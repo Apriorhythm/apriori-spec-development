@@ -374,6 +374,28 @@ What `/opsx:archive` actually does: it **merges this change's delta specs into O
 
 **This step is the lifeline of long-term maintainability for legacy projects** — every change deposits new facts back into the knowledge-base repo, so the next `explore` has no holes.
 
+### 4.10 Automating the Loop with `/goal` (Claude Code)
+
+Every loop above already has a **machine-checkable exit condition** — which is exactly what Claude Code's `/goal` consumes. `/goal "<condition>"` makes Claude work across turns **unattended until the condition holds**; after each turn an independent fast model (Haiku) reads the transcript and decides done / not-done, looping until done or you stop it.
+
+**The one architectural rule that keeps this sound:**
+
+> `/goal`'s built-in evaluator only **reads the transcript** and only judges *"is the condition met?"* — it is a weak model, and it is **NOT** the adversarial reviewer. So the real check must happen **inside the loop and leave its verdict in the transcript**. `/goal` orchestrates the loop; it never replaces the test run, the E2E suite, or the heterogeneous reviewer.
+
+That layering is what lets you automate **even adversarial review** without violating [§1.4](#14-adversarial-review): inside each turn Claude **calls the reviewer** (Codex via [§2.3](#23-driving-codex-non-interactively-multi-round-adversarial-review), or a fresh Claude session via [§2.4](#24-adversarial-review-with-only-claude-code)), pastes its verdict back, and the goal condition is simply *"the reviewer's verdict is 'no major issues', or N rounds reached."* The judgment stays heterogeneous + fresh-context; `/goal` only reads whether that judgment landed in the transcript.
+
+**What to automate, and what to leave as a human gate:**
+
+| Phase | A sound `/goal` condition (transcript-checkable) | Backed inside the loop by |
+|---|---|---|
+| STEP0 | REQ-REVIEW-DOC written and its verdict = "no major issues", or 5 rounds | a heterogeneous reviewer call each round |
+| STEP2 | SPEC-EVALUATION-DOC verdict = "no major issues, ready to execute", or N rounds | a heterogeneous reviewer call each round |
+| STEP5 | `npm test` exits 0 **and** every tasks.md item is `[x]` **and** the E2E/Playwright run is green **and** the consistency review reports no gaps, or N turns | real test + E2E run + reviewer call |
+| STEP6 | delta specs merged **and** the module's KB file updated | `/opsx:archive` + writeback |
+| **STEP3 tech review · reverse-capture review · KB sign-off** | — **do not wrap these in a goal** | a human decides |
+
+> Always cap it (`… or stop after N turns`): the cap maps to the handbook's ≤5-round limits and bounds cost — open-ended goals can run very expensive. Run **one `/goal` per machine-checkable stretch, stop at each human gate**, then start the next. Concrete conditions and the per-turn driver prompts are in [§7.7](#77-goal-recipes-automating-each-loop).
+
 ---
 
 ## 5. Example Project: mini-kv (In-Memory Cache with TTL)
@@ -643,6 +665,48 @@ Following the existing doc style of the KB repo, output a draft module KB doc to
 * Describe only facts that actually exist in the code; do not speculate. Explicitly mark uncertainties as "needs human confirmation"; do not invent abstract intent.
 ```
 > After producing it, **always have a human / heterogeneous model double-check** before writing it back to the knowledge-base repo (see [§6.4](#64-path-c-knowledge-base-missing-most-common)).
+
+### 7.7 `/goal` Recipes: Automating Each Loop
+
+> Reminder ([§4.10](#410-automating-the-loop-with-goal-claude-code)): `/goal` drives the loop; the real check (reviewer / tests / screenshots) must run **inside** each turn so its result lands in the transcript — the Haiku evaluator only reads whether it passed. Always include a turn cap. Replace `<change>` / `<module>` / paths and model names with your real ones.
+
+**STEP0 — requirement-review loop** (a heterogeneous reviewer runs inside the loop):
+```text
+/goal "Goal: requirement/req-final.md exists and the latest review pass reports 'no major issues'. Cap: 5 rounds.
+Each round:
+1. If doc/review/req-review-v{N}.md exists, revise requirement/req-v{N}.md per it, bump to v{N+1}, and note accept/reject+reason per issue.
+2. Run the reviewer with a DIFFERENT model on the current version and save its output to doc/review/req-review-v{N}.md, e.g.:
+   codex exec -s read-only \"<the §7.1 reviewer prompt> — target: requirement/req-v{N}.md\"
+   (no Codex? open a fresh `claude` per §2.4 and paste the §7.1 prompt)
+3. Paste the reviewer's final verdict line back into this conversation.
+Stop when the verdict is 'no major issues' (then copy to requirement/req-final.md) or after 5 rounds."
+```
+
+**STEP2 — spec + design adversarial loop** (use `codex exec resume <id>` so the reviewer keeps context across rounds, per §2.3):
+```text
+/goal "Goal: openspec/changes/<change>/ has SPEC-DOC+DESIGN-DOC and the latest SPEC-EVALUATION-DOC verdict is 'no major issues, ready to proceed to execution'. Cap: 4 rounds.
+Each round:
+1. Revise the spec/design files per the latest review — never touch source code.
+2. Re-run the heterogeneous reviewer (codex exec resume <session-id> with the §7.3 reviewer prompt) producing doc/design/<change>-review-v{N}.md.
+3. Surface the reviewer's verdict line here.
+Stop on 'no major issues, ready to proceed to execution' or after 4 rounds."
+```
+
+**STEP5 — apply: code + test + E2E + Playwright, until green:**
+```text
+/goal "Goal — ALL must hold: `npm test` exits 0; coverage >= 90%; every item in openspec/changes/<change>/tasks.md is [x]; the Playwright E2E suite passes and screenshot diffs are within threshold; AND a consistency review by a DIFFERENT model (the §7.4 prompt) reports no spec-vs-code gaps. Cap: 25 turns.
+Each turn: implement the next tasks.md item in order, write its tests, then run `npm test` and the Playwright run and SHOW the command output so the result is in the transcript. When the code is complete, run the consistency reviewer (codex exec / fresh claude) and paste its verdict.
+Stop when every condition holds or after 25 turns."
+```
+> Playwright/visual note: the goal evaluator reads **text**, so make the visual check emit a **textual pass/fail** (e.g. a pixelmatch threshold result printed to the console). If you instead rely on Claude's own look at a screenshot, it must **state the verdict in words** in the transcript, or the evaluator can't see it.
+
+**STEP6 — archive + knowledge-base writeback:**
+```text
+/goal "Goal: the change is archived (delta specs merged into openspec/specs/) AND the knowledge-base file for module <module> reflects this change's new/changed facts. Cap: 4 turns.
+Run /opsx:archive, then update ../knowledge-base/<module>.md and list exactly which files/sections changed.
+Stop when both hold."
+```
+> Then a **human reviews the KB diff** — don't let the goal self-approve the knowledge-base writeback (see [§6.5](#65-closing-the-loop-write-back-after-every-change)).
 
 ---
 

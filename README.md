@@ -70,6 +70,16 @@ Claude Code (Opus/Claude)  ──produces──►  SPEC-DOC + DESIGN-DOC
    revise per review  ◄──SPEC-EVALUATION-DOC──  Codex / Cursor switched to GPT, reviews
 ```
 
+**What actually makes a review adversarial — three independent levers:**
+
+| Lever | Why it helps | Needs a 2nd tool? |
+|---|---|---|
+| **Different model weights** | Non-overlapping blind spots (GPT vs Claude is strongest) | Yes |
+| **Fresh context** | The reviewer never sees the producer's reasoning, so it isn't anchored to its conclusions | No |
+| **Adversarial role** | The producer optimizes for "make it work"; the reviewer optimizes for "find where it breaks" | No |
+
+> The last two levers matter *more* than the first, and neither requires a second tool. A **freshly-started session explicitly told to refute** catches most issues even when it runs the same model as the producer — because it isn't bound to its own earlier reasoning. The worst anti-pattern is **asking the model to "review what you just wrote" in the same conversation**: its context is full of its own justifications, so it rubber-stamps. Switching models but staying in one session is *weaker* than the same model in a fresh one. If you only have Claude Code, see [§2.4](#24-adversarial-review-with-only-claude-code).
+
 Adversarial review runs through three points: **① requirement-doc review (STEP0) ② spec + design review (STEP2) ③ code implementation review (STEP5)**.
 
 ---
@@ -97,11 +107,11 @@ This methodology is **decoupled from any specific tool** — any "LLM + Tool use
 - **Claude Code CLI** (switch **between Anthropic models** via an environment variable):
   ```shell
   # PowerShell
-  $env:ANTHROPIC_MODEL="claude-opus-4-7"; claude
+  $env:ANTHROPIC_MODEL="claude-opus-4-8"; claude
   $env:ANTHROPIC_MODEL="claude-sonnet-4-6"; claude
 
   # Linux / macOS / WSL
-  ANTHROPIC_MODEL="claude-opus-4-7" claude
+  ANTHROPIC_MODEL="claude-opus-4-8" claude
   ANTHROPIC_MODEL="claude-sonnet-4-6" claude
   ```
   > ⚠️ `ANTHROPIC_MODEL` **only works among Anthropic's own models**. To make Claude Code use a non-Anthropic model (e.g. GPT), you **cannot** just set it to `gpt-5.5` — the default endpoint does not serve that model and the call will error out. You must route through a gateway/proxy that speaks the Anthropic protocol:
@@ -111,10 +121,64 @@ This methodology is **decoupled from any specific tool** — any "LLM + Tool use
   > ```
   > If you just want a GPT review perspective, **the simpler path is to use Codex / Cursor directly** (below) — no gateway needed.
 - **Cursor / Windsurf / Copilot**: switch directly via the model dropdown in the chat box.
-- **Codex**: specify the model via its config or launch flags.
+- **Codex**: specify the model via its config or the `-m` launch flag; to actually drive it from the CLI for a multi-round review, see [§2.3](#23-driving-codex-non-interactively-multi-round-adversarial-review).
 
 > 💡 Recommended combo: **Claude Code (Opus) for production + Codex/Cursor on GPT for review**. The two model families have non-overlapping blind spots, which makes the adversarial pass most effective.
 > 🐧 Linux / macOS / WSL is the best environment for CLI-type tools — rich command tooling and the most training examples in LLM corpora, so behavior is most stable.
+
+### 2.3 Driving Codex Non-Interactively (Multi-Round Adversarial Review)
+
+The adversarial-review loop (review → revise → re-review) only works if the reviewing tool **remembers the previous round**. With Codex you run this straight from the command line — no IDE needed — using `codex exec` to open a review session and `codex exec resume` to keep every round in **one conversation context**.
+
+**Round 1 — open a session:**
+```shell
+# -s read-only : the reviewer only audits; it must not modify your files
+# --skip-git-repo-check : only needed when running outside a git repo
+codex exec -s read-only "<your review prompt — e.g. the reviewer prompt from §7.3>"
+```
+The output header prints a line like `session id: 019f....`. **Copy that id** — it's the handle for the next round.
+
+**Round 2…N — resume the same context:**
+```shell
+# flags MUST come before the session id, otherwise Codex rejects them
+codex exec resume -s read-only <session-id> "I've revised per your last review; re-review and produce v{N+1}."
+```
+Because the session is preserved, the reviewer still remembers its earlier findings — it can verify "was issue #3 actually fixed?" instead of starting over each round.
+
+> Don't want to track the id? `codex exec resume --last "..."` continues the most recent session. But with several reviews in flight that's ambiguous, so prefer the explicit id for real review loops.
+
+**Pick the reviewing model** (keep it a *different* family from the producer — that's the whole point): `codex exec -m <model> ...`, or set the default in Codex's config.
+
+> ⚠️ **Transport warnings are gateway-specific, not failures.** If your Codex is pointed at a **custom / self-hosted gateway**, you may see `failed to connect to websocket: 404` followed by `Falling back ... to HTTPS`. That only means *that gateway* doesn't serve the WebSocket transport — the request still completes over HTTPS and the review is unaffected; on the official endpoint you won't see it at all. If the noise bothers you, filter it:
+> ```shell
+> codex exec ... 2>&1 | grep -v -E "websocket|Reconnecting|Falling back"
+> ```
+
+### 2.4 Adversarial Review With Only Claude Code
+
+No Codex or second tool? You can still run a real adversarial loop — you just give up the "different model family" lever ([§1.4](#14-adversarial-review)) and lean on **fresh context + adversarial role**, which carry most of the weight anyway.
+
+**The one rule: the reviewer must be a *separate session* — never a "now review your own work" turn inside the producer's conversation** (there its context is full of its own justifications, so it rubber-stamps). Open a second terminal, start a fresh `claude` on a different tier, and feed it only the artifacts (spec / design / code paths) plus the reviewer prompt from §7:
+
+```shell
+# left terminal — producer
+claude                                    # Opus by default; produces SPEC-DOC / code
+
+# right terminal — reviewer: fresh context + a different tier
+ANTHROPIC_MODEL="claude-sonnet-4-6" claude
+# then paste the §7.3 / §7.4 reviewer prompt, pointing at the artifact paths
+```
+
+This two-terminal setup is the Claude-only equivalent of §2.3's `codex exec` / `resume` loop: produce on the left, hand the artifacts to the right, paste findings back, repeat until "no major issues."
+
+**Match the model tier to the review point:**
+
+| Review point | What it needs | Suggested reviewer |
+|---|---|---|
+| STEP0 / STEP2 (requirement / design) | Judgment & reasoning | the **strongest** model available (e.g. Opus), fresh session |
+| STEP5 (impl vs spec consistency) | Mechanical "is everything in the spec present in the code" | **Sonnet 4.6 / Haiku 4.5** — fast and cheap is enough |
+
+> ⚠️ Don't point a weaker model at a stronger one's hard reasoning — auditing an Opus design with Haiku tends to miss exactly the subtle issues Haiku can't follow. Review *sideways or down* in capability, not steeply up. (`/model` switches the current session, but for review always **start a new session** so the reviewer keeps fresh eyes.)
 
 ---
 
@@ -527,6 +591,8 @@ When done, go to review again, producing v{N+1}.
 ```
 Loop until the review outputs "no major issues, ready to proceed to execution."
 
+> 💡 To run this review loop through Codex from the CLI — open the session in round 1, `resume <session-id>` each subsequent round so the reviewer keeps full context — see [§2.3](#23-driving-codex-non-interactively-multi-round-adversarial-review).
+
 ### 7.4 STEP5: apply (Code + Test)
 
 ```text
@@ -548,6 +614,8 @@ Review the consistency of this implementation against the SPEC-DOC. Focus on:
 3. Whether the tests truly cover each scenario (not just the happy path).
 List each inconsistency and a suggested fix.
 ```
+
+> 💡 As in STEP2, drive this with a heterogeneous model via the CLI; for the `codex exec` / `codex exec resume` mechanics see [§2.3](#23-driving-codex-non-interactively-multi-round-adversarial-review).
 
 ### 7.5 STEP6: archive
 

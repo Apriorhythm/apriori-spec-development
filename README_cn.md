@@ -70,6 +70,16 @@ Claude Code (Opus/Claude)  ──产出──►  SPEC-DOC + DESIGN-DOC
    按评审修订  ◄──SPEC-EVALUATION-DOC──  Codex / Cursor 切到 GPT 评审
 ```
 
+**真正让评审"对抗"起来的,是三个相互独立的杠杆:**
+
+| 杠杆 | 为什么有用 | 需要第二个工具吗? |
+|---|---|---|
+| **不同模型权重** | 盲区不重叠(GPT vs Claude 最强) | 需要 |
+| **全新上下文** | 评审方看不到生产方的推理链,不被其结论锚定 | 不需要 |
+| **对抗性角色** | 生产方求"能跑通",评审方求"找它哪会崩" | 不需要 |
+
+> 后两个杠杆比第一个**更**重要,而且都不需要第二个工具。一个**新开会话、被明确要求"证伪/挑刺"的 Claude**,即使跑的是和生产方相同的模型,也能逮到大半问题——因为它没有被自己之前的推理绑架。最糟的反模式是**在同一段对话里让模型"评审一下你刚写的"**:它的上下文里全是自己的理由,于是直接盖章。换了模型却留在同一会话,反而**不如**同模型但新开会话。若你只有 Claude Code,见 [§2.4](#24-只有-claude-code-时的对抗评审)。
+
 对抗训练贯穿三个环节：**① 需求文档评审（STEP0）② 规格+设计评审（STEP2）③ 代码实现评审（STEP5）**。
 
 ---
@@ -97,11 +107,11 @@ Claude Code (Opus/Claude)  ──产出──►  SPEC-DOC + DESIGN-DOC
 - **Claude Code CLI**（用环境变量在 **Anthropic 模型之间**切换）：
   ```shell
   # PowerShell
-  $env:ANTHROPIC_MODEL="claude-opus-4-7"; claude
+  $env:ANTHROPIC_MODEL="claude-opus-4-8"; claude
   $env:ANTHROPIC_MODEL="claude-sonnet-4-6"; claude
 
   # Linux / macOS / WSL
-  ANTHROPIC_MODEL="claude-opus-4-7" claude
+  ANTHROPIC_MODEL="claude-opus-4-8" claude
   ANTHROPIC_MODEL="claude-sonnet-4-6" claude
   ```
   > ⚠️ `ANTHROPIC_MODEL` **只在 Anthropic 自家模型间生效**。想让 Claude Code 改用非 Anthropic 模型（如 GPT），**不能**直接把它设成 `gpt-5.5`——默认端点不提供该模型，会直接报错。必须经由一个兼容 Anthropic 协议的网关/代理转发：
@@ -111,10 +121,64 @@ Claude Code (Opus/Claude)  ──产出──►  SPEC-DOC + DESIGN-DOC
   > ```
   > 若只是想要 GPT 的评审视角，**更省事的做法是直接用 Codex / Cursor**（见下），无需折腾网关。
 - **Cursor / Windsurf / Copilot**：在对话框的模型下拉里直接切换。
-- **Codex**：通过其配置或启动参数指定模型。
+- **Codex**：通过其配置或 `-m` 启动参数指定模型；想从命令行真正驱动它做多轮评审，见 [§2.3](#23-用命令行驱动-codex多轮对抗评审)。
 
 > 💡 推荐组合：**Claude Code（Opus）做生产 + Codex/Cursor 切 GPT 做评审**。两套模型的盲区不重叠，对抗效果最好。
 > 🐧 Linux / macOS / WSL 是跑 CLI 类工具的最佳环境——命令资源丰富，LLM 训练语料里这类案例最多，行为最稳。
+
+### 2.3 用命令行驱动 Codex（多轮对抗评审）
+
+对抗评审的闭环（评审 → 修订 → 再评审）能成立，前提是评审工具**记得上一轮**。用 Codex 时,这件事直接在命令行完成——无需 IDE——靠 `codex exec` 开一个评审会话、`codex exec resume` 让每一轮都待在**同一段对话上下文**里。
+
+**第一轮——开启会话：**
+```shell
+# -s read-only ：评审只审、不许改你的文件
+# --skip-git-repo-check ：仅当你在 git 仓库之外运行时才需要
+codex exec -s read-only "<你的评审提示词——例如 §7.3 的评审 prompt>"
+```
+输出头部会打印一行 `session id: 019f....`。**记下这个 id**——它是续接下一轮的句柄。
+
+**第二轮…第 N 轮——续接同一上下文：**
+```shell
+# flag 必须放在 session id 之前，否则 Codex 会报错拒绝
+codex exec resume -s read-only <session-id> "我已按你上轮意见修订；请重新评审并产出 v{N+1}。"
+```
+因为会话被保留，评审方仍记得它上一轮的发现——能核对"问题 #3 是否真的改好了",而不是每轮都从零重审。
+
+> 不想记 id？`codex exec resume --last "..."` 会续接最近一次会话。但同时有多个评审在跑时它会有歧义,所以正式评审循环建议显式带 id。
+
+**选评审模型**（务必与生产方**不同系**——这正是对抗的意义所在）：`codex exec -m <model> ...`,或在 Codex 配置里设默认值。
+
+> ⚠️ **传输层告警是网关个例,不是失败。** 如果你的 Codex 指向了**自定义 / 自建网关**,可能看到 `failed to connect to websocket: 404`,随后 `Falling back ... to HTTPS`。这只说明*那个网关*不提供 WebSocket 传输——请求仍会经 HTTPS 正常完成,评审不受影响;官方端点上根本不会出现。嫌刷屏可过滤掉:
+> ```shell
+> codex exec ... 2>&1 | grep -v -E "websocket|Reconnecting|Falling back"
+> ```
+
+### 2.4 只有 Claude Code 时的对抗评审
+
+没有 Codex、也没有第二个工具?照样能跑真正的对抗闭环——只是放弃"不同模型家族"这个杠杆([§1.4](#14-对抗训练)),靠**全新上下文 + 对抗角色**,而这两者本就占了大头。
+
+**唯一铁律:评审方必须是*独立会话*——绝不能在生产方的对话里接一句"现在评审一下你刚写的"**(那里它满脑子都是自己的理由,只会盖章)。另开一个终端,用不同档位起一个全新的 `claude`,只喂给它产物(spec / design / code 路径)加上 §7 的评审提示词:
+
+```shell
+# 左边终端——生产方
+claude                                    # 默认 Opus;产出 SPEC-DOC / 代码
+
+# 右边终端——评审方:全新上下文 + 不同档位
+ANTHROPIC_MODEL="claude-sonnet-4-6" claude
+# 然后贴入 §7.3 / §7.4 的评审提示词,指向产物路径
+```
+
+这套"双终端"就是 Claude-only 版的 §2.3 `codex exec` / `resume` 循环:左边生产,把产物交给右边,再把评审意见贴回来,循环到「无重大问题」。
+
+**按评审点匹配模型档位:**
+
+| 评审点 | 它需要什么 | 建议评审模型 |
+|---|---|---|
+| STEP0 / STEP2(需求 / 设计) | 判断与推理 | **最强**可用模型(如 Opus),新会话 |
+| STEP5(实现 vs spec 一致性) | 机械核对"spec 写的代码有没有" | **Sonnet 4.6 / Haiku 4.5**——快且便宜就够 |
+
+> ⚠️ 别拿弱模型去审强模型的硬推理——用 Haiku 审 Opus 的设计,往往恰好漏掉 Haiku 本就跟不上的微妙问题。评审要*平级或向下*选模型,别陡峭向上。(`/model` 切的是当前会话,但评审务必**另起新会话**,让评审方保持新鲜视角。)
 
 ---
 
@@ -527,6 +591,8 @@ graph TD
 ```
 循环直到评审输出「无重大问题，可进入执行阶段」。
 
+> 💡 想用 Codex 从命令行跑这个评审循环——第一轮开会话,之后每轮 `resume <session-id>` 让评审方保有完整上下文——见 [§2.3](#23-用命令行驱动-codex多轮对抗评审)。
+
 ### 7.4 STEP5｜apply（编码 + 测试）
 
 ```text
@@ -548,6 +614,8 @@ graph TD
 3. 测试是否真正覆盖了每个 scenario（而非只跑主路径）。
 逐条列出不一致项与修复建议。
 ```
+
+> 💡 同 STEP2,用异构模型从命令行驱动;`codex exec` / `codex exec resume` 的具体机制见 [§2.3](#23-用命令行驱动-codex多轮对抗评审)。
 
 ### 7.5 STEP6｜archive
 

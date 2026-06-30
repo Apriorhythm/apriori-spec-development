@@ -57,6 +57,8 @@ Then redirect to /login, carrying a redirect parameter
 
 After the AI writes the code and the tests, it **runs the tests itself**, keeping the code self-consistent and eliminating low-level mistakes (compile errors, missing fields, malformed data).
 
+> Each scenario in the SPEC-DOC ([§4.5](#45-step2-opsxpropose-produce-spec--design--adversarial-review)) is one such `if … then …`, so **the spec's scenarios *are* the test cases** the implementation must satisfy in STEP5 — "test-driven" here means letting the spec's scenarios drive the tests.
+
 ### 1.4 Adversarial Review
 
 > **Adversarial review = use a model *different* from the "producer" to audit the output.** A single model acting as both athlete and referee will systematically overlook its own blind spots.
@@ -276,6 +278,16 @@ openspec init
 | SPEC-EVALUATION-DOC | Spec review doc | In **STEP2** adversarial review, another model's audit of SPEC-DOC + DESIGN-DOC |
 | DESIGN-REVIEW-DOC | Technical review record | The conclusions and revisions from the human **STEP3** technical review meeting |
 
+**Where each artifact lives** (these paths are the conventions used throughout §7's prompts — adjust to your repo):
+
+| Artifact | Default location |
+|---|---|
+| Requirement doc | `requirement/req-v{N}.md`, finalized as `requirement/req-final.md` |
+| REQ-REVIEW-DOC | `doc/review/req-review-v{N}.md` |
+| SPEC-DOC / DESIGN-DOC / tasks.md | `openspec/changes/<change>/specs/`, `…/design.md`, `…/tasks.md` |
+| SPEC-EVALUATION-DOC | `doc/design/<change>-review-v{N}.md` |
+| TRUTH-DOC (knowledge base) | the long-lived KB repo, e.g. `../knowledge-base/<module>.md` (reverse-capture drafts land in `doc/truth/<module>.md` first) |
+
 ### 4.2 Overview Flowchart
 
 > The flowchart explicitly draws the **STEP0 requirement-doc adversarial review loop**, as well as the **loop-backs** between phases.
@@ -306,6 +318,8 @@ graph TD
     H2 -- No, fix --> H
     H2 -- Yes --> I[STEP6 /opsx:archive<br/>merge specs + write back to KB]
 ```
+
+> Every loop drawn here has a machine-checkable exit condition, so each can be **driven automatically by `/goal`** — see [§4.10](#410-automating-the-loop-with-goal-claude-code).
 
 ### 4.3 STEP0: Requirement Refinement (Adversarial Review, Up to 5 Rounds)
 
@@ -365,6 +379,7 @@ Write code per the SPEC-DOC, produce test code in lockstep, and treat **all test
 
 - **Prefer a stronger model (Opus) for complex logic, and a faster/cheaper model (Sonnet) for routine coding.**
 - Add adversarial review: use **another model** (e.g. Sonnet 4.6 / GPT) to review the **consistency** between spec and implementation — focus on "written in the spec but missing in the code," and "the code has a `continue`/silent-skip/skip branch that the spec never declared as user-visible."
+- **Tests span layers**: unit tests for logic (always); for a project **with a UI**, add E2E and visual-regression checks (e.g. Playwright screenshots). A pure library like §5's mini-kv has no UI, so it needs only unit tests — skip the Playwright clause in the [§7.7](#77-goal-recipes-automating-each-loop) recipe.
 
 ### 4.9 STEP6: `/opsx:archive` (Archive and Capture Facts)
 
@@ -377,6 +392,8 @@ What `/opsx:archive` actually does: it **merges this change's delta specs into O
 ### 4.10 Automating the Loop with `/goal` (Claude Code)
 
 Every loop above already has a **machine-checkable exit condition** — which is exactly what Claude Code's `/goal` consumes. `/goal "<condition>"` makes Claude work across turns **unattended until the condition holds**; after each turn an independent fast model (Haiku) reads the transcript and decides done / not-done, looping until done or you stop it.
+
+> **Prerequisite:** `/goal` needs Claude Code ≥ v2.1.139 and an accepted hook-trust dialog; it's unavailable if `disableAllHooks` / `allowManagedHooksOnly` is set. Check with `claude --version`. (On older versions, just drive the same loops by hand per §2.3 / §2.4.)
 
 **The one architectural rule that keeps this sound:**
 
@@ -394,7 +411,7 @@ That layering is what lets you automate **even adversarial review** without viol
 | STEP6 | delta specs merged **and** the module's KB file updated | `/opsx:archive` + writeback |
 | **STEP3 tech review · reverse-capture review · KB sign-off** | — **do not wrap these in a goal** | a human decides |
 
-> Always cap it (`… or stop after N turns`): the cap maps to the handbook's ≤5-round limits and bounds cost — open-ended goals can run very expensive. Run **one `/goal` per machine-checkable stretch, stop at each human gate**, then start the next. Concrete conditions and the per-turn driver prompts are in [§7.7](#77-goal-recipes-automating-each-loop).
+> Always cap it (`… or stop after N turns`): the cap maps to the handbook's ≤5-round limits and bounds cost — open-ended goals can run very expensive. Suggested caps: STEP0 ≈5, STEP2 ≈3–4, STEP5 ≈25. If a loop **oscillates** (the verdict flip-flops, or the same issue keeps resurfacing) or stalls without progress, treat hitting the cap as a signal to **escalate to a human** — not to quietly lower the bar. Run **one `/goal` per machine-checkable stretch, stop at each human gate**, then start the next. Concrete conditions and the per-turn driver prompts are in [§7.7](#77-goal-recipes-automating-each-loop).
 
 ---
 
@@ -402,7 +419,7 @@ That layering is what lets you automate **even adversarial review** without viol
 
 We'll run the whole workflow end-to-end on a small library with **real state and easy tests**. It's chosen because it lands squarely on a key rule in the OpenSpec config — **"external shared state MUST describe the three moments: init / update / cleanup"** (see §8.1) — making it a good way to feel out the right spec granularity.
 
-> Goal: a Node.js library `mini-kv` providing in-memory key-value storage with time-to-live (TTL); plus a small CLI demo.
+> Goal: a Node.js library `mini-kv` providing in-memory key-value storage with time-to-live (TTL).
 
 ### 5.0 Scaffold the Project
 
@@ -445,7 +462,13 @@ Please align the facts and output a gap report between current state A and targe
 /opsx:propose
 ```
 Pay attention to whether the resulting `spec.md` **gives each user-visible behavior its own scenario**, and whether the **external shared state (here, that in-memory map) describes the three moments: init / update-at-runtime / cleanup-and-invalidation**.
-Then switch to your reviewing tool/model and review → revise per [§7.3](#73-step2-adversarial-review-and-revision), looping until "no major issues."
+Then switch to your reviewing tool/model and review → revise per [§7.3](#73-step2-adversarial-review-and-revision), looping until "no major issues." Concretely, drive the review with Codex ([§2.3](#23-driving-codex-non-interactively-multi-round-adversarial-review)):
+```shell
+# round 1 — open the review session (note the printed session id)
+codex exec -s read-only "Review openspec/changes/<change>/specs/ and design.md against requirement/req-final.md, using the §7.3 reviewer checklist. End with a verdict line."
+# each revision round — same context, so it checks whether your fixes landed
+codex exec resume -s read-only <session-id> "I revised per your last review; re-review and produce v{N+1}."
+```
 
 ### 5.4 STEP5 · apply
 
@@ -460,6 +483,11 @@ Expect output along the lines of:
 Run it to confirm:
 ```shell
 npm test
+```
+
+To run the implement → test loop unattended, wrap it in a goal — the mini-kv form of the [§7.7](#77-goal-recipes-automating-each-loop) STEP5 recipe (it's a library, so no Playwright clause):
+```text
+/goal "All of: `npm test` exits 0; every item in openspec/changes/<change>/tasks.md is [x]; and a consistency review by a different model (the §7.4 prompt) reports no spec-vs-code gaps. Cap: 15 turns. Each turn: implement the next tasks.md item, write its tests, run `npm test` and SHOW the output. Stop when all hold or after 15 turns."
 ```
 
 ### 5.5 Acceptance & STEP6 · archive
@@ -694,11 +722,11 @@ Stop on 'no major issues, ready to proceed to execution' or after 4 rounds."
 
 **STEP5 — apply: code + test + E2E + Playwright, until green:**
 ```text
-/goal "Goal — ALL must hold: `npm test` exits 0; coverage >= 90%; every item in openspec/changes/<change>/tasks.md is [x]; the Playwright E2E suite passes and screenshot diffs are within threshold; AND a consistency review by a DIFFERENT model (the §7.4 prompt) reports no spec-vs-code gaps. Cap: 25 turns.
+/goal "Goal — ALL must hold: `npm test` exits 0; coverage meets the project bar (§8.1; the handbook targets 100%); every item in openspec/changes/<change>/tasks.md is [x]; (UI projects only) the Playwright E2E suite passes and screenshot diffs are within threshold; AND a consistency review by a DIFFERENT model (the §7.4 prompt) reports no spec-vs-code gaps. Cap: 25 turns.
 Each turn: implement the next tasks.md item in order, write its tests, then run `npm test` and the Playwright run and SHOW the command output so the result is in the transcript. When the code is complete, run the consistency reviewer (codex exec / fresh claude) and paste its verdict.
 Stop when every condition holds or after 25 turns."
 ```
-> Playwright/visual note: the goal evaluator reads **text**, so make the visual check emit a **textual pass/fail** (e.g. a pixelmatch threshold result printed to the console). If you instead rely on Claude's own look at a screenshot, it must **state the verdict in words** in the transcript, or the evaluator can't see it.
+> Playwright/visual note: this clause applies to **UI projects**; a pure library (like §5's mini-kv) drops it. The goal evaluator reads **text**, so make the visual check emit a **textual pass/fail** (e.g. a pixelmatch threshold result printed to the console). If you instead rely on Claude's own look at a screenshot, it must **state the verdict in words** in the transcript, or the evaluator can't see it.
 
 **STEP6 — archive + knowledge-base writeback:**
 ```text

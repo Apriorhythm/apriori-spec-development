@@ -362,44 +362,44 @@ rejected + intent hypothesis falsified → back to SPIKE or ABANDONED (the state
 
 **STEP0 loop:**
 ```text
-/goal "Goal: requirement/req-final.md exists and the latest review pass reports 'no major issues'. Cap: 5 rounds.
+/goal "Goal: requirement/req-final.md exists and the latest review pass reports 'no major issues'. Cap: step0-cap rounds (default 5).
 Each round:
 1. If doc/review/<change>-req-review-v{N}.md exists, revise requirement/req-v{N}.md per it, bump to v{N+1}, note accept/reject+reason per issue, and update those issues' Status in doc/review/<change>-issues.md.
 2. Run the reviewer with a DIFFERENT model on the current version and save its output to doc/review/<change>-req-review-v{N}.md, e.g.:
    codex exec -s read-only \"<the P1 prompt> — target: requirement/req-v{N}.md\"
    (no Codex? open a fresh `claude` and hand it P1 plus the issue ledger)
 3. Paste the reviewer's final verdict line back into this conversation.
-Stop when the verdict is 'no major issues' (then copy to requirement/req-final.md) or after 5 rounds."
+Stop when the verdict is 'no major issues' (then copy to requirement/req-final.md) or at the cap."
 ```
 
 **STEP2 loop:**
 ```text
-/goal "Goal: openspec/changes/<change>/ has SPEC-DOC+DESIGN-DOC and the latest review verdict is 'no major issues, ready to proceed to execution'. Cap: 4 rounds.
+/goal "Goal: openspec/changes/<change>/ has SPEC-DOC+DESIGN-DOC and the latest review verdict is 'no major issues, ready to proceed to execution'. Cap: step2-cap rounds (default 4).
 Each round:
 1. Revise the spec/design files per the latest review — never touch source code — and update the handled issues' Status in doc/review/<change>-issues.md.
 2. Re-run the heterogeneous reviewer with the P5 prompt (round 1: codex exec, note the printed session id; later rounds: codex exec resume -c sandbox_mode=\"read-only\" <session-id> — codex ≥0.14x rejects -s on resume; older CLIs: -s read-only before the id), producing doc/design/<change>-review-v{N}.md and updating the ledger.
 3. Surface the reviewer's verdict line here.
-Stop on 'no major issues, ready to proceed to execution' or after 4 rounds."
+Stop on 'no major issues, ready to proceed to execution' or at the cap."
 ```
 
 **STEP5 loop:**
 ```text
-/goal "Goal — ALL must hold: `npm test` exits 0; every scenario ID in openspec/changes/<change>/specs/ appears in at least one test name (list any missing IDs); every item in openspec/changes/<change>/tasks.md is [x]; (UI projects only) the Playwright E2E suite passes and screenshot diffs are within threshold; AND a consistency review by a DIFFERENT model (the P8 prompt) reports no spec-vs-code gaps. Cap: 25 turns.
+/goal "Goal — ALL must hold: `npm test` exits 0; every scenario ID in openspec/changes/<change>/specs/ appears in at least one test name (list any missing IDs); every item in openspec/changes/<change>/tasks.md is [x]; (UI projects only) the Playwright E2E suite passes and screenshot diffs are within threshold; AND a consistency review by a DIFFERENT model (the P8 prompt) reports no spec-vs-code gaps. Cap: step5-cap turns (default 25).
 Turn 1: derive one failing test per spec scenario, named with its scenario ID, and SHOW the failing run. Each later turn: implement the next tasks.md item in order, then run `npm test` (and the Playwright run for UI projects) and SHOW the output so the result is in the transcript. When the code is complete, run the consistency reviewer (codex exec / fresh claude) and paste its verdict.
-Stop when every condition holds or after 25 turns."
+Stop when every condition holds or at the cap."
 ```
 > Docs-only projects: replace `npm test` with `python3 scripts/check_docs.py`, drop the Playwright clause, keep the consistency review.
 
 **STEP6:**
 ```text
-/goal "Goal: the change is archived (delta specs merged into openspec/specs/) AND the KB file for module <module> reflects this change's new/changed facts with a refreshed source-commit stamp. Cap: 4 turns.
+/goal "Goal: the change is archived (delta specs merged into openspec/specs/) AND the KB file for module <module> reflects this change's new/changed facts with a refreshed source-commit stamp. Cap: step6-cap turns (default 4).
 Run /opsx:archive, then update docs/truth/<module>.md and list exactly which files/sections changed.
 Stop when both hold."
 ```
 
 **Gate checklist (what you personally decide):** ① STEP0 finalization when the cap is hit ② gap-report skim (Large) ③ STEP3 technical review ④ KB-diff approval ⑤ any cap hit / reopened ledger ID — escalation, never quietly lowering the bar. Explore track adds: `intent-card sign-off` and the `extraction review` outcome. Gate consolidation (§1) is yours to grant — but never over the shrink decision, the KB sign-off, or `intent-card sign-off`.
 
-**Shrink governance (the metabolism rule).** Every N changes (default 5, `post-merge-review-freq`) the agent **reports — never applies** — a shrink/expand proposal whose data pack MUST contain: verified count, rejected count (with sampled reasons), reopened-ID count. Shrinking a review stage is a **human gate decision**, blocked outright when the rejected ratio exceeds `rejected-ratio-guard` (default 50%) or the change class is tripwired (shared state / migration / security / production data). Shrinking means lowering a stage's round cap — **floor 1; no stage ever reaches zero**. Post-merge re-review (default 1 in 5 merged changes) finding ≥1 high-risk miss → restore the stage's previous cap, logged the same way. Beware both directions: producers can zero the metric by rejecting findings (that's what the rejected-ratio guard is for); reviewers can inflate it by careless verifies (which merely delays shrinking).
+**Shrink governance (the metabolism rule).** Every N changes (default 5, `shrink-proposal-freq`) the agent **reports — never applies** — a shrink/expand proposal whose data pack MUST contain: verified count, rejected count (with sampled reasons), reopened-ID count. Shrinking a review stage is a **human gate decision**, blocked outright when the rejected ratio exceeds `rejected-ratio-guard` (default 50%) or the change class is tripwired (shared state / migration / security / production data). Shrinking means lowering a stage's round cap — **floor 1; no stage ever reaches zero**. Post-merge re-review (sampling rate `post-merge-review-freq`, default 1 in 5 merged changes) finding ≥1 high-risk miss → restore the stage's previous cap, logged the same way. Beware both directions: producers can zero the metric by rejecting findings (that's what the rejected-ratio guard is for); reviewers can inflate it by careless verifies (which merely delays shrinking).
 
 ---
 

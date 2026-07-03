@@ -340,7 +340,7 @@ graph LR
 | P11 / P12 | 提取与其评审 | P11 从已验证的原型提取规格;P12(异构)对照意图卡评审该提取 |
 | track | 确定性轴分轨 | `harden` 或 `explore`,连同理由记入状态文件([§4.0](#40-先给变更定级)) |
 
-**各类产物放哪**（下列路径就是 RUNBOOK 各提示词里通用的约定——按你的仓库调整）：
+**各类产物放哪**（下列路径就是 RUNBOOK 各提示词里通用的约定——按你的仓库调整；过程产物也可经状态文件的 `artifact-root` 字段整体外置，语义以 RUNBOOK §3 为准）：
 
 | 产物 | 默认位置 |
 |---|---|
@@ -487,9 +487,9 @@ SPEC-DOC + DESIGN-DOC_V2  ──评审模型──►  SPEC-EVALUATION-DOC_V2
 
 | 阶段 | 一个可靠的 `/goal` 条件（transcript 可判） | 循环内部由什么支撑 |
 |---|---|---|
-| STEP0 | REQ-REVIEW-DOC 已产出且判定 =「无重大问题」，或 5 轮 | 每轮一次异构评审调用 |
+| STEP0 | REQ-REVIEW-DOC 已产出且判定 =「无重大问题」，或 step0-cap 轮（默认 5） | 每轮一次异构评审调用 |
 | STEP2 | SPEC-EVALUATION-DOC 判定 =「无重大问题，可进入执行」，或 N 轮 | 每轮一次异构评审调用 |
-| STEP5 | `npm test` 退出码 0 **且** tasks.md 全 `[x]` **且** E2E/Playwright 全绿 **且** 一致性评审无缺口，或 N 轮 | 真跑测试 + E2E + 评审调用 |
+| STEP5 | `npm test` 退出码 0 **且** tasks.md 全 `[x]` **且** E2E/Playwright 全绿 **且** 一致性评审无缺口，或 N 轮——按 §4.8 项目类型矩阵替换（纯文档：`python3 scripts/check_docs.py` + 示例命令静态检查） | 真跑测试 + E2E + 评审调用 |
 | STEP6 | 增量规格已合并 **且** 该模块知识库文件已更新 | `/opsx:archive` + 回写 |
 | **STEP3 技术评审 · 反向沉淀复核 · 知识库签字** | —— **不要塞进 goal** | 由人决定 |
 
@@ -505,7 +505,7 @@ SPEC-DOC + DESIGN-DOC_V2  ──评审模型──►  SPEC-EVALUATION-DOC_V2
 |---|---|
 | 一个变更 | 一个分支（`change/<change-name>`）、一个 PR |
 | SPEC-DOC / DESIGN-DOC / 评审文档 / 问题台账 | 随分支提交——评审者在同一个 diff 里同时看到文档与代码 |
-| STEP5 退出条件 | PR 上的 CI 任务：测试全绿；每个 spec scenario ID 至少出现在一个测试名里（grep 即可查的追溯检查）；tasks.md 全 `[x]` |
+| STEP5 退出条件 | PR 上的 CI 任务：测试全绿；每个 spec scenario ID 至少出现在一个测试名里（grep 即可查的追溯检查）；tasks.md 全 `[x]`——纯文档项目的"测试"映射为 `python3 scripts/check_docs.py` + 示例命令静态检查（§4.8） |
 | 一致性评审结论（§7.4） | 以评论 / 必过检查的形式挂在 PR 上，过不了不许合并 |
 | STEP6 知识库回写 | 同一个 PR 的一部分——"代码合了、知识库没更"在评审里一眼可见，而不是悄悄积累 |
 
@@ -565,7 +565,7 @@ git init             # 建议纳入版本管理，方便对照每步 diff
 # 第一轮——开启评审会话（记下打印出来的 session id）
 codex exec -s read-only "按 RUNBOOK P5 评审清单，对照 requirement/req-final.md 评审 openspec/changes/<change>/specs/ 与 design.md，末尾给出结论行。"
 # 之后每个修订轮——同一上下文，它能核对你的修复是否到位
-codex exec resume -s read-only <session-id> "我已按上轮意见修订；请重新评审并产出 v{N+1}。"
+codex exec resume -c sandbox_mode="read-only" <session-id> "我已按上轮意见修订；请重新评审并产出 v{N+1}。"
 ```
 
 ### 5.4 STEP5 · apply

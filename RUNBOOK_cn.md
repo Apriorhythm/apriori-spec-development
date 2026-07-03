@@ -362,44 +362,44 @@ rejected+意图假设被证伪 → 回 SPIKE 或 ABANDONED(状态机的失败分
 
 **STEP0 循环:**
 ```text
-/goal "目标:requirement/req-final.md 存在,且最新一轮评审判定为「无重大问题」。上限:5 轮。
+/goal "目标:requirement/req-final.md 存在,且最新一轮评审判定为「无重大问题」。上限:step0-cap 轮(默认 5)。
 每一轮:
 1. 若 doc/review/<change>-req-review-v{N}.md 存在,据其修订 requirement/req-v{N}.md,升到 v{N+1},逐条注明 采纳/拒绝+理由,并同步更新 doc/review/<change>-issues.md 里对应问题的状态。
 2. 用一个不同的模型对当前版本跑评审,输出存到 doc/review/<change>-req-review-v{N}.md,例如:
    codex exec -s read-only \"<P1 提示词> —— 目标:requirement/req-v{N}.md\"
    (没有 Codex?新开一个 claude,把 P1 连同问题台账一起交给它)
 3. 把评审方的结论行贴回本对话。
-当判定为「无重大问题」时停(并复制为 requirement/req-final.md),或满 5 轮停。"
+当判定为「无重大问题」时停(并复制为 requirement/req-final.md),或触顶停。"
 ```
 
 **STEP2 循环:**
 ```text
-/goal "目标:openspec/changes/<change>/ 有 SPEC-DOC+DESIGN-DOC,且最新评审判定为「无重大问题,可进入执行阶段」。上限:4 轮。
+/goal "目标:openspec/changes/<change>/ 有 SPEC-DOC+DESIGN-DOC,且最新评审判定为「无重大问题,可进入执行阶段」。上限:step2-cap 轮(默认 4)。
 每一轮:
 1. 据最新评审修订 spec/design 文件——绝不动源码——并同步更新 doc/review/<change>-issues.md 里已处理问题的状态。
 2. 重跑异构评审,用 P5 提示词(第 1 轮:codex exec,记下打印的 session id;之后各轮:codex exec resume -c sandbox_mode=\"read-only\" <session-id>——codex ≥0.14x 的 resume 不接受 -s;旧版在 id 前用 -s read-only),产出 doc/design/<change>-review-v{N}.md 并更新台账。
 3. 把评审结论行贴回这里。
-当判定为「无重大问题,可进入执行阶段」时停,或满 4 轮停。"
+当判定为「无重大问题,可进入执行阶段」时停,或触顶停。"
 ```
 
 **STEP5 循环:**
 ```text
-/goal "目标 —— 以下全部成立:`npm test` 退出码 0;openspec/changes/<change>/specs/ 里每个 scenario ID 至少出现在一个测试名里(列出缺失的 ID);openspec/changes/<change>/tasks.md 每项均为 [x];(仅 UI 项目)Playwright E2E 套件通过且截图差异在阈值内;并且由一个不同模型做的一致性评审(P8 提示词)报告无 spec-vs-代码 缺口。上限:25 轮。
+/goal "目标 —— 以下全部成立:`npm test` 退出码 0;openspec/changes/<change>/specs/ 里每个 scenario ID 至少出现在一个测试名里(列出缺失的 ID);openspec/changes/<change>/tasks.md 每项均为 [x];(仅 UI 项目)Playwright E2E 套件通过且截图差异在阈值内;并且由一个不同模型做的一致性评审(P8 提示词)报告无 spec-vs-代码 缺口。上限:step5-cap 轮(默认 25)。
 第 1 轮:为每个 spec scenario 派生一条失败测试(以其 scenario ID 命名),并把失败运行结果打印出来。之后每一轮:按 tasks.md 顺序实现下一项,然后跑 `npm test`(有界面再跑 Playwright)并把命令输出打印出来,让结果进 transcript。代码完成后,跑一致性评审(codex exec / 新开 claude)并把结论贴回。
-当全部条件成立时停,或满 25 轮停。"
+当全部条件成立时停,或触顶停。"
 ```
 > 纯文档项目:`npm test` 换成 `python3 scripts/check_docs.py`,去掉 Playwright 条款,保留一致性评审。
 
 **STEP6:**
 ```text
-/goal "目标:本次变更已归档(增量规格合并进 openspec/specs/),且模块 <module> 的知识库文件已反映本次新增/变更的事实、并刷新了 source-commit 标记。上限:4 轮。
+/goal "目标:本次变更已归档(增量规格合并进 openspec/specs/),且模块 <module> 的知识库文件已反映本次新增/变更的事实、并刷新了 source-commit 标记。上限:step6-cap 轮(默认 4)。
 执行 /opsx:archive,然后更新 docs/truth/<module>.md,并列出究竟改了哪些文件/段落。
 当两者都成立时停。"
 ```
 
 **闸口清单(由你亲自决定的事):**① STEP0 触顶时的定稿裁决 ② gap 报告过目(大型)③ STEP3 技术评审 ④ 知识库 diff 批准 ⑤ 任何触顶 / 台账 ID 重开——升级处理,绝不悄悄放低标准。探索轨另加:`intent-card sign-off` 与 `extraction review` 的结论裁决。闸口整合(§1)由你授予——但永远不覆盖收缩决策、知识库签核、意图卡签核。
 
-**收缩治理(新陈代谢规则)。** 每 N 个变更(默认 5,`post-merge-review-freq`)由 agent **汇报——绝不自行执行**——一份收缩/恢复建议,数据包必含:verified 数、rejected 数(附理由抽样)、reopened ID 数。收缩任何评审环节都是**人工闸口决策**;rejected 占比超过 `rejected-ratio-guard`(默认 50%)或变更类别触绊线(共享状态/迁移/安全/生产数据)时一律不得收缩。收缩=下调该环节轮次上限——**地板 1,任何环节绝不归零**。合并后复查(默认每 5 个合并变更抽 1 个)发现 ≥1 个高风险漏网 → 恢复该环节原上限,同样记档。两个方向都要提防:生产方靠拒单可以把指标压零(rejected 占比守卫防的就是这个);评审方轻率 verify 只会推迟收缩(方向安全)。
+**收缩治理(新陈代谢规则)。** 每 N 个变更(默认 5,`shrink-proposal-freq`)由 agent **汇报——绝不自行执行**——一份收缩/恢复建议,数据包必含:verified 数、rejected 数(附理由抽样)、reopened ID 数。收缩任何评审环节都是**人工闸口决策**;rejected 占比超过 `rejected-ratio-guard`(默认 50%)或变更类别触绊线(共享状态/迁移/安全/生产数据)时一律不得收缩。收缩=下调该环节轮次上限——**地板 1,任何环节绝不归零**。合并后复查(采样率 `post-merge-review-freq`,默认每 5 个合并变更抽 1 个)发现 ≥1 个高风险漏网 → 恢复该环节原上限,同样记档。两个方向都要提防:生产方靠拒单可以把指标压零(rejected 占比守卫防的就是这个);评审方轻率 verify 只会推迟收缩(方向安全)。
 
 ---
 

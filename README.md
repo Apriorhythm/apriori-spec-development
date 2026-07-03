@@ -340,7 +340,7 @@ graph LR
 | P11 / P12 | Extraction & its review | P11 extracts the spec from a validated prototype; P12 (heterogeneous) reviews it against the intent card |
 | track | Certainty-axis routing | `harden` or `explore`, with a rationale, in the state file ([§4.0](#40-size-the-change-first)) |
 
-**Where each artifact lives** (these paths are the conventions used throughout the RUNBOOK's prompts — adjust to your repo):
+**Where each artifact lives** (these paths are the conventions used throughout the RUNBOOK's prompts — adjust to your repo; process artifacts can also be relocated wholesale via the state file's `artifact-root` field, whose semantics live in RUNBOOK §3):
 
 | Artifact | Default location |
 |---|---|
@@ -487,9 +487,9 @@ That layering is what lets you automate **even adversarial review** without viol
 
 | Phase | A sound `/goal` condition (transcript-checkable) | Backed inside the loop by |
 |---|---|---|
-| STEP0 | REQ-REVIEW-DOC written and its verdict = "no major issues", or 5 rounds | a heterogeneous reviewer call each round |
+| STEP0 | REQ-REVIEW-DOC written and its verdict = "no major issues", or step0-cap rounds (default 5) | a heterogeneous reviewer call each round |
 | STEP2 | SPEC-EVALUATION-DOC verdict = "no major issues, ready to execute", or N rounds | a heterogeneous reviewer call each round |
-| STEP5 | `npm test` exits 0 **and** every tasks.md item is `[x]` **and** the E2E/Playwright run is green **and** the consistency review reports no gaps, or N turns | real test + E2E run + reviewer call |
+| STEP5 | `npm test` exits 0 **and** every tasks.md item is `[x]` **and** the E2E/Playwright run is green **and** the consistency review reports no gaps, or N turns — substitute per §4.8's project-type matrix (docs-only: `python3 scripts/check_docs.py` + example-command static checks) | real test + E2E run + reviewer call |
 | STEP6 | delta specs merged **and** the module's KB file updated | `/opsx:archive` + writeback |
 | **STEP3 tech review · reverse-capture review · KB sign-off** | — **do not wrap these in a goal** | a human decides |
 
@@ -505,7 +505,7 @@ Everything above is convention; a branch + CI mapping is what makes it *enforced
 |---|---|
 | One change | One branch (`change/<change-name>`), one PR |
 | SPEC-DOC / DESIGN-DOC / review docs / issue ledger | Committed on the branch — reviewers see the docs and the code in the same diff |
-| STEP5 exit conditions | CI jobs on the PR: tests green; every spec scenario ID appears in ≥1 test name (a grep-able traceability check); tasks.md all `[x]` |
+| STEP5 exit conditions | CI jobs on the PR: tests green; every spec scenario ID appears in ≥1 test name (a grep-able traceability check); tasks.md all `[x]` — docs-only projects map "tests" to `python3 scripts/check_docs.py` + example-command static checks (§4.8) |
 | Consistency-review verdict (§7.4) | Posted on the PR as a comment / required check before merge |
 | STEP6 KB writeback | Part of the same PR — "code merged but KB not updated" becomes visible in review instead of silently accumulating |
 
@@ -565,7 +565,7 @@ Then switch to your reviewing tool/model and review → revise per [§7.3](#73-s
 # round 1 — open the review session (note the printed session id)
 codex exec -s read-only "Review openspec/changes/<change>/specs/ and design.md against requirement/req-final.md, using the RUNBOOK P5 checklist. End with a verdict line."
 # each revision round — same context, so it checks whether your fixes landed
-codex exec resume -s read-only <session-id> "I revised per your last review; re-review and produce v{N+1}."
+codex exec resume -c sandbox_mode="read-only" <session-id> "I revised per your last review; re-review and produce v{N+1}."
 ```
 
 ### 5.4 STEP5 · apply

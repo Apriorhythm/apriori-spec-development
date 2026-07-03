@@ -19,7 +19,7 @@ This handbook does **not** attempt the endgame today. It becomes a v2 requiremen
 - OpenSpec (or its successor in this workflow) supports executable scenarios natively, or
 - an equivalent tool emerges and clears the same bar: scenario IDs, delta specs, archive-merge semantics.
 
-Until then, any "executable spec" work in this repo is out of scope by declaration (req-final §3 of the vnext change).
+Until then, any "executable spec" work in this repo is declared out of scope for 1.x.
 
 ## 3. Paving Decisions
 

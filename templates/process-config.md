@@ -16,7 +16,8 @@
 | extraction-review-cap | 2 | ≥ 1 | 2 |
 | shrink-state | none | none / <stage>: <new-cap> entries, human-approved only | none |
 | rejected-ratio-guard | 50% | 0–100%; above it, shrinking is blocked | 50% |
-| post-merge-review-freq | 1 in 5 | ≥ 1 in N merged changes | 1 in 5 |
+| shrink-proposal-freq | 5 | ≥ 1 — a proposal every N changes | 5 |
+| post-merge-review-freq | 1 in 5 | ≥ 1 in N merged changes (sampling rate) | 1 in 5 |
 
 <!-- shrink-state is written only after a human gate approves a shrink proposal (RUNBOOK §6),
      e.g. `shrink-state: step2-cap: 2 (approved 2026-07-04, gates log)`.

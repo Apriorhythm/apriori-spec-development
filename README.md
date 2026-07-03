@@ -9,6 +9,8 @@
 > This handbook is written for developers with an **engineering background**, and is a complete, self-contained guide.
 > It assumes you start from **a clean machine**, and covers: environment setup → tool selection → the full workflow → a worked example → legacy-project development → a prompt library → configuration reference.
 
+> 🤖 **AI agents have their own entry point: [RUNBOOK.md](./RUNBOOK.md)** — the self-contained executable protocol (hard rules, state machine, prompts). Agents don't need this handbook. To adopt the workflow in your own project: copy the runbook in and add one reference line to your project's rules file (RUNBOOK §0). Humans: keep reading.
+
 ---
 
 ## Table of Contents
@@ -138,7 +140,7 @@ The adversarial-review loop (review → revise → re-review) only works if the 
 ```shell
 # -s read-only : the reviewer only audits; it must not modify your files
 # --skip-git-repo-check : only needed when running outside a git repo
-codex exec -s read-only "<your review prompt — e.g. the reviewer prompt from §7.3>"
+codex exec -s read-only "<your review prompt — e.g. the RUNBOOK P5 reviewer prompt>"
 ```
 The output header prints a line like `session id: 019f....`. **Copy that id** — it's the handle for the next round.
 
@@ -164,7 +166,7 @@ Because the session is preserved, the reviewer still remembers its earlier findi
 
 No Codex or second tool? You can still run a real adversarial loop — you just give up the "different model family" lever ([§1.4](#14-adversarial-review)) and lean on **fresh context + adversarial role**, which carry most of the weight anyway.
 
-**The one rule: the reviewer must be a *separate session* — never a "now review your own work" turn inside the producer's conversation** (there its context is full of its own justifications, so it rubber-stamps). Open a second terminal, start a fresh `claude` on a different tier, and feed it only the artifacts (spec / design / code paths) plus the reviewer prompt from §7:
+**The one rule: the reviewer must be a *separate session* — never a "now review your own work" turn inside the producer's conversation** (there its context is full of its own justifications, so it rubber-stamps). Open a second terminal, start a fresh `claude` on a different tier, and feed it only the artifacts (spec / design / code paths) plus the reviewer prompt from the RUNBOOK (§5):
 
 ```shell
 # left terminal — producer
@@ -172,7 +174,7 @@ claude                                    # Opus by default; produces SPEC-DOC /
 
 # right terminal — reviewer: fresh context + a different tier
 ANTHROPIC_MODEL="claude-sonnet-4-6" claude
-# then paste the §7.3 / §7.4 reviewer prompt, pointing at the artifact paths
+# then paste the RUNBOOK P5 / P8 reviewer prompt, pointing at the artifact paths
 ```
 
 This two-terminal setup is the Claude-only equivalent of §2.3's `codex exec` / `resume` loop: produce on the left, hand the artifacts to the right, paste findings back, repeat until "no major issues." One difference from `resume`: a fresh `claude` remembers nothing across rounds — so hand the reviewer the **issue ledger** ([§7.0](#70-the-issue-ledger-shared-by-all-review-loops)) along with the artifacts. It verifies earlier fixes from the ledger while keeping fresh eyes; per [§1.4](#14-adversarial-review), that combination is worth having even when `resume` is available.
@@ -295,7 +297,7 @@ Two rules of thumb: **anything touching external shared state (§8.1's three-mom
 | DESIGN-REVIEW-DOC | Technical review record | The conclusions and revisions from the human **STEP3** technical review meeting |
 | Issue ledger | Cumulative issue table | One per change, shared by every review loop; each issue carries an ID and a status — see [§7.0](#70-the-issue-ledger-shared-by-all-review-loops) |
 
-**Where each artifact lives** (these paths are the conventions used throughout §7's prompts — adjust to your repo):
+**Where each artifact lives** (these paths are the conventions used throughout the RUNBOOK's prompts — adjust to your repo):
 
 | Artifact | Default location |
 |---|---|
@@ -441,7 +443,7 @@ That layering is what lets you automate **even adversarial review** without viol
 | STEP6 | delta specs merged **and** the module's KB file updated | `/opsx:archive` + writeback |
 | **STEP3 tech review · reverse-capture review · KB sign-off** | — **do not wrap these in a goal** | a human decides |
 
-> Always cap it (`… or stop after N turns`): the cap maps to the handbook's ≤5-round limits and bounds cost — open-ended goals can run very expensive. Suggested caps: STEP0 ≈5, STEP2 ≈3–4, STEP5 ≈25. If a loop **oscillates** (the verdict flip-flops, or the same ledger ID keeps getting reopened — [§7.0](#70-the-issue-ledger-shared-by-all-review-loops) makes this visible) or stalls without progress, treat hitting the cap as a signal to **escalate to a human** — not to quietly lower the bar. Run **one `/goal` per machine-checkable stretch, stop at each human gate**, then start the next. Concrete conditions and the per-turn driver prompts are in [§7.7](#77-goal-recipes-automating-each-loop).
+> Always cap it (`… or stop after N turns`): the cap maps to the handbook's ≤5-round limits and bounds cost — open-ended goals can run very expensive. Suggested caps: STEP0 ≈5, STEP2 ≈3–4, STEP5 ≈25. If a loop **oscillates** (the verdict flip-flops, or the same ledger ID keeps getting reopened — [§7.0](#70-the-issue-ledger-shared-by-all-review-loops) makes this visible) or stalls without progress, treat hitting the cap as a signal to **escalate to a human** — not to quietly lower the bar. Run **one `/goal` per machine-checkable stretch, stop at each human gate**, then start the next. The ready-to-paste recipes ship in [RUNBOOK.md](./RUNBOOK.md) §6; their design notes are in [§7.7](#77-goal-recipes-automating-each-loop).
 
 > **Tune the caps with data, not folklore.** Track one number per loop: *accepted issues per review round* (the ledger, [§7.0](#70-the-issue-ledger-shared-by-all-review-loops), gives it to you for free). If round 2 already yields ~0 accepted issues for your team, shorten the caps; if round 5 still surfaces real ones, the fix is upstream — requirement quality — not a higher cap.
 
@@ -511,7 +513,7 @@ Pay attention to whether the resulting `spec.md` **gives each user-visible behav
 Then switch to your reviewing tool/model and review → revise per [§7.3](#73-step2-adversarial-review-and-revision), looping until "no major issues." Concretely, drive the review with Codex ([§2.3](#23-driving-codex-non-interactively-multi-round-adversarial-review)):
 ```shell
 # round 1 — open the review session (note the printed session id)
-codex exec -s read-only "Review openspec/changes/<change>/specs/ and design.md against requirement/req-final.md, using the §7.3 reviewer checklist. End with a verdict line."
+codex exec -s read-only "Review openspec/changes/<change>/specs/ and design.md against requirement/req-final.md, using the RUNBOOK P5 checklist. End with a verdict line."
 # each revision round — same context, so it checks whether your fixes landed
 codex exec resume -s read-only <session-id> "I revised per your last review; re-review and produce v{N+1}."
 ```
@@ -536,7 +538,7 @@ npm test
 
 To run the implement → test loop unattended, wrap it in a goal — the mini-kv form of the [§7.7](#77-goal-recipes-automating-each-loop) STEP5 recipe (it's a library, so no Playwright clause):
 ```text
-/goal "All of: `npm test` exits 0; every spec scenario ID appears in at least one test name; every item in openspec/changes/<change>/tasks.md is [x]; and a consistency review by a different model (the §7.4 prompt) reports no spec-vs-code gaps. Cap: 15 turns. Turn 1: generate one failing test per spec scenario (named with its ID) and SHOW the failing run. Each later turn: implement the next tasks.md item, run `npm test` and SHOW the output. Stop when all hold or after 15 turns."
+/goal "All of: `npm test` exits 0; every spec scenario ID appears in at least one test name; every item in openspec/changes/<change>/tasks.md is [x]; and a consistency review by a different model (the RUNBOOK P8 prompt) reports no spec-vs-code gaps. Cap: 15 turns. Turn 1: generate one failing test per spec scenario (named with its ID) and SHOW the failing run. Each later turn: implement the next tasks.md item, run `npm test` and SHOW the output. Stop when all hold or after 15 turns."
 ```
 
 ### 5.5 Acceptance & STEP6 · archive
@@ -640,214 +642,57 @@ Whether a legacy project gets easier to change over time depends on **whether ST
 
 ## 7. Prompt Library
 
-> Every prompt shares one structure: explicit "Role / Input / Task / Output / Constraints," with version numbers, loops, and exit conditions made explicit. Paths are examples — replace with real ones.
+> **The prompt texts themselves live in [RUNBOOK.md](./RUNBOOK.md) §5 (P0–P10)** — one source, distributed with the protocol, so agents never need this handbook. This section keeps the design notes: what each prompt must achieve and why it's shaped that way. Every prompt shares one structure — explicit "Role / Input / Task / Output / Constraints," with version numbers, loops, and exit conditions made explicit.
 
 ### 7.0 The Issue Ledger (Shared by All Review Loops)
 
-Every review loop below appends to one cumulative ledger per change — `doc/review/<change>-issues.md`:
-
-```markdown
-| ID | Issue | Risk | Round found | Status |
-|---|---|---|---|---|
-| REQ-3 | `ttlMs<=0` behavior undefined | med | 1 | fixed (v2) |
-| SPEC-1 | cleanup moment missing for the in-memory map | high | 1 | verified |
-| SPEC-2 | rename `del` to `delete` | low | 2 | rejected — cosmetic, out of scope for this change |
-```
-
-Rules:
-- **The reviewer** appends new rows, and flips `fixed → verified` once it confirms a fix actually landed. A re-found issue **reopens its old ID** — never gets a new row; a reopened ID is exactly the oscillation alarm [§4.10](#410-automating-the-loop-with-goal-claude-code) watches for.
-- **The producer** flips `open → fixed` or `open → rejected`; a rejection MUST carry a reason — human gates read the rejections first.
-- Because the cross-round memory lives in this file rather than in a session, every round's reviewer can be a **fresh** session without losing the thread ([§1.4](#14-adversarial-review)).
+One cumulative ledger per change, `doc/review/<change>-issues.md` (format: RUNBOOK **P0**). Why it exists: cross-round memory lives in a file instead of a session, so every round's reviewer can be a **fresh** session without losing the thread ([§1.4](#14-adversarial-review)). Who writes what: the reviewer appends rows and flips `fixed → verified`; the producer flips `open → fixed/rejected` — a rejection must carry a reason, because human gates read the rejections first. A re-found issue **reopens its old ID** rather than getting a new row; that reopened ID is exactly the oscillation alarm [§4.10](#410-automating-the-loop-with-goal-claude-code) watches for.
 
 ### 7.1 STEP0: Requirement-Doc Adversarial Review
 
-> Run with a **model/tool different from the one that drafted the requirement**.
+Prompts: RUNBOOK **P1** (reviewer) / **P2** (producer's revise). Design notes:
 
-```text
-You are a senior requirements reviewer. Review the requirement doc below; the goal is to make it precise enough to hand straight to an AI for implementation.
-
-[Input]
-* Requirement doc: requirement/req-v{N}.md
-* System knowledge base (if any): docs/truth/<module>.md (or your KB path)
-* Issue ledger (if any): doc/review/<change>-issues.md
-
-[Review dimensions, give a verdict on each]
-1. Is target state B clear and unambiguous
-2. Are edge cases and exception paths covered (null, out-of-range, concurrency, timeout, failure rollback)
-3. Are there "implied but undeclared" state changes or side effects
-4. Is each acceptance criterion testable (expressible as "if … then …")
-5. Does it conflict with the current state A (if a KB was provided)
-
-[Output]
-Produce a REQ-REVIEW-DOC: doc/review/<change>-req-review-v{N}.md
-* List an "issue list" by dimension; each entry has: issue description / risk / suggested fix
-* Mirror every issue into the ledger doc/review/<change>-issues.md (§7.0): new issues get new IDs, a re-found issue reopens its old ID, and flip fixed→verified for fixes you can confirm
-* End with an overall verdict: whether it is "no major issues" and can be finalized
-
-Do not modify the requirement doc itself; only produce the review and the ledger update.
-```
-
-Revise and loop:
-```text
-The review is at doc/review/<change>-req-review-v{N}.md. Revise the requirement doc accordingly and output requirement/req-v{N+1}.md.
-For each issue, state how you handled it (accept/reject + reason), and update its Status in doc/review/<change>-issues.md (fixed / rejected + reason).
-```
-Repeat until the review outputs "no major issues," finalizing as `requirement/req-final.md` (max 5 rounds).
+- Run P1 with a **model/tool different from the one that drafted the requirement**, and feed it the ledger so it can verify earlier fixes.
+- The five review dimensions are fixed on purpose — target-state clarity / edge & exception coverage / undeclared state changes / testable acceptance criteria / conflicts with state A — a stable checklist keeps rounds comparable.
+- The reviewer only reviews, never edits the requirement doc; the producer answers every issue with accept/reject + reason. Loop until "no major issues," finalize as `requirement/req-final.md` (max 5 rounds).
 
 ### 7.2 STEP1: explore
 
-```text
-/opsx:explore
-I want to implement a new requirement on an existing system. First align all known facts — do not write code.
-[Input]
-* Requirement doc: requirement/req-final.md
-* System knowledge base: docs/truth/ (module: <module-name>; for a new project, note "none"; separate-repo layout: its local path)
-* Detailed technical design doc: design.md (if any)
-* Code: this repo
-[Output]
-A gap report at doc/explore/<change>-gap-report.md: list current state A, target state B, and the differences and risks to bridge between them.
-```
+Prompt: RUNBOOK **P3**. Design notes: facts only — no code. The KB and the finalized requirement doc go in as inputs, and the output is pinned to `doc/explore/<change>-gap-report.md` so the cheap pre-propose gate ([§4.4](#44-step1-opsxexplore-explore--align)) has something concrete to read.
 
 ### 7.3 STEP2: Adversarial Review and Revision
 
-**Produce (primary tool/model):**
-```text
-/opsx:propose
-Based on the aligned facts, write the proposal and all spec docs (SPEC-DOC), and output the design doc (DESIGN-DOC) in lockstep.
-Requirements:
-* Every "user-visible output" must be its own scenario; multiple visible side-effects must not be merged;
-* For any external shared state (Redis/DB field/global singleton/in-memory cache), separately describe the three moments: init / update-at-runtime / cleanup-and-invalidation.
-Stop when done and wait for review.
-```
+Prompts: RUNBOOK **P4** (propose) / **P5** (reviewer) / **P6** (producer's revise). Design notes:
 
-**Review (heterogeneous model/tool):**
-```text
-You are a technical reviewer. Review the spec and design of this change, focusing on issues that would "cause rework or a production incident."
-[Input]
-* SPEC-DOC: openspec/changes/<change-name>/specs/
-* DESIGN-DOC: openspec/changes/<change-name>/design.md
-* System knowledge base: docs/truth/ (or your KB path)
-* Requirement doc: requirement/req-final.md
-* Issue ledger: doc/review/<change-name>-issues.md
-[Checklist]
-1. Do the scenarios cover every visible behavior of the requirement; any missing failure/edge scenarios
-2. Are the three moments of external shared state (init/update/cleanup) complete
-3. Does the design conflict with current state A or break existing conventions
-4. Anything the spec requires but the design doesn't deliver, or behavior the design introduces that the spec never declared
-5. Security, where the change touches external input or permissions: unvalidated input, missing authz on new paths, secrets/PII in logs, injection surfaces
-[Output]
-Produce a SPEC-EVALUATION-DOC: doc/design/<change-name>-review-v{N}.md
-List issues one by one (description/risk/suggestion), ending with a verdict: whether it is "no major issues, ready to proceed to execution."
-Mirror every issue into the ledger (§7.0): new issues get new IDs, a re-found issue reopens its old ID, and flip fixed→verified for fixes you can confirm.
-```
-
-**Back to the producer to revise (note: revise the spec/design, not the source):**
-```text
-I had another model review your design and spec; the review is at doc/design/<change-name>-review-v{N}.md.
-Handle each item (accept/reject + reason), modifying the spec and design files that need changes (not the source),
-and update each issue's Status in doc/review/<change-name>-issues.md (fixed / rejected + reason).
-When done, go to review again, producing v{N+1}.
-```
-Loop until the review outputs "no major issues, ready to proceed to execution."
+- P4 bakes in the two spec-quality rules from §8.1: one scenario per user-visible output (with a stable ID), and the three moments for any external shared state.
+- P5 hunts specifically for "rework or production incident" issues — including a security dimension whenever the change touches external input or permissions. Its verdict line ("no major issues, ready to proceed to execution") is the loop's machine-checkable exit.
+- P6 touches spec/design files only — never source — and must answer every ledger issue with accept/reject + reason.
 
 > 💡 To run this review loop through Codex from the CLI — open the session in round 1, `resume <session-id>` each subsequent round so the reviewer keeps full context — see [§2.3](#23-driving-codex-non-interactively-multi-round-adversarial-review).
 
 ### 7.4 STEP5: apply (Code + Test)
 
-```text
-/opsx:apply
-Tests first: before implementing, derive one failing test per spec scenario, each test named with its scenario ID (e.g. `test('KV-03 …')`), and show the failing run.
-Then implement strictly in tasks.md order; mark each task [x] immediately on completion.
-Requirements:
-* Scenario coverage is the hard bar: every spec scenario has at least one test carrying its ID. Line coverage is a signal, not a target — never pad with assertion-free tests;
-* Use a stronger model for complex logic, a faster model for routine implementation;
-* Log at key branches and function entries per the logging convention;
-* When all done, run the tests until green; for any continue/skip/silently-ignored branch, re-check the spec to confirm whether it must be user-visible.
-Stop when done and wait for archive.
-```
+Prompts: RUNBOOK **P7** (apply) / **P8** (consistency reviewer). Design notes:
 
-**Implementation-consistency adversarial review (heterogeneous model):**
-```text
-Review the consistency of this implementation against the SPEC-DOC. Focus on:
-1. First the mechanical check: list every scenario ID in the spec that appears in no test name;
-2. Behavior the spec requires but the code doesn't implement;
-3. continue/skip/silently-ignored branches in the code — does the spec require them to be user-visible;
-4. Whether the tests truly cover each scenario (assert real outcomes — not merely "it runs");
-5. Where the change touches external input or permissions: unvalidated input, missing authz, secrets/PII in logs.
-List each inconsistency and a suggested fix, and mirror them into doc/review/<change>-issues.md (§7.0).
-```
-
-> 💡 As in STEP2, drive this with a heterogeneous model via the CLI; for the `codex exec` / `codex exec resume` mechanics see [§2.3](#23-driving-codex-non-interactively-multi-round-adversarial-review).
+- P7 is tests-first: one failing test per spec scenario, test names carrying scenario IDs, shown failing *before* implementation — then implement in tasks.md order. Scenario coverage is the hard bar; line coverage stays a signal ([§4.8](#48-step5-opsxapply-code--test--implementation-review)).
+- P8 runs the mechanical check first (scenario IDs missing from all test names) before any judgment calls — cheap checks in front. Like every review, it runs on a heterogeneous model ([§2.3](#23-driving-codex-non-interactively-multi-round-adversarial-review)).
 
 ### 7.5 STEP6: archive
 
-```text
-/opsx:archive
-Archive this change, and update the system knowledge base and specs in lockstep:
-* Write this change's new/changed facts back to docs/truth/<module-name>.md (separate-repo layout: that repo's module doc);
-* Refresh the doc's `source-commit` stamp to the current code commit;
-* Ensure the TRUTH-DOC is consistent with the final implementation;
-List which KB files and which sections you updated.
-```
+Prompt: RUNBOOK **P9**. Design notes: archive alone only merges OpenSpec's own specs ([§4.9](#49-step6-opsxarchive-archive-and-capture-facts)) — P9 additionally forces the KB writeback to `docs/truth/<module>.md`, the `source-commit` refresh, and an explicit list of what changed, so the human gate has a concrete diff to approve.
 
 ### 7.6 Reverse Knowledge Capture for Legacy Projects
 
-```text
-You are a system knowledge-base engineer. Read the following module's code and produce/reconcile that module's system knowledge-base doc.
-[Input]
-* Code scope: <directory or file list>
-* Existing KB (if any): docs/truth/<module-name>.md (or this module's doc in your KB path)
-[Task]
-* Treating the code as the sole source of truth, abstract the module's: public responsibilities/interfaces, core data flow, key state and side effects, dependencies on other modules, important conventions and pitfalls;
-* If an existing KB is provided, flag each "mismatched with code / outdated / missing" point and revise.
-[Output]
-Following the existing doc style of the KB, output the module KB doc to docs/truth/<module-name>.md (on the change branch, so the PR diff is where it gets reviewed), with a `source-commit` stamp set to the code commit you read.
-[Constraints]
-* Describe only facts that actually exist in the code; do not speculate. Explicitly mark uncertainties as "needs human confirmation"; do not invent abstract intent.
-```
-> After producing it, **always have a human / heterogeneous model double-check** before the KB doc merges (see [§6.4](#64-path-c-knowledge-base-missing-most-common)) — in the same-repo layout, that check is simply part of the PR review.
+Prompt: RUNBOOK **P10**. Design notes: the code is the sole source of truth — uncertainties get marked "needs human confirmation" instead of invented intent; the output lands on the change branch at `docs/truth/<module>.md`, so the mandatory double-check ([§6.4](#64-path-c-knowledge-base-missing-most-common)) happens where reviews already happen: the PR diff.
 
 ### 7.7 `/goal` Recipes: Automating Each Loop
 
-> Reminder ([§4.10](#410-automating-the-loop-with-goal-claude-code)): `/goal` drives the loop; the real check (reviewer / tests / screenshots) must run **inside** each turn so its result lands in the transcript — the Haiku evaluator only reads whether it passed. Always include a turn cap. Replace `<change>` / `<module>` / paths and model names with your real ones.
+The four ready-to-paste recipes (STEP0 / STEP2 / STEP5 / STEP6) live in **[RUNBOOK.md](./RUNBOOK.md) §6, the human operator appendix** — they are run by *you*, never by the agent, and this way they ship inside the protocol file your project already carries. What stays true regardless of recipe ([§4.10](#410-automating-the-loop-with-goal-claude-code)):
 
-**STEP0 — requirement-review loop** (a heterogeneous reviewer runs inside the loop):
-```text
-/goal "Goal: requirement/req-final.md exists and the latest review pass reports 'no major issues'. Cap: 5 rounds.
-Each round:
-1. If doc/review/<change>-req-review-v{N}.md exists, revise requirement/req-v{N}.md per it, bump to v{N+1}, note accept/reject+reason per issue, and update those issues' Status in doc/review/<change>-issues.md.
-2. Run the reviewer with a DIFFERENT model on the current version and save its output to doc/review/<change>-req-review-v{N}.md, e.g.:
-   codex exec -s read-only \"<the §7.1 reviewer prompt> — target: requirement/req-v{N}.md\"
-   (no Codex? open a fresh `claude` per §2.4 and hand it the §7.1 prompt plus the issue ledger)
-3. Paste the reviewer's final verdict line back into this conversation.
-Stop when the verdict is 'no major issues' (then copy to requirement/req-final.md) or after 5 rounds."
-```
-
-**STEP2 — spec + design adversarial loop** (use `codex exec resume <id>` so the reviewer keeps context across rounds, per §2.3):
-```text
-/goal "Goal: openspec/changes/<change>/ has SPEC-DOC+DESIGN-DOC and the latest SPEC-EVALUATION-DOC verdict is 'no major issues, ready to proceed to execution'. Cap: 4 rounds.
-Each round:
-1. Revise the spec/design files per the latest review — never touch source code — and update the handled issues' Status in doc/review/<change>-issues.md.
-2. Re-run the heterogeneous reviewer with the §7.3 prompt (round 1: codex exec, note the printed session id; later rounds: codex exec resume <session-id>), producing doc/design/<change>-review-v{N}.md and updating the ledger.
-3. Surface the reviewer's verdict line here.
-Stop on 'no major issues, ready to proceed to execution' or after 4 rounds."
-```
-
-**STEP5 — apply: code + test + E2E + Playwright, until green:**
-```text
-/goal "Goal — ALL must hold: `npm test` exits 0; every scenario ID in openspec/changes/<change>/specs/ appears in at least one test name (list any missing IDs); every item in openspec/changes/<change>/tasks.md is [x]; (UI projects only) the Playwright E2E suite passes and screenshot diffs are within threshold; AND a consistency review by a DIFFERENT model (the §7.4 prompt) reports no spec-vs-code gaps. Cap: 25 turns.
-Turn 1: derive one failing test per spec scenario, named with its scenario ID, and SHOW the failing run. Each later turn: implement the next tasks.md item in order, then run `npm test` and the Playwright run and SHOW the command output so the result is in the transcript. When the code is complete, run the consistency reviewer (codex exec / fresh claude) and paste its verdict.
-Stop when every condition holds or after 25 turns."
-```
-> Playwright/visual note: this clause applies to **UI projects**; a pure library (like §5's mini-kv) drops it. The goal evaluator reads **text**, so make the visual check emit a **textual pass/fail** (e.g. a pixelmatch threshold result printed to the console). If you instead rely on Claude's own look at a screenshot, it must **state the verdict in words** in the transcript, or the evaluator can't see it.
-
-**STEP6 — archive + knowledge-base writeback:**
-```text
-/goal "Goal: the change is archived (delta specs merged into openspec/specs/) AND the KB file for module <module> reflects this change's new/changed facts with a refreshed source-commit stamp. Cap: 4 turns.
-Run /opsx:archive, then update docs/truth/<module>.md and list exactly which files/sections changed.
-Stop when both hold."
-```
-> Then a **human reviews the KB diff** — don't let the goal self-approve the knowledge-base writeback (see [§6.5](#65-closing-the-loop-write-back-after-every-change)).
+- `/goal` only orchestrates; the real check (reviewer / tests / screenshots) runs **inside** each turn and must land its result in the transcript — the Haiku evaluator just reads whether it passed.
+- Always include a turn cap; treat a hit cap or a reopened ledger ID as escalation to a human, never as license to lower the bar.
+- Visual checks must emit a **textual** pass/fail (e.g. a pixelmatch threshold printed to the console), or the evaluator can't see them; a pure library (like §5's mini-kv) drops the Playwright clause entirely.
+- The KB writeback is never self-approved — a **human reviews the KB diff** ([§6.5](#65-closing-the-loop-write-back-after-every-change)).
 
 ---
 
@@ -855,7 +700,7 @@ Stop when both hold."
 
 ### 8.1 `openspec/config.yaml`
 
-The OpenSpec config at the project root defines language, proposal rules, task granularity, and implementation constraints. Below is a general baseline — add or remove per project:
+The OpenSpec config at the project root defines language, proposal rules, task granularity, and implementation constraints. Below is a general baseline — add or remove per project (a copy-ready version ships as [`templates/config.yaml`](./templates/config.yaml)):
 
 ```yaml
 schema: spec-driven
@@ -900,6 +745,8 @@ The rules file is the Agent's "always-on global convention." Each tool puts it i
 | Windsurf | `.windsurf/rules` (or workflow files) |
 | Copilot | `.github/copilot-instructions.md` |
 | Codex | `AGENTS.md` |
+
+> Whichever tools you use, also add one line to each rules file referencing your project's copy of the runbook (`docs/apriori-runbook.md`, install steps in [RUNBOOK.md](./RUNBOOK.md) §0) — that line is what makes every session load the protocol automatically.
 
 > **Land the same convention in all the tools your team uses**, so behavior is consistent across tools. The content of the rules file is **highly stack-specific** and should be written by you for your own project. Below is a **language-agnostic skeleton template** — fill in your team's real conventions (the example entries are placeholders, please replace).
 

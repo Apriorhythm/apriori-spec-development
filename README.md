@@ -82,7 +82,9 @@ Claude Code (Opus/Claude)  ──produces──►  SPEC-DOC + DESIGN-DOC
 
 > The last two levers matter *more* than the first, and neither requires a second tool. A **freshly-started session explicitly told to refute** catches most issues even when it runs the same model as the producer — because it isn't bound to its own earlier reasoning. The worst anti-pattern is **asking the model to "review what you just wrote" in the same conversation**: its context is full of its own justifications, so it rubber-stamps. Switching models but staying in one session is *weaker* than the same model in a fresh one. If you only have Claude Code, see [§2.4](#24-adversarial-review-with-only-claude-code).
 
-Adversarial review runs through three points: **① requirement-doc review (STEP0) ② spec + design review (STEP2) ③ code implementation review (STEP5)**.
+**Fresh context vs. cross-round memory — the issue ledger.** Multi-round review has a built-in tension: each round's reviewer should be *fresh* (the second lever), yet it must remember earlier rounds to verify "was issue #3 actually fixed?" Keeping one long-lived reviewer session buys memory at the cost of freshness — after round 1, the reviewer is anchored to *its own* past findings too. The fix is to move the memory out of the session and into a file: a cumulative **issue ledger** per change ([§7.0](#70-the-issue-ledger-shared-by-all-review-loops)), where every issue carries an ID and a status (`open / fixed / rejected + reason / verified`). Each round's reviewer can then be a brand-new session: it reads the ledger to verify fixes and appends new findings, staying unanchored. The ledger doubles as the audit trail for human gates — rejections stay visible with their reasons, and a resurfacing issue reopens its old ID instead of masquerading as a new finding.
+
+Adversarial review runs through three points: **① requirement-doc review (STEP0) ② spec + design review (STEP2) ③ code implementation review (STEP5)** — and every round of each one logs to the same per-change issue ledger.
 
 ---
 
@@ -156,6 +158,8 @@ Because the session is preserved, the reviewer still remembers its earlier findi
 > codex exec ... 2>&1 | grep -v -E "websocket|Reconnecting|Falling back"
 > ```
 
+> 💡 Even with `resume`, keep the **issue ledger** ([§7.0](#70-the-issue-ledger-shared-by-all-review-loops)) updated every round — the session gives the *reviewer* memory, but the ledger gives *you* (and every human gate) the audit trail, and it lets you swap in a completely fresh reviewer at any round without losing state.
+
 ### 2.4 Adversarial Review With Only Claude Code
 
 No Codex or second tool? You can still run a real adversarial loop — you just give up the "different model family" lever ([§1.4](#14-adversarial-review)) and lean on **fresh context + adversarial role**, which carry most of the weight anyway.
@@ -171,7 +175,7 @@ ANTHROPIC_MODEL="claude-sonnet-4-6" claude
 # then paste the §7.3 / §7.4 reviewer prompt, pointing at the artifact paths
 ```
 
-This two-terminal setup is the Claude-only equivalent of §2.3's `codex exec` / `resume` loop: produce on the left, hand the artifacts to the right, paste findings back, repeat until "no major issues."
+This two-terminal setup is the Claude-only equivalent of §2.3's `codex exec` / `resume` loop: produce on the left, hand the artifacts to the right, paste findings back, repeat until "no major issues." One difference from `resume`: a fresh `claude` remembers nothing across rounds — so hand the reviewer the **issue ledger** ([§7.0](#70-the-issue-ledger-shared-by-all-review-loops)) along with the artifacts. It verifies earlier fixes from the ledger while keeping fresh eyes; per [§1.4](#14-adversarial-review), that combination is worth having even when `resume` is available.
 
 **Match the model tier to the review point:**
 
@@ -267,26 +271,41 @@ openspec init
 
 ## 4. The Complete Workflow
 
+### 4.0 Size the Change First
+
+STEP0–STEP6 below describe the **full** pipeline. Running all of it on a typo-level fix is how teams end up abandoning the process altogether — so before anything else, size the change and run only the steps that pay for themselves:
+
+| Tier | Typical shape | Steps to run |
+|---|---|---|
+| **Trivial** | Bugfix / single file; no new user-visible behavior; no shared-state change | Light `explore` (facts only) → STEP5 `apply` with tests + one consistency-review pass → STEP6 writeback if any KB fact changed |
+| **Medium** | One module; new user-visible behavior | STEP0 (1–2 rounds) → STEP1 → STEP2 (1–2 review rounds) → STEP5 → STEP6; STEP3 shrinks to an async design look-over |
+| **Large** | Cross-module / touches external shared state / data migration / new subsystem | The full STEP0–STEP6, every gate included |
+
+Two rules of thumb: **anything touching external shared state (§8.1's three-moments rule) or crossing module boundaries is Large, no matter how small the diff looks**; and when in doubt, start one tier lower and escalate the moment `explore` or a review surfaces a surprise — escalating early is cheap, discovering a missing spec in production is not.
+
 ### 4.1 Glossary
 
 | Abbreviation | Full name | Description |
 |---|---|---|
-| TRUTH-DOC | System knowledge-base doc | The abstracted set of all known facts about the current system, maintained long-term (your team's long-lived knowledge-base repo) |
+| TRUTH-DOC | System knowledge-base doc | The abstracted set of all known facts about the current system, maintained long-term (default: `docs/truth/` inside the code repo — see §6) |
 | SPEC-DOC | Spec doc | The requirement spec generated by OpenSpec, describing every scenario of this change |
 | DESIGN-DOC | Design doc | The technical approach for this change, output by `/opsx:propose` |
 | REQ-REVIEW-DOC | Requirement review doc | The issue list the reviewing model produces on the requirement doc in **STEP0** |
 | SPEC-EVALUATION-DOC | Spec review doc | In **STEP2** adversarial review, another model's audit of SPEC-DOC + DESIGN-DOC |
 | DESIGN-REVIEW-DOC | Technical review record | The conclusions and revisions from the human **STEP3** technical review meeting |
+| Issue ledger | Cumulative issue table | One per change, shared by every review loop; each issue carries an ID and a status — see [§7.0](#70-the-issue-ledger-shared-by-all-review-loops) |
 
 **Where each artifact lives** (these paths are the conventions used throughout §7's prompts — adjust to your repo):
 
 | Artifact | Default location |
 |---|---|
 | Requirement doc | `requirement/req-v{N}.md`, finalized as `requirement/req-final.md` |
-| REQ-REVIEW-DOC | `doc/review/req-review-v{N}.md` |
+| REQ-REVIEW-DOC | `doc/review/<change>-req-review-v{N}.md` (prefix with the change name — parallel changes must not overwrite each other) |
+| Gap report (STEP1 output) | `doc/explore/<change>-gap-report.md` |
+| Issue ledger | `doc/review/<change>-issues.md` |
 | SPEC-DOC / DESIGN-DOC / tasks.md | `openspec/changes/<change>/specs/`, `…/design.md`, `…/tasks.md` |
 | SPEC-EVALUATION-DOC | `doc/design/<change>-review-v{N}.md` |
-| TRUTH-DOC (knowledge base) | the long-lived KB repo, e.g. `../knowledge-base/<module>.md` (reverse-capture drafts land in `doc/truth/<module>.md` first) |
+| TRUTH-DOC (knowledge base) | `docs/truth/<module>.md`, **in the same repo as the code** (a separate KB repo also works if every doc carries a `source-commit` stamp — see §6) |
 
 ### 4.2 Overview Flowchart
 
@@ -316,10 +335,13 @@ graph TD
     G --> H[STEP5 /opsx:apply<br/>code + test + code review]
     H --> H2{Tests pass & impl review consistent?}
     H2 -- No, fix --> H
+    H2 -- No, the design itself is infeasible --> C
     H2 -- Yes --> I[STEP6 /opsx:archive<br/>merge specs + write back to KB]
 ```
 
 > Every loop drawn here has a machine-checkable exit condition, so each can be **driven automatically by `/goal`** — see [§4.10](#410-automating-the-loop-with-goal-claude-code).
+
+> One loop-back the chart doesn't draw: if implementation reveals the **requirement itself** was wrong, go all the way back to STEP0 — coding around a wrong goal is the most expensive loop in the diagram.
 
 ### 4.3 STEP0: Requirement Refinement (Adversarial Review, Up to 5 Rounds)
 
@@ -338,6 +360,7 @@ Requirement Doc v1.0 ──► reviewing model audits ──► REQ-REVIEW-DOC (
 - **The reviewing model should differ from the one that drafted the requirement** (e.g. draft with Claude, review with GPT).
 - Fix the review dimensions as a checklist: **is target state B clear / any ambiguity / are edge cases and exceptions covered / any implied-but-undeclared state changes / are acceptance criteria testable**.
 - **Exit condition**: the reviewing model explicitly outputs "no major issues," or a human decides after hitting the 5-round cap.
+- **Every round also logs to the issue ledger** (`doc/review/<change>-issues.md`, [§7.0](#70-the-issue-ledger-shared-by-all-review-loops)): new findings get IDs, fixes flip statuses, and a reopened ID is your early warning that the loop isn't converging.
 
 For the prompt, see [§7.1](#71-step0-requirement-doc-adversarial-review).
 
@@ -345,10 +368,12 @@ For the prompt, see [§7.1](#71-step0-requirement-doc-adversarial-review).
 
 Explore based on all known facts, and align the design.
 
-- **Inputs**: TRUTH-DOC (the knowledge-base repo), any leftover SPEC-DOC from the previous round, the code, the finalized requirement doc.
-- **Output**: an alignment report listing the **gap between current state A and target state B**.
+- **Inputs**: TRUTH-DOC (the KB, `docs/truth/`), any leftover SPEC-DOC from the previous round, the code, the finalized requirement doc.
+- **Output**: an alignment report listing the **gap between current state A and target state B**, saved to `doc/explore/<change>-gap-report.md`.
 
-> Legacy projects depend on this step especially: see Section 6 — make sure the knowledge-base repo covers the relevant modules first, or `explore` will surface facts with holes in them.
+> **Skim the gap report before running propose** — it's the cheapest gate in the pipeline. A wrong or missing fact caught here costs a minute of reading; the same fact caught by the STEP2 reviewer costs a review round, and caught in STEP5 it costs a rework.
+
+> Legacy projects depend on this step especially: see Section 6 — make sure the KB covers the relevant modules first, or `explore` will surface facts with holes in them.
 
 ### 4.5 STEP2: `/opsx:propose` (Produce Spec & Design + Adversarial Review)
 
@@ -361,6 +386,8 @@ SPEC-DOC + DESIGN-DOC_V2  ──reviewing model──►  SPEC-EVALUATION-DOC_V2
 … (up to N rounds)
 ```
 
+Each round mirrors its findings into the issue ledger ([§7.0](#70-the-issue-ledger-shared-by-all-review-loops)), so the producer's accept/reject calls stay visible to the STEP3 human gate.
+
 **Exit condition**: the reviewing model explicitly outputs "no major issues, ready to proceed to execution," or a human decides after the cap. Prompt: see [§7.3](#73-step2-adversarial-review-and-revision).
 
 ### 4.6 STEP3: Technical Review
@@ -369,14 +396,17 @@ Hold a technical review meeting on the `DESIGN-DOC`; in parallel, hand the `spec
 
 > If the review produces a **major design change**, return to STEP2 and re-run `/opsx:propose`.
 
+> **Solo developer?** There's no meeting to hold — substitute a self-review against a fixed checklist (the [§7.3](#73-step2-adversarial-review-and-revision) reviewer checklist works) plus one extra fresh-session heterogeneous review round, and still record the conclusions as DESIGN-REVIEW-DOC. The point of STEP3 is a decision record made *outside the producer's context*, not the meeting itself.
+
 ### 4.7 STEP4: Update Related Documents
 
 Update SPEC-DOC and DESIGN-DOC per the DESIGN-REVIEW-DOC; you can layer on another round of adversarial review.
 
 ### 4.8 STEP5: `/opsx:apply` (Code + Test + Implementation Review)
 
-Write code per the SPEC-DOC, produce test code in lockstep, and treat **all tests passing** as the bar.
+Write code per the SPEC-DOC — **tests first**: derive one failing test per spec scenario (named with the scenario's ID), then implement in tasks.md order until everything is green. "All tests passing" is still the bar, and the failing-first run proves the tests can actually fail.
 
+- **Traceability beats coverage numbers**: the hard requirement is *scenario coverage* — every spec scenario has at least one test carrying its ID, which a grep-level CI check can enforce ([§4.11](#411-mapping-the-workflow-onto-git--pr--ci)). Line coverage is a signal worth watching, not a target: a model told to "hit 100%" will happily pad with assertion-free tests. For high-risk logic, spot-check test quality with mutation testing.
 - **Prefer a stronger model (Opus) for complex logic, and a faster/cheaper model (Sonnet) for routine coding.**
 - Add adversarial review: use **another model** (e.g. Sonnet 4.6 / GPT) to review the **consistency** between spec and implementation — focus on "written in the spec but missing in the code," and "the code has a `continue`/silent-skip/skip branch that the spec never declared as user-visible."
 - **Tests span layers**: unit tests for logic (always); for a project **with a UI**, add E2E and visual-regression checks (e.g. Playwright screenshots). A pure library like §5's mini-kv has no UI, so it needs only unit tests — skip the Playwright clause in the [§7.7](#77-goal-recipes-automating-each-loop) recipe.
@@ -385,9 +415,9 @@ Write code per the SPEC-DOC, produce test code in lockstep, and treat **all test
 
 What `/opsx:archive` actually does: it **merges this change's delta specs into OpenSpec's own spec store (`openspec/specs/`)** and archives the change, keeping OpenSpec's specs consistent with the final implementation.
 
-> ⚠️ Note the distinction: `/opsx:archive` **does NOT automatically update your separately-maintained knowledge-base repo (TRUTH-DOC)**. Writing this change's new/changed facts **back into the knowledge-base repo is a separate step** (use the prompt in [§7.5](#75-step6-archive) to have the AI do it explicitly, or write it manually).
+> ⚠️ Note the distinction: `/opsx:archive` **does NOT automatically update your own TRUTH-DOC** (`docs/truth/` or a separate KB repo — §6). Writing this change's new/changed facts **back into the KB is a separate step** (use the prompt in [§7.5](#75-step6-archive) to have the AI do it explicitly, or write it manually).
 
-**This step is the lifeline of long-term maintainability for legacy projects** — every change deposits new facts back into the knowledge-base repo, so the next `explore` has no holes.
+**This step is the lifeline of long-term maintainability for legacy projects** — every change deposits new facts back into the KB, so the next `explore` has no holes. With the KB in the same repo (§6), the writeback rides in the same PR as the code, where a reviewer can actually see it — the enforcement mapping is in [§4.11](#411-mapping-the-workflow-onto-git--pr--ci).
 
 ### 4.10 Automating the Loop with `/goal` (Claude Code)
 
@@ -411,7 +441,23 @@ That layering is what lets you automate **even adversarial review** without viol
 | STEP6 | delta specs merged **and** the module's KB file updated | `/opsx:archive` + writeback |
 | **STEP3 tech review · reverse-capture review · KB sign-off** | — **do not wrap these in a goal** | a human decides |
 
-> Always cap it (`… or stop after N turns`): the cap maps to the handbook's ≤5-round limits and bounds cost — open-ended goals can run very expensive. Suggested caps: STEP0 ≈5, STEP2 ≈3–4, STEP5 ≈25. If a loop **oscillates** (the verdict flip-flops, or the same issue keeps resurfacing) or stalls without progress, treat hitting the cap as a signal to **escalate to a human** — not to quietly lower the bar. Run **one `/goal` per machine-checkable stretch, stop at each human gate**, then start the next. Concrete conditions and the per-turn driver prompts are in [§7.7](#77-goal-recipes-automating-each-loop).
+> Always cap it (`… or stop after N turns`): the cap maps to the handbook's ≤5-round limits and bounds cost — open-ended goals can run very expensive. Suggested caps: STEP0 ≈5, STEP2 ≈3–4, STEP5 ≈25. If a loop **oscillates** (the verdict flip-flops, or the same ledger ID keeps getting reopened — [§7.0](#70-the-issue-ledger-shared-by-all-review-loops) makes this visible) or stalls without progress, treat hitting the cap as a signal to **escalate to a human** — not to quietly lower the bar. Run **one `/goal` per machine-checkable stretch, stop at each human gate**, then start the next. Concrete conditions and the per-turn driver prompts are in [§7.7](#77-goal-recipes-automating-each-loop).
+
+> **Tune the caps with data, not folklore.** Track one number per loop: *accepted issues per review round* (the ledger, [§7.0](#70-the-issue-ledger-shared-by-all-review-loops), gives it to you for free). If round 2 already yields ~0 accepted issues for your team, shorten the caps; if round 5 still surfaces real ones, the fix is upstream — requirement quality — not a higher cap.
+
+### 4.11 Mapping the Workflow onto Git / PR / CI
+
+Everything above is convention; a branch + CI mapping is what makes it *enforced*:
+
+| Workflow element | Git / CI home |
+|---|---|
+| One change | One branch (`change/<change-name>`), one PR |
+| SPEC-DOC / DESIGN-DOC / review docs / issue ledger | Committed on the branch — reviewers see the docs and the code in the same diff |
+| STEP5 exit conditions | CI jobs on the PR: tests green; every spec scenario ID appears in ≥1 test name (a grep-able traceability check); tasks.md all `[x]` |
+| Consistency-review verdict (§7.4) | Posted on the PR as a comment / required check before merge |
+| STEP6 KB writeback | Part of the same PR — "code merged but KB not updated" becomes visible in review instead of silently accumulating |
+
+**Parallel changes.** Branches isolate code, but two things still collide at archive time: OpenSpec's merged spec store (`openspec/specs/`) and per-module KB files. Serialize archives per module — whoever merges second rebases their delta specs and KB diff — and treat a KB-file conflict as a signal that two changes touched the same facts: reconcile them deliberately, don't just pick a side in the merge editor.
 
 ---
 
@@ -451,9 +497,9 @@ In your primary tool:
 ```text
 /opsx:explore
 * Requirement doc: requirement/req-final.md
-* System knowledge base: (new project: none / legacy project: path to the knowledge-base repo)
+* System knowledge base: (new project: none / legacy project: docs/truth/ or your KB path)
 * Code: this repo
-Please align the facts and output a gap report between current state A and target B.
+Please align the facts and output a gap report between current state A and target B to doc/explore/<change>-gap-report.md.
 ```
 
 ### 5.3 STEP2 · propose + Adversarial Review
@@ -472,9 +518,12 @@ codex exec resume -s read-only <session-id> "I revised per your last review; re-
 
 ### 5.4 STEP5 · apply
 
+> mini-kv is a solo project, so STEP3/STEP4 collapse into the [§4.6](#46-step3-technical-review) solo-mode self-check — one fresh-session look at the design is enough here; record anything you changed, then move on.
+
 ```text
 /opsx:apply
-Begin implementation, run the tests yourself, and continue until tests pass, coverage is adequate, and the feature is complete.
+First derive one failing test per spec scenario (test names carry the scenario IDs) and show me the failing run.
+Then implement in tasks.md order until all tests pass and the feature is complete.
 ```
 Expect output along the lines of:
 - `src/mini-kv.js`: the core implementation
@@ -487,7 +536,7 @@ npm test
 
 To run the implement → test loop unattended, wrap it in a goal — the mini-kv form of the [§7.7](#77-goal-recipes-automating-each-loop) STEP5 recipe (it's a library, so no Playwright clause):
 ```text
-/goal "All of: `npm test` exits 0; every item in openspec/changes/<change>/tasks.md is [x]; and a consistency review by a different model (the §7.4 prompt) reports no spec-vs-code gaps. Cap: 15 turns. Each turn: implement the next tasks.md item, write its tests, run `npm test` and SHOW the output. Stop when all hold or after 15 turns."
+/goal "All of: `npm test` exits 0; every spec scenario ID appears in at least one test name; every item in openspec/changes/<change>/tasks.md is [x]; and a consistency review by a different model (the §7.4 prompt) reports no spec-vs-code gaps. Cap: 15 turns. Turn 1: generate one failing test per spec scenario (named with its ID) and SHOW the failing run. Each later turn: implement the next tasks.md item, run `npm test` and SHOW the output. Stop when all hold or after 15 turns."
 ```
 
 ### 5.5 Acceptance & STEP6 · archive
@@ -501,22 +550,50 @@ Once satisfied, archive:
 ```text
 /opsx:archive
 ```
-A new project's first archive **produces the initial TRUTH-DOC** — congratulations, your mini-kv now has a system knowledge base, and the next feature can start from the "knowledge base exists" path in Section 6.
+A new project's first archive **produces the initial TRUTH-DOC** (per §6's default: `docs/truth/mini-kv.md`, in the same repo) — congratulations, your mini-kv now has a system knowledge base, and the next feature can start from the "knowledge base exists" path in Section 6. To calibrate granularity, here's roughly what that first KB doc should look like:
+
+```markdown
+---
+module: mini-kv
+source-commit: <commit sha at archive time>
+---
+# mini-kv — in-memory KV cache with TTL
+
+## Intent
+Small in-process cache. Single process, no persistence, no cross-instance consistency.
+
+## Public interface
+- `set(key, value, ttlMs?)` — overwrite replaces both value and TTL; `ttlMs <= 0` deletes the key immediately
+- `get(key)` — `undefined` on missing *or expired*; reading an expired key deletes it (lazy expiry)
+- `del(key)` — idempotent, no error on missing keys
+
+## State & the three moments
+One in-memory `Map`: `key → { value, expiresAt }`.
+- **Init**: empty Map at construction; a sweep timer starts on first `set`
+- **Update**: on every `set`/`del`; `get` may delete (lazy expiry)
+- **Cleanup**: lazy delete on `get`, plus a periodic sweep for never-read keys; the timer is `unref()`ed so it doesn't hold the process open
+
+## Pitfalls
+- Between sweeps, an expired never-read key still occupies memory (bounded by the sweep interval)
+- Not safe across worker threads — single-JS-thread assumption
+```
+
+Notice what it is — **abstract intent + interface contracts + the three moments + pitfalls** — and what it is not: no code listings, no line-by-line walkthrough. That's the granularity every later `explore` will consume.
 
 ---
 
 ## 6. Legacy Project Development: The Knowledge-Base Loop
 
-> Here, the **System Knowledge Base (TRUTH-DOC)** means a documentation repo that sits alongside the code repo and is maintained long-term — it captures each module's abstract intent, public interfaces, and data flow. Below it's called the "knowledge-base repo."
+> Here, the **System Knowledge Base (TRUTH-DOC)** means the long-lived documentation that captures each module's abstract intent, public interfaces, and data flow. **Default placement: in the same repo as the code, under `docs/truth/<module>.md`** — then one PR atomically carries a code change *and* its KB update, and reviewers see both in one diff ([§4.11](#411-mapping-the-workflow-onto-git--pr--ci)). A separate KB repo also works (e.g. one KB spanning several code repos), but you lose that atomicity — compensate by stamping every KB doc with the code commit it was verified against (`source-commit:`, used by the freshness check in §6.1). Below, "the KB" means either layout.
 
-The biggest risk in legacy projects was flagged in [§1.2](#12-document-driven-development-three-documents): **without the system knowledge base, the Agent can only reverse-engineer intent from the code — slow, and easy to guess wrong.** So the first principle of legacy development is — **make sure the knowledge-base repo covers the module you're about to change, then develop.**
+The biggest risk in legacy projects was flagged in [§1.2](#12-document-driven-development-three-documents): **without the system knowledge base, the Agent can only reverse-engineer intent from the code — slow, and easy to guess wrong.** So the first principle of legacy development is — **make sure the KB covers the module you're about to change, then develop.**
 
 ### 6.1 Three Starting Points, Three Paths
 
 ```mermaid
 graph TD
-    X[New requirement on a legacy project] --> Y{Does the KB repo cover the relevant module?}
-    Y -- Covered and fresh --> P1[Path A: go straight to STEP1<br/>feed the KB repo into explore]
+    X[New requirement on a legacy project] --> Y{Does the KB cover the relevant module?}
+    Y -- Covered and fresh --> P1[Path A: go straight to STEP1<br/>feed the KB into explore]
     Y -- Covered but stale --> P2[Path B: have the AI reconcile code vs KB<br/>revise the KB, then STEP1]
     Y -- Missing/uncovered --> P3[Path C: reverse knowledge capture first<br/>generate the module's KB from code, write back, then STEP1]
     P1 --> Z[Proceed through STEP1-6 in Section 4]
@@ -524,37 +601,63 @@ graph TD
     P3 --> Z
 ```
 
+**How do you *know* it's fresh?** Don't guess — every KB doc carries a `source-commit` stamp (the code commit it was last verified against), so the check is mechanical:
+
+```shell
+# any output = the module's code moved since the KB was last verified → Path B
+git log --oneline <source-commit>..HEAD -- src/<module>/
+```
+
+A tiny CI job that runs this per module and flags "stale KB" turns the Path A/B split from a judgment call into a lookup.
+
 ### 6.2 Path A: Knowledge Base Already Covers It (Ideal)
 
-Go straight to STEP1, feeding the knowledge-base repo (cloned to a local directory) in as the source of facts:
+Go straight to STEP1, feeding the KB in as the source of facts:
 ```text
 /opsx:explore
 * Requirement doc: requirement/req-final.md
-* System knowledge base: ../knowledge-base folder (module: <module-name>)
+* System knowledge base: docs/truth/ (module: <module-name>; separate-repo layout: pass that repo's local path instead)
 * Detailed technical design doc: design.md
-Please align facts from the KB and the code, and output a gap report.
+Please align facts from the KB and the code, and output a gap report to doc/explore/<change>-gap-report.md.
 ```
 
 ### 6.3 Path B: Knowledge Base Is Stale
 
-First have the AI treat the **code as the source of truth** to reconcile and revise the knowledge base (prompt: [§7.6](#76-reverse-knowledge-capture-for-legacy-projects)), commit the revised knowledge-base repo, then follow Path A.
+First have the AI treat the **code as the source of truth** to reconcile and revise the knowledge base (prompt: [§7.6](#76-reverse-knowledge-capture-for-legacy-projects)), commit the revised KB docs with refreshed `source-commit` stamps, then follow Path A.
 
 ### 6.4 Path C: Knowledge Base Missing (Most Common)
 
-**Reverse knowledge capture**: have the AI read the target module's code and produce that module's knowledge-base doc (abstract intent, public interfaces, data flow, dependencies, side effects); after review, **write it back to the knowledge-base repo**, then enter the normal workflow. Prompt: [§7.6](#76-reverse-knowledge-capture-for-legacy-projects).
+**Reverse knowledge capture**: have the AI read the target module's code and produce that module's KB doc (abstract intent, public interfaces, data flow, dependencies, side effects). It lands directly at `docs/truth/<module>.md` on your change branch, so **the review happens where reviews already happen — in the PR diff**; once approved, enter the normal workflow. Prompt: [§7.6](#76-reverse-knowledge-capture-for-legacy-projects).
 
 > ⚠️ Reverse-captured knowledge **must be reviewed by a human or a heterogeneous model** — when an AI reverse-engineers intent from code, it fabricates "plausible-looking but actually wrong" abstractions. Don't let a poisoned knowledge base contaminate all downstream development.
 
 ### 6.5 Closing the Loop: Write Back After Every Change
 
-Whether a legacy project gets easier to change over time depends on **whether STEP6 faithfully writes back to the knowledge-base repo**. Bake it into a team rule:
-**one change = one code commit + one knowledge-base-repo update.** Sustained over time, the knowledge-base repo converges from "Path C" toward "Path A," and development efficiency keeps rising.
+Whether a legacy project gets easier to change over time depends on **whether STEP6 faithfully writes back to the KB**. Bake it into a team rule:
+**one change = one PR that contains both the code diff and the KB diff.** With the KB in the same repo (the §6 default) this is enforceable in review — a PR that touches `src/<module>/` but not `docs/truth/<module>.md` gets asked why ([§4.11](#411-mapping-the-workflow-onto-git--pr--ci)). Separate-repo teams have to lean on convention plus the `source-commit` freshness check to catch drift after the fact. Sustained over time, the KB converges from "Path C" toward "Path A," and development efficiency keeps rising.
 
 ---
 
 ## 7. Prompt Library
 
 > Every prompt shares one structure: explicit "Role / Input / Task / Output / Constraints," with version numbers, loops, and exit conditions made explicit. Paths are examples — replace with real ones.
+
+### 7.0 The Issue Ledger (Shared by All Review Loops)
+
+Every review loop below appends to one cumulative ledger per change — `doc/review/<change>-issues.md`:
+
+```markdown
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| REQ-3 | `ttlMs<=0` behavior undefined | med | 1 | fixed (v2) |
+| SPEC-1 | cleanup moment missing for the in-memory map | high | 1 | verified |
+| SPEC-2 | rename `del` to `delete` | low | 2 | rejected — cosmetic, out of scope for this change |
+```
+
+Rules:
+- **The reviewer** appends new rows, and flips `fixed → verified` once it confirms a fix actually landed. A re-found issue **reopens its old ID** — never gets a new row; a reopened ID is exactly the oscillation alarm [§4.10](#410-automating-the-loop-with-goal-claude-code) watches for.
+- **The producer** flips `open → fixed` or `open → rejected`; a rejection MUST carry a reason — human gates read the rejections first.
+- Because the cross-round memory lives in this file rather than in a session, every round's reviewer can be a **fresh** session without losing the thread ([§1.4](#14-adversarial-review)).
 
 ### 7.1 STEP0: Requirement-Doc Adversarial Review
 
@@ -565,7 +668,8 @@ You are a senior requirements reviewer. Review the requirement doc below; the go
 
 [Input]
 * Requirement doc: requirement/req-v{N}.md
-* System knowledge base (if any): <KB repo path / module name>
+* System knowledge base (if any): docs/truth/<module>.md (or your KB path)
+* Issue ledger (if any): doc/review/<change>-issues.md
 
 [Review dimensions, give a verdict on each]
 1. Is target state B clear and unambiguous
@@ -575,17 +679,18 @@ You are a senior requirements reviewer. Review the requirement doc below; the go
 5. Does it conflict with the current state A (if a KB was provided)
 
 [Output]
-Produce a REQ-REVIEW-DOC: doc/review/req-review-v{N}.md
+Produce a REQ-REVIEW-DOC: doc/review/<change>-req-review-v{N}.md
 * List an "issue list" by dimension; each entry has: issue description / risk / suggested fix
+* Mirror every issue into the ledger doc/review/<change>-issues.md (§7.0): new issues get new IDs, a re-found issue reopens its old ID, and flip fixed→verified for fixes you can confirm
 * End with an overall verdict: whether it is "no major issues" and can be finalized
 
-Do not modify the requirement doc itself; only produce the review.
+Do not modify the requirement doc itself; only produce the review and the ledger update.
 ```
 
 Revise and loop:
 ```text
-The review is at doc/review/req-review-v{N}.md. Revise the requirement doc accordingly and output requirement/req-v{N+1}.md.
-For each issue, state how you handled it (accept/reject + reason).
+The review is at doc/review/<change>-req-review-v{N}.md. Revise the requirement doc accordingly and output requirement/req-v{N+1}.md.
+For each issue, state how you handled it (accept/reject + reason), and update its Status in doc/review/<change>-issues.md (fixed / rejected + reason).
 ```
 Repeat until the review outputs "no major issues," finalizing as `requirement/req-final.md` (max 5 rounds).
 
@@ -596,11 +701,11 @@ Repeat until the review outputs "no major issues," finalizing as `requirement/re
 I want to implement a new requirement on an existing system. First align all known facts — do not write code.
 [Input]
 * Requirement doc: requirement/req-final.md
-* System knowledge base: <KB repo path> (module: <module-name>; for a new project, note "none")
+* System knowledge base: docs/truth/ (module: <module-name>; for a new project, note "none"; separate-repo layout: its local path)
 * Detailed technical design doc: design.md (if any)
 * Code: this repo
 [Output]
-A gap report: list current state A, target state B, and the differences and risks to bridge between them.
+A gap report at doc/explore/<change>-gap-report.md: list current state A, target state B, and the differences and risks to bridge between them.
 ```
 
 ### 7.3 STEP2: Adversarial Review and Revision
@@ -621,22 +726,26 @@ You are a technical reviewer. Review the spec and design of this change, focusin
 [Input]
 * SPEC-DOC: openspec/changes/<change-name>/specs/
 * DESIGN-DOC: openspec/changes/<change-name>/design.md
-* System knowledge base: <KB repo path>
+* System knowledge base: docs/truth/ (or your KB path)
 * Requirement doc: requirement/req-final.md
+* Issue ledger: doc/review/<change-name>-issues.md
 [Checklist]
 1. Do the scenarios cover every visible behavior of the requirement; any missing failure/edge scenarios
 2. Are the three moments of external shared state (init/update/cleanup) complete
 3. Does the design conflict with current state A or break existing conventions
 4. Anything the spec requires but the design doesn't deliver, or behavior the design introduces that the spec never declared
+5. Security, where the change touches external input or permissions: unvalidated input, missing authz on new paths, secrets/PII in logs, injection surfaces
 [Output]
 Produce a SPEC-EVALUATION-DOC: doc/design/<change-name>-review-v{N}.md
 List issues one by one (description/risk/suggestion), ending with a verdict: whether it is "no major issues, ready to proceed to execution."
+Mirror every issue into the ledger (§7.0): new issues get new IDs, a re-found issue reopens its old ID, and flip fixed→verified for fixes you can confirm.
 ```
 
 **Back to the producer to revise (note: revise the spec/design, not the source):**
 ```text
 I had another model review your design and spec; the review is at doc/design/<change-name>-review-v{N}.md.
-Handle each item (accept/reject + reason), modifying the spec and design files that need changes (not the source).
+Handle each item (accept/reject + reason), modifying the spec and design files that need changes (not the source),
+and update each issue's Status in doc/review/<change-name>-issues.md (fixed / rejected + reason).
 When done, go to review again, producing v{N+1}.
 ```
 Loop until the review outputs "no major issues, ready to proceed to execution."
@@ -647,9 +756,10 @@ Loop until the review outputs "no major issues, ready to proceed to execution."
 
 ```text
 /opsx:apply
-Implement strictly in tasks.md order; mark each task [x] immediately on completion.
+Tests first: before implementing, derive one failing test per spec scenario, each test named with its scenario ID (e.g. `test('KV-03 …')`), and show the failing run.
+Then implement strictly in tasks.md order; mark each task [x] immediately on completion.
 Requirements:
-* Write tests in lockstep, covering every scenario in the spec, aiming for 100% coverage;
+* Scenario coverage is the hard bar: every spec scenario has at least one test carrying its ID. Line coverage is a signal, not a target — never pad with assertion-free tests;
 * Use a stronger model for complex logic, a faster model for routine implementation;
 * Log at key branches and function entries per the logging convention;
 * When all done, run the tests until green; for any continue/skip/silently-ignored branch, re-check the spec to confirm whether it must be user-visible.
@@ -659,10 +769,12 @@ Stop when done and wait for archive.
 **Implementation-consistency adversarial review (heterogeneous model):**
 ```text
 Review the consistency of this implementation against the SPEC-DOC. Focus on:
-1. Behavior the spec requires but the code doesn't implement;
-2. continue/skip/silently-ignored branches in the code — does the spec require them to be user-visible;
-3. Whether the tests truly cover each scenario (not just the happy path).
-List each inconsistency and a suggested fix.
+1. First the mechanical check: list every scenario ID in the spec that appears in no test name;
+2. Behavior the spec requires but the code doesn't implement;
+3. continue/skip/silently-ignored branches in the code — does the spec require them to be user-visible;
+4. Whether the tests truly cover each scenario (assert real outcomes — not merely "it runs");
+5. Where the change touches external input or permissions: unvalidated input, missing authz, secrets/PII in logs.
+List each inconsistency and a suggested fix, and mirror them into doc/review/<change>-issues.md (§7.0).
 ```
 
 > 💡 As in STEP2, drive this with a heterogeneous model via the CLI; for the `codex exec` / `codex exec resume` mechanics see [§2.3](#23-driving-codex-non-interactively-multi-round-adversarial-review).
@@ -672,9 +784,10 @@ List each inconsistency and a suggested fix.
 ```text
 /opsx:archive
 Archive this change, and update the system knowledge base and specs in lockstep:
-* Write this change's new/changed facts back to the corresponding module (<module-name>) in the knowledge-base repo;
+* Write this change's new/changed facts back to docs/truth/<module-name>.md (separate-repo layout: that repo's module doc);
+* Refresh the doc's `source-commit` stamp to the current code commit;
 * Ensure the TRUTH-DOC is consistent with the final implementation;
-List which files and which sections of the knowledge-base repo you updated.
+List which KB files and which sections you updated.
 ```
 
 ### 7.6 Reverse Knowledge Capture for Legacy Projects
@@ -683,16 +796,16 @@ List which files and which sections of the knowledge-base repo you updated.
 You are a system knowledge-base engineer. Read the following module's code and produce/reconcile that module's system knowledge-base doc.
 [Input]
 * Code scope: <directory or file list>
-* Existing KB (if any): <path to this module's doc in the KB repo>
+* Existing KB (if any): docs/truth/<module-name>.md (or this module's doc in your KB path)
 [Task]
 * Treating the code as the sole source of truth, abstract the module's: public responsibilities/interfaces, core data flow, key state and side effects, dependencies on other modules, important conventions and pitfalls;
 * If an existing KB is provided, flag each "mismatched with code / outdated / missing" point and revise.
 [Output]
-Following the existing doc style of the KB repo, output a draft module KB doc to doc/truth/<module-name>.md.
+Following the existing doc style of the KB, output the module KB doc to docs/truth/<module-name>.md (on the change branch, so the PR diff is where it gets reviewed), with a `source-commit` stamp set to the code commit you read.
 [Constraints]
 * Describe only facts that actually exist in the code; do not speculate. Explicitly mark uncertainties as "needs human confirmation"; do not invent abstract intent.
 ```
-> After producing it, **always have a human / heterogeneous model double-check** before writing it back to the knowledge-base repo (see [§6.4](#64-path-c-knowledge-base-missing-most-common)).
+> After producing it, **always have a human / heterogeneous model double-check** before the KB doc merges (see [§6.4](#64-path-c-knowledge-base-missing-most-common)) — in the same-repo layout, that check is simply part of the PR review.
 
 ### 7.7 `/goal` Recipes: Automating Each Loop
 
@@ -702,10 +815,10 @@ Following the existing doc style of the KB repo, output a draft module KB doc to
 ```text
 /goal "Goal: requirement/req-final.md exists and the latest review pass reports 'no major issues'. Cap: 5 rounds.
 Each round:
-1. If doc/review/req-review-v{N}.md exists, revise requirement/req-v{N}.md per it, bump to v{N+1}, and note accept/reject+reason per issue.
-2. Run the reviewer with a DIFFERENT model on the current version and save its output to doc/review/req-review-v{N}.md, e.g.:
+1. If doc/review/<change>-req-review-v{N}.md exists, revise requirement/req-v{N}.md per it, bump to v{N+1}, note accept/reject+reason per issue, and update those issues' Status in doc/review/<change>-issues.md.
+2. Run the reviewer with a DIFFERENT model on the current version and save its output to doc/review/<change>-req-review-v{N}.md, e.g.:
    codex exec -s read-only \"<the §7.1 reviewer prompt> — target: requirement/req-v{N}.md\"
-   (no Codex? open a fresh `claude` per §2.4 and paste the §7.1 prompt)
+   (no Codex? open a fresh `claude` per §2.4 and hand it the §7.1 prompt plus the issue ledger)
 3. Paste the reviewer's final verdict line back into this conversation.
 Stop when the verdict is 'no major issues' (then copy to requirement/req-final.md) or after 5 rounds."
 ```
@@ -714,24 +827,24 @@ Stop when the verdict is 'no major issues' (then copy to requirement/req-final.m
 ```text
 /goal "Goal: openspec/changes/<change>/ has SPEC-DOC+DESIGN-DOC and the latest SPEC-EVALUATION-DOC verdict is 'no major issues, ready to proceed to execution'. Cap: 4 rounds.
 Each round:
-1. Revise the spec/design files per the latest review — never touch source code.
-2. Re-run the heterogeneous reviewer (codex exec resume <session-id> with the §7.3 reviewer prompt) producing doc/design/<change>-review-v{N}.md.
+1. Revise the spec/design files per the latest review — never touch source code — and update the handled issues' Status in doc/review/<change>-issues.md.
+2. Re-run the heterogeneous reviewer with the §7.3 prompt (round 1: codex exec, note the printed session id; later rounds: codex exec resume <session-id>), producing doc/design/<change>-review-v{N}.md and updating the ledger.
 3. Surface the reviewer's verdict line here.
 Stop on 'no major issues, ready to proceed to execution' or after 4 rounds."
 ```
 
 **STEP5 — apply: code + test + E2E + Playwright, until green:**
 ```text
-/goal "Goal — ALL must hold: `npm test` exits 0; coverage meets the project bar (§8.1; the handbook targets 100%); every item in openspec/changes/<change>/tasks.md is [x]; (UI projects only) the Playwright E2E suite passes and screenshot diffs are within threshold; AND a consistency review by a DIFFERENT model (the §7.4 prompt) reports no spec-vs-code gaps. Cap: 25 turns.
-Each turn: implement the next tasks.md item in order, write its tests, then run `npm test` and the Playwright run and SHOW the command output so the result is in the transcript. When the code is complete, run the consistency reviewer (codex exec / fresh claude) and paste its verdict.
+/goal "Goal — ALL must hold: `npm test` exits 0; every scenario ID in openspec/changes/<change>/specs/ appears in at least one test name (list any missing IDs); every item in openspec/changes/<change>/tasks.md is [x]; (UI projects only) the Playwright E2E suite passes and screenshot diffs are within threshold; AND a consistency review by a DIFFERENT model (the §7.4 prompt) reports no spec-vs-code gaps. Cap: 25 turns.
+Turn 1: derive one failing test per spec scenario, named with its scenario ID, and SHOW the failing run. Each later turn: implement the next tasks.md item in order, then run `npm test` and the Playwright run and SHOW the command output so the result is in the transcript. When the code is complete, run the consistency reviewer (codex exec / fresh claude) and paste its verdict.
 Stop when every condition holds or after 25 turns."
 ```
 > Playwright/visual note: this clause applies to **UI projects**; a pure library (like §5's mini-kv) drops it. The goal evaluator reads **text**, so make the visual check emit a **textual pass/fail** (e.g. a pixelmatch threshold result printed to the console). If you instead rely on Claude's own look at a screenshot, it must **state the verdict in words** in the transcript, or the evaluator can't see it.
 
 **STEP6 — archive + knowledge-base writeback:**
 ```text
-/goal "Goal: the change is archived (delta specs merged into openspec/specs/) AND the knowledge-base file for module <module> reflects this change's new/changed facts. Cap: 4 turns.
-Run /opsx:archive, then update ../knowledge-base/<module>.md and list exactly which files/sections changed.
+/goal "Goal: the change is archived (delta specs merged into openspec/specs/) AND the KB file for module <module> reflects this change's new/changed facts with a refreshed source-commit stamp. Cap: 4 turns.
+Run /opsx:archive, then update docs/truth/<module>.md and list exactly which files/sections changed.
 Stop when both hold."
 ```
 > Then a **human reviews the KB diff** — don't let the goal self-approve the knowledge-base writeback (see [§6.5](#65-closing-the-loop-write-back-after-every-change)).
@@ -756,6 +869,7 @@ rules:
     - Only create artifacts (proposal.md/design.md/specs/tasks.md); do not modify any source files
     - Stop when done and wait for the user to run /opsx:apply
     - Every "user-visible output" must have its own scenario; if one requirement has multiple visible side-effects (e.g. "filtering" and "showing the filtered-out results"), write them as two separate scenarios, never merged into one sentence
+    - Give every scenario a stable ID (e.g. KV-03); downstream tests must reference these IDs
     - |
       For any spec involving "external shared state" (Redis, DB fields, global singletons, etc.),
       you MUST additionally describe behavior at these three moments:
@@ -771,7 +885,8 @@ rules:
     - Mark each task [x] immediately on completion before continuing
     - Stop when all done and wait for the user to run /opsx:archive
     - For any continue / silent-ignore / skip branch in the code, re-check the spec to confirm whether that branch must be user-visible; if the spec requires it, produce the corresponding record — don't satisfy only the "exclude the main path" while dropping the "display side"
-    - Every key branch or function entry in the code must log; the log format is `[UUID]-description,XXX:[{}],YYY:[{}]`
+    - Name every test after the scenario ID it covers (e.g. `test('KV-03 …')`); a spec scenario with no matching test fails the traceability check
+    - Every key branch or function entry in the code must log; the log format is `[UUID]-description,XXX:[{}],YYY:[{}]` (this format is an example — swap in your own team's logging convention from the rules file, §8.2)
 ```
 
 ### 8.2 Project Rules File (CLAUDE.md and Per-Tool Equivalents)
@@ -835,7 +950,7 @@ A unified format, for global search and pinpointing:
 * Base class / framework: <convention>
 * Mock strategy: <what to mock (e.g. external remote calls), what to avoid mocking (e.g. local data access — operate for real where possible)>
 * Test numbering / naming: <convention, e.g. numbering ranges for success vs failure scenarios>
-* Coverage requirement: <e.g. cover all branches where possible, target 100%>
+* Coverage requirement: <scenario coverage is the hard bar — every spec scenario ↔ at least one test carrying its ID; treat line/branch coverage as a signal to investigate (e.g. anything below 85%), never a target to chase — a model told to hit a number will pad with assertion-free tests>
 * Test method-body template: <give an empty-shell example to unify the style>
 ````
 

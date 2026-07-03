@@ -48,6 +48,8 @@ The problem with vibe coding is that the prompt is too vague and the requirement
 > Once the Agent reads the **Requirement Doc** it knows the target state B; the **System Knowledge Base** lets it reconstruct most of the current state A; **Code** fills in the rest of the detail, and it now grasps most of the system's truth.
 > **Without the system knowledge base, the Agent can only reverse-engineer abstract intent from the code — slow, and easy to guess wrong.** This is exactly the core tension Section 6 ("Legacy Project Development") is meant to resolve.
 
+**North star:** the endgame this handbook paves toward — executable scenarios, "the spec *is* the test suite" — lives in [VISION.md](./VISION.md). It is non-blocking guidance: no gate reads it; a change that conflicts with it merely records why. The scenario-ID ↔ test-name mapping in §4.8 is the first paving stone.
+
 ### 1.3 Test-Driven Development
 
 Early in development, from the requirement doc plus existing facts, first produce test cases (scenario-style `if … then …`):
@@ -87,6 +89,19 @@ Claude Code (Opus/Claude)  ──produces──►  SPEC-DOC + DESIGN-DOC
 **Fresh context vs. cross-round memory — the issue ledger.** Multi-round review has a built-in tension: each round's reviewer should be *fresh* (the second lever), yet it must remember earlier rounds to verify "was issue #3 actually fixed?" Keeping one long-lived reviewer session buys memory at the cost of freshness — after round 1, the reviewer is anchored to *its own* past findings too. The fix is to move the memory out of the session and into a file: a cumulative **issue ledger** per change ([§7.0](#70-the-issue-ledger-shared-by-all-review-loops)), where every issue carries an ID and a status (`open / fixed / rejected + reason / verified`). Each round's reviewer can then be a brand-new session: it reads the ledger to verify fixes and appends new findings, staying unanchored. The ledger doubles as the audit trail for human gates — rejections stay visible with their reasons, and a resurfacing issue reopens its old ID instead of masquerading as a new finding.
 
 Adversarial review runs through three points: **① requirement-doc review (STEP0) ② spec + design review (STEP2) ③ code implementation review (STEP5)** — and every round of each one logs to the same per-change issue ledger.
+
+LLM adversarial review is one instrument in a larger verification portfolio — where quality actually comes from, stage by stage, is stated once in [§1.5](#15-where-quality-comes-from).
+
+### 1.5 Where Quality Comes From
+
+Four principles every mechanism in this handbook (and the RUNBOOK) instantiates:
+
+1. **Quality comes from different instruments at different stages.** In a change's requirement/spec **document stages** (STEP0/2), LLM review is the only instrument available — there it is the primary one, and it never drops below one round per stage per change. In the **implementation stage** (STEP5), executable verification is primary (v1.0 already worked this way); LLM review covers what execution can't judge.
+2. **Intent comes first; the spec's form may come later.** On any track, a human-acknowledged statement of intent precedes code; the tracks (§4.0) differ only in when the full spec crystallizes — **the spec is a conserved quantity at merge time**.
+3. **Supervision parameters are never written by the supervised.** Round caps and shrink decisions live in a human-held config and human gates; the agent reports data, never adjusts its own oversight.
+4. **Extracted descriptions are drafts until reviewed.** Anything reverse-derived from code or a prototype (P10, P11) must pass review before anything downstream consumes it.
+
+**Compatibility in 1.x, honestly stated:** the harden track's paths, gates, exit conditions and prompt numbering are unchanged (default config: zero path drift); exit conditions gained mapping variants only for project types v1.0 never defined (docs-only projects). The explore track is an **addition** whose named decision points — `intent-card sign-off`, `extraction review`, `STEP2 full review` — carry gate status. Gate consolidation (RUNBOOK §1) is an explicit, logged, revocable human authorization, never covering the shrink decision, the KB sign-off, or the intent-card sign-off.
 
 ---
 
@@ -146,8 +161,10 @@ The output header prints a line like `session id: 019f....`. **Copy that id** �
 
 **Round 2…N — resume the same context:**
 ```shell
-# flags MUST come before the session id, otherwise Codex rejects them
-codex exec resume -s read-only <session-id> "I've revised per your last review; re-review and produce v{N+1}."
+# codex CLI ≥ 0.14x: `resume` rejects -s — pass the sandbox as a config override
+codex exec resume -c sandbox_mode="read-only" <session-id> "I've revised per your last review; re-review and produce v{N+1}."
+# older CLIs: -s works, but flags MUST come before the session id
+codex exec resume -s read-only <session-id> "..."
 ```
 Because the session is preserved, the reviewer still remembers its earlier findings — it can verify "was issue #3 actually fixed?" instead of starting over each round.
 
@@ -285,6 +302,29 @@ STEP0–STEP6 below describe the **full** pipeline. Running all of it on a typo-
 
 Two rules of thumb: **anything touching external shared state (§8.1's three-moments rule) or crossing module boundaries is Large, no matter how small the diff looks**; and when in doubt, start one tier lower and escalate the moment `explore` or a review surfaces a surprise — escalating early is cheap, discovering a missing spec in production is not.
 
+**The second axis: goal certainty.** Sizing decides how much process; certainty decides *which track*. On both tracks intent comes first and **the spec is a conserved quantity at merge time** — the tracks differ only in when it crystallizes ([§1.5](#15-where-quality-comes-from)).
+
+| Situation | Track |
+|---|---|
+| Goal and acceptance stateable, even roughly | **Harden** (default) — the STEP0 loop refines them |
+| Goal clear, approach unknown | **Harden** — approach uncertainty is design work, not goal uncertainty |
+| Neither goal nor acceptance stateable | **Explore** |
+| Exploration reveals a clear goal | switch to Harden immediately |
+
+**Tripwires outrank certainty**: shared-state / production-data / cross-module / migration changes never take the explore track, however vague — they go Harden, optionally with a research spike (RUNBOOK §4's STEP1 variant). When in doubt: **Harden** — the opposite default from the size axis, because the risks point the other way. The track and its rationale land in the state file and are reported at the next human gate.
+
+The explore track in one picture — it merges into the main flow at STEP2 ([§4.2](#42-overview-flowchart)):
+
+```mermaid
+graph LR
+    IC[Intent card, ≤15 lines<br/>human sign-off] --> SP[Spike in spike/<br/>cap: spike-cap]
+    SP --> P11[P11 extract spec<br/>req-final + drafts]
+    P11 --> P12{P12 extraction review<br/>heterogeneous}
+    P12 -- accepted --> S2[merge into STEP2<br/>full review loop]
+    P12 -- unfaithful --> P11
+    P12 -- hypothesis falsified --> AB[ABANDONED<br/>keep card + findings]
+```
+
 ### 4.1 Glossary
 
 | Abbreviation | Full name | Description |
@@ -296,6 +336,9 @@ Two rules of thumb: **anything touching external shared state (§8.1's three-mom
 | SPEC-EVALUATION-DOC | Spec review doc | In **STEP2** adversarial review, another model's audit of SPEC-DOC + DESIGN-DOC |
 | DESIGN-REVIEW-DOC | Technical review record | The conclusions and revisions from the human **STEP3** technical review meeting |
 | Issue ledger | Cumulative issue table | One per change, shared by every review loop; each issue carries an ID and a status — see [§7.0](#70-the-issue-ledger-shared-by-all-review-loops) |
+| Intent card | Explore-track intent statement | ≤15 lines: goal hypothesis / success criteria / spike questions; human-signed **before** any spike (RUNBOOK §4) |
+| P11 / P12 | Extraction & its review | P11 extracts the spec from a validated prototype; P12 (heterogeneous) reviews it against the intent card |
+| track | Certainty-axis routing | `harden` or `explore`, with a rationale, in the state file ([§4.0](#40-size-the-change-first)) |
 
 **Where each artifact lives** (these paths are the conventions used throughout the RUNBOOK's prompts — adjust to your repo):
 
@@ -307,14 +350,20 @@ Two rules of thumb: **anything touching external shared state (§8.1's three-mom
 | Issue ledger | `doc/review/<change>-issues.md` |
 | SPEC-DOC / DESIGN-DOC / tasks.md | `openspec/changes/<change>/specs/`, `…/design.md`, `…/tasks.md` |
 | SPEC-EVALUATION-DOC | `doc/design/<change>-review-v{N}.md` |
+| Intent card (explore track) | `requirement/intent-card.md` |
+| Extraction review (explore track) | `doc/review/<change>-extraction-review-v{N}.md` |
+| Prototype (explore track) | `spike/` — deleted or quarantined at archive; never referenced by tasks.md |
 | TRUTH-DOC (knowledge base) | `docs/truth/<module>.md`, **in the same repo as the code** (a separate KB repo also works if every doc carries a `source-commit` stamp — see §6) |
 
 ### 4.2 Overview Flowchart
 
 > The flowchart explicitly draws the **STEP0 requirement-doc adversarial review loop**, as well as the **loop-backs** between phases.
 
+> **This chart is the harden track — the default.** Vague-goal changes run the explore track ([§4.0](#40-size-the-change-first)'s small chart) and merge into this one at STEP2, drawn below as the dashed arrival.
+
 ```mermaid
 graph TD
+    X0([explore track, §4.0]) -.-> C
     subgraph S0[STEP0 Requirement Refinement · Adversarial Loop]
         A1[Requirement Doc v_n] --> A2[Reviewing model audits<br/>produces REQ-REVIEW-DOC]
         A2 --> A3{Major issues?}
@@ -347,7 +396,7 @@ graph TD
 
 ### 4.3 STEP0: Requirement Refinement (Adversarial Review, Up to 5 Rounds)
 
-> The requirement doc is the **top-level prompt** for AI development — make it precise. Ideally, product runs an AI self-check on it first.
+> The requirement doc is the **top-level prompt** for AI development — make it precise. Ideally, product runs an AI self-check on it first. (Round numbers in this section's title and below are defaults — `process-config.md` is the source of truth.)
 
 This step is itself an adversarial loop:
 
@@ -409,6 +458,7 @@ Update SPEC-DOC and DESIGN-DOC per the DESIGN-REVIEW-DOC; you can layer on anoth
 Write code per the SPEC-DOC — **tests first**: derive one failing test per spec scenario (named with the scenario's ID), then implement in tasks.md order until everything is green. "All tests passing" is still the bar, and the failing-first run proves the tests can actually fail.
 
 - **Traceability beats coverage numbers**: the hard requirement is *scenario coverage* — every spec scenario has at least one test carrying its ID, which a grep-level CI check can enforce ([§4.11](#411-mapping-the-workflow-onto-git--pr--ci)). Line coverage is a signal worth watching, not a target: a model told to "hit 100%" will happily pad with assertion-free tests. For high-risk logic, spot-check test quality with mutation testing.
+- **Verification matrix by project type**: backend/library — unit + property tests, mutation spot-checks; UI — plus E2E/visual regression; deployed service — plus runtime contracts and canary + rollback (an hour on rollback capability usually buys more safety than an extra review round — a trade-off that exists only in the implementation stage, and note canaries catch regressions and crashes, not "built the wrong thing"); **docs-only — the checker script and example-command static checks are the test suite**. Where an instrument's precondition is missing (no deploy surface; solo; library; docs), LLM review is the primary instrument there — not a downgrade ([§1.5](#15-where-quality-comes-from)).
 - **Prefer a stronger model (Opus) for complex logic, and a faster/cheaper model (Sonnet) for routine coding.**
 - Add adversarial review: use **another model** (e.g. Sonnet 4.6 / GPT) to review the **consistency** between spec and implementation — focus on "written in the spec but missing in the code," and "the code has a `continue`/silent-skip/skip branch that the spec never declared as user-visible."
 - **Tests span layers**: unit tests for logic (always); for a project **with a UI**, add E2E and visual-regression checks (e.g. Playwright screenshots). A pure library like §5's mini-kv has no UI, so it needs only unit tests — skip the Playwright clause in the [§7.7](#77-goal-recipes-automating-each-loop) recipe.
@@ -443,9 +493,9 @@ That layering is what lets you automate **even adversarial review** without viol
 | STEP6 | delta specs merged **and** the module's KB file updated | `/opsx:archive` + writeback |
 | **STEP3 tech review · reverse-capture review · KB sign-off** | — **do not wrap these in a goal** | a human decides |
 
-> Always cap it (`… or stop after N turns`): the cap maps to the handbook's ≤5-round limits and bounds cost — open-ended goals can run very expensive. Suggested caps: STEP0 ≈5, STEP2 ≈3–4, STEP5 ≈25. If a loop **oscillates** (the verdict flip-flops, or the same ledger ID keeps getting reopened — [§7.0](#70-the-issue-ledger-shared-by-all-review-loops) makes this visible) or stalls without progress, treat hitting the cap as a signal to **escalate to a human** — not to quietly lower the bar. Run **one `/goal` per machine-checkable stretch, stop at each human gate**, then start the next. The ready-to-paste recipes ship in [RUNBOOK.md](./RUNBOOK.md) §6; their design notes are in [§7.7](#77-goal-recipes-automating-each-loop).
+> Always cap it (`… or stop after N turns`): the cap maps to the handbook's ≤5-round limits and bounds cost — open-ended goals can run very expensive. Caps live in `process-config.md` — human-held, agent-read-only — with defaults STEP0 5, STEP2 4, STEP5 25 and a hard floor of 1 per review stage. If a loop **oscillates** (the verdict flip-flops, or the same ledger ID keeps getting reopened — [§7.0](#70-the-issue-ledger-shared-by-all-review-loops) makes this visible) or stalls without progress, treat hitting the cap as a signal to **escalate to a human** — not to quietly lower the bar. Run **one `/goal` per machine-checkable stretch, stop at each human gate**, then start the next. The ready-to-paste recipes ship in [RUNBOOK.md](./RUNBOOK.md) §6; their design notes are in [§7.7](#77-goal-recipes-automating-each-loop).
 
-> **Tune the caps with data, not folklore.** Track one number per loop: *accepted issues per review round* (the ledger, [§7.0](#70-the-issue-ledger-shared-by-all-review-loops), gives it to you for free). If round 2 already yields ~0 accepted issues for your team, shorten the caps; if round 5 still surfaces real ones, the fix is upstream — requirement quality — not a higher cap.
+> **Tune the caps with data — under governance, not autopilot.** Every N changes (default 5) the agent *reports* a shrink/expand proposal whose data pack must contain: verified count, rejected count (with sampled reasons) and reopened-ID count (all free from the ledger, [§7.0](#70-the-issue-ledger-shared-by-all-review-loops)). Shrinking is a **human gate decision** — blocked outright when the rejected ratio exceeds the configured guard, or the change class is tripwired. Shrinking lowers a stage's round cap with a hard floor of 1, so no stage ever reaches zero and exit conditions stay intact; a post-merge re-review that finds a high-risk miss restores the previous cap. Mind both directions: a producer can zero the metric by rejecting findings (that is what the guard is for); careless verifies merely delay shrinking. And if round 5 still surfaces real issues, the fix is upstream — requirement quality — not a higher cap.
 
 ### 4.11 Mapping the Workflow onto Git / PR / CI
 
@@ -540,6 +590,7 @@ To run the implement → test loop unattended, wrap it in a goal — the mini-kv
 ```text
 /goal "All of: `npm test` exits 0; every spec scenario ID appears in at least one test name; every item in openspec/changes/<change>/tasks.md is [x]; and a consistency review by a different model (the RUNBOOK P8 prompt) reports no spec-vs-code gaps. Cap: 15 turns. Turn 1: generate one failing test per spec scenario (named with its ID) and SHOW the failing run. Each later turn: implement the next tasks.md item, run `npm test` and SHOW the output. Stop when all hold or after 15 turns."
 ```
+> The numeric caps in this recipe are example defaults — `process-config.md` is the source of truth.
 
 ### 5.5 Acceptance & STEP6 · archive
 
@@ -557,36 +608,48 @@ A new project's first archive **produces the initial TRUTH-DOC** (per §6's defa
 ```markdown
 ---
 module: mini-kv
-source-commit: <commit sha at archive time>
+source-commit: <commit sha at archive time>   # covers the Contract section only
 ---
 # mini-kv — in-memory KV cache with TTL
 
-## Intent
-Small in-process cache. Single process, no persistence, no cross-instance consistency.
+## Contract (code-is-truth)
 
-## Public interface
+**Intent**: small in-process cache; single process, no persistence, no cross-instance consistency.
+
+**Interface**
 - `set(key, value, ttlMs?)` — overwrite replaces both value and TTL; `ttlMs <= 0` deletes the key immediately
 - `get(key)` — `undefined` on missing *or expired*; reading an expired key deletes it (lazy expiry)
 - `del(key)` — idempotent, no error on missing keys
 
-## State & the three moments
-One in-memory `Map`: `key → { value, expiresAt }`.
-- **Init**: empty Map at construction; a sweep timer starts on first `set`
-- **Update**: on every `set`/`del`; `get` may delete (lazy expiry)
-- **Cleanup**: lazy delete on `get`, plus a periodic sweep for never-read keys; the timer is `unref()`ed so it doesn't hold the process open
+**State & the three moments**: one in-memory `Map`, `key → { value, expiresAt }` — init: empty at construction, sweep timer starts on first `set`; update: every `set`/`del`, `get` may delete (lazy expiry); cleanup: lazy delete on `get` + periodic sweep, timer `unref()`ed so it doesn't hold the process open.
 
-## Pitfalls
-- Between sweeps, an expired never-read key still occupies memory (bounded by the sweep interval)
-- Not safe across worker threads — single-JS-thread assumption
+**Pitfalls (code-derived)**: between sweeps, an expired never-read key still occupies memory (bounded by the sweep interval); not safe across worker threads.
+
+## Decisions (doc-is-truth)
+
+- **DEC-1 (active)** — expiry = lazy delete **plus** a periodic sweep. *Rejected alternative*: lazy-only — turned down because requirement #4 caps long-term memory of dead keys, and never-read keys would leak. Consequence: the sweep timer must be `unref()`ed.
+- **INV-1 (active, invariant)** — an expired key is **never** observable via `get`. Code violating this is a bug to file, never a doc to edit.
+- **CON-1 (active, product constraint)** — zero runtime dependencies; the library stays embeddable.
 ```
 
-Notice what it is — **abstract intent + interface contracts + the three moments + pitfalls** — and what it is not: no code listings, no line-by-line walkthrough. That's the granularity every later `explore` will consume.
+Notice the two fixed sections and their **opposite truth directions**: the Contract section is reconciled *from* code and covered by the `source-commit` stamp; the Decisions section outranks code — it ages by being superseded, not by code drift. And notice what the doc is not: no code listings, no line-by-line walkthrough. That's the granularity every later `explore` will consume.
 
 ---
 
 ## 6. Legacy Project Development: The Knowledge-Base Loop
 
 > Here, the **System Knowledge Base (TRUTH-DOC)** means the long-lived documentation that captures each module's abstract intent, public interfaces, and data flow. **Default placement: in the same repo as the code, under `docs/truth/<module>.md`** — then one PR atomically carries a code change *and* its KB update, and reviewers see both in one diff ([§4.11](#411-mapping-the-workflow-onto-git--pr--ci)). A separate KB repo also works (e.g. one KB spanning several code repos), but you lose that atomicity — compensate by stamping every KB doc with the code commit it was verified against (`source-commit:`, used by the freshness check in §6.1). Below, "the KB" means either layout.
+
+**What the KB owes you — and what it doesn't:**
+
+| Maintenance duty | Exempt — regenerate on demand |
+|---|---|
+| Interface contracts + the three moments | Implementation walkthroughs |
+| Decisions and rejected alternatives (with reasons) | Code listings |
+| Invariants and product constraints | Anything a strong model can cheaply re-derive from code |
+| Pitfalls — filed under their truth direction | |
+
+Every KB doc has two fixed sections with **opposite truth directions**: `## Contract (code-is-truth)` — reconciled from code, covered by the `source-commit` stamp — and `## Decisions (doc-is-truth)`, where code violating an `active` invariant is a bug to report, and an entry expires only when a newer decision supersedes it (`superseded-by: <id>`), never by code drift.
 
 The biggest risk in legacy projects was flagged in [§1.2](#12-document-driven-development-three-documents): **without the system knowledge base, the Agent can only reverse-engineer intent from the code — slow, and easy to guess wrong.** So the first principle of legacy development is — **make sure the KB covers the module you're about to change, then develop.**
 
@@ -603,7 +666,7 @@ graph TD
     P3 --> Z
 ```
 
-**How do you *know* it's fresh?** Don't guess — every KB doc carries a `source-commit` stamp (the code commit it was last verified against), so the check is mechanical:
+**How do you *know* it's fresh?** Don't guess — the **Contract section** carries a `source-commit` stamp (the code commit it was last verified against; the Decisions section is exempt — it expires by supersession, not code drift), so the check is mechanical:
 
 ```shell
 # any output = the module's code moved since the KB was last verified → Path B
@@ -658,7 +721,7 @@ Prompts: RUNBOOK **P1** (reviewer) / **P2** (producer's revise). Design notes:
 
 ### 7.2 STEP1: explore
 
-Prompt: RUNBOOK **P3**. Design notes: facts only — no code. The KB and the finalized requirement doc go in as inputs, and the output is pinned to `doc/explore/<change>-gap-report.md` so the cheap pre-propose gate ([§4.4](#44-step1-opsxexplore-explore--align)) has something concrete to read.
+Prompt: RUNBOOK **P3**. Design notes: facts only — no code. The KB and the finalized requirement doc go in as inputs, and the output is pinned to `doc/explore/<change>-gap-report.md` so the cheap pre-propose gate ([§4.4](#44-step1-opsxexplore-explore--align)) has something concrete to read. One carve-out: the **research-spike variant** (vague-but-tripwired changes, [§4.0](#40-size-the-change-first)) allows probe code under `spike/`, with findings landing as a gap-report appendix.
 
 ### 7.3 STEP2: Adversarial Review and Revision
 
@@ -676,6 +739,7 @@ Prompts: RUNBOOK **P7** (apply) / **P8** (consistency reviewer). Design notes:
 
 - P7 is tests-first: one failing test per spec scenario, test names carrying scenario IDs, shown failing *before* implementation — then implement in tasks.md order. Scenario coverage is the hard bar; line coverage stays a signal ([§4.8](#48-step5-opsxapply-code--test--implementation-review)).
 - P8 runs the mechanical check first (scenario IDs missing from all test names) before any judgment calls — cheap checks in front. Like every review, it runs on a heterogeneous model ([§2.3](#23-driving-codex-non-interactively-multi-round-adversarial-review)).
+- The explore track's **P11** (spec extraction) and **P12** (extraction review, heterogeneous) follow the same pattern: the intent card — never the prototype — is the review baseline; P12 runs P1's five dimensions plus intent-conformance and no-invention checks; its verdict line (`extraction accepted`) is the track's machine-checkable merge condition (RUNBOOK §4/§5).
 
 ### 7.5 STEP6: archive
 

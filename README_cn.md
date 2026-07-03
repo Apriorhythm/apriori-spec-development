@@ -157,7 +157,7 @@ LLM 对抗评审是更大的验证组合中的一件仪器——质量在各阶�
 # --skip-git-repo-check ：仅当你在 git 仓库之外运行时才需要
 codex exec -s read-only "<你的评审提示词——例如 RUNBOOK P5 的评审 prompt>"
 ```
-输出头部会打印一行 `session id: 019f....`。**记下这个 id**——它是续接下一轮的句柄。
+输出头部会打印一行 `session id: 019f....`。**记下这个 id**——它是续接下一轮的句柄。(脚本或后台调用 codex 时要关闭 stdin——命令末尾加 `< /dev/null`——否则它会等待输入而挂起。)
 
 **第二轮…第 N 轮——续接同一上下文：**
 ```shell

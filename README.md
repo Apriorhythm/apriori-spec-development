@@ -157,7 +157,7 @@ The adversarial-review loop (review → revise → re-review) only works if the 
 # --skip-git-repo-check : only needed when running outside a git repo
 codex exec -s read-only "<your review prompt — e.g. the RUNBOOK P5 reviewer prompt>"
 ```
-The output header prints a line like `session id: 019f....`. **Copy that id** — it's the handle for the next round.
+The output header prints a line like `session id: 019f....`. **Copy that id** — it's the handle for the next round. (Invoking codex from a script or background job? Close stdin — append `< /dev/null` — or it waits for input and hangs.)
 
 **Round 2…N — resume the same context:**
 ```shell

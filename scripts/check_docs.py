@@ -25,6 +25,12 @@ KB_SECTIONS = {  # EN marker : CN marker (hardcoded — do not translate freely)
 }
 KB_CHECK_FILES = ("README.md", "README_cn.md")  # §5.5 example lives here
 
+# checker 5 — artifact-interface assertions (DEV-1: "降级" forbidden only in OpenSpec context)
+INTERFACE_DOCS = ("README.md", "README_cn.md", "RUNBOOK.md", "RUNBOOK_cn.md")
+ADAPTER_WORDS = ("adapter", "适配器", "接口动作", "interface action")
+FORBIDDEN_PHRASES = ("Without OpenSpec", "无 OpenSpec")
+ADAPTER_HEADER_FILES = ("templates/config.yaml",)  # /opsx hits pass if header carries the marker
+
 
 def gh_slug(heading):
     s = heading.strip().lower().replace("`", "").replace("*", "")
@@ -104,6 +110,35 @@ def main():
                   f"(expected RED until §5.5 rewrite lands — bootstrap note)")
         else:
             print(f"== {name}: KB dual-section names present")
+
+    # --- checker 5: artifact-interface assertions -------------------------
+    for name in INTERFACE_DOCS:
+        p = os.path.join(ROOT, name)
+        if not os.path.exists(p):
+            continue
+        raw = open(p, encoding="utf-8").read()
+        stripped = re.sub(r"```.*?```", "", raw, flags=re.S)  # mermaid/code fences exempt from prose rules
+        for phrase in FORBIDDEN_PHRASES:
+            if phrase in stripped:
+                fail = True
+                print(f"== {name}: FORBIDDEN phrase present: {phrase!r}")
+        # paragraph rule: any blank-line-delimited block mentioning /opsx: must carry adapter wording
+        for j, block in enumerate(re.split(r"\n\s*\n", raw)):
+            if "/opsx:" in block and not any(w in block for w in ADAPTER_WORDS):
+                first = block.strip().splitlines()[0][:60]
+                fail = True
+                print(f"== {name}: /opsx: block without adapter wording: {first!r}")
+        for i, line in enumerate(raw.splitlines()):
+            if "降级" in line and "OpenSpec" in line:
+                fail = True
+                print(f"== {name}:{i + 1}: '降级' used in OpenSpec context (DEV-1 rule)")
+    for name in ADAPTER_HEADER_FILES:
+        p = os.path.join(ROOT, name)
+        if os.path.exists(p):
+            head = "\n".join(open(p, encoding="utf-8").read().splitlines()[:5])
+            if "OpenSpec adapter" not in head:
+                fail = True
+                print(f"== {name}: missing 'OpenSpec adapter' marker in first 5 lines")
 
     print("RESULT:", "FAIL" if fail else "PASS")
     sys.exit(1 if fail else 0)

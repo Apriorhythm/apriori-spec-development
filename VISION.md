@@ -6,7 +6,7 @@
 
 # VISION — the North Star
 
-> **Non-blocking guidance.** This file adds no gate and no exit condition; nothing in the workflow reads it as a requirement. The only obligation it creates: a change that *conflicts* with it records why, in that change's design notes. It exists so that 1.x improvements accumulate in one direction instead of scattering.
+> **Non-blocking guidance.** This file adds no gate and no exit condition; nothing in the workflow reads it as a requirement. The only obligation it creates: a change that *conflicts* with it records why, in that change's design notes. It exists so that the V2 line's improvements accumulate in one direction instead of scattering.
 
 ## 1. The Endgame
 
@@ -14,16 +14,16 @@ Scenarios become **executable**: the spec *is* the test suite. Every scenario is
 
 ## 2. Trigger Conditions
 
-This handbook does **not** attempt the endgame today. It becomes a v2 requirement when either holds:
+This handbook does **not** attempt the endgame today. It becomes the next major version's (V3) requirement when either holds:
 
 - OpenSpec (or its successor in this workflow) supports executable scenarios natively, or
 - an equivalent tool emerges and clears the same bar: scenario IDs, delta specs, archive-merge semantics.
 
-Until then, any "executable spec" work in this repo is declared out of scope for 1.x.
+Until then, any "executable spec" work is declared out of scope for the V2 line.
 
 ## 3. Paving Decisions
 
-Choices already made in 1.x whose deeper purpose is the endgame — keep them aligned:
+Choices already made on the V2 line whose deeper purpose is the endgame — keep them aligned:
 
 | Decision | How it paves |
 |---|---|

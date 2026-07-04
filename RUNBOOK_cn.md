@@ -6,7 +6,7 @@
 
 # Apriori RUNBOOK —— 给 AI Agent 的可执行协议
 
-> `runbook-version: 1.1` · 上游:`https://github.com/Apriorhythm/apriori-spec-development`
+> `runbook-version: 2.0` · 上游:`https://github.com/Apriorhythm/apriori-spec-development`
 > 项目本地状态只存在于 `process-config.md` 与 flow-state 文件——本文件无状态,因此**升级=用上游新版整文件覆盖**。
 
 > **读者:AI Agent**(§6 除外,那节给操作它的人)。本文件自包含:Agent 运行时需要的一切都在这里——铁律、状态机、产物路径、提示词。

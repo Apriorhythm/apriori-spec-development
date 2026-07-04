@@ -746,7 +746,7 @@ git log --oneline <source-commit>..HEAD -- src/<module>/
 
 ### 7.5 STEP6｜archive
 
-提示词:RUNBOOK **P9**。设计说明:单纯 archive 只合并 OpenSpec 自己的规格库（[§4.9](#49-step6opsxarchive归档并沉淀事实)）——P9 额外强制知识库回写到 `docs/truth/<module>.md`、刷新 `source-commit` 标记,并列出改了什么,让人工闸口有一份具体的 diff 可批。
+提示词:RUNBOOK **P9**。设计说明:archive 动作按 RUNBOOK §4 的算法把增量规格并入 living 规格库（`doc/specs/`;OpenSpec 适配器:`openspec/specs/`——[§4.9](#49-step6opsxarchive归档并沉淀事实)）——P9 额外强制知识库回写到 `docs/truth/<module>.md`、刷新 `source-commit` 标记,并列出改了什么(含每条 merged/modified/deprecated 的 ID),让人工闸口有一份具体的 diff 可批。
 
 ### 7.6 旧项目反向知识沉淀 / 知识库校对
 

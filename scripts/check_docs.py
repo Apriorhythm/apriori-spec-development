@@ -112,16 +112,25 @@ def main():
             print(f"== {name}: KB dual-section names present")
 
     # --- checker 5: artifact-interface assertions -------------------------
+    TEMPLATE_FILES = ("templates/config.yaml", "templates/claude-command-apriori.md", "templates/process-config.md")
+    for name in INTERFACE_DOCS + TEMPLATE_FILES:
+        p = os.path.join(ROOT, name)
+        if not os.path.exists(p):
+            continue
+        raw = open(p, encoding="utf-8").read()
+        for phrase in FORBIDDEN_PHRASES:
+            if phrase in raw:
+                fail = True
+                print(f"== {name}: FORBIDDEN phrase present: {phrase!r}")
+        for i, line in enumerate(raw.splitlines()):
+            if "降级" in line and "OpenSpec" in line:
+                fail = True
+                print(f"== {name}:{i + 1}: '降级' used in OpenSpec context (DEV-1 rule)")
     for name in INTERFACE_DOCS:
         p = os.path.join(ROOT, name)
         if not os.path.exists(p):
             continue
         raw = open(p, encoding="utf-8").read()
-        stripped = re.sub(r"```.*?```", "", raw, flags=re.S)  # mermaid/code fences exempt from prose rules
-        for phrase in FORBIDDEN_PHRASES:
-            if phrase in stripped:
-                fail = True
-                print(f"== {name}: FORBIDDEN phrase present: {phrase!r}")
         # paragraph rule: any blank-line-delimited block mentioning /opsx: must carry adapter
         # wording (case-insensitive). Fenced blocks are atomic; a lone heading merges with
         # the paragraph that follows it.
@@ -142,10 +151,6 @@ def main():
                 first = block.strip().splitlines()[0][:60]
                 fail = True
                 print(f"== {name}: /opsx: block without adapter wording: {first!r}")
-        for i, line in enumerate(raw.splitlines()):
-            if "降级" in line and "OpenSpec" in line:
-                fail = True
-                print(f"== {name}:{i + 1}: '降级' used in OpenSpec context (DEV-1 rule)")
     for name in ADAPTER_HEADER_FILES:
         p = os.path.join(ROOT, name)
         if os.path.exists(p):

@@ -22,7 +22,7 @@
 2. Add one line to the project's rules file (`CLAUDE.md` / `AGENTS.md` / `.cursor/rules/*.mdc` / `.github/copilot-instructions.md`):
    > Development follows `docs/apriori-runbook.md`. At session start, read it and `doc/changes/<change>/flow-state.md`, then continue from the recorded position.
 3. Copy `templates/process-config.md` to the project root as `process-config.md` — **human-held; the agent treats it as read-only** (R3). Without it, the defaults printed in §4 apply.
-4. If the project has no OpenSpec yet: `openspec init` (handbook §3.3); `templates/config.yaml` is a ready-made starting `openspec/config.yaml`. (OpenSpec is optional — see the no-OpenSpec mapping at the end of §4.)
+4. Optional — the **OpenSpec adapter**: `openspec init` (tested with OpenSpec **1.5.0**; CLIs drift — if the adapter misbehaves, fall back to the artifact interface's plain-files form, §4); `templates/config.yaml` is a ready-made starting `openspec/config.yaml`. The workflow runs fully without it: OpenSpec automates scaffolding and archive-merge for the interface defined in §4.
 5. Optional (Claude Code): copy `templates/claude-command-apriori.md` to `.claude/commands/apriori.md` to get `/apriori <change>` as a starter.
 
 **Session start (agent, every session):**
@@ -118,7 +118,8 @@ Update it immediately after each step and each round; append every gate decision
 | Requirement review | `doc/review/<change>-req-review-v{N}.md` |
 | Issue ledger | `doc/review/<change>-issues.md` |
 | Gap report | `doc/explore/<change>-gap-report.md` |
-| Spec / design / tasks | `openspec/changes/<change>/specs/`, `…/design.md`, `…/tasks.md` |
+| Spec / design / tasks | `doc/changes/<change>/specs/`, `…/design.md`, `…/tasks.md` (OpenSpec adapter: `openspec/changes/<change>/…`) |
+| Living spec store | `doc/specs/` (OpenSpec adapter: `openspec/specs/`) |
 | Spec evaluation | `doc/design/<change>-review-v{N}.md` |
 | Knowledge base (TRUTH-DOC) | `docs/truth/<module>.md` — `source-commit` stamp required (covers the Contract section only, §5 P9/P10) |
 | Flow state | `doc/changes/<change>/flow-state.md` |
@@ -126,6 +127,14 @@ Update it immediately after each step and each round; append every gate decision
 | Extraction review (explore track) | `doc/review/<change>-extraction-review-v{N}.md` |
 | Prototype (explore track) | `spike/` — deleted or quarantined at archive; never referenced by tasks.md |
 | Reviewer raw output | `doc/review/<change>-<stage>-raw.*` |
+
+**The artifact interface (normative).** The paths above are the interface's **plain-files form — the reference implementation**; any tool (OpenSpec included) is an adapter onto it.
+
+- **Layout:** a change stages its artifacts under `doc/changes/<change>/` (`specs/`, `design.md`, `tasks.md`); accepted specs live in the store `doc/specs/`. The `artifact-root` rule (§3) covers the staging area; `openspec/` itself is tool-owned and never relocated.
+- **Spec structure:** Requirement blocks containing Scenario blocks with stable IDs (the quality rules in README §8.1 — the OpenSpec-adapter config — bind regardless of adapter).
+- **Archive algorithm:** merge staged specs into the store by stable Requirement/Scenario ID — new ID → append; existing ID → replace the whole block; staged `REMOVED` → keep the store block, marked `deprecated (superseded by <change>)`. A same-ID conflict with a change merged since branching → **stop, open a ledger issue, a human resolves** (§4.11's serialize-per-module rule). The archive action must list every merged / modified / deprecated ID.
+- **Adapter runtime policy:** version differs from the tested one → warn and proceed; adapter command unavailable or erroring → execute the interface action directly in plain-files form and record it in the ledger; adapter output violating this interface → the interface wins, open a ledger issue.
+- **Project classification:** uses the OpenSpec CLI → adapter project; keeps a legacy `openspec/` directory without the CLI → declare the canonical store in the project rules file; new projects default to plain-files, adapter optional.
 
 ### STEP0 — requirement refinement · adversarial loop · cap: `step0-cap` (default 5)
 
@@ -137,7 +146,7 @@ Update it immediately after each step and each round; append every gate decision
 
 0. **Intent card first (non-waivable):** ≤15 lines at `requirement/intent-card.md` — goal hypothesis / success criteria / the questions the spike must answer. Requires **human sign-off** (`intent-card sign-off`; a heterogeneous review may inform it, but cannot replace it). On this track the intent card is the independent review baseline — the extracted spec is never judged against the prototype alone.
 1. **Spike (bounded):** prototype freely under `spike/`; cap: `spike-cap` (default 10) turns; exit = every intent-card question answered. Cap hit → **gate ⑤**.
-2. **P11 — spec extraction:** inputs = intent card + prototype + spike findings; outputs = `requirement/req-final.md` + spec drafts (OpenSpec projects: `openspec/changes/<change>/specs/`; without OpenSpec: `doc/changes/<change>/specs/`).
+2. **P11 — spec extraction:** inputs = intent card + prototype + spike findings; outputs = `requirement/req-final.md` + spec drafts under `doc/changes/<change>/specs/` (adapter projects: `openspec/changes/<change>/specs/`).
 3. **P12 — extraction review (heterogeneous, R2):** cap: `extraction-review-cap` (default 2). Verdict `extraction accepted` → step 4. `extraction rejected` + unfaithful extraction → redo P11; `extraction rejected` + intent hypothesis falsified → back to SPIKE, or `ABANDONED` (archive the intent card + findings; log in the ledger).
 4. **Merge:** enter STEP2's full P5/P6 loop — from here the tracks are identical.
 5. **The prototype is disposable, machine-checkably:** STEP5 rebuilds from failing tests; tasks.md must not reference `spike/`; `spike/` is deleted (or quarantined) at archive.
@@ -152,13 +161,13 @@ KB docs have two sections with **opposite truth directions** (§5 P9/P10): `Cont
 
 ### STEP1 — explore
 
-- **Do:** `/opsx:explore` with **P3**. **Out:** the gap report.
+- **Do:** the **explore action** (adapter: `/opsx:explore`) with **P3**. **Out:** the gap report.
 - **Research-spike variant** (vague-but-tripwired changes, §2): probe code is allowed under `spike/` — the explore track's full isolation rules apply — capped by `spike-cap` (default 10); findings land as a "research conclusions" appendix to the gap report. P3 carries the matching variant clause.
 - **Exit:** Large tier → **gate ②** (human skims the gap report). Other tiers: fold the report's top risks into your next report and proceed.
 
 ### STEP2 — propose · adversarial loop · cap: `step2-cap` (default 4)
 
-- **Do:** `/opsx:propose` with **P4**; then loop: reviewer **P5** (R2) → producer revises with **P6** (spec/design only — never source); ledger every round.
+- **Do:** the **propose action** (adapter: `/opsx:propose`) with **P4**; then loop: reviewer **P5** (R2) → producer revises with **P6** (spec/design only — never source); ledger every round.
 - **Exit:** verdict = "no major issues, ready to proceed to execution" → advance. Cap hit or oscillation → **gate ⑤**.
 
 ### STEP3 — technical review — **gate ③ (human)**
@@ -178,10 +187,9 @@ KB docs have two sections with **opposite truth directions** (§5 P9/P10): `Cont
 
 ### STEP6 — archive + KB writeback
 
-- **Do:** `/opsx:archive` with **P9**; update `docs/truth/<module>.md` (Contract section from the final implementation + refreshed `source-commit`; Decisions section appends this change's new decisions/invariants); list exactly which files/sections changed. Explore-track changes: delete or quarantine `spike/` here.
+- **Do:** the **archive action** (adapter: `/opsx:archive`) with **P9** — merge per the interface's archive algorithm above; update `docs/truth/<module>.md` (Contract section from the final implementation + refreshed `source-commit`; Decisions section appends this change's new decisions/invariants); list exactly which files/sections changed. Explore-track changes: delete or quarantine `spike/` here.
 - **Exit:** delta specs merged + KB updated → **gate ④**: the human approves the KB diff (same-repo layout: that's just PR review). Then set `current-step: DONE`.
 
-**Without OpenSpec** (any project type): `/opsx:explore` → author the gap report directly per P3; `/opsx:propose` → author spec/design docs directly (P4's requirements still bind), spec drafts under `doc/changes/<change>/specs/`; `/opsx:archive` → merge specs into the project's agreed spec directory. Installing OpenSpec is not required.
 
 ---
 
@@ -232,7 +240,7 @@ For each issue, state how you handled it (accept/reject + reason), and update it
 ### P3 — STEP1 explore
 
 ```text
-/opsx:explore
+/opsx:explore   # adapter command for the interface's explore action — plain-files projects follow this prompt directly
 Align all known facts first — do not write code.
 [Input]
 * Requirement doc: requirement/req-final.md
@@ -249,7 +257,7 @@ findings land as a "research conclusions" appendix of the gap report. Otherwise:
 ### P4 — STEP2 propose (producer)
 
 ```text
-/opsx:propose
+/opsx:propose   # adapter command for the interface's propose action — plain-files projects follow this prompt directly
 Based on the aligned facts, write the proposal, all spec docs and the design doc.
 * Every user-visible output gets its own scenario with a stable ID (e.g. KV-03); never merge visible side-effects;
 * Any external shared state (Redis / DB field / global singleton / in-memory cache) must describe three moments: init / runtime update / cleanup-invalidation.
@@ -261,7 +269,7 @@ Stop when done and wait for review.
 ```text
 You are a technical reviewer. Hunt for issues that would cause rework or a production incident.
 [Input]
-* SPEC-DOC: openspec/changes/<change>/specs/   * DESIGN-DOC: openspec/changes/<change>/design.md
+* SPEC-DOC: doc/changes/<change>/specs/   * DESIGN-DOC: doc/changes/<change>/design.md   (adapter projects: openspec/changes/<change>/…)
 * KB: docs/truth/   * Requirement doc: requirement/req-final.md   * Ledger: doc/review/<change>-issues.md
 [Checklist]
 1. Do scenarios cover every visible behavior; any missing failure/edge scenarios
@@ -285,7 +293,7 @@ Update each issue's Status in the ledger, then request review round v{N+1}.
 ### P7 — STEP5 apply (producer)
 
 ```text
-/opsx:apply
+/opsx:apply   # adapter command for the interface's apply action — plain-files projects follow this prompt directly
 Tests first: derive one failing test per spec scenario, named with its scenario ID (e.g. test('KV-03 …')), and show the failing run.
 Then implement strictly in tasks.md order; mark each task [x] immediately on completion.
 * Scenario coverage is the hard bar: every scenario has ≥1 test carrying its ID. Line coverage is a signal, never a target — no assertion-free padding;
@@ -312,8 +320,8 @@ End with a verdict line: "no spec-vs-code gaps" or not.
 ### P9 — STEP6 archive (producer)
 
 ```text
-/opsx:archive
-Archive this change, then update the knowledge base in lockstep. KB docs have two sections with opposite truth directions:
+/opsx:archive   # adapter command for the interface's archive action — plain-files projects follow this prompt directly
+Archive this change per the interface's archive algorithm (§4) — list every merged/modified/deprecated ID; on a same-ID conflict, stop and open a ledger issue. Then update the knowledge base in lockstep. KB docs have two sections with opposite truth directions:
 * "## Contract (code-is-truth)": update it from the final implementation; refresh the source-commit stamp (it covers this section only);
 * "## Decisions (doc-is-truth)": append decisions/invariants/rejected alternatives made in this change, each with status (active / superseded-by: <id>). NEVER rewrite an active invariant to match code — if the code violates one, file a bug instead;
 List exactly which KB files and sections you updated.
@@ -337,7 +345,7 @@ You are a system knowledge-base engineer. Read the module's code and produce/rec
 [Input] requirement/intent-card.md; the prototype under spike/; the spike findings.
 [Task] Extract the specification implied by the prototype's *validated* behaviors — never invent behavior that neither the intent card nor an observed spike run supports. Produce:
 * requirement/req-final.md — goal + acceptance criteria, each traceable to the intent card;
-* spec drafts with scenario IDs (OpenSpec projects: openspec/changes/<change>/specs/; without OpenSpec: doc/changes/<change>/specs/).
+* spec drafts with scenario IDs under doc/changes/<change>/specs/ (adapter projects: openspec/changes/<change>/specs/).
 [Constraints] Mark unvalidated assumptions "needs confirmation". The prototype is a source of observations, not of authority: where intent and prototype disagree, the intent card wins and the disagreement is listed explicitly.
 Stop and wait for the extraction review (P12).
 ```
@@ -376,7 +384,7 @@ Stop when the verdict is 'no major issues' (then copy to requirement/req-final.m
 
 **STEP2 loop:**
 ```text
-/goal "Goal: openspec/changes/<change>/ has SPEC-DOC+DESIGN-DOC and the latest review verdict is 'no major issues, ready to proceed to execution'. Cap: step2-cap rounds (default 4).
+/goal "Goal: doc/changes/<change>/ (adapter: openspec/changes/<change>/) has SPEC-DOC+DESIGN-DOC and the latest review verdict is 'no major issues, ready to proceed to execution'. Cap: step2-cap rounds (default 4).
 Each round:
 1. Revise the spec/design files per the latest review — never touch source code — and update the handled issues' Status in doc/review/<change>-issues.md.
 2. Re-run the heterogeneous reviewer with the P5 prompt (round 1: codex exec, note the printed session id; later rounds: codex exec resume -c sandbox_mode=\"read-only\" <session-id> — codex ≥0.14x rejects -s on resume; older CLIs: -s read-only before the id), producing doc/design/<change>-review-v{N}.md and updating the ledger.
@@ -386,7 +394,7 @@ Stop on 'no major issues, ready to proceed to execution' or at the cap."
 
 **STEP5 loop:**
 ```text
-/goal "Goal — ALL must hold: `npm test` exits 0; every scenario ID in openspec/changes/<change>/specs/ appears in at least one test name (list any missing IDs); every item in openspec/changes/<change>/tasks.md is [x]; (UI projects only) the Playwright E2E suite passes and screenshot diffs are within threshold; AND a consistency review by a DIFFERENT model (the P8 prompt) reports no spec-vs-code gaps. Cap: step5-cap turns (default 25).
+/goal "Goal — ALL must hold: `npm test` exits 0; every scenario ID in doc/changes/<change>/specs/ (adapter: openspec/…) appears in at least one test name (list any missing IDs); every item in doc/changes/<change>/tasks.md (adapter: openspec/…) is [x]; (UI projects only) the Playwright E2E suite passes and screenshot diffs are within threshold; AND a consistency review by a DIFFERENT model (the P8 prompt) reports no spec-vs-code gaps. Cap: step5-cap turns (default 25).
 Turn 1: derive one failing test per spec scenario, named with its scenario ID, and SHOW the failing run. Each later turn: implement the next tasks.md item in order, then run `npm test` (and the Playwright run for UI projects) and SHOW the output so the result is in the transcript. When the code is complete, run the consistency reviewer (codex exec / fresh claude) and paste its verdict.
 Stop when every condition holds or at the cap."
 ```
@@ -394,8 +402,8 @@ Stop when every condition holds or at the cap."
 
 **STEP6:**
 ```text
-/goal "Goal: the change is archived (delta specs merged into openspec/specs/) AND the KB file for module <module> reflects this change's new/changed facts with a refreshed source-commit stamp. Cap: step6-cap turns (default 4).
-Run /opsx:archive, then update docs/truth/<module>.md and list exactly which files/sections changed.
+/goal "Goal: the change is archived (delta specs merged into the living spec store doc/specs/; adapter: openspec/specs/) AND the KB file for module <module> reflects this change's new/changed facts with a refreshed source-commit stamp. Cap: step6-cap turns (default 4).
+Run the archive action (adapter: /opsx:archive), then update docs/truth/<module>.md and list exactly which files/sections changed.
 Stop when both hold."
 ```
 

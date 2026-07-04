@@ -48,7 +48,7 @@ The problem with vibe coding is that the prompt is too vague and the requirement
 > Once the Agent reads the **Requirement Doc** it knows the target state B; the **System Knowledge Base** lets it reconstruct most of the current state A; **Code** fills in the rest of the detail, and it now grasps most of the system's truth.
 > **Without the system knowledge base, the Agent can only reverse-engineer abstract intent from the code — slow, and easy to guess wrong.** This is exactly the core tension Section 6 ("Legacy Project Development") is meant to resolve.
 
-**North star:** the endgame this handbook paves toward — executable scenarios, "the spec *is* the test suite" — lives in [VISION.md](./VISION.md). It is non-blocking guidance: no gate reads it; a change that conflicts with it merely records why. The scenario-ID ↔ test-name mapping in §4.8 is the first paving stone.
+**North star:** this workflow is **Spec-Anchored** (specs persist as living documents); the endgame it paves toward — executable scenarios, "the spec *is* the test suite", trending toward the Spec-as-Source tier — lives in [VISION.md](./VISION.md). It is non-blocking guidance: no gate reads it; a change that conflicts with it merely records why. The scenario-ID ↔ test-name mapping in §4.8 is the first paving stone.
 
 ### 1.3 Test-Driven Development
 
@@ -80,7 +80,7 @@ Claude Code (Opus/Claude)  ──produces──►  SPEC-DOC + DESIGN-DOC
 
 | Lever | Why it helps | Needs a 2nd tool? |
 |---|---|---|
-| **Different model weights** | Non-overlapping blind spots (GPT vs Claude is strongest) | Yes |
+| **Different model weights** | Partially non-overlapping blind spots (the most intuitive lever — see the caveat below) | Yes |
 | **Fresh context** | The reviewer never sees the producer's reasoning, so it isn't anchored to its conclusions | No |
 | **Adversarial role** | The producer optimizes for "make it work"; the reviewer optimizes for "find where it breaks" | No |
 
@@ -89,6 +89,8 @@ Claude Code (Opus/Claude)  ──produces──►  SPEC-DOC + DESIGN-DOC
 **Fresh context vs. cross-round memory — the issue ledger.** Multi-round review has a built-in tension: each round's reviewer should be *fresh* (the second lever), yet it must remember earlier rounds to verify "was issue #3 actually fixed?" Keeping one long-lived reviewer session buys memory at the cost of freshness — after round 1, the reviewer is anchored to *its own* past findings too. The fix is to move the memory out of the session and into a file: a cumulative **issue ledger** per change ([§7.0](#70-the-issue-ledger-shared-by-all-review-loops)), where every issue carries an ID and a status (`open / fixed / rejected + reason / verified`). Each round's reviewer can then be a brand-new session: it reads the ledger to verify fixes and appends new findings, staying unanchored. The ledger doubles as the audit trail for human gates — rejections stay visible with their reasons, and a resurfacing issue reopens its old ID instead of masquerading as a new finding.
 
 Adversarial review runs through three points: **① requirement-doc review (STEP0) ② spec + design review (STEP2) ③ code implementation review (STEP5)** — and every round of each one logs to the same per-change issue ledger.
+
+**An honest caveat on LLM judges.** Heterogeneity reduces bias but does not eliminate it: self-preference in LLM judges is driven by *familiarity* (perplexity), not authorship — a different model only partially escapes it; code defects are partly **shared, systemic weaknesses across models**, so a cross-model reviewer inherits some of the producer's blind spots; and in one four-tool review comparison, 93.4% of distinct findings were caught by exactly one tool — review coverage is inherently incomplete. The implication: deterministic verification stays the primary instrument, always.
 
 LLM adversarial review is one instrument in a larger verification portfolio — where quality actually comes from, stage by stage, is stated once in [§1.5](#15-where-quality-comes-from).
 
@@ -399,7 +401,7 @@ graph TD
 
 ### 4.3 STEP0: Requirement Refinement (Adversarial Review, Up to 5 Rounds)
 
-> The requirement doc is the **top-level prompt** for AI development — make it precise. Ideally, product runs an AI self-check on it first. (Round numbers in this section's title and below are defaults — `process-config.md` is the source of truth.)
+> The requirement doc is the **top-level prompt** for AI development — make it precise. Ideally, product runs an AI self-check on it first. If it lacks any of the three essentials — goal / out-of-scope / testable acceptance — have the AI interview you with structured questions before drafting. (Round numbers in this section's title and below are defaults — `process-config.md` is the source of truth.)
 
 This step is itself an adversarial loop:
 
@@ -461,7 +463,7 @@ Update SPEC-DOC and DESIGN-DOC per the DESIGN-REVIEW-DOC; you can layer on anoth
 The **apply action** (adapter command in the heading). Write code per the SPEC-DOC — **tests first**: derive one failing test per spec scenario (named with the scenario's ID), then implement in tasks.md order until everything is green. "All tests passing" is still the bar, and the failing-first run proves the tests can actually fail.
 
 - **Traceability beats coverage numbers**: the hard requirement is *scenario coverage* — every spec scenario has at least one test carrying its ID, which a grep-level CI check can enforce ([§4.11](#411-mapping-the-workflow-onto-git--pr--ci)). Line coverage is a signal worth watching, not a target: a model told to "hit 100%" will happily pad with assertion-free tests. For high-risk logic, spot-check test quality with mutation testing.
-- **Verification matrix by project type**: backend/library — unit + property tests, mutation spot-checks; UI — plus E2E/visual regression; deployed service — plus runtime contracts and canary + rollback (an hour on rollback capability usually buys more safety than an extra review round — a trade-off that exists only in the implementation stage, and note canaries catch regressions and crashes, not "built the wrong thing"); **docs-only — the checker script and example-command static checks are the test suite**. Where an instrument's precondition is missing (no deploy surface; solo; library; docs), LLM review is the primary instrument there — not a downgrade ([§1.5](#15-where-quality-comes-from)).
+- **Verification matrix by project type**: all code projects — lint/static analysis green (plus SAST where security-sensitive) — where configured; backend/library — unit + property tests, mutation spot-checks; UI — plus E2E/visual regression; deployed service — plus runtime contracts and canary + rollback (an hour on rollback capability usually buys more safety than an extra review round — a trade-off that exists only in the implementation stage, and note canaries catch regressions and crashes, not "built the wrong thing"); **docs-only — the checker script and example-command static checks are the test suite**. Where an instrument's precondition is missing (no deploy surface; solo; library; docs), LLM review is the primary instrument there — not a downgrade ([§1.5](#15-where-quality-comes-from)).
 - **Prefer a stronger model (Opus) for complex logic, and a faster/cheaper model (Sonnet) for routine coding.**
 - Add adversarial review: use **another model** (e.g. Sonnet 4.6 / GPT) to review the **consistency** between spec and implementation — focus on "written in the spec but missing in the code," and "the code has a `continue`/silent-skip/skip branch that the spec never declared as user-visible."
 - **Tests span layers**: unit tests for logic (always); for a project **with a UI**, add E2E and visual-regression checks (e.g. Playwright screenshots). A pure library like §5's mini-kv has no UI, so it needs only unit tests — skip the Playwright clause in the [§7.7](#77-goal-recipes-automating-each-loop) recipe.
@@ -492,13 +494,13 @@ That layering is what lets you automate **even adversarial review** without viol
 |---|---|---|
 | STEP0 | REQ-REVIEW-DOC written and its verdict = "no major issues", or step0-cap rounds (default 5) | a heterogeneous reviewer call each round |
 | STEP2 | SPEC-EVALUATION-DOC verdict = "no major issues, ready to execute", or N rounds | a heterogeneous reviewer call each round |
-| STEP5 | `npm test` exits 0 **and** every tasks.md item is `[x]` **and** the E2E/Playwright run is green **and** the consistency review reports no gaps, or N turns — substitute per §4.8's project-type matrix (docs-only: `python3 scripts/check_docs.py` + example-command static checks) | real test + E2E run + reviewer call |
+| STEP5 | `npm test` exits 0 **and** lint/static analysis green (where configured) **and** every tasks.md item is `[x]` **and** the E2E/Playwright run is green **and** the consistency review reports no gaps, or N turns — substitute per §4.8's project-type matrix (docs-only: `python3 scripts/check_docs.py` + example-command static checks) | real test + E2E run + reviewer call |
 | STEP6 | delta specs merged **and** the module's KB file updated | archive action (adapter `/opsx:archive`) + writeback |
 | **STEP3 tech review · reverse-capture review · KB sign-off** | — **do not wrap these in a goal** | a human decides |
 
 > Always cap it (`… or stop after N turns`): the cap maps to the handbook's ≤5-round limits and bounds cost — open-ended goals can run very expensive. Caps live in `process-config.md` — human-held, agent-read-only — with defaults STEP0 5, STEP2 4, STEP5 25 and a hard floor of 1 per review stage. If a loop **oscillates** (the verdict flip-flops, or the same ledger ID keeps getting reopened — [§7.0](#70-the-issue-ledger-shared-by-all-review-loops) makes this visible) or stalls without progress, treat hitting the cap as a signal to **escalate to a human** — not to quietly lower the bar. Run **one `/goal` per machine-checkable stretch, stop at each human gate**, then start the next. The ready-to-paste recipes ship in [RUNBOOK.md](./RUNBOOK.md) §6; their design notes are in [§7.7](#77-goal-recipes-automating-each-loop).
 
-> **Tune the caps with data — under governance, not autopilot.** Every N changes (default 5) the agent *reports* a shrink/expand proposal whose data pack must contain: verified count, rejected count (with sampled reasons) and reopened-ID count (all free from the ledger, [§7.0](#70-the-issue-ledger-shared-by-all-review-loops)). Shrinking is a **human gate decision** — blocked outright when the rejected ratio exceeds the configured guard, or the change class is tripwired. Shrinking lowers a stage's round cap with a hard floor of 1, so no stage ever reaches zero and exit conditions stay intact; a post-merge re-review that finds a high-risk miss restores the previous cap. Mind both directions: a producer can zero the metric by rejecting findings (that is what the guard is for); careless verifies merely delay shrinking. And if round 5 still surfaces real issues, the fix is upstream — requirement quality — not a higher cap.
+> **Tune the caps with data — under governance, not autopilot.** Every N changes (default 5) the agent *reports* a shrink/expand proposal whose data pack must contain: verified count, rejected count (with sampled reasons), reopened-ID count (including advisory upgrades), the advisory ratio (monitoring only), and wall-clock per change and per review stage (from the state file's timestamps; wall-clock includes human-gate waits — note it, or cost curves mislead; missing timestamps are `n/a`, never estimated). The rejected-ratio guard counts formal findings only — advisories are excluded from both sides, so relabeling can't dilute it. Shrinking is a **human gate decision** — blocked outright when the guard trips or the change class is tripwired. Shrinking lowers a stage's round cap with a hard floor of 1, so no stage ever reaches zero and exit conditions stay intact — and **you may shrink review rounds, but never trade them for fewer deterministic checks**; a post-merge re-review that finds a high-risk miss (including a real gap mislabeled advisory) restores the previous cap. Mind both directions: a producer can zero the metric by rejecting findings (that is what the guard is for); careless verifies merely delay shrinking. And if round 5 still surfaces real issues, the fix is upstream — requirement quality — not a higher cap.
 
 ### 4.11 Mapping the Workflow onto Git / PR / CI
 
@@ -508,11 +510,11 @@ Everything above is convention; a branch + CI mapping is what makes it *enforced
 |---|---|
 | One change | One branch (`change/<change-name>`), one PR |
 | SPEC-DOC / DESIGN-DOC / review docs / issue ledger | Committed on the branch — reviewers see the docs and the code in the same diff |
-| STEP5 exit conditions | CI jobs on the PR: tests green; every spec scenario ID appears in ≥1 test name (a grep-able traceability check); tasks.md all `[x]` — docs-only projects map "tests" to `python3 scripts/check_docs.py` + example-command static checks (§4.8) |
+| STEP5 exit conditions | CI jobs on the PR: tests green; lint/static analysis green (where configured); every spec scenario ID appears in ≥1 test name (a grep-able traceability check); tasks.md all `[x]` — docs-only projects map "tests" to `python3 scripts/check_docs.py` + example-command static checks (§4.8) |
 | Consistency-review verdict (§7.4) | Posted on the PR as a comment / required check before merge |
 | STEP6 KB writeback | Part of the same PR — "code merged but KB not updated" becomes visible in review instead of silently accumulating |
 
-**Parallel changes.** Branches isolate code, but two things still collide at archive time: the living spec store (`doc/specs/`; adapter: `openspec/specs/`) and per-module KB files. Serialize archives per module — whoever merges second rebases their delta specs and KB diff — and treat a KB-file conflict as a signal that two changes touched the same facts: reconcile them deliberately, don't just pick a side in the merge editor.
+**Parallel changes.** Each change can also take its own `git worktree` for an isolated working copy — most SDD tooling now automates this. Branches isolate code, but two things still collide at archive time: the living spec store (`doc/specs/`; adapter: `openspec/specs/`) and per-module KB files. Serialize archives per module — whoever merges second rebases their delta specs and KB diff — and treat a KB-file conflict as a signal that two changes touched the same facts: reconcile them deliberately, don't just pick a side in the merge editor.
 
 ---
 
@@ -712,7 +714,7 @@ Whether a legacy project gets easier to change over time depends on **whether ST
 
 ### 7.0 The Issue Ledger (Shared by All Review Loops)
 
-One cumulative ledger per change, `doc/review/<change>-issues.md` (format: RUNBOOK **P0**). Why it exists: cross-round memory lives in a file instead of a session, so every round's reviewer can be a **fresh** session without losing the thread ([§1.4](#14-adversarial-review)). Who writes what: the reviewer appends rows and flips `fixed → verified`; the producer flips `open → fixed/rejected` — a rejection must carry a reason, because human gates read the rejections first. A re-found issue **reopens its old ID** rather than getting a new row; that reopened ID is exactly the oscillation alarm [§4.10](#410-automating-the-loop-with-goal-claude-code) watches for.
+One cumulative ledger per change, `doc/review/<change>-issues.md` (format: RUNBOOK **P0**). Reviews follow a **scope discipline** (per Anthropic's fully-verified warning that gap-hunting reviewers report gaps even in sound work): only correctness/security/stated-requirement gaps become formal rows; the rest are `advisory` — per-item lists stay in the review doc, the ledger takes one batch row per round. Why it exists: cross-round memory lives in a file instead of a session, so every round's reviewer can be a **fresh** session without losing the thread ([§1.4](#14-adversarial-review)). Who writes what: the reviewer appends rows and flips `fixed → verified`; the producer flips `open → fixed/rejected` — a rejection must carry a reason, because human gates read the rejections first. A re-found issue **reopens its old ID** rather than getting a new row; that reopened ID is exactly the oscillation alarm [§4.10](#410-automating-the-loop-with-goal-claude-code) watches for.
 
 ### 7.1 STEP0: Requirement-Doc Adversarial Review
 
@@ -720,7 +722,7 @@ Prompts: RUNBOOK **P1** (reviewer) / **P2** (producer's revise). Design notes:
 
 - Run P1 with a **model/tool different from the one that drafted the requirement**, and feed it the ledger so it can verify earlier fixes.
 - The five review dimensions are fixed on purpose — target-state clarity / edge & exception coverage / undeclared state changes / testable acceptance criteria / conflicts with state A — a stable checklist keeps rounds comparable.
-- The reviewer only reviews, never edits the requirement doc; the producer answers every issue with accept/reject + reason. Loop until "no major issues," finalize as `requirement/req-final.md` (max 5 rounds).
+- The reviewer only reviews, never edits the requirement doc; the producer answers every formal issue with accept/reject + reason (advisories batch-acknowledge, RUNBOOK P0). Loop until "no major issues," finalize as `requirement/req-final.md` (max 5 rounds).
 
 ### 7.2 STEP1: explore
 
@@ -732,7 +734,7 @@ Prompts: RUNBOOK **P4** (propose) / **P5** (reviewer) / **P6** (producer's revis
 
 - P4 bakes in the two spec-quality rules from §8.1: one scenario per user-visible output (with a stable ID), and the three moments for any external shared state.
 - P5 hunts specifically for "rework or production incident" issues — including a security dimension whenever the change touches external input or permissions. Its verdict line ("no major issues, ready to proceed to execution") is the loop's machine-checkable exit.
-- P6 touches spec/design files only — never source — and must answer every ledger issue with accept/reject + reason.
+- P6 touches spec/design files only — never source — and must answer every formal ledger issue with accept/reject + reason; the scope clause (what counts toward each verdict line) lives in the P prompts.
 
 > 💡 To run this review loop through Codex from the CLI — open the session in round 1, `resume <session-id>` each subsequent round so the reviewer keeps full context — see [§2.3](#23-driving-codex-non-interactively-multi-round-adversarial-review).
 
@@ -741,7 +743,7 @@ Prompts: RUNBOOK **P4** (propose) / **P5** (reviewer) / **P6** (producer's revis
 Prompts: RUNBOOK **P7** (apply) / **P8** (consistency reviewer). Design notes:
 
 - P7 is tests-first: one failing test per spec scenario, test names carrying scenario IDs, shown failing *before* implementation — then implement in tasks.md order. Scenario coverage is the hard bar; line coverage stays a signal ([§4.8](#48-step5-opsxapply-code--test--implementation-review)).
-- P8 runs the mechanical check first (scenario IDs missing from all test names) before any judgment calls — cheap checks in front. Like every review, it runs on a heterogeneous model ([§2.3](#23-driving-codex-non-interactively-multi-round-adversarial-review)).
+- P8 runs the mechanical check first (scenario IDs missing from all test names) before any judgment calls — cheap checks in front, and its scope clause keeps style findings advisory. Like every review, it runs on a heterogeneous model ([§2.3](#23-driving-codex-non-interactively-multi-round-adversarial-review)).
 - The explore track's **P11** (spec extraction) and **P12** (extraction review, heterogeneous) follow the same pattern: the intent card — never the prototype — is the review baseline; P12 runs P1's five dimensions plus intent-conformance and no-invention checks; its verdict line (`extraction accepted`) is the track's machine-checkable merge condition (RUNBOOK §4/§5).
 
 ### 7.5 STEP6: archive
@@ -869,7 +871,7 @@ A unified format, for global search and pinpointing:
 * Test method-body template: <give an empty-shell example to unify the style>
 ````
 
-> Tip: deposit, one by one, the conventions your team keeps having to remind each other of into the rules file; **the more specific and executable the rules, the more stable the Agent's output.**
+> Tip: deposit, one by one, the conventions your team keeps having to remind each other of into the rules file — grow it from observed needs, never front-load an encyclopedia and never auto-generate it (auto-generated instruction files measurably *hurt*: ≈−2% success, +23% cost, versus ≈+4% for human-written ones). Aim for single-digit kilobytes, and prune ruthlessly with the official test: *"would removing this line cause the agent to make mistakes? If not, cut it"* — bloated files cause instructions to be ignored. Six content categories consistently earn their keep: build/test commands, code-style rules that differ from defaults, project structure, testing instructions, git conventions, and boundaries. **The more specific and executable the rules, the more stable the Agent's output.**
 
 ---
 

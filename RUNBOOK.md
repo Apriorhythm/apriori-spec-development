@@ -41,7 +41,7 @@ Advance ONLY to the next human gate, then stop and report.
 
 **R1 — Stop at every human gate.** The gates are: ① STEP0 verdict at round cap ② gap-report sign-off (Large tier only) ③ STEP3 technical review ④ STEP6 KB-diff approval ⑤ any cap hit or oscillation (a reopened ledger ID). At a gate: update the state file, report — current step, reviewer verdict lines **verbatim**, open/rejected ledger items, the decision you need — then stop. Never approve a gate yourself; never treat "the human hasn't answered" as approval.
 
-**R2 — Reviews must be genuinely external.** The producing session never issues a review verdict. Spawn a heterogeneous reviewer: `codex exec -s read-only "<prompt>"` (rounds 2+: `codex exec resume -s read-only <session-id> "..."`), or — without Codex — a **fresh** `claude` session on a different tier, fed the artifacts plus the issue ledger (P0). Paste the reviewer's verdict line back verbatim and apply its ledger updates. If you cannot actually spawn a reviewer, stop and say so — **do not simulate one**.
+**R2 — Reviews must be genuinely external.** The producing session never issues a review verdict. Spawn a heterogeneous reviewer: `codex exec -s read-only "<prompt>"` (rounds 2+: `codex exec resume -c sandbox_mode="read-only" <session-id> "..."` — codex CLIs ≥0.14x reject `-s` on `resume`; older versions use `-s read-only` before the id; non-interactive invocations must close stdin with `< /dev/null` or codex hangs), or — without Codex — a **fresh** `claude` session on a different tier, fed the artifacts plus the issue ledger (P0). Paste the reviewer's verdict line back verbatim. Read-only sandboxes cannot write the ledger: the reviewer ends its output with a ledger delta, the producer lands it verbatim (marked as recorded on the reviewer's behalf) and archives the raw output for diffing. If you cannot actually spawn a reviewer, stop and say so — **do not simulate one**.
 
 **R3 — Everything lands on disk; `/goal` belongs to the human.** Artifacts go to the exact paths in §4's table; the state file is updated after every step and every review round. `/goal` is a command the human runs (§6) — never claim to run it or imitate its evaluator. Loops you drive inside a session still obey the round caps in §4.
 
@@ -296,7 +296,7 @@ Stop when the verdict is 'no major issues' (then copy to requirement/req-final.m
 /goal "Goal: openspec/changes/<change>/ has SPEC-DOC+DESIGN-DOC and the latest review verdict is 'no major issues, ready to proceed to execution'. Cap: 4 rounds.
 Each round:
 1. Revise the spec/design files per the latest review — never touch source code — and update the handled issues' Status in doc/review/<change>-issues.md.
-2. Re-run the heterogeneous reviewer with the P5 prompt (round 1: codex exec, note the printed session id; later rounds: codex exec resume <session-id>), producing doc/design/<change>-review-v{N}.md and updating the ledger.
+2. Re-run the heterogeneous reviewer with the P5 prompt (round 1: codex exec, note the printed session id; later rounds: codex exec resume -c sandbox_mode=\"read-only\" <session-id>), producing doc/design/<change>-review-v{N}.md and updating the ledger.
 3. Surface the reviewer's verdict line here.
 Stop on 'no major issues, ready to proceed to execution' or after 4 rounds."
 ```

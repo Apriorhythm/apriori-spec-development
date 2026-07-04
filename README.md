@@ -142,12 +142,14 @@ The adversarial-review loop (review → revise → re-review) only works if the 
 # --skip-git-repo-check : only needed when running outside a git repo
 codex exec -s read-only "<your review prompt — e.g. the RUNBOOK P5 reviewer prompt>"
 ```
-The output header prints a line like `session id: 019f....`. **Copy that id** — it's the handle for the next round.
+The output header prints a line like `session id: 019f....`. **Copy that id** — it's the handle for the next round. (Invoking codex from a script or background job? Close stdin — append `< /dev/null` — or it waits for input and hangs.)
 
 **Round 2…N — resume the same context:**
 ```shell
-# flags MUST come before the session id, otherwise Codex rejects them
-codex exec resume -s read-only <session-id> "I've revised per your last review; re-review and produce v{N+1}."
+# codex CLI ≥ 0.14x: `resume` rejects -s — pass the sandbox as a config override
+codex exec resume -c sandbox_mode="read-only" <session-id> "I've revised per your last review; re-review and produce v{N+1}."
+# older CLIs: -s works, but flags MUST come before the session id
+codex exec resume -s read-only <session-id> "..."
 ```
 Because the session is preserved, the reviewer still remembers its earlier findings — it can verify "was issue #3 actually fixed?" instead of starting over each round.
 
@@ -515,7 +517,7 @@ Then switch to your reviewing tool/model and review → revise per [§7.3](#73-s
 # round 1 — open the review session (note the printed session id)
 codex exec -s read-only "Review openspec/changes/<change>/specs/ and design.md against requirement/req-final.md, using the RUNBOOK P5 checklist. End with a verdict line."
 # each revision round — same context, so it checks whether your fixes landed
-codex exec resume -s read-only <session-id> "I revised per your last review; re-review and produce v{N+1}."
+codex exec resume -c sandbox_mode="read-only" <session-id> "I revised per your last review; re-review and produce v{N+1}."
 ```
 
 ### 5.4 STEP5 · apply

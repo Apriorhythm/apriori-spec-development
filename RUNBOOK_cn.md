@@ -41,7 +41,7 @@
 
 **R1 —— 每个人工闸口必停。** 闸口清单:① STEP0 触顶时的定稿裁决 ② gap 报告过目(仅大型)③ STEP3 技术评审 ④ STEP6 知识库 diff 批准 ⑤ 任何触顶或振荡(台账 ID 被重开)。到达闸口:更新状态文件,汇报——当前步骤、评审方结论行**原文**、台账中 open/rejected 项、需要人做的决定——然后停下。绝不替人批准闸口;"人还没回复"绝不等于批准。
 
-**R2 —— 评审必须真实外调。** 生产会话永远不出评审结论。真实调起异构评审方:`codex exec -s read-only "<提示词>"`(第 2 轮起:`codex exec resume -s read-only <session-id> "..."`);没有 Codex 就**新开**一个不同档位的 `claude` 会话,喂给它产物加问题台账(P0)。把评审方的结论行**原文**贴回并落实其台账更新。如果无法真实调起评审方,停下来说明——**禁止模拟评审**。
+**R2 —— 评审必须真实外调。** 生产会话永远不出评审结论。真实调起异构评审方:`codex exec -s read-only "<提示词>"`(第 2 轮起:`codex exec resume -c sandbox_mode="read-only" <session-id> "..."`——codex CLI ≥0.14x 的 resume 不接受 `-s`,旧版在 id 前用 `-s read-only`;非交互调用须以 `< /dev/null` 关闭 stdin,否则 codex 挂起);没有 Codex 就**新开**一个不同档位的 `claude` 会话,喂给它产物加问题台账(P0)。把评审方的结论行**原文**贴回。只读沙箱写不了台账:评审方在输出末尾给出台账增量,生产方原样落盘(注明代录)并存档原始输出以备对照。如果无法真实调起评审方,停下来说明——**禁止模拟评审**。
 
 **R3 —— 一切落盘;`/goal` 属于人。** 产物写到 §4 表格的确切路径;每完成一步、每轮评审后都更新状态文件。`/goal` 是人执行的命令(§6)——绝不声称自己在跑 `/goal`,也不模仿它的评估器。你在会话内自行驱动的循环,同样遵守 §4 的轮次上限。
 
@@ -296,7 +296,7 @@ doc/design/<change>-review-v{N}.md:逐条问题(描述/风险/建议);按台账�
 /goal "目标:openspec/changes/<change>/ 有 SPEC-DOC+DESIGN-DOC,且最新评审判定为「无重大问题,可进入执行阶段」。上限:4 轮。
 每一轮:
 1. 据最新评审修订 spec/design 文件——绝不动源码——并同步更新 doc/review/<change>-issues.md 里已处理问题的状态。
-2. 重跑异构评审,用 P5 提示词(第 1 轮:codex exec,记下打印的 session id;之后各轮:codex exec resume <session-id>),产出 doc/design/<change>-review-v{N}.md 并更新台账。
+2. 重跑异构评审,用 P5 提示词(第 1 轮:codex exec,记下打印的 session id;之后各轮:codex exec resume -c sandbox_mode=\"read-only\" <session-id>),产出 doc/design/<change>-review-v{N}.md 并更新台账。
 3. 把评审结论行贴回这里。
 当判定为「无重大问题,可进入执行阶段」时停,或满 4 轮停。"
 ```

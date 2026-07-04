@@ -142,12 +142,14 @@ Claude Code (Opus/Claude)  ──产出──►  SPEC-DOC + DESIGN-DOC
 # --skip-git-repo-check ：仅当你在 git 仓库之外运行时才需要
 codex exec -s read-only "<你的评审提示词——例如 RUNBOOK P5 的评审 prompt>"
 ```
-输出头部会打印一行 `session id: 019f....`。**记下这个 id**——它是续接下一轮的句柄。
+输出头部会打印一行 `session id: 019f....`。**记下这个 id**——它是续接下一轮的句柄。(脚本或后台调用 codex 时要关闭 stdin——命令末尾加 `< /dev/null`——否则它会等待输入而挂起。)
 
 **第二轮…第 N 轮——续接同一上下文：**
 ```shell
-# flag 必须放在 session id 之前，否则 Codex 会报错拒绝
-codex exec resume -s read-only <session-id> "我已按你上轮意见修订；请重新评审并产出 v{N+1}。"
+# codex CLI ≥ 0.14x:resume 不接受 -s——沙箱改用配置覆盖传入
+codex exec resume -c sandbox_mode="read-only" <session-id> "我已按你上轮意见修订；请重新评审并产出 v{N+1}。"
+# 旧版 CLI:-s 可用,但 flag 必须放在 session id 之前
+codex exec resume -s read-only <session-id> "..."
 ```
 因为会话被保留，评审方仍记得它上一轮的发现——能核对"问题 #3 是否真的改好了",而不是每轮都从零重审。
 
@@ -515,7 +517,7 @@ git init             # 建议纳入版本管理，方便对照每步 diff
 # 第一轮——开启评审会话（记下打印出来的 session id）
 codex exec -s read-only "按 RUNBOOK P5 评审清单，对照 requirement/req-final.md 评审 openspec/changes/<change>/specs/ 与 design.md，末尾给出结论行。"
 # 之后每个修订轮——同一上下文，它能核对你的修复是否到位
-codex exec resume -s read-only <session-id> "我已按上轮意见修订；请重新评审并产出 v{N+1}。"
+codex exec resume -c sandbox_mode="read-only" <session-id> "我已按上轮意见修订；请重新评审并产出 v{N+1}。"
 ```
 
 ### 5.4 STEP5 · apply

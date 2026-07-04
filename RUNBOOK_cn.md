@@ -22,7 +22,7 @@
 2. 在项目规则文件(`CLAUDE.md` / `AGENTS.md` / `.cursor/rules/*.mdc` / `.github/copilot-instructions.md`)里加一行:
    > 开发流程遵循 `docs/apriori-runbook.md`。每次会话开始,先读它和 `doc/changes/<change>/flow-state.md`,从记录的位置继续。
 3. 把 `templates/process-config.md` 复制到项目根目录为 `process-config.md`——**人类持有;agent 视其为只读**(R3)。缺失时,§4 打印的默认值生效。
-4. 项目还没有 OpenSpec 的话:`openspec init`(手册 §3.3);`templates/config.yaml` 是一份现成的 `openspec/config.yaml` 起点。(OpenSpec 是可选的——见 §4 末尾的无 OpenSpec 映射。)
+4. 可选——**OpenSpec 适配器**:`openspec init`(已测 OpenSpec **1.5.0**;CLI 会漂移——适配器异常时,按 §4 产物接口的 plain-files 形态直接执行);`templates/config.yaml` 是一份现成的 `openspec/config.yaml` 起点。流程零依赖可跑:OpenSpec 只是为 §4 定义的接口自动化脚手架与归档合并。
 5. 可选(Claude Code):把 `templates/claude-command-apriori.md` 复制为 `.claude/commands/apriori.md`,即可用 `/apriori <change>` 启动。
 
 **会话启动(Agent,每个会话都做):**
@@ -118,7 +118,8 @@ gates:                  # 只增不改的人工决定日志
 | 需求评审 | `doc/review/<change>-req-review-v{N}.md` |
 | 问题台账 | `doc/review/<change>-issues.md` |
 | gap 报告 | `doc/explore/<change>-gap-report.md` |
-| 规格 / 设计 / 任务 | `openspec/changes/<change>/specs/`、`…/design.md`、`…/tasks.md` |
+| 规格 / 设计 / 任务 | `doc/changes/<change>/specs/`、`…/design.md`、`…/tasks.md`(OpenSpec 适配器:`openspec/changes/<change>/…`) |
+| living 规格库 | `doc/specs/`(OpenSpec 适配器:`openspec/specs/`) |
 | 规格评审 | `doc/design/<change>-review-v{N}.md` |
 | 知识库(TRUTH-DOC) | `docs/truth/<module>.md`——必须带 `source-commit` 标记(只覆盖契约节,§5 P9/P10) |
 | 流程状态 | `doc/changes/<change>/flow-state.md` |
@@ -126,6 +127,14 @@ gates:                  # 只增不改的人工决定日志
 | 提取评审(探索轨) | `doc/review/<change>-extraction-review-v{N}.md` |
 | 原型(探索轨) | `spike/`——archive 时删除或隔离;tasks.md 绝不引用 |
 | 评审方原始输出 | `doc/review/<change>-<stage>-raw.*` |
+
+**产物接口(规范性)。** 上表路径即接口的 **plain-files 形态——参考实现**;任何工具(包括 OpenSpec)都是它之上的适配器。
+
+- **布局:**变更在 `doc/changes/<change>/` 下暂存产物(`specs/`、`design.md`、`tasks.md`);已接受的规格进入规格库 `doc/specs/`。`artifact-root` 规则(§3)作用于暂存区;`openspec/` 本身由工具持有,绝不迁移。
+- **spec 结构:**Requirement 块内含带稳定 ID 的 Scenario 块(README §8.1——OpenSpec 适配器配置——中的质量规则对任何适配器同样生效)。
+- **archive 算法:**按稳定 Requirement/Scenario ID 把暂存规格并入规格库——新 ID → 追加;已有 ID → 整块替换;暂存标 `REMOVED` → 规格库保留原块并标 `deprecated (superseded by <change>)`。与分叉后已合并的并行变更发生同 ID 冲突 → **停止、开台账、人工裁决**(§4.11 按模块串行)。archive 动作必须列出每条 merged / modified / deprecated 的 ID。
+- **适配器运行策略:**版本与已测不符 → 提示风险后继续;适配器命令不可用/报错 → 按接口以 plain-files 形态直接执行并记台账;适配器产物违反本接口 → 以接口为准并开台账 issue。
+- **项目归类:**使用 OpenSpec CLI → 适配器项目;保留历史 `openspec/` 目录但不用 CLI → 在项目规则文件里显式声明 canonical 规格库;新项目默认 plain-files,可选装适配器。
 
 ### STEP0 —— 需求精细化 · 对抗循环 · 上限:`step0-cap`(默认 5)
 
@@ -137,7 +146,7 @@ gates:                  # 只增不改的人工决定日志
 
 0. **意图卡先行(不可豁免):**≤15 行,路径 `requirement/intent-card.md`——目标假设 / 成功判据 / spike 要回答的问题。须经**人签核**(`intent-card sign-off`;异构评审可作为签核前的参考,但不能替代)。在这条轨上,意图卡是独立评审基准——提取出的规格绝不只对照原型自证。
 1. **spike(有界):**在 `spike/` 下自由做原型;上限:`spike-cap`(默认 10)轮;退出=意图卡问题逐条有答案。触顶 → **闸口 ⑤**。
-2. **P11 —— 规格提取:**输入=意图卡+原型+spike 结论;输出=`requirement/req-final.md` + spec 草案(OpenSpec 项目:`openspec/changes/<change>/specs/`;无 OpenSpec:`doc/changes/<change>/specs/`)。
+2. **P11 —— 规格提取:**输入=意图卡+原型+spike 结论;输出=`requirement/req-final.md` + spec 草案,置于 `doc/changes/<change>/specs/`(适配器项目:`openspec/changes/<change>/specs/`)。
 3. **P12 —— 提取评审(异构,R2):**上限:`extraction-review-cap`(默认 2)。结论 `extraction accepted` → 第 4 步;`extraction rejected` + 提取不忠实 → 重跑 P11;`extraction rejected` + 意图假设被证伪 → 回 SPIKE,或 `ABANDONED`(归档意图卡与结论;记台账)。
 4. **汇入:**进入 STEP2 的 P5/P6 全量循环——此后两轨完全无差别。
 5. **原型是一次性的,且机器可查:**STEP5 从失败测试重建;tasks.md 不得引用 `spike/`;`spike/` 在 archive 时删除(或隔离归档)。
@@ -152,13 +161,13 @@ gates:                  # 只增不改的人工决定日志
 
 ### STEP1 —— explore
 
-- **动作:**用 **P3** 执行 `/opsx:explore`。**产出:**gap 报告。
+- **动作:**执行 **explore 接口动作**(适配器命令:`/opsx:explore`),用 **P3**。**产出:**gap 报告。
 - **调研 spike 变体**(模糊但触绊线的变更,§2):允许在 `spike/` 下写探针代码——探索轨的全部隔离规则适用——上限 `spike-cap`(默认 10);结论作为 gap 报告的"调研结论"附录。P3 带对应变体条款。
 - **退出:**大型 → **闸口 ②**(人过目 gap 报告)。其余级别:把报告的主要风险并入下次汇报,继续前进。
 
 ### STEP2 —— propose · 对抗循环 · 上限:`step2-cap`(默认 4)
 
-- **动作:**用 **P4** 执行 `/opsx:propose`;然后循环:评审方 **P5**(R2)→ 生产方用 **P6** 修订(只改 spec/design——绝不动源码);每轮更新台账。
+- **动作:**执行 **propose 接口动作**(适配器命令:`/opsx:propose`),用 **P4**;然后循环:评审方 **P5**(R2)→ 生产方用 **P6** 修订(只改 spec/design——绝不动源码);每轮更新台账。
 - **退出:**结论 =「无重大问题,可进入执行阶段」→ 前进。触顶或振荡 → **闸口 ⑤**。
 
 ### STEP3 —— 技术评审 —— **闸口 ③(人工)**
@@ -178,10 +187,9 @@ gates:                  # 只增不改的人工决定日志
 
 ### STEP6 —— 归档 + 知识库回写
 
-- **动作:**用 **P9** 执行 `/opsx:archive`;更新 `docs/truth/<module>.md`(契约节按最终实现更新+刷新 `source-commit`;决策节追加本次变更的新决策/不变式);列出改了哪些文件/段落。探索轨变更:在此删除或隔离 `spike/`。
+- **动作:**执行 **archive 接口动作**(适配器命令:`/opsx:archive`),用 **P9**——按上文接口的 archive 算法合并;更新 `docs/truth/<module>.md`(契约节按最终实现更新+刷新 `source-commit`;决策节追加本次变更的新决策/不变式);列出改了哪些文件/段落。探索轨变更:在此删除或隔离 `spike/`。
 - **退出:**增量规格已合并 + 知识库已更新 → **闸口 ④**:人批准知识库 diff(同仓库布局下就是 PR 评审)。然后置 `current-step: DONE`。
 
-**无 OpenSpec 时**(任何项目类型):`/opsx:explore` → 按 P3 直接撰写 gap 报告;`/opsx:propose` → 直接撰写 spec/design 文档(P4 的要求照旧约束),spec 草案放 `doc/changes/<change>/specs/`;`/opsx:archive` → 把规格归档进项目约定目录。不强制安装 OpenSpec。
 
 ---
 
@@ -232,7 +240,7 @@ gates:                  # 只增不改的人工决定日志
 ### P3 —— STEP1 explore
 
 ```text
-/opsx:explore
+/opsx:explore   # explore 接口动作的适配器命令——plain-files 项目直接按本提示词执行
 先对齐所有已知事实——不要写代码。
 【输入】
 * 需求文档: requirement/req-final.md
@@ -249,7 +257,7 @@ doc/explore/<change>-gap-report.md:当前状态 A、目标状态 B,以及两者�
 ### P4 —— STEP2 propose(生产方)
 
 ```text
-/opsx:propose
+/opsx:propose   # propose 接口动作的适配器命令——plain-files 项目直接按本提示词执行
 基于已对齐的事实,编写提案、全部规格文档与设计文档。
 * 每个用户可见的输出都有独立 scenario,并带稳定 ID(如 KV-03);可见侧效果不得合并;
 * 凡外部共享状态(Redis/DB字段/全局单例/内存缓存),必须描述三个时机:初始化 / 运行中更新 / 清理失效。
@@ -261,7 +269,7 @@ doc/explore/<change>-gap-report.md:当前状态 A、目标状态 B,以及两者�
 ```text
 你是技术评审专家,重点找"会导致返工或线上事故"的问题。
 【输入】
-* SPEC-DOC: openspec/changes/<change>/specs/   * DESIGN-DOC: openspec/changes/<change>/design.md
+* SPEC-DOC: doc/changes/<change>/specs/   * DESIGN-DOC: doc/changes/<change>/design.md   (适配器项目:openspec/changes/<change>/…)
 * 知识库: docs/truth/   * 需求文档: requirement/req-final.md   * 台账: doc/review/<change>-issues.md
 【检查清单】
 1. scenario 是否覆盖全部可见行为,有无遗漏的失败/边界场景
@@ -285,7 +293,7 @@ doc/design/<change>-review-v{N}.md:逐条问题(描述/风险/建议);按台账�
 ### P7 —— STEP5 apply(生产方)
 
 ```text
-/opsx:apply
+/opsx:apply   # apply 接口动作的适配器命令——plain-files 项目直接按本提示词执行
 测试先行:每个 spec scenario 派生一条失败测试,以其 scenario ID 命名(如 test('KV-03 …')),展示失败运行。
 然后严格按 tasks.md 顺序实现,每条完成立即标 [x]。
 * scenario 覆盖是硬性标准:每个 scenario 至少一条带其 ID 的测试。行覆盖率是信号不是目标——不许无断言凑数;
@@ -312,8 +320,8 @@ doc/design/<change>-review-v{N}.md:逐条问题(描述/风险/建议);按台账�
 ### P9 —— STEP6 archive(生产方)
 
 ```text
-/opsx:archive
-归档本次变更,并同步更新知识库。知识库文档有两个真相方向相反的小节:
+/opsx:archive   # archive 接口动作的适配器命令——plain-files 项目直接按本提示词执行
+按接口的 archive 算法(§4)归档本次变更——列出每条 merged/modified/deprecated 的 ID;同 ID 冲突即停并开台账。然后同步更新知识库。知识库文档有两个真相方向相反的小节:
 * "## 契约(code-is-truth)":按最终实现更新;刷新 source-commit 标记(只覆盖本节);
 * "## 决策(doc-is-truth)":追加本次变更做出的决策/不变式/被否决方案,各带状态(active / superseded-by: <id>)。绝不为迁就代码改写 active 不变式——代码违反它就报 bug;
 列出你更新了哪些知识库文件、哪些段落。
@@ -337,7 +345,7 @@ doc/design/<change>-review-v{N}.md:逐条问题(描述/风险/建议);按台账�
 【输入】requirement/intent-card.md;spike/ 下的原型;spike 结论。
 【任务】提取原型的*已验证*行为所蕴含的规格——绝不发明意图卡与 spike 观察都不支持的行为。产出:
 * requirement/req-final.md——目标+验收标准,逐条可溯源到意图卡;
-* 带 scenario ID 的 spec 草案(OpenSpec 项目:openspec/changes/<change>/specs/;无 OpenSpec:doc/changes/<change>/specs/)。
+* 带 scenario ID 的 spec 草案,置于 doc/changes/<change>/specs/(适配器项目:openspec/changes/<change>/specs/)。
 【约束】未验证的假设标"待确认"。原型是观察来源,不是权威来源:意图与原型冲突处,以意图卡为准并显式列出分歧。
 完成后停下,等待提取评审(P12)。
 ```
@@ -376,7 +384,7 @@ rejected+意图假设被证伪 → 回 SPIKE 或 ABANDONED(状态机的失败分
 
 **STEP2 循环:**
 ```text
-/goal "目标:openspec/changes/<change>/ 有 SPEC-DOC+DESIGN-DOC,且最新评审判定为「无重大问题,可进入执行阶段」。上限:step2-cap 轮(默认 4)。
+/goal "目标:doc/changes/<change>/(适配器:openspec/changes/<change>/)有 SPEC-DOC+DESIGN-DOC,且最新评审判定为「无重大问题,可进入执行阶段」。上限:step2-cap 轮(默认 4)。
 每一轮:
 1. 据最新评审修订 spec/design 文件——绝不动源码——并同步更新 doc/review/<change>-issues.md 里已处理问题的状态。
 2. 重跑异构评审,用 P5 提示词(第 1 轮:codex exec,记下打印的 session id;之后各轮:codex exec resume -c sandbox_mode=\"read-only\" <session-id>——codex ≥0.14x 的 resume 不接受 -s;旧版在 id 前用 -s read-only),产出 doc/design/<change>-review-v{N}.md 并更新台账。
@@ -386,7 +394,7 @@ rejected+意图假设被证伪 → 回 SPIKE 或 ABANDONED(状态机的失败分
 
 **STEP5 循环:**
 ```text
-/goal "目标 —— 以下全部成立:`npm test` 退出码 0;openspec/changes/<change>/specs/ 里每个 scenario ID 至少出现在一个测试名里(列出缺失的 ID);openspec/changes/<change>/tasks.md 每项均为 [x];(仅 UI 项目)Playwright E2E 套件通过且截图差异在阈值内;并且由一个不同模型做的一致性评审(P8 提示词)报告无 spec-vs-代码 缺口。上限:step5-cap 轮(默认 25)。
+/goal "目标 —— 以下全部成立:`npm test` 退出码 0;doc/changes/<change>/specs/(适配器:openspec/…)里每个 scenario ID 至少出现在一个测试名里(列出缺失的 ID);doc/changes/<change>/tasks.md(适配器:openspec/…)每项均为 [x];(仅 UI 项目)Playwright E2E 套件通过且截图差异在阈值内;并且由一个不同模型做的一致性评审(P8 提示词)报告无 spec-vs-代码 缺口。上限:step5-cap 轮(默认 25)。
 第 1 轮:为每个 spec scenario 派生一条失败测试(以其 scenario ID 命名),并把失败运行结果打印出来。之后每一轮:按 tasks.md 顺序实现下一项,然后跑 `npm test`(有界面再跑 Playwright)并把命令输出打印出来,让结果进 transcript。代码完成后,跑一致性评审(codex exec / 新开 claude)并把结论贴回。
 当全部条件成立时停,或触顶停。"
 ```
@@ -394,8 +402,8 @@ rejected+意图假设被证伪 → 回 SPIKE 或 ABANDONED(状态机的失败分
 
 **STEP6:**
 ```text
-/goal "目标:本次变更已归档(增量规格合并进 openspec/specs/),且模块 <module> 的知识库文件已反映本次新增/变更的事实、并刷新了 source-commit 标记。上限:step6-cap 轮(默认 4)。
-执行 /opsx:archive,然后更新 docs/truth/<module>.md,并列出究竟改了哪些文件/段落。
+/goal "目标:本次变更已归档(增量规格合并进 living 规格库 doc/specs/;适配器:openspec/specs/),且模块 <module> 的知识库文件已反映本次新增/变更的事实、并刷新了 source-commit 标记。上限:step6-cap 轮(默认 4)。
+执行 archive 接口动作(适配器:/opsx:archive),然后更新 docs/truth/<module>.md,并列出究竟改了哪些文件/段落。
 当两者都成立时停。"
 ```
 

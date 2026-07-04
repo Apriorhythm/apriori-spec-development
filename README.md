@@ -746,7 +746,7 @@ Prompts: RUNBOOK **P7** (apply) / **P8** (consistency reviewer). Design notes:
 
 ### 7.5 STEP6: archive
 
-Prompt: RUNBOOK **P9**. Design notes: archive alone only merges OpenSpec's own specs ([§4.9](#49-step6-opsxarchive-archive-and-capture-facts)) — P9 additionally forces the KB writeback to `docs/truth/<module>.md`, the `source-commit` refresh, and an explicit list of what changed, so the human gate has a concrete diff to approve.
+Prompt: RUNBOOK **P9**. Design notes: the archive action merges delta specs into the living spec store per RUNBOOK §4's algorithm (`doc/specs/`; OpenSpec adapter: `openspec/specs/` — [§4.9](#49-step6-opsxarchive-archive-and-capture-facts)) — P9 additionally forces the KB writeback to `docs/truth/<module>.md`, the `source-commit` refresh, and an explicit list of what changed (including every merged/modified/deprecated ID), so the human gate has a concrete diff to approve.
 
 ### 7.6 Reverse Knowledge Capture for Legacy Projects
 

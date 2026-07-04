@@ -62,10 +62,11 @@ Advance ONLY to the next human gate, then stop and report.
 
 **R3 — Everything lands on disk; `/goal` belongs to the human; the config belongs to the human too.** Artifacts go to the exact paths in §4's table; the state file is updated after every step and every review round. All round caps are read from the project's `process-config.md` — **human-held; the agent never writes it**; if it is missing, the defaults printed in §4 apply. **Every review stage's cap has a hard floor of 1 per change: a configured value below 1, or an unparsable one, falls back to the default with a warning — no review stage ever goes to zero.** `/goal` is a command the human runs (§6) — never claim to run it or imitate its evaluator. Loops you drive inside a session still obey the caps.
 
-**Enforcement layers** (examples, not exhaustive; the deterministic items below are *available to configure*, not active by default in this repo). Advisory text gets ignored under pressure — classify each rule by how it can be enforced: ① **deterministically enforceable now** — `process-config.md` read-only (a hook blocking agent writes), `scripts/check_docs.py` as a required pre-commit/CI check, the scenario-ID traceability grep in CI, and the **verdict-evidence check**: every verdict line must have a matching raw archive file (`doc/review/<change>-<stage>-raw.*`) — a mechanical backstop against simulated reviews; ② **gate-level** — Stop hooks and `/goal` conditions; ③ **inherently advisory** — a reviewer's independent judgment quality, semantic adherence to the P prompts. Reference implementation is Claude Code hooks; any CI can enforce the same checks. Example (PreToolUse hook blocking config writes):
+**Enforcement layers** (examples, not exhaustive; the deterministic items below are *available to configure*, not active by default in this repo). Advisory text gets ignored under pressure — classify each rule by how it can be enforced: ① **deterministically enforceable now** — `process-config.md` read-only (a hook blocking agent writes), `scripts/check_docs.py` as a required pre-commit/CI check, the scenario-ID traceability grep in CI, and the **verdict-evidence check**: every verdict line must have a matching raw archive file (`doc/review/<change>-<stage>-raw.*`) — a mechanical backstop against simulated reviews; ② **gate-level** — Stop hooks and `/goal` conditions; ③ **inherently advisory** — a reviewer's independent judgment quality, semantic adherence to the P prompts. Reference implementation is Claude Code hooks; any CI can enforce the same checks. Example (a PreToolUse hook blocking config writes — illustrative sketch; exact schema in the Claude Code hooks docs):
 
-```json
-{"matcher": "Write|Edit", "condition": "file == 'process-config.md'", "action": "deny"}
+```text
+# pseudo-config: PreToolUse matcher on Write|Edit runs a guard command;
+# the command exits non-zero when the target is process-config.md, denying the call
 ```
 
 ---

@@ -62,10 +62,11 @@
 
 **R3 —— 一切落盘;`/goal` 属于人;配置也属于人。** 产物写到 §4 表格的确切路径;每完成一步、每轮评审后都更新状态文件。所有轮次上限读取项目根的 `process-config.md`——**人类持有,agent 绝不写它**;文件缺失时,§4 打印的默认值生效。**每个评审环节的上限有硬性地板:每变更 1 轮——配置值小于 1 或不可解析,一律按默认值生效并警告;任何评审环节绝不归零。** `/goal` 是人执行的命令(§6)——绝不声称自己在跑 `/goal`,也不模仿它的评估器。你在会话内自行驱动的循环,同样遵守上限。
 
-**强制层级**(举例式,非穷尽;下列强制项在本仓库现状为*可配置而非已生效*)。劝告性文本在压力下会被忽略——按可强制方式给规则分层:①**现在即可确定性强制**——`process-config.md` 只读(hook 拦截写入)、`scripts/check_docs.py` 作 pre-commit/CI 必过、scenario-ID 追溯 grep 进 CI、以及**结论行证据检查**:每个 verdict 行必须有对应 raw 存档文件(`doc/review/<change>-<stage>-raw.*`)——对模拟评审的机械化后盾;②**闸口级**——Stop hooks 与 `/goal` 条件;③**本质劝告性**——评审方的独立判断质量、对 P 提示词的语义遵循。参考实现为 Claude Code hooks;任何 CI 都能强制同样的检查。示例(PreToolUse hook 拦配置写入):
+**强制层级**(举例式,非穷尽;下列强制项在本仓库现状为*可配置而非已生效*)。劝告性文本在压力下会被忽略——按可强制方式给规则分层:①**现在即可确定性强制**——`process-config.md` 只读(hook 拦截写入)、`scripts/check_docs.py` 作 pre-commit/CI 必过、scenario-ID 追溯 grep 进 CI、以及**结论行证据检查**:每个 verdict 行必须有对应 raw 存档文件(`doc/review/<change>-<stage>-raw.*`)——对模拟评审的机械化后盾;②**闸口级**——Stop hooks 与 `/goal` 条件;③**本质劝告性**——评审方的独立判断质量、对 P 提示词的语义遵循。参考实现为 Claude Code hooks;任何 CI 都能强制同样的检查。示例(拦配置写入的 PreToolUse hook——示意伪配置;确切 schema 见 Claude Code hooks 文档):
 
-```json
-{"matcher": "Write|Edit", "condition": "file == 'process-config.md'", "action": "deny"}
+```text
+# 伪配置: PreToolUse 对 Write|Edit 匹配并运行守卫命令;
+# 目标为 process-config.md 时命令以非零退出,即拒绝该调用
 ```
 
 ---

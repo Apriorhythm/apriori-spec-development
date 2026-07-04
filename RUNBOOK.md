@@ -20,14 +20,14 @@
 
 1. Copy this file into the project, e.g. `docs/apriori-runbook.md`.
 2. Add one line to the project's rules file (`CLAUDE.md` / `AGENTS.md` / `.cursor/rules/*.mdc` / `.github/copilot-instructions.md`):
-   > Development follows `docs/apriori-runbook.md`. At session start, read it and `doc/changes/<change>/flow-state.md`, then continue from the recorded position.
+   > Development follows `docs/apriori-runbook.md`. At session start, read it per its session-start rule and `doc/changes/<change>/flow-state.md`, then continue from the recorded position.
 3. Copy `templates/process-config.md` to the project root as `process-config.md` — **human-held; the agent treats it as read-only** (R3). Without it, the defaults printed in §4 apply.
 4. Optional — the **OpenSpec adapter**: `openspec init` (tested with OpenSpec **1.5.0**; CLIs drift — if the adapter misbehaves, fall back to the artifact interface's plain-files form, §4); `templates/config.yaml` is a ready-made starting `openspec/config.yaml`. The workflow runs fully without it: OpenSpec automates scaffolding and archive-merge for the interface defined in §4.
 5. Optional (Claude Code): copy `templates/claude-command-apriori.md` to `.claude/commands/apriori.md` to get `/apriori <change>` as a starter.
 
 **Session start (agent, every session):**
 
-1. Read this runbook in full.
+1. Kickoff session: read this runbook in full. Resume session: read at least the minimal set listed in the **Context economy** block below.
 2. Read `doc/changes/<change>/flow-state.md`. If it doesn't exist and you were asked to start a change: size the change (§2), create the state file (§3), then begin at the tier's first step.
 3. Continue from `next-action`. The state file is authoritative — never reconstruct progress from memory or guesswork.
 
@@ -42,6 +42,12 @@ Advance ONLY to the next human gate, then stop and report.
 
 > On the **harden** track, this kickoff (or the sign-off of the requirement doc) *is* the human intent acknowledgment — the intent card exists only on the **explore** track (§4). When the artifact root is externalized, the kickoff prompt must state it, because the flow-state file itself lives under it.
 
+**Context economy.** The context window is the agent's scarcest resource — performance degrades as it fills, so manage it deliberately:
+
+- **Session hygiene:** on Medium+ changes, each STEP may run in a fresh session — the state file (§3) guarantees lossless resume, so accumulating one giant session is a cost, not a safety feature.
+- **Resume minimal set** (the single source of this list — §0's session-start rule references it): §1 hard rules; §3 state-file rules; §5's P0 ledger rules; the prompt(s) of the step `flow-state` points at; and that step's §4 state-machine entry (including its exit conditions; for STEP6, the archive algorithm).
+- **Just-in-time knowledge:** load KB docs per touched module (P3 already scopes this way) — never preload the whole store.
+
 ---
 
 ## 1. Hard Rules
@@ -55,6 +61,12 @@ Advance ONLY to the next human gate, then stop and report.
 **R2 — Reviews must be genuinely external.** The producing session never issues a review verdict. Spawn a heterogeneous reviewer: `codex exec -s read-only "<prompt>"` (rounds 2+: `codex exec resume -c sandbox_mode="read-only" <session-id> "..."` — codex CLIs ≥0.14x reject `-s` on `resume`; on older versions use `-s read-only` before the session id), or — without Codex — a **fresh** `claude` session on a different tier, fed the artifacts plus the issue ledger (P0). Paste the reviewer's verdict line back verbatim. Reviewers usually run in read-only sandboxes and cannot write the ledger: the reviewer ends its output with a **ledger delta** (new rows + status flips), and the producer lands it verbatim, marked "recorded on behalf of the reviewer"; the reviewer's raw output is archived in full at `doc/review/<change>-<stage>-raw.*` so the recorded delta can always be diffed against its source. When invoking codex non-interactively (background/scripted), close stdin — append `< /dev/null` — or it prints "Reading additional input from stdin..." and hangs. If you cannot actually spawn a reviewer, stop and say so — **do not simulate one**.
 
 **R3 — Everything lands on disk; `/goal` belongs to the human; the config belongs to the human too.** Artifacts go to the exact paths in §4's table; the state file is updated after every step and every review round. All round caps are read from the project's `process-config.md` — **human-held; the agent never writes it**; if it is missing, the defaults printed in §4 apply. **Every review stage's cap has a hard floor of 1 per change: a configured value below 1, or an unparsable one, falls back to the default with a warning — no review stage ever goes to zero.** `/goal` is a command the human runs (§6) — never claim to run it or imitate its evaluator. Loops you drive inside a session still obey the caps.
+
+**Enforcement layers** (examples, not exhaustive; the deterministic items below are *available to configure*, not active by default in this repo). Advisory text gets ignored under pressure — classify each rule by how it can be enforced: ① **deterministically enforceable now** — `process-config.md` read-only (a hook blocking agent writes), `scripts/check_docs.py` as a required pre-commit/CI check, the scenario-ID traceability grep in CI, and the **verdict-evidence check**: every verdict line must have a matching raw archive file (`doc/review/<change>-<stage>-raw.*`) — a mechanical backstop against simulated reviews; ② **gate-level** — Stop hooks and `/goal` conditions; ③ **inherently advisory** — a reviewer's independent judgment quality, semantic adherence to the P prompts. Reference implementation is Claude Code hooks; any CI can enforce the same checks. Example (PreToolUse hook blocking config writes):
+
+```json
+{"matcher": "Write|Edit", "condition": "file == 'process-config.md'", "action": "deny"}
+```
 
 ---
 
@@ -93,15 +105,18 @@ track-rationale: <one line: why this track — reported at the next human gate>
 current-step: STEP0 | STEP1 | STEP2 | STEP3 | STEP4 | STEP5 | STEP6 |
               INTENT-CARD | SPIKE | EXTRACTION |     # explore-track positions
               DONE | ABANDONED
-round: 0                # review round / apply turn within the current step
+round: 0                # review round / apply turn; log round-started/round-ended
+                        # timestamps (ISO, minute precision) when it changes
 next-action: <one concrete line, e.g. "spawn P1 reviewer on req-v2.md">
+                        # append an ISO timestamp comment on every update;
+                        # a missing duration is recorded as n/a — NEVER estimated
 artifact-root: .        # optional; default = project root (v1.0 paths unchanged verbatim).
                         # Applies ONLY to process artifacts: requirement/, doc/review/,
                         # doc/explore/, doc/changes/. NEVER to docs/truth/ (same-repo
                         # atomicity) or openspec/ (tool-owned). When externalized, the
                         # kickoff prompt must state it — this file itself lives under it.
 gates:                  # append-only log of human decisions
-  - <date> <gate>: <the human's decision, verbatim>
+  - <date+time> <gate>: <the human's decision, verbatim>
 ```
 
 Update it immediately after each step and each round; append every gate decision; a new session trusts this file over its own inference.
@@ -138,7 +153,7 @@ Update it immediately after each step and each round; append every gate decision
 
 ### STEP0 — requirement refinement · adversarial loop · cap: `step0-cap` (default 5)
 
-- **In:** `requirement/req-v{N}.md`; KB if any.
+- **In:** `requirement/req-v{N}.md`; KB if any. If the requirement lacks any of the three essentials — goal / out-of-scope / testable acceptance — **interview the human first** with structured questions, then draft req-v1.
 - **Each round:** (1) if a review exists, revise per it → `req-v{N+1}.md`, noting accept/reject + reason per issue and updating the ledger; (2) spawn the reviewer with **P1** (R2) → review doc + ledger; (3) record the verdict line.
 - **Exit:** verdict = "no major issues" → copy to `requirement/req-final.md`, advance. Cap hit → **gate ①**. Goal turns out unstateable → propose harden→explore (a human gate confirms the switch).
 
@@ -182,8 +197,8 @@ KB docs have two sections with **opposite truth directions** (§5 P9/P10): `Cont
 ### STEP5 — apply · cap: `step5-cap` (default 25)
 
 - **Do, in order:** (1) one failing test per spec scenario, test names carry scenario IDs — show the failing run; (2) implement in tasks.md order with **P7**, marking `[x]` as you go; (3) run until green; (4) heterogeneous consistency review **P8** (R2); ledger.
-- **Verification matrix by project type:** backend/library — unit + property tests, mutation spot-checks; UI — plus E2E/visual regression; deployed service — plus runtime contracts, canary + rollback; **docs-only project — `python3 scripts/check_docs.py` green + example-command static checks + the P8 consistency review replace `npm test` as the exit condition.** Where an executable instrument doesn't exist for the project type, the LLM review is the primary instrument there — that is not a downgrade.
-- **Exit — ALL of:** tests green (per the matrix above); every scenario ID appears in ≥1 test name (docs-only: the checker's structural checks stand in); tasks.md all `[x]`; consistency verdict = "no spec-vs-code gaps". Design infeasible → back to STEP2; requirement itself wrong → back to STEP0 (both: update the state file and tell the human). Cap hit → **gate ⑤**.
+- **Verification matrix by project type:** all code projects — lint/static analysis green (plus SAST where security-sensitive) — where configured; backend/library — unit + property tests, mutation spot-checks; UI — plus E2E/visual regression; deployed service — plus runtime contracts, canary + rollback; **docs-only project — `python3 scripts/check_docs.py` green + example-command static checks + the P8 consistency review replace `npm test` as the exit condition.** Where an executable instrument doesn't exist for the project type, the LLM review is the primary instrument there — that is not a downgrade.
+- **Exit — ALL of:** tests green (per the matrix above); lint/static analysis green (where configured); every scenario ID appears in ≥1 test name (docs-only: the checker's structural checks stand in); tasks.md all `[x]`; consistency verdict = "no spec-vs-code gaps". Design infeasible → back to STEP2; requirement itself wrong → back to STEP0 (both: update the state file and tell the human). Cap hit → **gate ⑤**.
 
 ### STEP6 — archive + KB writeback
 
@@ -209,6 +224,7 @@ KB docs have two sections with **opposite truth directions** (§5 P9/P10): `Cont
 
 - **Reviewer**: appends new rows; flips `fixed → verified` after confirming a fix landed; a re-found issue **reopens its old ID** — never a new row.
 - **Producer**: flips `open → fixed` or `open → rejected`; a rejection MUST carry a reason — human gates read rejections first.
+- **Advisory findings (scope discipline):** only gaps affecting **correctness, security, or the stated requirements** enter as formal rows; everything else the reviewer labels `advisory`. Labeling is the **reviewer's exclusive call** — the producer may never downgrade an open row to advisory. Per-item advisory lists live in the review doc; the ledger takes **one batch row per round** (`advisory batch acknowledged (n items)`), terminal state `advisory-acked`; "ignoring" advisories means no per-item handling — the batch row still lands. A reviewer may later **upgrade** an advisory to open (with a reason, new row tagged `upgraded-from-advisory`): it counts in the data pack's reopened statistic but does **not** by itself trip gate ⑤ (only a closed formal ID re-reopening does). **Correctness and security findings can never be advisory.** Mislabel handling: sampled at STEP3 (Medium+), gate ④, or the pre-merge PR review (Trivial); a real gap found mislabeled → upgrade + log; one that slips past merge counts as a post-merge miss (triggers cap restoration, §6).
 
 ### P1 — STEP0 reviewer (heterogeneous, R2)
 
@@ -224,9 +240,10 @@ You are a senior requirements reviewer. Review the requirement doc; the goal is 
 3. Are there "implied but undeclared" state changes or side effects
 4. Is each acceptance criterion testable (expressible as "if … then …")
 5. Does it conflict with current state A (if a KB was provided)
+[Scope] Count toward the verdict only: ambiguous target state, untestable acceptance criteria, missing edge/boundary coverage, conflicts with state A. Everything else — label advisory (P0 rules). Also check an explicit out-of-scope ("won't do") section exists.
 [Output]
-Produce doc/review/<change>-req-review-v{N}.md: an issue list by dimension (description / risk / suggested fix).
-Mirror every issue into the ledger per its rules. End with a verdict line: "no major issues" or not.
+Produce doc/review/<change>-req-review-v{N}.md: an issue list by dimension (description / risk / suggested fix); advisories listed separately.
+Mirror formal issues into the ledger per its rules. End with a verdict line: "no major issues" or not.
 Do not modify the requirement doc itself.
 ```
 
@@ -234,7 +251,8 @@ Do not modify the requirement doc itself.
 
 ```text
 Revise the requirement doc per doc/review/<change>-req-review-v{N}.md and output requirement/req-v{N+1}.md.
-For each issue, state how you handled it (accept/reject + reason), and update its Status in the ledger (fixed / rejected + reason).
+For each formal issue, state how you handled it (accept/reject + reason), and update its Status in the ledger (fixed / rejected + reason).
+Advisories may be batch-acknowledged or ignored without per-item reasons — only rejections of formal findings need justification.
 ```
 
 ### P3 — STEP1 explore
@@ -260,6 +278,7 @@ findings land as a "research conclusions" appendix of the gap report. Otherwise:
 /opsx:propose   # adapter command for the interface's propose action — plain-files projects follow this prompt directly
 Based on the aligned facts, write the proposal, all spec docs and the design doc.
 * Every user-visible output gets its own scenario with a stable ID (e.g. KV-03); never merge visible side-effects;
+* State explicitly what is out of scope for this change;
 * Any external shared state (Redis / DB field / global singleton / in-memory cache) must describe three moments: init / runtime update / cleanup-invalidation.
 Stop when done and wait for review.
 ```
@@ -277,8 +296,9 @@ You are a technical reviewer. Hunt for issues that would cause rework or a produ
 3. Conflicts with current state A, or broken existing conventions
 4. Spec'd but not designed, or designed behavior the spec never declared
 5. Security, where the change touches external input or permissions: unvalidated input, missing authz, secrets/PII in logs, injection surfaces
+[Scope] Count toward the verdict only gaps that would cause rework or a production incident. Everything else — label advisory (P0 rules).
 [Output]
-doc/design/<change>-review-v{N}.md: issues (description/risk/suggestion); mirror into the ledger per its rules.
+doc/design/<change>-review-v{N}.md: issues (description/risk/suggestion), advisories listed separately; mirror formal issues into the ledger per its rules.
 End with a verdict line: "no major issues, ready to proceed to execution" or not.
 ```
 
@@ -286,7 +306,8 @@ End with a verdict line: "no major issues, ready to proceed to execution" or not
 
 ```text
 A different model reviewed your spec and design: doc/design/<change>-review-v{N}.md.
-Handle each item (accept/reject + reason), modifying spec and design files only — never source.
+Handle each formal item (accept/reject + reason), modifying spec and design files only — never source.
+Advisories may be batch-acknowledged or ignored without per-item reasons — only rejections of formal findings need justification.
 Update each issue's Status in the ledger, then request review round v{N+1}.
 ```
 
@@ -298,6 +319,7 @@ Tests first: derive one failing test per spec scenario, named with its scenario 
 Then implement strictly in tasks.md order; mark each task [x] immediately on completion.
 * Scenario coverage is the hard bar: every scenario has ≥1 test carrying its ID. Line coverage is a signal, never a target — no assertion-free padding;
 * Log at key branches and function entries per the project convention;
+* Before declaring green, run the project's linter/static analysis (where configured);
 * For any continue/skip/silently-ignored branch, re-check the spec for required user-visibility.
 (Docs-only projects: the "test suite" is `python3 scripts/check_docs.py` + example-command static checks — same failing-first discipline where feasible.)
 Run the tests until green; stop and wait for archive.
@@ -312,7 +334,8 @@ Review the implementation against the SPEC-DOC:
 3. continue/skip/silently-ignored branches — does the spec require them to be user-visible;
 4. Do the tests assert real outcomes (not merely "it runs");
 5. Where external input or permissions are touched: unvalidated input, missing authz, secrets/PII in logs.
-List each inconsistency with a suggested fix; end with your ledger delta (P0 rules).
+[Scope] Count toward the verdict only spec-vs-code gaps. Style, taste and nice-to-haves — label advisory (P0 rules).
+List each inconsistency with a suggested fix; end with your ledger delta (P0 rules), advisories listed separately.
 (Docs-only projects: item 1's mechanical check = the checker script's output; read "tests" as the doc checks.)
 End with a verdict line: "no spec-vs-code gaps" or not.
 ```
@@ -357,7 +380,8 @@ Stop and wait for the extraction review (P12).
 [Checklist] P1's five dimensions, plus:
 6. Intent-card conformance — every goal and success criterion appears in the extracted spec;
 7. No invention — every spec line traces to the intent card or an observed spike behavior (spot-check the tracing).
-[Output] doc/review/<change>-extraction-review-v{N}.md — issues per P0; end with your ledger delta,
+[Scope] Count toward the verdict only unfaithful extraction or a falsified intent hypothesis; advisory findings never land in either rejected branch (P0 rules).
+[Output] doc/review/<change>-extraction-review-v{N}.md — issues per P0, advisories listed separately; end with your ledger delta,
 then exactly one verdict line: "extraction accepted" or "extraction rejected".
 Cap: extraction-review-cap (default 2). Rejected + unfaithful extraction → producer redoes P11;
 rejected + intent hypothesis falsified → back to SPIKE or ABANDONED (the state machine's failure branches).
@@ -394,7 +418,7 @@ Stop on 'no major issues, ready to proceed to execution' or at the cap."
 
 **STEP5 loop:**
 ```text
-/goal "Goal — ALL must hold: `npm test` exits 0; every scenario ID in doc/changes/<change>/specs/ (adapter: openspec/…) appears in at least one test name (list any missing IDs); every item in doc/changes/<change>/tasks.md (adapter: openspec/…) is [x]; (UI projects only) the Playwright E2E suite passes and screenshot diffs are within threshold; AND a consistency review by a DIFFERENT model (the P8 prompt) reports no spec-vs-code gaps. Cap: step5-cap turns (default 25).
+/goal "Goal — ALL must hold: `npm test` exits 0; lint/static analysis green (where configured); every scenario ID in doc/changes/<change>/specs/ (adapter: openspec/…) appears in at least one test name (list any missing IDs); every item in doc/changes/<change>/tasks.md (adapter: openspec/…) is [x]; (UI projects only) the Playwright E2E suite passes and screenshot diffs are within threshold; AND a consistency review by a DIFFERENT model (the P8 prompt) reports no spec-vs-code gaps. Cap: step5-cap turns (default 25).
 Turn 1: derive one failing test per spec scenario, named with its scenario ID, and SHOW the failing run. Each later turn: implement the next tasks.md item in order, then run `npm test` (and the Playwright run for UI projects) and SHOW the output so the result is in the transcript. When the code is complete, run the consistency reviewer (codex exec / fresh claude) and paste its verdict.
 Stop when every condition holds or at the cap."
 ```
@@ -409,7 +433,7 @@ Stop when both hold."
 
 **Gate checklist (what you personally decide):** ① STEP0 finalization when the cap is hit ② gap-report skim (Large) ③ STEP3 technical review ④ KB-diff approval ⑤ any cap hit / reopened ledger ID — escalation, never quietly lowering the bar. Explore track adds: `intent-card sign-off` and the `extraction review` outcome. Gate consolidation (§1) is yours to grant — but never over the shrink decision, the KB sign-off, or `intent-card sign-off`.
 
-**Shrink governance (the metabolism rule).** Every N changes (default 5, `shrink-proposal-freq`) the agent **reports — never applies** — a shrink/expand proposal whose data pack MUST contain: verified count, rejected count (with sampled reasons), reopened-ID count. Shrinking a review stage is a **human gate decision**, blocked outright when the rejected ratio exceeds `rejected-ratio-guard` (default 50%) or the change class is tripwired (shared state / migration / security / production data). Shrinking means lowering a stage's round cap — **floor 1; no stage ever reaches zero**. Post-merge re-review (sampling rate `post-merge-review-freq`, default 1 in 5 merged changes) finding ≥1 high-risk miss → restore the stage's previous cap, logged the same way. Beware both directions: producers can zero the metric by rejecting findings (that's what the rejected-ratio guard is for); reviewers can inflate it by careless verifies (which merely delays shrinking).
+**Shrink governance (the metabolism rule).** Every N changes (default 5, `shrink-proposal-freq`) the agent **reports — never applies** — a shrink/expand proposal whose data pack MUST contain: verified count; rejected count (with sampled reasons); reopened-ID count (including `upgraded-from-advisory` rows); advisory ratio (monitoring only — never a decision threshold); total wall-clock per change and per review stage (derived from the state file's timestamps; wall-clock includes human-gate waits — note this so cost curves aren't misread; missing timestamps → `n/a`, never estimated). The rejected ratio for `rejected-ratio-guard` (default 50%) counts **formal findings only — advisories are excluded from both numerator and denominator** (so relabeling can't dilute the guard). Shrinking a review stage is a **human gate decision**, blocked outright when the guard trips or the change class is tripwired (shared state / migration / security / production data). Shrinking means lowering a stage's round cap — **floor 1; no stage ever reaches zero** — and shrunk review rounds can never be traded for fewer deterministic checks: **you may shrink review rounds, you may not substitute them for lint, tests or traceability**. Post-merge re-review (sampling rate `post-merge-review-freq`, default 1 in 5 merged changes) finding ≥1 high-risk miss — including a real gap that had been mislabeled advisory — → restore the stage's previous cap, logged the same way. Beware both directions: producers can zero the metric by rejecting findings (that's what the guard is for); reviewers can inflate it by careless verifies (which merely delays shrinking).
 
 ---
 

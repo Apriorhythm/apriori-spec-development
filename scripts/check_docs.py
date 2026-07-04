@@ -122,9 +122,23 @@ def main():
             if phrase in stripped:
                 fail = True
                 print(f"== {name}: FORBIDDEN phrase present: {phrase!r}")
-        # paragraph rule: any blank-line-delimited block mentioning /opsx: must carry adapter wording
-        for j, block in enumerate(re.split(r"\n\s*\n", raw)):
-            if "/opsx:" in block and not any(w in block for w in ADAPTER_WORDS):
+        # paragraph rule: any blank-line-delimited block mentioning /opsx: must carry adapter
+        # wording (case-insensitive). Fenced blocks are atomic; a lone heading merges with
+        # the paragraph that follows it.
+        fenced_atomic = re.sub(r"```.*?```", lambda m: m.group(0).replace("\n\n", "\n"), raw, flags=re.S)
+        blocks = re.split(r"\n\s*\n", fenced_atomic)
+        merged = []
+        i = 0
+        while i < len(blocks):
+            b = blocks[i]
+            if b.strip().startswith("#") and "\n" not in b.strip() and i + 1 < len(blocks):
+                b = b + "\n" + blocks[i + 1]
+                i += 1
+            merged.append(b)
+            i += 1
+        for block in merged:
+            low = block.lower()
+            if "/opsx:" in low and not any(w.lower() in low for w in ADAPTER_WORDS):
                 first = block.strip().splitlines()[0][:60]
                 fail = True
                 print(f"== {name}: /opsx: block without adapter wording: {first!r}")

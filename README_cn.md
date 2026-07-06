@@ -869,4 +869,10 @@ rules:
 
 ---
 
+## 致谢
+
+本工作流所依托的产物接口——增量规格(`ADDED` / `MODIFIED` / `REMOVED`)、带稳定 ID 的 Requirement/Scenario 块、archive-merge 语义,以及多工具 `init` 脚手架模式——直接受 **[OpenSpec](https://github.com/Fission-AI/OpenSpec/)** 启发,V1、V2 线曾直接使用它。V3 把这套接口原生重实现为零依赖的 `apriori` CLI,而非依赖它——但接口的形状源自 OpenSpec,这份负债在此郑重致谢。
+
+---
+
 > 至此，你已经掌握：空环境搭建 → 多工具选型与对抗训练 → 完整 STEP0–STEP6 流程 → 实例项目 → 旧项目(遗留系统)闭环 → 提示词与配置。

@@ -8,6 +8,7 @@
 
 | Field | Value | Legal range | Default |
 |---|---|---|---|
+| language | auto | auto (match the human) / any language name, e.g. `中文`, `English` | auto |
 | step0-cap | 5 | ≥ 1 | 5 |
 | step2-cap | 4 | ≥ 1 | 4 |
 | step5-cap | 25 | ≥ 1 | 25 |

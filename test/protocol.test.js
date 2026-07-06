@@ -41,3 +41,16 @@ test('PR-05 the disposable prototype rule still holds', () => {
   assert.match(EN, /prototype is disposable|`spike\/` is deleted/);
   assert.match(CN, /原型是一次性|`spike\/`/);
 });
+
+test('PR-06 a configurable language governs prose; machine tokens stay English', () => {
+  // the runbook documents the language field + the "match the human" default
+  assert.match(EN, /\*\*Language\.\*\*/);
+  assert.match(EN, /match the language the human is using/);
+  assert.match(EN, /Machine tokens are ALWAYS English/);
+  assert.match(CN, /\*\*语言。\*\*/);
+  assert.match(CN, /跟随人正在使用的语言/);
+  assert.match(CN, /机器令牌.*永远是英文/);
+  // and the scaffolded config carries the language field (default auto)
+  const cfg = fs.readFileSync(path.join(ROOT, 'templates', 'process-config.md'), 'utf8');
+  assert.match(cfg, /\| language \| auto \|/);
+});

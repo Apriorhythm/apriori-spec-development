@@ -17,6 +17,8 @@ cd your-project && apriori init   # 搭建工作流,勾选你用的 AI 工具
 
 然后对你的 agent 说:*"按 apriori runbook 推进变更 `<名字>`。"* 它会跑到下一个人工闸口,停下汇报。三个确定性闸口是 CLI 命令:**`apriori verify`**(每条 scenario 有绿测试)、**`apriori archive`**(把变更的规格并入 living 规格库)、**`apriori check`**(CI 一致性)。下面是给人看的完整讲解——AI agent 读自包含的 [RUNBOOK_cn.md](./RUNBOOK_cn.md),不读本手册。
 
+**语言。** 默认情况下,apriori **用你书写的语言干活**——中文 kickoff 就产出中文的需求文档、规格与消息。(scenario ID 如 `CALC-01`、结论行、文件路径始终保持英文,这样 `apriori verify`/`check` 照常工作。)想不管你怎么打字都固定一种语言,就在 `apriori/process-config.md` 里设 `language` 字段(如 `中文` 或 `English`;默认 `auto` = 跟随你)——或装的时候直接 `apriori init --language 中文` 定好。
+
 ---
 
 > 本手册面向**有工程背景**的开发者，是一份可独立使用的完整手册。

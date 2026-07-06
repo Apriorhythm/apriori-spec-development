@@ -27,6 +27,8 @@ cd your-project && apriori init  # 交互式:勾选要接入的 AI 工具
 
 `apriori/process-config.md` **人类持有;agent 视其为只读**(R3)。缺失时,§4 打印的默认值生效。三个确定性闸口以 CLI 命令运行:`apriori verify`(STEP5)、`apriori archive`(STEP6)、`apriori check`(CI)——均为零依赖 Node,详见 §4/§6。
 
+**语言。** 人可读的散文——需求文档、spec 的 scenario 描述、gap/设计/评审文档、台账描述、`flow-state` 备注,以及每一条对人的消息——使用 `apriori/process-config.md` 里的 `language` 字段。未设或为 `auto` 时,**跟随人正在使用的语言**(其 kickoff 与消息)。机器令牌无论何种语言**永远是英文**:结论行(§5 短语表)、scenario ID(`KV-03`)、delta 关键字 `ADDED`/`MODIFIED`/`REMOVED`、文件路径,以及本 runbook。所以中文 kickoff 产出中文产物,但 ID 与结论行是英文——`apriori verify`/`check` 照常工作。
+
 **会话启动(Agent,每个会话都做):**
 
 1. Kickoff 会话:完整读本 RUNBOOK。续跑会话:至少读下方**上下文经济**块列出的最小集。

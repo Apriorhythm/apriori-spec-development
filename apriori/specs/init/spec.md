@@ -32,3 +32,7 @@
 #### Scenario: IN-08 reports command-level vs rule-level entry honestly
 - WHEN a selected tool has no slash-command mechanism (e.g. Cursor, Copilot)
 - THEN init states that tool gets a rule-level entry (point the agent at the runbook), not a `/apriori` command
+
+#### Scenario: IN-09 --language pins a language in the scaffolded config
+- WHEN init runs with `--language 中文` on a project without an existing config
+- THEN the scaffolded `apriori/process-config.md` has its `language` field set to `中文` (default is `auto` = match the human); an existing config is never overwritten

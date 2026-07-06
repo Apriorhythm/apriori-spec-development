@@ -20,3 +20,7 @@ The V3 runbook SHALL make scenario-to-test binding a deterministic gate, narrow 
 #### Scenario: PR-05 the disposable prototype rule still holds
 - WHEN an explore-track change archives
 - THEN `spike/` is deleted or quarantined and STEP5 is rebuilt from failing tests (unchanged from v2)
+
+#### Scenario: PR-06 a configurable language governs human-facing prose, machine tokens stay English
+- WHEN the runbook describes output language
+- THEN human-facing prose follows `process-config.md`'s `language` (unset/`auto` → match the human), while machine tokens (verdict lines, scenario IDs, ADDED/MODIFIED/REMOVED, file paths) stay English regardless

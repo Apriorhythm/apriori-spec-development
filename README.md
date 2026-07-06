@@ -17,6 +17,8 @@ cd your-project && apriori init   # scaffold the workflow, pick your AI tools
 
 Then tell your agent: *"Follow the apriori runbook for change `<name>`."* It runs the workflow to the next human gate, then stops and reports. Three deterministic gates are CLI commands: **`apriori verify`** (every scenario has a passing test), **`apriori archive`** (merge the change's specs into the living store), **`apriori check`** (CI consistency). Everything below is the full walkthrough for humans — AI agents read the self-contained [RUNBOOK.md](./RUNBOOK.md) instead.
 
+**Language.** By default apriori works in **whatever language you write in** — a Chinese kickoff produces Chinese requirement docs, specs and messages. (Scenario IDs like `CALC-01`, verdict lines and file paths always stay English, so `apriori verify`/`check` keep working.) To pin one language regardless of how you type, set the `language` field in `apriori/process-config.md` (e.g. `中文` or `English`; the default is `auto` = match you) — or scaffold it up front with `apriori init --language 中文`.
+
 ---
 
 > This handbook is written for developers with an **engineering background**, and is a complete, self-contained guide.

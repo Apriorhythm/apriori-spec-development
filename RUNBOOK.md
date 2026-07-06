@@ -27,6 +27,8 @@ cd your-project && apriori init  # interactive: pick the AI tools to configure
 
 `apriori/process-config.md` is **human-held; the agent treats it as read-only** (R3). Without it, the defaults printed in §4 apply. The three deterministic gates run as CLI commands: `apriori verify` (STEP5), `apriori archive` (STEP6), `apriori check` (CI) — all zero-dependency Node, detailed in §4/§6.
 
+**Language.** Human-facing prose — requirement docs, spec scenario descriptions, gap/design/review docs, ledger descriptions, `flow-state` notes, and every message to the human — uses the `language` field in `apriori/process-config.md`. If it is unset or `auto`, **match the language the human is using** (their kickoff and messages). Machine tokens are ALWAYS English, whatever the language: verdict lines (§5 phrase table), scenario IDs (`KV-03`), the delta keywords `ADDED`/`MODIFIED`/`REMOVED`, file paths, and this runbook. So a Chinese kickoff yields Chinese artifacts with English IDs and verdict lines — `apriori verify`/`check` keep working unchanged.
+
 **Session start (agent, every session):**
 
 1. Kickoff session: read this runbook in full. Resume session: read at least the minimal set listed in the **Context economy** block below.

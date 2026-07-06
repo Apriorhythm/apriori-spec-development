@@ -79,3 +79,18 @@ test('IN-08 reports command-level vs rule-level entry per tool', () => {
   assert.strictEqual(levels.cursor, 'rule');          // no slash command
   assert.strictEqual(levels.copilot, 'rule');         // Copilot: rule-level, no slash command
 });
+
+test('IN-09 --language pins a language in the scaffolded config; default is auto', () => {
+  const withLang = tmp();
+  init.scaffold(withLang, ['claude'], { language: '中文' });
+  assert.match(read(withLang, 'apriori/process-config.md'), /\| language \| 中文 \|/);
+  const noLang = tmp();
+  init.scaffold(noLang, ['claude']);
+  assert.match(read(noLang, 'apriori/process-config.md'), /\| language \| auto \|/);   // default
+  // an existing config is never overwritten
+  const existing = tmp();
+  fs.mkdirSync(path.join(existing, 'apriori'), { recursive: true });
+  fs.writeFileSync(path.join(existing, 'apriori', 'process-config.md'), 'MINE\n');
+  init.scaffold(existing, ['claude'], { language: '中文' });
+  assert.strictEqual(read(existing, 'apriori/process-config.md'), 'MINE\n');
+});

@@ -8,6 +8,8 @@ const path = require('node:path');
 const ROOT = path.join(__dirname, '..');
 const EN = fs.readFileSync(path.join(ROOT, 'RUNBOOK.md'), 'utf8');
 const CN = fs.readFileSync(path.join(ROOT, 'RUNBOOK_cn.md'), 'utf8');
+const README = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
+const README_CN = fs.readFileSync(path.join(ROOT, 'README_cn.md'), 'utf8');
 
 test('PR-01 STEP5 exit adds a deterministic spec-runner gate', () => {
   assert.match(EN, /`apriori verify` GREEN/);
@@ -27,10 +29,12 @@ test('PR-03 archive action is native plain-files, no adapter', () => {
   assert.doesNotMatch(CN, /\/opsx:/);
 });
 
-test('PR-04 the interface is single-path plain-files', () => {
-  assert.doesNotMatch(EN, /\(adapter:/);
-  assert.doesNotMatch(EN, /openspec\//);
-  assert.doesNotMatch(CN, /openspec\//);
+test('PR-04 the interface is single-path plain-files (runbook AND handbook)', () => {
+  for (const doc of [EN, CN, README, README_CN]) {
+    assert.doesNotMatch(doc, /\(adapter:/);
+    assert.doesNotMatch(doc, /openspec\//);
+    assert.doesNotMatch(doc, /\/opsx:/);
+  }
 });
 
 test('PR-05 the disposable prototype rule still holds', () => {

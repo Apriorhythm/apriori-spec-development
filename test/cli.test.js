@@ -13,6 +13,10 @@ test('CL-01 subcommand dispatch: known subs dispatch, unknown prints usage + non
   const unknown = run(['frobnicate']);
   assert.notStrictEqual(unknown.status, 0);
   assert.match(unknown.stderr, /unknown command/);
+  // init dispatches to lib/init (non-interactive without --tools → its own usage, not "unknown command")
+  const init = run(['init']);
+  assert.match(init.stderr, /--tools/);
+  assert.doesNotMatch(init.stderr, /unknown command/);
 });
 
 test('CL-02 verify subcommand is the spec-runner', () => {

@@ -65,11 +65,20 @@ test('AM-05 the action lists every merged/modified/deprecated ID', () => {
     '## REMOVED Requirements\n### Requirement: Alpha\nA.\n');
   const r = merge(STORE, delta, 'c');
   assert.deepStrictEqual([r.merged, r.modified, r.deprecated], [['Gamma'], ['Beta'], ['Alpha']]);
-  // CLI layer: clean dry-run → exit 0, store untouched (no --write)
+  // CLI layer: clean dry-run → exit 0, store untouched (no --write), and stdout lists IDs by category
   const store = tmpFile(STORE);
-  const dfile = tmpFile('## ADDED Requirements\n### Requirement: Gamma\nG.\n');
+  const dfile = tmpFile('## ADDED Requirements\n### Requirement: Gamma\nG.\n' +
+    '## MODIFIED Requirements\n### Requirement: Beta\nB2.\n' +
+    '## REMOVED Requirements\n### Requirement: Alpha\nA.\n');
   const before = fs.readFileSync(store, 'utf8');
-  assert.strictEqual(cli(['--store', store, '--delta', dfile, '--change', 'c']), 0);
+  const orig = console.log; const out = [];
+  console.log = (...a) => out.push(a.join(' '));
+  try { assert.strictEqual(cli(['--store', store, '--delta', dfile, '--change', 'c']), 0); }
+  finally { console.log = orig; }
+  const printed = out.join('\n');
+  assert.match(printed, /merged \(ADDED\): Gamma/);
+  assert.match(printed, /modified \(MODIFIED\): Beta/);
+  assert.match(printed, /deprecated \(REMOVED\): Alpha/);
   assert.strictEqual(fs.readFileSync(store, 'utf8'), before);   // dry-run doesn't write
 });
 

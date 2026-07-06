@@ -23,11 +23,13 @@ test('IN-02 the multi-select universe is the six supported tools', () => {
     ['claude', 'codex', 'copilot', 'cursor', 'opencode', 'windsurf'].sort());
 });
 
-test('IN-03 non-interactive via flags parses tools/test-cmd/yes', () => {
-  const a = init.parseArgs(['--tools', 'claude,cursor', '--test-cmd', 'npm test', '--yes']);
+test('IN-03 non-interactive via flags parses tools/test-cmd/yes/language', () => {
+  const a = init.parseArgs(['--tools', 'claude,cursor', '--test-cmd', 'npm test', '--yes', '--language', '中文']);
   assert.deepStrictEqual(a.tools, ['claude', 'cursor']);
   assert.strictEqual(a.testCmd, 'npm test');
   assert.strictEqual(a.yes, true);
+  assert.strictEqual(a.language, '中文');
+  assert.strictEqual(init.parseArgs([]).language, null);   // default: no pin (auto)
 });
 
 test('IN-04 the protocol runbook is written once, self-contained, regardless of tool count', () => {

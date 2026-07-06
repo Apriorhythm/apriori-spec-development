@@ -47,6 +47,9 @@ test('PR-06 a configurable language governs prose; machine tokens stay English',
   assert.match(EN, /\*\*Language\.\*\*/);
   assert.match(EN, /match the language the human is using/);
   assert.match(EN, /Machine tokens are ALWAYS English/);
+  // each machine token is itemized as English-only (not just the general rule)
+  for (const tok of ['verdict lines', 'scenario IDs', 'ADDED', 'MODIFIED', 'REMOVED', 'file paths'])
+    assert.ok(EN.includes(tok), `RUNBOOK Language rule must itemize "${tok}"`);
   assert.match(CN, /\*\*语言。\*\*/);
   assert.match(CN, /跟随人正在使用的语言/);
   assert.match(CN, /机器令牌.*永远是英文/);

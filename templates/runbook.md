@@ -19,7 +19,7 @@
 **Install (human, once per project):**
 
 ```shell
-npm i -g @apriori/spec-dev     # or run any command below via `npx @apriori/spec-dev …`
+npm i -g apriori-cli     # or run any command below via `npx apriori-cli …`
 cd your-project && apriori init  # interactive: pick the AI tools to configure
 ```
 

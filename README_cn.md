@@ -265,8 +265,8 @@ npm -v    # 例如 10.x.x
 ### 3.3 安装并初始化 apriori
 
 ```shell
-# 全局安装(或用 `npx @apriori/spec-dev …` 跑任一命令)
-npm install -g @apriori/spec-dev
+# 全局安装(或用 `npx apriori-cli …` 跑任一命令)
+npm install -g apriori-cli
 # 验证
 apriori --help
 ```

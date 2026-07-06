@@ -265,8 +265,8 @@ npm -v    # e.g. 10.x.x
 ### 3.3 Install and Initialize apriori
 
 ```shell
-# Install globally (or run any command via `npx @apriori/spec-dev …`)
-npm install -g @apriori/spec-dev
+# Install globally (or run any command via `npx apriori-cli …`)
+npm install -g apriori-cli
 # Verify
 apriori --help
 ```

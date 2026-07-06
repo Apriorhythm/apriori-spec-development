@@ -19,7 +19,7 @@
 **安装(人做,每个项目一次):**
 
 ```shell
-npm i -g @apriori/spec-dev     # 或用 `npx @apriori/spec-dev …` 跑下面任一命令
+npm i -g apriori-cli     # 或用 `npx apriori-cli …` 跑下面任一命令
 cd your-project && apriori init  # 交互式:勾选要接入的 AI 工具
 ```
 

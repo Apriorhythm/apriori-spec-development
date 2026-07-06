@@ -14,7 +14,7 @@ const USAGE = `apriori <command>
 
 Run 'apriori <command>' with no args for that command's usage.`;
 
-function main() {
+async function main() {
   switch (sub) {
     case 'verify':  return require('../lib/spec-runner').cli(rest);
     case 'archive': return require('../lib/archive-merge').cli(rest);
@@ -27,4 +27,4 @@ function main() {
   }
 }
 
-process.exit(main());
+main().then((code) => process.exit(code));

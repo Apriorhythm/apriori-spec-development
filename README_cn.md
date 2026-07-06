@@ -198,7 +198,7 @@ ANTHROPIC_MODEL="claude-sonnet-4-6" claude
 # 然后贴入 RUNBOOK P5 / P8 的评审提示词,指向产物路径
 ```
 
-这套"双终端"就是 Claude-only 版的 §2.3 `codex exec` / `resume` 循环:左边生产,把产物交给右边,再把评审意见贴回来,循环到「无重大问题」。与 `resume` 的一点差别:全新的 `claude` 不记得之前几轮——所以把**问题台账**([§7.0](#70-问题台账所有评审循环共用))连同产物一起交给评审方,它靠台账核对早前的修复是否落地,同时保持新鲜视角;按 [§1.4](#14-对抗训练) 的逻辑,即便有 `resume` 可用,这个组合也值得用。
+这套"双终端"就是 Claude-only 版的 §2.3 `codex exec` / `resume` 循环:左边生产,把产物交给右边,再把评审意见贴回来,循环到 "VERDICT: no major issues"(无重大问题)。与 `resume` 的一点差别:全新的 `claude` 不记得之前几轮——所以把**问题台账**([§7.0](#70-问题台账所有评审循环共用))连同产物一起交给评审方,它靠台账核对早前的修复是否落地,同时保持新鲜视角;按 [§1.4](#14-对抗训练) 的逻辑,即便有 `resume` 可用,这个组合也值得用。
 
 **按评审点匹配模型档位:**
 
@@ -410,12 +410,12 @@ graph TD
        ▲                                      │
        └────────── 修订 v2.0 ◄────────────────┘   …（最多 5 轮）
                                       │
-                          直到「无重大问题」 ──► 定稿
+                          直到 "VERDICT: no major issues" ──► 定稿
 ```
 
 - **评审用的模型，应与起草需求时不同**（例如需求初稿用 Claude，评审切 GPT）。
 - 评审维度建议固定为清单：**目标状态 B 是否清晰 / 是否有歧义 / 边界与异常是否覆盖 / 是否隐含未声明的状态变更 / 验收标准是否可测**。
-- **退出条件**：评审模型明确输出「无重大问题」，或达到 5 轮上限后人工裁决。
+- **退出条件**：评审模型明确输出 "VERDICT: no major issues"（无重大问题），或达到 5 轮上限后人工裁决。
 - **每一轮同时写入问题台账**（`doc/review/<change>-issues.md`，[§7.0](#70-问题台账所有评审循环共用)）：新发现领新 ID、修复翻状态；一旦有 ID 被重开，就是循环不收敛的预警。
 
 对应提示词见 [§7.1](#71-step0需求文档对抗评审)。
@@ -444,7 +444,7 @@ SPEC-DOC + DESIGN-DOC_V2  ──评审模型──►  SPEC-EVALUATION-DOC_V2
 
 每一轮的发现都会同步进问题台账（[§7.0](#70-问题台账所有评审循环共用)），生产方的采纳/拒绝决定对 STEP3 的人工闸口全程可见。
 
-**退出条件**：评审模型明确输出「无重大问题，可进入执行阶段」，或达上限后人工决策。提示词见 [§7.3](#73-step2对抗训练评审与修订)。
+**退出条件**：评审模型明确输出 "VERDICT: no major issues, ready to proceed to execution"（无重大问题，可进入执行阶段），或达上限后人工决策。提示词见 [§7.3](#73-step2对抗训练评审与修订)。
 
 ### 4.6 STEP3｜技术评审
 
@@ -486,14 +486,14 @@ SPEC-DOC + DESIGN-DOC_V2  ──评审模型──►  SPEC-EVALUATION-DOC_V2
 
 > `/goal` 自带的评估器**只读 transcript**、只判 *"条件达到了吗"*——它是个弱模型，**不是**对抗评审。所以真正的检查必须在循环**内部**跑、并把结论**留在 transcript 里**。`/goal` 负责编排循环，它永远不替代测试、E2E 套件或异构评审本身。
 
-正是这种分层，让你能在**不违反 [§1.4](#14-对抗训练)** 的前提下连**对抗评审都自动化**：每一轮里 Claude **主动调用评审方**（Codex 走 [§2.3](#23-用命令行驱动-codex多轮对抗评审)，或新开一个 Claude 会话走 [§2.4](#24-只有-claude-code-时的对抗评审)），把它的结论贴回来，而 goal 条件不过是 *"评审方判定为'无重大问题'，或满 N 轮"*。判断仍是异构+新上下文，`/goal` 只读"这个判断有没有落进 transcript"。
+正是这种分层，让你能在**不违反 [§1.4](#14-对抗训练)** 的前提下连**对抗评审都自动化**：每一轮里 Claude **主动调用评审方**（Codex 走 [§2.3](#23-用命令行驱动-codex多轮对抗评审)，或新开一个 Claude 会话走 [§2.4](#24-只有-claude-code-时的对抗评审)），把它的结论贴回来，而 goal 条件不过是 *"评审方结论行为 'VERDICT: no major issues'，或满 N 轮"*。判断仍是异构+新上下文，`/goal` 只读"这个判断有没有落进 transcript"。
 
 **哪些该自动化，哪些留作人工闸口：**
 
 | 阶段 | 一个可靠的 `/goal` 条件（transcript 可判） | 循环内部由什么支撑 |
 |---|---|---|
-| STEP0 | REQ-REVIEW-DOC 已产出且判定 =「无重大问题」，或 step0-cap 轮（默认 5） | 每轮一次异构评审调用 |
-| STEP2 | SPEC-EVALUATION-DOC 判定 =「无重大问题，可进入执行」，或 N 轮 | 每轮一次异构评审调用 |
+| STEP0 | REQ-REVIEW-DOC 已产出且结论行 = `VERDICT: no major issues`，或 step0-cap 轮（默认 5） | 每轮一次异构评审调用 |
+| STEP2 | SPEC-EVALUATION-DOC 结论行 = `VERDICT: no major issues, ready to proceed to execution`，或 N 轮 | 每轮一次异构评审调用 |
 | STEP5 | `npm test` 退出码 0 **且** lint/静态分析全绿(where configured) **且** tasks.md 全 `[x]` **且** E2E/Playwright 全绿 **且** 一致性评审无缺口，或 N 轮——按 §4.8 项目类型矩阵替换（纯文档：`python3 scripts/check_docs.py` + 示例命令静态检查） | 真跑测试 + E2E + 评审调用 |
 | STEP6 | 增量规格已合并 **且** 该模块知识库文件已更新 | archive 动作(适配器 `/opsx:archive`)+ 回写 |
 | **STEP3 技术评审 · 反向沉淀复核 · 知识库签字** | —— **不要塞进 goal** | 由人决定 |
@@ -514,7 +514,7 @@ SPEC-DOC + DESIGN-DOC_V2  ──评审模型──►  SPEC-EVALUATION-DOC_V2
 | 一致性评审结论（§7.4） | 以评论 / 必过检查的形式挂在 PR 上，过不了不许合并 |
 | STEP6 知识库回写 | 同一个 PR 的一部分——"代码合了、知识库没更"在评审里一眼可见，而不是悄悄积累 |
 
-**并行变更。** 每个变更还可用 `git worktree` 获得隔离工作副本——SDD 工具已多将其自动化。分支隔离了代码，但归档时仍有两处会撞车：living 规格库(`doc/specs/`;适配器 `openspec/specs/`)和按模块的知识库文件。按模块串行归档——后合并的一方负责 rebase 自己的增量规格与知识库 diff；把知识库文件冲突当作"两个变更动了同一批事实"的信号：要有意识地调和，而不是在合并编辑器里随手选一边。
+**并行变更。** 每个变更还可用 `git worktree` 获得隔离工作副本——SDD 工具已多将其自动化。多谱系仓库(多条长期版本线并存)中,每份需求及其 flow-state 都预先声明**目标谱系**(分支/线)——变更中途发现谱系冲突是立即停下的信号,不是合并编辑器里现场解决的事。分支隔离了代码，但归档时仍有两处会撞车：living 规格库(`doc/specs/`;适配器 `openspec/specs/`)和按模块的知识库文件。按模块串行归档——后合并的一方负责 rebase 自己的增量规格与知识库 diff；把知识库文件冲突当作"两个变更动了同一批事实"的信号：要有意识地调和，而不是在合并编辑器里随手选一边。
 
 ---
 
@@ -565,7 +565,7 @@ git init             # 建议纳入版本管理，方便对照每步 diff
 /opsx:propose   # 适配器命令——plain-files 项目直接按 RUNBOOK P4 执行
 ```
 重点检查产出的 `spec.md` 是否**为每个用户可见行为单独建 scenario**，且**外部共享状态（这里就是那张内存 map）描述了 初始化 / 运行中更新 / 清理失效 三个时机**。
-然后切到评审工具/模型，按 [§7.3](#73-step2对抗训练评审与修订) 评审 → 修订，循环到「无重大问题」。具体可用 Codex 来驱动评审（[§2.3](#23-用命令行驱动-codex多轮对抗评审)）：
+然后切到评审工具/模型，按 [§7.3](#73-step2对抗训练评审与修订) 评审 → 修订，循环到 "VERDICT: no major issues"。具体可用 Codex 来驱动评审（[§2.3](#23-用命令行驱动-codex多轮对抗评审)）：
 ```shell
 # 第一轮——开启评审会话（记下打印出来的 session id）
 codex exec -s read-only "按 RUNBOOK P5 评审清单，对照 requirement/req-final.md 评审 openspec/changes/<change>/specs/ 与 design.md，末尾给出结论行。"   # 适配器路径——plain-files 项目为 doc/changes/<change>/…
@@ -593,7 +593,7 @@ npm test
 
 想让"实现 → 测试"循环无人值守地跑，就用 goal 包起来——这是 [§7.7](#77-goal-配方自动化每个循环) STEP5 配方的 mini-kv 版（它是个库，所以没有 Playwright 那一条）：
 ```text
-/goal "目标——以下全部成立:`npm test` 退出码 0;每个 spec scenario ID 至少出现在一个测试名里;openspec/changes/<change>/tasks.md(适配器路径;plain-files 为 doc/changes/<change>/tasks.md)每项均为 [x];且由另一个模型做的一致性评审(RUNBOOK P8 提示词)报告无 spec-vs-代码 缺口。上限:15 轮。第 1 轮:为每个 spec scenario 生成一条失败测试(以其 ID 命名)并把失败运行结果打印出来。之后每一轮:按顺序实现 tasks.md 下一项,跑 `npm test` 并把输出打印出来。全部成立或满 15 轮则停。"
+/goal "目标——以下全部成立:`npm test` 退出码 0;每个 spec scenario ID 至少出现在一个测试名里;openspec/changes/<change>/tasks.md(适配器路径;plain-files 为 doc/changes/<change>/tasks.md)每项均为 [x];且由另一个模型做的一致性评审(RUNBOOK P8 提示词)报告 'VERDICT: no spec-vs-code gaps'。上限:15 轮。第 1 轮:为每个 spec scenario 生成一条失败测试(以其 ID 命名)并把失败运行结果打印出来。之后每一轮:按顺序实现 tasks.md 下一项,跑 `npm test` 并把输出打印出来。全部成立或满 15 轮则停。"
 ```
 > 配方里的轮数是示例默认值——以 `process-config.md` 为准。
 
@@ -722,7 +722,7 @@ git log --oneline <source-commit>..HEAD -- src/<module>/
 
 - P1 用**与起草需求不同的模型/工具**执行,并把台账一并喂给它,让它能核验早前的修复。
 - 五个评审维度是刻意固定的——目标态清晰度 / 边界与异常覆盖 / 未声明的状态变更 / 验收标准可测性 / 与现状 A 的冲突——清单稳定,各轮才可比。
-- 评审方只评审、绝不改需求文档;生产方对每条正式问题给出采纳/拒绝+理由(advisory 整批确认即可,RUNBOOK P0)。循环到「无重大问题」,定稿为 `requirement/req-final.md`（最多 5 轮）。
+- 评审方只评审、绝不改需求文档;生产方对每条正式问题给出采纳/拒绝+理由(advisory 整批确认即可,RUNBOOK P0)。循环到 "VERDICT: no major issues",定稿为 `requirement/req-final.md`（最多 5 轮）。
 
 ### 7.2 STEP1｜explore
 
@@ -733,7 +733,7 @@ git log --oneline <source-commit>..HEAD -- src/<module>/
 提示词:RUNBOOK **P4**（propose）/ **P5**（评审方）/ **P6**（生产方修订）。设计说明:
 
 - P4 内置了 §8.1 的两条规格质量规则:每个用户可见输出一个独立 scenario（带稳定 ID）,外部共享状态必须写三个时机。
-- P5 专找「会导致返工或线上事故」的问题——变更触及外部输入或权限时还带安全维度;它的结论行（「无重大问题,可进入执行阶段」）就是循环的机器可判退出条件。
+- P5 专找「会导致返工或线上事故」的问题——变更触及外部输入或权限时还带安全维度;它的结论行（"VERDICT: no major issues, ready to proceed to execution"）就是循环的机器可判退出条件。
 - P6 只改 spec/design 文件——绝不动源码——且必须对台账里每条正式问题给出采纳/拒绝+理由;范围条款(什么计入各结论行)写在 P 提示词里。
 
 > 💡 想用 Codex 从命令行跑这个评审循环——第一轮开会话,之后每轮 `resume <session-id>` 让评审方保有完整上下文——见 [§2.3](#23-用命令行驱动-codex多轮对抗评审)。
@@ -744,7 +744,7 @@ git log --oneline <source-commit>..HEAD -- src/<module>/
 
 - P7 测试先行:每个 spec scenario 一条失败测试,测试名带 scenario ID,在实现*之前*先展示失败运行——然后按 tasks.md 顺序实现。scenario 覆盖是硬标准,行覆盖率只是信号（[§4.8](#48-step5opsxapply编码--测试--实现评审)）。
 - P8 把机械核对放在最前（哪些 scenario ID 没出现在任何测试名里）,便宜的检查先跑,其范围条款把风格类发现留在 advisory;和所有评审一样跑在异构模型上（[§2.3](#23-用命令行驱动-codex多轮对抗评审)）。
-- 探索轨的 **P11**(规格提取)与 **P12**(提取评审,异构)沿用同一模式:评审基准是意图卡——绝不是原型本身;P12 跑 P1 五维度外加意图符合性与无凭空发明检查;其结论行(`extraction accepted`)就是该轨机器可判的汇入条件(RUNBOOK §4/§5)。
+- 探索轨的 **P11**(规格提取)与 **P12**(提取评审,异构)沿用同一模式:评审基准是意图卡——绝不是原型本身;P12 跑 P1 五维度外加意图符合性与无凭空发明检查;其结论行(`VERDICT: extraction accepted`)就是该轨机器可判的汇入条件(RUNBOOK §4/§5)。提取时决策——意图卡与 spike 观察都不支撑的行为——以显式 `EXT-n` 提案声明:P12 给推荐,人在提取评审决策点终裁(机制见 RUNBOOK P11/P12)。
 
 ### 7.5 STEP6｜archive
 

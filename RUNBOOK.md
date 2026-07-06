@@ -56,7 +56,7 @@ Advance ONLY to the next human gate, then stop and report.
 
 **Gate consolidation (explicit authorization).** The default is stop-at-every-gate. A human may explicitly consolidate intermediate gates into a later one (e.g. "run to the final merge review"); the decision must be recorded in `gates:` (scope + how to revoke) and is revocable at any time. Three gates can NEVER be covered by such an authorization: the **shrink decision** (§6), the **KB sign-off** (gate ④), and **`intent-card sign-off`**.
 
-> The protection forbids *silent coverage by a blanket authorization* — not the owner's explicit choice. A protected gate may still be decided by **explicit proxy**, under all of the following: ① the agent first presents the pending gate — **each protected gate itemized independently** (numbered, what is being approved, artifact path, the decision options) — never bundled into a progress question; ② the human's delegating reply comes *after* that presentation and is recorded **verbatim** in `gates:`, one entry per gate; ③ the proxy is **one-shot** — it covers exactly the gates itemized in that presentation and never inherits to future gates of the same kind. A reply may cover several protected gates only if each was itemized; a pre-existing blanket authorization never qualifies.
+> The protection forbids *silent coverage by a blanket authorization* — not the owner's explicit choice. A protected gate may still be decided by **explicit proxy**, under all of the following: ① the agent first presents the pending gate — **each protected gate itemized independently** (numbered, what is being approved, artifact path, the decision options) — never bundled into a progress question; ② the human's delegating reply comes *after* that presentation and is recorded **verbatim** in `gates:`, one entry per gate; ③ the proxy is **one-shot** — it covers exactly the gates itemized in that presentation and never inherits to future gates of the same kind. A reply may cover several protected gates only if each was itemized; a pre-existing blanket authorization never qualifies. An itemized *multi-step end-to-end run* does **not** implicitly cover protected gates nested inside it: when an un-itemized protected gate surfaces mid-run, stop and present it — the interruption itself is logged in `gates:`; gates that were itemized up front are unaffected.
 
 **R2 — Reviews must be genuinely external.** The producing session never issues a review verdict. Spawn a heterogeneous reviewer: `codex exec -s read-only "<prompt>"` (rounds 2+: `codex exec resume -c sandbox_mode="read-only" <session-id> "..."` — codex CLIs ≥0.14x reject `-s` on `resume`; on older versions use `-s read-only` before the session id), or — without Codex — a **fresh** `claude` session on a different tier, fed the artifacts plus the issue ledger (P0). Paste the reviewer's verdict line back verbatim. Reviewers usually run in read-only sandboxes and cannot write the ledger: the reviewer ends its output with a **ledger delta** (new rows + status flips), and the producer lands it verbatim, marked "recorded on behalf of the reviewer"; the reviewer's raw output is archived in full at `doc/review/<change>-<stage>-raw.*` so the recorded delta can always be diffed against its source. When invoking codex non-interactively (background/scripted), close stdin — append `< /dev/null` — or it prints "Reading additional input from stdin..." and hangs. If you cannot actually spawn a reviewer, stop and say so — **do not simulate one**.
 
@@ -103,6 +103,9 @@ change: <change-name>
 tier: trivial | medium | large
 track: harden | explore
 track-rationale: <one line: why this track — reported at the next human gate>
+lineage: <target branch/line + its merge taboo, e.g. "v2 (never merge to main)">
+                        # copied from the requirement at kickoff; a lineage
+                        # conflict discovered mid-change is an immediate stop
 current-step: STEP0 | STEP1 | STEP2 | STEP3 | STEP4 | STEP5 | STEP6 |
               INTENT-CARD | SPIKE | EXTRACTION |     # explore-track positions
               DONE | ABANDONED
@@ -117,7 +120,14 @@ artifact-root: .        # optional; default = project root (v1.0 paths unchanged
                         # atomicity) or openspec/ (tool-owned). When externalized, the
                         # kickoff prompt must state it — this file itself lives under it.
 gates:                  # append-only log of human decisions
-  - <date+time> <gate>: <the human's decision, verbatim>
+  - <YYYY-MM-DDTHH:MM> <label>: <the human's decision, verbatim>
+                        # label from the fixed vocabulary: gate① … gate⑤ |
+                        # intent-card sign-off | extraction review |
+                        # STEP2 full review | consolidation | note
+                        # (note = non-decision events: degradations, closeout, …)
+                        # the format constrains the prefix ONLY — the decision text
+                        # stays verbatim free text; the fixed prefix is what lets
+                        # §6's wall-clock duration fields be machine-extracted
 ```
 
 Update it immediately after each step and each round; append every gate decision; a new session trusts this file over its own inference.
@@ -154,16 +164,16 @@ Update it immediately after each step and each round; append every gate decision
 
 ### STEP0 — requirement refinement · adversarial loop · cap: `step0-cap` (default 5)
 
-- **In:** `requirement/req-v{N}.md`; KB if any. If the requirement lacks any of the three essentials — goal / out-of-scope / testable acceptance — **interview the human first** with structured questions, then draft req-v1.
+- **In:** `requirement/req-v{N}.md`; KB if any. The requirement must state its **target lineage** (mainline / which branch line) — in multi-lineage repos a missing lineage is a fourth interview trigger. If the requirement lacks any of the three essentials — goal / out-of-scope / testable acceptance — **interview the human first** with structured questions, then draft req-v1.
 - **Each round:** (1) if a review exists, revise per it → `req-v{N+1}.md`, noting accept/reject + reason per issue and updating the ledger; (2) spawn the reviewer with **P1** (R2) → review doc + ledger; (3) record the verdict line.
-- **Exit:** verdict = "no major issues" → copy to `requirement/req-final.md`, advance. Cap hit → **gate ①**. Goal turns out unstateable → propose harden→explore (a human gate confirms the switch).
+- **Exit:** verdict line = `VERDICT: no major issues` → copy to `requirement/req-final.md`, advance. Cap hit → **gate ①**. Goal turns out unstateable → propose harden→explore (a human gate confirms the switch).
 
 ### EXPLORE track — when §2 routes the change here
 
 0. **Intent card first (non-waivable):** ≤15 lines at `requirement/intent-card.md` — goal hypothesis / success criteria / the questions the spike must answer. Requires **human sign-off** (`intent-card sign-off`; a heterogeneous review may inform it, but cannot replace it). On this track the intent card is the independent review baseline — the extracted spec is never judged against the prototype alone.
 1. **Spike (bounded):** prototype freely under `spike/`; cap: `spike-cap` (default 10) turns; exit = every intent-card question answered. Cap hit → **gate ⑤**.
-2. **P11 — spec extraction:** inputs = intent card + prototype + spike findings; outputs = `requirement/req-final.md` + spec drafts under `doc/changes/<change>/specs/` (adapter projects: `openspec/changes/<change>/specs/`).
-3. **P12 — extraction review (heterogeneous, R2):** cap: `extraction-review-cap` (default 2). Verdict `extraction accepted` → step 4. `extraction rejected` + unfaithful extraction → redo P11; `extraction rejected` + intent hypothesis falsified → back to SPIKE, or `ABANDONED` (archive the intent card + findings; log in the ledger).
+2. **P11 — spec extraction:** inputs = intent card + prototype + spike findings; outputs = spec drafts under `doc/changes/<change>/specs/` (adapter projects: `openspec/changes/<change>/specs/`) as the **sole intent-side authority**, plus `requirement/req-final.md` as a thin index over them (§5 P11 — never a second acceptance narrative). Declared extraction-time decisions (`EXT-n`) get their final ruling at the `extraction review` decision point.
+3. **P12 — extraction review (heterogeneous, R2):** cap: `extraction-review-cap` (default 2). Verdict line `VERDICT: extraction accepted` → step 4. `VERDICT: extraction rejected` + unfaithful extraction → redo P11; `VERDICT: extraction rejected` + intent hypothesis falsified → back to SPIKE, or `ABANDONED` (archive the intent card + findings; log in the ledger).
 4. **Merge:** enter STEP2's full P5/P6 loop — from here the tracks are identical.
 5. **The prototype is disposable, machine-checkably:** STEP5 rebuilds from failing tests; tasks.md must not reference `spike/`; `spike/` is deleted (or quarantined) at archive.
 6. **Track transitions:** explore→harden (extraction accepted, or the goal turns out clear); harden→explore (STEP0 finds the goal unstateable — via a human gate); explore→ABANDONED (hypothesis falsified). Each transition keeps the intent card, findings and ledger; only `spike/` is dropped.
@@ -184,7 +194,7 @@ KB docs have two sections with **opposite truth directions** (§5 P9/P10): `Cont
 ### STEP2 — propose · adversarial loop · cap: `step2-cap` (default 4)
 
 - **Do:** the **propose action** (adapter: `/opsx:propose`) with **P4**; then loop: reviewer **P5** (R2) → producer revises with **P6** (spec/design only — never source); ledger every round.
-- **Exit:** verdict = "no major issues, ready to proceed to execution" → advance. Cap hit or oscillation → **gate ⑤**.
+- **Exit:** verdict line = `VERDICT: no major issues, ready to proceed to execution` → advance. Cap hit or oscillation → **gate ⑤**.
 
 ### STEP3 — technical review — **gate ③ (human)**
 
@@ -199,7 +209,7 @@ KB docs have two sections with **opposite truth directions** (§5 P9/P10): `Cont
 
 - **Do, in order:** (1) one failing test per spec scenario, test names carry scenario IDs — show the failing run; (2) implement in tasks.md order with **P7**, marking `[x]` as you go; (3) run until green; (4) heterogeneous consistency review **P8** (R2); ledger.
 - **Verification matrix by project type:** all code projects — lint/static analysis green (plus SAST where security-sensitive) — where configured; backend/library — unit + property tests, mutation spot-checks; UI — plus E2E/visual regression; deployed service — plus runtime contracts, canary + rollback; **docs-only project — `python3 scripts/check_docs.py` green + example-command static checks + the P8 consistency review replace `npm test` as the exit condition.** Where an executable instrument doesn't exist for the project type, the LLM review is the primary instrument there — that is not a downgrade.
-- **Exit — ALL of:** tests green (per the matrix above); lint/static analysis green (where configured); every scenario ID appears in ≥1 test name (docs-only: the checker's structural checks stand in); tasks.md all `[x]`; consistency verdict = "no spec-vs-code gaps". Design infeasible → back to STEP2; requirement itself wrong → back to STEP0 (both: update the state file and tell the human). Cap hit → **gate ⑤**.
+- **Exit — ALL of:** tests green (per the matrix above); lint/static analysis green (where configured); every scenario ID appears in ≥1 test name (docs-only: the checker's structural checks stand in); tasks.md all `[x]`; consistency verdict line = `VERDICT: no spec-vs-code gaps`. Design infeasible → back to STEP2; requirement itself wrong → back to STEP0 (both: update the state file and tell the human). Cap hit → **gate ⑤**.
 
 ### STEP6 — archive + KB writeback
 
@@ -210,6 +220,17 @@ KB docs have two sections with **opposite truth directions** (§5 P9/P10): `Cont
 ---
 
 ## 5. Prompts
+
+**Verdict-line phrase table.** Every review prompt ends with exactly one `VERDICT:` line drawn from this table — these are the machine-greppable strings that `/goal` conditions and the exit rules in §4 match against. CN documents quote the English strings verbatim (a CN gloss in prose is fine; the verdict line itself is never translated).
+
+| Prompt | Pass | Fail |
+|---|---|---|
+| P1 | `VERDICT: no major issues` | `VERDICT: <N> issues open` |
+| P5 | `VERDICT: no major issues, ready to proceed to execution` | `VERDICT: <N> issues open` |
+| P8 | `VERDICT: no spec-vs-code gaps` | `VERDICT: <N> issues open` |
+| P12 | `VERDICT: extraction accepted` | `VERDICT: extraction rejected` |
+
+`<N>` = the total count of formal ledger rows with status `open` at the end of that review round (whole ledger, no stage filtering — mechanically decidable; a positive integer; advisory/rejected/fixed rows don't count). P12 uses fixed phrases only, never the count form.
 
 ### P0 — issue ledger (every prompt below reads/writes it)
 
@@ -241,10 +262,11 @@ You are a senior requirements reviewer. Review the requirement doc; the goal is 
 3. Are there "implied but undeclared" state changes or side effects
 4. Is each acceptance criterion testable (expressible as "if … then …")
 5. Does it conflict with current state A (if a KB was provided)
+6. Is the target lineage declared, and does it match the repo's reality (multi-lineage repos: which branch/line this lands on)
 [Scope] Count toward the verdict only: ambiguous target state, untestable acceptance criteria, missing edge/boundary coverage, conflicts with state A. Everything else — label advisory (P0 rules). Also check an explicit out-of-scope ("won't do") section exists.
 [Output]
 Produce doc/review/<change>-req-review-v{N}.md: an issue list by dimension (description / risk / suggested fix); advisories listed separately.
-Mirror formal issues into the ledger per its rules. End with a verdict line: "no major issues" or not.
+Mirror formal issues into the ledger per its rules. End with the verdict line (§5 phrase table): "VERDICT: no major issues" or "VERDICT: <N> issues open".
 Do not modify the requirement doc itself.
 ```
 
@@ -300,7 +322,7 @@ You are a technical reviewer. Hunt for issues that would cause rework or a produ
 [Scope] Count toward the verdict only gaps that would cause rework or a production incident. Everything else — label advisory (P0 rules).
 [Output]
 doc/design/<change>-review-v{N}.md: issues (description/risk/suggestion), advisories listed separately; mirror formal issues into the ledger per its rules.
-End with a verdict line: "no major issues, ready to proceed to execution" or not.
+End with the verdict line (§5 phrase table): "VERDICT: no major issues, ready to proceed to execution" or "VERDICT: <N> issues open".
 ```
 
 ### P6 — STEP2 revise (producer)
@@ -338,7 +360,7 @@ Review the implementation against the SPEC-DOC:
 [Scope] Count toward the verdict only spec-vs-code gaps. Style, taste and nice-to-haves — label advisory (P0 rules).
 List each inconsistency with a suggested fix; end with your ledger delta (P0 rules), advisories listed separately.
 (Docs-only projects: item 1's mechanical check = the checker script's output; read "tests" as the doc checks.)
-End with a verdict line: "no spec-vs-code gaps" or not.
+End with the verdict line (§5 phrase table): "VERDICT: no spec-vs-code gaps" or "VERDICT: <N> issues open".
 ```
 
 ### P9 — STEP6 archive (producer)
@@ -368,9 +390,9 @@ You are a system knowledge-base engineer. Read the module's code and produce/rec
 ```text
 [Input] requirement/intent-card.md; the prototype under spike/; the spike findings.
 [Task] Extract the specification implied by the prototype's *validated* behaviors — never invent behavior that neither the intent card nor an observed spike run supports. Produce:
-* requirement/req-final.md — goal + acceptance criteria, each traceable to the intent card;
-* spec drafts with scenario IDs under doc/changes/<change>/specs/ (adapter projects: openspec/changes/<change>/specs/).
-[Constraints] Mark unvalidated assumptions "needs confirmation". The prototype is a source of observations, not of authority: where intent and prototype disagree, the intent card wins and the disagreement is listed explicitly.
+* spec drafts with scenario IDs under doc/changes/<change>/specs/ (adapter projects: openspec/changes/<change>/specs/) — the SOLE intent-side authority;
+* requirement/req-final.md — a THIN INDEX only: one goal line citing the intent card + acceptance = a reference to the spec scenario-ID list. Never write a second acceptance narrative there — two prose versions of the same intent drift apart.
+[Constraints] Mark unvalidated assumptions "needs confirmation". Behavior that neither the intent card nor an observed spike run supports, but the spec needs for completeness, MUST be declared as an explicit extraction-time decision — an `EXT-n` entry (content + reasoning) in a dedicated section, never mixed into extracted facts; EXT-n entries are ruled on at the extraction review. The prototype is a source of observations, not of authority: where intent and prototype disagree, the intent card wins and the disagreement is listed explicitly.
 Stop and wait for the extraction review (P12).
 ```
 
@@ -379,11 +401,12 @@ Stop and wait for the extraction review (P12).
 ```text
 [Input] requirement/intent-card.md; P11's outputs; the issue ledger.
 [Checklist] P1's five dimensions, plus:
-6. Intent-card conformance — every goal and success criterion appears in the extracted spec;
-7. No invention — every spec line traces to the intent card or an observed spike behavior (spot-check the tracing).
+6. Intent-card conformance — every goal and success criterion appears in the extracted specs/ (the sole authority; the req-final thin index is checked only for being thin and consistent);
+7. No invention — every spec line traces to the intent card or an observed spike behavior (spot-check the tracing), EXCEPT declared EXT-n entries, which are reviewed as proposals: recommend each as accepted / rejected / needs-human.
+[EXT-n semantics] Your verdict line judges extraction faithfulness only (invention outside declared EXT-n, intent conformance) — EXT-n recommendations never change it. Final EXT-n rulings belong to the `extraction review` decision point (the existing human gate): human-rejected → the producer deletes those spec lines, deletion confirmed mechanically (grep: the EXT-n scenario IDs are gone) with no P12 rerun; human-accepted → the entry is back-noted on the intent card. Unruled EXT-n block the decision point, not your verdict line — list them explicitly before it.
 [Scope] Count toward the verdict only unfaithful extraction or a falsified intent hypothesis; advisory findings never land in either rejected branch (P0 rules).
-[Output] doc/review/<change>-extraction-review-v{N}.md — issues per P0, advisories listed separately; end with your ledger delta,
-then exactly one verdict line: "extraction accepted" or "extraction rejected".
+[Output] doc/review/<change>-extraction-review-v{N}.md — issues per P0, advisories listed separately, EXT-n recommendations; end with your ledger delta,
+then exactly one verdict line (§5 phrase table): "VERDICT: extraction accepted" or "VERDICT: extraction rejected".
 Cap: extraction-review-cap (default 2). Rejected + unfaithful extraction → producer redoes P11;
 rejected + intent hypothesis falsified → back to SPIKE or ABANDONED (the state machine's failure branches).
 ```
@@ -397,29 +420,29 @@ rejected + intent hypothesis falsified → back to SPIKE or ABANDONED (the state
 
 **STEP0 loop:**
 ```text
-/goal "Goal: requirement/req-final.md exists and the latest review pass reports 'no major issues'. Cap: step0-cap rounds (default 5).
+/goal "Goal: requirement/req-final.md exists and the latest review pass reports 'VERDICT: no major issues'. Cap: step0-cap rounds (default 5).
 Each round:
 1. If doc/review/<change>-req-review-v{N}.md exists, revise requirement/req-v{N}.md per it, bump to v{N+1}, note accept/reject+reason per issue, and update those issues' Status in doc/review/<change>-issues.md.
 2. Run the reviewer with a DIFFERENT model on the current version and save its output to doc/review/<change>-req-review-v{N}.md, e.g.:
    codex exec -s read-only \"<the P1 prompt> — target: requirement/req-v{N}.md\"
    (no Codex? open a fresh `claude` and hand it P1 plus the issue ledger)
 3. Paste the reviewer's final verdict line back into this conversation.
-Stop when the verdict is 'no major issues' (then copy to requirement/req-final.md) or at the cap."
+Stop when the verdict line is 'VERDICT: no major issues' (then copy to requirement/req-final.md) or at the cap."
 ```
 
 **STEP2 loop:**
 ```text
-/goal "Goal: doc/changes/<change>/ (adapter: openspec/changes/<change>/) has SPEC-DOC+DESIGN-DOC and the latest review verdict is 'no major issues, ready to proceed to execution'. Cap: step2-cap rounds (default 4).
+/goal "Goal: doc/changes/<change>/ (adapter: openspec/changes/<change>/) has SPEC-DOC+DESIGN-DOC and the latest review verdict line is 'VERDICT: no major issues, ready to proceed to execution'. Cap: step2-cap rounds (default 4).
 Each round:
 1. Revise the spec/design files per the latest review — never touch source code — and update the handled issues' Status in doc/review/<change>-issues.md.
 2. Re-run the heterogeneous reviewer with the P5 prompt (round 1: codex exec, note the printed session id; later rounds: codex exec resume -c sandbox_mode=\"read-only\" <session-id> — codex ≥0.14x rejects -s on resume; older CLIs: -s read-only before the id), producing doc/design/<change>-review-v{N}.md and updating the ledger.
 3. Surface the reviewer's verdict line here.
-Stop on 'no major issues, ready to proceed to execution' or at the cap."
+Stop on 'VERDICT: no major issues, ready to proceed to execution' or at the cap."
 ```
 
 **STEP5 loop:**
 ```text
-/goal "Goal — ALL must hold: `npm test` exits 0; lint/static analysis green (where configured); every scenario ID in doc/changes/<change>/specs/ (adapter: openspec/…) appears in at least one test name (list any missing IDs); every item in doc/changes/<change>/tasks.md (adapter: openspec/…) is [x]; (UI projects only) the Playwright E2E suite passes and screenshot diffs are within threshold; AND a consistency review by a DIFFERENT model (the P8 prompt) reports no spec-vs-code gaps. Cap: step5-cap turns (default 25).
+/goal "Goal — ALL must hold: `npm test` exits 0; lint/static analysis green (where configured); every scenario ID in doc/changes/<change>/specs/ (adapter: openspec/…) appears in at least one test name (list any missing IDs); every item in doc/changes/<change>/tasks.md (adapter: openspec/…) is [x]; (UI projects only) the Playwright E2E suite passes and screenshot diffs are within threshold; AND a consistency review by a DIFFERENT model (the P8 prompt) reports 'VERDICT: no spec-vs-code gaps'. Cap: step5-cap turns (default 25).
 Turn 1: derive one failing test per spec scenario, named with its scenario ID, and SHOW the failing run. Each later turn: implement the next tasks.md item in order, then run `npm test` (and the Playwright run for UI projects) and SHOW the output so the result is in the transcript. When the code is complete, run the consistency reviewer (codex exec / fresh claude) and paste its verdict.
 Stop when every condition holds or at the cap."
 ```

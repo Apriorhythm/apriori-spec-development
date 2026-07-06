@@ -56,7 +56,7 @@
 
 **闸口整合(显式授权)。** 默认逐闸必停。人可以显式把中间闸口整合到某个靠后的闸口(如"一路跑到终审");该决定必须记入 `gates:`(范围+撤销方式),且随时可撤销。三个闸口**永远不可**被此类授权覆盖:**收缩决策**(§6)、**知识库签核**(闸口④)、**意图卡签核**(`intent-card sign-off`)。
 
-> 这条保护禁止的是*被一揽子授权静默覆盖*——不是所有者的显式选择。受保护闸口仍可由**显式代行**决定,须同时满足:① agent 先呈报待决闸口——**每个受保护闸口独立列项**(编号、批的是什么、产物路径、可选决定),绝不与进度性提问捆绑;② 人的授权答复发生在呈报*之后*,并**原文**记入 `gates:`,一闸一条;③ 代行是**一次性的**——只覆盖该次呈报中列项的闸口,绝不继承到未来同类闸口。一句答复可以覆盖多个受保护闸口,当且仅当每个都被独立列项;先前存在的一揽子授权永远不算数。
+> 这条保护禁止的是*被一揽子授权静默覆盖*——不是所有者的显式选择。受保护闸口仍可由**显式代行**决定,须同时满足:① agent 先呈报待决闸口——**每个受保护闸口独立列项**(编号、批的是什么、产物路径、可选决定),绝不与进度性提问捆绑;② 人的授权答复发生在呈报*之后*,并**原文**记入 `gates:`,一闸一条;③ 代行是**一次性的**——只覆盖该次呈报中列项的闸口,绝不继承到未来同类闸口。一句答复可以覆盖多个受保护闸口,当且仅当每个都被独立列项;先前存在的一揽子授权永远不算数。列项呈报的*多步端到端运行*也**不**隐含覆盖其内部嵌套的受保护闸口:运行途中浮现未列项的受保护闸口时,停下、单独呈报——这次中断本身记入 `gates:`;事先已列项的闸口不受影响。
 
 **R2 —— 评审必须真实外调。** 生产会话永远不出评审结论。真实调起异构评审方:`codex exec -s read-only "<提示词>"`(第 2 轮起:`codex exec resume -c sandbox_mode="read-only" <session-id> "..."`——codex CLI ≥0.14x 的 resume 子命令不接受 `-s`;旧版本在 session id 之前用 `-s read-only`);没有 Codex 就**新开**一个不同档位的 `claude` 会话,喂给它产物加问题台账(P0)。把评审方的结论行**原文**贴回。评审方通常跑在只读沙箱里、无法自己写台账:由评审方在输出末尾给出**台账增量**(新行+状态翻转),生产方原样落盘并注明"代评审方录入";评审方原始输出全文存档于 `doc/review/<change>-<stage>-raw.*`,代录增量随时可与其对照。非交互/后台调用 codex 时必须关闭 stdin——命令末尾加 `< /dev/null`——否则它会打印 "Reading additional input from stdin..." 并挂起。如果无法真实调起评审方,停下来说明——**禁止模拟评审**。
 
@@ -103,6 +103,9 @@ change: <change-name>
 tier: trivial | medium | large
 track: harden | explore
 track-rationale: <一行:为什么走这条轨——下一个人工闸口必报>
+lineage: <目标分支/线 + 合并禁忌,如 "v2(永不合入 main)">
+                        # kickoff 时从需求文档抄录;变更中途发现谱系冲突
+                        # =立即停下
 current-step: STEP0 | STEP1 | STEP2 | STEP3 | STEP4 | STEP5 | STEP6 |
               INTENT-CARD | SPIKE | EXTRACTION |     # 探索轨位置
               DONE | ABANDONED
@@ -117,7 +120,13 @@ artifact-root: .        # 可选;默认=项目根(v1.0 路径逐字不变)。
                         # (同仓原子性)与 openspec/(工具持有)。外置时
                         # kickoff 提示词必须写明——本文件自己就在它下面。
 gates:                  # 只增不改的人工决定日志
-  - <日期+时间> <闸口>: <人的决定,原文>
+  - <YYYY-MM-DDTHH:MM> <标签>: <人的决定,原文>
+                        # 标签取固定词表:gate① … gate⑤ |
+                        # intent-card sign-off | extraction review |
+                        # STEP2 full review | consolidation | note
+                        # (note=非决策事件:降级、收官等)
+                        # 格式只约束前缀——决定内容仍是逐字自由文本;
+                        # 固定前缀让 §6 的墙钟时长字段可被机器提取
 ```
 
 每步、每轮完成后立即更新;每个闸口决定都追加记录;新会话信这个文件,不信自己的推断。
@@ -154,16 +163,16 @@ gates:                  # 只增不改的人工决定日志
 
 ### STEP0 —— 需求精细化 · 对抗循环 · 上限:`step0-cap`(默认 5)
 
-- **输入:**`requirement/req-v{N}.md`;知识库(如有)。若需求缺"目标 / 范围外 / 可测验收"三要素之一——**先结构化提问采访人**,再出 req-v1。
+- **输入:**`requirement/req-v{N}.md`;知识库(如有)。需求必须声明**目标谱系**(主线/哪条分支线)——多谱系仓库中谱系缺失是第四个访谈触发条件。若需求缺"目标 / 范围外 / 可测验收"三要素之一——**先结构化提问采访人**,再出 req-v1。
 - **每轮:**(1)若已有评审,据其修订 → `req-v{N+1}.md`,逐条注明采纳/拒绝+理由并更新台账;(2)用 **P1** 调起评审方(R2)→ 评审文档 + 台账;(3)记录结论行。
-- **退出:**结论 =「无重大问题」→ 复制为 `requirement/req-final.md`,前进。触顶 → **闸口 ①**。发现目标根本说不清 → 提议 harden→explore(经人工闸口确认后切轨)。
+- **退出:**结论行 = `VERDICT: no major issues`(无重大问题)→ 复制为 `requirement/req-final.md`,前进。触顶 → **闸口 ①**。发现目标根本说不清 → 提议 harden→explore(经人工闸口确认后切轨)。
 
 ### 探索轨(EXPLORE)—— §2 把变更分到这里时
 
 0. **意图卡先行(不可豁免):**≤15 行,路径 `requirement/intent-card.md`——目标假设 / 成功判据 / spike 要回答的问题。须经**人签核**(`intent-card sign-off`;异构评审可作为签核前的参考,但不能替代)。在这条轨上,意图卡是独立评审基准——提取出的规格绝不只对照原型自证。
 1. **spike(有界):**在 `spike/` 下自由做原型;上限:`spike-cap`(默认 10)轮;退出=意图卡问题逐条有答案。触顶 → **闸口 ⑤**。
-2. **P11 —— 规格提取:**输入=意图卡+原型+spike 结论;输出=`requirement/req-final.md` + spec 草案,置于 `doc/changes/<change>/specs/`(适配器项目:`openspec/changes/<change>/specs/`)。
-3. **P12 —— 提取评审(异构,R2):**上限:`extraction-review-cap`(默认 2)。结论 `extraction accepted` → 第 4 步;`extraction rejected` + 提取不忠实 → 重跑 P11;`extraction rejected` + 意图假设被证伪 → 回 SPIKE,或 `ABANDONED`(归档意图卡与结论;记台账)。
+2. **P11 —— 规格提取:**输入=意图卡+原型+spike 结论;输出=spec 草案,置于 `doc/changes/<change>/specs/`(适配器项目:`openspec/changes/<change>/specs/`),是意图侧的**唯一权威**;另加 `requirement/req-final.md` 薄索引(§5 P11——绝不另写第二份验收叙述)。显式声明的提取时决策(`EXT-n`)在 `extraction review` 决策点终裁。
+3. **P12 —— 提取评审(异构,R2):**上限:`extraction-review-cap`(默认 2)。结论行 `VERDICT: extraction accepted` → 第 4 步;`VERDICT: extraction rejected` + 提取不忠实 → 重跑 P11;`VERDICT: extraction rejected` + 意图假设被证伪 → 回 SPIKE,或 `ABANDONED`(归档意图卡与结论;记台账)。
 4. **汇入:**进入 STEP2 的 P5/P6 全量循环——此后两轨完全无差别。
 5. **原型是一次性的,且机器可查:**STEP5 从失败测试重建;tasks.md 不得引用 `spike/`;`spike/` 在 archive 时删除(或隔离归档)。
 6. **轨道转移:**explore→harden(提取通过,或目标已然明确);harden→explore(STEP0 发现目标说不清——经人工闸口);explore→ABANDONED(假设证伪)。每次转移保留意图卡、结论与台账;只丢弃 `spike/`。
@@ -184,7 +193,7 @@ gates:                  # 只增不改的人工决定日志
 ### STEP2 —— propose · 对抗循环 · 上限:`step2-cap`(默认 4)
 
 - **动作:**执行 **propose 接口动作**(适配器命令:`/opsx:propose`),用 **P4**;然后循环:评审方 **P5**(R2)→ 生产方用 **P6** 修订(只改 spec/design——绝不动源码);每轮更新台账。
-- **退出:**结论 =「无重大问题,可进入执行阶段」→ 前进。触顶或振荡 → **闸口 ⑤**。
+- **退出:**结论行 = `VERDICT: no major issues, ready to proceed to execution`(无重大问题,可进入执行阶段)→ 前进。触顶或振荡 → **闸口 ⑤**。
 
 ### STEP3 —— 技术评审 —— **闸口 ③(人工)**
 
@@ -199,7 +208,7 @@ gates:                  # 只增不改的人工决定日志
 
 - **动作,按序:**(1)每个 spec scenario 一条失败测试,测试名带 scenario ID——展示失败运行;(2)用 **P7** 按 tasks.md 顺序实现,随做随标 `[x]`;(3)跑到全绿;(4)异构一致性评审 **P8**(R2);更新台账。
 - **按项目类型的验证矩阵:**所有代码项目——lint/静态分析全绿(安全敏感加 SAST)——where configured;后端/库——单测+属性测试+变异抽查;UI——另加 E2E/视觉回归;有部署面的服务——另加运行时契约、金丝雀+回滚;**纯文档项目——`python3 scripts/check_docs.py` 全绿 + 示例命令静态检查 + P8 一致性评审,替代 `npm test` 作为退出条件。** 项目类型不具备某种可执行仪器时,LLM 评审在该处就是主力仪器——这不是降级。
-- **退出——以下全部:**测试全绿(按上述矩阵);lint/静态分析全绿(where configured);每个 scenario ID 至少出现在一个测试名里(纯文档:由校验脚本的结构检查顶替);tasks.md 全 `[x]`;一致性结论 =「无 spec-vs-代码缺口」。设计不可行 → 回 STEP2;需求本身错了 → 回 STEP0(两者都要:更新状态文件并告知人)。触顶 → **闸口 ⑤**。
+- **退出——以下全部:**测试全绿(按上述矩阵);lint/静态分析全绿(where configured);每个 scenario ID 至少出现在一个测试名里(纯文档:由校验脚本的结构检查顶替);tasks.md 全 `[x]`;一致性结论行 = `VERDICT: no spec-vs-code gaps`(无 spec-vs-代码缺口)。设计不可行 → 回 STEP2;需求本身错了 → 回 STEP0(两者都要:更新状态文件并告知人)。触顶 → **闸口 ⑤**。
 
 ### STEP6 —— 归档 + 知识库回写
 
@@ -210,6 +219,17 @@ gates:                  # 只增不改的人工决定日志
 ---
 
 ## 5. 提示词
+
+**结论行短语表。** 每条评审提示词以且仅以一行表内 `VERDICT:` 串结束——这些是 `/goal` 条件与 §4 退出规则所 grep 的机器串。中文文档逐字引用英文串(行文中可加中文括注;结论行本身永不翻译)。
+
+| 提示词 | 通过 | 未通过 |
+|---|---|---|
+| P1 | `VERDICT: no major issues` | `VERDICT: <N> issues open` |
+| P5 | `VERDICT: no major issues, ready to proceed to execution` | `VERDICT: <N> issues open` |
+| P8 | `VERDICT: no spec-vs-code gaps` | `VERDICT: <N> issues open` |
+| P12 | `VERDICT: extraction accepted` | `VERDICT: extraction rejected` |
+
+`<N>` = 本轮评审结束时,台账中状态为 `open` 的正式行总数(全台账口径,不分阶段——机械可判;正整数;advisory/rejected/fixed 行不计)。P12 只用固定短语,永不用计数形态。
 
 ### P0 —— 问题台账(下面每条提示词都读写它)
 
@@ -241,10 +261,11 @@ gates:                  # 只增不改的人工决定日志
 3. 是否存在"隐含但未声明"的状态变更或副作用
 4. 每条验收标准是否可测(能写成「如果…那么…」)
 5. 与系统现状 A 是否冲突(若提供了知识库)
+6. 目标谱系是否已声明且与仓库现实一致(多谱系仓库:落在哪条分支/线上)
 【范围】只把以下缺口计入结论行:目标歧义、验收不可测、边界/异常缺失、与现状 A 冲突。其余一律标 advisory(P0 规则)。顺带核查"明确不做"(范围外)节是否存在。
 【输出】
 生成 doc/review/<change>-req-review-v{N}.md:按维度列问题清单(描述/风险/修改建议);advisory 单列。
-按台账规则把正式问题同步进台账。末尾给出结论行:「无重大问题」与否。
+按台账规则把正式问题同步进台账。末尾给出结论行(§5 短语表):"VERDICT: no major issues" 或 "VERDICT: <N> issues open"。
 不要修改需求文档本身。
 ```
 
@@ -300,7 +321,7 @@ doc/explore/<change>-gap-report.md:当前状态 A、目标状态 B,以及两者�
 【范围】只把会导致返工或线上事故的缺口计入结论行;其余标 advisory(P0 规则)。
 【输出】
 doc/design/<change>-review-v{N}.md:逐条问题(描述/风险/建议),advisory 单列;按台账规则把正式问题同步进台账。
-末尾给出结论行:「无重大问题,可进入执行阶段」与否。
+末尾给出结论行(§5 短语表):"VERDICT: no major issues, ready to proceed to execution" 或 "VERDICT: <N> issues open"。
 ```
 
 ### P6 —— STEP2 修订(生产方)
@@ -338,7 +359,7 @@ advisory 可整批确认或忽略,无需逐条理由——只有对正式发现�
 【范围】只把 spec-vs-代码缺口计入结论行;风格、品味与锦上添花一律标 advisory(P0 规则)。
 逐条列出不一致项与修复建议;末尾给出你的台账增量(按 P0 规则),advisory 单列。
 (纯文档项目:第 1 条机械核对 = 校验脚本的输出;"测试"读作文档检查。)
-末尾给出结论行:「无 spec-vs-代码缺口」与否。
+末尾给出结论行(§5 短语表):"VERDICT: no spec-vs-code gaps" 或 "VERDICT: <N> issues open"。
 ```
 
 ### P9 —— STEP6 archive(生产方)
@@ -368,9 +389,9 @@ advisory 可整批确认或忽略,无需逐条理由——只有对正式发现�
 ```text
 【输入】requirement/intent-card.md;spike/ 下的原型;spike 结论。
 【任务】提取原型的*已验证*行为所蕴含的规格——绝不发明意图卡与 spike 观察都不支持的行为。产出:
-* requirement/req-final.md——目标+验收标准,逐条可溯源到意图卡;
-* 带 scenario ID 的 spec 草案,置于 doc/changes/<change>/specs/(适配器项目:openspec/changes/<change>/specs/)。
-【约束】未验证的假设标"待确认"。原型是观察来源,不是权威来源:意图与原型冲突处,以意图卡为准并显式列出分歧。
+* 带 scenario ID 的 spec 草案,置于 doc/changes/<change>/specs/(适配器项目:openspec/changes/<change>/specs/)——意图侧的唯一权威;
+* requirement/req-final.md——仅为薄索引:一句目标引意图卡 + 验收=对 spec 场景 ID 清单的引用。绝不在此另写第二份验收叙述——同一意图的两份行文必然互漂。
+【约束】未验证的假设标"待确认"。意图卡与 spike 观察都不支撑、但规格完整性所需的行为,必须以显式的提取时决策声明——专节集中的 `EXT-n` 条目(内容+推理),绝不混入提取事实;EXT-n 在提取评审(extraction review)处终裁。原型是观察来源,不是权威来源:意图与原型冲突处,以意图卡为准并显式列出分歧。
 完成后停下,等待提取评审(P12)。
 ```
 
@@ -379,11 +400,12 @@ advisory 可整批确认或忽略,无需逐条理由——只有对正式发现�
 ```text
 【输入】requirement/intent-card.md;P11 的产出;问题台账。
 【检查表】P1 的五个维度,另加:
-6. 意图卡符合性——每个目标与成功判据都出现在提取出的规格里;
-7. 无凭空发明——每条规格可溯源到意图卡或某次 spike 观察(抽查溯源)。
+6. 意图卡符合性——每个目标与成功判据都出现在提取出的 specs/ 里(唯一权威;req-final 薄索引只查"薄且一致");
+7. 无凭空发明——每条规格可溯源到意图卡或某次 spike 观察(抽查溯源),已声明的 EXT-n 除外:EXT-n 按提案评审,逐条给 accepted / rejected / needs-human 三态推荐。
+【EXT-n 语义】你的结论行只裁提取忠实性(声明外发明、意图卡符合度)——EXT-n 推荐永不改变结论行。EXT-n 的终裁属于 `extraction review` 决策点(既有人工闸口):人裁 rejected → 生产方删除对应 spec 行,删除以机械核查确认(grep:该 EXT-n 场景 ID 已消失),不重跑 P12;人裁 accepted → 该条目补记回意图卡。未终裁的 EXT-n 阻塞决策点、不阻塞你的结论行——在结论行前显式列出它们。
 【范围】只把提取不忠实或意图假设被证伪计入结论行;advisory 发现不落入任何 rejected 分支(P0 规则)。
-【输出】doc/review/<change>-extraction-review-v{N}.md——问题按 P0 列出,advisory 单列;末尾给出你的台账增量,
-然后是严格二选一的结论行:「extraction accepted」或「extraction rejected」。
+【输出】doc/review/<change>-extraction-review-v{N}.md——问题按 P0 列出,advisory 单列,附 EXT-n 推荐;末尾给出你的台账增量,
+然后是严格二选一的结论行(§5 短语表):"VERDICT: extraction accepted" 或 "VERDICT: extraction rejected"。
 上限:extraction-review-cap(默认 2)。rejected+提取不忠实 → 生产方重跑 P11;
 rejected+意图假设被证伪 → 回 SPIKE 或 ABANDONED(状态机的失败分支)。
 ```
@@ -397,29 +419,29 @@ rejected+意图假设被证伪 → 回 SPIKE 或 ABANDONED(状态机的失败分
 
 **STEP0 循环:**
 ```text
-/goal "目标:requirement/req-final.md 存在,且最新一轮评审判定为「无重大问题」。上限:step0-cap 轮(默认 5)。
+/goal "目标:requirement/req-final.md 存在,且最新一轮评审报告 'VERDICT: no major issues'。上限:step0-cap 轮(默认 5)。
 每一轮:
 1. 若 doc/review/<change>-req-review-v{N}.md 存在,据其修订 requirement/req-v{N}.md,升到 v{N+1},逐条注明 采纳/拒绝+理由,并同步更新 doc/review/<change>-issues.md 里对应问题的状态。
 2. 用一个不同的模型对当前版本跑评审,输出存到 doc/review/<change>-req-review-v{N}.md,例如:
    codex exec -s read-only \"<P1 提示词> —— 目标:requirement/req-v{N}.md\"
    (没有 Codex?新开一个 claude,把 P1 连同问题台账一起交给它)
 3. 把评审方的结论行贴回本对话。
-当判定为「无重大问题」时停(并复制为 requirement/req-final.md),或触顶停。"
+当结论行为 'VERDICT: no major issues' 时停(并复制为 requirement/req-final.md),或触顶停。"
 ```
 
 **STEP2 循环:**
 ```text
-/goal "目标:doc/changes/<change>/(适配器:openspec/changes/<change>/)有 SPEC-DOC+DESIGN-DOC,且最新评审判定为「无重大问题,可进入执行阶段」。上限:step2-cap 轮(默认 4)。
+/goal "目标:doc/changes/<change>/(适配器:openspec/changes/<change>/)有 SPEC-DOC+DESIGN-DOC,且最新评审结论行为 'VERDICT: no major issues, ready to proceed to execution'。上限:step2-cap 轮(默认 4)。
 每一轮:
 1. 据最新评审修订 spec/design 文件——绝不动源码——并同步更新 doc/review/<change>-issues.md 里已处理问题的状态。
 2. 重跑异构评审,用 P5 提示词(第 1 轮:codex exec,记下打印的 session id;之后各轮:codex exec resume -c sandbox_mode=\"read-only\" <session-id>——codex ≥0.14x 的 resume 不接受 -s;旧版在 id 前用 -s read-only),产出 doc/design/<change>-review-v{N}.md 并更新台账。
 3. 把评审结论行贴回这里。
-当判定为「无重大问题,可进入执行阶段」时停,或触顶停。"
+当结论行为 'VERDICT: no major issues, ready to proceed to execution' 时停,或触顶停。"
 ```
 
 **STEP5 循环:**
 ```text
-/goal "目标 —— 以下全部成立:`npm test` 退出码 0;lint/静态分析全绿(where configured);doc/changes/<change>/specs/(适配器:openspec/…)里每个 scenario ID 至少出现在一个测试名里(列出缺失的 ID);doc/changes/<change>/tasks.md(适配器:openspec/…)每项均为 [x];(仅 UI 项目)Playwright E2E 套件通过且截图差异在阈值内;并且由一个不同模型做的一致性评审(P8 提示词)报告无 spec-vs-代码 缺口。上限:step5-cap 轮(默认 25)。
+/goal "目标 —— 以下全部成立:`npm test` 退出码 0;lint/静态分析全绿(where configured);doc/changes/<change>/specs/(适配器:openspec/…)里每个 scenario ID 至少出现在一个测试名里(列出缺失的 ID);doc/changes/<change>/tasks.md(适配器:openspec/…)每项均为 [x];(仅 UI 项目)Playwright E2E 套件通过且截图差异在阈值内;并且由一个不同模型做的一致性评审(P8 提示词)报告 'VERDICT: no spec-vs-code gaps'。上限:step5-cap 轮(默认 25)。
 第 1 轮:为每个 spec scenario 派生一条失败测试(以其 scenario ID 命名),并把失败运行结果打印出来。之后每一轮:按 tasks.md 顺序实现下一项,然后跑 `npm test`(有界面再跑 Playwright)并把命令输出打印出来,让结果进 transcript。代码完成后,跑一致性评审(codex exec / 新开 claude)并把结论贴回。
 当全部条件成立时停,或触顶停。"
 ```

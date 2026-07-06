@@ -198,7 +198,7 @@ ANTHROPIC_MODEL="claude-sonnet-4-6" claude
 # then paste the RUNBOOK P5 / P8 reviewer prompt, pointing at the artifact paths
 ```
 
-This two-terminal setup is the Claude-only equivalent of §2.3's `codex exec` / `resume` loop: produce on the left, hand the artifacts to the right, paste findings back, repeat until "no major issues." One difference from `resume`: a fresh `claude` remembers nothing across rounds — so hand the reviewer the **issue ledger** ([§7.0](#70-the-issue-ledger-shared-by-all-review-loops)) along with the artifacts. It verifies earlier fixes from the ledger while keeping fresh eyes; per [§1.4](#14-adversarial-review), that combination is worth having even when `resume` is available.
+This two-terminal setup is the Claude-only equivalent of §2.3's `codex exec` / `resume` loop: produce on the left, hand the artifacts to the right, paste findings back, repeat until "VERDICT: no major issues." One difference from `resume`: a fresh `claude` remembers nothing across rounds — so hand the reviewer the **issue ledger** ([§7.0](#70-the-issue-ledger-shared-by-all-review-loops)) along with the artifacts. It verifies earlier fixes from the ledger while keeping fresh eyes; per [§1.4](#14-adversarial-review), that combination is worth having even when `resume` is available.
 
 **Match the model tier to the review point:**
 
@@ -410,12 +410,12 @@ Requirement Doc v1.0 ──► reviewing model audits ──► REQ-REVIEW-DOC (
         ▲                                                  │
         └────────── revise to v2.0 ◄───────────────────────┘   … (up to 5 rounds)
                                           │
-                          until "no major issues" ──► finalized
+                          until "VERDICT: no major issues" ──► finalized
 ```
 
 - **The reviewing model should differ from the one that drafted the requirement** (e.g. draft with Claude, review with GPT).
 - Fix the review dimensions as a checklist: **is target state B clear / any ambiguity / are edge cases and exceptions covered / any implied-but-undeclared state changes / are acceptance criteria testable**.
-- **Exit condition**: the reviewing model explicitly outputs "no major issues," or a human decides after hitting the 5-round cap.
+- **Exit condition**: the reviewing model explicitly outputs "VERDICT: no major issues", or a human decides after hitting the 5-round cap.
 - **Every round also logs to the issue ledger** (`doc/review/<change>-issues.md`, [§7.0](#70-the-issue-ledger-shared-by-all-review-loops)): new findings get IDs, fixes flip statuses, and a reopened ID is your early warning that the loop isn't converging.
 
 For the prompt, see [§7.1](#71-step0-requirement-doc-adversarial-review).
@@ -444,7 +444,7 @@ SPEC-DOC + DESIGN-DOC_V2  ──reviewing model──►  SPEC-EVALUATION-DOC_V2
 
 Each round mirrors its findings into the issue ledger ([§7.0](#70-the-issue-ledger-shared-by-all-review-loops)), so the producer's accept/reject calls stay visible to the STEP3 human gate.
 
-**Exit condition**: the reviewing model explicitly outputs "no major issues, ready to proceed to execution," or a human decides after the cap. Prompt: see [§7.3](#73-step2-adversarial-review-and-revision).
+**Exit condition**: the reviewing model explicitly outputs "VERDICT: no major issues, ready to proceed to execution", or a human decides after the cap. Prompt: see [§7.3](#73-step2-adversarial-review-and-revision).
 
 ### 4.6 STEP3: Technical Review
 
@@ -486,14 +486,14 @@ Every loop above already has a **machine-checkable exit condition** — which is
 
 > `/goal`'s built-in evaluator only **reads the transcript** and only judges *"is the condition met?"* — it is a weak model, and it is **NOT** the adversarial reviewer. So the real check must happen **inside the loop and leave its verdict in the transcript**. `/goal` orchestrates the loop; it never replaces the test run, the E2E suite, or the heterogeneous reviewer.
 
-That layering is what lets you automate **even adversarial review** without violating [§1.4](#14-adversarial-review): inside each turn Claude **calls the reviewer** (Codex via [§2.3](#23-driving-codex-non-interactively-multi-round-adversarial-review), or a fresh Claude session via [§2.4](#24-adversarial-review-with-only-claude-code)), pastes its verdict back, and the goal condition is simply *"the reviewer's verdict is 'no major issues', or N rounds reached."* The judgment stays heterogeneous + fresh-context; `/goal` only reads whether that judgment landed in the transcript.
+That layering is what lets you automate **even adversarial review** without violating [§1.4](#14-adversarial-review): inside each turn Claude **calls the reviewer** (Codex via [§2.3](#23-driving-codex-non-interactively-multi-round-adversarial-review), or a fresh Claude session via [§2.4](#24-adversarial-review-with-only-claude-code)), pastes its verdict back, and the goal condition is simply *"the reviewer's verdict line is 'VERDICT: no major issues', or N rounds reached."* The judgment stays heterogeneous + fresh-context; `/goal` only reads whether that judgment landed in the transcript.
 
 **What to automate, and what to leave as a human gate:**
 
 | Phase | A sound `/goal` condition (transcript-checkable) | Backed inside the loop by |
 |---|---|---|
-| STEP0 | REQ-REVIEW-DOC written and its verdict = "no major issues", or step0-cap rounds (default 5) | a heterogeneous reviewer call each round |
-| STEP2 | SPEC-EVALUATION-DOC verdict = "no major issues, ready to execute", or N rounds | a heterogeneous reviewer call each round |
+| STEP0 | REQ-REVIEW-DOC written and its verdict line = `VERDICT: no major issues`, or step0-cap rounds (default 5) | a heterogeneous reviewer call each round |
+| STEP2 | SPEC-EVALUATION-DOC verdict line = `VERDICT: no major issues, ready to proceed to execution`, or N rounds | a heterogeneous reviewer call each round |
 | STEP5 | `npm test` exits 0 **and** lint/static analysis green (where configured) **and** every tasks.md item is `[x]` **and** the E2E/Playwright run is green **and** the consistency review reports no gaps, or N turns — substitute per §4.8's project-type matrix (docs-only: `python3 scripts/check_docs.py` + example-command static checks) | real test + E2E run + reviewer call |
 | STEP6 | delta specs merged **and** the module's KB file updated | archive action (adapter `/opsx:archive`) + writeback |
 | **STEP3 tech review · reverse-capture review · KB sign-off** | — **do not wrap these in a goal** | a human decides |
@@ -514,7 +514,7 @@ Everything above is convention; a branch + CI mapping is what makes it *enforced
 | Consistency-review verdict (§7.4) | Posted on the PR as a comment / required check before merge |
 | STEP6 KB writeback | Part of the same PR — "code merged but KB not updated" becomes visible in review instead of silently accumulating |
 
-**Parallel changes.** Each change can also take its own `git worktree` for an isolated working copy — most SDD tooling now automates this. Branches isolate code, but two things still collide at archive time: the living spec store (`doc/specs/`; adapter: `openspec/specs/`) and per-module KB files. Serialize archives per module — whoever merges second rebases their delta specs and KB diff — and treat a KB-file conflict as a signal that two changes touched the same facts: reconcile them deliberately, don't just pick a side in the merge editor.
+**Parallel changes.** Each change can also take its own `git worktree` for an isolated working copy — most SDD tooling now automates this. In multi-lineage repos (several long-lived version lines), every requirement and its flow-state declare the **target lineage** (branch/line) up front — a lineage conflict discovered mid-change is an immediate-stop signal, not something to resolve in the merge editor. Branches isolate code, but two things still collide at archive time: the living spec store (`doc/specs/`; adapter: `openspec/specs/`) and per-module KB files. Serialize archives per module — whoever merges second rebases their delta specs and KB diff — and treat a KB-file conflict as a signal that two changes touched the same facts: reconcile them deliberately, don't just pick a side in the merge editor.
 
 ---
 
@@ -565,7 +565,7 @@ Please align the facts and output a gap report between current state A and targe
 /opsx:propose   # adapter command — plain-files projects follow RUNBOOK P4 directly
 ```
 Pay attention to whether the resulting `spec.md` **gives each user-visible behavior its own scenario**, and whether the **external shared state (here, that in-memory map) describes the three moments: init / update-at-runtime / cleanup-and-invalidation**.
-Then switch to your reviewing tool/model and review → revise per [§7.3](#73-step2-adversarial-review-and-revision), looping until "no major issues." Concretely, drive the review with Codex ([§2.3](#23-driving-codex-non-interactively-multi-round-adversarial-review)):
+Then switch to your reviewing tool/model and review → revise per [§7.3](#73-step2-adversarial-review-and-revision), looping until "VERDICT: no major issues." Concretely, drive the review with Codex ([§2.3](#23-driving-codex-non-interactively-multi-round-adversarial-review)):
 ```shell
 # round 1 — open the review session (note the printed session id)
 codex exec -s read-only "Review openspec/changes/<change>/specs/ and design.md against requirement/req-final.md, using the RUNBOOK P5 checklist. End with a verdict line."   # adapter paths — plain-files projects: doc/changes/<change>/…
@@ -593,7 +593,7 @@ npm test
 
 To run the implement → test loop unattended, wrap it in a goal — the mini-kv form of the [§7.7](#77-goal-recipes-automating-each-loop) STEP5 recipe (it's a library, so no Playwright clause):
 ```text
-/goal "All of: `npm test` exits 0; every spec scenario ID appears in at least one test name; every item in openspec/changes/<change>/tasks.md (adapter path; plain-files: doc/changes/<change>/tasks.md) is [x]; and a consistency review by a different model (the RUNBOOK P8 prompt) reports no spec-vs-code gaps. Cap: 15 turns. Turn 1: generate one failing test per spec scenario (named with its ID) and SHOW the failing run. Each later turn: implement the next tasks.md item, run `npm test` and SHOW the output. Stop when all hold or after 15 turns."
+/goal "All of: `npm test` exits 0; every spec scenario ID appears in at least one test name; every item in openspec/changes/<change>/tasks.md (adapter path; plain-files: doc/changes/<change>/tasks.md) is [x]; and a consistency review by a different model (the RUNBOOK P8 prompt) reports 'VERDICT: no spec-vs-code gaps'. Cap: 15 turns. Turn 1: generate one failing test per spec scenario (named with its ID) and SHOW the failing run. Each later turn: implement the next tasks.md item, run `npm test` and SHOW the output. Stop when all hold or after 15 turns."
 ```
 > The numeric caps in this recipe are example defaults — `process-config.md` is the source of truth.
 
@@ -722,7 +722,7 @@ Prompts: RUNBOOK **P1** (reviewer) / **P2** (producer's revise). Design notes:
 
 - Run P1 with a **model/tool different from the one that drafted the requirement**, and feed it the ledger so it can verify earlier fixes.
 - The five review dimensions are fixed on purpose — target-state clarity / edge & exception coverage / undeclared state changes / testable acceptance criteria / conflicts with state A — a stable checklist keeps rounds comparable.
-- The reviewer only reviews, never edits the requirement doc; the producer answers every formal issue with accept/reject + reason (advisories batch-acknowledge, RUNBOOK P0). Loop until "no major issues," finalize as `requirement/req-final.md` (max 5 rounds).
+- The reviewer only reviews, never edits the requirement doc; the producer answers every formal issue with accept/reject + reason (advisories batch-acknowledge, RUNBOOK P0). Loop until "VERDICT: no major issues", finalize as `requirement/req-final.md` (max 5 rounds).
 
 ### 7.2 STEP1: explore
 
@@ -733,7 +733,7 @@ Prompt: RUNBOOK **P3**. Design notes: facts only — no code. The KB and the fin
 Prompts: RUNBOOK **P4** (propose) / **P5** (reviewer) / **P6** (producer's revise). Design notes:
 
 - P4 bakes in the two spec-quality rules from §8.1: one scenario per user-visible output (with a stable ID), and the three moments for any external shared state.
-- P5 hunts specifically for "rework or production incident" issues — including a security dimension whenever the change touches external input or permissions. Its verdict line ("no major issues, ready to proceed to execution") is the loop's machine-checkable exit.
+- P5 hunts specifically for "rework or production incident" issues — including a security dimension whenever the change touches external input or permissions. Its verdict line ("VERDICT: no major issues, ready to proceed to execution") is the loop's machine-checkable exit.
 - P6 touches spec/design files only — never source — and must answer every formal ledger issue with accept/reject + reason; the scope clause (what counts toward each verdict line) lives in the P prompts.
 
 > 💡 To run this review loop through Codex from the CLI — open the session in round 1, `resume <session-id>` each subsequent round so the reviewer keeps full context — see [§2.3](#23-driving-codex-non-interactively-multi-round-adversarial-review).
@@ -744,7 +744,7 @@ Prompts: RUNBOOK **P7** (apply) / **P8** (consistency reviewer). Design notes:
 
 - P7 is tests-first: one failing test per spec scenario, test names carrying scenario IDs, shown failing *before* implementation — then implement in tasks.md order. Scenario coverage is the hard bar; line coverage stays a signal ([§4.8](#48-step5-opsxapply-code--test--implementation-review)).
 - P8 runs the mechanical check first (scenario IDs missing from all test names) before any judgment calls — cheap checks in front, and its scope clause keeps style findings advisory. Like every review, it runs on a heterogeneous model ([§2.3](#23-driving-codex-non-interactively-multi-round-adversarial-review)).
-- The explore track's **P11** (spec extraction) and **P12** (extraction review, heterogeneous) follow the same pattern: the intent card — never the prototype — is the review baseline; P12 runs P1's five dimensions plus intent-conformance and no-invention checks; its verdict line (`extraction accepted`) is the track's machine-checkable merge condition (RUNBOOK §4/§5).
+- The explore track's **P11** (spec extraction) and **P12** (extraction review, heterogeneous) follow the same pattern: the intent card — never the prototype — is the review baseline; P12 runs P1's five dimensions plus intent-conformance and no-invention checks; its verdict line (`VERDICT: extraction accepted`) is the track's machine-checkable merge condition (RUNBOOK §4/§5). Extraction-time decisions that neither the intent card nor the spike observations support are declared as explicit `EXT-n` proposals — P12 recommends, the human rules at the extraction-review decision point (mechanics in RUNBOOK P11/P12).
 
 ### 7.5 STEP6: archive
 

@@ -9,6 +9,15 @@ Checks per EN/CN file pair (pairs enabled by existence — bootstrap mode):
      mismatches are printed side by side
   4. the §5.5 example KB block contains the fixed dual-section names
      (Contract/Decisions ↔ 契约/决策) — hardcoded mapping
+  5. artifact-interface assertions (forbidden phrases, /opsx: adapter wording,
+     adapter header markers)
+  6. verdict-line phrase table: canonical `VERDICT:` strings present in both
+     RUNBOOKs; known drift variants forbidden; every `VERDICT:` string quoted
+     anywhere in the four docs is a table entry (retro-sweep RS-R1/RS-R4)
+  7. codex example commands: EN/CN token-identical after stripping localized
+     prompt payloads (positional quoted args); escaped quotes unescaped first
+  8. codex known-good forms: `resume` commands carry -c sandbox_mode="read-only"
+     (exempt: the legacy-CLI fallback exemplar); RUNBOOKs mention `< /dev/null`
 Exit code != 0 on any failure.
 """
 import re, sys, os, unicodedata
@@ -30,6 +39,25 @@ INTERFACE_DOCS = ("README.md", "README_cn.md", "RUNBOOK.md", "RUNBOOK_cn.md")
 ADAPTER_WORDS = ("adapter", "适配器", "接口动作", "interface action")
 FORBIDDEN_PHRASES = ("Without OpenSpec", "无 OpenSpec")
 ADAPTER_HEADER_FILES = ("templates/config.yaml",)  # /opsx hits pass if header carries the marker
+
+# checkers 6-8 — verdict phrase table + codex command checks (retro-sweep, all table-driven)
+VERDICT_DOCS = ("README.md", "README_cn.md", "RUNBOOK.md", "RUNBOOK_cn.md")
+VERDICT_PHRASES = (  # the §5 phrase table — the single source the docs must quote from
+    "VERDICT: no major issues, ready to proceed to execution",  # longest first (prefix-safe matching)
+    "VERDICT: no major issues",
+    "VERDICT: no spec-vs-code gaps",
+    "VERDICT: extraction accepted",
+    "VERDICT: extraction rejected",
+    "VERDICT: <N> issues open",
+)
+FORBIDDEN_VARIANTS = (  # (regex, label) — known drift variants; extend when a new one is caught
+    (r"ready to execute", 'EN drift variant "ready to execute" (canonical: "ready to proceed to execution")'),
+    (r"可进入执行(?!阶段)", 'CN drift variant 「可进入执行」 missing 「阶段」'),
+)
+CODEX_BARE_WORDS = {"codex", "exec", "resume"}  # only these survive as bare command tokens
+CODEX_EXEMPT_SIGNATURES = (  # legacy-CLI fallback exemplar (design D4) — allowed verbatim
+    ("codex", "exec", "resume", "-s", "read-only", "<session-id>"),
+)
 
 
 def gh_slug(heading):
@@ -57,6 +85,128 @@ def parse(path):
 def num_prefix(title):
     m = re.match(r"^(\d+(?:\.\d+)*)\b", title.strip())
     return m.group(1) if m else None
+
+
+# --- checkers 6-8 helpers ---------------------------------------------------
+
+def codex_candidates(text):
+    """Yield checkable codex commands as token tuples (design D3).
+
+    Candidates come from every line mentioning `codex exec` (fenced or inline —
+    the token filter below discards prose either way). A candidate is checkable
+    iff it has no ellipsis, no --last, and at least one flag or quoted arg.
+    """
+    for line in text.splitlines():
+        start = 0
+        while True:
+            idx = line.find("codex exec", start)
+            if idx < 0:
+                break
+            frag = line[idx:]
+            start = idx + len("codex exec")
+            frag = frag.replace('\\"', '"')          # /goal-embedded escaped quotes
+            frag = frag.replace("——", " — ")          # CN em-dash glued to tokens
+            raw_frag = frag
+            # strip positional quoted payloads (standalone quotes = the prompt);
+            # key="value" survives because its quote is not preceded by whitespace
+            frag = re.sub(r'(^|\s)"[^"]*"', r"\1", frag)
+            frag = re.sub(r"(^|\s)'[^']*'", r"\1", frag)
+            frag = re.sub(r"\s#.*$", "", frag)        # trailing shell comment is prose
+            tokens = []
+            for tok in frag.split():
+                tok = tok.rstrip(",;)。")
+                is_flag_value = (tokens and tokens[-1].startswith("-")
+                                 and re.fullmatch(r"[A-Za-z0-9._/-]+", tok))
+                if tok in CODEX_BARE_WORDS or is_flag_value or re.fullmatch(
+                        r"-{1,2}[A-Za-z][\w-]*|[A-Za-z_]+=(\"[^\"]*\"|\S+)|<[^>]+>|\||2>&1|<|/dev/null",
+                        tok):
+                    tokens.append(tok)
+                else:
+                    break                              # first non-command token ends the command
+            # ellipsis test runs AFTER payload stripping: a quoted "..." is a
+            # prompt placeholder (fine); a bare ... elides command parts (skip)
+            checkable = ("..." not in frag and "…" not in frag
+                         and "--last" not in tokens
+                         and (any(t.startswith("-") for t in tokens) or '"' in raw_frag))
+            if checkable and len(tokens) > 2:          # more than the bare "codex exec"
+                yield tuple(tokens)
+
+
+def check_verdict_phrases(root):
+    fail = False
+    texts = {}
+    for name in VERDICT_DOCS:
+        p = os.path.join(root, name)
+        if os.path.exists(p):
+            texts[name] = open(p, encoding="utf-8").read()
+    for name in ("RUNBOOK.md", "RUNBOOK_cn.md"):
+        for phrase in VERDICT_PHRASES:
+            if name in texts and phrase not in texts[name]:
+                fail = True
+                print(f"== {name}: phrase-table entry missing: {phrase!r}")
+    for name, text in texts.items():
+        for rx, label in FORBIDDEN_VARIANTS:
+            for m in re.finditer(rx, text):
+                fail = True
+                line_no = text.count("\n", 0, m.start()) + 1
+                print(f"== {name}:{line_no}: {label}")
+        for m in re.finditer(r"VERDICT:[^\"'`」\n]+", text):
+            quoted = m.group(0).rstrip(" .。);,，")
+            if not any(quoted == p or quoted.startswith(p) for p in VERDICT_PHRASES):
+                fail = True
+                line_no = text.count("\n", 0, m.start()) + 1
+                print(f"== {name}:{line_no}: VERDICT string not in phrase table: {quoted!r}")
+    if not fail:
+        print("== verdict phrase table: canonical strings present, no drift variants")
+    return fail
+
+
+def check_codex_commands(root):
+    fail = False
+    for en_name, cn_name in (("README.md", "README_cn.md"), ("RUNBOOK.md", "RUNBOOK_cn.md")):
+        en_p, cn_p = os.path.join(root, en_name), os.path.join(root, cn_name)
+        if not (os.path.exists(en_p) and os.path.exists(cn_p)):
+            continue
+        en_cmds = list(codex_candidates(open(en_p, encoding="utf-8").read()))
+        cn_cmds = list(codex_candidates(open(cn_p, encoding="utf-8").read()))
+        if len(en_cmds) != len(cn_cmds):
+            fail = True
+            print(f"== {en_name}/{cn_name}: codex command count mismatch: {len(en_cmds)} vs {len(cn_cmds)}")
+            continue
+        for i, (e, c) in enumerate(zip(en_cmds, cn_cmds)):
+            if e != c:
+                fail = True
+                print(f"== {en_name}/{cn_name}: codex command #{i + 1} token mismatch:\n   EN: {e}\n   CN: {c}")
+        if en_cmds and not fail:
+            print(f"== {en_name}/{cn_name}: {len(en_cmds)} codex commands token-identical")
+    return fail
+
+
+def check_codex_known_forms(root):
+    fail = False
+    for name in VERDICT_DOCS:
+        p = os.path.join(root, name)
+        if not os.path.exists(p):
+            continue
+        for tokens in codex_candidates(open(p, encoding="utf-8").read()):
+            if "resume" not in tokens:
+                continue
+            if tokens in CODEX_EXEMPT_SIGNATURES:
+                continue                               # legacy-CLI fallback exemplar
+            if "-s" in tokens:
+                fail = True
+                print(f"== {name}: resume command uses -s (rejected on codex >=0.14x): {tokens}")
+            if not ("-c" in tokens and 'sandbox_mode="read-only"' in tokens):
+                fail = True
+                print(f"== {name}: resume command missing -c sandbox_mode=\"read-only\": {tokens}")
+    for name in ("RUNBOOK.md", "RUNBOOK_cn.md"):
+        p = os.path.join(root, name)
+        if os.path.exists(p) and "< /dev/null" not in open(p, encoding="utf-8").read():
+            fail = True
+            print(f"== {name}: missing the `< /dev/null` non-interactive guidance")
+    if not fail:
+        print("== codex known-good forms: resume flags OK, /dev/null guidance present")
+    return fail
 
 
 def main():
@@ -158,6 +308,11 @@ def main():
             if "OpenSpec adapter" not in head:
                 fail = True
                 print(f"== {name}: missing 'OpenSpec adapter' marker in first 5 lines")
+
+    # --- checkers 6-8: verdict phrase table + codex commands (retro-sweep) --
+    fail |= check_verdict_phrases(ROOT)
+    fail |= check_codex_commands(ROOT)
+    fail |= check_codex_known_forms(ROOT)
 
     print("RESULT:", "FAIL" if fail else "PASS")
     sys.exit(1 if fail else 0)

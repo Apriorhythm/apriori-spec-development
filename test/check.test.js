@@ -33,6 +33,11 @@ test('CK-03 verdict-phrase and codex-command checks catch drift', () => {
   assert.strictEqual(c.checkCodexCommands(en, cnOk).length, 0);
   const cnBad = 'codex exec resume -c sandbox_mode="danger" <id> "评审这个"';
   assert.ok(c.checkCodexCommands(en, cnBad).some((f) => /token mismatch/.test(f)));
+  // checker 8 (ported): resume must carry -c sandbox_mode="read-only"; RUNBOOKs need `< /dev/null`
+  const good = { 'RUNBOOK.md': 'codex exec resume -c sandbox_mode="read-only" <id> "x"\nrun `< /dev/null`', 'RUNBOOK_cn.md': 'codex exec resume -c sandbox_mode="read-only" <id> "x"\n用 `< /dev/null`' };
+  assert.strictEqual(c.checkCodexKnownForms(good).length, 0);
+  assert.ok(c.checkCodexKnownForms({ 'RUNBOOK.md': 'codex exec resume -s read-only <id> "x"\n< /dev/null' }).some((f) => /uses -s/.test(f)));
+  assert.ok(c.checkCodexKnownForms({ 'RUNBOOK.md': 'codex exec resume -c sandbox_mode="read-only" <id> "x"' }).some((f) => /dev\/null/.test(f)));
 });
 
 test('CK-04 every spec scenario must carry a bindable ID', () => {

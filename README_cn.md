@@ -205,7 +205,7 @@ ANTHROPIC_MODEL="claude-sonnet-4-6" claude
 | 评审点 | 它需要什么 | 建议评审模型 |
 |---|---|---|
 | STEP0 / STEP2(需求 / 设计) | 判断与推理 | **最强**可用模型(如 Opus),新会话 |
-| STEP5(实现 vs spec 一致性) | 机械核对"spec 写的代码有没有" | **Sonnet 4.6 / Haiku 4.5**——快且便宜就够 |
+| STEP5(实现 vs spec 一致性) | 语义忠实(绑定已由 apriori verify 机械完成) | **Sonnet 4.6 / Haiku 4.5**——快且便宜就够 |
 
 > ⚠️ 别拿弱模型去审强模型的硬推理——用 Haiku 审 Opus 的设计,往往恰好漏掉 Haiku 本就跟不上的微妙问题。评审要*平级或向下*选模型,别陡峭向上。(`/model` 切的是当前会话,但评审务必**另起新会话**,让评审方保持新鲜视角。)
 
@@ -495,7 +495,7 @@ SPEC-DOC + DESIGN-DOC_V2  ──评审模型──►  SPEC-EVALUATION-DOC_V2
 |---|---|---|
 | STEP0 | REQ-REVIEW-DOC 已产出且结论行 = `VERDICT: no major issues`，或 step0-cap 轮（默认 5） | 每轮一次异构评审调用 |
 | STEP2 | SPEC-EVALUATION-DOC 结论行 = `VERDICT: no major issues, ready to proceed to execution`，或 N 轮 | 每轮一次异构评审调用 |
-| STEP5 | `npm test` 退出码 0 **且** lint/静态分析全绿(where configured) **且** tasks.md 全 `[x]` **且** E2E/Playwright 全绿 **且** 一致性评审无缺口，或 N 轮——按 §4.8 项目类型矩阵替换（纯文档：`python3 scripts/check_docs.py` + 示例命令静态检查） | 真跑测试 + E2E + 评审调用 |
+| STEP5 | `npm test` 退出码 0 **且** lint/静态分析全绿(where configured) **且** tasks.md 全 `[x]` **且** E2E/Playwright 全绿 **且** 一致性评审无缺口，或 N 轮——按 §4.8 项目类型矩阵替换（纯文档：`apriori check`） | 真跑测试 + E2E + 评审调用 |
 | STEP6 | 增量规格已合并 **且** 该模块知识库文件已更新 | archive 动作+ 回写 |
 | **STEP3 技术评审 · 反向沉淀复核 · 知识库签字** | —— **不要塞进 goal** | 由人决定 |
 
@@ -511,7 +511,7 @@ SPEC-DOC + DESIGN-DOC_V2  ──评审模型──►  SPEC-EVALUATION-DOC_V2
 |---|---|
 | 一个变更 | 一个分支（`change/<change-name>`）、一个 PR |
 | SPEC-DOC / DESIGN-DOC / 评审文档 / 问题台账 | 随分支提交——评审者在同一个 diff 里同时看到文档与代码 |
-| STEP5 退出条件 | PR 上的 CI 任务：测试全绿；lint/静态分析全绿(where configured)；每个 spec scenario ID 至少出现在一个测试名里（grep 即可查的追溯检查）；tasks.md 全 `[x]`——纯文档项目的"测试"映射为 `python3 scripts/check_docs.py` + 示例命令静态检查（§4.8） |
+| STEP5 退出条件 | PR 上的 CI 任务：测试全绿；lint/静态分析全绿(where configured)；每个 spec scenario ID 至少出现在一个测试名里（grep 即可查的追溯检查）；tasks.md 全 `[x]`——纯文档项目的"测试"映射为 `apriori check`（§4.8） |
 | 一致性评审结论（§7.4） | 以评论 / 必过检查的形式挂在 PR 上，过不了不许合并 |
 | STEP6 知识库回写 | 同一个 PR 的一部分——"代码合了、知识库没更"在评审里一眼可见，而不是悄悄积累 |
 
@@ -739,7 +739,7 @@ git log --oneline <source-commit>..HEAD -- src/<module>/
 提示词:RUNBOOK **P7**（apply）/ **P8**（一致性评审方）。设计说明:
 
 - P7 测试先行:每个 spec scenario 一条失败测试,测试名带 scenario ID,在实现*之前*先展示失败运行——然后按 tasks.md 顺序实现。scenario 覆盖是硬标准,行覆盖率只是信号（[§4.8](#48-step5编码--测试--实现评审)）。
-- P8 把机械核对放在最前（哪些 scenario ID 没出现在任何测试名里）,便宜的检查先跑,其范围条款把风格类发现留在 advisory;和所有评审一样跑在异构模型上（[§2.3](#23-用命令行驱动-codex多轮对抗评审)）。
+- `apriori verify` 已做完机械绑定检查(每条 scenario 有绿测试),所以 P8 收窄为**语义忠实**——每条测试是否真的检验了 scenario 的意图,而不只是共享 ID;其范围条款把风格类发现留在 advisory;和所有评审一样跑在异构模型上（[§2.3](#23-用命令行驱动-codex多轮对抗评审)）。
 - 探索轨的 **P11**(规格提取)与 **P12**(提取评审,异构)沿用同一模式:评审基准是意图卡——绝不是原型本身;P12 跑 P1 五维度外加意图符合性与无凭空发明检查;其结论行(`VERDICT: extraction accepted`)就是该轨机器可判的汇入条件(RUNBOOK §4/§5)。提取时决策——意图卡与 spike 观察都不支撑的行为——以显式 `EXT-n` 提案声明:P12 给推荐,人在提取评审决策点终裁(机制见 RUNBOOK P11/P12)。
 
 ### 7.5 STEP6｜archive

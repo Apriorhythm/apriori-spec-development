@@ -205,7 +205,7 @@ This two-terminal setup is the Claude-only equivalent of §2.3's `codex exec` / 
 | Review point | What it needs | Suggested reviewer |
 |---|---|---|
 | STEP0 / STEP2 (requirement / design) | Judgment & reasoning | the **strongest** model available (e.g. Opus), fresh session |
-| STEP5 (impl vs spec consistency) | Mechanical "is everything in the spec present in the code" | **Sonnet 4.6 / Haiku 4.5** — fast and cheap is enough |
+| STEP5 (impl vs spec consistency) | Semantic faithfulness (binding already done by `apriori verify`) | **Sonnet 4.6 / Haiku 4.5** — fast and cheap is enough |
 
 > ⚠️ Don't point a weaker model at a stronger one's hard reasoning — auditing an Opus design with Haiku tends to miss exactly the subtle issues Haiku can't follow. Review *sideways or down* in capability, not steeply up. (`/model` switches the current session, but for review always **start a new session** so the reviewer keeps fresh eyes.)
 
@@ -495,7 +495,7 @@ That layering is what lets you automate **even adversarial review** without viol
 |---|---|---|
 | STEP0 | REQ-REVIEW-DOC written and its verdict line = `VERDICT: no major issues`, or step0-cap rounds (default 5) | a heterogeneous reviewer call each round |
 | STEP2 | SPEC-EVALUATION-DOC verdict line = `VERDICT: no major issues, ready to proceed to execution`, or N rounds | a heterogeneous reviewer call each round |
-| STEP5 | `npm test` exits 0 **and** lint/static analysis green (where configured) **and** every tasks.md item is `[x]` **and** the E2E/Playwright run is green **and** the consistency review reports no gaps, or N turns — substitute per §4.8's project-type matrix (docs-only: `python3 scripts/check_docs.py` + example-command static checks) | real test + E2E run + reviewer call |
+| STEP5 | `npm test` exits 0 **and** lint/static analysis green (where configured) **and** every tasks.md item is `[x]` **and** the E2E/Playwright run is green **and** the consistency review reports no gaps, or N turns — substitute per §4.8's project-type matrix (docs-only: `apriori check`) | real test + E2E run + reviewer call |
 | STEP6 | delta specs merged **and** the module's KB file updated | archive action + writeback |
 | **STEP3 tech review · reverse-capture review · KB sign-off** | — **do not wrap these in a goal** | a human decides |
 
@@ -511,7 +511,7 @@ Everything above is convention; a branch + CI mapping is what makes it *enforced
 |---|---|
 | One change | One branch (`change/<change-name>`), one PR |
 | SPEC-DOC / DESIGN-DOC / review docs / issue ledger | Committed on the branch — reviewers see the docs and the code in the same diff |
-| STEP5 exit conditions | CI jobs on the PR: tests green; lint/static analysis green (where configured); every spec scenario ID appears in ≥1 test name (a grep-able traceability check); tasks.md all `[x]` — docs-only projects map "tests" to `python3 scripts/check_docs.py` + example-command static checks (§4.8) |
+| STEP5 exit conditions | CI jobs on the PR: tests green; lint/static analysis green (where configured); every spec scenario ID appears in ≥1 test name (a grep-able traceability check); tasks.md all `[x]` — docs-only projects map "tests" to `apriori check` (§4.8) |
 | Consistency-review verdict (§7.4) | Posted on the PR as a comment / required check before merge |
 | STEP6 KB writeback | Part of the same PR — "code merged but KB not updated" becomes visible in review instead of silently accumulating |
 
@@ -739,7 +739,7 @@ Prompts: RUNBOOK **P4** (propose) / **P5** (reviewer) / **P6** (producer's revis
 Prompts: RUNBOOK **P7** (apply) / **P8** (consistency reviewer). Design notes:
 
 - P7 is tests-first: one failing test per spec scenario, test names carrying scenario IDs, shown failing *before* implementation — then implement in tasks.md order. Scenario coverage is the hard bar; line coverage stays a signal ([§4.8](#48-step5-code--test--implementation-review)).
-- P8 runs the mechanical check first (scenario IDs missing from all test names) before any judgment calls — cheap checks in front, and its scope clause keeps style findings advisory. Like every review, it runs on a heterogeneous model ([§2.3](#23-driving-codex-non-interactively-multi-round-adversarial-review)).
+- `apriori verify` has already done the mechanical binding check (every scenario has a passing test), so P8 is narrowed to **semantic faithfulness** — whether each test actually exercises its scenario's intent, not just shares its ID. Its scope clause keeps style findings advisory. Like every review, it runs on a heterogeneous model ([§2.3](#23-driving-codex-non-interactively-multi-round-adversarial-review)).
 - The explore track's **P11** (spec extraction) and **P12** (extraction review, heterogeneous) follow the same pattern: the intent card — never the prototype — is the review baseline; P12 runs P1's five dimensions plus intent-conformance and no-invention checks; its verdict line (`VERDICT: extraction accepted`) is the track's machine-checkable merge condition (RUNBOOK §4/§5). Extraction-time decisions that neither the intent card nor the spike observations support are declared as explicit `EXT-n` proposals — P12 recommends, the human rules at the extraction-review decision point (mechanics in RUNBOOK P11/P12).
 
 ### 7.5 STEP6: archive

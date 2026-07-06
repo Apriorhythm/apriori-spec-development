@@ -30,10 +30,12 @@ test('IN-03 non-interactive via flags parses tools/test-cmd/yes', () => {
   assert.strictEqual(a.yes, true);
 });
 
-test('IN-04 the protocol runbook is written once regardless of tool count', () => {
+test('IN-04 the protocol runbook is written once, self-contained, regardless of tool count', () => {
   const root = tmp();
   init.scaffold(root, ['claude', 'cursor', 'codex']);
-  assert.ok(fs.existsSync(path.join(root, 'apriori', 'runbook.md')));
+  const rb = read(root, 'apriori/runbook.md');
+  assert.ok(rb.includes('# Apriori RUNBOOK'));           // the real runbook, not a placeholder
+  assert.ok(rb.includes('## 1. Hard Rules'));            // self-contained: carries the protocol
   // no per-tool runbook duplication — only pointers reference it
   assert.ok(read(root, 'CLAUDE.md').includes('apriori/runbook.md'));
   assert.ok(!read(root, '.cursor/rules/apriori.mdc').includes('# Apriori RUNBOOK'));
@@ -75,5 +77,5 @@ test('IN-08 reports command-level vs rule-level entry per tool', () => {
   const { levels } = init.scaffold(root, ['claude', 'cursor', 'copilot']);
   assert.strictEqual(levels.claude, 'command');
   assert.strictEqual(levels.cursor, 'rule');          // no slash command
-  assert.strictEqual(levels.copilot, 'command-experimental');
+  assert.strictEqual(levels.copilot, 'rule');         // Copilot: rule-level, no slash command
 });

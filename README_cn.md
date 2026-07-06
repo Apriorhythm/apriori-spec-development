@@ -113,15 +113,15 @@ LLM 对抗评审是更大的验证组合中的一件仪器——质量在各阶�
 
 ### 2.1 工具一览
 
-| 工具 | 形态 | 默认模型生态 | OpenSpec 适配器接入 | 在本流程中的角色 |
+| 工具 | 形态 | 默认模型生态 | `apriori init` 入口 | 在本流程中的角色 |
 |---|---|---|---|---|
-| **Claude Code CLI** | 终端 | Claude（Opus/Sonnet/Haiku） | 生成斜杠命令 `/opsx:*` | 主力生产 + 复杂逻辑 |
-| **Codex** | CLI / IDE | GPT 系 | 生成 `AGENTS.md` 等指令文件 | 对抗评审（换 GPT 视角） |
-| **Cursor** | IDE（VSCode 衍生） | 多模型可选 | 生成 `.cursor/rules` 规则 | 生产或评审，按所选模型 |
-| **Windsurf** | IDE | 多模型可选（Cascade） | 生成规则/工作流文件 | 生产或评审 |
-| **Copilot** | IDE 插件 | 多模型可选 | 生成 `.github` instructions | 生产或评审、行内补全 |
+| **Claude Code CLI** | 终端 | Claude（Opus/Sonnet/Haiku） | `CLAUDE.md` + `/apriori` 命令 | 主力生产 + 复杂逻辑 |
+| **Codex** | CLI / IDE | GPT 系 | `AGENTS.md` + `.codex/prompts` | 对抗评审（换 GPT 视角） |
+| **Cursor** | IDE（VSCode 衍生） | 多模型可选 | `.cursor/rules/apriori.mdc`（规则级） | 生产或评审，按所选模型 |
+| **Windsurf** | IDE | 多模型可选（Cascade） | `.windsurf/rules` + 工作流 | 生产或评审 |
+| **Copilot** | IDE 插件 | 多模型可选 | `.github/copilot-instructions.md` | 生产或评审、行内补全 |
 
-> ⚠️ 不同工具调用 OpenSpec 适配器的方式略有差异：支持自定义斜杠命令的（如 Claude Code）直接用适配器命令 `/opsx:explore`；其它工具 OpenSpec 会生成**等价的提示词/规则文件**，你在对话里引用即可。**四个接口动作（explore/propose/apply/archive，RUNBOOK §4）是通用的，叫法因工具而异。**
+> ⚠️ `apriori init` 把一行指向唯一自包含 `apriori/runbook.md` 的**指针**写进每个工具的原生位置——工具支持斜杠命令的给命令(Claude Code、Codex、Windsurf),否则给规则级入口(Cursor、Copilot)。**协议只存一份;每个工具只是入口不同。** 四个步骤动作(explore/propose/apply/archive,RUNBOOK §4)是通用的。
 
 > **过程技能层可替换——产物机制不可。** RUNBOOK 的 P1~P12 提示词*就是*本工作流自带的 SDD skill 层;Claude Code 的 superpowers(TDD、调试、规划)这类技能体系位于其下的实现层——兼容,但不能替代产物机制(规格库/台账/闸口)。指令冲突时,RUNBOOK 恒为准绳。
 
@@ -217,7 +217,7 @@ ANTHROPIC_MODEL="claude-sonnet-4-6" claude
 
 ### 3.1 安装 Node.js（一切的运行时）
 
-OpenSpec 是 npm 包，必须先有 Node.js。**推荐用版本管理器装**，方便后续切换版本。
+`apriori` CLI 跑在 Node.js 上，必须先有 Node。**推荐用版本管理器装**，方便后续切换版本。
 
 **macOS / Linux / WSL（推荐 nvm）：**
 ```shell
@@ -262,33 +262,35 @@ npm -v    # 例如 10.x.x
 
 > 做对抗训练**至少装两个不同模型生态的工具**（例：Claude Code + Cursor，或 Claude Code + Codex）。
 
-### 3.3 安装并初始化 OpenSpec
+### 3.3 安装并初始化 apriori
 
 ```shell
-# 全局安装
-npm install -g @fission-ai/openspec@latest
+# 全局安装(或用 `npx @apriori/spec-dev …` 跑任一命令)
+npm install -g @apriori/spec-dev
 # 验证
-openspec --version
+apriori --help
 ```
 
-OpenSpec 是本工作流的**官方适配器**——推荐但非必需(已测 **1.5.0**;CLI 会漂移,且流程在产物接口的 plain-files 形态下零依赖可跑,RUNBOOK §4)。它自动化脚手架与归档合并。进入你的项目根目录后初始化：
+`apriori` CLI 自包含——**零运行时依赖**,纯 Node。进入你的项目根目录后搭建工作流：
 ```shell
 cd /path/to/your-project
-openspec init
+apriori init
 ```
 
-`openspec init` 会让你**勾选正在使用的 AI 工具**（可多选），并为每个工具生成对应的接入文件（Claude Code → 斜杠命令；Cursor → `.cursor/rules`；Copilot → `.github` instructions；等等）。生成的 `openspec/` 目录是流程的"说明书"，**纳入版本管理、不要随意删**。
+`apriori init` 会让你**勾选正在使用的 AI 工具**（可多选），并为每个工具把一行指向唯一 `apriori/runbook.md` 的指针写进其原生位置（Claude Code → `CLAUDE.md` + 斜杠命令；Cursor → `.cursor/rules`；Copilot → `.github` instructions；等等）。它创建单一 `apriori/` 根(`runbook.md`、`process-config.md`,以及 `specs/ changes/ review/ truth/` 工作目录)。增量写入、绝不覆盖——**把 `apriori/` 纳入版本管理**。
 
-> 官方仓库（含各工具最新接入说明）：https://github.com/Fission-AI/OpenSpec
+> 上游仓库（含各工具最新接入说明）：https://github.com/Apriorhythm/apriori-spec-development
 
 ### 3.4 命令速览
 
-| 接口动作 | 适配器命令 | 用途 |
+| `apriori` 命令 | 何时 | 用途 |
 |---|---|---|
-| explore | `/opsx:explore` | 需求前期探索，对齐已知事实与设计 |
-| propose | `/opsx:propose` | 输出 SPEC-DOC、DESIGN-DOC 等实施文档 |
-| apply | `/opsx:apply` | 根据 SPEC-DOC 执行编码与测试 |
-| archive | `/opsx:archive` | 归档变更，把增量规格合并进 living 规格库 |
+| `apriori init` | 每项目一次 | 搭建 `apriori/` + 各工具指针 |
+| `apriori verify` | STEP5 退出闸口 | 把每条 scenario ID 绑定到绿测试(GREEN 或 GAPS) |
+| `apriori archive` | STEP6 | 把变更的增量规格并入 living 规格库 |
+| `apriori check` | CI / pre-commit | 结构一致性(锚点、scenario ID、漂移) |
+
+runbook 提到的四个**步骤动作**——explore(STEP1)、propose(STEP2)、apply(STEP5)、archive(STEP6)——是 agent 执行的提示词(RUNBOOK §5);只有 archive 另有确定性 CLI(`apriori archive`)。
 
 ---
 
@@ -333,9 +335,9 @@ graph LR
 
 | 缩写 | 全称 | 说明 |
 |---|---|---|
-| TRUTH-DOC | 系统知识库文档 | 当前系统所有已知事实的抽象集合，长期维护（默认放在代码仓库内的 `docs/truth/`——见第六节） |
-| SPEC-DOC | 规格文档 | 由 propose 动作产出的需求规格(OpenSpec 为适配器)，描述本次变更的所有场景 |
-| DESIGN-DOC | 设计文档 | 本次变更的技术方案，由 propose 动作(适配器：`/opsx:propose`)输出 |
+| TRUTH-DOC | 系统知识库文档 | 当前系统所有已知事实的抽象集合，长期维护（默认放在代码仓库内的 `apriori/truth/`——见第六节） |
+| SPEC-DOC | 规格文档 | 由 propose 动作产出的需求规格，描述本次变更的所有场景 |
+| DESIGN-DOC | 设计文档 | 本次变更的技术方案，由 propose 动作输出 |
 | REQ-REVIEW-DOC | 需求评审文档 | **STEP0** 中由评审模型对需求文档输出的问题列表 |
 | SPEC-EVALUATION-DOC | 规格评审文档 | **STEP2** 对抗训练中，另一模型对 SPEC-DOC + DESIGN-DOC 的审查意见 |
 | DESIGN-REVIEW-DOC | 技术评审记录 | **STEP3** 人工技术评审会议的结论与修改意见 |
@@ -349,25 +351,24 @@ graph LR
 | 产物 | 默认位置 |
 |---|---|
 | 需求文档 | `requirement/req-v{N}.md`，定稿为 `requirement/req-final.md` |
-| REQ-REVIEW-DOC | `doc/review/<change>-req-review-v{N}.md`（带上变更名前缀——并行的变更不能互相覆盖） |
-| gap 报告（STEP1 产出） | `doc/explore/<change>-gap-report.md` |
-| 问题台账 | `doc/review/<change>-issues.md` |
-| SPEC-DOC / DESIGN-DOC / tasks.md | `doc/changes/<change>/specs/`、`…/design.md`、`…/tasks.md`(OpenSpec 适配器：`openspec/changes/<change>/…`) |
-| SPEC-EVALUATION-DOC | `doc/design/<change>-review-v{N}.md` |
+| REQ-REVIEW-DOC | `apriori/review/<change>-req-review-v{N}.md`（带上变更名前缀——并行的变更不能互相覆盖） |
+| gap 报告（STEP1 产出） | `apriori/explore/<change>-gap-report.md` |
+| 问题台账 | `apriori/review/<change>-issues.md` |
+| SPEC-DOC / DESIGN-DOC / tasks.md | `apriori/changes/<change>/specs/`、`…/design.md`、`…/tasks.md` |
+| SPEC-EVALUATION-DOC | `apriori/design/<change>-review-v{N}.md` |
 | 意图卡（探索轨） | `requirement/intent-card.md` |
-| 提取评审（探索轨） | `doc/review/<change>-extraction-review-v{N}.md` |
+| 提取评审（探索轨） | `apriori/review/<change>-extraction-review-v{N}.md` |
 | 原型（探索轨） | `spike/`——archive 时删除或隔离;tasks.md 绝不引用 |
-| TRUTH-DOC（知识库） | `docs/truth/<module>.md`，**与代码同仓库**（独立知识库仓库也可以，但每份文档必须带 `source-commit` 标记——见第六节） |
+| TRUTH-DOC（知识库） | `apriori/truth/<module>.md`，**与代码同仓库**（独立知识库仓库也可以，但每份文档必须带 `source-commit` 标记——见第六节） |
 
 ### 4.2 总览流程图
 
 > 流程图显式画出了 **STEP0 需求文档对抗评审的循环**，以及各环节之间的**回环**。
 
-> **本图是加固轨——默认轨道。**(节点以适配器命令 `/opsx:*` 标示接口动作。) 目标模糊的变更走探索轨([§4.0](#40-先给变更定级) 的小图),在 STEP2 汇入本图——即下图的虚线到达。
+> **本图是加固轨——默认轨道。** 目标模糊的变更走探索轨([§4.0](#40-先给变更定级) 的小图),在 STEP2 汇入本图——即下图的虚线到达。
 
 ```mermaid
 graph TD
-    %% 节点以适配器命令(/opsx:*)标示接口动作
     X0([探索轨, §4.0]) -.-> C
     subgraph S0[STEP0 需求文档精细化 · 对抗循环]
         A1[需求文档 v_n] --> A2[评审模型审查<br/>产出 REQ-REVIEW-DOC]
@@ -377,8 +378,8 @@ graph TD
         A3 -- 否 --> A5[需求文档定稿]
     end
 
-    A5 --> B[STEP1 /opsx:explore<br/>对齐事实, 输出 gap 报告]
-    B --> C[STEP2 /opsx:propose<br/>输出 SPEC-DOC + DESIGN-DOC]
+    A5 --> B[STEP1 explore<br/>对齐事实, 输出 gap 报告]
+    B --> C[STEP2 propose<br/>输出 SPEC-DOC + DESIGN-DOC]
 
     C --> D[对抗训练: 异构模型评审<br/>产出 SPEC-EVALUATION-DOC]
     D --> D2{无重大问题?}
@@ -388,11 +389,11 @@ graph TD
     E --> F{评审有重大变更?}
     F -- 是, 回炉 --> C
     F -- 否 --> G[STEP4 更新 SPEC-DOC / DESIGN-DOC]
-    G --> H[STEP5 /opsx:apply<br/>编码 + 测试 + 代码评审]
+    G --> H[STEP5 apply<br/>编码 + 测试 + 代码评审]
     H --> H2{测试通过 & 实现评审一致?}
     H2 -- 否, 修复 --> H
     H2 -- 否, 设计本身不可行 --> C
-    H2 -- 是 --> I[STEP6 /opsx:archive<br/>合并规格 + 回写知识库]
+    H2 -- 是 --> I[STEP6 archive<br/>合并规格 + 回写知识库]
 ```
 
 > 图中每个循环都有机器可判定的退出条件，因此都能**交给 `/goal` 自动驱动**——见 [§4.10](#410-用-goal-自动化整个流程)。
@@ -416,24 +417,24 @@ graph TD
 - **评审用的模型，应与起草需求时不同**（例如需求初稿用 Claude，评审切 GPT）。
 - 评审维度建议固定为清单：**目标状态 B 是否清晰 / 是否有歧义 / 边界与异常是否覆盖 / 是否隐含未声明的状态变更 / 验收标准是否可测**。
 - **退出条件**：评审模型明确输出 "VERDICT: no major issues"（无重大问题），或达到 5 轮上限后人工裁决。
-- **每一轮同时写入问题台账**（`doc/review/<change>-issues.md`，[§7.0](#70-问题台账所有评审循环共用)）：新发现领新 ID、修复翻状态；一旦有 ID 被重开，就是循环不收敛的预警。
+- **每一轮同时写入问题台账**（`apriori/review/<change>-issues.md`，[§7.0](#70-问题台账所有评审循环共用)）：新发现领新 ID、修复翻状态；一旦有 ID 被重开，就是循环不收敛的预警。
 
 对应提示词见 [§7.1](#71-step0需求文档对抗评审)。
 
-### 4.4 STEP1｜`/opsx:explore`（探索对齐）
+### 4.4 STEP1｜探索对齐
 
-本节即 **explore 接口动作**(标题为其适配器命令)。根据所有已知事实进行探索，对齐设计。
+本节即 **explore 接口动作**。根据所有已知事实进行探索，对齐设计。
 
-- **输入**：TRUTH-DOC（知识库，`docs/truth/`）、上轮遗留的 SPEC-DOC（如有）、代码、定稿的需求文档。
-- **输出**：对齐报告，列出**当前状态 A 与目标状态 B 之间的 gap**，落盘为 `doc/explore/<change>-gap-report.md`。
+- **输入**：TRUTH-DOC（知识库，`apriori/truth/`）、上轮遗留的 SPEC-DOC（如有）、代码、定稿的需求文档。
+- **输出**：对齐报告，列出**当前状态 A 与目标状态 B 之间的 gap**，落盘为 `apriori/explore/<change>-gap-report.md`。
 
 > **跑 propose 之前先扫一眼 gap 报告**——这是全流程里最便宜的一道闸口。错误或缺失的事实在这里被抓住，代价是一分钟阅读；留给 STEP2 评审方去抓，代价是一整轮评审；漏到 STEP5，代价就是返工。
 
 > 旧项目尤其依赖这一步：见第六节，先确保知识库覆盖到相关模块，否则 explore 出来的事实会有缺口。
 
-### 4.5 STEP2｜`/opsx:propose`（产出规格与设计 + 对抗训练）
+### 4.5 STEP2｜产出规格与设计 + 对抗训练
 
-本节即 **propose 接口动作**(标题为其适配器命令)。产出提案、全部 Spec 文档（SPEC-DOC）与设计文档（DESIGN-DOC），然后进入对抗训练：
+本节即 **propose 接口动作**。产出提案、全部 Spec 文档（SPEC-DOC）与设计文档（DESIGN-DOC），然后进入对抗训练：
 
 ```
 SPEC-DOC + DESIGN-DOC_V1  ──评审模型──►  SPEC-EVALUATION-DOC_V1
@@ -450,7 +451,7 @@ SPEC-DOC + DESIGN-DOC_V2  ──评审模型──►  SPEC-EVALUATION-DOC_V2
 
 开技术评审会，对 `DESIGN-DOC` 评审；同步把 `SPEC-DOC` 里的 `spec.md`（内含各类场景）交给测试。记录结论为 DESIGN-REVIEW-DOC。
 
-> 若评审产生**重大设计变更**，回到 STEP2 重跑 propose 动作(适配器：`/opsx:propose`)。
+> 若评审产生**重大设计变更**，回到 STEP2 重跑 propose 动作。
 
 > **个人开发者？** 没有会可开——就换成对着固定清单做自查（[§7.3](#73-step2对抗训练评审与修订) 的评审清单即可用），再加一轮全新会话的异构评审，结论照样记成 DESIGN-REVIEW-DOC。STEP3 的意义在于*在生产方上下文之外*形成一份决策记录，而不在于开会这个形式。
 
@@ -458,9 +459,9 @@ SPEC-DOC + DESIGN-DOC_V2  ──评审模型──►  SPEC-EVALUATION-DOC_V2
 
 依据 DESIGN-REVIEW-DOC 更新 SPEC-DOC 与 DESIGN-DOC，可再叠加一轮对抗训练。
 
-### 4.8 STEP5｜`/opsx:apply`（编码 + 测试 + 实现评审）
+### 4.8 STEP5｜编码 + 测试 + 实现评审
 
-本节即 **apply 接口动作**(标题为其适配器命令)。根据 SPEC-DOC 编写代码——**测试先行**：先从 spec 的每个 scenario 派生一条失败测试（测试名带 scenario ID），再按 tasks.md 顺序实现到全绿。标准仍是**测试全部通过**，而先失败的那次运行恰好证明这些测试真的能失败。
+本节即 **apply 接口动作**。根据 SPEC-DOC 编写代码——**测试先行**：先从 spec 的每个 scenario 派生一条失败测试（测试名带 scenario ID），再按 tasks.md 顺序实现到全绿。标准仍是**测试全部通过**，而先失败的那次运行恰好证明这些测试真的能失败。
 
 - **可追溯性优先于覆盖率数字**：硬性要求是 *scenario 覆盖*——每个 spec scenario 至少有一条带其 ID 的测试，一个 grep 级的 CI 检查就能强制（[§4.11](#411-把流程落到-git--pr--ci)）。行覆盖率是值得盯的信号，不是目标：被要求"冲 100%"的模型，会乐呵呵地拿无断言测试凑数。高风险逻辑可用变异测试（mutation testing）抽查测试质量。
 - **按项目类型的验证矩阵**：所有代码项目——lint/静态分析全绿(安全敏感加 SAST)——where configured；后端/库——单测+属性测试+变异抽查；UI——另加 E2E/视觉回归；有部署面的服务——另加运行时契约与金丝雀+回滚（一小时投入回滚能力,通常比多开一轮评审买到更多安全——但这个取舍只存在于实现阶段,且金丝雀捕获的是回归和崩溃,不是"造对了一个错东西"）；**纯文档项目——校验脚本与示例命令静态检查就是测试套件**。某仪器的前提缺失时(无部署面、solo、库、文档),LLM 评审在该处就是主力——不是降级（[§1.5](#15-质量从哪里来)）。
@@ -468,11 +469,11 @@ SPEC-DOC + DESIGN-DOC_V2  ──评审模型──►  SPEC-EVALUATION-DOC_V2
 - 引入对抗训练：用**另一模型**（如 Sonnet 4.6 / GPT）评审 Spec 与代码实现的**一致性**——重点查"spec 里写了、代码里漏了"，以及"代码里有 `continue`/静默跳过/skip 分支但 spec 未声明对用户可见"。
 - **测试分层**：逻辑用单元测试（始终要有）；**有界面的项目**再加 E2E 与视觉回归（如 Playwright 截图）。像 §5 的 mini-kv 这样的纯库没有界面，只需单元测试——[§7.7](#77-goal-配方自动化每个循环) 配方里的 Playwright 那一条可跳过。
 
-### 4.9 STEP6｜`/opsx:archive`（归档并沉淀事实）
+### 4.9 STEP6｜归档并沉淀事实
 
-**archive 接口动作**(适配器：`/opsx:archive`)做的是：按接口的 archive 算法(RUNBOOK §4)把本次 change 的**增量规格合并进 living 规格库**(`doc/specs/`;适配器：`openspec/specs/`)并归档该 change，让规格库与最终实现保持一致。
+**archive 接口动作**(`apriori archive`)做的是：按接口的 archive 算法(RUNBOOK §4)把本次 change 的**增量规格合并进 living 规格库**(`apriori/specs/`)并归档该 change，让规格库与最终实现保持一致。
 
-> ⚠️ 注意区分：archive 动作(适配器：`/opsx:archive`)**不会自动更新你自己的 TRUTH-DOC**（`docs/truth/` 或独立知识库仓库——见第六节）。把本次新增/变更的事实**回写到知识库，是一个额外的步骤**（用 [§7.5](#75-step6archive) 的提示词显式让 AI 去做，或人工补写）。
+> ⚠️ 注意区分：archive 动作**不会自动更新你自己的 TRUTH-DOC**（`apriori/truth/` 或独立知识库仓库——见第六节）。把本次新增/变更的事实**回写到知识库，是一个额外的步骤**（用 [§7.5](#75-step6archive) 的提示词显式让 AI 去做，或人工补写）。
 
 **这一步是旧项目长期可维护的命脉**——每次变更都把新事实沉淀回知识库，下次 explore 才不会有缺口。知识库与代码同仓库时（见第六节），回写和代码走同一个 PR，评审者真的看得见——强制手段的映射见 [§4.11](#411-把流程落到-git--pr--ci)。
 
@@ -495,7 +496,7 @@ SPEC-DOC + DESIGN-DOC_V2  ──评审模型──►  SPEC-EVALUATION-DOC_V2
 | STEP0 | REQ-REVIEW-DOC 已产出且结论行 = `VERDICT: no major issues`，或 step0-cap 轮（默认 5） | 每轮一次异构评审调用 |
 | STEP2 | SPEC-EVALUATION-DOC 结论行 = `VERDICT: no major issues, ready to proceed to execution`，或 N 轮 | 每轮一次异构评审调用 |
 | STEP5 | `npm test` 退出码 0 **且** lint/静态分析全绿(where configured) **且** tasks.md 全 `[x]` **且** E2E/Playwright 全绿 **且** 一致性评审无缺口，或 N 轮——按 §4.8 项目类型矩阵替换（纯文档：`python3 scripts/check_docs.py` + 示例命令静态检查） | 真跑测试 + E2E + 评审调用 |
-| STEP6 | 增量规格已合并 **且** 该模块知识库文件已更新 | archive 动作(适配器 `/opsx:archive`)+ 回写 |
+| STEP6 | 增量规格已合并 **且** 该模块知识库文件已更新 | archive 动作+ 回写 |
 | **STEP3 技术评审 · 反向沉淀复核 · 知识库签字** | —— **不要塞进 goal** | 由人决定 |
 
 > 务必加上限（`…或 N 轮后停`）：这个上限既对应手册的"≤5 轮"约束，也兜住成本——开放式 goal 可能跑得很贵。上限放在 `process-config.md`——人类持有、agent 只读——默认 STEP0 5、STEP2 4、STEP5 25,每评审环节硬性地板 1 轮。若某个循环**来回振荡**（判定反复横跳，或同一个台账 ID 反复被重开——[§7.0](#70-问题台账所有评审循环共用) 让这一点变得可见）或停滞不前，应把"触顶上限"当作**升级给人**的信号，而不是悄悄放低标准。**每段机器可判定的区间跑一个 `/goal`，到人工闸口就停**，再开下一个。可直接粘贴的配方在 [RUNBOOK_cn.md](./RUNBOOK_cn.md) §6；设计说明见 [§7.7](#77-goal-配方自动化每个循环)。
@@ -514,13 +515,13 @@ SPEC-DOC + DESIGN-DOC_V2  ──评审模型──►  SPEC-EVALUATION-DOC_V2
 | 一致性评审结论（§7.4） | 以评论 / 必过检查的形式挂在 PR 上，过不了不许合并 |
 | STEP6 知识库回写 | 同一个 PR 的一部分——"代码合了、知识库没更"在评审里一眼可见，而不是悄悄积累 |
 
-**并行变更。** 每个变更还可用 `git worktree` 获得隔离工作副本——SDD 工具已多将其自动化。多谱系仓库(多条长期版本线并存)中,每份需求及其 flow-state 都预先声明**目标谱系**(分支/线)——变更中途发现谱系冲突是立即停下的信号,不是合并编辑器里现场解决的事。分支隔离了代码，但归档时仍有两处会撞车：living 规格库(`doc/specs/`;适配器 `openspec/specs/`)和按模块的知识库文件。按模块串行归档——后合并的一方负责 rebase 自己的增量规格与知识库 diff；把知识库文件冲突当作"两个变更动了同一批事实"的信号：要有意识地调和，而不是在合并编辑器里随手选一边。
+**并行变更。** 每个变更还可用 `git worktree` 获得隔离工作副本——SDD 工具已多将其自动化。多谱系仓库(多条长期版本线并存)中,每份需求及其 flow-state 都预先声明**目标谱系**(分支/线)——变更中途发现谱系冲突是立即停下的信号,不是合并编辑器里现场解决的事。分支隔离了代码，但归档时仍有两处会撞车：living 规格库(`apriori/specs/`)和按模块的知识库文件。按模块串行归档——后合并的一方负责 rebase 自己的增量规格与知识库 diff；把知识库文件冲突当作"两个变更动了同一批事实"的信号：要有意识地调和，而不是在合并编辑器里随手选一边。
 
 ---
 
 ## 五、实例项目：mini-kv（带 TTL 的内存缓存）
 
-用一个**有真实状态、易测试**的小库，把全流程跑通一遍。选它是因为它正好命中 OpenSpec 配置里那条关键规则——**"外部共享状态必须描述 初始化 / 更新 / 清理 三个时机"**（见 §8.1），是体会规格颗粒度的好例子。
+用一个**有真实状态、易测试**的小库，把全流程跑通一遍。选它是因为它正好命中一条关键规格规则——**"外部共享状态必须描述 初始化 / 更新 / 清理 三个时机"**（见 §8.1），是体会规格颗粒度的好例子。
 
 > 目标：一个 Node.js 库 `mini-kv`，提供带过期时间（TTL）的内存键值存储。
 
@@ -529,7 +530,7 @@ SPEC-DOC + DESIGN-DOC_V2  ──评审模型──►  SPEC-EVALUATION-DOC_V2
 ```shell
 mkdir mini-kv && cd mini-kv
 npm init -y
-openspec init        # mini-kv 选用 OpenSpec 适配器(归类规则:RUNBOOK §4);plain-files 项目跳过此步
+apriori init         # 搭建 apriori/ 根与各工具指针
 git init             # 建议纳入版本管理，方便对照每步 diff
 ```
 
@@ -552,23 +553,21 @@ git init             # 建议纳入版本管理，方便对照每步 diff
 
 在主力工具里：
 ```text
-/opsx:explore   # 适配器命令——plain-files 项目直接按本提示词执行
 * 需求文档: requirement/req-final.md
-* 系统知识库: （新项目，暂无 / 旧项目填 docs/truth/ 或知识库路径）
+* 系统知识库: （新项目，暂无 / 旧项目填 apriori/truth/ 或知识库路径）
 * 代码: 当前仓库
-请对齐事实，输出当前状态 A 与目标 B 的 gap 报告到 doc/explore/<change>-gap-report.md。
+请对齐事实，输出当前状态 A 与目标 B 的 gap 报告到 apriori/explore/<change>-gap-report.md。
 ```
 
 ### 5.3 STEP2 · propose + 对抗评审
 
 ```text
-/opsx:propose   # 适配器命令——plain-files 项目直接按 RUNBOOK P4 执行
 ```
 重点检查产出的 `spec.md` 是否**为每个用户可见行为单独建 scenario**，且**外部共享状态（这里就是那张内存 map）描述了 初始化 / 运行中更新 / 清理失效 三个时机**。
 然后切到评审工具/模型，按 [§7.3](#73-step2对抗训练评审与修订) 评审 → 修订，循环到 "VERDICT: no major issues"。具体可用 Codex 来驱动评审（[§2.3](#23-用命令行驱动-codex多轮对抗评审)）：
 ```shell
 # 第一轮——开启评审会话（记下打印出来的 session id）
-codex exec -s read-only "按 RUNBOOK P5 评审清单，对照 requirement/req-final.md 评审 openspec/changes/<change>/specs/ 与 design.md，末尾给出结论行。"   # 适配器路径——plain-files 项目为 doc/changes/<change>/…
+codex exec -s read-only "按 RUNBOOK P5 评审清单，对照 requirement/req-final.md 评审 apriori/changes/<change>/specs/ 与 design.md，末尾给出结论行。"
 # 之后每个修订轮——同一上下文，它能核对你的修复是否到位
 codex exec resume -c sandbox_mode="read-only" <session-id> "我已按上轮意见修订；请重新评审并产出 v{N+1}。"
 ```
@@ -578,7 +577,6 @@ codex exec resume -c sandbox_mode="read-only" <session-id> "我已按上轮意�
 > mini-kv 是单人项目，STEP3/STEP4 折叠成 [§4.6](#46-step3技术评审) 的个人自查——对设计做一次全新会话的过目就够；有改动就记下来，然后继续。
 
 ```text
-/opsx:apply   # 适配器命令——plain-files 项目直接按 RUNBOOK P7 执行
 先从 spec 的每个 scenario 派生一条失败测试（测试名带 scenario ID），把失败的运行结果给我看。
 然后按 tasks.md 顺序实现，直到测试全部通过、功能完整。
 ```
@@ -593,7 +591,7 @@ npm test
 
 想让"实现 → 测试"循环无人值守地跑，就用 goal 包起来——这是 [§7.7](#77-goal-配方自动化每个循环) STEP5 配方的 mini-kv 版（它是个库，所以没有 Playwright 那一条）：
 ```text
-/goal "目标——以下全部成立:`npm test` 退出码 0;每个 spec scenario ID 至少出现在一个测试名里;openspec/changes/<change>/tasks.md(适配器路径;plain-files 为 doc/changes/<change>/tasks.md)每项均为 [x];且由另一个模型做的一致性评审(RUNBOOK P8 提示词)报告 'VERDICT: no spec-vs-code gaps'。上限:15 轮。第 1 轮:为每个 spec scenario 生成一条失败测试(以其 ID 命名)并把失败运行结果打印出来。之后每一轮:按顺序实现 tasks.md 下一项,跑 `npm test` 并把输出打印出来。全部成立或满 15 轮则停。"
+/goal "目标——以下全部成立:`npm test` 退出码 0;每个 spec scenario ID 至少出现在一个测试名里;apriori/changes/<change>/tasks.md 每项均为 [x];且由另一个模型做的一致性评审(RUNBOOK P8 提示词)报告 'VERDICT: no spec-vs-code gaps'。上限:15 轮。第 1 轮:为每个 spec scenario 生成一条失败测试(以其 ID 命名)并把失败运行结果打印出来。之后每一轮:按顺序实现 tasks.md 下一项,跑 `npm test` 并把输出打印出来。全部成立或满 15 轮则停。"
 ```
 > 配方里的轮数是示例默认值——以 `process-config.md` 为准。
 
@@ -606,9 +604,8 @@ node -e "const KV=require('./src/mini-kv'); const k=new KV(); k.set('a',1,50); c
 ```
 满意后归档：
 ```text
-/opsx:archive   # 适配器命令——plain-files 项目直接按 RUNBOOK P9 的 archive 算法执行
 ```
-新项目第一次 archive 会**生成初版 TRUTH-DOC**（按第六节的默认约定：`docs/truth/mini-kv.md`，与代码同仓库）——恭喜，你的 mini-kv 从此有了系统知识库，下个功能就能从第六节的"有知识库"路径起步。为了校准颗粒度，第一份知识库文档大致应长这样：
+新项目第一次 archive 会**生成初版 TRUTH-DOC**（按第六节的默认约定：`apriori/truth/mini-kv.md`，与代码同仓库）——恭喜，你的 mini-kv 从此有了系统知识库，下个功能就能从第六节的"有知识库"路径起步。为了校准颗粒度，第一份知识库文档大致应长这样：
 
 ```markdown
 ---
@@ -643,7 +640,7 @@ source-commit: <归档时的 commit sha>   # 只覆盖契约节
 
 ## 六、旧项目开发：系统知识库闭环
 
-> 这里的**系统知识库（TRUTH-DOC）**指长期维护、沉淀每个模块抽象意图、对外接口、数据流的文档。**默认位置：与代码同仓库，放在 `docs/truth/<module>.md`**——这样一个 PR 原子地同时携带代码变更*和*知识库更新，评审者在同一个 diff 里两边都看得到（[§4.11](#411-把流程落到-git--pr--ci)）。独立的知识库仓库也可以（例如一份知识库覆盖多个代码仓库），但会失去这种原子性——补救办法是给每份知识库文档打上它核对时对应的代码 commit 标记（`source-commit:`，供 §6.1 的新鲜度检查使用）。下文所说「知识库」兼指两种布局。
+> 这里的**系统知识库（TRUTH-DOC）**指长期维护、沉淀每个模块抽象意图、对外接口、数据流的文档。**默认位置：与代码同仓库，放在 `apriori/truth/<module>.md`**——这样一个 PR 原子地同时携带代码变更*和*知识库更新，评审者在同一个 diff 里两边都看得到（[§4.11](#411-把流程落到-git--pr--ci)）。独立的知识库仓库也可以（例如一份知识库覆盖多个代码仓库），但会失去这种原子性——补救办法是给每份知识库文档打上它核对时对应的代码 commit 标记（`source-commit:`，供 §6.1 的新鲜度检查使用）。下文所说「知识库」兼指两种布局。
 
 **知识库欠你什么——不欠你什么:**
 
@@ -684,11 +681,10 @@ git log --oneline <source-commit>..HEAD -- src/<module>/
 
 直接进 STEP1，把知识库作为事实来源喂进去：
 ```text
-/opsx:explore   # 适配器命令——plain-files 项目直接按本提示词执行
 * 需求文档: requirement/req-final.md
-* 系统知识库: docs/truth/（对应模块: <模块名>；独立仓库布局则填其本地路径）
+* 系统知识库: apriori/truth/（对应模块: <模块名>；独立仓库布局则填其本地路径）
 * 技术详细设计文档: design.md
-请基于知识库与代码对齐事实，输出 gap 报告到 doc/explore/<change>-gap-report.md。
+请基于知识库与代码对齐事实，输出 gap 报告到 apriori/explore/<change>-gap-report.md。
 ```
 
 ### 6.3 路径 B：知识库过时
@@ -697,14 +693,14 @@ git log --oneline <source-commit>..HEAD -- src/<module>/
 
 ### 6.4 路径 C：知识库缺失（最常见）
 
-**反向知识沉淀**：让 AI 阅读目标模块代码，产出该模块的知识库文档（抽象意图、对外接口、数据流、依赖、副作用）。它直接落在变更分支的 `docs/truth/<模块名>.md`，于是**评审就发生在评审本来就发生的地方——PR diff 里**；通过后再进入正常流程。提示词见 [§7.6](#76-旧项目反向知识沉淀--知识库校对)。
+**反向知识沉淀**：让 AI 阅读目标模块代码，产出该模块的知识库文档（抽象意图、对外接口、数据流、依赖、副作用）。它直接落在变更分支的 `apriori/truth/<模块名>.md`，于是**评审就发生在评审本来就发生的地方——PR diff 里**；通过后再进入正常流程。提示词见 [§7.6](#76-旧项目反向知识沉淀--知识库校对)。
 
 > ⚠️ 反向沉淀出来的知识库**必须人工或异构模型评审**——AI 从代码反推意图时会编造"看似合理但实则错误"的抽象。别让带毒的知识库污染后续所有开发。
 
 ### 6.5 闭环：每次开发都回写
 
 旧项目能否越改越顺，取决于 **STEP6 是否老老实实回写知识库**。把它写进团队约定：
-**一次变更 = 一个同时包含代码 diff 与知识库 diff 的 PR。** 知识库与代码同仓库时（第六节的默认），这条在评审里就能强制——动了 `src/<module>/` 却没动 `docs/truth/<module>.md` 的 PR，会被问一句为什么（[§4.11](#411-把流程落到-git--pr--ci)）。用独立仓库的团队只能靠约定加 `source-commit` 新鲜度检查事后兜底。长期坚持，知识库会从"路径 C"逐步收敛到"路径 A"，开发效率持续提升。
+**一次变更 = 一个同时包含代码 diff 与知识库 diff 的 PR。** 知识库与代码同仓库时（第六节的默认），这条在评审里就能强制——动了 `src/<module>/` 却没动 `apriori/truth/<module>.md` 的 PR，会被问一句为什么（[§4.11](#411-把流程落到-git--pr--ci)）。用独立仓库的团队只能靠约定加 `source-commit` 新鲜度检查事后兜底。长期坚持，知识库会从"路径 C"逐步收敛到"路径 A"，开发效率持续提升。
 
 ---
 
@@ -714,7 +710,7 @@ git log --oneline <source-commit>..HEAD -- src/<module>/
 
 ### 7.0 问题台账（所有评审循环共用）
 
-每个变更一份累积台账 `doc/review/<change>-issues.md`（格式:RUNBOOK **P0**）。评审执行**范围纪律**(依据 Anthropic 全票验证的警告:被要求找缺口的评审者对健康工作也会报缺口):只有正确性/安全/既定需求类缺口立正式行;其余为 `advisory`——逐条清单留在评审文档,台账每轮只落一行批量行。它存在的理由:跨轮记忆放在文件里而不是会话里,于是每一轮的评审方都可以是**全新**会话而不丢线索（[§1.4](#14-对抗训练)）。谁写什么:评审方追加新行并把 `fixed → verified`;生产方把 `open → fixed/rejected`——拒绝必须给理由,因为人工闸口最先看的就是拒绝项。再次发现的问题**重开旧 ID**而不是另起新行;被重开的 ID 正是 [§4.10](#410-用-goal-自动化整个流程) 盯的振荡警报。
+每个变更一份累积台账 `apriori/review/<change>-issues.md`（格式:RUNBOOK **P0**）。评审执行**范围纪律**(依据 Anthropic 全票验证的警告:被要求找缺口的评审者对健康工作也会报缺口):只有正确性/安全/既定需求类缺口立正式行;其余为 `advisory`——逐条清单留在评审文档,台账每轮只落一行批量行。它存在的理由:跨轮记忆放在文件里而不是会话里,于是每一轮的评审方都可以是**全新**会话而不丢线索（[§1.4](#14-对抗训练)）。谁写什么:评审方追加新行并把 `fixed → verified`;生产方把 `open → fixed/rejected`——拒绝必须给理由,因为人工闸口最先看的就是拒绝项。再次发现的问题**重开旧 ID**而不是另起新行;被重开的 ID 正是 [§4.10](#410-用-goal-自动化整个流程) 盯的振荡警报。
 
 ### 7.1 STEP0｜需求文档对抗评审
 
@@ -726,7 +722,7 @@ git log --oneline <source-commit>..HEAD -- src/<module>/
 
 ### 7.2 STEP1｜explore
 
-提示词:RUNBOOK **P3**。设计说明:只对齐事实——不写代码。知识库与定稿需求作为输入,输出固定落盘到 `doc/explore/<change>-gap-report.md`,让 propose 前那道便宜闸口（[§4.4](#44-step1opsxexplore探索对齐)）有实物可读。唯一豁免:**调研 spike 变体**(模糊但触绊线的变更,[§4.0](#40-先给变更定级))允许在 `spike/` 下写探针代码,结论作为 gap 报告附录。
+提示词:RUNBOOK **P3**。设计说明:只对齐事实——不写代码。知识库与定稿需求作为输入,输出固定落盘到 `apriori/explore/<change>-gap-report.md`,让 propose 前那道便宜闸口（[§4.4](#44-step1探索对齐)）有实物可读。唯一豁免:**调研 spike 变体**(模糊但触绊线的变更,[§4.0](#40-先给变更定级))允许在 `spike/` 下写探针代码,结论作为 gap 报告附录。
 
 ### 7.3 STEP2｜对抗训练评审与修订
 
@@ -742,17 +738,17 @@ git log --oneline <source-commit>..HEAD -- src/<module>/
 
 提示词:RUNBOOK **P7**（apply）/ **P8**（一致性评审方）。设计说明:
 
-- P7 测试先行:每个 spec scenario 一条失败测试,测试名带 scenario ID,在实现*之前*先展示失败运行——然后按 tasks.md 顺序实现。scenario 覆盖是硬标准,行覆盖率只是信号（[§4.8](#48-step5opsxapply编码--测试--实现评审)）。
+- P7 测试先行:每个 spec scenario 一条失败测试,测试名带 scenario ID,在实现*之前*先展示失败运行——然后按 tasks.md 顺序实现。scenario 覆盖是硬标准,行覆盖率只是信号（[§4.8](#48-step5编码--测试--实现评审)）。
 - P8 把机械核对放在最前（哪些 scenario ID 没出现在任何测试名里）,便宜的检查先跑,其范围条款把风格类发现留在 advisory;和所有评审一样跑在异构模型上（[§2.3](#23-用命令行驱动-codex多轮对抗评审)）。
 - 探索轨的 **P11**(规格提取)与 **P12**(提取评审,异构)沿用同一模式:评审基准是意图卡——绝不是原型本身;P12 跑 P1 五维度外加意图符合性与无凭空发明检查;其结论行(`VERDICT: extraction accepted`)就是该轨机器可判的汇入条件(RUNBOOK §4/§5)。提取时决策——意图卡与 spike 观察都不支撑的行为——以显式 `EXT-n` 提案声明:P12 给推荐,人在提取评审决策点终裁(机制见 RUNBOOK P11/P12)。
 
 ### 7.5 STEP6｜archive
 
-提示词:RUNBOOK **P9**。设计说明:archive 动作按 RUNBOOK §4 的算法把增量规格并入 living 规格库（`doc/specs/`;OpenSpec 适配器:`openspec/specs/`——[§4.9](#49-step6opsxarchive归档并沉淀事实)）——P9 额外强制知识库回写到 `docs/truth/<module>.md`、刷新 `source-commit` 标记,并列出改了什么(含每条 merged/modified/deprecated 的 ID),让人工闸口有一份具体的 diff 可批。
+提示词:RUNBOOK **P9**。设计说明:archive 动作按 RUNBOOK §4 的算法把增量规格并入 living 规格库（`apriori/specs/`,[§4.9](#49-step6归档并沉淀事实)）——P9 额外强制知识库回写到 `apriori/truth/<module>.md`、刷新 `source-commit` 标记,并列出改了什么(含每条 merged/modified/deprecated 的 ID),让人工闸口有一份具体的 diff 可批。
 
 ### 7.6 旧项目反向知识沉淀 / 知识库校对
 
-提示词:RUNBOOK **P10**。设计说明:代码是唯一真相——不确定处标「待人工确认」而不是编造意图;产出落在变更分支的 `docs/truth/<module>.md`,于是那道强制复核（[§6.4](#64-路径-c知识库缺失最常见)）就发生在评审本来就发生的地方:PR diff 里。
+提示词:RUNBOOK **P10**。设计说明:代码是唯一真相——不确定处标「待人工确认」而不是编造意图;产出落在变更分支的 `apriori/truth/<module>.md`,于是那道强制复核（[§6.4](#64-路径-c知识库缺失最常见)）就发生在评审本来就发生的地方:PR diff 里。
 
 ### 7.7 /goal 配方：自动化每个循环
 
@@ -767,14 +763,12 @@ git log --oneline <source-commit>..HEAD -- src/<module>/
 
 ## 八、配置参考
 
-### 8.1 `openspec/config.yaml`
+### 8.1 规格撰写规则
 
-本节为 **OpenSpec 适配器专用**配置：适配器在项目根目录的配置定义语言、提案规则、任务粒度、实施约束(plain-files 项目把这些 rules 并入项目规则文件即可,§8.2)。以下为一份通用基线，可按项目增删（可直接拷贝的版本见 [`templates/config.yaml`](./templates/config.yaml)）：
+这些是 propose 动作(STEP2)与 apply 动作(STEP5)所强制的规格质量规则。V3 里它们放在你的**项目规则文件**(§8.2)——没有独立的工具配置。以下为一份通用基线，可按项目增删：
 
 ```yaml
-# OpenSpec 适配器配置——plain-files 项目将这些规则并入规则文件(§8.2)
-schema: spec-driven
-
+# 规格撰写规则——并入你的项目规则文件(§8.2)
 context: |
   语言：中文（简体）
   所有产出物必须用简体中文撰写。
@@ -782,9 +776,9 @@ context: |
 rules:
   proposal:
     - 只创建 artifacts（proposal.md/design.md/specs/tasks.md），不得修改任何源代码文件
-    - 完成后停下来，等待用户执行 /opsx:apply
+    - 完成后停下来，等待评审,然后进 apply 步骤(STEP5)
     - 每个"用户可见的输出"必须有独立的 scenario；若同一个需求包含多个可见侧效果（如"过滤"与"展示被过滤结果"），必须分开写成两个 scenario，不得合并为一句描述
-    - 给每个 scenario 一个稳定 ID（如 KV-03）；后续测试必须引用这些 ID
+    - 给每个 scenario 一个稳定 ID（如 KV-03）；后续测试必须引用这些 ID(`apriori verify` 据此绑定,`apriori check` 拒绝无 ID 的 scenario)
     - |
       凡 spec 中涉及"外部共享状态"（Redis、DB 字段、全局单例等），
       MUST 额外描述以下三个时机的行为：
@@ -798,9 +792,9 @@ rules:
   apply:
     - 严格按 tasks.md 中的任务顺序执行
     - 每条任务完成后立即标记为 [x]，再继续下一条
-    - 全部完成后停下来，等待用户执行 /opsx:archive
+    - 全部完成、`apriori verify` GREEN 后停下,变更就绪待归档(STEP6)
     - 凡代码中出现 continue / 静默忽略 / skip 分支，必须回查 spec 确认该分支的内容是否需要对用户可见；若 spec 有要求，则必须产出对应记录，不能只满足"排除主路径"而遗漏"展示侧"
-    - 每条测试都以其覆盖的 scenario ID 命名（如 `test('KV-03 …')`）；存在没有对应测试的 spec scenario，即视为未通过追溯检查
+    - 每条测试都以其覆盖的 scenario ID 命名（如 `test('KV-03 …')`）；存在没有对应测试的 spec scenario,即视为未通过 `apriori verify`
     - 代码中所有关键的分支或者函数开始，都需要打印日志，日志的格式是 `[UUID]-文字说明,XXX:[{}],YYY:[{}]`（该格式是示例——请换成你团队自己的日志规范，见 §8.2 规则文件）
 ```
 
@@ -816,7 +810,7 @@ rules:
 | Copilot | `.github/copilot-instructions.md` |
 | Codex | `AGENTS.md` |
 
-> 不管你用哪些工具，都在各自的规则文件里加一行，引用项目内那份 runbook（`docs/apriori-runbook.md`，安装步骤见 [RUNBOOK_cn.md](./RUNBOOK_cn.md) §0）——正是这一行让每个会话自动加载协议。
+> 不管你用哪些工具，都在各自的规则文件里加一行，引用项目内那份 runbook（`apriori/runbook.md`，安装步骤见 [RUNBOOK_cn.md](./RUNBOOK_cn.md) §0）——正是这一行让每个会话自动加载协议。
 
 > **建议把同一份规范同时落到你团队在用的几个工具里**，保证不同工具行为一致。规则文件的内容**与技术栈强相关**，应由你按自己的项目编写。下面是一份**与语言无关的骨架模板**，照着填进你团队的真实约定即可（示例条目仅作占位，请替换）。
 

@@ -6,6 +6,19 @@
 
 # 规格驱动开发实战手册
 
+## 这是什么 & 怎么用
+
+**apriori** 是一套面向 AI 编程的规格驱动工作流,外加一个零依赖 CLI(`apriori-cli`),它让你的规格**可执行**:每条 scenario 都绑定到一个测试,于是"写了规格却没实现"是**跑一条命令**就查出来的,而不是靠人眼盯 diff。你驱动一个 AI agent 走状态机(精化规格 → 用*另一个*模型对抗评审 → 实现 → 归档),只在真正要紧的人工闸口停下。
+
+```shell
+npm i -g apriori-cli              # 零依赖;也可从 GitHub 装(见 §3.3)
+cd your-project && apriori init   # 搭建工作流,勾选你用的 AI 工具
+```
+
+然后对你的 agent 说:*"按 apriori runbook 推进变更 `<名字>`。"* 它会跑到下一个人工闸口,停下汇报。三个确定性闸口是 CLI 命令:**`apriori verify`**(每条 scenario 有绿测试)、**`apriori archive`**(把变更的规格并入 living 规格库)、**`apriori check`**(CI 一致性)。下面是给人看的完整讲解——AI agent 读自包含的 [RUNBOOK_cn.md](./RUNBOOK_cn.md),不读本手册。
+
+---
+
 > 本手册面向**有工程背景**的开发者，是一份可独立使用的完整手册。
 > 它假设你从**一台干净的机器**开始，覆盖：环境搭建 → 工具选型 → 完整工作流 → 实例项目 → 旧项目（遗留系统）开发 → 提示词库 → 配置参考。
 
@@ -264,14 +277,21 @@ npm -v    # 例如 10.x.x
 
 ### 3.3 安装并初始化 apriori
 
+两种安装方式——都给你同一个 `apriori` 命令。CLI 自包含(**零运行时依赖**,纯 Node)。
+
+**A. 从 npm(推荐):**
 ```shell
-# 全局安装(或用 `npx apriori-cli …` 跑任一命令)
-npm install -g apriori-cli
-# 验证
-apriori --help
+npm install -g apriori-cli        # 或用 `npx apriori-cli …` 跑任一命令
+apriori --help                    # 验证
 ```
 
-`apriori` CLI 自包含——**零运行时依赖**,纯 Node。进入你的项目根目录后搭建工作流：
+**B. 从 GitHub(不需要 npm registry):**
+```shell
+npm install -g github:Apriorhythm/apriori-spec-development#v3
+```
+> 如果 GitHub 装出旧版本(npm 会缓存 git 安装),先清缓存:`npm cache clean --force`。
+
+进入你的项目根目录后搭建工作流：
 ```shell
 cd /path/to/your-project
 apriori init

@@ -6,6 +6,19 @@
 
 # A Practical Handbook for Spec-Driven Development
 
+## What is this & how to use it
+
+**apriori** is a spec-driven workflow for AI coding, plus a zero-dependency CLI (`apriori-cli`) that makes your specs **executable**: every scenario is bound to a test, so "spec'd but never built" is caught by running a command — not by eyeballing a diff. You drive an AI agent through a state machine (refine the spec → adversarial review by a *different* model → implement → archive), stopping at the human gates that matter.
+
+```shell
+npm i -g apriori-cli              # zero dependencies; or install from GitHub (see §3.3)
+cd your-project && apriori init   # scaffold the workflow, pick your AI tools
+```
+
+Then tell your agent: *"Follow the apriori runbook for change `<name>`."* It runs the workflow to the next human gate, then stops and reports. Three deterministic gates are CLI commands: **`apriori verify`** (every scenario has a passing test), **`apriori archive`** (merge the change's specs into the living store), **`apriori check`** (CI consistency). Everything below is the full walkthrough for humans — AI agents read the self-contained [RUNBOOK.md](./RUNBOOK.md) instead.
+
+---
+
 > This handbook is written for developers with an **engineering background**, and is a complete, self-contained guide.
 > It assumes you start from **a clean machine**, and covers: environment setup → tool selection → the full workflow → a worked example → legacy-project development → a prompt library → configuration reference.
 
@@ -264,14 +277,21 @@ npm -v    # e.g. 10.x.x
 
 ### 3.3 Install and Initialize apriori
 
+Two ways to install — both give you the same `apriori` command. The CLI is self-contained (**zero runtime dependencies**, pure Node).
+
+**A. From npm (recommended):**
 ```shell
-# Install globally (or run any command via `npx apriori-cli …`)
-npm install -g apriori-cli
-# Verify
-apriori --help
+npm install -g apriori-cli        # or run any command via `npx apriori-cli …`
+apriori --help                    # verify
 ```
 
-The `apriori` CLI is self-contained — **zero runtime dependencies**, pure Node. From your project root, scaffold the workflow:
+**B. From GitHub (no npm registry needed):**
+```shell
+npm install -g github:Apriorhythm/apriori-spec-development#v3
+```
+> If a GitHub install ever serves a stale version (npm caches git installs), clear the cache first: `npm cache clean --force`.
+
+From your project root, scaffold the workflow:
 ```shell
 cd /path/to/your-project
 apriori init

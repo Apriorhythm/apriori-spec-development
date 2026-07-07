@@ -9,6 +9,11 @@ const BIN = path.join(__dirname, '..', 'bin', 'apriori.js');
 function run(args) { return spawnSync('node', [BIN, ...args], { encoding: 'utf8' }); }
 
 test('CL-01 subcommand dispatch: known subs dispatch, unknown prints usage + non-zero', () => {
+  // update dispatches to lib/update (bare cwd is uninitialized → its own error, not "unknown command")
+  const up = run(['update']);
+  assert.strictEqual(up.status, 1);
+  assert.match(up.stderr, /apriori init/);
+  assert.doesNotMatch(up.stderr, /unknown command/);
   assert.match(run(['--help']).stdout, /apriori <command>/);
   const unknown = run(['frobnicate']);
   assert.notStrictEqual(unknown.status, 0);
@@ -49,4 +54,21 @@ test('CL-05 zero runtime dependencies', () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
   assert.ok(!pkg.dependencies || Object.keys(pkg.dependencies).length === 0);
   assert.ok(!pkg.devDependencies || Object.keys(pkg.devDependencies).length === 0);
+});
+
+test('CL-06 --version prints the package version verbatim, exit 0', () => {
+  const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
+  for (const flag of ['--version', '-v']) {
+    const r = run([flag]);
+    assert.strictEqual(r.status, 0);
+    assert.strictEqual(r.stdout.trim(), pkg.version);
+  }
+});
+
+test('CL-07 unexpected subcommand failures exit cleanly — one line, no stack trace', () => {
+  // archive with an unreadable store file → fs throws deep inside the subcommand
+  const r = run(['archive', '--store', 'no-such-store.md', '--delta', 'no-such-delta.md', '--change', 'x']);
+  assert.strictEqual(r.status, 1);
+  assert.match(r.stderr, /^apriori: /);
+  assert.doesNotMatch(r.stderr, /\n\s+at /);   // no stack frames reach the user
 });

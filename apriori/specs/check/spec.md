@@ -20,3 +20,10 @@
 #### Scenario: CK-05 no OpenSpec adapter assertions remain
 - WHEN check runs against v3 docs
 - THEN it enforces the single plain-files interface (no `openspec/`-adapter dual-path assertions from v2)
+
+### Requirement: check warns on a stale scaffolded runbook without failing
+`apriori check` SHALL compare the project's scaffolded `apriori/runbook.md` (when present) against the installed package's `RUNBOOK.md` and warn on divergence, without turning the warning into a failure.
+
+#### Scenario: CK-06 stale scaffolded runbook warns, never fails
+- WHEN `apriori check` runs in a project whose `apriori/runbook.md` differs byte-wise from the installed package's runbook
+- THEN it prints a warning naming `apriori update`, and RESULT stays PASS if nothing else failed; a missing `apriori/runbook.md` produces no warning

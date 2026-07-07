@@ -55,3 +55,28 @@ test('CK-05 no residual OpenSpec adapter references remain', () => {
   assert.ok(c.checkNoOpenspec('RUNBOOK.md', 'doc/specs/ (adapter: openspec/specs/)').length > 0);
   assert.strictEqual(c.checkNoOpenspec('RUNBOOK.md', 'plain-files at apriori/specs/ only').length, 0);
 });
+
+test('CK-06 stale scaffolded runbook warns via check, never fails', () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { spawnSync } = require('node:child_process');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-ck6-'));
+  // no apriori/runbook.md → no warning
+  assert.strictEqual(c.checkRunbookFreshness(root).length, 0);
+  // identical runbook → no warning
+  fs.mkdirSync(path.join(root, 'apriori'), { recursive: true });
+  fs.copyFileSync(path.join(__dirname, '..', 'RUNBOOK.md'), path.join(root, 'apriori', 'runbook.md'));
+  assert.strictEqual(c.checkRunbookFreshness(root).length, 0);
+  // diverged runbook → warning names apriori update
+  fs.writeFileSync(path.join(root, 'apriori', 'runbook.md'), '# old runbook\n');
+  const warns = c.checkRunbookFreshness(root);
+  assert.strictEqual(warns.length, 1);
+  assert.match(warns[0], /apriori update/);
+  // through the CLI: warning is printed but RESULT stays PASS (nothing else fails in a bare dir)
+  const r = spawnSync('node', [path.join(__dirname, '..', 'bin', 'apriori.js'), 'check'],
+    { cwd: root, encoding: 'utf8' });
+  assert.strictEqual(r.status, 0);
+  assert.match(r.stdout, /! .*apriori update/);
+  assert.match(r.stdout, /RESULT: PASS/);
+});

@@ -38,6 +38,8 @@ test('IN-04 the protocol runbook is written once, self-contained, regardless of 
   const rb = read(root, 'apriori/runbook.md');
   assert.ok(rb.includes('# Apriori RUNBOOK'));           // the real runbook, not a placeholder
   assert.ok(rb.includes('## 1. Hard Rules'));            // self-contained: carries the protocol
+  // single source: byte-identical to the package's own RUNBOOK.md (no template copy to drift)
+  assert.strictEqual(rb, fs.readFileSync(path.join(__dirname, '..', 'RUNBOOK.md'), 'utf8'));
   // no per-tool runbook duplication — only pointers reference it
   assert.ok(read(root, 'CLAUDE.md').includes('apriori/runbook.md'));
   assert.ok(!read(root, '.cursor/rules/apriori.mdc').includes('# Apriori RUNBOOK'));

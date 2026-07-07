@@ -13,6 +13,7 @@ const USAGE = `apriori <command>
   archive   merge a change's delta specs into the living store (STEP6)
   check     structural consistency checks (CI / pre-commit)
   init      scaffold the workflow + per-tool pointers
+  update    refresh tool-owned files (runbook copy, command pointers) after a CLI upgrade
 
 Run 'apriori <command>' with no args for that command's usage.`;
 
@@ -24,6 +25,9 @@ async function main() {
     case 'archive': return require('../lib/archive-merge').cli(rest);
     case 'check':   return require('../lib/check').cli(rest);
     case 'init':    return require('../lib/init').cli(rest);
+    case 'update':  return require('../lib/update').cli(rest);
+    case '-v':
+    case '--version': console.log(require('../package.json').version); return 0;
     case undefined:
     case '-h':
     case '--help':  console.log(USAGE); return 0;
@@ -31,4 +35,7 @@ async function main() {
   }
 }
 
-main().then((code) => process.exit(code));
+main().then(
+  (code) => process.exit(code),
+  (err) => { console.error(`apriori: ${err && err.message ? err.message : err}`); process.exit(1); }
+);

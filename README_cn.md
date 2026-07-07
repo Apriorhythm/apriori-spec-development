@@ -301,6 +301,8 @@ apriori init
 
 `apriori init` 会让你**勾选正在使用的 AI 工具**（可多选），并为每个工具把一行指向唯一 `apriori/runbook.md` 的指针写进其原生位置（Claude Code → `CLAUDE.md` + 斜杠命令；Cursor → `.cursor/rules`；Copilot → `.github` instructions；等等）。它创建单一 `apriori/` 根(`runbook.md`、`process-config.md`,以及 `specs/ changes/ review/ truth/` 工作目录)。增量写入、绝不覆盖——**把 `apriori/` 纳入版本管理**。
 
+日后升级：`npm update -g apriori-cli && apriori update`——`update` 把工具所有的文件（runbook 副本、命令指针）刷新到新版本，绝不碰属于你的文件（`process-config.md`、`specs/`、`changes/`、规则文件）。runbook 过期时 `apriori check` 也会给出警告。
+
 > 上游仓库（含各工具最新接入说明）：https://github.com/Apriorhythm/apriori-spec-development
 
 ### 3.4 命令速览
@@ -308,9 +310,12 @@ apriori init
 | `apriori` 命令 | 何时 | 用途 |
 |---|---|---|
 | `apriori init` | 每项目一次 | 搭建 `apriori/` + 各工具指针 |
+| `apriori new <name>` | 变更启动时 | 搭建 `apriori/changes/<name>/` + flow-state 骨架 |
+| `apriori status` | 随时 | 每个变更走到哪:步骤、下一动作、未决台账项(`--json`) |
 | `apriori verify` | STEP5 退出闸口 | 把每条 scenario ID 绑定到绿测试(GREEN 或 GAPS) |
 | `apriori archive` | STEP6 | 把变更的增量规格并入 living 规格库 |
 | `apriori check` | CI / pre-commit | 结构一致性(锚点、scenario ID、漂移) |
+| `apriori update` | CLI 升级后 | 刷新 runbook 副本 + 命令指针(绝不动你的文件) |
 
 runbook 提到的四个**步骤动作**——explore(STEP1)、propose(STEP2)、apply(STEP5)、archive(STEP6)——是 agent 执行的提示词(RUNBOOK §5);只有 archive 另有确定性 CLI(`apriori archive`)。
 

@@ -301,6 +301,8 @@ apriori init
 
 `apriori init` lets you **check the AI tools you use** (multiple allowed) and writes each a thin pointer to the one `apriori/runbook.md` in that tool's native location (Claude Code → `CLAUDE.md` + slash command; Cursor → `.cursor/rules`; Copilot → `.github` instructions; etc.). It creates the single `apriori/` root (`runbook.md`, `process-config.md`, and the `specs/ changes/ review/ truth/` working dirs). It is additive and never overwrites — **commit `apriori/` to version control.**
 
+To upgrade later: `npm update -g apriori-cli && apriori update` — `update` refreshes the tool-owned files (the runbook copy and command pointers) to the new version and never touches yours (`process-config.md`, `specs/`, `changes/`, rules files). A stale runbook also shows up as an `apriori check` warning.
+
 > Upstream (with the latest per-tool integration docs): https://github.com/Apriorhythm/apriori-spec-development
 
 ### 3.4 Command Cheat Sheet
@@ -308,9 +310,12 @@ apriori init
 | `apriori` command | When | Purpose |
 |---|---|---|
 | `apriori init` | once per project | scaffold `apriori/` + per-tool pointers |
+| `apriori new <name>` | change kickoff | scaffold `apriori/changes/<name>/` + a flow-state skeleton |
+| `apriori status` | anytime | where each change is: step, next action, open ledger items (`--json`) |
 | `apriori verify` | STEP5 exit gate | bind every scenario ID to a passing test (GREEN or GAPS) |
 | `apriori archive` | STEP6 | merge a change's delta specs into the living store |
 | `apriori check` | CI / pre-commit | structural consistency (anchors, scenario IDs, drift) |
+| `apriori update` | after a CLI upgrade | refresh the runbook copy + command pointers (never your files) |
 
 The four **step actions** the runbook refers to — explore (STEP1), propose (STEP2), apply (STEP5), archive (STEP6) — are prompts the agent runs (RUNBOOK §5); only `archive` also has a deterministic CLI (`apriori archive`).
 

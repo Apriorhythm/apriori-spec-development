@@ -15,7 +15,7 @@
 
 #### Scenario: IN-04 the protocol is written once; tools get pointers
 - WHEN any set of tools is selected
-- THEN `apriori/runbook.md` is written once and each tool gets only a pointer to it (no protocol duplication)
+- THEN `apriori/runbook.md` is written once, **byte-identical to the package's own `RUNBOOK.md` (single source — no separate template copy to drift)**, and each tool gets only a pointer to it (no protocol duplication)
 
 #### Scenario: IN-05 per-tool native location and format
 - WHEN a tool is selected

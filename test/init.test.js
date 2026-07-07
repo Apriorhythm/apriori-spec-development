@@ -74,6 +74,43 @@ test('IN-07 dry-run previews actions without writing any file', () => {
   assert.ok(!fs.existsSync(path.join(root, 'CLAUDE.md')));
 });
 
+test('IN-10 arrow-key multiselect: parseKey, reducer, render (no numbers), end-to-end', async () => {
+  // parseKey maps raw terminal bytes → key names
+  assert.strictEqual(init.parseKey(Buffer.from('\x1b[A')), 'up');
+  assert.strictEqual(init.parseKey(Buffer.from('\x1b[B')), 'down');
+  assert.strictEqual(init.parseKey(Buffer.from(' ')), 'space');
+  assert.strictEqual(init.parseKey(Buffer.from('\r')), 'enter');
+  assert.strictEqual(init.parseKey(Buffer.from('a')), 'all');
+  assert.strictEqual(init.parseKey(Buffer.from('\x03')), 'cancel');
+
+  const items = [{ key: 'a', name: 'A' }, { key: 'b', name: 'B' }, { key: 'c', name: 'C' }];
+  let st = { items, cursor: 0, selected: new Set() };
+  st = init.reduceKey(st, 'up');    assert.strictEqual(st.cursor, 2);   // wraps to bottom
+  st = init.reduceKey(st, 'down');  assert.strictEqual(st.cursor, 0);   // wraps to top
+  st = init.reduceKey(st, 'space'); assert.ok(st.selected.has('a'));    // toggle current on
+  st = init.reduceKey(st, 'space'); assert.ok(!st.selected.has('a'));   // toggle off
+  st = init.reduceKey(st, 'all');   assert.strictEqual(st.selected.size, 3);  // all on
+  st = init.reduceKey(st, 'all');   assert.strictEqual(st.selected.size, 0);  // all off
+
+  // render shows a cursor + checkbox, and NO numeric "1." "2." selection
+  const menu = init.renderMenu({ items, cursor: 1, selected: new Set(['a']) });
+  assert.match(menu, /❯ ◯ B/);      // cursor on row 1
+  assert.match(menu, /◉ A/);        // 'a' selected
+  assert.doesNotMatch(menu, /\d\.\s/);   // no "1. 2. 3."
+  assert.match(menu, /space toggle · a all · enter confirm/);
+
+  // end-to-end driver with injected streams: down, space, down, space, enter → picks b, c
+  const { PassThrough } = require('node:stream');
+  const input = new PassThrough();
+  const output = { write() {} };
+  const p = init.multiselect({ items, preselected: [], input, output });
+  for (const seq of ['\x1b[B', ' ', '\x1b[B', ' ', '\r']) {
+    input.write(Buffer.from(seq));
+    await new Promise((r) => setImmediate(r));
+  }
+  assert.deepStrictEqual(await p, ['b', 'c']);
+});
+
 test('IN-08 reports command-level vs rule-level entry per tool', () => {
   const root = tmp();
   const { levels } = init.scaffold(root, ['claude', 'cursor', 'copilot']);

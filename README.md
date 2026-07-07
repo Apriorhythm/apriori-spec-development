@@ -98,7 +98,7 @@ LLM adversarial review is one instrument in a larger verification portfolio — 
 
 Four principles every mechanism in this handbook (and the RUNBOOK) instantiates:
 
-1. **Quality comes from different instruments at different stages.** In a change's requirement/spec **document stages** (STEP0/2), LLM review is the only instrument available — there it is the primary one, and it never drops below one round per stage per change. In the **implementation stage** (STEP5), executable verification is primary (v1.0 already worked this way); LLM review covers what execution can't judge.
+1. **Quality comes from different instruments at different stages.** In a change's docs/apriori/requirement/spec **document stages** (STEP0/2), LLM review is the only instrument available — there it is the primary one, and it never drops below one round per stage per change. In the **implementation stage** (STEP5), executable verification is primary (v1.0 already worked this way); LLM review covers what execution can't judge.
 2. **Intent comes first; the spec's form may come later.** On any track, a human-acknowledged statement of intent precedes code; the tracks (§4.0) differ only in when the full spec crystallizes — **the spec is a conserved quantity at merge time**.
 3. **Supervision parameters are never written by the supervised.** Round caps and shrink decisions live in a human-held config and human gates; the agent reports data, never adjusts its own oversight.
 4. **Extracted descriptions are drafts until reviewed.** Anything reverse-derived from code or a prototype (P10, P11) must pass review before anything downstream consumes it.
@@ -333,7 +333,7 @@ graph LR
 
 | Abbreviation | Full name | Description |
 |---|---|---|
-| TRUTH-DOC | System knowledge-base doc | The abstracted set of all known facts about the current system, maintained long-term (default: `docs/truth/` inside the code repo — see §6) |
+| TRUTH-DOC | System knowledge-base doc | The abstracted set of all known facts about the current system, maintained long-term (default: `docs/apriori/truth/` inside the code repo — see §6) |
 | SPEC-DOC | Spec doc | The requirement spec produced by the propose action (OpenSpec as adapter), describing every scenario of this change |
 | DESIGN-DOC | Design doc | The technical approach for this change, output by the propose action (adapter: `/opsx:propose`) |
 | REQ-REVIEW-DOC | Requirement review doc | The issue list the reviewing model produces on the requirement doc in **STEP0** |
@@ -348,16 +348,16 @@ graph LR
 
 | Artifact | Default location |
 |---|---|
-| Requirement doc | `requirement/req-v{N}.md`, finalized as `requirement/req-final.md` |
-| REQ-REVIEW-DOC | `doc/review/<change>-req-review-v{N}.md` (prefix with the change name — parallel changes must not overwrite each other) |
-| Gap report (STEP1 output) | `doc/explore/<change>-gap-report.md` |
-| Issue ledger | `doc/review/<change>-issues.md` |
-| SPEC-DOC / DESIGN-DOC / tasks.md | `doc/changes/<change>/specs/`, `…/design.md`, `…/tasks.md` (OpenSpec adapter: `openspec/changes/<change>/…`) |
-| SPEC-EVALUATION-DOC | `doc/design/<change>-review-v{N}.md` |
-| Intent card (explore track) | `requirement/intent-card.md` |
-| Extraction review (explore track) | `doc/review/<change>-extraction-review-v{N}.md` |
+| Requirement doc | `docs/apriori/requirement/req-v{N}.md`, finalized as `docs/apriori/requirement/req-final.md` |
+| REQ-REVIEW-DOC | `docs/apriori/review/<change>-req-review-v{N}.md` (prefix with the change name — parallel changes must not overwrite each other) |
+| Gap report (STEP1 output) | `docs/apriori/explore/<change>-gap-report.md` |
+| Issue ledger | `docs/apriori/review/<change>-issues.md` |
+| SPEC-DOC / DESIGN-DOC / tasks.md | `docs/apriori/changes/<change>/specs/`, `…/design.md`, `…/tasks.md` (OpenSpec adapter: `openspec/changes/<change>/…`) |
+| SPEC-EVALUATION-DOC | `docs/apriori/design/<change>-review-v{N}.md` |
+| Intent card (explore track) | `docs/apriori/requirement/intent-card.md` |
+| Extraction review (explore track) | `docs/apriori/review/<change>-extraction-review-v{N}.md` |
 | Prototype (explore track) | `spike/` — deleted or quarantined at archive; never referenced by tasks.md |
-| TRUTH-DOC (knowledge base) | `docs/truth/<module>.md`, **in the same repo as the code** (a separate KB repo also works if every doc carries a `source-commit` stamp — see §6) |
+| TRUTH-DOC (knowledge base) | `docs/apriori/truth/<module>.md`, **in the same repo as the code** (a separate KB repo also works if every doc carries a `source-commit` stamp — see §6) |
 
 ### 4.2 Overview Flowchart
 
@@ -416,7 +416,7 @@ Requirement Doc v1.0 ──► reviewing model audits ──► REQ-REVIEW-DOC (
 - **The reviewing model should differ from the one that drafted the requirement** (e.g. draft with Claude, review with GPT).
 - Fix the review dimensions as a checklist: **is target state B clear / any ambiguity / are edge cases and exceptions covered / any implied-but-undeclared state changes / are acceptance criteria testable**.
 - **Exit condition**: the reviewing model explicitly outputs "VERDICT: no major issues", or a human decides after hitting the 5-round cap.
-- **Every round also logs to the issue ledger** (`doc/review/<change>-issues.md`, [§7.0](#70-the-issue-ledger-shared-by-all-review-loops)): new findings get IDs, fixes flip statuses, and a reopened ID is your early warning that the loop isn't converging.
+- **Every round also logs to the issue ledger** (`docs/apriori/review/<change>-issues.md`, [§7.0](#70-the-issue-ledger-shared-by-all-review-loops)): new findings get IDs, fixes flip statuses, and a reopened ID is your early warning that the loop isn't converging.
 
 For the prompt, see [§7.1](#71-step0-requirement-doc-adversarial-review).
 
@@ -424,8 +424,8 @@ For the prompt, see [§7.1](#71-step0-requirement-doc-adversarial-review).
 
 The **explore action** (heading shows its adapter command). Explore based on all known facts, and align the design.
 
-- **Inputs**: TRUTH-DOC (the KB, `docs/truth/`), any leftover SPEC-DOC from the previous round, the code, the finalized requirement doc.
-- **Output**: an alignment report listing the **gap between current state A and target state B**, saved to `doc/explore/<change>-gap-report.md`.
+- **Inputs**: TRUTH-DOC (the KB, `docs/apriori/truth/`), any leftover SPEC-DOC from the previous round, the code, the finalized requirement doc.
+- **Output**: an alignment report listing the **gap between current state A and target state B**, saved to `docs/apriori/explore/<change>-gap-report.md`.
 
 > **Skim the gap report before running propose** — it's the cheapest gate in the pipeline. A wrong or missing fact caught here costs a minute of reading; the same fact caught by the STEP2 reviewer costs a review round, and caught in STEP5 it costs a rework.
 
@@ -470,9 +470,9 @@ The **apply action** (adapter command in the heading). Write code per the SPEC-D
 
 ### 4.9 STEP6: `/opsx:archive` (Archive and Capture Facts)
 
-What the **archive action** does (adapter: `/opsx:archive`): it **merges this change's delta specs into the living spec store** (`doc/specs/`; adapter: `openspec/specs/`) per the interface's archive algorithm (RUNBOOK §4), keeping the store consistent with the final implementation.
+What the **archive action** does (adapter: `/opsx:archive`): it **merges this change's delta specs into the living spec store** (`docs/apriori/specs/`; adapter: `openspec/specs/`) per the interface's archive algorithm (RUNBOOK §4), keeping the store consistent with the final implementation.
 
-> ⚠️ Note the distinction: the archive action (adapter: `/opsx:archive`) **does NOT automatically update your own TRUTH-DOC** (`docs/truth/` or a separate KB repo — §6). Writing this change's new/changed facts **back into the KB is a separate step** (use the prompt in [§7.5](#75-step6-archive) to have the AI do it explicitly, or write it manually).
+> ⚠️ Note the distinction: the archive action (adapter: `/opsx:archive`) **does NOT automatically update your own TRUTH-DOC** (`docs/apriori/truth/` or a separate KB repo — §6). Writing this change's new/changed facts **back into the KB is a separate step** (use the prompt in [§7.5](#75-step6-archive) to have the AI do it explicitly, or write it manually).
 
 **This step is the lifeline of long-term maintainability for legacy projects** — every change deposits new facts back into the KB, so the next `explore` has no holes. With the KB in the same repo (§6), the writeback rides in the same PR as the code, where a reviewer can actually see it — the enforcement mapping is in [§4.11](#411-mapping-the-workflow-onto-git--pr--ci).
 
@@ -514,7 +514,7 @@ Everything above is convention; a branch + CI mapping is what makes it *enforced
 | Consistency-review verdict (§7.4) | Posted on the PR as a comment / required check before merge |
 | STEP6 KB writeback | Part of the same PR — "code merged but KB not updated" becomes visible in review instead of silently accumulating |
 
-**Parallel changes.** Each change can also take its own `git worktree` for an isolated working copy — most SDD tooling now automates this. In multi-lineage repos (several long-lived version lines), every requirement and its flow-state declare the **target lineage** (branch/line) up front — a lineage conflict discovered mid-change is an immediate-stop signal, not something to resolve in the merge editor. Branches isolate code, but two things still collide at archive time: the living spec store (`doc/specs/`; adapter: `openspec/specs/`) and per-module KB files. Serialize archives per module — whoever merges second rebases their delta specs and KB diff — and treat a KB-file conflict as a signal that two changes touched the same facts: reconcile them deliberately, don't just pick a side in the merge editor.
+**Parallel changes.** Each change can also take its own `git worktree` for an isolated working copy — most SDD tooling now automates this. In multi-lineage repos (several long-lived version lines), every requirement and its flow-state declare the **target lineage** (branch/line) up front — a lineage conflict discovered mid-change is an immediate-stop signal, not something to resolve in the merge editor. Branches isolate code, but two things still collide at archive time: the living spec store (`docs/apriori/specs/`; adapter: `openspec/specs/`) and per-module KB files. Serialize archives per module — whoever merges second rebases their delta specs and KB diff — and treat a KB-file conflict as a signal that two changes touched the same facts: reconcile them deliberately, don't just pick a side in the merge editor.
 
 ---
 
@@ -535,7 +535,7 @@ git init             # version control recommended, so you can diff each step
 
 ### 5.1 STEP0 · Write and Review Requirements
 
-First write a plain-language requirement in `requirement/req-v1.md`:
+First write a plain-language requirement in `docs/apriori/requirement/req-v1.md`:
 
 ```text
 Build an in-memory key-value cache library, mini-kv:
@@ -546,17 +546,17 @@ Build an in-memory key-value cache library, mini-kv:
 5. Overwrite: calling set again on an existing key overwrites both the old value and the old TTL.
 ```
 
-Then have a **reviewing model** (a model/tool different from the one that drafted it) review it once per the prompt in [§7.1](#71-step0-requirement-doc-adversarial-review), filling in edge cases you missed (e.g. what `ttlMs<=0` does, whether `get` cleans up lazily or on a timer, concurrent-write semantics). Finalize as `requirement/req-final.md`.
+Then have a **reviewing model** (a model/tool different from the one that drafted it) review it once per the prompt in [§7.1](#71-step0-requirement-doc-adversarial-review), filling in edge cases you missed (e.g. what `ttlMs<=0` does, whether `get` cleans up lazily or on a timer, concurrent-write semantics). Finalize as `docs/apriori/requirement/req-final.md`.
 
 ### 5.2 STEP1 · explore
 
 In your primary tool:
 ```text
 /opsx:explore   # adapter command — plain-files projects follow the prompt directly
-* Requirement doc: requirement/req-final.md
-* System knowledge base: (new project: none / legacy project: docs/truth/ or your KB path)
+* Requirement doc: docs/apriori/requirement/req-final.md
+* System knowledge base: (new project: none / legacy project: docs/apriori/truth/ or your KB path)
 * Code: this repo
-Please align the facts and output a gap report between current state A and target B to doc/explore/<change>-gap-report.md.
+Please align the facts and output a gap report between current state A and target B to docs/apriori/explore/<change>-gap-report.md.
 ```
 
 ### 5.3 STEP2 · propose + Adversarial Review
@@ -568,7 +568,7 @@ Pay attention to whether the resulting `spec.md` **gives each user-visible behav
 Then switch to your reviewing tool/model and review → revise per [§7.3](#73-step2-adversarial-review-and-revision), looping until "VERDICT: no major issues." Concretely, drive the review with Codex ([§2.3](#23-driving-codex-non-interactively-multi-round-adversarial-review)):
 ```shell
 # round 1 — open the review session (note the printed session id)
-codex exec -s read-only "Review openspec/changes/<change>/specs/ and design.md against requirement/req-final.md, using the RUNBOOK P5 checklist. End with a verdict line."   # adapter paths — plain-files projects: doc/changes/<change>/…
+codex exec -s read-only "Review openspec/changes/<change>/specs/ and design.md against docs/apriori/requirement/req-final.md, using the RUNBOOK P5 checklist. End with a verdict line."   # adapter paths — plain-files projects: docs/apriori/changes/<change>/…
 # each revision round — same context, so it checks whether your fixes landed
 codex exec resume -c sandbox_mode="read-only" <session-id> "I revised per your last review; re-review and produce v{N+1}."
 ```
@@ -593,7 +593,7 @@ npm test
 
 To run the implement → test loop unattended, wrap it in a goal — the mini-kv form of the [§7.7](#77-goal-recipes-automating-each-loop) STEP5 recipe (it's a library, so no Playwright clause):
 ```text
-/goal "All of: `npm test` exits 0; every spec scenario ID appears in at least one test name; every item in openspec/changes/<change>/tasks.md (adapter path; plain-files: doc/changes/<change>/tasks.md) is [x]; and a consistency review by a different model (the RUNBOOK P8 prompt) reports 'VERDICT: no spec-vs-code gaps'. Cap: 15 turns. Turn 1: generate one failing test per spec scenario (named with its ID) and SHOW the failing run. Each later turn: implement the next tasks.md item, run `npm test` and SHOW the output. Stop when all hold or after 15 turns."
+/goal "All of: `npm test` exits 0; every spec scenario ID appears in at least one test name; every item in openspec/changes/<change>/tasks.md (adapter path; plain-files: docs/apriori/changes/<change>/tasks.md) is [x]; and a consistency review by a different model (the RUNBOOK P8 prompt) reports 'VERDICT: no spec-vs-code gaps'. Cap: 15 turns. Turn 1: generate one failing test per spec scenario (named with its ID) and SHOW the failing run. Each later turn: implement the next tasks.md item, run `npm test` and SHOW the output. Stop when all hold or after 15 turns."
 ```
 > The numeric caps in this recipe are example defaults — `process-config.md` is the source of truth.
 
@@ -608,7 +608,7 @@ Once satisfied, archive:
 ```text
 /opsx:archive   # adapter command — plain-files projects run RUNBOOK P9's archive algorithm directly
 ```
-A new project's first archive **produces the initial TRUTH-DOC** (per §6's default: `docs/truth/mini-kv.md`, in the same repo) — congratulations, your mini-kv now has a system knowledge base, and the next feature can start from the "knowledge base exists" path in Section 6. To calibrate granularity, here's roughly what that first KB doc should look like:
+A new project's first archive **produces the initial TRUTH-DOC** (per §6's default: `docs/apriori/truth/mini-kv.md`, in the same repo) — congratulations, your mini-kv now has a system knowledge base, and the next feature can start from the "knowledge base exists" path in Section 6. To calibrate granularity, here's roughly what that first KB doc should look like:
 
 ```markdown
 ---
@@ -643,7 +643,7 @@ Notice the two fixed sections and their **opposite truth directions**: the Contr
 
 ## 6. Legacy Project Development: The Knowledge-Base Loop
 
-> Here, the **System Knowledge Base (TRUTH-DOC)** means the long-lived documentation that captures each module's abstract intent, public interfaces, and data flow. **Default placement: in the same repo as the code, under `docs/truth/<module>.md`** — then one PR atomically carries a code change *and* its KB update, and reviewers see both in one diff ([§4.11](#411-mapping-the-workflow-onto-git--pr--ci)). A separate KB repo also works (e.g. one KB spanning several code repos), but you lose that atomicity — compensate by stamping every KB doc with the code commit it was verified against (`source-commit:`, used by the freshness check in §6.1). Below, "the KB" means either layout.
+> Here, the **System Knowledge Base (TRUTH-DOC)** means the long-lived documentation that captures each module's abstract intent, public interfaces, and data flow. **Default placement: in the same repo as the code, under `docs/apriori/truth/<module>.md`** — then one PR atomically carries a code change *and* its KB update, and reviewers see both in one diff ([§4.11](#411-mapping-the-workflow-onto-git--pr--ci)). A separate KB repo also works (e.g. one KB spanning several code repos), but you lose that atomicity — compensate by stamping every KB doc with the code commit it was verified against (`source-commit:`, used by the freshness check in §6.1). Below, "the KB" means either layout.
 
 **What the KB owes you — and what it doesn't:**
 
@@ -685,10 +685,10 @@ A tiny CI job that runs this per module and flags "stale KB" turns the Path A/B 
 Go straight to STEP1, feeding the KB in as the source of facts:
 ```text
 /opsx:explore   # adapter command — plain-files projects follow the prompt directly
-* Requirement doc: requirement/req-final.md
-* System knowledge base: docs/truth/ (module: <module-name>; separate-repo layout: pass that repo's local path instead)
+* Requirement doc: docs/apriori/requirement/req-final.md
+* System knowledge base: docs/apriori/truth/ (module: <module-name>; separate-repo layout: pass that repo's local path instead)
 * Detailed technical design doc: design.md
-Please align facts from the KB and the code, and output a gap report to doc/explore/<change>-gap-report.md.
+Please align facts from the KB and the code, and output a gap report to docs/apriori/explore/<change>-gap-report.md.
 ```
 
 ### 6.3 Path B: Knowledge Base Is Stale
@@ -697,14 +697,14 @@ First have the AI treat the **code as the source of truth** to reconcile and rev
 
 ### 6.4 Path C: Knowledge Base Missing (Most Common)
 
-**Reverse knowledge capture**: have the AI read the target module's code and produce that module's KB doc (abstract intent, public interfaces, data flow, dependencies, side effects). It lands directly at `docs/truth/<module>.md` on your change branch, so **the review happens where reviews already happen — in the PR diff**; once approved, enter the normal workflow. Prompt: [§7.6](#76-reverse-knowledge-capture-for-legacy-projects).
+**Reverse knowledge capture**: have the AI read the target module's code and produce that module's KB doc (abstract intent, public interfaces, data flow, dependencies, side effects). It lands directly at `docs/apriori/truth/<module>.md` on your change branch, so **the review happens where reviews already happen — in the PR diff**; once approved, enter the normal workflow. Prompt: [§7.6](#76-reverse-knowledge-capture-for-legacy-projects).
 
 > ⚠️ Reverse-captured knowledge **must be reviewed by a human or a heterogeneous model** — when an AI reverse-engineers intent from code, it fabricates "plausible-looking but actually wrong" abstractions. Don't let a poisoned knowledge base contaminate all downstream development.
 
 ### 6.5 Closing the Loop: Write Back After Every Change
 
 Whether a legacy project gets easier to change over time depends on **whether STEP6 faithfully writes back to the KB**. Bake it into a team rule:
-**one change = one PR that contains both the code diff and the KB diff.** With the KB in the same repo (the §6 default) this is enforceable in review — a PR that touches `src/<module>/` but not `docs/truth/<module>.md` gets asked why ([§4.11](#411-mapping-the-workflow-onto-git--pr--ci)). Separate-repo teams have to lean on convention plus the `source-commit` freshness check to catch drift after the fact. Sustained over time, the KB converges from "Path C" toward "Path A," and development efficiency keeps rising.
+**one change = one PR that contains both the code diff and the KB diff.** With the KB in the same repo (the §6 default) this is enforceable in review — a PR that touches `src/<module>/` but not `docs/apriori/truth/<module>.md` gets asked why ([§4.11](#411-mapping-the-workflow-onto-git--pr--ci)). Separate-repo teams have to lean on convention plus the `source-commit` freshness check to catch drift after the fact. Sustained over time, the KB converges from "Path C" toward "Path A," and development efficiency keeps rising.
 
 ---
 
@@ -714,7 +714,7 @@ Whether a legacy project gets easier to change over time depends on **whether ST
 
 ### 7.0 The Issue Ledger (Shared by All Review Loops)
 
-One cumulative ledger per change, `doc/review/<change>-issues.md` (format: RUNBOOK **P0**). Reviews follow a **scope discipline** (per Anthropic's fully-verified warning that gap-hunting reviewers report gaps even in sound work): only correctness/security/stated-requirement gaps become formal rows; the rest are `advisory` — per-item lists stay in the review doc, the ledger takes one batch row per round. Why it exists: cross-round memory lives in a file instead of a session, so every round's reviewer can be a **fresh** session without losing the thread ([§1.4](#14-adversarial-review)). Who writes what: the reviewer appends rows and flips `fixed → verified`; the producer flips `open → fixed/rejected` — a rejection must carry a reason, because human gates read the rejections first. A re-found issue **reopens its old ID** rather than getting a new row; that reopened ID is exactly the oscillation alarm [§4.10](#410-automating-the-loop-with-goal-claude-code) watches for.
+One cumulative ledger per change, `docs/apriori/review/<change>-issues.md` (format: RUNBOOK **P0**). Reviews follow a **scope discipline** (per Anthropic's fully-verified warning that gap-hunting reviewers report gaps even in sound work): only correctness/security/stated-requirement gaps become formal rows; the rest are `advisory` — per-item lists stay in the review doc, the ledger takes one batch row per round. Why it exists: cross-round memory lives in a file instead of a session, so every round's reviewer can be a **fresh** session without losing the thread ([§1.4](#14-adversarial-review)). Who writes what: the reviewer appends rows and flips `fixed → verified`; the producer flips `open → fixed/rejected` — a rejection must carry a reason, because human gates read the rejections first. A re-found issue **reopens its old ID** rather than getting a new row; that reopened ID is exactly the oscillation alarm [§4.10](#410-automating-the-loop-with-goal-claude-code) watches for.
 
 ### 7.1 STEP0: Requirement-Doc Adversarial Review
 
@@ -722,11 +722,11 @@ Prompts: RUNBOOK **P1** (reviewer) / **P2** (producer's revise). Design notes:
 
 - Run P1 with a **model/tool different from the one that drafted the requirement**, and feed it the ledger so it can verify earlier fixes.
 - The five review dimensions are fixed on purpose — target-state clarity / edge & exception coverage / undeclared state changes / testable acceptance criteria / conflicts with state A — a stable checklist keeps rounds comparable.
-- The reviewer only reviews, never edits the requirement doc; the producer answers every formal issue with accept/reject + reason (advisories batch-acknowledge, RUNBOOK P0). Loop until "VERDICT: no major issues", finalize as `requirement/req-final.md` (max 5 rounds).
+- The reviewer only reviews, never edits the requirement doc; the producer answers every formal issue with accept/reject + reason (advisories batch-acknowledge, RUNBOOK P0). Loop until "VERDICT: no major issues", finalize as `docs/apriori/requirement/req-final.md` (max 5 rounds).
 
 ### 7.2 STEP1: explore
 
-Prompt: RUNBOOK **P3**. Design notes: facts only — no code. The KB and the finalized requirement doc go in as inputs, and the output is pinned to `doc/explore/<change>-gap-report.md` so the cheap pre-propose gate ([§4.4](#44-step1-opsxexplore-explore--align)) has something concrete to read. One carve-out: the **research-spike variant** (vague-but-tripwired changes, [§4.0](#40-size-the-change-first)) allows probe code under `spike/`, with findings landing as a gap-report appendix.
+Prompt: RUNBOOK **P3**. Design notes: facts only — no code. The KB and the finalized requirement doc go in as inputs, and the output is pinned to `docs/apriori/explore/<change>-gap-report.md` so the cheap pre-propose gate ([§4.4](#44-step1-opsxexplore-explore--align)) has something concrete to read. One carve-out: the **research-spike variant** (vague-but-tripwired changes, [§4.0](#40-size-the-change-first)) allows probe code under `spike/`, with findings landing as a gap-report appendix.
 
 ### 7.3 STEP2: Adversarial Review and Revision
 
@@ -748,11 +748,11 @@ Prompts: RUNBOOK **P7** (apply) / **P8** (consistency reviewer). Design notes:
 
 ### 7.5 STEP6: archive
 
-Prompt: RUNBOOK **P9**. Design notes: the archive action merges delta specs into the living spec store per RUNBOOK §4's algorithm (`doc/specs/`; OpenSpec adapter: `openspec/specs/` — [§4.9](#49-step6-opsxarchive-archive-and-capture-facts)) — P9 additionally forces the KB writeback to `docs/truth/<module>.md`, the `source-commit` refresh, and an explicit list of what changed (including every merged/modified/deprecated ID), so the human gate has a concrete diff to approve.
+Prompt: RUNBOOK **P9**. Design notes: the archive action merges delta specs into the living spec store per RUNBOOK §4's algorithm (`docs/apriori/specs/`; OpenSpec adapter: `openspec/specs/` — [§4.9](#49-step6-opsxarchive-archive-and-capture-facts)) — P9 additionally forces the KB writeback to `docs/apriori/truth/<module>.md`, the `source-commit` refresh, and an explicit list of what changed (including every merged/modified/deprecated ID), so the human gate has a concrete diff to approve.
 
 ### 7.6 Reverse Knowledge Capture for Legacy Projects
 
-Prompt: RUNBOOK **P10**. Design notes: the code is the sole source of truth — uncertainties get marked "needs human confirmation" instead of invented intent; the output lands on the change branch at `docs/truth/<module>.md`, so the mandatory double-check ([§6.4](#64-path-c-knowledge-base-missing-most-common)) happens where reviews already happen: the PR diff.
+Prompt: RUNBOOK **P10**. Design notes: the code is the sole source of truth — uncertainties get marked "needs human confirmation" instead of invented intent; the output lands on the change branch at `docs/apriori/truth/<module>.md`, so the mandatory double-check ([§6.4](#64-path-c-knowledge-base-missing-most-common)) happens where reviews already happen: the PR diff.
 
 ### 7.7 `/goal` Recipes: Automating Each Loop
 
@@ -816,7 +816,7 @@ The rules file is the Agent's "always-on global convention." Each tool puts it i
 | Copilot | `.github/copilot-instructions.md` |
 | Codex | `AGENTS.md` |
 
-> Whichever tools you use, also add one line to each rules file referencing your project's copy of the runbook (`docs/apriori-runbook.md`, install steps in [RUNBOOK.md](./RUNBOOK.md) §0) — that line is what makes every session load the protocol automatically.
+> Whichever tools you use, also add one line to each rules file referencing your project's copy of the runbook (`docs/apriori/runbook.md`, install steps in [RUNBOOK.md](./RUNBOOK.md) §0) — that line is what makes every session load the protocol automatically.
 
 > **Land the same convention in all the tools your team uses**, so behavior is consistent across tools. The content of the rules file is **highly stack-specific** and should be written by you for your own project. Below is a **language-agnostic skeleton template** — fill in your team's real conventions (the example entries are placeholders, please replace).
 

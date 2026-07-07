@@ -18,9 +18,9 @@
 
 **Install (human, once per project):**
 
-1. Copy this file into the project, e.g. `docs/apriori-runbook.md`.
+1. Copy this file into the project, e.g. `docs/apriori/runbook.md`.
 2. Add one line to the project's rules file (`CLAUDE.md` / `AGENTS.md` / `.cursor/rules/*.mdc` / `.github/copilot-instructions.md`):
-   > Development follows `docs/apriori-runbook.md`. At session start, read it per its session-start rule and `doc/changes/<change>/flow-state.md`, then continue from the recorded position.
+   > Development follows `docs/apriori/runbook.md`. At session start, read it per its session-start rule and `docs/apriori/changes/<change>/flow-state.md`, then continue from the recorded position.
 3. Copy `templates/process-config.md` to the project root as `process-config.md` — **human-held; the agent treats it as read-only** (R3). Without it, the defaults printed in §4 apply.
 4. Optional — the **OpenSpec adapter**: `openspec init` (tested with OpenSpec **1.5.0**; CLIs drift — if the adapter misbehaves, fall back to the artifact interface's plain-files form, §4); `templates/config.yaml` is a ready-made starting `openspec/config.yaml`. The workflow runs fully without it: OpenSpec automates scaffolding and archive-merge for the interface defined in §4.
 5. Optional (Claude Code): copy `templates/claude-command-apriori.md` to `.claude/commands/apriori.md` to get `/apriori <change>` as a starter.
@@ -28,14 +28,14 @@
 **Session start (agent, every session):**
 
 1. Kickoff session: read this runbook in full. Resume session: read at least the minimal set listed in the **Context economy** block below.
-2. Read `doc/changes/<change>/flow-state.md`. If it doesn't exist and you were asked to start a change: size the change (§2), create the state file (§3), then begin at the tier's first step.
+2. Read `docs/apriori/changes/<change>/flow-state.md`. If it doesn't exist and you were asked to start a change: size the change (§2), create the state file (§3), then begin at the tier's first step.
 3. Continue from `next-action`. The state file is authoritative — never reconstruct progress from memory or guesswork.
 
 **Kickoff prompt (human — copy and fill in):**
 
 ```text
-Follow the apriori runbook (docs/apriori-runbook.md) for change <change-name>, tier <trivial|medium|large>, track <harden|explore> (unsure: harden).
-Read the runbook and doc/changes/<change-name>/flow-state.md first and continue from the recorded position.
+Follow the apriori runbook (docs/apriori/runbook.md) for change <change-name>, tier <trivial|medium|large>, track <harden|explore> (unsure: harden).
+Read the runbook and docs/apriori/changes/<change-name>/flow-state.md first and continue from the recorded position.
 (If the artifact root is externalized: artifact-root=<path>. Otherwise omit — project root.)
 Advance ONLY to the next human gate, then stop and report.
 ```
@@ -58,11 +58,11 @@ Advance ONLY to the next human gate, then stop and report.
 
 > The protection forbids *silent coverage by a blanket authorization* — not the owner's explicit choice. A protected gate may still be decided by **explicit proxy**, under all of the following: ① the agent first presents the pending gate — **each protected gate itemized independently** (numbered, what is being approved, artifact path, the decision options) — never bundled into a progress question; ② the human's delegating reply comes *after* that presentation and is recorded **verbatim** in `gates:`, one entry per gate; ③ the proxy is **one-shot** — it covers exactly the gates itemized in that presentation and never inherits to future gates of the same kind. A reply may cover several protected gates only if each was itemized; a pre-existing blanket authorization never qualifies. An itemized *multi-step end-to-end run* does **not** implicitly cover protected gates nested inside it: when an un-itemized protected gate surfaces mid-run, stop and present it — the interruption itself is logged in `gates:`; gates that were itemized up front are unaffected.
 
-**R2 — Reviews must be genuinely external.** The producing session never issues a review verdict. Spawn a heterogeneous reviewer: `codex exec -s read-only "<prompt>"` (rounds 2+: `codex exec resume -c sandbox_mode="read-only" <session-id> "..."` — codex CLIs ≥0.14x reject `-s` on `resume`; on older versions use `-s read-only` before the session id), or — without Codex — a **fresh** `claude` session on a different tier, fed the artifacts plus the issue ledger (P0). Paste the reviewer's verdict line back verbatim. Reviewers usually run in read-only sandboxes and cannot write the ledger: the reviewer ends its output with a **ledger delta** (new rows + status flips), and the producer lands it verbatim, marked "recorded on behalf of the reviewer"; the reviewer's raw output is archived in full at `doc/review/<change>-<stage>-raw.*` so the recorded delta can always be diffed against its source. When invoking codex non-interactively (background/scripted), close stdin — append `< /dev/null` — or it prints "Reading additional input from stdin..." and hangs. If you cannot actually spawn a reviewer, stop and say so — **do not simulate one**.
+**R2 — Reviews must be genuinely external.** The producing session never issues a review verdict. Spawn a heterogeneous reviewer: `codex exec -s read-only "<prompt>"` (rounds 2+: `codex exec resume -c sandbox_mode="read-only" <session-id> "..."` — codex CLIs ≥0.14x reject `-s` on `resume`; on older versions use `-s read-only` before the session id), or — without Codex — a **fresh** `claude` session on a different tier, fed the artifacts plus the issue ledger (P0). Paste the reviewer's verdict line back verbatim. Reviewers usually run in read-only sandboxes and cannot write the ledger: the reviewer ends its output with a **ledger delta** (new rows + status flips), and the producer lands it verbatim, marked "recorded on behalf of the reviewer"; the reviewer's raw output is archived in full at `docs/apriori/review/<change>-<stage>-raw.*` so the recorded delta can always be diffed against its source. When invoking codex non-interactively (background/scripted), close stdin — append `< /dev/null` — or it prints "Reading additional input from stdin..." and hangs. If you cannot actually spawn a reviewer, stop and say so — **do not simulate one**.
 
 **R3 — Everything lands on disk; `/goal` belongs to the human; the config belongs to the human too.** Artifacts go to the exact paths in §4's table; the state file is updated after every step and every review round. All round caps are read from the project's `process-config.md` — **human-held; the agent never writes it**; if it is missing, the defaults printed in §4 apply. **Every review stage's cap has a hard floor of 1 per change: a configured value below 1, or an unparsable one, falls back to the default with a warning — no review stage ever goes to zero.** `/goal` is a command the human runs (§6) — never claim to run it or imitate its evaluator. Loops you drive inside a session still obey the caps.
 
-**Enforcement layers** (examples, not exhaustive; the deterministic items below are *available to configure*, not active by default in this repo). Advisory text gets ignored under pressure — classify each rule by how it can be enforced: ① **deterministically enforceable now** — `process-config.md` read-only (a hook blocking agent writes), `scripts/check_docs.py` as a required pre-commit/CI check, the scenario-ID traceability grep in CI, and the **verdict-evidence check**: every verdict line must have a matching raw archive file (`doc/review/<change>-<stage>-raw.*`) — a mechanical backstop against simulated reviews; ② **gate-level** — Stop hooks and `/goal` conditions; ③ **inherently advisory** — a reviewer's independent judgment quality, semantic adherence to the P prompts. Reference implementation is Claude Code hooks; any CI can enforce the same checks. Example (a PreToolUse hook blocking config writes — illustrative sketch; exact schema in the Claude Code hooks docs):
+**Enforcement layers** (examples, not exhaustive; the deterministic items below are *available to configure*, not active by default in this repo). Advisory text gets ignored under pressure — classify each rule by how it can be enforced: ① **deterministically enforceable now** — `process-config.md` read-only (a hook blocking agent writes), `scripts/check_docs.py` as a required pre-commit/CI check, the scenario-ID traceability grep in CI, and the **verdict-evidence check**: every verdict line must have a matching raw archive file (`docs/apriori/review/<change>-<stage>-raw.*`) — a mechanical backstop against simulated reviews; ② **gate-level** — Stop hooks and `/goal` conditions; ③ **inherently advisory** — a reviewer's independent judgment quality, semantic adherence to the P prompts. Reference implementation is Claude Code hooks; any CI can enforce the same checks. Example (a PreToolUse hook blocking config writes — illustrative sketch; exact schema in the Claude Code hooks docs):
 
 ```text
 # pseudo-config: PreToolUse matcher on Write|Edit runs a guard command;
@@ -96,7 +96,7 @@ Anything touching external shared state or crossing module boundaries is **Large
 
 ## 3. The State File
 
-`doc/changes/<change>/flow-state.md`:
+`docs/apriori/changes/<change>/flow-state.md`:
 
 ```markdown
 change: <change-name>
@@ -114,9 +114,9 @@ round: 0                # review round / apply turn; log round-started/round-end
 next-action: <one concrete line, e.g. "spawn P1 reviewer on req-v2.md">
                         # append an ISO timestamp comment on every update;
                         # a missing duration is recorded as n/a — NEVER estimated
-artifact-root: .        # optional; default = project root (v1.0 paths unchanged verbatim).
-                        # Applies ONLY to process artifacts: requirement/, doc/review/,
-                        # doc/explore/, doc/changes/. NEVER to docs/truth/ (same-repo
+artifact-root: .        # optional; default = project root.
+                        # Applies ONLY to process artifacts: docs/apriori/requirement/, docs/apriori/review/,
+                        # docs/apriori/explore/, docs/apriori/changes/. NEVER to docs/apriori/truth/ (same-repo
                         # atomicity) or openspec/ (tool-owned). When externalized, the
                         # kickoff prompt must state it — this file itself lives under it.
 gates:                  # append-only log of human decisions
@@ -140,23 +140,23 @@ Update it immediately after each step and each round; append every gate decision
 
 | Artifact | Path |
 |---|---|
-| Requirement doc | `requirement/req-v{N}.md` → finalized `requirement/req-final.md` |
-| Requirement review | `doc/review/<change>-req-review-v{N}.md` |
-| Issue ledger | `doc/review/<change>-issues.md` |
-| Gap report | `doc/explore/<change>-gap-report.md` |
-| Spec / design / tasks | `doc/changes/<change>/specs/`, `…/design.md`, `…/tasks.md` (OpenSpec adapter: `openspec/changes/<change>/…`) |
-| Living spec store | `doc/specs/` (OpenSpec adapter: `openspec/specs/`) |
-| Spec evaluation | `doc/design/<change>-review-v{N}.md` |
-| Knowledge base (TRUTH-DOC) | `docs/truth/<module>.md` — `source-commit` stamp required (covers the Contract section only, §5 P9/P10) |
-| Flow state | `doc/changes/<change>/flow-state.md` |
-| Intent card (explore track) | `requirement/intent-card.md` |
-| Extraction review (explore track) | `doc/review/<change>-extraction-review-v{N}.md` |
+| Requirement doc | `docs/apriori/requirement/req-v{N}.md` → finalized `docs/apriori/requirement/req-final.md` |
+| Requirement review | `docs/apriori/review/<change>-req-review-v{N}.md` |
+| Issue ledger | `docs/apriori/review/<change>-issues.md` |
+| Gap report | `docs/apriori/explore/<change>-gap-report.md` |
+| Spec / design / tasks | `docs/apriori/changes/<change>/specs/`, `…/design.md`, `…/tasks.md` (OpenSpec adapter: `openspec/changes/<change>/…`) |
+| Living spec store | `docs/apriori/specs/` (OpenSpec adapter: `openspec/specs/`) |
+| Spec evaluation | `docs/apriori/design/<change>-review-v{N}.md` |
+| Knowledge base (TRUTH-DOC) | `docs/apriori/truth/<module>.md` — `source-commit` stamp required (covers the Contract section only, §5 P9/P10) |
+| Flow state | `docs/apriori/changes/<change>/flow-state.md` |
+| Intent card (explore track) | `docs/apriori/requirement/intent-card.md` |
+| Extraction review (explore track) | `docs/apriori/review/<change>-extraction-review-v{N}.md` |
 | Prototype (explore track) | `spike/` — deleted or quarantined at archive; never referenced by tasks.md |
-| Reviewer raw output | `doc/review/<change>-<stage>-raw.*` |
+| Reviewer raw output | `docs/apriori/review/<change>-<stage>-raw.*` |
 
 **The artifact interface (normative).** The paths above are the interface's **plain-files form — the reference implementation**; any tool (OpenSpec included) is an adapter onto it.
 
-- **Layout:** a change stages its artifacts under `doc/changes/<change>/` (`specs/`, `design.md`, `tasks.md`); accepted specs live in the store `doc/specs/`. The `artifact-root` rule (§3) covers the staging area; `openspec/` itself is tool-owned and never relocated.
+- **Layout:** a change stages its artifacts under `docs/apriori/changes/<change>/` (`specs/`, `design.md`, `tasks.md`); accepted specs live in the store `docs/apriori/specs/`. The `artifact-root` rule (§3) covers the staging area; `openspec/` itself is tool-owned and never relocated.
 - **Spec structure:** Requirement blocks containing Scenario blocks with stable IDs (the quality rules in README §8.1 — the OpenSpec-adapter config — bind regardless of adapter).
 - **Archive algorithm:** merge staged specs into the store by stable Requirement/Scenario ID — new ID → append; existing ID → replace the whole block; staged `REMOVED` → keep the store block, marked `deprecated (superseded by <change>)`. A same-ID conflict with a change merged since branching → **stop, open a ledger issue, a human resolves** (§4.11's serialize-per-module rule). The archive action must list every merged / modified / deprecated ID.
 - **Adapter runtime policy:** version differs from the tested one → warn and proceed; adapter command unavailable or erroring → execute the interface action directly in plain-files form and record it in the ledger; adapter output violating this interface → the interface wins, open a ledger issue.
@@ -164,15 +164,15 @@ Update it immediately after each step and each round; append every gate decision
 
 ### STEP0 — requirement refinement · adversarial loop · cap: `step0-cap` (default 5)
 
-- **In:** `requirement/req-v{N}.md`; KB if any. The requirement must state its **target lineage** (mainline / which branch line) — in multi-lineage repos a missing lineage is a fourth interview trigger. If the requirement lacks any of the three essentials — goal / out-of-scope / testable acceptance — **interview the human first** with structured questions, then draft req-v1.
+- **In:** `docs/apriori/requirement/req-v{N}.md`; KB if any. The requirement must state its **target lineage** (mainline / which branch line) — in multi-lineage repos a missing lineage is a fourth interview trigger. If the requirement lacks any of the three essentials — goal / out-of-scope / testable acceptance — **interview the human first** with structured questions, then draft req-v1.
 - **Each round:** (1) if a review exists, revise per it → `req-v{N+1}.md`, noting accept/reject + reason per issue and updating the ledger; (2) spawn the reviewer with **P1** (R2) → review doc + ledger; (3) record the verdict line.
-- **Exit:** verdict line = `VERDICT: no major issues` → copy to `requirement/req-final.md`, advance. Cap hit → **gate ①**. Goal turns out unstateable → propose harden→explore (a human gate confirms the switch).
+- **Exit:** verdict line = `VERDICT: no major issues` → copy to `docs/apriori/requirement/req-final.md`, advance. Cap hit → **gate ①**. Goal turns out unstateable → propose harden→explore (a human gate confirms the switch).
 
 ### EXPLORE track — when §2 routes the change here
 
-0. **Intent card first (non-waivable):** ≤15 lines at `requirement/intent-card.md` — goal hypothesis / success criteria / the questions the spike must answer. Requires **human sign-off** (`intent-card sign-off`; a heterogeneous review may inform it, but cannot replace it). On this track the intent card is the independent review baseline — the extracted spec is never judged against the prototype alone.
+0. **Intent card first (non-waivable):** ≤15 lines at `docs/apriori/requirement/intent-card.md` — goal hypothesis / success criteria / the questions the spike must answer. Requires **human sign-off** (`intent-card sign-off`; a heterogeneous review may inform it, but cannot replace it). On this track the intent card is the independent review baseline — the extracted spec is never judged against the prototype alone.
 1. **Spike (bounded):** prototype freely under `spike/`; cap: `spike-cap` (default 10) turns; exit = every intent-card question answered. Cap hit → **gate ⑤**.
-2. **P11 — spec extraction:** inputs = intent card + prototype + spike findings; outputs = spec drafts under `doc/changes/<change>/specs/` (adapter projects: `openspec/changes/<change>/specs/`) as the **sole intent-side authority**, plus `requirement/req-final.md` as a thin index over them (§5 P11 — never a second acceptance narrative). Declared extraction-time decisions (`EXT-n`) get their final ruling at the `extraction review` decision point.
+2. **P11 — spec extraction:** inputs = intent card + prototype + spike findings; outputs = spec drafts under `docs/apriori/changes/<change>/specs/` (adapter projects: `openspec/changes/<change>/specs/`) as the **sole intent-side authority**, plus `docs/apriori/requirement/req-final.md` as a thin index over them (§5 P11 — never a second acceptance narrative). Declared extraction-time decisions (`EXT-n`) get their final ruling at the `extraction review` decision point.
 3. **P12 — extraction review (heterogeneous, R2):** cap: `extraction-review-cap` (default 2). Verdict line `VERDICT: extraction accepted` → step 4. `VERDICT: extraction rejected` + unfaithful extraction → redo P11; `VERDICT: extraction rejected` + intent hypothesis falsified → back to SPIKE, or `ABANDONED` (archive the intent card + findings; log in the ledger).
 4. **Merge:** enter STEP2's full P5/P6 loop — from here the tracks are identical.
 5. **The prototype is disposable, machine-checkably:** STEP5 rebuilds from failing tests; tasks.md must not reference `spike/`; `spike/` is deleted (or quarantined) at archive.
@@ -182,7 +182,7 @@ Update it immediately after each step and each round; append every gate decision
 
 KB docs have two sections with **opposite truth directions** (§5 P9/P10): `Contract (code-is-truth)` and `Decisions (doc-is-truth)`.
 
-- **Contract section:** does `docs/truth/<module>.md` have one, and is it fresh — is `git log --oneline <source-commit>..HEAD -- <module-dir>` empty? (`source-commit` covers the Contract section only.) Fresh → STEP1. Stale → reconcile the Contract section with **P10** (there, code is truth), refresh the stamp. Missing → reverse-capture with **P10**; the produced doc must be checked by a human or a heterogeneous model **before** anything downstream consumes it.
+- **Contract section:** does `docs/apriori/truth/<module>.md` have one, and is it fresh — is `git log --oneline <source-commit>..HEAD -- <module-dir>` empty? (`source-commit` covers the Contract section only.) Fresh → STEP1. Stale → reconcile the Contract section with **P10** (there, code is truth), refresh the stamp. Missing → reverse-capture with **P10**; the produced doc must be checked by a human or a heterogeneous model **before** anything downstream consumes it.
 - **Decisions section:** never reconciled from code. If code violates an `active` invariant recorded there, that is a **bug to report, not a doc to update**; a decision expires only when a newer decision supersedes it (`superseded-by: <id>`).
 
 ### STEP1 — explore
@@ -213,7 +213,7 @@ KB docs have two sections with **opposite truth directions** (§5 P9/P10): `Cont
 
 ### STEP6 — archive + KB writeback
 
-- **Do:** the **archive action** (adapter: `/opsx:archive`) with **P9** — merge per the interface's archive algorithm above; update `docs/truth/<module>.md` (Contract section from the final implementation + refreshed `source-commit`; Decisions section appends this change's new decisions/invariants); list exactly which files/sections changed. Explore-track changes: delete or quarantine `spike/` here.
+- **Do:** the **archive action** (adapter: `/opsx:archive`) with **P9** — merge per the interface's archive algorithm above; update `docs/apriori/truth/<module>.md` (Contract section from the final implementation + refreshed `source-commit`; Decisions section appends this change's new decisions/invariants); list exactly which files/sections changed. Explore-track changes: delete or quarantine `spike/` here.
 - **Exit:** delta specs merged + KB updated → **gate ④**: the human approves the KB diff (same-repo layout: that's just PR review). Then set `current-step: DONE`.
 
 
@@ -234,7 +234,7 @@ KB docs have two sections with **opposite truth directions** (§5 P9/P10): `Cont
 
 ### P0 — issue ledger (every prompt below reads/writes it)
 
-`doc/review/<change>-issues.md`:
+`docs/apriori/review/<change>-issues.md`:
 
 ```markdown
 | ID | Issue | Risk | Round found | Status |
@@ -253,9 +253,9 @@ KB docs have two sections with **opposite truth directions** (§5 P9/P10): `Cont
 ```text
 You are a senior requirements reviewer. Review the requirement doc; the goal is to make it precise enough to hand straight to an AI for implementation.
 [Input]
-* Requirement doc: requirement/req-v{N}.md
-* System knowledge base (if any): docs/truth/<module>.md
-* Issue ledger (if any): doc/review/<change>-issues.md
+* Requirement doc: docs/apriori/requirement/req-v{N}.md
+* System knowledge base (if any): docs/apriori/truth/<module>.md
+* Issue ledger (if any): docs/apriori/review/<change>-issues.md
 [Review dimensions, give a verdict on each]
 1. Is target state B clear and unambiguous
 2. Are edge cases and exception paths covered (null, out-of-range, concurrency, timeout, failure rollback)
@@ -265,7 +265,7 @@ You are a senior requirements reviewer. Review the requirement doc; the goal is 
 6. Is the target lineage declared, and does it match the repo's reality (multi-lineage repos: which branch/line this lands on)
 [Scope] Count toward the verdict only: ambiguous target state, untestable acceptance criteria, missing edge/boundary coverage, conflicts with state A. Everything else — label advisory (P0 rules). Also check an explicit out-of-scope ("won't do") section exists.
 [Output]
-Produce doc/review/<change>-req-review-v{N}.md: an issue list by dimension (description / risk / suggested fix); advisories listed separately.
+Produce docs/apriori/review/<change>-req-review-v{N}.md: an issue list by dimension (description / risk / suggested fix); advisories listed separately.
 Mirror formal issues into the ledger per its rules. End with the verdict line (§5 phrase table): "VERDICT: no major issues" or "VERDICT: <N> issues open".
 Do not modify the requirement doc itself.
 ```
@@ -273,7 +273,7 @@ Do not modify the requirement doc itself.
 ### P2 — STEP0 revise (producer)
 
 ```text
-Revise the requirement doc per doc/review/<change>-req-review-v{N}.md and output requirement/req-v{N+1}.md.
+Revise the requirement doc per docs/apriori/review/<change>-req-review-v{N}.md and output docs/apriori/requirement/req-v{N+1}.md.
 For each formal issue, state how you handled it (accept/reject + reason), and update its Status in the ledger (fixed / rejected + reason).
 Advisories may be batch-acknowledged or ignored without per-item reasons — only rejections of formal findings need justification.
 ```
@@ -284,12 +284,12 @@ Advisories may be batch-acknowledged or ignored without per-item reasons — onl
 /opsx:explore   # adapter command for the interface's explore action — plain-files projects follow this prompt directly
 Align all known facts first — do not write code.
 [Input]
-* Requirement doc: requirement/req-final.md
-* System knowledge base: docs/truth/ (module: <module>; new project: note "none")
+* Requirement doc: docs/apriori/requirement/req-final.md
+* System knowledge base: docs/apriori/truth/ (module: <module>; new project: note "none")
 * Detailed design doc: design.md (if any)
 * Code: this repo
 [Output]
-doc/explore/<change>-gap-report.md: current state A, target state B, and the gaps and risks between them.
+docs/apriori/explore/<change>-gap-report.md: current state A, target state B, and the gaps and risks between them.
 [Research-spike variant — ONLY for vague-but-tripwired changes routed here by §2]
 Probe code is allowed under spike/ (explore-track isolation rules apply), capped by spike-cap;
 findings land as a "research conclusions" appendix of the gap report. Otherwise: do not write code.
@@ -311,8 +311,8 @@ Stop when done and wait for review.
 ```text
 You are a technical reviewer. Hunt for issues that would cause rework or a production incident.
 [Input]
-* SPEC-DOC: doc/changes/<change>/specs/   * DESIGN-DOC: doc/changes/<change>/design.md   (adapter projects: openspec/changes/<change>/…)
-* KB: docs/truth/   * Requirement doc: requirement/req-final.md   * Ledger: doc/review/<change>-issues.md
+* SPEC-DOC: docs/apriori/changes/<change>/specs/   * DESIGN-DOC: docs/apriori/changes/<change>/design.md   (adapter projects: openspec/changes/<change>/…)
+* KB: docs/apriori/truth/   * Requirement doc: docs/apriori/requirement/req-final.md   * Ledger: docs/apriori/review/<change>-issues.md
 [Checklist]
 1. Do scenarios cover every visible behavior; any missing failure/edge scenarios
 2. Are the three moments of external shared state complete
@@ -321,14 +321,14 @@ You are a technical reviewer. Hunt for issues that would cause rework or a produ
 5. Security, where the change touches external input or permissions: unvalidated input, missing authz, secrets/PII in logs, injection surfaces
 [Scope] Count toward the verdict only gaps that would cause rework or a production incident. Everything else — label advisory (P0 rules).
 [Output]
-doc/design/<change>-review-v{N}.md: issues (description/risk/suggestion), advisories listed separately; mirror formal issues into the ledger per its rules.
+docs/apriori/design/<change>-review-v{N}.md: issues (description/risk/suggestion), advisories listed separately; mirror formal issues into the ledger per its rules.
 End with the verdict line (§5 phrase table): "VERDICT: no major issues, ready to proceed to execution" or "VERDICT: <N> issues open".
 ```
 
 ### P6 — STEP2 revise (producer)
 
 ```text
-A different model reviewed your spec and design: doc/design/<change>-review-v{N}.md.
+A different model reviewed your spec and design: docs/apriori/design/<change>-review-v{N}.md.
 Handle each formal item (accept/reject + reason), modifying spec and design files only — never source.
 Advisories may be batch-acknowledged or ignored without per-item reasons — only rejections of formal findings need justification.
 Update each issue's Status in the ledger, then request review round v{N+1}.
@@ -377,9 +377,9 @@ List exactly which KB files and sections you updated.
 
 ```text
 You are a system knowledge-base engineer. Read the module's code and produce/reconcile its KB doc.
-[Input] Code scope: <dirs/files>. Existing KB (if any): docs/truth/<module>.md
+[Input] Code scope: <dirs/files>. Existing KB (if any): docs/apriori/truth/<module>.md
 [Task] Abstract: public responsibilities/interfaces, core data flow, key state and side effects (the three moments), dependencies, conventions and pitfalls. If a KB exists, flag every mismatched/stale/missing point and revise — per the section rules below.
-[Output] docs/truth/<module>.md on the change branch (so the PR diff is where it gets reviewed), structured as two fixed sections with opposite truth directions:
+[Output] docs/apriori/truth/<module>.md on the change branch (so the PR diff is where it gets reviewed), structured as two fixed sections with opposite truth directions:
 * "## Contract (code-is-truth)" — interfaces, three moments, code-derived pitfalls; here code IS the sole source of truth: reconcile from it and stamp with the source-commit you read (the stamp covers this section only);
 * "## Decisions (doc-is-truth)" — decisions, invariants, rejected alternatives, each with status (active / superseded-by: <id>); NEVER reconcile this section from code — where code contradicts an active invariant, flag it as a bug in your output instead of editing the entry.
 [Constraints] Contract: only facts present in the code. Decisions: only explicitly confirmed intent. Mark uncertainties "needs human confirmation"; never invent abstract intent.
@@ -388,10 +388,10 @@ You are a system knowledge-base engineer. Read the module's code and produce/rec
 ### P11 — explore track: spec extraction (producer)
 
 ```text
-[Input] requirement/intent-card.md; the prototype under spike/; the spike findings.
+[Input] docs/apriori/requirement/intent-card.md; the prototype under spike/; the spike findings.
 [Task] Extract the specification implied by the prototype's *validated* behaviors — never invent behavior that neither the intent card nor an observed spike run supports. Produce:
-* spec drafts with scenario IDs under doc/changes/<change>/specs/ (adapter projects: openspec/changes/<change>/specs/) — the SOLE intent-side authority;
-* requirement/req-final.md — a THIN INDEX only: one goal line citing the intent card + acceptance = a reference to the spec scenario-ID list. Never write a second acceptance narrative there — two prose versions of the same intent drift apart.
+* spec drafts with scenario IDs under docs/apriori/changes/<change>/specs/ (adapter projects: openspec/changes/<change>/specs/) — the SOLE intent-side authority;
+* docs/apriori/requirement/req-final.md — a THIN INDEX only: one goal line citing the intent card + acceptance = a reference to the spec scenario-ID list. Never write a second acceptance narrative there — two prose versions of the same intent drift apart.
 [Constraints] Mark unvalidated assumptions "needs confirmation". Behavior that neither the intent card nor an observed spike run supports, but the spec needs for completeness, MUST be declared as an explicit extraction-time decision — an `EXT-n` entry (content + reasoning) in a dedicated section, never mixed into extracted facts; EXT-n entries are ruled on at the extraction review. The prototype is a source of observations, not of authority: where intent and prototype disagree, the intent card wins and the disagreement is listed explicitly.
 Stop and wait for the extraction review (P12).
 ```
@@ -399,13 +399,13 @@ Stop and wait for the extraction review (P12).
 ### P12 — explore track: extraction review (heterogeneous, R2)
 
 ```text
-[Input] requirement/intent-card.md; P11's outputs; the issue ledger.
+[Input] docs/apriori/requirement/intent-card.md; P11's outputs; the issue ledger.
 [Checklist] P1's five dimensions, plus:
 6. Intent-card conformance — every goal and success criterion appears in the extracted specs/ (the sole authority; the req-final thin index is checked only for being thin and consistent);
 7. No invention — every spec line traces to the intent card or an observed spike behavior (spot-check the tracing), EXCEPT declared EXT-n entries, which are reviewed as proposals: recommend each as accepted / rejected / needs-human.
 [EXT-n semantics] Your verdict line judges extraction faithfulness only (invention outside declared EXT-n, intent conformance) — EXT-n recommendations never change it. Final EXT-n rulings belong to the `extraction review` decision point (the existing human gate): human-rejected → the producer deletes those spec lines, deletion confirmed mechanically (grep: the EXT-n scenario IDs are gone) with no P12 rerun; human-accepted → the entry is back-noted on the intent card. Unruled EXT-n block the decision point, not your verdict line — list them explicitly before it.
 [Scope] Count toward the verdict only unfaithful extraction or a falsified intent hypothesis; advisory findings never land in either rejected branch (P0 rules).
-[Output] doc/review/<change>-extraction-review-v{N}.md — issues per P0, advisories listed separately, EXT-n recommendations; end with your ledger delta,
+[Output] docs/apriori/review/<change>-extraction-review-v{N}.md — issues per P0, advisories listed separately, EXT-n recommendations; end with your ledger delta,
 then exactly one verdict line (§5 phrase table): "VERDICT: extraction accepted" or "VERDICT: extraction rejected".
 Cap: extraction-review-cap (default 2). Rejected + unfaithful extraction → producer redoes P11;
 rejected + intent hypothesis falsified → back to SPIKE or ABANDONED (the state machine's failure branches).
@@ -420,29 +420,29 @@ rejected + intent hypothesis falsified → back to SPIKE or ABANDONED (the state
 
 **STEP0 loop:**
 ```text
-/goal "Goal: requirement/req-final.md exists and the latest review pass reports 'VERDICT: no major issues'. Cap: step0-cap rounds (default 5).
+/goal "Goal: docs/apriori/requirement/req-final.md exists and the latest review pass reports 'VERDICT: no major issues'. Cap: step0-cap rounds (default 5).
 Each round:
-1. If doc/review/<change>-req-review-v{N}.md exists, revise requirement/req-v{N}.md per it, bump to v{N+1}, note accept/reject+reason per issue, and update those issues' Status in doc/review/<change>-issues.md.
-2. Run the reviewer with a DIFFERENT model on the current version and save its output to doc/review/<change>-req-review-v{N}.md, e.g.:
-   codex exec -s read-only \"<the P1 prompt> — target: requirement/req-v{N}.md\"
+1. If docs/apriori/review/<change>-req-review-v{N}.md exists, revise docs/apriori/requirement/req-v{N}.md per it, bump to v{N+1}, note accept/reject+reason per issue, and update those issues' Status in docs/apriori/review/<change>-issues.md.
+2. Run the reviewer with a DIFFERENT model on the current version and save its output to docs/apriori/review/<change>-req-review-v{N}.md, e.g.:
+   codex exec -s read-only \"<the P1 prompt> — target: docs/apriori/requirement/req-v{N}.md\"
    (no Codex? open a fresh `claude` and hand it P1 plus the issue ledger)
 3. Paste the reviewer's final verdict line back into this conversation.
-Stop when the verdict line is 'VERDICT: no major issues' (then copy to requirement/req-final.md) or at the cap."
+Stop when the verdict line is 'VERDICT: no major issues' (then copy to docs/apriori/requirement/req-final.md) or at the cap."
 ```
 
 **STEP2 loop:**
 ```text
-/goal "Goal: doc/changes/<change>/ (adapter: openspec/changes/<change>/) has SPEC-DOC+DESIGN-DOC and the latest review verdict line is 'VERDICT: no major issues, ready to proceed to execution'. Cap: step2-cap rounds (default 4).
+/goal "Goal: docs/apriori/changes/<change>/ (adapter: openspec/changes/<change>/) has SPEC-DOC+DESIGN-DOC and the latest review verdict line is 'VERDICT: no major issues, ready to proceed to execution'. Cap: step2-cap rounds (default 4).
 Each round:
-1. Revise the spec/design files per the latest review — never touch source code — and update the handled issues' Status in doc/review/<change>-issues.md.
-2. Re-run the heterogeneous reviewer with the P5 prompt (round 1: codex exec, note the printed session id; later rounds: codex exec resume -c sandbox_mode=\"read-only\" <session-id> — codex ≥0.14x rejects -s on resume; older CLIs: -s read-only before the id), producing doc/design/<change>-review-v{N}.md and updating the ledger.
+1. Revise the spec/design files per the latest review — never touch source code — and update the handled issues' Status in docs/apriori/review/<change>-issues.md.
+2. Re-run the heterogeneous reviewer with the P5 prompt (round 1: codex exec, note the printed session id; later rounds: codex exec resume -c sandbox_mode=\"read-only\" <session-id> — codex ≥0.14x rejects -s on resume; older CLIs: -s read-only before the id), producing docs/apriori/design/<change>-review-v{N}.md and updating the ledger.
 3. Surface the reviewer's verdict line here.
 Stop on 'VERDICT: no major issues, ready to proceed to execution' or at the cap."
 ```
 
 **STEP5 loop:**
 ```text
-/goal "Goal — ALL must hold: `npm test` exits 0; lint/static analysis green (where configured); every scenario ID in doc/changes/<change>/specs/ (adapter: openspec/…) appears in at least one test name (list any missing IDs); every item in doc/changes/<change>/tasks.md (adapter: openspec/…) is [x]; (UI projects only) the Playwright E2E suite passes and screenshot diffs are within threshold; AND a consistency review by a DIFFERENT model (the P8 prompt) reports 'VERDICT: no spec-vs-code gaps'. Cap: step5-cap turns (default 25).
+/goal "Goal — ALL must hold: `npm test` exits 0; lint/static analysis green (where configured); every scenario ID in docs/apriori/changes/<change>/specs/ (adapter: openspec/…) appears in at least one test name (list any missing IDs); every item in docs/apriori/changes/<change>/tasks.md (adapter: openspec/…) is [x]; (UI projects only) the Playwright E2E suite passes and screenshot diffs are within threshold; AND a consistency review by a DIFFERENT model (the P8 prompt) reports 'VERDICT: no spec-vs-code gaps'. Cap: step5-cap turns (default 25).
 Turn 1: derive one failing test per spec scenario, named with its scenario ID, and SHOW the failing run. Each later turn: implement the next tasks.md item in order, then run `npm test` (and the Playwright run for UI projects) and SHOW the output so the result is in the transcript. When the code is complete, run the consistency reviewer (codex exec / fresh claude) and paste its verdict.
 Stop when every condition holds or at the cap."
 ```
@@ -450,8 +450,8 @@ Stop when every condition holds or at the cap."
 
 **STEP6:**
 ```text
-/goal "Goal: the change is archived (delta specs merged into the living spec store doc/specs/; adapter: openspec/specs/) AND the KB file for module <module> reflects this change's new/changed facts with a refreshed source-commit stamp. Cap: step6-cap turns (default 4).
-Run the archive action (adapter: /opsx:archive), then update docs/truth/<module>.md and list exactly which files/sections changed.
+/goal "Goal: the change is archived (delta specs merged into the living spec store docs/apriori/specs/; adapter: openspec/specs/) AND the KB file for module <module> reflects this change's new/changed facts with a refreshed source-commit stamp. Cap: step6-cap turns (default 4).
+Run the archive action (adapter: /opsx:archive), then update docs/apriori/truth/<module>.md and list exactly which files/sections changed.
 Stop when both hold."
 ```
 

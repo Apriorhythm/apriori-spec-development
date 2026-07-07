@@ -24,3 +24,7 @@
 #### Scenario: AM-06 archive moves the in-flight change under a dated archive dir
 - WHEN archive completes on change `<name>`
 - THEN the in-flight `apriori/changes/<name>/` (bare name, no prefix) is moved to `apriori/changes/archive/<YYYY-MM-DDThhmm>-<name>/` — a colon-free date-time stamped by the CLI's own clock (never an agent guess); e.g. `archive/2026-07-06T0657-add-playback/`
+
+#### Scenario: AM-07 RENAMED renames a requirement in place, preserving content
+- WHEN the delta has a `## RENAMED Requirements` entry `- Old Name -> New Name` and `Old Name` exists while `New Name` does not
+- THEN the store block keeps its content but its heading ID becomes `New Name`, listed as renamed; a missing source or a colliding target is a conflict (stop, exit 1, nothing written)

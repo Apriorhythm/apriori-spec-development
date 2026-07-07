@@ -82,6 +82,19 @@ test('AM-05 the action lists every merged/modified/deprecated ID', () => {
   assert.strictEqual(fs.readFileSync(store, 'utf8'), before);   // dry-run doesn't write
 });
 
+test('AM-07 RENAMED renames a requirement in place, preserving content', () => {
+  const delta = parseDelta('## RENAMED Requirements\n- Beta -> Bravo\n');
+  const r = merge(STORE, delta, 'c');
+  assert.deepStrictEqual(r.renamed, ['Beta -> Bravo']);
+  assert.ok(r.store.has('Bravo') && !r.store.has('Beta'));
+  assert.match(r.store.get('Bravo'), /### Requirement: Bravo/);
+  assert.match(r.store.get('Bravo'), /Beta old\./);            // content preserved
+  assert.match(r.store.get('Bravo'), /BE-01 beta/);            // its scenario preserved
+  // conflicts: missing source, or target already exists
+  assert.strictEqual(merge(STORE, parseDelta('## RENAMED Requirements\n- Ghost -> X\n'), 'c').conflicts.length, 1);
+  assert.strictEqual(merge(STORE, parseDelta('## RENAMED Requirements\n- Beta -> Alpha\n'), 'c').conflicts.length, 1);
+});
+
 test('AM-06 archive moves the in-flight change under a dated (date-time) archive dir', () => {
   const base = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-am-'));
   const changes = path.join(base, 'changes');

@@ -7,6 +7,7 @@ const rest = process.argv.slice(3);
 
 const USAGE = `apriori <command>
 
+  status    show where a change is: step, next-action, open ledger items
   verify    bind spec scenarios to test runs (STEP5 gate)
   archive   merge a change's delta specs into the living store (STEP6)
   check     structural consistency checks (CI / pre-commit)
@@ -16,6 +17,7 @@ Run 'apriori <command>' with no args for that command's usage.`;
 
 async function main() {
   switch (sub) {
+    case 'status':  return require('../lib/status').cli(rest);
     case 'verify':  return require('../lib/spec-runner').cli(rest);
     case 'archive': return require('../lib/archive-merge').cli(rest);
     case 'check':   return require('../lib/check').cli(rest);

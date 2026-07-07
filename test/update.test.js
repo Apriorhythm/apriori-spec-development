@@ -81,3 +81,19 @@ test('UP-04 --dry-run previews without writing', () => {
   assert.strictEqual(fs.readFileSync(path.join(root, '.claude', 'commands', 'apriori.md'), 'utf8'),
     'old command body\n');
 });
+
+test('UP-05 protocol-required scaffolding is re-established', () => {
+  // a project initialized before the gitignored scratch dir existed
+  const root = agedProject();
+  fs.rmSync(path.join(root, 'apriori', '.gitignore'), { force: true });
+  fs.rmSync(path.join(root, 'apriori', 'tmp'), { recursive: true, force: true });
+  const { actions } = update.run(root);
+  assert.ok(actions.some((a) => a.file === 'apriori/.gitignore' && a.action === 'created'));
+  assert.strictEqual(fs.readFileSync(path.join(root, 'apriori', '.gitignore'), 'utf8'), 'tmp/\n');
+  assert.ok(fs.statSync(path.join(root, 'apriori', 'tmp')).isDirectory());
+  // an existing (customized) .gitignore is never modified
+  fs.writeFileSync(path.join(root, 'apriori', '.gitignore'), 'tmp/\ncustom/\n');
+  const again = update.run(root);
+  assert.strictEqual(fs.readFileSync(path.join(root, 'apriori', '.gitignore'), 'utf8'), 'tmp/\ncustom/\n');
+  assert.ok(!again.actions.some((a) => a.file === 'apriori/.gitignore'));
+});

@@ -188,3 +188,35 @@ test('PR-08 proposal.md is a STEP2 artifact (table + P4 + STEP3 packet, both lan
   assert.match(EN, /assemble the packet — proposal\.md, design doc/);
   assert.match(CN, /备齐材料——proposal\.md、设计文档/);
 });
+
+test('PR-10 UI projects render-and-look during implementation; E2E sits above the binding gate', () => {
+  // P7: implementation-time visual self-check with ephemeral storage
+  const p7en = block(EN, /^### P7 — STEP5 apply.*$/m);
+  assert.match(p7en, /don't fly blind/);
+  assert.match(p7en, /Playwright screenshots/);
+  assert.match(p7en, /simulated clicks/);
+  assert.match(p7en, /`apriori\/tmp\/` \(gitignored/);
+  assert.match(p7en, /textual observation/);
+  // verification matrix: TAP binding vs the E2E/visual layer
+  assert.match(EN, /bind to `apriori verify` via unit\/component tests/);
+  assert.match(EN, /speaks TAP, which Playwright does not emit/);
+  assert.match(EN, /on top of\*\* the binding gate as an additional exit condition/);
+  assert.match(EN, /emitting a textual pass\/fail/);
+  assert.match(EN, /baseline images belong to the project's own test suite/);
+  const p7cn = block(CN, /^### P7 —— STEP5 apply.*$/m);
+  assert.match(p7cn, /不许盲飞/);
+  assert.match(p7cn, /Playwright 对运行中页面截图/);
+  assert.match(p7cn, /模拟点击/);
+  assert.match(p7cn, /apriori\/tmp\//);
+  assert.match(p7cn, /一行文本观察/);
+  assert.match(CN, /经单测\/组件测绑定给 `apriori verify`/);
+  assert.match(CN, /只认 TAP,而 Playwright 不输出 TAP/);
+  assert.match(CN, /绑定闸口之上作为额外退出条件/);
+  assert.match(CN, /文本化 pass\/fail/);
+  assert.match(CN, /基线图属于项目自己的测试套件/);
+  // README mirrors the matrix (both languages), including baseline ownership
+  assert.match(README, /screenshot self-checks land in the gitignored `apriori\/tmp\/`/);
+  assert.match(README, /baseline images belong to the project's own test suite/);
+  assert.match(README_CN, /截图自查落在已被 gitignore 的 `apriori\/tmp\/`/);
+  assert.match(README_CN, /基线图属于项目自己的测试套件/);
+});

@@ -223,7 +223,7 @@ gates:                  # 只增不改的人工决定日志
 
 - **动作,按序:**(1)每个 spec scenario 一条失败测试,测试名带 scenario ID——展示失败运行;(2)用 **P7** 按 tasks.md 顺序实现,随做随标 `[x]`;(3)跑到全绿;(4)`apriori verify` GREEN(确定性绑定闸口);(5)异构一致性评审 **P8**(R2);更新台账。
 - **spec-runner 闸口(`apriori verify`)。** `apriori verify --specs apriori/specs --test-cmd "<你的测试命令>"` 枚举每条 scenario ID,跑项目自己的测试命令(TAP 输出),把每条 scenario 绑到测试:BOUND-GREEN / BOUND-RED / UNBOUND(scenario 无测试)/ ORPHAN(测试无 scenario)/ UNIDENTIFIED(scenario 无 ID)。GREEN(exit 0)= 每条 scenario 有绿测试且无孤儿——这就是过去 P8 的机械覆盖检查,现在确定性化了。
-- **按项目类型的验证矩阵:**所有代码项目——`apriori verify` GREEN + lint/静态分析全绿(安全敏感加 SAST)——where configured;后端/库——单测+属性测试+变异抽查;UI——另加 E2E/视觉回归;有部署面的服务——另加运行时契约、金丝雀+回滚;**纯文档项目——`apriori check` 全绿 + P8 一致性评审,替代 `npm test`。** 项目类型不具备某种可执行仪器时,LLM 评审在该处就是主力仪器——这不是降级。
+- **按项目类型的验证矩阵:**所有代码项目——`apriori verify` GREEN + lint/静态分析全绿(安全敏感加 SAST)——where configured;后端/库——单测+属性测试+变异抽查;UI——另加 E2E/视觉回归(scenario ID 经单测/组件测绑定给 `apriori verify`——verify 的闸口只认 TAP,而 Playwright 不输出 TAP;Playwright 的 E2E/视觉层**叠在**绑定闸口之上作为额外退出条件,视觉检查须输出文本化 pass/fail;视觉回归的基线图属于项目自己的测试套件、按其框架惯例存放,不属于 `apriori/`);有部署面的服务——另加运行时契约、金丝雀+回滚;**纯文档项目——`apriori check` 全绿 + P8 一致性评审,替代 `npm test`。** 项目类型不具备某种可执行仪器时,LLM 评审在该处就是主力仪器——这不是降级。
 - **退出——以下全部:**测试全绿(按上述矩阵);`apriori verify` GREEN(纯文档:`apriori check` 全绿);lint/静态分析全绿(where configured);tasks.md 全 `[x]`;一致性结论行 = `VERDICT: no spec-vs-code gaps`(无 spec-vs-代码缺口)。设计不可行 → 回 STEP2;需求本身错了 → 回 STEP0(两者都要:更新状态文件并告知人)。触顶 → **闸口 ⑤**。
 
 ### STEP6 —— 归档 + 知识库回写
@@ -358,6 +358,10 @@ advisory 可整批确认或忽略,无需逐条理由——只有对正式发现�
 * 关键分支与函数入口按项目规范打日志;
 * 宣布全绿前,先过项目的 linter/静态分析(where configured);
 * 凡 continue/skip/静默忽略分支,回查 spec 确认是否需要对用户可见。
+* UI 项目:不许盲飞——实现过程中把做出来的东西渲染出来、亲眼看一眼
+  (如 Playwright 对运行中页面截图、沿核心流程模拟点击)。
+  截图写到 `apriori/tmp/`(已被 gitignore——它们是仪器,绝不是要提交的产物);
+  留档的是你对截图内容的一行文本观察。
 (纯文档项目:"测试套件"= `apriori check`——可行处同样先失败后通过。)
 跑测试到全绿;停下等待 archive。
 ```

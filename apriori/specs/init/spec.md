@@ -40,3 +40,7 @@
 #### Scenario: IN-10 the multi-select is arrow-key driven (no numbered input)
 - WHEN the interactive selector runs
 - THEN keys map as ↑/↓ = move (wrapping), space = toggle current, `a` = toggle all, enter = confirm, Ctrl-C/Esc = cancel; the rendered menu shows a cursor + `◉`/`◯` checkboxes, a `selected: <names>` footer (`(none)` when empty; names colored on a TTY), and never a numbered list; selection returns the chosen tool keys in order
+
+#### Scenario: IN-11 a gitignored scratch dir for ephemeral instruments
+- WHEN init scaffolds the `apriori/` root
+- THEN it creates `apriori/tmp/` and an `apriori/.gitignore` containing `tmp/`, so P7 screenshot self-checks and similar ephemeral instruments never enter version control; an existing `.gitignore` is never overwritten

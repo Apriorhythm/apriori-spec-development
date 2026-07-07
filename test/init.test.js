@@ -140,3 +140,15 @@ test('IN-09 --language pins a language in the scaffolded config; default is auto
   init.scaffold(existing, ['claude'], { language: '中文' });
   assert.strictEqual(read(existing, 'apriori/process-config.md'), 'MINE\n');
 });
+
+test('IN-11 a gitignored scratch dir for ephemeral instruments', () => {
+  const root = tmp();
+  init.scaffold(root, ['claude']);
+  assert.ok(fs.statSync(path.join(root, 'apriori', 'tmp')).isDirectory());
+  assert.strictEqual(read(root, 'apriori/.gitignore'), 'tmp/\n');
+  // an existing .gitignore is never overwritten; re-run reports skipped
+  fs.writeFileSync(path.join(root, 'apriori', '.gitignore'), 'tmp/\ncustom/\n');
+  const { actions } = init.scaffold(root, ['claude']);
+  assert.strictEqual(read(root, 'apriori/.gitignore'), 'tmp/\ncustom/\n');
+  assert.ok(actions.some((a) => a.file === 'apriori/.gitignore' && a.action === 'skipped'));
+});

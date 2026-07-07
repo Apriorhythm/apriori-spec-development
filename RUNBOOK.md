@@ -224,7 +224,7 @@ KB docs have two sections with **opposite truth directions** (§5 P9/P10): `Cont
 
 - **Do, in order:** (1) one failing test per spec scenario, test names carry scenario IDs — show the failing run; (2) implement in tasks.md order with **P7**, marking `[x]` as you go; (3) run until green; (4) `apriori verify` GREEN (the deterministic binding gate); (5) heterogeneous consistency review **P8** (R2); ledger.
 - **The spec-runner gate (`apriori verify`).** `apriori verify --specs apriori/specs --test-cmd "<your test command>"` enumerates every scenario ID, runs the project's own test command (TAP output), and binds each scenario to its test: BOUND-GREEN / BOUND-RED / UNBOUND (scenario with no test) / ORPHAN (test with no scenario) / UNIDENTIFIED (scenario with no ID). GREEN (exit 0) means every scenario has a passing test and there are no orphans — this is what used to be P8's mechanical coverage check, now deterministic.
-- **Verification matrix by project type:** all code projects — `apriori verify` GREEN + lint/static analysis green (plus SAST where security-sensitive) — where configured; backend/library — unit + property tests, mutation spot-checks; UI — plus E2E/visual regression; deployed service — plus runtime contracts, canary + rollback; **docs-only project — `apriori check` green + the P8 consistency review stand in for `npm test`.** Where an executable instrument doesn't exist for the project type, the LLM review is the primary instrument there — that is not a downgrade.
+- **Verification matrix by project type:** all code projects — `apriori verify` GREEN + lint/static analysis green (plus SAST where security-sensitive) — where configured; backend/library — unit + property tests, mutation spot-checks; UI — plus E2E/visual regression (scenario IDs bind to `apriori verify` via unit/component tests — verify's gate speaks TAP, which Playwright does not emit; the Playwright E2E/visual layer sits **on top of** the binding gate as an additional exit condition, with visual checks emitting a textual pass/fail; visual-regression baseline images belong to the project's own test suite per its framework's convention, not to `apriori/`); deployed service — plus runtime contracts, canary + rollback; **docs-only project — `apriori check` green + the P8 consistency review stand in for `npm test`.** Where an executable instrument doesn't exist for the project type, the LLM review is the primary instrument there — that is not a downgrade.
 - **Exit — ALL of:** tests green (per the matrix above); `apriori verify` GREEN (docs-only: `apriori check` green); lint/static analysis green (where configured); tasks.md all `[x]`; consistency verdict line = `VERDICT: no spec-vs-code gaps`. Design infeasible → back to STEP2; requirement itself wrong → back to STEP0 (both: update the state file and tell the human). Cap hit → **gate ⑤**.
 
 ### STEP6 — archive + KB writeback
@@ -359,6 +359,10 @@ Then implement strictly in tasks.md order; mark each task [x] immediately on com
 * Log at key branches and function entries per the project convention;
 * Before declaring green, run the project's linter/static analysis (where configured);
 * For any continue/skip/silently-ignored branch, re-check the spec for required user-visibility.
+* UI projects: don't fly blind — while implementing, render what you built and LOOK at it
+  (e.g. Playwright screenshots of the running page, simulated clicks along the core flows).
+  Screenshots go to `apriori/tmp/` (gitignored — they are instruments, never committed artifacts);
+  what persists is your one-line textual observation of what the screenshot showed.
 (Docs-only projects: the "test suite" is `apriori check` — same failing-first discipline where feasible.)
 Run the tests until green; stop and wait for archive.
 ```

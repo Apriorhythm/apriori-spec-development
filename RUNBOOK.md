@@ -344,7 +344,7 @@ Then implement strictly in tasks.md order; mark each task [x] immediately on com
 * Scenario coverage is the hard bar: every scenario has ≥1 test carrying its ID. Line coverage is a signal, never a target — no assertion-free padding;
 * Log at key branches and function entries per the project convention;
 * Before declaring green, run the project's linter/static analysis (where configured);
-* For any continue/skip/silently-ignored branch, re-check the spec for required user-visibility.
+* For any continue/skip/silently-ignored branch, re-check the spec for required user-visibility — and if the spec requires it, produce that user-visible record; never satisfy only the "exclude the main path" half while dropping the display side.
 (Docs-only projects: the "test suite" is `python3 scripts/check_docs.py` + example-command static checks — same failing-first discipline where feasible.)
 Run the tests until green; stop and wait for archive.
 ```

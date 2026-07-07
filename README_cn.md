@@ -104,7 +104,7 @@ Claude Code (Opus/Claude)  ──产出──►  SPEC-DOC + DESIGN-DOC
 | **Windsurf** | IDE | 多模型可选（Cascade） | 生成规则/工作流文件 | 生产或评审 |
 | **Copilot** | IDE 插件 | 多模型可选 | 生成 `.github` instructions | 生产或评审、行内补全 |
 
-> ⚠️ 不同工具调用 OpenSpec 的方式略有差异：支持自定义斜杠命令的（如 Claude Code）直接 `/opsx:explore`；其它工具 OpenSpec 会生成**等价的提示词/规则文件**，你在对话里引用即可。**四个阶段（explore/propose/apply/archive）是通用的，叫法因工具而异。**
+> ⚠️ 不同工具调用 OpenSpec 的方式略有差异：支持自定义斜杠命令的（如 Claude Code）直接调 `/opsx:propose` 这类命令；其它工具 OpenSpec 会生成**等价的提示词/规则文件**，你在对话里引用即可。**四个阶段（explore/propose/apply/archive）是通用的，叫法因工具而异。**
 
 ### 2.2 多模型 / 多工具切换
 

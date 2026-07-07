@@ -239,7 +239,7 @@ docs/apriori/design/<change>-review-v{N}.md:逐条问题(描述/风险/建议);�
 然后严格按 tasks.md 顺序实现,每条完成立即标 [x]。
 * scenario 覆盖是硬性标准:每个 scenario 至少一条带其 ID 的测试。行覆盖率是信号不是目标——不许无断言凑数;
 * 关键分支与函数入口按项目规范打日志;
-* 凡 continue/skip/静默忽略分支,回查 spec 确认是否需要对用户可见。
+* 凡 continue/skip/静默忽略分支,回查 spec 确认是否需要对用户可见——若 spec 有要求,必须产出对应的可见记录;绝不能只满足"排除主路径"而丢掉"展示侧"。
 跑测试到全绿;停下等待 archive。
 ```
 

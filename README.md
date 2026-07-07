@@ -104,7 +104,7 @@ This methodology is **decoupled from any specific tool** — any "LLM + Tool use
 | **Windsurf** | IDE | Multiple models (Cascade) | Generates rules / workflow files | Produce or review |
 | **Copilot** | IDE plugin | Multiple models | Generates `.github` instructions | Produce or review, inline completion |
 
-> ⚠️ Tools invoke OpenSpec slightly differently: those that support custom slash commands (e.g. Claude Code) call `/opsx:explore` directly; for the others, OpenSpec generates **equivalent prompt/rule files** that you reference in chat. **The four phases (explore/propose/apply/archive) are universal; only the invocation differs per tool.**
+> ⚠️ Tools invoke OpenSpec slightly differently: those that support custom slash commands (e.g. Claude Code) call commands like `/opsx:propose` directly; for the others, OpenSpec generates **equivalent prompt/rule files** that you reference in chat. **The four phases (explore/propose/apply/archive) are universal; only the invocation differs per tool.**
 
 ### 2.2 Switching Models / Tools
 

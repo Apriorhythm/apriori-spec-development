@@ -36,7 +36,7 @@ test('NW-02 refuses an existing change or the reserved archive name', () => {
 
 test('NW-03 enforces bare kebab-case names (dates stamped at archive time, not here)', () => {
   const root = tmp();
-  for (const bad of ['Add-Playback', 'add playback', '2026-07-07T0305-add-playback', '2026-07-07-add-playback', '', '-lead']) {
+  for (const bad of ['Add-Playback', 'add playback', '2026-07-07T0305-add-playback', '2026-07-07-add-playback', '', '-lead', 'a--b', 'a-']) {
     const r = nw.scaffoldChange(root, bad, NOW);
     assert.strictEqual(r.ok, false, `should refuse '${bad}'`);
   }

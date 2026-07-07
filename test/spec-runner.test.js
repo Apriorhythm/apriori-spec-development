@@ -108,4 +108,12 @@ test('SR-09 --json emits a machine-consumable verify report; exit still encodes 
   assert.strictEqual(code, 0);
   const green = JSON.parse(out.join('\n'));
   assert.strictEqual(green.result, 'GREEN');
+  // GAPS via CLI: exit 1 and pure JSON with result GAPS
+  const out2 = [];
+  console.log = (...a) => out2.push(a.join(' '));
+  let code2;
+  try { code2 = cli(['--specs', file, '--test-cmd', 'printf "not ok 1 - XX-01 a\\n"', '--json']); }
+  finally { console.log = log; }
+  assert.strictEqual(code2, 1);
+  assert.strictEqual(JSON.parse(out2.join('\n')).result, 'GAPS');
 });

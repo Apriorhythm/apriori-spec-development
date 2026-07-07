@@ -79,6 +79,8 @@ test('ST-04 --json emits a machine-consumable report (single + list), pure JSON'
     assert.strictEqual(single.change, 'demo');
     assert.strictEqual(single.step, 'STEP2');
     assert.strictEqual(single.tier, 'medium');
+    assert.strictEqual(single.track, 'harden');
+    assert.strictEqual(single.hasFlowState, true);
     assert.match(single.nextAction, /spawn P5 reviewer/);
     assert.match(single.lastGate, /gate③: approved/);
     assert.deepStrictEqual(single.openLedger, ['D-1', 'D-3']);

@@ -41,7 +41,7 @@ Advance ONLY to the next human gate, then stop and report.
 
 **R1 — Stop at every human gate.** The gates are: ① STEP0 verdict at round cap ② gap-report sign-off (Large tier only) ③ STEP3 technical review ④ STEP6 KB-diff approval ⑤ any cap hit or oscillation (a reopened ledger ID). At a gate: update the state file, report — current step, reviewer verdict lines **verbatim**, open/rejected ledger items, the decision you need — then stop. Never approve a gate yourself; never treat "the human hasn't answered" as approval.
 
-**R2 — Reviews must be genuinely external.** The producing session never issues a review verdict. Spawn a heterogeneous reviewer: `codex exec -s read-only "<prompt>"` (rounds 2+: `codex exec resume -c sandbox_mode="read-only" <session-id> "..."` — codex CLIs ≥0.14x reject `-s` on `resume`; older versions use `-s read-only` before the id; non-interactive invocations must close stdin with `< /dev/null` or codex hangs), or — without Codex — a **fresh** `claude` session on a different tier, fed the artifacts plus the issue ledger (P0). Paste the reviewer's verdict line back verbatim. Read-only sandboxes cannot write the ledger: the reviewer ends its output with a ledger delta, the producer lands it verbatim (marked as recorded on the reviewer's behalf) and archives the raw output for diffing. If you cannot actually spawn a reviewer, stop and say so — **do not simulate one**.
+**R2 — Reviews must be genuinely external.** The producing session never issues a review verdict. Spawn a heterogeneous reviewer: `codex exec -s read-only "<prompt>"` (rounds 2+: `codex exec resume -c sandbox_mode="read-only" <session-id> "..."` — codex CLIs ≥0.14x reject `-s` on `resume`; older versions use `-s read-only` before the id; non-interactive invocations must close stdin with `< /dev/null` or codex hangs), or — without Codex — a **fresh** `claude` session on a different tier, fed the artifacts plus the issue ledger (P0). Paste the reviewer's verdict line back verbatim. Read-only sandboxes cannot write the ledger: the reviewer ends its output with a ledger delta, the producer lands it verbatim (marked as recorded on the reviewer's behalf) and archives the raw output **in full at `docs/apriori/review/<change>-<stage>-raw.*`** for diffing. If the reviewer dies before its verdict line lands (network/provider failure mid-review), **resume the same session** and have it finish — never fill in the verdict yourself. A read-only reviewer's **dynamic observations are untrustworthy** — test runs, builds, anything needing writes can degrade inside its sandbox and produce phantom findings; only its static reads count, and the producer rejects sandbox-artifact findings with evidence from the real environment. If you cannot actually spawn a reviewer, stop and say so — **do not simulate one**.
 
 **R3 — Everything lands on disk; `/goal` belongs to the human.** Artifacts go to the exact paths in §4's table; the state file is updated after every step and every review round. `/goal` is a command the human runs (§6) — never claim to run it or imitate its evaluator. Loops you drive inside a session still obey the round caps in §4.
 
@@ -100,17 +100,19 @@ Update it immediately after each step and each round; append every gate decision
 
 ### KB pre-check — before STEP1, whenever the project already has code
 
+> Greenfield (no module code yet): this check is **N/A** — skip it; never reverse-capture a KB from code that doesn't exist.
+
 - For each touched module: does `docs/apriori/truth/<module>.md` exist? If yes, is it fresh — is `git log --oneline <source-commit>..HEAD -- <module-dir>` empty?
 - Fresh → STEP1. Stale → reconcile with **P10** (code is truth), refresh the stamp. Missing → reverse-capture with **P10**; the produced KB doc must be checked by a human or a heterogeneous model **before** anything downstream consumes it.
 
 ### STEP1 — explore
 
-- **Do:** `/opsx:explore` with **P3**. **Out:** the gap report.
+- **Do:** produce the gap report by following **P3 directly**. **Out:** the gap report. (Current OpenSpec's `/opsx:explore` is a free-form thinking mode with *no required output* — it does NOT produce the gap report; use it as an optional thinking aid at most.)
 - **Exit:** Large tier → **gate ②** (human skims the gap report). Other tiers: fold the report's top risks into your next report and proceed.
 
 ### STEP2 — propose · adversarial loop · cap 4 rounds
 
-- **Do:** `/opsx:propose` with **P4**; then loop: reviewer **P5** (R2) → producer revises with **P6** (spec/design only — never source); ledger every round.
+- **Do:** `/opsx:propose` with **P4**; then loop: reviewer **P5** (R2) → producer revises with **P6** (spec/design only — never source); ledger every round. (OpenSpec's own guidance treats design.md as conditional; this runbook requires it regardless — the runbook wins.)
 - **Exit:** verdict = "no major issues, ready to proceed to execution" → advance. Cap hit or oscillation → **gate ⑤**.
 
 ### STEP3 — technical review — **gate ③ (human)**
@@ -129,7 +131,8 @@ Update it immediately after each step and each round; append every gate decision
 
 ### STEP6 — archive + KB writeback
 
-- **Do:** `/opsx:archive` with **P9**; update `docs/apriori/truth/<module>.md`, refresh `source-commit`; list exactly which files/sections changed.
+- **Before P9:** make sure the change's work is **committed** — `source-commit` must reference a real commit containing the implementation (greenfield repos included: commit first, then stamp).
+- **Do:** archive with **P9** — autonomous agents use the non-interactive CLI `openspec archive <change> --yes` (the `/opsx:archive` command is an interactive flow); after archiving, fill in the generated `Purpose: TBD` placeholder in the store spec. Then update `docs/apriori/truth/<module>.md`, refresh `source-commit`; list exactly which files/sections changed.
 - **Exit:** delta specs merged + KB updated → **gate ④**: the human approves the KB diff (same-repo layout: that's just PR review). Then set `current-step: DONE`.
 
 ---
@@ -181,7 +184,7 @@ For each issue, state how you handled it (accept/reject + reason), and update it
 ### P3 — STEP1 explore
 
 ```text
-/opsx:explore
+# NOTE: current OpenSpec's /opsx:explore is a free-form thinking mode and does NOT produce this artifact — follow this prompt directly
 Align all known facts first — do not write code.
 [Input]
 * Requirement doc: docs/apriori/requirement/req-final.md
@@ -197,7 +200,7 @@ docs/apriori/explore/<change>-gap-report.md: current state A, target state B, an
 ```text
 /opsx:propose
 Based on the aligned facts, write the proposal, all spec docs and the design doc.
-* Every user-visible output gets its own scenario with a stable ID (e.g. KV-03); never merge visible side-effects;
+* Every user-visible output gets its own scenario with a stable ID (e.g. KV-03) — embed it as the scenario-name prefix (`#### Scenario: KV-03 …`), since OpenSpec's spec format has no separate ID field; never merge visible side-effects;
 * Any external shared state (Redis / DB field / global singleton / in-memory cache) must describe three moments: init / runtime update / cleanup-invalidation.
 Stop when done and wait for review.
 ```

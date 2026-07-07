@@ -266,7 +266,7 @@ openspec init
 
 | Command | Purpose |
 |---|---|
-| `/opsx:explore` | Early-stage exploration; align known facts and the design |
+| (follow RUNBOOK P3 directly — `/opsx:explore` is a free-form thinking mode, no gap report) | Early-stage exploration; align known facts and the design |
 | `/opsx:propose` | Output the implementation docs (SPEC-DOC, DESIGN-DOC, etc.) |
 | `/opsx:apply` | Implement code and tests per the SPEC-DOC |
 | `/opsx:archive` | Archive the change; merge delta specs into the OpenSpec spec store |
@@ -325,7 +325,7 @@ graph TD
         A3 -- No --> A5[Requirement Doc finalized]
     end
 
-    A5 --> B[STEP1 /opsx:explore<br/>align facts, output gap report]
+    A5 --> B[STEP1 explore per P3<br/>align facts, output gap report]
     B --> C[STEP2 /opsx:propose<br/>output SPEC-DOC + DESIGN-DOC]
 
     C --> D[Adversarial review: heterogeneous model<br/>produces SPEC-EVALUATION-DOC]
@@ -368,9 +368,9 @@ Requirement Doc v1.0 ──► reviewing model audits ──► REQ-REVIEW-DOC (
 
 For the prompt, see [§7.1](#71-step0-requirement-doc-adversarial-review).
 
-### 4.4 STEP1: `/opsx:explore` (Explore & Align)
+### 4.4 STEP1: Explore & Align
 
-Explore based on all known facts, and align the design.
+Explore based on all known facts, and align the design. ⚠️ Current OpenSpec's `/opsx:explore` is a free-form thinking mode with *no required output* — it does **not** produce the gap report. The agent produces it by following RUNBOOK P3 directly; the slash command is at most an optional thinking aid.
 
 - **Inputs**: TRUTH-DOC (the KB, `docs/apriori/truth/`), any leftover SPEC-DOC from the previous round, the code, the finalized requirement doc.
 - **Output**: an alignment report listing the **gap between current state A and target state B**, saved to `docs/apriori/explore/<change>-gap-report.md`.
@@ -499,7 +499,7 @@ Then have a **reviewing model** (a model/tool different from the one that drafte
 
 In your primary tool:
 ```text
-/opsx:explore
+# STEP1 explore — follow RUNBOOK P3 directly (/opsx:explore has no required output)
 * Requirement doc: docs/apriori/requirement/req-final.md
 * System knowledge base: (new project: none / legacy project: docs/apriori/truth/ or your KB path)
 * Code: this repo
@@ -618,7 +618,7 @@ A tiny CI job that runs this per module and flags "stale KB" turns the Path A/B 
 
 Go straight to STEP1, feeding the KB in as the source of facts:
 ```text
-/opsx:explore
+# STEP1 explore — follow RUNBOOK P3 directly (/opsx:explore has no required output)
 * Requirement doc: docs/apriori/requirement/req-final.md
 * System knowledge base: docs/apriori/truth/ (module: <module-name>; separate-repo layout: pass that repo's local path instead)
 * Detailed technical design doc: design.md
@@ -660,7 +660,7 @@ Prompts: RUNBOOK **P1** (reviewer) / **P2** (producer's revise). Design notes:
 
 ### 7.2 STEP1: explore
 
-Prompt: RUNBOOK **P3**. Design notes: facts only — no code. The KB and the finalized requirement doc go in as inputs, and the output is pinned to `docs/apriori/explore/<change>-gap-report.md` so the cheap pre-propose gate ([§4.4](#44-step1-opsxexplore-explore--align)) has something concrete to read.
+Prompt: RUNBOOK **P3**. Design notes: facts only — no code. The KB and the finalized requirement doc go in as inputs, and the output is pinned to `docs/apriori/explore/<change>-gap-report.md` so the cheap pre-propose gate ([§4.4](#44-step1-explore--align)) has something concrete to read.
 
 ### 7.3 STEP2: Adversarial Review and Revision
 
@@ -727,13 +727,10 @@ rules:
   tasks:
     - Each task's granularity is at most one file or one feature point
     - All tasks must be listed individually, never merged
-  apply:
-    - Execute strictly in the order of tasks.md
-    - Mark each task [x] immediately on completion before continuing
-    - Stop when all done and wait for the user to run /opsx:archive
-    - For any continue / silent-ignore / skip branch in the code, re-check the spec to confirm whether that branch must be user-visible; if the spec requires it, produce the corresponding record — don't satisfy only the "exclude the main path" while dropping the "display side"
-    - Name every test after the scenario ID it covers (e.g. `test('KV-03 …')`); a spec scenario with no matching test fails the traceability check
-    - Every key branch or function entry in the code must log; the log format is `[UUID]-description,XXX:[{}],YYY:[{}]` (this format is an example — swap in your own team's logging convention from the rules file, §8.2)
+  # NOTE: OpenSpec's current schema has no "apply" rule artifact — an apply: section
+  # here is silently dropped by the CLI. Apply-phase rules (strict tasks.md order,
+  # immediate [x], scenario-ID test naming, logging convention) are enforced by
+  # RUNBOOK P7 instead.
 ```
 
 ### 8.2 Project Rules File (CLAUDE.md and Per-Tool Equivalents)

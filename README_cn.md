@@ -266,7 +266,7 @@ openspec init
 
 | 命令 | 用途 |
 |---|---|
-| `/opsx:explore` | 需求前期探索，对齐已知事实与设计 |
+| (直接按 RUNBOOK P3 执行——`/opsx:explore` 是自由思考模式,不产 gap 报告) | 需求前期探索，对齐已知事实与设计 |
 | `/opsx:propose` | 输出 SPEC-DOC、DESIGN-DOC 等实施文档 |
 | `/opsx:apply` | 根据 SPEC-DOC 执行编码与测试 |
 | `/opsx:archive` | 归档变更，把增量规格合并进 OpenSpec 规格库 |
@@ -325,7 +325,7 @@ graph TD
         A3 -- 否 --> A5[需求文档定稿]
     end
 
-    A5 --> B[STEP1 /opsx:explore<br/>对齐事实, 输出 gap 报告]
+    A5 --> B[STEP1 按 P3 explore<br/>对齐事实, 输出 gap 报告]
     B --> C[STEP2 /opsx:propose<br/>输出 SPEC-DOC + DESIGN-DOC]
 
     C --> D[对抗训练: 异构模型评审<br/>产出 SPEC-EVALUATION-DOC]
@@ -368,9 +368,9 @@ graph TD
 
 对应提示词见 [§7.1](#71-step0需求文档对抗评审)。
 
-### 4.4 STEP1｜`/opsx:explore`（探索对齐）
+### 4.4 STEP1｜探索对齐
 
-根据所有已知事实进行探索，对齐设计。
+根据所有已知事实进行探索，对齐设计。⚠️ 当前 OpenSpec 的 `/opsx:explore` 是*无必需产出*的自由思考模式——它**不会**产出 gap 报告;由 agent 直接按 RUNBOOK P3 产出,斜杠命令至多当可选的思考辅助。
 
 - **输入**：TRUTH-DOC（知识库，`docs/apriori/truth/`）、上轮遗留的 SPEC-DOC（如有）、代码、定稿的需求文档。
 - **输出**：对齐报告，列出**当前状态 A 与目标状态 B 之间的 gap**，落盘为 `docs/apriori/explore/<change>-gap-report.md`。
@@ -499,7 +499,7 @@ git init             # 建议纳入版本管理，方便对照每步 diff
 
 在主力工具里：
 ```text
-/opsx:explore
+# STEP1 explore——直接按 RUNBOOK P3 执行(/opsx:explore 无必需产出)
 * 需求文档: docs/apriori/requirement/req-final.md
 * 系统知识库: （新项目，暂无 / 旧项目填 docs/apriori/truth/ 或知识库路径）
 * 代码: 当前仓库
@@ -618,7 +618,7 @@ git log --oneline <source-commit>..HEAD -- src/<module>/
 
 直接进 STEP1，把知识库作为事实来源喂进去：
 ```text
-/opsx:explore
+# STEP1 explore——直接按 RUNBOOK P3 执行(/opsx:explore 无必需产出)
 * 需求文档: docs/apriori/requirement/req-final.md
 * 系统知识库: docs/apriori/truth/（对应模块: <模块名>；独立仓库布局则填其本地路径）
 * 技术详细设计文档: design.md
@@ -660,7 +660,7 @@ git log --oneline <source-commit>..HEAD -- src/<module>/
 
 ### 7.2 STEP1｜explore
 
-提示词:RUNBOOK **P3**。设计说明:只对齐事实——不写代码。知识库与定稿需求作为输入,输出固定落盘到 `docs/apriori/explore/<change>-gap-report.md`,让 propose 前那道便宜闸口（[§4.4](#44-step1opsxexplore探索对齐)）有实物可读。
+提示词:RUNBOOK **P3**。设计说明:只对齐事实——不写代码。知识库与定稿需求作为输入,输出固定落盘到 `docs/apriori/explore/<change>-gap-report.md`,让 propose 前那道便宜闸口（[§4.4](#44-step1探索对齐)）有实物可读。
 
 ### 7.3 STEP2｜对抗训练评审与修订
 
@@ -727,13 +727,9 @@ rules:
   tasks:
     - 每条任务粒度不超过一个文件或一个功能点
     - 所有任务必须逐条列出，不得合并
-  apply:
-    - 严格按 tasks.md 中的任务顺序执行
-    - 每条任务完成后立即标记为 [x]，再继续下一条
-    - 全部完成后停下来，等待用户执行 /opsx:archive
-    - 凡代码中出现 continue / 静默忽略 / skip 分支，必须回查 spec 确认该分支的内容是否需要对用户可见；若 spec 有要求，则必须产出对应记录，不能只满足"排除主路径"而遗漏"展示侧"
-    - 每条测试都以其覆盖的 scenario ID 命名（如 `test('KV-03 …')`）；存在没有对应测试的 spec scenario，即视为未通过追溯检查
-    - 代码中所有关键的分支或者函数开始，都需要打印日志，日志的格式是 `[UUID]-文字说明,XXX:[{}],YYY:[{}]`（该格式是示例——请换成你团队自己的日志规范，见 §8.2 规则文件）
+  # 注意:OpenSpec 当前 schema 没有 "apply" 规则 artifact——写在这里的 apply: 段
+  # 会被 CLI 静默丢弃。apply 阶段规则(严格 tasks.md 顺序、随做随标 [x]、
+  # scenario-ID 测试命名、日志规范)由 RUNBOOK P7 强制。
 ```
 
 ### 8.2 项目规则文件（CLAUDE.md 及其它工具等价物）

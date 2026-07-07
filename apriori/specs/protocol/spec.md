@@ -25,10 +25,14 @@ The V3 runbook SHALL make scenario-to-test binding a deterministic gate, narrow 
 - WHEN the runbook describes output language
 - THEN human-facing prose follows `process-config.md`'s `language` (unset/`auto` → match the human), while machine tokens (verdict lines, scenario IDs, ADDED/MODIFIED/REMOVED, file paths) stay English regardless
 
-#### Scenario: PR-07 an optional pre-STEP0 brainstorm stance funnels into the pipeline
+#### Scenario: PR-07 the brainstorm stance is a structured diverge→converge→funnel, entered via P13
 - WHEN the runbook describes what to do with a still-fuzzy idea
-- THEN it offers a **Brainstorm** stance (a stance, not a tracked step; no required output; never writes code) that must funnel into STEP0 when the goal becomes stateable, or the explore-track intent card when it cannot
+- THEN it offers a **Brainstorm** stance (a stance, not a tracked step; no required output; entered via a P13 kickoff prompt) with three movements: **diverge** — open threads not interrogations, codebase-grounded, ASCII sketches including 2-3 UI-mockup variants for anything user-facing, risks surfaced unprompted; **converge** — exactly one question per message with concrete options, a coverage checklist (purpose, target users, core scenarios, UI shape, data & content, constraints, non-goals, success criteria) where every item is answered or explicitly deferred by the human, mid-conversation additions probed as observed-need vs speculation (cost stated, staged path offered first), human fatigue collapsing the remaining checklist into batch-approved recommended defaults, and 2-3 candidate approaches with tradeoffs before any exit; **funnel** — into STEP0 when the human approves a stateable goal, or the explore-track intent card when it cannot be stated ("no third resting place")
 
 #### Scenario: PR-08 proposal.md is a STEP2 artifact
 - WHEN STEP2 (propose / P4) runs
 - THEN `proposal.md` (a human-readable why/what/out-of-scope one-pager) is listed in §4's artifact table and produced by P4, and the STEP3 gate packet includes it
+
+#### Scenario: PR-09 brainstorm's exit is human-gated, artifact-free until approval, and carries a requirement seed
+- WHEN a brainstorm session runs and approaches its end
+- THEN nothing durable is written before the human approves the exit (no code, no requirement/spec/proposal/design files, no `apriori new`, no flow-state), and that protection is stated to the human in one plain-language sentence, never as protocol internals; the agent may only *propose* exiting after presenting the approaches comparison; "stateable" is the human's judgment, never the agent's; and on approval the crystallized understanding is written as the kickoff requirement draft (goal, users, chosen approach, success criteria, constraints, non-goals with the reasons they were cut, open questions) that becomes STEP0's `req-v1` starting material

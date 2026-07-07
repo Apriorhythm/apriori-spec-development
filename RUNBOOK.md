@@ -167,7 +167,15 @@ Update it immediately after each step and each round; append every gate decision
 
 ### Brainstorm — optional pre-STEP0 stance (a stance, not a step)
 
-Before a change is even stateable, you may enter a **thinking-partner stance**: explore a vague idea with the human — ask the questions that emerge, sketch options and tradeoffs (ASCII diagrams welcome), map the relevant code, surface risks. It has **no required output, no fixed steps, and no flow-state entry** (it is not a tracked step). Two hard rules: **never write code** (this is thinking, not building), and it **must funnel into the pipeline** — the moment the goal becomes stateable, start **STEP0**; while it still cannot be stated, route to the **explore track's intent card** (§4) — the same goal-certainty split as §2. There is no third resting place: brainstorm feeds one of the two. It never replaces STEP0's requirement discipline — it feeds it.
+Before a change is even stateable, you may enter a **thinking-partner stance** (enter via **P13**). It has **no required output, no fixed steps, and no flow-state entry** (it is not a tracked step) — but treat it as load-bearing: everything after STEP0 runs largely on autopilot, so this conversation is where the human and the machine actually align, and the pipeline amplifies whatever alignment — or misalignment — it produces. Do not rush it.
+
+**Hard gate — nothing durable before approval.** Until the human explicitly approves the exit, write nothing that outlives the conversation: **never write code**, and never create workflow artifacts either — no requirement doc, no spec/proposal/design file, no `apriori new`, no flow-state. The conversation is brainstorm's only medium; the first file is written *after* the human says go. State this protection **in one plain-language sentence** ("I won't create any files until you say go — for now we just talk"); never recite protocol internals (artifact names, commands, step numbers) at the human. And no idea is "too simple to brainstorm" — simple-looking ideas hide the most unexamined assumptions. (Skipping brainstorm entirely and going straight to STEP0 is always the human's right — theirs, never yours to presume.)
+
+**Diverge — curious, not prescriptive.** Open threads, not interrogations: surface several directions worth exploring and let the human pick what resonates, instead of funneling them down a single path of questions. Ground everything in the actual codebase — read it, don't theorize. Challenge assumptions (the human's and your own), reframe the problem, offer analogies. Sketch liberally: ASCII diagrams for architecture, states, data flow — and for anything user-facing, **draft 2-3 ASCII UI-mockup variants** and let the human point at what feels right and what doesn't. Surface risks and unknowns unprompted. You don't have to follow a script, ask the same questions every time, reach a conclusion, or stay on topic when a tangent is earning its keep.
+
+**Converge — one question at a time.** When a shape emerges, switch to discipline (and say so — announcing the gear-change helps the human follow): **exactly one question per message**, offering concrete options to pick from wherever options are honest (open-ended only where they would mislead), and keep each turn scannable — the question must never drown in prose. Work the coverage checklist — *purpose · target users · core scenarios · UI shape (when user-facing) · data & content · constraints · non-goals · success criteria* — until every item is either answered or **explicitly deferred with the human's consent**; an item silently skipped is a defect. Two situational moves: when the human adds a want mid-conversation, **probe its reality before absorbing it** — is it an observed need or a speculation? state its cost plainly, and offer a deferred/staged path (record it as a non-goal with an upgrade route) before letting it into scope; when the human signals fatigue or impatience, **collapse the remaining checklist into recommended defaults** presented for one batch approval instead of grinding on question-by-question. If the idea spans several independent pieces, say so and split — each piece becomes its own change. Before any exit: present **2-3 candidate approaches with tradeoffs and your recommendation** — never silently adopt the human's first framing. YAGNI throughout.
+
+**Funnel — the human decides, and the fire is carried.** "Stateable" is the human's judgment, not yours: after the approaches comparison you may *propose* exiting; only the human's approval ends the stance — and it **must funnel into the pipeline**. On approval of a stateable goal, start **STEP0**; if the goal still cannot be stated, route to the **explore track's intent card** (§4) — the same goal-certainty split as §2. There is no third resting place: brainstorm feeds one of the two. On funnel, carry everything: write the crystallized understanding as the kickoff requirement draft — goal, users, chosen approach (and the UI sketch that won, if any), success criteria, constraints, non-goals **with the reasons they were cut**, open questions — which becomes STEP0's `req-v1` starting material. Brainstorm never replaces STEP0's requirement discipline — it feeds it.
 
 ### STEP0 — requirement refinement · adversarial loop · cap: `step0-cap` (default 5)
 
@@ -417,6 +425,29 @@ Stop and wait for the extraction review (P12).
 then exactly one verdict line (§5 phrase table): "VERDICT: extraction accepted" or "VERDICT: extraction rejected".
 Cap: extraction-review-cap (default 2). Rejected + unfaithful extraction → producer redoes P11;
 rejected + intent hypothesis falsified → back to SPIKE or ABANDONED (the state machine's failure branches).
+```
+
+### P13 — brainstorm kickoff (pre-STEP0 stance)
+
+```text
+Enter the Brainstorm stance (§4 "Brainstorm") for: <the idea, however vague>.
+You are a thinking partner, not a builder. Hard gate: until I explicitly approve the exit,
+write NOTHING durable — no code, no requirement/spec/proposal/design files, no `apriori new`,
+no flow-state. Tell me that protection in one plain sentence — never recite protocol internals at me.
+Diverge first: open several threads worth exploring and let me pick; read the actual codebase;
+challenge assumptions; surface risks and unknowns without being asked;
+sketch ASCII diagrams — and 2-3 UI-mockup variants for anything user-facing.
+Then converge (announce the switch): one question per message, with concrete options wherever
+options are honest, each turn scannable; cover purpose, target users, core scenarios, UI shape,
+data & content, constraints, non-goals, success criteria — each answered or explicitly deferred
+by me. If I add a want mid-way, probe whether it's real or speculative, state its cost, and offer
+a staged path before absorbing it. If I sound tired, collapse what's left into recommended
+defaults for one batch approval. Before proposing an exit, present 2-3 candidate approaches with
+tradeoffs and your recommendation. I decide when it is stateable. On my approval, write the
+kickoff requirement draft (goal, users, chosen approach and the winning UI sketch if any,
+success criteria, constraints, non-goals with reasons, open questions) and start STEP0 with it
+as the `req-v1` starting material; if it still cannot be stated, route to the explore track's
+intent card.
 ```
 
 ---

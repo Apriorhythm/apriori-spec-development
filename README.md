@@ -138,7 +138,7 @@ This methodology is **decoupled from any specific tool** — any "LLM + Tool use
 
 > ⚠️ `apriori init` writes each tool a thin **pointer** to the one self-contained `apriori/runbook.md` in that tool's native location — a slash command where the tool supports one (Claude Code, Codex, Windsurf), a rule-level entry otherwise (Cursor, Copilot). **The protocol lives once; only the entry point differs per tool.** The four step actions (explore/propose/apply/archive, RUNBOOK §4) are universal.
 
-> **Process-skill layers are swappable — artifact machinery is not.** The RUNBOOK's P1–P12 prompts *are* this workflow's own SDD skill layer; skill systems such as Claude Code's superpowers (TDD, debugging, planning) sit below it at the implementation layer — compatible, but no replacement for the artifact machinery (spec store, ledger, gates). On any conflict of instructions, the RUNBOOK stays canonical.
+> **Process-skill layers are swappable — artifact machinery is not.** The RUNBOOK's P1–P13 prompts *are* this workflow's own SDD skill layer; skill systems such as Claude Code's superpowers (TDD, debugging, planning) sit below it at the implementation layer — compatible, but no replacement for the artifact machinery (spec store, ledger, gates). On any conflict of instructions, the RUNBOOK stays canonical.
 
 ### 2.2 Switching Models / Tools
 
@@ -371,6 +371,7 @@ graph LR
 | Issue ledger | Cumulative issue table | One per change, shared by every review loop; each issue carries an ID and a status — see [§7.0](#70-the-issue-ledger-shared-by-all-review-loops) |
 | Intent card | Explore-track intent statement | ≤15 lines: goal hypothesis / success criteria / spike questions; human-signed **before** any spike (RUNBOOK §4) |
 | P11 / P12 | Extraction & its review | P11 extracts the spec from a validated prototype; P12 (heterogeneous) reviews it against the intent card |
+| P13 | Brainstorm kickoff | Enters the pre-STEP0 thinking-partner stance: diverge → converge → human-approved funnel (RUNBOOK "Brainstorm") |
 | track | Certainty-axis routing | `harden` or `explore`, with a rationale, in the state file ([§4.0](#40-size-the-change-first)) |
 
 **Where each artifact lives** (these paths are the conventions used throughout the RUNBOOK's prompts — adjust to your repo; process artifacts can also be relocated wholesale via the state file's `artifact-root` field, whose semantics live in RUNBOOK §3):
@@ -432,7 +433,7 @@ graph TD
 
 > The requirement doc is the **top-level prompt** for AI development — make it precise. Ideally, product runs an AI self-check on it first. If it lacks any of the three essentials — goal / out-of-scope / testable acceptance — have the AI interview you with structured questions before drafting. (Round numbers in this section's title and below are defaults — `process-config.md` is the source of truth.)
 
-> 💡 **Before STEP0, you can just think.** If the idea is still fuzzy, tell the agent to brainstorm with you — a thinking-partner stance (ask questions, sketch options, map the code, no code written, no required output). When the goal becomes stateable it funnels into STEP0; if it still can't be stated, into the explore track's intent card (RUNBOOK "Brainstorm").
+> 💡 **Before STEP0, you can just think.** If the idea is still fuzzy, enter the Brainstorm stance (paste RUNBOOK **P13**): the agent diverges with you first (several threads to pick from, codebase-grounded, ASCII sketches — including 2-3 UI-mockup variants for anything user-facing), then converges with discipline (one question per message with options, a coverage checklist — purpose/users/scenarios/UI/data/constraints/non-goals/success criteria — and 2-3 candidate approaches with tradeoffs before any exit). Two protections: **nothing durable is written before you approve** (no code, no docs, no scaffolding), and **you decide** when it's stateable — on your go, the crystallized understanding becomes STEP0's kickoff requirement draft; if it still can't be stated, it feeds the explore track's intent card (RUNBOOK "Brainstorm"). This stance is load-bearing: everything after STEP0 largely runs itself, so this is where you and the machine actually align.
 
 This step is itself an adversarial loop:
 
@@ -736,7 +737,7 @@ Whether a legacy project gets easier to change over time depends on **whether ST
 
 ## 7. Prompt Library
 
-> **The prompt texts themselves live in [RUNBOOK.md](./RUNBOOK.md) §5 (P0–P10)** — one source, distributed with the protocol, so agents never need this handbook. This section keeps the design notes: what each prompt must achieve and why it's shaped that way. Every prompt shares one structure — explicit "Role / Input / Task / Output / Constraints," with version numbers, loops, and exit conditions made explicit.
+> **The prompt texts themselves live in [RUNBOOK.md](./RUNBOOK.md) §5 (P0–P13)** — one source, distributed with the protocol, so agents never need this handbook. This section keeps the design notes: what each prompt must achieve and why it's shaped that way. Every prompt shares one structure — explicit "Role / Input / Task / Output / Constraints," with version numbers, loops, and exit conditions made explicit.
 
 ### 7.0 The Issue Ledger (Shared by All Review Loops)
 

@@ -67,24 +67,114 @@ function block(text, headingRe) {
   return next < 0 ? rest : rest.slice(0, m[0].length + next);
 }
 
-test('PR-07 an optional pre-STEP0 brainstorm stance funnels into the pipeline', () => {
+test('PR-07 the brainstorm stance is a structured diverge→converge→funnel, entered via P13', () => {
   const en = block(EN, /^### Brainstorm — optional pre-STEP0 stance.*$/m);
   assert.ok(en, 'EN Brainstorm block present');
   assert.match(en, /never write code/);
   assert.match(en, /no required output/);
   assert.match(en, /no flow-state entry|not a tracked step/);
+  assert.match(en, /\*\*P13\*\*/);                             // entered via P13
+  // diverge movement
+  assert.match(en, /Open threads, not interrogations/);
+  assert.match(en, /Ground everything in the actual codebase/);
+  assert.match(en, /2-3 ASCII UI-mockup variants/);
+  assert.match(en, /risks and unknowns unprompted/i);
+  // converge movement
+  assert.match(en, /exactly one question per message/);
+  assert.match(en, /purpose · target users · core scenarios · UI shape \(when user-facing\) · data & content · constraints · non-goals · success criteria/);
+  assert.match(en, /explicitly deferred with the human's consent/);
+  assert.match(en, /observed need or a speculation/);          // scope-creep probing (lab: OpenSpec's move)
+  assert.match(en, /deferred\/staged path/);
+  assert.match(en, /fatigue or impatience/);                   // fatigue batching (lab: V3's spontaneous move, now a rule)
+  assert.match(en, /recommended defaults/);
+  assert.match(en, /2-3 candidate approaches with tradeoffs and your recommendation/);
+  // funnel
   assert.match(en, /must funnel into the pipeline/);
   assert.match(en, /start \*\*STEP0\*\*/);                     // branch 1
   assert.match(en, /explore track's intent card/);            // branch 2
   assert.match(en, /no third resting place/);                 // the binary is exhaustive
+  // P13 exists in §5 AND its body mirrors the stance (hard gate, diverge, converge, funnel)
+  const p13en = block(EN, /^### P13 — brainstorm kickoff.*$/m);
+  assert.ok(p13en, 'EN P13 block present');
+  assert.match(p13en, /write NOTHING durable/);
+  assert.match(p13en, /no `apriori new`,\s*\nno flow-state|no `apriori new`, no flow-state/);
+  assert.match(p13en, /one plain sentence/);
+  assert.match(p13en, /read the actual codebase/);
+  assert.match(p13en, /surface risks and unknowns without being asked/);
+  assert.match(p13en, /2-3 UI-mockup variants/);
+  assert.match(p13en, /the winning UI sketch if any/);
+  assert.match(p13en, /one question per message/);
+  assert.match(p13en, /staged path/);
+  assert.match(p13en, /recommended\s+defaults/);
+  assert.match(p13en, /2-3 candidate approaches/);
+  assert.match(p13en, /I decide when it is stateable/);
+  assert.match(p13en, /`req-v1` starting\s*\nmaterial|`req-v1` starting material/);
   const cn = block(CN, /^### 脑暴 —— STEP0 前的可选姿态.*$/m);
   assert.ok(cn, 'CN Brainstorm block present');
   assert.match(cn, /绝不写代码/);
   assert.match(cn, /无必需产出/);
   assert.match(cn, /无 flow-state 条目|不是被追踪的步骤/);
+  assert.match(cn, /P13/);
+  // CN parity clause-by-clause with the EN assertions above
+  assert.match(cn, /开线头而非审问/);
+  assert.match(cn, /扎根真实代码库/);
+  assert.match(cn, /不等人问就把风险和未知摆出来/);
+  assert.match(cn, /2-3 个 ASCII 界面草图变体/);
+  assert.match(cn, /每条消息恰好一个问题/);
+  assert.match(cn, /给具体选项/);
+  assert.match(cn, /目的 · 目标用户 · 核心场景 · 界面形态\(面向用户时\) · 数据与内容 · 约束 · 非目标 · 成功判据/);
+  assert.match(cn, /经人同意明确搁置/);
+  assert.match(cn, /观察到的真需求/);
+  assert.match(cn, /把代价说白/);
+  assert.match(cn, /缓做\/分级路线/);
+  assert.match(cn, /疲劳或不耐烦/);
+  assert.match(cn, /推荐默认值/);
+  assert.match(cn, /2-3 个候选方案的取舍对比和你的推荐/);
   assert.match(cn, /必须漏斗进流程/);
   assert.match(cn, /STEP0/);                                   // branch 1
   assert.match(cn, /探索轨的意图卡/);                          // branch 2
+  // CN P13 body mirrors the stance too
+  const p13cn = block(CN, /^### P13 —— 脑暴启动.*$/m);
+  assert.ok(p13cn, 'CN P13 block present');
+  assert.match(p13cn, /不留任何持久物/);
+  assert.match(p13cn, /不建 flow-state/);
+  assert.match(p13cn, /一句大白话/);
+  assert.match(p13cn, /读真实代码库/);
+  assert.match(p13cn, /不等我问就把风险和未知摆出来/);
+  assert.match(p13cn, /2-3 个界面草图变体/);
+  assert.match(p13cn, /胜出的界面草图如有/);
+  assert.match(p13cn, /每条消息一个问题/);
+  assert.match(p13cn, /缓做路线/);
+  assert.match(p13cn, /推荐默认值/);
+  assert.match(p13cn, /2-3 个候选方案/);
+  assert.match(p13cn, /由我判定/);
+  assert.match(p13cn, /`req-v1` 起始材料/);
+});
+
+test('PR-09 brainstorm exit is human-gated, artifact-free until approval, carries a requirement seed', () => {
+  const en = block(EN, /^### Brainstorm — optional pre-STEP0 stance.*$/m);
+  // hard gate: no durable artifacts before approval, stated in plain language
+  assert.match(en, /never create workflow artifacts either/);
+  assert.match(en, /no requirement doc, no spec\/proposal\/design file, no `apriori new`, no flow-state/);
+  assert.match(en, /plain-language sentence/);
+  assert.match(en, /never recite protocol internals/);
+  // human-gated exit: propose only after approaches comparison; human judges stateable
+  assert.match(en, /you may \*propose\* exiting/);
+  assert.match(en, /the human's judgment, not yours/);
+  // requirement seed carried into STEP0 — every field the scenario names
+  assert.match(en, /kickoff requirement draft/);
+  assert.match(en, /goal, users, chosen approach \(and the UI sketch that won, if any\), success criteria, constraints, non-goals \*\*with the reasons they were cut\*\*, open questions/);
+  assert.match(en, /`req-v1` starting material/);
+  const cn = block(CN, /^### 脑暴 —— STEP0 前的可选姿态.*$/m);
+  assert.match(cn, /绝不创建工作流产物/);
+  assert.match(cn, /不跑 `apriori new`/);
+  assert.match(cn, /一句大白话/);
+  assert.match(cn, /绝不对人背诵协议内部词汇/);
+  assert.match(cn, /提议\*退出|\*提议\*退出/);
+  assert.match(cn, /由人判定,不由你/);
+  assert.match(cn, /kickoff 需求草稿/);
+  assert.match(cn, /目标、用户、选定方案\(以及胜出的界面草图,如有\)、成功判据、约束、非目标\*\*连同砍掉它们的理由\*\*、遗留开放问题/);
+  assert.match(cn, /`req-v1` 起始材料/);
 });
 
 test('PR-08 proposal.md is a STEP2 artifact (table + P4 + STEP3 packet, both languages)', () => {

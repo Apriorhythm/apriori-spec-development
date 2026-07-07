@@ -147,6 +147,7 @@ gates:                  # 只增不改的人工决定日志
 | 需求评审 | `apriori/review/<change>-req-review-v{N}.md` |
 | 问题台账 | `apriori/review/<change>-issues.md` |
 | gap 报告 | `apriori/explore/<change>-gap-report.md` |
+| 提案(为什么 / 做什么 / 范围外) | `apriori/changes/<change>/proposal.md`——给人看的一页纸(STEP2) |
 | 规格 / 设计 / 任务 | `apriori/changes/<change>/specs/`、`…/design.md`、`…/tasks.md` |
 | living 规格库 | `apriori/specs/` |
 | 规格评审 | `apriori/design/<change>-review-v{N}.md` |
@@ -162,6 +163,10 @@ gates:                  # 只增不改的人工决定日志
 - **布局:**变更在 `apriori/changes/<change>/` 下暂存产物(`specs/`、`design.md`、`tasks.md`);已接受的规格进入规格库 `apriori/specs/`。`artifact-root` 规则(§3)只作用于暂存区。
 - **spec 结构:**Requirement 块内含带**稳定 ID** 的 Scenario 块(README §8.1 中的质量规则)。每条 scenario 必须带前导 ID(如 `#### Scenario: KV-03 …`)——无 ID 的 scenario 永远无法绑定到测试(`apriori check` 会标它)。
 - **archive 算法:**`apriori archive` 按稳定 Requirement ID 把变更的增量规格并入规格库——`## ADDED` → 追加;`## MODIFIED` → 整块替换;`## REMOVED` → 规格库保留原块并标 `deprecated (superseded by <change>)`;`## RENAMED`(`- Old -> New`)→ 就地把块的 ID 改名、内容保留。与分叉后已合并的并行变更发生同 ID 冲突 → **停止、开台账、人工裁决**(§4.11 按模块串行)。命令列出每条 merged / modified / deprecated / renamed 的 ID,并在 `--write` 时把在途变更目录挪到 `apriori/changes/archive/<YYYY-MM-DDThhmm>-<name>/`(日期时间由 CLI 盖)。
+
+### 脑暴 —— STEP0 前的可选姿态(是姿态,不是步骤)
+
+在变更还说不清之前,你可以进入一种**思考伙伴姿态**:和人一起探索一个模糊点子——问自然浮现的问题、勾勒选项与取舍(欢迎 ASCII 图)、摸相关代码、把风险摆出来。它**无必需产出、无固定步骤、无 flow-state 条目**(不是被追踪的步骤)。两条硬规则:**绝不写代码**(这是思考不是建造),且**必须漏斗进流程**——目标一旦说得清就开 **STEP0**;若目标与验收都还说不清,就转**探索轨的意图卡**(§4)。它绝不替代 STEP0 的需求纪律——它喂给它。
 
 ### STEP0 —— 需求精细化 · 对抗循环 · 上限:`step0-cap`(默认 5)
 
@@ -199,7 +204,7 @@ gates:                  # 只增不改的人工决定日志
 
 ### STEP3 —— 技术评审 —— **闸口 ③(人工)**
 
-- **Agent 的职责:**备齐材料——设计文档、规格、台账(拒绝项置顶)——呈上,停下。把结论记为 DESIGN-REVIEW-DOC 并写入 `gates:`。重大设计变更 → 回 STEP2。
+- **Agent 的职责:**备齐材料——proposal.md、设计文档、规格、台账(拒绝项置顶)——呈上,停下。把结论记为 DESIGN-REVIEW-DOC 并写入 `gates:`。重大设计变更 → 回 STEP2。
 - 中型:异步过目替代会议——结论照样记录。个人开发者:决策记录仍须来自生产方上下文之外(全新会话评审)。
 
 ### STEP4 —— 更新文档
@@ -299,9 +304,10 @@ apriori/explore/<change>-gap-report.md:当前状态 A、目标状态 B,以及两
 ### P4 —— STEP2 propose(生产方)
 
 ```text
-基于已对齐的事实,编写提案、全部规格文档与设计文档。
+基于已对齐的事实,编写 proposal.md、全部规格文档与设计文档。
+* proposal.md——给人看的一页纸:为什么做这个变更、做什么、范围外是什么。这是 STEP3 闸口和评审方最先读的那份;保持简短。
 * 每个用户可见的输出都有独立 scenario,并带稳定 ID(如 KV-03);可见侧效果不得合并;
-* 显式声明本次变更的范围外(out of scope);
+* 显式声明本次变更的范围外(out of scope,写在 proposal.md);
 * 凡外部共享状态(Redis/DB字段/全局单例/内存缓存),必须描述三个时机:初始化 / 运行中更新 / 清理失效。
 完成后停下,等待评审。
 ```

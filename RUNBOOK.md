@@ -148,6 +148,7 @@ Update it immediately after each step and each round; append every gate decision
 | Requirement review | `apriori/review/<change>-req-review-v{N}.md` |
 | Issue ledger | `apriori/review/<change>-issues.md` |
 | Gap report | `apriori/explore/<change>-gap-report.md` |
+| Proposal (why / what / scope) | `apriori/changes/<change>/proposal.md` — the human-readable one-pager (STEP2) |
 | Spec / design / tasks | `apriori/changes/<change>/specs/`, `…/design.md`, `…/tasks.md` |
 | Living spec store | `apriori/specs/` |
 | Spec evaluation | `apriori/design/<change>-review-v{N}.md` |
@@ -163,6 +164,10 @@ Update it immediately after each step and each round; append every gate decision
 - **Layout:** a change stages its artifacts under `apriori/changes/<change>/` (`specs/`, `design.md`, `tasks.md`); accepted specs live in the store `apriori/specs/`. The `artifact-root` rule (§3) covers the staging area only.
 - **Spec structure:** Requirement blocks containing Scenario blocks with **stable IDs** (the quality rules in README §8.1). Every scenario MUST carry a leading ID (e.g. `#### Scenario: KV-03 …`) — an ID-less scenario can never be bound to a test (`apriori check` flags it).
 - **Archive algorithm:** `apriori archive` merges a change's delta specs into the store by stable Requirement ID — `## ADDED` → append; `## MODIFIED` → replace the whole block; `## REMOVED` → keep the store block, marked `deprecated (superseded by <change>)`; `## RENAMED` (`- Old -> New`) → rename the block's ID in place, content preserved. A same-ID conflict with a change merged since branching → **stop, open a ledger issue, a human resolves** (§4.11's serialize-per-module rule). The command lists every merged / modified / deprecated / renamed ID and, on `--write`, moves the in-flight change dir to `apriori/changes/archive/<YYYY-MM-DDThhmm>-<name>/` (date-time stamped by the CLI).
+
+### Brainstorm — optional pre-STEP0 stance (a stance, not a step)
+
+Before a change is even stateable, you may enter a **thinking-partner stance**: explore a vague idea with the human — ask the questions that emerge, sketch options and tradeoffs (ASCII diagrams welcome), map the relevant code, surface risks. It has **no required output, no fixed steps, and no flow-state entry** (it is not a tracked step). Two hard rules: **never write code** (this is thinking, not building), and it **must funnel into the pipeline** — the moment the goal becomes stateable, start **STEP0**; if neither the goal nor its acceptance can be stated, route to the **explore track's intent card** (§4). It never replaces STEP0's requirement discipline — it feeds it.
 
 ### STEP0 — requirement refinement · adversarial loop · cap: `step0-cap` (default 5)
 
@@ -200,7 +205,7 @@ KB docs have two sections with **opposite truth directions** (§5 P9/P10): `Cont
 
 ### STEP3 — technical review — **gate ③ (human)**
 
-- **Agent's job:** assemble the packet — design doc, spec, ledger with rejections on top — present it, stop. Record the outcome as DESIGN-REVIEW-DOC and in `gates:`. Major design change → back to STEP2.
+- **Agent's job:** assemble the packet — proposal.md, design doc, spec, ledger with rejections on top — present it, stop. Record the outcome as DESIGN-REVIEW-DOC and in `gates:`. Major design change → back to STEP2.
 - Medium tier: an async look-over replaces the meeting — the outcome still gets recorded. Solo developer: the decision record must still come from outside the producer's context (fresh-session review).
 
 ### STEP4 — update docs
@@ -300,9 +305,10 @@ findings land as a "research conclusions" appendix of the gap report. Otherwise:
 ### P4 — STEP2 propose (producer)
 
 ```text
-Based on the aligned facts, write the proposal, all spec docs and the design doc.
+Based on the aligned facts, write proposal.md, all spec docs and the design doc.
+* proposal.md — the human-readable one-pager: WHY this change, WHAT it does, what is OUT OF SCOPE. This is what the STEP3 gate and reviewers read first; keep it short.
 * Every user-visible output gets its own scenario with a stable ID (e.g. KV-03); never merge visible side-effects;
-* State explicitly what is out of scope for this change;
+* State explicitly what is out of scope for this change (in proposal.md);
 * Any external shared state (Redis / DB field / global singleton / in-memory cache) must describe three moments: init / runtime update / cleanup-invalidation.
 Stop when done and wait for review.
 ```

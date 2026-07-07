@@ -24,3 +24,11 @@ The V3 runbook SHALL make scenario-to-test binding a deterministic gate, narrow 
 #### Scenario: PR-06 a configurable language governs human-facing prose, machine tokens stay English
 - WHEN the runbook describes output language
 - THEN human-facing prose follows `process-config.md`'s `language` (unset/`auto` → match the human), while machine tokens (verdict lines, scenario IDs, ADDED/MODIFIED/REMOVED, file paths) stay English regardless
+
+#### Scenario: PR-07 an optional pre-STEP0 brainstorm stance funnels into the pipeline
+- WHEN the runbook describes what to do with a still-fuzzy idea
+- THEN it offers a **Brainstorm** stance (a stance, not a tracked step; no required output; never writes code) that must funnel into STEP0 when the goal becomes stateable, or the explore-track intent card when it cannot
+
+#### Scenario: PR-08 proposal.md is a STEP2 artifact
+- WHEN STEP2 (propose / P4) runs
+- THEN `proposal.md` (a human-readable why/what/out-of-scope one-pager) is listed in §4's artifact table and produced by P4, and the STEP3 gate packet includes it

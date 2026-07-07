@@ -57,3 +57,22 @@ test('PR-06 a configurable language governs prose; machine tokens stay English',
   const cfg = fs.readFileSync(path.join(ROOT, 'templates', 'process-config.md'), 'utf8');
   assert.match(cfg, /\| language \| auto \|/);
 });
+
+test('PR-07 an optional pre-STEP0 brainstorm stance funnels into the pipeline', () => {
+  assert.match(EN, /### Brainstorm — optional pre-STEP0 stance/);
+  assert.match(EN, /never write code/);
+  assert.match(EN, /must funnel into the pipeline/);
+  assert.match(EN, /start \*\*STEP0\*\*|start STEP0/);
+  assert.match(EN, /explore track's intent card/);
+  assert.match(CN, /### 脑暴 —— STEP0 前的可选姿态/);
+  assert.match(CN, /绝不写代码/);
+  assert.match(CN, /必须漏斗进流程/);
+});
+
+test('PR-08 proposal.md is a STEP2 artifact (table + P4 + STEP3 packet)', () => {
+  assert.match(EN, /apriori\/changes\/<change>\/proposal\.md/);       // artifact table
+  assert.match(EN, /write proposal\.md, all spec docs/);              // P4 produces it
+  assert.match(EN, /assemble the packet — proposal\.md/);             // STEP3 packet
+  assert.match(CN, /proposal\.md/);
+  assert.match(CN, /编写 proposal\.md/);
+});

@@ -426,6 +426,8 @@ graph TD
 
 > The requirement doc is the **top-level prompt** for AI development — make it precise. Ideally, product runs an AI self-check on it first. If it lacks any of the three essentials — goal / out-of-scope / testable acceptance — have the AI interview you with structured questions before drafting. (Round numbers in this section's title and below are defaults — `process-config.md` is the source of truth.)
 
+> 💡 **Before STEP0, you can just think.** If the idea is still fuzzy, tell the agent to brainstorm with you — a thinking-partner stance (ask questions, sketch options, map the code, no code written, no required output). When the goal becomes stateable it funnels into STEP0; if it still can't be stated, into the explore track's intent card (RUNBOOK "Brainstorm").
+
 This step is itself an adversarial loop:
 
 ```
@@ -456,7 +458,7 @@ The **explore action**. Explore based on all known facts, and align the design.
 
 ### 4.5 STEP2: Produce Spec & Design + Adversarial Review
 
-The **propose action**. Produce the proposal, all spec docs (SPEC-DOC), and the design doc (DESIGN-DOC), then enter adversarial review:
+The **propose action**. Produce `proposal.md` (the human-readable one-pager: why / what / out-of-scope — what the STEP3 gate and reviewers read first), all spec docs (SPEC-DOC), and the design doc (DESIGN-DOC), then enter adversarial review:
 
 ```
 SPEC-DOC + DESIGN-DOC_V1  ──reviewing model──►  SPEC-EVALUATION-DOC_V1

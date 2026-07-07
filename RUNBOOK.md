@@ -58,7 +58,7 @@ Advance ONLY to the next human gate, then stop and report.
 
 > The protection forbids *silent coverage by a blanket authorization* — not the owner's explicit choice. A protected gate may still be decided by **explicit proxy**, under all of the following: ① the agent first presents the pending gate — **each protected gate itemized independently** (numbered, what is being approved, artifact path, the decision options) — never bundled into a progress question; ② the human's delegating reply comes *after* that presentation and is recorded **verbatim** in `gates:`, one entry per gate; ③ the proxy is **one-shot** — it covers exactly the gates itemized in that presentation and never inherits to future gates of the same kind. A reply may cover several protected gates only if each was itemized; a pre-existing blanket authorization never qualifies. An itemized *multi-step end-to-end run* does **not** implicitly cover protected gates nested inside it: when an un-itemized protected gate surfaces mid-run, stop and present it — the interruption itself is logged in `gates:`; gates that were itemized up front are unaffected.
 
-**R2 — Reviews must be genuinely external.** The producing session never issues a review verdict. Spawn a heterogeneous reviewer: `codex exec -s read-only "<prompt>"` (rounds 2+: `codex exec resume -c sandbox_mode="read-only" <session-id> "..."` — codex CLIs ≥0.14x reject `-s` on `resume`; on older versions use `-s read-only` before the session id), or — without Codex — a **fresh** `claude` session on a different tier, fed the artifacts plus the issue ledger (P0). Paste the reviewer's verdict line back verbatim. Reviewers usually run in read-only sandboxes and cannot write the ledger: the reviewer ends its output with a **ledger delta** (new rows + status flips), and the producer lands it verbatim, marked "recorded on behalf of the reviewer"; the reviewer's raw output is archived in full at `docs/apriori/review/<change>-<stage>-raw.*` so the recorded delta can always be diffed against its source. When invoking codex non-interactively (background/scripted), close stdin — append `< /dev/null` — or it prints "Reading additional input from stdin..." and hangs. If you cannot actually spawn a reviewer, stop and say so — **do not simulate one**.
+**R2 — Reviews must be genuinely external.** The producing session never issues a review verdict. Spawn a heterogeneous reviewer: `codex exec -s read-only "<prompt>"` (rounds 2+: `codex exec resume -c sandbox_mode="read-only" <session-id> "..."` — codex CLIs ≥0.14x reject `-s` on `resume`; on older versions use `-s read-only` before the session id), or — without Codex — a **fresh** `claude` session on a different tier, fed the artifacts plus the issue ledger (P0). Paste the reviewer's verdict line back verbatim. Reviewers usually run in read-only sandboxes and cannot write the ledger: the reviewer ends its output with a **ledger delta** (new rows + status flips), and the producer lands it verbatim, marked "recorded on behalf of the reviewer"; the reviewer's raw output is archived in full at `docs/apriori/review/<change>-<stage>-raw.*` so the recorded delta can always be diffed against its source. When invoking codex non-interactively (background/scripted), close stdin — append `< /dev/null` — or it prints "Reading additional input from stdin..." and hangs. If the reviewer dies before its verdict line lands (network/provider failure mid-review), **resume the same session** and have it finish — never fill in the verdict yourself. A read-only reviewer's **dynamic observations are untrustworthy** — test runs, builds, anything needing writes can degrade inside its sandbox and produce phantom findings; only its static reads count, and the producer rejects sandbox-artifact findings with evidence from the real environment. If you cannot actually spawn a reviewer, stop and say so — **do not simulate one**.
 
 **R3 — Everything lands on disk; `/goal` belongs to the human; the config belongs to the human too.** Artifacts go to the exact paths in §4's table; the state file is updated after every step and every review round. All round caps are read from the project's `process-config.md` — **human-held; the agent never writes it**; if it is missing, the defaults printed in §4 apply. **Every review stage's cap has a hard floor of 1 per change: a configured value below 1, or an unparsable one, falls back to the default with a warning — no review stage ever goes to zero.** `/goal` is a command the human runs (§6) — never claim to run it or imitate its evaluator. Loops you drive inside a session still obey the caps.
 
@@ -187,7 +187,7 @@ KB docs have two sections with **opposite truth directions** (§5 P9/P10): `Cont
 
 ### STEP1 — explore
 
-- **Do:** the **explore action** (adapter: `/opsx:explore`) with **P3**. **Out:** the gap report.
+- **Do:** produce the gap report by following **P3 directly**. **Out:** the gap report. (Current OpenSpec's `/opsx:explore` adapter command is a free-form thinking mode with *no required output* — it does NOT produce the gap report; use it as an optional thinking aid at most.)
 - **Research-spike variant** (vague-but-tripwired changes, §2): probe code is allowed under `spike/` — the explore track's full isolation rules apply — capped by `spike-cap` (default 10); findings land as a "research conclusions" appendix to the gap report. P3 carries the matching variant clause.
 - **Exit:** Large tier → **gate ②** (human skims the gap report). Other tiers: fold the report's top risks into your next report and proceed.
 
@@ -213,7 +213,8 @@ KB docs have two sections with **opposite truth directions** (§5 P9/P10): `Cont
 
 ### STEP6 — archive + KB writeback
 
-- **Do:** the **archive action** (adapter: `/opsx:archive`) with **P9** — merge per the interface's archive algorithm above; update `docs/apriori/truth/<module>.md` (Contract section from the final implementation + refreshed `source-commit`; Decisions section appends this change's new decisions/invariants); list exactly which files/sections changed. Explore-track changes: delete or quarantine `spike/` here.
+- **Before P9:** make sure the change's work is **committed** — `source-commit` must reference a real commit containing the implementation the Contract section is reconciled against (greenfield repos included: commit first, then stamp).
+- **Do:** the **archive action** with **P9** — autonomous agents use the non-interactive CLI `openspec archive <change> --yes` (the `/opsx:archive` adapter command is an interactive flow); after archiving, fill in the generated `Purpose: TBD` placeholder in the store spec as part of the writeback. Merge per the interface's archive algorithm above; update `docs/apriori/truth/<module>.md` (Contract section from the final implementation + refreshed `source-commit`; Decisions section appends this change's new decisions/invariants); list exactly which files/sections changed. Explore-track changes: delete or quarantine `spike/` here.
 - **Exit:** delta specs merged + KB updated → **gate ④**: the human approves the KB diff (same-repo layout: that's just PR review). Then set `current-step: DONE`.
 
 
@@ -281,7 +282,7 @@ Advisories may be batch-acknowledged or ignored without per-item reasons — onl
 ### P3 — STEP1 explore
 
 ```text
-/opsx:explore   # adapter command for the interface's explore action — plain-files projects follow this prompt directly
+# NOTE: current OpenSpec's /opsx:explore (adapter) is a free-form thinking mode and does NOT produce this artifact — ALL projects follow this prompt directly
 Align all known facts first — do not write code.
 [Input]
 * Requirement doc: docs/apriori/requirement/req-final.md
@@ -357,7 +358,7 @@ Review the implementation against the SPEC-DOC:
 3. continue/skip/silently-ignored branches — does the spec require them to be user-visible;
 4. Do the tests assert real outcomes (not merely "it runs");
 5. Where external input or permissions are touched: unvalidated input, missing authz, secrets/PII in logs.
-[Scope] Count toward the verdict only spec-vs-code gaps. Style, taste and nice-to-haves — label advisory (P0 rules).
+[Scope] Count toward the verdict only spec-vs-code gaps. Style, taste and nice-to-haves — label advisory (P0 rules). If you run tests yourself in a read-only sandbox, treat degraded output as a sandbox artifact, not a finding (R2).
 List each inconsistency with a suggested fix; end with your ledger delta (P0 rules), advisories listed separately.
 (Docs-only projects: item 1's mechanical check = the checker script's output; read "tests" as the doc checks.)
 End with the verdict line (§5 phrase table): "VERDICT: no spec-vs-code gaps" or "VERDICT: <N> issues open".

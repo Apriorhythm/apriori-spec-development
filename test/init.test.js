@@ -92,12 +92,16 @@ test('IN-10 arrow-key multiselect: parseKey, reducer, render (no numbers), end-t
   st = init.reduceKey(st, 'all');   assert.strictEqual(st.selected.size, 3);  // all on
   st = init.reduceKey(st, 'all');   assert.strictEqual(st.selected.size, 0);  // all off
 
-  // render shows a cursor + checkbox, and NO numeric "1." "2." selection
-  const menu = init.renderMenu({ items, cursor: 1, selected: new Set(['a']) });
+  // render shows a cursor + checkbox, a selected-footer, and NO numeric "1." "2." selection
+  const menu = init.renderMenu({ items, cursor: 1, selected: new Set(['a', 'c']) });
   assert.match(menu, /❯ ◯ B/);      // cursor on row 1
   assert.match(menu, /◉ A/);        // 'a' selected
   assert.doesNotMatch(menu, /\d\.\s/);   // no "1. 2. 3."
   assert.match(menu, /space toggle · a all · enter confirm/);
+  assert.match(menu, /selected: A, C/);                     // footer lists selected names in order
+  assert.match(init.renderMenu({ items, cursor: 0, selected: new Set() }), /selected: \(none\)/);
+  assert.doesNotMatch(menu, /\x1b\[/);                      // no ANSI when color off (default)
+  assert.match(init.renderMenu({ items, cursor: 0, selected: new Set(['a']) }, { color: true }), /\x1b\[32m/); // green when on
 
   // end-to-end driver with injected streams: down, space, down, space, enter → picks b, c
   const { PassThrough } = require('node:stream');

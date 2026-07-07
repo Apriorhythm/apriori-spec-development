@@ -39,4 +39,4 @@
 
 #### Scenario: IN-10 the multi-select is arrow-key driven (no numbered input)
 - WHEN the interactive selector runs
-- THEN keys map as ↑/↓ = move (wrapping), space = toggle current, `a` = toggle all, enter = confirm, Ctrl-C/Esc = cancel; the rendered menu shows a cursor + `◉`/`◯` checkboxes and never a numbered list; selection returns the chosen tool keys in order
+- THEN keys map as ↑/↓ = move (wrapping), space = toggle current, `a` = toggle all, enter = confirm, Ctrl-C/Esc = cancel; the rendered menu shows a cursor + `◉`/`◯` checkboxes, a `selected: <names>` footer (`(none)` when empty; names colored on a TTY), and never a numbered list; selection returns the chosen tool keys in order

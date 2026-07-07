@@ -15,23 +15,23 @@
 
 **安装(人做,每个项目一次):**
 
-1. 把本文件复制进项目,如 `docs/apriori-runbook.md`。
+1. 把本文件复制进项目,如 `docs/apriori/runbook.md`。
 2. 在项目规则文件(`CLAUDE.md` / `AGENTS.md` / `.cursor/rules/*.mdc` / `.github/copilot-instructions.md`)里加一行:
-   > 开发流程遵循 `docs/apriori-runbook.md`。每次会话开始,先读它和 `doc/changes/<change>/flow-state.md`,从记录的位置继续。
+   > 开发流程遵循 `docs/apriori/runbook.md`。每次会话开始,先读它和 `docs/apriori/changes/<change>/flow-state.md`,从记录的位置继续。
 3. 项目还没有 OpenSpec 的话:`openspec init`(手册 §3.3);`templates/config.yaml` 是一份现成的 `openspec/config.yaml` 起点。
 4. 可选(Claude Code):把 `templates/claude-command-apriori.md` 复制为 `.claude/commands/apriori.md`,即可用 `/apriori <change>` 启动。
 
 **会话启动(Agent,每个会话都做):**
 
 1. 完整读一遍本 RUNBOOK。
-2. 读 `doc/changes/<change>/flow-state.md`。若不存在且你被要求启动一个变更:先定级(§2),创建状态文件(§3),再从该级别的第一步开始。
+2. 读 `docs/apriori/changes/<change>/flow-state.md`。若不存在且你被要求启动一个变更:先定级(§2),创建状态文件(§3),再从该级别的第一步开始。
 3. 从 `next-action` 继续。状态文件是唯一权威——绝不凭记忆或猜测重建进度。
 
 **启动提示词(人用——复制并填空):**
 
 ```text
-按 apriori runbook(docs/apriori-runbook.md)推进变更 <change-name>,级别 <小型|中型|大型>。
-先读 runbook 和 doc/changes/<change-name>/flow-state.md,从记录的位置继续。
+按 apriori runbook(docs/apriori/runbook.md)推进变更 <change-name>,级别 <小型|中型|大型>。
+先读 runbook 和 docs/apriori/changes/<change-name>/flow-state.md,从记录的位置继续。
 只推进到下一个人工闸口,然后停下来汇报。
 ```
 
@@ -61,7 +61,7 @@
 
 ## 3. 状态文件
 
-`doc/changes/<change>/flow-state.md`:
+`docs/apriori/changes/<change>/flow-state.md`:
 
 ```markdown
 change: <change-name>
@@ -83,24 +83,24 @@ gates:                  # 只增不改的人工决定日志
 
 | 产物 | 路径 |
 |---|---|
-| 需求文档 | `requirement/req-v{N}.md` → 定稿 `requirement/req-final.md` |
-| 需求评审 | `doc/review/<change>-req-review-v{N}.md` |
-| 问题台账 | `doc/review/<change>-issues.md` |
-| gap 报告 | `doc/explore/<change>-gap-report.md` |
+| 需求文档 | `docs/apriori/requirement/req-v{N}.md` → 定稿 `docs/apriori/requirement/req-final.md` |
+| 需求评审 | `docs/apriori/review/<change>-req-review-v{N}.md` |
+| 问题台账 | `docs/apriori/review/<change>-issues.md` |
+| gap 报告 | `docs/apriori/explore/<change>-gap-report.md` |
 | 规格 / 设计 / 任务 | `openspec/changes/<change>/specs/`、`…/design.md`、`…/tasks.md` |
-| 规格评审 | `doc/design/<change>-review-v{N}.md` |
-| 知识库(TRUTH-DOC) | `docs/truth/<module>.md`——必须带 `source-commit` 标记 |
-| 流程状态 | `doc/changes/<change>/flow-state.md` |
+| 规格评审 | `docs/apriori/design/<change>-review-v{N}.md` |
+| 知识库(TRUTH-DOC) | `docs/apriori/truth/<module>.md`——必须带 `source-commit` 标记 |
+| 流程状态 | `docs/apriori/changes/<change>/flow-state.md` |
 
 ### STEP0 —— 需求精细化 · 对抗循环 · 上限 5 轮
 
-- **输入:**`requirement/req-v{N}.md`;知识库(如有)。
+- **输入:**`docs/apriori/requirement/req-v{N}.md`;知识库(如有)。
 - **每轮:**(1)若已有评审,据其修订 → `req-v{N+1}.md`,逐条注明采纳/拒绝+理由并更新台账;(2)用 **P1** 调起评审方(R2)→ 评审文档 + 台账;(3)记录结论行。
-- **退出:**结论 =「无重大问题」→ 复制为 `requirement/req-final.md`,前进。触顶 → **闸口 ①**。
+- **退出:**结论 =「无重大问题」→ 复制为 `docs/apriori/requirement/req-final.md`,前进。触顶 → **闸口 ①**。
 
 ### 知识库前置检查 —— STEP1 之前,凡项目已有代码就做
 
-- 对每个涉及的模块:`docs/truth/<module>.md` 存在吗?若存在,新鲜吗——`git log --oneline <source-commit>..HEAD -- <模块目录>` 是否为空?
+- 对每个涉及的模块:`docs/apriori/truth/<module>.md` 存在吗?若存在,新鲜吗——`git log --oneline <source-commit>..HEAD -- <模块目录>` 是否为空?
 - 新鲜 → STEP1。过期 → 用 **P10** 校对(代码为真相),刷新标记。缺失 → 用 **P10** 反向沉淀;产出的知识库文档必须先经人或异构模型复核,**之后**下游才能使用。
 
 ### STEP1 —— explore
@@ -129,7 +129,7 @@ gates:                  # 只增不改的人工决定日志
 
 ### STEP6 —— 归档 + 知识库回写
 
-- **动作:**用 **P9** 执行 `/opsx:archive`;更新 `docs/truth/<module>.md`,刷新 `source-commit`;列出改了哪些文件/段落。
+- **动作:**用 **P9** 执行 `/opsx:archive`;更新 `docs/apriori/truth/<module>.md`,刷新 `source-commit`;列出改了哪些文件/段落。
 - **退出:**增量规格已合并 + 知识库已更新 → **闸口 ④**:人批准知识库 diff(同仓库布局下就是 PR 评审)。然后置 `current-step: DONE`。
 
 ---
@@ -138,7 +138,7 @@ gates:                  # 只增不改的人工决定日志
 
 ### P0 —— 问题台账(下面每条提示词都读写它)
 
-`doc/review/<change>-issues.md`:
+`docs/apriori/review/<change>-issues.md`:
 
 ```markdown
 | ID | 问题 | 风险 | 发现轮次 | 状态 |
@@ -156,9 +156,9 @@ gates:                  # 只增不改的人工决定日志
 ```text
 你是一名资深需求评审专家。请审查需求文档,目标是让它精确到可以直接交给 AI 实现。
 【输入】
-* 需求文档: requirement/req-v{N}.md
-* 系统知识库(如有): docs/truth/<模块名>.md
-* 问题台账(如有): doc/review/<change>-issues.md
+* 需求文档: docs/apriori/requirement/req-v{N}.md
+* 系统知识库(如有): docs/apriori/truth/<模块名>.md
+* 问题台账(如有): docs/apriori/review/<change>-issues.md
 【评审维度,逐条给结论】
 1. 目标状态 B 是否清晰、无歧义
 2. 边界条件与异常路径是否覆盖(空值、越界、并发、超时、失败回滚)
@@ -166,7 +166,7 @@ gates:                  # 只增不改的人工决定日志
 4. 每条验收标准是否可测(能写成「如果…那么…」)
 5. 与系统现状 A 是否冲突(若提供了知识库)
 【输出】
-生成 doc/review/<change>-req-review-v{N}.md:按维度列问题清单(描述/风险/修改建议)。
+生成 docs/apriori/review/<change>-req-review-v{N}.md:按维度列问题清单(描述/风险/修改建议)。
 按台账规则把每条问题同步进台账。末尾给出结论行:「无重大问题」与否。
 不要修改需求文档本身。
 ```
@@ -174,7 +174,7 @@ gates:                  # 只增不改的人工决定日志
 ### P2 —— STEP0 修订(生产方)
 
 ```text
-按 doc/review/<change>-req-review-v{N}.md 修订需求文档,输出 requirement/req-v{N+1}.md。
+按 docs/apriori/review/<change>-req-review-v{N}.md 修订需求文档,输出 docs/apriori/requirement/req-v{N+1}.md。
 逐条说明处理方式(采纳/拒绝+理由),并更新台账中各问题的状态(fixed / rejected+理由)。
 ```
 
@@ -184,12 +184,12 @@ gates:                  # 只增不改的人工决定日志
 /opsx:explore
 先对齐所有已知事实——不要写代码。
 【输入】
-* 需求文档: requirement/req-final.md
-* 系统知识库: docs/truth/(相关模块: <模块名>;新项目注明"暂无")
+* 需求文档: docs/apriori/requirement/req-final.md
+* 系统知识库: docs/apriori/truth/(相关模块: <模块名>;新项目注明"暂无")
 * 技术详细设计文档: design.md(如有)
 * 代码: 当前仓库
 【输出】
-doc/explore/<change>-gap-report.md:当前状态 A、目标状态 B,以及两者之间的差异点与风险。
+docs/apriori/explore/<change>-gap-report.md:当前状态 A、目标状态 B,以及两者之间的差异点与风险。
 ```
 
 ### P4 —— STEP2 propose(生产方)
@@ -208,7 +208,7 @@ doc/explore/<change>-gap-report.md:当前状态 A、目标状态 B,以及两者�
 你是技术评审专家,重点找"会导致返工或线上事故"的问题。
 【输入】
 * SPEC-DOC: openspec/changes/<change>/specs/   * DESIGN-DOC: openspec/changes/<change>/design.md
-* 知识库: docs/truth/   * 需求文档: requirement/req-final.md   * 台账: doc/review/<change>-issues.md
+* 知识库: docs/apriori/truth/   * 需求文档: docs/apriori/requirement/req-final.md   * 台账: docs/apriori/review/<change>-issues.md
 【检查清单】
 1. scenario 是否覆盖全部可见行为,有无遗漏的失败/边界场景
 2. 外部共享状态的三个时机是否完整
@@ -216,14 +216,14 @@ doc/explore/<change>-gap-report.md:当前状态 A、目标状态 B,以及两者�
 4. spec 写了设计没落实,或设计引入了 spec 未声明的行为
 5. 安全(变更触及外部输入或权限时):未校验输入、缺鉴权、日志中密钥/敏感信息、注入面
 【输出】
-doc/design/<change>-review-v{N}.md:逐条问题(描述/风险/建议);按台账规则同步进台账。
+docs/apriori/design/<change>-review-v{N}.md:逐条问题(描述/风险/建议);按台账规则同步进台账。
 末尾给出结论行:「无重大问题,可进入执行阶段」与否。
 ```
 
 ### P6 —— STEP2 修订(生产方)
 
 ```text
-另一个模型评审了你的规格与设计:doc/design/<change>-review-v{N}.md。
+另一个模型评审了你的规格与设计:docs/apriori/design/<change>-review-v{N}.md。
 逐条处理(采纳/拒绝+理由),只修改 spec 与 design 文件——绝不动源码。
 更新台账中各问题的状态,然后进入评审轮 v{N+1}。
 ```
@@ -258,7 +258,7 @@ doc/design/<change>-review-v{N}.md:逐条问题(描述/风险/建议);按台账�
 ```text
 /opsx:archive
 归档本次变更,并同步更新知识库:
-* 把本次新增/变更的事实写入 docs/truth/<模块名>.md;
+* 把本次新增/变更的事实写入 docs/apriori/truth/<模块名>.md;
 * 把该文档的 source-commit 标记刷新为当前代码 commit;
 列出你更新了哪些知识库文件、哪些段落。
 ```
@@ -267,9 +267,9 @@ doc/design/<change>-review-v{N}.md:逐条问题(描述/风险/建议);按台账�
 
 ```text
 你是系统知识库工程师。阅读该模块代码,产出/校对其知识库文档。
-【输入】代码范围: <目录或文件清单>。现有知识库(如有): docs/truth/<模块名>.md
+【输入】代码范围: <目录或文件清单>。现有知识库(如有): docs/apriori/truth/<模块名>.md
 【任务】以代码为唯一真相,抽象:对外职责/接口、核心数据流、关键状态与副作用(三个时机)、依赖、约定与坑。若已有知识库,逐条标出不符/过时/缺失并修订。
-【输出】docs/truth/<模块名>.md,放在变更分支上(让 PR diff 成为评审现场),带上你所读代码 commit 的 source-commit 标记。
+【输出】docs/apriori/truth/<模块名>.md,放在变更分支上(让 PR diff 成为评审现场),带上你所读代码 commit 的 source-commit 标记。
 【约束】只写代码里确实存在的事实;不确定处标"待人工确认";绝不编造抽象意图。
 ```
 
@@ -281,22 +281,22 @@ doc/design/<change>-review-v{N}.md:逐条问题(描述/风险/建议);按台账�
 
 **STEP0 循环:**
 ```text
-/goal "目标:requirement/req-final.md 存在,且最新一轮评审判定为「无重大问题」。上限:5 轮。
+/goal "目标:docs/apriori/requirement/req-final.md 存在,且最新一轮评审判定为「无重大问题」。上限:5 轮。
 每一轮:
-1. 若 doc/review/<change>-req-review-v{N}.md 存在,据其修订 requirement/req-v{N}.md,升到 v{N+1},逐条注明 采纳/拒绝+理由,并同步更新 doc/review/<change>-issues.md 里对应问题的状态。
-2. 用一个不同的模型对当前版本跑评审,输出存到 doc/review/<change>-req-review-v{N}.md,例如:
-   codex exec -s read-only \"<P1 提示词> —— 目标:requirement/req-v{N}.md\"
+1. 若 docs/apriori/review/<change>-req-review-v{N}.md 存在,据其修订 docs/apriori/requirement/req-v{N}.md,升到 v{N+1},逐条注明 采纳/拒绝+理由,并同步更新 docs/apriori/review/<change>-issues.md 里对应问题的状态。
+2. 用一个不同的模型对当前版本跑评审,输出存到 docs/apriori/review/<change>-req-review-v{N}.md,例如:
+   codex exec -s read-only \"<P1 提示词> —— 目标:docs/apriori/requirement/req-v{N}.md\"
    (没有 Codex?新开一个 claude,把 P1 连同问题台账一起交给它)
 3. 把评审方的结论行贴回本对话。
-当判定为「无重大问题」时停(并复制为 requirement/req-final.md),或满 5 轮停。"
+当判定为「无重大问题」时停(并复制为 docs/apriori/requirement/req-final.md),或满 5 轮停。"
 ```
 
 **STEP2 循环:**
 ```text
 /goal "目标:openspec/changes/<change>/ 有 SPEC-DOC+DESIGN-DOC,且最新评审判定为「无重大问题,可进入执行阶段」。上限:4 轮。
 每一轮:
-1. 据最新评审修订 spec/design 文件——绝不动源码——并同步更新 doc/review/<change>-issues.md 里已处理问题的状态。
-2. 重跑异构评审,用 P5 提示词(第 1 轮:codex exec,记下打印的 session id;之后各轮:codex exec resume -c sandbox_mode=\"read-only\" <session-id>),产出 doc/design/<change>-review-v{N}.md 并更新台账。
+1. 据最新评审修订 spec/design 文件——绝不动源码——并同步更新 docs/apriori/review/<change>-issues.md 里已处理问题的状态。
+2. 重跑异构评审,用 P5 提示词(第 1 轮:codex exec,记下打印的 session id;之后各轮:codex exec resume -c sandbox_mode=\"read-only\" <session-id>),产出 docs/apriori/design/<change>-review-v{N}.md 并更新台账。
 3. 把评审结论行贴回这里。
 当判定为「无重大问题,可进入执行阶段」时停,或满 4 轮停。"
 ```
@@ -311,7 +311,7 @@ doc/design/<change>-review-v{N}.md:逐条问题(描述/风险/建议);按台账�
 **STEP6:**
 ```text
 /goal "目标:本次变更已归档(增量规格合并进 openspec/specs/),且模块 <module> 的知识库文件已反映本次新增/变更的事实、并刷新了 source-commit 标记。上限:4 轮。
-执行 /opsx:archive,然后更新 docs/truth/<module>.md,并列出究竟改了哪些文件/段落。
+执行 /opsx:archive,然后更新 docs/apriori/truth/<module>.md,并列出究竟改了哪些文件/段落。
 当两者都成立时停。"
 ```
 

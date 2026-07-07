@@ -291,7 +291,7 @@ openspec init
 
 | 缩写 | 全称 | 说明 |
 |---|---|---|
-| TRUTH-DOC | 系统知识库文档 | 当前系统所有已知事实的抽象集合，长期维护（默认放在代码仓库内的 `docs/truth/`——见第六节） |
+| TRUTH-DOC | 系统知识库文档 | 当前系统所有已知事实的抽象集合，长期维护（默认放在代码仓库内的 `docs/apriori/truth/`——见第六节） |
 | SPEC-DOC | 规格文档 | OpenSpec 生成的需求规格，描述本次变更的所有场景 |
 | DESIGN-DOC | 设计文档 | 本次变更的技术方案，由 `/opsx:propose` 输出 |
 | REQ-REVIEW-DOC | 需求评审文档 | **STEP0** 中由评审模型对需求文档输出的问题列表 |
@@ -303,13 +303,13 @@ openspec init
 
 | 产物 | 默认位置 |
 |---|---|
-| 需求文档 | `requirement/req-v{N}.md`，定稿为 `requirement/req-final.md` |
-| REQ-REVIEW-DOC | `doc/review/<change>-req-review-v{N}.md`（带上变更名前缀——并行的变更不能互相覆盖） |
-| gap 报告（STEP1 产出） | `doc/explore/<change>-gap-report.md` |
-| 问题台账 | `doc/review/<change>-issues.md` |
+| 需求文档 | `docs/apriori/requirement/req-v{N}.md`，定稿为 `docs/apriori/requirement/req-final.md` |
+| REQ-REVIEW-DOC | `docs/apriori/review/<change>-req-review-v{N}.md`（带上变更名前缀——并行的变更不能互相覆盖） |
+| gap 报告（STEP1 产出） | `docs/apriori/explore/<change>-gap-report.md` |
+| 问题台账 | `docs/apriori/review/<change>-issues.md` |
 | SPEC-DOC / DESIGN-DOC / tasks.md | `openspec/changes/<change>/specs/`、`…/design.md`、`…/tasks.md` |
-| SPEC-EVALUATION-DOC | `doc/design/<change>-review-v{N}.md` |
-| TRUTH-DOC（知识库） | `docs/truth/<module>.md`，**与代码同仓库**（独立知识库仓库也可以，但每份文档必须带 `source-commit` 标记——见第六节） |
+| SPEC-EVALUATION-DOC | `docs/apriori/design/<change>-review-v{N}.md` |
+| TRUTH-DOC（知识库） | `docs/apriori/truth/<module>.md`，**与代码同仓库**（独立知识库仓库也可以，但每份文档必须带 `source-commit` 标记——见第六节） |
 
 ### 4.2 总览流程图
 
@@ -364,7 +364,7 @@ graph TD
 - **评审用的模型，应与起草需求时不同**（例如需求初稿用 Claude，评审切 GPT）。
 - 评审维度建议固定为清单：**目标状态 B 是否清晰 / 是否有歧义 / 边界与异常是否覆盖 / 是否隐含未声明的状态变更 / 验收标准是否可测**。
 - **退出条件**：评审模型明确输出「无重大问题」，或达到 5 轮上限后人工裁决。
-- **每一轮同时写入问题台账**（`doc/review/<change>-issues.md`，[§7.0](#70-问题台账所有评审循环共用)）：新发现领新 ID、修复翻状态；一旦有 ID 被重开，就是循环不收敛的预警。
+- **每一轮同时写入问题台账**（`docs/apriori/review/<change>-issues.md`，[§7.0](#70-问题台账所有评审循环共用)）：新发现领新 ID、修复翻状态；一旦有 ID 被重开，就是循环不收敛的预警。
 
 对应提示词见 [§7.1](#71-step0需求文档对抗评审)。
 
@@ -372,8 +372,8 @@ graph TD
 
 根据所有已知事实进行探索，对齐设计。
 
-- **输入**：TRUTH-DOC（知识库，`docs/truth/`）、上轮遗留的 SPEC-DOC（如有）、代码、定稿的需求文档。
-- **输出**：对齐报告，列出**当前状态 A 与目标状态 B 之间的 gap**，落盘为 `doc/explore/<change>-gap-report.md`。
+- **输入**：TRUTH-DOC（知识库，`docs/apriori/truth/`）、上轮遗留的 SPEC-DOC（如有）、代码、定稿的需求文档。
+- **输出**：对齐报告，列出**当前状态 A 与目标状态 B 之间的 gap**，落盘为 `docs/apriori/explore/<change>-gap-report.md`。
 
 > **跑 propose 之前先扫一眼 gap 报告**——这是全流程里最便宜的一道闸口。错误或缺失的事实在这里被抓住，代价是一分钟阅读；留给 STEP2 评审方去抓，代价是一整轮评审；漏到 STEP5，代价就是返工。
 
@@ -419,7 +419,7 @@ SPEC-DOC + DESIGN-DOC_V2  ──评审模型──►  SPEC-EVALUATION-DOC_V2
 
 `/opsx:archive` 本身做的是：把本次 change 的**增量规格合并进 OpenSpec 自己的规格库（`openspec/specs/`）**并归档该 change，让 OpenSpec 的规格与最终实现保持一致。
 
-> ⚠️ 注意区分：`/opsx:archive` **不会自动更新你自己的 TRUTH-DOC**（`docs/truth/` 或独立知识库仓库——见第六节）。把本次新增/变更的事实**回写到知识库，是一个额外的步骤**（用 [§7.5](#75-step6archive) 的提示词显式让 AI 去做，或人工补写）。
+> ⚠️ 注意区分：`/opsx:archive` **不会自动更新你自己的 TRUTH-DOC**（`docs/apriori/truth/` 或独立知识库仓库——见第六节）。把本次新增/变更的事实**回写到知识库，是一个额外的步骤**（用 [§7.5](#75-step6archive) 的提示词显式让 AI 去做，或人工补写）。
 
 **这一步是旧项目长期可维护的命脉**——每次变更都把新事实沉淀回知识库，下次 explore 才不会有缺口。知识库与代码同仓库时（见第六节），回写和代码走同一个 PR，评审者真的看得见——强制手段的映射见 [§4.11](#411-把流程落到-git--pr--ci)。
 
@@ -482,7 +482,7 @@ git init             # 建议纳入版本管理，方便对照每步 diff
 
 ### 5.1 STEP0 · 写并评审需求
 
-先写一份 `requirement/req-v1.md`（人话需求）：
+先写一份 `docs/apriori/requirement/req-v1.md`（人话需求）：
 
 ```text
 做一个内存键值缓存库 mini-kv：
@@ -493,17 +493,17 @@ git init             # 建议纳入版本管理，方便对照每步 diff
 5. 覆盖写：对已存在的 key 再次 set，应覆盖旧值与旧 TTL。
 ```
 
-然后让**评审模型**（与起草不同的模型/工具）按 [§7.1](#71-step0需求文档对抗评审) 的提示词审一轮，补全你没想到的边界（如 `ttlMs<=0` 怎么办、`get` 是否惰性清理还是定时清理、并发写入语义）。定稿为 `requirement/req-final.md`。
+然后让**评审模型**（与起草不同的模型/工具）按 [§7.1](#71-step0需求文档对抗评审) 的提示词审一轮，补全你没想到的边界（如 `ttlMs<=0` 怎么办、`get` 是否惰性清理还是定时清理、并发写入语义）。定稿为 `docs/apriori/requirement/req-final.md`。
 
 ### 5.2 STEP1 · explore
 
 在主力工具里：
 ```text
 /opsx:explore
-* 需求文档: requirement/req-final.md
-* 系统知识库: （新项目，暂无 / 旧项目填 docs/truth/ 或知识库路径）
+* 需求文档: docs/apriori/requirement/req-final.md
+* 系统知识库: （新项目，暂无 / 旧项目填 docs/apriori/truth/ 或知识库路径）
 * 代码: 当前仓库
-请对齐事实，输出当前状态 A 与目标 B 的 gap 报告到 doc/explore/<change>-gap-report.md。
+请对齐事实，输出当前状态 A 与目标 B 的 gap 报告到 docs/apriori/explore/<change>-gap-report.md。
 ```
 
 ### 5.3 STEP2 · propose + 对抗评审
@@ -515,7 +515,7 @@ git init             # 建议纳入版本管理，方便对照每步 diff
 然后切到评审工具/模型，按 [§7.3](#73-step2对抗训练评审与修订) 评审 → 修订，循环到「无重大问题」。具体可用 Codex 来驱动评审（[§2.3](#23-用命令行驱动-codex多轮对抗评审)）：
 ```shell
 # 第一轮——开启评审会话（记下打印出来的 session id）
-codex exec -s read-only "按 RUNBOOK P5 评审清单，对照 requirement/req-final.md 评审 openspec/changes/<change>/specs/ 与 design.md，末尾给出结论行。"
+codex exec -s read-only "按 RUNBOOK P5 评审清单，对照 docs/apriori/requirement/req-final.md 评审 openspec/changes/<change>/specs/ 与 design.md，末尾给出结论行。"
 # 之后每个修订轮——同一上下文，它能核对你的修复是否到位
 codex exec resume -c sandbox_mode="read-only" <session-id> "我已按上轮意见修订；请重新评审并产出 v{N+1}。"
 ```
@@ -554,7 +554,7 @@ node -e "const KV=require('./src/mini-kv'); const k=new KV(); k.set('a',1,50); c
 ```text
 /opsx:archive
 ```
-新项目第一次 archive 会**生成初版 TRUTH-DOC**（按第六节的默认约定：`docs/truth/mini-kv.md`，与代码同仓库）——恭喜，你的 mini-kv 从此有了系统知识库，下个功能就能从第六节的"有知识库"路径起步。为了校准颗粒度，第一份知识库文档大致应长这样：
+新项目第一次 archive 会**生成初版 TRUTH-DOC**（按第六节的默认约定：`docs/apriori/truth/mini-kv.md`，与代码同仓库）——恭喜，你的 mini-kv 从此有了系统知识库，下个功能就能从第六节的"有知识库"路径起步。为了校准颗粒度，第一份知识库文档大致应长这样：
 
 ```markdown
 ---
@@ -588,7 +588,7 @@ source-commit: <归档时的 commit sha>
 
 ## 六、旧项目开发：系统知识库闭环
 
-> 这里的**系统知识库（TRUTH-DOC）**指长期维护、沉淀每个模块抽象意图、对外接口、数据流的文档。**默认位置：与代码同仓库，放在 `docs/truth/<module>.md`**——这样一个 PR 原子地同时携带代码变更*和*知识库更新，评审者在同一个 diff 里两边都看得到（[§4.11](#411-把流程落到-git--pr--ci)）。独立的知识库仓库也可以（例如一份知识库覆盖多个代码仓库），但会失去这种原子性——补救办法是给每份知识库文档打上它核对时对应的代码 commit 标记（`source-commit:`，供 §6.1 的新鲜度检查使用）。下文所说「知识库」兼指两种布局。
+> 这里的**系统知识库（TRUTH-DOC）**指长期维护、沉淀每个模块抽象意图、对外接口、数据流的文档。**默认位置：与代码同仓库，放在 `docs/apriori/truth/<module>.md`**——这样一个 PR 原子地同时携带代码变更*和*知识库更新，评审者在同一个 diff 里两边都看得到（[§4.11](#411-把流程落到-git--pr--ci)）。独立的知识库仓库也可以（例如一份知识库覆盖多个代码仓库），但会失去这种原子性——补救办法是给每份知识库文档打上它核对时对应的代码 commit 标记（`source-commit:`，供 §6.1 的新鲜度检查使用）。下文所说「知识库」兼指两种布局。
 
 旧项目的最大风险在 [§1.2](#12-文档驱动开发三种文档) 已点明：**缺了系统知识库，Agent 只能从代码反推意图，又慢又容易猜错。** 所以旧项目开发的第一性原则是——**先保证知识库覆盖到你要改的模块，再开发。**
 
@@ -619,10 +619,10 @@ git log --oneline <source-commit>..HEAD -- src/<module>/
 直接进 STEP1，把知识库作为事实来源喂进去：
 ```text
 /opsx:explore
-* 需求文档: requirement/req-final.md
-* 系统知识库: docs/truth/（对应模块: <模块名>；独立仓库布局则填其本地路径）
+* 需求文档: docs/apriori/requirement/req-final.md
+* 系统知识库: docs/apriori/truth/（对应模块: <模块名>；独立仓库布局则填其本地路径）
 * 技术详细设计文档: design.md
-请基于知识库与代码对齐事实，输出 gap 报告到 doc/explore/<change>-gap-report.md。
+请基于知识库与代码对齐事实，输出 gap 报告到 docs/apriori/explore/<change>-gap-report.md。
 ```
 
 ### 6.3 路径 B：知识库过时
@@ -631,14 +631,14 @@ git log --oneline <source-commit>..HEAD -- src/<module>/
 
 ### 6.4 路径 C：知识库缺失（最常见）
 
-**反向知识沉淀**：让 AI 阅读目标模块代码，产出该模块的知识库文档（抽象意图、对外接口、数据流、依赖、副作用）。它直接落在变更分支的 `docs/truth/<模块名>.md`，于是**评审就发生在评审本来就发生的地方——PR diff 里**；通过后再进入正常流程。提示词见 [§7.6](#76-旧项目反向知识沉淀--知识库校对)。
+**反向知识沉淀**：让 AI 阅读目标模块代码，产出该模块的知识库文档（抽象意图、对外接口、数据流、依赖、副作用）。它直接落在变更分支的 `docs/apriori/truth/<模块名>.md`，于是**评审就发生在评审本来就发生的地方——PR diff 里**；通过后再进入正常流程。提示词见 [§7.6](#76-旧项目反向知识沉淀--知识库校对)。
 
 > ⚠️ 反向沉淀出来的知识库**必须人工或异构模型评审**——AI 从代码反推意图时会编造"看似合理但实则错误"的抽象。别让带毒的知识库污染后续所有开发。
 
 ### 6.5 闭环：每次开发都回写
 
 旧项目能否越改越顺，取决于 **STEP6 是否老老实实回写知识库**。把它写进团队约定：
-**一次变更 = 一个同时包含代码 diff 与知识库 diff 的 PR。** 知识库与代码同仓库时（第六节的默认），这条在评审里就能强制——动了 `src/<module>/` 却没动 `docs/truth/<module>.md` 的 PR，会被问一句为什么（[§4.11](#411-把流程落到-git--pr--ci)）。用独立仓库的团队只能靠约定加 `source-commit` 新鲜度检查事后兜底。长期坚持，知识库会从"路径 C"逐步收敛到"路径 A"，开发效率持续提升。
+**一次变更 = 一个同时包含代码 diff 与知识库 diff 的 PR。** 知识库与代码同仓库时（第六节的默认），这条在评审里就能强制——动了 `src/<module>/` 却没动 `docs/apriori/truth/<module>.md` 的 PR，会被问一句为什么（[§4.11](#411-把流程落到-git--pr--ci)）。用独立仓库的团队只能靠约定加 `source-commit` 新鲜度检查事后兜底。长期坚持，知识库会从"路径 C"逐步收敛到"路径 A"，开发效率持续提升。
 
 ---
 
@@ -648,7 +648,7 @@ git log --oneline <source-commit>..HEAD -- src/<module>/
 
 ### 7.0 问题台账（所有评审循环共用）
 
-每个变更一份累积台账 `doc/review/<change>-issues.md`（格式:RUNBOOK **P0**）。它存在的理由:跨轮记忆放在文件里而不是会话里,于是每一轮的评审方都可以是**全新**会话而不丢线索（[§1.4](#14-对抗训练)）。谁写什么:评审方追加新行并把 `fixed → verified`;生产方把 `open → fixed/rejected`——拒绝必须给理由,因为人工闸口最先看的就是拒绝项。再次发现的问题**重开旧 ID**而不是另起新行;被重开的 ID 正是 [§4.10](#410-用-goal-自动化整个流程) 盯的振荡警报。
+每个变更一份累积台账 `docs/apriori/review/<change>-issues.md`（格式:RUNBOOK **P0**）。它存在的理由:跨轮记忆放在文件里而不是会话里,于是每一轮的评审方都可以是**全新**会话而不丢线索（[§1.4](#14-对抗训练)）。谁写什么:评审方追加新行并把 `fixed → verified`;生产方把 `open → fixed/rejected`——拒绝必须给理由,因为人工闸口最先看的就是拒绝项。再次发现的问题**重开旧 ID**而不是另起新行;被重开的 ID 正是 [§4.10](#410-用-goal-自动化整个流程) 盯的振荡警报。
 
 ### 7.1 STEP0｜需求文档对抗评审
 
@@ -656,11 +656,11 @@ git log --oneline <source-commit>..HEAD -- src/<module>/
 
 - P1 用**与起草需求不同的模型/工具**执行,并把台账一并喂给它,让它能核验早前的修复。
 - 五个评审维度是刻意固定的——目标态清晰度 / 边界与异常覆盖 / 未声明的状态变更 / 验收标准可测性 / 与现状 A 的冲突——清单稳定,各轮才可比。
-- 评审方只评审、绝不改需求文档;生产方对每条问题给出采纳/拒绝+理由。循环到「无重大问题」,定稿为 `requirement/req-final.md`（最多 5 轮）。
+- 评审方只评审、绝不改需求文档;生产方对每条问题给出采纳/拒绝+理由。循环到「无重大问题」,定稿为 `docs/apriori/requirement/req-final.md`（最多 5 轮）。
 
 ### 7.2 STEP1｜explore
 
-提示词:RUNBOOK **P3**。设计说明:只对齐事实——不写代码。知识库与定稿需求作为输入,输出固定落盘到 `doc/explore/<change>-gap-report.md`,让 propose 前那道便宜闸口（[§4.4](#44-step1opsxexplore探索对齐)）有实物可读。
+提示词:RUNBOOK **P3**。设计说明:只对齐事实——不写代码。知识库与定稿需求作为输入,输出固定落盘到 `docs/apriori/explore/<change>-gap-report.md`,让 propose 前那道便宜闸口（[§4.4](#44-step1opsxexplore探索对齐)）有实物可读。
 
 ### 7.3 STEP2｜对抗训练评审与修订
 
@@ -681,11 +681,11 @@ git log --oneline <source-commit>..HEAD -- src/<module>/
 
 ### 7.5 STEP6｜archive
 
-提示词:RUNBOOK **P9**。设计说明:单纯 archive 只合并 OpenSpec 自己的规格库（[§4.9](#49-step6opsxarchive归档并沉淀事实)）——P9 额外强制知识库回写到 `docs/truth/<module>.md`、刷新 `source-commit` 标记,并列出改了什么,让人工闸口有一份具体的 diff 可批。
+提示词:RUNBOOK **P9**。设计说明:单纯 archive 只合并 OpenSpec 自己的规格库（[§4.9](#49-step6opsxarchive归档并沉淀事实)）——P9 额外强制知识库回写到 `docs/apriori/truth/<module>.md`、刷新 `source-commit` 标记,并列出改了什么,让人工闸口有一份具体的 diff 可批。
 
 ### 7.6 旧项目反向知识沉淀 / 知识库校对
 
-提示词:RUNBOOK **P10**。设计说明:代码是唯一真相——不确定处标「待人工确认」而不是编造意图;产出落在变更分支的 `docs/truth/<module>.md`,于是那道强制复核（[§6.4](#64-路径-c知识库缺失最常见)）就发生在评审本来就发生的地方:PR diff 里。
+提示词:RUNBOOK **P10**。设计说明:代码是唯一真相——不确定处标「待人工确认」而不是编造意图;产出落在变更分支的 `docs/apriori/truth/<module>.md`,于是那道强制复核（[§6.4](#64-路径-c知识库缺失最常见)）就发生在评审本来就发生的地方:PR diff 里。
 
 ### 7.7 /goal 配方：自动化每个循环
 
@@ -748,7 +748,7 @@ rules:
 | Copilot | `.github/copilot-instructions.md` |
 | Codex | `AGENTS.md` |
 
-> 不管你用哪些工具，都在各自的规则文件里加一行，引用项目内那份 runbook（`docs/apriori-runbook.md`，安装步骤见 [RUNBOOK_cn.md](./RUNBOOK_cn.md) §0）——正是这一行让每个会话自动加载协议。
+> 不管你用哪些工具，都在各自的规则文件里加一行，引用项目内那份 runbook（`docs/apriori/runbook.md`，安装步骤见 [RUNBOOK_cn.md](./RUNBOOK_cn.md) §0）——正是这一行让每个会话自动加载协议。
 
 > **建议把同一份规范同时落到你团队在用的几个工具里**，保证不同工具行为一致。规则文件的内容**与技术栈强相关**，应由你按自己的项目编写。下面是一份**与语言无关的骨架模板**，照着填进你团队的真实约定即可（示例条目仅作占位，请替换）。
 

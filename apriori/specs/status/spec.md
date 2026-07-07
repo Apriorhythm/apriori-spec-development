@@ -12,3 +12,7 @@
 #### Scenario: ST-03 open-ledger detection ignores non-open rows
 - WHEN the ledger has rows with statuses like `open`, `fixed`, `verified`, `advisory-acked`
 - THEN only the `open` rows are counted as open
+
+#### Scenario: ST-04 --json emits a machine-consumable report
+- WHEN `apriori status --json` (or `--change <name> --json`) runs
+- THEN it prints valid JSON — per change: change/step/tier/track/lineage/nextAction/lastGate/hasFlowState/openLedger (IDs) — with no prose mixed in, so an agent can parse instead of scraping text

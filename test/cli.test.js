@@ -21,6 +21,11 @@ test('CL-01 subcommand dispatch: known subs dispatch, unknown prints usage + non
   const st = run(['status']);
   assert.strictEqual(st.status, 0);
   assert.doesNotMatch(st.stderr + st.stdout, /unknown command/);
+  // new dispatches to lib/new (no name → its own usage, exit 2)
+  const nw = run(['new']);
+  assert.strictEqual(nw.status, 2);
+  assert.match(nw.stderr, /apriori new <change-name>/);
+  assert.doesNotMatch(nw.stderr, /unknown command/);
 });
 
 test('CL-02 verify subcommand is the spec-runner', () => {

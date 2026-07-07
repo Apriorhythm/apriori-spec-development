@@ -86,3 +86,26 @@ test('SR-08 the id-pattern is configurable, default [A-Z]+-\\d+', () => {
   const e2e = verify({ specs: [file], testCmd: 'printf "ok 1 - ab-1 lower\\n"', idPattern: '[a-z]+-\\d+' });
   assert.deepStrictEqual(e2e.verdict.boundGreen, ['ab-1']);
 });
+
+test('SR-09 --json emits a machine-consumable verify report; exit still encodes GREEN/GAPS', () => {
+  const { verifyJson } = require('../lib/spec-runner');
+  const { file } = tmpSpec('#### Scenario: XX-01 a\n#### Scenario: XX-02 b\n');
+  const r = verify({ specs: [file], testCmd: 'printf "ok 1 - XX-01 a\\nnot ok 2 - XX-02 b\\nok 3 - XX-99 orphan\\n"' });
+  const j = verifyJson(r.verdict, r.results, r.fileCount);
+  const parsed = JSON.parse(JSON.stringify(j));            // round-trips as valid JSON
+  assert.strictEqual(parsed.clean, false);
+  assert.strictEqual(parsed.result, 'GAPS');
+  assert.deepStrictEqual(parsed.boundGreen, [{ id: 'XX-01', pass: 1, fail: 0 }]);
+  assert.deepStrictEqual(parsed.boundRed, [{ id: 'XX-02', pass: 0, fail: 1 }]);
+  assert.deepStrictEqual(parsed.orphan, [{ id: 'XX-99', pass: 1, fail: 0 }]);
+  // CLI: --json prints pure JSON and exits 1 on GAPS, 0 on GREEN
+  const { cli } = require('../lib/spec-runner');
+  const log = console.log, out = [];
+  console.log = (...a) => out.push(a.join(' '));
+  let code;
+  try { code = cli(['--specs', file, '--test-cmd', 'printf "ok 1 - XX-01 a\\nok 2 - XX-02 b\\n"', '--json']); }
+  finally { console.log = log; }
+  assert.strictEqual(code, 0);
+  const green = JSON.parse(out.join('\n'));
+  assert.strictEqual(green.result, 'GREEN');
+});

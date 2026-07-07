@@ -67,3 +67,25 @@ test('ST-03 open detection ignores fixed/verified/advisory-acked', () => {
   assert.strictEqual(open.length, 2);
   assert.ok(!open.some((r) => r.status.includes('advisory')));
 });
+
+test('ST-04 --json emits a machine-consumable report (single + list), pure JSON', () => {
+  const root = project({ demo: { flow: FLOW, ledger: LEDGER } });
+  const cwd = process.cwd(), log = console.log, out = [];
+  console.log = (...a) => out.push(a.join(' '));
+  try {
+    process.chdir(root);
+    assert.strictEqual(status.cli(['--change', 'demo', '--json']), 0);
+    const single = JSON.parse(out.join('\n'));            // parses = pure JSON, no prose
+    assert.strictEqual(single.change, 'demo');
+    assert.strictEqual(single.step, 'STEP2');
+    assert.strictEqual(single.tier, 'medium');
+    assert.match(single.nextAction, /spawn P5 reviewer/);
+    assert.match(single.lastGate, /gate③: approved/);
+    assert.deepStrictEqual(single.openLedger, ['D-1', 'D-3']);
+    out.length = 0;
+    assert.strictEqual(status.cli(['--json']), 0);         // list mode
+    const list = JSON.parse(out.join('\n'));
+    assert.strictEqual(list.changes.length, 1);
+    assert.strictEqual(list.changes[0].change, 'demo');
+  } finally { console.log = log; process.chdir(cwd); }
+});

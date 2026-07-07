@@ -32,3 +32,7 @@
 #### Scenario: SR-08 the id-pattern is configurable, default [A-Z]+-\d+
 - WHEN `--id-pattern` is omitted
 - THEN IDs are matched as `[A-Z]+-\d+`; when given, that pattern governs both spec and test extraction
+
+#### Scenario: SR-09 --json emits a machine-consumable verify report
+- WHEN `apriori verify … --json` runs
+- THEN it prints valid JSON — clean, result (GREEN/GAPS), specFiles, boundGreen/boundRed (with pass/fail counts), unbound, orphan, unidentified — and the exit code still encodes GREEN(0)/GAPS(1)

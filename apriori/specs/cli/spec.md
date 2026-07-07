@@ -1,8 +1,8 @@
 ### Requirement: single self-contained apriori CLI
-The toolchain SHALL ship as one npm package `apriori-cli` exposing a `bin` named `apriori` with subcommands `init | status | verify | archive | check`, requiring zero npm runtime dependencies (pure Node stdlib), runnable via global install or `npx`.
+The toolchain SHALL ship as one npm package `apriori-cli` exposing a `bin` named `apriori` with subcommands `init | new | status | verify | archive | check`, requiring zero npm runtime dependencies (pure Node stdlib), runnable via global install or `npx`.
 
 #### Scenario: CL-01 subcommand dispatch
-- WHEN `apriori <sub> ...` is invoked with sub in {init, status, verify, archive, check}
+- WHEN `apriori <sub> ...` is invoked with sub in {init, new, status, verify, archive, check}
 - THEN it dispatches to that subcommand; an unknown sub prints usage and exits non-zero
 
 #### Scenario: CL-02 verify subcommand is the spec-runner

@@ -167,7 +167,7 @@ Update it immediately after each step and each round; append every gate decision
 
 ### Brainstorm — optional pre-STEP0 stance (a stance, not a step)
 
-Before a change is even stateable, you may enter a **thinking-partner stance**: explore a vague idea with the human — ask the questions that emerge, sketch options and tradeoffs (ASCII diagrams welcome), map the relevant code, surface risks. It has **no required output, no fixed steps, and no flow-state entry** (it is not a tracked step). Two hard rules: **never write code** (this is thinking, not building), and it **must funnel into the pipeline** — the moment the goal becomes stateable, start **STEP0**; if neither the goal nor its acceptance can be stated, route to the **explore track's intent card** (§4). It never replaces STEP0's requirement discipline — it feeds it.
+Before a change is even stateable, you may enter a **thinking-partner stance**: explore a vague idea with the human — ask the questions that emerge, sketch options and tradeoffs (ASCII diagrams welcome), map the relevant code, surface risks. It has **no required output, no fixed steps, and no flow-state entry** (it is not a tracked step). Two hard rules: **never write code** (this is thinking, not building), and it **must funnel into the pipeline** — the moment the goal becomes stateable, start **STEP0**; while it still cannot be stated, route to the **explore track's intent card** (§4) — the same goal-certainty split as §2. There is no third resting place: brainstorm feeds one of the two. It never replaces STEP0's requirement discipline — it feeds it.
 
 ### STEP0 — requirement refinement · adversarial loop · cap: `step0-cap` (default 5)
 

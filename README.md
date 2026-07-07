@@ -376,6 +376,7 @@ graph LR
 | REQ-REVIEW-DOC | `apriori/review/<change>-req-review-v{N}.md` (prefix with the change name — parallel changes must not overwrite each other) |
 | Gap report (STEP1 output) | `apriori/explore/<change>-gap-report.md` |
 | Issue ledger | `apriori/review/<change>-issues.md` |
+| proposal.md (why / what / scope) | `apriori/changes/<change>/proposal.md` |
 | SPEC-DOC / DESIGN-DOC / tasks.md | `apriori/changes/<change>/specs/`, `…/design.md`, `…/tasks.md` |
 | SPEC-EVALUATION-DOC | `apriori/design/<change>-review-v{N}.md` |
 | Intent card (explore track) | `requirement/intent-card.md` |

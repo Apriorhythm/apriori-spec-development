@@ -376,6 +376,7 @@ graph LR
 | REQ-REVIEW-DOC | `apriori/review/<change>-req-review-v{N}.md`（带上变更名前缀——并行的变更不能互相覆盖） |
 | gap 报告（STEP1 产出） | `apriori/explore/<change>-gap-report.md` |
 | 问题台账 | `apriori/review/<change>-issues.md` |
+| proposal.md(为什么 / 做什么 / 范围外) | `apriori/changes/<change>/proposal.md` |
 | SPEC-DOC / DESIGN-DOC / tasks.md | `apriori/changes/<change>/specs/`、`…/design.md`、`…/tasks.md` |
 | SPEC-EVALUATION-DOC | `apriori/design/<change>-review-v{N}.md` |
 | 意图卡（探索轨） | `requirement/intent-card.md` |

@@ -58,21 +58,43 @@ test('PR-06 a configurable language governs prose; machine tokens stay English',
   assert.match(cfg, /\| language \| auto \|/);
 });
 
+// isolate the Brainstorm block (heading → next ### heading) so assertions are section-scoped
+function block(text, headingRe) {
+  const m = text.match(headingRe);
+  if (!m) return '';
+  const rest = text.slice(m.index);
+  const next = rest.slice(m[0].length).search(/^### /m);
+  return next < 0 ? rest : rest.slice(0, m[0].length + next);
+}
+
 test('PR-07 an optional pre-STEP0 brainstorm stance funnels into the pipeline', () => {
-  assert.match(EN, /### Brainstorm — optional pre-STEP0 stance/);
-  assert.match(EN, /never write code/);
-  assert.match(EN, /must funnel into the pipeline/);
-  assert.match(EN, /start \*\*STEP0\*\*|start STEP0/);
-  assert.match(EN, /explore track's intent card/);
-  assert.match(CN, /### 脑暴 —— STEP0 前的可选姿态/);
-  assert.match(CN, /绝不写代码/);
-  assert.match(CN, /必须漏斗进流程/);
+  const en = block(EN, /^### Brainstorm — optional pre-STEP0 stance.*$/m);
+  assert.ok(en, 'EN Brainstorm block present');
+  assert.match(en, /never write code/);
+  assert.match(en, /no required output/);
+  assert.match(en, /no flow-state entry|not a tracked step/);
+  assert.match(en, /must funnel into the pipeline/);
+  assert.match(en, /start \*\*STEP0\*\*/);                     // branch 1
+  assert.match(en, /explore track's intent card/);            // branch 2
+  assert.match(en, /no third resting place/);                 // the binary is exhaustive
+  const cn = block(CN, /^### 脑暴 —— STEP0 前的可选姿态.*$/m);
+  assert.ok(cn, 'CN Brainstorm block present');
+  assert.match(cn, /绝不写代码/);
+  assert.match(cn, /无必需产出/);
+  assert.match(cn, /无 flow-state 条目|不是被追踪的步骤/);
+  assert.match(cn, /必须漏斗进流程/);
+  assert.match(cn, /STEP0/);                                   // branch 1
+  assert.match(cn, /探索轨的意图卡/);                          // branch 2
 });
 
-test('PR-08 proposal.md is a STEP2 artifact (table + P4 + STEP3 packet)', () => {
-  assert.match(EN, /apriori\/changes\/<change>\/proposal\.md/);       // artifact table
-  assert.match(EN, /write proposal\.md, all spec docs/);              // P4 produces it
-  assert.match(EN, /assemble the packet — proposal\.md/);             // STEP3 packet
-  assert.match(CN, /proposal\.md/);
-  assert.match(CN, /编写 proposal\.md/);
+test('PR-08 proposal.md is a STEP2 artifact (table + P4 + STEP3 packet, both languages)', () => {
+  // §4 artifact table row
+  assert.match(EN, /\|[^|]*\|\s*`apriori\/changes\/<change>\/proposal\.md`[^\n]*STEP2/);
+  assert.match(CN, /\|[^|]*\|\s*`apriori\/changes\/<change>\/proposal\.md`[^\n]*STEP2/);
+  // P4 produces it (inside the P4 propose prompt)
+  assert.match(block(EN, /^### P4 — STEP2 propose.*$/m), /write proposal\.md, all spec docs/);
+  assert.match(block(CN, /^### P4 —— STEP2 propose.*$/m), /编写 proposal\.md/);
+  // STEP3 gate packet includes it
+  assert.match(EN, /assemble the packet — proposal\.md, design doc/);
+  assert.match(CN, /备齐材料——proposal\.md、设计文档/);
 });

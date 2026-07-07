@@ -220,3 +220,42 @@ test('PR-10 UI projects render-and-look during implementation; E2E sits above th
   assert.match(README_CN, /截图自查落在已被 gitignore 的 `apriori\/tmp\/`/);
   assert.match(README_CN, /基线图属于项目自己的测试套件/);
 });
+
+test('PR-11 hard guarantees must be exercised by a fault-injecting test (§4.8 + P8)', () => {
+  // verification matrix carries the guarantee-claim discipline
+  assert.match(EN, /Guarantee-claim discipline/);
+  assert.match(EN, /injects\*\* the adversarial condition|injects the adversarial condition/);
+  assert.match(EN, /crash durability/);
+  assert.match(EN, /scope the wording down to what is actually verified/);
+  // P8 dimension 5 names it a spec-vs-code gap
+  assert.match(block(EN, /^### P8 — STEP5 consistency reviewer.*$/m), /Guarantee claims:/);
+  assert.match(block(EN, /^### P8 — STEP5 consistency reviewer.*$/m), /unexercised hard guarantee is a spec-vs-code gap/);
+  assert.match(CN, /保证声明纪律/);
+  assert.match(CN, /注入对抗条件/);
+  assert.match(CN, /把措辞收窄到实际验证到的程度/);
+  const p8cn = block(CN, /^### P8 —— STEP5 一致性评审方.*$/m);
+  assert.match(p8cn, /保证声明:/);
+  assert.match(p8cn, /未经验证的硬保证是规格-代码缺口/);
+  assert.match(p8cn, /不标 advisory/);
+});
+
+test('PR-12 flow-state persists the reviewer resumable session id (schema + R2)', () => {
+  // schema field
+  assert.match(EN, /reviewer-session: <id or n\/a>/);
+  assert.match(EN, /resumes the SAME\s*\n?\s*#*\s*session \(R2\)/);
+  // R2 names it as the persistence point
+  assert.match(EN, /record the reviewer's session id in flow-state's `reviewer-session` field/);
+  assert.match(CN, /reviewer-session: <id 或 n\/a>/);
+  assert.match(CN, /记进 flow-state 的 `reviewer-session` 字段/);
+  // ledger round stage-prefix disambiguation
+  assert.match(EN, /label rounds with\s*\n?\s*#*\s*their step \(STEP0·r1, STEP5·r1\)/);
+  assert.match(CN, /前缀\(STEP0·r1、STEP5·r1\)/);
+});
+
+test('PR: P4 produces tasks.md as a STEP2 output (both languages)', () => {
+  assert.match(block(EN, /^### P4 — STEP2 propose.*$/m), /write proposal\.md, all spec docs, the design doc, and tasks\.md/);
+  assert.match(block(EN, /^### P4 — STEP2 propose.*$/m), /tasks\.md — the ordered implementation checklist STEP5 consumes/);
+  const p4cn = block(CN, /^### P4 —— STEP2 propose.*$/m);
+  assert.match(p4cn, /编写 proposal\.md、全部规格文档、设计文档与 tasks\.md/);
+  assert.match(p4cn, /tasks\.md —— STEP5 消费的有序实现清单;STEP2 就是它的产出步骤/);
+});

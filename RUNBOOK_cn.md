@@ -62,7 +62,7 @@ cd your-project && apriori init  # 交互式:勾选要接入的 AI 工具
 
 > 这条保护禁止的是*被一揽子授权静默覆盖*——不是所有者的显式选择。受保护闸口仍可由**显式代行**决定,须同时满足:① agent 先呈报待决闸口——**每个受保护闸口独立列项**(编号、批的是什么、产物路径、可选决定),绝不与进度性提问捆绑;② 人的授权答复发生在呈报*之后*,并**原文**记入 `gates:`,一闸一条;③ 代行是**一次性的**——只覆盖该次呈报中列项的闸口,绝不继承到未来同类闸口。一句答复可以覆盖多个受保护闸口,当且仅当每个都被独立列项;先前存在的一揽子授权永远不算数。列项呈报的*多步端到端运行*也**不**隐含覆盖其内部嵌套的受保护闸口:运行途中浮现未列项的受保护闸口时,停下、单独呈报——这次中断本身记入 `gates:`;事先已列项的闸口不受影响。
 
-**R2 —— 评审必须真实外调。** 生产会话永远不出评审结论。真实调起异构评审方:`codex exec -s read-only "<提示词>"`(第 2 轮起:`codex exec resume -c sandbox_mode="read-only" <session-id> "..."`——codex CLI ≥0.14x 的 resume 子命令不接受 `-s`;旧版本在 session id 之前用 `-s read-only`);没有 Codex 就**新开**一个不同档位的 `claude` 会话,喂给它产物加问题台账(P0)。把评审方的结论行**原文**贴回。评审方通常跑在只读沙箱里、无法自己写台账:由评审方在输出末尾给出**台账增量**(新行+状态翻转),生产方原样落盘并注明"代评审方录入";评审方原始输出全文存档于 `apriori/review/<change>-<stage>-raw.*`,代录增量随时可与其对照。非交互/后台调用 codex 时必须关闭 stdin——命令末尾加 `< /dev/null`——否则它会打印 "Reading additional input from stdin..." 并挂起。评审方在结论行落盘前死亡(评审中途网络/服务故障)→ **resume 同一会话**让它续完——绝不代填结论行。只读评审方的**动态观测不可信**——跑测试、构建、任何需要写入的操作在其沙箱内都可能降级并产生幻影发现;只有它的静态阅读作数,生产方以真实环境的证据拒绝此类沙箱伪象发现。如果无法真实调起评审方,停下来说明——**禁止模拟评审**。
+**R2 —— 评审必须真实外调。** 生产会话永远不出评审结论。真实调起异构评审方:`codex exec -s read-only "<提示词>"`(第 2 轮起:`codex exec resume -c sandbox_mode="read-only" <session-id> "..."`——codex CLI ≥0.14x 的 resume 子命令不接受 `-s`;旧版本在 session id 之前用 `-s read-only`);没有 Codex 就**新开**一个不同档位的 `claude` 会话,喂给它产物加问题台账(P0)。把评审方的结论行**原文**贴回。评审方通常跑在只读沙箱里、无法自己写台账:由评审方在输出末尾给出**台账增量**(新行+状态翻转),生产方原样落盘并注明"代评审方录入";评审方原始输出全文存档于 `apriori/review/<change>-<stage>-raw.*`,代录增量随时可与其对照。非交互/后台调用 codex 时必须关闭 stdin——命令末尾加 `< /dev/null`——否则它会打印 "Reading additional input from stdin..." 并挂起。评审方在结论行落盘前死亡(评审中途网络/服务故障)→ **resume 同一会话**让它续完——绝不代填结论行。要让它也扛得住*生产方*侧的中断,第 1 轮一打印评审方的 session id 就记进 flow-state 的 `reviewer-session` 字段——否则崩溃后 resume 无会话可重连。只读评审方的**动态观测不可信**——跑测试、构建、任何需要写入的操作在其沙箱内都可能降级并产生幻影发现;只有它的静态阅读作数,生产方以真实环境的证据拒绝此类沙箱伪象发现。如果无法真实调起评审方,停下来说明——**禁止模拟评审**。
 
 **R3 —— 一切落盘;`/goal` 属于人;配置也属于人。** 产物写到 §4 表格的确切路径;每完成一步、每轮评审后都更新状态文件。所有轮次上限读取项目根的 `process-config.md`——**人类持有,agent 绝不写它**;文件缺失时,§4 打印的默认值生效。**每个评审环节的上限有硬性地板:每变更 1 轮——配置值小于 1 或不可解析,一律按默认值生效并警告;任何评审环节绝不归零。** `/goal` 是人执行的命令(§6)——绝不声称自己在跑 `/goal`,也不模仿它的评估器。你在会话内自行驱动的循环,同样遵守上限。
 
@@ -114,7 +114,11 @@ current-step: STEP0 | STEP1 | STEP2 | STEP3 | STEP4 | STEP5 | STEP6 |
               INTENT-CARD | SPIKE | EXTRACTION |     # 探索轨位置
               DONE | ABANDONED
 round: 0                # 评审轮次/apply 轮次;变更时记 round-started/round-ended
-                        # 时间戳(ISO,分钟级)
+                        # 时间戳(ISO,分钟级)。一份台账跨步骤复用时,轮次要带步骤
+                        # 前缀(STEP0·r1、STEP5·r1),同一数字在两个步骤里才不歧义。
+reviewer-session: <id 或 n/a>   # 异构评审方可 resume 的会话 id(如 codex 打印的
+                        # session id),第 1 轮一打印就记下——这样中途中断能 resume
+                        # 同一会话(R2),不必去考古;评审开始前为 n/a
 next-action: <一行具体动作,如 "对 req-v2.md 调起 P1 评审">
                         # 每次更新在行尾附 ISO 时间戳注释;
                         # 缺失的时长记 n/a——绝不估算补数
@@ -224,6 +228,7 @@ gates:                  # 只增不改的人工决定日志
 - **动作,按序:**(1)每个 spec scenario 一条失败测试,测试名带 scenario ID——展示失败运行;(2)用 **P7** 按 tasks.md 顺序实现,随做随标 `[x]`;(3)跑到全绿;(4)`apriori verify` GREEN(确定性绑定闸口);(5)异构一致性评审 **P8**(R2);更新台账。
 - **spec-runner 闸口(`apriori verify`)。** `apriori verify --specs apriori/specs --test-cmd "<你的测试命令>"` 枚举每条 scenario ID,跑项目自己的测试命令(TAP 输出),把每条 scenario 绑到测试:BOUND-GREEN / BOUND-RED / UNBOUND(scenario 无测试)/ ORPHAN(测试无 scenario)/ UNIDENTIFIED(scenario 无 ID)。GREEN(exit 0)= 每条 scenario 有绿测试且无孤儿——这就是过去 P8 的机械覆盖检查,现在确定性化了。
 - **按项目类型的验证矩阵:**所有代码项目——`apriori verify` GREEN + lint/静态分析全绿(安全敏感加 SAST)——where configured;后端/库——单测+属性测试+变异抽查;UI——另加 E2E/视觉回归(scenario ID 经单测/组件测绑定给 `apriori verify`——verify 的闸口只认 TAP,而 Playwright 不输出 TAP;Playwright 的 E2E/视觉层**叠在**绑定闸口之上作为额外退出条件,视觉检查须输出文本化 pass/fail;视觉回归的基线图属于项目自己的测试套件、按其框架惯例存放,不属于 `apriori/`);有部署面的服务——另加运行时契约、金丝雀+回滚;**纯文档项目——`apriori check` 全绿 + P8 一致性评审,替代 `npm test`。** 项目类型不具备某种可执行仪器时,LLM 评审在该处就是主力仪器——这不是降级。
+- **保证声明纪律(规格不得承诺没有测试验证的东西):**规格或 KB 每当断言一个硬保证——崩溃持久性("成功响应即已落盘")、原子性、"始终/并发下/重启后"成立的不变量——该保证只有当存在一个**注入对抗条件**(确认后杀进程、并发写入、损坏/rename 中断的文件)并观测其成立的测试时才算真的成立。若无此测试,要么补上,要么**把措辞收窄到实际验证到的程度**(例如写"原子 rename"而非"崩溃持久")。P8 专门查这条:散文里未经验证的硬保证是规格-代码缺口,不是可有可无的润色。
 - **退出——以下全部:**测试全绿(按上述矩阵);`apriori verify` GREEN(纯文档:`apriori check` 全绿);lint/静态分析全绿(where configured);tasks.md 全 `[x]`;一致性结论行 = `VERDICT: no spec-vs-code gaps`(无 spec-vs-代码缺口)。设计不可行 → 回 STEP2;需求本身错了 → 回 STEP0(两者都要:更新状态文件并告知人)。触顶 → **闸口 ⑤**。
 
 ### STEP6 —— 归档 + 知识库回写
@@ -262,7 +267,7 @@ gates:                  # 只增不改的人工决定日志
 
 - **评审方**:追加新行;确认修复落地后把 `fixed → verified`;再次发现的问题**重开旧 ID**——绝不另起新行。
 - **生产方**:把 `open → fixed` 或 `open → rejected`;拒绝必须给理由——人工闸口最先看拒绝项。
-- **advisory(范围纪律):**只有影响**正确性、安全或既定需求**的缺口才立正式行;其余由评审方标 `advisory`。标注权**评审方独占**——生产方永远不得把 open 行降级为 advisory。逐条 advisory 只存于评审文档;台账每轮只落**一行批量行**(`advisory batch acknowledged (n 条)`),终态 `advisory-acked`;"忽略"=不逐条处理,批量行仍落。评审方可在后续轮把 advisory **升级为 open**(须给理由,新行标 `upgraded-from-advisory`):计入数据包的 reopened 统计,但**不单独触发闸口⑤**(⑤仍只由已闭合正式 ID 复发触发)。**正确性与安全类发现永远不得标 advisory。**误标处置:STEP3(Medium+)、闸口④、或合并前 PR 评审(Trivial)抽查;发现真缺口被误标→升级+记档;漏到合并后按 post-merge miss 处理(触发上限恢复,§6)。
+- **advisory(范围纪律):**只有影响**正确性、安全或既定需求**的缺口才立正式行;其余由评审方标 `advisory`。标注权**评审方独占**——生产方永远不得把 open 行降级为 advisory。逐条 advisory 只存于评审文档;台账每轮只落**一行批量行**(`advisory batch acknowledged (n 条)`),终态 `advisory-acked`——"原文代录"(R2)约束的是评审方增量的*内容*,而行的*形态*一律归一为这个批量形式,所以评审方自创格式的 advisory 行按归一处理、不逐字照抄;"忽略"=不逐条处理,批量行仍落。评审方可在后续轮把 advisory **升级为 open**(须给理由,新行标 `upgraded-from-advisory`):计入数据包的 reopened 统计,但**不单独触发闸口⑤**(⑤仍只由已闭合正式 ID 复发触发)。**正确性与安全类发现永远不得标 advisory。**误标处置:STEP3(Medium+)、闸口④、或合并前 PR 评审(Trivial)抽查;发现真缺口被误标→升级+记档;漏到合并后按 post-merge miss 处理(触发上限恢复,§6)。
 
 ### P1 —— STEP0 评审方(异构,R2)
 
@@ -313,7 +318,8 @@ apriori/explore/<change>-gap-report.md:当前状态 A、目标状态 B,以及两
 ### P4 —— STEP2 propose(生产方)
 
 ```text
-基于已对齐的事实,编写 proposal.md、全部规格文档与设计文档。
+基于已对齐的事实,编写 proposal.md、全部规格文档、设计文档与 tasks.md。
+* tasks.md —— STEP5 消费的有序实现清单;STEP2 就是它的产出步骤。
 * proposal.md——给人看的一页纸:为什么做这个变更、做什么、范围外是什么。这是 STEP3 闸口和评审方最先读的那份;保持简短。
 * 每个用户可见的输出都有独立 scenario,并带稳定 ID(如 KV-03);可见侧效果不得合并;
 * 显式声明本次变更的范围外(out of scope,写在 proposal.md);
@@ -376,6 +382,7 @@ advisory 可整批确认或忽略,无需逐条理由——只有对正式发现�
 2. spec 要求但代码未实现、且被绑定测试漏掉的行为;
 3. continue/skip/静默忽略分支——spec 是否要求其对用户可见;
 4. 触及外部输入或权限时:未校验输入、缺失鉴权、日志中密钥/敏感信息。
+5. 保证声明:规格或 KB 里每个"始终/并发下/崩溃持久/成功即落盘/原子"的说法,都必须有一个注入对抗条件并观测其成立的测试——未经验证的硬保证是规格-代码缺口(§4.8 保证声明纪律),不标 advisory。
 【范围】只把 spec-vs-代码缺口计入结论行;风格、品味与锦上添花一律标 advisory(P0 规则)。若你在只读沙箱里自行跑测试,降级的输出按沙箱伪象处理,不作为发现(R2)。
 逐条列出不一致项与修复建议;末尾给出你的台账增量(按 P0 规则),advisory 单列。
 (纯文档项目:"测试"读作文档检查;`apriori check` 顶替绑定闸口。)

@@ -40,3 +40,11 @@ The V3 runbook SHALL make scenario-to-test binding a deterministic gate, narrow 
 #### Scenario: PR-10 UI projects render-and-look during implementation; the E2E layer sits above the binding gate
 - WHEN a change with a UI reaches STEP5
 - THEN P7 instructs the producer to render the built UI and inspect it while implementing (e.g. Playwright screenshots and simulated clicks along core flows), with images going to the gitignored `apriori/tmp/` and only the textual observation persisting; and the verification matrix states that scenario IDs bind to `apriori verify` via unit/component tests (verify speaks TAP, which Playwright does not emit), the Playwright E2E/visual layer being an additional exit condition above the binding gate whose visual checks emit a textual pass/fail, with baseline images belonging to the project's own test suite
+
+#### Scenario: PR-11 a hard guarantee in the spec must be exercised by a fault-injecting test
+- WHEN a spec or KB asserts a hard guarantee — crash durability ("a success response means the write is persisted"), atomicity, or an invariant qualified "always" / "under concurrency" / "after restart"
+- THEN the verification matrix (§4.8) requires a test that injects the adversarial condition (kill-after-ack, concurrent writers, corrupt/rename-interrupted file) and observes the guarantee hold, or the wording is scoped down to what is verified; and P8's mandate lists the unexercised-guarantee case as a spec-vs-code gap (never advisory)
+
+#### Scenario: PR-12 flow-state persists the reviewer's resumable session id
+- WHEN a heterogeneous review starts and round 1 prints the reviewer's session id
+- THEN the flow-state schema (§3) carries a `reviewer-session` field that records it immediately (so even a first-round interruption on either side resumes the SAME session per R2 rather than reconstructing it), and R2 names this field as the persistence point

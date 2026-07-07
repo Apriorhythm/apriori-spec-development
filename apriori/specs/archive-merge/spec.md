@@ -1,5 +1,5 @@
 ### Requirement: archive-merge applies delta specs to the living store
-`apriori archive` SHALL merge a change's delta requirements into the living spec store by stable Requirement ID, consuming the same `## ADDED/MODIFIED/REMOVED Requirements` delta format the OpenSpec adapter used, so it is the adapter-free native implementation of §4's archive action.
+`apriori archive` SHALL merge a change's delta requirements into the living spec store by stable Requirement ID, consuming the same `## ADDED/MODIFIED/REMOVED/RENAMED Requirements` delta format the OpenSpec adapter used, so it is the adapter-free native implementation of §4's archive action.
 
 #### Scenario: AM-01 ADDED appends a new requirement
 - WHEN the delta has an ADDED requirement whose ID is absent from the store

@@ -161,7 +161,7 @@ gates:                  # 只增不改的人工决定日志
 
 - **布局:**变更在 `apriori/changes/<change>/` 下暂存产物(`specs/`、`design.md`、`tasks.md`);已接受的规格进入规格库 `apriori/specs/`。`artifact-root` 规则(§3)只作用于暂存区。
 - **spec 结构:**Requirement 块内含带**稳定 ID** 的 Scenario 块(README §8.1 中的质量规则)。每条 scenario 必须带前导 ID(如 `#### Scenario: KV-03 …`)——无 ID 的 scenario 永远无法绑定到测试(`apriori check` 会标它)。
-- **archive 算法:**`apriori archive` 按稳定 Requirement ID 把变更的增量规格并入规格库——`## ADDED` → 追加;`## MODIFIED` → 整块替换;`## REMOVED` → 规格库保留原块并标 `deprecated (superseded by <change>)`。与分叉后已合并的并行变更发生同 ID 冲突 → **停止、开台账、人工裁决**(§4.11 按模块串行)。命令列出每条 merged / modified / deprecated 的 ID,并在 `--write` 时把在途变更目录挪到 `apriori/changes/archive/<YYYY-MM-DDThhmm>-<name>/`(日期时间由 CLI 盖)。
+- **archive 算法:**`apriori archive` 按稳定 Requirement ID 把变更的增量规格并入规格库——`## ADDED` → 追加;`## MODIFIED` → 整块替换;`## REMOVED` → 规格库保留原块并标 `deprecated (superseded by <change>)`;`## RENAMED`(`- Old -> New`)→ 就地把块的 ID 改名、内容保留。与分叉后已合并的并行变更发生同 ID 冲突 → **停止、开台账、人工裁决**(§4.11 按模块串行)。命令列出每条 merged / modified / deprecated / renamed 的 ID,并在 `--write` 时把在途变更目录挪到 `apriori/changes/archive/<YYYY-MM-DDThhmm>-<name>/`(日期时间由 CLI 盖)。
 
 ### STEP0 —— 需求精细化 · 对抗循环 · 上限:`step0-cap`(默认 5)
 
@@ -366,7 +366,7 @@ advisory 可整批确认或忽略,无需逐条理由——只有对正式发现�
 ### P9 —— STEP6 archive(生产方)
 
 ```text
-按接口的 archive 算法(§4)归档本次变更——列出每条 merged/modified/deprecated 的 ID;同 ID 冲突即停并开台账。然后同步更新知识库。知识库文档有两个真相方向相反的小节:
+按接口的 archive 算法(§4)归档本次变更——列出每条 merged/modified/deprecated/renamed 的 ID;同 ID 冲突即停并开台账。然后同步更新知识库。知识库文档有两个真相方向相反的小节:
 * "## 契约(code-is-truth)":按最终实现更新;刷新 source-commit 标记(只覆盖本节);
 * "## 决策(doc-is-truth)":追加本次变更做出的决策/不变式/被否决方案,各带状态(active / superseded-by: <id>)。绝不为迁就代码改写 active 不变式——代码违反它就报 bug;
 列出你更新了哪些知识库文件、哪些段落。

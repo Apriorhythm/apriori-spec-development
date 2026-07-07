@@ -162,7 +162,7 @@ Update it immediately after each step and each round; append every gate decision
 
 - **Layout:** a change stages its artifacts under `apriori/changes/<change>/` (`specs/`, `design.md`, `tasks.md`); accepted specs live in the store `apriori/specs/`. The `artifact-root` rule (§3) covers the staging area only.
 - **Spec structure:** Requirement blocks containing Scenario blocks with **stable IDs** (the quality rules in README §8.1). Every scenario MUST carry a leading ID (e.g. `#### Scenario: KV-03 …`) — an ID-less scenario can never be bound to a test (`apriori check` flags it).
-- **Archive algorithm:** `apriori archive` merges a change's delta specs into the store by stable Requirement ID — `## ADDED` → append; `## MODIFIED` → replace the whole block; `## REMOVED` → keep the store block, marked `deprecated (superseded by <change>)`. A same-ID conflict with a change merged since branching → **stop, open a ledger issue, a human resolves** (§4.11's serialize-per-module rule). The command lists every merged / modified / deprecated ID and, on `--write`, moves the in-flight change dir to `apriori/changes/archive/<YYYY-MM-DDThhmm>-<name>/` (date-time stamped by the CLI).
+- **Archive algorithm:** `apriori archive` merges a change's delta specs into the store by stable Requirement ID — `## ADDED` → append; `## MODIFIED` → replace the whole block; `## REMOVED` → keep the store block, marked `deprecated (superseded by <change>)`; `## RENAMED` (`- Old -> New`) → rename the block's ID in place, content preserved. A same-ID conflict with a change merged since branching → **stop, open a ledger issue, a human resolves** (§4.11's serialize-per-module rule). The command lists every merged / modified / deprecated / renamed ID and, on `--write`, moves the in-flight change dir to `apriori/changes/archive/<YYYY-MM-DDThhmm>-<name>/` (date-time stamped by the CLI).
 
 ### STEP0 — requirement refinement · adversarial loop · cap: `step0-cap` (default 5)
 
@@ -368,7 +368,7 @@ End with the verdict line (§5 phrase table): "VERDICT: no spec-vs-code gaps" or
 ### P9 — STEP6 archive (producer)
 
 ```text
-Archive this change per the interface's archive algorithm (§4) — list every merged/modified/deprecated ID; on a same-ID conflict, stop and open a ledger issue. Then update the knowledge base in lockstep. KB docs have two sections with opposite truth directions:
+Archive this change per the interface's archive algorithm (§4) — list every merged/modified/deprecated/renamed ID; on a same-ID conflict, stop and open a ledger issue. Then update the knowledge base in lockstep. KB docs have two sections with opposite truth directions:
 * "## Contract (code-is-truth)": update it from the final implementation; refresh the source-commit stamp (it covers this section only);
 * "## Decisions (doc-is-truth)": append decisions/invariants/rejected alternatives made in this change, each with status (active / superseded-by: <id>). NEVER rewrite an active invariant to match code — if the code violates one, file a bug instead;
 List exactly which KB files and sections you updated.

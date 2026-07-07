@@ -93,6 +93,16 @@ test('AM-07 RENAMED renames a requirement in place, preserving content', () => {
   // conflicts: missing source, or target already exists
   assert.strictEqual(merge(STORE, parseDelta('## RENAMED Requirements\n- Ghost -> X\n'), 'c').conflicts.length, 1);
   assert.strictEqual(merge(STORE, parseDelta('## RENAMED Requirements\n- Beta -> Alpha\n'), 'c').conflicts.length, 1);
+  // CLI layer: success prints "renamed (RENAMED)"; a conflict exits 1 and writes nothing
+  const store = tmpFile(STORE);
+  const orig = console.log, out = [];
+  console.log = (...a) => out.push(a.join(' '));
+  try { assert.strictEqual(cli(['--store', store, '--delta', tmpFile('## RENAMED Requirements\n- Beta -> Bravo\n'), '--change', 'c']), 0); }
+  finally { console.log = orig; }
+  assert.match(out.join('\n'), /renamed \(RENAMED\): Beta -> Bravo/);
+  const store2 = tmpFile(STORE), before = fs.readFileSync(store2, 'utf8');
+  assert.strictEqual(cli(['--store', store2, '--delta', tmpFile('## RENAMED Requirements\n- Ghost -> X\n'), '--change', 'c', '--write']), 1);
+  assert.strictEqual(fs.readFileSync(store2, 'utf8'), before);   // conflict → nothing written
 });
 
 test('AM-06 archive moves the in-flight change under a dated (date-time) archive dir', () => {

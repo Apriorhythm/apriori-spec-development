@@ -41,14 +41,24 @@ test('ST-01 --change reports step, next-action, and open-ledger count/IDs', () =
   assert.deepStrictEqual(s.open.map((r) => r.id), ['D-1', 'D-3']);
   const out = status.formatOne(s);
   assert.match(out, /step:.*STEP2/);
+  assert.match(out, /next-action:.*spawn P5 reviewer/);
+  assert.match(out, /last gate:.*gate③: approved/);          // last gate surfaced
   assert.match(out, /open ledger:  2 — D-1, D-3/);
 });
 
-test('ST-02 no args lists active changes, excluding archive/', () => {
+test('ST-02 no args lists active changes (with step + open count), excluding archive/', () => {
   const root = project({ demo: { flow: FLOW, ledger: LEDGER }, other: { flow: 'change: other\ncurrent-step: STEP0\n' } });
   fs.mkdirSync(path.join(root, 'apriori', 'changes', 'archive', '2026-07-01-old'), { recursive: true });
-  const active = status.activeChanges(root);
-  assert.deepStrictEqual(active, ['demo', 'other']);   // archive/ excluded
+  assert.deepStrictEqual(status.activeChanges(root), ['demo', 'other']);   // archive/ excluded
+  // the no-args CLI output lists each change with its step and open count
+  const cwd = process.cwd(), log = console.log, out = [];
+  console.log = (...a) => out.push(a.join(' '));
+  try { process.chdir(root); assert.strictEqual(status.cli([]), 0); }
+  finally { console.log = log; process.chdir(cwd); }
+  const printed = out.join('\n');
+  assert.match(printed, /demo  —  STEP2, 2 open/);
+  assert.match(printed, /other  —  STEP0, 0 open/);
+  assert.doesNotMatch(printed, /2026-07-01-old/);            // archive not listed
 });
 
 test('ST-03 open detection ignores fixed/verified/advisory-acked', () => {

@@ -101,7 +101,8 @@ test('IN-10 arrow-key multiselect: parseKey, reducer, render (no numbers), end-t
   assert.match(menu, /selected: A, C/);                     // footer lists selected names in order
   assert.match(init.renderMenu({ items, cursor: 0, selected: new Set() }), /selected: \(none\)/);
   assert.doesNotMatch(menu, /\x1b\[/);                      // no ANSI when color off (default)
-  assert.match(init.renderMenu({ items, cursor: 0, selected: new Set(['a']) }, { color: true }), /\x1b\[32m/); // green when on
+  // green when on — assert the FOOTER names specifically are green (not just the ◉ boxes)
+  assert.match(init.renderMenu({ items, cursor: 0, selected: new Set(['a']) }, { color: true }), /selected: \x1b\[32mA\x1b\[0m/);
 
   // end-to-end driver with injected streams: down, space, down, space, enter → picks b, c
   const { PassThrough } = require('node:stream');

@@ -43,8 +43,12 @@ The V3 runbook SHALL make scenario-to-test binding a deterministic gate, narrow 
 
 #### Scenario: PR-11 a hard guarantee in the spec must be exercised by a fault-injecting test
 - WHEN a spec or KB asserts a hard guarantee — crash durability ("a success response means the write is persisted"), atomicity, or an invariant qualified "always" / "under concurrency" / "after restart"
-- THEN the verification matrix (§4.8) requires a test that injects the adversarial condition (kill-after-ack, concurrent writers, corrupt/rename-interrupted file) and observes the guarantee hold, or the wording is scoped down to what is verified; and P8's mandate lists the unexercised-guarantee case as a spec-vs-code gap (never advisory)
+- THEN the verification matrix (§4.8) requires a test that injects the adversarial condition **matched to the exact claim on its success path** — a crash-durability claim demands kill-after-ack-then-restart-and-verify (an error-path injection like a rename failure proves only "no false success", a different claim), and the discipline names the atomic-file gotcha that durability needs `fsync` on both the temp file AND its containing directory — or the wording is scoped down to what is verified; and P8's mandate lists the unexercised-guarantee case as a spec-vs-code gap (never advisory)
 
 #### Scenario: PR-12 flow-state persists the reviewer's resumable session id
 - WHEN a heterogeneous review starts and round 1 prints the reviewer's session id
 - THEN the flow-state schema (§3) carries a `reviewer-session` field that records it immediately (so even a first-round interruption on either side resumes the SAME session per R2 rather than reconstructing it), and R2 names this field as the persistence point
+
+#### Scenario: PR-13 the UI render-and-look must drive spec boundaries, not the happy path
+- WHEN a UI change reaches STEP5 and P7's render-and-look self-check runs
+- THEN it drives the spec's stated boundaries through the real UI — every range's min AND max (e.g. a 2..20-option form must actually build a 20-option poll) and every rejection path the backend spec promises — and a UI that cannot reach a spec'd path (a hard cap below the max, an input that pre-filters what the server is spec'd to reject) is treated as a spec-vs-code gap, because the front end must be able to produce every input the backend spec handles or rejects

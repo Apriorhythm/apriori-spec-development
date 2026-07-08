@@ -227,12 +227,19 @@ test('PR-11 hard guarantees must be exercised by a fault-injecting test (§4.8 +
   assert.match(EN, /injects\*\* the adversarial condition|injects the adversarial condition/);
   assert.match(EN, /crash durability/);
   assert.match(EN, /scope the wording down to what is actually verified/);
+  // improvement #2: match injection to the claim on its SUCCESS path; fsync(file)+fsync(dir) gotcha
+  assert.match(EN, /killing the process AFTER the success is acknowledged, then restarting/);
+  assert.match(EN, /an error-path test does not prove a success-path guarantee/);
+  assert.match(EN, /both the temp file AND its containing directory/);
   // P8 dimension 5 names it a spec-vs-code gap
   assert.match(block(EN, /^### P8 — STEP5 consistency reviewer.*$/m), /Guarantee claims:/);
   assert.match(block(EN, /^### P8 — STEP5 consistency reviewer.*$/m), /unexercised hard guarantee is a spec-vs-code gap/);
   assert.match(CN, /保证声明纪律/);
   assert.match(CN, /注入对抗条件/);
   assert.match(CN, /把措辞收窄到实际验证到的程度/);
+  assert.match(CN, /在成功被确认之后杀掉进程、再重启、验证数据仍在/);
+  assert.match(CN, /测错误路径证明不了成功路径的保证/);
+  assert.match(CN, /临时文件和它的承载目录都做 `fsync`/);
   const p8cn = block(CN, /^### P8 —— STEP5 一致性评审方.*$/m);
   assert.match(p8cn, /保证声明:/);
   assert.match(p8cn, /未经验证的硬保证是规格-代码缺口/);
@@ -258,4 +265,21 @@ test('PR: P4 produces tasks.md as a STEP2 output (both languages)', () => {
   const p4cn = block(CN, /^### P4 —— STEP2 propose.*$/m);
   assert.match(p4cn, /编写 proposal\.md、全部规格文档、设计文档与 tasks\.md/);
   assert.match(p4cn, /tasks\.md —— STEP5 消费的有序实现清单;STEP2 就是它的产出步骤/);
+});
+
+test('PR-13 UI render-and-look drives spec boundaries, not the happy path (P7, both languages)', () => {
+  const p7en = block(EN, /^### P7 — STEP5 apply.*$/m);
+  assert.match(p7en, /Drive the SPEC BOUNDARIES, not just the happy path/);
+  assert.match(p7en, /min AND max/);
+  assert.match(p7en, /must be REACHABLE and exercised through the real UI/);
+  assert.match(p7en, /hard cap below the max/);
+  assert.match(p7en, /pre-filters what the server is spec'd to reject/);
+  assert.match(p7en, /spec-vs-code gap/);
+  const p7cn = block(CN, /^### P7 —— STEP5 apply.*$/m);
+  assert.match(p7cn, /要压\*\*规格边界\*\*、不止 happy path/);
+  assert.match(p7cn, /min 和 max 都要/);
+  assert.match(p7cn, /都必须能从真实 UI \*\*触达\*\*并被走一遍/);
+  assert.match(p7cn, /上限被硬编码在规格 max 之下/);
+  assert.match(p7cn, /预先过滤掉了服务端本该拒绝的东西/);
+  assert.match(p7cn, /规格-代码缺口/);
 });

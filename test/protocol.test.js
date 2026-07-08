@@ -231,6 +231,7 @@ test('PR-11 hard guarantees must be exercised by a fault-injecting test (§4.8 +
   assert.match(EN, /killing the process AFTER the success is acknowledged, then restarting/);
   assert.match(EN, /an error-path test does not prove a success-path guarantee/);
   assert.match(EN, /both the temp file AND its containing directory/);
+  assert.match(EN, /read it back through the app's own load path after a real restart/);
   // P8 dimension 5 names it a spec-vs-code gap
   assert.match(block(EN, /^### P8 — STEP5 consistency reviewer.*$/m), /Guarantee claims:/);
   assert.match(block(EN, /^### P8 — STEP5 consistency reviewer.*$/m), /unexercised hard guarantee is a spec-vs-code gap/);
@@ -240,6 +241,7 @@ test('PR-11 hard guarantees must be exercised by a fault-injecting test (§4.8 +
   assert.match(CN, /在成功被确认之后杀掉进程、再重启、验证数据仍在/);
   assert.match(CN, /测错误路径证明不了成功路径的保证/);
   assert.match(CN, /临时文件和它的承载目录都做 `fsync`/);
+  assert.match(CN, /真重启后经应用自己的读回路读出来/);
   const p8cn = block(CN, /^### P8 —— STEP5 一致性评审方.*$/m);
   assert.match(p8cn, /保证声明:/);
   assert.match(p8cn, /未经验证的硬保证是规格-代码缺口/);
@@ -275,6 +277,7 @@ test('PR-13 UI render-and-look drives spec boundaries, not the happy path (P7, b
   assert.match(p7en, /hard cap below the max/);
   assert.match(p7en, /pre-filters what the server is spec'd to reject/);
   assert.match(p7en, /spec-vs-code gap/);
+  assert.match(p7en, /surface the rejection to the user/);
   const p7cn = block(CN, /^### P7 —— STEP5 apply.*$/m);
   assert.match(p7cn, /要压\*\*规格边界\*\*、不止 happy path/);
   assert.match(p7cn, /min 和 max 都要/);
@@ -282,4 +285,5 @@ test('PR-13 UI render-and-look drives spec boundaries, not the happy path (P7, b
   assert.match(p7cn, /上限被硬编码在规格 max 之下/);
   assert.match(p7cn, /预先过滤掉了服务端本该拒绝的东西/);
   assert.match(p7cn, /规格-代码缺口/);
+  assert.match(p7cn, /把拒绝呈现给用户/);
 });

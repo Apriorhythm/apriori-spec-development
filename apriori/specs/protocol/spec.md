@@ -52,3 +52,11 @@ The V3 runbook SHALL make scenario-to-test binding a deterministic gate, narrow 
 #### Scenario: PR-13 the UI render-and-look must drive spec boundaries, not the happy path
 - WHEN a UI change reaches STEP5 and P7's render-and-look self-check runs
 - THEN it drives the spec's stated boundaries through the real UI — every range's min AND max (e.g. a 2..20-option form must actually build a 20-option poll) and every rejection path the backend spec promises — and a UI that cannot reach a spec'd path (a hard cap below the max, an input that pre-filters what the server is spec'd to reject) is treated as a spec-vs-code gap, because the front end must be able to produce every input the backend spec handles or rejects, and when the UI catches input the server would reject it must surface the rejection rather than silently drop it
+
+#### Scenario: PR-14 two entry doors — a bare /apriori opens the Brainstorm stance
+- WHEN a human has only a fuzzy idea (no change name yet)
+- THEN the scaffolded `/apriori` command with NO arguments enters the Brainstorm stance via P13 (thinking only, nothing durable until the approved exit), the runbook's §0 names the two doors explicitly (fuzzy idea → Brainstorm; stateable change → kickoff prompt), and `apriori init`'s closing hint presents both doors
+
+#### Scenario: PR-15 ABANDONED is a legal harden-track exit, on the human's word only
+- WHEN the human decides mid-change to drop a harden-track change (any step)
+- THEN the runbook prescribes: one ledger row `abandoned` carrying the human's verbatim reason, the change dir archived with flow-state `current-step: ABANDONED`, nothing written to KB or spec store, touched code disposed only as the human directs; the agent may never propose abandonment as an escape from failing reviews; requirement docs and ledger are kept as a recorded decision

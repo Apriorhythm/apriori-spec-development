@@ -287,3 +287,42 @@ test('PR-13 UI render-and-look drives spec boundaries, not the happy path (P7, b
   assert.match(p7cn, /规格-代码缺口/);
   assert.match(p7cn, /把拒绝呈现给用户/);
 });
+
+test('PR-14 two entry doors: bare /apriori opens Brainstorm via P13', () => {
+  const cmd = fs.readFileSync(path.join(ROOT, 'templates', 'command.md'), 'utf8');
+  assert.match(cmd, /If NO change name was given/);
+  assert.match(cmd, /Brainstorm stance via its P13 prompt/);
+  assert.match(cmd, /nothing durable is written until they approve/);
+  // the with-arg door is unchanged: flow-state read + advance-only-to-gate survive
+  assert.match(cmd, /If a change name was given above/);
+  assert.match(cmd, /apriori\/changes\/<change>\/flow-state\.md/);
+  assert.match(cmd, /Advance ONLY to the next human gate/);
+  // runbook §0 names the two doors (both languages)
+  assert.match(EN, /\*\*Two doors in\.\*\*/);
+  assert.match(EN, /`\/apriori` command with no arguments opens that door directly/);
+  assert.match(CN, /\*\*两扇门。\*\*/);
+  assert.match(CN, /`\/apriori` 命令不带参数就直接打开这扇门/);
+  // init's closing hint presents both doors
+  const initSrc = fs.readFileSync(path.join(ROOT, 'lib', 'init.js'), 'utf8');
+  assert.match(initSrc, /idea still fuzzy\?\s+\/apriori/);
+  assert.match(initSrc, /change is clear\?\s+\/apriori <change>/);
+});
+
+test('PR-15 ABANDONED is a legal harden-track exit, human-only', () => {
+  const en = EN;
+  assert.match(en, /Abandoning a harden change/);
+  assert.match(en, /their call alone; never proposed by the agent as a way out of failing reviews/);
+  assert.match(en, /`abandoned — <the human's reason, verbatim>`/);
+  assert.match(en, /write nothing to the KB or spec store/);
+  assert.match(en, /revert \/ keep on a branch — ask, don't assume/);
+  assert.match(en, /move the change dir to `apriori\/changes\/archive\/<stamp>-<name>\/`/);
+  assert.match(en, /`current-step: ABANDONED`/);
+  assert.match(en, /a recorded decision, not an erased one/);
+  assert.match(CN, /harden 变更的弃案/);
+  assert.match(CN, /agent 绝不许把它当作躲避评审不过关的出路来提议/);
+  assert.match(CN, /KB 与规格库一概不写/);
+  assert.match(CN, /要问,不许自作主张/);
+  assert.match(CN, /变更目录移入 `apriori\/changes\/archive\//);
+  assert.match(CN, /`current-step: ABANDONED`/);
+  assert.match(CN, /被记录的决定,不是被抹掉的决定/);
+});

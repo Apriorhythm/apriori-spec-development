@@ -15,7 +15,7 @@ npm i -g apriori-cli              # 零依赖;也可从 GitHub 装(见 §3.3)
 cd your-project && apriori init   # 搭建工作流,勾选你用的 AI 工具
 ```
 
-然后对你的 agent 说:*"按 apriori runbook 推进变更 `<名字>`。"* 它会跑到下一个人工闸口,停下汇报。三个确定性闸口是 CLI 命令:**`apriori verify`**(每条 scenario 有绿测试)、**`apriori archive`**(把变更的规格并入 living 规格库)、**`apriori check`**(CI 一致性)。下面是给人看的完整讲解——AI agent 读自包含的 [RUNBOOK_cn.md](./RUNBOOK_cn.md),不读本手册。
+然后——两扇门。想法还模糊?直接跑不带参数的 */apriori*(或说"陪我脑暴"):agent 先陪你想,你点头之前什么都不写。变更已经清楚?对你的 agent 说:*"按 apriori runbook 推进变更 `<名字>`。"* 它会跑到下一个人工闸口,停下汇报。三个确定性闸口是 CLI 命令:**`apriori verify`**(每条 scenario 有绿测试)、**`apriori archive`**(把变更的规格并入 living 规格库)、**`apriori check`**(CI 一致性)。下面是给人看的完整讲解——AI agent 读自包含的 [RUNBOOK_cn.md](./RUNBOOK_cn.md),不读本手册。
 
 **语言。** 默认情况下,apriori **用你书写的语言干活**——中文 kickoff 就产出中文的需求文档、规格与消息。(scenario ID 如 `CALC-01`、结论行、文件路径始终保持英文,这样 `apriori verify`/`check` 照常工作。)想不管你怎么打字都固定一种语言,就在 `apriori/process-config.md` 里设 `language` 字段(如 `中文` 或 `English`;默认 `auto` = 跟随你)——或装的时候直接 `apriori init --language 中文` 定好。
 
@@ -176,7 +176,7 @@ LLM 对抗评审是更大的验证组合中的一件仪器——质量在各阶�
 # --skip-git-repo-check ：仅当你在 git 仓库之外运行时才需要
 codex exec -s read-only "<你的评审提示词——例如 RUNBOOK P5 的评审 prompt>"
 ```
-输出头部会打印一行 `session id: 019f....`。**记下这个 id**——它是续接下一轮的句柄。(脚本或后台调用 codex 时要关闭 stdin——命令末尾加 `< /dev/null`——否则它会等待输入而挂起。)
+输出头部会打印一行 `session id: 019f....`。**记下这个 id**——它是续接下一轮的句柄。(脚本或后台调用 codex 时要关闭 stdin——命令末尾加 `< /dev/null`(PowerShell 没有 /dev/null,改用管道 `$null | codex exec …`)——否则它会等待输入而挂起。)
 
 **第二轮…第 N 轮——续接同一上下文：**
 ```shell

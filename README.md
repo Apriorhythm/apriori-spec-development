@@ -15,7 +15,7 @@ npm i -g apriori-cli              # zero dependencies; or install from GitHub (s
 cd your-project && apriori init   # scaffold the workflow, pick your AI tools
 ```
 
-Then tell your agent: *"Follow the apriori runbook for change `<name>`."* It runs the workflow to the next human gate, then stops and reports. Three deterministic gates are CLI commands: **`apriori verify`** (every scenario has a passing test), **`apriori archive`** (merge the change's specs into the living store), **`apriori check`** (CI consistency). Everything below is the full walkthrough for humans — AI agents read the self-contained [RUNBOOK.md](./RUNBOOK.md) instead.
+Then — two doors. Idea still fuzzy? Just run */apriori* with no arguments (or say "brainstorm with me"): the agent thinks with you first and writes nothing until you approve. Change already clear? Tell your agent: *"Follow the apriori runbook for change `<name>`."* It runs the workflow to the next human gate, then stops and reports. Three deterministic gates are CLI commands: **`apriori verify`** (every scenario has a passing test), **`apriori archive`** (merge the change's specs into the living store), **`apriori check`** (CI consistency). Everything below is the full walkthrough for humans — AI agents read the self-contained [RUNBOOK.md](./RUNBOOK.md) instead.
 
 **Language.** By default apriori works in **whatever language you write in** — a Chinese kickoff produces Chinese requirement docs, specs and messages. (Scenario IDs like `CALC-01`, verdict lines and file paths always stay English, so `apriori verify`/`check` keep working.) To pin one language regardless of how you type, set the `language` field in `apriori/process-config.md` (e.g. `中文` or `English`; the default is `auto` = match you) — or scaffold it up front with `apriori init --language 中文`.
 
@@ -176,7 +176,7 @@ The adversarial-review loop (review → revise → re-review) only works if the 
 # --skip-git-repo-check : only needed when running outside a git repo
 codex exec -s read-only "<your review prompt — e.g. the RUNBOOK P5 reviewer prompt>"
 ```
-The output header prints a line like `session id: 019f....`. **Copy that id** — it's the handle for the next round. (Invoking codex from a script or background job? Close stdin — append `< /dev/null` — or it waits for input and hangs.)
+The output header prints a line like `session id: 019f....`. **Copy that id** — it's the handle for the next round. (Invoking codex from a script or background job? Close stdin — append `< /dev/null`; PowerShell has no /dev/null, pipe instead: `$null | codex exec …` — or it waits for input and hangs.)
 
 **Round 2…N — resume the same context:**
 ```shell

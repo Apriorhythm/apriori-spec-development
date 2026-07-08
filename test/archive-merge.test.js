@@ -1,7 +1,7 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { parseDelta, merge, archiveStamp, archiveChangeDir, cli } = require('../lib/archive-merge');
+const { parseDelta, deltaOpCount, merge, archiveStamp, archiveChangeDir, cli } = require('../lib/archive-merge');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -117,4 +117,40 @@ test('AM-06 archive moves the in-flight change under a dated (date-time) archive
   assert.ok(!fs.existsSync(path.join(changes, 'add-playback')));
   // stamp is colon-free date-time
   assert.strictEqual(archiveStamp(now), '2026-07-06T0657');
+});
+
+test('AM-08 a content-bearing delta that parses to zero operations is a hard error', () => {
+  // pure helper: opcount of an empty vs real delta
+  assert.strictEqual(deltaOpCount(parseDelta('nothing here\n')), 0);
+  assert.ok(deltaOpCount(parseDelta('## ADDED Requirements\n\n### Requirement: X\ntext\n')) > 0);
+  // cli: wrong heading level (h3 section instead of h2) → parses to 0 ops → error, nothing written, exit 1
+  const store = tmpFile('# spec\n\n### Requirement: Old\nbody\n');
+  const before = fs.readFileSync(store, 'utf8');
+  const badDelta = tmpFile('### ADDED Requirements\n\n#### Requirement: New\nstuff\n');   // wrong levels
+  const errs = [], outs = [];
+  const origErr = console.error, origLog = console.log;
+  console.error = (...a) => errs.push(a.join(' '));
+  console.log = (...a) => outs.push(a.join(' '));
+  let code;
+  try { code = cli(['--store', store, '--delta', badDelta, '--change', 'c', '--write']); }
+  finally { console.error = origErr; console.log = origLog; }
+  assert.strictEqual(code, 1);
+  const err = errs.join('\n');
+  assert.match(err, /parsed 0 delta operations/);
+  assert.match(err, /## ADDED\|MODIFIED\|REMOVED Requirements/);
+  assert.match(err, /### Requirement:/);
+  assert.match(err, /RENAMED/);
+  assert.doesNotMatch(outs.join('\n'), /RESULT: MERGED/);        // never claims a merge happened
+  assert.strictEqual(fs.readFileSync(store, 'utf8'), before);    // nothing written
+  // a genuinely empty (whitespace-only) delta is NOT flagged by this guard — it reaches the
+  // normal path: clean dry-run, exit 0, and no "0 delta operations" error
+  const emptyDelta = tmpFile('   \n\n');
+  const e2 = [], o2 = [];
+  console.error = (...a) => e2.push(a.join(' ')); console.log = (...a) => o2.push(a.join(' '));
+  let code2;
+  try { code2 = cli(['--store', store, '--delta', emptyDelta, '--change', 'c']); }
+  finally { console.error = origErr; console.log = origLog; }
+  assert.strictEqual(code2, 0);
+  assert.doesNotMatch(e2.join('\n'), /0 delta operations/);
+  assert.match(o2.join('\n'), /RESULT: MERGED \(dry-run/);
 });

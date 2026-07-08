@@ -28,3 +28,7 @@
 #### Scenario: AM-07 RENAMED renames a requirement in place, preserving content
 - WHEN the delta has a `## RENAMED Requirements` entry `- Old Name -> New Name` and `Old Name` exists while `New Name` does not
 - THEN the store block keeps its content but its heading ID becomes `New Name`, listed as renamed; a missing source or a colliding target is a conflict (stop, exit 1, nothing written)
+
+#### Scenario: AM-08 a content-bearing delta that parses to zero operations is a hard error
+- WHEN `apriori archive` reads a delta file that has non-whitespace content but matches no recognized section (e.g. wrong heading level or keyword, so 0 delta operations parse)
+- THEN it writes nothing, prints an error naming the expected `## ADDED|MODIFIED|REMOVED|RENAMED Requirements` + `### Requirement:` format, and exits non-zero — never reporting MERGED for a delta the parser did not understand

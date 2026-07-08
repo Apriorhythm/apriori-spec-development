@@ -11,7 +11,7 @@ The toolchain SHALL ship as one npm package `apriori-cli` exposing a `bin` named
 
 #### Scenario: CL-03 archive subcommand is archive-merge
 - WHEN `apriori archive --store <f> --delta <f> --change <name> [--write]` runs
-- THEN it behaves per the archive-merge requirement (AM-01..06)
+- THEN it behaves per the archive-merge requirement (AM-01..08)
 
 #### Scenario: CL-04 check subcommand is the doc checker
 - WHEN `apriori check` runs

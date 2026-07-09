@@ -36,3 +36,7 @@
 #### Scenario: SR-09 --json emits a machine-consumable verify report
 - WHEN `apriori verify … --json` runs
 - THEN it prints valid JSON — clean, result (GREEN/GAPS), specFiles, boundGreen/boundRed (with pass/fail counts), unbound, orphan, unidentified — and the exit code still encodes GREEN(0)/GAPS(1)
+
+#### Scenario: SR-10 zero parsed TAP results triggers a reporter hint
+- WHEN `apriori verify` runs a test command that produces output but not a single parseable TAP result line
+- THEN the report is preceded by a warning that the test command is probably not emitting TAP (naming node's `--test-reporter=tap`), so the all-UNBOUND list is not misread as missing tests

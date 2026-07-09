@@ -11,7 +11,7 @@ The V3 runbook SHALL make scenario-to-test binding a deterministic gate, narrow 
 
 #### Scenario: PR-03 archive action is native plain-files, no adapter
 - WHEN STEP6 archive runs
-- THEN it uses archive-merge (AM-01..06) directly; there is no `openspec/` path and no `/opsx:` adapter command
+- THEN it uses archive-merge (AM-01..10) directly; there is no `openspec/` path and no `/opsx:` adapter command
 
 #### Scenario: PR-04 the interface is single-path plain-files
 - WHEN any runbook/README section references artifact paths
@@ -60,3 +60,7 @@ The V3 runbook SHALL make scenario-to-test binding a deterministic gate, narrow 
 #### Scenario: PR-15 ABANDONED is a legal harden-track exit, on the human's word only
 - WHEN the human decides mid-change to drop a harden-track change (any step)
 - THEN the runbook prescribes: one ledger row `abandoned` carrying the human's verbatim reason, the change dir archived with flow-state `current-step: ABANDONED`, nothing written to KB or spec store, touched code disposed only as the human directs; the agent may never propose abandonment as an escape from failing reviews; requirement docs and ledger are kept as a recorded decision
+
+#### Scenario: PR-16 legacy-project clarity clauses from the inherited-poll lab
+- WHEN an agent runs the protocol on a legacy project or resumes a dead session
+- THEN the runbook states: the KB pre-check may run before STEP0 on a legacy kickoff; the `gates:` vocabulary includes a `KB sign-off` label; P10 carries first-contact module-sizing guidance and declares capture is NOT a defect audit; flow-state's `next-action` holds exactly ONE action; R2's transcription mechanism covers the review doc itself; the guarantee-claim discipline warns that chmod-based fault injection silently fails under root (inject via the I/O primitive); and the archive prose names `--changes-dir` for the dir move plus the flow-state-at-archived-path sequencing around gate④

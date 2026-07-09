@@ -7,11 +7,11 @@ The toolchain SHALL ship as one npm package `apriori-cli` exposing a `bin` named
 
 #### Scenario: CL-02 verify subcommand is the spec-runner
 - WHEN `apriori verify --specs <dir> --test-cmd <cmd>` runs
-- THEN it behaves per the spec-runner requirement (SR-01..08)
+- THEN it behaves per the spec-runner requirement (SR-01..10)
 
 #### Scenario: CL-03 archive subcommand is archive-merge
 - WHEN `apriori archive --store <f> --delta <f> --change <name> [--write]` runs
-- THEN it behaves per the archive-merge requirement (AM-01..08)
+- THEN it behaves per the archive-merge requirement (AM-01..10)
 
 #### Scenario: CL-04 check subcommand is the doc checker
 - WHEN `apriori check` runs

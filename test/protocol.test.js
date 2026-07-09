@@ -326,3 +326,31 @@ test('PR-15 ABANDONED is a legal harden-track exit, human-only', () => {
   assert.match(CN, /`current-step: ABANDONED`/);
   assert.match(CN, /被记录的决定,不是被抹掉的决定/);
 });
+
+test('PR-16 legacy-project clarity clauses (both languages)', () => {
+  // KB pre-check may run before STEP0 on a legacy kickoff
+  assert.match(EN, /before STEP0 even drafts req-v1/);
+  assert.match(CN, /提前到 STEP0 起草 req-v1 之前/);
+  // gates vocabulary gains KB sign-off
+  assert.match(EN, /gate① … gate⑤ \| KB sign-off \|/);
+  assert.match(CN, /gate① … gate⑤ \| KB 签核 \|/);
+  // P10 sizing + not-a-defect-audit
+  assert.match(EN, /One KB doc for the whole app is fine up to/);
+  assert.match(EN, /it is NOT a defect audit/);
+  assert.match(CN, /整个应用一份 KB 文档即可/);
+  assert.match(CN, /不是缺陷审计/);
+  // next-action holds exactly one action
+  assert.match(EN, /ONE concrete action — never bundle two steps into one line/);
+  assert.match(CN, /恰好一个动作——绝不把两步塞进一行/);
+  // R2 transcription covers the review doc itself
+  assert.match(EN, /The same transcription mechanism covers the \*\*review doc itself\*\*/);
+  assert.match(CN, /同一代录机制也覆盖\*\*评审文档本体\*\*/);
+  // root chmod gotcha in guarantee-claim discipline
+  assert.match(EN, /`chmod` does nothing to root; inject at the I\/O primitive/);
+  assert.match(CN, /`chmod` 对 root 无效;改为在 I\/O 原语处用依赖注入/);
+  // archive prose: --changes-dir + gate④ sequencing
+  assert.match(EN, /with `--changes-dir apriori\/changes`\*\*, moves the in-flight change dir/);
+  assert.match(EN, /flow-state lives — and is updated — at its \*\*archived\*\* path/);
+  assert.match(CN, /且带 `--changes-dir apriori\/changes`\*\*/);
+  assert.match(CN, /位于——且更新于——它的\*\*归档\*\*路径/);
+});

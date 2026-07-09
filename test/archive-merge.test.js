@@ -154,3 +154,50 @@ test('AM-08 a content-bearing delta that parses to zero operations is a hard err
   assert.doesNotMatch(e2.join('\n'), /0 delta operations/);
   assert.match(o2.join('\n'), /RESULT: MERGED \(dry-run/);
 });
+
+test('AM-09 the first archive in a repo creates the store file', () => {
+  const os = require('node:os');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-am9-'));
+  const store = path.join(dir, 'specs', 'kv', 'spec.md');   // nested, nonexistent
+  const delta = tmpFile('## ADDED Requirements\n### Requirement: Fresh\nNew stuff.\n');
+  const out = [];
+  const orig = console.log; console.log = (...a) => out.push(a.join(' '));
+  let code;
+  try { code = cli(['--store', store, '--delta', delta, '--change', 'c', '--write']); }
+  finally { console.log = orig; }
+  assert.strictEqual(code, 0);
+  assert.match(out.join('\n'), /does not exist yet — will be created/);
+  assert.match(fs.readFileSync(store, 'utf8'), /### Requirement: Fresh/);
+});
+
+test('AM-10 re-running an already-merged delta is an idempotent no-op', () => {
+  const block = '## ADDED Requirements\n### Requirement: Gamma\nG content.\n';
+  const store = tmpFile('### Requirement: Gamma\nG content.\n');   // already merged
+  const delta = tmpFile(block);
+  const before = fs.readFileSync(store, 'utf8');
+  const out = [];
+  const orig = console.log; console.log = (...a) => out.push(a.join(' '));
+  let code;
+  try { code = cli(['--store', store, '--delta', delta, '--change', 'c', '--write']); }
+  finally { console.log = orig; }
+  assert.strictEqual(code, 0);                                    // no conflict
+  assert.match(out.join('\n'), /already merged \(no-op\): Gamma/);
+  assert.doesNotMatch(out.join('\n'), /CONFLICT/);
+  assert.strictEqual(fs.readFileSync(store, 'utf8').trim(), before.trim());
+  // genuinely different content with the same ID is still a conflict
+  const delta2 = tmpFile('## ADDED Requirements\n### Requirement: Gamma\nDIFFERENT.\n');
+  const code2 = cli(['--store', store, '--delta', delta2, '--change', 'c', '--write']);
+  assert.strictEqual(code2, 1);
+});
+
+test('AM-10b rename-aware idempotency: same-delta RENAMED+ADDED collides; rename rerun is a no-op', () => {
+  // same delta renames Alpha->Gamma AND adds an identical Gamma → collision, not no-op
+  const d1 = parseDelta('## RENAMED Requirements\n- Alpha -> Gamma\n## ADDED Requirements\n### Requirement: Gamma\nAlpha behaves.\n\n#### Scenario: AL-01 alpha\n- THEN ok\n');
+  const r1 = merge(STORE, d1, 'c');
+  assert.ok(r1.conflicts.some((c) => /ADDED 'Gamma' already exists/.test(c)));
+  // rerun of a rename-only delta: source gone, target present → already-renamed no-op
+  const renamedStore = STORE.replace('### Requirement: Beta', '### Requirement: Bravo');
+  const r2 = merge(renamedStore, parseDelta('## RENAMED Requirements\n- Beta -> Bravo\n'), 'c');
+  assert.strictEqual(r2.conflicts.length, 0);
+  assert.ok(r2.unchanged.some((u) => /Beta -> Bravo \(already renamed\)/.test(u)));
+});

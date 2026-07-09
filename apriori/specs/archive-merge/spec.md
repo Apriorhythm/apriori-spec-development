@@ -27,8 +27,16 @@
 
 #### Scenario: AM-07 RENAMED renames a requirement in place, preserving content
 - WHEN the delta has a `## RENAMED Requirements` entry `- Old Name -> New Name` and `Old Name` exists while `New Name` does not
-- THEN the store block keeps its content but its heading ID becomes `New Name`, listed as renamed; a missing source or a colliding target is a conflict (stop, exit 1, nothing written)
+- THEN the store block keeps its content but its heading ID becomes `New Name`, listed as renamed; a missing source (with no existing target) or a colliding target is a conflict (stop, exit 1, nothing written) — the source-gone-AND-target-present rerun case is AM-10's no-op, not a conflict
 
 #### Scenario: AM-08 a content-bearing delta that parses to zero operations is a hard error
 - WHEN `apriori archive` reads a delta file that has non-whitespace content but matches no recognized section (e.g. wrong heading level or keyword, so 0 delta operations parse)
 - THEN it writes nothing, prints an error naming the expected `## ADDED|MODIFIED|REMOVED|RENAMED Requirements` + `### Requirement:` format, and exits non-zero — never reporting MERGED for a delta the parser did not understand
+
+#### Scenario: AM-09 the first archive in a repo creates the store file
+- WHEN `apriori archive --write` targets a store file that does not exist yet
+- THEN it notes the store will be created, starts from an empty store, and writes the merged result — no ENOENT
+
+#### Scenario: AM-10 re-running an already-merged delta is an idempotent no-op
+- WHEN an ADDED requirement in the delta already exists in the store with byte-identical (trimmed) content, or a RENAMED entry's source is gone while its target is present — both the signature of a rerun after a partial archive
+- THEN each is reported as already merged / already renamed (no-op), not a conflict, and the run can proceed to move the change dir; but an ADDED whose name was created by THIS run's own RENAMED is a same-delta collision and still conflicts even with identical content

@@ -117,3 +117,33 @@ test('SR-09 --json emits a machine-consumable verify report; exit still encodes 
   assert.strictEqual(code2, 1);
   assert.strictEqual(JSON.parse(out2.join('\n')).result, 'GAPS');
 });
+
+test('SR-10 zero parsed TAP results triggers a reporter hint', () => {
+  const { zeroTapParsed, parseTap } = require('../lib/spec-runner');
+  const idRe = /[A-Z]+-\d+/;
+  // human "spec" reporter output: content but no TAP lines → flagged
+  const human = '✔ KV-01 stores a value (1.2ms)\n✔ KV-02 expires (0.8ms)\npass 2\n';
+  const p1 = parseTap(human, idRe);
+  assert.strictEqual(zeroTapParsed(human, p1.results, p1.untagged), true);
+  // real TAP → not flagged
+  const tap = 'ok 1 - KV-01 stores a value\nok 2 - KV-02 expires\n';
+  const p2 = parseTap(tap, idRe);
+  assert.strictEqual(zeroTapParsed(tap, p2.results, p2.untagged), false);
+  // empty output (test cmd produced nothing) → not this warning's business
+  const p3 = parseTap('', idRe);
+  assert.strictEqual(zeroTapParsed('', p3.results, p3.untagged), false);
+  // valid TAP with an EMPTY suite (version/plan lines only) is not a reporter problem
+  const emptySuite = 'TAP version 13\n1..0\n';
+  const p4 = parseTap(emptySuite, idRe);
+  assert.strictEqual(zeroTapParsed(emptySuite, p4.results, p4.untagged), false);
+  // through the CLI: warning lands on stderr, UNBOUND report still prints
+  const { spawnSync } = require('node:child_process');
+  const os = require('node:os');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-sr10-'));
+  fs.writeFileSync(path.join(dir, 'spec.md'), '### Requirement: R\n#### Scenario: KV-01 x\n- THEN y\n');
+  const r = spawnSync('node', [path.join(__dirname, '..', 'bin', 'apriori.js'), 'verify',
+    '--specs', dir, '--test-cmd', 'echo "not tap at all"'], { encoding: 'utf8' });
+  assert.match(r.stderr, /ZERO TAP results were parsed/);
+  assert.match(r.stderr, /--test-reporter=tap/);
+  assert.match(r.stdout, /UNBOUND/);
+});

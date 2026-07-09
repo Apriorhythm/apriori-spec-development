@@ -1,4 +1,8 @@
 <p align="center">
+  <a href="https://www.npmjs.com/package/apriori-cli"><img alt="npm" src="https://img.shields.io/npm/v/apriori-cli"></a>
+</p>
+
+<p align="center">
   Languages:
   <a href="./README.md">English</a> ·
   <a href="./README_cn.md">中文</a>

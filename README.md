@@ -316,8 +316,9 @@ To upgrade later: `npm update -g apriori-cli && apriori update` — `update` ref
 | `apriori init` | once per project | scaffold `apriori/` + per-tool pointers |
 | `apriori new <name>` | change kickoff | scaffold `apriori/changes/<name>/` + a flow-state skeleton |
 | `apriori status` | anytime | where each change is: step, next action, open ledger items (`--json`) |
-| `apriori verify` | STEP5 exit gate | bind every scenario ID to a passing test (GREEN or GAPS) |
-| `apriori archive` | STEP6 | merge a change's delta specs into the living store |
+| `apriori verify` | STEP5 exit gate | bind every scenario ID to a passing test (GREEN or GAPS); `--change <name>` verifies against the projected (post-merge) store — the mid-change form |
+| `apriori archive` | STEP6 | merge a change's delta specs into the living store; `--change <name>` discovers the whole change, dry-runs, commits failure-atomically (up to the commit point) |
+| `apriori stamp <store-file>` | delta authoring | print the CAS base-stamp line — `verify --change`/`archive` refuse if the store diverged since |
 | `apriori check` | CI / pre-commit | structural consistency (anchors, scenario IDs, drift) |
 | `apriori update` | after a CLI upgrade | refresh the runbook copy + command pointers (never your files) |
 

@@ -11,6 +11,7 @@ const USAGE = `apriori <command>
   status    show where a change is: step, next-action, open ledger items (--json)
   verify    bind spec scenarios to test runs (STEP5 gate) (--json)
   archive   merge a change's delta specs into the living store (STEP6)
+  stamp     print the CAS base-stamp line for a store file (delta authoring)
   check     structural consistency checks (CI / pre-commit)
   init      scaffold the workflow + per-tool pointers
   update    refresh tool-owned files (runbook copy, command pointers) after a CLI upgrade
@@ -23,6 +24,7 @@ async function main() {
     case 'status':  return require('../lib/status').cli(rest);
     case 'verify':  return require('../lib/spec-runner').cli(rest);
     case 'archive': return require('../lib/archive-merge').cli(rest);
+    case 'stamp':   return require('../lib/archive-merge').stampCli(rest);
     case 'check':   return require('../lib/check').cli(rest);
     case 'init':    return require('../lib/init').cli(rest);
     case 'update':  return require('../lib/update').cli(rest);

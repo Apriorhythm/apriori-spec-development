@@ -65,6 +65,13 @@ test('CL-06 --version prints the package version verbatim, exit 0', () => {
   }
 });
 
+test('CL-08 stamp subcommand appears in usage and dispatches', () => {
+  assert.match(run(['--help']).stdout, /stamp/);
+  const r = run(['stamp']);                      // no arg → its own usage, exit 2, not "unknown command"
+  assert.strictEqual(r.status, 2);
+  assert.doesNotMatch(r.stderr, /unknown command/);
+});
+
 test('CL-07 unexpected subcommand failures exit cleanly — one line, no stack trace', () => {
   // archive with an unreadable store file → fs throws deep inside the subcommand
   const r = run(['archive', '--store', 'no-such-store.md', '--delta', 'no-such-delta.md', '--change', 'x']);

@@ -316,8 +316,9 @@ apriori init
 | `apriori init` | 每项目一次 | 搭建 `apriori/` + 各工具指针 |
 | `apriori new <name>` | 变更启动时 | 搭建 `apriori/changes/<name>/` + flow-state 骨架 |
 | `apriori status` | 随时 | 每个变更走到哪:步骤、下一动作、未决台账项(`--json`) |
-| `apriori verify` | STEP5 退出闸口 | 把每条 scenario ID 绑定到绿测试(GREEN 或 GAPS) |
-| `apriori archive` | STEP6 | 把变更的增量规格并入 living 规格库 |
+| `apriori verify` | STEP5 退出闸口 | 把每条 scenario ID 绑定到绿测试(GREEN 或 GAPS);`--change <name>` 对投影(合并后)规格库验证——变更进行中用这个形式 |
+| `apriori archive` | STEP6 | 把变更的增量规格并入 living 规格库;`--change <name>` 自动发现整个变更、先 dry-run、失败原子地提交(至提交点为止) |
+| `apriori stamp <store-file>` | 写增量规格时 | 打印 CAS 基线章——库若已变化,`verify --change`/`archive` 会拒绝执行 |
 | `apriori check` | CI / pre-commit | 结构一致性(锚点、scenario ID、漂移) |
 | `apriori update` | CLI 升级后 | 刷新 runbook 副本 + 命令指针(绝不动你的文件) |
 

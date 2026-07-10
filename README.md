@@ -320,6 +320,7 @@ To upgrade later: `npm update -g apriori-cli && apriori update` — `update` ref
 | `apriori archive` | STEP6 | merge a change's delta specs into the living store; `--change <name>` discovers the whole change, dry-runs, commits failure-atomically (up to the commit point) |
 | `apriori stamp <store-file>` | delta authoring | print the CAS base-stamp line — `verify --change`/`archive` refuse if the store diverged since |
 | `apriori gate --change <name>` | STEP5/6, CI | one exit code over the mechanical checks: binding verify, tasks, flow-state, ledger, verdict↔raw evidence, KB freshness (PASS ≠ human gates) |
+| `apriori doctor` | onboarding / anytime | diagnose the project↔apriori seam: Node floor, scaffold, runbook freshness, tool pointers, TAP plumbing probe, store health, changes overview — findings name their fixer |
 | `apriori check` | CI / pre-commit | structural consistency (anchors, scenario IDs, drift) |
 | `apriori update` | after a CLI upgrade | refresh the runbook copy + command pointers (never your files) |
 

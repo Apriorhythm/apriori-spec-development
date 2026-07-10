@@ -23,7 +23,7 @@ npm i -g apriori-cli     # 或用 `npx apriori-cli …` 跑下面任一命令
 cd your-project && apriori init  # 交互式:勾选要接入的 AI 工具
 ```
 
-`apriori init` 搭建单一 `apriori/` 根(本 runbook 落在 `apriori/runbook.md`、`apriori/process-config.md`,以及 `specs/ changes/ review/ truth/` 工作目录),并把一行指向 runbook 的指针写进你勾选的每个工具的原生位置——`CLAUDE.md` + `.claude/commands/apriori.md`、`AGENTS.md`(Codex/OpenCode)、`.cursor/rules/apriori.mdc`、`.github/copilot-instructions.md`、`.windsurf/…`。协议只存一份;工具都指向它。增量写入、绝不覆盖;随时可重跑以加一个工具。CLI 升级后,`apriori update` 把工具所有的文件(本 runbook 副本和命令指针)刷新到已安装版本——绝不碰属于用户的文件(`process-config.md`、`specs/`、`changes/`、规则文件);runbook 副本过期时 `apriori check` 会给出警告。
+`apriori init` 搭建单一 `apriori/` 根(本 runbook 落在 `apriori/runbook.md`、`apriori/process-config.md`,以及 `specs/ changes/ review/ truth/` 工作目录),并把一行指向 runbook 的指针写进你勾选的每个工具的原生位置——`CLAUDE.md` + `.claude/commands/apriori.md`、`AGENTS.md`(Codex/OpenCode)、`.cursor/rules/apriori.mdc`、`.github/copilot-instructions.md`、`.windsurf/…`。协议只存一份;工具都指向它。增量写入、绝不覆盖;随时可重跑以加一个工具。接入后用 `apriori doctor` 给整个接缝做体检——Node 地板、脚手架缺口、runbook 新鲜度、工具指针、测试命令是否真的输出 TAP——每个发现都指名修复它的命令。CLI 升级后,`apriori update` 把工具所有的文件(本 runbook 副本和命令指针)刷新到已安装版本——绝不碰属于用户的文件(`process-config.md`、`specs/`、`changes/`、规则文件);runbook 副本过期时 `apriori check` 会给出警告。
 
 `apriori/process-config.md` **人类持有;agent 视其为只读**(R3)。缺失时,§4 打印的默认值生效。三个确定性闸口以 CLI 命令运行:`apriori verify`(STEP5)、`apriori archive`(STEP6)、`apriori check`(CI)——均为零依赖 Node,详见 §4/§6。
 

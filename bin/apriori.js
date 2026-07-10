@@ -13,6 +13,7 @@ const USAGE = `apriori <command>
   archive   merge a change's delta specs into the living store (STEP6)
   stamp     print the CAS base-stamp line for a store file (delta authoring)
   gate      aggregate the mechanical gate checks for one change (CI-friendly)
+  doctor    diagnose the project↔apriori seam (onboarding health check)
   check     structural consistency checks (CI / pre-commit)
   init      scaffold the workflow + per-tool pointers
   update    refresh tool-owned files (runbook copy, command pointers) after a CLI upgrade
@@ -27,6 +28,7 @@ async function main() {
     case 'archive': return require('../lib/archive-merge').cli(rest);
     case 'stamp':   return require('../lib/archive-merge').stampCli(rest);
     case 'gate':    return require('../lib/gate').cli(rest);
+    case 'doctor':  return require('../lib/doctor').cli(rest);
     case 'check':   return require('../lib/check').cli(rest);
     case 'init':    return require('../lib/init').cli(rest);
     case 'update':  return require('../lib/update').cli(rest);

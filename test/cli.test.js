@@ -79,6 +79,13 @@ test('CL-09 gate subcommand appears in usage and dispatches', () => {
   assert.doesNotMatch(r.stderr, /unknown command/);
 });
 
+test('CL-10 doctor subcommand appears in usage and dispatches', () => {
+  assert.match(run(['--help']).stdout, /doctor/);
+  const r = run(['doctor', 'stray-positional']);   // positional → its own usage, exit 2, not "unknown command"
+  assert.strictEqual(r.status, 2);
+  assert.doesNotMatch(r.stderr, /unknown command/);
+});
+
 test('CL-07 unexpected subcommand failures exit cleanly — one line, no stack trace', () => {
   // archive with an unreadable store file → fs throws deep inside the subcommand
   const r = run(['archive', '--store', 'no-such-store.md', '--delta', 'no-such-delta.md', '--change', 'x']);

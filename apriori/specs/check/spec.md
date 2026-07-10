@@ -31,3 +31,14 @@
 #### Scenario: CK-07 consumer mode is the default; self-checks require --self
 - WHEN `apriori check` runs in a consumer project
 - THEN only the spec-store checks (CK-04) and runbook freshness (CK-06) run — a consumer legitimately using OpenSpec or shipping its own README is never failed by apriori's handbook self-checks (EN/CN pairs, verdict phrases, codex forms, no-openspec), which run only under `--self`; and a missing spec-store path is an error (exit 2, naming `apriori init` when uninitialized), never a silent PASS
+
+### Requirement: self-mode guards the split documentation set
+`apriori check --self` SHALL extend its EN/CN pair coverage to the docs/ pairs (concepts, legacy, ci, cli, troubleshooting — `_cn` suffix convention) and SHALL resolve links relative to the linking file, validating cross-file fragments.
+
+#### Scenario: CK-08 docs pairs are guarded, one-sided pairs fail
+- WHEN `check --self` runs where a docs/ pair misaligns (heading count, level, or numeric prefix), or exactly ONE side of a pair exists
+- THEN it FAILs naming the pair (or the missing mirror); WHEN both sides of a pair are absent THEN that pair is skipped and older checkouts pass as before
+
+#### Scenario: CK-09 links resolve from the linking file and fragments are validated
+- WHEN a checked file links `./y.md` or `./y.md#frag`
+- THEN the target resolves relative to THAT file's directory (root files unchanged); a missing target file FAILs naming the linking file; and a fragment with no heading in the target slugifying (ghSlug) to it FAILs naming both — self-mode only

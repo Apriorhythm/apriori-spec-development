@@ -9,6 +9,9 @@ const ROOT = path.join(__dirname, '..');
 const EN = fs.readFileSync(path.join(ROOT, 'RUNBOOK.md'), 'utf8');
 const CN = fs.readFileSync(path.join(ROOT, 'RUNBOOK_cn.md'), 'utf8');
 const README = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
+// readme-split: the handbook's deep content lives in docs/ now — the matrix mirror moved with it
+const CONCEPTS = fs.readFileSync(path.join(ROOT, 'docs', 'concepts.md'), 'utf8');
+const CONCEPTS_CN = fs.readFileSync(path.join(ROOT, 'docs', 'concepts_cn.md'), 'utf8');
 const README_CN = fs.readFileSync(path.join(ROOT, 'README_cn.md'), 'utf8');
 
 test('PR-01 STEP5 exit adds a deterministic spec-runner gate', () => {
@@ -214,11 +217,11 @@ test('PR-10 UI projects render-and-look during implementation; E2E sits above th
   assert.match(CN, /绑定闸口之上作为额外退出条件/);
   assert.match(CN, /文本化 pass\/fail/);
   assert.match(CN, /基线图属于项目自己的测试套件/);
-  // README mirrors the matrix (both languages), including baseline ownership
-  assert.match(README, /screenshot self-checks land in the gitignored `apriori\/tmp\/`/);
-  assert.match(README, /baseline images belong to the project's own test suite/);
-  assert.match(README_CN, /截图自查落在已被 gitignore 的 `apriori\/tmp\/`/);
-  assert.match(README_CN, /基线图属于项目自己的测试套件/);
+  // the handbook (docs/concepts since readme-split) mirrors the matrix, including baseline ownership
+  assert.match(CONCEPTS, /screenshot self-checks land in the gitignored `apriori\/tmp\/`/);
+  assert.match(CONCEPTS, /baseline images belong to the project's own test suite/);
+  assert.match(CONCEPTS_CN, /截图自查落在已被 gitignore 的 `apriori\/tmp\/`/);
+  assert.match(CONCEPTS_CN, /基线图属于项目自己的测试套件/);
 });
 
 test('PR-11 hard guarantees must be exercised by a fault-injecting test (§4.8 + P8)', () => {

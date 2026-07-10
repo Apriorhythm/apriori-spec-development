@@ -108,3 +108,71 @@ test('CK-07 consumer mode never runs self-checks; missing spec store is an error
   assert.match(miss.stderr, /does not exist/);
   assert.match(miss.stderr, /apriori init/);
 });
+
+test('CK-08 self-mode guards docs pairs; one-sided pairs fail; absent pairs skip', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const os = require('os');
+  // aligned pair → PASS contribution (no docs failures)
+  const mk = (files) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-ck8-'));
+    fs.mkdirSync(path.join(root, 'apriori/specs'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'apriori/specs/s.md'), '#### Scenario: XX-01 a\n- t\n');
+    for (const [rel, c] of Object.entries(files)) {
+      fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
+      fs.writeFileSync(path.join(root, rel), c);
+    }
+    return root;
+  };
+  const run = (root) => require('node:child_process').spawnSync('node', [path.join(__dirname, '..', 'bin', 'apriori.js'), 'check', '--self'], { encoding: 'utf8', cwd: root });
+  // both sides absent → skipped (pass)
+  assert.strictEqual(run(mk({})).status, 0);
+  // aligned pair → pass
+  assert.strictEqual(run(mk({ 'docs/concepts.md': '## A\n', 'docs/concepts_cn.md': '## 甲\n' })).status, 0);
+  // misaligned pair → fail naming it
+  const mis = run(mk({ 'docs/concepts.md': '## A\n## B\n', 'docs/concepts_cn.md': '## 甲\n' }));
+  assert.strictEqual(mis.status, 1);
+  assert.match(mis.stdout, /concepts/);
+  // one-sided pair → fail naming the missing mirror
+  const one = run(mk({ 'docs/concepts.md': '## A\n' }));
+  assert.strictEqual(one.status, 1);
+  assert.match(one.stdout, /concepts_cn\.md/);
+});
+
+test('CK-09 links resolve from the linking file; cross-file fragments validated (self-mode)', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const os = require('os');
+  const mk = (files) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-ck9-'));
+    fs.mkdirSync(path.join(root, 'apriori/specs'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'apriori/specs/s.md'), '#### Scenario: XX-01 a\n- t\n');
+    for (const [rel, c] of Object.entries(files)) {
+      fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
+      fs.writeFileSync(path.join(root, rel), c);
+    }
+    return root;
+  };
+  const run = (root) => require('node:child_process').spawnSync('node', [path.join(__dirname, '..', 'bin', 'apriori.js'), 'check', '--self'], { encoding: 'utf8', cwd: root });
+  // docs-relative link to an existing sibling → pass
+  assert.strictEqual(run(mk({
+    'docs/concepts.md': 'see [x](./legacy.md)\n', 'docs/concepts_cn.md': '见 [x](./legacy.md)\n',
+    'docs/legacy.md': '## L\n', 'docs/legacy_cn.md': '## 甲\n',
+  })).status, 0);
+  // missing sibling → fail naming the linking file
+  const miss = run(mk({ 'docs/concepts.md': 'see [x](./nope.md)\n', 'docs/concepts_cn.md': '见 [x](./nope.md)\n' }));
+  assert.strictEqual(miss.status, 1);
+  assert.match(miss.stdout, /concepts\.md/);
+  // valid cross-file fragment → pass; bad fragment → fail naming both
+  assert.strictEqual(run(mk({
+    'docs/concepts.md': 'see [x](./legacy.md#the-loop)\n', 'docs/concepts_cn.md': '见 [x](./legacy.md#the-loop)\n',
+    'docs/legacy.md': '## The Loop\n', 'docs/legacy_cn.md': '## 环\n',
+  })).status, 0);
+  const badfrag = run(mk({
+    'docs/concepts.md': 'see [x](./legacy.md#nope)\n', 'docs/concepts_cn.md': '见 [x](./legacy.md#nope)\n',
+    'docs/legacy.md': '## The Loop\n', 'docs/legacy_cn.md': '## 环\n',
+  }));
+  assert.strictEqual(badfrag.status, 1);
+  assert.match(badfrag.stdout, /concepts\.md/);
+  assert.match(badfrag.stdout, /nope/);
+});

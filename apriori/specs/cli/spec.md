@@ -1,8 +1,8 @@
 ### Requirement: single self-contained apriori CLI
-The toolchain SHALL ship as one npm package `apriori-cli` exposing a `bin` named `apriori` with subcommands `init | new | status | verify | archive | check | update | stamp | gate` plus a `--version` flag, requiring zero npm runtime dependencies (pure Node stdlib), runnable via global install or `npx`, and failing cleanly (one-line error, no stack trace) on unexpected errors.
+The toolchain SHALL ship as one npm package `apriori-cli` exposing a `bin` named `apriori` with subcommands `init | new | status | verify | archive | check | update | stamp | gate | doctor` plus a `--version` flag, requiring zero npm runtime dependencies (pure Node stdlib), runnable via global install or `npx`, and failing cleanly (one-line error, no stack trace) on unexpected errors.
 
 #### Scenario: CL-01 subcommand dispatch
-- WHEN `apriori <sub> ...` is invoked with sub in {init, new, status, verify, archive, check, update, stamp, gate}
+- WHEN `apriori <sub> ...` is invoked with sub in {init, new, status, verify, archive, check, update, stamp, gate, doctor}
 - THEN it dispatches to that subcommand; an unknown sub prints usage and exits non-zero
 
 #### Scenario: CL-02 verify subcommand is the spec-runner
@@ -36,3 +36,7 @@ The toolchain SHALL ship as one npm package `apriori-cli` exposing a `bin` named
 #### Scenario: CL-09 gate subcommand appears in usage
 - WHEN `apriori` runs with no arguments or `--help`
 - THEN the printed usage lists `gate` alongside the other subcommands (behavior per GT-01..12); `apriori gate` without `--change` prints its own usage and exits 2
+
+#### Scenario: CL-10 doctor subcommand appears in usage
+- WHEN `apriori` runs with no arguments or `--help`
+- THEN the printed usage lists `doctor` alongside the other subcommands (behavior per DR-01..12); `apriori doctor <positional>` prints its own usage and exits 2

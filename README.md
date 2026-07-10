@@ -319,6 +319,7 @@ To upgrade later: `npm update -g apriori-cli && apriori update` — `update` ref
 | `apriori verify` | STEP5 exit gate | bind every scenario ID to a passing test (GREEN or GAPS); `--change <name>` verifies against the projected (post-merge) store — the mid-change form |
 | `apriori archive` | STEP6 | merge a change's delta specs into the living store; `--change <name>` discovers the whole change, dry-runs, commits failure-atomically (up to the commit point) |
 | `apriori stamp <store-file>` | delta authoring | print the CAS base-stamp line — `verify --change`/`archive` refuse if the store diverged since |
+| `apriori gate --change <name>` | STEP5/6, CI | one exit code over the mechanical checks: binding verify, tasks, flow-state, ledger, verdict↔raw evidence, KB freshness (PASS ≠ human gates) |
 | `apriori check` | CI / pre-commit | structural consistency (anchors, scenario IDs, drift) |
 | `apriori update` | after a CLI upgrade | refresh the runbook copy + command pointers (never your files) |
 

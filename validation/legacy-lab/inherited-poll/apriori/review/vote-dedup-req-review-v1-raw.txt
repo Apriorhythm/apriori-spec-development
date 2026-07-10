@@ -1,0 +1,1573 @@
+Reading additional input from stdin...
+OpenAI Codex v0.142.3
+--------
+workdir: /root/terra/legacy-lab/inherited-poll
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f4127-1cdf-7e32-a569-e568fe86ff58
+--------
+user
+You are a senior requirements reviewer. Review the requirement doc; the goal is to make it precise enough to hand straight to an AI for implementation.
+[Input]
+* Requirement doc: requirement/req-v1.md
+* System knowledge base: apriori/truth/polls.md
+* Issue ledger: apriori/review/vote-dedup-issues.md
+* You may also read the actual code (server.js, lib/, public/, test/) to check the doc against reality.
+[Review dimensions, give a verdict on each]
+1. Is target state B clear and unambiguous
+2. Are edge cases and exception paths covered (null, out-of-range, concurrency, timeout, failure rollback)
+3. Are there 'implied but undeclared' state changes or side effects
+4. Is each acceptance criterion testable (expressible as 'if … then …')
+5. Does it conflict with current state A (the KB was provided)
+6. Is the target lineage declared, and does it match the repo's reality
+[Scope] Count toward the verdict only: ambiguous target state, untestable acceptance criteria, missing edge/boundary coverage, conflicts with state A. Everything else — label advisory. Correctness/security findings can never be advisory. Advisory findings do NOT count in the verdict's <N>.
+[Output — IMPORTANT: your sandbox is read-only, so DO NOT try to write files. Instead print, in your final message:]
+1. The full markdown content of the review doc (issue list by dimension: description / risk / suggested fix; advisories listed separately) — I will save it verbatim to apriori/review/vote-dedup-req-review-v1.md on your behalf.
+2. A LEDGER DELTA section: new rows for the ledger table (| ID | Issue | Risk | Round found | Status |), IDs prefixed REQ-, status 'open'. I will land it verbatim on your behalf.
+3. Exactly one final verdict line: 'VERDICT: no major issues' or 'VERDICT: <N> issues open' where <N> = count of open formal ledger rows.
+Do not modify the requirement doc itself. Write the review in Chinese (the project language); keep the VERDICT line and IDs in English.
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-08T09:55:10.446785Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-08T09:55:10.649735Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-08T09:55:11.099596Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-08T09:55:11.653115Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-08T09:55:12.616017Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-08T09:55:14.313862Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-08T09:55:17.733884Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: V5wrOiKpLwzA
+codex
+我会先读取需求、知识库、既有问题账和相关代码，核对需求是否能直接驱动实现。当前环境是只读，我只会查看文件并在最后输出可保存的 Markdown。
+exec
+/usr/bin/zsh -lc 'rg --files' in /root/terra/legacy-lab/inherited-poll
+exec
+/usr/bin/zsh -lc "sed -n '1,240p' apriori/truth/polls.md" in /root/terra/legacy-lab/inherited-poll
+exec
+/usr/bin/zsh -lc "sed -n '1,240p' requirement/req-v1.md" in /root/terra/legacy-lab/inherited-poll
+exec
+/usr/bin/zsh -lc "sed -n '1,240p' apriori/review/vote-dedup-issues.md" in /root/terra/legacy-lab/inherited-poll
+ succeeded in 120ms:
+requirement/req-v1.md
+server.js
+CLAUDE.md
+package.json
+lib/polls.js
+lib/store.js
+test/store.test.js
+test/e2e.test.js
+README.md
+test/polls.test.js
+test/server.test.js
+public/poll.html
+public/style.css
+public/admin.html
+public/index.html
+apriori/process-config.md
+apriori/runbook.md
+apriori/truth/polls.md
+apriori/review/vote-dedup-issues.md
+apriori/review/vote-dedup-req-review-v1-raw.txt
+apriori/changes/vote-dedup/flow-state.md
+
+ succeeded in 112ms:
+# KB — polls (whole app: HTTP layer + domain logic + persistence + frontend)
+
+> Reverse-captured (P10) — the inherited project had no `apriori/truth/` docs.
+> Code scope read: `server.js`, `lib/polls.js`, `lib/store.js`, `public/*.html`, `test/*.js`.
+> **Human/heterogeneous check required before this feeds any downstream step (KB pre-check rule).**
+
+## Contract (code-is-truth)
+
+`source-commit: 3f1d30954a9d5b500f8a6708b9070d51e045aac5`
+
+### Public interfaces (HTTP API — `server.js`)
+
+Zero external dependencies (Node builtins only); JSON in/out, `charset=utf-8`; errors are
+`{ error: <Chinese message> }` with the `PollError.status` code, or 500 + generic message + `console.error`
+for unexpected throws.
+
+| Method | Path | Body | Response |
+|---|---|---|---|
+| GET | `/` | — | `public/index.html` (create-poll page) |
+| GET | `/style.css` | — | stylesheet |
+| GET | `/poll/:id` | — | `public/poll.html` (id not validated against store — page loads, then fetches JSON and shows the error) |
+| GET | `/admin/:token` | — | `public/admin.html` (same: token validity checked only by the JSON call the page makes) |
+| POST | `/api/polls` | `{question, options[], multiple?, deadline?}` | 201 `{id, adminToken}` |
+| GET | `/api/polls/:id` | — | 200 public view (see `view()` below) or 404 |
+| POST | `/api/polls/:id/vote` | `{choices:[int,...]}` | 200 public view, or 400/404/409 |
+| GET | `/api/admin/:token` | — | 200 view (by admin token) or 404 |
+| POST | `/api/admin/:token/close` | — | 200 view (`closed:true`) or 404 |
+
+Route matching: `id` and `token` path segments are matched by `^[a-z0-9]+$` at the router level (`server.js`);
+actual existence is checked inside `lib/polls.js`. No auth/session of any kind — `adminToken` is a bearer
+capability string embedded in the admin URL, nothing else gates `/api/admin/*`.
+
+### Domain logic (`lib/polls.js`)
+
+- `create(input)` — validates `question` (non-empty, trimmed, ≤200 chars) and `options` (trim+drop-empty,
+  2..20 items, each ≤100 chars); optional `deadline` must parse and be strictly in the future (`now()` is
+  injectable for tests). Generates `id` (6 chars) and `adminToken` (16 chars) from a shared 31-char alphabet
+  (`abcdefghjkmnpqrstuvwxyz23456789` — visually-ambiguous chars `i l o 0 1` excluded) via `crypto.randomBytes`.
+  Stores the full poll object (**including `adminToken`**) via `store.put`.
+- `view(poll)` — the ONLY public projection: strips `adminToken` and the raw `votes` array, returns
+  `{id, question, options, multiple, deadline, closed, open, counts, total}`. `counts[i]` = number of
+  votes whose `choices` array includes index `i`; `total` = `votes.length` (i.e. number of vote *events*,
+  not the sum of counts — a multi-select vote counts once toward `total` but toward multiple `counts[i]`).
+- `isOpen(poll)` = `!closed && (!deadline || now() < deadline)`.
+- `vote(id, choices)` — **current behavior has NO duplicate-vote defense of any kind server-side.**
+  Checks (in order): poll exists (404) → not closed (409 `投票已关闭`) → not past deadline (409
+  `投票已过截止时间`) → `choices` is a non-empty array (400) → every choice is an integer in
+  `[0, options.length)` and choices has no duplicate indices (400 `选项不合法`) → single-select poll
+  has exactly one choice (400). On success: `poll.votes.push(choices)` — **unconditionally, no caller
+  identity is recorded or checked** — then persists and returns the view. Nothing in this function, the
+  store, or the HTTP layer associates a vote with a browser/cookie/IP; the same `curl -X POST .../vote`
+  can be replayed unboundedly and every call succeeds and increments the count (verified empirically:
+  3 identical curl-equivalent POSTs against a fresh poll → 3× 200, `total` 1→2→3).
+- `findByToken(token)` — **linear scan** over every stored poll (`store.all()`) comparing `adminToken`;
+  fine at current scale, would need an index if poll count grows large.
+- `adminView` / `close` both resolve the poll via `findByToken` — no separate rate limiting or attempt
+  cap on token guessing (16 random chars from a 31-char alphabet is the only defense).
+
+### Data model / persistence (`lib/store.js`)
+
+- One JSON file: `<dataDir>/polls.json` — a flat object keyed by poll `id`, values are full poll records
+  (including `adminToken` and raw `votes`). Loaded once into memory at `createStore()` time; every `put`
+  rewrites the **entire file** (no per-poll files, no append log).
+- **Three moments:**
+  - *init*: `load()` reads the whole file synchronously at store construction; missing file → start
+    from `{}`; JSON parse failure → the corrupt file is renamed to `<file>.bak-<timestamp>Z` and a fresh
+    `{}` is used (logged via `console.error`, not surfaced to any HTTP caller).
+  - *runtime update*: `put(poll)` mutates the in-memory object, then `save()` — write to `<file>.tmp`,
+    `fs.renameSync` over the real file. This is an atomic rename (no torn writes, no leftover `.tmp` on
+    success — asserted by `store.test.js`), but **`save()` does not call `fsync`** on the temp file or the
+    containing directory, so this store makes no crash-durability guarantee across a real power loss /
+    kill -9 — only "no partial/corrupt file under normal process exit". Nothing in the code or tests
+    claims durability beyond that; do not read one in.
+  - *cleanup/invalidation*: none — there is no TTL, no poll deletion, no vote retraction. `data/` is
+    gitignored; nothing in the app itself prunes it.
+- Poll record shape: `{id, adminToken, question, options[], multiple, deadline (ISO string|null),
+  closed, votes: [ [choiceIndex,...], ... ], createdAt}`. `votes` entries carry **no voter identity, no
+  timestamp** — just the chosen index array from that call.
+
+### Frontend (`public/*.html`)
+
+- Zero build step, inline `<script>` per page, no framework. `poll.html`'s only anti-repeat-vote
+  mechanism is `localStorage.setItem('voted:'+pollId, '1')` set client-side **after** a successful vote
+  response — purely a UX nicety (hides the form, shows "你已经投过票了"); trivially bypassed (private
+  window, different browser, `localStorage.clear()`, or simply calling the API directly, e.g. curl).
+  The server currently doesn't know or care whether the browser thinks it already voted.
+  Polling for live results: both `poll.html` and `admin.html` re-`fetch` their view every 3s
+  (`setInterval(load, 3000)`), no websockets/SSE.
+- `index.html` (create) and `admin.html` (manage) have no relevant state beyond what's described above.
+- No cookies are set or read anywhere in the current codebase (frontend or backend) — confirmed by
+  grep: no `document.cookie`, no `Set-Cookie` header, no cookie-parsing code exists yet.
+
+### Dependencies / tooling
+
+- Runtime: zero npm dependencies (`package.json` has none listed); Node ≥18 required (`engines`),
+  actually exercised on Node 24 in this sandbox.
+- Tests: `node --test` (builtin runner) over `test/store.test.js`, `test/polls.test.js`,
+  `test/server.test.js` (18 tests, all green as of `source-commit`). `test/e2e.test.js` is a separate
+  `npm run test:e2e` target requiring a **globally** installed `playwright` (`NODE_PATH` trick — not a
+  project dependency) with chromium cached; not part of the default `npm test`.
+- No linter/formatter config found in the repo (no `.eslintrc*`, no `package.json` lint script).
+
+### Known pitfalls for anyone touching this module
+
+1. **No server-side vote dedup** (the subject of the in-flight change) — see `vote()` above.
+2. `store.save()` rewrites the whole file on every single vote — fine at poll-tool scale, would not
+   scale to high write volume.
+3. `adminToken` is stored in the same plain record as everything else and is returned verbatim from
+   `view()`'s caller (`create`) but never leaked by `view()` itself — any change to `view()` must keep
+   stripping it.
+4. `findByToken` is O(n) over all polls — a hot path if this ever needs to scale.
+5. Chinese user-facing error strings are asserted verbatim in tests (`server.test.js`, `polls.test.js`)
+   — changing message text is a breaking test change, not just a UX tweak.
+6. `data/` (and hence `data/polls.json`) is gitignored — the file present in the working tree is
+   sample/dev data, not a fixture the tests depend on (tests use `fs.mkdtempSync` scratch dirs).
+
+## Decisions (doc-is-truth)
+
+No `apriori/` decision records existed before this reverse-capture. Two design/plan documents did
+exist earlier in this project's history but were deleted before this KB was written (git history only):
+`docs/superpowers/specs/2026-07-07-quick-poll-design.md` (commit `4874ec1`) and
+`docs/superpowers/plans/2026-07-08-quick-poll.md` (commit `1ce4b47`), removed in `3f1d309 chore: strip
+tooling remnants`. Their content is recoverable via `git show <commit>:<path>` if needed, but nothing
+in them has been re-confirmed as active intent here — **treat as historical, not authoritative**, and
+mark the absence of any surviving decision record explicitly:
+
+- `DEC-0` — status: **needs human confirmation**. No confirmed, currently-active design decision or
+  invariant is on record for this module. Anything that looks like a deliberate choice in the Contract
+  section above (e.g. "cookie-level anti-replay, no login", "file-backed store, no DB") is inferred from
+  code shape only, not from a documented decision — do not treat code shape as proof of intent.
+
+ succeeded in 108ms:
+# req-v1 — vote-dedup：服务端防重复投票（cookie 级别）
+
+- change: vote-dedup
+- tier: medium · track: harden
+- 目标 lineage: **master**（单分支仓库,直接落 master,无 merge 禁忌）
+- 现状事实来源: `apriori/truth/polls.md`（已经人扫过——注意其 DEC-0:本项目没有任何存活的设计决策记录,现状描述以代码为准）
+
+## 1. 背景与问题（现状 A）
+
+当前"防重复投票"只存在于前端:`poll.html` 投票成功后写 `localStorage['voted:'+id]`,仅用于隐藏表单。服务端 `vote()` 对调用者身份零感知——同一请求用 curl 原样重放,每次都 200 并计票(已实测:3 次重放 → total 1→2→3)。服务端目前没有任何 cookie 的读写代码。
+
+## 2. 目标（目标态 B）
+
+服务端以**匿名、不可伪造的投票者标识**(经 HttpOnly cookie 承载)为准,拒绝同一标识对同一投票的重复投票。不引入登录/账号体系。
+
+### 行为要求
+
+- B1 **标识下发**:客户端首次请求投票数据(`GET /api/polls/:id`)时,服务端生成匿名投票者标识,经 `Set-Cookie`(HttpOnly、SameSite=Lax、Path=/、长有效期)下发;已带有效标识的请求不重复下发。标识全站一个(不按 poll 区分)。
+- B2 **标识不可伪造**:标识必须带服务端签名(HMAC 或等价),自造/篡改的值视同无标识。签名密钥持久化在数据目录,服务重启后既有 cookie 仍有效。
+- B3 **投票必须携带有效标识**:`POST /api/polls/:id/vote` 无 cookie 或标识非法 → 拒绝(4xx + 明确错误文案),**不计票**。正常浏览器用户不受影响(打开页面即已领到标识)。
+- B4 **同一标识同一投票只能投一次**:重复投票 → `409` + 明确文案,票数不变。首次投票成功时,服务端将"该标识已投过该 poll"随 poll 数据一起落盘;重启后依然防重复。
+- B5 **跨投票互不影响**:同一标识可对不同 poll 各投一票。
+- B6 **前端以服务端为准**:公开视图对携带已投标识的请求返回 `voted: true`;`poll.html` 据此显示"已投过"状态(localStorage 可保留为辅助,但判定以服务端字段为准);服务端 4xx/409 拒绝必须以可见文案呈现给用户,不得吞掉。
+- B7 **隐私**:标识是随机匿名值,不含且不派生任何个人信息;不记录、不使用 IP;投票内容与标识的绑定仅用于防重复判定,不在任何视图/接口中暴露"谁投了什么"。
+
+### 验收标准（全部可测,if…then）
+
+- AC1 无 cookie 的客户端 `GET /api/polls/:id` → 应答含 `Set-Cookie`(HttpOnly);带该 cookie `POST …/vote` 合法选项 → 200,票数 +1。
+- AC2 同一 cookie 对同一 poll 再次 `POST …/vote` → 409,错误文案明确表达"已投过",`total` 不变。
+- AC3 含 cookie 的同一 curl 请求原样重放 N 次 → 仅第一次 200,其余全部 409,票数只 +1(与你复现漏洞用的方式一一对应)。
+- AC4 不带 cookie 的 `POST …/vote` → 4xx 拒绝且不计票;伪造/篡改签名的 cookie 同样拒绝且不计票。
+- AC5 同一 cookie 对另一个 poll 投票 → 200(跨 poll 不互相误伤)。
+- AC6 投票成功后重启服务(同一数据目录):同一 cookie 再投同一 poll → 仍 409;票数与重启前一致。**验证方式必须是重启后经应用自身的加载路径读回**(新起 server/store 实例走 API 断言),不是直接翻 JSON 文件。
+- AC7 浏览器端到端:投完票刷新页面显示"已投过";**清掉 localStorage 后刷新仍显示"已投过"**(证明判定来自服务端);无 cookie 直连 POST 的拒绝文案对用户可见。
+- AC8 既有行为不回归:建投票校验、计票口径(`counts`/`total` 语义)、关闭、截止、管理链接等现有测试语义全部保持;`view()` 继续不泄露 `adminToken` 与原始 `votes`,也不得泄露投票者标识与"谁投了什么"。
+
+### 防护边界（明确接受的限制——不是本次要解决的问题）
+
+- 清 cookie、换浏览器、隐身窗口可以再投——cookie 级别防护的固有上限,需求方已明确接受("cookie 级别就行")。
+- 脚本可以"先 GET 领新标识再 POST"绕过(每票多一次请求的成本,但可自动化)。真正抗机器人需要登录/验证码/IP 限速,均明确不做。
+- 本文档中"防重复"的准确含义是:**同一浏览器会话标识不能重复投票,且裸调 API(不领标识/重放同一标识)不能刷票**;不承诺"一人一票"。
+
+## 3. Out of scope（本次明确不做）
+
+- 登录、账号、验证码、设备指纹、IP 级限速或任何基于 IP 的判定。
+- 管理端查看"谁投了什么"(继续保持匿名聚合结果)。
+- 历史数据迁移:既有 `data/polls.json` 中的旧投票无标识,保持原样计票,不追溯、不清洗。
+- store 层的 fsync/掉电级持久性改造(KB 已记录现状为原子改名、无 fsync;本次不改变该保证等级,也不得在文档中声称超出该等级的保证)。
+- 管理接口(`/api/admin/*`)的防护改造。
+
+## 4. 开放问题（供评审）
+
+- Q1 拒绝无标识 POST 用 400 还是 403?(倾向 403:语义是"拒绝该来源",非"格式错误")
+- Q2 `GET /api/polls/:id` 之外,`GET /poll/:id` 页面请求要不要也下发 cookie?(倾向只在 API 层下发,页面加载后必然会调 API,行为等价且实现集中)
+- Q3 既有单测中 `polls.vote(id, choices)` 的领域层签名将变(需带 voter 标识),测试改写的口径在 STEP2 定。
+
+ succeeded in 119ms:
+# Issue ledger — vote-dedup
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+
+codex
+需求本身已经覆盖了不少核心路径；我接下来读实现和测试，重点找与当前代码模型冲突、验收不可测或边界未声明的位置。
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' server.js" in /root/terra/legacy-lab/inherited-poll
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' lib/store.js" in /root/terra/legacy-lab/inherited-poll
+exec
+/usr/bin/zsh -lc "sed -n '1,280p' lib/polls.js" in /root/terra/legacy-lab/inherited-poll
+exec
+/usr/bin/zsh -lc "sed -n '1,300p' test/server.test.js" in /root/terra/legacy-lab/inherited-poll
+exec
+/usr/bin/zsh -lc "sed -n '1,280p' test/polls.test.js" in /root/terra/legacy-lab/inherited-poll
+ succeeded in 0ms:
+'use strict';
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const { createPolls, PollError } = require('../lib/polls');
+
+function memStore() {
+  const data = {};
+  return {
+    get: (id) => data[id],
+    all: () => data,
+    put: (p) => {
+      data[p.id] = p;
+    },
+  };
+}
+
+function make(now) {
+  return createPolls(memStore(), now);
+}
+
+test('create：合法输入生成完整 poll 并存入 store', () => {
+  const store = memStore();
+  const polls = createPolls(store);
+  const poll = polls.create({
+    question: ' 周五团建去哪 ',
+    options: ['烤肉', ' 火锅 ', '', '轰趴馆'],
+    multiple: true,
+    deadline: null,
+  });
+  assert.match(poll.id, /^[a-z2-9]{6}$/);
+  assert.match(poll.adminToken, /^[a-z2-9]{16}$/);
+  assert.equal(poll.question, '周五团建去哪');
+  assert.deepEqual(poll.options, ['烤肉', '火锅', '轰趴馆']);
+  assert.equal(poll.multiple, true);
+  assert.equal(poll.deadline, null);
+  assert.equal(poll.closed, false);
+  assert.deepEqual(poll.votes, []);
+  assert.equal(store.get(poll.id), poll);
+});
+
+test('create：问题为空 / 超 200 字被拒', () => {
+  const polls = make();
+  assert.throws(() => polls.create({ question: '  ', options: ['a', 'b'] }), (e) => e instanceof PollError && e.status === 400 && e.message === '问题不能为空');
+  assert.throws(() => polls.create({ question: 'x'.repeat(201), options: ['a', 'b'] }), (e) => e.status === 400 && e.message === '问题不能超过 200 字');
+});
+
+test('create：选项数量与长度校验', () => {
+  const polls = make();
+  assert.throws(() => polls.create({ question: 'q', options: ['只有一个', ' '] }), (e) => e.status === 400 && e.message === '至少需要 2 个选项');
+  assert.throws(() => polls.create({ question: 'q', options: Array.from({ length: 21 }, (_, i) => `选项${i}`) }), (e) => e.status === 400 && e.message === '选项不能超过 20 个');
+  assert.throws(() => polls.create({ question: 'q', options: ['a', 'b'.repeat(101)] }), (e) => e.status === 400 && e.message === '单个选项不能超过 100 字');
+});
+
+test('create：deadline 非法或不在未来被拒；合法则存 ISO 串', () => {
+  const now = () => new Date('2026-07-08T12:00:00Z');
+  const polls = make(now);
+  assert.throws(() => polls.create({ question: 'q', options: ['a', 'b'], deadline: '不是时间' }), (e) => e.status === 400 && e.message === '截止时间格式不正确');
+  assert.throws(() => polls.create({ question: 'q', options: ['a', 'b'], deadline: '2026-07-08T11:00:00Z' }), (e) => e.status === 400 && e.message === '截止时间必须晚于当前时间');
+  const poll = polls.create({ question: 'q', options: ['a', 'b'], deadline: '2026-07-09T12:00:00Z' });
+  assert.equal(poll.deadline, new Date('2026-07-09T12:00:00Z').toISOString());
+});
+
+test('getView：公开视图字段齐全、计票正确、不含 adminToken', () => {
+  const polls = make();
+  const poll = polls.create({ question: 'q', options: ['a', 'b', 'c'], multiple: true });
+  polls.vote(poll.id, [0]);
+  polls.vote(poll.id, [0, 2]);
+  const view = polls.getView(poll.id);
+  assert.deepEqual(view.counts, [2, 0, 1]);
+  assert.equal(view.total, 2);
+  assert.equal(view.open, true);
+  assert.equal(view.closed, false);
+  assert.ok(!('adminToken' in view));
+  assert.ok(!('votes' in view));
+});
+
+test('getView：不存在的 id 抛 404', () => {
+  const polls = make();
+  assert.throws(() => polls.getView('nope42'), (e) => e.status === 404 && e.message === '投票不存在');
+});
+
+test('vote：单选只允许一个选项；choices 校验', () => {
+  const polls = make();
+  const poll = polls.create({ question: 'q', options: ['a', 'b'] });
+  assert.throws(() => polls.vote(poll.id, [0, 1]), (e) => e.status === 400 && e.message === '该投票为单选，只能选择一个选项');
+  assert.throws(() => polls.vote(poll.id, []), (e) => e.status === 400 && e.message === '请至少选择一个选项');
+  assert.throws(() => polls.vote(poll.id, undefined), (e) => e.status === 400 && e.message === '请至少选择一个选项');
+  assert.throws(() => polls.vote(poll.id, [5]), (e) => e.status === 400 && e.message === '选项不合法');
+  assert.throws(() => polls.vote(poll.id, [0.5]), (e) => e.status === 400 && e.message === '选项不合法');
+  const view = polls.vote(poll.id, [1]);
+  assert.deepEqual(view.counts, [0, 1]);
+});
+
+test('vote：多选可含多个不重复下标，重复被拒', () => {
+  const polls = make();
+  const poll = polls.create({ question: 'q', options: ['a', 'b'], multiple: true });
+  assert.throws(() => polls.vote(poll.id, [0, 0]), (e) => e.status === 400 && e.message === '选项不合法');
+  const view = polls.vote(poll.id, [0, 1]);
+  assert.deepEqual(view.counts, [1, 1]);
+  assert.equal(view.total, 1);
+});
+
+test('vote：已关闭 409；过截止时间 409 且 open=false', () => {
+  let t = new Date('2026-07-08T12:00:00Z');
+  const polls = make(() => t);
+  const p1 = polls.create({ question: 'q', options: ['a', 'b'] });
+  const closed = polls.create({ question: 'q3', options: ['a', 'b'] });
+  polls.close(closed.adminToken);
+  assert.throws(() => polls.vote(closed.id, [0]), (e) => e.status === 409 && e.message === '投票已关闭');
+
+  const dated = polls.create({ question: 'q4', options: ['a', 'b'], deadline: '2026-07-08T13:00:00Z' });
+  t = new Date('2026-07-08T13:00:01Z');
+  assert.throws(() => polls.vote(dated.id, [0]), (e) => e.status === 409 && e.message === '投票已过截止时间');
+  assert.equal(polls.getView(dated.id).open, false);
+  assert.equal(polls.getView(p1.id).open, true);
+});
+
+test('adminView / close：按 token 取视图、关闭投票；未知 token 404', () => {
+  const polls = make();
+  const poll = polls.create({ question: 'q', options: ['a', 'b'] });
+  const view = polls.adminView(poll.adminToken);
+  assert.equal(view.id, poll.id);
+  assert.ok(!('adminToken' in view));
+  const closedView = polls.close(poll.adminToken);
+  assert.equal(closedView.closed, true);
+  assert.equal(closedView.open, false);
+  assert.throws(() => polls.adminView('0'.repeat(16)), (e) => e.status === 404 && e.message === '管理链接不存在');
+  assert.throws(() => polls.close('0'.repeat(16)), (e) => e.status === 404 && e.message === '管理链接不存在');
+});
+
+ succeeded in 107ms:
+'use strict';
+const http = require('node:http');
+const fs = require('node:fs');
+const path = require('node:path');
+const { createStore } = require('./lib/store');
+const { createPolls, PollError } = require('./lib/polls');
+
+const PUBLIC_DIR = path.join(__dirname, 'public');
+
+function sendJson(res, status, body) {
+  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
+  res.end(JSON.stringify(body));
+}
+
+function sendFile(res, name, type) {
+  res.writeHead(200, { 'Content-Type': `${type}; charset=utf-8` });
+  res.end(fs.readFileSync(path.join(PUBLIC_DIR, name)));
+}
+
+function readJsonBody(req) {
+  return new Promise((resolve, reject) => {
+    let raw = '';
+    req.on('data', (chunk) => {
+      raw += chunk;
+      if (raw.length > 1e6) req.destroy();
+    });
+    req.on('end', () => {
+      try {
+        resolve(raw ? JSON.parse(raw) : {});
+      } catch {
+        reject(new PollError(400, '请求格式不正确'));
+      }
+    });
+    req.on('error', reject);
+  });
+}
+
+function createServer(dataDir) {
+  const store = createStore(dataDir);
+  const polls = createPolls(store);
+
+  return http.createServer(async (req, res) => {
+    const { pathname } = new URL(req.url, 'http://localhost');
+    const get = req.method === 'GET';
+    const postReq = req.method === 'POST';
+    let m;
+    try {
+      if (get && pathname === '/') return sendFile(res, 'index.html', 'text/html');
+      if (get && pathname === '/style.css') return sendFile(res, 'style.css', 'text/css');
+      if (get && /^\/poll\/[a-z0-9]+$/.test(pathname)) return sendFile(res, 'poll.html', 'text/html');
+      if (get && /^\/admin\/[a-z0-9]+$/.test(pathname)) return sendFile(res, 'admin.html', 'text/html');
+
+      if (postReq && pathname === '/api/polls') {
+        const body = await readJsonBody(req);
+        const poll = polls.create(body);
+        return sendJson(res, 201, { id: poll.id, adminToken: poll.adminToken });
+      }
+      if (get && (m = pathname.match(/^\/api\/polls\/([a-z0-9]+)$/))) {
+        return sendJson(res, 200, polls.getView(m[1]));
+      }
+      if (postReq && (m = pathname.match(/^\/api\/polls\/([a-z0-9]+)\/vote$/))) {
+        const body = await readJsonBody(req);
+        return sendJson(res, 200, polls.vote(m[1], body.choices));
+      }
+      if (get && (m = pathname.match(/^\/api\/admin\/([a-z0-9]+)$/))) {
+        return sendJson(res, 200, polls.adminView(m[1]));
+      }
+      if (postReq && (m = pathname.match(/^\/api\/admin\/([a-z0-9]+)\/close$/))) {
+        return sendJson(res, 200, polls.close(m[1]));
+      }
+      return sendJson(res, 404, { error: '页面不存在' });
+    } catch (err) {
+      if (err instanceof PollError) return sendJson(res, err.status, { error: err.message });
+      console.error(err);
+      return sendJson(res, 500, { error: '服务器内部错误' });
+    }
+  });
+}
+
+module.exports = { createServer };
+
+if (require.main === module) {
+  const port = Number(process.env.PORT) || 3000;
+  createServer(path.join(__dirname, 'data')).listen(port, '0.0.0.0', () => {
+    console.log(`快速投票已启动: http://localhost:${port}`);
+  });
+}
+
+ succeeded in 115ms:
+'use strict';
+const fs = require('node:fs');
+const path = require('node:path');
+
+function createStore(dataDir) {
+  const file = path.join(dataDir, 'polls.json');
+  const data = load();
+
+  function load() {
+    if (!fs.existsSync(file)) return {};
+    try {
+      return JSON.parse(fs.readFileSync(file, 'utf8'));
+    } catch {
+      const backup = `${file}.bak-${Date.now()}`;
+      fs.renameSync(file, backup);
+      console.error(`polls.json 损坏，已备份为 ${backup}，从空数据开始`);
+      return {};
+    }
+  }
+
+  function save() {
+    fs.mkdirSync(dataDir, { recursive: true });
+    const tmp = `${file}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(data, null, 2));
+    fs.renameSync(tmp, file);
+  }
+
+  return {
+    get(id) {
+      return data[id];
+    },
+    all() {
+      return data;
+    },
+    put(poll) {
+      data[poll.id] = poll;
+      save();
+    },
+  };
+}
+
+module.exports = { createStore };
+
+ succeeded in 122ms:
+'use strict';
+const crypto = require('node:crypto');
+
+class PollError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+}
+
+const ID_CHARS = 'abcdefghjkmnpqrstuvwxyz23456789';
+
+function randomId(length) {
+  const bytes = crypto.randomBytes(length);
+  let out = '';
+  for (let i = 0; i < length; i++) out += ID_CHARS[bytes[i] % ID_CHARS.length];
+  return out;
+}
+
+function createPolls(store, now = () => new Date()) {
+  function create(input) {
+    const question = String(input.question ?? '').trim();
+    if (!question) throw new PollError(400, '问题不能为空');
+    if (question.length > 200) throw new PollError(400, '问题不能超过 200 字');
+
+    const raw = Array.isArray(input.options) ? input.options : [];
+    const options = raw.map((o) => String(o).trim()).filter(Boolean);
+    if (options.length < 2) throw new PollError(400, '至少需要 2 个选项');
+    if (options.length > 20) throw new PollError(400, '选项不能超过 20 个');
+    if (options.some((o) => o.length > 100)) throw new PollError(400, '单个选项不能超过 100 字');
+
+    let deadline = null;
+    if (input.deadline) {
+      const d = new Date(input.deadline);
+      if (Number.isNaN(d.getTime())) throw new PollError(400, '截止时间格式不正确');
+      if (d <= now()) throw new PollError(400, '截止时间必须晚于当前时间');
+      deadline = d.toISOString();
+    }
+
+    const poll = {
+      id: randomId(6),
+      adminToken: randomId(16),
+      question,
+      options,
+      multiple: Boolean(input.multiple),
+      deadline,
+      closed: false,
+      votes: [],
+      createdAt: now().toISOString(),
+    };
+    store.put(poll);
+    return poll;
+  }
+
+  function isOpen(poll) {
+    if (poll.closed) return false;
+    if (poll.deadline && now() >= new Date(poll.deadline)) return false;
+    return true;
+  }
+
+  function view(poll) {
+    const counts = poll.options.map(
+      (_, i) => poll.votes.filter((v) => v.includes(i)).length
+    );
+    return {
+      id: poll.id,
+      question: poll.question,
+      options: poll.options,
+      multiple: poll.multiple,
+      deadline: poll.deadline,
+      closed: poll.closed,
+      open: isOpen(poll),
+      counts,
+      total: poll.votes.length,
+    };
+  }
+
+  function getPoll(id) {
+    const poll = store.get(id);
+    if (!poll) throw new PollError(404, '投票不存在');
+    return poll;
+  }
+
+  function getView(id) {
+    return view(getPoll(id));
+  }
+
+  function vote(id, choices) {
+    const poll = getPoll(id);
+    if (poll.closed) throw new PollError(409, '投票已关闭');
+    if (!isOpen(poll)) throw new PollError(409, '投票已过截止时间');
+    if (!Array.isArray(choices) || choices.length === 0) {
+      throw new PollError(400, '请至少选择一个选项');
+    }
+    const validIndex = (c) => Number.isInteger(c) && c >= 0 && c < poll.options.length;
+    if (!choices.every(validIndex) || new Set(choices).size !== choices.length) {
+      throw new PollError(400, '选项不合法');
+    }
+    if (!poll.multiple && choices.length > 1) {
+      throw new PollError(400, '该投票为单选，只能选择一个选项');
+    }
+    poll.votes.push(choices);
+    store.put(poll);
+    return view(poll);
+  }
+
+  function findByToken(token) {
+    const all = store.all();
+    for (const id of Object.keys(all)) {
+      if (all[id].adminToken === token) return all[id];
+    }
+    throw new PollError(404, '管理链接不存在');
+  }
+
+  function adminView(token) {
+    return view(findByToken(token));
+  }
+
+  function close(token) {
+    const poll = findByToken(token);
+    poll.closed = true;
+    store.put(poll);
+    return view(poll);
+  }
+
+  return { create, getView, vote, adminView, close };
+}
+
+module.exports = { createPolls, PollError };
+
+ succeeded in 128ms:
+'use strict';
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { createServer } = require('../server');
+
+async function startServer(t) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'poll-srv-'));
+  const server = createServer(dir);
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  return `http://127.0.0.1:${server.address().port}`;
+}
+
+async function post(base, p, body) {
+  const res = await fetch(base + p, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  return { status: res.status, body: await res.json() };
+}
+
+test('全流程：建投票→投票→查结果→关闭→再投被拒', async (t) => {
+  const base = await startServer(t);
+
+  const created = await post(base, '/api/polls', {
+    question: '周五团建去哪',
+    options: ['烤肉', '火锅', '轰趴馆'],
+    multiple: false,
+  });
+  assert.equal(created.status, 201);
+  const { id, adminToken } = created.body;
+  assert.match(id, /^[a-z2-9]{6}$/);
+  assert.match(adminToken, /^[a-z2-9]{16}$/);
+
+  const voted = await post(base, `/api/polls/${id}/vote`, { choices: [1] });
+  assert.equal(voted.status, 200);
+  assert.deepEqual(voted.body.counts, [0, 1, 0]);
+
+  const view = await fetch(`${base}/api/polls/${id}`).then((r) => r.json());
+  assert.equal(view.total, 1);
+  assert.equal(view.open, true);
+  assert.ok(!('adminToken' in view));
+
+  const admin = await fetch(`${base}/api/admin/${adminToken}`).then((r) => r.json());
+  assert.equal(admin.id, id);
+
+  const closed = await post(base, `/api/admin/${adminToken}/close`, {});
+  assert.equal(closed.status, 200);
+  assert.equal(closed.body.closed, true);
+
+  const rejected = await post(base, `/api/polls/${id}/vote`, { choices: [0] });
+  assert.equal(rejected.status, 409);
+  assert.equal(rejected.body.error, '投票已关闭');
+});
+
+test('错误路径：404 / 校验 400 / 非法 JSON 400', async (t) => {
+  const base = await startServer(t);
+
+  const missing = await fetch(`${base}/api/polls/nope42`);
+  assert.equal(missing.status, 404);
+  assert.equal((await missing.json()).error, '投票不存在');
+
+  const invalid = await post(base, '/api/polls', { question: '', options: ['a', 'b'] });
+  assert.equal(invalid.status, 400);
+  assert.equal(invalid.body.error, '问题不能为空');
+
+  const badJson = await fetch(`${base}/api/polls`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{broken',
+  });
+  assert.equal(badJson.status, 400);
+  assert.equal((await badJson.json()).error, '请求格式不正确');
+
+  const unknown = await fetch(`${base}/api/what`);
+  assert.equal(unknown.status, 404);
+  assert.equal((await unknown.json()).error, '页面不存在');
+});
+
+test('页面路由：/、/poll/:id、/admin/:token 返回 HTML', async (t) => {
+  const base = await startServer(t);
+  for (const p of ['/', '/poll/abc123', '/admin/abcdefgh23456789']) {
+    const res = await fetch(base + p);
+    assert.equal(res.status, 200, p);
+    assert.match(res.headers.get('content-type'), /text\/html/);
+  }
+});
+
+test('前端资产：style.css 可达；页面含真实应用标记', async (t) => {
+  const base = await startServer(t);
+  const css = await fetch(`${base}/style.css`);
+  assert.equal(css.status, 200);
+  assert.match(css.headers.get('content-type'), /text\/css/);
+
+  const index = await fetch(`${base}/`).then((r) => r.text());
+  assert.match(index, /id="create"/);
+  const poll = await fetch(`${base}/poll/abc123`).then((r) => r.text());
+  assert.match(poll, /id="results"/);
+  const admin = await fetch(`${base}/admin/abcdefgh23456789`).then((r) => r.text());
+  assert.match(admin, /id="close"/);
+});
+
+exec
+/usr/bin/zsh -lc "sed -n '1,240p' test/store.test.js" in /root/terra/legacy-lab/inherited-poll
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' test/e2e.test.js" in /root/terra/legacy-lab/inherited-poll
+exec
+/usr/bin/zsh -lc "sed -n '1,320p' public/poll.html" in /root/terra/legacy-lab/inherited-poll
+exec
+/usr/bin/zsh -lc "sed -n '1,220p' package.json" in /root/terra/legacy-lab/inherited-poll
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' apriori/review/vote-dedup-req-review-v1-raw.txt" in /root/terra/legacy-lab/inherited-poll
+ succeeded in 0ms:
+Reading additional input from stdin...
+OpenAI Codex v0.142.3
+--------
+workdir: /root/terra/legacy-lab/inherited-poll
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f4127-1cdf-7e32-a569-e568fe86ff58
+--------
+user
+You are a senior requirements reviewer. Review the requirement doc; the goal is to make it precise enough to hand straight to an AI for implementation.
+[Input]
+* Requirement doc: requirement/req-v1.md
+* System knowledge base: apriori/truth/polls.md
+* Issue ledger: apriori/review/vote-dedup-issues.md
+* You may also read the actual code (server.js, lib/, public/, test/) to check the doc against reality.
+[Review dimensions, give a verdict on each]
+1. Is target state B clear and unambiguous
+2. Are edge cases and exception paths covered (null, out-of-range, concurrency, timeout, failure rollback)
+3. Are there 'implied but undeclared' state changes or side effects
+4. Is each acceptance criterion testable (expressible as 'if … then …')
+5. Does it conflict with current state A (the KB was provided)
+6. Is the target lineage declared, and does it match the repo's reality
+[Scope] Count toward the verdict only: ambiguous target state, untestable acceptance criteria, missing edge/boundary coverage, conflicts with state A. Everything else — label advisory. Correctness/security findings can never be advisory. Advisory findings do NOT count in the verdict's <N>.
+[Output — IMPORTANT: your sandbox is read-only, so DO NOT try to write files. Instead print, in your final message:]
+1. The full markdown content of the review doc (issue list by dimension: description / risk / suggested fix; advisories listed separately) — I will save it verbatim to apriori/review/vote-dedup-req-review-v1.md on your behalf.
+2. A LEDGER DELTA section: new rows for the ledger table (| ID | Issue | Risk | Round found | Status |), IDs prefixed REQ-, status 'open'. I will land it verbatim on your behalf.
+3. Exactly one final verdict line: 'VERDICT: no major issues' or 'VERDICT: <N> issues open' where <N> = count of open formal ledger rows.
+Do not modify the requirement doc itself. Write the review in Chinese (the project language); keep the VERDICT line and IDs in English.
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-08T09:55:10.446785Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-08T09:55:10.649735Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-08T09:55:11.099596Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-08T09:55:11.653115Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-08T09:55:12.616017Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-08T09:55:14.313862Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-08T09:55:17.733884Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: V5wrOiKpLwzA
+codex
+我会先读取需求、知识库、既有问题账和相关代码，核对需求是否能直接驱动实现。当前环境是只读，我只会查看文件并在最后输出可保存的 Markdown。
+exec
+/usr/bin/zsh -lc 'rg --files' in /root/terra/legacy-lab/inherited-poll
+exec
+/usr/bin/zsh -lc "sed -n '1,240p' apriori/truth/polls.md" in /root/terra/legacy-lab/inherited-poll
+exec
+/usr/bin/zsh -lc "sed -n '1,240p' requirement/req-v1.md" in /root/terra/legacy-lab/inherited-poll
+exec
+/usr/bin/zsh -lc "sed -n '1,240p' apriori/review/vote-dedup-issues.md" in /root/terra/legacy-lab/inherited-poll
+ succeeded in 120ms:
+requirement/req-v1.md
+server.js
+CLAUDE.md
+package.json
+lib/polls.js
+lib/store.js
+test/store.test.js
+test/e2e.test.js
+README.md
+test/polls.test.js
+test/server.test.js
+public/poll.html
+public/style.css
+public/admin.html
+public/index.html
+apriori/process-config.md
+apriori/runbook.md
+apriori/truth/polls.md
+apriori/review/vote-dedup-issues.md
+apriori/review/vote-dedup-req-review-v1-raw.txt
+apriori/changes/vote-dedup/flow-state.md
+
+ succeeded in 112ms:
+# KB — polls (whole app: HTTP layer + domain logic + persistence + frontend)
+
+> Reverse-captured (P10) — the inherited project had no `apriori/truth/` docs.
+> Code scope read: `server.js`, `lib/polls.js`, `lib/store.js`, `public/*.html`, `test/*.js`.
+> **Human/heterogeneous check required before this feeds any downstream step (KB pre-check rule).**
+
+## Contract (code-is-truth)
+
+`source-commit: 3f1d30954a9d5b500f8a6708b9070d51e045aac5`
+
+### Public interfaces (HTTP API — `server.js`)
+
+Zero external dependencies (Node builtins only); JSON in/out, `charset=utf-8`; errors are
+`{ error: <Chinese message> }` with the `PollError.status` code, or 500 + generic message + `console.error`
+for unexpected throws.
+
+| Method | Path | Body | Response |
+|---|---|---|---|
+| GET | `/` | — | `public/index.html` (create-poll page) |
+| GET | `/style.css` | — | stylesheet |
+| GET | `/poll/:id` | — | `public/poll.html` (id not validated against store — page loads, then fetches JSON and shows the error) |
+| GET | `/admin/:token` | — | `public/admin.html` (same: token validity checked only by the JSON call the page makes) |
+| POST | `/api/polls` | `{question, options[], multiple?, deadline?}` | 201 `{id, adminToken}` |
+| GET | `/api/polls/:id` | — | 200 public view (see `view()` below) or 404 |
+| POST | `/api/polls/:id/vote` | `{choices:[int,...]}` | 200 public view, or 400/404/409 |
+| GET | `/api/admin/:token` | — | 200 view (by admin token) or 404 |
+| POST | `/api/admin/:token/close` | — | 200 view (`closed:true`) or 404 |
+
+Route matching: `id` and `token` path segments are matched by `^[a-z0-9]+$` at the router level (`server.js`);
+actual existence is checked inside `lib/polls.js`. No auth/session of any kind — `adminToken` is a bearer
+capability string embedded in the admin URL, nothing else gates `/api/admin/*`.
+
+### Domain logic (`lib/polls.js`)
+
+- `create(input)` — validates `question` (non-empty, trimmed, ≤200 chars) and `options` (trim+drop-empty,
+  2..20 items, each ≤100 chars); optional `deadline` must parse and be strictly in the future (`now()` is
+  injectable for tests). Generates `id` (6 chars) and `adminToken` (16 chars) from a shared 31-char alphabet
+  (`abcdefghjkmnpqrstuvwxyz23456789` — visually-ambiguous chars `i l o 0 1` excluded) via `crypto.randomBytes`.
+  Stores the full poll object (**including `adminToken`**) via `store.put`.
+- `view(poll)` — the ONLY public projection: strips `adminToken` and the raw `votes` array, returns
+  `{id, question, options, multiple, deadline, closed, open, counts, total}`. `counts[i]` = number of
+  votes whose `choices` array includes index `i`; `total` = `votes.length` (i.e. number of vote *events*,
+  not the sum of counts — a multi-select vote counts once toward `total` but toward multiple `counts[i]`).
+- `isOpen(poll)` = `!closed && (!deadline || now() < deadline)`.
+- `vote(id, choices)` — **current behavior has NO duplicate-vote defense of any kind server-side.**
+  Checks (in order): poll exists (404) → not closed (409 `投票已关闭`) → not past deadline (409
+  `投票已过截止时间`) → `choices` is a non-empty array (400) → every choice is an integer in
+  `[0, options.length)` and choices has no duplicate indices (400 `选项不合法`) → single-select poll
+  has exactly one choice (400). On success: `poll.votes.push(choices)` — **unconditionally, no caller
+  identity is recorded or checked** — then persists and returns the view. Nothing in this function, the
+  store, or the HTTP layer associates a vote with a browser/cookie/IP; the same `curl -X POST .../vote`
+  can be replayed unboundedly and every call succeeds and increments the count (verified empirically:
+  3 identical curl-equivalent POSTs against a fresh poll → 3× 200, `total` 1→2→3).
+- `findByToken(token)` — **linear scan** over every stored poll (`store.all()`) comparing `adminToken`;
+  fine at current scale, would need an index if poll count grows large.
+- `adminView` / `close` both resolve the poll via `findByToken` — no separate rate limiting or attempt
+  cap on token guessing (16 random chars from a 31-char alphabet is the only defense).
+
+### Data model / persistence (`lib/store.js`)
+
+- One JSON file: `<dataDir>/polls.json` — a flat object keyed by poll `id`, values are full poll records
+  (including `adminToken` and raw `votes`). Loaded once into memory at `createStore()` time; every `put`
+  rewrites the **entire file** (no per-poll files, no append log).
+- **Three moments:**
+  - *init*: `load()` reads the whole file synchronously at store construction; missing file → start
+    from `{}`; JSON parse failure → the corrupt file is renamed to `<file>.bak-<timestamp>Z` and a fresh
+    `{}` is used (logged via `console.error`, not surfaced to any HTTP caller).
+  - *runtime update*: `put(poll)` mutates the in-memory object, then `save()` — write to `<file>.tmp`,
+    `fs.renameSync` over the real file. This is an atomic rename (no torn writes, no leftover `.tmp` on
+    success — asserted by `store.test.js`), but **`save()` does not call `fsync`** on the temp file or the
+    containing directory, so this store makes no crash-durability guarantee across a real power loss /
+    kill -9 — only "no partial/corrupt file under normal process exit". Nothing in the code or tests
+    claims durability beyond that; do not read one in.
+  - *cleanup/invalidation*: none — there is no TTL, no poll deletion, no vote retraction. `data/` is
+    gitignored; nothing in the app itself prunes it.
+- Poll record shape: `{id, adminToken, question, options[], multiple, deadline (ISO string|null),
+  closed, votes: [ [choiceIndex,...], ... ], createdAt}`. `votes` entries carry **no voter identity, no
+  timestamp** — just the chosen index array from that call.
+
+### Frontend (`public/*.html`)
+
+- Zero build step, inline `<script>` per page, no framework. `poll.html`'s only anti-repeat-vote
+  mechanism is `localStorage.setItem('voted:'+pollId, '1')` set client-side **after** a successful vote
+  response — purely a UX nicety (hides the form, shows "你已经投过票了"); trivially bypassed (private
+  window, different browser, `localStorage.clear()`, or simply calling the API directly, e.g. curl).
+  The server currently doesn't know or care whether the browser thinks it already voted.
+  Polling for live results: both `poll.html` and `admin.html` re-`fetch` their view every 3s
+  (`setInterval(load, 3000)`), no websockets/SSE.
+- `index.html` (create) and `admin.html` (manage) have no relevant state beyond what's described above.
+- No cookies are set or read anywhere in the current codebase (frontend or backend) — confirmed by
+  grep: no `document.cookie`, no `Set-Cookie` header, no cookie-parsing code exists yet.
+
+### Dependencies / tooling
+
+- Runtime: zero npm dependencies (`package.json` has none listed); Node ≥18 required (`engines`),
+  actually exercised on Node 24 in this sandbox.
+- Tests: `node --test` (builtin runner) over `test/store.test.js`, `test/polls.test.js`,
+  `test/server.test.js` (18 tests, all green as of `source-commit`). `test/e2e.test.js` is a separate
+  `npm run test:e2e` target requiring a **globally** installed `playwright` (`NODE_PATH` trick — not a
+  project dependency) with chromium cached; not part of the default `npm test`.
+- No linter/formatter config found in the repo (no `.eslintrc*`, no `package.json` lint script).
+
+### Known pitfalls for anyone touching this module
+
+1. **No server-side vote dedup** (the subject of the in-flight change) — see `vote()` above.
+2. `store.save()` rewrites the whole file on every single vote — fine at poll-tool scale, would not
+   scale to high write volume.
+3. `adminToken` is stored in the same plain record as everything else and is returned verbatim from
+   `view()`'s caller (`create`) but never leaked by `view()` itself — any change to `view()` must keep
+   stripping it.
+4. `findByToken` is O(n) over all polls — a hot path if this ever needs to scale.
+5. Chinese user-facing error strings are asserted verbatim in tests (`server.test.js`, `polls.test.js`)
+   — changing message text is a breaking test change, not just a UX tweak.
+6. `data/` (and hence `data/polls.json`) is gitignored — the file present in the working tree is
+   sample/dev data, not a fixture the tests depend on (tests use `fs.mkdtempSync` scratch dirs).
+
+## Decisions (doc-is-truth)
+
+No `apriori/` decision records existed before this reverse-capture. Two design/plan documents did
+exist earlier in this project's history but were deleted before this KB was written (git history only):
+`docs/superpowers/specs/2026-07-07-quick-poll-design.md` (commit `4874ec1`) and
+`docs/superpowers/plans/2026-07-08-quick-poll.md` (commit `1ce4b47`), removed in `3f1d309 chore: strip
+tooling remnants`. Their content is recoverable via `git show <commit>:<path>` if needed, but nothing
+in them has been re-confirmed as active intent here — **treat as historical, not authoritative**, and
+mark the absence of any surviving decision record explicitly:
+
+- `DEC-0` — status: **needs human confirmation**. No confirmed, currently-active design decision or
+  invariant is on record for this module. Anything that looks like a deliberate choice in the Contract
+  section above (e.g. "cookie-level anti-replay, no login", "file-backed store, no DB") is inferred from
+  code shape only, not from a documented decision — do not treat code shape as proof of intent.
+
+ succeeded in 108ms:
+# req-v1 — vote-dedup：服务端防重复投票（cookie 级别）
+
+- change: vote-dedup
+- tier: medium · track: harden
+- 目标 lineage: **master**（单分支仓库,直接落 master,无 merge 禁忌）
+- 现状事实来源: `apriori/truth/polls.md`（已经人扫过——注意其 DEC-0:本项目没有任何存活的设计决策记录,现状描述以代码为准）
+
+## 1. 背景与问题（现状 A）
+
+当前"防重复投票"只存在于前端:`poll.html` 投票成功后写 `localStorage['voted:'+id]`,仅用于隐藏表单。服务端 `vote()` 对调用者身份零感知——同一请求用 curl 原样重放,每次都 200 并计票(已实测:3 次重放 → total 1→2→3)。服务端目前没有任何 cookie 的读写代码。
+
+## 2. 目标（目标态 B）
+
+服务端以**匿名、不可伪造的投票者标识**(经 HttpOnly cookie 承载)为准,拒绝同一标识对同一投票的重复投票。不引入登录/账号体系。
+
+### 行为要求
+
+- B1 **标识下发**:客户端首次请求投票数据(`GET /api/polls/:id`)时,服务端生成匿名投票者标识,经 `Set-Cookie`(HttpOnly、SameSite=Lax、Path=/、长有效期)下发;已带有效标识的请求不重复下发。标识全站一个(不按 poll 区分)。
+- B2 **标识不可伪造**:标识必须带服务端签名(HMAC 或等价),自造/篡改的值视同无标识。签名密钥持久化在数据目录,服务重启后既有 cookie 仍有效。
+- B3 **投票必须携带有效标识**:`POST /api/polls/:id/vote` 无 cookie 或标识非法 → 拒绝(4xx + 明确错误文案),**不计票**。正常浏览器用户不受影响(打开页面即已领到标识)。
+- B4 **同一标识同一投票只能投一次**:重复投票 → `409` + 明确文案,票数不变。首次投票成功时,服务端将"该标识已投过该 poll"随 poll 数据一起落盘;重启后依然防重复。
+- B5 **跨投票互不影响**:同一标识可对不同 poll 各投一票。
+- B6 **前端以服务端为准**:公开视图对携带已投标识的请求返回 `voted: true`;`poll.html` 据此显示"已投过"状态(localStorage 可保留为辅助,但判定以服务端字段为准);服务端 4xx/409 拒绝必须以可见文案呈现给用户,不得吞掉。
+- B7 **隐私**:标识是随机匿名值,不含且不派生任何个人信息;不记录、不使用 IP;投票内容与标识的绑定仅用于防重复判定,不在任何视图/接口中暴露"谁投了什么"。
+
+### 验收标准（全部可测,if…then）
+
+- AC1 无 cookie 的客户端 `GET /api/polls/:id` → 应答含 `Set-Cookie`(HttpOnly);带该 cookie `POST …/vote` 合法选项 → 200,票数 +1。
+- AC2 同一 cookie 对同一 poll 再次 `POST …/vote` → 409,错误文案明确表达"已投过",`total` 不变。
+- AC3 含 cookie 的同一 curl 请求原样重放 N 次 → 仅第一次 200,其余全部 409,票数只 +1(与你复现漏洞用的方式一一对应)。
+- AC4 不带 cookie 的 `POST …/vote` → 4xx 拒绝且不计票;伪造/篡改签名的 cookie 同样拒绝且不计票。
+- AC5 同一 cookie 对另一个 poll 投票 → 200(跨 poll 不互相误伤)。
+- AC6 投票成功后重启服务(同一数据目录):同一 cookie 再投同一 poll → 仍 409;票数与重启前一致。**验证方式必须是重启后经应用自身的加载路径读回**(新起 server/store 实例走 API 断言),不是直接翻 JSON 文件。
+- AC7 浏览器端到端:投完票刷新页面显示"已投过";**清掉 localStorage 后刷新仍显示"已投过"**(证明判定来自服务端);无 cookie 直连 POST 的拒绝文案对用户可见。
+- AC8 既有行为不回归:建投票校验、计票口径(`counts`/`total` 语义)、关闭、截止、管理链接等现有测试语义全部保持;`view()` 继续不泄露 `adminToken` 与原始 `votes`,也不得泄露投票者标识与"谁投了什么"。
+
+### 防护边界（明确接受的限制——不是本次要解决的问题）
+
+- 清 cookie、换浏览器、隐身窗口可以再投——cookie 级别防护的固有上限,需求方已明确接受("cookie 级别就行")。
+- 脚本可以"先 GET 领新标识再 POST"绕过(每票多一次请求的成本,但可自动化)。真正抗机器人需要登录/验证码/IP 限速,均明确不做。
+- 本文档中"防重复"的准确含义是:**同一浏览器会话标识不能重复投票,且裸调 API(不领标识/重放同一标识)不能刷票**;不承诺"一人一票"。
+
+## 3. Out of scope（本次明确不做）
+
+- 登录、账号、验证码、设备指纹、IP 级限速或任何基于 IP 的判定。
+- 管理端查看"谁投了什么"(继续保持匿名聚合结果)。
+- 历史数据迁移:既有 `data/polls.json` 中的旧投票无标识,保持原样计票,不追溯、不清洗。
+- store 层的 fsync/掉电级持久性改造(KB 已记录现状为原子改名、无 fsync;本次不改变该保证等级,也不得在文档中声称超出该等级的保证)。
+- 管理接口(`/api/admin/*`)的防护改造。
+
+ succeeded in 121ms:
+'use strict';
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { createStore } = require('../lib/store');
+
+function tmpDir() {
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'poll-store-'));
+}
+
+test('put 后可 get；新建 store 实例（模拟重启）后数据仍在', () => {
+  const dir = tmpDir();
+  const store = createStore(dir);
+  store.put({ id: 'abc123', question: 'q', votes: [] });
+  assert.equal(store.get('abc123').question, 'q');
+
+  const reopened = createStore(dir);
+  assert.equal(reopened.get('abc123').question, 'q');
+});
+
+test('数据文件不存在时从空数据开始', () => {
+  const store = createStore(tmpDir());
+  assert.equal(store.get('nope'), undefined);
+  assert.deepEqual(store.all(), {});
+});
+
+test('数据文件损坏时备份为 polls.json.bak-* 并从空数据开始', () => {
+  const dir = tmpDir();
+  fs.writeFileSync(path.join(dir, 'polls.json'), '{broken json');
+  const store = createStore(dir);
+  assert.deepEqual(store.all(), {});
+  const baks = fs.readdirSync(dir).filter((f) => f.startsWith('polls.json.bak-'));
+  assert.equal(baks.length, 1);
+});
+
+test('写入是原子的：目录里不残留 .tmp 文件', () => {
+  const dir = tmpDir();
+  const store = createStore(dir);
+  store.put({ id: 'x1', votes: [] });
+  assert.ok(!fs.readdirSync(dir).some((f) => f.endsWith('.tmp')));
+});
+
+ succeeded in 126ms:
+'use strict';
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { createServer } = require('../server');
+const { chromium } = require('playwright');
+
+test('浏览器冒烟：建投票→投票→看结果→刷新后不能再投', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'poll-e2e-'));
+  const server = createServer(dir);
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const browser = await chromium.launch();
+  t.after(async () => {
+    await browser.close();
+    server.close();
+  });
+  const page = await browser.newPage();
+
+  await page.goto(base + '/');
+  await page.fill('#question', '周五团建去哪');
+  const optionInputs = page.locator('#options input');
+  await optionInputs.nth(0).fill('烤肉');
+  await optionInputs.nth(1).fill('火锅');
+  await page.click('#create');
+  await page.waitForSelector('#links:not([hidden])');
+  const voteUrl = await page.textContent('#vote-url');
+  assert.match(voteUrl, /\/poll\/[a-z2-9]{6}$/);
+
+  await page.goto(voteUrl);
+  await page.waitForSelector('#form:not([hidden])');
+  await page.check('#c1');
+  await page.click('#submit');
+  await page.waitForSelector('#notice:not([hidden])');
+  const results = await page.textContent('#results');
+  assert.ok(results.includes('1 票'), '结果里应显示 1 票');
+
+  await page.reload();
+  await page.waitForSelector('#notice:not([hidden])');
+  assert.ok((await page.textContent('#notice')).includes('已经投过'), '刷新后应提示已投过');
+  assert.ok(await page.locator('#form').isHidden(), '已投过时投票表单应隐藏');
+});
+
+ succeeded in 126ms:
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>快速投票</title>
+<link rel="stylesheet" href="/style.css">
+<body>
+<h1 id="question">加载中…</h1>
+<div id="notice" class="notice" hidden></div>
+<div id="form" hidden>
+  <div id="choices"></div>
+  <p><button type="button" id="submit">投票</button></p>
+  <div id="error" class="notice error" hidden></div>
+</div>
+<h2>当前结果</h2>
+<div id="results"></div>
+<p class="muted" id="total"></p>
+<script>
+const $ = (s) => document.querySelector(s);
+const pollId = location.pathname.split('/')[2];
+const votedKey = 'voted:' + pollId;
+let rendered = false;
+
+function renderResults(view) {
+  $('#results').innerHTML = view.options.map((opt, i) => {
+    const count = view.counts[i];
+    const pct = view.total ? Math.round((count / view.total) * 100) : 0;
+    return '<div class="result-row"><div class="result-label"><span></span><span>'
+      + count + ' 票 · ' + pct + '%</span></div><div class="bar"><div style="width:'
+      + pct + '%"></div></div></div>';
+  }).join('');
+  document.querySelectorAll('#results .result-label span:first-child')
+    .forEach((el, i) => { el.textContent = view.options[i]; });
+  $('#total').textContent = '共 ' + view.total + ' 人参与';
+}
+
+function renderForm(view) {
+  const type = view.multiple ? 'checkbox' : 'radio';
+  $('#choices').innerHTML = view.options.map((_, i) =>
+    '<div class="choice"><input type="' + type + '" name="choice" id="c' + i
+    + '" value="' + i + '"><label for="c' + i + '"></label></div>'
+  ).join('');
+  document.querySelectorAll('#choices label')
+    .forEach((el, i) => { el.textContent = view.options[i]; });
+}
+
+function updateState(view) {
+  document.title = view.question + ' · 快速投票';
+  $('#question').textContent = view.question;
+  renderResults(view);
+  const voted = localStorage.getItem(votedKey);
+  const notice = $('#notice');
+  if (voted) {
+    notice.textContent = '你已经投过票了，下面是当前结果。';
+    notice.hidden = false; $('#form').hidden = true;
+  } else if (!view.open) {
+    notice.textContent = view.closed ? '投票已关闭，下面是最终结果。' : '投票已过截止时间，下面是最终结果。';
+    notice.hidden = false; $('#form').hidden = true;
+  } else {
+    notice.hidden = true;
+    if (!rendered) { renderForm(view); rendered = true; }
+    $('#form').hidden = false;
+  }
+}
+
+async function load() {
+  const res = await fetch('/api/polls/' + pollId);
+  const data = await res.json();
+  if (!res.ok) {
+    $('#question').textContent = data.error || '加载失败';
+    return;
+  }
+  updateState(data);
+}
+
+$('#submit').addEventListener('click', async () => {
+  $('#error').hidden = true;
+  const choices = [...document.querySelectorAll('#choices input:checked')]
+    .map((i) => Number(i.value));
+  const res = await fetch('/api/polls/' + pollId + '/vote', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ choices }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    const box = $('#error');
+    box.textContent = data.error || '投票失败';
+    box.hidden = false;
+    if (res.status === 409) updateState(await (await fetch('/api/polls/' + pollId)).json());
+    return;
+  }
+  localStorage.setItem(votedKey, '1');
+  updateState(data);
+});
+
+load();
+setInterval(load, 3000);
+</script>
+</body>
+</html>
+
+ succeeded in 105ms:
+{
+  "name": "superpowers-poll",
+  "version": "0.1.0",
+  "private": true,
+  "description": "快速投票小工具：建投票、发链接、匿名投票、实时看结果",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/store.test.js test/polls.test.js test/server.test.js",
+    "test:e2e": "NODE_PATH=\"$(npm root -g)\" node --test test/e2e.test.js"
+  },
+  "engines": { "node": ">=18" }
+}
+
+codex
+我已确认现状：HTTP 层没有 cookie 支持，领域层 `vote(id, choices)` 只存 choices 数组，公开视图由 `view()` 统一裁剪敏感字段。现在需要判断需求里新增的 `voted`、签名密钥和持久化投票者状态是否把接口/数据模型变更说完整。
+exec
+/usr/bin/zsh -lc 'git branch --show-current' in /root/terra/legacy-lab/inherited-poll
+exec
+/usr/bin/zsh -lc "sed -n '1,220p' README.md" in /root/terra/legacy-lab/inherited-poll
+exec
+/usr/bin/zsh -lc 'git status --short' in /root/terra/legacy-lab/inherited-poll
+exec
+/usr/bin/zsh -lc 'git rev-parse HEAD' in /root/terra/legacy-lab/inherited-poll
+ succeeded in 0ms:
+3f1d30954a9d5b500f8a6708b9070d51e045aac5
+
+ succeeded in 103ms:
+master
+
+ succeeded in 109ms:
+# 快速投票
+
+开会/群里征集意见用的小工具：建投票 → 发链接 → 匿名投票 → 实时看结果。
+
+## 运行
+
+    node server.js          # http://localhost:3000，局域网用本机 IP 访问
+    PORT=8080 node server.js
+
+零依赖，不需要 npm install。数据存 `data/polls.json`。
+
+## 使用
+
+1. 打开首页建投票（问题 + 选项，可多选、可设截止时间）
+2. 把**投票链接**发到群里；**管理链接**自己收好（可关闭投票，丢了找不回）
+3. 大家点开即投（匿名，浏览器标记防重复），结果实时可看
+
+## 测试
+
+    npm test                # 单测 + 集成（零依赖）
+    npm run test:e2e        # Playwright 浏览器冒烟（需全局安装 playwright）
+
+ succeeded in 126ms:
+?? .claude/
+?? CLAUDE.md
+?? apriori/
+?? requirement/
+
+codex
+# vote-dedup req-v1 需求评审
+
+## 结论摘要
+
+本轮发现 7 个正式问题。需求方向与现状 A 基本一致，目标 lineage 声明正确，但仍有若干目标态、异常路径、数据模型与验收表述不够精确，尚不适合直接交给 AI 无歧义实现。
+
+| 维度 | Verdict | 关联问题 |
+|---|---|---|
+| 1. 目标态 B 是否清晰无歧义 | 不通过 | REQ-001, REQ-002, REQ-006 |
+| 2. 边界与异常路径是否覆盖 | 不通过 | REQ-003, REQ-004 |
+| 3. 是否存在隐含但未声明的状态变化/副作用 | 不通过 | REQ-005 |
+| 4. 验收标准是否可测试 | 不通过 | REQ-007 |
+| 5. 是否与当前状态 A 冲突 | 通过 | 未发现直接冲突 |
+| 6. 目标 lineage 是否声明且匹配现实 | 通过 | 当前分支为 `master`，HEAD 与 KB `source-commit` 一致 |
+
+## 正式问题
+
+### 维度 1：目标态 B 是否清晰无歧义
+
+#### REQ-001 — 文档仍保留开放问题，目标态未封版
+
+**Description:**  
+第 4 节仍列出 Q1/Q2/Q3。尤其是无标识 POST 的状态码、是否在 `/poll/:id` HTML 请求下发 cookie、领域层 `polls.vote()` 签名如何变化，都会直接影响实现和测试。
+
+**Risk:**  
+不同实现者可能选择不同状态码、cookie 下发入口和内部 API 形态，导致实现虽各自合理但验收不一致。
+
+**Suggested fix:**  
+把开放问题改成明确决定。例如：无/非法标识 POST 固定返回 `403`；仅 `GET /api/polls/:id` 下发/刷新投票者 cookie；领域层接口明确为 `getView(id, voterId?)`、`vote(id, choices, voterId)` 或等价签名。
+
+#### REQ-002 — `voted` 字段的公开视图契约不完整
+
+**Description:**  
+B6 只声明“携带已投标识的请求返回 `voted: true`”，但未说明以下情况：无 cookie、非法 cookie、有效 cookie 但未投过、投票成功响应、404 响应、管理视图是否包含 `voted`。当前代码的 `view(poll)` 是无身份上下文的公共投影视图，这一接口变化需要明确。
+
+**Risk:**  
+实现可能让 `voted` 缺省、返回 `false`、只在 GET 返回、或误加到 admin view；前端和测试会产生分歧，也可能意外扩大接口暴露面。
+
+**Suggested fix:**  
+声明公共投票视图的完整契约：`GET /api/polls/:id` 和成功 `POST /vote` 均返回布尔 `voted`；有效标识且已投为 `true`，否则为 `false`；无/非法 cookie 的 GET 视同新标识并返回 `false`；admin view 是否不包含该字段也要明确。
+
+#### REQ-006 — Cookie 与签名密钥生命周期不够精确
+
+**Description:**  
+B1 的“长有效期”和 B2 的“签名密钥持久化在数据目录”没有定义具体可验收行为：cookie 名称、有效期下限或精确 `Max-Age/Expires`、密钥文件位置、首次生成、重启复用、密钥文件缺失/损坏时的处理。
+
+**Risk:**  
+实现可能选择一天、一年或会话级有效期；密钥重建策略不同会让已有 cookie 是否失效不可预测。密钥损坏时如果静默重建，也会造成所有既有 cookie 失效但无明确验收依据。
+
+**Suggested fix:**  
+补充固定契约。例如：cookie 名为 `poll_voter`；`Max-Age=31536000`；密钥文件为 `<dataDir>/cookie-secret`；文件不存在时生成并保存；存在时复用；读取失败返回 500 或启动失败；非法 cookie 在 GET 上按无标识处理，在 POST 上拒绝。
+
+### 维度 2：边界与异常路径是否覆盖
+
+#### REQ-003 — 同一 cookie 并发投票的结果未定义
+
+**Description:**  
+AC2/AC3 覆盖了串行重复提交，但没有覆盖两个相同 cookie 对同一 poll 近同时提交的行为。
+
+**Risk:**  
+如果实现把“检查是否已投”和“写入投票/标记已投”拆开且中间存在异步边界，可能两个请求都通过检查并双计票，核心防重复目标失效。
+
+**Suggested fix:**  
+增加并发验收：同一有效 cookie 对同一 poll 同时发起两个合法 `POST /vote`，则最多一个返回 200，其余返回 409，最终 `total` 只增加 1。并声明检查、计票、标记已投必须作为一个原子逻辑步骤完成。
+
+#### REQ-004 — 持久化失败时的回滚/一致性未定义
+
+**Description:**  
+B4 要求首次投票成功时“已投过该 poll”随 poll 数据一起落盘，但未说明 `store.put()`/文件写入失败时，内存中的票数和去重标记应如何处理。当前 store 是先改内存对象再写整个 JSON 文件，失败路径尤其需要明确。
+
+**Risk:**  
+实现可能返回 500 但内存中已经计票，或计票成功但去重标记未持久化，导致重启前后行为不一致、重复投票漏拦或票数异常。
+
+**Suggested fix:**  
+声明失败语义：计票和去重标记必须对调用者表现为 all-or-nothing；持久化失败时返回 500，且活动进程内的票数与去重状态不得改变。至少增加可注入失败 store 的单测，断言失败后再次读取视图不变。
+
+### 维度 3：隐含但未声明的状态变化/副作用
+
+#### REQ-005 — 新旧投票数据模型兼容规则未声明
+
+**Description:**  
+当前 poll 记录是 `votes: [[choiceIndex,...]]`。需求要求新增“该标识已投过该 poll”的持久状态，并且 out of scope 声明历史旧投票无标识、保持原样计票，但没有定义新字段/新 schema 与旧 `votes` 数组如何共存。
+
+**Risk:**  
+实现可能把 `votes` 从数组改成对象数组，破坏现有 `counts`/`total` 语义、旧数据加载或 `view()` 裁剪规则；也可能把投票者标识和选择直接绑在同一结构中，增加隐私暴露风险。
+
+**Suggested fix:**  
+明确持久化形态和兼容规则。例如：旧 `votes` 数组保持有效；新增 `voters`/`votedBy` 存防重用的标识摘要；`counts` 和 `total` 继续只按 `votes` 计算；公开视图不得返回 `votes`、`voters`、cookie 原值或标识摘要；不做历史迁移但必须能读取旧 poll。
+
+### 维度 4：验收标准是否可测试
+
+#### REQ-007 — AC7 的“无 cookie 直连 POST 拒绝文案对用户可见”不可按字面做浏览器端到端断言
+
+**Description:**  
+AC7 把“浏览器端到端”和“无 cookie 直连 POST”放在一起，但直连 POST 没有页面承载错误文案；正常浏览器访问 `/poll/:id` 后又会先 GET 领取 cookie。
+
+**Risk:**  
+测试作者无法判断应通过 curl/API 断言 JSON 错误，还是构造浏览器页面态断言 `#error` 可见，导致验收实现不一致。
+
+**Suggested fix:**  
+拆成两个可测 AC：API 层无 cookie POST 返回指定 4xx 和 `{error}`；浏览器层在页面已加载后删除投票者 cookie，再点击投票按钮，页面 `#error` 显示该错误文案且表单不被静默隐藏。
+
+### 维度 5：是否与当前状态 A 冲突
+
+未发现直接冲突。需求确认了当前无服务端 cookie、无服务端去重、`view()` 不泄露 `adminToken`/`votes`、store 无 fsync 保证，这些与 KB 和代码现实一致。需注意 REQ-005 中的数据模型兼容规则补齐后，才能确保不破坏现有旧数据与计票语义。
+
+### 维度 6：目标 lineage 是否声明且匹配现实
+
+通过。需求声明目标 lineage 为 `master`；当前仓库分支为 `master`，HEAD 为 `3f1d30954a9d5b500f8a6708b9070d51e045aac5`，与 KB 的 `source-commit` 一致。
+
+## Advisories
+
+- ADV-001：若继续保持项目“零运行时依赖”的现实约束很重要，建议在需求中显式声明 cookie 解析、签名、随机值生成使用 Node 内建能力，不新增 npm 依赖。
+- ADV-002：现有测试会精确断言中文错误文案。新错误如“未获得投票标识”“你已经投过”等，建议在需求中给出固定文案，减少实现和测试反复。
+- ADV-003：AC3 的 `N 次` 建议落成具体测试值，例如 N=3，便于测试用例稳定表达。
+
+## LEDGER DELTA
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| REQ-001 | 文档仍保留开放问题，目标态未封版 | 状态码、cookie 下发入口和领域层接口可能被不同实现者选择成不同结果 | req-v1 | open |
+| REQ-002 | `voted` 字段的公开视图契约不完整 | 前端、API 响应和测试可能对字段存在性/真假值产生分歧 | req-v1 | open |
+| REQ-003 | 同一 cookie 并发投票的结果未定义 | 并发重复提交可能双计票，破坏服务端防重复目标 | req-v1 | open |
+| REQ-004 | 持久化失败时的回滚/一致性未定义 | 可能出现返回失败但内存已计票，或计票与去重标记不一致 | req-v1 | open |
+| REQ-005 | 新旧投票数据模型兼容规则未声明 | 可能破坏旧 `votes` 数据、`counts`/`total` 语义或隐私边界 | req-v1 | open |
+| REQ-006 | Cookie 与签名密钥生命周期不够精确 | cookie 有效期、密钥复用和损坏处理不可预测，重启后行为可能不一致 | req-v1 | open |
+| REQ-007 | AC7 的无 cookie 直连 POST 用户可见文案不可按字面端到端测试 | 测试作者无法确定应断言 API JSON 还是浏览器页面错误状态 | req-v1 | open |
+
+VERDICT: 7 issues open
+tokens used
+39,988
+# vote-dedup req-v1 需求评审
+
+## 结论摘要
+
+本轮发现 7 个正式问题。需求方向与现状 A 基本一致，目标 lineage 声明正确，但仍有若干目标态、异常路径、数据模型与验收表述不够精确，尚不适合直接交给 AI 无歧义实现。
+
+| 维度 | Verdict | 关联问题 |
+|---|---|---|
+| 1. 目标态 B 是否清晰无歧义 | 不通过 | REQ-001, REQ-002, REQ-006 |
+| 2. 边界与异常路径是否覆盖 | 不通过 | REQ-003, REQ-004 |
+| 3. 是否存在隐含但未声明的状态变化/副作用 | 不通过 | REQ-005 |
+| 4. 验收标准是否可测试 | 不通过 | REQ-007 |
+| 5. 是否与当前状态 A 冲突 | 通过 | 未发现直接冲突 |
+| 6. 目标 lineage 是否声明且匹配现实 | 通过 | 当前分支为 `master`，HEAD 与 KB `source-commit` 一致 |
+
+## 正式问题
+
+### 维度 1：目标态 B 是否清晰无歧义
+
+#### REQ-001 — 文档仍保留开放问题，目标态未封版
+
+**Description:**  
+第 4 节仍列出 Q1/Q2/Q3。尤其是无标识 POST 的状态码、是否在 `/poll/:id` HTML 请求下发 cookie、领域层 `polls.vote()` 签名如何变化，都会直接影响实现和测试。
+
+**Risk:**  
+不同实现者可能选择不同状态码、cookie 下发入口和内部 API 形态，导致实现虽各自合理但验收不一致。
+
+**Suggested fix:**  
+把开放问题改成明确决定。例如：无/非法标识 POST 固定返回 `403`；仅 `GET /api/polls/:id` 下发/刷新投票者 cookie；领域层接口明确为 `getView(id, voterId?)`、`vote(id, choices, voterId)` 或等价签名。
+
+#### REQ-002 — `voted` 字段的公开视图契约不完整
+
+**Description:**  
+B6 只声明“携带已投标识的请求返回 `voted: true`”，但未说明以下情况：无 cookie、非法 cookie、有效 cookie 但未投过、投票成功响应、404 响应、管理视图是否包含 `voted`。当前代码的 `view(poll)` 是无身份上下文的公共投影视图，这一接口变化需要明确。
+
+**Risk:**  
+实现可能让 `voted` 缺省、返回 `false`、只在 GET 返回、或误加到 admin view；前端和测试会产生分歧，也可能意外扩大接口暴露面。
+
+**Suggested fix:**  
+声明公共投票视图的完整契约：`GET /api/polls/:id` 和成功 `POST /vote` 均返回布尔 `voted`；有效标识且已投为 `true`，否则为 `false`；无/非法 cookie 的 GET 视同新标识并返回 `false`；admin view 是否不包含该字段也要明确。
+
+#### REQ-006 — Cookie 与签名密钥生命周期不够精确
+
+**Description:**  
+B1 的“长有效期”和 B2 的“签名密钥持久化在数据目录”没有定义具体可验收行为：cookie 名称、有效期下限或精确 `Max-Age/Expires`、密钥文件位置、首次生成、重启复用、密钥文件缺失/损坏时的处理。
+
+**Risk:**  
+实现可能选择一天、一年或会话级有效期；密钥重建策略不同会让已有 cookie 是否失效不可预测。密钥损坏时如果静默重建，也会造成所有既有 cookie 失效但无明确验收依据。
+
+**Suggested fix:**  
+补充固定契约。例如：cookie 名为 `poll_voter`；`Max-Age=31536000`；密钥文件为 `<dataDir>/cookie-secret`；文件不存在时生成并保存；存在时复用；读取失败返回 500 或启动失败；非法 cookie 在 GET 上按无标识处理，在 POST 上拒绝。
+
+### 维度 2：边界与异常路径是否覆盖
+
+#### REQ-003 — 同一 cookie 并发投票的结果未定义
+
+**Description:**  
+AC2/AC3 覆盖了串行重复提交，但没有覆盖两个相同 cookie 对同一 poll 近同时提交的行为。
+
+**Risk:**  
+如果实现把“检查是否已投”和“写入投票/标记已投”拆开且中间存在异步边界，可能两个请求都通过检查并双计票，核心防重复目标失效。
+
+**Suggested fix:**  
+增加并发验收：同一有效 cookie 对同一 poll 同时发起两个合法 `POST /vote`，则最多一个返回 200，其余返回 409，最终 `total` 只增加 1。并声明检查、计票、标记已投必须作为一个原子逻辑步骤完成。
+
+#### REQ-004 — 持久化失败时的回滚/一致性未定义
+
+**Description:**  
+B4 要求首次投票成功时“已投过该 poll”随 poll 数据一起落盘，但未说明 `store.put()`/文件写入失败时，内存中的票数和去重标记应如何处理。当前 store 是先改内存对象再写整个 JSON 文件，失败路径尤其需要明确。
+
+**Risk:**  
+实现可能返回 500 但内存中已经计票，或计票成功但去重标记未持久化，导致重启前后行为不一致、重复投票漏拦或票数异常。
+
+**Suggested fix:**  
+声明失败语义：计票和去重标记必须对调用者表现为 all-or-nothing；持久化失败时返回 500，且活动进程内的票数与去重状态不得改变。至少增加可注入失败 store 的单测，断言失败后再次读取视图不变。
+
+### 维度 3：隐含但未声明的状态变化/副作用
+
+#### REQ-005 — 新旧投票数据模型兼容规则未声明
+
+**Description:**  
+当前 poll 记录是 `votes: [[choiceIndex,...]]`。需求要求新增“该标识已投过该 poll”的持久状态，并且 out of scope 声明历史旧投票无标识、保持原样计票，但没有定义新字段/新 schema 与旧 `votes` 数组如何共存。
+
+**Risk:**  
+实现可能把 `votes` 从数组改成对象数组，破坏现有 `counts`/`total` 语义、旧数据加载或 `view()` 裁剪规则；也可能把投票者标识和选择直接绑在同一结构中，增加隐私暴露风险。
+
+**Suggested fix:**  
+明确持久化形态和兼容规则。例如：旧 `votes` 数组保持有效；新增 `voters`/`votedBy` 存防重用的标识摘要；`counts` 和 `total` 继续只按 `votes` 计算；公开视图不得返回 `votes`、`voters`、cookie 原值或标识摘要；不做历史迁移但必须能读取旧 poll。
+
+### 维度 4：验收标准是否可测试
+
+#### REQ-007 — AC7 的“无 cookie 直连 POST 拒绝文案对用户可见”不可按字面做浏览器端到端断言
+
+**Description:**  
+AC7 把“浏览器端到端”和“无 cookie 直连 POST”放在一起，但直连 POST 没有页面承载错误文案；正常浏览器访问 `/poll/:id` 后又会先 GET 领取 cookie。
+
+**Risk:**  
+测试作者无法判断应通过 curl/API 断言 JSON 错误，还是构造浏览器页面态断言 `#error` 可见，导致验收实现不一致。
+
+**Suggested fix:**  
+拆成两个可测 AC：API 层无 cookie POST 返回指定 4xx 和 `{error}`；浏览器层在页面已加载后删除投票者 cookie，再点击投票按钮，页面 `#error` 显示该错误文案且表单不被静默隐藏。
+
+### 维度 5：是否与当前状态 A 冲突
+
+未发现直接冲突。需求确认了当前无服务端 cookie、无服务端去重、`view()` 不泄露 `adminToken`/`votes`、store 无 fsync 保证，这些与 KB 和代码现实一致。需注意 REQ-005 中的数据模型兼容规则补齐后，才能确保不破坏现有旧数据与计票语义。
+
+### 维度 6：目标 lineage 是否声明且匹配现实
+
+通过。需求声明目标 lineage 为 `master`；当前仓库分支为 `master`，HEAD 为 `3f1d30954a9d5b500f8a6708b9070d51e045aac5`，与 KB 的 `source-commit` 一致。
+
+## Advisories
+
+- ADV-001：若继续保持项目“零运行时依赖”的现实约束很重要，建议在需求中显式声明 cookie 解析、签名、随机值生成使用 Node 内建能力，不新增 npm 依赖。
+- ADV-002：现有测试会精确断言中文错误文案。新错误如“未获得投票标识”“你已经投过”等，建议在需求中给出固定文案，减少实现和测试反复。
+- ADV-003：AC3 的 `N 次` 建议落成具体测试值，例如 N=3，便于测试用例稳定表达。
+
+## LEDGER DELTA
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| REQ-001 | 文档仍保留开放问题，目标态未封版 | 状态码、cookie 下发入口和领域层接口可能被不同实现者选择成不同结果 | req-v1 | open |
+| REQ-002 | `voted` 字段的公开视图契约不完整 | 前端、API 响应和测试可能对字段存在性/真假值产生分歧 | req-v1 | open |
+| REQ-003 | 同一 cookie 并发投票的结果未定义 | 并发重复提交可能双计票，破坏服务端防重复目标 | req-v1 | open |
+| REQ-004 | 持久化失败时的回滚/一致性未定义 | 可能出现返回失败但内存已计票，或计票与去重标记不一致 | req-v1 | open |
+| REQ-005 | 新旧投票数据模型兼容规则未声明 | 可能破坏旧 `votes` 数据、`counts`/`total` 语义或隐私边界 | req-v1 | open |
+| REQ-006 | Cookie 与签名密钥生命周期不够精确 | cookie 有效期、密钥复用和损坏处理不可预测，重启后行为可能不一致 | req-v1 | open |
+| REQ-007 | AC7 的无 cookie 直连 POST 用户可见文案不可按字面端到端测试 | 测试作者无法确定应断言 API JSON 还是浏览器页面错误状态 | req-v1 | open |
+
+VERDICT: 7 issues open

@@ -1,0 +1,1221 @@
+Reading additional input from stdin...
+OpenAI Codex v0.142.3
+--------
+workdir: /root/terra/legacy-lab/inherited-poll
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f451e-a96d-7001-b405-a13f218f3275
+--------
+user
+You are a consistency reviewer for a trivial-tier bugfix change named json-body-400. [Facts] The bug: POST bodies that are valid JSON but not an object (the literal null, arrays, bare strings/numbers) crashed with TypeError → 500; empty bodies and unparsable JSON already returned 400. [The change] server.js readJsonBody now rejects any parse result that is not a plain object with PollError 400 '请求格式不正确' (empty body still treated as {} so downstream field validation keeps its specific messages). Spec: apriori/changes/json-body-400/specs/json-body-400.md (scenario RB-01). Test: the RB-01 test in test/server.test.js. Review: 1) does the fix match the spec scenario exactly (all listed shapes, both endpoints, empty-body semantics preserved); 2) does the RB-01 test faithfully exercise it; 3) any regression risk to existing behavior (e.g. legitimate object bodies, the existing '{broken' 400 path, the vote 403-before-body-read ordering) — note POST vote reads the body only AFTER the cookie check, so no-cookie + bad-body still 403s, check that's consistent with the spec's 'with a valid voter cookie' wording; 4) any other spec-vs-code gap this change introduces. Read server.js, the spec delta, and test/server.test.js. Only spec-vs-code gaps count toward the verdict; everything else advisory (P0). End with a ledger delta (print, don't write files) and exactly one verdict line: "VERDICT: no spec-vs-code gaps" or "VERDICT: <N> issues open".
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-09T04:24:25.541647Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-09T04:24:25.703518Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-09T04:24:26.026721Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-09T04:24:26.549520Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-09T04:24:27.566166Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-09T04:24:29.260734Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-09T04:24:32.408153Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: 4YdO0XVnHPF5
+codex
+I’ll review the implementation against the named spec and test only, then separate real spec gaps from advisory risk. I’m going to inspect `server.js`, the spec, and the relevant test file without modifying anything.
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' server.js" in /root/terra/legacy-lab/inherited-poll
+exec
+/usr/bin/zsh -lc "sed -n '1,220p' apriori/changes/json-body-400/specs/json-body-400.md" in /root/terra/legacy-lab/inherited-poll
+exec
+/usr/bin/zsh -lc "sed -n '1,360p' test/server.test.js" in /root/terra/legacy-lab/inherited-poll
+ succeeded in 119ms:
+# Spec delta — json-body-400
+
+> Merges into `apriori/specs/polls.md`. Trivial-tier bugfix: request-body shape validation at the
+> HTTP layer.
+
+## ADDED Requirements
+
+### Requirement: REQUEST-BODY-VALIDATION — non-object JSON bodies are rejected, never 500
+
+Every JSON-consuming POST endpoint rejects a request body that does not parse to a plain JSON
+object with `400 {error:"请求格式不正确"}` — a malformed body can never produce a 500.
+
+#### Scenario: RB-01 — JSON `null`, arrays, and bare primitives get 400 with the fixed message
+- Given `POST /api/polls` or `POST /api/polls/:id/vote` (with a valid voter cookie)
+- When the request body is the JSON literal `null`, a JSON array, or a bare string/number — i.e.
+  valid JSON that is not an object — or is not valid JSON at all
+- Then the response is `400` with `{error:"请求格式不正确"}` (and never a 500)
+- And an empty body keeps its existing behavior (treated as `{}` — downstream field validation
+  answers with its specific 400 message, e.g. `问题不能为空` / `请至少选择一个选项`)
+
+ succeeded in 127ms:
+'use strict';
+const http = require('node:http');
+const fs = require('node:fs');
+const path = require('node:path');
+const { createStore } = require('./lib/store');
+const { createPolls, PollError } = require('./lib/polls');
+const voter = require('./lib/voter-identity');
+
+const PUBLIC_DIR = path.join(__dirname, 'public');
+
+function sendJson(res, status, body) {
+  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
+  res.end(JSON.stringify(body));
+}
+
+function sendFile(res, name, type) {
+  res.writeHead(200, { 'Content-Type': `${type}; charset=utf-8` });
+  res.end(fs.readFileSync(path.join(PUBLIC_DIR, name)));
+}
+
+function readJsonBody(req) {
+  return new Promise((resolve, reject) => {
+    let raw = '';
+    req.on('data', (chunk) => {
+      raw += chunk;
+      if (raw.length > 1e6) req.destroy();
+    });
+    req.on('end', () => {
+      try {
+        const parsed = raw ? JSON.parse(raw) : {};
+        // 合法 JSON 但不是对象（null、数组、裸字符串/数字）一律按格式错误处理：
+        // 下游代码假定 body 是普通对象（body.question / body.choices），放行会 500（RB-01）。
+        if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          return reject(new PollError(400, '请求格式不正确'));
+        }
+        resolve(parsed);
+      } catch {
+        reject(new PollError(400, '请求格式不正确'));
+      }
+    });
+    req.on('error', reject);
+  });
+}
+
+// storeIo 仅用于测试的故障注入直通（design.md §4）；生产调用不传第二个参数。
+function createServer(dataDir, { storeIo } = {}) {
+  const store = createStore(dataDir, storeIo);
+  const polls = createPolls(store);
+  // 构造期加载/生成签名密钥：文件损坏 → 这里直接抛错，服务不启动（VD-10）。
+  const secret = voter.loadOrCreateSecret(dataDir);
+
+  // 从请求头解析并校验投票者 cookie；合法返回 raw，否则 null。
+  function verifiedRaw(req) {
+    const cookies = voter.parseCookieHeader(req.headers.cookie);
+    return voter.verify(cookies[voter.COOKIE_NAME], secret);
+  }
+
+  return http.createServer(async (req, res) => {
+    const { pathname } = new URL(req.url, 'http://localhost');
+    const get = req.method === 'GET';
+    const postReq = req.method === 'POST';
+    let m;
+    try {
+      if (get && pathname === '/') return sendFile(res, 'index.html', 'text/html');
+      if (get && pathname === '/style.css') return sendFile(res, 'style.css', 'text/css');
+      if (get && /^\/poll\/[a-z0-9]+$/.test(pathname)) return sendFile(res, 'poll.html', 'text/html');
+      if (get && /^\/admin\/[a-z0-9]+$/.test(pathname)) return sendFile(res, 'admin.html', 'text/html');
+
+      if (postReq && pathname === '/api/polls') {
+        const body = await readJsonBody(req);
+        const poll = polls.create(body);
+        return sendJson(res, 201, { id: poll.id, adminToken: poll.adminToken });
+      }
+      if (get && (m = pathname.match(/^\/api\/polls\/([a-z0-9]+)$/))) {
+        // 标识签发只在这一个入口：无/非法 cookie → 签发新标识并 Set-Cookie；有效则不重复下发。
+        let raw = verifiedRaw(req);
+        let issued = null;
+        if (raw === null) {
+          issued = voter.issue(secret);
+          raw = issued.raw;
+        }
+        // 先取视图：404 等失败会在这里抛出——失败响应不下发新 cookie（B1，EXEC-001 修复）。
+        const body = polls.getView(m[1], voter.digest(raw, secret));
+        if (issued) res.setHeader('Set-Cookie', voter.buildSetCookie(issued.value));
+        return sendJson(res, 200, body);
+      }
+      if (postReq && (m = pathname.match(/^\/api\/polls\/([a-z0-9]+)\/vote$/))) {
+        const raw = verifiedRaw(req);
+        // 无有效标识：403 拒绝，不计票，也不下发新 cookie（不奖励非法请求，VD-04）。
+        if (raw === null) return sendJson(res, 403, { error: '未获得投票标识' });
+        const body = await readJsonBody(req);
+        return sendJson(res, 200, polls.vote(m[1], body.choices, voter.digest(raw, secret)));
+      }
+      if (get && (m = pathname.match(/^\/api\/admin\/([a-z0-9]+)$/))) {
+        return sendJson(res, 200, polls.adminView(m[1]));
+      }
+      if (postReq && (m = pathname.match(/^\/api\/admin\/([a-z0-9]+)\/close$/))) {
+        return sendJson(res, 200, polls.close(m[1]));
+      }
+      return sendJson(res, 404, { error: '页面不存在' });
+    } catch (err) {
+      if (err instanceof PollError) return sendJson(res, err.status, { error: err.message });
+      console.error(err);
+      return sendJson(res, 500, { error: '服务器内部错误' });
+    }
+  });
+}
+
+module.exports = { createServer };
+
+if (require.main === module) {
+  const port = Number(process.env.PORT) || 3000;
+  createServer(path.join(__dirname, 'data')).listen(port, '0.0.0.0', () => {
+    console.log(`快速投票已启动: http://localhost:${port}`);
+  });
+}
+
+ succeeded in 159ms:
+'use strict';
+const test = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { createServer } = require('../server');
+
+async function startServer(t, opts) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'poll-srv-'));
+  const server = createServer(dir, opts);
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  const base = `http://127.0.0.1:${server.address().port}`;
+  return { base, dir, server };
+}
+
+async function post(base, p, body, cookie) {
+  const headers = { 'Content-Type': 'application/json' };
+  if (cookie) headers.Cookie = cookie;
+  const res = await fetch(base + p, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body),
+  });
+  return { status: res.status, body: await res.json(), headers: res.headers };
+}
+
+// 领取投票者 cookie：对 poll 视图发一次 GET，取回 Set-Cookie 的 pv=... 部分
+async function getCookie(base, id) {
+  const res = await fetch(`${base}/api/polls/${id}`);
+  const setCookie = res.headers.get('set-cookie');
+  if (!setCookie) return null;
+  return setCookie.split(';')[0]; // "pv=<value>"
+}
+
+test('全流程：建投票→领 cookie→投票→查结果→关闭→再投被拒', async (t) => {
+  const { base } = await startServer(t);
+
+  const created = await post(base, '/api/polls', {
+    question: '周五团建去哪',
+    options: ['烤肉', '火锅', '轰趴馆'],
+    multiple: false,
+  });
+  assert.equal(created.status, 201);
+  const { id, adminToken } = created.body;
+  assert.match(id, /^[a-z2-9]{6}$/);
+  assert.match(adminToken, /^[a-z2-9]{16}$/);
+
+  const cookie = await getCookie(base, id);
+  const voted = await post(base, `/api/polls/${id}/vote`, { choices: [1] }, cookie);
+  assert.equal(voted.status, 200);
+  assert.deepEqual(voted.body.counts, [0, 1, 0]);
+
+  const view = await fetch(`${base}/api/polls/${id}`).then((r) => r.json());
+  assert.equal(view.total, 1);
+  assert.equal(view.open, true);
+  assert.ok(!('adminToken' in view));
+
+  const admin = await fetch(`${base}/api/admin/${adminToken}`).then((r) => r.json());
+  assert.equal(admin.id, id);
+
+  const closed = await post(base, `/api/admin/${adminToken}/close`, {});
+  assert.equal(closed.status, 200);
+  assert.equal(closed.body.closed, true);
+
+  const rejected = await post(base, `/api/polls/${id}/vote`, { choices: [0] }, cookie);
+  assert.equal(rejected.status, 409);
+  assert.equal(rejected.body.error, '投票已关闭');
+});
+
+test('VD-01 无 cookie 的 GET 下发 HttpOnly 的 pv cookie；带 cookie 投票 → 200、票数 +1、voted:true', async (t) => {
+  const { base } = await startServer(t);
+  const { body: { id } } = await post(base, '/api/polls', { question: 'q', options: ['a', 'b'] });
+
+  const res = await fetch(`${base}/api/polls/${id}`);
+  const setCookie = res.headers.get('set-cookie');
+  assert.ok(setCookie, 'GET 应下发 Set-Cookie');
+  assert.match(setCookie, /^pv=/);
+  assert.match(setCookie, /HttpOnly/i);
+  assert.equal((await res.json()).voted, false);
+  const cookie = setCookie.split(';')[0];
+
+  // 已带有效 cookie 的 GET 不重复下发
+  const res2 = await fetch(`${base}/api/polls/${id}`, { headers: { Cookie: cookie } });
+  assert.equal(res2.headers.get('set-cookie'), null);
+
+  const voted = await post(base, `/api/polls/${id}/vote`, { choices: [0] }, cookie);
+  assert.equal(voted.status, 200);
+  assert.equal(voted.body.total, 1);
+  assert.equal(voted.body.voted, true);
+});
+
+test('VD-04 无 cookie / 伪造 cookie 的投票 → 403 固定文案，不计票，不下发 cookie', async (t) => {
+  const { base } = await startServer(t);
+  const { body: { id } } = await post(base, '/api/polls', { question: 'q', options: ['a', 'b'] });
+
+  const noCookie = await post(base, `/api/polls/${id}/vote`, { choices: [0] });
+  assert.equal(noCookie.status, 403);
+  assert.equal(noCookie.body.error, '未获得投票标识');
+  assert.equal(noCookie.headers.get('set-cookie'), null);
+
+  const forged = await post(base, `/api/polls/${id}/vote`, { choices: [0] }, 'pv=Zm9yZ2Vk.Zm9yZ2Vkc2ln');
+  assert.equal(forged.status, 403);
+  assert.equal(forged.body.error, '未获得投票标识');
+  assert.equal(forged.headers.get('set-cookie'), null);
+
+  // 篡改真 cookie 的签名部分
+  const real = await getCookie(base, id);
+  const tampered = real.slice(0, -2) + 'xx';
+  const bad = await post(base, `/api/polls/${id}/vote`, { choices: [0] }, tampered);
+  assert.equal(bad.status, 403);
+  assert.equal(bad.headers.get('set-cookie'), null);
+
+  const view = await fetch(`${base}/api/polls/${id}`).then((r) => r.json());
+  assert.equal(view.total, 0);
+  assert.deepEqual(view.counts, [0, 0]);
+});
+
+test('VD-06 重启后（新 server/store 实例，同数据目录）同一 cookie 再投仍 409，票数经应用加载路径读回一致', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'poll-srv-restart-'));
+  const server1 = createServer(dir);
+  await new Promise((resolve) => server1.listen(0, '127.0.0.1', resolve));
+  const base1 = `http://127.0.0.1:${server1.address().port}`;
+
+  const created = await post(base1, '/api/polls', { question: 'q', options: ['a', 'b'] });
+  const id = created.body.id;
+  const cookie = await getCookie(base1, id);
+  const voted = await post(base1, `/api/polls/${id}/vote`, { choices: [0] }, cookie);
+  assert.equal(voted.status, 200);
+  const before = await fetch(`${base1}/api/polls/${id}`, { headers: { Cookie: cookie } }).then((r) => r.json());
+  await new Promise((resolve) => server1.close(resolve));
+
+  // “重启”：全新实例走自身加载路径读回，同一数据目录
+  const server2 = createServer(dir);
+  await new Promise((resolve) => server2.listen(0, '127.0.0.1', resolve));
+  t.after(() => server2.close());
+  const base2 = `http://127.0.0.1:${server2.address().port}`;
+
+  const again = await post(base2, `/api/polls/${id}/vote`, { choices: [1] }, cookie);
+  assert.equal(again.status, 409);
+  assert.equal(again.body.error, '你已经投过这个投票了');
+  const after = await fetch(`${base2}/api/polls/${id}`, { headers: { Cookie: cookie } }).then((r) => r.json());
+  assert.equal(after.total, before.total);
+  assert.deepEqual(after.counts, before.counts);
+  assert.equal(after.voted, true);
+});
+
+test('VD-08 同一 cookie 并发两个投票请求：恰一个 200、一个 409，total 只 +1', async (t) => {
+  const { base } = await startServer(t);
+  const { body: { id } } = await post(base, '/api/polls', { question: 'q', options: ['a', 'b'] });
+  const cookie = await getCookie(base, id);
+
+  const [r1, r2] = await Promise.all([
+    post(base, `/api/polls/${id}/vote`, { choices: [0] }, cookie),
+    post(base, `/api/polls/${id}/vote`, { choices: [1] }, cookie),
+  ]);
+  const statuses = [r1.status, r2.status].sort();
+  assert.deepEqual(statuses, [200, 409]);
+  const view = await fetch(`${base}/api/polls/${id}`).then((r) => r.json());
+  assert.equal(view.total, 1);
+});
+
+test('VD-09 注入写盘失败：投票 → 500，随后同进程 GET 读到的状态与失败前完全一致', async (t) => {
+  let fail = false;
+  const { base } = await startServer(t, {
+    storeIo: {
+      writeFileSync: (...args) => {
+        if (fail) throw new Error('injected write failure');
+        return fs.writeFileSync(...args);
+      },
+    },
+  });
+  // fixture 先建好（此时注入未武装，落盘正常）
+  const { body: { id } } = await post(base, '/api/polls', { question: 'q', options: ['a', 'b'] });
+  const cookie = await getCookie(base, id);
+  const before = await fetch(`${base}/api/polls/${id}`, { headers: { Cookie: cookie } }).then((r) => r.json());
+
+  fail = true; // 武装：下一次写盘失败，命中投票的持久化
+  const r = await post(base, `/api/polls/${id}/vote`, { choices: [0] }, cookie);
+  assert.equal(r.status, 500);
+
+  fail = false;
+  const after = await fetch(`${base}/api/polls/${id}`, { headers: { Cookie: cookie } }).then((r) => r.json());
+  assert.equal(after.total, before.total);
+  assert.deepEqual(after.counts, before.counts);
+  assert.equal(after.voted, false, '失败的投票不得留下去重标记');
+});
+
+test('VD-11 admin 视图与公开视图的隐私边界：均不含 adminToken/votes/voters；admin 无 voted 字段', async (t) => {
+  const { base } = await startServer(t);
+  const created = await post(base, '/api/polls', { question: 'q', options: ['a', 'b'] });
+  const { id, adminToken } = created.body;
+  const cookie = await getCookie(base, id);
+  await post(base, `/api/polls/${id}/vote`, { choices: [0] }, cookie);
+
+  const pub = await fetch(`${base}/api/polls/${id}`, { headers: { Cookie: cookie } }).then((r) => r.json());
+  for (const k of ['adminToken', 'votes', 'voters']) assert.ok(!(k in pub), `公开视图不应含 ${k}`);
+  assert.equal(pub.voted, true);
+
+  const admin = await fetch(`${base}/api/admin/${adminToken}`).then((r) => r.json());
+  for (const k of ['adminToken', 'votes', 'voters', 'voted']) assert.ok(!(k in admin), `admin 视图不应含 ${k}`);
+
+  const closedView = await post(base, `/api/admin/${adminToken}/close`, {});
+  for (const k of ['adminToken', 'votes', 'voters', 'voted']) assert.ok(!(k in closedView.body), `close 响应不应含 ${k}`);
+});
+
+test('VD-10 密钥文件损坏 → createServer 构造抛错（启动失败，非静默重建）', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'poll-srv-badkey-'));
+  fs.writeFileSync(path.join(dir, 'cookie-secret'), 'corrupt');
+  assert.throws(() => createServer(dir), /cookie-secret/);
+});
+
+test('错误路径：404 / 校验 400 / 非法 JSON 400', async (t) => {
+  const { base } = await startServer(t);
+
+  const missing = await fetch(`${base}/api/polls/nope42`);
+  assert.equal(missing.status, 404);
+  assert.equal((await missing.json()).error, '投票不存在');
+  // EXEC-001 回归：失败响应不得下发新 cookie（无 cookie 的 404 GET 也不签发标识）
+  assert.equal(missing.headers.get('set-cookie'), null);
+
+  const invalid = await post(base, '/api/polls', { question: '', options: ['a', 'b'] });
+  assert.equal(invalid.status, 400);
+  assert.equal(invalid.body.error, '问题不能为空');
+
+  const badJson = await fetch(`${base}/api/polls`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{broken',
+  });
+  assert.equal(badJson.status, 400);
+  assert.equal((await badJson.json()).error, '请求格式不正确');
+
+  const unknown = await fetch(`${base}/api/what`);
+  assert.equal(unknown.status, 404);
+  assert.equal((await unknown.json()).error, '页面不存在');
+});
+
+test('RB-01 合法 JSON 但非对象的 body（null/数组/裸标量）→ 400 固定文案，绝不 500；空 body 保持原语义', async (t) => {
+  const { base } = await startServer(t);
+
+  for (const body of ['null', '[1,2]', '"abc"', '42']) {
+    const r = await fetch(`${base}/api/polls`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body,
+    });
+    assert.equal(r.status, 400, `create body=${body}`);
+    assert.equal((await r.json()).error, '请求格式不正确', `create body=${body}`);
+  }
+
+  const created = await post(base, '/api/polls', { question: 'q', options: ['a', 'b'] });
+  const cookie = await getCookie(base, created.body.id);
+  for (const body of ['null', '[0]', '"x"']) {
+    const r = await fetch(`${base}/api/polls/${created.body.id}/vote`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+      body,
+    });
+    assert.equal(r.status, 400, `vote body=${body}`);
+    assert.equal((await r.json()).error, '请求格式不正确', `vote body=${body}`);
+  }
+
+  // 空 body：仍按 {} 处理，由字段校验给出具体 400 文案（不改变既有语义）
+  const emptyCreate = await fetch(`${base}/api/polls`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  assert.equal(emptyCreate.status, 400);
+  assert.equal((await emptyCreate.json()).error, '问题不能为空');
+  const emptyVote = await fetch(`${base}/api/polls/${created.body.id}/vote`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: cookie },
+  });
+  assert.equal(emptyVote.status, 400);
+  assert.equal((await emptyVote.json()).error, '请至少选择一个选项');
+});
+
+test('页面路由：/、/poll/:id、/admin/:token 返回 HTML', async (t) => {
+  const { base } = await startServer(t);
+  for (const p of ['/', '/poll/abc123', '/admin/abcdefgh23456789']) {
+    const res = await fetch(base + p);
+    assert.equal(res.status, 200, p);
+    assert.match(res.headers.get('content-type'), /text\/html/);
+  }
+});
+
+test('前端资产：style.css 可达；页面含真实应用标记', async (t) => {
+  const { base } = await startServer(t);
+  const css = await fetch(`${base}/style.css`);
+  assert.equal(css.status, 200);
+  assert.match(css.headers.get('content-type'), /text\/css/);
+
+  const index = await fetch(`${base}/`).then((r) => r.text());
+  assert.match(index, /id="create"/);
+  const poll = await fetch(`${base}/poll/abc123`).then((r) => r.text());
+  assert.match(poll, /id="results"/);
+  const admin = await fetch(`${base}/admin/abcdefgh23456789`).then((r) => r.text());
+  assert.match(admin, /id="close"/);
+});
+
+codex
+The core server path is small: `readJsonBody` is shared by create and vote, while vote deliberately verifies the cookie before reading. I’m checking line references and the existing validation functions now so the verdict can stay limited to spec-vs-code gaps.
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' lib/polls.js" in /root/terra/legacy-lab/inherited-poll
+exec
+/usr/bin/zsh -lc "nl -ba server.js | sed -n '1,140p'" in /root/terra/legacy-lab/inherited-poll
+exec
+/usr/bin/zsh -lc "nl -ba test/server.test.js | sed -n '210,310p'" in /root/terra/legacy-lab/inherited-poll
+exec
+/usr/bin/zsh -lc 'nl -ba apriori/changes/json-body-400/specs/json-body-400.md' in /root/terra/legacy-lab/inherited-poll
+ succeeded in 122ms:
+'use strict';
+const crypto = require('node:crypto');
+
+class PollError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.status = status;
+  }
+}
+
+const ID_CHARS = 'abcdefghjkmnpqrstuvwxyz23456789';
+
+function randomId(length) {
+  const bytes = crypto.randomBytes(length);
+  let out = '';
+  for (let i = 0; i < length; i++) out += ID_CHARS[bytes[i] % ID_CHARS.length];
+  return out;
+}
+
+function createPolls(store, now = () => new Date()) {
+  function create(input) {
+    const question = String(input.question ?? '').trim();
+    if (!question) throw new PollError(400, '问题不能为空');
+    if (question.length > 200) throw new PollError(400, '问题不能超过 200 字');
+
+    const raw = Array.isArray(input.options) ? input.options : [];
+    const options = raw.map((o) => String(o).trim()).filter(Boolean);
+    if (options.length < 2) throw new PollError(400, '至少需要 2 个选项');
+    if (options.length > 20) throw new PollError(400, '选项不能超过 20 个');
+    if (options.some((o) => o.length > 100)) throw new PollError(400, '单个选项不能超过 100 字');
+
+    let deadline = null;
+    if (input.deadline) {
+      const d = new Date(input.deadline);
+      if (Number.isNaN(d.getTime())) throw new PollError(400, '截止时间格式不正确');
+      if (d <= now()) throw new PollError(400, '截止时间必须晚于当前时间');
+      deadline = d.toISOString();
+    }
+
+    const poll = {
+      id: randomId(6),
+      adminToken: randomId(16),
+      question,
+      options,
+      multiple: Boolean(input.multiple),
+      deadline,
+      closed: false,
+      votes: [],
+      voters: [], // 已投过的标识摘要（HMAC），不存标识明文；旧数据无此字段，读取时归一化
+      createdAt: now().toISOString(),
+    };
+    store.put(poll);
+    return poll;
+  }
+
+  function isOpen(poll) {
+    if (poll.closed) return false;
+    if (poll.deadline && now() >= new Date(poll.deadline)) return false;
+    return true;
+  }
+
+  // 基础投影：字段与历史版本完全一致，永不携带 voted —— admin 视图专用（VD-11）。
+  function view(poll) {
+    const counts = poll.options.map(
+      (_, i) => poll.votes.filter((v) => v.includes(i)).length
+    );
+    return {
+      id: poll.id,
+      question: poll.question,
+      options: poll.options,
+      multiple: poll.multiple,
+      deadline: poll.deadline,
+      closed: poll.closed,
+      open: isOpen(poll),
+      counts,
+      total: poll.votes.length,
+    };
+  }
+
+  // 旧数据兼容（DES-001）：本次改动前的存量记录没有 voters 字段，读取时一律归一化为 []。
+  function votersOf(poll) {
+    return Array.isArray(poll.voters) ? poll.voters : [];
+  }
+
+  // 公开投影：基础字段 + 派生布尔 voted（携带有效标识且已投过 → true）。
+  function publicView(poll, voterId) {
+    return { ...view(poll), voted: Boolean(voterId) && votersOf(poll).includes(voterId) };
+  }
+
+  function getPoll(id) {
+    const poll = store.get(id);
+    if (!poll) throw new PollError(404, '投票不存在');
+    return poll;
+  }
+
+  function getView(id, voterId) {
+    return publicView(getPoll(id), voterId);
+  }
+
+  // voterId 为 HTTP 层校验 cookie 后算出的标识摘要；cookie 的签发/校验不进领域层。
+  // 整个函数保持同步（无 await/回调）：检查→计票→标记→落盘之间没有事件循环让出点，
+  // 这是 VD-08 并发保证的成立前提（design.md §3）——改动此函数时不得引入异步步骤。
+  function vote(id, choices, voterId) {
+    const poll = getPoll(id);
+    if (poll.closed) throw new PollError(409, '投票已关闭');
+    if (!isOpen(poll)) throw new PollError(409, '投票已过截止时间');
+    if (!Array.isArray(choices) || choices.length === 0) {
+      throw new PollError(400, '请至少选择一个选项');
+    }
+    const validIndex = (c) => Number.isInteger(c) && c >= 0 && c < poll.options.length;
+    if (!choices.every(validIndex) || new Set(choices).size !== choices.length) {
+      throw new PollError(400, '选项不合法');
+    }
+    if (!poll.multiple && choices.length > 1) {
+      throw new PollError(400, '该投票为单选，只能选择一个选项');
+    }
+    const voters = votersOf(poll);
+    if (voters.includes(voterId)) throw new PollError(409, '你已经投过这个投票了');
+    // 在新对象上应用变更，绝不原地改 poll：store.put 落盘失败抛错时，
+    // 内存中的原对象未被碰过，回滚即“什么都不用做”（VD-09 的 all-or-nothing）。
+    const candidate = { ...poll, votes: [...poll.votes, choices], voters: [...voters, voterId] };
+    store.put(candidate);
+    return publicView(candidate, voterId);
+  }
+
+  function findByToken(token) {
+    const all = store.all();
+    for (const id of Object.keys(all)) {
+      if (all[id].adminToken === token) return all[id];
+    }
+    throw new PollError(404, '管理链接不存在');
+  }
+
+  function adminView(token) {
+    return view(findByToken(token));
+  }
+
+  function close(token) {
+    const poll = findByToken(token);
+    poll.closed = true;
+    store.put(poll);
+    return view(poll);
+  }
+
+  return { create, getView, vote, adminView, close };
+}
+
+module.exports = { createPolls, PollError };
+
+ succeeded in 128ms:
+     1	'use strict';
+     2	const http = require('node:http');
+     3	const fs = require('node:fs');
+     4	const path = require('node:path');
+     5	const { createStore } = require('./lib/store');
+     6	const { createPolls, PollError } = require('./lib/polls');
+     7	const voter = require('./lib/voter-identity');
+     8	
+     9	const PUBLIC_DIR = path.join(__dirname, 'public');
+    10	
+    11	function sendJson(res, status, body) {
+    12	  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
+    13	  res.end(JSON.stringify(body));
+    14	}
+    15	
+    16	function sendFile(res, name, type) {
+    17	  res.writeHead(200, { 'Content-Type': `${type}; charset=utf-8` });
+    18	  res.end(fs.readFileSync(path.join(PUBLIC_DIR, name)));
+    19	}
+    20	
+    21	function readJsonBody(req) {
+    22	  return new Promise((resolve, reject) => {
+    23	    let raw = '';
+    24	    req.on('data', (chunk) => {
+    25	      raw += chunk;
+    26	      if (raw.length > 1e6) req.destroy();
+    27	    });
+    28	    req.on('end', () => {
+    29	      try {
+    30	        const parsed = raw ? JSON.parse(raw) : {};
+    31	        // 合法 JSON 但不是对象（null、数组、裸字符串/数字）一律按格式错误处理：
+    32	        // 下游代码假定 body 是普通对象（body.question / body.choices），放行会 500（RB-01）。
+    33	        if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    34	          return reject(new PollError(400, '请求格式不正确'));
+    35	        }
+    36	        resolve(parsed);
+    37	      } catch {
+    38	        reject(new PollError(400, '请求格式不正确'));
+    39	      }
+    40	    });
+    41	    req.on('error', reject);
+    42	  });
+    43	}
+    44	
+    45	// storeIo 仅用于测试的故障注入直通（design.md §4）；生产调用不传第二个参数。
+    46	function createServer(dataDir, { storeIo } = {}) {
+    47	  const store = createStore(dataDir, storeIo);
+    48	  const polls = createPolls(store);
+    49	  // 构造期加载/生成签名密钥：文件损坏 → 这里直接抛错，服务不启动（VD-10）。
+    50	  const secret = voter.loadOrCreateSecret(dataDir);
+    51	
+    52	  // 从请求头解析并校验投票者 cookie；合法返回 raw，否则 null。
+    53	  function verifiedRaw(req) {
+    54	    const cookies = voter.parseCookieHeader(req.headers.cookie);
+    55	    return voter.verify(cookies[voter.COOKIE_NAME], secret);
+    56	  }
+    57	
+    58	  return http.createServer(async (req, res) => {
+    59	    const { pathname } = new URL(req.url, 'http://localhost');
+    60	    const get = req.method === 'GET';
+    61	    const postReq = req.method === 'POST';
+    62	    let m;
+    63	    try {
+    64	      if (get && pathname === '/') return sendFile(res, 'index.html', 'text/html');
+    65	      if (get && pathname === '/style.css') return sendFile(res, 'style.css', 'text/css');
+    66	      if (get && /^\/poll\/[a-z0-9]+$/.test(pathname)) return sendFile(res, 'poll.html', 'text/html');
+    67	      if (get && /^\/admin\/[a-z0-9]+$/.test(pathname)) return sendFile(res, 'admin.html', 'text/html');
+    68	
+    69	      if (postReq && pathname === '/api/polls') {
+    70	        const body = await readJsonBody(req);
+    71	        const poll = polls.create(body);
+    72	        return sendJson(res, 201, { id: poll.id, adminToken: poll.adminToken });
+    73	      }
+    74	      if (get && (m = pathname.match(/^\/api\/polls\/([a-z0-9]+)$/))) {
+    75	        // 标识签发只在这一个入口：无/非法 cookie → 签发新标识并 Set-Cookie；有效则不重复下发。
+    76	        let raw = verifiedRaw(req);
+    77	        let issued = null;
+    78	        if (raw === null) {
+    79	          issued = voter.issue(secret);
+    80	          raw = issued.raw;
+    81	        }
+    82	        // 先取视图：404 等失败会在这里抛出——失败响应不下发新 cookie（B1，EXEC-001 修复）。
+    83	        const body = polls.getView(m[1], voter.digest(raw, secret));
+    84	        if (issued) res.setHeader('Set-Cookie', voter.buildSetCookie(issued.value));
+    85	        return sendJson(res, 200, body);
+    86	      }
+    87	      if (postReq && (m = pathname.match(/^\/api\/polls\/([a-z0-9]+)\/vote$/))) {
+    88	        const raw = verifiedRaw(req);
+    89	        // 无有效标识：403 拒绝，不计票，也不下发新 cookie（不奖励非法请求，VD-04）。
+    90	        if (raw === null) return sendJson(res, 403, { error: '未获得投票标识' });
+    91	        const body = await readJsonBody(req);
+    92	        return sendJson(res, 200, polls.vote(m[1], body.choices, voter.digest(raw, secret)));
+    93	      }
+    94	      if (get && (m = pathname.match(/^\/api\/admin\/([a-z0-9]+)$/))) {
+    95	        return sendJson(res, 200, polls.adminView(m[1]));
+    96	      }
+    97	      if (postReq && (m = pathname.match(/^\/api\/admin\/([a-z0-9]+)\/close$/))) {
+    98	        return sendJson(res, 200, polls.close(m[1]));
+    99	      }
+   100	      return sendJson(res, 404, { error: '页面不存在' });
+   101	    } catch (err) {
+   102	      if (err instanceof PollError) return sendJson(res, err.status, { error: err.message });
+   103	      console.error(err);
+   104	      return sendJson(res, 500, { error: '服务器内部错误' });
+   105	    }
+   106	  });
+   107	}
+   108	
+   109	module.exports = { createServer };
+   110	
+   111	if (require.main === module) {
+   112	  const port = Number(process.env.PORT) || 3000;
+   113	  createServer(path.join(__dirname, 'data')).listen(port, '0.0.0.0', () => {
+   114	    console.log(`快速投票已启动: http://localhost:${port}`);
+   115	  });
+   116	}
+
+ succeeded in 130ms:
+   210	  fs.writeFileSync(path.join(dir, 'cookie-secret'), 'corrupt');
+   211	  assert.throws(() => createServer(dir), /cookie-secret/);
+   212	});
+   213	
+   214	test('错误路径：404 / 校验 400 / 非法 JSON 400', async (t) => {
+   215	  const { base } = await startServer(t);
+   216	
+   217	  const missing = await fetch(`${base}/api/polls/nope42`);
+   218	  assert.equal(missing.status, 404);
+   219	  assert.equal((await missing.json()).error, '投票不存在');
+   220	  // EXEC-001 回归：失败响应不得下发新 cookie（无 cookie 的 404 GET 也不签发标识）
+   221	  assert.equal(missing.headers.get('set-cookie'), null);
+   222	
+   223	  const invalid = await post(base, '/api/polls', { question: '', options: ['a', 'b'] });
+   224	  assert.equal(invalid.status, 400);
+   225	  assert.equal(invalid.body.error, '问题不能为空');
+   226	
+   227	  const badJson = await fetch(`${base}/api/polls`, {
+   228	    method: 'POST',
+   229	    headers: { 'Content-Type': 'application/json' },
+   230	    body: '{broken',
+   231	  });
+   232	  assert.equal(badJson.status, 400);
+   233	  assert.equal((await badJson.json()).error, '请求格式不正确');
+   234	
+   235	  const unknown = await fetch(`${base}/api/what`);
+   236	  assert.equal(unknown.status, 404);
+   237	  assert.equal((await unknown.json()).error, '页面不存在');
+   238	});
+   239	
+   240	test('RB-01 合法 JSON 但非对象的 body（null/数组/裸标量）→ 400 固定文案，绝不 500；空 body 保持原语义', async (t) => {
+   241	  const { base } = await startServer(t);
+   242	
+   243	  for (const body of ['null', '[1,2]', '"abc"', '42']) {
+   244	    const r = await fetch(`${base}/api/polls`, {
+   245	      method: 'POST',
+   246	      headers: { 'Content-Type': 'application/json' },
+   247	      body,
+   248	    });
+   249	    assert.equal(r.status, 400, `create body=${body}`);
+   250	    assert.equal((await r.json()).error, '请求格式不正确', `create body=${body}`);
+   251	  }
+   252	
+   253	  const created = await post(base, '/api/polls', { question: 'q', options: ['a', 'b'] });
+   254	  const cookie = await getCookie(base, created.body.id);
+   255	  for (const body of ['null', '[0]', '"x"']) {
+   256	    const r = await fetch(`${base}/api/polls/${created.body.id}/vote`, {
+   257	      method: 'POST',
+   258	      headers: { 'Content-Type': 'application/json', Cookie: cookie },
+   259	      body,
+   260	    });
+   261	    assert.equal(r.status, 400, `vote body=${body}`);
+   262	    assert.equal((await r.json()).error, '请求格式不正确', `vote body=${body}`);
+   263	  }
+   264	
+   265	  // 空 body：仍按 {} 处理，由字段校验给出具体 400 文案（不改变既有语义）
+   266	  const emptyCreate = await fetch(`${base}/api/polls`, {
+   267	    method: 'POST',
+   268	    headers: { 'Content-Type': 'application/json' },
+   269	  });
+   270	  assert.equal(emptyCreate.status, 400);
+   271	  assert.equal((await emptyCreate.json()).error, '问题不能为空');
+   272	  const emptyVote = await fetch(`${base}/api/polls/${created.body.id}/vote`, {
+   273	    method: 'POST',
+   274	    headers: { 'Content-Type': 'application/json', Cookie: cookie },
+   275	  });
+   276	  assert.equal(emptyVote.status, 400);
+   277	  assert.equal((await emptyVote.json()).error, '请至少选择一个选项');
+   278	});
+   279	
+   280	test('页面路由：/、/poll/:id、/admin/:token 返回 HTML', async (t) => {
+   281	  const { base } = await startServer(t);
+   282	  for (const p of ['/', '/poll/abc123', '/admin/abcdefgh23456789']) {
+   283	    const res = await fetch(base + p);
+   284	    assert.equal(res.status, 200, p);
+   285	    assert.match(res.headers.get('content-type'), /text\/html/);
+   286	  }
+   287	});
+   288	
+   289	test('前端资产：style.css 可达；页面含真实应用标记', async (t) => {
+   290	  const { base } = await startServer(t);
+   291	  const css = await fetch(`${base}/style.css`);
+   292	  assert.equal(css.status, 200);
+   293	  assert.match(css.headers.get('content-type'), /text\/css/);
+   294	
+   295	  const index = await fetch(`${base}/`).then((r) => r.text());
+   296	  assert.match(index, /id="create"/);
+   297	  const poll = await fetch(`${base}/poll/abc123`).then((r) => r.text());
+   298	  assert.match(poll, /id="results"/);
+   299	  const admin = await fetch(`${base}/admin/abcdefgh23456789`).then((r) => r.text());
+   300	  assert.match(admin, /id="close"/);
+   301	});
+
+ succeeded in 137ms:
+     1	# Spec delta — json-body-400
+     2	
+     3	> Merges into `apriori/specs/polls.md`. Trivial-tier bugfix: request-body shape validation at the
+     4	> HTTP layer.
+     5	
+     6	## ADDED Requirements
+     7	
+     8	### Requirement: REQUEST-BODY-VALIDATION — non-object JSON bodies are rejected, never 500
+     9	
+    10	Every JSON-consuming POST endpoint rejects a request body that does not parse to a plain JSON
+    11	object with `400 {error:"请求格式不正确"}` — a malformed body can never produce a 500.
+    12	
+    13	#### Scenario: RB-01 — JSON `null`, arrays, and bare primitives get 400 with the fixed message
+    14	- Given `POST /api/polls` or `POST /api/polls/:id/vote` (with a valid voter cookie)
+    15	- When the request body is the JSON literal `null`, a JSON array, or a bare string/number — i.e.
+    16	  valid JSON that is not an object — or is not valid JSON at all
+    17	- Then the response is `400` with `{error:"请求格式不正确"}` (and never a 500)
+    18	- And an empty body keeps its existing behavior (treated as `{}` — downstream field validation
+    19	  answers with its specific 400 message, e.g. `问题不能为空` / `请至少选择一个选项`)
+
+codex
+The code preserves the empty-body path by mapping `raw === ''` to `{}`, then existing domain validation produces the specific create/vote messages. I’m going to run the test suite once for confirmation; this may fail only if the read-only sandbox blocks temp-file writes.
+exec
+/usr/bin/zsh -lc 'node --test' in /root/terra/legacy-lab/inherited-poll
+ exited 1 in 284ms:
+node:internal/modules/cjs/loader:1423
+  throw err;
+  ^
+
+Error: Cannot find module 'playwright'
+Require stack:
+- /root/terra/legacy-lab/inherited-poll/test/e2e.test.js
+    at Module._resolveFilename (node:internal/modules/cjs/loader:1420:15)
+    at defaultResolveImpl (node:internal/modules/cjs/loader:1058:19)
+    at resolveForCJSWithHooks (node:internal/modules/cjs/loader:1063:22)
+    at Module._load (node:internal/modules/cjs/loader:1226:37)
+    at TracingChannel.traceSync (node:diagnostics_channel:328:14)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:244:24)
+    at Module.require (node:internal/modules/cjs/loader:1503:12)
+    at require (node:internal/modules/helpers:152:16)
+    at Object.<anonymous> (/root/terra/legacy-lab/inherited-poll/test/e2e.test.js:8:22)
+    at Module._compile (node:internal/modules/cjs/loader:1760:14) {
+  code: 'MODULE_NOT_FOUND',
+  requireStack: [ '/root/terra/legacy-lab/inherited-poll/test/e2e.test.js' ]
+}
+
+Node.js v24.11.0
+✖ test/e2e.test.js (45.171175ms)
+✔ test/polls.test.js (60.861386ms)
+✖ test/server.test.js (69.726526ms)
+✖ test/store.test.js (54.863701ms)
+✖ test/voter-identity.test.js (53.598641ms)
+ℹ tests 5
+ℹ suites 0
+ℹ pass 1
+ℹ fail 4
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 102.714159
+
+✖ failing tests:
+
+test at test/e2e.test.js:1:1
+✖ test/e2e.test.js (45.171175ms)
+  'test failed'
+
+test at test/server.test.js:1:1
+✖ test/server.test.js (69.726526ms)
+  'test failed'
+
+test at test/store.test.js:1:1
+✖ test/store.test.js (54.863701ms)
+  'test failed'
+
+test at test/voter-identity.test.js:1:1
+✖ test/voter-identity.test.js (53.598641ms)
+  'test failed'
+
+codex
+The full `node --test` run is blocked by a missing `playwright` dependency from the e2e test file, so I’m narrowing verification to the server test that contains RB-01.
+exec
+/usr/bin/zsh -lc 'node --test test/server.test.js' in /root/terra/legacy-lab/inherited-poll
+ exited 1 in 249ms:
+✖ test/server.test.js (69.79151ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 75.295362
+
+✖ failing tests:
+
+test at test/server.test.js:1:1
+✖ test/server.test.js (69.79151ms)
+  'test failed'
+
+codex
+`test/server.test.js` is also being reported as a file-level failure without per-assert output, so I’m running it directly to expose the underlying exception.
+exec
+/usr/bin/zsh -lc 'node test/server.test.js' in /root/terra/legacy-lab/inherited-poll
+ exited 1 in 200ms:
+✖ 全流程：建投票→领 cookie→投票→查结果→关闭→再投被拒 (1.029168ms)
+✖ VD-01 无 cookie 的 GET 下发 HttpOnly 的 pv cookie；带 cookie 投票 → 200、票数 +1、voted:true (0.284812ms)
+✖ VD-04 无 cookie / 伪造 cookie 的投票 → 403 固定文案，不计票，不下发 cookie (0.263481ms)
+✖ VD-06 重启后（新 server/store 实例，同数据目录）同一 cookie 再投仍 409，票数经应用加载路径读回一致 (0.250846ms)
+✖ VD-08 同一 cookie 并发两个投票请求：恰一个 200、一个 409，total 只 +1 (0.28239ms)
+✖ VD-09 注入写盘失败：投票 → 500，随后同进程 GET 读到的状态与失败前完全一致 (0.258021ms)
+✖ VD-11 admin 视图与公开视图的隐私边界：均不含 adminToken/votes/voters；admin 无 voted 字段 (1.499027ms)
+✖ VD-10 密钥文件损坏 → createServer 构造抛错（启动失败，非静默重建） (0.228191ms)
+✖ 错误路径：404 / 校验 400 / 非法 JSON 400 (0.271283ms)
+✖ RB-01 合法 JSON 但非对象的 body（null/数组/裸标量）→ 400 固定文案，绝不 500；空 body 保持原语义 (0.312907ms)
+✖ 页面路由：/、/poll/:id、/admin/:token 返回 HTML (0.164302ms)
+✖ 前端资产：style.css 可达；页面含真实应用标记 (0.15958ms)
+ℹ tests 12
+ℹ suites 0
+ℹ pass 0
+ℹ fail 12
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 10.658541
+
+✖ failing tests:
+
+test at test/server.test.js:37:1
+✖ 全流程：建投票→领 cookie→投票→查结果→关闭→再投被拒 (1.029168ms)
+  Error: EROFS: read-only file system, mkdtemp '/tmp/poll-srv-XXXXXX'
+      at Object.mkdtempSync (node:fs:3039:18)
+      at startServer (/root/terra/legacy-lab/inherited-poll/test/server.test.js:10:18)
+      at TestContext.<anonymous> (/root/terra/legacy-lab/inherited-poll/test/server.test.js:38:26)
+      at Test.runInAsyncScope (node:async_hooks:214:14)
+      at Test.run (node:internal/test_runner/test:1106:25)
+      at Test.start (node:internal/test_runner/test:1003:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:358:17) {
+    errno: -30,
+    code: 'EROFS',
+    syscall: 'mkdtemp',
+    path: '/tmp/poll-srv-XXXXXX'
+  }
+
+test at test/server.test.js:72:1
+✖ VD-01 无 cookie 的 GET 下发 HttpOnly 的 pv cookie；带 cookie 投票 → 200、票数 +1、voted:true (0.284812ms)
+  Error: EROFS: read-only file system, mkdtemp '/tmp/poll-srv-XXXXXX'
+      at Object.mkdtempSync (node:fs:3039:18)
+      at startServer (/root/terra/legacy-lab/inherited-poll/test/server.test.js:10:18)
+      at TestContext.<anonymous> (/root/terra/legacy-lab/inherited-poll/test/server.test.js:73:26)
+      at Test.runInAsyncScope (node:async_hooks:214:14)
+      at Test.run (node:internal/test_runner/test:1106:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:788:18)
+      at Test.postRun (node:internal/test_runner/test:1235:19)
+      at Test.run (node:internal/test_runner/test:1163:12)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:358:3) {
+    errno: -30,
+    code: 'EROFS',
+    syscall: 'mkdtemp',
+    path: '/tmp/poll-srv-XXXXXX'
+  }
+
+test at test/server.test.js:94:1
+✖ VD-04 无 cookie / 伪造 cookie 的投票 → 403 固定文案，不计票，不下发 cookie (0.263481ms)
+  Error: EROFS: read-only file system, mkdtemp '/tmp/poll-srv-XXXXXX'
+      at Object.mkdtempSync (node:fs:3039:18)
+      at startServer (/root/terra/legacy-lab/inherited-poll/test/server.test.js:10:18)
+      at TestContext.<anonymous> (/root/terra/legacy-lab/inherited-poll/test/server.test.js:95:26)
+      at Test.runInAsyncScope (node:async_hooks:214:14)
+      at Test.run (node:internal/test_runner/test:1106:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:788:18)
+      at Test.postRun (node:internal/test_runner/test:1235:19)
+      at Test.run (node:internal/test_runner/test:1163:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    errno: -30,
+    code: 'EROFS',
+    syscall: 'mkdtemp',
+    path: '/tmp/poll-srv-XXXXXX'
+  }
+
+test at test/server.test.js:120:1
+✖ VD-06 重启后（新 server/store 实例，同数据目录）同一 cookie 再投仍 409，票数经应用加载路径读回一致 (0.250846ms)
+  Error: EROFS: read-only file system, mkdtemp '/tmp/poll-srv-restart-XXXXXX'
+      at Object.mkdtempSync (node:fs:3039:18)
+      at TestContext.<anonymous> (/root/terra/legacy-lab/inherited-poll/test/server.test.js:121:18)
+      at Test.runInAsyncScope (node:async_hooks:214:14)
+      at Test.run (node:internal/test_runner/test:1106:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:788:18)
+      at Test.postRun (node:internal/test_runner/test:1235:19)
+      at Test.run (node:internal/test_runner/test:1163:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    errno: -30,
+    code: 'EROFS',
+    syscall: 'mkdtemp',
+    path: '/tmp/poll-srv-restart-XXXXXX'
+  }
+
+test at test/server.test.js:149:1
+✖ VD-08 同一 cookie 并发两个投票请求：恰一个 200、一个 409，total 只 +1 (0.28239ms)
+  Error: EROFS: read-only file system, mkdtemp '/tmp/poll-srv-XXXXXX'
+      at Object.mkdtempSync (node:fs:3039:18)
+      at startServer (/root/terra/legacy-lab/inherited-poll/test/server.test.js:10:18)
+      at TestContext.<anonymous> (/root/terra/legacy-lab/inherited-poll/test/server.test.js:150:26)
+      at Test.runInAsyncScope (node:async_hooks:214:14)
+      at Test.run (node:internal/test_runner/test:1106:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:788:18)
+      at Test.postRun (node:internal/test_runner/test:1235:19)
+      at Test.run (node:internal/test_runner/test:1163:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    errno: -30,
+    code: 'EROFS',
+    syscall: 'mkdtemp',
+    path: '/tmp/poll-srv-XXXXXX'
+  }
+
+test at test/server.test.js:164:1
+✖ VD-09 注入写盘失败：投票 → 500，随后同进程 GET 读到的状态与失败前完全一致 (0.258021ms)
+  Error: EROFS: read-only file system, mkdtemp '/tmp/poll-srv-XXXXXX'
+      at Object.mkdtempSync (node:fs:3039:18)
+      at startServer (/root/terra/legacy-lab/inherited-poll/test/server.test.js:10:18)
+      at TestContext.<anonymous> (/root/terra/legacy-lab/inherited-poll/test/server.test.js:166:26)
+      at Test.runInAsyncScope (node:async_hooks:214:14)
+      at Test.run (node:internal/test_runner/test:1106:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:788:18)
+      at Test.postRun (node:internal/test_runner/test:1235:19)
+      at Test.run (node:internal/test_runner/test:1163:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    errno: -30,
+    code: 'EROFS',
+    syscall: 'mkdtemp',
+    path: '/tmp/poll-srv-XXXXXX'
+  }
+
+test at test/server.test.js:190:1
+✖ VD-11 admin 视图与公开视图的隐私边界：均不含 adminToken/votes/voters；admin 无 voted 字段 (1.499027ms)
+  Error: EROFS: read-only file system, mkdtemp '/tmp/poll-srv-XXXXXX'
+      at Object.mkdtempSync (node:fs:3039:18)
+      at startServer (/root/terra/legacy-lab/inherited-poll/test/server.test.js:10:18)
+      at TestContext.<anonymous> (/root/terra/legacy-lab/inherited-poll/test/server.test.js:191:26)
+      at Test.runInAsyncScope (node:async_hooks:214:14)
+      at Test.run (node:internal/test_runner/test:1106:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:788:18)
+      at Test.postRun (node:internal/test_runner/test:1235:19)
+      at Test.run (node:internal/test_runner/test:1163:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    errno: -30,
+    code: 'EROFS',
+    syscall: 'mkdtemp',
+    path: '/tmp/poll-srv-XXXXXX'
+  }
+
+test at test/server.test.js:208:1
+✖ VD-10 密钥文件损坏 → createServer 构造抛错（启动失败，非静默重建） (0.228191ms)
+  Error: EROFS: read-only file system, mkdtemp '/tmp/poll-srv-badkey-XXXXXX'
+      at Object.mkdtempSync (node:fs:3039:18)
+      at TestContext.<anonymous> (/root/terra/legacy-lab/inherited-poll/test/server.test.js:209:18)
+      at Test.runInAsyncScope (node:async_hooks:214:14)
+      at Test.run (node:internal/test_runner/test:1106:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:788:18)
+      at Test.postRun (node:internal/test_runner/test:1235:19)
+      at Test.run (node:internal/test_runner/test:1163:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    errno: -30,
+    code: 'EROFS',
+    syscall: 'mkdtemp',
+    path: '/tmp/poll-srv-badkey-XXXXXX'
+  }
+
+test at test/server.test.js:214:1
+✖ 错误路径：404 / 校验 400 / 非法 JSON 400 (0.271283ms)
+  Error: EROFS: read-only file system, mkdtemp '/tmp/poll-srv-XXXXXX'
+      at Object.mkdtempSync (node:fs:3039:18)
+      at startServer (/root/terra/legacy-lab/inherited-poll/test/server.test.js:10:18)
+      at TestContext.<anonymous> (/root/terra/legacy-lab/inherited-poll/test/server.test.js:215:26)
+      at Test.runInAsyncScope (node:async_hooks:214:14)
+      at Test.run (node:internal/test_runner/test:1106:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:788:18)
+      at Test.postRun (node:internal/test_runner/test:1235:19)
+      at Test.run (node:internal/test_runner/test:1163:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    errno: -30,
+    code: 'EROFS',
+    syscall: 'mkdtemp',
+    path: '/tmp/poll-srv-XXXXXX'
+  }
+
+test at test/server.test.js:240:1
+✖ RB-01 合法 JSON 但非对象的 body（null/数组/裸标量）→ 400 固定文案，绝不 500；空 body 保持原语义 (0.312907ms)
+  Error: EROFS: read-only file system, mkdtemp '/tmp/poll-srv-XXXXXX'
+      at Object.mkdtempSync (node:fs:3039:18)
+      at startServer (/root/terra/legacy-lab/inherited-poll/test/server.test.js:10:18)
+      at TestContext.<anonymous> (/root/terra/legacy-lab/inherited-poll/test/server.test.js:241:26)
+      at Test.runInAsyncScope (node:async_hooks:214:14)
+      at Test.run (node:internal/test_runner/test:1106:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:788:18)
+      at Test.postRun (node:internal/test_runner/test:1235:19)
+      at Test.run (node:internal/test_runner/test:1163:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    errno: -30,
+    code: 'EROFS',
+    syscall: 'mkdtemp',
+    path: '/tmp/poll-srv-XXXXXX'
+  }
+
+test at test/server.test.js:280:1
+✖ 页面路由：/、/poll/:id、/admin/:token 返回 HTML (0.164302ms)
+  Error: EROFS: read-only file system, mkdtemp '/tmp/poll-srv-XXXXXX'
+      at Object.mkdtempSync (node:fs:3039:18)
+      at startServer (/root/terra/legacy-lab/inherited-poll/test/server.test.js:10:18)
+      at TestContext.<anonymous> (/root/terra/legacy-lab/inherited-poll/test/server.test.js:281:26)
+      at Test.runInAsyncScope (node:async_hooks:214:14)
+      at Test.run (node:internal/test_runner/test:1106:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:788:18)
+      at Test.postRun (node:internal/test_runner/test:1235:19)
+      at Test.run (node:internal/test_runner/test:1163:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    errno: -30,
+    code: 'EROFS',
+    syscall: 'mkdtemp',
+    path: '/tmp/poll-srv-XXXXXX'
+  }
+
+test at test/server.test.js:289:1
+✖ 前端资产：style.css 可达；页面含真实应用标记 (0.15958ms)
+  Error: EROFS: read-only file system, mkdtemp '/tmp/poll-srv-XXXXXX'
+      at Object.mkdtempSync (node:fs:3039:18)
+      at startServer (/root/terra/legacy-lab/inherited-poll/test/server.test.js:10:18)
+      at TestContext.<anonymous> (/root/terra/legacy-lab/inherited-poll/test/server.test.js:290:26)
+      at Test.runInAsyncScope (node:async_hooks:214:14)
+      at Test.run (node:internal/test_runner/test:1106:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:788:18)
+      at Test.postRun (node:internal/test_runner/test:1235:19)
+      at Test.run (node:internal/test_runner/test:1163:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:788:7) {
+    errno: -30,
+    code: 'EROFS',
+    syscall: 'mkdtemp',
+    path: '/tmp/poll-srv-XXXXXX'
+  }
+
+codex
+No spec-vs-code gaps found.
+
+`readJsonBody` rejects `null`, arrays, strings, and numbers with `PollError(400, '请求格式不正确')` before domain code runs, and both JSON-consuming endpoints use it: create at [server.js](/root/terra/legacy-lab/inherited-poll/server.js:69) and vote after cookie validation at [server.js](/root/terra/legacy-lab/inherited-poll/server.js:87). Empty body still becomes `{}` at [server.js](/root/terra/legacy-lab/inherited-poll/server.js:30), preserving downstream messages from `polls.create` / `polls.vote`.
+
+Advisory P0: the RB-01 test covers create `null`/array/string/number, vote `null`/array/string, and empty-body semantics, but it does not cover vote with a bare number or invalid JSON on the vote endpoint. The code path is shared, so this is a test completeness note, not an open spec-vs-code issue. Existing malformed JSON create coverage remains at [test/server.test.js](/root/terra/legacy-lab/inherited-poll/test/server.test.js:227). No-cookie + bad vote body still returns 403 because vote checks the cookie before reading the body, which matches RB-01’s “with a valid voter cookie” condition.
+
+Verification note: I could not run the suite in this sandbox. `node --test` also lacks `playwright`, and `node test/server.test.js` fails because `/tmp` is read-only (`EROFS: mkdtemp`).
+
+Ledger delta:
+- `json-body-400`: reviewed
+- Spec-vs-code gaps: `0`
+- Advisory P0 test coverage notes: `2`
+
+VERDICT: no spec-vs-code gaps
+tokens used
+36,513
+No spec-vs-code gaps found.
+
+`readJsonBody` rejects `null`, arrays, strings, and numbers with `PollError(400, '请求格式不正确')` before domain code runs, and both JSON-consuming endpoints use it: create at [server.js](/root/terra/legacy-lab/inherited-poll/server.js:69) and vote after cookie validation at [server.js](/root/terra/legacy-lab/inherited-poll/server.js:87). Empty body still becomes `{}` at [server.js](/root/terra/legacy-lab/inherited-poll/server.js:30), preserving downstream messages from `polls.create` / `polls.vote`.
+
+Advisory P0: the RB-01 test covers create `null`/array/string/number, vote `null`/array/string, and empty-body semantics, but it does not cover vote with a bare number or invalid JSON on the vote endpoint. The code path is shared, so this is a test completeness note, not an open spec-vs-code issue. Existing malformed JSON create coverage remains at [test/server.test.js](/root/terra/legacy-lab/inherited-poll/test/server.test.js:227). No-cookie + bad vote body still returns 403 because vote checks the cookie before reading the body, which matches RB-01’s “with a valid voter cookie” condition.
+
+Verification note: I could not run the suite in this sandbox. `node --test` also lacks `playwright`, and `node test/server.test.js` fails because `/tmp` is read-only (`EROFS: mkdtemp`).
+
+Ledger delta:
+- `json-body-400`: reviewed
+- Spec-vs-code gaps: `0`
+- Advisory P0 test coverage notes: `2`
+
+VERDICT: no spec-vs-code gaps

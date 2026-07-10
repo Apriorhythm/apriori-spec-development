@@ -1,0 +1,638 @@
+OpenAI Codex v0.142.3
+--------
+workdir: /root/terra/legacy-lab/inherited-poll
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f4501-a346-77c3-917e-74c11995c3d2
+--------
+user
+Round 2 of the same P8 consistency review. Your round-1 finding EXEC-001 (GET /api/polls/:id issued Set-Cookie before the poll lookup could 404, violating B1's no-cookie-on-failure) has been addressed: server.js now calls polls.getView() BEFORE setting the Set-Cookie header (see the GET /api/polls/:id branch), and test/server.test.js's 404 error-path test now asserts set-cookie is absent; the two advisories were also taken (VD-04 test now asserts counts unchanged and set-cookie absence on the tampered branch). Verify the fix actually closes the gap — re-read server.js and the tests, don't take the producer's word. If inadequate, reopen EXEC-001 (same ID). Re-check your five dimensions against the current code. [Scope] Only spec-vs-code gaps count toward the verdict; everything else advisory (P0 rules). End with your ledger delta (print it, do not edit files) and exactly one verdict line: "VERDICT: no spec-vs-code gaps" or "VERDICT: <N> issues open".
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-09T03:59:09.260183Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-09T03:59:09.700161Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-09T03:59:10.234213Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-09T03:59:10.837734Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-09T03:59:11.813914Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-09T03:59:13.685758Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-09T03:59:17.077109Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: rXecfqQJpiXJ
+codex
+I’ll re-check the actual diff surface for the round-1 gap first, then re-scan the scenario bindings for any new or still-missed spec/code mismatch.
+exec
+/usr/bin/zsh -lc "nl -ba public/poll.html | sed -n '47,96p'" in /root/terra/legacy-lab/inherited-poll
+exec
+/usr/bin/zsh -lc "nl -ba test/server.test.js | sed -n '88,125p;145,190p;206,240p'" in /root/terra/legacy-lab/inherited-poll
+exec
+/usr/bin/zsh -lc "nl -ba test/polls.test.js | sed -n '137,176p;212,232p'" in /root/terra/legacy-lab/inherited-poll
+exec
+/usr/bin/zsh -lc "nl -ba server.js | sed -n '55,105p'" in /root/terra/legacy-lab/inherited-poll
+ succeeded in 0ms:
+    55	    const postReq = req.method === 'POST';
+    56	    let m;
+    57	    try {
+    58	      if (get && pathname === '/') return sendFile(res, 'index.html', 'text/html');
+    59	      if (get && pathname === '/style.css') return sendFile(res, 'style.css', 'text/css');
+    60	      if (get && /^\/poll\/[a-z0-9]+$/.test(pathname)) return sendFile(res, 'poll.html', 'text/html');
+    61	      if (get && /^\/admin\/[a-z0-9]+$/.test(pathname)) return sendFile(res, 'admin.html', 'text/html');
+    62	
+    63	      if (postReq && pathname === '/api/polls') {
+    64	        const body = await readJsonBody(req);
+    65	        const poll = polls.create(body);
+    66	        return sendJson(res, 201, { id: poll.id, adminToken: poll.adminToken });
+    67	      }
+    68	      if (get && (m = pathname.match(/^\/api\/polls\/([a-z0-9]+)$/))) {
+    69	        // 标识签发只在这一个入口：无/非法 cookie → 签发新标识并 Set-Cookie；有效则不重复下发。
+    70	        let raw = verifiedRaw(req);
+    71	        let issued = null;
+    72	        if (raw === null) {
+    73	          issued = voter.issue(secret);
+    74	          raw = issued.raw;
+    75	        }
+    76	        // 先取视图：404 等失败会在这里抛出——失败响应不下发新 cookie（B1，EXEC-001 修复）。
+    77	        const body = polls.getView(m[1], voter.digest(raw, secret));
+    78	        if (issued) res.setHeader('Set-Cookie', voter.buildSetCookie(issued.value));
+    79	        return sendJson(res, 200, body);
+    80	      }
+    81	      if (postReq && (m = pathname.match(/^\/api\/polls\/([a-z0-9]+)\/vote$/))) {
+    82	        const raw = verifiedRaw(req);
+    83	        // 无有效标识：403 拒绝，不计票，也不下发新 cookie（不奖励非法请求，VD-04）。
+    84	        if (raw === null) return sendJson(res, 403, { error: '未获得投票标识' });
+    85	        const body = await readJsonBody(req);
+    86	        return sendJson(res, 200, polls.vote(m[1], body.choices, voter.digest(raw, secret)));
+    87	      }
+    88	      if (get && (m = pathname.match(/^\/api\/admin\/([a-z0-9]+)$/))) {
+    89	        return sendJson(res, 200, polls.adminView(m[1]));
+    90	      }
+    91	      if (postReq && (m = pathname.match(/^\/api\/admin\/([a-z0-9]+)\/close$/))) {
+    92	        return sendJson(res, 200, polls.close(m[1]));
+    93	      }
+    94	      return sendJson(res, 404, { error: '页面不存在' });
+    95	    } catch (err) {
+    96	      if (err instanceof PollError) return sendJson(res, err.status, { error: err.message });
+    97	      console.error(err);
+    98	      return sendJson(res, 500, { error: '服务器内部错误' });
+    99	    }
+   100	  });
+   101	}
+   102	
+   103	module.exports = { createServer };
+   104	
+   105	if (require.main === module) {
+
+ succeeded in 118ms:
+    47	function updateState(view) {
+    48	  document.title = view.question + ' · 快速投票';
+    49	  $('#question').textContent = view.question;
+    50	  renderResults(view);
+    51	  // 判定以服务端 voted 字段为准（localStorage 仅作历史遗留的辅助写入，不再决定显示）
+    52	  const voted = view.voted;
+    53	  const notice = $('#notice');
+    54	  if (voted) {
+    55	    notice.textContent = '你已经投过票了，下面是当前结果。';
+    56	    notice.hidden = false; $('#form').hidden = true;
+    57	  } else if (!view.open) {
+    58	    notice.textContent = view.closed ? '投票已关闭，下面是最终结果。' : '投票已过截止时间，下面是最终结果。';
+    59	    notice.hidden = false; $('#form').hidden = true;
+    60	  } else {
+    61	    notice.hidden = true;
+    62	    if (!rendered) { renderForm(view); rendered = true; }
+    63	    $('#form').hidden = false;
+    64	  }
+    65	}
+    66	
+    67	async function load() {
+    68	  const res = await fetch('/api/polls/' + pollId);
+    69	  const data = await res.json();
+    70	  if (!res.ok) {
+    71	    $('#question').textContent = data.error || '加载失败';
+    72	    return;
+    73	  }
+    74	  updateState(data);
+    75	}
+    76	
+    77	$('#submit').addEventListener('click', async () => {
+    78	  $('#error').hidden = true;
+    79	  const choices = [...document.querySelectorAll('#choices input:checked')]
+    80	    .map((i) => Number(i.value));
+    81	  const res = await fetch('/api/polls/' + pollId + '/vote', {
+    82	    method: 'POST',
+    83	    headers: { 'Content-Type': 'application/json' },
+    84	    body: JSON.stringify({ choices }),
+    85	  });
+    86	  const data = await res.json();
+    87	  if (!res.ok) {
+    88	    const box = $('#error');
+    89	    box.textContent = data.error || '投票失败';
+    90	    box.hidden = false;
+    91	    if (res.status === 409) updateState(await (await fetch('/api/polls/' + pollId)).json());
+    92	    return;
+    93	  }
+    94	  localStorage.setItem(votedKey, '1');
+    95	  updateState(data);
+    96	});
+
+ succeeded in 114ms:
+    88	  const voted = await post(base, `/api/polls/${id}/vote`, { choices: [0] }, cookie);
+    89	  assert.equal(voted.status, 200);
+    90	  assert.equal(voted.body.total, 1);
+    91	  assert.equal(voted.body.voted, true);
+    92	});
+    93	
+    94	test('VD-04 无 cookie / 伪造 cookie 的投票 → 403 固定文案，不计票，不下发 cookie', async (t) => {
+    95	  const { base } = await startServer(t);
+    96	  const { body: { id } } = await post(base, '/api/polls', { question: 'q', options: ['a', 'b'] });
+    97	
+    98	  const noCookie = await post(base, `/api/polls/${id}/vote`, { choices: [0] });
+    99	  assert.equal(noCookie.status, 403);
+   100	  assert.equal(noCookie.body.error, '未获得投票标识');
+   101	  assert.equal(noCookie.headers.get('set-cookie'), null);
+   102	
+   103	  const forged = await post(base, `/api/polls/${id}/vote`, { choices: [0] }, 'pv=Zm9yZ2Vk.Zm9yZ2Vkc2ln');
+   104	  assert.equal(forged.status, 403);
+   105	  assert.equal(forged.body.error, '未获得投票标识');
+   106	  assert.equal(forged.headers.get('set-cookie'), null);
+   107	
+   108	  // 篡改真 cookie 的签名部分
+   109	  const real = await getCookie(base, id);
+   110	  const tampered = real.slice(0, -2) + 'xx';
+   111	  const bad = await post(base, `/api/polls/${id}/vote`, { choices: [0] }, tampered);
+   112	  assert.equal(bad.status, 403);
+   113	  assert.equal(bad.headers.get('set-cookie'), null);
+   114	
+   115	  const view = await fetch(`${base}/api/polls/${id}`).then((r) => r.json());
+   116	  assert.equal(view.total, 0);
+   117	  assert.deepEqual(view.counts, [0, 0]);
+   118	});
+   119	
+   120	test('VD-06 重启后（新 server/store 实例，同数据目录）同一 cookie 再投仍 409，票数经应用加载路径读回一致', async (t) => {
+   121	  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'poll-srv-restart-'));
+   122	  const server1 = createServer(dir);
+   123	  await new Promise((resolve) => server1.listen(0, '127.0.0.1', resolve));
+   124	  const base1 = `http://127.0.0.1:${server1.address().port}`;
+   125	
+   145	  assert.deepEqual(after.counts, before.counts);
+   146	  assert.equal(after.voted, true);
+   147	});
+   148	
+   149	test('VD-08 同一 cookie 并发两个投票请求：恰一个 200、一个 409，total 只 +1', async (t) => {
+   150	  const { base } = await startServer(t);
+   151	  const { body: { id } } = await post(base, '/api/polls', { question: 'q', options: ['a', 'b'] });
+   152	  const cookie = await getCookie(base, id);
+   153	
+   154	  const [r1, r2] = await Promise.all([
+   155	    post(base, `/api/polls/${id}/vote`, { choices: [0] }, cookie),
+   156	    post(base, `/api/polls/${id}/vote`, { choices: [1] }, cookie),
+   157	  ]);
+   158	  const statuses = [r1.status, r2.status].sort();
+   159	  assert.deepEqual(statuses, [200, 409]);
+   160	  const view = await fetch(`${base}/api/polls/${id}`).then((r) => r.json());
+   161	  assert.equal(view.total, 1);
+   162	});
+   163	
+   164	test('VD-09 注入写盘失败：投票 → 500，随后同进程 GET 读到的状态与失败前完全一致', async (t) => {
+   165	  let fail = false;
+   166	  const { base } = await startServer(t, {
+   167	    storeIo: {
+   168	      writeFileSync: (...args) => {
+   169	        if (fail) throw new Error('injected write failure');
+   170	        return fs.writeFileSync(...args);
+   171	      },
+   172	    },
+   173	  });
+   174	  // fixture 先建好（此时注入未武装，落盘正常）
+   175	  const { body: { id } } = await post(base, '/api/polls', { question: 'q', options: ['a', 'b'] });
+   176	  const cookie = await getCookie(base, id);
+   177	  const before = await fetch(`${base}/api/polls/${id}`, { headers: { Cookie: cookie } }).then((r) => r.json());
+   178	
+   179	  fail = true; // 武装：下一次写盘失败，命中投票的持久化
+   180	  const r = await post(base, `/api/polls/${id}/vote`, { choices: [0] }, cookie);
+   181	  assert.equal(r.status, 500);
+   182	
+   183	  fail = false;
+   184	  const after = await fetch(`${base}/api/polls/${id}`, { headers: { Cookie: cookie } }).then((r) => r.json());
+   185	  assert.equal(after.total, before.total);
+   186	  assert.deepEqual(after.counts, before.counts);
+   187	  assert.equal(after.voted, false, '失败的投票不得留下去重标记');
+   188	});
+   189	
+   190	test('VD-11 admin 视图与公开视图的隐私边界：均不含 adminToken/votes/voters；admin 无 voted 字段', async (t) => {
+   206	});
+   207	
+   208	test('VD-10 密钥文件损坏 → createServer 构造抛错（启动失败，非静默重建）', async () => {
+   209	  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'poll-srv-badkey-'));
+   210	  fs.writeFileSync(path.join(dir, 'cookie-secret'), 'corrupt');
+   211	  assert.throws(() => createServer(dir), /cookie-secret/);
+   212	});
+   213	
+   214	test('错误路径：404 / 校验 400 / 非法 JSON 400', async (t) => {
+   215	  const { base } = await startServer(t);
+   216	
+   217	  const missing = await fetch(`${base}/api/polls/nope42`);
+   218	  assert.equal(missing.status, 404);
+   219	  assert.equal((await missing.json()).error, '投票不存在');
+   220	  // EXEC-001 回归：失败响应不得下发新 cookie（无 cookie 的 404 GET 也不签发标识）
+   221	  assert.equal(missing.headers.get('set-cookie'), null);
+   222	
+   223	  const invalid = await post(base, '/api/polls', { question: '', options: ['a', 'b'] });
+   224	  assert.equal(invalid.status, 400);
+   225	  assert.equal(invalid.body.error, '问题不能为空');
+   226	
+   227	  const badJson = await fetch(`${base}/api/polls`, {
+   228	    method: 'POST',
+   229	    headers: { 'Content-Type': 'application/json' },
+   230	    body: '{broken',
+   231	  });
+   232	  assert.equal(badJson.status, 400);
+   233	  assert.equal((await badJson.json()).error, '请求格式不正确');
+   234	
+   235	  const unknown = await fetch(`${base}/api/what`);
+   236	  assert.equal(unknown.status, 404);
+   237	  assert.equal((await unknown.json()).error, '页面不存在');
+   238	});
+   239	
+   240	test('页面路由：/、/poll/:id、/admin/:token 返回 HTML', async (t) => {
+
+ succeeded in 123ms:
+   137	test('VD-02 同一标识对同一 poll 重复投票 → 409 固定文案，total 不变', () => {
+   138	  const polls = make();
+   139	  const poll = polls.create({ question: 'q', options: ['a', 'b'] });
+   140	  polls.vote(poll.id, [0], 'voter-a');
+   141	  assert.throws(
+   142	    () => polls.vote(poll.id, [1], 'voter-a'),
+   143	    (e) => e instanceof PollError && e.status === 409 && e.message === '你已经投过这个投票了'
+   144	  );
+   145	  assert.equal(polls.getView(poll.id).total, 1);
+   146	});
+   147	
+   148	test('VD-03 同一标识重放 3 次：仅第一次成功，其余 409，票数只 +1', () => {
+   149	  const polls = make();
+   150	  const poll = polls.create({ question: 'q', options: ['a', 'b'] });
+   151	  const results = [];
+   152	  for (let i = 0; i < 3; i++) {
+   153	    try {
+   154	      polls.vote(poll.id, [0], 'voter-a');
+   155	      results.push(200);
+   156	    } catch (e) {
+   157	      results.push(e.status);
+   158	    }
+   159	  }
+   160	  assert.deepEqual(results, [200, 409, 409]);
+   161	  assert.equal(polls.getView(poll.id).total, 1);
+   162	  assert.deepEqual(polls.getView(poll.id).counts, [1, 0]);
+   163	});
+   164	
+   165	test('VD-05 同一标识可对不同 poll 各投一票，互不影响', () => {
+   166	  const polls = make();
+   167	  const p1 = polls.create({ question: 'q1', options: ['a', 'b'] });
+   168	  const p2 = polls.create({ question: 'q2', options: ['x', 'y'] });
+   169	  polls.vote(p1.id, [0], 'voter-a');
+   170	  const v2 = polls.vote(p2.id, [1], 'voter-a');
+   171	  assert.equal(v2.total, 1);
+   172	  assert.equal(polls.getView(p1.id, 'voter-a').voted, true);
+   173	  assert.equal(polls.getView(p2.id, 'voter-a').voted, true);
+   174	  assert.equal(polls.getView(p2.id, 'voter-b').voted, false);
+   175	});
+   176	
+   212	test('隐私边界：公开视图不含 voters / votes / adminToken；voted 为派生布尔', () => {
+   213	  const polls = make();
+   214	  const poll = polls.create({ question: 'q', options: ['a', 'b'] });
+   215	  polls.vote(poll.id, [0], 'voter-a');
+   216	  const view = polls.getView(poll.id, 'voter-a');
+   217	  assert.ok(!('voters' in view));
+   218	  assert.ok(!('votes' in view));
+   219	  assert.ok(!('adminToken' in view));
+   220	  assert.equal(typeof view.voted, 'boolean');
+   221	});
+   222	
+   223	test('adminView：不含 voted 字段（管理视图无请求方语境）', () => {
+   224	  const polls = make();
+   225	  const poll = polls.create({ question: 'q', options: ['a', 'b'] });
+   226	  polls.vote(poll.id, [0], 'voter-a');
+   227	  const admin = polls.adminView(poll.adminToken);
+   228	  assert.ok(!('voted' in admin));
+   229	  assert.ok(!('voters' in admin));
+   230	});
+
+codex
+The EXEC-001 code path is now ordered correctly: the branch builds the view first, and only sets `Set-Cookie` after `polls.getView()` returns. I’m doing one more pass for guarantee claims and user-visible error branches before closing the verdict.
+exec
+/usr/bin/zsh -lc "nl -ba lib/voter-identity.js | sed -n '1,90p'" in /root/terra/legacy-lab/inherited-poll
+exec
+/usr/bin/zsh -lc "nl -ba test/voter-identity.test.js | sed -n '1,85p'" in /root/terra/legacy-lab/inherited-poll
+exec
+/usr/bin/zsh -lc "nl -ba lib/store.js | sed -n '1,90p'" in /root/terra/legacy-lab/inherited-poll
+exec
+/usr/bin/zsh -lc "nl -ba test/e2e.test.js | sed -n '50,115p'" in /root/terra/legacy-lab/inherited-poll
+ succeeded in 115ms:
+     1	'use strict';
+     2	const fs = require('node:fs');
+     3	const path = require('node:path');
+     4	
+     5	// io 仅用于测试的故障注入（缺省 = 真实 fs），见 apriori/changes/vote-dedup/design.md §2。
+     6	function createStore(dataDir, io = {}) {
+     7	  const writeFileSync = io.writeFileSync || fs.writeFileSync;
+     8	  const renameSync = io.renameSync || fs.renameSync;
+     9	  const file = path.join(dataDir, 'polls.json');
+    10	  let data = load();
+    11	
+    12	  function load() {
+    13	    if (!fs.existsSync(file)) return {};
+    14	    try {
+    15	      return JSON.parse(fs.readFileSync(file, 'utf8'));
+    16	    } catch {
+    17	      const backup = `${file}.bak-${Date.now()}`;
+    18	      fs.renameSync(file, backup);
+    19	      console.error(`polls.json 损坏，已备份为 ${backup}，从空数据开始`);
+    20	      return {};
+    21	    }
+    22	  }
+    23	
+    24	  function save(snapshot) {
+    25	    fs.mkdirSync(dataDir, { recursive: true });
+    26	    const tmp = `${file}.tmp`;
+    27	    writeFileSync(tmp, JSON.stringify(snapshot, null, 2));
+    28	    renameSync(tmp, file);
+    29	  }
+    30	
+    31	  return {
+    32	    get(id) {
+    33	      return data[id];
+    34	    },
+    35	    all() {
+    36	      return data;
+    37	    },
+    38	    // 写后提交：先落盘快照，成功后才替换内存引用——落盘抛错时内存保持原样。
+    39	    put(poll) {
+    40	      const snapshot = { ...data, [poll.id]: poll };
+    41	      save(snapshot);
+    42	      data = snapshot;
+    43	    },
+    44	  };
+    45	}
+    46	
+    47	module.exports = { createStore };
+
+ succeeded in 128ms:
+     1	'use strict';
+     2	const crypto = require('node:crypto');
+     3	const fs = require('node:fs');
+     4	const path = require('node:path');
+     5	
+     6	const SECRET_BYTES = 32;
+     7	const COOKIE_NAME = 'pv';
+     8	// 一年；属性按需求 B1 固定
+     9	const COOKIE_ATTRS = 'HttpOnly; SameSite=Lax; Path=/; Max-Age=31536000';
+    10	
+    11	// 读取或生成签名密钥。文件存在但长度非法 → 抛错（启动失败，绝不静默重建）。
+    12	function loadOrCreateSecret(dataDir) {
+    13	  const file = path.join(dataDir, 'cookie-secret');
+    14	  if (fs.existsSync(file)) {
+    15	    const buf = fs.readFileSync(file);
+    16	    if (buf.length !== SECRET_BYTES) {
+    17	      throw new Error(`cookie-secret 文件损坏（期望 ${SECRET_BYTES} 字节，实际 ${buf.length}），拒绝启动`);
+    18	    }
+    19	    return buf;
+    20	  }
+    21	  fs.mkdirSync(dataDir, { recursive: true });
+    22	  const secret = crypto.randomBytes(SECRET_BYTES);
+    23	  fs.writeFileSync(file, secret);
+    24	  return secret;
+    25	}
+    26	
+    27	function sign(raw, secret) {
+    28	  return crypto.createHmac('sha256', secret).update(raw).digest('base64url');
+    29	}
+    30	
+    31	// 签发新标识：cookie 值 = <raw>.<hmac>
+    32	function issue(secret) {
+    33	  const raw = crypto.randomBytes(16).toString('base64url');
+    34	  return { value: `${raw}.${sign(raw, secret)}`, raw };
+    35	}
+    36	
+    37	// 校验 cookie 值；合法返回 raw，任何畸形/签名不符返回 null（绝不抛错）。
+    38	function verify(cookieValue, secret) {
+    39	  if (typeof cookieValue !== 'string') return null;
+    40	  const dot = cookieValue.indexOf('.');
+    41	  if (dot <= 0 || dot === cookieValue.length - 1) return null;
+    42	  const raw = cookieValue.slice(0, dot);
+    43	  const sig = cookieValue.slice(dot + 1);
+    44	  const expected = Buffer.from(sign(raw, secret));
+    45	  const actual = Buffer.from(sig);
+    46	  if (actual.length !== expected.length) return null;
+    47	  if (!crypto.timingSafeEqual(actual, expected)) return null;
+    48	  return raw;
+    49	}
+    50	
+    51	// 持久化到 poll.voters 的摘要：与 cookie 签名用不同的 HMAC 输入前缀（域分离），
+    52	// 摘要既不能反推 raw，也不能被当作合法 cookie 签名重放。
+    53	function digest(raw, secret) {
+    54	  return crypto.createHmac('sha256', secret).update(`voters:${raw}`).digest('base64url');
+    55	}
+    56	
+    57	function parseCookieHeader(header) {
+    58	  const out = {};
+    59	  if (typeof header !== 'string' || header === '') return out;
+    60	  for (const part of header.split(';')) {
+    61	    const eq = part.indexOf('=');
+    62	    if (eq === -1) continue;
+    63	    const key = part.slice(0, eq).trim();
+    64	    const val = part.slice(eq + 1).trim();
+    65	    if (key) out[key] = val;
+    66	  }
+    67	  return out;
+    68	}
+    69	
+    70	function buildSetCookie(value) {
+    71	  return `${COOKIE_NAME}=${value}; ${COOKIE_ATTRS}`;
+    72	}
+    73	
+    74	module.exports = {
+    75	  COOKIE_NAME,
+    76	  loadOrCreateSecret,
+    77	  issue,
+    78	  verify,
+    79	  digest,
+    80	  parseCookieHeader,
+    81	  buildSetCookie,
+    82	};
+
+ succeeded in 144ms:
+     1	'use strict';
+     2	const test = require('node:test');
+     3	const assert = require('node:assert/strict');
+     4	const fs = require('node:fs');
+     5	const os = require('node:os');
+     6	const path = require('node:path');
+     7	const {
+     8	  loadOrCreateSecret,
+     9	  issue,
+    10	  verify,
+    11	  digest,
+    12	  parseCookieHeader,
+    13	  buildSetCookie,
+    14	} = require('../lib/voter-identity');
+    15	
+    16	function tmpDir() {
+    17	  return fs.mkdtempSync(path.join(os.tmpdir(), 'poll-vid-'));
+    18	}
+    19	
+    20	test('loadOrCreateSecret：不存在时生成 32 字节并落盘；已存在时复用', () => {
+    21	  const dir = tmpDir();
+    22	  const s1 = loadOrCreateSecret(dir);
+    23	  assert.equal(s1.length, 32);
+    24	  assert.ok(fs.existsSync(path.join(dir, 'cookie-secret')));
+    25	  const s2 = loadOrCreateSecret(dir);
+    26	  assert.deepEqual(s1, s2);
+    27	});
+    28	
+    29	test('loadOrCreateSecret：dataDir 不存在时自行创建（不依赖 store 先建目录）', () => {
+    30	  const dir = path.join(tmpDir(), 'nested', 'data');
+    31	  const s = loadOrCreateSecret(dir);
+    32	  assert.equal(s.length, 32);
+    33	});
+    34	
+    35	test('VD-10 密钥文件损坏（非法长度）→ 构造即抛错，不静默重建', () => {
+    36	  const dir = tmpDir();
+    37	  fs.writeFileSync(path.join(dir, 'cookie-secret'), 'short');
+    38	  assert.throws(() => loadOrCreateSecret(dir), /cookie-secret/);
+    39	  // 未被静默重建：内容保持原样
+    40	  assert.equal(fs.readFileSync(path.join(dir, 'cookie-secret'), 'utf8'), 'short');
+    41	});
+    42	
+    43	test('issue/verify 往返：签发的值可验证并还原 raw', () => {
+    44	  const secret = loadOrCreateSecret(tmpDir());
+    45	  const { value, raw } = issue(secret);
+    46	  assert.match(value, /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
+    47	  assert.equal(verify(value, secret), raw);
+    48	});
+    49	
+    50	test('verify：篡改签名 / 篡改 raw / 换密钥 / 畸形输入 → null', () => {
+    51	  const dirA = tmpDir();
+    52	  const secret = loadOrCreateSecret(dirA);
+    53	  const other = loadOrCreateSecret(tmpDir());
+    54	  const { value, raw } = issue(secret);
+    55	  const [r, sig] = value.split('.');
+    56	  assert.equal(verify(`${r}.${sig.slice(0, -2)}xx`, secret), null);
+    57	  assert.equal(verify(`tampered.${sig}`, secret), null);
+    58	  assert.equal(verify(value, other), null);
+    59	  assert.equal(verify('', secret), null);
+    60	  assert.equal(verify('no-dot-at-all', secret), null);
+    61	  assert.equal(verify(null, secret), null);
+    62	  assert.equal(verify(`${r}.`, secret), null);
+    63	  assert.notEqual(raw, null);
+    64	});
+    65	
+    66	test('digest：与 cookie 签名不同（前缀域分离），同 raw 同密钥下稳定', () => {
+    67	  const secret = loadOrCreateSecret(tmpDir());
+    68	  const { value, raw } = issue(secret);
+    69	  const sig = value.split('.')[1];
+    70	  const d = digest(raw, secret);
+    71	  assert.notEqual(d, sig);
+    72	  assert.equal(d, digest(raw, secret));
+    73	});
+    74	
+    75	test('parseCookieHeader / buildSetCookie：解析与构造', () => {
+    76	  assert.deepEqual(parseCookieHeader('pv=abc.def; other=1'), { pv: 'abc.def', other: '1' });
+    77	  assert.deepEqual(parseCookieHeader(undefined), {});
+    78	  assert.deepEqual(parseCookieHeader(''), {});
+    79	  const sc = buildSetCookie('abc.def');
+    80	  assert.equal(sc, 'pv=abc.def; HttpOnly; SameSite=Lax; Path=/; Max-Age=31536000');
+    81	});
+
+ succeeded in 161ms:
+    50	    body: JSON.stringify({ question: 'e2e 场景投票', options: ['甲', '乙'] }),
+    51	  });
+    52	  return (await res.json()).id;
+    53	}
+    54	
+    55	test('VD-07a 投票后清掉 localStorage 再刷新：仍显示已投过（判定来自服务端 voted 字段）', async (t) => {
+    56	  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'poll-e2e-07a-'));
+    57	  const server = createServer(dir);
+    58	  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    59	  const base = `http://127.0.0.1:${server.address().port}`;
+    60	  const browser = await chromium.launch();
+    61	  t.after(async () => {
+    62	    await browser.close();
+    63	    server.close();
+    64	  });
+    65	  const page = await browser.newPage();
+    66	  const id = await createPollViaApi(base);
+    67	
+    68	  await page.goto(`${base}/poll/${id}`);
+    69	  await page.waitForSelector('#form:not([hidden])');
+    70	  await page.check('#c0');
+    71	  await page.click('#submit');
+    72	  await page.waitForSelector('#notice:not([hidden])');
+    73	
+    74	  // 清掉 localStorage —— 唯一的客户端“已投过”痕迹
+    75	  await page.evaluate(() => localStorage.clear());
+    76	  await page.reload();
+    77	  await page.waitForSelector('#notice:not([hidden])');
+    78	  assert.ok((await page.textContent('#notice')).includes('已经投过'), '清 localStorage 后仍应显示已投过');
+    79	  assert.ok(await page.locator('#form').isHidden(), '已投过时表单应隐藏');
+    80	  await page.screenshot({ path: 'apriori/tmp/vd-07a-after-localstorage-clear.png' });
+    81	});
+    82	
+    83	test('VD-07b 页面加载后删除投票者 cookie 再点投票：#error 可见显示拒绝文案，表单不消失', async (t) => {
+    84	  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'poll-e2e-07b-'));
+    85	  const server = createServer(dir);
+    86	  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+    87	  const base = `http://127.0.0.1:${server.address().port}`;
+    88	  const browser = await chromium.launch();
+    89	  t.after(async () => {
+    90	    await browser.close();
+    91	    server.close();
+    92	  });
+    93	  const context = await browser.newContext();
+    94	  const page = await context.newPage();
+    95	  const id = await createPollViaApi(base);
+    96	
+    97	  await page.goto(`${base}/poll/${id}`);
+    98	  await page.waitForSelector('#form:not([hidden])');
+    99	  await page.check('#c1');
+   100	  // 删除 cookie 后立即点击（须赶在 3s 轮询重新领 cookie 之前）
+   101	  await context.clearCookies();
+   102	  await page.click('#submit');
+   103	  await page.waitForSelector('#error:not([hidden])');
+   104	  assert.ok((await page.textContent('#error')).includes('未获得投票标识'), '#error 应显示服务端拒绝文案');
+   105	  assert.ok(await page.locator('#form').isVisible(), '被拒后表单不应被静默隐藏');
+   106	  await page.screenshot({ path: 'apriori/tmp/vd-07b-error-visible.png' });
+   107	});
+
+codex
+EXEC-001 is closed. In [server.js](/root/terra/legacy-lab/inherited-poll/server.js:76), `polls.getView()` now runs before `Set-Cookie` is set, so a 404 exits through the `PollError` handler without granting a cookie. The regression assertion is present at [test/server.test.js](/root/terra/legacy-lab/inherited-poll/test/server.test.js:217).
+
+I re-checked the five review dimensions against the current code and did not find a remaining spec-vs-code gap. VD-04’s strengthened assertions now cover unchanged `counts` and no `Set-Cookie` on the tampered-cookie branch.
+
+Advisory: VD-02/VD-03/VD-05 are still bound primarily at the domain layer rather than as literal cookie-backed HTTP `POST` scenarios, though the current HTTP implementation and other HTTP tests cover the route behavior enough that I’m not counting this as a spec-vs-code issue.
+
+Ledger delta:
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| EXEC-001 | `GET /api/polls/:id` could grant a new `pv` cookie on 404 | Failed poll-view requests could receive identity despite B1 no-cookie-on-failure | STEP5·r1 | fixed in r2 |
+
+VERDICT: no spec-vs-code gaps
+tokens used
+124,797
+EXEC-001 is closed. In [server.js](/root/terra/legacy-lab/inherited-poll/server.js:76), `polls.getView()` now runs before `Set-Cookie` is set, so a 404 exits through the `PollError` handler without granting a cookie. The regression assertion is present at [test/server.test.js](/root/terra/legacy-lab/inherited-poll/test/server.test.js:217).
+
+I re-checked the five review dimensions against the current code and did not find a remaining spec-vs-code gap. VD-04’s strengthened assertions now cover unchanged `counts` and no `Set-Cookie` on the tampered-cookie branch.
+
+Advisory: VD-02/VD-03/VD-05 are still bound primarily at the domain layer rather than as literal cookie-backed HTTP `POST` scenarios, though the current HTTP implementation and other HTTP tests cover the route behavior enough that I’m not counting this as a spec-vs-code issue.
+
+Ledger delta:
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| EXEC-001 | `GET /api/polls/:id` could grant a new `pv` cookie on 404 | Failed poll-view requests could receive identity despite B1 no-cookie-on-failure | STEP5·r1 | fixed in r2 |
+
+VERDICT: no spec-vs-code gaps

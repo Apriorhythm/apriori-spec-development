@@ -1,0 +1,525 @@
+OpenAI Codex v0.142.3
+--------
+workdir: /root/terra/legacy-lab/inherited-poll
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f44ec-b8cb-7ca1-a7c7-e64826b62233
+--------
+user
+You are a technical reviewer. Hunt for issues that would cause rework or a production incident.
+[Input]
+* SPEC-DOC: apriori/changes/vote-dedup/specs/   * DESIGN-DOC: apriori/changes/vote-dedup/design.md (revised since your round 1)
+* PROPOSAL: apriori/changes/vote-dedup/proposal.md   * TASKS: apriori/changes/vote-dedup/tasks.md (revised since your round 1)
+* KB: apriori/truth/   * Requirement doc: requirement/req-final.md   * Ledger: apriori/review/vote-dedup-issues.md
+[Context] This is round 2 of the same STEP2 review. Your round-1 findings DES-001 (legacy `voters`-less polls could 500) and DES-002 (VD-09's HTTP-level fault-injection seam was missing) are addressed in design.md (see its new "STEP2 review v1 handling" table near the top, plus the inline "(fixes DES-001/DES-002, STEP2 review v1)" annotations) and in tasks.md. Verify those fixes actually close the gaps you raised — don't just take the producer's word for it. If a fix is inadequate, reopen that same ID (don't open a new one) per the ledger's reopen rule.
+[Checklist]
+1. Do scenarios cover every visible behavior; any missing failure/edge scenarios
+2. Are the three moments of external shared state complete (this change touches: the cookie-secret file, and the poll record's new `voters` field)
+3. Conflicts with current state A, or broken existing conventions
+4. Spec'd but not designed, or designed behavior the spec never declared
+5. Security, where the change touches external input or permissions: unvalidated input, missing authz, secrets/PII in logs, injection surfaces
+[Scope] Count toward the verdict only gaps that would cause rework or a production incident. Everything else — label advisory (P0 rules).
+[Output]
+apriori/design/vote-dedup-review-v2.md: issues (description/risk/suggestion), advisories listed separately; mirror formal issues into the ledger per its rules (apriori/review/vote-dedup-issues.md — print your ledger delta, do not edit the file yourself).
+End with the verdict line (exactly one, verbatim): "VERDICT: no major issues, ready to proceed to execution" or "VERDICT: <N> issues open".
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-09T03:36:38.208524Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-09T03:36:38.515256Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-09T03:36:38.845492Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-09T03:36:39.412741Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-09T03:36:40.263431Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-09T03:36:42.216350Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-09T03:36:45.882816Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: KDFlgQmLV9ag
+codex
+I’ll re-read the revised design/tasks and the current ledger, then specifically verify whether DES-001 and DES-002 are actually closed rather than relying on the handling table.
+exec
+/usr/bin/zsh -lc "nl -ba apriori/changes/vote-dedup/specs/vote-dedup.md | sed -n '1,220p'" in /root/terra/legacy-lab/inherited-poll
+exec
+/usr/bin/zsh -lc "nl -ba apriori/changes/vote-dedup/design.md | sed -n '1,300p'" in /root/terra/legacy-lab/inherited-poll
+exec
+/usr/bin/zsh -lc "nl -ba apriori/changes/vote-dedup/tasks.md | sed -n '1,260p'" in /root/terra/legacy-lab/inherited-poll
+exec
+/usr/bin/zsh -lc "nl -ba apriori/review/vote-dedup-issues.md | sed -n '1,220p'" in /root/terra/legacy-lab/inherited-poll
+ succeeded in 133ms:
+     1	# Spec delta — vote-dedup
+     2	
+     3	> Merges into `apriori/specs/polls.md` (new file — this is the project's first spec) as `## ADDED`
+     4	> blocks. Source: `requirement/req-final.md` B1–B8 / AC1–AC11.
+     5	
+     6	## ADDED
+     7	
+     8	## Requirement: VOTER-IDENTITY — anonymous signed cookie issuance
+     9	
+    10	Server issues an HMAC-signed anonymous voter-identity cookie (`pv`) from the API layer only, never
+    11	from page routes; the cookie is unforgeable and its signing key survives a restart.
+    12	
+    13	#### Scenario: VD-01 — first API call issues the identity cookie, then a vote succeeds
+    14	- Given a client with no `pv` cookie
+    15	- When it sends `GET /api/polls/:id`
+    16	- Then the response includes `Set-Cookie: pv=...` with `HttpOnly` set
+    17	- And when it then sends `POST /api/polls/:id/vote` with that cookie and a legal choice
+    18	- Then the response is `200` and `total` increases by 1 and the body includes `voted: true`
+    19	
+    20	#### Scenario: VD-04 — no cookie or a forged/tampered cookie is rejected on vote, uncounted, no cookie granted
+    21	- Given a client with no `pv` cookie, or a `pv` cookie whose signature does not verify
+    22	- When it sends `POST /api/polls/:id/vote` with a legal choice
+    23	- Then the response is `403` with `{error:"未获得投票标识"}`
+    24	- And the poll's `total`/`counts` are unchanged
+    25	- And the response does not include `Set-Cookie`
+    26	
+    27	#### Scenario: VD-10 — a corrupted signing-key file fails the server at startup, not silently
+    28	- Given `<dataDir>/cookie-secret` exists but its content is not the expected key length
+    29	- When the server (or store/cookie module) is constructed against that `dataDir`
+    30	- Then construction throws / the process fails to start (no silent regeneration, no silently-accepted
+    31	  corrupt key)
+    32	
+    33	## Requirement: VOTE-DEDUP — server-enforced one-vote-per-identity-per-poll
+    34	
+    35	Same signed identity voting twice on the same poll is rejected; this holds under concurrent requests,
+    36	under a persistence failure, across process restart, and never cross-contaminates between polls.
+    37	
+    38	#### Scenario: VD-02 — repeat vote from the same identity is rejected
+    39	- Given a `pv` cookie that has already voted once on poll `P`
+    40	- When it sends `POST /api/polls/:id/vote` again on `P` with a legal choice
+    41	- Then the response is `409` with `{error:"你已经投过这个投票了"}`
+    42	- And `total` is unchanged
+    43	
+    44	#### Scenario: VD-03 — replaying the identical request N=3 times only counts once
+    45	- Given a `pv` cookie and a legal vote request body
+    46	- When the identical `POST /api/polls/:id/vote` is sent 3 times in sequence
+    47	- Then only the first response is `200`; the other two are `409`
+    48	- And `total` increased by exactly 1
+    49	
+    50	#### Scenario: VD-05 — the same identity can vote on a different poll
+    51	- Given a `pv` cookie that has already voted on poll `P1`
+    52	- When it sends `POST /api/polls/:id/vote` on a different poll `P2` with a legal choice
+    53	- Then the response is `200` and `P2.total` increases by 1 (independent of `P1`)
+    54	
+    55	#### Scenario: VD-06 — dedup survives a real process restart, verified through the app's own read path
+    56	- Given a `pv` cookie has successfully voted on poll `P`, and the server process is then restarted
+    57	  against the same `dataDir` (a fresh `server`/`store` instance, not a file peek)
+    58	- When the same cookie sends `POST /api/polls/:id/vote` on `P` again
+    59	- Then the response is `409`, and `total` read back via `GET /api/polls/:id` on the new instance
+    60	  matches the pre-restart value exactly
+    61	
+    62	#### Scenario: VD-08 — two concurrent votes from the same identity on the same poll only count once
+    63	- Given a `pv` cookie that has not yet voted on poll `P`
+    64	- When two `POST /api/polls/:id/vote` requests from that same cookie are issued concurrently
+    65	  (e.g. `Promise.all`)
+    66	- Then exactly one response is `200` and the other is `409`
+    67	- And `P.total` increased by exactly 1
+    68	
+    69	#### Scenario: VD-09 — a persistence failure leaves in-memory vote/dedup state unchanged
+    70	- Given a store whose write step is made to fail (a real, injected write failure — see design.md for
+    71	  the injection seam) for the next write
+    72	- When a `POST /api/polls/:id/vote` with a legal choice and a fresh identity is sent
+    73	- Then the response is `500`
+    74	- And a subsequent (non-restart) `GET /api/polls/:id` shows `total`/`counts`/`voted` exactly as before
+    75	  the failed request — no phantom vote, no phantom dedup mark
+    76	
+    77	## Requirement: PUBLIC-VIEW-CONTRACT — `voted` field and privacy boundaries
+    78	
+    79	The public view exposes a `voted` boolean derived from the request's identity; the admin view never
+    80	exposes `voted`, `voters`, raw `votes`, or `adminToken`; the frontend surfaces server-side rejections
+    81	visibly and no longer trusts `localStorage` alone.
+    82	
+    83	#### Scenario: VD-07a — server-side `voted` survives clearing localStorage
+    84	- Given a browser has successfully voted on poll `P` (server-side `voted` now true for its cookie)
+    85	- When it clears `localStorage` and reloads `/poll/:id`
+    86	- Then the page still shows the "already voted" state (proving the判定 comes from the server's `voted`
+    87	  field, not from localStorage)
+    88	
+    89	#### Scenario: VD-07b — deleting the voter cookie mid-session surfaces the rejection visibly
+    90	- Given a loaded `/poll/:id` page (form visible, not yet voted) whose browser context then has its
+    91	  `pv` cookie deleted
+    92	- When the user clicks the vote button
+    93	- Then the page's visible error area displays the rejection text (not a silent failure, not a
+    94	  vanishing form)
+    95	
+    96	#### Scenario: VD-11 — admin view and public view keep their existing privacy boundary, extended to the new fields
+    97	- Given a poll with at least one vote from at least one identity
+    98	- When its admin view (`GET /api/admin/:token`) and public view (`GET /api/polls/:id`) are fetched
+    99	- Then neither response includes `adminToken`, raw `votes`, or `voters`
+   100	- And the admin view does not include a `voted` field at all (not even `false`)
+
+ succeeded in 155ms:
+     1	# Design — vote-dedup
+     2	
+     3	Resolves gap-report risks (`apriori/explore/vote-dedup-gap-report.md`) #1 (store atomicity) and #2
+     4	(synchronous vote path) explicitly, since those two gate whether VD-08/VD-09 are satisfiable at all.
+     5	
+     6	## STEP2 review v1 handling (P6)
+     7	
+     8	| ID | Handled | Where |
+     9	|---|---|---|
+    10	| DES-001 | accept | §3 `vote`/`publicView` now normalize `poll.voters` to `[]` when the field is absent (legacy records) |
+    11	| DES-002 | accept | §2/§4: `createServer(dataDir, { storeIo })` passthrough added; VD-09's binding test moves to `server.test.js` (HTTP-level), `polls.test.js` version becomes optional extra coverage — tasks.md updated |
+    12	| ADV-DES-001 | accept | §1 "three moments" wording changed from "first use" to "during construction", matching VD-10 |
+    13	| ADV-DES-002 | batch-acknowledged, not added as a new scenario | existing VD-01 already covers reissue-on-missing/invalid vs. no-reissue-on-valid is implied by "already has a valid cookie" branch of B1 — judged adequately covered, no rework needed |
+    14	| ADV-DES-003 | batch-acknowledged | scope note taken; `store.put`'s guarantee is already described narrowly (§2, tied to non-mutating callers) and `close()` is explicitly out of scope (proposal.md) |
+    15	
+    16	## 1. New module: `lib/voter-identity.js`
+    17	
+    18	Owns cookie parsing/building and signing. Zero new dependencies — `node:crypto` only.
+    19	
+    20	- `loadOrCreateSecret(dataDir)`: reads `<dataDir>/cookie-secret`. Missing → `fs.mkdirSync(dataDir,
+    21	  {recursive:true})` then generate 32 random bytes via `crypto.randomBytes(32)` and
+    22	  `fs.writeFileSync` (sync — this module does its **own** `mkdirSync`, does not assume `store.js` has
+    23	  already created `dataDir`, closing gap-report risk #3). Present but wrong length → `throw` (server
+    24	  construction fails loudly; no silent regeneration — VD-10).
+    25	- `issue(secret)` → `{value, raw}`: `raw = crypto.randomBytes(16).toString('base64url')`;
+    26	  `sig = crypto.createHmac('sha256', secret).update(raw).digest('base64url')`; cookie value =
+    27	  `raw + '.' + sig`.
+    28	- `verify(cookieValue, secret)` → `raw string | null`: splits on `.`, recomputes HMAC over the `raw`
+    29	  part, `crypto.timingSafeEqual`s against the provided signature; malformed input or mismatch → `null`
+    30	  (never throws — HTTP layer treats `null` as "no valid identity").
+    31	- `digest(raw, secret)` → `crypto.createHmac('sha256', secret).update('voters:'+raw).digest('base64url')`:
+    32	  a **different** HMAC input prefix than the cookie signature, so the persisted `voters[]` digest can
+    33	  never be replayed as a valid cookie signature or vice versa. This is what gets stored in
+    34	  `poll.voters` — never the raw identity, never the cookie value (B7 privacy).
+    35	- `parseCookieHeader(header)` → tiny hand-rolled `Cookie:` header parser (no library) returning
+    36	  `{pv: '...'}`-shaped object; `buildSetCookie(value)` → the literal
+    37	  `pv=<value>; HttpOnly; SameSite=Lax; Path=/; Max-Age=31536000` string.
+    38	
+    39	**Three moments** (external shared state — the cookie-secret file):
+    40	- *init*: `loadOrCreateSecret` runs during `createServer(dataDir)`'s **construction** (not lazily on
+    41	  first request) — this is what makes VD-10's "corrupt key fails startup" observable: the throw
+    42	  happens before the server ever calls `.listen()`. Called once per process, cached in a closure — not
+    43	  re-read per request. (ADV-DES-001, STEP2 review v1: wording aligned with VD-10/tasks.md, which both
+    44	  already required construction-time failure.)
+    45	- *runtime update*: never rewritten after creation for the life of a dataDir (no rotation in scope).
+    46	- *cleanup/invalidation*: none — matches KB's existing `data/` lifecycle (no TTL/pruning anywhere in
+    47	  this app); out of scope per proposal.md.
+    48	
+    49	## 2. `lib/store.js` — restructured for write-then-commit atomicity (gap-report risk #1)
+    50	
+    51	Current bug-in-waiting: `put(poll)` does `data[poll.id] = poll; save();` — since callers normally pass
+    52	the *same object reference* already living in `data`, the live map is corrupted the instant the caller
+    53	mutates that object, independent of whether `save()` (the disk write) succeeds. Two changes:
+    54	
+    55	```js
+    56	// module-level: `let data = load();` (was `const`)
+    57	function save(snapshot) {
+    58	  fs.mkdirSync(dataDir, { recursive: true });
+    59	  const tmp = `${file}.tmp`;
+    60	  fs.writeFileSync(tmp, JSON.stringify(snapshot, null, 2));
+    61	  fs.renameSync(tmp, file);
+    62	}
+    63	put(poll) {
+    64	  const snapshot = { ...data, [poll.id]: poll };
+    65	  save(snapshot);       // throws → `data` untouched, caller sees the throw
+    66	  data = snapshot;       // only reached on success
+    67	}
+    68	```
+    69	
+    70	This alone is not suffient — it only helps if `polls.vote()` also stops mutating the *live* poll
+    71	object in place before calling `put`. See §3.
+    72	
+    73	**Test seam for VD-09 (persistence-failure injection):** this sandbox runs as **root**, and an
+    74	empirical check during design confirmed root bypasses directory permission bits (`chmod 500` on a
+    75	scratch dir did not block `fs.writeFileSync` as root) — so a permission-based fault injection is not a
+    76	reliable, portable mechanism here. Instead, `createStore(dataDir, io = {})` accepts an optional
+    77	override object defaulting to the real `fs` functions:
+    78	```js
+    79	function createStore(dataDir, io = {}) {
+    80	  const writeFileSync = io.writeFileSync || fs.writeFileSync;
+    81	  const renameSync = io.renameSync || fs.renameSync;
+    82	  ...
+    83	}
+    84	```
+    85	Production code path is unchanged (default args = real `fs`). The VD-09 test constructs a store with
+    86	`io.writeFileSync` that throws once, exercising `polls.vote()`'s real rollback logic against a real
+    87	thrown error from the real call site — this is dependency injection of the I/O primitive, not a mock
+    88	of the assertion; the code under test (`polls.js`'s catch/rollback path) runs unmodified and for real.
+    89	
+    90	**(fixes DES-002, STEP2 review v1):** the same `io` seam must be reachable from the **HTTP** layer, not
+    91	just the domain layer, because VD-09 is specified as a `POST`-then-`GET` HTTP scenario (the visible
+    92	behavior a real client observes), not a `polls.vote()` unit call. `createServer(dataDir, { storeIo }
+    93	= {})` (see §4) forwards `storeIo` straight into `createStore(dataDir, storeIo)` — production callers
+    94	(`server.js`'s `require.main === module` block) pass nothing, so the default (real `fs`) path is
+    95	unaffected. `test/server.test.js`'s VD-09 test constructs its server with a `storeIo.writeFileSync`
+    96	that throws on its next call, issues a real `GET` (to get a cookie) then a real `POST` over HTTP,
+    97	asserts `500`, then issues a further real `GET` over HTTP and asserts `total`/`counts`/`voted`
+    98	unchanged — this is the actual API-level guarantee the spec makes, exercised end-to-end. The
+    99	`polls.test.js` domain-layer version of the same idea (§6 in the original design) is now optional
+   100	extra coverage, not the scenario's binding test — `tasks.md` is updated accordingly.
+   101	
+   102	## 3. `lib/polls.js` — signature changes and the atomic vote path
+   103	
+   104	- `vote(id, choices, voterId)` — `voterId` is the HMAC digest (see §1), always a non-empty string;
+   105	  supplying it is the HTTP layer's responsibility (cookie validated in `server.js` **before** `vote()`
+   106	  is ever called — REQ-001's Q3 resolution: cookie validation is HTTP-layer, not domain-layer).
+   107	  ```js
+   108	  function vote(id, choices, voterId) {
+   109	    const poll = getPoll(id);
+   110	    // ...existing closed/deadline/choices/multiple checks, unchanged...
+   111	    const voters = Array.isArray(poll.voters) ? poll.voters : []; // legacy (pre-change) polls have no
+   112	                                                                    // `voters` field at all — B8
+   113	    if (voters.includes(voterId)) throw new PollError(409, '你已经投过这个投票了');
+   114	    const candidate = { ...poll, votes: [...poll.votes, choices], voters: [...voters, voterId] };
+   115	    store.put(candidate);   // throws → `poll` (the caller's object) was never mutated — rollback is
+   116	                             // "do nothing", by construction, not a try/catch undo
+   117	    return publicView(candidate, voterId);
+   118	  }
+   119	  ```
+   120	  **(fixes DES-001, STEP2 review v1):** `publicView(poll, voterId)` (§3 below) applies the same
+   121	  `Array.isArray(poll.voters) ? poll.voters : []` normalization — a poll record written before this
+   122	  change (no `voters` key at all) must never throw on a public `GET`/`POST`; it is read as "nobody has
+   123	  voted on it under the new scheme yet", consistent with B8's "no retroactive migration, no crash."
+   124	  The normalized (possibly-just-created) `voters: []` is persisted the next time that poll is
+   125	  successfully written (i.e. on its first post-change vote, via `candidate` above) — no separate
+   126	  migration step, no read triggers a write.
+   127	  Building `candidate` as a **new** object (never `poll.votes.push(...)`) is what makes rollback free:
+   128	  on `store.put` throwing, nothing about the live `poll` object or `data` map changed, so a following
+   129	  `GET` naturally reflects pre-failure state (VD-09) with no separate rollback code path to get wrong.
+   130	- **Synchronous end-to-end, by design constraint** (gap-report risk #2): every step from
+   131	  `poll.voters.includes(voterId)` through `store.put(candidate)` is synchronous — no `await`, no
+   132	  callback-based I/O — so Node's single-threaded event loop cannot interleave a second concurrent
+   133	  `POST .../vote` between the dedup check and the commit. This is why VD-08 needs no explicit lock:
+   134	  it needs the *absence* of any yield point in this function, which is why `voter-identity.js`'s
+   135	  `issue`/`verify`/`digest` are all synchronous crypto calls, not `crypto.randomBytes`'s async
+   136	  callback form.
+   137	- `hasVoted` is inlined (`poll.voters.includes(voterId)`) — no separate exported helper needed.
+   138	- Split the view projection to make the admin/public boundary structurally impossible to blur
+   139	  (addresses reviewer advisory ADV-r2-001 from `vote-dedup-req-review-v2.md`, turning a "be careful"
+   140	  advisory into a type-level separation):
+   141	  ```js
+   142	  function view(poll) { /* existing fields only — id, question, options, multiple, deadline,
+   143	                            closed, open, counts, total — UNCHANGED, never gains a voted field */ }
+   144	  function publicView(poll, voterId) {
+   145	    const voters = Array.isArray(poll.voters) ? poll.voters : []; // DES-001 fix — legacy polls
+   146	    return { ...view(poll), voted: Boolean(voterId) && voters.includes(voterId) };
+   147	  }
+   148	  ```
+   149	  `getView(id, voterId)` → `publicView(getPoll(id), voterId)`. `adminView(token)` and `close(token)`
+   150	  keep calling the base `view(poll)` — **unchanged**, so admin responses structurally cannot carry
+   151	  `voted` (VD-11).
+   152	- `create(input)` gains `voters: []` on the initial poll record, alongside the existing `votes: []`
+   153	  (old polls loaded from disk without a `voters` field are treated as `voters: []` at read time via
+   154	  the `Array.isArray(poll.voters) ? poll.voters : []` normalization above — DES-001 — so pre-existing
+   155	  `data/polls.json` entries need no migration, confirming req-final.md B8).
+   156	
+   157	## 4. `server.js` — HTTP-layer cookie wiring
+   158	
+   159	- `createServer(dataDir, { storeIo } = {})` **(fixes DES-002, STEP2 review v1)**: adds an optional
+   160	  second parameter, forwarded verbatim as `createStore(dataDir, storeIo)`'s `io` argument — this is
+   161	  the only signature change to `createServer`. Every production call site (`require.main === module`
+   162	  at the bottom of `server.js`) passes nothing, so `storeIo` defaults to `undefined` → `createStore`'s
+   163	  own default (`io = {}`) → real `fs` functions; behavior for real deployments is byte-for-byte
+   164	  unchanged. Tests that need VD-09's fault injection construct `createServer(tmpDataDir, { storeIo:
+   165	  { writeFileSync: throwsOnce } })` and drive it exactly like a normal server (`http` requests), so the
+   166	  test exercises the real request→response path, not a domain-layer shortcut.
+   167	- `GET /api/polls/:id`: parse `Cookie` header; `verify()` the `pv` value against the secret.
+   168	  - Valid → `voterId = digest(raw, secret)`, no `Set-Cookie` in the response.
+   169	  - Missing/invalid → `issue(secret)` a new identity, respond with `Set-Cookie: buildSetCookie(...)`,
+   170	    and use `digest(raw, secret)` of the **newly issued** raw as `voterId` for this same response's
+   171	    `getView` call (so a first-ever visitor's first response already carries an accurate `voted:false`,
+   172	    consistent — trivially, since a brand-new identity has never voted).
+   173	- `POST /api/polls/:id/vote`: parse+verify the same way; **no verified identity → respond 403
+   174	  immediately, never call `polls.vote()`, never `Set-Cookie`** (VD-04). Verified → call
+   175	  `polls.vote(id, choices, digest(raw, secret))`.
+   176	- `GET /poll/:id`, `GET /admin/:token`, `GET /`, `GET /style.css`: **unchanged** — no cookie read, no
+   177	  cookie write (B1's "API-layer-only" issuance boundary).
+   178	- `GET /api/admin/:token`, `POST /api/admin/:token/close`: **unchanged** call sites (`adminView`,
+   179	  `close`) — no voter identity involved, confirming VD-11's admin-side guarantee structurally (§3).
+   180	
+   181	## 5. `public/poll.html` — minimal frontend change
+   182	
+   183	- `updateState(view)`: branch on `view.voted` (server truth) instead of (or in addition to, as a
+   184	  cosmetic pre-paint hint) the `localStorage` read — server value wins on any conflict (VD-07a).
+   185	  `localStorage.setItem` after a successful vote can stay as a harmless legacy write, but must not be
+   186	  the deciding read.
+   187	- The `#error` box already exists and is already shown on a non-ok vote response (`server.test.js`'s
+   188	  existing coverage) — VD-07b needs no new UI element, just a Playwright scenario that deletes the
+   189	  `pv` cookie via `context.clearCookies()` (or `page.context().clearCookies()`) before clicking submit,
+   190	  and asserts `#error` becomes visible with the 403 text. Note (carried from gap-report risk #6): the
+   191	  page's `setInterval(load, 3000)` could silently re-`GET` and re-issue a cookie between "delete
+   192	  cookie" and "click vote" if the test is slow — the Playwright test must delete the cookie and click
+   193	  within one 3s window, or stub/clear the interval for that test.
+   194	
+   195	## 6. Existing test call-site inventory (gap-report risk #4/#5 — enumerated so STEP5's tasks.md is exhaustive)
+   196	
+   197	Grep-confirmed call sites needing a third argument or a `voters` field addition:
+   198	- `test/polls.test.js`: every `polls.vote(id, choices)` call → add a fixed test voter digest (e.g. a
+   199	  literal string, since these tests exercise the domain layer directly, not through cookies/HTTP).
+   200	  Every `polls.create(...)`-derived poll fixture implicitly gets `voters: []` from `create()`'s new
+   201	  default — no test change needed there.
+   202	  Every `polls.getView(id)` that asserts on the exact returned object shape now also receives `voted`.
+   203	- `test/server.test.js`: HTTP-level tests that currently POST directly without a cookie will now hit
+   204	  the new 403 path — each existing "vote succeeds" test needs to first `GET /api/polls/:id`, capture
+   205	  `Set-Cookie`, and forward it on the `POST`.
+   206	- `test/store.test.js`: `put`'s new write-then-commit contract needs at least one test asserting a
+   207	  failed `save()` leaves the prior `all()`/`get()` state exactly unchanged (this can reuse the same
+   208	  `io.writeFileSync`-throws seam from §2 rather than inventing a second one).
+   209	
+   210	## 7. Explicitly NOT changing
+   211	
+   212	- `findByToken`, `close`, `create`'s validation rules, `isOpen`, deadline/closed 409 ordering, the
+   213	  `store.js` load-on-corrupt-JSON `.bak` rename behavior — all untouched, per proposal.md's
+   214	  out-of-scope list and AC11/VD-11's non-regression requirement.
+
+ succeeded in 166ms:
+     1	# Tasks — vote-dedup
+     2	
+     3	Ordered for STEP5 (P7). Each task names the scenario ID(s) it must make pass. Tests-first per P7: a
+     4	failing test per scenario is written before its implementation task.
+     5	
+     6	## 0. Test scaffolding (write failing tests first, named with scenario IDs)
+     7	
+     8	- [ ] `test/voter-identity.test.js` (new): unit tests for `lib/voter-identity.js` — issue/verify
+     9	      round-trip, tampered signature rejected, missing/corrupt secret file (VD-10).
+    10	- [ ] `test/store.test.js`: add write-then-commit rollback test using the `io.writeFileSync`-throws
+    11	      seam (design.md §2) — failing state must equal pre-write state after a thrown save.
+    12	- [ ] `test/polls.test.js`: add/extend tests for VD-02, VD-03, VD-05, VD-08, VD-11 at the domain layer
+    13	      (voter digest passed directly, no HTTP/cookie involved), plus a DES-001 regression test: a poll
+    14	      object with no `voters` key at all must not throw from `publicView`/`vote`.
+    15	- [ ] `test/server.test.js`: add/extend tests for VD-01, VD-04, VD-06 (restart via a fresh server/store
+    16	      instance against the same tmp dataDir), VD-09 (fixes DES-002 — the `storeIo`-injected write
+    17	      failure exercised over real HTTP: `POST` → 500, then a real `GET` confirming unchanged
+    18	      `total`/`counts`/`voted`; this is VD-09's binding test, not the polls.test.js version), VD-11
+    19	      (admin view shape).
+    20	- [ ] `test/e2e.test.js`: add Playwright tests for VD-07a, VD-07b.
+    21	- [ ] Run `npm test` — confirm the new tests fail for the right reason (no cookie support yet), show
+    22	      the failing run.
+    23	
+    24	## 1. `lib/voter-identity.js` (new module)
+    25	
+    26	- [ ] Implement `loadOrCreateSecret`, `issue`, `verify`, `digest`, `parseCookieHeader`,
+    27	      `buildSetCookie` per design.md §1.
+    28	- [ ] `node --test test/voter-identity.test.js` green.
+    29	
+    30	## 2. `lib/store.js` — write-then-commit `put`
+    31	
+    32	- [ ] Change `data` from `const` to `let`; restructure `put` to build a snapshot, `save(snapshot)`
+    33	      first, commit `data = snapshot` only after success (design.md §2).
+    34	- [ ] Add the optional `io` override parameter to `createStore` for fault injection (production call
+    35	      sites unaffected — no argument passed).
+    36	- [ ] `node --test test/store.test.js` green (including the new rollback test).
+    37	
+    38	## 2b. `server.js` — fault-injection passthrough (fixes DES-002)
+    39	
+    40	- [ ] `createServer(dataDir, { storeIo } = {})` forwards `storeIo` to `createStore(dataDir, storeIo)`;
+    41	      no other behavior change; production call site passes nothing (design.md §4).
+    42	
+    43	## 3. `lib/polls.js` — domain-layer changes
+    44	
+    45	- [ ] `create(input)`: add `voters: []` to the new poll record.
+    46	- [ ] Split `view(poll)` (base, unchanged fields) from `publicView(poll, voterId)` (adds `voted`) per
+    47	      design.md §3.
+    48	- [ ] `getView(id, voterId)` → `publicView(getPoll(id), voterId)`.
+    49	- [ ] `vote(id, choices, voterId)`: normalize `poll.voters` to `[]` when absent (DES-001), add the
+    50	      `voters.includes(voterId)` 409 check, build the `candidate` object (new arrays, never mutate
+    51	      `poll` in place), call `store.put(candidate)`, return `publicView(candidate, voterId)`. Keep
+    52	      every existing validation check (closed, deadline, choices shape, single-vs-multiple) in its
+    53	      current order, unchanged.
+    54	- [ ] `adminView`/`close`: keep calling base `view(poll)` — no signature change, no `voted` field.
+    55	- [ ] `node --test test/polls.test.js` green.
+    56	
+    57	## 4. `server.js` — HTTP wiring
+    58	
+    59	- [ ] Construct/cache the cookie secret at server startup (`loadOrCreateSecret(dataDir)`) — startup
+    60	      must fail loudly if the secret file is corrupt (VD-10).
+    61	- [ ] `GET /api/polls/:id`: parse+verify cookie; issue+`Set-Cookie` on missing/invalid; pass the
+    62	      resulting voter digest into `getView`.
+    63	- [ ] `POST /api/polls/:id/vote`: parse+verify cookie; no valid identity → `403
+    64	      {error:"未获得投票标识"}` before calling `polls.vote`; valid → call `polls.vote(id, choices,
+    65	      voterDigest)`.
+    66	- [ ] Confirm `GET /poll/:id`, `GET /admin/:token`, `GET /`, `GET /style.css`, `GET
+    67	      /api/admin/:token`, `POST /api/admin/:token/close` are untouched (no cookie logic added there).
+    68	- [ ] `node --test test/server.test.js` green.
+    69	
+    70	## 5. `public/poll.html` — frontend
+    71	
+    72	- [ ] `updateState(view)`: branch on `view.voted` as the source of truth; keep the existing
+    73	      `localStorage` write as a non-authoritative legacy no-op.
+    74	- [ ] Confirm the existing `#error` display path already surfaces the new 403/409 text (no new UI
+    75	      element expected — verify by reading the vote button's fetch error handler).
+    76	
+    77	## 6. Full verification
+    78	
+    79	- [ ] `npm test` green (all of `store.test.js`, `polls.test.js`, `server.test.js`).
+    80	- [ ] `npm run test:e2e` green (VD-07a, VD-07b, plus existing e2e coverage still passing).
+    81	- [ ] `apriori verify --specs apriori/changes/vote-dedup/specs --test-cmd "npm test"` — every VD-*
+    82	      scenario BOUND-GREEN, no ORPHAN/UNBOUND/UNIDENTIFIED.
+    83	- [ ] Manually run the app (`run` skill / `npm start`), drive AC1/AC2/AC7 by hand with a real browser,
+    84	      per P7's "don't fly blind" rule; record one-line observations.
+    85	- [ ] Heterogeneous consistency review (P8, codex).
+
+ succeeded in 182ms:
+     1	# Issue ledger — vote-dedup
+     2	
+     3	| ID | Issue | Risk | Round found | Status |
+     4	|---|---|---|---|---|
+     5	| REQ-001 | 文档仍保留开放问题，目标态未封版 | 状态码、cookie 下发入口和领域层接口可能被不同实现者选择成不同结果 | STEP0·r1 | fixed (v2) |
+     6	| REQ-002 | `voted` 字段的公开视图契约不完整 | 前端、API 响应和测试可能对字段存在性/真假值产生分歧 | STEP0·r1 | fixed (v2) |
+     7	| REQ-003 | 同一 cookie 并发投票的结果未定义 | 并发重复提交可能双计票，破坏服务端防重复目标 | STEP0·r1 | fixed (v2) |
+     8	| REQ-004 | 持久化失败时的回滚/一致性未定义 | 可能出现返回失败但内存已计票，或计票与去重标记不一致 | STEP0·r1 | fixed (v2) |
+     9	| REQ-005 | 新旧投票数据模型兼容规则未声明 | 可能破坏旧 `votes` 数据、`counts`/`total` 语义或隐私边界 | STEP0·r1 | fixed (v2) |
+    10	| REQ-006 | Cookie 与签名密钥生命周期不够精确 | cookie 有效期、密钥复用和损坏处理不可预测，重启后行为可能不一致 | STEP0·r1 | fixed (v2) |
+    11	| REQ-007 | AC7 的无 cookie 直连 POST 用户可见文案不可按字面端到端测试 | 测试作者无法确定应断言 API JSON 还是浏览器页面错误状态 | STEP0·r1 | fixed (v2) |
+    12	| REQ-ADV-r1 | advisory batch acknowledged (3 items: ADV-001 零依赖约束显式化 / ADV-002 固定错误文案 / ADV-003 AC3 落成 N=3) — 见 review-v1 | — | STEP0·r1 | advisory-acked |
+    13	| DES-001 | Legacy poll records without `voters` can 500 on public GET/vote despite B8 compatibility | Existing polls created before this change may break immediately after deploy because design/tasks read `poll.voters` directly instead of normalizing missing fields to `[]` | STEP2·r1 | fixed (design.md rev) |
+    14	| DES-002 | VD-09 HTTP failure scenario lacks a server-level injection seam | The required visible `POST` 500 plus follow-up API `GET` can be untestable or only tested at the wrong layer, allowing spec/API mismatch and execution rework | STEP2·r1 | fixed (design.md rev) |
+    15	| DES-ADV-r1 | advisory batch acknowledged (3 items: ADV-DES-001 cookie-secret timing wording / ADV-DES-002 GET reissue-vs-no-reissue coverage / ADV-DES-003 scope `store.put` rollback wording) — 见 vote-dedup-review-v1.md | — | STEP2·r1 | advisory-acked |
+    16	
+    17	> Rows REQ-001..REQ-007 recorded on behalf of the reviewer (codex, session 019f4127-1cdf-7e32-a569-e568fe86ff58); reviewer's raw delta in vote-dedup-req-review-v1-raw.txt. "Round found" normalized from the reviewer's "req-v1" to the ledger's step-labeled form STEP0·r1.
+    18	> All seven fixed in req-v2 (producer P2, 2026-07-09): see requirement/req-v2.md §5 for accept+reason per item — every issue accepted, none rejected.
+    19	> STEP0·r2 (codex resume, same session, req-v2.md): reviewer confirmed all seven fixes adequate on re-check, no new/reopened formal rows, 2 advisories (ADV-r2-001/002, batch-noted, not landed as ledger rows per P0 — reviewer supplied no batch line so none added here). VERDICT: no major issues. Raw: vote-dedup-req-review-v2-raw.txt.
+    20	> STEP2·r1 (codex exec, new session 019f44ec-b8cb-7ca1-a7c7-e64826b62233, read-only sandbox): reviewed proposal.md/specs/design.md/tasks.md against req-final.md + KB + current code. DES-001/DES-002 recorded on behalf of the reviewer; reviewer's raw delta in vote-dedup-step2-review-v1-raw.txt. VERDICT: 2 issues open.
+
+codex
+The two round-1 fixes are present in the revised docs: legacy `voters` normalization is now specified in both `vote` and `publicView`, and VD-09 is moved to an HTTP-level server test with a `storeIo` passthrough. I’m doing one more pass for new spec/design mismatches introduced by those fixes.
+codex
+`apriori/design/vote-dedup-review-v2.md` content:
+
+**Formal Issues**
+
+None.
+
+DES-001 is adequately closed: `vote()` and `publicView()` now normalize missing legacy `poll.voters` to `[]`, persist `voters` on the next successful vote, and tasks add regression coverage.
+
+DES-002 is adequately closed: `createServer(dataDir, { storeIo } = {})` now forwards the store I/O seam, and VD-09’s binding test is moved to `server.test.js` over real HTTP with `POST` 500 followed by API `GET`.
+
+**Advisories**
+
+- `ADV-DES-r2-001`: The DES-001 regression test should not create an `apriori verify` orphan. Either bind it to a real spec scenario if the CLI expects every scenario-like ID in test names, or keep the test name free of unlisted scenario IDs.
+- `ADV-DES-r2-002`: The VD-09 HTTP test should arm the injected write failure after poll fixture setup, or preseed `polls.json`, so the injected failure hits the vote write rather than poll creation.
+- `ADV-DES-r2-003`: One sentence still says the synchronous span starts at `poll.voters.includes(voterId)`; update that wording to `voters.includes(voterId)` to match the DES-001 normalization.
+
+**Ledger Delta**
+
+No new or reopened formal issues. No ledger row changes required.
+
+VERDICT: no major issues, ready to proceed to execution
+tokens used
+143,024
+`apriori/design/vote-dedup-review-v2.md` content:
+
+**Formal Issues**
+
+None.
+
+DES-001 is adequately closed: `vote()` and `publicView()` now normalize missing legacy `poll.voters` to `[]`, persist `voters` on the next successful vote, and tasks add regression coverage.
+
+DES-002 is adequately closed: `createServer(dataDir, { storeIo } = {})` now forwards the store I/O seam, and VD-09’s binding test is moved to `server.test.js` over real HTTP with `POST` 500 followed by API `GET`.
+
+**Advisories**
+
+- `ADV-DES-r2-001`: The DES-001 regression test should not create an `apriori verify` orphan. Either bind it to a real spec scenario if the CLI expects every scenario-like ID in test names, or keep the test name free of unlisted scenario IDs.
+- `ADV-DES-r2-002`: The VD-09 HTTP test should arm the injected write failure after poll fixture setup, or preseed `polls.json`, so the injected failure hits the vote write rather than poll creation.
+- `ADV-DES-r2-003`: One sentence still says the synchronous span starts at `poll.voters.includes(voterId)`; update that wording to `voters.includes(voterId)` to match the DES-001 normalization.
+
+**Ledger Delta**
+
+No new or reopened formal issues. No ledger row changes required.
+
+VERDICT: no major issues, ready to proceed to execution

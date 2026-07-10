@@ -1,0 +1,353 @@
+Reading additional input from stdin...
+OpenAI Codex v0.142.3
+--------
+workdir: /root/terra/fullrun-lab/v3-poll-r3
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f3f4b-f0b0-7681-a376-986dd14c55d8
+--------
+user
+You are a senior requirements reviewer. Review the requirement doc; the goal is to make it precise enough to hand straight to an AI for implementation.
+
+You are running in a READ-ONLY sandbox and CANNOT write files. Therefore: print your ENTIRE output to stdout (do not attempt to create or edit any file). The producer will archive your raw output and land your ledger delta on your behalf.
+
+[Input]
+* Requirement doc: requirement/req-v1.md   (read it from disk)
+* System knowledge base: none (greenfield repo, no code yet)
+* Issue ledger: none yet (this is round 1)
+
+[Review dimensions, give a verdict on each]
+1. Is target state B clear and unambiguous
+2. Are edge cases and exception paths covered (null, out-of-range, concurrency, timeout, failure rollback)
+3. Are there "implied but undeclared" state changes or side effects
+4. Is each acceptance criterion testable (expressible as "if then")
+5. Does it conflict with current state A (n/a — greenfield)
+6. Is the target lineage declared, and does it match the repo's reality
+
+[Scope] Count toward the verdict only: ambiguous target state, untestable acceptance criteria, missing edge/boundary coverage, conflicts with state A. Everything else — label advisory. Also check an explicit out-of-scope ("won't do") section exists. Correctness/security findings can NEVER be advisory.
+
+[Language] Write the review prose in Chinese to match the human. Keep ALL machine tokens in English: the verdict line verbatim, issue IDs (e.g. REQ-1), and the ledger table.
+
+[Output — all to stdout, in this order]
+1. A heading "=== REVIEW DOC (apriori/review/quick-poll-req-review-v1.md) ===" then the full review content: issues by dimension (description / risk / suggested fix); advisories listed separately.
+2. A heading "=== LEDGER DELTA (apriori/review/quick-poll-issues.md) ===" then a markdown table of NEW formal rows only, columns: | ID | Issue | Risk | Round found | Status | — use IDs like REQ-1, REQ-2, status "open", Round found "1". If there are advisory-only items, emit one batch row: | REQ-ADV-1 | advisory batch acknowledged (n items) | low | 1 | advisory-acked |.
+3. Exactly one verdict line from this table, verbatim: "VERDICT: no major issues" (if zero formal open issues) OR "VERDICT: <N> issues open" where <N> = count of formal rows with status open.
+
+Do not modify the requirement doc itself.
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-08T01:16:09.839925Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-08T01:16:10.076469Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-08T01:16:10.496215Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-08T01:16:10.986240Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-08T01:16:10.844545Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-08T01:16:12.575663Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-08T01:16:16.345902Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: 52zkeOCvGVfK
+codex
+I’ll read the requirement document and then print the review and ledger exactly to stdout. Because the sandbox is read-only, I’ll avoid any write/edit tools.
+exec
+/usr/bin/zsh -lc "sed -n '1,240p' requirement/req-v1.md" in /root/terra/fullrun-lab/v3-poll-r3
+ succeeded in 152ms:
+# 需求:quick-poll —— 快速匿名投票小工具
+
+> change: `quick-poll` · tier: medium · track: harden
+> target lineage: **master (mainline)** —— 全新仓库,无合并禁忌
+> 状态:req-v1(brainstorm 结晶稿,待 STEP0 评审)
+
+## 1. 目标(Goal / 目标态 B)
+
+任何人都能在几十秒内创建一个**单问题投票**(标题 + 若干选项),拿到一条分享链接;几十位同事/朋友点开链接,**匿名、免登录、无需安装**,投一票后立刻看到实时汇总结果。发起人另持一条私密**管理链接**,可随时手动关闭投票,或预设截止时间到点自动关闭。
+
+用途:开会或群里**征集意见**。核心价值 = 发起与参与都几乎零成本。
+
+技术路线(brainstorm 拍板,方案 1):**Node 标准库 HTTP 服务 + 每个投票一个 JSON 文件**;前端为服务端渲染的简单页面 + 少量原生 JS;不使用数据库;并发写入由应用层解决(每投票串行写 + 原子落盘)。
+
+## 2. 目标用户
+
+- **发起人**:开会主持人、群主、任何想快速收集意见的人。免登录;创建投票后凭"管理链接"行使管理权。
+- **投票人**:同事、朋友,数量级为**几十人(设计目标约 50 人并发)**。匿名、免登录、手机或电脑浏览器点开即用。
+
+## 3. 核心场景
+
+1. **创建投票**:发起人填标题 + 2–10 个选项,选择单选/多选(默认单选),可选设置截止时间,提交后得到两条链接:**分享链接**(投票用)与**管理链接**(私密,含管理凭证)。
+2. **投票**:投票人打开分享链接,看到标题与选项;单选投票选一项,多选投票选一或多项;提交后立刻看到实时结果(每项票数 + 百分比 + 条形,顶部显示总投票人数)。
+3. **看结果**:投过的人(同一浏览器)再次打开分享链接,直接看到结果页,不再显示投票表单(软拦截)。任何人打开已关闭投票的分享链接,看到结果且不能再投。
+4. **关闭投票**:发起人打开管理链接可手动关闭;若设了截止时间,到点自动关闭。关闭后拒绝新票,结果仍可查看。
+
+## 4. UI 形态(brainstorm 草图,详细设计在 STEP2)
+
+- **创建页**:标题输入框、选项列表(可增删,2–10 项)、单选/多选开关、可选截止时间、"生成投票链接"按钮 → 结果展示两条链接。
+- **投票页**(分享链接):标题 + 选项(单选=radio,多选=checkbox)+ 提交按钮;已关闭则不显示提交。
+- **结果页**:每项条形 + 票数 + 百分比 + 总人数;顶部标明投票是否已关闭。
+- **管理页**(管理链接):投票概览 + "关闭投票"按钮 + 结果视图。
+
+## 5. 数据与内容
+
+- 每个投票持久化为一个 JSON 文件,字段至少含:投票 id、标题、选项列表、single/multi 模式、创建时间、可选截止时间(deadline)、开/关状态(open/closed)、各选项计票、总投票人数、管理凭证(admin token,仅在管理链接中呈现,不落在分享链接)。
+- **约束**:标题 ≤ 100 字;每个选项 ≤ 50 字;选项数 2–10(最少 2,最多 10)。
+- 投票文件**长期保留**,不做自动清理;关闭后结果仍可查看。
+- 软拦截"已投过"的状态记在**投票人浏览器本地**(不落服务端身份)。
+
+## 6. 可测收尾标准(Acceptance —— 每条 "if … then …" 可测)
+
+- **AC-1 创建**:提交合法的标题 + 2–10 个选项 → 返回分享链接与管理链接,且投票初始为 open、计票全 0。
+- **AC-2 选项数下界**:提交少于 2 个选项 → 拒绝创建并提示。
+- **AC-3 选项数上界**:提交恰好 10 个选项 → 创建成功;提交多于 10 个 → 拒绝并提示。
+- **AC-4 单选投票**:single 模式下选一项提交 → 该项 +1、总人数 +1,立刻返回结果。
+- **AC-5 单选拒多**:single 模式下提交多于一项 → 拒绝计票并提示。
+- **AC-6 多选投票**:multi 模式下选多项提交 → 所选各项各 +1、总人数 +1(百分比按人数计,允许合计 > 100%)。
+- **AC-7 软拦截**:同一浏览器已投过后再打开分享链接 → 直接显示结果页,不显示投票表单。
+- **AC-8 手动关闭**:发起人经管理链接关闭 → 投票转 closed;此后经分享链接提交投票 → 被拒,结果仍可查看。
+- **AC-9 到点自动关闭**:设了截止时间,当前时间已过 deadline → 投票视为 closed,新票被拒。
+- **AC-10 管理凭证隔离**:分享链接不含 admin token;仅持管理链接者能关闭投票;拿分享链接的人无法关闭。
+- **AC-11 并发不丢票**:约 50 个并发投票请求打到同一投票 → 最终总票数 = 成功请求数,无丢失、无覆盖(对抗性并发测试证明)。
+- **AC-12 非法输入**:空标题、空选项、超长标题/选项、投给不存在的选项 id、投给不存在的投票 → 均被拒并给出可辨识的错误,不写坏数据文件。
+
+## 7. 不做(Out of scope —— 附原因)
+
+- **账号 / 登录 / 用户体系** —— 需求就是匿名免登录。
+- **硬防刷(IP 限制 / 实名 / 验证码)** —— 与免登录冲突;已接受"软拦截,防不住无痕/清缓存的硬刷"。升级路线:未来若需要可加设备指纹或登录。
+- **A 方向的现场大屏实时跳动 / 二维码现场秀** —— 本工具面向"群里发链接"。
+- **投票创建后编辑标题/选项** —— YAGNI;未来可加。
+- **多问题问卷 / 分支逻辑** —— 一个投票只含一个问题。
+- **数据库** —— 明确用文件存储。
+- **投票文件自动清理 / 配额** —— 长期保留,暂不做生命周期管理(未来若磁盘增长成问题再加)。
+
+## 8. 已知风险 / 待定(open questions)
+
+- **并发写同一 JSON 文件**:几十人同时投,必须保证不丢票、不写坏文件。这是本变更最大的技术风险,设计阶段须明确"每投票串行化 + 原子落盘(临时文件 + fsync + rename)"策略,并在 STEP5 用对抗性并发测试证明(AC-11),不得只在文字上承诺。
+- **管理凭证形态**:admin token 如何生成/校验、管理链接如何编码,留待 STEP2 设计定夺(约束:分享链接绝不泄露 token)。
+- **软拦截的本地存储载体**:localStorage vs cookie,STEP2 定;需保证 AC-7 可测。
+- **截止时间的时区/表述**:以服务器时间为准还是带时区,STEP2 明确。
+
+codex
+=== REVIEW DOC (apriori/review/quick-poll-req-review-v1.md) ===
+
+# quick-poll 需求评审 v1
+
+## 维度 1: 目标态 B 是否清晰且无歧义
+
+结论: 有阻塞问题。
+
+### REQ-1: deadline 语义未精确定义
+
+描述: 文档要求“可选截止时间”“到点自动关闭”，但未定义截止时间的输入格式、时区、是否允许创建过去时间、以及“刚好等于 deadline”的请求应算 open 还是 closed。
+
+风险: 实现者可能采用不同解释，导致 AC-9 无法稳定测试，也可能出现边界时刻投票被不同环境接受或拒绝。
+
+建议修复: 明确 deadline 使用 ISO 8601 或本地表单格式；明确转换为服务器 UTC 时间存储；明确 `now >= deadline` 时视为 closed；明确创建时过去时间是拒绝创建还是立即创建为 closed。
+
+### REQ-2: 管理凭证安全要求不足
+
+描述: 文档要求管理链接含 `admin token`，但“管理凭证形态”仍列为 open question，未定义 token 生成强度、长度、不可枚举性、校验方式，以及错误 token 的行为。
+
+风险: 这是安全与正确性问题。若实现使用可预测 token 或弱随机数，持分享链接者可能猜出管理链接并关闭投票。
+
+建议修复: 明确使用 CSPRNG 生成至少 128-bit 随机 token；token 只在服务端 poll JSON 中保存并用于常量时间比较；错误或缺失 token 返回不可关闭状态；分享页 HTML、JS、接口响应均不得泄露 token。
+
+## 维度 2: 边界与异常路径是否覆盖
+
+结论: 有阻塞问题。
+
+### REQ-3: 持久化失败与回滚行为未定义
+
+描述: 文档提到“原子落盘”，但未定义写临时文件、fsync、rename、目录 fsync 任一环节失败时，投票请求应返回什么、内存计数是否回滚、文件是否保持旧版本、是否允许部分成功。
+
+风险: 写入失败时可能出现用户看到“投票成功”但文件未计入，或内存状态与磁盘状态不一致；重启后丢票，破坏 AC-11。
+
+建议修复: 明确一次投票只有在持久化成功后才返回成功；任何落盘失败必须返回可辨识错误且不更新可观测结果；旧 JSON 文件必须保持可读；启动时遇到损坏文件的处理策略需定义。
+
+### REQ-4: 请求超时、并发队列上限和过载行为未定义
+
+描述: AC-11 要求约 50 并发不丢票，但未定义每个 poll 的串行队列是否有等待上限、请求超时后是否仍可能被计票、客户端断开后是否继续提交、过载时哪些请求算“成功请求”。
+
+风险: 并发测试无法严谨判定“成功请求数”；实现可能在客户端超时后仍写入，导致调用方认为失败但结果增加。
+
+建议修复: 明确成功请求定义为服务端返回 2xx 的请求；若请求在进入持久化前超时或客户端断开则不得计票，或反向明确“提交后即可能计票”；定义队列等待上限与 503/timeout 行为。
+
+## 维度 3: 是否存在隐含但未声明的状态变化或副作用
+
+结论: 有阻塞问题。
+
+### REQ-5: 浏览器本地“已投过”状态的写入时机和键名范围未定义
+
+描述: 文档声明软拦截状态存在浏览器本地，但未定义何时写入、写入失败怎么办、按 poll id 还是链接维度隔离、投票失败是否写入。
+
+风险: 实现可能在提交前或失败后标记已投，导致用户未成功投票却被拦截；也可能不同投票之间互相污染。
+
+建议修复: 明确仅在服务端返回投票成功后写入本地状态；状态按 poll id 隔离；本地写入失败不影响服务端计票但页面需仍显示结果；投票失败不得写入已投标记。
+
+## 维度 4: 每条验收标准是否可测试
+
+结论: 有阻塞问题。
+
+### REQ-6: 百分比计算与舍入规则不可稳定测试
+
+描述: 结果页要求显示百分比，AC-6 说明多选百分比按人数计且可超过 100%，但未定义百分比的小数位、舍入方式、总人数为 0 时显示什么。
+
+风险: UI 与测试会对 `33%`、`33.3%`、`33.33%` 或 `0%` 等产生不一致判断。
+
+建议修复: 明确百分比公式为 `optionVotes / totalVoters * 100`；总人数为 0 时所有选项显示 `0%`；明确显示整数四舍五入或固定 1 位小数。
+
+### REQ-7: “可辨识的错误”过于模糊
+
+描述: AC-12 多处要求“给出可辨识的错误”，但未定义错误呈现位置、HTTP status、错误码或消息结构。
+
+风险: 自动化测试无法可靠判断错误是否正确；实现可能只返回通用失败文本，仍声称满足要求。
+
+建议修复: 为创建、投票、管理接口定义稳定错误码，例如 `TITLE_REQUIRED`、`OPTION_REQUIRED`、`OPTION_OUT_OF_RANGE`、`POLL_NOT_FOUND`、`POLL_CLOSED`、`INVALID_ADMIN_TOKEN`，并指定 HTTP status。
+
+## 维度 5: 是否与当前态 A 冲突
+
+结论: 通过。当前为 greenfield，未发现与现有系统冲突。
+
+## 维度 6: target lineage 是否声明且匹配仓库现实
+
+结论: 通过。文档声明 `target lineage: master (mainline)`，并说明“全新仓库,无合并禁忌”；与输入中的 greenfield repo 一致。
+
+## Out of scope 检查
+
+结论: 通过。文档存在明确“不做(Out of scope)”章节，并列出账号、硬防刷、现场大屏、创建后编辑、多问题问卷、数据库、自动清理等范围外事项。
+
+## Advisories
+
+- 文档未指定具体 HTTP route、表单字段名、页面 URL 结构。若后续直接交给 AI 实现，建议补一个最小接口草案，但这不属于本轮正式阻塞项。
+- “几十秒内创建”“几乎零成本”是产品语义，不适合作为验收标准；目前未进入 AC，因此仅建议保留为背景。
+- 建议明确 HTML 转义要求，避免标题或选项中的 HTML 被渲染执行。由于当前文档已覆盖非法输入但未覆盖安全渲染，这一点接近安全要求；若允许任意文本输入，应在下一版正式纳入 AC。
+- 建议明确数据目录、文件命名规则与 poll id 字符集，便于避免路径穿越和测试 fixture 管理。
+- 建议明确空白字符串是否 trim 后判空，以及重复选项名是否允许。
+
+=== LEDGER DELTA (apriori/review/quick-poll-issues.md) ===
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| REQ-1 | deadline semantics are ambiguous: format, timezone, past deadline handling, and exact-boundary closure rule are undeclared | medium | 1 | open |
+| REQ-2 | admin token security requirements are undeclared, including entropy, generation, validation, and leakage constraints | high | 1 | open |
+| REQ-3 | persistence failure and rollback behavior are undefined for failed atomic writes | high | 1 | open |
+| REQ-4 | concurrency timeout, queue limit, client disconnect, overload behavior, and definition of successful request are undefined | medium | 1 | open |
+| REQ-5 | local voted-state side effect is underspecified: write timing, poll scoping, and failure behavior are unclear | medium | 1 | open |
+| REQ-6 | percentage display is not fully testable because rounding and zero-total behavior are unspecified | low | 1 | open |
+| REQ-7 | recognizable error behavior is not testable because stable status codes or error codes are not specified | medium | 1 | open |
+| REQ-ADV-1 | advisory batch acknowledged (5 items) | low | 1 | advisory-acked |
+
+VERDICT: 7 issues open
+tokens used
+7,449
+=== REVIEW DOC (apriori/review/quick-poll-req-review-v1.md) ===
+
+# quick-poll 需求评审 v1
+
+## 维度 1: 目标态 B 是否清晰且无歧义
+
+结论: 有阻塞问题。
+
+### REQ-1: deadline 语义未精确定义
+
+描述: 文档要求“可选截止时间”“到点自动关闭”，但未定义截止时间的输入格式、时区、是否允许创建过去时间、以及“刚好等于 deadline”的请求应算 open 还是 closed。
+
+风险: 实现者可能采用不同解释，导致 AC-9 无法稳定测试，也可能出现边界时刻投票被不同环境接受或拒绝。
+
+建议修复: 明确 deadline 使用 ISO 8601 或本地表单格式；明确转换为服务器 UTC 时间存储；明确 `now >= deadline` 时视为 closed；明确创建时过去时间是拒绝创建还是立即创建为 closed。
+
+### REQ-2: 管理凭证安全要求不足
+
+描述: 文档要求管理链接含 `admin token`，但“管理凭证形态”仍列为 open question，未定义 token 生成强度、长度、不可枚举性、校验方式，以及错误 token 的行为。
+
+风险: 这是安全与正确性问题。若实现使用可预测 token 或弱随机数，持分享链接者可能猜出管理链接并关闭投票。
+
+建议修复: 明确使用 CSPRNG 生成至少 128-bit 随机 token；token 只在服务端 poll JSON 中保存并用于常量时间比较；错误或缺失 token 返回不可关闭状态；分享页 HTML、JS、接口响应均不得泄露 token。
+
+## 维度 2: 边界与异常路径是否覆盖
+
+结论: 有阻塞问题。
+
+### REQ-3: 持久化失败与回滚行为未定义
+
+描述: 文档提到“原子落盘”，但未定义写临时文件、fsync、rename、目录 fsync 任一环节失败时，投票请求应返回什么、内存计数是否回滚、文件是否保持旧版本、是否允许部分成功。
+
+风险: 写入失败时可能出现用户看到“投票成功”但文件未计入，或内存状态与磁盘状态不一致；重启后丢票，破坏 AC-11。
+
+建议修复: 明确一次投票只有在持久化成功后才返回成功；任何落盘失败必须返回可辨识错误且不更新可观测结果；旧 JSON 文件必须保持可读；启动时遇到损坏文件的处理策略需定义。
+
+### REQ-4: 请求超时、并发队列上限和过载行为未定义
+
+描述: AC-11 要求约 50 并发不丢票，但未定义每个 poll 的串行队列是否有等待上限、请求超时后是否仍可能被计票、客户端断开后是否继续提交、过载时哪些请求算“成功请求”。
+
+风险: 并发测试无法严谨判定“成功请求数”；实现可能在客户端超时后仍写入，导致调用方认为失败但结果增加。
+
+建议修复: 明确成功请求定义为服务端返回 2xx 的请求；若请求在进入持久化前超时或客户端断开则不得计票，或反向明确“提交后即可能计票”；定义队列等待上限与 503/timeout 行为。
+
+## 维度 3: 是否存在隐含但未声明的状态变化或副作用
+
+结论: 有阻塞问题。
+
+### REQ-5: 浏览器本地“已投过”状态的写入时机和键名范围未定义
+
+描述: 文档声明软拦截状态存在浏览器本地，但未定义何时写入、写入失败怎么办、按 poll id 还是链接维度隔离、投票失败是否写入。
+
+风险: 实现可能在提交前或失败后标记已投，导致用户未成功投票却被拦截；也可能不同投票之间互相污染。
+
+建议修复: 明确仅在服务端返回投票成功后写入本地状态；状态按 poll id 隔离；本地写入失败不影响服务端计票但页面需仍显示结果；投票失败不得写入已投标记。
+
+## 维度 4: 每条验收标准是否可测试
+
+结论: 有阻塞问题。
+
+### REQ-6: 百分比计算与舍入规则不可稳定测试
+
+描述: 结果页要求显示百分比，AC-6 说明多选百分比按人数计且可超过 100%，但未定义百分比的小数位、舍入方式、总人数为 0 时显示什么。
+
+风险: UI 与测试会对 `33%`、`33.3%`、`33.33%` 或 `0%` 等产生不一致判断。
+
+建议修复: 明确百分比公式为 `optionVotes / totalVoters * 100`；总人数为 0 时所有选项显示 `0%`；明确显示整数四舍五入或固定 1 位小数。
+
+### REQ-7: “可辨识的错误”过于模糊
+
+描述: AC-12 多处要求“给出可辨识的错误”，但未定义错误呈现位置、HTTP status、错误码或消息结构。
+
+风险: 自动化测试无法可靠判断错误是否正确；实现可能只返回通用失败文本，仍声称满足要求。
+
+建议修复: 为创建、投票、管理接口定义稳定错误码，例如 `TITLE_REQUIRED`、`OPTION_REQUIRED`、`OPTION_OUT_OF_RANGE`、`POLL_NOT_FOUND`、`POLL_CLOSED`、`INVALID_ADMIN_TOKEN`，并指定 HTTP status。
+
+## 维度 5: 是否与当前态 A 冲突
+
+结论: 通过。当前为 greenfield，未发现与现有系统冲突。
+
+## 维度 6: target lineage 是否声明且匹配仓库现实
+
+结论: 通过。文档声明 `target lineage: master (mainline)`，并说明“全新仓库,无合并禁忌”；与输入中的 greenfield repo 一致。
+
+## Out of scope 检查
+
+结论: 通过。文档存在明确“不做(Out of scope)”章节，并列出账号、硬防刷、现场大屏、创建后编辑、多问题问卷、数据库、自动清理等范围外事项。
+
+## Advisories
+
+- 文档未指定具体 HTTP route、表单字段名、页面 URL 结构。若后续直接交给 AI 实现，建议补一个最小接口草案，但这不属于本轮正式阻塞项。
+- “几十秒内创建”“几乎零成本”是产品语义，不适合作为验收标准；目前未进入 AC，因此仅建议保留为背景。
+- 建议明确 HTML 转义要求，避免标题或选项中的 HTML 被渲染执行。由于当前文档已覆盖非法输入但未覆盖安全渲染，这一点接近安全要求；若允许任意文本输入，应在下一版正式纳入 AC。
+- 建议明确数据目录、文件命名规则与 poll id 字符集，便于避免路径穿越和测试 fixture 管理。
+- 建议明确空白字符串是否 trim 后判空，以及重复选项名是否允许。
+
+=== LEDGER DELTA (apriori/review/quick-poll-issues.md) ===
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| REQ-1 | deadline semantics are ambiguous: format, timezone, past deadline handling, and exact-boundary closure rule are undeclared | medium | 1 | open |
+| REQ-2 | admin token security requirements are undeclared, including entropy, generation, validation, and leakage constraints | high | 1 | open |
+| REQ-3 | persistence failure and rollback behavior are undefined for failed atomic writes | high | 1 | open |
+| REQ-4 | concurrency timeout, queue limit, client disconnect, overload behavior, and definition of successful request are undefined | medium | 1 | open |
+| REQ-5 | local voted-state side effect is underspecified: write timing, poll scoping, and failure behavior are unclear | medium | 1 | open |
+| REQ-6 | percentage display is not fully testable because rounding and zero-total behavior are unspecified | low | 1 | open |
+| REQ-7 | recognizable error behavior is not testable because stable status codes or error codes are not specified | medium | 1 | open |
+| REQ-ADV-1 | advisory batch acknowledged (5 items) | low | 1 | advisory-acked |
+
+VERDICT: 7 issues open

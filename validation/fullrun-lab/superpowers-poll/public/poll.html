@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>快速投票</title>
+<link rel="stylesheet" href="/style.css">
+<body>
+<h1 id="question">加载中…</h1>
+<div id="notice" class="notice" hidden></div>
+<div id="form" hidden>
+  <div id="choices"></div>
+  <p><button type="button" id="submit">投票</button></p>
+  <div id="error" class="notice error" hidden></div>
+</div>
+<h2>当前结果</h2>
+<div id="results"></div>
+<p class="muted" id="total"></p>
+<script>
+const $ = (s) => document.querySelector(s);
+const pollId = location.pathname.split('/')[2];
+const votedKey = 'voted:' + pollId;
+let rendered = false;
+
+function renderResults(view) {
+  $('#results').innerHTML = view.options.map((opt, i) => {
+    const count = view.counts[i];
+    const pct = view.total ? Math.round((count / view.total) * 100) : 0;
+    return '<div class="result-row"><div class="result-label"><span></span><span>'
+      + count + ' 票 · ' + pct + '%</span></div><div class="bar"><div style="width:'
+      + pct + '%"></div></div></div>';
+  }).join('');
+  document.querySelectorAll('#results .result-label span:first-child')
+    .forEach((el, i) => { el.textContent = view.options[i]; });
+  $('#total').textContent = '共 ' + view.total + ' 人参与';
+}
+
+function renderForm(view) {
+  const type = view.multiple ? 'checkbox' : 'radio';
+  $('#choices').innerHTML = view.options.map((_, i) =>
+    '<div class="choice"><input type="' + type + '" name="choice" id="c' + i
+    + '" value="' + i + '"><label for="c' + i + '"></label></div>'
+  ).join('');
+  document.querySelectorAll('#choices label')
+    .forEach((el, i) => { el.textContent = view.options[i]; });
+}
+
+function updateState(view) {
+  document.title = view.question + ' · 快速投票';
+  $('#question').textContent = view.question;
+  renderResults(view);
+  const voted = localStorage.getItem(votedKey);
+  const notice = $('#notice');
+  if (voted) {
+    notice.textContent = '你已经投过票了，下面是当前结果。';
+    notice.hidden = false; $('#form').hidden = true;
+  } else if (!view.open) {
+    notice.textContent = view.closed ? '投票已关闭，下面是最终结果。' : '投票已过截止时间，下面是最终结果。';
+    notice.hidden = false; $('#form').hidden = true;
+  } else {
+    notice.hidden = true;
+    if (!rendered) { renderForm(view); rendered = true; }
+    $('#form').hidden = false;
+  }
+}
+
+async function load() {
+  const res = await fetch('/api/polls/' + pollId);
+  const data = await res.json();
+  if (!res.ok) {
+    $('#question').textContent = data.error || '加载失败';
+    return;
+  }
+  updateState(data);
+}
+
+$('#submit').addEventListener('click', async () => {
+  $('#error').hidden = true;
+  const choices = [...document.querySelectorAll('#choices input:checked')]
+    .map((i) => Number(i.value));
+  const res = await fetch('/api/polls/' + pollId + '/vote', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ choices }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    const box = $('#error');
+    box.textContent = data.error || '投票失败';
+    box.hidden = false;
+    if (res.status === 409) updateState(await (await fetch('/api/polls/' + pollId)).json());
+    return;
+  }
+  localStorage.setItem(votedKey, '1');
+  updateState(data);
+});
+
+load();
+setInterval(load, 3000);
+</script>
+</body>
+</html>

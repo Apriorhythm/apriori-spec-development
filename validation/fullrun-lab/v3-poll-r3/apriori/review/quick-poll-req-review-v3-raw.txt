@@ -1,0 +1,346 @@
+OpenAI Codex v0.142.3
+--------
+workdir: /root/terra/fullrun-lab/v3-poll-r3
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f3f4b-f0b0-7681-a376-986dd14c55d8
+--------
+user
+STEP0 round 3 requirements re-review. Read-only sandbox rule: you CANNOT write files — print your ENTIRE output to stdout; the producer archives it and lands your ledger delta.
+
+Context: round-2 you verified REQ-1..REQ-8 and raised REQ-9 (payload schema/parse), REQ-10 (duplicate optionIds), REQ-11 (concurrent close/vote serialization, high). The producer revised to requirement/req-v3.md addressing all three, plus your 3 advisories (persist status:closed on deadline-expiry, idempotent repeat-close, Unicode-code-point length unit). Ledger: apriori/review/quick-poll-issues.md.
+
+[Task]
+1. Read requirement/req-v3.md and apriori/review/quick-poll-issues.md.
+2. For REQ-9, REQ-10, REQ-11: confirm whether req-v3 resolves each. Resolved -> flip to verified in your ledger delta; not resolved -> reopen (same ID, status open) with why.
+3. Re-run P1's six dimensions on req-v3; raise NEW formal issues (REQ-12, ...) only for genuine blocking gaps (ambiguous target state / untestable acceptance / missing edge coverage / correctness / security). Everything else -> advisory. Correctness/security can NEVER be advisory. Be honest: if the doc is now implementation-ready, say so and return a clean verdict — do not manufacture issues.
+
+[Language] Review prose in Chinese; machine tokens (verdict line, IDs, ledger table) in English.
+
+[Output — all to stdout, in order]
+1. "=== REVIEW DOC (apriori/review/quick-poll-req-review-v3.md) ===" then the review content.
+2. "=== LEDGER DELTA (apriori/review/quick-poll-issues.md) ===" then a markdown table of status flips + any NEW rows (Round found "3"); advisory-only -> one batch row REQ-ADV-3 status advisory-acked.
+3. Exactly one verdict line, verbatim: "VERDICT: no major issues" (zero formal rows still open) OR "VERDICT: <N> issues open".
+
+Do not modify any file.
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-08T01:26:28.384888Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-08T01:26:28.563209Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-08T01:26:29.049722Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-08T01:26:29.576872Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-08T01:26:30.453857Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-08T01:26:32.260035Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-08T01:26:35.933713Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: 5JINIOYZ5wtU
+codex
+I’ll read v3 and the ledger, then verify only the remaining open issues before doing one final full-dimension pass. Still read-only; I’ll only print the result.
+exec
+/usr/bin/zsh -lc "sed -n '1,320p' requirement/req-v3.md" in /root/terra/fullrun-lab/v3-poll-r3
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' apriori/review/quick-poll-issues.md" in /root/terra/fullrun-lab/v3-poll-r3
+ succeeded in 108ms:
+# 需求:quick-poll —— 快速匿名投票小工具
+
+> change: `quick-poll` · tier: medium · track: harden
+> target lineage: **master (mainline)** —— 全新仓库,无合并禁忌
+> 状态:req-v3(据 quick-poll-req-review-v2 修订 REQ-9/10/11 + advisory,待 STEP0 round 3 评审)
+
+## 1. 目标(Goal / 目标态 B)
+
+任何人都能在几十秒内创建一个**单问题投票**(标题 + 若干选项),拿到一条分享链接;几十位同事/朋友点开链接,**匿名、免登录、无需安装**,投一票后立刻看到实时汇总结果。发起人另持一条私密**管理链接**,可随时手动关闭投票,或预设截止时间到点自动关闭。
+
+用途:开会或群里**征集意见**。核心价值 = 发起与参与都几乎零成本。
+
+技术路线(brainstorm 拍板,方案 1):**Node 标准库 HTTP 服务 + 每个投票一个 JSON 文件**;前端为服务端渲染的简单页面 + 少量原生 JS;不使用数据库;并发写入由应用层解决(每投票串行化 + 原子落盘)。
+
+## 2. 目标用户
+
+- **发起人**:开会主持人、群主、任何想快速收集意见的人。免登录;创建投票后凭"管理链接"行使管理权。
+- **投票人**:同事、朋友,数量级为**几十人(设计目标约 50 人并发)**。匿名、免登录、手机或电脑浏览器点开即用。
+
+## 3. 核心场景
+
+1. **创建投票**:发起人填标题 + 2–10 个选项,选择单选/多选(默认单选),可选设置截止时间,提交后得到两条链接:**分享链接**(投票用)与**管理链接**(私密,含管理凭证)。
+2. **投票**:投票人打开分享链接,看到标题与选项;单选投票选一项,多选投票选一或多项;提交后立刻看到实时结果(每项票数 + 百分比 + 条形,顶部显示总投票人数)。
+3. **看结果**:投过的人(同一浏览器)再次打开分享链接,直接看到结果页,不再显示投票表单(软拦截)。任何人打开已关闭投票的分享链接,看到结果且不能再投。
+4. **关闭投票**:发起人打开管理链接可手动关闭;若设了截止时间,到点自动关闭。关闭后拒绝新票,结果仍可查看。
+
+## 4. UI 形态(brainstorm 草图,详细设计在 STEP2)
+
+- **创建页**:标题输入框、选项列表(可增删,2–10 项)、单选/多选开关、可选截止时间、"生成投票链接"按钮 → 结果展示两条链接。
+- **投票页**(分享链接):标题 + 选项(单选=radio,多选=checkbox)+ 提交按钮;已关闭则不显示提交。
+- **结果页**:每项条形 + 票数 + 百分比 + 总人数;顶部标明投票是否已关闭。
+- **管理页**(管理链接):投票概览 + "关闭投票"按钮 + 结果视图。
+
+## 5. 数据与内容
+
+每个投票持久化为一个 JSON 文件(文件名 = `<pollId>.json`),字段至少含:
+
+- `id`:poll id,服务端用 CSPRNG 生成,字符集 `[A-Za-z0-9_-]`(URL-safe,≥16 字符),避免路径穿越。
+- `title`:标题(trim 后非空,≤100 字)。
+- `options`:选项数组,每项 `{ id, text, votes }`;`text` trim 后非空、≤50 字;选项数 2–10;**允许重复选项文本**(不去重,由发起人负责)。
+- `mode`:`"single"` | `"multi"`(默认 `single`)。
+- `createdAt`:创建时间(epoch millis, UTC)。
+- `deadline`:可选,epoch millis(UTC);缺省表示无自动截止。
+- `status`:`"open"` | `"closed"`(手动关闭时持久化为 `closed`)。
+- `totalVoters`:总投票人数(= 成功投票请求数)。
+- `adminToken`:管理凭证,**仅存服务端此文件**,绝不出现在分享链接/分享页 HTML/JS/接口响应中。
+
+约束:标题 ≤100、选项 ≤50,长度口径统一为 **Unicode code points**(`[...str].length`,trim 后计;避免 emoji/代理对在边界测试中不一致);空白经 trim 判空。投票文件**长期保留**,不做自动清理;关闭后结果仍可查看。手动关闭时 `status` 持久化为 `"closed"`;因 deadline 过期而"视为 closed"的投票,首次被访问/写入时**也持久化** `status:"closed"`(便于文件状态观察,REQ-ADV-2)。
+
+**软拦截"已投过"状态**:记在投票人浏览器 `localStorage`,键按 **poll id 隔离**(如 `voted:<pollId>`);**仅在服务端返回投票成功(2xx)后**写入;写入失败不影响服务端计票,但页面仍显示结果页;投票失败(非 2xx)**不得**写标记。不同投票之间互不污染。
+
+## 6. deadline 语义(REQ-1)
+
+- 输入格式:ISO 8601(前端 `datetime-local` 采集,提交给服务端换算为 epoch millis UTC 存储)。
+- 判定:请求到达时若 `now >= deadline`(含刚好相等)→ 该投票视为 **closed**,拒绝新票。
+- 创建时:`deadline` 必须晚于当前时间;**提交过去或等于当前的 deadline → 拒绝创建**(错误码 `DEADLINE_IN_PAST`)。
+
+## 7. 管理凭证安全(REQ-2)
+
+- `adminToken` 用 CSPRNG 生成,**≥128-bit** 熵(如 32 hex / 24 字节 base64url)。
+- 仅存于服务端 poll JSON;校验用**常量时间比较**。
+- 缺失或错误 token 的管理操作 → `403 INVALID_ADMIN_TOKEN`,不改变投票状态。
+- 分享链接、投票页 HTML/JS、以及任何面向投票人的接口响应**均不得包含** `adminToken`。
+
+## 8. 持久化与失败回滚(REQ-3)
+
+- 一次投票**只有在持久化成功后才返回 2xx 成功**。
+- 原子落盘 = 写临时文件 → `fsync(临时文件)` → `rename` 覆盖 → `fsync(目录)`;任一环节失败 → 返回 `500 PERSIST_FAILED`,**不更新任何可观测结果**(内存计数在持久化成功后才对外可见,失败即回滚/不提交)。
+- 旧 JSON 文件在写入失败时必须保持可读(rename 前不破坏旧文件)。
+- 启动时读到损坏/无法解析的 JSON 文件 → 记日志并跳过该文件,不导致进程崩溃。
+
+## 9. 并发、串行化与"成功请求"定义(REQ-4 / REQ-11)
+
+- **成功请求 = 服务端返回 2xx 的投票请求**。AC-11 的"成功请求数"以此为准。
+- **每个 poll 一条 per-poll mutation queue**:所有会修改该 poll 文件的操作——**投票(vote)与关闭(close)一律进入同一队列**——按入队顺序串行执行,互不覆盖(REQ-11)。
+- vote 在**执行时(而非入队时)重新检查** `status`/`deadline`:若此刻已 closed 或已过 deadline → `409 POLL_CLOSED`,不计票。
+- close 成功持久化后,队列中其后的 vote 必检查到 closed 并返回 `409`。
+- 计票只在持久化成功后对外可见;若持久化失败则该请求返回非 2xx 且不计票。
+- MVP 规模(数十人)不设人为队列上限;请求体设**大小上限 16 KiB(16384 字节)**防滥用,超限 → `413 PAYLOAD_TOO_LARGE`。
+- **重复关闭**:对已 closed 的 poll 再次 close(合法 token)→ **幂等返回 2xx**(状态已是 closed,不视为错误,REQ-ADV-2)。
+
+## 10. 结果展示与百分比(REQ-6)
+
+- 百分比公式:`round(optionVotes / totalVoters * 100)`,显示为**整数(四舍五入)**。
+- `totalVoters == 0` 时,所有选项显示 `0%`。
+
+## 11. 错误码与 HTTP 状态(REQ-7)
+
+统一 JSON 错误体 `{ "error": "<CODE>", "message": "<可读说明>" }`:
+
+| 场景 | HTTP | error code |
+|---|---|---|
+| 标题空/仅空白 | 400 | `TITLE_REQUIRED` |
+| 标题超长 | 400 | `TITLE_TOO_LONG` |
+| 选项空/仅空白 | 400 | `OPTION_REQUIRED` |
+| 选项超长 | 400 | `OPTION_TOO_LONG` |
+| 选项数 <2 或 >10 | 400 | `OPTION_COUNT_OUT_OF_RANGE` |
+| deadline 非未来 | 400 | `DEADLINE_IN_PAST` |
+| 投票/管理:poll 不存在 | 404 | `POLL_NOT_FOUND` |
+| 投给不存在的选项 id | 400 | `OPTION_NOT_FOUND` |
+| single 模式投多项 | 400 | `SINGLE_CHOICE_VIOLATION` |
+| 未选任何项 (`optionIds` 空) | 400 | `NO_SELECTION` |
+| 一次请求内重复 optionId | 400 | `DUPLICATE_OPTION_ID` |
+| 投票时 poll 已关闭/过截止 | 409 | `POLL_CLOSED` |
+| 管理 token 缺失/错误 | 403 | `INVALID_ADMIN_TOKEN` |
+| 请求体超限 | 413 | `PAYLOAD_TOO_LARGE` |
+| 请求体非合法 JSON | 400 | `INVALID_JSON` |
+| `mode` 非 single/multi | 400 | `INVALID_MODE` |
+| `deadline` 格式无法解析 | 400 | `INVALID_DEADLINE` |
+| 字段缺失/类型错误 (title/options/optionIds 非期望类型) | 400 | `INVALID_PAYLOAD` |
+| 持久化失败 | 500 | `PERSIST_FAILED` |
+
+## 12. 接口草案(最小,详细在 STEP2 design)
+
+- `POST /api/polls` → 创建;body `{title, options[], mode, deadline?}`;返回 `{shareUrl, adminUrl}`。
+- `GET /poll/<id>` → 投票/结果页(HTML)。
+- `POST /api/polls/<id>/vote` → 投票;body `{optionIds[]}`;返回结果 JSON。
+- `GET /api/polls/<id>` → 结果 JSON(**不含 adminToken**)。
+- `POST /api/polls/<id>/close` → 关闭;需带 `adminToken`(header 或 body)。
+- `GET /admin/<id>?token=<adminToken>` → 管理页(HTML)。
+
+### 12.1 请求体 schema 与解析规则(REQ-9)
+
+所有 `POST` 接口:`Content-Type: application/json`,body 上限 **16 KiB**(超限 `413 PAYLOAD_TOO_LARGE`);body 非合法 JSON → `400 INVALID_JSON`。
+
+- `POST /api/polls`:`title` 必须为非空(trim 后)string;`options` 必须为长度 2–10 的 string 数组,每项 trim 后非空;`mode` 缺省 `"single"`,取值仅 `"single"`/`"multi"`,否则 `400 INVALID_MODE`;`deadline` 可选,必须为可解析的 ISO 8601 string,否则 `400 INVALID_DEADLINE`,且须为未来时间(否则 `400 DEADLINE_IN_PAST`)。字段缺失或类型不符 → `400 INVALID_PAYLOAD`。
+- `POST /api/polls/<id>/vote`:`optionIds` 必须为**非空 string 数组**;空数组 → `400 NO_SELECTION`;含不存在的选项 id → `400 OPTION_NOT_FOUND`;数组内重复 id → `400 DUPLICATE_OPTION_ID`;single 模式长度 >1 → `400 SINGLE_CHOICE_VIOLATION`;类型不符 → `400 INVALID_PAYLOAD`。
+- `POST /api/polls/<id>/close`:`adminToken` 经 body 或 header 提供;缺失/错误 → `403 INVALID_ADMIN_TOKEN`。
+
+## 13. 可测收尾标准(Acceptance —— 每条 "if … then …" 可测)
+
+- **AC-1 创建**:提交合法标题 + 2–10 选项 → 返回 shareUrl 与 adminUrl,投票初始 open、计票全 0。
+- **AC-2 选项数下界**:少于 2 个选项 → `400 OPTION_COUNT_OUT_OF_RANGE`,不创建。
+- **AC-3 选项数上界**:恰好 10 个选项 → 创建成功;多于 10 个 → `400 OPTION_COUNT_OUT_OF_RANGE`。
+- **AC-4 单选投票**:single 选一项 → 该项 +1、totalVoters +1,返回结果。
+- **AC-5 单选拒多**:single 提交多于一项 → `400 SINGLE_CHOICE_VIOLATION`,不计票。
+- **AC-6 多选投票**:multi 选多项 → 所选各项各 +1、totalVoters +1(百分比按人数,允许合计 >100%)。
+- **AC-7 软拦截**:同一浏览器成功投票后再打开分享链接 → 直接显示结果页,不显示投票表单;失败投票不置标记。
+- **AC-8 手动关闭**:经管理链接(合法 token)关闭 → status 转 closed;此后投票 → `409 POLL_CLOSED`,结果仍可查看。
+- **AC-9 到点自动关闭**:设了 deadline 且 `now >= deadline` → 投票视为 closed,新票 `409 POLL_CLOSED`。
+- **AC-10 管理凭证隔离**:分享链接/投票页/面向投票人的接口响应均不含 adminToken;无 token 或错 token 关闭 → `403 INVALID_ADMIN_TOKEN`;仅持管理链接者能关闭。
+- **AC-11 并发不丢票**:约 50 个并发投票请求(全部合法)打到同一投票 → 最终 totalVoters = 返回 2xx 的请求数,各项计票之和一致,无丢失/覆盖(**对抗性并发测试**:并行发起、校验持久化后计数)。
+- **AC-12 非法输入**:空标题、空选项、超长标题/选项、不存在的选项 id、不存在的投票 → 均按 §11 错误码表拒绝,且**不写坏数据文件**(旧文件仍可解析)。
+- **AC-13 XSS 防护**:标题/选项含 HTML(如 `<script>`)→ 在投票页/结果页/管理页均被转义为文本呈现,不被作为 HTML 执行。
+- **AC-14 deadline 拒过去**:创建时 deadline 为过去或等于当前 → `400 DEADLINE_IN_PAST`。
+- **AC-15 持久化失败不谎报成功**:注入落盘失败 → 投票返回 `500 PERSIST_FAILED`,计数不增加、旧文件不被破坏(**对抗性注入测试**)。
+- **AC-16 payload 解析边界**(REQ-9):malformed JSON → `400 INVALID_JSON`;`mode` 非法 → `400 INVALID_MODE`;`deadline` 不可解析 → `400 INVALID_DEADLINE`;字段缺失/类型错误 → `400 INVALID_PAYLOAD`;body >16 KiB → `413 PAYLOAD_TOO_LARGE`。均不写坏数据。
+- **AC-17 重复 optionId**(REQ-10):一次 vote 的 `optionIds` 含重复 id → `400 DUPLICATE_OPTION_ID`,不计票(不出现某项 +2 而 totalVoters 只 +1)。
+- **AC-18 close/vote 并发串行**(REQ-11):close 与多个 vote 并发到达同一 poll → 二者进同一 per-poll 队列;close 持久化后其后到达的 vote 一律 `409 POLL_CLOSED`;最终 totalVoters = close 生效前成功 vote 数,无因竞态丢失或越权计票(**对抗性并发测试**)。
+- **AC-19 重复关闭幂等**:对已 closed 的 poll 用合法 token 再次 close → 幂等 2xx,状态仍 closed。
+
+## 14. 不做(Out of scope —— 附原因)
+
+- **账号 / 登录 / 用户体系** —— 需求就是匿名免登录。
+- **硬防刷(IP 限制 / 实名 / 验证码)** —— 与免登录冲突;已接受"软拦截"。升级路线:未来可加设备指纹或登录。
+- **A 方向的现场大屏实时跳动 / 二维码现场秀** —— 面向"群里发链接"。
+- **投票创建后编辑标题/选项** —— YAGNI;未来可加。
+- **多问题问卷 / 分支逻辑** —— 一个投票一个问题。
+- **数据库** —— 明确用文件存储。
+- **投票文件自动清理 / 配额** —— 长期保留,暂不做生命周期管理。
+- **人为并发队列上限 / 限流** —— MVP 数十人规模不需要;仅设请求体大小上限。
+
+## 15. 仍开放(留待 STEP2 设计细化,非阻塞)
+
+- 管理链接 URL 的确切编码(query token vs path);分享/管理页的具体 HTML 结构与字段名 —— 属设计细节。
+- localStorage vs cookie 的最终取舍(默认 localStorage,AC-7 以行为为准)。
+
+ succeeded in 111ms:
+# quick-poll — issue ledger (P0)
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| REQ-1 | deadline semantics are ambiguous: format, timezone, past deadline handling, and exact-boundary closure rule are undeclared | medium | 1 | verified |
+| REQ-2 | admin token security requirements are undeclared, including entropy, generation, validation, and leakage constraints | high | 1 | verified |
+| REQ-3 | persistence failure and rollback behavior are undefined for failed atomic writes | high | 1 | verified |
+| REQ-4 | concurrency timeout, queue limit, client disconnect, overload behavior, and definition of successful request are undefined | medium | 1 | verified |
+| REQ-5 | local voted-state side effect is underspecified: write timing, poll scoping, and failure behavior are unclear | medium | 1 | verified |
+| REQ-6 | percentage display is not fully testable because rounding and zero-total behavior are unspecified | low | 1 | verified |
+| REQ-7 | recognizable error behavior is not testable because stable status codes or error codes are not specified | medium | 1 | verified |
+| REQ-ADV-1 | advisory batch acknowledged (5 items) | low | 1 | advisory-acked |
+| REQ-8 | untrusted title/option text rendered without HTML escaping is an XSS surface (upgraded from advisory by producer — security cannot be advisory, P0) | high | 1 | verified |
+| REQ-9 | API payload schema and parse failure behavior are incomplete for malformed JSON, null/wrong-type fields, invalid mode/deadline, missing optionIds, and exact body size limit | medium | 2 | fixed (v3 §12) |
+| REQ-10 | duplicate optionIds within one vote request have undefined counting semantics | medium | 2 | fixed (v3 §11 DUPLICATE_OPTION_ID) |
+| REQ-11 | concurrent close and vote operations are not explicitly serialized with a defined ordering rule | high | 2 | fixed (v3 §9) |
+| REQ-ADV-2 | advisory batch acknowledged (3 items) | low | 2 | advisory-acked |
+
+<!-- Rows REQ-1..REQ-7 + REQ-ADV-1 recorded on behalf of the reviewer (codex session 019f3f4b-f0b0-7681-a376-986dd14c55d8); raw at apriori/review/quick-poll-req-review-v1-raw.txt. -->
+
+codex
+=== REVIEW DOC (apriori/review/quick-poll-req-review-v3.md) ===
+
+# quick-poll 需求评审 v3
+
+## 既有问题复核
+
+- REQ-9 resolved: yes。§11 与 §12.1 已补齐 JSON body、16 KiB 精确上限、malformed JSON、字段缺失/类型错误、非法 mode、非法 deadline、`optionIds` schema 等解析边界，并在 AC-16 中形成可测验收。
+- REQ-10 resolved: yes。§11 定义 `DUPLICATE_OPTION_ID`，§12.1 与 AC-17 明确一次 vote 中重复 option id 返回 `400 DUPLICATE_OPTION_ID` 且不计票。
+- REQ-11 resolved: yes。§9 明确 vote 与 close 进入同一 per-poll mutation queue，按入队顺序串行执行，并要求 vote 执行时重新检查 `status/deadline`；AC-18 已覆盖并发验收。
+
+## 六维复审结论
+
+### 维度 1: 目标态 B 是否清晰且无歧义
+
+结论: 通过。目标态、数据模型、deadline、管理凭证、持久化、并发队列、错误码与接口草案已足够明确，可交给实现阶段细化 UI 结构与字段命名。
+
+### 维度 2: 边界与异常路径是否覆盖
+
+结论: 通过。null/类型错误、非法 JSON、body 超限、非法 mode/deadline、重复 option id、不存在资源、关闭后投票、持久化失败、并发 vote/close 均有明确行为。
+
+### 维度 3: 是否存在隐含但未声明的状态变化或副作用
+
+结论: 通过。服务端 JSON 持久化、本地 `localStorage` 软拦截、deadline 到期持久化 closed、重复关闭幂等行为均已声明。
+
+### 维度 4: 每条验收标准是否可测试
+
+结论: 通过。AC-1 到 AC-19 均可表达为 if/then，并包含关键对抗性测试：并发投票、持久化失败注入、close/vote 并发。
+
+### 维度 5: 是否与当前态 A 冲突
+
+结论: n/a。greenfield repo，无当前态冲突。
+
+### 维度 6: target lineage 是否声明且匹配仓库现实
+
+结论: 通过。`target lineage: master (mainline)` 已声明，且与 greenfield 输入一致。
+
+## Out of scope 检查
+
+结论: 通过。§14 存在明确 `Out of scope`，范围边界清楚。
+
+## Advisories
+
+无新增 advisory。req-v3 已可作为实现输入进入后续设计/开发阶段。
+
+=== LEDGER DELTA (apriori/review/quick-poll-issues.md) ===
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| REQ-9 | API payload schema and parse failure behavior are incomplete for malformed JSON, null/wrong-type fields, invalid mode/deadline, missing optionIds, and exact body size limit | medium | 2 | verified |
+| REQ-10 | duplicate optionIds within one vote request have undefined counting semantics | medium | 2 | verified |
+| REQ-11 | concurrent close and vote operations are not explicitly serialized with a defined ordering rule | high | 2 | verified |
+
+VERDICT: no major issues
+tokens used
+28,736
+=== REVIEW DOC (apriori/review/quick-poll-req-review-v3.md) ===
+
+# quick-poll 需求评审 v3
+
+## 既有问题复核
+
+- REQ-9 resolved: yes。§11 与 §12.1 已补齐 JSON body、16 KiB 精确上限、malformed JSON、字段缺失/类型错误、非法 mode、非法 deadline、`optionIds` schema 等解析边界，并在 AC-16 中形成可测验收。
+- REQ-10 resolved: yes。§11 定义 `DUPLICATE_OPTION_ID`，§12.1 与 AC-17 明确一次 vote 中重复 option id 返回 `400 DUPLICATE_OPTION_ID` 且不计票。
+- REQ-11 resolved: yes。§9 明确 vote 与 close 进入同一 per-poll mutation queue，按入队顺序串行执行，并要求 vote 执行时重新检查 `status/deadline`；AC-18 已覆盖并发验收。
+
+## 六维复审结论
+
+### 维度 1: 目标态 B 是否清晰且无歧义
+
+结论: 通过。目标态、数据模型、deadline、管理凭证、持久化、并发队列、错误码与接口草案已足够明确，可交给实现阶段细化 UI 结构与字段命名。
+
+### 维度 2: 边界与异常路径是否覆盖
+
+结论: 通过。null/类型错误、非法 JSON、body 超限、非法 mode/deadline、重复 option id、不存在资源、关闭后投票、持久化失败、并发 vote/close 均有明确行为。
+
+### 维度 3: 是否存在隐含但未声明的状态变化或副作用
+
+结论: 通过。服务端 JSON 持久化、本地 `localStorage` 软拦截、deadline 到期持久化 closed、重复关闭幂等行为均已声明。
+
+### 维度 4: 每条验收标准是否可测试
+
+结论: 通过。AC-1 到 AC-19 均可表达为 if/then，并包含关键对抗性测试：并发投票、持久化失败注入、close/vote 并发。
+
+### 维度 5: 是否与当前态 A 冲突
+
+结论: n/a。greenfield repo，无当前态冲突。
+
+### 维度 6: target lineage 是否声明且匹配仓库现实
+
+结论: 通过。`target lineage: master (mainline)` 已声明，且与 greenfield 输入一致。
+
+## Out of scope 检查
+
+结论: 通过。§14 存在明确 `Out of scope`，范围边界清楚。
+
+## Advisories
+
+无新增 advisory。req-v3 已可作为实现输入进入后续设计/开发阶段。
+
+=== LEDGER DELTA (apriori/review/quick-poll-issues.md) ===
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| REQ-9 | API payload schema and parse failure behavior are incomplete for malformed JSON, null/wrong-type fields, invalid mode/deadline, missing optionIds, and exact body size limit | medium | 2 | verified |
+| REQ-10 | duplicate optionIds within one vote request have undefined counting semantics | medium | 2 | verified |
+| REQ-11 | concurrent close and vote operations are not explicitly serialized with a defined ordering rule | high | 2 | verified |
+
+VERDICT: no major issues

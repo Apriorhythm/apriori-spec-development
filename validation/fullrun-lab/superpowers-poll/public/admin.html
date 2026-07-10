@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>投票管理</title>
+<link rel="stylesheet" href="/style.css">
+<body>
+<h1 id="question">加载中…</h1>
+<div id="notice" class="notice" hidden></div>
+<h2>当前结果</h2>
+<div id="results"></div>
+<p class="muted" id="total"></p>
+<p><button type="button" id="close">关闭投票</button></p>
+<p class="muted" id="share"></p>
+<script>
+const $ = (s) => document.querySelector(s);
+const token = location.pathname.split('/')[2];
+
+function render(view) {
+  document.title = view.question + ' · 投票管理';
+  $('#question').textContent = view.question;
+  $('#results').innerHTML = view.options.map((opt, i) => {
+    const count = view.counts[i];
+    const pct = view.total ? Math.round((count / view.total) * 100) : 0;
+    return '<div class="result-row"><div class="result-label"><span></span><span>'
+      + count + ' 票 · ' + pct + '%</span></div><div class="bar"><div style="width:'
+      + pct + '%"></div></div></div>';
+  }).join('');
+  document.querySelectorAll('#results .result-label span:first-child')
+    .forEach((el, i) => { el.textContent = view.options[i]; });
+  $('#total').textContent = '共 ' + view.total + ' 人参与';
+  $('#share').textContent = '投票链接：' + location.origin + '/poll/' + view.id;
+  const notice = $('#notice');
+  if (!view.open) {
+    notice.textContent = view.closed ? '投票已关闭。' : '投票已过截止时间。';
+    notice.hidden = false;
+    $('#close').disabled = true;
+    $('#close').textContent = view.closed ? '已关闭' : '已截止';
+  }
+}
+
+async function load() {
+  const res = await fetch('/api/admin/' + token);
+  const data = await res.json();
+  if (!res.ok) {
+    $('#question').textContent = data.error || '加载失败';
+    $('#close').disabled = true;
+    return;
+  }
+  render(data);
+}
+
+$('#close').addEventListener('click', async () => {
+  if (!confirm('确定关闭投票？关闭后不能再投。')) return;
+  const res = await fetch('/api/admin/' + token + '/close', { method: 'POST' });
+  const data = await res.json();
+  if (res.ok) render(data);
+});
+
+load();
+setInterval(load, 3000);
+</script>
+</body>
+</html>

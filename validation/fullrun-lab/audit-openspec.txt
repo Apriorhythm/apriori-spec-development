@@ -1,0 +1,1711 @@
+Reading additional input from stdin...
+OpenAI Codex v0.142.3
+--------
+workdir: /root/terra/fullrun-lab/openspec-poll
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f3ef0-d40c-7ff3-994f-8446059e193c
+--------
+user
+Adversarial static code audit of this quick-poll web app (Node, file-backed). Read server/lib/page/test code thoroughly. Report ONLY real defects with concrete failure scenarios, categorized: [correctness] wrong behavior vs the app's own spec/docs, [security] XSS/path traversal/token handling/timing, [data] loss/corruption under concurrency/crash/restart, [robustness] malformed input/edge cases. For each: file:line, the exact failure scenario, severity (high/med/low). You are read-only — do not run anything; static reads only. Also assess test quality in one paragraph: do tests exercise real behavior or mirror implementation? End with exactly: 'DEFECTS: <N> (high:<h> med:<m> low:<l>)'
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-07T23:36:38.365352Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-07T23:36:38.560499Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-07T23:36:38.890049Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-07T23:36:39.460515Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-07T23:36:40.347040Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-07T23:36:42.055614Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-07T23:36:45.183503Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: oRrieWLIcsPl
+codex
+I’ll audit this as a review: first map the app structure and docs/spec, then read server, lib, page, and tests against those expectations. I’ll keep this read-only and avoid executing the app or tests.
+exec
+/usr/bin/zsh -lc 'rg --files' in /root/terra/fullrun-lab/openspec-poll
+exec
+/usr/bin/zsh -lc 'pwd && ls' in /root/terra/fullrun-lab/openspec-poll
+ succeeded in 105ms:
+LAB-NOTES.md
+server.js
+package.json
+openspec/specs/poll-voting/spec.md
+test/poll.test.js
+test/e2e/run-e2e.js
+openspec/specs/poll-lifecycle/spec.md
+test/store.test.js
+openspec/specs/poll-creation/spec.md
+openspec/specs/poll-results/spec.md
+lib/poll.js
+lib/store.js
+openspec/specs/poll-storage/spec.md
+openspec/config.yaml
+lib/pages.js
+openspec/changes/archive/2026-07-08-add-quick-poll/design.md
+openspec/changes/archive/2026-07-08-add-quick-poll/proposal.md
+openspec/changes/archive/2026-07-08-add-quick-poll/tasks.md
+openspec/changes/archive/2026-07-08-add-quick-poll/specs/poll-voting/spec.md
+openspec/changes/archive/2026-07-08-add-quick-poll/specs/poll-lifecycle/spec.md
+openspec/changes/archive/2026-07-08-add-quick-poll/specs/poll-storage/spec.md
+openspec/changes/archive/2026-07-08-add-quick-poll/specs/poll-creation/spec.md
+openspec/changes/archive/2026-07-08-add-quick-poll/specs/poll-results/spec.md
+
+ succeeded in 106ms:
+/root/terra/fullrun-lab/openspec-poll
+LAB-NOTES.md
+lib
+node_modules
+openspec
+package.json
+server.js
+test
+
+codex
+The repo is small: one HTTP server, two library modules, one page renderer, OpenSpec docs, and unit/e2e tests. I’m reading the specs and implementation side by side so findings are tied to stated behavior, not taste.
+exec
+/usr/bin/zsh -lc 'nl -ba server.js' in /root/terra/fullrun-lab/openspec-poll
+exec
+/usr/bin/zsh -lc 'nl -ba lib/pages.js' in /root/terra/fullrun-lab/openspec-poll
+exec
+/usr/bin/zsh -lc 'nl -ba lib/poll.js' in /root/terra/fullrun-lab/openspec-poll
+exec
+/usr/bin/zsh -lc 'nl -ba lib/store.js' in /root/terra/fullrun-lab/openspec-poll
+ succeeded in 112ms:
+     1	// 服务端渲染页面：布局 + HTML 转义 + 5 个页面。无框架、无构建，JS 仅作复制按钮增强。
+     2	export function escapeHtml(s) {
+     3	  return String(s)
+     4	    .replaceAll('&', '&amp;')
+     5	    .replaceAll('<', '&lt;')
+     6	    .replaceAll('>', '&gt;')
+     7	    .replaceAll('"', '&quot;')
+     8	    .replaceAll("'", '&#39;');
+     9	}
+    10	
+    11	const CSS = `
+    12	:root { --fg:#1a1a2e; --muted:#6b7280; --bg:#f7f7fb; --card:#fff; --accent:#4f46e5; --accent2:#eef2ff; --danger:#b91c1c; --ok:#047857; --line:#e5e7eb; }
+    13	* { box-sizing:border-box; }
+    14	body { margin:0; font-family:system-ui,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; background:var(--bg); color:var(--fg); line-height:1.6; }
+    15	main { max-width:520px; margin:0 auto; padding:24px 16px 48px; }
+    16	h1 { font-size:1.35rem; margin:.5rem 0 1rem; overflow-wrap:anywhere; }
+    17	.card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:20px; margin-bottom:16px; }
+    18	label { display:block; font-weight:600; margin:14px 0 4px; }
+    19	input[type=text], input[type=datetime-local], input[type=number] { width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:8px; font-size:1rem; }
+    20	.opt-row { margin-bottom:8px; }
+    21	button, .btn { display:inline-block; background:var(--accent); color:#fff; border:0; border-radius:8px; padding:12px 20px; font-size:1rem; cursor:pointer; text-decoration:none; }
+    22	button.secondary { background:var(--accent2); color:var(--accent); }
+    23	.choice { display:flex; align-items:center; gap:10px; padding:12px; border:1px solid var(--line); border-radius:8px; margin-bottom:8px; cursor:pointer; overflow-wrap:anywhere; }
+    24	.choice:has(:checked) { border-color:var(--accent); background:var(--accent2); }
+    25	.bar-track { background:var(--accent2); border-radius:6px; height:10px; overflow:hidden; margin-top:4px; }
+    26	.bar { background:var(--accent); height:100%; }
+    27	.row-head { display:flex; justify-content:space-between; gap:8px; overflow-wrap:anywhere; }
+    28	.muted { color:var(--muted); font-size:.9rem; }
+    29	.status { display:inline-block; padding:2px 10px; border-radius:999px; font-size:.85rem; }
+    30	.status.open { background:#ecfdf5; color:var(--ok); }
+    31	.status.closed { background:#fef2f2; color:var(--danger); }
+    32	.linkbox { display:flex; gap:8px; margin:6px 0 14px; }
+    33	.linkbox input { flex:1; font-size:.9rem; color:var(--muted); }
+    34	.error { background:#fef2f2; color:var(--danger); border:1px solid #fecaca; border-radius:8px; padding:10px 14px; margin-bottom:14px; }
+    35	.notice { background:#fffbeb; border:1px solid #fde68a; border-radius:8px; padding:10px 14px; margin-bottom:14px; font-size:.95rem; }
+    36	footer { text-align:center; margin-top:24px; }
+    37	footer a { color:var(--muted); font-size:.85rem; }
+    38	`;
+    39	
+    40	const COPY_JS = `
+    41	document.querySelectorAll('[data-copy]').forEach(btn => {
+    42	  btn.addEventListener('click', async () => {
+    43	    const input = document.getElementById(btn.dataset.copy);
+    44	    try { await navigator.clipboard.writeText(input.value); } catch { input.select(); document.execCommand('copy'); }
+    45	    const old = btn.textContent; btn.textContent = '已复制'; setTimeout(() => btn.textContent = old, 1200);
+    46	  });
+    47	});
+    48	`;
+    49	
+    50	export function layout(title, body, { withCopyJs = false } = {}) {
+    51	  return `<!doctype html>
+    52	<html lang="zh-CN">
+    53	<head>
+    54	<meta charset="utf-8">
+    55	<meta name="viewport" content="width=device-width, initial-scale=1">
+    56	<title>${escapeHtml(title)}</title>
+    57	<style>${CSS}</style>
+    58	</head>
+    59	<body>
+    60	<main>
+    61	${body}
+    62	<footer><a href="/">⚡ 快速投票</a></footer>
+    63	</main>
+    64	${withCopyJs ? `<script>${COPY_JS}</script>` : ''}
+    65	</body>
+    66	</html>`;
+    67	}
+    68	
+    69	const errorBlock = (error) => (error ? `<div class="error">${escapeHtml(error)}</div>` : '');
+    70	const statusBadge = (open) =>
+    71	  open ? '<span class="status open">进行中</span>' : '<span class="status closed">已结束</span>';
+    72	
+    73	/** 首页：创建表单。 */
+    74	export function createFormPage({ error = null, values = {} } = {}) {
+    75	  const optionValues = values.options?.length ? values.options : ['', ''];
+    76	  const optionInputs = Array.from({ length: Math.max(optionValues.length, 2) }, (_, i) =>
+    77	    `<div class="opt-row"><input type="text" name="option" maxlength="100" placeholder="选项 ${i + 1}" value="${escapeHtml(optionValues[i] ?? '')}"></div>`
+    78	  ).join('\n');
+    79	
+    80	  return layout('创建投票', `
+    81	<h1>⚡ 创建一个快速投票</h1>
+    82	${errorBlock(error)}
+    83	<form class="card" method="post" action="/create">
+    84	  <label for="title">投票标题</label>
+    85	  <input type="text" id="title" name="title" maxlength="200" required placeholder="例如：周五团建去哪" value="${escapeHtml(values.title ?? '')}">
+    86	
+    87	  <label>选项（至少 2 个，留空的行忽略）</label>
+    88	  ${optionInputs}
+    89	  <div class="opt-row"><input type="text" name="option" maxlength="100" placeholder="选项（可留空）"></div>
+    90	  <div class="opt-row"><input type="text" name="option" maxlength="100" placeholder="选项（可留空）"></div>
+    91	  <div class="opt-row"><input type="text" name="option" maxlength="100" placeholder="选项（可留空）"></div>
+    92	
+    93	  <label><input type="checkbox" name="multi" value="1" ${values.multi ? 'checked' : ''}> 允许多选</label>
+    94	  <label for="maxChoices">多选上限（可选，仅多选时生效）</label>
+    95	  <input type="number" id="maxChoices" name="maxChoices" min="2" placeholder="不填 = 不限" value="${escapeHtml(values.maxChoices ?? '')}">
+    96	
+    97	  <label for="deadline">截止时间（可选）</label>
+    98	  <input type="datetime-local" id="deadline" name="deadline" value="${escapeHtml(values.deadline ?? '')}">
+    99	
+   100	  <p><button type="submit">创建投票</button></p>
+   101	</form>`);
+   102	}
+   103	
+   104	/** 创建成功页：双链接，一次性展示。 */
+   105	export function createdPage(poll, adminKey, origin) {
+   106	  const voteUrl = `${origin}/p/${poll.id}`;
+   107	  const adminUrl = `${origin}/p/${poll.id}/admin/${adminKey}`;
+   108	  return layout('投票已创建', `
+   109	<h1>投票已创建 🎉</h1>
+   110	<div class="card">
+   111	  <p><strong>${escapeHtml(poll.title)}</strong></p>
+   112	  <label>参与链接（发到群里）</label>
+   113	  <div class="linkbox"><input type="text" id="vote-url" readonly value="${escapeHtml(voteUrl)}"><button class="secondary" data-copy="vote-url" type="button">复制</button></div>
+   114	  <label>管理链接（只给你自己）</label>
+   115	  <div class="linkbox"><input type="text" id="admin-url" readonly value="${escapeHtml(adminUrl)}"><button class="secondary" data-copy="admin-url" type="button">复制</button></div>
+   116	  <div class="notice">⚠️ 管理链接仅此一次展示，请立即保存。用它可以关闭投票。</div>
+   117	  <p><a class="btn" href="/p/${poll.id}">前往投票页</a></p>
+   118	</div>`, { withCopyJs: true });
+   119	}
+   120	
+   121	/** 投票页。 */
+   122	export function votePage(poll, { error = null } = {}) {
+   123	  const type = poll.multi ? 'checkbox' : 'radio';
+   124	  const hint = poll.multi
+   125	    ? (poll.maxChoices != null ? `多选，最多选 ${poll.maxChoices} 项` : '多选，不限项数')
+   126	    : '单选';
+   127	  const deadlineNote = poll.deadline
+   128	    ? `<p class="muted">截止：${escapeHtml(new Date(poll.deadline).toLocaleString('zh-CN', { hour12: false }))}</p>`
+   129	    : '';
+   130	  const choices = poll.options.map((label, i) =>
+   131	    `<label class="choice"><input type="${type}" name="choice" value="${i}"> ${escapeHtml(label)}</label>`
+   132	  ).join('\n');
+   133	
+   134	  return layout(poll.title, `
+   135	<h1>${escapeHtml(poll.title)}</h1>
+   136	<p class="muted">${hint} · 匿名投票</p>
+   137	${deadlineNote}
+   138	${errorBlock(error)}
+   139	<form class="card" method="post" action="/p/${poll.id}/vote">
+   140	  ${choices}
+   141	  <p><button type="submit">投票</button> <a href="/p/${poll.id}/results" class="muted">先看结果 →</a></p>
+   142	</form>`);
+   143	}
+   144	
+   145	/** 结果页。 */
+   146	export function resultsPage(view, pollId) {
+   147	  const rows = view.rows.map((r) => `
+   148	<div style="margin-bottom:14px">
+   149	  <div class="row-head"><span>${escapeHtml(r.label)}</span><span class="muted">${r.count} 票 · ${r.pct}%</span></div>
+   150	  <div class="bar-track"><div class="bar" style="width:${r.pct}%"></div></div>
+   151	</div>`).join('\n');
+   152	  const multiNote = view.multi
+   153	    ? '<p class="muted">多选投票：占比 = 选了该项的人数比例，合计可能超过 100%。</p>'
+   154	    : '';
+   155	
+   156	  return layout(`结果 · ${view.title}`, `
+   157	<h1>${escapeHtml(view.title)}</h1>
+   158	<p>${statusBadge(view.open)} <span class="muted">共 ${view.total} 人参与</span></p>
+   159	<div class="card">
+   160	${rows}
+   161	</div>
+   162	${multiNote}
+   163	<p>${view.open ? `<a class="btn secondary btn" href="/p/${pollId}">去投票</a> ` : ''}<button class="secondary" onclick="location.reload()">刷新结果</button></p>`);
+   164	}
+   165	
+   166	/** 管理页。 */
+   167	export function adminPage(poll, adminKey, open) {
+   168	  const closeForm = open
+   169	    ? `<form method="post" action="/p/${poll.id}/admin/${adminKey}/close" onsubmit="return confirm('确认关闭？关闭后不可重新打开。')">
+   170	  <button type="submit" style="background:var(--danger)">关闭投票</button>
+   171	</form>`
+   172	    : '<p class="notice">该投票已关闭（或已过截止时间），只能查看结果。</p>';
+   173	
+   174	  return layout(`管理 · ${poll.title}`, `
+   175	<h1>${escapeHtml(poll.title)}</h1>
+   176	<p>${statusBadge(open)} <span class="muted">共 ${poll.totalVoters} 人参与</span></p>
+   177	<div class="card">
+   178	  <p class="muted">这是发起人管理页。</p>
+   179	  ${closeForm}
+   180	  <p style="margin-top:14px"><a href="/p/${poll.id}/results">查看结果 →</a></p>
+   181	</div>`);
+   182	}
+   183	
+   184	/** 404 页。 */
+   185	export function notFoundPage() {
+   186	  return layout('投票不存在', `
+   187	<h1>投票不存在</h1>
+   188	<div class="card"><p>链接可能有误，或该投票不存在。</p><p><a class="btn" href="/">创建一个新投票</a></p></div>`);
+   189	}
+   190	
+   191	/** 投票已结束提示页（尝试投票时）。 */
+   192	export function closedPage(pollId) {
+   193	  return layout('投票已结束', `
+   194	<h1>投票已结束</h1>
+   195	<div class="card"><p>该投票已停止接受新提交。</p><p><a class="btn" href="/p/${pollId}/results">查看结果</a></p></div>`);
+   196	}
+
+ succeeded in 118ms:
+     1	// 领域逻辑：创建校验、开放状态判定、投票提交校验与计票。纯函数，无 IO。
+     2	import { newPollId, newAdminKey } from './store.js';
+     3	
+     4	export const LIMITS = {
+     5	  titleMax: 200,
+     6	  optionMax: 100,
+     7	  optionsMin: 2,
+     8	  optionsMax: 20,
+     9	};
+    10	
+    11	/**
+    12	 * 校验创建输入并构造 poll 对象。
+    13	 * input: { title, options: string[], multi?: bool, maxChoices?: number|null, deadline?: string|null }
+    14	 * 返回 { ok: true, poll } 或 { ok: false, error }
+    15	 */
+    16	export function buildPoll(input, now = new Date()) {
+    17	  const title = (input.title ?? '').trim();
+    18	  if (!title) return fail('标题不能为空');
+    19	  if (title.length > LIMITS.titleMax) return fail(`标题不能超过 ${LIMITS.titleMax} 字符`);
+    20	
+    21	  const options = (input.options ?? []).map((o) => String(o).trim()).filter(Boolean);
+    22	  if (options.length < LIMITS.optionsMin) return fail(`至少需要 ${LIMITS.optionsMin} 个选项`);
+    23	  if (options.length > LIMITS.optionsMax) return fail(`选项不能超过 ${LIMITS.optionsMax} 个`);
+    24	  for (const o of options) {
+    25	    if (o.length > LIMITS.optionMax) return fail(`选项不能超过 ${LIMITS.optionMax} 字符`);
+    26	  }
+    27	
+    28	  const multi = Boolean(input.multi);
+    29	  let maxChoices = null;
+    30	  if (multi && input.maxChoices != null && String(input.maxChoices).trim() !== '') {
+    31	    maxChoices = Number(input.maxChoices);
+    32	    if (!Number.isInteger(maxChoices) || maxChoices < 2 || maxChoices > options.length) {
+    33	      return fail(`多选上限必须是 2~${options.length} 的整数`);
+    34	    }
+    35	  }
+    36	
+    37	  let deadline = null;
+    38	  if (input.deadline != null && String(input.deadline).trim() !== '') {
+    39	    const d = new Date(input.deadline);
+    40	    if (Number.isNaN(d.getTime())) return fail('截止时间格式无效');
+    41	    if (d.getTime() <= now.getTime()) return fail('截止时间必须晚于当前时间');
+    42	    deadline = d.toISOString();
+    43	  }
+    44	
+    45	  return {
+    46	    ok: true,
+    47	    poll: {
+    48	      id: newPollId(),
+    49	      title,
+    50	      options,
+    51	      multi,
+    52	      maxChoices,
+    53	      deadline,
+    54	      adminKey: newAdminKey(),
+    55	      closed: false,
+    56	      counts: options.map(() => 0),
+    57	      totalVoters: 0,
+    58	      createdAt: now.toISOString(),
+    59	    },
+    60	  };
+    61	}
+    62	
+    63	/** 开放判定：未手动关闭，且（无截止时间或未到截止时间）。每次请求被动计算。 */
+    64	export function isOpen(poll, now = new Date()) {
+    65	  if (poll.closed) return false;
+    66	  if (poll.deadline && now.getTime() >= new Date(poll.deadline).getTime()) return false;
+    67	  return true;
+    68	}
+    69	
+    70	/**
+    71	 * 校验一次投票提交并返回计票后的新 poll。
+    72	 * choices: number[]（选项索引）
+    73	 * 返回 { ok: true, poll } 或 { ok: false, error }
+    74	 */
+    75	export function castVote(poll, choices, now = new Date()) {
+    76	  if (!isOpen(poll, now)) return fail('投票已结束');
+    77	
+    78	  if (!Array.isArray(choices) || choices.length === 0) return fail('请至少选择一项');
+    79	  const uniq = [...new Set(choices)];
+    80	  if (uniq.length !== choices.length) return fail('选项重复');
+    81	  for (const c of uniq) {
+    82	    if (!Number.isInteger(c) || c < 0 || c >= poll.options.length) return fail('存在无效选项');
+    83	  }
+    84	
+    85	  if (!poll.multi) {
+    86	    if (uniq.length !== 1) return fail('单选投票只能选择一项');
+    87	  } else if (poll.maxChoices != null && uniq.length > poll.maxChoices) {
+    88	    return fail(`最多可选 ${poll.maxChoices} 项`);
+    89	  }
+    90	
+    91	  const counts = [...poll.counts];
+    92	  for (const c of uniq) counts[c] += 1;
+    93	  return { ok: true, poll: { ...poll, counts, totalVoters: poll.totalVoters + 1 } };
+    94	}
+    95	
+    96	/** 关闭投票（幂等）。 */
+    97	export function closePoll(poll) {
+    98	  return poll.closed ? poll : { ...poll, closed: true };
+    99	}
+   100	
+   101	/** 结果视图：各选项票数与占比（分母 totalVoters；0 票时占比 0）。 */
+   102	export function resultsView(poll, now = new Date()) {
+   103	  const total = poll.totalVoters;
+   104	  return {
+   105	    title: poll.title,
+   106	    multi: poll.multi,
+   107	    total,
+   108	    open: isOpen(poll, now),
+   109	    deadline: poll.deadline,
+   110	    rows: poll.options.map((label, i) => ({
+   111	      label,
+   112	      count: poll.counts[i],
+   113	      pct: total === 0 ? 0 : Math.round((poll.counts[i] / total) * 100),
+   114	    })),
+   115	  };
+   116	}
+   117	
+   118	function fail(error) {
+   119	  return { ok: false, error };
+   120	}
+
+ succeeded in 140ms:
+     1	// 快速投票小工具 — 单文件 HTTP 服务（零运行时依赖）。
+     2	// 路由表见 openspec/changes/add-quick-poll/design.md D8。
+     3	import http from 'node:http';
+     4	import { timingSafeEqual } from 'node:crypto';
+     5	import path from 'node:path';
+     6	import { fileURLToPath } from 'node:url';
+     7	import { openStore, isValidId } from './lib/store.js';
+     8	import { buildPoll, castVote, closePoll, isOpen, resultsView } from './lib/poll.js';
+     9	import * as pages from './lib/pages.js';
+    10	
+    11	const __dirname = path.dirname(fileURLToPath(import.meta.url));
+    12	const DATA_DIR = process.env.POLL_DATA_DIR || path.join(__dirname, 'data');
+    13	const PORT = Number(process.env.PORT || 3000);
+    14	const MAX_BODY = 16 * 1024; // 16KB 请求体上限
+    15	
+    16	const store = await openStore(DATA_DIR);
+    17	
+    18	// ---------- 工具 ----------
+    19	
+    20	function html(res, status, body, headers = {}) {
+    21	  res.writeHead(status, { 'content-type': 'text/html; charset=utf-8', ...headers });
+    22	  res.end(body);
+    23	}
+    24	const notFound = (res) => html(res, 404, pages.notFoundPage());
+    25	const redirect = (res, status, location, headers = {}) => {
+    26	  res.writeHead(status, { location, ...headers });
+    27	  res.end();
+    28	};
+    29	
+    30	function readBody(req) {
+    31	  return new Promise((resolve, reject) => {
+    32	    let size = 0;
+    33	    const chunks = [];
+    34	    req.on('data', (c) => {
+    35	      size += c.length;
+    36	      if (size > MAX_BODY) {
+    37	        reject(Object.assign(new Error('body too large'), { statusCode: 413 }));
+    38	        req.destroy();
+    39	        return;
+    40	      }
+    41	      chunks.push(c);
+    42	    });
+    43	    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+    44	    req.on('error', reject);
+    45	  });
+    46	}
+    47	
+    48	async function readForm(req) {
+    49	  return new URLSearchParams(await readBody(req));
+    50	}
+    51	
+    52	function parseCookies(req) {
+    53	  const out = {};
+    54	  for (const part of (req.headers.cookie ?? '').split(';')) {
+    55	    const i = part.indexOf('=');
+    56	    if (i > 0) out[part.slice(0, i).trim()] = part.slice(i + 1).trim();
+    57	  }
+    58	  return out;
+    59	}
+    60	
+    61	const hasVoted = (req, pollId) => parseCookies(req)[`voted_${pollId}`] === '1';
+    62	const votedCookie = (pollId) =>
+    63	  `voted_${pollId}=1; Max-Age=31536000; Path=/p/${pollId}; SameSite=Lax; HttpOnly`;
+    64	
+    65	function keyMatches(expected, given) {
+    66	  const a = Buffer.from(String(expected));
+    67	  const b = Buffer.from(String(given));
+    68	  return a.length === b.length && timingSafeEqual(a, b);
+    69	}
+    70	
+    71	function requestOrigin(req) {
+    72	  const host = req.headers.host ?? `localhost:${PORT}`;
+    73	  const proto = req.headers['x-forwarded-proto'] ?? 'http';
+    74	  return `${proto}://${host}`;
+    75	}
+    76	
+    77	// datetime-local 提交的是无时区本地时间（YYYY-MM-DDTHH:mm）；按服务器本地时区解释。
+    78	function normalizeDeadline(raw) {
+    79	  return raw && raw.trim() !== '' ? raw : null;
+    80	}
+    81	
+    82	// ---------- 处理器 ----------
+    83	
+    84	async function handleCreate(req, res) {
+    85	  const form = await readForm(req);
+    86	  const input = {
+    87	    title: form.get('title'),
+    88	    options: form.getAll('option'),
+    89	    multi: form.get('multi') === '1',
+    90	    maxChoices: form.get('maxChoices'),
+    91	    deadline: normalizeDeadline(form.get('deadline')),
+    92	  };
+    93	  const r = buildPoll(input);
+    94	  if (!r.ok) {
+    95	    return html(res, 400, pages.createFormPage({
+    96	      error: r.error,
+    97	      values: { title: input.title, options: input.options, multi: input.multi, maxChoices: input.maxChoices ?? '', deadline: input.deadline ?? '' },
+    98	    }));
+    99	  }
+   100	  await store.createPoll(r.poll);
+   101	  return redirect(res, 303, `/p/${r.poll.id}/created?key=${r.poll.adminKey}`);
+   102	}
+   103	
+   104	async function handleCreated(req, res, id, url) {
+   105	  const poll = await store.readPoll(id);
+   106	  if (!poll) return notFound(res);
+   107	  const key = url.searchParams.get('key') ?? '';
+   108	  if (!keyMatches(poll.adminKey, key)) return notFound(res);
+   109	  return html(res, 200, pages.createdPage(poll, poll.adminKey, requestOrigin(req)));
+   110	}
+   111	
+   112	async function handleVoteForm(req, res, id) {
+   113	  const poll = await store.readPoll(id);
+   114	  if (!poll) return notFound(res);
+   115	  if (hasVoted(req, id) || !isOpen(poll)) return redirect(res, 302, `/p/${id}/results`);
+   116	  return html(res, 200, pages.votePage(poll));
+   117	}
+   118	
+   119	async function handleVoteSubmit(req, res, id) {
+   120	  const form = await readForm(req);
+   121	  if (!(await store.readPoll(id))) return notFound(res);
+   122	  if (hasVoted(req, id)) return redirect(res, 303, `/p/${id}/results`); // 软防重：拒绝重复提交
+   123	
+   124	  const choices = form.getAll('choice').map((v) => Number(v));
+   125	  const outcome = await store.updatePoll(id, (poll) => {
+   126	    if (!poll) return { poll: null, result: { notFound: true } };
+   127	    const r = castVote(poll, choices);
+   128	    return r.ok ? { poll: r.poll, result: { ok: true } } : { poll: null, result: r };
+   129	  });
+   130	
+   131	  if (outcome.result.notFound) return notFound(res);
+   132	  if (outcome.result.ok) {
+   133	    return redirect(res, 303, `/p/${id}/results`, { 'set-cookie': votedCookie(id) });
+   134	  }
+   135	  const poll = await store.readPoll(id);
+   136	  if (!isOpen(poll)) return html(res, 403, pages.closedPage(id));
+   137	  return html(res, 400, pages.votePage(poll, { error: outcome.result.error }));
+   138	}
+   139	
+   140	async function handleResults(req, res, id) {
+   141	  const poll = await store.readPoll(id);
+   142	  if (!poll) return notFound(res);
+   143	  return html(res, 200, pages.resultsPage(resultsView(poll), id));
+   144	}
+   145	
+   146	async function handleAdmin(req, res, id, key) {
+   147	  const poll = await store.readPoll(id);
+   148	  if (!poll || !keyMatches(poll.adminKey, key)) return notFound(res); // 错误密钥一律 404
+   149	  return html(res, 200, pages.adminPage(poll, key, isOpen(poll)));
+   150	}
+   151	
+   152	async function handleClose(req, res, id, key) {
+   153	  const poll = await store.readPoll(id);
+   154	  if (!poll || !keyMatches(poll.adminKey, key)) return notFound(res);
+   155	  await store.updatePoll(id, (cur) => (cur ? { poll: closePoll(cur) } : null)); // 幂等
+   156	  return redirect(res, 303, `/p/${id}/admin/${key}`);
+   157	}
+   158	
+   159	// ---------- 路由 ----------
+   160	
+   161	const server = http.createServer(async (req, res) => {
+   162	  try {
+   163	    const url = new URL(req.url, requestOrigin(req));
+   164	    const seg = url.pathname.split('/').filter(Boolean); // e.g. ['p', id, 'results']
+   165	    const m = req.method;
+   166	
+   167	    if (seg.length === 0 && m === 'GET') return html(res, 200, pages.createFormPage());
+   168	    if (seg.length === 1 && seg[0] === 'create' && m === 'POST') return handleCreate(req, res);
+   169	
+   170	    if (seg[0] === 'p' && seg.length >= 2) {
+   171	      const id = seg[1];
+   172	      if (!isValidId(id)) return notFound(res); // 路径白名单：杜绝 . / 等
+   173	      const rest = seg.slice(2);
+   174	
+   175	      if (rest.length === 0 && m === 'GET') return handleVoteForm(req, res, id);
+   176	      if (rest.length === 1 && rest[0] === 'created' && m === 'GET') return handleCreated(req, res, id, url);
+   177	      if (rest.length === 1 && rest[0] === 'vote' && m === 'POST') return handleVoteSubmit(req, res, id);
+   178	      if (rest.length === 1 && rest[0] === 'results' && m === 'GET') return handleResults(req, res, id);
+   179	      if (rest.length === 2 && rest[0] === 'admin' && m === 'GET') return handleAdmin(req, res, id, rest[1]);
+   180	      if (rest.length === 3 && rest[0] === 'admin' && rest[2] === 'close' && m === 'POST') {
+   181	        return handleClose(req, res, id, rest[1]);
+   182	      }
+   183	    }
+   184	
+   185	    return notFound(res);
+   186	  } catch (err) {
+   187	    const status = err.statusCode ?? 500;
+   188	    console.error(`[error] ${req.method} ${req.url}:`, err.message);
+   189	    return html(res, status, pages.layout('出错了', '<h1>出错了</h1><div class="card"><p>请稍后重试。</p></div>'));
+   190	  }
+   191	});
+   192	
+   193	server.listen(PORT, () => {
+   194	  console.log(`⚡ 快速投票已启动: http://localhost:${PORT} (数据目录: ${DATA_DIR})`);
+   195	});
+
+ succeeded in 149ms:
+     1	// 存储层：每投票一个 JSON 文件，原子写 + 每投票串行化写队列。
+     2	// 单进程假设（见 design.md D4）。
+     3	import { randomBytes } from 'node:crypto';
+     4	import { mkdir, readFile, writeFile, rename } from 'node:fs/promises';
+     5	import path from 'node:path';
+     6	
+     7	const URL_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-';
+     8	const ID_RE = /^[A-Za-z0-9_-]+$/;
+     9	
+    10	export function randomToken(length) {
+    11	  const bytes = randomBytes(length);
+    12	  let out = '';
+    13	  for (let i = 0; i < length; i++) out += URL_ALPHABET[bytes[i] & 63];
+    14	  return out;
+    15	}
+    16	
+    17	export const newPollId = () => randomToken(8);
+    18	export const newAdminKey = () => randomToken(24);
+    19	
+    20	export function isValidId(id) {
+    21	  return typeof id === 'string' && id.length > 0 && id.length <= 64 && ID_RE.test(id);
+    22	}
+    23	
+    24	export class Store {
+    25	  constructor(dataDir) {
+    26	    this.dataDir = dataDir;
+    27	    this.writeChains = new Map(); // pollId -> tail promise（串行化写队列）
+    28	  }
+    29	
+    30	  async init() {
+    31	    await mkdir(this.dataDir, { recursive: true });
+    32	    return this;
+    33	  }
+    34	
+    35	  filePath(id) {
+    36	    if (!isValidId(id)) throw new Error('invalid poll id');
+    37	    return path.join(this.dataDir, `${id}.json`);
+    38	  }
+    39	
+    40	  /** 读投票；不存在或 ID 非法返回 null。 */
+    41	  async readPoll(id) {
+    42	    if (!isValidId(id)) return null;
+    43	    try {
+    44	      return JSON.parse(await readFile(this.filePath(id), 'utf8'));
+    45	    } catch (err) {
+    46	      if (err.code === 'ENOENT') return null;
+    47	      throw err;
+    48	    }
+    49	  }
+    50	
+    51	  /** 原子写：写临时文件后 rename（同目录内原子）。 */
+    52	  async #atomicWrite(id, poll) {
+    53	    const target = this.filePath(id);
+    54	    const tmp = path.join(this.dataDir, `.${id}.${randomToken(6)}.tmp`);
+    55	    await writeFile(tmp, JSON.stringify(poll, null, 2), 'utf8');
+    56	    await rename(tmp, target);
+    57	  }
+    58	
+    59	  /** 创建投票文件（首次写入）。 */
+    60	  async createPoll(poll) {
+    61	    return this.#enqueue(poll.id, async () => {
+    62	      await this.#atomicWrite(poll.id, poll);
+    63	      return poll;
+    64	    });
+    65	  }
+    66	
+    67	  /**
+    68	   * 串行化的读-改-写。mutator 收到当前 poll（可能为 null），
+    69	   * 返回新 poll 对象则落盘；返回 null/undefined 则不写。
+    70	   * 返回 { poll, result }，result 为 mutator 附带结果。
+    71	   */
+    72	  async updatePoll(id, mutator) {
+    73	    if (!isValidId(id)) throw new Error('invalid poll id');
+    74	    return this.#enqueue(id, async () => {
+    75	      const current = await this.readPoll(id);
+    76	      const outcome = await mutator(current);
+    77	      if (outcome && outcome.poll) {
+    78	        await this.#atomicWrite(id, outcome.poll);
+    79	      }
+    80	      return outcome;
+    81	    });
+    82	  }
+    83	
+    84	  /** 把操作挂到该 pollId 的 promise 链尾，保证同一投票的写严格串行。 */
+    85	  #enqueue(id, op) {
+    86	    const tail = this.writeChains.get(id) ?? Promise.resolve();
+    87	    const next = tail.then(op, op); // 前序失败不阻塞后续
+    88	    // 链上保留一个吞掉错误的哨兵，防 unhandled rejection；调用方拿到的是 next 本身
+    89	    this.writeChains.set(id, next.catch(() => {}));
+    90	    return next;
+    91	  }
+    92	}
+    93	
+    94	export async function openStore(dataDir) {
+    95	  return new Store(dataDir).init();
+    96	}
+
+codex
+I’ve finished the primary implementation pass. Next I’m reading the normative specs and tests, then I’ll filter out anything that is merely a design limitation unless it contradicts the app’s documented behavior or creates a concrete security/data failure.
+exec
+/usr/bin/zsh -lc 'nl -ba openspec/specs/poll-storage/spec.md' in /root/terra/fullrun-lab/openspec-poll
+exec
+/usr/bin/zsh -lc 'nl -ba openspec/specs/poll-lifecycle/spec.md' in /root/terra/fullrun-lab/openspec-poll
+exec
+/usr/bin/zsh -lc 'nl -ba openspec/specs/poll-creation/spec.md' in /root/terra/fullrun-lab/openspec-poll
+exec
+/usr/bin/zsh -lc 'nl -ba openspec/specs/poll-results/spec.md' in /root/terra/fullrun-lab/openspec-poll
+exec
+/usr/bin/zsh -lc 'nl -ba openspec/specs/poll-voting/spec.md' in /root/terra/fullrun-lab/openspec-poll
+ succeeded in 102ms:
+     1	# poll-storage Specification
+     2	
+     3	## Purpose
+     4	
+     5	定义基于 JSON 文件的持久化：每投票一文件、原子且串行的写入。
+     6	
+     7	## Requirements
+     8	
+     9	### Requirement: 每投票一个 JSON 文件
+    10	系统必须（SHALL）将每个投票持久化为数据目录下以投票 ID 命名的单个 JSON 文件（`data/<id>.json`），不使用数据库。文件必须包含：标题、选项列表、投票模式、多选上限（如有）、截止时间（如有）、管理密钥、是否已手动关闭、各选项票数、总提交人数、创建时间。数据目录不存在时系统启动必须自动创建。
+    11	
+    12	#### Scenario: 创建投票即落盘
+    13	- **WHEN** 投票创建成功
+    14	- **THEN** 数据目录下存在 `<id>.json`，内容为合法 JSON 且包含全部上述字段
+    15	
+    16	#### Scenario: 服务重启数据不丢
+    17	- **WHEN** 服务进程重启后访问已有投票的参与链接或结果页
+    18	- **THEN** 投票定义与已有票数与重启前一致
+    19	
+    20	### Requirement: 原子且串行的写入
+    21	系统必须（MUST）对同一投票文件的写入串行化（进程内按投票 ID 排队），且每次写入必须为原子写：先写入同目录临时文件，再 rename 覆盖目标文件。任何时刻目标文件必须是完整合法的 JSON，不得出现半写状态。
+    22	
+    23	#### Scenario: 并发写不损坏文件
+    24	- **WHEN** 同一投票收到多个并发提交
+    25	- **THEN** 全部提交处理完毕后，该投票文件为合法 JSON 且计票与成功提交数一致
+    26	
+    27	#### Scenario: 投票 ID 即文件名的安全性
+    28	- **WHEN** 请求路径中的投票 ID 包含 `.`、`/` 等非法字符
+    29	- **THEN** 系统必须拒绝该请求（404），绝不将其拼接为文件路径读写
+
+ succeeded in 106ms:
+     1	# poll-lifecycle Specification
+     2	
+     3	## Purpose
+     4	
+     5	定义投票的开放/关闭状态：截止时间被动判定与发起人手动关闭。
+     6	
+     7	## Requirements
+     8	
+     9	### Requirement: 投票开放状态判定
+    10	系统必须（SHALL）按以下规则判定投票是否开放：投票开放，当且仅当其未被手动关闭，且（无截止时间，或当前时间早于截止时间）。截止判定必须在每次请求时被动计算，不依赖定时任务。已关闭的投票仅可查看结果。
+    11	
+    12	#### Scenario: 到达截止时间自动结束
+    13	- **WHEN** 参与者在截止时间之后打开该投票的参与链接
+    14	- **THEN** 系统展示"投票已结束"并引导至结果页，不提供投票表单
+    15	
+    16	#### Scenario: 无截止时间且未关闭则持续开放
+    17	- **WHEN** 参与者打开无截止时间且未被手动关闭的投票
+    18	- **THEN** 系统正常展示投票表单
+    19	
+    20	### Requirement: 发起人手动关闭投票
+    21	系统必须（SHALL）允许持有正确管理密钥者通过管理页 `/p/<id>/admin/<密钥>` 关闭投票。关闭操作必须校验密钥与存储中的管理密钥一致；密钥错误时必须返回 404（不提示"密钥错误"以避免确认投票管理入口的存在）。关闭为不可逆操作，关闭后再次访问管理页显示"已关闭"状态。
+    22	
+    23	#### Scenario: 管理链接关闭投票
+    24	- **WHEN** 发起人打开正确的管理链接并点击"关闭投票"
+    25	- **THEN** 投票状态变为已关闭，后续投票提交被拒绝，结果页状态显示"已结束"
+    26	
+    27	#### Scenario: 错误密钥被拒绝
+    28	- **WHEN** 任何人使用错误的管理密钥访问管理页或提交关闭操作
+    29	- **THEN** 系统返回 404，投票状态不变
+    30	
+    31	#### Scenario: 重复关闭幂等
+    32	- **WHEN** 发起人对已关闭的投票再次提交关闭操作
+    33	- **THEN** 系统保持已关闭状态并正常展示"已关闭"，不报错
+
+ succeeded in 117ms:
+     1	# poll-creation Specification
+     2	
+     3	## Purpose
+     4	
+     5	定义投票的创建：输入校验、投票 ID 与双链接（参与/管理）的生成规则。
+     6	
+     7	## Requirements
+     8	
+     9	### Requirement: 创建投票
+    10	系统必须（SHALL）允许任何访问者免登录创建投票。创建输入为：标题（必填，非空，≤200 字符）、选项列表（必填，2~20 个，每项非空且 ≤100 字符）、投票模式（单选或多选，默认单选）、多选上限（仅多选模式下有效，可选，2 ≤ 上限 ≤ 选项数，不填表示不限）、截止时间（可选，必须晚于当前时间）。
+    11	
+    12	#### Scenario: 成功创建单选投票
+    13	- **WHEN** 访问者提交标题"午饭吃什么"与选项 ["面", "饭", "饺子"]，模式为单选
+    14	- **THEN** 系统创建投票并返回创建成功页
+    15	
+    16	#### Scenario: 成功创建带截止时间的多选投票
+    17	- **WHEN** 访问者提交合法标题、3 个选项、模式为多选（上限 2）、截止时间为未来时刻
+    18	- **THEN** 系统创建投票，记录模式、多选上限与截止时间
+    19	
+    20	#### Scenario: 选项不足被拒绝
+    21	- **WHEN** 访问者提交的有效选项少于 2 个（空白选项不计入）
+    22	- **THEN** 系统必须拒绝创建并提示"至少需要 2 个选项"，不产生任何存储文件
+    23	
+    24	#### Scenario: 截止时间早于当前时间被拒绝
+    25	- **WHEN** 访问者提交的截止时间不晚于当前时间
+    26	- **THEN** 系统必须拒绝创建并提示截止时间无效
+    27	
+    28	### Requirement: 投票 ID 与双链接生成
+    29	创建成功时，系统必须（SHALL）生成不可预测的投票 ID（URL 安全字符，≥6 字符）与不可预测的管理密钥（≥16 字符随机值），并在创建成功页一次性展示两个链接：参与链接 `/p/<id>` 与管理链接 `/p/<id>/admin/<管理密钥>`。管理密钥必须仅存在于存储文件与管理链接中，绝不出现在参与链接或结果页。
+    30	
+    31	#### Scenario: 创建成功页展示双链接
+    32	- **WHEN** 投票创建成功
+    33	- **THEN** 页面同时展示参与链接与管理链接，并提示发起人：管理链接仅此一次展示，请自行保存
+    34	
+    35	#### Scenario: 参与页不泄露管理密钥
+    36	- **WHEN** 任何人打开参与链接或结果页
+    37	- **THEN** 响应内容中必须不包含管理密钥
+
+ succeeded in 119ms:
+     1	# poll-results Specification
+     2	
+     3	## Purpose
+     4	
+     5	定义结果查看：票数与占比展示、状态标识、不存在投票的处理。
+     6	
+     7	## Requirements
+     8	
+     9	### Requirement: 结果查看
+    10	系统必须（SHALL）向任何持参与链接者提供结果页 `/p/<id>/results`，展示：投票标题、每个选项的票数与占比（以总提交人数为分母；总数为 0 时占比显示 0%）、总提交人数、投票状态（进行中/已结束）。结果不要求登录即可查看，且每次加载必须反映当前最新计票。
+    11	
+    12	#### Scenario: 查看进行中投票的结果
+    13	- **WHEN** 任何人打开进行中投票的结果页
+    14	- **THEN** 页面展示各选项当前票数、占比、总提交人数，状态为"进行中"
+    15	
+    16	#### Scenario: 零票投票的结果
+    17	- **WHEN** 打开尚无人投票的投票结果页
+    18	- **THEN** 各选项票数为 0、占比为 0%，页面正常渲染
+    19	
+    20	#### Scenario: 刷新可见最新结果
+    21	- **WHEN** 有新投票提交后，任何人刷新结果页
+    22	- **THEN** 页面展示包含新提交在内的最新票数
+    23	
+    24	### Requirement: 不存在的投票返回 404
+    25	系统必须（SHALL）对不存在的投票 ID 的任何页面（参与页、结果页、管理页）返回 404 与友好提示，且必须不泄露内部错误细节。
+    26	
+    27	#### Scenario: 访问不存在的投票
+    28	- **WHEN** 任何人访问 `/p/不存在的id` 或其结果页
+    29	- **THEN** 系统返回 404 与"投票不存在"提示
+
+ succeeded in 130ms:
+     1	# poll-voting Specification
+     2	
+     3	## Purpose
+     4	
+     5	定义匿名投票的提交规则：单选/多选校验、软防重、并发计票准确性。
+     6	
+     7	## Requirements
+     8	
+     9	### Requirement: 匿名投票
+    10	系统必须（SHALL）允许任何持参与链接者在投票开放期间免登录提交选择。单选投票必须恰好选择 1 项；多选投票必须选择 1 项及以上，且不超过多选上限（若设置）。提交的选项索引必须是该投票的合法选项。
+    11	
+    12	#### Scenario: 单选投票成功
+    13	- **WHEN** 参与者打开开放中的单选投票页，选择 1 个选项并提交
+    14	- **THEN** 系统将该选项票数 +1，并跳转到结果页
+    15	
+    16	#### Scenario: 多选投票成功
+    17	- **WHEN** 参与者在多选投票（上限 2）中勾选 2 个选项并提交
+    18	- **THEN** 系统将这 2 个选项票数各 +1，并跳转到结果页
+    19	
+    20	#### Scenario: 多选超上限被拒绝
+    21	- **WHEN** 参与者在多选投票（上限 2）中提交 3 个选项
+    22	- **THEN** 系统必须拒绝该提交并提示最多可选 2 项，票数不变
+    23	
+    24	#### Scenario: 非法选项被拒绝
+    25	- **WHEN** 提交中包含不存在的选项索引
+    26	- **THEN** 系统必须拒绝该提交，票数不变
+    27	
+    28	#### Scenario: 向已关闭投票提交被拒绝
+    29	- **WHEN** 参与者向已关闭（手动关闭或已过截止时间）的投票提交选择
+    30	- **THEN** 系统必须拒绝该提交并引导至结果页，票数不变
+    31	
+    32	### Requirement: 软防重
+    33	系统必须（SHALL）在投票提交成功后于参与者浏览器本地记录该投票"已投过"标记（Cookie 或等价机制）。持有该标记的浏览器再次打开参与链接时，系统必须直接展示结果页而非投票表单，且必须拒绝其再次提交。本机制为软防重：不要求跨浏览器或跨设备防重。
+    34	
+    35	#### Scenario: 已投浏览器重访直达结果
+    36	- **WHEN** 已成功投票的浏览器再次打开同一投票的参与链接
+    37	- **THEN** 系统直接展示结果页，不展示投票表单
+    38	
+    39	#### Scenario: 已投浏览器重复提交被拒绝
+    40	- **WHEN** 携带"已投过"标记的浏览器再次提交投票
+    41	- **THEN** 系统必须拒绝该提交，票数不变
+    42	
+    43	### Requirement: 并发计票不丢票
+    44	系统必须（MUST）保证并发提交下计票准确：对同一投票的写操作必须串行化执行，任意 N 个成功提交必须使总票数准确增加 N。
+    45	
+    46	#### Scenario: 并发提交全部计入
+    47	- **WHEN** 10 个参与者在同一时刻向同一投票提交合法选择且均返回成功
+    48	- **THEN** 该投票的总提交数恰好增加 10，无丢失或重复
+
+codex
+The specs define a few hard requirements that matter for this audit: closed/deadline access should show an ended state, duplicate browser submissions must be rejected, admin keys must not leak outside admin/created links, and writes are only promised serial inside one process. I’m checking tests now to see whether they would catch the edge cases.
+exec
+/usr/bin/zsh -lc 'nl -ba test/store.test.js' in /root/terra/fullrun-lab/openspec-poll
+exec
+/usr/bin/zsh -lc 'nl -ba LAB-NOTES.md' in /root/terra/fullrun-lab/openspec-poll
+exec
+/usr/bin/zsh -lc 'nl -ba test/e2e/run-e2e.js' in /root/terra/fullrun-lab/openspec-poll
+exec
+/usr/bin/zsh -lc 'nl -ba test/poll.test.js' in /root/terra/fullrun-lab/openspec-poll
+exec
+/usr/bin/zsh -lc 'nl -ba package.json' in /root/terra/fullrun-lab/openspec-poll
+ succeeded in 183ms:
+     1	import { test } from 'node:test';
+     2	import assert from 'node:assert/strict';
+     3	import { mkdtemp, readFile, readdir } from 'node:fs/promises';
+     4	import { tmpdir } from 'node:os';
+     5	import path from 'node:path';
+     6	import { openStore, isValidId, newPollId, newAdminKey } from '../lib/store.js';
+     7	import { buildPoll, castVote } from '../lib/poll.js';
+     8	
+     9	async function tempStore() {
+    10	  const dir = await mkdtemp(path.join(tmpdir(), 'poll-store-'));
+    11	  return { store: await openStore(dir), dir };
+    12	}
+    13	
+    14	const sampleInput = { title: '午饭吃什么', options: ['面', '饭', '饺子'], multi: false };
+    15	
+    16	test('创建投票即落盘，字段完整（specs/poll-storage）', async () => {
+    17	  const { store, dir } = await tempStore();
+    18	  const { poll } = buildPoll(sampleInput);
+    19	  await store.createPoll(poll);
+    20	
+    21	  const raw = JSON.parse(await readFile(path.join(dir, `${poll.id}.json`), 'utf8'));
+    22	  for (const key of ['id', 'title', 'options', 'multi', 'maxChoices', 'deadline', 'adminKey', 'closed', 'counts', 'totalVoters', 'createdAt']) {
+    23	    assert.ok(key in raw, `缺少字段 ${key}`);
+    24	  }
+    25	  assert.equal(raw.title, '午饭吃什么');
+    26	  assert.deepEqual(raw.counts, [0, 0, 0]);
+    27	});
+    28	
+    29	test('重开 store（模拟重启）后数据仍在', async () => {
+    30	  const { store, dir } = await tempStore();
+    31	  const { poll } = buildPoll(sampleInput);
+    32	  await store.createPoll(poll);
+    33	
+    34	  const store2 = await openStore(dir); // 模拟进程重启
+    35	  const loaded = await store2.readPoll(poll.id);
+    36	  assert.equal(loaded.title, poll.title);
+    37	  assert.deepEqual(loaded.options, poll.options);
+    38	});
+    39	
+    40	test('并发写不丢票、文件始终为合法 JSON（specs/poll-voting + poll-storage）', async () => {
+    41	  const { store, dir } = await tempStore();
+    42	  const { poll } = buildPoll(sampleInput);
+    43	  await store.createPoll(poll);
+    44	
+    45	  const N = 25;
+    46	  await Promise.all(
+    47	    Array.from({ length: N }, (_, i) =>
+    48	      store.updatePoll(poll.id, (cur) => {
+    49	        const r = castVote(cur, [i % 3]);
+    50	        assert.ok(r.ok);
+    51	        return { poll: r.poll };
+    52	      })
+    53	    )
+    54	  );
+    55	
+    56	  const final = JSON.parse(await readFile(path.join(dir, `${poll.id}.json`), 'utf8'));
+    57	  assert.equal(final.totalVoters, N, '总提交数必须恰好为 N');
+    58	  assert.equal(final.counts.reduce((a, b) => a + b, 0), N);
+    59	  // 无残留临时文件
+    60	  const leftovers = (await readdir(dir)).filter((f) => f.endsWith('.tmp'));
+    61	  assert.deepEqual(leftovers, []);
+    62	});
+    63	
+    64	test('非法 ID 被拒绝，绝不触碰文件系统（specs/poll-storage）', async () => {
+    65	  const { store } = await tempStore();
+    66	  for (const bad of ['../etc/passwd', 'a/b', 'a.b', '', 'x'.repeat(65), '哈哈']) {
+    67	    assert.equal(isValidId(bad), false, `应拒绝: ${bad}`);
+    68	    assert.equal(await store.readPoll(bad), null);
+    69	    await assert.rejects(() => store.updatePoll(bad, () => ({})), /invalid poll id/);
+    70	  }
+    71	});
+    72	
+    73	test('ID 与密钥为 URL 安全字符且长度达标（specs/poll-creation）', () => {
+    74	  for (let i = 0; i < 20; i++) {
+    75	    assert.match(newPollId(), /^[A-Za-z0-9_-]{8}$/);
+    76	    assert.match(newAdminKey(), /^[A-Za-z0-9_-]{24}$/);
+    77	  }
+    78	});
+
+ succeeded in 185ms:
+     1	// E2E：起真实服务 + Chromium 走完整用户流程，另含并发与重启持久化验证。
+     2	// 运行：node test/e2e/run-e2e.js（npm test 已包含）
+     3	import { spawn } from 'node:child_process';
+     4	import { mkdtemp, writeFile } from 'node:fs/promises';
+     5	import { tmpdir } from 'node:os';
+     6	import path from 'node:path';
+     7	import { setTimeout as sleep } from 'node:timers/promises';
+     8	import { fileURLToPath } from 'node:url';
+     9	import { chromium } from 'playwright';
+    10	
+    11	const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+    12	const PORT = 3178;
+    13	const BASE = `http://localhost:${PORT}`;
+    14	
+    15	let passed = 0;
+    16	function ok(cond, name) {
+    17	  if (!cond) throw new Error(`E2E 断言失败: ${name}`);
+    18	  passed++;
+    19	  console.log(`  ✔ ${name}`);
+    20	}
+    21	
+    22	let serverProc = null;
+    23	async function startServer(dataDir) {
+    24	  serverProc = spawn(process.execPath, ['server.js'], {
+    25	    cwd: ROOT,
+    26	    env: { ...process.env, PORT: String(PORT), POLL_DATA_DIR: dataDir },
+    27	    stdio: ['ignore', 'pipe', 'inherit'],
+    28	  });
+    29	  for (let i = 0; i < 50; i++) {
+    30	    try {
+    31	      await fetch(BASE + '/');
+    32	      return;
+    33	    } catch {
+    34	      await sleep(100);
+    35	    }
+    36	  }
+    37	  throw new Error('服务未能启动');
+    38	}
+    39	async function stopServer() {
+    40	  if (!serverProc) return;
+    41	  serverProc.kill('SIGTERM');
+    42	  await new Promise((r) => serverProc.on('exit', r));
+    43	  serverProc = null;
+    44	}
+    45	
+    46	async function createPollViaHttp(body) {
+    47	  const res = await fetch(`${BASE}/create`, {
+    48	    method: 'POST',
+    49	    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    50	    body,
+    51	    redirect: 'manual',
+    52	  });
+    53	  const loc = res.headers.get('location'); // /p/<id>/created?key=<key>
+    54	  const id = loc.match(/\/p\/([^/]+)\/created/)[1];
+    55	  const key = loc.match(/key=(.+)$/)[1];
+    56	  return { id, key };
+    57	}
+    58	
+    59	const dataDir = await mkdtemp(path.join(tmpdir(), 'poll-e2e-'));
+    60	await startServer(dataDir);
+    61	const browser = await chromium.launch();
+    62	
+    63	try {
+    64	  // ---------- 场景 1：单选全流程（创建 → 投票 → 结果 → 软防重） ----------
+    65	  console.log('场景 1: 单选全流程');
+    66	  {
+    67	    const ctx = await browser.newContext();
+    68	    const page = await ctx.newPage();
+    69	    await page.goto(BASE + '/');
+    70	    await page.fill('#title', '周五团建去哪');
+    71	    const opts = page.locator('input[name=option]');
+    72	    await opts.nth(0).fill('烧烤');
+    73	    await opts.nth(1).fill('火锅');
+    74	    await page.click('button[type=submit]');
+    75	
+    76	    ok(/\/p\/[^/]+\/created\?key=/.test(page.url()), '创建后到达创建成功页（双链接）');
+    77	    const voteUrl = await page.inputValue('#vote-url');
+    78	    const adminUrl = await page.inputValue('#admin-url');
+    79	    ok(await page.locator('.notice').textContent().then((t) => t.includes('仅此一次')), '展示"仅此一次"提示');
+    80	
+    81	    await page.goto(voteUrl);
+    82	    const html = await page.content();
+    83	    ok(!html.includes(adminUrl.split('/admin/')[1]), '投票页不含管理密钥');
+    84	    await page.locator('.choice', { hasText: '火锅' }).click();
+    85	    await page.click('button[type=submit]');
+    86	    ok(page.url().endsWith('/results'), '投票后 303 到结果页');
+    87	    ok(await page.locator('.row-head', { hasText: '火锅' }).textContent().then((t) => t.includes('1 票 · 100%')), '结果计票正确（火锅 1 票 100%）');
+    88	    ok((await page.content()).includes('共 1 人参与'), '总提交人数为 1');
+    89	
+    90	    await page.goto(voteUrl); // 同浏览器重访
+    91	    ok(page.url().endsWith('/results'), '已投浏览器重访直达结果页（软防重）');
+    92	    await ctx.close();
+    93	  }
+    94	
+    95	  // ---------- 场景 2：多选（上限 2，超上限拒绝） ----------
+    96	  console.log('场景 2: 多选与上限');
+    97	  {
+    98	    const { id } = await createPollViaHttp('title=装备选择&option=A&option=B&option=C&multi=1&maxChoices=2');
+    99	    const ctx = await browser.newContext();
+   100	    const page = await ctx.newPage();
+   101	    await page.goto(`${BASE}/p/${id}`);
+   102	    ok((await page.content()).includes('最多选 2 项'), '多选页展示上限提示');
+   103	    for (const label of ['A', 'B', 'C']) await page.locator('.choice', { hasText: label }).click();
+   104	    await page.click('button[type=submit]');
+   105	    ok((await page.locator('.error').textContent()).includes('最多可选 2 项'), '超上限提交被拒绝');
+   106	
+   107	    await page.locator('.choice', { hasText: 'C' }).click(); // 取消 C
+   108	    await page.click('button[type=submit]');
+   109	    ok(page.url().endsWith('/results'), '合规多选提交成功');
+   110	    ok((await page.content()).includes('合计可能超过 100%'), '结果页注明多选占比含义');
+   111	    await ctx.close();
+   112	  }
+   113	
+   114	  // ---------- 场景 3：管理链接关闭 → 无法再投；错误密钥 404 ----------
+   115	  console.log('场景 3: 关闭与管理密钥');
+   116	  {
+   117	    const { id, key } = await createPollViaHttp('title=关门测试&option=X&option=Y');
+   118	    const ctx = await browser.newContext();
+   119	    const page = await ctx.newPage();
+   120	
+   121	    const bad = await page.goto(`${BASE}/p/${id}/admin/WRONGKEY_123456789012345`);
+   122	    ok(bad.status() === 404, '错误管理密钥返回 404');
+   123	
+   124	    await page.goto(`${BASE}/p/${id}/admin/${key}`);
+   125	    page.on('dialog', (d) => d.accept());
+   126	    await page.click('button[type=submit]');
+   127	    ok((await page.content()).includes('已关闭'), '关闭后管理页显示已关闭');
+   128	
+   129	    const ctx2 = await browser.newContext(); // 全新浏览器（无 Cookie）
+   130	    const page2 = await ctx2.newPage();
+   131	    await page2.goto(`${BASE}/p/${id}`);
+   132	    ok(page2.url().endsWith('/results'), '已关闭投票的参与链接直达结果页');
+   133	    ok((await page2.content()).includes('已结束'), '结果页状态为已结束');
+   134	    const res = await fetch(`${BASE}/p/${id}/vote`, {
+   135	      method: 'POST',
+   136	      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+   137	      body: 'choice=0',
+   138	    });
+   139	    ok(res.status === 403, '对已关闭投票直接 POST 被拒绝(403)');
+   140	    await ctx2.close();
+   141	    await ctx.close();
+   142	  }
+   143	
+   144	  // ---------- 场景 4：截止时间过期后只读（预置过期投票文件） ----------
+   145	  console.log('场景 4: 截止时间过期');
+   146	  {
+   147	    const expired = {
+   148	      id: 'expiredp', title: '过期投票', options: ['a', 'b'], multi: false, maxChoices: null,
+   149	      deadline: new Date(Date.now() - 3600e3).toISOString(), adminKey: 'k'.repeat(24),
+   150	      closed: false, counts: [2, 1], totalVoters: 3, createdAt: new Date(Date.now() - 7200e3).toISOString(),
+   151	    };
+   152	    await writeFile(path.join(dataDir, 'expiredp.json'), JSON.stringify(expired));
+   153	    const ctx = await browser.newContext();
+   154	    const page = await ctx.newPage();
+   155	    await page.goto(`${BASE}/p/expiredp`);
+   156	    ok(page.url().endsWith('/results'), '过期投票参与链接直达结果页');
+   157	    ok((await page.content()).includes('已结束'), '过期投票状态为已结束');
+   158	    const res = await fetch(`${BASE}/p/expiredp/vote`, {
+   159	      method: 'POST',
+   160	      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+   161	      body: 'choice=0',
+   162	    });
+   163	    ok(res.status === 403, '向过期投票提交被拒绝(403)');
+   164	    await ctx.close();
+   165	  }
+   166	
+   167	  // ---------- 场景 5：并发 12 票全部计入 + 重启持久化（Task 5.2） ----------
+   168	  console.log('场景 5: 并发与重启持久化');
+   169	  {
+   170	    const { id } = await createPollViaHttp('title=并发测试&option=p&option=q&option=r');
+   171	    const N = 12;
+   172	    const results = await Promise.all(
+   173	      Array.from({ length: N }, (_, i) =>
+   174	        fetch(`${BASE}/p/${id}/vote`, {
+   175	          method: 'POST',
+   176	          headers: { 'content-type': 'application/x-www-form-urlencoded' },
+   177	          body: `choice=${i % 3}`,
+   178	          redirect: 'manual',
+   179	        })
+   180	      )
+   181	    );
+   182	    ok(results.every((r) => r.status === 303), `并发 ${N} 票全部返回成功`);
+   183	    let body = await fetch(`${BASE}/p/${id}/results`).then((r) => r.text());
+   184	    ok(body.includes(`共 ${N} 人参与`), `并发 ${N} 票无丢失（总数恰为 ${N}）`);
+   185	
+   186	    await stopServer(); // 模拟重启
+   187	    await startServer(dataDir);
+   188	    body = await fetch(`${BASE}/p/${id}/results`).then((r) => r.text());
+   189	    ok(body.includes(`共 ${N} 人参与`), '服务重启后数据仍在');
+   190	  }
+   191	
+   192	  // ---------- 场景 6：手机视口渲染冒烟（Task 5.3） ----------
+   193	  console.log('场景 6: 手机视口冒烟');
+   194	  {
+   195	    const { id } = await createPollViaHttp('title=手机上看看这个比较长的标题会不会溢出容器边界&option=选项一&option=选项二');
+   196	    const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
+   197	    const page = await ctx.newPage();
+   198	    for (const url of [`${BASE}/`, `${BASE}/p/${id}`, `${BASE}/p/${id}/results`]) {
+   199	      await page.goto(url);
+   200	      const noHScroll = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
+   201	      ok(noHScroll, `无横向滚动: ${new URL(url).pathname}`);
+   202	    }
+   203	    await ctx.close();
+   204	  }
+   205	
+   206	  console.log(`\nE2E 全部通过（${passed} 项断言）`);
+   207	} finally {
+   208	  await browser.close();
+   209	  await stopServer();
+   210	}
+
+ succeeded in 196ms:
+     1	# LAB-NOTES.md — friction log (experiment overlay, not part of the OpenSpec process)
+     2	
+     3	- explore.md step "Check for context" says to run `openspec list --json` unconditionally, but on a brand-new project (no `openspec/` dir yet) this exits 1 with a `list_error`. The command doesn't branch on "not initialized yet" vs "no active changes" — had to infer that `openspec init` comes later (at propose time) rather than during explore.
+     4	- `openspec new change` worked fine without `openspec init` (auto-created openspec/changes/), yet `openspec list` had earlier insisted "Run 'openspec init' first". Inconsistent init story between commands.
+     5	- CLI flag inconsistency: `status`/`instructions` take `--change <name>`, but `validate` rejects `--change` (suggests `--changes`); positional `openspec validate <name>` is the actual form. Explore.md even lists `validate` among commands that accept `--store`, reinforcing the wrong-flag guess.
+     6	- propose.md says to re-run `openspec status --json` after each artifact and check `applyRequires` done — fine, but `status` exits 0 with JSON and initial suspicion of `status` exiting 1 was a false alarm — the exit 1 came from the chained `validate --change` failure, standalone `status` exits 0. Friction was self-inflicted by chaining; no CLI bug.
+     7	- Session interruption mid-apply: recovery via tasks.md checkboxes worked, BUT only because progress happened to be checkpointed. I had batched checkbox updates (marked 1.x-3.x together, hadn't marked 4.x though the code was done) — after resume the checkboxes claimed less progress than reality, and I had to re-verify files/tests to reconcile. apply.md's "update task checkbox immediately after completing each task" is load-bearing for crash recovery; batching is tempting and nothing enforces it.
+     8	- `openspec instructions apply` returned task IDs "1".."14" (flat sequence) while tasks.md uses "1.1".."5.3" — two numbering schemes for the same tasks; harmless but momentarily confusing when cross-referencing.
+     9	- archive.md step 4 mandates re-prompting "Sync now vs Archive without syncing" even though my previous turn already told the user archive = sync + move and they confirmed. Process forces a redundant confirmation.
+    10	- archive.md step 4 says to have a subagent invoke skill `openspec-sync-specs` — no such skill exists in this environment (only the four opsx command files were provided). If the user picks "sync", the prescribed mechanism is broken; will have to do the merge manually.
+
+ succeeded in 204ms:
+     1	import { test } from 'node:test';
+     2	import assert from 'node:assert/strict';
+     3	import { buildPoll, castVote, closePoll, isOpen, resultsView } from '../lib/poll.js';
+     4	
+     5	const mk = (over = {}) => buildPoll({ title: 't', options: ['a', 'b', 'c'], ...over });
+     6	
+     7	test('创建校验：合法输入成功', () => {
+     8	  const r = mk();
+     9	  assert.ok(r.ok);
+    10	  assert.equal(r.poll.multi, false);
+    11	  assert.equal(r.poll.closed, false);
+    12	});
+    13	
+    14	test('创建校验：选项不足 2 个被拒绝（含空白选项过滤）', () => {
+    15	  assert.equal(mk({ options: ['a'] }).ok, false);
+    16	  assert.equal(mk({ options: ['a', '  ', ''] }).ok, false);
+    17	  assert.match(mk({ options: ['a'] }).error, /至少需要 2 个选项/);
+    18	});
+    19	
+    20	test('创建校验：标题为空/超长被拒绝', () => {
+    21	  assert.equal(mk({ title: '  ' }).ok, false);
+    22	  assert.equal(mk({ title: 'x'.repeat(201) }).ok, false);
+    23	});
+    24	
+    25	test('创建校验：截止时间不晚于当前时间被拒绝', () => {
+    26	  const now = new Date('2026-07-08T12:00:00Z');
+    27	  assert.equal(buildPoll({ title: 't', options: ['a', 'b'], deadline: '2026-07-08T11:00:00Z' }, now).ok, false);
+    28	  assert.equal(buildPoll({ title: 't', options: ['a', 'b'], deadline: '2026-07-08T12:00:00Z' }, now).ok, false);
+    29	  assert.equal(buildPoll({ title: 't', options: ['a', 'b'], deadline: 'not-a-date' }, now).ok, false);
+    30	  assert.ok(buildPoll({ title: 't', options: ['a', 'b'], deadline: '2026-07-08T13:00:00Z' }, now).ok);
+    31	});
+    32	
+    33	test('创建校验：多选上限范围 2~选项数', () => {
+    34	  assert.equal(mk({ multi: true, maxChoices: 1 }).ok, false);
+    35	  assert.equal(mk({ multi: true, maxChoices: 4 }).ok, false);
+    36	  assert.equal(mk({ multi: true, maxChoices: 1.5 }).ok, false);
+    37	  assert.ok(mk({ multi: true, maxChoices: 2 }).ok);
+    38	  assert.ok(mk({ multi: true }).ok); // 不限
+    39	});
+    40	
+    41	test('投票：单选恰好一项', () => {
+    42	  const { poll } = mk();
+    43	  assert.ok(castVote(poll, [1]).ok);
+    44	  assert.equal(castVote(poll, []).ok, false);
+    45	  assert.equal(castVote(poll, [0, 1]).ok, false);
+    46	});
+    47	
+    48	test('投票：多选 1~上限，超上限拒绝', () => {
+    49	  const { poll } = mk({ multi: true, maxChoices: 2 });
+    50	  assert.ok(castVote(poll, [0]).ok);
+    51	  assert.ok(castVote(poll, [0, 2]).ok);
+    52	  const r = castVote(poll, [0, 1, 2]);
+    53	  assert.equal(r.ok, false);
+    54	  assert.match(r.error, /最多可选 2 项/);
+    55	});
+    56	
+    57	test('投票：非法/重复索引被拒绝', () => {
+    58	  const { poll } = mk({ multi: true });
+    59	  assert.equal(castVote(poll, [3]).ok, false);
+    60	  assert.equal(castVote(poll, [-1]).ok, false);
+    61	  assert.equal(castVote(poll, ['1']).ok, false);
+    62	  assert.equal(castVote(poll, [1, 1]).ok, false);
+    63	});
+    64	
+    65	test('投票：计票准确', () => {
+    66	  let { poll } = mk({ multi: true });
+    67	  poll = castVote(poll, [0, 2]).poll;
+    68	  poll = castVote(poll, [0]).poll;
+    69	  assert.deepEqual(poll.counts, [2, 0, 1]);
+    70	  assert.equal(poll.totalVoters, 2);
+    71	});
+    72	
+    73	test('生命周期：手动关闭后拒绝投票，关闭幂等', () => {
+    74	  let { poll } = mk();
+    75	  poll = closePoll(poll);
+    76	  assert.equal(isOpen(poll), false);
+    77	  const r = castVote(poll, [0]);
+    78	  assert.equal(r.ok, false);
+    79	  assert.match(r.error, /已结束/);
+    80	  assert.equal(closePoll(poll).closed, true); // 幂等
+    81	});
+    82	
+    83	test('生命周期：截止时间被动判定', () => {
+    84	  const now = new Date('2026-07-08T12:00:00Z');
+    85	  const { poll } = buildPoll({ title: 't', options: ['a', 'b'], deadline: '2026-07-08T13:00:00Z' }, now);
+    86	  assert.equal(isOpen(poll, new Date('2026-07-08T12:59:59Z')), true);
+    87	  assert.equal(isOpen(poll, new Date('2026-07-08T13:00:00Z')), false);
+    88	  assert.equal(castVote(poll, [0], new Date('2026-07-08T14:00:00Z')).ok, false);
+    89	});
+    90	
+    91	test('结果视图：占比以总提交人数为分母，0 票为 0%', () => {
+    92	  let { poll } = mk({ multi: true });
+    93	  const empty = resultsView(poll);
+    94	  assert.deepEqual(empty.rows.map((r) => r.pct), [0, 0, 0]);
+    95	  assert.equal(empty.total, 0);
+    96	
+    97	  poll = castVote(poll, [0, 1]).poll;
+    98	  poll = castVote(poll, [0]).poll;
+    99	  const v = resultsView(poll);
+   100	  assert.equal(v.total, 2);
+   101	  assert.deepEqual(v.rows.map((r) => r.pct), [100, 50, 0]); // 多选下总和可超 100%
+   102	});
+
+ succeeded in 233ms:
+     1	{
+     2	  "name": "openspec-poll",
+     3	  "version": "0.1.0",
+     4	  "description": "快速投票小工具：建投票、发链接、匿名即投、共享结果",
+     5	  "type": "module",
+     6	  "private": true,
+     7	  "engines": {
+     8	    "node": ">=18"
+     9	  },
+    10	  "scripts": {
+    11	    "start": "node server.js",
+    12	    "test": "node --test test/*.test.js && node test/e2e/run-e2e.js"
+    13	  },
+    14	  "devDependencies": {
+    15	    "playwright": "^1.60.0"
+    16	  }
+    17	}
+
+codex
+The e2e tests cover the happy workflows and several spec scenarios, but they also reveal a likely mismatch: they assert closed/deadline GETs redirect to results, while the lifecycle spec says the participant should see an ended prompt. I’m checking the archived design/proposal before deciding whether that is a defect or an intentional route contract.
+exec
+/usr/bin/zsh -lc 'nl -ba openspec/changes/archive/2026-07-08-add-quick-poll/design.md' in /root/terra/fullrun-lab/openspec-poll
+exec
+/usr/bin/zsh -lc 'nl -ba openspec/changes/archive/2026-07-08-add-quick-poll/proposal.md' in /root/terra/fullrun-lab/openspec-poll
+exec
+/usr/bin/zsh -lc 'find openspec/changes/archive/2026-07-08-add-quick-poll/specs -type f -maxdepth 3 -print' in /root/terra/fullrun-lab/openspec-poll
+exec
+/usr/bin/zsh -lc 'nl -ba openspec/changes/archive/2026-07-08-add-quick-poll/tasks.md' in /root/terra/fullrun-lab/openspec-poll
+ succeeded in 148ms:
+     1	# Tasks: add-quick-poll
+     2	
+     3	## 1. 项目骨架
+     4	
+     5	- [x] 1.1 初始化 package.json（ESM、`npm start`/`npm test` 脚本、零运行时依赖、devDep: playwright）与 .gitignore（node_modules、data/）
+     6	- [x] 1.2 建立目录结构：server.js、lib/store.js、lib/poll.js、lib/pages.js、test/
+     7	
+     8	## 2. 存储层（specs/poll-storage）
+     9	
+    10	- [x] 2.1 实现 lib/store.js：数据目录自动创建、`readPoll(id)`、原子写（临时文件 + rename）、每投票 promise 链串行化写、ID/adminKey 生成（crypto，URL 安全字母表）、ID 格式白名单校验
+    11	- [x] 2.2 单测（node:test）：落盘字段完整、并发写不丢票不损坏文件、非法 ID 被拒绝
+    12	
+    13	## 3. 领域逻辑（specs/poll-creation、poll-voting、poll-lifecycle）
+    14	
+    15	- [x] 3.1 实现 lib/poll.js：创建输入校验（标题/选项数与长度/多选上限/截止时间）、开放状态纯函数、投票提交校验（单选恰 1 项、多选 1~上限、索引合法、开放中）、计票
+    16	- [x] 3.2 单测：各校验边界（选项 <2、截止时间过期、多选超上限、非法索引、向已关闭投票提交）
+    17	
+    18	## 4. HTTP 服务与页面（specs 全部 + design D2/D5/D6/D8）
+    19	
+    20	- [x] 4.1 实现 server.js 路由分发（design D8 路由表）、请求体解析（大小上限）、404 处理
+    21	- [x] 4.2 实现 lib/pages.js：布局 + HTML 转义 + 5 个页面（创建表单、创建成功双链接页、投票页、结果页含比例条、管理页）
+    22	- [x] 4.3 接通创建流：GET / → POST /create → 303 创建成功页（双链接、"仅此一次"提示；参与页/结果页不含 adminKey）
+    23	- [x] 4.4 接通投票流：GET /p/:id（已投/已关闭重定向）→ POST /p/:id/vote（校验 + 计票 + Set-Cookie 软防重）→ 303 结果页
+    24	- [x] 4.5 接通结果页与生命周期：GET /p/:id/results（票数/占比/状态、多选占比注明）、管理页 + POST close（timingSafeEqual 校验、错误密钥 404、关闭幂等）、截止时间被动判定
+    25	
+    26	## 5. 端到端验证
+    27	
+    28	- [x] 5.1 Playwright E2E：创建单选投票 → 投票 → 结果正确 → 同浏览器重访直达结果页；多选（含超上限拒绝）；管理链接关闭后无法再投；截止时间过期后只读；错误管理密钥 404
+    29	- [x] 5.2 并发验证：脚本并发 POST 10+ 票，总数准确；服务重启后数据仍在
+    30	- [x] 5.3 全量跑通 `npm test`，手动冒烟一遍手机宽度视口渲染
+
+ succeeded in 163ms:
+     1	# Proposal: add-quick-poll
+     2	
+     3	## Why
+     4	
+     5	开会或群聊里临时征集意见时，现有投票工具要么要求登录/注册，要么依赖特定平台（微信小程序、企业 IM 插件）。需要一个零门槛的网页投票小工具：发起人几秒建好投票、发一条链接，参与者点开即投、匿名免登录，所有人共享同一份实时结果。本仓库当前为空项目，这是首个变更，从零建立该工具。
+     6	
+     7	## What Changes
+     8	
+     9	- 新增投票创建：标题 + 2 个及以上选项，可选"单选/多选"模式（多选可限制最多可选项数），可选截止时间。
+    10	- 新增双链接机制：创建成功后生成参与链接（公开分享）与管理链接（含随机管理密钥，仅展示一次，供发起人使用）。
+    11	- 新增匿名投票：参与者免登录提交选择；浏览器本地记录"已投过"实现软防重（同一浏览器重复打开直接显示结果）。
+    12	- 新增结果页：展示各选项票数与比例，刷新即见最新结果。
+    13	- 新增投票关闭：发起人通过管理链接手动关闭投票；到达截止时间自动视为关闭。关闭后仅可查看结果，不可再投。
+    14	- 新增文件存储：每个投票一个 JSON 文件，进程内串行化写入 + 原子写（临时文件 + rename），不引入数据库。
+    15	
+    16	## Capabilities
+    17	
+    18	### New Capabilities
+    19	
+    20	- `poll-creation`: 创建投票（标题、选项、单选/多选、可选截止时间），生成投票 ID、参与链接与管理密钥。
+    21	- `poll-voting`: 匿名提交投票（单选/多选校验、软防重、开放状态校验），共享计票。
+    22	- `poll-results`: 查看投票结果（票数、比例、投票状态），对所有持参与链接者可见。
+    23	- `poll-lifecycle`: 投票的开放/关闭状态管理（管理链接手动关闭、截止时间自动关闭）。
+    24	- `poll-storage`: 基于 JSON 文件的持久化（每投票一文件、写串行化、原子写）。
+    25	
+    26	### Modified Capabilities
+    27	
+    28	（无——空项目，无既有 spec。）
+    29	
+    30	## Impact
+    31	
+    32	- 全新代码：一个 Node.js HTTP 服务（含路由、页面、静态资源）、`data/` 目录下的 JSON 存储文件。
+    33	- 新增依赖：预期仅极少量运行时依赖（详见 design.md），不引入数据库。
+    34	- 无既有代码、API 或系统受影响（空仓库）。
+
+ succeeded in 170ms:
+     1	# Design: add-quick-poll
+     2	
+     3	## Context
+     4	
+     5	空仓库，从零构建。需求见 proposal.md 与 specs/：网页投票小工具，匿名免登录、多人共享结果、文件存储、发起人可关闭。用户明确约束：不上数据库、保持"小"。部署形态假定为单进程、单实例的小型 Node 服务。
+     6	
+     7	## Goals / Non-Goals
+     8	
+     9	**Goals:**
+    10	- 一条命令启动的自包含 Web 服务（`node server.js` 或 `npm start`）。
+    11	- 创建 → 分享 → 投票 → 看结果全流程，秒级上手，手机浏览器可用。
+    12	- 并发提交下计票准确、文件不损坏。
+    13	- 代码量与依赖面尽可能小，便于阅读与改造。
+    14	
+    15	**Non-Goals:**
+    16	- 强防刷（跨设备/IP 级防重）、真实身份鉴权、登录体系。
+    17	- WebSocket/SSE 实时推送（刷新即最新）。
+    18	- 投票编辑、删除、列表/发现页、导出、多语言。
+    19	- 多进程/多实例水平扩展（进程内写锁的前提是单进程）。
+    20	
+    21	## Decisions
+    22	
+    23	### D1: 零依赖 Node 原生 HTTP 服务（而非 Express/Fastify）
+    24	需求只有约 7 个路由、无中间件需求。用 `node:http` + 手写小路由表即可，省掉 node_modules 与安全更新负担。备选 Express：更顺手但对这个体量是纯开销。**Node ≥ 18，ESM。**
+    25	
+    26	### D2: 服务端渲染 HTML 模板字符串，无前端框架、无构建步骤
+    27	页面共 5 个（创建、创建成功、投票、结果、管理），均为简单表单/展示页。用模板函数（tagged template + HTML 转义工具）服务端拼 HTML，内联一份共享 CSS。表单用原生 `<form>` POST 提交（302 跳转），JS 仅用于"复制链接"按钮等增强，无 JS 也能完整投票。备选 SPA + JSON API：交互更花哨，但引入构建链与状态管理，违背"小"。
+    28	
+    29	### D3: 数据模型与文件布局
+    30	```
+    31	data/<pollId>.json
+    32	{
+    33	  "id": "x7Kp2mAq",            // nanoid 风格，[A-Za-z0-9_-]{8}，crypto 随机
+    34	  "title": "午饭吃什么",
+    35	  "options": ["面", "饭", "饺子"],
+    36	  "multi": false,               // 单选/多选
+    37	  "maxChoices": null,           // 多选上限；null = 不限
+    38	  "deadline": null,             // ISO 8601 字符串或 null
+    39	  "adminKey": "…",              // crypto 随机 24 字符
+    40	  "closed": false,              // 手动关闭标记
+    41	  "counts": [0, 0, 0],          // 与 options 对齐
+    42	  "totalVoters": 0,             // 总提交人数（一人一次提交）
+    43	  "createdAt": "…"
+    44	}
+    45	```
+    46	开放判定为纯函数：`!closed && (!deadline || now < deadline)`。占比分母用 `totalVoters`（多选下各选项占比含义为"多少比例的人选了它"，总和可超 100%，页面注明）。
+    47	
+    48	### D4: 写并发控制——进程内每投票一条 promise 链 + 原子写
+    49	每个 pollId 维护一条串行 promise 链（`Map<pollId, Promise>`），写操作（投票、关闭）排队执行"读文件 → 改 → 写临时文件 → rename"。rename 同目录内原子，读方永远看到完整 JSON。备选：文件锁库（proper-lockfile）——为多进程设计，这里单进程用不上；追加日志（JSONL）——重启需重放，复杂化读路径。
+    50	
+    51	### D5: 软防重用 Cookie
+    52	投票成功后 `Set-Cookie: voted_<pollId>=1`（一年有效、SameSite=Lax、Path 限定该投票路径）。GET 投票页与 POST 投票时检查该 Cookie：GET 重定向到结果页，POST 拒绝（303 到结果页）。备选 localStorage：需要 JS 且服务端无法在 POST 时校验，Cookie 两端都能看到，更符合"无 JS 也能用"。
+    53	
+    54	### D6: 安全基线
+    55	- pollId 与 adminKey 均来自 `crypto.randomBytes`，URL 安全字母表；ID 不可枚举。
+    56	- 路由参数白名单校验 `^[A-Za-z0-9_-]+$`，杜绝路径穿越（specs/poll-storage）。
+    57	- 所有用户输入输出经 HTML 转义，防 XSS。
+    58	- adminKey 校验用 `crypto.timingSafeEqual`；错误一律 404，不暴露管理入口存在性。
+    59	- 请求体大小上限（16KB）防滥用。
+    60	
+    61	### D7: 目录结构
+    62	```
+    63	openspec-poll/
+    64	├── server.js          # 入口：http server + 路由分发
+    65	├── lib/
+    66	│   ├── store.js       # 读写 JSON、串行化、原子写、ID/密钥生成
+    67	│   ├── poll.js        # 领域逻辑：校验、开放判定、计票
+    68	│   └── pages.js       # HTML 模板（5 个页面 + 布局 + 转义）
+    69	├── test/              # node:test 单测 + Playwright E2E
+    70	├── data/              # 运行时生成（gitignore）
+    71	└── package.json       # 无运行时依赖；devDep: playwright
+    72	```
+    73	
+    74	### D8: 路由表
+    75	| 方法 | 路径 | 行为 |
+    76	|------|------|------|
+    77	| GET  | `/` | 创建表单 |
+    78	| POST | `/create` | 创建投票 → 303 到创建成功页 |
+    79	| GET  | `/p/:id/created?key=…` | 创建成功页（双链接展示，一次性） |
+    80	| GET  | `/p/:id` | 投票页（已投/已关闭 → 302 结果页） |
+    81	| POST | `/p/:id/vote` | 提交投票 → 303 结果页 |
+    82	| GET  | `/p/:id/results` | 结果页 |
+    83	| GET  | `/p/:id/admin/:key` | 管理页 |
+    84	| POST | `/p/:id/admin/:key/close` | 关闭投票 → 303 管理页 |
+    85	
+    86	创建成功页经 303 重定向携带 `?key=`，页面本身提示"仅此一次，请保存"；不持久化"是否已展示"，保持简单（拿到 URL 即拿到权限，与管理链接同一信任模型）。
+    87	
+    88	## Risks / Trade-offs
+    89	
+    90	- [软防重可绕过：换浏览器/清 Cookie 即可再投] → 明确的产品取舍，场景是会议/群聊熟人环境；spec 已将其定义为"软防重"。
+    91	- [管理链接丢失则无法手动关闭] → 截止时间兜底；文档提示创建时保存。
+    92	- [单进程假设：多实例部署会破坏写串行化] → Non-Goal，README/design 明示；文件模型天然不支持多写者。
+    93	- [data/ 无限增长（无删除/过期清理）] → 初版接受；JSON 文件极小，量级可忽略。
+    94	- [创建成功页 URL 含 key，可能进浏览器历史/日志] → 与"管理链接即凭证"模型一致，风险不高于管理链接本身。
+    95	
+    96	## Migration Plan
+    97	
+    98	全新项目，无迁移。回滚 = 停服删目录。
+    99	
+   100	## Open Questions
+   101	
+   102	（无——范围已在 explore 阶段与用户确认。）
+
+ succeeded in 178ms:
+openspec/changes/archive/2026-07-08-add-quick-poll/specs/poll-storage/spec.md
+openspec/changes/archive/2026-07-08-add-quick-poll/specs/poll-creation/spec.md
+openspec/changes/archive/2026-07-08-add-quick-poll/specs/poll-results/spec.md
+openspec/changes/archive/2026-07-08-add-quick-poll/specs/poll-lifecycle/spec.md
+openspec/changes/archive/2026-07-08-add-quick-poll/specs/poll-voting/spec.md
+
+codex
+I’ve got the candidate list down to defects with reproducible effects. A few tempting items are just accepted tradeoffs in the design, so I’m excluding those unless they contradict a SHALL or can produce loss/exposure in normal deployment.
+exec
+/usr/bin/zsh -lc 'rg -n "TODO|FIXME|adminKey|deadline|cookie|voted|atomic|rename|Host|x-forwarded|created|已结束|已投|防重|fsync|collision|重复|tmp|writeChains" .' in /root/terra/fullrun-lab/openspec-poll
+exec
+/usr/bin/zsh -lc "find . -maxdepth 3 -type f -not -path './node_modules/*' -not -path './.git/*' -print" in /root/terra/fullrun-lab/openspec-poll
+ succeeded in 109ms:
+./LAB-NOTES.md:4:- `openspec new change` worked fine without `openspec init` (auto-created openspec/changes/), yet `openspec list` had earlier insisted "Run 'openspec init' first". Inconsistent init story between commands.
+./test/poll.test.js:27:  assert.equal(buildPoll({ title: 't', options: ['a', 'b'], deadline: '2026-07-08T11:00:00Z' }, now).ok, false);
+./test/poll.test.js:28:  assert.equal(buildPoll({ title: 't', options: ['a', 'b'], deadline: '2026-07-08T12:00:00Z' }, now).ok, false);
+./test/poll.test.js:29:  assert.equal(buildPoll({ title: 't', options: ['a', 'b'], deadline: 'not-a-date' }, now).ok, false);
+./test/poll.test.js:30:  assert.ok(buildPoll({ title: 't', options: ['a', 'b'], deadline: '2026-07-08T13:00:00Z' }, now).ok);
+./test/poll.test.js:57:test('投票：非法/重复索引被拒绝', () => {
+./test/poll.test.js:79:  assert.match(r.error, /已结束/);
+./test/poll.test.js:85:  const { poll } = buildPoll({ title: 't', options: ['a', 'b'], deadline: '2026-07-08T13:00:00Z' }, now);
+./server.js:54:  for (const part of (req.headers.cookie ?? '').split(';')) {
+./server.js:61:const hasVoted = (req, pollId) => parseCookies(req)[`voted_${pollId}`] === '1';
+./server.js:62:const votedCookie = (pollId) =>
+./server.js:63:  `voted_${pollId}=1; Max-Age=31536000; Path=/p/${pollId}; SameSite=Lax; HttpOnly`;
+./server.js:73:  const proto = req.headers['x-forwarded-proto'] ?? 'http';
+./server.js:91:    deadline: normalizeDeadline(form.get('deadline')),
+./server.js:97:      values: { title: input.title, options: input.options, multi: input.multi, maxChoices: input.maxChoices ?? '', deadline: input.deadline ?? '' },
+./server.js:101:  return redirect(res, 303, `/p/${r.poll.id}/created?key=${r.poll.adminKey}`);
+./server.js:108:  if (!keyMatches(poll.adminKey, key)) return notFound(res);
+./server.js:109:  return html(res, 200, pages.createdPage(poll, poll.adminKey, requestOrigin(req)));
+./server.js:122:  if (hasVoted(req, id)) return redirect(res, 303, `/p/${id}/results`); // 软防重：拒绝重复提交
+./server.js:133:    return redirect(res, 303, `/p/${id}/results`, { 'set-cookie': votedCookie(id) });
+./server.js:148:  if (!poll || !keyMatches(poll.adminKey, key)) return notFound(res); // 错误密钥一律 404
+./server.js:154:  if (!poll || !keyMatches(poll.adminKey, key)) return notFound(res);
+./server.js:176:      if (rest.length === 1 && rest[0] === 'created' && m === 'GET') return handleCreated(req, res, id, url);
+./test/store.test.js:4:import { tmpdir } from 'node:os';
+./test/store.test.js:10:  const dir = await mkdtemp(path.join(tmpdir(), 'poll-store-'));
+./test/store.test.js:22:  for (const key of ['id', 'title', 'options', 'multi', 'maxChoices', 'deadline', 'adminKey', 'closed', 'counts', 'totalVoters', 'createdAt']) {
+./test/store.test.js:60:  const leftovers = (await readdir(dir)).filter((f) => f.endsWith('.tmp'));
+./test/e2e/run-e2e.js:5:import { tmpdir } from 'node:os';
+./test/e2e/run-e2e.js:53:  const loc = res.headers.get('location'); // /p/<id>/created?key=<key>
+./test/e2e/run-e2e.js:54:  const id = loc.match(/\/p\/([^/]+)\/created/)[1];
+./test/e2e/run-e2e.js:59:const dataDir = await mkdtemp(path.join(tmpdir(), 'poll-e2e-'));
+./test/e2e/run-e2e.js:64:  // ---------- 场景 1：单选全流程（创建 → 投票 → 结果 → 软防重） ----------
+./test/e2e/run-e2e.js:76:    ok(/\/p\/[^/]+\/created\?key=/.test(page.url()), '创建后到达创建成功页（双链接）');
+./test/e2e/run-e2e.js:91:    ok(page.url().endsWith('/results'), '已投浏览器重访直达结果页（软防重）');
+./test/e2e/run-e2e.js:133:    ok((await page2.content()).includes('已结束'), '结果页状态为已结束');
+./test/e2e/run-e2e.js:149:      deadline: new Date(Date.now() - 3600e3).toISOString(), adminKey: 'k'.repeat(24),
+./test/e2e/run-e2e.js:150:      closed: false, counts: [2, 1], totalVoters: 3, createdAt: new Date(Date.now() - 7200e3).toISOString(),
+./test/e2e/run-e2e.js:157:    ok((await page.content()).includes('已结束'), '过期投票状态为已结束');
+./openspec/specs/poll-voting/spec.md:5:定义匿名投票的提交规则：单选/多选校验、软防重、并发计票准确性。
+./openspec/specs/poll-voting/spec.md:32:### Requirement: 软防重
+./openspec/specs/poll-voting/spec.md:33:系统必须（SHALL）在投票提交成功后于参与者浏览器本地记录该投票"已投过"标记（Cookie 或等价机制）。持有该标记的浏览器再次打开参与链接时，系统必须直接展示结果页而非投票表单，且必须拒绝其再次提交。本机制为软防重：不要求跨浏览器或跨设备防重。
+./openspec/specs/poll-voting/spec.md:35:#### Scenario: 已投浏览器重访直达结果
+./openspec/specs/poll-voting/spec.md:39:#### Scenario: 已投浏览器重复提交被拒绝
+./openspec/specs/poll-voting/spec.md:40:- **WHEN** 携带"已投过"标记的浏览器再次提交投票
+./openspec/specs/poll-voting/spec.md:48:- **THEN** 该投票的总提交数恰好增加 10，无丢失或重复
+./lib/store.js:4:import { mkdir, readFile, writeFile, rename } from 'node:fs/promises';
+./lib/store.js:27:    this.writeChains = new Map(); // pollId -> tail promise（串行化写队列）
+./lib/store.js:51:  /** 原子写：写临时文件后 rename（同目录内原子）。 */
+./lib/store.js:52:  async #atomicWrite(id, poll) {
+./lib/store.js:54:    const tmp = path.join(this.dataDir, `.${id}.${randomToken(6)}.tmp`);
+./lib/store.js:55:    await writeFile(tmp, JSON.stringify(poll, null, 2), 'utf8');
+./lib/store.js:56:    await rename(tmp, target);
+./lib/store.js:62:      await this.#atomicWrite(poll.id, poll);
+./lib/store.js:78:        await this.#atomicWrite(id, outcome.poll);
+./lib/store.js:86:    const tail = this.writeChains.get(id) ?? Promise.resolve();
+./lib/store.js:89:    this.writeChains.set(id, next.catch(() => {}));
+./lib/poll.js:13: * input: { title, options: string[], multi?: bool, maxChoices?: number|null, deadline?: string|null }
+./lib/poll.js:37:  let deadline = null;
+./lib/poll.js:38:  if (input.deadline != null && String(input.deadline).trim() !== '') {
+./lib/poll.js:39:    const d = new Date(input.deadline);
+./lib/poll.js:42:    deadline = d.toISOString();
+./lib/poll.js:53:      deadline,
+./lib/poll.js:54:      adminKey: newAdminKey(),
+./lib/poll.js:58:      createdAt: now.toISOString(),
+./lib/poll.js:66:  if (poll.deadline && now.getTime() >= new Date(poll.deadline).getTime()) return false;
+./lib/poll.js:76:  if (!isOpen(poll, now)) return fail('投票已结束');
+./lib/poll.js:80:  if (uniq.length !== choices.length) return fail('选项重复');
+./lib/poll.js:109:    deadline: poll.deadline,
+./openspec/specs/poll-storage/spec.md:21:系统必须（MUST）对同一投票文件的写入串行化（进程内按投票 ID 排队），且每次写入必须为原子写：先写入同目录临时文件，再 rename 覆盖目标文件。任何时刻目标文件必须是完整合法的 JSON，不得出现半写状态。
+./openspec/specs/poll-lifecycle/spec.md:14:- **THEN** 系统展示"投票已结束"并引导至结果页，不提供投票表单
+./openspec/specs/poll-lifecycle/spec.md:25:- **THEN** 投票状态变为已关闭，后续投票提交被拒绝，结果页状态显示"已结束"
+./openspec/specs/poll-lifecycle/spec.md:31:#### Scenario: 重复关闭幂等
+./lib/pages.js:71:  open ? '<span class="status open">进行中</span>' : '<span class="status closed">已结束</span>';
+./lib/pages.js:97:  <label for="deadline">截止时间（可选）</label>
+./lib/pages.js:98:  <input type="datetime-local" id="deadline" name="deadline" value="${escapeHtml(values.deadline ?? '')}">
+./lib/pages.js:105:export function createdPage(poll, adminKey, origin) {
+./lib/pages.js:107:  const adminUrl = `${origin}/p/${poll.id}/admin/${adminKey}`;
+./lib/pages.js:127:  const deadlineNote = poll.deadline
+./lib/pages.js:128:    ? `<p class="muted">截止：${escapeHtml(new Date(poll.deadline).toLocaleString('zh-CN', { hour12: false }))}</p>`
+./lib/pages.js:137:${deadlineNote}
+./lib/pages.js:167:export function adminPage(poll, adminKey, open) {
+./lib/pages.js:169:    ? `<form method="post" action="/p/${poll.id}/admin/${adminKey}/close" onsubmit="return confirm('确认关闭？关闭后不可重新打开。')">
+./lib/pages.js:191:/** 投票已结束提示页（尝试投票时）。 */
+./lib/pages.js:193:  return layout('投票已结束', `
+./lib/pages.js:194:<h1>投票已结束</h1>
+./openspec/changes/archive/2026-07-08-add-quick-poll/design.md:16:- 强防刷（跨设备/IP 级防重）、真实身份鉴权、登录体系。
+./openspec/changes/archive/2026-07-08-add-quick-poll/design.md:38:  "deadline": null,             // ISO 8601 字符串或 null
+./openspec/changes/archive/2026-07-08-add-quick-poll/design.md:39:  "adminKey": "…",              // crypto 随机 24 字符
+./openspec/changes/archive/2026-07-08-add-quick-poll/design.md:43:  "createdAt": "…"
+./openspec/changes/archive/2026-07-08-add-quick-poll/design.md:46:开放判定为纯函数：`!closed && (!deadline || now < deadline)`。占比分母用 `totalVoters`（多选下各选项占比含义为"多少比例的人选了它"，总和可超 100%，页面注明）。
+./openspec/changes/archive/2026-07-08-add-quick-poll/design.md:49:每个 pollId 维护一条串行 promise 链（`Map<pollId, Promise>`），写操作（投票、关闭）排队执行"读文件 → 改 → 写临时文件 → rename"。rename 同目录内原子，读方永远看到完整 JSON。备选：文件锁库（proper-lockfile）——为多进程设计，这里单进程用不上；追加日志（JSONL）——重启需重放，复杂化读路径。
+./openspec/changes/archive/2026-07-08-add-quick-poll/design.md:51:### D5: 软防重用 Cookie
+./openspec/changes/archive/2026-07-08-add-quick-poll/design.md:52:投票成功后 `Set-Cookie: voted_<pollId>=1`（一年有效、SameSite=Lax、Path 限定该投票路径）。GET 投票页与 POST 投票时检查该 Cookie：GET 重定向到结果页，POST 拒绝（303 到结果页）。备选 localStorage：需要 JS 且服务端无法在 POST 时校验，Cookie 两端都能看到，更符合"无 JS 也能用"。
+./openspec/changes/archive/2026-07-08-add-quick-poll/design.md:55:- pollId 与 adminKey 均来自 `crypto.randomBytes`，URL 安全字母表；ID 不可枚举。
+./openspec/changes/archive/2026-07-08-add-quick-poll/design.md:58:- adminKey 校验用 `crypto.timingSafeEqual`；错误一律 404，不暴露管理入口存在性。
+./openspec/changes/archive/2026-07-08-add-quick-poll/design.md:79:| GET  | `/p/:id/created?key=…` | 创建成功页（双链接展示，一次性） |
+./openspec/changes/archive/2026-07-08-add-quick-poll/design.md:80:| GET  | `/p/:id` | 投票页（已投/已关闭 → 302 结果页） |
+./openspec/changes/archive/2026-07-08-add-quick-poll/design.md:90:- [软防重可绕过：换浏览器/清 Cookie 即可再投] → 明确的产品取舍，场景是会议/群聊熟人环境；spec 已将其定义为"软防重"。
+./openspec/changes/archive/2026-07-08-add-quick-poll/tasks.md:10:- [x] 2.1 实现 lib/store.js：数据目录自动创建、`readPoll(id)`、原子写（临时文件 + rename）、每投票 promise 链串行化写、ID/adminKey 生成（crypto，URL 安全字母表）、ID 格式白名单校验
+./openspec/changes/archive/2026-07-08-add-quick-poll/tasks.md:22:- [x] 4.3 接通创建流：GET / → POST /create → 303 创建成功页（双链接、"仅此一次"提示；参与页/结果页不含 adminKey）
+./openspec/changes/archive/2026-07-08-add-quick-poll/tasks.md:23:- [x] 4.4 接通投票流：GET /p/:id（已投/已关闭重定向）→ POST /p/:id/vote（校验 + 计票 + Set-Cookie 软防重）→ 303 结果页
+./openspec/specs/poll-results/spec.md:10:系统必须（SHALL）向任何持参与链接者提供结果页 `/p/<id>/results`，展示：投票标题、每个选项的票数与占比（以总提交人数为分母；总数为 0 时占比显示 0%）、总提交人数、投票状态（进行中/已结束）。结果不要求登录即可查看，且每次加载必须反映当前最新计票。
+./openspec/changes/archive/2026-07-08-add-quick-poll/proposal.md:11:- 新增匿名投票：参与者免登录提交选择；浏览器本地记录"已投过"实现软防重（同一浏览器重复打开直接显示结果）。
+./openspec/changes/archive/2026-07-08-add-quick-poll/proposal.md:14:- 新增文件存储：每个投票一个 JSON 文件，进程内串行化写入 + 原子写（临时文件 + rename），不引入数据库。
+./openspec/changes/archive/2026-07-08-add-quick-poll/proposal.md:21:- `poll-voting`: 匿名提交投票（单选/多选校验、软防重、开放状态校验），共享计票。
+./openspec/changes/archive/2026-07-08-add-quick-poll/specs/poll-storage/spec.md:17:系统必须（MUST）对同一投票文件的写入串行化（进程内按投票 ID 排队），且每次写入必须为原子写：先写入同目录临时文件，再 rename 覆盖目标文件。任何时刻目标文件必须是完整合法的 JSON，不得出现半写状态。
+./openspec/changes/archive/2026-07-08-add-quick-poll/specs/poll-voting/spec.md:28:### Requirement: 软防重
+./openspec/changes/archive/2026-07-08-add-quick-poll/specs/poll-voting/spec.md:29:系统必须（SHALL）在投票提交成功后于参与者浏览器本地记录该投票"已投过"标记（Cookie 或等价机制）。持有该标记的浏览器再次打开参与链接时，系统必须直接展示结果页而非投票表单，且必须拒绝其再次提交。本机制为软防重：不要求跨浏览器或跨设备防重。
+./openspec/changes/archive/2026-07-08-add-quick-poll/specs/poll-voting/spec.md:31:#### Scenario: 已投浏览器重访直达结果
+./openspec/changes/archive/2026-07-08-add-quick-poll/specs/poll-voting/spec.md:35:#### Scenario: 已投浏览器重复提交被拒绝
+./openspec/changes/archive/2026-07-08-add-quick-poll/specs/poll-voting/spec.md:36:- **WHEN** 携带"已投过"标记的浏览器再次提交投票
+./openspec/changes/archive/2026-07-08-add-quick-poll/specs/poll-voting/spec.md:44:- **THEN** 该投票的总提交数恰好增加 10，无丢失或重复
+./openspec/changes/archive/2026-07-08-add-quick-poll/specs/poll-lifecycle/spec.md:10:- **THEN** 系统展示"投票已结束"并引导至结果页，不提供投票表单
+./openspec/changes/archive/2026-07-08-add-quick-poll/specs/poll-lifecycle/spec.md:21:- **THEN** 投票状态变为已关闭，后续投票提交被拒绝，结果页状态显示"已结束"
+./openspec/changes/archive/2026-07-08-add-quick-poll/specs/poll-lifecycle/spec.md:27:#### Scenario: 重复关闭幂等
+./openspec/changes/archive/2026-07-08-add-quick-poll/specs/poll-results/spec.md:6:系统必须（SHALL）向任何持参与链接者提供结果页 `/p/<id>/results`，展示：投票标题、每个选项的票数与占比（以总提交人数为分母；总数为 0 时占比显示 0%）、总提交人数、投票状态（进行中/已结束）。结果不要求登录即可查看，且每次加载必须反映当前最新计票。
+
+ succeeded in 103ms:
+./package.json
+./server.js
+./.gitignore
+./test/store.test.js
+./test/e2e/run-e2e.js
+./test/poll.test.js
+./lib/pages.js
+./lib/poll.js
+./lib/store.js
+./openspec/config.yaml
+./LAB-NOTES.md
+
+codex
+The remaining findings are mostly around input parsing and persistence guarantees rather than obvious XSS/path traversal; escaping and ID path validation are consistently applied for normal app-generated data. I’m doing one final pass on line references and severity so the final report is concise and only lists actionable defects.
+exec
+/usr/bin/zsh -lc 'nl -ba openspec/config.yaml' in /root/terra/fullrun-lab/openspec-poll
+ succeeded in 0ms:
+     1	schema: spec-driven
+
+exec
+/usr/bin/zsh -lc 'nl -ba .gitignore' in /root/terra/fullrun-lab/openspec-poll
+ succeeded in 0ms:
+     1	node_modules/
+     2	data/
+     3	*.log
+
+codex
+Static read-only audit; I did not run the app or tests.
+
+- [security] `server.js:101` - Admin key is placed in `/created?key=...`, so it appears outside the management link in redirect headers, address bar, browser history, and typical proxy/access logs. This violates the spec’s “admin key only in storage file and management link” rule. Severity: med.
+
+- [data] `lib/store.js:60` - `createPoll()` blindly writes `poll.id`. If `newPollId()` ever collides, the new poll overwrites the existing poll file, destroying votes and replacing the admin key. Severity: med.
+
+- [data] `lib/store.js:55` - “atomic write” does `writeFile()` then `rename()` without fsyncing the temp file or directory. A host crash/power loss around the write/rename can leave the poll missing, stale, or not durably written despite the storage spec’s crash/restart expectations. Severity: med.
+
+- [data] `server.js:122` - Soft duplicate prevention only checks the incoming cookie. Two near-simultaneous POSTs from the same browser before the first `Set-Cookie` response is processed both count as successful votes. Concrete case: double-submit a form quickly; total voters increases by 2. Severity: med.
+
+- [robustness] `lib/store.js:89` - `writeChains` entries are never removed after a poll’s queue drains. Repeated creation/voting across many unique poll IDs grows this Map for the life of the process, enabling unbounded memory growth. Severity: med.
+
+- [correctness] `server.js:115` - For a closed or expired poll, `GET /p/:id` redirects straight to results. The lifecycle spec says the participant link should display “投票已结束” and guide to results; `pages.closedPage()` exists but is only used after failed POSTs. Severity: low.
+
+- [robustness] `server.js:124` - Vote choices are parsed with `Number()`, so malformed form values like `choice=` or `choice=0x1` become valid indexes `0`/`1`. A malformed POST can be accepted as a vote instead of rejected as an invalid option index. Severity: low.
+
+Test quality: The unit tests cover domain logic boundaries and the store’s normal queued-write behavior, and the Playwright script exercises real browser/server flows, which is valuable. But several tests mirror implementation choices rather than the normative specs, especially closed/expired polls redirecting to results. They do not cover malformed POST values, in-flight duplicate submits, admin-key URL exposure, ID collision handling, memory growth in `writeChains`, or crash durability of file writes.
+
+DEFECTS: 7 (high:0 med:5 low:2)
+tokens used
+49,089
+Static read-only audit; I did not run the app or tests.
+
+- [security] `server.js:101` - Admin key is placed in `/created?key=...`, so it appears outside the management link in redirect headers, address bar, browser history, and typical proxy/access logs. This violates the spec’s “admin key only in storage file and management link” rule. Severity: med.
+
+- [data] `lib/store.js:60` - `createPoll()` blindly writes `poll.id`. If `newPollId()` ever collides, the new poll overwrites the existing poll file, destroying votes and replacing the admin key. Severity: med.
+
+- [data] `lib/store.js:55` - “atomic write” does `writeFile()` then `rename()` without fsyncing the temp file or directory. A host crash/power loss around the write/rename can leave the poll missing, stale, or not durably written despite the storage spec’s crash/restart expectations. Severity: med.
+
+- [data] `server.js:122` - Soft duplicate prevention only checks the incoming cookie. Two near-simultaneous POSTs from the same browser before the first `Set-Cookie` response is processed both count as successful votes. Concrete case: double-submit a form quickly; total voters increases by 2. Severity: med.
+
+- [robustness] `lib/store.js:89` - `writeChains` entries are never removed after a poll’s queue drains. Repeated creation/voting across many unique poll IDs grows this Map for the life of the process, enabling unbounded memory growth. Severity: med.
+
+- [correctness] `server.js:115` - For a closed or expired poll, `GET /p/:id` redirects straight to results. The lifecycle spec says the participant link should display “投票已结束” and guide to results; `pages.closedPage()` exists but is only used after failed POSTs. Severity: low.
+
+- [robustness] `server.js:124` - Vote choices are parsed with `Number()`, so malformed form values like `choice=` or `choice=0x1` become valid indexes `0`/`1`. A malformed POST can be accepted as a vote instead of rejected as an invalid option index. Severity: low.
+
+Test quality: The unit tests cover domain logic boundaries and the store’s normal queued-write behavior, and the Playwright script exercises real browser/server flows, which is valuable. But several tests mirror implementation choices rather than the normative specs, especially closed/expired polls redirecting to results. They do not cover malformed POST values, in-flight duplicate submits, admin-key URL exposure, ID collision handling, memory growth in `writeChains`, or crash durability of file writes.
+
+DEFECTS: 7 (high:0 med:5 low:2)

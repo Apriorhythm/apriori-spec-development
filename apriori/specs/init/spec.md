@@ -44,3 +44,7 @@
 #### Scenario: IN-11 a gitignored scratch dir for ephemeral instruments
 - WHEN init scaffolds the `apriori/` root
 - THEN it creates `apriori/tmp/` and an `apriori/.gitignore` containing `tmp/`, so P7 screenshot self-checks and similar ephemeral instruments never enter version control; an existing `.gitignore` is never overwritten
+
+#### Scenario: IN-12 --test-cmd is persisted, not parsed-and-dropped
+- WHEN `apriori init --test-cmd "<cmd>"` creates a fresh process-config
+- THEN the config gains a `test-cmd` row that `apriori verify` uses as its default test command; an existing config is never rewritten

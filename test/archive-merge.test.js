@@ -201,3 +201,54 @@ test('AM-10b rename-aware idempotency: same-delta RENAMED+ADDED collides; rename
   assert.strictEqual(r2.conflicts.length, 0);
   assert.ok(r2.unchanged.some((u) => /Beta -> Bravo \(already renamed\)/.test(u)));
 });
+
+test('AM-11 change name is validated and the move can never escape changes-dir', () => {
+  const { CHANGE_NAME_RE } = require('../lib/archive-merge');
+  assert.ok(CHANGE_NAME_RE.test('add-playback'));
+  assert.ok(!CHANGE_NAME_RE.test('../victim'));
+  assert.ok(!CHANGE_NAME_RE.test('a/b'));
+  // cli rejects a path-segment change name up front, exit 2
+  const store = tmpFile(STORE);
+  const delta = tmpFile('## ADDED Requirements\n### Requirement: Fresh\nF.\n');
+  const errs = [];
+  const origErr = console.error; console.error = (...a) => errs.push(a.join(' '));
+  let code;
+  try { code = cli(['--store', store, '--delta', delta, '--change', '../victim', '--write']); }
+  finally { console.error = origErr; }
+  assert.strictEqual(code, 2);
+  assert.match(errs.join('\n'), /invalid change name/);
+  // archiveChangeDir itself throws on an escaping name (defense in depth)
+  assert.throws(() => archiveChangeDir('/tmp/x-changes', '../victim', new Date(2026, 0, 1)), /invalid change name|escapes/);
+  // --changes-dir with a nonexistent source change → preflight error, nothing written
+  const before = fs.readFileSync(store, 'utf8');
+  const errs2 = [];
+  console.error = (...a) => errs2.push(a.join(' '));
+  let code2;
+  try { code2 = cli(['--store', store, '--delta', delta, '--change', 'ghost-change', '--write', '--changes-dir', fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-am11-'))]); }
+  finally { console.error = origErr; }
+  assert.strictEqual(code2, 2);
+  assert.match(errs2.join('\n'), /not found under/);
+  assert.strictEqual(fs.readFileSync(store, 'utf8'), before);
+});
+
+test('AM-12 store commit is transactional with the dir move — move fails ⇒ store untouched', () => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-am12-'));
+  const changes = path.join(base, 'changes');
+  fs.mkdirSync(path.join(changes, 'my-change'), { recursive: true });
+  fs.writeFileSync(path.join(changes, 'my-change', 'flow-state.md'), 'x');
+  // sabotage: archive/ exists as a FILE so the dest mkdir/rename must fail
+  fs.writeFileSync(path.join(changes, 'archive'), 'not a dir');
+  const store = path.join(base, 'store.md');
+  fs.writeFileSync(store, '### Requirement: Old\nO.\n');
+  const before = fs.readFileSync(store, 'utf8');
+  const delta = tmpFile('## ADDED Requirements\n### Requirement: Fresh\nF.\n');
+  const errs = [];
+  const origErr = console.error; console.error = (...a) => errs.push(a.join(' '));
+  let code;
+  try { code = cli(['--store', store, '--delta', delta, '--change', 'my-change', '--write', '--changes-dir', changes]); }
+  finally { console.error = origErr; }
+  assert.strictEqual(code, 1);
+  assert.strictEqual(fs.readFileSync(store, 'utf8'), before);          // store byte-for-byte untouched
+  assert.ok(!fs.existsSync(store + '.tmp-archive'));                    // no temp residue
+  assert.ok(fs.existsSync(path.join(changes, 'my-change')));            // change dir still in place
+});

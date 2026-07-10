@@ -47,6 +47,9 @@ test('CK-04 every spec scenario must carry a bindable ID', () => {
   const fails = c.checkScenarioIds(bad, 'spec.md');
   assert.strictEqual(fails.length, 1);
   assert.match(fails[0], /scenario without a bindable ID: no id here/);
+  // fenced scenarios are documentation — same rule as the spec-runner (SR-13)
+  const fenced = c.checkScenarioIds('```\n#### Scenario: no id fenced example\n```\n#### Scenario: PB-02 real\n', 'spec.md');
+  assert.strictEqual(fenced.length, 0);
 });
 
 test('CK-05 no residual OpenSpec adapter references remain', () => {
@@ -64,8 +67,9 @@ test('CK-06 stale scaffolded runbook warns via check, never fails', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-ck6-'));
   // no apriori/runbook.md → no warning
   assert.strictEqual(c.checkRunbookFreshness(root).length, 0);
-  // identical runbook → no warning
-  fs.mkdirSync(path.join(root, 'apriori'), { recursive: true });
+  // identical runbook → no warning (specs store present so consumer checks can run)
+  fs.mkdirSync(path.join(root, 'apriori', 'specs'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'apriori', 'specs', 's.md'), '#### Scenario: CK-99 x\n- THEN y\n');
   fs.copyFileSync(path.join(__dirname, '..', 'RUNBOOK.md'), path.join(root, 'apriori', 'runbook.md'));
   assert.strictEqual(c.checkRunbookFreshness(root).length, 0);
   // diverged runbook → warning names apriori update
@@ -79,4 +83,28 @@ test('CK-06 stale scaffolded runbook warns via check, never fails', () => {
   assert.strictEqual(r.status, 0);
   assert.match(r.stdout, /! .*apriori update/);
   assert.match(r.stdout, /RESULT: PASS/);
+});
+
+test('CK-07 consumer mode never runs self-checks; missing spec store is an error', () => {
+  const fs2 = require('node:fs'), os2 = require('node:os'), path2 = require('node:path');
+  const { spawnSync } = require('node:child_process');
+  const BIN = path2.join(__dirname, '..', 'bin', 'apriori.js');
+  // consumer legitimately using OpenSpec + its own README → PASS (no self-checks by default)
+  const root = fs2.mkdtempSync(path2.join(os2.tmpdir(), 'apriori-ck7-'));
+  fs2.mkdirSync(path2.join(root, 'apriori', 'specs'), { recursive: true });
+  fs2.writeFileSync(path2.join(root, 'apriori', 'specs', 's.md'), '#### Scenario: ZZ-01 x\n- THEN y\n');
+  fs2.writeFileSync(path2.join(root, 'README.md'), '# mine\nWe use openspec/ and /opsx: every day.\n');
+  const ok = spawnSync('node', [BIN, 'check'], { cwd: root, encoding: 'utf8' });
+  assert.strictEqual(ok.status, 0);
+  assert.match(ok.stdout, /RESULT: PASS/);
+  // --self in that same dir would apply the no-openspec rule → FAIL (self mode is for the apriori repo)
+  const self = spawnSync('node', [BIN, 'check', '--self'], { cwd: root, encoding: 'utf8' });
+  assert.strictEqual(self.status, 1);
+  assert.match(self.stdout, /residual OpenSpec/);
+  // missing spec store path → ERROR exit 2, never a silent PASS
+  const bare = fs2.mkdtempSync(path2.join(os2.tmpdir(), 'apriori-ck7b-'));
+  const miss = spawnSync('node', [BIN, 'check'], { cwd: bare, encoding: 'utf8' });
+  assert.strictEqual(miss.status, 2);
+  assert.match(miss.stderr, /does not exist/);
+  assert.match(miss.stderr, /apriori init/);
 });

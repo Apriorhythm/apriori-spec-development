@@ -152,3 +152,19 @@ test('IN-11 a gitignored scratch dir for ephemeral instruments', () => {
   assert.strictEqual(read(root, 'apriori/.gitignore'), 'tmp/\ncustom/\n');
   assert.ok(actions.some((a) => a.file === 'apriori/.gitignore' && a.action === 'skipped'));
 });
+
+test('IN-12 --test-cmd persists into the fresh config and verify uses it as default', () => {
+  const root = tmp();
+  init.scaffold(root, ['claude'], { testCmd: 'node -e "console.log(1)"' });
+  const cfg = read(root, 'apriori/process-config.md');
+  assert.match(cfg, /\| test-cmd \| node -e "console\.log\(1\)" \|/);
+  // verify's fallback reader picks it up
+  const { configTestCmd } = require('../lib/spec-runner');
+  assert.strictEqual(configTestCmd(root), 'node -e "console.log(1)"');
+  // an existing config is never rewritten
+  const existing = tmp();
+  fs.mkdirSync(path.join(existing, 'apriori'), { recursive: true });
+  fs.writeFileSync(path.join(existing, 'apriori', 'process-config.md'), 'MINE\n');
+  init.scaffold(existing, ['claude'], { testCmd: 'x' });
+  assert.strictEqual(read(existing, 'apriori/process-config.md'), 'MINE\n');
+});

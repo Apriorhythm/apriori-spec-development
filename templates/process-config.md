@@ -1,6 +1,6 @@
 # process-config — supervision parameters (HUMAN-HELD)
 
-<!-- Copy to your project root as `process-config.md`.
+<!-- Lives at `apriori/process-config.md` (scaffolded there by `apriori init`).
      Governance: this file is owned by a human; the agent READS it and never writes it (RUNBOOK §1 R3).
      Missing file → the defaults printed in RUNBOOK §4 apply.
      Invalid value (< 1, or unparsable) → the default applies, with a warning.

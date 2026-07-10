@@ -27,3 +27,7 @@
 #### Scenario: CK-06 stale scaffolded runbook warns, never fails
 - WHEN `apriori check` runs in a project whose `apriori/runbook.md` differs byte-wise from the installed package's runbook
 - THEN it prints a warning naming `apriori update`, and RESULT stays PASS if nothing else failed; a missing `apriori/runbook.md` produces no warning
+
+#### Scenario: CK-07 consumer mode is the default; self-checks require --self
+- WHEN `apriori check` runs in a consumer project
+- THEN only the spec-store checks (CK-04) and runbook freshness (CK-06) run — a consumer legitimately using OpenSpec or shipping its own README is never failed by apriori's handbook self-checks (EN/CN pairs, verdict phrases, codex forms, no-openspec), which run only under `--self`; and a missing spec-store path is an error (exit 2, naming `apriori init` when uninitialized), never a silent PASS

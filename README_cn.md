@@ -638,7 +638,11 @@ node -e "const KV=require('./src/mini-kv'); const k=new KV(); k.set('a',1,50); c
 # 预期先打印 1，过期后打印 undefined
 ```
 满意后归档：
-```text
+```shell
+apriori archive --store apriori/specs/mini-kv.md \\
+  --delta apriori/changes/add-mini-kv/specs/mini-kv.md \\
+  --change add-mini-kv --changes-dir apriori/changes --write
+# merged (ADDED): <你的 requirement ID> · 变更目录 → apriori/changes/archive/<戳>-add-mini-kv/
 ```
 新项目第一次 archive 会**生成初版 TRUTH-DOC**（按第六节的默认约定：`apriori/truth/mini-kv.md`，与代码同仓库）——恭喜，你的 mini-kv 从此有了系统知识库，下个功能就能从第六节的"有知识库"路径起步。为了校准颗粒度，第一份知识库文档大致应长这样：
 

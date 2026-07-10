@@ -12,3 +12,7 @@
 #### Scenario: NW-03 enforces bare kebab-case names
 - WHEN the name is not bare kebab-case (uppercase, spaces, a `2026-…` date prefix, or empty)
 - THEN it refuses (exit non-zero) and the error explains dates are stamped at archive time, not at creation
+
+#### Scenario: NW-04 the skeleton carries the full flow-state schema
+- WHEN `apriori new` scaffolds flow-state.md
+- THEN every field of the runbook §3 schema is present — including `reviewer-session: n/a` and `artifact-root: .` — so the scaffold never drifts behind the schema

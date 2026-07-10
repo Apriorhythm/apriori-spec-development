@@ -40,3 +40,11 @@
 #### Scenario: AM-10 re-running an already-merged delta is an idempotent no-op
 - WHEN an ADDED requirement in the delta already exists in the store with byte-identical (trimmed) content, or a RENAMED entry's source is gone while its target is present — both the signature of a rerun after a partial archive
 - THEN each is reported as already merged / already renamed (no-op), not a conflict, and the run can proceed to move the change dir; but an ADDED whose name was created by THIS run's own RENAMED is a same-delta collision and still conflicts even with identical content
+
+#### Scenario: AM-11 change names are validated and the dir move cannot escape
+- WHEN `--change` is not bare kebab-case (e.g. `../victim`), or `--changes-dir` is given but the change dir does not exist
+- THEN archive exits 2 before writing anything; the move helper independently rejects any source that resolves outside the changes dir
+
+#### Scenario: AM-12 the store commit and the dir move are one transaction
+- WHEN `--write --changes-dir` runs and the change-dir move fails
+- THEN the store on disk stays byte-for-byte untouched (staged to a temp file, committed by rename only after the move succeeds) and no temp residue remains

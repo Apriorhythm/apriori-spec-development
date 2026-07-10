@@ -44,3 +44,13 @@ test('NW-03 enforces bare kebab-case names (dates stamped at archive time, not h
   assert.match(nw.scaffoldChange(root, '2026-07-late', NOW).error, /archive time/);
   assert.strictEqual(nw.scaffoldChange(root, 'ok-name-2', NOW).ok, true); // digits inside are fine
 });
+
+test('NW-04 the skeleton carries every flow-state schema field the runbook defines', () => {
+  const { flowStateSkeleton } = require('../lib/new');
+  const s = flowStateSkeleton('my-change', new Date(2026, 0, 2, 3, 4));
+  for (const field of ['change:', 'tier:', 'track:', 'track-rationale:', 'lineage:',
+                       'current-step:', 'round:', 'reviewer-session:', 'next-action:', 'artifact-root:', 'gates:'])
+    assert.ok(s.includes(field), `skeleton missing ${field}`);
+  assert.match(s, /reviewer-session: n\/a/);
+  assert.match(s, /artifact-root: \./);
+});

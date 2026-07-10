@@ -638,7 +638,11 @@ node -e "const KV=require('./src/mini-kv'); const k=new KV(); k.set('a',1,50); c
 # expected: prints 1 first, then undefined after expiry
 ```
 Once satisfied, archive:
-```text
+```shell
+apriori archive --store apriori/specs/mini-kv.md \\
+  --delta apriori/changes/add-mini-kv/specs/mini-kv.md \\
+  --change add-mini-kv --changes-dir apriori/changes --write
+# merged (ADDED): <your requirement IDs> · change dir → apriori/changes/archive/<stamp>-add-mini-kv/
 ```
 A new project's first archive **produces the initial TRUTH-DOC** (per §6's default: `apriori/truth/mini-kv.md`, in the same repo) — congratulations, your mini-kv now has a system knowledge base, and the next feature can start from the "knowledge base exists" path in Section 6. To calibrate granularity, here's roughly what that first KB doc should look like:
 

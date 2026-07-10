@@ -200,7 +200,7 @@ test('CK-10 committed secrets in review evidence fail the check', () => {
   const cases = [
     ['apriori/review/a-raw.txt', 'line one\nkey=AKIA' + 'ABCDEFGHIJKLMNOP\n', /AWS/i, 'AKIA' + 'ABCDEFGHIJKLMNOP'],
     ['apriori/review/deep/b-raw.md', 'ghp_' + 'a'.repeat(36) + ' embedded in output\n', /GitHub/i, 'ghp_' + 'a'.repeat(36)],
-    ['apriori/review/c.txt', '-----BEGIN RSA PRIVATE KEY-----\nMII...\n', /private.key/i, 'MII'],
+    ['apriori/review/c.txt', '-----BEGIN RSA ' + 'PRIVATE KEY-----\nMII...\n', /private.key/i, 'MII'],   // assembled at runtime — the source (and raws quoting it) never carries the full literal
   ];
   for (const [rel, content, classRe, secret] of cases) {
     const root = mk({ [rel]: content });

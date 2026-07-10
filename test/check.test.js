@@ -176,3 +176,50 @@ test('CK-09 links resolve from the linking file; cross-file fragments validated 
   assert.match(badfrag.stdout, /concepts\.md/);
   assert.match(badfrag.stdout, /nope/);
 });
+
+test('CK-10 committed secrets in review evidence fail the check', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const os = require('os');
+  const mk = (files) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-ck10-'));
+    fs.mkdirSync(path.join(root, 'apriori/specs'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'apriori/specs/s.md'), '#### Scenario: XX-01 a\n- t\n');
+    for (const [rel, c] of Object.entries(files)) {
+      fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
+      fs.writeFileSync(path.join(root, rel), c);
+    }
+    return root;
+  };
+  const run = (root) => require('node:child_process').spawnSync('node', [path.join(__dirname, '..', 'bin', 'apriori.js'), 'check'], { encoding: 'utf8', cwd: root });
+  // absent review dir → skip (pass)
+  assert.strictEqual(run(mk({})).status, 0);
+  // clean review dir → pass
+  assert.strictEqual(run(mk({ 'apriori/review/x-raw.txt': 'clean transcript\nsha256:abcdef' })).status, 0);
+  // each class fails naming file/line/class WITHOUT echoing the value (one nested)
+  const cases = [
+    ['apriori/review/a-raw.txt', 'line one\nkey=AKIA' + 'ABCDEFGHIJKLMNOP\n', /AWS/i, 'AKIA' + 'ABCDEFGHIJKLMNOP'],
+    ['apriori/review/deep/b-raw.md', 'ghp_' + 'a'.repeat(36) + ' embedded in output\n', /GitHub/i, 'ghp_' + 'a'.repeat(36)],
+    ['apriori/review/c.txt', '-----BEGIN RSA PRIVATE KEY-----\nMII...\n', /private.key/i, 'MII'],
+  ];
+  for (const [rel, content, classRe, secret] of cases) {
+    const root = mk({ [rel]: content });
+    const r = run(root);
+    assert.strictEqual(r.status, 1, rel + r.stdout);
+    assert.match(r.stdout, classRe);
+    assert.match(r.stdout, new RegExp(rel.split('/').pop().replace('.', '\\.')));
+    assert.match(r.stdout, /:\d+:/);                       // line number
+    assert.ok(!r.stdout.includes(secret), 'secret value must never be echoed');
+    assert.match(r.stdout, /sanitize|SECURITY/i);           // remedy pointer
+  }
+  // symlinked entry skipped with a warn (capability-guarded)
+  const root = mk({ 'outside.txt': 'ghp_' + 'b'.repeat(36) });
+  fs.mkdirSync(path.join(root, 'apriori/review'), { recursive: true });
+  let can = true;
+  try { fs.symlinkSync(path.join(root, 'outside.txt'), path.join(root, 'apriori/review/link-raw.txt')); } catch { can = false; }
+  if (can) {
+    const r = run(root);
+    assert.strictEqual(r.status, 0);
+    assert.match(r.stdout, /link-raw/);
+  }
+});

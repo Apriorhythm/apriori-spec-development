@@ -223,6 +223,15 @@ test('DR-09 changes overview validates flow-states and surfaces pending gates', 
     const t = byId(r2, 'D7').map((c) => c.detail).join(' ');
     assert.doesNotMatch(t, /change: evil/);        // never read
     assert.match(t, /skipped|escape/);             // and the skip is surfaced as info
+    // per-FILE containment: an active change whose flow-state.md symlinks outside is diagnosed, never read
+    const secret = path.join(outside, 'secret-flow.md');
+    fs.writeFileSync(secret, 'change: leak-me\ncurrent-step: STEP0\n');
+    fs.mkdirSync(path.join(root, 'apriori/changes/linked'), { recursive: true });
+    fs.symlinkSync(secret, path.join(root, 'apriori/changes/linked/flow-state.md'));
+    const r3 = doctor.runDoctor({ cwd: root, testCmd: TAP_OK });
+    const t3 = byId(r3, 'D7').map((c) => c.detail).join(' ');
+    assert.doesNotMatch(t3, /leak-me/);
+    assert.match(t3, /linked.*escape|escape.*linked/);
   }
 });
 

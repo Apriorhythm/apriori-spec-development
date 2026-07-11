@@ -2,6 +2,10 @@
 
 The 3.0.0 stability promise: CLI surface & flags, `--json` shapes, the delta format, the flow-state schema and the `apriori/` layout only break in a major. Everything below is either additive or a declared fail-closed tightening.
 
+## 3.4.0 → 3.4.1
+
+Convention-only (no CLI behavior change): name requirement docs `requirement/<change>-req-v{N}.md` (finalized `<change>-req-final.md`; explore track `<change>-intent-card.md`) instead of the old global names, and at STEP6 copy them into the archived change dir per the runbook's new preservation clause. Existing archived changes keep their old names — nothing parses these filenames.
+
 ## 3.3.x → 3.4.0
 
 Nothing on a documented success path changes. Five error-path behaviors are new — all fail-closed tightenings; each names its cure when it fires:

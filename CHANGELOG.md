@@ -2,6 +2,12 @@
 
 All notable changes to `apriori-cli`. Versions follow semver; the stability promise from 3.0.0 holds: CLI surface & flags, `--json` shapes, the delta format, the flow-state schema and the `apriori/` layout only break in a major.
 
+## 3.4.1 — 2026-07-12 · requirement paths carry their change
+
+- **`requirement/<change>-req-v{N}.md` / `<change>-req-final.md` / `<change>-intent-card.md`** — requirement-stage paths gain the change prefix in both runbook editions, the concepts handbook, and `apriori new`'s scaffolded next-action, closing the global-path collision where parallel (or successive) changes overwrote each other's requirement history (dogfooded twice; ported from V1.4's stopgap). The root relocation (Change Bundle) remains scheduled for 4.0.
+- **STEP6 preservation clause** — after the archive move and before the closeout commit, the change's requirement docs (all versions, plus the intent card if any) are copied into `apriori/changes/archive/<stamp>-<change>/requirement/`; the requirement history travels with its change.
+- Already-archived changes keep their old file names (nothing parses requirement filenames). 2 new scenarios (PR-19, NW-05); 199 tests.
+
 ## 3.4.0 — 2026-07-12 · the second-review hardening release
 
 Every item traces to the second external GPT-5.6 review (7 changes, each through the full V3 loop with adversarial codex reviews) plus one defect dogfooding found on ourselves.

@@ -168,3 +168,74 @@ test('IN-12 --test-cmd persists into the fresh config and verify uses it as defa
   init.scaffold(existing, ['claude'], { testCmd: 'x' });
   assert.strictEqual(read(existing, 'apriori/process-config.md'), 'MINE\n');
 });
+
+// ---- update-manifest (IN-13..17): init records what it creates ----
+
+const umPath = require('node:path');
+const umFs = require('node:fs');
+const umOs = require('node:os');
+const umCrypto = require('node:crypto');
+const umInit = require('../lib/init');
+const umUpdate = require('../lib/update');
+const umTmp = () => umFs.mkdtempSync(umPath.join(umOs.tmpdir(), 'apriori-inm-'));
+const umSha = (p) => 'sha256:' + umCrypto.createHash('sha256').update(umFs.readFileSync(p)).digest('hex');
+const umManifest = (root) => JSON.parse(umFs.readFileSync(umPath.join(root, 'apriori', 'managed.json'), 'utf8'));
+
+test('IN-13 fresh init writes the manifest for exactly what it created', () => {
+  const root = umTmp();
+  umInit.scaffold(root, ['claude']);
+  const m = umManifest(root);
+  assert.strictEqual(m.version, 1);
+  assert.deepStrictEqual(Object.keys(m.files).sort(), ['.claude/commands/apriori.md', 'apriori/runbook.md']);
+  assert.strictEqual(m.files['apriori/runbook.md'], umSha(umPath.join(root, 'apriori', 'runbook.md')));
+  assert.strictEqual(m.files['.claude/commands/apriori.md'], umSha(umPath.join(root, '.claude', 'commands', 'apriori.md')));
+});
+
+test('IN-14 add-tool init merges without adopting bystanders', () => {
+  const root = umTmp();
+  umInit.scaffold(root, ['claude']);
+  const claudeHash = umManifest(root).files['.claude/commands/apriori.md'];
+  // a user file already sits at codex's command path — init skips it, and it must gain NO entry
+  const codexCmd = umPath.join(root, '.codex', 'prompts', 'apriori.md');
+  umFs.mkdirSync(umPath.dirname(codexCmd), { recursive: true });
+  umFs.writeFileSync(codexCmd, 'user file, was here first\n');
+  umInit.scaffold(root, ['codex']);
+  const m = umManifest(root);
+  assert.strictEqual(m.files['.claude/commands/apriori.md'], claudeHash);   // preserved
+  assert.ok(!('.codex/prompts/apriori.md' in m.files), 'bystander adopted!');
+  const { actions } = umUpdate.run(root);
+  const row = actions.find((a) => a.file === '.codex/prompts/apriori.md');
+  assert.ok(row && /unmanaged/.test(row.action));
+  assert.strictEqual(umFs.readFileSync(codexCmd, 'utf8'), 'user file, was here first\n');
+});
+
+test('IN-15 the delete-and-reinit cure closes cleanly', () => {
+  const root = umTmp();
+  umInit.scaffold(root, ['claude']);
+  const cmd = umPath.join(root, '.claude', 'commands', 'apriori.md');
+  umFs.appendFileSync(cmd, '\nlocal edits\n');            // modified…
+  umFs.rmSync(cmd);                                        // …then deleted, per the cure
+  umInit.scaffold(root, ['claude']);                       // re-init recreates it
+  assert.strictEqual(umManifest(root).files['.claude/commands/apriori.md'], umSha(cmd));
+  const { actions } = umUpdate.run(root);
+  const row = actions.find((a) => a.file === '.claude/commands/apriori.md');
+  assert.strictEqual(row.action, 'up-to-date');
+});
+
+test('IN-16 init dry-run leaves the manifest alone', () => {
+  const root = umTmp();
+  umInit.scaffold(root, ['claude'], { dryRun: true });
+  assert.ok(!umFs.existsSync(umPath.join(root, 'apriori', 'managed.json')));
+  umInit.scaffold(root, ['claude']);
+  const before = umFs.readFileSync(umPath.join(root, 'apriori', 'managed.json'), 'utf8');
+  umInit.scaffold(root, ['codex'], { dryRun: true });
+  assert.strictEqual(umFs.readFileSync(umPath.join(root, 'apriori', 'managed.json'), 'utf8'), before);
+});
+
+test('IN-17 a hygiene-invalid manifest blocks init', () => {
+  const root = umTmp();
+  umInit.scaffold(root, ['claude']);
+  umFs.writeFileSync(umPath.join(root, 'apriori', 'managed.json'), '{ broken');
+  assert.throws(() => umInit.scaffold(root, ['codex']), /managed\.json/);
+  assert.ok(!umFs.existsSync(umPath.join(root, '.codex')), 'scaffolding ran despite invalid manifest');
+});

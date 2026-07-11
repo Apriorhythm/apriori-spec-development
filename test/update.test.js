@@ -12,12 +12,26 @@ function tmp() { return fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-up-')); }
 const PKG_RUNBOOK = fs.readFileSync(path.join(__dirname, '..', 'RUNBOOK.md'), 'utf8');
 const PKG_COMMAND = fs.readFileSync(path.join(__dirname, '..', 'templates', 'command.md'), 'utf8');
 
-// scaffold a claude-configured project, then age some tool-owned files
+const crypto = require('node:crypto');
+const sha = (buf) => 'sha256:' + crypto.createHash('sha256').update(buf).digest('hex');
+const shaFile = (p) => sha(fs.readFileSync(p));
+function writeManifest(root, files) {
+  fs.writeFileSync(path.join(root, 'apriori', 'managed.json'),
+    JSON.stringify({ version: 1, files }, null, 2) + '\n');
+}
+
+// scaffold a claude-configured project, then age some tool-owned files.
+// The manifest records the AGED bytes — exactly what an older CLI would have
+// written and recorded — so update sees tool-owned-and-unmodified files.
 function agedProject() {
   const root = tmp();
   init.scaffold(root, ['claude']);
   fs.writeFileSync(path.join(root, 'apriori', 'runbook.md'), '# old runbook from a previous CLI version\n');
   fs.writeFileSync(path.join(root, '.claude', 'commands', 'apriori.md'), 'old command body\n');
+  writeManifest(root, {
+    'apriori/runbook.md': shaFile(path.join(root, 'apriori', 'runbook.md')),
+    '.claude/commands/apriori.md': shaFile(path.join(root, '.claude', 'commands', 'apriori.md')),
+  });
   return root;
 }
 
@@ -96,4 +110,136 @@ test('UP-05 protocol-required scaffolding is re-established', () => {
   const again = update.run(root);
   assert.strictEqual(fs.readFileSync(path.join(root, 'apriori', '.gitignore'), 'utf8'), 'tmp/\ncustom/\n');
   assert.ok(!again.actions.some((a) => a.file === 'apriori/.gitignore'));
+});
+
+// ---- update-manifest (UP-06..11): update refreshes only manifest-proven files ----
+
+test('UP-06 a foreign file at a tool path survives update', () => {
+  const root = agedProject();
+  const foreign = path.join(root, '.codex', 'prompts', 'apriori.md');
+  fs.mkdirSync(path.dirname(foreign), { recursive: true });
+  fs.writeFileSync(foreign, 'my own prompt, hands off\n');
+  const { actions } = update.run(root);
+  const row = actions.find((a) => a.file === '.codex/prompts/apriori.md');
+  assert.ok(row && /unmanaged/.test(row.action), JSON.stringify(actions));
+  assert.strictEqual(fs.readFileSync(foreign, 'utf8'), 'my own prompt, hands off\n');
+});
+
+test('UP-07 an unmodified managed file refreshes and re-hashes', () => {
+  const root = agedProject();
+  const { actions } = update.run(root);
+  const byFile = Object.fromEntries(actions.map((a) => [a.file, a.action]));
+  assert.strictEqual(byFile['.claude/commands/apriori.md'], 'updated');
+  assert.strictEqual(fs.readFileSync(path.join(root, '.claude', 'commands', 'apriori.md'), 'utf8'), PKG_COMMAND);
+  const m = JSON.parse(fs.readFileSync(path.join(root, 'apriori', 'managed.json'), 'utf8'));
+  assert.strictEqual(m.files['.claude/commands/apriori.md'],
+    shaFile(path.join(__dirname, '..', 'templates', 'command.md')));
+  assert.strictEqual(m.files['apriori/runbook.md'], shaFile(path.join(__dirname, '..', 'RUNBOOK.md')));
+});
+
+test('UP-08 a locally modified managed file is protected', () => {
+  const root = agedProject();
+  // the user edited both managed files AFTER the manifest recorded them
+  fs.appendFileSync(path.join(root, '.claude', 'commands', 'apriori.md'), '\nteam-specific extras\n');
+  fs.appendFileSync(path.join(root, 'apriori', 'runbook.md'), '\nlocal notes\n');
+  const cmdBefore = fs.readFileSync(path.join(root, '.claude', 'commands', 'apriori.md'), 'utf8');
+  const rbBefore = fs.readFileSync(path.join(root, 'apriori', 'runbook.md'), 'utf8');
+  const manifestBefore = fs.readFileSync(path.join(root, 'apriori', 'managed.json'), 'utf8');
+  const { actions } = update.run(root);
+  for (const rel of ['.claude/commands/apriori.md', 'apriori/runbook.md']) {
+    const row = actions.find((a) => a.file === rel);
+    assert.ok(row && /modified/.test(row.action), JSON.stringify(actions));
+  }
+  assert.strictEqual(fs.readFileSync(path.join(root, '.claude', 'commands', 'apriori.md'), 'utf8'), cmdBefore);
+  assert.strictEqual(fs.readFileSync(path.join(root, 'apriori', 'runbook.md'), 'utf8'), rbBefore);
+  // --dry-run through the CLI: identical classification, nothing written at all
+  const { spawnSync } = require('node:child_process');
+  const r = spawnSync('node', [path.join(__dirname, '..', 'bin', 'apriori.js'), 'update', '--dry-run'],
+    { cwd: root, encoding: 'utf8' });
+  assert.strictEqual(r.status, 0);
+  assert.match(r.stdout, /modified/);
+  assert.strictEqual(fs.readFileSync(path.join(root, 'apriori', 'managed.json'), 'utf8'), manifestBefore);
+});
+
+test('UP-09 pre-manifest projects are adopted only on proof', () => {
+  const root = tmp();
+  init.scaffold(root, ['claude', 'codex']);
+  fs.rmSync(path.join(root, 'apriori', 'managed.json'), { force: true });   // pre-manifest CLI wrote none
+  // claude command = pristine current template (identity proof);
+  // codex command = a previous shipped generation (proved via the injectable generation list);
+  // opencode command = arbitrary user content (no proof)
+  fs.writeFileSync(path.join(root, '.codex', 'prompts', 'apriori.md'), 'generation zero body\n');
+  const oc = path.join(root, '.opencode', 'command', 'apriori.md');
+  fs.mkdirSync(path.dirname(oc), { recursive: true });
+  fs.writeFileSync(oc, 'user-owned free text\n');
+  const gens = [shaFile(path.join(__dirname, '..', 'templates', 'command.md')), sha('generation zero body\n')];
+  const { actions } = update.run(root, { generations: gens });
+  const byFile = Object.fromEntries(actions.map((a) => [a.file, a.action]));
+  assert.strictEqual(byFile['.claude/commands/apriori.md'], 'up-to-date');
+  assert.strictEqual(byFile['.codex/prompts/apriori.md'], 'updated');
+  assert.ok(/unmanaged/.test(byFile['.opencode/command/apriori.md']), JSON.stringify(byFile));
+  assert.strictEqual(fs.readFileSync(oc, 'utf8'), 'user-owned free text\n');
+  assert.strictEqual(fs.readFileSync(path.join(root, '.codex', 'prompts', 'apriori.md'), 'utf8'), PKG_COMMAND);
+  // the adoption pass materialized the manifest, covering exactly the proven files + runbook
+  const m = JSON.parse(fs.readFileSync(path.join(root, 'apriori', 'managed.json'), 'utf8'));
+  assert.deepStrictEqual(Object.keys(m.files).sort(),
+    ['.claude/commands/apriori.md', '.codex/prompts/apriori.md', 'apriori/runbook.md']);
+  // dry-run pre-manifest: no manifest materializes
+  const root2 = tmp();
+  init.scaffold(root2, ['claude']);
+  fs.rmSync(path.join(root2, 'apriori', 'managed.json'), { force: true });
+  update.run(root2, { dryRun: true });
+  assert.ok(!fs.existsSync(path.join(root2, 'apriori', 'managed.json')));
+});
+
+test('UP-10 manifest hygiene fails closed', () => {
+  const bads = [
+    'not json at all',
+    JSON.stringify({ version: 2, files: {} }),
+    JSON.stringify({ version: 1 }),
+    JSON.stringify({ version: 1, files: { 'apriori/runbook.md': 'md5:abc' } }),
+    JSON.stringify({ version: 1, files: { '../outside.md': 'sha256:' + 'a'.repeat(64) } }),
+    JSON.stringify({ version: 1, files: { 'apriori/process-config.md': 'sha256:' + 'a'.repeat(64) } }),  // not a refresh target
+    JSON.stringify({ version: 1, files: { '.claude\\commands\\apriori.md': 'sha256:' + 'a'.repeat(64) } }),  // non-canonical key
+  ];
+  for (const bad of bads) {
+    const root = agedProject();
+    fs.writeFileSync(path.join(root, 'apriori', 'managed.json'), bad);
+    const rbBefore = fs.readFileSync(path.join(root, 'apriori', 'runbook.md'), 'utf8');
+    assert.throws(() => update.run(root), /managed\.json/, bad.slice(0, 40));
+    assert.throws(() => update.run(root, { dryRun: true }), /managed\.json/, bad.slice(0, 40));
+    assert.strictEqual(fs.readFileSync(path.join(root, 'apriori', 'runbook.md'), 'utf8'), rbBefore);
+    // CLI surfaces it as a nonzero exit, not a stack trace
+    const { spawnSync } = require('node:child_process');
+    const r = spawnSync('node', [path.join(__dirname, '..', 'bin', 'apriori.js'), 'update'],
+      { cwd: root, encoding: 'utf8' });
+    assert.notStrictEqual(r.status, 0);
+    assert.match(r.stdout + r.stderr, /managed\.json/);
+  }
+});
+
+test('UP-10b a manifest-listed file that vanished is reported missing; escaping symlinks fail before hashing', (t) => {
+  // missing: delete a managed file → `missing` row, no write (UMIMPL-1 refutation made durable)
+  const root = agedProject();
+  fs.rmSync(path.join(root, '.claude', 'commands', 'apriori.md'));
+  const { actions } = update.run(root);
+  const row = actions.find((a) => a.file === '.claude/commands/apriori.md');
+  assert.ok(row && /missing/.test(row.action), JSON.stringify(actions));
+  // symlink escape: a listed path pointing outside the project is a hygiene error, never hashed/classified
+  if (process.platform === 'win32') return;                // symlink creation needs privileges there
+  const root2 = agedProject();
+  const outside = path.join(tmp(), 'outside.md');
+  fs.writeFileSync(outside, 'outside content\n');
+  fs.rmSync(path.join(root2, '.claude', 'commands', 'apriori.md'));
+  fs.symlinkSync(outside, path.join(root2, '.claude', 'commands', 'apriori.md'));
+  assert.throws(() => update.run(root2), /escapes the project root/);
+  assert.strictEqual(fs.readFileSync(outside, 'utf8'), 'outside content\n');
+});
+
+test('UP-11 the shipped-generation list stays honest', () => {
+  const managed = require('../lib/managed');
+  assert.ok(Array.isArray(managed.TEMPLATE_GENERATIONS) && managed.TEMPLATE_GENERATIONS.length >= 2);
+  for (const g of managed.TEMPLATE_GENERATIONS) assert.match(g, /^sha256:[0-9a-f]{64}$/);
+  assert.ok(managed.TEMPLATE_GENERATIONS.includes(shaFile(path.join(__dirname, '..', 'templates', 'command.md'))),
+    'templates/command.md changed without appending its hash to TEMPLATE_GENERATIONS');
 });

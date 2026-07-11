@@ -317,3 +317,111 @@ test('AM-10 REMOVED rerun: already-deprecated by this change is a no-op; by anot
   const other = am.merge(afterText, removed, 'other-change');
   assert.ok(other.conflicts.length > 0);
 });
+
+// ---- delta-consumption (AM-28..31): the parser consumes its whole input ----
+
+// reference: the pre-rewrite split()-based parse, kept verbatim so the corpus
+// test can assert the walker reproduces it byte-identically on well-formed input
+function referenceParseDelta(text) {
+  const SECTION = /^##\s+(ADDED|MODIFIED|REMOVED|RENAMED)\s+Requirements\s*$/m;
+  const REQ = /^###\s+Requirement:\s+(.+?)\s*$([\s\S]*?)(?=^###\s+Requirement:|$(?![\s\S]))/gm;
+  const buckets = { ADDED: new Map(), MODIFIED: new Map(), REMOVED: new Map(), RENAMED: [] };
+  const parts = text.split(SECTION);
+  for (let i = 1; i < parts.length; i += 2) {
+    const kind = parts[i];
+    if (kind === 'RENAMED') {
+      for (const m of parts[i + 1].matchAll(/^\s*-\s*(.+?)\s*->\s*(.+?)\s*$/gm))
+        buckets.RENAMED.push([m[1].trim(), m[2].trim()]);
+    } else {
+      let m; REQ.lastIndex = 0;
+      while ((m = REQ.exec(parts[i + 1])) !== null) {
+        const name = m[1].trim();
+        if (!buckets[kind].has(name)) buckets[kind].set(name, m[0].replace(/\s+$/, '') + '\n');
+      }
+    }
+  }
+  return buckets;
+}
+
+test('AM-28 a misspelled section heading is reported, never absorbed', () => {
+  const delta = '# Delta — x (c)\n\n## ADDED Requirements\n\n### Requirement: Fine\n\n#### Scenario: DC-01 a\n- t\n\n## ADDDED Requirements\n\n### Requirement: WronglyClassified\n\n#### Scenario: DC-02 b\n- t\n';
+  const { delta: buckets, problems } = am.parseDeltaStrict(delta);
+  assert.ok(problems.some((p) => p.includes('ADDDED') && /line 10\b/.test(p)), JSON.stringify(problems));
+  for (const kind of ['ADDED', 'MODIFIED', 'REMOVED'])
+    assert.ok(!buckets[kind].has('WronglyClassified'), `WronglyClassified leaked into ${kind}`);
+  assert.ok(buckets.ADDED.has('Fine'));
+  // both surfaces fail closed
+  const root = twoModuleProject({ 'apriori/changes/c/specs/a/spec.md': delta });
+  assert.strictEqual(run(['archive', '--change', 'c', '--write'], root).status, 1);
+  const r = run(['verify', '--change', 'c'], mkProject({
+    'apriori/specs/a/spec.md': STORE_A,
+    'apriori/changes/c/specs/a/spec.md': delta,
+  }));
+  assert.strictEqual(r.status, 2);
+});
+
+test('AM-29 structure outside its legal home is reported with line numbers', () => {
+  const delta = '### Requirement: Early\n\n## RENAMED Requirements\n\n### Requirement: InsideRenamed\n- Old -> New\n\n## ADDED Requirements\n\n#### Scenario: DC-03 stray\n\n### Requirement: Ok\n\n#### Scenario: DC-04 fine\n- t\n';
+  const { delta: buckets, problems } = am.parseDeltaStrict(delta);
+  assert.ok(problems.some((p) => /line 1\b/.test(p) && /before any section/i.test(p)), JSON.stringify(problems));
+  assert.ok(problems.some((p) => /line 5\b/.test(p) && /RENAMED/.test(p)), JSON.stringify(problems));
+  assert.ok(problems.some((p) => /line 10\b/.test(p) && /[Ss]cenario/.test(p)), JSON.stringify(problems));
+  assert.ok(buckets.ADDED.has('Ok'), 'legal block still parsed');
+  assert.ok(!buckets.ADDED.has('Early') && !buckets.ADDED.has('InsideRenamed'));
+  assert.deepStrictEqual(buckets.RENAMED, [], 'the illegal block body is never reinterpreted as rename lines');
+});
+
+test('AM-30 free text and fences stay legal; CRLF parses identically', () => {
+  const delta = '# Delta — archive-merge (c)\n\nA note before any section.\n\n## ADDED Requirements\n\nSection preamble prose is fine.\n\n### Requirement: Fenced\n\nBody prose.\n\n```md\n## Bogus Heading\n### Requirement: InsideFence\n<!-- apriori-base: sha256:zzz -->\n```\n\n#### Scenario: DC-05 f\n- t\n\nTrailing notes without structure markers.\n';
+  const lf = am.parseDeltaStrict(delta);
+  assert.deepStrictEqual(lf.problems, []);
+  assert.ok(lf.delta.ADDED.has('Fenced'));
+  assert.ok(!lf.delta.ADDED.has('InsideFence'));
+  assert.match(lf.delta.ADDED.get('Fenced'), /Bogus Heading/, 'fenced lines stay in the body');
+  const crlf = am.parseDeltaStrict(delta.replace(/\n/g, '\r\n'));
+  assert.deepStrictEqual(crlf.problems, []);
+  assert.deepStrictEqual([...crlf.delta.ADDED.entries()], [...lf.delta.ADDED.entries()], 'CRLF block text identical to LF');
+});
+
+test('AM-30b regression corpus: every archived delta parses clean and identical to the old grammar', () => {
+  const archRoot = path.join(__dirname, '..', 'apriori', 'changes', 'archive');
+  if (!fs.existsSync(archRoot)) return;   // corpus is local-only (apriori/* untracked)
+  const files = [];
+  (function walk(d) {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (e.isFile() && p.includes(`${path.sep}specs${path.sep}`) && p.endsWith('.md')) files.push(p);
+    }
+  })(archRoot);
+  for (const f of files) {
+    const text = fs.readFileSync(f, 'utf8');
+    const r = am.parseDeltaStrict(text);
+    assert.deepStrictEqual(r.problems, [], `${f}: ${JSON.stringify(r.problems)}`);
+    const ref = referenceParseDelta(text);
+    for (const kind of ['ADDED', 'MODIFIED', 'REMOVED']) {
+      assert.deepStrictEqual([...r.delta[kind].entries()], [...ref[kind].entries()], `${f} ${kind} differs from old grammar`);
+    }
+    assert.deepStrictEqual(r.delta.RENAMED, ref.RENAMED, `${f} RENAMED differs from old grammar`);
+  }
+});
+
+test('AM-31 stamp problems carry line numbers', () => {
+  const good = am.fingerprint(STORE_A);
+  const cases = [
+    [`<!-- apriori-base sha256:${'0'.repeat(64)} -->\n${ADD_A}`, /line 1\b/],   // malformed attempt (no colon)
+    [`<!-- apriori-base: ${good} -->\n<!-- apriori-base: new -->\n${ADD_A}`, /line 2\b/],  // duplicate
+    [`<!-- apriori-base: sha256:zzz -->\n${ADD_A}`, /line 1\b/],                // malformed digest
+    [`${ADD_A}\n<!-- apriori-base: ${good} -->\n`, /line 8\b/],                 // late stamp (ADD_A is 7 lines)
+  ];
+  for (const [text, lineRe] of cases) {
+    const { problems } = am.parseDeltaStrict(text);
+    assert.ok(problems.length > 0, text.slice(0, 40));
+    assert.ok(problems.some((p) => lineRe.test(p)), `${text.slice(0, 40)} → ${JSON.stringify(problems)}`);
+  }
+  // a stamp under a skipped unrecognized heading is attributed to NOTHING — never the delta stamp
+  const skipped = am.parseDeltaStrict(`## ADDDED Requirements\n\n<!-- apriori-base: new -->\n\n${ADD_A}`);
+  assert.strictEqual(skipped.stamp, null);
+  assert.ok(skipped.problems.some((p) => p.includes('ADDDED')));
+  assert.ok(!skipped.problems.some((p) => /apriori-base/.test(p)), 'covered by the heading problem, no flood');
+});

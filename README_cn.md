@@ -108,7 +108,7 @@ apriori check
 | `apriori verify` | STEP5 退出闸口 | 把每条 scenario ID 绑定到绿测试;`--change <name>` = 投影的、变更进行中的形式 |
 | `apriori stamp <store-file>` | 写增量规格时 | 打印 CAS 基线章——库分叉后 verify/archive 会拒绝 |
 | `apriori gate --change <name>` | STEP5/6、CI | 机械检查合成一个退出码(PASS ≠ 人工闸口) |
-| `apriori archive` | STEP6 | 把增量规格并入 living 规格库;`--change <name>` = 整变更、失败原子 |
+| `apriori archive` | STEP6 | 把增量规格并入 living 规格库;`--change <name>` = 整变更、失败原子(直到提交点为止) |
 | `apriori check` | CI / pre-commit | 结构一致性(scenario ID 可绑定) |
 | `apriori update` | CLI 升级后 | 刷新 runbook 副本 + 命令指针(绝不动你的文件) |
 

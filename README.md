@@ -108,7 +108,7 @@ From here, work WITH an agent instead of by hand: idea still fuzzy → run */apr
 | `apriori verify` | STEP5 exit gate | bind every scenario ID to a passing test; `--change <name>` = the projected, mid-change form |
 | `apriori stamp <store-file>` | delta authoring | print the CAS base-stamp line — verify/archive refuse if the store diverged since |
 | `apriori gate --change <name>` | STEP5/6, CI | one exit code over the mechanical checks (PASS ≠ human gates) |
-| `apriori archive` | STEP6 | merge delta specs into the living store; `--change <name>` = whole-change, failure-atomic |
+| `apriori archive` | STEP6 | merge delta specs into the living store; `--change <name>` = whole-change, failure-atomic (up to the commit point) |
 | `apriori check` | CI / pre-commit | structural consistency (scenario IDs bindable) |
 | `apriori update` | after a CLI upgrade | refresh the runbook copy + command pointers (never your files) |
 

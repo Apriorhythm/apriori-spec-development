@@ -281,7 +281,7 @@ STEP0–STEP6 below describe the **full** pipeline. Running all of it on a typo-
 
 | Tier | Typical shape | Steps to run |
 |---|---|---|
-| **Trivial** | Bugfix / single file; no new user-visible behavior; no shared-state change | Light `explore` (facts only) → STEP5 `apply` with tests + one consistency-review pass → STEP6 writeback if any KB fact changed |
+| **Trivial** | Bugfix / single file; no new user-visible behavior; no shared-state change | Light `explore` (facts only) → STEP5 `apply` with tests + one consistency-review pass (P8; R2 applies as always — raw archived, findings ledgered) → STEP6 writeback if any KB fact changed |
 | **Medium** | One module; new user-visible behavior | STEP0 (1–2 rounds) → STEP1 → STEP2 (1–2 review rounds) → STEP5 → STEP6; STEP3 shrinks to an async design look-over |
 | **Large** | Cross-module / touches external shared state / data migration / new subsystem | The full STEP0–STEP6, every gate included |
 
@@ -303,12 +303,13 @@ Two rules of thumb: **anything touching external shared state (§8.1's three-mom
 
 | Artifact | Default location |
 |---|---|
-| Requirement doc | `docs/apriori/requirement/req-v{N}.md`, finalized as `docs/apriori/requirement/req-final.md` |
+| Requirement doc | `docs/apriori/requirement/<change>-req-v{N}.md`, finalized as `docs/apriori/requirement/<change>-req-final.md` |
 | REQ-REVIEW-DOC | `docs/apriori/review/<change>-req-review-v{N}.md` (prefix with the change name — parallel changes must not overwrite each other) |
 | Gap report (STEP1 output) | `docs/apriori/explore/<change>-gap-report.md` |
 | Issue ledger | `docs/apriori/review/<change>-issues.md` |
 | SPEC-DOC / DESIGN-DOC / tasks.md | `openspec/changes/<change>/specs/`, `…/design.md`, `…/tasks.md` |
 | SPEC-EVALUATION-DOC | `docs/apriori/design/<change>-review-v{N}.md` |
+| DESIGN-REVIEW-DOC | `docs/apriori/design/<change>-design-review.md` |
 | TRUTH-DOC (knowledge base) | `docs/apriori/truth/<module>.md`, **in the same repo as the code** (a separate KB repo also works if every doc carries a `source-commit` stamp — see §6) |
 
 ### 4.2 Overview Flowchart
@@ -396,7 +397,7 @@ Each round mirrors its findings into the issue ledger ([§7.0](#70-the-issue-led
 
 ### 4.6 STEP3: Technical Review
 
-Hold a technical review meeting on the `DESIGN-DOC`; in parallel, hand the `spec.md` inside the `SPEC-DOC` (which holds all the scenarios) to QA. Record the conclusions as the DESIGN-REVIEW-DOC.
+Hold a technical review meeting on the `DESIGN-DOC`; in parallel, hand the `spec.md` inside the `SPEC-DOC` (which holds all the scenarios) to QA. Record the conclusions as the DESIGN-REVIEW-DOC (`docs/apriori/design/<change>-design-review.md`).
 
 > If the review produces a **major design change**, return to STEP2 and re-run `/opsx:propose`.
 
@@ -470,6 +471,8 @@ Everything above is convention; a branch + CI mapping is what makes it *enforced
 We'll run the whole workflow end-to-end on a small library with **real state and easy tests**. It's chosen because it lands squarely on a key rule in the OpenSpec config — **"external shared state MUST describe the three moments: init / update / cleanup"** (see §8.1) — making it a good way to feel out the right spec granularity.
 
 > Goal: a Node.js library `mini-kv` providing in-memory key-value storage with time-to-live (TTL).
+>
+> Sizing first (§4.0): mini-kv is a **Medium** change — one module, new user-visible behavior — so the walkthrough follows the Medium path (STEP3 shrinks to an async look-over). Because it is *also* a solo project, [§5.4](#54-step5--apply) collapses STEP3/STEP4 further into the [§4.6](#46-step3-technical-review) solo-mode self-check.
 
 ### 5.0 Scaffold the Project
 
@@ -482,7 +485,7 @@ git init             # version control recommended, so you can diff each step
 
 ### 5.1 STEP0 · Write and Review Requirements
 
-First write a plain-language requirement in `docs/apriori/requirement/req-v1.md`:
+First write a plain-language requirement in `docs/apriori/requirement/<change>-req-v1.md`:
 
 ```text
 Build an in-memory key-value cache library, mini-kv:
@@ -493,14 +496,14 @@ Build an in-memory key-value cache library, mini-kv:
 5. Overwrite: calling set again on an existing key overwrites both the old value and the old TTL.
 ```
 
-Then have a **reviewing model** (a model/tool different from the one that drafted it) review it once per the prompt in [§7.1](#71-step0-requirement-doc-adversarial-review), filling in edge cases you missed (e.g. what `ttlMs<=0` does, whether `get` cleans up lazily or on a timer, concurrent-write semantics). Finalize as `docs/apriori/requirement/req-final.md`.
+Then have a **reviewing model** (a model/tool different from the one that drafted it) review it once per the prompt in [§7.1](#71-step0-requirement-doc-adversarial-review), filling in edge cases you missed (e.g. what `ttlMs<=0` does, whether `get` cleans up lazily or on a timer, concurrent-write semantics). Finalize as `docs/apriori/requirement/<change>-req-final.md`.
 
 ### 5.2 STEP1 · explore
 
 In your primary tool:
 ```text
 # STEP1 explore — follow RUNBOOK P3 directly (/opsx:explore has no required output)
-* Requirement doc: docs/apriori/requirement/req-final.md
+* Requirement doc: docs/apriori/requirement/<change>-req-final.md
 * System knowledge base: (new project: none / legacy project: docs/apriori/truth/ or your KB path)
 * Code: this repo
 Please align the facts and output a gap report between current state A and target B to docs/apriori/explore/<change>-gap-report.md.
@@ -515,7 +518,7 @@ Pay attention to whether the resulting `spec.md` **gives each user-visible behav
 Then switch to your reviewing tool/model and review → revise per [§7.3](#73-step2-adversarial-review-and-revision), looping until "no major issues." Concretely, drive the review with Codex ([§2.3](#23-driving-codex-non-interactively-multi-round-adversarial-review)):
 ```shell
 # round 1 — open the review session (note the printed session id)
-codex exec -s read-only "Review openspec/changes/<change>/specs/ and design.md against docs/apriori/requirement/req-final.md, using the RUNBOOK P5 checklist. End with a verdict line."
+codex exec -s read-only "Review openspec/changes/<change>/specs/ and design.md against docs/apriori/requirement/<change>-req-final.md, using the RUNBOOK P5 checklist. End with a verdict line."
 # each revision round — same context, so it checks whether your fixes landed
 codex exec resume -c sandbox_mode="read-only" <session-id> "I revised per your last review; re-review and produce v{N+1}."
 ```
@@ -619,9 +622,9 @@ A tiny CI job that runs this per module and flags "stale KB" turns the Path A/B 
 Go straight to STEP1, feeding the KB in as the source of facts:
 ```text
 # STEP1 explore — follow RUNBOOK P3 directly (/opsx:explore has no required output)
-* Requirement doc: docs/apriori/requirement/req-final.md
+* Requirement doc: docs/apriori/requirement/<change>-req-final.md
 * System knowledge base: docs/apriori/truth/ (module: <module-name>; separate-repo layout: pass that repo's local path instead)
-* Detailed technical design doc: design.md
+* Detailed technical design doc: any existing one, e.g. a previous change round's openspec/changes/<change>/design.md
 Please align facts from the KB and the code, and output a gap report to docs/apriori/explore/<change>-gap-report.md.
 ```
 
@@ -656,7 +659,7 @@ Prompts: RUNBOOK **P1** (reviewer) / **P2** (producer's revise). Design notes:
 
 - Run P1 with a **model/tool different from the one that drafted the requirement**, and feed it the ledger so it can verify earlier fixes.
 - The five review dimensions are fixed on purpose — target-state clarity / edge & exception coverage / undeclared state changes / testable acceptance criteria / conflicts with state A — a stable checklist keeps rounds comparable.
-- The reviewer only reviews, never edits the requirement doc; the producer answers every issue with accept/reject + reason. Loop until "no major issues," finalize as `docs/apriori/requirement/req-final.md` (max 5 rounds).
+- The reviewer only reviews, never edits the requirement doc; the producer answers every issue with accept/reject + reason. Loop until "no major issues," finalize as `docs/apriori/requirement/<change>-req-final.md` (max 5 rounds).
 
 ### 7.2 STEP1: explore
 

@@ -16,7 +16,7 @@
 **安装(人做,每个项目一次):**
 
 1. 把本文件复制进项目,如 `docs/apriori/runbook.md`。
-2. 在项目规则文件(`CLAUDE.md` / `AGENTS.md` / `.cursor/rules/*.mdc` / `.github/copilot-instructions.md`)里加一行:
+2. 在项目规则文件(`CLAUDE.md` / `AGENTS.md` / `.cursor/rules/*.mdc` / `.windsurf/rules` / `.github/copilot-instructions.md`)里加一行:
    > 开发流程遵循 `docs/apriori/runbook.md`。每次会话开始,先读它和 `docs/apriori/changes/<change>/flow-state.md`,从记录的位置继续。
 3. 项目还没有 OpenSpec 的话:`openspec init`(手册 §3.3);`templates/config.yaml` 是一份现成的 `openspec/config.yaml` 起点。
 4. 可选(Claude Code):把 `templates/claude-command-apriori.md` 复制为 `.claude/commands/apriori.md`,即可用 `/apriori <change>` 启动。
@@ -51,7 +51,7 @@
 
 | 级别 | 典型形态 | 要跑的步骤 |
 |---|---|---|
-| **小型** | bugfix / 单文件;无新的用户可见行为;不动共享状态 | 轻量 explore(只对齐事实)→ STEP5 带测试 + 一轮一致性评审 → 有事实变化则 STEP6 回写 |
+| **小型** | bugfix / 单文件;无新的用户可见行为;不动共享状态 | 轻量 explore(只对齐事实)→ STEP5 带测试 + 一轮一致性评审(P8;R2 照常适用——原始输出存档、发现记台账)→ 有事实变化则 STEP6 回写 |
 | **中型** | 单模块;有新的用户可见行为 | STEP0(1–2 轮)→ STEP1 → STEP2(1–2 轮)→ STEP5 → STEP6;STEP3 缩为异步设计过目 |
 | **大型** | 跨模块 / 外部共享状态 / 数据迁移 / 新子系统 | 完整 STEP0–STEP6,所有闸口都过 |
 
@@ -68,7 +68,7 @@ change: <change-name>
 tier: trivial | medium | large
 current-step: STEP0 | STEP1 | STEP2 | STEP3 | STEP4 | STEP5 | STEP6 | DONE
 round: 0                # 当前步骤内的评审轮次 / apply 轮次
-next-action: <一行具体动作,如 "对 req-v2.md 调起 P1 评审">
+next-action: <一行具体动作,如 "对 <change>-req-v2.md 调起 P1 评审">
 gates:                  # 只增不改的人工决定日志
   - <日期> <闸口>: <人的决定,原文>
 ```
@@ -83,20 +83,21 @@ gates:                  # 只增不改的人工决定日志
 
 | 产物 | 路径 |
 |---|---|
-| 需求文档 | `docs/apriori/requirement/req-v{N}.md` → 定稿 `docs/apriori/requirement/req-final.md` |
+| 需求文档 | `docs/apriori/requirement/<change>-req-v{N}.md` → 定稿 `docs/apriori/requirement/<change>-req-final.md` |
 | 需求评审 | `docs/apriori/review/<change>-req-review-v{N}.md` |
 | 问题台账 | `docs/apriori/review/<change>-issues.md` |
 | gap 报告 | `docs/apriori/explore/<change>-gap-report.md` |
 | 规格 / 设计 / 任务 | `openspec/changes/<change>/specs/`、`…/design.md`、`…/tasks.md` |
 | 规格评审 | `docs/apriori/design/<change>-review-v{N}.md` |
+| 技术评审记录(DESIGN-REVIEW-DOC) | `docs/apriori/design/<change>-design-review.md` |
 | 知识库(TRUTH-DOC) | `docs/apriori/truth/<module>.md`——必须带 `source-commit` 标记 |
 | 流程状态 | `docs/apriori/changes/<change>/flow-state.md` |
 
 ### STEP0 —— 需求精细化 · 对抗循环 · 上限 5 轮
 
-- **输入:**`docs/apriori/requirement/req-v{N}.md`;知识库(如有)。
-- **每轮:**(1)若已有评审,据其修订 → `req-v{N+1}.md`,逐条注明采纳/拒绝+理由并更新台账;(2)用 **P1** 调起评审方(R2)→ 评审文档 + 台账;(3)记录结论行。
-- **退出:**结论 =「无重大问题」→ 复制为 `docs/apriori/requirement/req-final.md`,前进。触顶 → **闸口 ①**。
+- **输入:**`docs/apriori/requirement/<change>-req-v{N}.md`;知识库(如有)。
+- **每轮:**(1)若已有评审,据其修订 → `<change>-req-v{N+1}.md`,逐条注明采纳/拒绝+理由并更新台账;(2)用 **P1** 调起评审方(R2)→ 评审文档 + 台账;(3)记录结论行。
+- **退出:**结论 =「无重大问题」→ 复制为 `docs/apriori/requirement/<change>-req-final.md`,前进。触顶 → **闸口 ①**。
 
 ### 知识库前置检查 —— STEP1 之前,凡项目已有代码就做
 
@@ -117,7 +118,7 @@ gates:                  # 只增不改的人工决定日志
 
 ### STEP3 —— 技术评审 —— **闸口 ③(人工)**
 
-- **Agent 的职责:**备齐材料——设计文档、规格、台账(拒绝项置顶)——呈上,停下。把结论记为 DESIGN-REVIEW-DOC 并写入 `gates:`。重大设计变更 → 回 STEP2。
+- **Agent 的职责:**备齐材料——设计文档、规格、台账(拒绝项置顶)——呈上,停下。把结论记为 DESIGN-REVIEW-DOC(`docs/apriori/design/<change>-design-review.md`)并写入 `gates:`。重大设计变更 → 回 STEP2。
 - 中型:异步过目替代会议——结论照样记录。个人开发者:决策记录仍须来自生产方上下文之外(全新会话评审)。
 
 ### STEP4 —— 更新文档
@@ -159,7 +160,7 @@ gates:                  # 只增不改的人工决定日志
 ```text
 你是一名资深需求评审专家。请审查需求文档,目标是让它精确到可以直接交给 AI 实现。
 【输入】
-* 需求文档: docs/apriori/requirement/req-v{N}.md
+* 需求文档: docs/apriori/requirement/<change>-req-v{N}.md
 * 系统知识库(如有): docs/apriori/truth/<模块名>.md
 * 问题台账(如有): docs/apriori/review/<change>-issues.md
 【评审维度,逐条给结论】
@@ -177,7 +178,7 @@ gates:                  # 只增不改的人工决定日志
 ### P2 —— STEP0 修订(生产方)
 
 ```text
-按 docs/apriori/review/<change>-req-review-v{N}.md 修订需求文档,输出 docs/apriori/requirement/req-v{N+1}.md。
+按 docs/apriori/review/<change>-req-review-v{N}.md 修订需求文档,输出 docs/apriori/requirement/<change>-req-v{N+1}.md。
 逐条说明处理方式(采纳/拒绝+理由),并更新台账中各问题的状态(fixed / rejected+理由)。
 ```
 
@@ -187,9 +188,9 @@ gates:                  # 只增不改的人工决定日志
 # 注意:当前 OpenSpec 的 /opsx:explore 是自由思考模式,不会产出本产物——直接按本提示词执行
 先对齐所有已知事实——不要写代码。
 【输入】
-* 需求文档: docs/apriori/requirement/req-final.md
+* 需求文档: docs/apriori/requirement/<change>-req-final.md
 * 系统知识库: docs/apriori/truth/(相关模块: <模块名>;新项目注明"暂无")
-* 技术详细设计文档: design.md(如有)
+* 技术详细设计文档: 已存在的设计文档,如上一轮变更的 openspec/changes/<change>/design.md(没有就注明)
 * 代码: 当前仓库
 【输出】
 docs/apriori/explore/<change>-gap-report.md:当前状态 A、目标状态 B,以及两者之间的差异点与风险。
@@ -211,7 +212,7 @@ docs/apriori/explore/<change>-gap-report.md:当前状态 A、目标状态 B,以�
 你是技术评审专家,重点找"会导致返工或线上事故"的问题。
 【输入】
 * SPEC-DOC: openspec/changes/<change>/specs/   * DESIGN-DOC: openspec/changes/<change>/design.md
-* 知识库: docs/apriori/truth/   * 需求文档: docs/apriori/requirement/req-final.md   * 台账: docs/apriori/review/<change>-issues.md
+* 知识库: docs/apriori/truth/   * 需求文档: docs/apriori/requirement/<change>-req-final.md   * 台账: docs/apriori/review/<change>-issues.md
 【检查清单】
 1. scenario 是否覆盖全部可见行为,有无遗漏的失败/边界场景
 2. 外部共享状态的三个时机是否完整
@@ -284,14 +285,14 @@ docs/apriori/design/<change>-review-v{N}.md:逐条问题(描述/风险/建议);�
 
 **STEP0 循环:**
 ```text
-/goal "目标:docs/apriori/requirement/req-final.md 存在,且最新一轮评审判定为「无重大问题」。上限:5 轮。
+/goal "目标:docs/apriori/requirement/<change>-req-final.md 存在,且最新一轮评审判定为「无重大问题」。上限:5 轮。
 每一轮:
-1. 若 docs/apriori/review/<change>-req-review-v{N}.md 存在,据其修订 docs/apriori/requirement/req-v{N}.md,升到 v{N+1},逐条注明 采纳/拒绝+理由,并同步更新 docs/apriori/review/<change>-issues.md 里对应问题的状态。
+1. 若 docs/apriori/review/<change>-req-review-v{N}.md 存在,据其修订 docs/apriori/requirement/<change>-req-v{N}.md,升到 v{N+1},逐条注明 采纳/拒绝+理由,并同步更新 docs/apriori/review/<change>-issues.md 里对应问题的状态。
 2. 用一个不同的模型对当前版本跑评审,输出存到 docs/apriori/review/<change>-req-review-v{N}.md,例如:
-   codex exec -s read-only \"<P1 提示词> —— 目标:docs/apriori/requirement/req-v{N}.md\"
+   codex exec -s read-only \"<P1 提示词> —— 目标:docs/apriori/requirement/<change>-req-v{N}.md\"
    (没有 Codex?新开一个 claude,把 P1 连同问题台账一起交给它)
 3. 把评审方的结论行贴回本对话。
-当判定为「无重大问题」时停(并复制为 docs/apriori/requirement/req-final.md),或满 5 轮停。"
+当判定为「无重大问题」时停(并复制为 docs/apriori/requirement/<change>-req-final.md),或满 5 轮停。"
 ```
 
 **STEP2 循环:**

@@ -18,7 +18,7 @@
 1. [核心理念（为什么这么干）](#一核心理念为什么这么干)
 2. [你的 AI 工具箱（CLI / Codex / Cursor / Windsurf / Copilot）](#二你的-ai-工具箱)
 3. [环境搭建（从空环境开始）](#三环境搭建从空环境开始)
-4. [完整工作流程（含修正后的流程图）](#四完整工作流程)
+4. [完整工作流程](#四完整工作流程)
 5. [实例项目：mini-kv（带 TTL 的内存缓存）](#五实例项目mini-kv带-ttl-的内存缓存)
 6. [旧项目开发：系统知识库闭环](#六旧项目开发系统知识库闭环)
 7. [提示词库](#七提示词库)
@@ -281,7 +281,7 @@ openspec init
 
 | 级别 | 典型形态 | 要跑的步骤 |
 |---|---|---|
-| **小型** | bugfix / 单文件;无新的用户可见行为;不动共享状态 | 轻量 `explore`(只对齐事实)→ STEP5 `apply` 带测试 + 一轮一致性评审 → 若有事实变化则 STEP6 回写 |
+| **小型** | bugfix / 单文件;无新的用户可见行为;不动共享状态 | 轻量 `explore`(只对齐事实)→ STEP5 `apply` 带测试 + 一轮一致性评审(P8;R2 照常适用——原始输出存档、发现记台账)→ 若有事实变化则 STEP6 回写 |
 | **中型** | 单模块;有新的用户可见行为 | STEP0(1–2 轮)→ STEP1 → STEP2(1–2 轮评审)→ STEP5 → STEP6;STEP3 缩为异步的设计过目 |
 | **大型** | 跨模块 / 触及外部共享状态 / 数据迁移 / 新子系统 | 完整 STEP0–STEP6,所有闸口都过 |
 
@@ -303,12 +303,13 @@ openspec init
 
 | 产物 | 默认位置 |
 |---|---|
-| 需求文档 | `docs/apriori/requirement/req-v{N}.md`，定稿为 `docs/apriori/requirement/req-final.md` |
+| 需求文档 | `docs/apriori/requirement/<change>-req-v{N}.md`，定稿为 `docs/apriori/requirement/<change>-req-final.md` |
 | REQ-REVIEW-DOC | `docs/apriori/review/<change>-req-review-v{N}.md`（带上变更名前缀——并行的变更不能互相覆盖） |
 | gap 报告（STEP1 产出） | `docs/apriori/explore/<change>-gap-report.md` |
 | 问题台账 | `docs/apriori/review/<change>-issues.md` |
 | SPEC-DOC / DESIGN-DOC / tasks.md | `openspec/changes/<change>/specs/`、`…/design.md`、`…/tasks.md` |
 | SPEC-EVALUATION-DOC | `docs/apriori/design/<change>-review-v{N}.md` |
+| DESIGN-REVIEW-DOC | `docs/apriori/design/<change>-design-review.md` |
 | TRUTH-DOC（知识库） | `docs/apriori/truth/<module>.md`，**与代码同仓库**（独立知识库仓库也可以，但每份文档必须带 `source-commit` 标记——见第六节） |
 
 ### 4.2 总览流程图
@@ -396,7 +397,7 @@ SPEC-DOC + DESIGN-DOC_V2  ──评审模型──►  SPEC-EVALUATION-DOC_V2
 
 ### 4.6 STEP3｜技术评审
 
-开技术评审会，对 `DESIGN-DOC` 评审；同步把 `SPEC-DOC` 里的 `spec.md`（内含各类场景）交给测试。记录结论为 DESIGN-REVIEW-DOC。
+开技术评审会，对 `DESIGN-DOC` 评审；同步把 `SPEC-DOC` 里的 `spec.md`（内含各类场景）交给测试。记录结论为 DESIGN-REVIEW-DOC(`docs/apriori/design/<change>-design-review.md`)。
 
 > 若评审产生**重大设计变更**，回到 STEP2 重跑 `/opsx:propose`。
 
@@ -470,6 +471,8 @@ SPEC-DOC + DESIGN-DOC_V2  ──评审模型──►  SPEC-EVALUATION-DOC_V2
 用一个**有真实状态、易测试**的小库，把全流程跑通一遍。选它是因为它正好命中 OpenSpec 配置里那条关键规则——**"外部共享状态必须描述 初始化 / 更新 / 清理 三个时机"**（见 §8.1），是体会规格颗粒度的好例子。
 
 > 目标：一个 Node.js 库 `mini-kv`，提供带过期时间（TTL）的内存键值存储。
+>
+> 先定级(§4.0):mini-kv 是**中型**变更——单模块、有新的用户可见行为——所以本节实例走中型路径(STEP3 缩为异步过目)。又因为它*同时*是单人项目,[§5.4](#54-step5--apply) 才把 STEP3/STEP4 进一步折叠成 [§4.6](#46-step3技术评审) 的个人自查。
 
 ### 5.0 建项目骨架
 
@@ -482,7 +485,7 @@ git init             # 建议纳入版本管理，方便对照每步 diff
 
 ### 5.1 STEP0 · 写并评审需求
 
-先写一份 `docs/apriori/requirement/req-v1.md`（人话需求）：
+先写一份 `docs/apriori/requirement/<change>-req-v1.md`（人话需求）：
 
 ```text
 做一个内存键值缓存库 mini-kv：
@@ -493,14 +496,14 @@ git init             # 建议纳入版本管理，方便对照每步 diff
 5. 覆盖写：对已存在的 key 再次 set，应覆盖旧值与旧 TTL。
 ```
 
-然后让**评审模型**（与起草不同的模型/工具）按 [§7.1](#71-step0需求文档对抗评审) 的提示词审一轮，补全你没想到的边界（如 `ttlMs<=0` 怎么办、`get` 是否惰性清理还是定时清理、并发写入语义）。定稿为 `docs/apriori/requirement/req-final.md`。
+然后让**评审模型**（与起草不同的模型/工具）按 [§7.1](#71-step0需求文档对抗评审) 的提示词审一轮，补全你没想到的边界（如 `ttlMs<=0` 怎么办、`get` 是否惰性清理还是定时清理、并发写入语义）。定稿为 `docs/apriori/requirement/<change>-req-final.md`。
 
 ### 5.2 STEP1 · explore
 
 在主力工具里：
 ```text
 # STEP1 explore——直接按 RUNBOOK P3 执行(/opsx:explore 无必需产出)
-* 需求文档: docs/apriori/requirement/req-final.md
+* 需求文档: docs/apriori/requirement/<change>-req-final.md
 * 系统知识库: （新项目，暂无 / 旧项目填 docs/apriori/truth/ 或知识库路径）
 * 代码: 当前仓库
 请对齐事实，输出当前状态 A 与目标 B 的 gap 报告到 docs/apriori/explore/<change>-gap-report.md。
@@ -515,7 +518,7 @@ git init             # 建议纳入版本管理，方便对照每步 diff
 然后切到评审工具/模型，按 [§7.3](#73-step2对抗训练评审与修订) 评审 → 修订，循环到「无重大问题」。具体可用 Codex 来驱动评审（[§2.3](#23-用命令行驱动-codex多轮对抗评审)）：
 ```shell
 # 第一轮——开启评审会话（记下打印出来的 session id）
-codex exec -s read-only "按 RUNBOOK P5 评审清单，对照 docs/apriori/requirement/req-final.md 评审 openspec/changes/<change>/specs/ 与 design.md，末尾给出结论行。"
+codex exec -s read-only "按 RUNBOOK P5 评审清单，对照 docs/apriori/requirement/<change>-req-final.md 评审 openspec/changes/<change>/specs/ 与 design.md，末尾给出结论行。"
 # 之后每个修订轮——同一上下文，它能核对你的修复是否到位
 codex exec resume -c sandbox_mode="read-only" <session-id> "我已按上轮意见修订；请重新评审并产出 v{N+1}。"
 ```
@@ -619,9 +622,9 @@ git log --oneline <source-commit>..HEAD -- src/<module>/
 直接进 STEP1，把知识库作为事实来源喂进去：
 ```text
 # STEP1 explore——直接按 RUNBOOK P3 执行(/opsx:explore 无必需产出)
-* 需求文档: docs/apriori/requirement/req-final.md
+* 需求文档: docs/apriori/requirement/<change>-req-final.md
 * 系统知识库: docs/apriori/truth/（对应模块: <模块名>；独立仓库布局则填其本地路径）
-* 技术详细设计文档: design.md
+* 技术详细设计文档: 已存在的设计文档,如上一轮变更的 openspec/changes/<change>/design.md
 请基于知识库与代码对齐事实，输出 gap 报告到 docs/apriori/explore/<change>-gap-report.md。
 ```
 
@@ -656,7 +659,7 @@ git log --oneline <source-commit>..HEAD -- src/<module>/
 
 - P1 用**与起草需求不同的模型/工具**执行,并把台账一并喂给它,让它能核验早前的修复。
 - 五个评审维度是刻意固定的——目标态清晰度 / 边界与异常覆盖 / 未声明的状态变更 / 验收标准可测性 / 与现状 A 的冲突——清单稳定,各轮才可比。
-- 评审方只评审、绝不改需求文档;生产方对每条问题给出采纳/拒绝+理由。循环到「无重大问题」,定稿为 `docs/apriori/requirement/req-final.md`（最多 5 轮）。
+- 评审方只评审、绝不改需求文档;生产方对每条问题给出采纳/拒绝+理由。循环到「无重大问题」,定稿为 `docs/apriori/requirement/<change>-req-final.md`（最多 5 轮）。
 
 ### 7.2 STEP1｜explore
 

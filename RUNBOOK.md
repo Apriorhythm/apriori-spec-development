@@ -16,7 +16,7 @@
 **Install (human, once per project):**
 
 1. Copy this file into the project, e.g. `docs/apriori/runbook.md`.
-2. Add one line to the project's rules file (`CLAUDE.md` / `AGENTS.md` / `.cursor/rules/*.mdc` / `.github/copilot-instructions.md`):
+2. Add one line to the project's rules file (`CLAUDE.md` / `AGENTS.md` / `.cursor/rules/*.mdc` / `.windsurf/rules` / `.github/copilot-instructions.md`):
    > Development follows `docs/apriori/runbook.md`. At session start, read it and `docs/apriori/changes/<change>/flow-state.md`, then continue from the recorded position.
 3. If the project has no OpenSpec yet: `openspec init` (handbook §3.3); `templates/config.yaml` is a ready-made starting `openspec/config.yaml`.
 4. Optional (Claude Code): copy `templates/claude-command-apriori.md` to `.claude/commands/apriori.md` to get `/apriori <change>` as a starter.
@@ -51,7 +51,7 @@ Advance ONLY to the next human gate, then stop and report.
 
 | Tier | Typical shape | Steps to run |
 |---|---|---|
-| **Trivial** | Bugfix / single file; no new user-visible behavior; no shared-state change | Light explore (facts only) → STEP5 with tests + one consistency review → STEP6 writeback if any KB fact changed |
+| **Trivial** | Bugfix / single file; no new user-visible behavior; no shared-state change | Light explore (facts only) → STEP5 with tests + one consistency review (P8; R2 applies as always — raw archived, findings ledgered) → STEP6 writeback if any KB fact changed |
 | **Medium** | One module; new user-visible behavior | STEP0 (1–2 rounds) → STEP1 → STEP2 (1–2 rounds) → STEP5 → STEP6; STEP3 shrinks to an async design look-over |
 | **Large** | Cross-module / external shared state / data migration / new subsystem | Full STEP0–STEP6, every gate included |
 
@@ -68,7 +68,7 @@ change: <change-name>
 tier: trivial | medium | large
 current-step: STEP0 | STEP1 | STEP2 | STEP3 | STEP4 | STEP5 | STEP6 | DONE
 round: 0                # review round / apply turn within the current step
-next-action: <one concrete line, e.g. "spawn P1 reviewer on req-v2.md">
+next-action: <one concrete line, e.g. "spawn P1 reviewer on <change>-req-v2.md">
 gates:                  # append-only log of human decisions
   - <date> <gate>: <the human's decision, verbatim>
 ```
@@ -83,20 +83,21 @@ Update it immediately after each step and each round; append every gate decision
 
 | Artifact | Path |
 |---|---|
-| Requirement doc | `docs/apriori/requirement/req-v{N}.md` → finalized `docs/apriori/requirement/req-final.md` |
+| Requirement doc | `docs/apriori/requirement/<change>-req-v{N}.md` → finalized `docs/apriori/requirement/<change>-req-final.md` |
 | Requirement review | `docs/apriori/review/<change>-req-review-v{N}.md` |
 | Issue ledger | `docs/apriori/review/<change>-issues.md` |
 | Gap report | `docs/apriori/explore/<change>-gap-report.md` |
 | Spec / design / tasks | `openspec/changes/<change>/specs/`, `…/design.md`, `…/tasks.md` |
 | Spec evaluation | `docs/apriori/design/<change>-review-v{N}.md` |
+| Technical review record (DESIGN-REVIEW-DOC) | `docs/apriori/design/<change>-design-review.md` |
 | Knowledge base (TRUTH-DOC) | `docs/apriori/truth/<module>.md` — `source-commit` stamp required |
 | Flow state | `docs/apriori/changes/<change>/flow-state.md` |
 
 ### STEP0 — requirement refinement · adversarial loop · cap 5 rounds
 
-- **In:** `docs/apriori/requirement/req-v{N}.md`; KB if any.
-- **Each round:** (1) if a review exists, revise per it → `req-v{N+1}.md`, noting accept/reject + reason per issue and updating the ledger; (2) spawn the reviewer with **P1** (R2) → review doc + ledger; (3) record the verdict line.
-- **Exit:** verdict = "no major issues" → copy to `docs/apriori/requirement/req-final.md`, advance. Cap hit → **gate ①**.
+- **In:** `docs/apriori/requirement/<change>-req-v{N}.md`; KB if any.
+- **Each round:** (1) if a review exists, revise per it → `<change>-req-v{N+1}.md`, noting accept/reject + reason per issue and updating the ledger; (2) spawn the reviewer with **P1** (R2) → review doc + ledger; (3) record the verdict line.
+- **Exit:** verdict = "no major issues" → copy to `docs/apriori/requirement/<change>-req-final.md`, advance. Cap hit → **gate ①**.
 
 ### KB pre-check — before STEP1, whenever the project already has code
 
@@ -117,7 +118,7 @@ Update it immediately after each step and each round; append every gate decision
 
 ### STEP3 — technical review — **gate ③ (human)**
 
-- **Agent's job:** assemble the packet — design doc, spec, ledger with rejections on top — present it, stop. Record the outcome as DESIGN-REVIEW-DOC and in `gates:`. Major design change → back to STEP2.
+- **Agent's job:** assemble the packet — design doc, spec, ledger with rejections on top — present it, stop. Record the outcome as DESIGN-REVIEW-DOC (`docs/apriori/design/<change>-design-review.md`) and in `gates:`. Major design change → back to STEP2.
 - Medium tier: an async look-over replaces the meeting — the outcome still gets recorded. Solo developer: the decision record must still come from outside the producer's context (fresh-session review).
 
 ### STEP4 — update docs
@@ -159,7 +160,7 @@ Update it immediately after each step and each round; append every gate decision
 ```text
 You are a senior requirements reviewer. Review the requirement doc; the goal is to make it precise enough to hand straight to an AI for implementation.
 [Input]
-* Requirement doc: docs/apriori/requirement/req-v{N}.md
+* Requirement doc: docs/apriori/requirement/<change>-req-v{N}.md
 * System knowledge base (if any): docs/apriori/truth/<module>.md
 * Issue ledger (if any): docs/apriori/review/<change>-issues.md
 [Review dimensions, give a verdict on each]
@@ -177,7 +178,7 @@ Do not modify the requirement doc itself.
 ### P2 — STEP0 revise (producer)
 
 ```text
-Revise the requirement doc per docs/apriori/review/<change>-req-review-v{N}.md and output docs/apriori/requirement/req-v{N+1}.md.
+Revise the requirement doc per docs/apriori/review/<change>-req-review-v{N}.md and output docs/apriori/requirement/<change>-req-v{N+1}.md.
 For each issue, state how you handled it (accept/reject + reason), and update its Status in the ledger (fixed / rejected + reason).
 ```
 
@@ -187,9 +188,9 @@ For each issue, state how you handled it (accept/reject + reason), and update it
 # NOTE: current OpenSpec's /opsx:explore is a free-form thinking mode and does NOT produce this artifact — follow this prompt directly
 Align all known facts first — do not write code.
 [Input]
-* Requirement doc: docs/apriori/requirement/req-final.md
+* Requirement doc: docs/apriori/requirement/<change>-req-final.md
 * System knowledge base: docs/apriori/truth/ (module: <module>; new project: note "none")
-* Detailed design doc: design.md (if any)
+* Detailed design doc: any existing one, e.g. a previous change round's openspec/changes/<change>/design.md (none: say so)
 * Code: this repo
 [Output]
 docs/apriori/explore/<change>-gap-report.md: current state A, target state B, and the gaps and risks between them.
@@ -211,7 +212,7 @@ Stop when done and wait for review.
 You are a technical reviewer. Hunt for issues that would cause rework or a production incident.
 [Input]
 * SPEC-DOC: openspec/changes/<change>/specs/   * DESIGN-DOC: openspec/changes/<change>/design.md
-* KB: docs/apriori/truth/   * Requirement doc: docs/apriori/requirement/req-final.md   * Ledger: docs/apriori/review/<change>-issues.md
+* KB: docs/apriori/truth/   * Requirement doc: docs/apriori/requirement/<change>-req-final.md   * Ledger: docs/apriori/review/<change>-issues.md
 [Checklist]
 1. Do scenarios cover every visible behavior; any missing failure/edge scenarios
 2. Are the three moments of external shared state complete
@@ -284,14 +285,14 @@ You are a system knowledge-base engineer. Read the module's code and produce/rec
 
 **STEP0 loop:**
 ```text
-/goal "Goal: docs/apriori/requirement/req-final.md exists and the latest review pass reports 'no major issues'. Cap: 5 rounds.
+/goal "Goal: docs/apriori/requirement/<change>-req-final.md exists and the latest review pass reports 'no major issues'. Cap: 5 rounds.
 Each round:
-1. If docs/apriori/review/<change>-req-review-v{N}.md exists, revise docs/apriori/requirement/req-v{N}.md per it, bump to v{N+1}, note accept/reject+reason per issue, and update those issues' Status in docs/apriori/review/<change>-issues.md.
+1. If docs/apriori/review/<change>-req-review-v{N}.md exists, revise docs/apriori/requirement/<change>-req-v{N}.md per it, bump to v{N+1}, note accept/reject+reason per issue, and update those issues' Status in docs/apriori/review/<change>-issues.md.
 2. Run the reviewer with a DIFFERENT model on the current version and save its output to docs/apriori/review/<change>-req-review-v{N}.md, e.g.:
-   codex exec -s read-only \"<the P1 prompt> — target: docs/apriori/requirement/req-v{N}.md\"
+   codex exec -s read-only \"<the P1 prompt> — target: docs/apriori/requirement/<change>-req-v{N}.md\"
    (no Codex? open a fresh `claude` and hand it P1 plus the issue ledger)
 3. Paste the reviewer's final verdict line back into this conversation.
-Stop when the verdict is 'no major issues' (then copy to docs/apriori/requirement/req-final.md) or after 5 rounds."
+Stop when the verdict is 'no major issues' (then copy to docs/apriori/requirement/<change>-req-final.md) or after 5 rounds."
 ```
 
 **STEP2 loop:**

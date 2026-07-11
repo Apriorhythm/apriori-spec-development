@@ -153,7 +153,7 @@ A delta carrying MODIFIED/REMOVED/RENAMED operations without a CAS stamp SHALL p
 - WHEN a MODIFIED operation's delta block trim-equals the current store block
 - THEN merge reports it `unchanged` rather than `modified`, and first applications behave exactly as before
 
-### Requirement: archive stages the requirement history into the change before the move
+### Requirement: archive stages the requirement history into the change before the move  _deprecated (superseded by change-bundle)_
 With `--write` and an explicit `--changes-dir`, `archiveChange` SHALL, AFTER the stores commit and BEFORE the change-dir move, rename every file in `<cwd>/requirement/` whose basename exactly matches one of three anchored patterns for the change — `^<change>-req-v[0-9]+\.md$`, `^<change>-req-final\.md$`, `^<change>-intent-card\.md$` (change name regex-escaped) — into `changes/<name>/requirement/` (created on demand, basenames preserved), so the existing atomic move carries the requirement history; no post-move writes exist. Fail-closed: the source dir must realpath-resolve inside cwd and the destination must pass containment under the changes dir before any read or rename; a MATCHING candidate that is a symlink (lstat) fails the run before the move, naming the symlink and the cure — symlinks are never followed, non-matching entries are ignored. Any staging failure aborts before the move with exit 1 and the existing rerunnable taxonomy (`stores committed but requirement staging failed … — rerun to complete`); a rerun completes staging and the move (stores re-verify as applied, staged files no-op). Zero matches → silent no-op; dry-run and the single-file form never stage. The report carries `staged: <n> requirement file(s) → changes/<name>/requirement/` when n > 0.
 
 #### Scenario: AM-36 the requirement history travels inside the atomic move
@@ -171,3 +171,22 @@ With `--write` and an explicit `--changes-dir`, `archiveChange` SHALL, AFTER the
 #### Scenario: AM-39 non-staging paths are unaffected
 - WHEN a change has zero matching requirement files, or runs dry-run, or omits --changes-dir, or uses the single-file form
 - THEN no staging happens, no staged-line appears, and behavior is byte-identical to before
+
+### Requirement: the atomic move carries the whole bundle
+`archiveChange` SHALL have no staging phase and no post-commit writes of any kind: with `--write` and an explicit `--changes-dir`, the change dir — which by the bundle layout already contains `requirement/`, `review/`, `gap-report.md`, and everything else the change owns — moves to `archive/<stamp>-<name>/` in the existing single atomic rename, carrying it all. The command reads and writes nothing under any legacy root; it is track-agnostic and never deletes `spike/` (executor protocol). Dry-run and the single-file form behave as before.
+
+#### Scenario: AM-36 the bundle travels whole
+- WHEN a bundle change carrying requirement/ (req versions + intent card), review/ (ledger, docs, raws), and gap-report.md archives with --write --changes-dir
+- THEN the archived dir contains all of them byte-identically, nothing is left behind in the live changes dir, no staging or copy lines appear in the report, and the exit is 0
+
+#### Scenario: AM-37 the command touches nothing outside the moved dir
+- WHEN the same archive runs
+- THEN no file outside `changes/<name>/` and the store files is read for staging or written — there is no requirement-staging code path at all
+
+#### Scenario: AM-38 move failure keeps the bundle intact and rerunnable
+- WHEN the dir move is made to fail (DI seam)
+- THEN stores stay committed, the untouched bundle remains in flight with all its contents, the existing move-failure taxonomy reports the rerun cure, and a rerun completes the move with the bundle intact
+
+#### Scenario: AM-39 non-move paths are unaffected
+- WHEN a change runs dry-run, omits --changes-dir, or uses the single-file form
+- THEN behavior is byte-identical to before — no move, no bundle handling

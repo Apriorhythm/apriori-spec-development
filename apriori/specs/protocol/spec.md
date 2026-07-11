@@ -79,16 +79,23 @@ The runbook (both editions) SHALL document, in the P0 issue-ledger section: the 
 - WHEN the P0 and STEP6 sections are read in either language
 - THEN the seven statuses with their setters are documented (waived = human-only with a gates: entry; rejected-verified preserves the original rationale), the reopen-is-an-event rule is stated, the STEP6 exit names the post-archive gate run feeding the gate④ packet, and concepts §7.0 carries the updated vocabulary in both languages
 
-### Requirement: requirement-stage paths carry the change name
+### Requirement: requirement-stage paths carry the change name  _deprecated (superseded by change-bundle)_
 The runbook (both editions) and the concepts handbook (both languages) SHALL write every requirement-stage path with the change prefix — `requirement/<change>-req-v{N}.md` finalized as `requirement/<change>-req-final.md`, and `requirement/<change>-intent-card.md` on the explore track — and none of the old global literals (`requirement/req-v`, `requirement/req-final.md`, `requirement/intent-card.md`) anywhere in the four live docs; parallel changes stop overwriting each other's requirement history. The STEP6 section (both runbook editions) SHALL carry the preservation clause: after `apriori archive --change <name> --write --changes-dir apriori/changes` moves the change dir, and before the STEP6 closeout commit, every `requirement/<change>-req-*.md` and `requirement/<change>-intent-card.md` (if present) is copied into `apriori/changes/archive/<stamp>-<change>/requirement/`, basenames preserved, all versions included. Already-archived changes keep their old file names (grandfathered — nothing parses requirement filenames).
 
 #### Scenario: PR-19 the prefixed convention binds in every live doc
 - WHEN the four live docs (runbook EN/CN, concepts EN/CN) are scanned
 - THEN the prefixed forms appear where the convention is written (artifact table, STEP0, intent card, the goal recipes, concepts' walkthrough), the STEP6 preservation clause names its destination and its before-the-closeout-commit timing in both runbook editions, and none of the three forbidden old literals appears anywhere in the four docs
 
-### Requirement: the preservation of requirement history is command behavior
+### Requirement: the preservation of requirement history is command behavior  _deprecated (superseded by change-bundle)_
 The runbook STEP6 section (both editions) SHALL state that the archive action itself stages `requirement/<change>-*` (req versions, final, intent card) into the change dir and carries them through the atomic move into `archive/<stamp>-<change>/requirement/` — the executor's residual duty is only the closeout commit; the former executor-copy instruction SHALL be absent.
 
 #### Scenario: PR-20 the automatic carry binds and the manual instruction is gone
 - WHEN the STEP6 section is read in either edition
 - THEN it states the archive action carries the requirement history automatically (destination named), the executor's duty is the closeout commit alone, and the old copy-it-yourself phrasing ("copy every"/"拷入") appears nowhere in the section
+
+### Requirement: per-change artifacts live in the change bundle
+The runbook (both editions) and the concepts handbook (both languages) SHALL define the bundle as the ONLY layout: everything a change owns lives in `apriori/changes/<name>/` — `flow-state.md`; `requirement/` holding `req-v{N}.md`/`req-final.md`/`intent-card.md` under PLAIN names (the directory is the identity); `gap-report.md`; `proposal.md`/`design.md`/`tasks.md`; `specs/<module>/`; `review/` holding the ledger `issues.md`, every review doc (`req-review-v{N}.md`, `spec-review-v{N}.md`, `step5-review-v{N}.md`, `extraction-review-v{N}.md`) and each doc's raw beside it under the unchanged `<stem>-raw.*` rule; and `spike/` on the explore track, which the EXECUTOR deletes or quarantines BEFORE the archive action (the command never deletes anything). The five legacy roots (`requirement/`, `spike/`, `apriori/review/`, `apriori/design/`, `apriori/explore/`) appear nowhere as standalone paths: after stripping every `changes/<…>/` bundle form from the four live docs, zero occurrences of those roots remain. The archive action carries the whole bundle in its one atomic move; STEP6 carries no preservation or staging text. The v4 stability sentence states its promise over the CLI surface & flags, `--json` shapes, the delta format, and the flow-state schema — without a layout clause.
+
+#### Scenario: PR-21 the bundle layout binds and the legacy roots are gone
+- WHEN the four live docs (runbook EN/CN, concepts EN/CN) are scanned
+- THEN the artifact table names the bundle paths (requirement/, review/ with the ledger and docs+raws, gap-report.md, spike/ under changes/<name>/), the STEP6 text says the move carries the bundle with no staging/copy instruction, the spike disposition is the executor's pre-archive duty, and the strip-scan finds zero standalone occurrences of the five legacy roots — while the stability sentence carries no layout clause

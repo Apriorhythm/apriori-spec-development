@@ -17,9 +17,9 @@
 - WHEN `apriori new` scaffolds flow-state.md
 - THEN every field of the runbook §3 schema is present — including `reviewer-session: n/a` and `artifact-root: .` — so the scaffold never drifts behind the schema
 
-### Requirement: the scaffold points at the prefixed requirement path
-`apriori new <name>` SHALL scaffold the flow-state `next-action` line as `draft requirement/<name>-req-v1.md (or the intent card on the explore track)` — the change's own name substituted, no forbidden old literal emitted. Advisory text only: nothing parses the line.
+### Requirement: the scaffold builds the bundle skeleton
+`apriori new <name>` SHALL scaffold the bundle skeleton: `flow-state.md` plus empty `requirement/` and `review/` directories under `apriori/changes/<name>/`, with the flow-state `next-action` line reading `draft apriori/changes/<name>/requirement/req-v1.md (or the intent card on the explore track)` — the change's own name substituted, no legacy-root literal emitted. The next-action is advisory text; no behavior depends on the empty dirs existing.
 
-#### Scenario: NW-05 the scaffolded next-action carries the change name
-- WHEN `apriori new my-change` scaffolds a flow-state
-- THEN its next-action line reads `draft requirement/my-change-req-v1.md (or the intent card on the explore track)` and the generated flow-state contains none of the three forbidden literals (`requirement/req-v`, `requirement/req-final.md`, `requirement/intent-card.md`)
+#### Scenario: NW-05 the scaffold is a bundle
+- WHEN `apriori new my-change` runs
+- THEN `apriori/changes/my-change/` contains flow-state.md plus empty `requirement/` and `review/` dirs, the next-action line reads `draft apriori/changes/my-change/requirement/req-v1.md (or the intent card on the explore track)`, and the flow-state contains no standalone legacy-root literal

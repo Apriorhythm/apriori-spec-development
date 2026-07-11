@@ -10,7 +10,7 @@
 - THEN C2 reports `✗` naming the file, the final line is `GATE: BLOCKED` with the count, and the exit code is 1
 
 #### Scenario: GT-03 the ledger blocks on open rows and reasonless rejections
-- WHEN the ledger at `apriori/review/<name>-issues.md` contains a row whose status starts `open` (case-insensitive), or a `rejected` row with no reason text beyond the word itself
+- WHEN the bundle ledger at `<changeDir>/review/issues.md` contains a row whose status starts `open` (case-insensitive), or a `rejected` row with no reason text beyond the word itself
 - THEN C4 blocks naming the row ID; a `rejected` row passes only when, after stripping the leading word `rejected`, the remaining text contains at least one word character (`rejected: duplicate` passes; `rejected`, `rejected:`, `rejected -` block); `advisory*`/`fixed`/`verified` rows never block
 
 #### Scenario: GT-04 flow-state legality is enforced
@@ -18,8 +18,8 @@
 - THEN C3 blocks naming the offending key; a fully legal flow-state passes
 
 #### Scenario: GT-05 verdict evidence is mechanical
-- WHEN a review doc for the change (files matching `apriori/review/<name>-*.md` or `apriori/design/<name>-review-v*.md`, excluding the ledger and `*-raw` stems, regular files only) contains a `^VERDICT:` line but no file that is REGULAR by lstat (symlinks are not evidence) matches `apriori/review/<stem>-raw.*`
-- THEN C5 blocks naming the doc; adding the raw flips it to `✓`; a symlink matching the doc globs blocks naming the symlink (an evidence doc must never silently drop out by file type)
+- WHEN a review doc in the bundle (files matching `<changeDir>/review/*.md`, excluding `issues.md` and `*-raw` stems, regular files only) contains a `^VERDICT:` line but no file that is REGULAR by lstat (symlinks are not evidence) matches `<changeDir>/review/<stem>-raw.*`
+- THEN C5 blocks naming the doc; adding the raw beside it flips it to `✓`; a symlink matching the doc glob blocks naming the symlink (an evidence doc must never silently drop out by file type); a `review` entry that is a symlink, escapes the change dir (realpath), or is not a directory at all blocks C4 and C5 naming the path and the defect — never read through, never crashed on — and the check works identically at both stages because the evidence travels with the dir
 
 #### Scenario: GT-06 the binding gate is stage-aware
 - WHEN the change is in-flight
@@ -34,8 +34,8 @@
 - THEN gate exits 2 (tier-aware checks are impossible); a readable flow-state whose `change` key mismatches `--change` is C3-blocked, not exit 2
 
 #### Scenario: GT-09 trivial tier is not asked for artifacts it never produces
-- WHEN flow-state declares `tier: trivial` and tasks.md or the ledger file is absent
-- THEN C2/C4 report `–` (not applicable) instead of blocking; on medium/large the same absences block
+- WHEN flow-state declares `tier: trivial` and tasks.md or the bundle ledger `<changeDir>/review/issues.md` is absent
+- THEN C2/C4 report `–` (not applicable) instead of blocking; on medium/large the same absences block naming the exact bundle path
 
 #### Scenario: GT-10 KB freshness degrades honestly
 - WHEN a touched module `<m>` (first path segment of the change's delta-spec suffixes) has `apriori/truth/<m>.md` with a `source-commit` stamp, `lib/<m>.js` exists, and git reports commits in `<stamp>..HEAD -- lib/<m>.js`
@@ -50,7 +50,7 @@
 - THEN no file in the tree is created, modified, or deleted (only the C1 test command's own side effects, which gate does not add to)
 
 ### Requirement: C4 speaks the terminal-state vocabulary
-Gate C4 SHALL parse every ledger row's status against the legal vocabulary (leading token, case-insensitive): non-terminal `open` / `fixed` / `rejected + reason`; terminal `verified` / `rejected-verified + reason` / `waived + reason` / `advisory-acked`. ANY other status blocks at BOTH stages. `rejected`, `rejected-verified`, and `waived` without a word-character reason block at both stages. A `waived` row additionally requires machine-checked human evidence at both stages: the change's flow-state `gates:` block must contain the row's ID and the text `waiv` (case-insensitive) — a producer-written row alone never passes. At the ARCHIVED stage every row must be terminal: `fixed` and plain `rejected` block with a cure naming the reviewer's verify/concur duty or the human waive. In-flight, `fixed` and reasoned `rejected` pass as today.
+Gate C4 SHALL parse every ledger row's status against the legal vocabulary (leading token, case-insensitive): non-terminal `open` / `fixed` / `rejected + reason`; terminal `verified` / `rejected-verified + reason` / `waived + reason` / `advisory-acked`. ANY other status blocks at BOTH stages. `rejected`, `rejected-verified`, and `waived` without a word-character reason block at both stages. A `waived` row additionally requires machine-checked human evidence at both stages: the change's flow-state `gates:` block must contain the row's ID and the text `waiv` (case-insensitive) — a producer-written row alone never passes. At the ARCHIVED stage every row must be terminal: `fixed` and plain `rejected` block with a cure naming the reviewer's verify/concur duty or the human waive. In-flight, `fixed` and reasoned `rejected` pass as today. The ledger lives at `<changeDir>/review/issues.md` at both stages.
 
 #### Scenario: GT-13 archived ledgers must be terminal
 - WHEN gate resolves a change at the archived stage whose ledger carries a `fixed` row, a plain reasoned `rejected` row, or an unknown status like `done`
@@ -61,7 +61,7 @@ Gate C4 SHALL parse every ledger row's status against the legal vocabulary (lead
 - THEN C4 reports BLOCKED naming the row — and the same waived row passes once the gates: entry records the human decision
 
 #### Scenario: GT-15 every archived ledger in this repo parses legal and terminal
-- WHEN the corpus of archived changes (apriori/changes/archive/*) is walked and each change's ledger at apriori/review/<name>-issues.md is parsed
+- WHEN the corpus of archived changes (apriori/changes/archive/*) is walked and each bundle's ledger at `<archived dir>/review/issues.md` is parsed
 - THEN every row is legal AND terminal under the vocabulary (skip-if-absent for packaged environments)
 
 ### Requirement: C7 denies unstamped mutation deltas unless visibly waived

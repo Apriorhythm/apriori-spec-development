@@ -357,3 +357,67 @@ test('PR-16 legacy-project clarity clauses (both languages)', () => {
   assert.match(CN, /且带 `--changes-dir apriori\/changes`\*\*/);
   assert.match(CN, /位于——且更新于——它的\*\*归档\*\*路径/);
 });
+
+// PR-17 helper: like block(), but bounded by the NEXT ## or ### heading — the
+// external-side-effects rule is the last ### in §1, so block() would swallow §2/§3
+function sectionBlock(text, headingRe) {
+  const m = text.match(headingRe);
+  if (!m) return '';
+  const rest = text.slice(m.index);
+  const next = rest.slice(m[0].length).search(/^#{2,3} /m);
+  return next < 0 ? rest : rest.slice(0, m[0].length + next);
+}
+
+test('PR-17 external side effects require the principal\'s explicit authorization (both editions)', () => {
+  const en = sectionBlock(EN, /^### External side effects \(hard rule\)$/m);
+  assert.ok(en.length > 0, 'EN subsection missing');
+  // the rule + recording
+  assert.match(en, /outside the local repository/);
+  assert.match(en, /never covers external side effects/);
+  assert.match(en, /one-shot/i);
+  assert.match(en, /recorded verbatim in `gates:`/);
+  assert.match(en, /class, scope, and expiry/i);
+  assert.match(en, /invalid/);
+  assert.match(en, /never authorizes an external side effect/);
+  assert.match(en, /internal state-machine transitions/);
+  // every mandatory class family
+  for (const re of [/push/, /merg/, /release|package|tag/, /deploy/, /production data/, /settings/,
+                    /secrets/, /webhooks/, /permissions|collaborators/, /environments/, /paid/,
+                    /messages to external|external humans/])
+    assert.match(en, re, String(re));
+  // the carve-out, both sides
+  assert.match(en, /routine configured verification|expected verification path/);
+  assert.match(en, /new paid service/i);
+  assert.match(en, /unusual spend/);
+  assert.match(en, /production-affecting/);
+  assert.match(en, /non-public.*data|data outside the expected verification path/);
+  // the gate-consolidation paragraph cross-references the rule (asserted OUTSIDE the block)
+  const consEn = EN.match(/\*\*Gate consolidation \(explicit authorization\)\.\*\*[^\n]*/)[0];
+  assert.match(consEn, /external side effects/i);
+  // CN mirror
+  const cn = sectionBlock(CN, /^### 外部副作用\(硬规则\)$/m);
+  assert.ok(cn.length > 0, 'CN subsection missing');
+  assert.match(cn, /本地仓库.*之外|工作区之外/);
+  assert.match(cn, /永不覆盖外部副作用|绝不.*覆盖外部副作用/);
+  assert.match(cn, /一次性/);
+  assert.match(cn, /逐字记入|原文记入/);
+  assert.match(cn, /失效边界/);
+  assert.match(cn, /无效/);
+  assert.match(cn, /永不授权外部副作用|绝不授权外部副作用/);
+  assert.match(cn, /内部状态机/);
+  for (const re of [/推送/, /合并/, /发布/, /部署/, /生产数据/, /设置/, /密钥/, /webhook/i,
+                    /权限|协作者/, /环境/, /付费/, /外部.*消息|外部的人/])
+    assert.match(cn, re, String(re));
+  assert.match(cn, /验证路径/);
+  assert.match(cn, /新的付费服务|新付费服务/);
+  assert.match(cn, /异常花费|异常开销/);
+  assert.match(cn, /影响生产/);
+  assert.match(cn, /非公开.*数据/);
+  const consCn = CN.match(/\*\*闸口整合\(显式授权\)。\*\*[^\n]*/)[0];
+  assert.match(consCn, /外部副作用/);
+  // the concepts handbook mirrors the boundary
+  assert.match(CONCEPTS, /outside the local repository|external side effects?.*explicit authorization/i);
+  assert.match(CONCEPTS, /never authorizes an external side effect|data,? never authorization/i);
+  assert.match(CONCEPTS_CN, /本地仓库.*之外|外部副作用/);
+  assert.match(CONCEPTS_CN, /永不授权外部副作用|绝不授权外部副作用|是数据.*不是授权/);
+});

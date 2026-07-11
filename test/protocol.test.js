@@ -485,10 +485,23 @@ test('PR-19 requirement-stage paths carry the change name in every live doc', ()
   // the STEP6 preservation clause binds in both runbook editions: destination + timing
   const s6en = sectionBlock(EN, /^### STEP6 — archive.*$/m);
   assert.match(s6en, /archive\/<stamp>-<change>\/requirement\//);
-  assert.match(s6en, /before the STEP6 closeout commit|before the closeout commit/);
+  assert.match(s6en, /before the move/);          // req-sweep: the carry is automatic, staged pre-move
   assert.match(s6en, /all versions/);
   const s6cn = sectionBlock(CN, /^### STEP6 —— 归档.*$/m);
   assert.match(s6cn, /archive\/<stamp>-<change>\/requirement\//);
-  assert.match(s6cn, /收尾提交之前|收尾提交前/);
+  assert.match(s6cn, /移动之前/);
   assert.match(s6cn, /全部版本|所有版本/);
+});
+
+test('PR-20 the automatic requirement carry binds and the manual instruction is gone', () => {
+  const s6en = sectionBlock(EN, /^### STEP6 — archive.*$/m);
+  assert.match(s6en, /carries the requirement history automatically/);
+  assert.match(s6en, /archive\/<stamp>-<change>\/requirement\//);
+  assert.match(s6en, /closeout commit/);
+  assert.ok(!/copy every/.test(s6en), 'old executor-copy instruction survives in EN');
+  const s6cn = sectionBlock(CN, /^### STEP6 —— 归档.*$/m);
+  assert.match(s6cn, /自动/);
+  assert.match(s6cn, /archive\/<stamp>-<change>\/requirement\//);
+  assert.match(s6cn, /收尾提交/);
+  assert.ok(!/拷入|拷贝每/.test(s6cn), 'old executor-copy instruction survives in CN');
 });

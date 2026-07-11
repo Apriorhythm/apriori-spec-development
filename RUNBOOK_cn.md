@@ -251,7 +251,7 @@ gates:                  # 只增不改的人工决定日志
 ### STEP6 —— 归档 + 知识库回写
 
 - **P9 之前:**确保本变更的工作已**提交**——`source-commit` 必须指向一个真实存在、包含契约节所校对实现的 commit(全新仓库同样:先提交,再盖标)。
-- **动作:**执行 **archive 接口动作**,用 **P9**——按上文接口的 archive 算法合并;更新 `apriori/truth/<module>.md`(契约节按最终实现更新+刷新 `source-commit`;决策节追加本次变更的新决策/不变式);列出改了哪些文件/段落。探索轨变更:在此删除或隔离 `spike/`。 **保全需求史:**归档移动(`--changes-dir`)之后、STEP6 收尾提交之前,把每一份 `requirement/<change>-req-*.md` 和 `requirement/<change>-intent-card.md`(如有)拷入 `apriori/changes/archive/<stamp>-<change>/requirement/`——保留原文件名、全部版本都带上;需求史随变更同行。
+- **动作:**执行 **archive 接口动作**,用 **P9**——按上文接口的 archive 算法合并;更新 `apriori/truth/<module>.md`(契约节按最终实现更新+刷新 `source-commit`;决策节追加本次变更的新决策/不变式);列出改了哪些文件/段落。探索轨变更:在此删除或隔离 `spike/`。 **归档动作自动携带需求史:**带 `--changes-dir` 时,它会在移动之前把每一份 `requirement/<change>-req-*.md` 与 `<change>-intent-card.md`(全部版本、保留原文件名)暂存进变更目录,随原子移动落至 `apriori/changes/archive/<stamp>-<change>/requirement/`——你剩下的唯一职责是收尾提交。
 - **退出:**增量规格已合并 + 知识库已更新 + 归档后再跑一次 `apriori gate --change <name>`(此时解析到 archived 归档态——C4 要求台账每行都是终态),其结果放进**闸口 ④**的材料包 → 人批准知识库 diff(同仓库布局下就是 PR 评审)。然后置 `current-step: DONE`。
 
 

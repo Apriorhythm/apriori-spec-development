@@ -85,3 +85,10 @@ The runbook (both editions) and the concepts handbook (both languages) SHALL wri
 #### Scenario: PR-19 the prefixed convention binds in every live doc
 - WHEN the four live docs (runbook EN/CN, concepts EN/CN) are scanned
 - THEN the prefixed forms appear where the convention is written (artifact table, STEP0, intent card, the goal recipes, concepts' walkthrough), the STEP6 preservation clause names its destination and its before-the-closeout-commit timing in both runbook editions, and none of the three forbidden old literals appears anywhere in the four docs
+
+### Requirement: the preservation of requirement history is command behavior
+The runbook STEP6 section (both editions) SHALL state that the archive action itself stages `requirement/<change>-*` (req versions, final, intent card) into the change dir and carries them through the atomic move into `archive/<stamp>-<change>/requirement/` — the executor's residual duty is only the closeout commit; the former executor-copy instruction SHALL be absent.
+
+#### Scenario: PR-20 the automatic carry binds and the manual instruction is gone
+- WHEN the STEP6 section is read in either edition
+- THEN it states the archive action carries the requirement history automatically (destination named), the executor's duty is the closeout commit alone, and the old copy-it-yourself phrasing ("copy every"/"拷入") appears nowhere in the section

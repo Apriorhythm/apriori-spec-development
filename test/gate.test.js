@@ -419,3 +419,57 @@ test('GT-15 every archived ledger in this repo parses legal and terminal', () =>
     }
   }
 });
+
+// ---- cas-enforcement (GT-16): C7 denies unstamped mutation deltas unless visibly waived ----
+
+const MOD_DELTA = '## MODIFIED Requirements\n\n### Requirement: Alpha\n\n#### Scenario: XA-01 base\n- tightened\n';
+function modProject(extraFiles = {}) {
+  return mkProject({
+    'apriori/specs/kv/spec.md': STORE,
+    'apriori/changes/c/flow-state.md': FLOW('c'),
+    'apriori/changes/c/tasks.md': '- [x] T1 done\n',
+    'apriori/changes/c/specs/kv/spec.md': MOD_DELTA,
+    'apriori/review/c-issues.md': LEDGER_OK,
+    ...extraFiles,
+  });
+}
+const MOD_TAP = tapCmd('ok 1 - XA-01 a');
+const c7Of = (root, opts = {}) => gate.runGate({ cwd: root, change: 'c', testCmd: MOD_TAP, ...opts }).checks.find((x) => x.id === 'C7');
+
+test('GT-16 C7 blocks, and waivers are loud', () => {
+  // unstamped mutation delta → blocked naming the suffix + cure
+  const b = c7Of(modProject());
+  assert.ok(b, 'C7 missing from checks');
+  assert.strictEqual(b.status, 'blocked');
+  assert.match(b.detail, /kv[\/\\]spec\.md/);
+  assert.match(b.detail, /apriori stamp/);
+  // --no-cas → loud waiver, not blocked
+  const w = c7Of(modProject(), { noCas: true });
+  assert.notStrictEqual(w.status, 'blocked');
+  assert.match(w.detail, /waived \(--no-cas\)/);
+  // config row | cas | optional | → waived naming the config
+  const rootC = modProject({ 'apriori/process-config.md': '| Field | Value |\n|---|---|\n| cas | optional |\n' });
+  const wc = c7Of(rootC);
+  assert.notStrictEqual(wc.status, 'blocked');
+  assert.match(wc.detail, /process-config/);
+  // the flag wins over a required config
+  const rootR = modProject({ 'apriori/process-config.md': '| Field | Value |\n|---|---|\n| cas | required |\n' });
+  assert.strictEqual(c7Of(rootR).status, 'blocked');
+  assert.match(c7Of(rootR, { noCas: true }).detail, /waived \(--no-cas\)/);
+  // stamped or ADDED-only → silent pass
+  const okA = c7Of(healthy());                                   // ADDED-only fixture
+  assert.strictEqual(okA.status, 'pass');
+  // archived stage → n/a (deltas already merged)
+  const arch = mkProject({
+    'apriori/specs/kv/spec.md': STORE + '\n### Requirement: Beta\n\n#### Scenario: XB-01 new\n- t\n',
+    'apriori/changes/archive/2026-07-10T1200-c/flow-state.md': FLOW('c'),
+    'apriori/changes/archive/2026-07-10T1200-c/tasks.md': '- [x] T1\n',
+    'apriori/changes/archive/2026-07-10T1200-c/specs/kv/spec.md': DELTA,
+    'apriori/review/c-issues.md': LEDGER_OK,
+  });
+  const na = gate.runGate({ cwd: arch, change: 'c', testCmd: TAP_OK }).checks.find((x) => x.id === 'C7');
+  assert.strictEqual(na.status, 'n/a');
+  // CLI: --no-cas is a legal flag
+  const cli = run(['gate', '--change', 'c', '--no-cas', '--test-cmd', MOD_TAP], modProject());
+  assert.match(cli.stdout, /waived/);
+});

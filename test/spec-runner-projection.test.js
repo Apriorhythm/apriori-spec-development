@@ -136,7 +136,7 @@ test('SR-23 --json carries the projection contract in every outcome class', () =
   const ok = jsonCli(['--change', 'c', '--cwd', okRoot, '--test-cmd', tapCmd('ok 1 - XA-01 a', 'ok 2 - XB-01 b'), '--json']);
   assert.strictEqual(ok.code, 0);
   assert.strictEqual(ok.json.result, 'GREEN');
-  assert.deepStrictEqual(ok.json.projection, { change: 'c', modules: ['kv/spec.md'], conflicts: [] });
+  assert.deepStrictEqual(ok.json.projection, { change: 'c', modules: ['kv/spec.md'], conflicts: [], unstampedMutations: [], notes: [] });
   // merge-conflict class
   const cfRoot = mkProject({
     'apriori/specs/kv/spec.md': STORE_KV,
@@ -152,7 +152,7 @@ test('SR-23 --json carries the projection contract in every outcome class', () =
   const nf = jsonCli(['--change', 'zzz', '--cwd', nfRoot, '--test-cmd', tapCmd('ok 1 - XA-01 a'), '--json']);
   assert.strictEqual(nf.code, 2);
   assert.strictEqual(nf.json.result, 'ERROR');
-  assert.deepStrictEqual(nf.json.projection, { change: 'zzz', modules: [], conflicts: [] });
+  assert.deepStrictEqual(nf.json.projection, { change: 'zzz', modules: [], conflicts: [], unstampedMutations: [] });
   assert.ok(nf.json.errors.length > 0);
   // non-change runs never emit projection
   const plain = jsonCli(['--specs', path.join(okRoot, 'apriori/specs'), '--test-cmd', tapCmd('ok 1 - XA-01 a'), '--json']);
@@ -181,4 +181,35 @@ test('SR-25 deprecated block scenarios stop being demanded; their tests are ORPH
   assert.deepStrictEqual(run.verdict.boundGreen, ['XA-01']);   // non-deprecated block unaffected
   assert.deepStrictEqual(run.verdict.unbound, []);             // XO-01 not demanded
   assert.deepStrictEqual(run.verdict.orphan, ['XO-01']);       // lingering test flagged
+});
+
+// ---- cas-enforcement (SR-32): the projection warns but does not judge ----
+const ceFs = require('node:fs');
+const cePath = require('node:path');
+const ceOs = require('node:os');
+const { spawnSync: ceSpawn } = require('node:child_process');
+const CE_BIN = cePath.join(__dirname, '..', 'bin', 'apriori.js');
+
+test('SR-32 the projection warns but does not judge', () => {
+  const root = ceFs.mkdtempSync(cePath.join(ceOs.tmpdir(), 'apriori-sr32-'));
+  const w = (rel, body) => { const p = cePath.join(root, rel); ceFs.mkdirSync(cePath.dirname(p), { recursive: true }); ceFs.writeFileSync(p, body); };
+  w('apriori/specs/kv/spec.md', '### Requirement: Alpha\n\n#### Scenario: XA-01 a\n- t\n');
+  w('apriori/changes/c/specs/kv/spec.md', '## MODIFIED Requirements\n\n### Requirement: Alpha\n\n#### Scenario: XA-01 a\n- tightened\n');
+  const tap = `node -e "console.log('ok 1 - XA-01 a')"`;
+  const r = ceSpawn('node', [CE_BIN, 'verify', '--change', 'c', '--test-cmd', tap, '--json'], { cwd: root, encoding: 'utf8' });
+  assert.strictEqual(r.status, 0, r.stdout + r.stderr);           // GREEN despite the warning
+  assert.match(r.stderr, /unstamped mutation delta/);
+  assert.match(r.stderr, /apriori stamp/);
+  const j = JSON.parse(r.stdout);
+  assert.deepStrictEqual(j.projection.unstampedMutations, ['kv/spec.md']);
+  // ADDED-only: empty list, no warning
+  const root2 = ceFs.mkdtempSync(cePath.join(ceOs.tmpdir(), 'apriori-sr32b-'));
+  const w2 = (rel, body) => { const p = cePath.join(root2, rel); ceFs.mkdirSync(cePath.dirname(p), { recursive: true }); ceFs.writeFileSync(p, body); };
+  w2('apriori/specs/kv/spec.md', '### Requirement: Alpha\n\n#### Scenario: XA-01 a\n- t\n');
+  w2('apriori/changes/c/specs/kv/spec.md', '## ADDED Requirements\n\n### Requirement: Beta\n\n#### Scenario: XB-01 b\n- t\n');
+  const tap2 = `node -e "console.log('ok 1 - XA-01 a');console.log('ok 2 - XB-01 b')"`;
+  const r2 = ceSpawn('node', [CE_BIN, 'verify', '--change', 'c', '--test-cmd', tap2, '--json'], { cwd: root2, encoding: 'utf8' });
+  assert.strictEqual(r2.status, 0);
+  assert.doesNotMatch(r2.stderr, /unstamped/);
+  assert.deepStrictEqual(JSON.parse(r2.stdout).projection.unstampedMutations, []);
 });

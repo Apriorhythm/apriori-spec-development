@@ -425,3 +425,89 @@ test('AM-31 stamp problems carry line numbers', () => {
   assert.ok(skipped.problems.some((p) => p.includes('ADDDED')));
   assert.ok(!skipped.problems.some((p) => /apriori-base/.test(p)), 'covered by the heading problem, no flood');
 });
+
+// ---- cas-enforcement (AM-32..35): graded stamps + rerun repair ----
+
+const MOD_SAME = '## MODIFIED Requirements\n\n### Requirement: Alpha\n\n#### Scenario: XA-01 a\n- t\n';   // trim-equal to STORE_A's block
+const MOD_DIFF = '## MODIFIED Requirements\n\n### Requirement: Alpha\n\n#### Scenario: XA-01 a\n- CHANGED\n';
+const STALE = `<!-- apriori-base: sha256:${'0'.repeat(64)} -->\n`;
+
+test('AM-32 unstamped mutation deltas warn on both archive forms', () => {
+  // high-level form: warns AND merges
+  const root = twoModuleProject({ 'apriori/changes/c/specs/a/spec.md': MOD_DIFF });
+  const r = run(['archive', '--change', 'c', '--write'], root);
+  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout + r.stderr, /unstamped mutation delta/);
+  assert.match(r.stdout + r.stderr, /apriori stamp/);
+  assert.match(fs.readFileSync(path.join(root, 'apriori/specs/a/spec.md'), 'utf8'), /CHANGED/);
+  // single-file form warns too
+  const root2 = mkProject({ 'store.md': STORE_A, 'delta.md': MOD_DIFF });
+  const r2 = run(['archive', '--store', 'store.md', '--delta', 'delta.md', '--change', 'c', '--write'], root2);
+  assert.strictEqual(r2.status, 0);
+  assert.match(r2.stdout + r2.stderr, /unstamped mutation delta/);
+  // ADDED-only stays quiet
+  const root3 = twoModuleProject();
+  const r3 = run(['archive', '--change', 'c', '--write'], root3);
+  assert.strictEqual(r3.status, 0);
+  assert.doesNotMatch(r3.stdout + r3.stderr, /unstamped mutation delta/);
+});
+
+test('AM-33 an already-applied stamped delta reruns to completion', () => {
+  // store already carries the merged content; the stamp records a stale base → mismatch + all-unchanged
+  const root = mkProject({
+    'apriori/specs/a/spec.md': STORE_A,
+    'apriori/changes/c/specs/a/spec.md': STALE + MOD_SAME,     // MODIFIED-only, trim-equal (the CE-1 case)
+  });
+  const before = fs.readFileSync(path.join(root, 'apriori/specs/a/spec.md'), 'utf8');
+  const r = run(['archive', '--change', 'c', '--write', '--changes-dir', 'apriori/changes'], root);
+  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout + r.stderr, /rerun accepted/);
+  assert.strictEqual(fs.readFileSync(path.join(root, 'apriori/specs/a/spec.md'), 'utf8'), before);
+  assert.ok(!fs.existsSync(path.join(root, 'apriori/changes/c')), 'change dir must have moved');
+  assert.ok(fs.readdirSync(path.join(root, 'apriori/changes/archive')).some((b) => b.endsWith('-c')));
+});
+
+test('AM-34 divergence with pending work never repairs; the resumed mix completes', () => {
+  // (a) stale stamp + a REAL pending op → hard fail, nothing written or moved
+  const rootA = mkProject({
+    'apriori/specs/a/spec.md': STORE_A,
+    'apriori/changes/c/specs/a/spec.md': STALE + MOD_DIFF,
+  });
+  const beforeA = fs.readFileSync(path.join(rootA, 'apriori/specs/a/spec.md'), 'utf8');
+  const rA = run(['archive', '--change', 'c', '--write', '--changes-dir', 'apriori/changes'], rootA);
+  assert.strictEqual(rA.status, 1);
+  assert.match(rA.stdout + rA.stderr, /base mismatch/);
+  assert.strictEqual(fs.readFileSync(path.join(rootA, 'apriori/specs/a/spec.md'), 'utf8'), beforeA);
+  assert.ok(fs.existsSync(path.join(rootA, 'apriori/changes/c')), 'change dir must NOT move');
+  // (b) the resumed-partial-commit mix: A stale-but-applied + B matching-with-real-ops → completes
+  const goodB = am.fingerprint(STORE_B);
+  const rootB = mkProject({
+    'apriori/specs/a/spec.md': STORE_A,
+    'apriori/specs/b/spec.md': STORE_B,
+    'apriori/changes/c/specs/a/spec.md': STALE + MOD_SAME,
+    'apriori/changes/c/specs/b/spec.md': `<!-- apriori-base: ${goodB} -->\n` + ADD_B,
+  });
+  const rB = run(['archive', '--change', 'c', '--write', '--changes-dir', 'apriori/changes'], rootB);
+  assert.strictEqual(rB.status, 0, rB.stdout + rB.stderr);
+  assert.match(rB.stdout + rB.stderr, /rerun accepted/);
+  assert.match(fs.readFileSync(path.join(rootB, 'apriori/specs/b/spec.md'), 'utf8'), /Bravo2/);
+  // (c) mixed with a diverged pending file → whole preflight fails, B untouched too
+  const rootC = mkProject({
+    'apriori/specs/a/spec.md': STORE_A,
+    'apriori/specs/b/spec.md': STORE_B,
+    'apriori/changes/c/specs/a/spec.md': STALE + MOD_SAME,
+    'apriori/changes/c/specs/b/spec.md': STALE + '## MODIFIED Requirements\n\n### Requirement: Bravo\n\n#### Scenario: XV-01 b\n- CHANGED\n',
+  });
+  const rC = run(['archive', '--change', 'c', '--write', '--changes-dir', 'apriori/changes'], rootC);
+  assert.strictEqual(rC.status, 1);
+  assert.strictEqual(fs.readFileSync(path.join(rootC, 'apriori/specs/b/spec.md'), 'utf8'), STORE_B);
+});
+
+test('AM-35 MODIFIED speaks the idempotence vocabulary', () => {
+  const sameBlock = '### Requirement: Alpha\n\n#### Scenario: XA-01 a\n- t\n';
+  const same = am.merge(STORE_A, { ADDED: new Map(), MODIFIED: new Map([['Alpha', sameBlock]]), REMOVED: new Map(), RENAMED: [] }, 'c');
+  assert.deepStrictEqual(same.modified, []);
+  assert.ok(same.unchanged.includes('Alpha'), JSON.stringify(same.unchanged));
+  const diff = am.merge(STORE_A, { ADDED: new Map(), MODIFIED: new Map([['Alpha', sameBlock.replace('- t', '- x')]]), REMOVED: new Map(), RENAMED: [] }, 'c');
+  assert.deepStrictEqual(diff.modified, ['Alpha']);
+});

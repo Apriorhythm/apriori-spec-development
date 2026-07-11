@@ -2,12 +2,15 @@
 
 All notable changes to `apriori-cli`. Versions follow semver; the stability promise from 3.0.0 holds: CLI surface & flags, `--json` shapes, the delta format, the flow-state schema and the `apriori/` layout only break in a major.
 
-## Unreleased (3.3.0)
+## 3.3.0 — 2026-07-11 · the productization release
 
 - **Strict argument parsing everywhere** — every subcommand answers `--help`/`-h` (exit 0, wins over any other validation); unknown flags and stray positionals exit 2 naming themselves. A typo can no longer make a gate command act on the wrong target while exiting green. Three declared behavior changes: `apriori new a b` errors on `b` (was silently ignored), `apriori stamp --foo` is an unknown flag (was treated as the file), multi-value flags (`verify --specs`) stop consuming at any `-`-prefixed token (was `--`-only).
 - **README split** — the README is now a ~117-line first screen with a machine-verified executable Quickstart; deep content moved to `docs/{concepts,legacy,ci,cli,troubleshooting}` (EN/CN pairs). `check --self` guards the new pairs (a one-sided pair fails) and resolves links per-file with cross-file fragment validation.
 - **Golden path in CI** — the CI job packs the tarball (`npm pack`) and `scripts/golden-path.mjs` installs it into an isolated prefix and walks the README Quickstart verbatim on ubuntu and windows, asserting the documented exit sequence and final state. The published package is now proven as installed, not just as checked out.
-- CHANGELOG.md, MIGRATING.md, SECURITY.md (this change).
+- CHANGELOG.md, MIGRATING.md, SECURITY.md — the security fact-check drove a real hardening (doctor per-file flow-state containment).
+- `examples/python-pytest/` — the any-language TAP pattern, verified in CI (ubuntu+windows, py3.12).
+- CK-10 review-evidence secret tripwire (three airtight literal patterns) + provenance header convention + retention clause.
+- `validation/` — the four labs' primary materials with an honest evidence-grade README (single-operator, no external replication yet).
 
 ## 3.2.0 — 2026-07-11 · the gate & doctor release
 

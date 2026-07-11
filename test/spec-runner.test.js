@@ -352,3 +352,90 @@ test('SR-31 projected verify and gate inherit the plan check', () => {
   assert.strictEqual(g.status, 2);   // untrustworthy run = gate ERROR, like every other infra failure
   assert.match(g.stdout + g.stderr, /declares 3 test point\(s\) but 2/);
 });
+
+// ---- unattributed-fail (SR-33..37): unattributed test failures block GREEN ----
+
+test('SR-33 the teardown false-green is dead', () => {
+  const { file } = tmpSpec('#### Scenario: XX-01 a\n');
+  const r = runCli(['--specs', file, '--test-cmd',
+    `node -e "console.log('ok 1 - XX-01 pass');console.log('not ok 2 - global teardown failed');console.log('1..2');process.exit(1)"`]);
+  assert.strictEqual(r.status, 1, r.stdout + r.stderr);
+  assert.doesNotMatch(r.stdout, /RESULT: GREEN/);
+  assert.match(r.stdout, /UNATTRIBUTED FAILURES[^\n]*: 1/);
+  assert.match(r.stdout, /global teardown failed/);
+});
+
+test('SR-34 bare and half-shaped not-ok points block even on exit 0', () => {
+  const { file } = tmpSpec('#### Scenario: XX-01 a\n');
+  for (const bad of ['not ok', 'not ok 3', 'not ok 4 teardown', 'not ok - teardown failed']) {
+    const r = runCli(['--specs', file, '--test-cmd',
+      `node -e "console.log('ok 1 - XX-01 a');console.log('${bad}');console.log('1..2')"`]);
+    assert.strictEqual(r.status, 1, `${bad}: ${r.stdout}`);
+    assert.match(r.stdout, /UNATTRIBUTED FAILURES/);
+  }
+  // bare/untagged ok points block nothing
+  const ok = runCli(['--specs', file, '--test-cmd',
+    `node -e "console.log('ok 1 - XX-01 a');console.log('ok');console.log('1..2')"`]);
+  assert.strictEqual(ok.status, 0, ok.stdout);
+  assert.match(ok.stdout, /RESULT: GREEN/);
+  // an unattributed-ONLY stream (no tagged result, no plan) is a real failure, not a reporter problem
+  const only = runCli(['--specs', file, '--test-cmd', `node -e "console.log('not ok')"`]);
+  assert.strictEqual(only.status, 1, only.stdout + only.stderr);
+  assert.match(only.stdout, /UNATTRIBUTED FAILURES/);
+  assert.doesNotMatch(only.stderr, /ZERO TAP results/);
+});
+
+test('SR-35 directives, nesting, and prefix look-alikes stay exempt', () => {
+  const { file } = tmpSpec('#### Scenario: XX-01 a\n');
+  const lines = [
+    "console.log('ok 1 - XX-01 a')",
+    "console.log('not ok 5 # SKIP flaky')",
+    "console.log('not ok 6 # TODO later')",
+    "console.log('    not ok 1 - subtest detail')",
+    "console.log('not ok: summary')",
+  ].join(';');
+  const r = runCli(['--specs', file, '--test-cmd', `node -e "${lines}"`]);
+  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /RESULT: GREEN/);
+  assert.doesNotMatch(r.stdout, /UNATTRIBUTED FAILURES/);
+});
+
+test('SR-36 infra errors keep precedence', () => {
+  const { file } = tmpSpec('#### Scenario: XX-01 a\n');
+  // plan mismatch + unattributed failure → exit 2, both reported
+  const r = runCli(['--specs', file, '--test-cmd',
+    `node -e "console.log('ok 1 - XX-01 a');console.log('not ok 2 - teardown');console.log('1..5')"`]);
+  assert.strictEqual(r.status, 2, r.stdout + r.stderr);
+  assert.match(r.stderr, /plan declares 5/);
+  assert.match(r.stdout, /UNATTRIBUTED FAILURES/);
+  // Bail out! + unattributed failure → exit 2
+  const b = runCli(['--specs', file, '--test-cmd',
+    `node -e "console.log('not ok 1 - x');console.log('Bail out! stop')"`]);
+  assert.strictEqual(b.status, 2, b.stdout + b.stderr);
+});
+
+test('SR-37 the reporting contract is exact', () => {
+  const { file } = tmpSpec('#### Scenario: XX-01 a\n');
+  const mk = [
+    "console.log('ok 1 - XX-01 a')",
+    "for(let i=0;i<25;i++)console.log('not ok '+(i+2)+' - fail'+(i===0?' '+'x'.repeat(150):' '+i))",
+  ].join(';');
+  const r = runCli(['--specs', file, '--test-cmd', `node -e "${mk}"`, '--json']);
+  assert.strictEqual(r.status, 1, r.stdout + r.stderr);
+  const j = JSON.parse(r.stdout);
+  assert.strictEqual(j.unattributedFailures.count, 25);
+  assert.strictEqual(j.unattributedFailures.lines.length, 25);
+  assert.ok(j.unattributedFailures.lines[0].length > 120, 'JSON lines untruncated');
+  // human report: first 20, 120-char cap incl. ellipsis, "and N more"
+  const h = runCli(['--specs', file, '--test-cmd', `node -e "${mk}"`]);
+  const seg = h.stdout.slice(h.stdout.indexOf('UNATTRIBUTED'));
+  const listed = seg.split('\n').filter((l) => /fail/.test(l));
+  assert.strictEqual(listed.length, 20, 'first 20 listed');
+  const long = listed.find((l) => l.includes('x'.repeat(10)));
+  assert.ok(long.trim().length <= 120 && long.trim().endsWith('…'), 'cut to 119 + ellipsis');
+  assert.match(seg, /and 5 more/);
+  // GREEN carries the stable empty shape
+  const g = runCli(['--specs', file, '--test-cmd', `node -e "console.log('ok 1 - XX-01 a')"`, '--json']);
+  const gj = JSON.parse(g.stdout);
+  assert.deepStrictEqual(gj.unattributedFailures, { count: 0, lines: [] });
+});

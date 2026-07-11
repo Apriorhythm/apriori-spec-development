@@ -496,3 +496,12 @@ test('GT-16 C7 blocks, and waivers are loud', () => {
   const cli = run(['gate', '--change', 'c', '--no-cas', '--test-cmd', MOD_TAP], modProject());
   assert.match(cli.stdout, /waived/);
 });
+
+test('SR-38 gate C1 inherits the unattributed-failure GAPS class', () => {
+  const root = healthy();
+  const cmd = tapCmd('ok 1 - XA-01 a', 'ok 2 - XB-01 b', 'not ok 3 - teardown failed');
+  const r = gate.runGate({ cwd: root, change: 'c', testCmd: cmd });
+  const c1 = r.checks.find((x) => x.id === 'C1');
+  assert.strictEqual(c1.status, 'blocked', c1.detail);
+  assert.match(c1.detail, /unattributed/, 'the gap count names the unattributed class');
+});

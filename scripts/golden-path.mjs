@@ -11,6 +11,51 @@ import { fileURLToPath } from 'node:url';
 
 export const EXPECTS = [0, 1, 0, 0];
 
+// GP-06..10: on win32, resolve an EXPLICIT Git Bash — bare `bash` finds the System32 WSL
+// shim first on real machines, and the WSL world can't see the Windows-side prefix/PATH/cwd.
+// Injectable seams; real defaults. Throws (never exits) so main() can route through fail().
+export function resolveBash(opts = {}) {
+  const platform = opts.platform ?? process.platform;
+  if (platform !== 'win32') return 'bash';                  // posix: nothing consulted, nothing logged
+  const env = opts.env ?? process.env;
+  const whereGit = opts.whereGit ?? (() => spawnSync('where', ['git'], { shell: false, encoding: 'utf8' }));
+  const existsFile = opts.existsFile ?? ((p) => { try { return fs.statSync(p).isFile(); } catch { return false; } });
+  const log = opts.log ?? ((m) => console.error(m));        // stderr keeps walk stdout sentinel-clean
+  const override = env.APRIORI_GIT_BASH;
+  if (override) {
+    // an explicit override is never silently ignored or reinterpreted
+    if (!path.win32.isAbsolute(override)) throw new Error(`APRIORI_GIT_BASH must be an absolute path (got '${override}')`);
+    if (!existsFile(override)) throw new Error(`APRIORI_GIT_BASH points to nothing: ${override}`);
+    log(`golden-path: bash = ${override}`);
+    return override;
+  }
+  const candidates = [];
+  const seen = new Set();
+  const push = (p) => { const k = p.toLowerCase(); if (!seen.has(k)) { seen.add(k); candidates.push(p); } };
+  const w = whereGit();
+  const hits = (w && w.status === 0 && w.stdout) ? w.stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean) : [];
+  for (const hit of hits) {
+    // lazy (.*?) — greedy would let `bin` match inside `mingw64\bin`, deriving root ...\Git\mingw64
+    const m = /^(.*?)\\(?:cmd|mingw64\\bin|mingw32\\bin|bin)\\git\.exe$/i.exec(hit);
+    if (!m) continue;                                        // unrecognized shapes derive nothing
+    // the generic bin\git.exe alternative must not turn MSYS/Cygwin-like usr\bin\git.exe
+    // (or a bare mingw dir) into a "root" — only the four Git-for-Windows layouts derive
+    if (/\\(?:usr|mingw64|mingw32)$/i.test(m[1])) continue;
+    push(m[1] + '\\bin\\bash.exe');
+    push(m[1] + '\\usr\\bin\\bash.exe');
+  }
+  for (const [v, sub] of [[env.ProgramFiles, 'Git'], [env['ProgramFiles(x86)'], 'Git'],
+                          [env.LocalAppData, 'Programs\\Git']]) {
+    if (!v) continue;
+    push(`${v}\\${sub}\\bin\\bash.exe`);
+    push(`${v}\\${sub}\\usr\\bin\\bash.exe`);
+  }
+  for (const c of candidates) {
+    if (existsFile(c)) { log(`golden-path: bash = ${c}`); return c; }
+  }
+  throw new Error('no Git Bash found on this Windows machine — install Git for Windows or set APRIORI_GIT_BASH to its bin\\bash.exe');   // fail() adds the golden-path: prefix
+}
+
 // GP-01: pure text seam — never touches the filesystem
 export function extractBlocks(readmeText) {
   // fence-aware: heading-looking lines INSIDE ```shell blocks (heredoc'd delta specs) must not
@@ -72,6 +117,8 @@ export function assertSentinels(stdout, expects) {
 export function main(argv) {
   const mode = argv.includes('--packed') ? 'packed' : (argv.includes('--local') ? 'local' : null);
   if (!mode) fail('usage: golden-path.mjs --local | --packed <tgz>');
+  let BASH;                                  // resolved once; every spawn site uses it (GP-06..10)
+  try { BASH = resolveBash(); } catch (e) { fail(e.message); }
   const here = path.dirname(fileURLToPath(import.meta.url));
   const checkout = path.join(here, '..');
   const work = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-golden-'));
@@ -102,7 +149,7 @@ export function main(argv) {
   // the script is invoked by RELATIVE name with cwd=work — an absolute Windows path
   // (C:\Users\...) gets its backslashes eaten crossing into bash; a relative name never does
   fs.writeFileSync(path.join(work, 'walk.sh'), script);
-  const run = spawnSync('bash', ['walk.sh'], { cwd: work, env, encoding: 'utf8' });
+  const run = spawnSync(BASH, ['walk.sh'], { cwd: work, env, encoding: 'utf8' });
   process.stdout.write(run.stdout || '');
   process.stderr.write(run.stderr || '');
   // parse sentinels — a missing one means the script itself died (named)
@@ -110,7 +157,7 @@ export function main(argv) {
   // GP-03: final state, asserted through the SAME medium and env as the walk
   const demo = path.join(work, 'hello-apriori');
   const assertCmd = (label, cmd, expect = 0) => {
-    const r = spawnSync('bash', ['-c', cmd], { cwd: demo, env, encoding: 'utf8' });
+    const r = spawnSync(BASH, ['-c', cmd], { cwd: demo, env, encoding: 'utf8' });
     if (r.status !== expect) fail(`final-state ${label}: exit ${r.status}, expected ${expect}\n${r.stdout}${r.stderr}`);
   };
   assertCmd('store verify', 'apriori verify --specs apriori/specs');

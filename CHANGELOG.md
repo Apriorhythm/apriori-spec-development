@@ -2,6 +2,16 @@
 
 All notable changes to `apriori-cli`. Versions follow semver; the stability promise: CLI surface & flags, `--json` shapes, the delta format and the flow-state schema only break in a major.
 
+## 4.0.1 — 2026-07-12 · the false-green dies and CAS keeps its word
+
+Both fixes trace to the GPT-5.6 external review of 4.0.0 (each reproduced before work started; two changes through the full loop with adversarial codex reviews).
+
+- **Unattributed test failures block GREEN** — any top-level non-SKIP/TODO `not ok`, whatever its shape (numbered-without-ID, bare, number-only, dash-less), is an *unattributed failure*: verdict GAPS (exit 1) even when the test command exits 0, a new report group (first 20 lines, 120-char cap) and `--json` `unattributedFailures {count, lines}` in every outcome class. Infra ERRORs keep precedence; `exec.status !== 0` never exits 0; nested-subtest indentation, directives, and `not ok:`-style prefixes stay exempt; gate C1 names the class. This kills the reviewer-reproduced teardown false-green.
+- **`archive` denies unstamped mutation deltas by default** — the promise "mandatory in 4.0" is now code on both archive forms: preflight error naming the file and the cure, nothing written or moved; the two visible waivers are `--no-cas` and a `| cas | optional |` config row (the flag wins, the output names the source). `verify --change` stays warn-only; ADDED-only deltas stay exempt.
+- **`status` sees archived changes** — the shared resolver (new `lib/resolve.js`) plus file-level containment guards: `stage`/`path` in output and JSON, bad names / missing changes / escaping paths exit 2.
+- **`doctor` D8 + `update` warnings** name the five legacy 3.x roots with a pointer at MIGRATING.md's new 4.0 section (manual mapping table; a full migrate command stays out until external users need it).
+- `package.json` homepage now points at the v4 tree. 218 tests.
+
 ## 4.0.0 — 2026-07-12 · the change bundle
 
 Everything a change produces lives in ONE directory: `apriori/changes/<name>/` — `flow-state.md`, the `requirement/` history (plain names: `req-v{N}.md`, `req-final.md`, `intent-card.md`), `gap-report.md`, `proposal.md`, `design.md`, `tasks.md`, the `specs/` deltas, the `review/` evidence (ledger `issues.md`, review docs, raws), and `spike/` on the explore track. The five scattered per-change roots (`requirement/`, `spike/`, `apriori/review/`, `apriori/design/`, `apriori/explore/`) cease to exist.

@@ -99,3 +99,10 @@ The runbook (both editions) and the concepts handbook (both languages) SHALL def
 #### Scenario: PR-21 the bundle layout binds and the legacy roots are gone
 - WHEN the four live docs (runbook EN/CN, concepts EN/CN) are scanned
 - THEN the artifact table names the bundle paths (requirement/, review/ with the ledger and docs+raws, gap-report.md, spike/ under changes/<name>/), the STEP6 text says the move carries the bundle with no staging/copy instruction, the spike disposition is the executor's pre-archive duty, and the strip-scan finds zero standalone occurrences of the five legacy roots — while the stability sentence carries no layout clause
+
+### Requirement: the CAS promise speaks the present tense and the release surface points at v4
+Both runbook editions SHALL state the CAS rule in the present tense — unstamped mutation deltas are denied by archive by default, naming the two visible waivers (`--no-cas`, `| cas | optional |`) — with no future-tense "mandatory in 4.0 / 4.0 起强制" phrasing left; MIGRATING.md SHALL carry a 4.0 section with the legacy-root detection guidance and the manual migration mapping; `package.json`'s homepage SHALL point at the v4 tree.
+
+#### Scenario: PR-22 the promise and the pointers are current
+- WHEN the two runbook editions, MIGRATING.md, and package.json are read
+- THEN the runbooks state archive's default denial in the present tense with both waivers named and carry no future-tense mandatory-in-4.0 phrasing; MIGRATING.md has a 4.0 section naming the five legacy roots; the homepage field ends in `tree/v4#readme`

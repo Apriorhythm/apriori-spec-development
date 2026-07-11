@@ -54,3 +54,17 @@ test('NW-04 the skeleton carries every flow-state schema field the runbook defin
   assert.match(s, /reviewer-session: n\/a/);
   assert.match(s, /artifact-root: \./);
 });
+
+test('NW-05 the scaffolded next-action carries the change name', () => {
+  const rpFs = require('node:fs');
+  const rpPath = require('node:path');
+  const rpOs = require('node:os');
+  const { spawnSync: rpSpawn } = require('node:child_process');
+  const root = rpFs.mkdtempSync(rpPath.join(rpOs.tmpdir(), 'apriori-nw05-'));
+  const r = rpSpawn('node', [rpPath.join(__dirname, '..', 'bin', 'apriori.js'), 'new', 'my-change'], { cwd: root, encoding: 'utf8' });
+  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+  const flow = rpFs.readFileSync(rpPath.join(root, 'apriori', 'changes', 'my-change', 'flow-state.md'), 'utf8');
+  assert.match(flow, /next-action: draft requirement\/my-change-req-v1\.md \(or the intent card on the explore track\)/);
+  for (const lit of ['requirement/req-v', 'requirement/req-final.md', 'requirement/intent-card.md'])
+    assert.ok(!flow.includes(lit), `scaffold emitted forbidden literal '${lit}'`);
+});

@@ -291,14 +291,14 @@ graph LR
 
 | Artifact | Default location |
 |---|---|
-| Requirement doc | `requirement/req-v{N}.md`, finalized as `requirement/req-final.md` |
+| Requirement doc | `requirement/<change>-req-v{N}.md`, finalized as `requirement/<change>-req-final.md` |
 | REQ-REVIEW-DOC | `apriori/review/<change>-req-review-v{N}.md` (prefix with the change name — parallel changes must not overwrite each other) |
 | Gap report (STEP1 output) | `apriori/explore/<change>-gap-report.md` |
 | Issue ledger | `apriori/review/<change>-issues.md` |
 | proposal.md (why / what / scope) | `apriori/changes/<change>/proposal.md` |
 | SPEC-DOC / DESIGN-DOC / tasks.md | `apriori/changes/<change>/specs/`, `…/design.md`, `…/tasks.md` |
 | SPEC-EVALUATION-DOC | `apriori/design/<change>-review-v{N}.md` |
-| Intent card (explore track) | `requirement/intent-card.md` |
+| Intent card (explore track) | `requirement/<change>-intent-card.md` |
 | Extraction review (explore track) | `apriori/review/<change>-extraction-review-v{N}.md` |
 | Prototype (explore track) | `spike/` — deleted or quarantined at archive; never referenced by tasks.md |
 | TRUTH-DOC (knowledge base) | `apriori/truth/<module>.md`, **in the same repo as the code** (a separate KB repo also works if every doc carries a `source-commit` stamp — see §6) |
@@ -482,7 +482,7 @@ git init             # version control recommended, so you can diff each step
 
 ### 5.1 STEP0 · Write and Review Requirements
 
-First write a plain-language requirement in `requirement/req-v1.md`:
+First write a plain-language requirement in `requirement/<change>-req-v1.md`:
 
 ```text
 Build an in-memory key-value cache library, mini-kv:
@@ -493,13 +493,13 @@ Build an in-memory key-value cache library, mini-kv:
 5. Overwrite: calling set again on an existing key overwrites both the old value and the old TTL.
 ```
 
-Then have a **reviewing model** (a model/tool different from the one that drafted it) review it once per the prompt in [§7.1](#71-step0-requirement-doc-adversarial-review), filling in edge cases you missed (e.g. what `ttlMs<=0` does, whether `get` cleans up lazily or on a timer, concurrent-write semantics). Finalize as `requirement/req-final.md`.
+Then have a **reviewing model** (a model/tool different from the one that drafted it) review it once per the prompt in [§7.1](#71-step0-requirement-doc-adversarial-review), filling in edge cases you missed (e.g. what `ttlMs<=0` does, whether `get` cleans up lazily or on a timer, concurrent-write semantics). Finalize as `requirement/<change>-req-final.md`.
 
 ### 5.2 STEP1 · explore
 
 In your primary tool:
 ```text
-* Requirement doc: requirement/req-final.md
+* Requirement doc: requirement/<change>-req-final.md
 * System knowledge base: (new project: none / legacy project: apriori/truth/ or your KB path)
 * Code: this repo
 Please align the facts and output a gap report between current state A and target B to apriori/explore/<change>-gap-report.md.
@@ -513,7 +513,7 @@ Pay attention to whether the resulting `spec.md` **gives each user-visible behav
 Then switch to your reviewing tool/model and review → revise per [§7.3](#73-step2-adversarial-review-and-revision), looping until "VERDICT: no major issues." Concretely, drive the review with Codex ([§2.3](#23-driving-codex-non-interactively-multi-round-adversarial-review)):
 ```shell
 # round 1 — open the review session (note the printed session id)
-codex exec -s read-only "Review apriori/changes/<change>/specs/ and design.md against requirement/req-final.md, using the RUNBOOK P5 checklist. End with a verdict line."
+codex exec -s read-only "Review apriori/changes/<change>/specs/ and design.md against requirement/<change>-req-final.md, using the RUNBOOK P5 checklist. End with a verdict line."
 # each revision round — same context, so it checks whether your fixes landed
 codex exec resume -c sandbox_mode="read-only" <session-id> "I revised per your last review; re-review and produce v{N+1}."
 ```
@@ -602,7 +602,7 @@ Prompts: RUNBOOK **P1** (reviewer) / **P2** (producer's revise). Design notes:
 
 - Run P1 with a **model/tool different from the one that drafted the requirement**, and feed it the ledger so it can verify earlier fixes.
 - The five review dimensions are fixed on purpose — target-state clarity / edge & exception coverage / undeclared state changes / testable acceptance criteria / conflicts with state A — a stable checklist keeps rounds comparable.
-- The reviewer only reviews, never edits the requirement doc; the producer answers every formal issue with accept/reject + reason (advisories batch-acknowledge, RUNBOOK P0). Loop until "VERDICT: no major issues", finalize as `requirement/req-final.md` (max 5 rounds).
+- The reviewer only reviews, never edits the requirement doc; the producer answers every formal issue with accept/reject + reason (advisories batch-acknowledge, RUNBOOK P0). Loop until "VERDICT: no major issues", finalize as `requirement/<change>-req-final.md` (max 5 rounds).
 
 ### 7.2 STEP1: explore
 

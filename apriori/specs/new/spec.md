@@ -16,3 +16,10 @@
 #### Scenario: NW-04 the skeleton carries the full flow-state schema
 - WHEN `apriori new` scaffolds flow-state.md
 - THEN every field of the runbook §3 schema is present — including `reviewer-session: n/a` and `artifact-root: .` — so the scaffold never drifts behind the schema
+
+### Requirement: the scaffold points at the prefixed requirement path
+`apriori new <name>` SHALL scaffold the flow-state `next-action` line as `draft requirement/<name>-req-v1.md (or the intent card on the explore track)` — the change's own name substituted, no forbidden old literal emitted. Advisory text only: nothing parses the line.
+
+#### Scenario: NW-05 the scaffolded next-action carries the change name
+- WHEN `apriori new my-change` scaffolds a flow-state
+- THEN its next-action line reads `draft requirement/my-change-req-v1.md (or the intent card on the explore track)` and the generated flow-state contains none of the three forbidden literals (`requirement/req-v`, `requirement/req-final.md`, `requirement/intent-card.md`)

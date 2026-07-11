@@ -163,7 +163,7 @@ Update it immediately after each step and each round; append every gate decision
 
 | Artifact | Path |
 |---|---|
-| Requirement doc | `requirement/req-v{N}.md` → finalized `requirement/req-final.md` |
+| Requirement doc | `requirement/<change>-req-v{N}.md` → finalized `requirement/<change>-req-final.md` |
 | Requirement review | `apriori/review/<change>-req-review-v{N}.md` |
 | Issue ledger | `apriori/review/<change>-issues.md` |
 | Gap report | `apriori/explore/<change>-gap-report.md` |
@@ -173,7 +173,7 @@ Update it immediately after each step and each round; append every gate decision
 | Spec evaluation | `apriori/design/<change>-review-v{N}.md` |
 | Knowledge base (TRUTH-DOC) | `apriori/truth/<module>.md` — `source-commit` stamp required (covers the Contract section only, §5 P9/P10) |
 | Flow state | `apriori/changes/<change>/flow-state.md` |
-| Intent card (explore track) | `requirement/intent-card.md` |
+| Intent card (explore track) | `requirement/<change>-intent-card.md` |
 | Extraction review (explore track) | `apriori/review/<change>-extraction-review-v{N}.md` |
 | Prototype (explore track) | `spike/` — deleted or quarantined at archive; never referenced by tasks.md |
 | Reviewer raw output | `apriori/review/<change>-<stage>-raw.*` |
@@ -196,19 +196,19 @@ Before a change is even stateable, you may enter a **thinking-partner stance** (
 
 **Converge — one question at a time.** When a shape emerges, switch to discipline (and say so — announcing the gear-change helps the human follow): **exactly one question per message**, offering concrete options to pick from wherever options are honest (open-ended only where they would mislead), and keep each turn scannable — the question must never drown in prose. Work the coverage checklist — *purpose · target users · core scenarios · UI shape (when user-facing) · data & content · constraints · non-goals · success criteria* — until every item is either answered or **explicitly deferred with the human's consent**; an item silently skipped is a defect. Two situational moves: when the human adds a want mid-conversation, **probe its reality before absorbing it** — is it an observed need or a speculation? state its cost plainly, and offer a deferred/staged path (record it as a non-goal with an upgrade route) before letting it into scope; when the human signals fatigue or impatience, **collapse the remaining checklist into recommended defaults** presented for one batch approval instead of grinding on question-by-question. If the idea spans several independent pieces, say so and split — each piece becomes its own change. Before any exit: present **2-3 candidate approaches with tradeoffs and your recommendation** — never silently adopt the human's first framing. YAGNI throughout.
 
-**Funnel — the human decides, and the fire is carried.** "Stateable" is the human's judgment, not yours: after the approaches comparison you may *propose* exiting; only the human's approval ends the stance — and it **must funnel into the pipeline**. On approval of a stateable goal, start **STEP0**; if the goal still cannot be stated, route to the **explore track's intent card** (§4) — the same goal-certainty split as §2. There is no third resting place: brainstorm feeds one of the two. On funnel, carry everything: write the crystallized understanding as the kickoff requirement draft — goal, users, chosen approach (and the UI sketch that won, if any), success criteria, constraints, non-goals **with the reasons they were cut**, open questions — which becomes STEP0's `req-v1` starting material. Brainstorm never replaces STEP0's requirement discipline — it feeds it.
+**Funnel — the human decides, and the fire is carried.** "Stateable" is the human's judgment, not yours: after the approaches comparison you may *propose* exiting; only the human's approval ends the stance — and it **must funnel into the pipeline**. On approval of a stateable goal, start **STEP0**; if the goal still cannot be stated, route to the **explore track's intent card** (§4) — the same goal-certainty split as §2. There is no third resting place: brainstorm feeds one of the two. On funnel, carry everything: write the crystallized understanding as the kickoff requirement draft — goal, users, chosen approach (and the UI sketch that won, if any), success criteria, constraints, non-goals **with the reasons they were cut**, open questions — which becomes STEP0's `<change>-req-v1` starting material. Brainstorm never replaces STEP0's requirement discipline — it feeds it.
 
 ### STEP0 — requirement refinement · adversarial loop · cap: `step0-cap` (default 5)
 
-- **In:** `requirement/req-v{N}.md`; KB if any. The requirement must state its **target lineage** (mainline / which branch line) — in multi-lineage repos a missing lineage is a fourth interview trigger. If the requirement lacks any of the three essentials — goal / out-of-scope / testable acceptance — **interview the human first** with structured questions, then draft req-v1.
-- **Each round:** (1) if a review exists, revise per it → `req-v{N+1}.md`, noting accept/reject + reason per issue and updating the ledger; (2) spawn the reviewer with **P1** (R2) → review doc + ledger; (3) record the verdict line.
-- **Exit:** verdict line = `VERDICT: no major issues` → copy to `requirement/req-final.md`, advance. Cap hit → **gate ①**. Goal turns out unstateable → propose harden→explore (a human gate confirms the switch).
+- **In:** `requirement/<change>-req-v{N}.md`; KB if any. The requirement must state its **target lineage** (mainline / which branch line) — in multi-lineage repos a missing lineage is a fourth interview trigger. If the requirement lacks any of the three essentials — goal / out-of-scope / testable acceptance — **interview the human first** with structured questions, then draft <change>-req-v1.
+- **Each round:** (1) if a review exists, revise per it → `<change>-req-v{N+1}.md`, noting accept/reject + reason per issue and updating the ledger; (2) spawn the reviewer with **P1** (R2) → review doc + ledger; (3) record the verdict line.
+- **Exit:** verdict line = `VERDICT: no major issues` → copy to `requirement/<change>-req-final.md`, advance. Cap hit → **gate ①**. Goal turns out unstateable → propose harden→explore (a human gate confirms the switch).
 
 ### EXPLORE track — when §2 routes the change here
 
-0. **Intent card first (non-waivable):** ≤15 lines at `requirement/intent-card.md` — goal hypothesis / success criteria / the questions the spike must answer. Requires **human sign-off** (`intent-card sign-off`; a heterogeneous review may inform it, but cannot replace it). On this track the intent card is the independent review baseline — the extracted spec is never judged against the prototype alone.
+0. **Intent card first (non-waivable):** ≤15 lines at `requirement/<change>-intent-card.md` — goal hypothesis / success criteria / the questions the spike must answer. Requires **human sign-off** (`intent-card sign-off`; a heterogeneous review may inform it, but cannot replace it). On this track the intent card is the independent review baseline — the extracted spec is never judged against the prototype alone.
 1. **Spike (bounded):** prototype freely under `spike/`; cap: `spike-cap` (default 10) turns; exit = every intent-card question answered. Cap hit → **gate ⑤**.
-2. **P11 — spec extraction:** inputs = intent card + prototype + spike findings; outputs = spec drafts under `apriori/changes/<change>/specs/` as the **sole intent-side authority**, plus `requirement/req-final.md` as a thin index over them (§5 P11 — never a second acceptance narrative). Declared extraction-time decisions (`EXT-n`) get their final ruling at the `extraction review` decision point.
+2. **P11 — spec extraction:** inputs = intent card + prototype + spike findings; outputs = spec drafts under `apriori/changes/<change>/specs/` as the **sole intent-side authority**, plus `requirement/<change>-req-final.md` as a thin index over them (§5 P11 — never a second acceptance narrative). Declared extraction-time decisions (`EXT-n`) get their final ruling at the `extraction review` decision point.
 3. **P12 — extraction review (heterogeneous, R2):** cap: `extraction-review-cap` (default 2). Verdict line `VERDICT: extraction accepted` → step 4. `VERDICT: extraction rejected` + unfaithful extraction → redo P11; `VERDICT: extraction rejected` + intent hypothesis falsified → back to SPIKE, or `ABANDONED` (archive the intent card + findings; log in the ledger).
 4. **Merge:** enter STEP2's full P5/P6 loop — from here the tracks are identical.
 5. **The prototype is disposable, machine-checkably:** STEP5 rebuilds from failing tests; tasks.md must not reference `spike/`; `spike/` is deleted (or quarantined) at archive.
@@ -217,7 +217,7 @@ Before a change is even stateable, you may enter a **thinking-partner stance** (
 
 ### KB pre-check — before STEP1, whenever the project already has code
 
-> On a legacy kickoff it may — and usually should — run **before STEP0 even drafts req-v1**: a requirement written blind to current-state facts (what protections already exist, what the data model actually is) wastes a review round rediscovering them. Pulling it ahead is always legal.
+> On a legacy kickoff it may — and usually should — run **before STEP0 even drafts <change>-req-v1**: a requirement written blind to current-state facts (what protections already exist, what the data model actually is) wastes a review round rediscovering them. Pulling it ahead is always legal.
 
 KB docs have two sections with **opposite truth directions** (§5 P9/P10): `Contract (code-is-truth)` and `Decisions (doc-is-truth)`.
 
@@ -255,7 +255,7 @@ KB docs have two sections with **opposite truth directions** (§5 P9/P10): `Cont
 ### STEP6 — archive + KB writeback
 
 - **Before P9:** make sure the change's work is **committed** — `source-commit` must reference a real commit containing the implementation the Contract section is reconciled against (greenfield repos included: commit first, then stamp).
-- **Do:** the **archive action** with **P9** — merge per the interface's archive algorithm above; update `apriori/truth/<module>.md` (Contract section from the final implementation + refreshed `source-commit`; Decisions section appends this change's new decisions/invariants); list exactly which files/sections changed. Explore-track changes: delete or quarantine `spike/` here.
+- **Do:** the **archive action** with **P9** — merge per the interface's archive algorithm above; update `apriori/truth/<module>.md` (Contract section from the final implementation + refreshed `source-commit`; Decisions section appends this change's new decisions/invariants); list exactly which files/sections changed. Explore-track changes: delete or quarantine `spike/` here. **Preserve the requirement history:** after the archive move (`--changes-dir`), and before the STEP6 closeout commit, copy every `requirement/<change>-req-*.md` and `requirement/<change>-intent-card.md` (if present) into `apriori/changes/archive/<stamp>-<change>/requirement/` — basenames preserved, all versions included; the requirement history travels with its change.
 - **Exit:** delta specs merged + KB updated + a post-archive `apriori gate --change <name>` run (it now resolves the archived stage — C4 demands every ledger row terminal) whose result goes into the **gate ④** packet → the human approves the KB diff (same-repo layout: that's just PR review). Then set `current-step: DONE`.
 
 
@@ -298,7 +298,7 @@ KB docs have two sections with **opposite truth directions** (§5 P9/P10): `Cont
 ```text
 You are a senior requirements reviewer. Review the requirement doc; the goal is to make it precise enough to hand straight to an AI for implementation.
 [Input]
-* Requirement doc: requirement/req-v{N}.md
+* Requirement doc: requirement/<change>-req-v{N}.md
 * System knowledge base (if any): apriori/truth/<module>.md
 * Issue ledger (if any): apriori/review/<change>-issues.md
 [Review dimensions, give a verdict on each]
@@ -318,7 +318,7 @@ Do not modify the requirement doc itself.
 ### P2 — STEP0 revise (producer)
 
 ```text
-Revise the requirement doc per apriori/review/<change>-req-review-v{N}.md and output requirement/req-v{N+1}.md.
+Revise the requirement doc per apriori/review/<change>-req-review-v{N}.md and output requirement/<change>-req-v{N+1}.md.
 For each formal issue, state how you handled it (accept/reject + reason), and update its Status in the ledger (fixed / rejected + reason).
 Advisories may be batch-acknowledged or ignored without per-item reasons — only rejections of formal findings need justification.
 ```
@@ -328,7 +328,7 @@ Advisories may be batch-acknowledged or ignored without per-item reasons — onl
 ```text
 Align all known facts first — do not write code.
 [Input]
-* Requirement doc: requirement/req-final.md
+* Requirement doc: requirement/<change>-req-final.md
 * System knowledge base: apriori/truth/ (module: <module>; new project: note "none")
 * Detailed design doc: design.md (if any)
 * Code: this repo
@@ -357,7 +357,7 @@ Stop when done and wait for review.
 You are a technical reviewer. Hunt for issues that would cause rework or a production incident.
 [Input]
 * SPEC-DOC: apriori/changes/<change>/specs/   * DESIGN-DOC: apriori/changes/<change>/design.md
-* KB: apriori/truth/   * Requirement doc: requirement/req-final.md   * Ledger: apriori/review/<change>-issues.md
+* KB: apriori/truth/   * Requirement doc: requirement/<change>-req-final.md   * Ledger: apriori/review/<change>-issues.md
 [Checklist]
 1. Do scenarios cover every visible behavior; any missing failure/edge scenarios
 2. Are the three moments of external shared state complete
@@ -450,10 +450,10 @@ commission an audit separately if wanted.)
 ### P11 — explore track: spec extraction (producer)
 
 ```text
-[Input] requirement/intent-card.md; the prototype under spike/; the spike findings.
+[Input] requirement/<change>-intent-card.md; the prototype under spike/; the spike findings.
 [Task] Extract the specification implied by the prototype's *validated* behaviors — never invent behavior that neither the intent card nor an observed spike run supports. Produce:
 * spec drafts with scenario IDs under apriori/changes/<change>/specs/ — the SOLE intent-side authority;
-* requirement/req-final.md — a THIN INDEX only: one goal line citing the intent card + acceptance = a reference to the spec scenario-ID list. Never write a second acceptance narrative there — two prose versions of the same intent drift apart.
+* requirement/<change>-req-final.md — a THIN INDEX only: one goal line citing the intent card + acceptance = a reference to the spec scenario-ID list. Never write a second acceptance narrative there — two prose versions of the same intent drift apart.
 [Constraints] Mark unvalidated assumptions "needs confirmation". Behavior that neither the intent card nor an observed spike run supports, but the spec needs for completeness, MUST be declared as an explicit extraction-time decision — an `EXT-n` entry (content + reasoning) in a dedicated section, never mixed into extracted facts; EXT-n entries are ruled on at the extraction review. The prototype is a source of observations, not of authority: where intent and prototype disagree, the intent card wins and the disagreement is listed explicitly.
 Stop and wait for the extraction review (P12).
 ```
@@ -461,7 +461,7 @@ Stop and wait for the extraction review (P12).
 ### P12 — explore track: extraction review (heterogeneous, R2)
 
 ```text
-[Input] requirement/intent-card.md; P11's outputs; the issue ledger.
+[Input] requirement/<change>-intent-card.md; P11's outputs; the issue ledger.
 [Checklist] P1's five dimensions, plus:
 6. Intent-card conformance — every goal and success criterion appears in the extracted specs/ (the sole authority; the req-final thin index is checked only for being thin and consistent);
 7. No invention — every spec line traces to the intent card or an observed spike behavior (spot-check the tracing), EXCEPT declared EXT-n entries, which are reviewed as proposals: recommend each as accepted / rejected / needs-human.
@@ -492,7 +492,7 @@ defaults for one batch approval. Before proposing an exit, present 2-3 candidate
 tradeoffs and your recommendation. I decide when it is stateable. On my approval, write the
 kickoff requirement draft (goal, users, chosen approach and the winning UI sketch if any,
 success criteria, constraints, non-goals with reasons, open questions) and start STEP0 with it
-as the `req-v1` starting material; if it still cannot be stated, route to the explore track's
+as the `<change>-req-v1` starting material; if it still cannot be stated, route to the explore track's
 intent card.
 ```
 
@@ -505,14 +505,14 @@ intent card.
 
 **STEP0 loop:**
 ```text
-/goal "Goal: requirement/req-final.md exists and the latest review pass reports 'VERDICT: no major issues'. Cap: step0-cap rounds (default 5).
+/goal "Goal: requirement/<change>-req-final.md exists and the latest review pass reports 'VERDICT: no major issues'. Cap: step0-cap rounds (default 5).
 Each round:
-1. If apriori/review/<change>-req-review-v{N}.md exists, revise requirement/req-v{N}.md per it, bump to v{N+1}, note accept/reject+reason per issue, and update those issues' Status in apriori/review/<change>-issues.md.
+1. If apriori/review/<change>-req-review-v{N}.md exists, revise requirement/<change>-req-v{N}.md per it, bump to v{N+1}, note accept/reject+reason per issue, and update those issues' Status in apriori/review/<change>-issues.md.
 2. Run the reviewer with a DIFFERENT model on the current version and save its output to apriori/review/<change>-req-review-v{N}.md, e.g.:
-   codex exec -s read-only \"<the P1 prompt> — target: requirement/req-v{N}.md\"
+   codex exec -s read-only \"<the P1 prompt> — target: requirement/<change>-req-v{N}.md\"
    (no Codex? open a fresh `claude` and hand it P1 plus the issue ledger)
 3. Paste the reviewer's final verdict line back into this conversation.
-Stop when the verdict line is 'VERDICT: no major issues' (then copy to requirement/req-final.md) or at the cap."
+Stop when the verdict line is 'VERDICT: no major issues' (then copy to requirement/<change>-req-final.md) or at the cap."
 ```
 
 **STEP2 loop:**

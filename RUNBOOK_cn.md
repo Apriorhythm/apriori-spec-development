@@ -159,7 +159,7 @@ gates:                  # 只增不改的人工决定日志
 
 | 产物 | 路径 |
 |---|---|
-| 需求文档 | `requirement/req-v{N}.md` → 定稿 `requirement/req-final.md` |
+| 需求文档 | `requirement/<change>-req-v{N}.md` → 定稿 `requirement/<change>-req-final.md` |
 | 需求评审 | `apriori/review/<change>-req-review-v{N}.md` |
 | 问题台账 | `apriori/review/<change>-issues.md` |
 | gap 报告 | `apriori/explore/<change>-gap-report.md` |
@@ -169,7 +169,7 @@ gates:                  # 只增不改的人工决定日志
 | 规格评审 | `apriori/design/<change>-review-v{N}.md` |
 | 知识库(TRUTH-DOC) | `apriori/truth/<module>.md`——必须带 `source-commit` 标记(只覆盖契约节,§5 P9/P10) |
 | 流程状态 | `apriori/changes/<change>/flow-state.md` |
-| 意图卡(探索轨) | `requirement/intent-card.md` |
+| 意图卡(探索轨) | `requirement/<change>-intent-card.md` |
 | 提取评审(探索轨) | `apriori/review/<change>-extraction-review-v{N}.md` |
 | 原型(探索轨) | `spike/`——archive 时删除或隔离;tasks.md 绝不引用 |
 | 评审方原始输出 | `apriori/review/<change>-<stage>-raw.*` |
@@ -192,19 +192,19 @@ gates:                  # 只增不改的人工决定日志
 
 **收敛——一次一个问题。** 形状浮现后切换到纪律(并且说出来——宣告换挡能帮人跟上节奏):**每条消息恰好一个问题**,凡是给选项不失真的地方就给具体选项供人挑(只在选项会误导时才开放式提问),并保持每轮一眼可读——问题绝不能淹没在正文里。过一遍覆盖清单——*目的 · 目标用户 · 核心场景 · 界面形态(面向用户时) · 数据与内容 · 约束 · 非目标 · 成功判据*——直到每一项要么已回答、要么**经人同意明确搁置**;悄悄跳过一项就是缺陷。两个情境招式:人中途加想法时,**先探它的成色再吸收**——是观察到的真需求,还是"觉得会好玩"?把代价说白,并先给出缓做/分级路线(记成带升级路径的非目标)再考虑放进范围;人表现出疲劳或不耐烦时,**把剩余清单折叠成推荐默认值**打包一次批准,不再逐项追问。点子横跨多个独立部分时,说出来并拆开——每块将来各是一个变更。任何退出之前:呈上 **2-3 个候选方案的取舍对比和你的推荐**——绝不悄悄顺着人的第一个说法走。全程 YAGNI。
 
-**汇入——人来定夺,火种随行。** "说得清"由人判定,不由你:方案对比给出之后你才可以*提议*退出;只有人的批准才结束这个姿态——且**必须漏斗进流程**。人批准了一个说得清的目标,就开 **STEP0**;目标仍然说不清,就转**探索轨的意图卡**(§4)——与 §2 的目标确定性同一分界。没有第三个停留处:脑暴只喂这两条之一。汇入时把一切带走:把结晶的共识写成 kickoff 需求草稿——目标、用户、选定方案(以及胜出的界面草图,如有)、成功判据、约束、非目标**连同砍掉它们的理由**、遗留开放问题——作为 STEP0 的 `req-v1` 起始材料。脑暴绝不替代 STEP0 的需求纪律——它喂给它。
+**汇入——人来定夺,火种随行。** "说得清"由人判定,不由你:方案对比给出之后你才可以*提议*退出;只有人的批准才结束这个姿态——且**必须漏斗进流程**。人批准了一个说得清的目标,就开 **STEP0**;目标仍然说不清,就转**探索轨的意图卡**(§4)——与 §2 的目标确定性同一分界。没有第三个停留处:脑暴只喂这两条之一。汇入时把一切带走:把结晶的共识写成 kickoff 需求草稿——目标、用户、选定方案(以及胜出的界面草图,如有)、成功判据、约束、非目标**连同砍掉它们的理由**、遗留开放问题——作为 STEP0 的 `<change>-req-v1` 起始材料。脑暴绝不替代 STEP0 的需求纪律——它喂给它。
 
 ### STEP0 —— 需求精细化 · 对抗循环 · 上限:`step0-cap`(默认 5)
 
-- **输入:**`requirement/req-v{N}.md`;知识库(如有)。需求必须声明**目标谱系**(主线/哪条分支线)——多谱系仓库中谱系缺失是第四个访谈触发条件。若需求缺"目标 / 范围外 / 可测验收"三要素之一——**先结构化提问采访人**,再出 req-v1。
-- **每轮:**(1)若已有评审,据其修订 → `req-v{N+1}.md`,逐条注明采纳/拒绝+理由并更新台账;(2)用 **P1** 调起评审方(R2)→ 评审文档 + 台账;(3)记录结论行。
-- **退出:**结论行 = `VERDICT: no major issues`(无重大问题)→ 复制为 `requirement/req-final.md`,前进。触顶 → **闸口 ①**。发现目标根本说不清 → 提议 harden→explore(经人工闸口确认后切轨)。
+- **输入:**`requirement/<change>-req-v{N}.md`;知识库(如有)。需求必须声明**目标谱系**(主线/哪条分支线)——多谱系仓库中谱系缺失是第四个访谈触发条件。若需求缺"目标 / 范围外 / 可测验收"三要素之一——**先结构化提问采访人**,再出 <change>-req-v1。
+- **每轮:**(1)若已有评审,据其修订 → `<change>-req-v{N+1}.md`,逐条注明采纳/拒绝+理由并更新台账;(2)用 **P1** 调起评审方(R2)→ 评审文档 + 台账;(3)记录结论行。
+- **退出:**结论行 = `VERDICT: no major issues`(无重大问题)→ 复制为 `requirement/<change>-req-final.md`,前进。触顶 → **闸口 ①**。发现目标根本说不清 → 提议 harden→explore(经人工闸口确认后切轨)。
 
 ### 探索轨(EXPLORE)—— §2 把变更分到这里时
 
-0. **意图卡先行(不可豁免):**≤15 行,路径 `requirement/intent-card.md`——目标假设 / 成功判据 / spike 要回答的问题。须经**人签核**(`intent-card sign-off`;异构评审可作为签核前的参考,但不能替代)。在这条轨上,意图卡是独立评审基准——提取出的规格绝不只对照原型自证。
+0. **意图卡先行(不可豁免):**≤15 行,路径 `requirement/<change>-intent-card.md`——目标假设 / 成功判据 / spike 要回答的问题。须经**人签核**(`intent-card sign-off`;异构评审可作为签核前的参考,但不能替代)。在这条轨上,意图卡是独立评审基准——提取出的规格绝不只对照原型自证。
 1. **spike(有界):**在 `spike/` 下自由做原型;上限:`spike-cap`(默认 10)轮;退出=意图卡问题逐条有答案。触顶 → **闸口 ⑤**。
-2. **P11 —— 规格提取:**输入=意图卡+原型+spike 结论;输出=spec 草案,置于 `apriori/changes/<change>/specs/`,是意图侧的**唯一权威**;另加 `requirement/req-final.md` 薄索引(§5 P11——绝不另写第二份验收叙述)。显式声明的提取时决策(`EXT-n`)在 `extraction review` 决策点终裁。
+2. **P11 —— 规格提取:**输入=意图卡+原型+spike 结论;输出=spec 草案,置于 `apriori/changes/<change>/specs/`,是意图侧的**唯一权威**;另加 `requirement/<change>-req-final.md` 薄索引(§5 P11——绝不另写第二份验收叙述)。显式声明的提取时决策(`EXT-n`)在 `extraction review` 决策点终裁。
 3. **P12 —— 提取评审(异构,R2):**上限:`extraction-review-cap`(默认 2)。结论行 `VERDICT: extraction accepted` → 第 4 步;`VERDICT: extraction rejected` + 提取不忠实 → 重跑 P11;`VERDICT: extraction rejected` + 意图假设被证伪 → 回 SPIKE,或 `ABANDONED`(归档意图卡与结论;记台账)。
 4. **汇入:**进入 STEP2 的 P5/P6 全量循环——此后两轨完全无差别。
 5. **原型是一次性的,且机器可查:**STEP5 从失败测试重建;tasks.md 不得引用 `spike/`;`spike/` 在 archive 时删除(或隔离归档)。
@@ -213,7 +213,7 @@ gates:                  # 只增不改的人工决定日志
 
 ### 知识库前置检查 —— STEP1 之前,凡项目已有代码就做
 
-> 遗留项目的 kickoff 上,它可以——而且通常应该——**提前到 STEP0 起草 req-v1 之前**:对现状事实(已有什么防护、数据模型长什么样)一无所知写出的需求,会浪费一轮评审去重新发现它们。提前永远合法。
+> 遗留项目的 kickoff 上,它可以——而且通常应该——**提前到 STEP0 起草 <change>-req-v1 之前**:对现状事实(已有什么防护、数据模型长什么样)一无所知写出的需求,会浪费一轮评审去重新发现它们。提前永远合法。
 
 知识库文档有两个**真相方向相反**的小节(§5 P9/P10):`契约(code-is-truth)` 与 `决策(doc-is-truth)`。
 
@@ -251,7 +251,7 @@ gates:                  # 只增不改的人工决定日志
 ### STEP6 —— 归档 + 知识库回写
 
 - **P9 之前:**确保本变更的工作已**提交**——`source-commit` 必须指向一个真实存在、包含契约节所校对实现的 commit(全新仓库同样:先提交,再盖标)。
-- **动作:**执行 **archive 接口动作**,用 **P9**——按上文接口的 archive 算法合并;更新 `apriori/truth/<module>.md`(契约节按最终实现更新+刷新 `source-commit`;决策节追加本次变更的新决策/不变式);列出改了哪些文件/段落。探索轨变更:在此删除或隔离 `spike/`。
+- **动作:**执行 **archive 接口动作**,用 **P9**——按上文接口的 archive 算法合并;更新 `apriori/truth/<module>.md`(契约节按最终实现更新+刷新 `source-commit`;决策节追加本次变更的新决策/不变式);列出改了哪些文件/段落。探索轨变更:在此删除或隔离 `spike/`。 **保全需求史:**归档移动(`--changes-dir`)之后、STEP6 收尾提交之前,把每一份 `requirement/<change>-req-*.md` 和 `requirement/<change>-intent-card.md`(如有)拷入 `apriori/changes/archive/<stamp>-<change>/requirement/`——保留原文件名、全部版本都带上;需求史随变更同行。
 - **退出:**增量规格已合并 + 知识库已更新 + 归档后再跑一次 `apriori gate --change <name>`(此时解析到 archived 归档态——C4 要求台账每行都是终态),其结果放进**闸口 ④**的材料包 → 人批准知识库 diff(同仓库布局下就是 PR 评审)。然后置 `current-step: DONE`。
 
 
@@ -294,7 +294,7 @@ gates:                  # 只增不改的人工决定日志
 ```text
 你是一名资深需求评审专家。请审查需求文档,目标是让它精确到可以直接交给 AI 实现。
 【输入】
-* 需求文档: requirement/req-v{N}.md
+* 需求文档: requirement/<change>-req-v{N}.md
 * 系统知识库(如有): apriori/truth/<模块名>.md
 * 问题台账(如有): apriori/review/<change>-issues.md
 【评审维度,逐条给结论】
@@ -314,7 +314,7 @@ gates:                  # 只增不改的人工决定日志
 ### P2 —— STEP0 修订(生产方)
 
 ```text
-按 apriori/review/<change>-req-review-v{N}.md 修订需求文档,输出 requirement/req-v{N+1}.md。
+按 apriori/review/<change>-req-review-v{N}.md 修订需求文档,输出 requirement/<change>-req-v{N+1}.md。
 对每条正式问题说明处理方式(采纳/拒绝+理由),并更新台账中各问题的状态(fixed / rejected+理由)。
 advisory 可整批确认或忽略,无需逐条理由——只有对正式发现的拒绝才需要说明。
 ```
@@ -324,7 +324,7 @@ advisory 可整批确认或忽略,无需逐条理由——只有对正式发现�
 ```text
 先对齐所有已知事实——不要写代码。
 【输入】
-* 需求文档: requirement/req-final.md
+* 需求文档: requirement/<change>-req-final.md
 * 系统知识库: apriori/truth/(相关模块: <模块名>;新项目注明"暂无")
 * 技术详细设计文档: design.md(如有)
 * 代码: 当前仓库
@@ -353,7 +353,7 @@ apriori/explore/<change>-gap-report.md:当前状态 A、目标状态 B,以及两
 你是技术评审专家,重点找"会导致返工或线上事故"的问题。
 【输入】
 * SPEC-DOC: apriori/changes/<change>/specs/   * DESIGN-DOC: apriori/changes/<change>/design.md
-* 知识库: apriori/truth/   * 需求文档: requirement/req-final.md   * 台账: apriori/review/<change>-issues.md
+* 知识库: apriori/truth/   * 需求文档: requirement/<change>-req-final.md   * 台账: apriori/review/<change>-issues.md
 【检查清单】
 1. scenario 是否覆盖全部可见行为,有无遗漏的失败/边界场景
 2. 外部共享状态的三个时机是否完整
@@ -442,10 +442,10 @@ advisory 可整批确认或忽略,无需逐条理由——只有对正式发现�
 ### P11 —— 探索轨:规格提取(生产方)
 
 ```text
-【输入】requirement/intent-card.md;spike/ 下的原型;spike 结论。
+【输入】requirement/<change>-intent-card.md;spike/ 下的原型;spike 结论。
 【任务】提取原型的*已验证*行为所蕴含的规格——绝不发明意图卡与 spike 观察都不支持的行为。产出:
 * 带 scenario ID 的 spec 草案,置于 apriori/changes/<change>/specs/——意图侧的唯一权威;
-* requirement/req-final.md——仅为薄索引:一句目标引意图卡 + 验收=对 spec 场景 ID 清单的引用。绝不在此另写第二份验收叙述——同一意图的两份行文必然互漂。
+* requirement/<change>-req-final.md——仅为薄索引:一句目标引意图卡 + 验收=对 spec 场景 ID 清单的引用。绝不在此另写第二份验收叙述——同一意图的两份行文必然互漂。
 【约束】未验证的假设标"待确认"。意图卡与 spike 观察都不支撑、但规格完整性所需的行为,必须以显式的提取时决策声明——专节集中的 `EXT-n` 条目(内容+推理),绝不混入提取事实;EXT-n 在提取评审(extraction review)处终裁。原型是观察来源,不是权威来源:意图与原型冲突处,以意图卡为准并显式列出分歧。
 完成后停下,等待提取评审(P12)。
 ```
@@ -453,7 +453,7 @@ advisory 可整批确认或忽略,无需逐条理由——只有对正式发现�
 ### P12 —— 探索轨:提取评审(异构,R2)
 
 ```text
-【输入】requirement/intent-card.md;P11 的产出;问题台账。
+【输入】requirement/<change>-intent-card.md;P11 的产出;问题台账。
 【检查表】P1 的五个维度,另加:
 6. 意图卡符合性——每个目标与成功判据都出现在提取出的 specs/ 里(唯一权威;req-final 薄索引只查"薄且一致");
 7. 无凭空发明——每条规格可溯源到意图卡或某次 spike 观察(抽查溯源),已声明的 EXT-n 除外:EXT-n 按提案评审,逐条给 accepted / rejected / needs-human 三态推荐。
@@ -480,7 +480,7 @@ rejected+意图假设被证伪 → 回 SPIKE 或 ABANDONED(状态机的失败分
 把代价说白,先给缓做路线再考虑吸收。我显得疲劳时,把剩余项折叠成推荐默认值打包一次批准。
 提议退出之前,先给 2-3 个候选方案的取舍对比和你的推荐。什么时候"说得清"由我判定。
 我批准后,写出 kickoff 需求草稿(目标、用户、选定方案及胜出的界面草图如有、成功判据、
-约束、非目标连同砍掉理由、开放问题),以它作为 `req-v1` 起始材料开 STEP0;
+约束、非目标连同砍掉理由、开放问题),以它作为 `<change>-req-v1` 起始材料开 STEP0;
 仍说不清就转探索轨的意图卡。
 ```
 
@@ -493,14 +493,14 @@ rejected+意图假设被证伪 → 回 SPIKE 或 ABANDONED(状态机的失败分
 
 **STEP0 循环:**
 ```text
-/goal "目标:requirement/req-final.md 存在,且最新一轮评审报告 'VERDICT: no major issues'。上限:step0-cap 轮(默认 5)。
+/goal "目标:requirement/<change>-req-final.md 存在,且最新一轮评审报告 'VERDICT: no major issues'。上限:step0-cap 轮(默认 5)。
 每一轮:
-1. 若 apriori/review/<change>-req-review-v{N}.md 存在,据其修订 requirement/req-v{N}.md,升到 v{N+1},逐条注明 采纳/拒绝+理由,并同步更新 apriori/review/<change>-issues.md 里对应问题的状态。
+1. 若 apriori/review/<change>-req-review-v{N}.md 存在,据其修订 requirement/<change>-req-v{N}.md,升到 v{N+1},逐条注明 采纳/拒绝+理由,并同步更新 apriori/review/<change>-issues.md 里对应问题的状态。
 2. 用一个不同的模型对当前版本跑评审,输出存到 apriori/review/<change>-req-review-v{N}.md,例如:
-   codex exec -s read-only \"<P1 提示词> —— 目标:requirement/req-v{N}.md\"
+   codex exec -s read-only \"<P1 提示词> —— 目标:requirement/<change>-req-v{N}.md\"
    (没有 Codex?新开一个 claude,把 P1 连同问题台账一起交给它)
 3. 把评审方的结论行贴回本对话。
-当结论行为 'VERDICT: no major issues' 时停(并复制为 requirement/req-final.md),或触顶停。"
+当结论行为 'VERDICT: no major issues' 时停(并复制为 requirement/<change>-req-final.md),或触顶停。"
 ```
 
 **STEP2 循环:**

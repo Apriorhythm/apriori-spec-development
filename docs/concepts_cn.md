@@ -291,14 +291,14 @@ graph LR
 
 | 产物 | 默认位置 |
 |---|---|
-| 需求文档 | `requirement/req-v{N}.md`，定稿为 `requirement/req-final.md` |
+| 需求文档 | `requirement/<change>-req-v{N}.md`，定稿为 `requirement/<change>-req-final.md` |
 | REQ-REVIEW-DOC | `apriori/review/<change>-req-review-v{N}.md`（带上变更名前缀——并行的变更不能互相覆盖） |
 | gap 报告（STEP1 产出） | `apriori/explore/<change>-gap-report.md` |
 | 问题台账 | `apriori/review/<change>-issues.md` |
 | proposal.md(为什么 / 做什么 / 范围外) | `apriori/changes/<change>/proposal.md` |
 | SPEC-DOC / DESIGN-DOC / tasks.md | `apriori/changes/<change>/specs/`、`…/design.md`、`…/tasks.md` |
 | SPEC-EVALUATION-DOC | `apriori/design/<change>-review-v{N}.md` |
-| 意图卡（探索轨） | `requirement/intent-card.md` |
+| 意图卡（探索轨） | `requirement/<change>-intent-card.md` |
 | 提取评审（探索轨） | `apriori/review/<change>-extraction-review-v{N}.md` |
 | 原型（探索轨） | `spike/`——archive 时删除或隔离;tasks.md 绝不引用 |
 | TRUTH-DOC（知识库） | `apriori/truth/<module>.md`，**与代码同仓库**（独立知识库仓库也可以，但每份文档必须带 `source-commit` 标记——见第六节） |
@@ -482,7 +482,7 @@ git init             # 建议纳入版本管理，方便对照每步 diff
 
 ### 5.1 STEP0 · 写并评审需求
 
-先写一份 `requirement/req-v1.md`（人话需求）：
+先写一份 `requirement/<change>-req-v1.md`（人话需求）：
 
 ```text
 做一个内存键值缓存库 mini-kv：
@@ -493,13 +493,13 @@ git init             # 建议纳入版本管理，方便对照每步 diff
 5. 覆盖写：对已存在的 key 再次 set，应覆盖旧值与旧 TTL。
 ```
 
-然后让**评审模型**（与起草不同的模型/工具）按 [§7.1](#71-step0需求文档对抗评审) 的提示词审一轮，补全你没想到的边界（如 `ttlMs<=0` 怎么办、`get` 是否惰性清理还是定时清理、并发写入语义）。定稿为 `requirement/req-final.md`。
+然后让**评审模型**（与起草不同的模型/工具）按 [§7.1](#71-step0需求文档对抗评审) 的提示词审一轮，补全你没想到的边界（如 `ttlMs<=0` 怎么办、`get` 是否惰性清理还是定时清理、并发写入语义）。定稿为 `requirement/<change>-req-final.md`。
 
 ### 5.2 STEP1 · explore
 
 在主力工具里：
 ```text
-* 需求文档: requirement/req-final.md
+* 需求文档: requirement/<change>-req-final.md
 * 系统知识库: （新项目，暂无 / 旧项目填 apriori/truth/ 或知识库路径）
 * 代码: 当前仓库
 请对齐事实，输出当前状态 A 与目标 B 的 gap 报告到 apriori/explore/<change>-gap-report.md。
@@ -513,7 +513,7 @@ git init             # 建议纳入版本管理，方便对照每步 diff
 然后切到评审工具/模型，按 [§7.3](#73-step2对抗训练评审与修订) 评审 → 修订，循环到 "VERDICT: no major issues"。具体可用 Codex 来驱动评审（[§2.3](#23-用命令行驱动-codex多轮对抗评审)）：
 ```shell
 # 第一轮——开启评审会话（记下打印出来的 session id）
-codex exec -s read-only "按 RUNBOOK P5 评审清单，对照 requirement/req-final.md 评审 apriori/changes/<change>/specs/ 与 design.md，末尾给出结论行。"
+codex exec -s read-only "按 RUNBOOK P5 评审清单，对照 requirement/<change>-req-final.md 评审 apriori/changes/<change>/specs/ 与 design.md，末尾给出结论行。"
 # 之后每个修订轮——同一上下文，它能核对你的修复是否到位
 codex exec resume -c sandbox_mode="read-only" <session-id> "我已按上轮意见修订；请重新评审并产出 v{N+1}。"
 ```
@@ -602,7 +602,7 @@ source-commit: <归档时的 commit sha>   # 只覆盖契约节
 
 - P1 用**与起草需求不同的模型/工具**执行,并把台账一并喂给它,让它能核验早前的修复。
 - 五个评审维度是刻意固定的——目标态清晰度 / 边界与异常覆盖 / 未声明的状态变更 / 验收标准可测性 / 与现状 A 的冲突——清单稳定,各轮才可比。
-- 评审方只评审、绝不改需求文档;生产方对每条正式问题给出采纳/拒绝+理由(advisory 整批确认即可,RUNBOOK P0)。循环到 "VERDICT: no major issues",定稿为 `requirement/req-final.md`（最多 5 轮）。
+- 评审方只评审、绝不改需求文档;生产方对每条正式问题给出采纳/拒绝+理由(advisory 整批确认即可,RUNBOOK P0)。循环到 "VERDICT: no major issues",定稿为 `requirement/<change>-req-final.md`（最多 5 轮）。
 
 ### 7.2 STEP1｜explore
 

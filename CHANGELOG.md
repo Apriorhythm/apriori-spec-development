@@ -2,6 +2,18 @@
 
 All notable changes to `apriori-cli`. Versions follow semver; the stability promise: CLI surface & flags, `--json` shapes, the delta format and the flow-state schema only break in a major.
 
+## 4.0.0 — 2026-07-12 · the change bundle
+
+Everything a change produces lives in ONE directory: `apriori/changes/<name>/` — `flow-state.md`, the `requirement/` history (plain names: `req-v{N}.md`, `req-final.md`, `intent-card.md`), `gap-report.md`, `proposal.md`, `design.md`, `tasks.md`, the `specs/` deltas, the `review/` evidence (ledger `issues.md`, review docs, raws), and `spike/` on the explore track. The five scattered per-change roots (`requirement/`, `spike/`, `apriori/review/`, `apriori/design/`, `apriori/explore/`) cease to exist.
+
+- **The archive move carries the whole bundle** — `apriori archive` moves the change dir in one atomic rename with everything already inside; the 3.4.x staging phase is deleted. Explore-track `spike/` is deleted or quarantined by the executor *before* the archive action (the command never touches it).
+- **Gates read the bundle** — C4's ledger lives at `<dir>/review/issues.md`, C5 scans `<dir>/review/*.md` with the same stem→`<stem>-raw.*` evidence rule; both work identically in-flight and archived because the evidence travels with the dir. The `review/` entry itself is containment-checked (symlink/non-dir/escape blocks with a named defect).
+- **`check` CK-10 re-rooted** — the secret tripwire sweeps every bundle's `review/` under `apriori/changes/` and `apriori/changes/archive/`, containment-guarded, symlinked entries warn-skipped by name.
+- **Review-doc names drop their prefixes** — P5 evaluations are `spec-review-v{N}.md`, STEP5 consistency reviews are `step5-review-v{N}.md`, requirement reviews stay `req-review-v{N}.md`, all inside the bundle's `review/`.
+- **`new` scaffolds the bundle skeleton** (`specs/`, `requirement/`, `review/`); `init` no longer creates a shared `apriori/review/`.
+- **Node floor: ≥ 22** — `engines`, doctor's D1 check, and CI (22/24) move together.
+- Both runbook editions and the concepts handbook are rewritten to bundle paths throughout; a corpus-level strip-scan test (PR-21) keeps the legacy roots from creeping back.
+
 ## 3.4.1 — 2026-07-12 · requirement paths carry their change
 
 - **`requirement/<change>-req-v{N}.md` / `<change>-req-final.md` / `<change>-intent-card.md`** — requirement-stage paths gain the change prefix in both runbook editions, the concepts handbook, and `apriori new`'s scaffolded next-action, closing the global-path collision where parallel (or successive) changes overwrote each other's requirement history (dogfooded twice; ported from V1.4's stopgap). The root relocation (Change Bundle) remains scheduled for 4.0.

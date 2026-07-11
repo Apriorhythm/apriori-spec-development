@@ -554,6 +554,9 @@ test('AM-37 the command touches nothing outside the moved dir', () => {
   assert.strictEqual(r.status, 0, r.stdout + r.stderr);
   assert.strictEqual(fs.readFileSync(path.join(root, 'requirement/c-req-v1.md'), 'utf8'), 'legacy bystander');
   assert.doesNotMatch(r.stdout + r.stderr, /staging|staged/);
+  // the archived requirement history is the BUNDLE's content — the bystander was never read in
+  const archDir = fs.readdirSync(path.join(root, 'apriori/changes/archive')).find((d) => d.endsWith('-c'));
+  assert.strictEqual(fs.readFileSync(path.join(root, 'apriori/changes/archive', archDir, 'requirement/req-v1.md'), 'utf8'), 'v1');
 });
 
 test('AM-38 move failure keeps the bundle intact and rerunnable', () => {

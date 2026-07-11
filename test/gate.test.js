@@ -134,6 +134,30 @@ test('GT-05 verdict evidence is mechanical (missing raw blocks; raw fixes; symli
     fs.symlinkSync(path.join(root, 'apriori/changes/c/review/elsewhere.txt'), path.join(root, 'apriori/changes/c/review/req-review-v1-raw.txt'));
     r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
     assert.strictEqual(r.checks.find((x) => x.id === 'C5').status, 'blocked');
+    // a DANGLING review/ symlink is a defect, not absence — C4 and C5 both block, in-flight…
+    const dang = healthy();
+    fs.rmSync(path.join(dang, 'apriori/changes/c/review'), { recursive: true });
+    fs.symlinkSync(path.join(dang, 'no-such-target'), path.join(dang, 'apriori/changes/c/review'));
+    r = gate.runGate({ cwd: dang, change: 'c', testCmd: TAP_OK });
+    for (const id of ['C4', 'C5']) {
+      const c = r.checks.find((x) => x.id === id);
+      assert.strictEqual(c.status, 'blocked', `${id}: ${c.detail}`);
+      assert.match(c.detail, /symlink/);
+    }
+    // …and archived
+    const darch = mkProject({
+      'apriori/specs/kv/spec.md': STORE + '\n### Requirement: Beta\n\n#### Scenario: XB-01 new\n- t\n',
+      'apriori/changes/archive/2026-07-10T1200-c/flow-state.md': FLOW('c'),
+      'apriori/changes/archive/2026-07-10T1200-c/tasks.md': '- [x] T1\n',
+      'apriori/changes/archive/2026-07-10T1200-c/specs/kv/spec.md': DELTA,
+    });
+    fs.symlinkSync(path.join(darch, 'no-such-target'), path.join(darch, 'apriori/changes/archive/2026-07-10T1200-c/review'));
+    r = gate.runGate({ cwd: darch, change: 'c', testCmd: TAP_OK });
+    for (const id of ['C4', 'C5']) {
+      const c = r.checks.find((x) => x.id === id);
+      assert.strictEqual(c.status, 'blocked', `${id}: ${c.detail}`);
+      assert.match(c.detail, /symlink/);
+    }
   }
 });
 

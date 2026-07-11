@@ -221,5 +221,19 @@ test('CK-10 committed secrets in review evidence fail the check', () => {
     const r = run(root);
     assert.strictEqual(r.status, 0);
     assert.match(r.stdout, /link-raw/);
+    // a SYMLINKED change dir is never followed — its secret stays unread, the skip is loud
+    const root2 = mk({ 'elsewhere/review/leak-raw.txt': 'ghp_' + 'c'.repeat(36) + '\n' });
+    fs.mkdirSync(path.join(root2, 'apriori/changes'), { recursive: true });
+    fs.symlinkSync(path.join(root2, 'elsewhere'), path.join(root2, 'apriori/changes/linked'));
+    const r2 = run(root2);
+    assert.strictEqual(r2.status, 0, r2.stdout);
+    assert.match(r2.stdout, /linked/);
+    assert.ok(!r2.stdout.includes('ghp_' + 'c'.repeat(36)), 'secret behind a symlinked change dir must not be read');
+    // a DANGLING review/ symlink warns; plain absence stays silent
+    const root3 = mk({ 'apriori/changes/d/flow-state.md': 'change: d\n' });
+    fs.symlinkSync(path.join(root3, 'no-such-target'), path.join(root3, 'apriori/changes/d/review'));
+    const r3 = run(root3);
+    assert.strictEqual(r3.status, 0, r3.stdout);
+    assert.match(r3.stdout, /d[\/\\]review.*symlink|symlink/);
   }
 });

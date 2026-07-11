@@ -99,9 +99,10 @@ export function main(argv) {
   delete env.NODE_OPTIONS;
   const readme = fs.readFileSync(path.join(checkout, 'README.md'), 'utf8');
   const { script, expects } = buildPlan(extractBlocks(readme), mode, { binDir, tgz, prefix });
-  const scriptPath = path.join(work, 'walk.sh');
-  fs.writeFileSync(scriptPath, script);
-  const run = spawnSync('bash', [scriptPath], { cwd: work, env, encoding: 'utf8' });
+  // the script is invoked by RELATIVE name with cwd=work — an absolute Windows path
+  // (C:\Users\...) gets its backslashes eaten crossing into bash; a relative name never does
+  fs.writeFileSync(path.join(work, 'walk.sh'), script);
+  const run = spawnSync('bash', ['walk.sh'], { cwd: work, env, encoding: 'utf8' });
   process.stdout.write(run.stdout || '');
   process.stderr.write(run.stderr || '');
   // parse sentinels — a missing one means the script itself died (named)

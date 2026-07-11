@@ -8,7 +8,8 @@ const { spawnSync } = require('node:child_process');
 
 const ROOT = path.join(__dirname, '..');
 const README = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
-async function gp() { return import(path.join(ROOT, 'scripts', 'golden-path.mjs').replace(/\\/g, '/')); }
+const { pathToFileURL } = require('node:url');
+async function gp() { return import(pathToFileURL(path.join(ROOT, 'scripts', 'golden-path.mjs')).href); }
 
 test('GP-01 the extractor is a pure text seam', async () => {
   const { extractBlocks } = await gp();
@@ -33,11 +34,10 @@ test('GP-04 drift between README and contract fails loudly', async () => {
   fs.chmodSync(path.join(stubBin, 'apriori'), 0o755);
   const { script } = buildPlan(extractBlocks(README), 'local', { binDir: stubBin });
   const work = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-gp4-'));
-  const sp = path.join(work, 'walk.sh');
-  fs.writeFileSync(sp, script);
+  fs.writeFileSync(path.join(work, 'walk.sh'), script);
   const env = { ...process.env, PATH: stubBin + path.delimiter + process.env.PATH };
   delete env.NODE_TEST_CONTEXT; delete env.NODE_OPTIONS;
-  const r = spawnSync('bash', [sp], { cwd: work, env, encoding: 'utf8' });
+  const r = spawnSync('bash', ['walk.sh'], { cwd: work, env, encoding: 'utf8' });   // relative: Windows-safe
   // the RUNNER's own comparison must fail naming block 2 with expected/actual (GPIMPL-1)
   const { assertSentinels, EXPECTS } = await gp();
   assert.throws(() => assertSentinels(r.stdout, EXPECTS), /block 2: exit 0, contract expects 1/);

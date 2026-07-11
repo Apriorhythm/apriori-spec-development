@@ -18,7 +18,7 @@
 
 ## Quickstart
 
-十分钟,从空目录到规格绑定的绿。需要 Node ≥ 18 和 POSIX shell。
+十分钟,从空目录到规格绑定的绿。需要 Node ≥ 22 和 POSIX shell。
 
 ```shell
 npm i -g apriori-cli

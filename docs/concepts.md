@@ -70,7 +70,7 @@ LLM adversarial review is one instrument in a larger verification portfolio — 
 
 Four principles every mechanism in this handbook (and the RUNBOOK) instantiates:
 
-1. **Quality comes from different instruments at different stages.** In a change's requirement/spec **document stages** (STEP0/2), LLM review is the only instrument available — there it is the primary one, and it never drops below one round per stage per change. In the **implementation stage** (STEP5), executable verification is primary (v1.0 already worked this way); LLM review covers what execution can't judge.
+1. **Quality comes from different instruments at different stages.** In a change's requirement & spec **document stages** (STEP0/2), LLM review is the only instrument available — there it is the primary one, and it never drops below one round per stage per change. In the **implementation stage** (STEP5), executable verification is primary (v1.0 already worked this way); LLM review covers what execution can't judge.
 2. **Intent comes first; the spec's form may come later.** On any track, a human-acknowledged statement of intent precedes code; the tracks (§4.0) differ only in when the full spec crystallizes — **the spec is a conserved quantity at merge time**.
 3. **Supervision parameters are never written by the supervised.** Round caps and shrink decisions live in a human-held config and human gates; the agent reports data, never adjusts its own oversight.
 4. **Extracted descriptions are drafts until reviewed.** Anything reverse-derived from code or a prototype (P10, P11) must pass review before anything downstream consumes it.
@@ -263,7 +263,7 @@ The explore track in one picture — it merges into the main flow at STEP2 ([§4
 
 ```mermaid
 graph LR
-    IC[Intent card, ≤15 lines<br/>human sign-off] --> SP[Spike in spike/<br/>cap: spike-cap]
+    IC[Intent card, ≤15 lines<br/>human sign-off] --> SP[Spike in changes/name/spike/<br/>cap: spike-cap]
     SP --> P11[P11 extract spec<br/>req-final + drafts]
     P11 --> P12{P12 extraction review<br/>heterogeneous}
     P12 -- accepted --> S2[merge into STEP2<br/>full review loop]
@@ -291,16 +291,16 @@ graph LR
 
 | Artifact | Default location |
 |---|---|
-| Requirement doc | `requirement/<change>-req-v{N}.md`, finalized as `requirement/<change>-req-final.md` |
-| REQ-REVIEW-DOC | `apriori/review/<change>-req-review-v{N}.md` (prefix with the change name — parallel changes must not overwrite each other) |
-| Gap report (STEP1 output) | `apriori/explore/<change>-gap-report.md` |
-| Issue ledger | `apriori/review/<change>-issues.md` |
+| Requirement doc | `apriori/changes/<change>/requirement/req-v{N}.md`, finalized as `apriori/changes/<change>/requirement/req-final.md` |
+| REQ-REVIEW-DOC | `apriori/changes/<change>/review/req-review-v{N}.md` (prefix with the change name — parallel changes must not overwrite each other) |
+| Gap report (STEP1 output) | `apriori/changes/<change>/gap-report.md` |
+| Issue ledger | `apriori/changes/<change>/review/issues.md` |
 | proposal.md (why / what / scope) | `apriori/changes/<change>/proposal.md` |
 | SPEC-DOC / DESIGN-DOC / tasks.md | `apriori/changes/<change>/specs/`, `…/design.md`, `…/tasks.md` |
-| SPEC-EVALUATION-DOC | `apriori/design/<change>-review-v{N}.md` |
-| Intent card (explore track) | `requirement/<change>-intent-card.md` |
-| Extraction review (explore track) | `apriori/review/<change>-extraction-review-v{N}.md` |
-| Prototype (explore track) | `spike/` — deleted or quarantined at archive; never referenced by tasks.md |
+| SPEC-EVALUATION-DOC | `apriori/changes/<change>/review/spec-review-v{N}.md` |
+| Intent card (explore track) | `apriori/changes/<change>/requirement/intent-card.md` |
+| Extraction review (explore track) | `apriori/changes/<change>/review/extraction-review-v{N}.md` |
+| Prototype (explore track) | `apriori/changes/<change>/spike/` — deleted or quarantined at archive; never referenced by tasks.md |
 | TRUTH-DOC (knowledge base) | `apriori/truth/<module>.md`, **in the same repo as the code** (a separate KB repo also works if every doc carries a `source-commit` stamp — see §6) |
 
 ### 4.2 Overview Flowchart
@@ -361,7 +361,7 @@ Requirement Doc v1.0 ──► reviewing model audits ──► REQ-REVIEW-DOC (
 - **The reviewing model should differ from the one that drafted the requirement** (e.g. draft with Claude, review with GPT).
 - Fix the review dimensions as a checklist: **is target state B clear / any ambiguity / are edge cases and exceptions covered / any implied-but-undeclared state changes / are acceptance criteria testable**.
 - **Exit condition**: the reviewing model explicitly outputs "VERDICT: no major issues", or a human decides after hitting the 5-round cap.
-- **Every round also logs to the issue ledger** (`apriori/review/<change>-issues.md`, [§7.0](#70-the-issue-ledger-shared-by-all-review-loops)): new findings get IDs, fixes flip statuses, and a reopened ID is your early warning that the loop isn't converging.
+- **Every round also logs to the issue ledger** (`apriori/changes/<change>/review/issues.md`, [§7.0](#70-the-issue-ledger-shared-by-all-review-loops)): new findings get IDs, fixes flip statuses, and a reopened ID is your early warning that the loop isn't converging.
 
 For the prompt, see [§7.1](#71-step0-requirement-doc-adversarial-review).
 
@@ -370,7 +370,7 @@ For the prompt, see [§7.1](#71-step0-requirement-doc-adversarial-review).
 The **explore action**. Explore based on all known facts, and align the design.
 
 - **Inputs**: TRUTH-DOC (the KB, `apriori/truth/`), any leftover SPEC-DOC from the previous round, the code, the finalized requirement doc.
-- **Output**: an alignment report listing the **gap between current state A and target state B**, saved to `apriori/explore/<change>-gap-report.md`.
+- **Output**: an alignment report listing the **gap between current state A and target state B**, saved to `apriori/changes/<change>/gap-report.md`.
 
 > **Skim the gap report before running propose** — it's the cheapest gate in the pipeline. A wrong or missing fact caught here costs a minute of reading; the same fact caught by the STEP2 reviewer costs a review round, and caught in STEP5 it costs a rework.
 
@@ -482,7 +482,7 @@ git init             # version control recommended, so you can diff each step
 
 ### 5.1 STEP0 · Write and Review Requirements
 
-First write a plain-language requirement in `requirement/<change>-req-v1.md`:
+First write a plain-language requirement in `apriori/changes/<change>/requirement/req-v1.md`:
 
 ```text
 Build an in-memory key-value cache library, mini-kv:
@@ -493,16 +493,16 @@ Build an in-memory key-value cache library, mini-kv:
 5. Overwrite: calling set again on an existing key overwrites both the old value and the old TTL.
 ```
 
-Then have a **reviewing model** (a model/tool different from the one that drafted it) review it once per the prompt in [§7.1](#71-step0-requirement-doc-adversarial-review), filling in edge cases you missed (e.g. what `ttlMs<=0` does, whether `get` cleans up lazily or on a timer, concurrent-write semantics). Finalize as `requirement/<change>-req-final.md`.
+Then have a **reviewing model** (a model/tool different from the one that drafted it) review it once per the prompt in [§7.1](#71-step0-requirement-doc-adversarial-review), filling in edge cases you missed (e.g. what `ttlMs<=0` does, whether `get` cleans up lazily or on a timer, concurrent-write semantics). Finalize as `apriori/changes/<change>/requirement/req-final.md`.
 
 ### 5.2 STEP1 · explore
 
 In your primary tool:
 ```text
-* Requirement doc: requirement/<change>-req-final.md
+* Requirement doc: apriori/changes/<change>/requirement/req-final.md
 * System knowledge base: (new project: none / legacy project: apriori/truth/ or your KB path)
 * Code: this repo
-Please align the facts and output a gap report between current state A and target B to apriori/explore/<change>-gap-report.md.
+Please align the facts and output a gap report between current state A and target B to apriori/changes/<change>/gap-report.md.
 ```
 
 ### 5.3 STEP2 · propose + Adversarial Review
@@ -513,7 +513,7 @@ Pay attention to whether the resulting `spec.md` **gives each user-visible behav
 Then switch to your reviewing tool/model and review → revise per [§7.3](#73-step2-adversarial-review-and-revision), looping until "VERDICT: no major issues." Concretely, drive the review with Codex ([§2.3](#23-driving-codex-non-interactively-multi-round-adversarial-review)):
 ```shell
 # round 1 — open the review session (note the printed session id)
-codex exec -s read-only "Review apriori/changes/<change>/specs/ and design.md against requirement/<change>-req-final.md, using the RUNBOOK P5 checklist. End with a verdict line."
+codex exec -s read-only "Review apriori/changes/<change>/specs/ and design.md against apriori/changes/<change>/requirement/req-final.md, using the RUNBOOK P5 checklist. End with a verdict line."
 # each revision round — same context, so it checks whether your fixes landed
 codex exec resume -c sandbox_mode="read-only" <session-id> "I revised per your last review; re-review and produce v{N+1}."
 ```
@@ -594,7 +594,7 @@ Notice the two fixed sections and their **opposite truth directions**: the Contr
 
 ### 7.0 The Issue Ledger (Shared by All Review Loops)
 
-One cumulative ledger per change, `apriori/review/<change>-issues.md` (format: RUNBOOK **P0**). Reviews follow a **scope discipline** (per Anthropic's fully-verified warning that gap-hunting reviewers report gaps even in sound work): only correctness/security/stated-requirement gaps become formal rows; the rest are `advisory` — per-item lists stay in the review doc, the ledger takes one batch row per round. Why it exists: cross-round memory lives in a file instead of a session, so every round's reviewer can be a **fresh** session without losing the thread ([§1.4](#14-adversarial-review)). Who writes what: the reviewer appends rows and flips `fixed → verified`; the producer flips `open → fixed/rejected` — a rejection must carry a reason, because human gates read the rejections first. A re-found issue **reopens its old ID** rather than getting a new row; that reopened ID is exactly the oscillation alarm [§4.10](#410-automating-the-loop-with-goal-claude-code) watches for.
+One cumulative ledger per change, `apriori/changes/<change>/review/issues.md` (format: RUNBOOK **P0**). Reviews follow a **scope discipline** (per Anthropic's fully-verified warning that gap-hunting reviewers report gaps even in sound work): only correctness/security/stated-requirement gaps become formal rows; the rest are `advisory` — per-item lists stay in the review doc, the ledger takes one batch row per round. Why it exists: cross-round memory lives in a file instead of a session, so every round's reviewer can be a **fresh** session without losing the thread ([§1.4](#14-adversarial-review)). Who writes what: the reviewer appends rows and flips `fixed → verified`; the producer flips `open → fixed/rejected` — a rejection must carry a reason, because human gates read the rejections first. A re-found issue **reopens its old ID** rather than getting a new row; that reopened ID is exactly the oscillation alarm [§4.10](#410-automating-the-loop-with-goal-claude-code) watches for.
 
 ### 7.1 STEP0: Requirement-Doc Adversarial Review
 
@@ -602,11 +602,11 @@ Prompts: RUNBOOK **P1** (reviewer) / **P2** (producer's revise). Design notes:
 
 - Run P1 with a **model/tool different from the one that drafted the requirement**, and feed it the ledger so it can verify earlier fixes.
 - The five review dimensions are fixed on purpose — target-state clarity / edge & exception coverage / undeclared state changes / testable acceptance criteria / conflicts with state A — a stable checklist keeps rounds comparable.
-- The reviewer only reviews, never edits the requirement doc; the producer answers every formal issue with accept/reject + reason (advisories batch-acknowledge, RUNBOOK P0). Loop until "VERDICT: no major issues", finalize as `requirement/<change>-req-final.md` (max 5 rounds).
+- The reviewer only reviews, never edits the requirement doc; the producer answers every formal issue with accept/reject + reason (advisories batch-acknowledge, RUNBOOK P0). Loop until "VERDICT: no major issues", finalize as `apriori/changes/<change>/requirement/req-final.md` (max 5 rounds).
 
 ### 7.2 STEP1: explore
 
-Prompt: RUNBOOK **P3**. Design notes: facts only — no code. The KB and the finalized requirement doc go in as inputs, and the output is pinned to `apriori/explore/<change>-gap-report.md` so the cheap pre-propose gate ([§4.4](#44-step1-explore--align)) has something concrete to read. One carve-out: the **research-spike variant** (vague-but-tripwired changes, [§4.0](#40-size-the-change-first)) allows probe code under `spike/`, with findings landing as a gap-report appendix.
+Prompt: RUNBOOK **P3**. Design notes: facts only — no code. The KB and the finalized requirement doc go in as inputs, and the output is pinned to `apriori/changes/<change>/gap-report.md` so the cheap pre-propose gate ([§4.4](#44-step1-explore--align)) has something concrete to read. One carve-out: the **research-spike variant** (vague-but-tripwired changes, [§4.0](#40-size-the-change-first)) allows probe code under `changes/<change>/spike/`, with findings landing as a gap-report appendix.
 
 ### 7.3 STEP2: Adversarial Review and Revision
 

@@ -111,7 +111,7 @@ test('PR-07 the brainstorm stance is a structured diverge→converge→funnel, e
   assert.match(p13en, /recommended\s+defaults/);
   assert.match(p13en, /2-3 candidate approaches/);
   assert.match(p13en, /I decide when it is stateable/);
-  assert.match(p13en, /`<change>-req-v1` starting\s*\nmaterial|`<change>-req-v1` starting material/);
+  assert.match(p13en, /`req-v1` starting\s*\nmaterial|`req-v1` starting material/);
   const cn = block(CN, /^### 脑暴 —— STEP0 前的可选姿态.*$/m);
   assert.ok(cn, 'CN Brainstorm block present');
   assert.match(cn, /绝不写代码/);
@@ -151,7 +151,7 @@ test('PR-07 the brainstorm stance is a structured diverge→converge→funnel, e
   assert.match(p13cn, /推荐默认值/);
   assert.match(p13cn, /2-3 个候选方案/);
   assert.match(p13cn, /由我判定/);
-  assert.match(p13cn, /`<change>-req-v1` 起始材料/);
+  assert.match(p13cn, /`req-v1` 起始材料/);
 });
 
 test('PR-09 brainstorm exit is human-gated, artifact-free until approval, carries a requirement seed', () => {
@@ -167,7 +167,7 @@ test('PR-09 brainstorm exit is human-gated, artifact-free until approval, carrie
   // requirement seed carried into STEP0 — every field the scenario names
   assert.match(en, /kickoff requirement draft/);
   assert.match(en, /goal, users, chosen approach \(and the UI sketch that won, if any\), success criteria, constraints, non-goals \*\*with the reasons they were cut\*\*, open questions/);
-  assert.match(en, /`<change>-req-v1` starting material/);
+  assert.match(en, /`req-v1` starting material/);
   const cn = block(CN, /^### 脑暴 —— STEP0 前的可选姿态.*$/m);
   assert.match(cn, /绝不创建工作流产物/);
   assert.match(cn, /不跑 `apriori new`/);
@@ -177,7 +177,7 @@ test('PR-09 brainstorm exit is human-gated, artifact-free until approval, carrie
   assert.match(cn, /由人判定,不由你/);
   assert.match(cn, /kickoff 需求草稿/);
   assert.match(cn, /目标、用户、选定方案\(以及胜出的界面草图,如有\)、成功判据、约束、非目标\*\*连同砍掉它们的理由\*\*、遗留开放问题/);
-  assert.match(cn, /`<change>-req-v1` 起始材料/);
+  assert.match(cn, /`req-v1` 起始材料/);
 });
 
 test('PR-08 proposal.md is a STEP2 artifact (table + P4 + STEP3 packet, both languages)', () => {
@@ -332,8 +332,8 @@ test('PR-15 ABANDONED is a legal harden-track exit, human-only', () => {
 
 test('PR-16 legacy-project clarity clauses (both languages)', () => {
   // KB pre-check may run before STEP0 on a legacy kickoff
-  assert.match(EN, /before STEP0 even drafts <change>-req-v1/);
-  assert.match(CN, /提前到 STEP0 起草 <change>-req-v1 之前/);
+  assert.match(EN, /before STEP0 even drafts req-v1/);
+  assert.match(CN, /提前到 STEP0 起草 req-v1 之前/);
   // gates vocabulary gains KB sign-off
   assert.match(EN, /gate① … gate⑤ \| KB sign-off \|/);
   assert.match(CN, /gate① … gate⑤ \| KB 签核 \|/);
@@ -462,46 +462,35 @@ test('PR-18 the ledger vocabulary and the post-archive gate bind in both edition
   assert.match(CONCEPTS_CN, /waived/);
 });
 
-test('PR-19 requirement-stage paths carry the change name in every live doc', () => {
-  const fsMod = require('node:fs');
-  const NEWJS = fsMod.readFileSync(path.join(ROOT, 'lib', 'new.js'), 'utf8');
-  // negative: the three forbidden global literals appear nowhere in the live docs or the scaffold source
-  for (const [label, doc] of [['RUNBOOK', EN], ['RUNBOOK_cn', CN], ['concepts', CONCEPTS], ['concepts_cn', CONCEPTS_CN], ['lib/new.js', NEWJS]])
-    for (const lit of ['requirement/req-v', 'requirement/req-final.md', 'requirement/intent-card.md'])
-      assert.ok(!doc.includes(lit), `${label} still carries the forbidden literal '${lit}'`);
-  // positive: the prefixed convention is written where it matters
-  for (const doc of [EN, CN]) {
-    assert.match(doc, /requirement\/<change>-req-v\{N\}\.md/);
-    assert.match(doc, /requirement\/<change>-req-final\.md/);
-    assert.match(doc, /requirement\/<change>-intent-card\.md/);
-  }
-  assert.match(CONCEPTS, /requirement\/<change>-req-/);
-  assert.match(CONCEPTS_CN, /requirement\/<change>-req-/);
-  // the RPIMPL-1 class, airtight: strip every prefixed form, then NO 'req-v' may remain —
-  // per-occurrence, so a line carrying both forms can't hide a bare one (the grep -v lesson)
-  for (const doc of [EN, CN, CONCEPTS, CONCEPTS_CN])
-    assert.ok(!doc.replaceAll('<change>-req-v', '').replaceAll('<name>-req-v', '').replaceAll('my-change-req-v', '').includes('req-v'),
-      'a bare req-v basename survives outside the prefixed forms');
-  // the STEP6 preservation clause binds in both runbook editions: destination + timing
-  const s6en = sectionBlock(EN, /^### STEP6 — archive.*$/m);
-  assert.match(s6en, /archive\/<stamp>-<change>\/requirement\//);
-  assert.match(s6en, /before the move/);          // req-sweep: the carry is automatic, staged pre-move
-  assert.match(s6en, /all versions/);
-  const s6cn = sectionBlock(CN, /^### STEP6 —— 归档.*$/m);
-  assert.match(s6cn, /archive\/<stamp>-<change>\/requirement\//);
-  assert.match(s6cn, /移动之前/);
-  assert.match(s6cn, /全部版本|所有版本/);
-});
 
-test('PR-20 the automatic requirement carry binds and the manual instruction is gone', () => {
+test('PR-21 the bundle layout binds and the legacy roots are gone', () => {
+  // strip WHOLE bundle tokens (incl. archive/<stamp>-<name>/… forms), then the five legacy
+  // roots must have zero standalone occurrences — legit bundle mentions survive the strip
+  const strip = (doc) => doc.replace(/(?:apriori\/)?changes\/[^\s)`"'|]+\//g, '');
+  for (const [label, doc] of [['RUNBOOK', EN], ['RUNBOOK_cn', CN], ['concepts', CONCEPTS], ['concepts_cn', CONCEPTS_CN]]) {
+    const t = strip(doc);
+    for (const root of ['apriori/review/', 'apriori/design/', 'apriori/explore/', 'requirement/', 'spike/'])
+      assert.ok(!t.includes(root), `${label}: legacy root '${root}' survives outside bundle paths`);
+  }
+  // the artifact table names the bundle homes
+  for (const doc of [EN, CN]) {
+    assert.match(doc, /changes\/<change>\/requirement\//);
+    assert.match(doc, /changes\/<change>\/review\//);
+    assert.match(doc, /changes\/<change>\/gap-report\.md/);
+    assert.match(doc, /changes\/<change>\/spike\//);
+  }
+  // STEP6: the move carries the bundle; no staging/copy instruction; spike is executor duty pre-archive
   const s6en = sectionBlock(EN, /^### STEP6 — archive.*$/m);
-  assert.match(s6en, /carries the requirement history automatically/);
-  assert.match(s6en, /archive\/<stamp>-<change>\/requirement\//);
-  assert.match(s6en, /closeout commit/);
-  assert.ok(!/copy every/.test(s6en), 'old executor-copy instruction survives in EN');
+  assert.match(s6en, /move carries the (whole )?bundle|carries the bundle/i);
+  assert.ok(!/staged?:|copy every|stages every/.test(s6en), 'staging/copy instruction survives in EN STEP6');
+  assert.match(s6en, /delete or quarantine/);
   const s6cn = sectionBlock(CN, /^### STEP6 —— 归档.*$/m);
-  assert.match(s6cn, /自动/);
-  assert.match(s6cn, /archive\/<stamp>-<change>\/requirement\//);
-  assert.match(s6cn, /收尾提交/);
-  assert.ok(!/拷入|拷贝每/.test(s6cn), 'old executor-copy instruction survives in CN');
+  assert.match(s6cn, /随.*移动|移动携带|一并带走/);
+  assert.ok(!/暂存|拷入|拷贝每/.test(s6cn), 'staging/copy instruction survives in CN STEP6');
+  assert.match(s6cn, /删除或隔离/);
+  // the v4 stability sentence carries no layout clause
+  const CHANGELOG = require('node:fs').readFileSync(path.join(ROOT, 'CHANGELOG.md'), 'utf8');
+  const promise = CHANGELOG.split('\n').find((l) => l.includes('stability promise')) || '';
+  assert.ok(promise.length > 0, 'stability sentence missing');
+  assert.ok(!/layout/.test(promise), 'the stability sentence still carries the layout clause');
 });

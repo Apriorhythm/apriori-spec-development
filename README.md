@@ -18,7 +18,7 @@ Humans start with the Quickstart below; AI agents read the self-contained [RUNBO
 
 ## Quickstart
 
-Ten minutes, from an empty directory to a spec-bound green. Requires Node ≥ 18 and a POSIX shell.
+Ten minutes, from an empty directory to a spec-bound green. Requires Node ≥ 22 and a POSIX shell.
 
 ```shell
 npm i -g apriori-cli

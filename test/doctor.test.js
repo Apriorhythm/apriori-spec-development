@@ -268,10 +268,10 @@ test('DR-11 doctor is read-only and rejects stray arguments', () => {
 
 test('DR-12 the Node floor is enforced testably', () => {
   const root = healthy();
-  const low = doctor.runDoctor({ cwd: root, testCmd: TAP_OK, nodeVersion: '16.20.0' });
+  const low = doctor.runDoctor({ cwd: root, testCmd: TAP_OK, nodeVersion: '20.11.0' });
   assert.strictEqual(low.code, 2);
   assert.strictEqual(low.result, 'UNUSABLE');
   assert.strictEqual(byId(low, 'D1')[0].status, 'finding');
-  const ok = doctor.runDoctor({ cwd: root, testCmd: TAP_OK, nodeVersion: '18.0.0' });
+  const ok = doctor.runDoctor({ cwd: root, testCmd: TAP_OK, nodeVersion: '22.0.0' });
   assert.strictEqual(byId(ok, 'D1')[0].status, 'ok');
 });

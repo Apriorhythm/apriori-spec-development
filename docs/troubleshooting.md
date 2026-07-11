@@ -5,7 +5,7 @@ Run `apriori doctor` first — most entries below are its findings, keyed by the
 ## Doctor findings
 
 ### D1 — Node below the supported floor
-apriori-cli needs Node ≥ 18. Upgrade Node; nothing else will behave until you do.
+apriori-cli needs Node ≥ 22. Upgrade Node; nothing else will behave until you do.
 
 ### D2 — no apriori/ here / scaffold gaps
 Not initialized (or half-initialized: missing `runbook.md`, `specs/`, `.gitignore` `tmp/` line, or the `tmp/` dir). Fix: `apriori init` (missing scaffold) or `apriori update` (gitignore/tmp gaps). A FILE sitting where a directory should be is reported the same way — replace it.

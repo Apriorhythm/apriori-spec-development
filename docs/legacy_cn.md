@@ -41,10 +41,10 @@ git log --oneline <source-commit>..HEAD -- src/<module>/
 
 直接进 STEP1，把知识库作为事实来源喂进去：
 ```text
-* 需求文档: requirement/req-final.md
+* 需求文档: apriori/changes/<change>/requirement/req-final.md
 * 系统知识库: apriori/truth/（对应模块: <模块名>；独立仓库布局则填其本地路径）
 * 技术详细设计文档: design.md
-请基于知识库与代码对齐事实，输出 gap 报告到 apriori/explore/<change>-gap-report.md。
+请基于知识库与代码对齐事实，输出 gap 报告到 apriori/changes/<change>/gap-report.md。
 ```
 
 ### 6.3 路径 B：知识库过时

@@ -195,12 +195,12 @@ test('CK-10 committed secrets in review evidence fail the check', () => {
   // absent review dir → skip (pass)
   assert.strictEqual(run(mk({})).status, 0);
   // clean review dir → pass
-  assert.strictEqual(run(mk({ 'apriori/review/x-raw.txt': 'clean transcript\nsha256:abcdef' })).status, 0);
+  assert.strictEqual(run(mk({ 'apriori/changes/x/review/x-raw.txt': 'clean transcript\nsha256:abcdef' })).status, 0);
   // each class fails naming file/line/class WITHOUT echoing the value (one nested)
   const cases = [
-    ['apriori/review/a-raw.txt', 'line one\nkey=AKIA' + 'ABCDEFGHIJKLMNOP\n', /AWS/i, 'AKIA' + 'ABCDEFGHIJKLMNOP'],
-    ['apriori/review/deep/b-raw.md', 'ghp_' + 'a'.repeat(36) + ' embedded in output\n', /GitHub/i, 'ghp_' + 'a'.repeat(36)],
-    ['apriori/review/c.txt', '-----BEGIN RSA ' + 'PRIVATE KEY-----\nMII...\n', /private.key/i, 'MII'],   // assembled at runtime — the source (and raws quoting it) never carries the full literal
+    ['apriori/changes/a/review/a-raw.txt', 'line one\nkey=AKIA' + 'ABCDEFGHIJKLMNOP\n', /AWS/i, 'AKIA' + 'ABCDEFGHIJKLMNOP'],
+    ['apriori/changes/archive/2026-01-01T0000-b/review/deep/b-raw.md', 'ghp_' + 'a'.repeat(36) + ' embedded in output\n', /GitHub/i, 'ghp_' + 'a'.repeat(36)],
+    ['apriori/changes/c/review/c.txt', '-----BEGIN RSA ' + 'PRIVATE KEY-----\nMII...\n', /private.key/i, 'MII'],   // assembled at runtime — the source (and raws quoting it) never carries the full literal
   ];
   for (const [rel, content, classRe, secret] of cases) {
     const root = mk({ [rel]: content });
@@ -214,9 +214,9 @@ test('CK-10 committed secrets in review evidence fail the check', () => {
   }
   // symlinked entry skipped with a warn (capability-guarded)
   const root = mk({ 'outside.txt': 'ghp_' + 'b'.repeat(36) });
-  fs.mkdirSync(path.join(root, 'apriori/review'), { recursive: true });
+  fs.mkdirSync(path.join(root, 'apriori/changes/s/review'), { recursive: true });
   let can = true;
-  try { fs.symlinkSync(path.join(root, 'outside.txt'), path.join(root, 'apriori/review/link-raw.txt')); } catch { can = false; }
+  try { fs.symlinkSync(path.join(root, 'outside.txt'), path.join(root, 'apriori/changes/s/review/link-raw.txt')); } catch { can = false; }
   if (can) {
     const r = run(root);
     assert.strictEqual(r.status, 0);

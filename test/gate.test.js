@@ -35,7 +35,7 @@ function healthy(name = 'c') {
     [`apriori/changes/${name}/flow-state.md`]: FLOW(name),
     [`apriori/changes/${name}/tasks.md`]: '- [x] T1 done\n- [X] T2 done\n',
     [`apriori/changes/${name}/specs/kv/spec.md`]: DELTA,
-    [`apriori/review/${name}-issues.md`]: LEDGER_OK,
+    [`apriori/changes/${name}/review/issues.md`]: LEDGER_OK,
   });
 }
 const TAP_OK = tapCmd('ok 1 - XA-01 a', 'ok 2 - XB-01 b');
@@ -73,7 +73,7 @@ test('GT-03 ledger blocks on open rows and reasonless rejections', () => {
     ['| Q-2 | b | high | 1 | advisory-acked |', false],
   ]) {
     const root = healthy();
-    fs.appendFileSync(path.join(root, 'apriori/review/c-issues.md'), row + '\n');
+    fs.appendFileSync(path.join(root, 'apriori/changes/c/review/issues.md'), row + '\n');
     const r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
     const c4 = r.checks.find((x) => x.id === 'C4');
     assert.strictEqual(c4.status, blocked ? 'blocked' : 'pass', row);
@@ -100,39 +100,38 @@ test('GT-04 flow-state legality is enforced', () => {
 
 test('GT-05 verdict evidence is mechanical (missing raw blocks; raw fixes; symlink blocks)', () => {
   const root = healthy();
-  fs.writeFileSync(path.join(root, 'apriori/review/c-req-review-v1.md'), 'body\nVERDICT: no major issues\n');
+  fs.writeFileSync(path.join(root, 'apriori/changes/c/review/req-review-v1.md'), 'body\nVERDICT: no major issues\n');
   let r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
   let c5 = r.checks.find((x) => x.id === 'C5');
   assert.strictEqual(c5.status, 'blocked');
-  assert.match(c5.detail, /c-req-review-v1/);
-  fs.writeFileSync(path.join(root, 'apriori/review/c-req-review-v1-raw.txt'), 'raw transcript');
+  assert.match(c5.detail, /req-review-v1/);
+  fs.writeFileSync(path.join(root, 'apriori/changes/c/review/req-review-v1-raw.txt'), 'raw transcript');
   r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
   c5 = r.checks.find((x) => x.id === 'C5');
   assert.strictEqual(c5.status, 'pass', c5.detail);
   // design-dir docs participate too
-  fs.mkdirSync(path.join(root, 'apriori/design'), { recursive: true });
-  fs.writeFileSync(path.join(root, 'apriori/design/c-review-v1.md'), 'VERDICT: 1 issues open\n');
+  fs.writeFileSync(path.join(root, 'apriori/changes/c/review/spec-review-v1.md'), 'VERDICT: 1 issues open\n');
   r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
   assert.strictEqual(r.checks.find((x) => x.id === 'C5').status, 'blocked');
-  fs.writeFileSync(path.join(root, 'apriori/review/c-review-v1-raw.txt'), 'raw');
+  fs.writeFileSync(path.join(root, 'apriori/changes/c/review/spec-review-v1-raw.txt'), 'raw');
   r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
   assert.strictEqual(r.checks.find((x) => x.id === 'C5').status, 'pass');
   // a VERDICT-free doc needs no raw
-  fs.writeFileSync(path.join(root, 'apriori/review/c-kb-check.md'), 'notes only\n');
+  fs.writeFileSync(path.join(root, 'apriori/changes/c/review/kb-check.md'), 'notes only\n');
   assert.strictEqual(gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK }).checks.find((x) => x.id === 'C5').status, 'pass');
   // symlinked doc-glob match blocks (where the platform allows symlinks)
   let canSymlink = true;
-  try { fs.symlinkSync(path.join(root, 'apriori/review/c-req-review-v1.md'), path.join(root, 'apriori/review/c-linked.md')); }
+  try { fs.symlinkSync(path.join(root, 'apriori/changes/c/review/req-review-v1.md'), path.join(root, 'apriori/changes/c/review/c-linked.md')); }
   catch { canSymlink = false; }
   if (canSymlink) {
     r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
     c5 = r.checks.find((x) => x.id === 'C5');
     assert.strictEqual(c5.status, 'blocked');
     assert.match(c5.detail, /c-linked/);
-    fs.rmSync(path.join(root, 'apriori/review/c-linked.md'));
+    fs.rmSync(path.join(root, 'apriori/changes/c/review/c-linked.md'));
     // a SYMLINKED raw is not evidence: replace the real raw with a symlink → blocked again
-    fs.renameSync(path.join(root, 'apriori/review/c-req-review-v1-raw.txt'), path.join(root, 'apriori/review/elsewhere.txt'));
-    fs.symlinkSync(path.join(root, 'apriori/review/elsewhere.txt'), path.join(root, 'apriori/review/c-req-review-v1-raw.txt'));
+    fs.renameSync(path.join(root, 'apriori/changes/c/review/req-review-v1-raw.txt'), path.join(root, 'apriori/changes/c/review/elsewhere.txt'));
+    fs.symlinkSync(path.join(root, 'apriori/changes/c/review/elsewhere.txt'), path.join(root, 'apriori/changes/c/review/req-review-v1-raw.txt'));
     r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
     assert.strictEqual(r.checks.find((x) => x.id === 'C5').status, 'blocked');
   }
@@ -154,7 +153,7 @@ test('GT-06 the binding gate is stage-aware (in-flight projected; archived plain
     'apriori/changes/archive/2026-07-10T1200-c/flow-state.md': FLOW('c'),
     'apriori/changes/archive/2026-07-10T1200-c/tasks.md': '- [x] T1\n',
     'apriori/changes/archive/2026-07-10T1200-c/specs/kv/spec.md': DELTA,
-    'apriori/review/c-issues.md': LEDGER_OK,
+    'apriori/changes/archive/2026-07-10T1200-c/review/issues.md': LEDGER_OK,
   });
   const r2 = gate.runGate({ cwd: arch, change: 'c', testCmd: TAP_OK });
   assert.strictEqual(r2.stage, 'archived');
@@ -179,7 +178,7 @@ test('GT-07 resolution is validated and deterministic', () => {
     'apriori/changes/archive/2026-07-10T1400-c/flow-state.md': FLOW('c'),
     'apriori/changes/archive/2026-07-10T1400-c/tasks.md': '- [x] fresh checked\n',
     'apriori/changes/archive/2026-07-10T1400-c/specs/kv/spec.md': DELTA,
-    'apriori/review/c-issues.md': LEDGER_OK,
+    'apriori/changes/archive/2026-07-10T1400-c/review/issues.md': LEDGER_OK,
   });
   const r = gate.runGate({ cwd: arch, change: 'c', testCmd: TAP_OK });
   assert.strictEqual(r.checks.find((x) => x.id === 'C2').status, 'pass');   // newer dir used
@@ -334,7 +333,7 @@ function archProject(ledger, flowExtra) {
     'apriori/changes/archive/2026-07-10T1200-c/flow-state.md': FLOW_G('c', flowExtra),
     'apriori/changes/archive/2026-07-10T1200-c/tasks.md': '- [x] T1\n',
     'apriori/changes/archive/2026-07-10T1200-c/specs/kv/spec.md': DELTA,
-    'apriori/review/c-issues.md': ledger,
+    'apriori/changes/archive/2026-07-10T1200-c/review/issues.md': ledger,
   });
 }
 const c4Of = (root) => gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK }).checks.find((x) => x.id === 'C4');
@@ -365,38 +364,38 @@ test('GT-13 archived ledgers must be terminal', () => {
 test('GT-14 waives belong to humans, unknown states belong to nobody', () => {
   // in-flight: waived without any gates: evidence → blocked
   const root1 = healthy();
-  fs.writeFileSync(path.join(root1, 'apriori/review/c-issues.md'), ledgerWith(['Q-1', 'waived — accepted']));
+  fs.writeFileSync(path.join(root1, 'apriori/changes/c/review/issues.md'), ledgerWith(['Q-1', 'waived — accepted']));
   const w1 = c4Of(root1);
   assert.strictEqual(w1.status, 'blocked');
   assert.match(w1.detail, /gates: entry/);
   // same row passes once the human decision is recorded in gates:
   const root2 = healthy();
-  fs.writeFileSync(path.join(root2, 'apriori/review/c-issues.md'), ledgerWith(['Q-1', 'waived — accepted']));
+  fs.writeFileSync(path.join(root2, 'apriori/changes/c/review/issues.md'), ledgerWith(['Q-1', 'waived — accepted']));
   fs.appendFileSync(path.join(root2, 'apriori/changes/c/flow-state.md'),
     '  - 2026-07-12T01:00 owner waived Q-1: risk accepted\n');
   assert.strictEqual(c4Of(root2).status, 'pass');
   // exact ID token: an entry waiving Q-10 never satisfies row Q-1
   const root3 = healthy();
-  fs.writeFileSync(path.join(root3, 'apriori/review/c-issues.md'), ledgerWith(['Q-1', 'waived — accepted']));
+  fs.writeFileSync(path.join(root3, 'apriori/changes/c/review/issues.md'), ledgerWith(['Q-1', 'waived — accepted']));
   fs.appendFileSync(path.join(root3, 'apriori/changes/c/flow-state.md'),
     '  - 2026-07-12T01:00 owner waived Q-10: a different row\n');
   assert.strictEqual(c4Of(root3).status, 'blocked');
   // ID in one entry + 'waived' in another entry never passes (same-entry rule)
   const root4 = healthy();
-  fs.writeFileSync(path.join(root4, 'apriori/review/c-issues.md'), ledgerWith(['Q-1', 'waived — accepted']));
+  fs.writeFileSync(path.join(root4, 'apriori/changes/c/review/issues.md'), ledgerWith(['Q-1', 'waived — accepted']));
   fs.appendFileSync(path.join(root4, 'apriori/changes/c/flow-state.md'),
     '  - 2026-07-12T01:00 note: Q-1 discussed\n  - 2026-07-12T01:01 something else waived here\n');
   assert.strictEqual(c4Of(root4).status, 'blocked');
   // unknown status blocks IN-FLIGHT too; reasonless terminals block
   const root5 = healthy();
-  fs.writeFileSync(path.join(root5, 'apriori/review/c-issues.md'), ledgerWith(['Q-1', 'verifed']));
+  fs.writeFileSync(path.join(root5, 'apriori/changes/c/review/issues.md'), ledgerWith(['Q-1', 'verifed']));
   assert.strictEqual(c4Of(root5).status, 'blocked');
   const root6 = healthy();
-  fs.writeFileSync(path.join(root6, 'apriori/review/c-issues.md'), ledgerWith(['Q-1', 'rejected-verified']));
+  fs.writeFileSync(path.join(root6, 'apriori/changes/c/review/issues.md'), ledgerWith(['Q-1', 'rejected-verified']));
   assert.strictEqual(c4Of(root6).status, 'blocked');
   // in-flight fixed and reasoned rejected still pass (the loop is running)
   const root7 = healthy();
-  fs.writeFileSync(path.join(root7, 'apriori/review/c-issues.md'),
+  fs.writeFileSync(path.join(root7, 'apriori/changes/c/review/issues.md'),
     ledgerWith(['Q-1', 'fixed (v2)'], ['Q-2', 'rejected — cosmetic, out of scope']));
   assert.strictEqual(c4Of(root7).status, 'pass');
 });
@@ -408,8 +407,8 @@ test('GT-15 every archived ledger in this repo parses legal and terminal', () =>
   assert.strictEqual(typeof classifyStatus, 'function');
   for (const d of fs.readdirSync(archRoot)) {
     const name = d.replace(/^\d{4}-\d{2}-\d{2}T\d{4}-/, '');
-    const lp = path.join(__dirname, '..', 'apriori', 'review', `${name}-issues.md`);
-    if (name === d || !fs.existsSync(lp)) continue;
+    const lp = path.join(archRoot, d, 'review', 'issues.md');
+    if (!fs.existsSync(lp)) continue;
     const { parseLedger } = require('../lib/status');
     for (const row of parseLedger(fs.readFileSync(lp, 'utf8'))) {
       const c = classifyStatus(row.status);
@@ -429,7 +428,7 @@ function modProject(extraFiles = {}) {
     'apriori/changes/c/flow-state.md': FLOW('c'),
     'apriori/changes/c/tasks.md': '- [x] T1 done\n',
     'apriori/changes/c/specs/kv/spec.md': MOD_DELTA,
-    'apriori/review/c-issues.md': LEDGER_OK,
+    'apriori/changes/c/review/issues.md': LEDGER_OK,
     ...extraFiles,
   });
 }
@@ -465,7 +464,7 @@ test('GT-16 C7 blocks, and waivers are loud', () => {
     'apriori/changes/archive/2026-07-10T1200-c/flow-state.md': FLOW('c'),
     'apriori/changes/archive/2026-07-10T1200-c/tasks.md': '- [x] T1\n',
     'apriori/changes/archive/2026-07-10T1200-c/specs/kv/spec.md': DELTA,
-    'apriori/review/c-issues.md': LEDGER_OK,
+    'apriori/changes/archive/2026-07-10T1200-c/review/issues.md': LEDGER_OK,
   });
   const na = gate.runGate({ cwd: arch, change: 'c', testCmd: TAP_OK }).checks.find((x) => x.id === 'C7');
   assert.strictEqual(na.status, 'n/a');

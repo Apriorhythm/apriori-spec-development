@@ -5,7 +5,7 @@
 ## Doctor 发现
 
 ### D1 —— Node 低于支持地板
-apriori-cli 需要 Node ≥ 18。先升级 Node,否则一切免谈。
+apriori-cli 需要 Node ≥ 22。先升级 Node,否则一切免谈。
 
 ### D2 —— 没有 apriori/ / 脚手架缺口
 未初始化(或半初始化:缺 `runbook.md`、`specs/`、`.gitignore` 的 `tmp/` 行、或 `tmp/` 目录)。修复:`apriori init`(缺脚手架)或 `apriori update`(gitignore/tmp 缺口)。目录位置上蹲着一个文件也会同样报出——换掉它。

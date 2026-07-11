@@ -12,7 +12,7 @@ function project(changes) {
     fs.mkdirSync(path.join(root, 'apriori', 'changes', name), { recursive: true });
     if (flow) fs.writeFileSync(path.join(root, 'apriori', 'changes', name, 'flow-state.md'), flow);
     fs.mkdirSync(path.join(root, 'apriori', 'review'), { recursive: true });
-    if (ledger) fs.writeFileSync(path.join(root, 'apriori', 'review', `${name}-issues.md`), ledger);
+    if (ledger) { fs.mkdirSync(path.join(root, 'apriori', 'changes', name, 'review'), { recursive: true }); fs.writeFileSync(path.join(root, 'apriori', 'changes', name, 'review', 'issues.md'), ledger); }
   }
   return root;
 }

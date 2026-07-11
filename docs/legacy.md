@@ -41,10 +41,10 @@ A tiny CI job that runs this per module and flags "stale KB" turns the Path A/B 
 
 Go straight to STEP1, feeding the KB in as the source of facts:
 ```text
-* Requirement doc: requirement/req-final.md
+* Requirement doc: apriori/changes/<change>/requirement/req-final.md
 * System knowledge base: apriori/truth/ (module: <module-name>; separate-repo layout: pass that repo's local path instead)
 * Detailed technical design doc: design.md
-Please align facts from the KB and the code, and output a gap report to apriori/explore/<change>-gap-report.md.
+Please align facts from the KB and the code, and output a gap report to apriori/changes/<change>/gap-report.md.
 ```
 
 ### 6.3 Path B: Knowledge Base Is Stale

@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to `apriori-cli`. Versions follow semver; the stability promise from 3.0.0 holds: CLI surface & flags, `--json` shapes, the delta format, the flow-state schema and the `apriori/` layout only break in a major.
+All notable changes to `apriori-cli`. Versions follow semver; the stability promise: CLI surface & flags, `--json` shapes, the delta format and the flow-state schema only break in a major.
 
 ## 3.4.1 — 2026-07-12 · requirement paths carry their change
 

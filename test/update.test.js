@@ -57,7 +57,7 @@ test('UP-02 user-owned files are never touched, nothing new is created', () => {
   const owned = {
     'apriori/specs/kv.md': '#### Scenario: KV-01 x\n',
     'apriori/changes/add-x/flow-state.md': '| step | STEP2 |\n',
-    'apriori/review/add-x-issues.md': '| I1 | open |\n',
+    'apriori/changes/add-x/review/issues.md': '| I1 | open |\n',
     'apriori/truth/kv.md': 'KB fact\n',
   };
   for (const [rel, body] of Object.entries(owned)) {

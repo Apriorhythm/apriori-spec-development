@@ -263,7 +263,7 @@ npm -v    # 例如 10.x.x
 
 ```mermaid
 graph LR
-    IC[意图卡 ≤15 行<br/>人签核] --> SP[spike/ 下做原型<br/>上限: spike-cap]
+    IC[意图卡 ≤15 行<br/>人签核] --> SP[changes/name/spike/ 下做原型<br/>上限: spike-cap]
     SP --> P11[P11 提取规格<br/>req-final + 草案]
     P11 --> P12{P12 提取评审<br/>异构}
     P12 -- accepted --> S2[汇入 STEP2<br/>全量评审循环]
@@ -291,16 +291,16 @@ graph LR
 
 | 产物 | 默认位置 |
 |---|---|
-| 需求文档 | `requirement/<change>-req-v{N}.md`，定稿为 `requirement/<change>-req-final.md` |
-| REQ-REVIEW-DOC | `apriori/review/<change>-req-review-v{N}.md`（带上变更名前缀——并行的变更不能互相覆盖） |
-| gap 报告（STEP1 产出） | `apriori/explore/<change>-gap-report.md` |
-| 问题台账 | `apriori/review/<change>-issues.md` |
+| 需求文档 | `apriori/changes/<change>/requirement/req-v{N}.md`，定稿为 `apriori/changes/<change>/requirement/req-final.md` |
+| REQ-REVIEW-DOC | `apriori/changes/<change>/review/req-review-v{N}.md`（带上变更名前缀——并行的变更不能互相覆盖） |
+| gap 报告（STEP1 产出） | `apriori/changes/<change>/gap-report.md` |
+| 问题台账 | `apriori/changes/<change>/review/issues.md` |
 | proposal.md(为什么 / 做什么 / 范围外) | `apriori/changes/<change>/proposal.md` |
 | SPEC-DOC / DESIGN-DOC / tasks.md | `apriori/changes/<change>/specs/`、`…/design.md`、`…/tasks.md` |
-| SPEC-EVALUATION-DOC | `apriori/design/<change>-review-v{N}.md` |
-| 意图卡（探索轨） | `requirement/<change>-intent-card.md` |
-| 提取评审（探索轨） | `apriori/review/<change>-extraction-review-v{N}.md` |
-| 原型（探索轨） | `spike/`——archive 时删除或隔离;tasks.md 绝不引用 |
+| SPEC-EVALUATION-DOC | `apriori/changes/<change>/review/spec-review-v{N}.md` |
+| 意图卡（探索轨） | `apriori/changes/<change>/requirement/intent-card.md` |
+| 提取评审（探索轨） | `apriori/changes/<change>/review/extraction-review-v{N}.md` |
+| 原型（探索轨） | `apriori/changes/<change>/spike/`——archive 时删除或隔离;tasks.md 绝不引用 |
 | TRUTH-DOC（知识库） | `apriori/truth/<module>.md`，**与代码同仓库**（独立知识库仓库也可以，但每份文档必须带 `source-commit` 标记——见第六节） |
 
 ### 4.2 总览流程图
@@ -361,7 +361,7 @@ graph TD
 - **评审用的模型，应与起草需求时不同**（例如需求初稿用 Claude，评审切 GPT）。
 - 评审维度建议固定为清单：**目标状态 B 是否清晰 / 是否有歧义 / 边界与异常是否覆盖 / 是否隐含未声明的状态变更 / 验收标准是否可测**。
 - **退出条件**：评审模型明确输出 "VERDICT: no major issues"（无重大问题），或达到 5 轮上限后人工裁决。
-- **每一轮同时写入问题台账**（`apriori/review/<change>-issues.md`，[§7.0](#70-问题台账所有评审循环共用)）：新发现领新 ID、修复翻状态；一旦有 ID 被重开，就是循环不收敛的预警。
+- **每一轮同时写入问题台账**（`apriori/changes/<change>/review/issues.md`，[§7.0](#70-问题台账所有评审循环共用)）：新发现领新 ID、修复翻状态；一旦有 ID 被重开，就是循环不收敛的预警。
 
 对应提示词见 [§7.1](#71-step0需求文档对抗评审)。
 
@@ -370,7 +370,7 @@ graph TD
 本节即 **explore 接口动作**。根据所有已知事实进行探索，对齐设计。
 
 - **输入**：TRUTH-DOC（知识库，`apriori/truth/`）、上轮遗留的 SPEC-DOC（如有）、代码、定稿的需求文档。
-- **输出**：对齐报告，列出**当前状态 A 与目标状态 B 之间的 gap**，落盘为 `apriori/explore/<change>-gap-report.md`。
+- **输出**：对齐报告，列出**当前状态 A 与目标状态 B 之间的 gap**，落盘为 `apriori/changes/<change>/gap-report.md`。
 
 > **跑 propose 之前先扫一眼 gap 报告**——这是全流程里最便宜的一道闸口。错误或缺失的事实在这里被抓住，代价是一分钟阅读；留给 STEP2 评审方去抓，代价是一整轮评审；漏到 STEP5，代价就是返工。
 
@@ -482,7 +482,7 @@ git init             # 建议纳入版本管理，方便对照每步 diff
 
 ### 5.1 STEP0 · 写并评审需求
 
-先写一份 `requirement/<change>-req-v1.md`（人话需求）：
+先写一份 `apriori/changes/<change>/requirement/req-v1.md`（人话需求）：
 
 ```text
 做一个内存键值缓存库 mini-kv：
@@ -493,16 +493,16 @@ git init             # 建议纳入版本管理，方便对照每步 diff
 5. 覆盖写：对已存在的 key 再次 set，应覆盖旧值与旧 TTL。
 ```
 
-然后让**评审模型**（与起草不同的模型/工具）按 [§7.1](#71-step0需求文档对抗评审) 的提示词审一轮，补全你没想到的边界（如 `ttlMs<=0` 怎么办、`get` 是否惰性清理还是定时清理、并发写入语义）。定稿为 `requirement/<change>-req-final.md`。
+然后让**评审模型**（与起草不同的模型/工具）按 [§7.1](#71-step0需求文档对抗评审) 的提示词审一轮，补全你没想到的边界（如 `ttlMs<=0` 怎么办、`get` 是否惰性清理还是定时清理、并发写入语义）。定稿为 `apriori/changes/<change>/requirement/req-final.md`。
 
 ### 5.2 STEP1 · explore
 
 在主力工具里：
 ```text
-* 需求文档: requirement/<change>-req-final.md
+* 需求文档: apriori/changes/<change>/requirement/req-final.md
 * 系统知识库: （新项目，暂无 / 旧项目填 apriori/truth/ 或知识库路径）
 * 代码: 当前仓库
-请对齐事实，输出当前状态 A 与目标 B 的 gap 报告到 apriori/explore/<change>-gap-report.md。
+请对齐事实，输出当前状态 A 与目标 B 的 gap 报告到 apriori/changes/<change>/gap-report.md。
 ```
 
 ### 5.3 STEP2 · propose + 对抗评审
@@ -513,7 +513,7 @@ git init             # 建议纳入版本管理，方便对照每步 diff
 然后切到评审工具/模型，按 [§7.3](#73-step2对抗训练评审与修订) 评审 → 修订，循环到 "VERDICT: no major issues"。具体可用 Codex 来驱动评审（[§2.3](#23-用命令行驱动-codex多轮对抗评审)）：
 ```shell
 # 第一轮——开启评审会话（记下打印出来的 session id）
-codex exec -s read-only "按 RUNBOOK P5 评审清单，对照 requirement/<change>-req-final.md 评审 apriori/changes/<change>/specs/ 与 design.md，末尾给出结论行。"
+codex exec -s read-only "按 RUNBOOK P5 评审清单，对照 apriori/changes/<change>/requirement/req-final.md 评审 apriori/changes/<change>/specs/ 与 design.md，末尾给出结论行。"
 # 之后每个修订轮——同一上下文，它能核对你的修复是否到位
 codex exec resume -c sandbox_mode="read-only" <session-id> "我已按上轮意见修订；请重新评审并产出 v{N+1}。"
 ```
@@ -594,7 +594,7 @@ source-commit: <归档时的 commit sha>   # 只覆盖契约节
 
 ### 7.0 问题台账（所有评审循环共用）
 
-每个变更一份累积台账 `apriori/review/<change>-issues.md`（格式:RUNBOOK **P0**）。评审执行**范围纪律**(依据 Anthropic 全票验证的警告:被要求找缺口的评审者对健康工作也会报缺口):只有正确性/安全/既定需求类缺口立正式行;其余为 `advisory`——逐条清单留在评审文档,台账每轮只落一行批量行。它存在的理由:跨轮记忆放在文件里而不是会话里,于是每一轮的评审方都可以是**全新**会话而不丢线索（[§1.4](#14-对抗训练)）。谁写什么:评审方追加新行并把 `fixed → verified`;生产方把 `open → fixed/rejected`——拒绝必须给理由,因为人工闸口最先看的就是拒绝项。再次发现的问题**重开旧 ID**而不是另起新行;被重开的 ID 正是 [§4.10](#410-用-goal-自动化整个流程) 盯的振荡警报。
+每个变更一份累积台账 `apriori/changes/<change>/review/issues.md`（格式:RUNBOOK **P0**）。评审执行**范围纪律**(依据 Anthropic 全票验证的警告:被要求找缺口的评审者对健康工作也会报缺口):只有正确性/安全/既定需求类缺口立正式行;其余为 `advisory`——逐条清单留在评审文档,台账每轮只落一行批量行。它存在的理由:跨轮记忆放在文件里而不是会话里,于是每一轮的评审方都可以是**全新**会话而不丢线索（[§1.4](#14-对抗训练)）。谁写什么:评审方追加新行并把 `fixed → verified`;生产方把 `open → fixed/rejected`——拒绝必须给理由,因为人工闸口最先看的就是拒绝项。再次发现的问题**重开旧 ID**而不是另起新行;被重开的 ID 正是 [§4.10](#410-用-goal-自动化整个流程) 盯的振荡警报。
 
 ### 7.1 STEP0｜需求文档对抗评审
 
@@ -602,11 +602,11 @@ source-commit: <归档时的 commit sha>   # 只覆盖契约节
 
 - P1 用**与起草需求不同的模型/工具**执行,并把台账一并喂给它,让它能核验早前的修复。
 - 五个评审维度是刻意固定的——目标态清晰度 / 边界与异常覆盖 / 未声明的状态变更 / 验收标准可测性 / 与现状 A 的冲突——清单稳定,各轮才可比。
-- 评审方只评审、绝不改需求文档;生产方对每条正式问题给出采纳/拒绝+理由(advisory 整批确认即可,RUNBOOK P0)。循环到 "VERDICT: no major issues",定稿为 `requirement/<change>-req-final.md`（最多 5 轮）。
+- 评审方只评审、绝不改需求文档;生产方对每条正式问题给出采纳/拒绝+理由(advisory 整批确认即可,RUNBOOK P0)。循环到 "VERDICT: no major issues",定稿为 `apriori/changes/<change>/requirement/req-final.md`（最多 5 轮）。
 
 ### 7.2 STEP1｜explore
 
-提示词:RUNBOOK **P3**。设计说明:只对齐事实——不写代码。知识库与定稿需求作为输入,输出固定落盘到 `apriori/explore/<change>-gap-report.md`,让 propose 前那道便宜闸口（[§4.4](#44-step1探索对齐)）有实物可读。唯一豁免:**调研 spike 变体**(模糊但触绊线的变更,[§4.0](#40-先给变更定级))允许在 `spike/` 下写探针代码,结论作为 gap 报告附录。
+提示词:RUNBOOK **P3**。设计说明:只对齐事实——不写代码。知识库与定稿需求作为输入,输出固定落盘到 `apriori/changes/<change>/gap-report.md`,让 propose 前那道便宜闸口（[§4.4](#44-step1探索对齐)）有实物可读。唯一豁免:**调研 spike 变体**(模糊但触绊线的变更,[§4.0](#40-先给变更定级))允许在 `changes/<change>/spike/` 下写探针代码,结论作为 gap 报告附录。
 
 ### 7.3 STEP2｜对抗训练评审与修订
 

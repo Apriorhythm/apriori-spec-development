@@ -512,130 +512,78 @@ test('AM-35 MODIFIED speaks the idempotence vocabulary', () => {
   assert.deepStrictEqual(diff.modified, ['Alpha']);
 });
 
-// ---- req-sweep (AM-36..39): archive stages the requirement history before the move ----
 
-function reqProject(reqFiles, extra = {}) {
+// ---- change-bundle (AM-36..39): the atomic move carries the whole bundle ----
+
+function bundleProject(extra = {}) {
   return mkProject({
     'apriori/specs/a/spec.md': STORE_A,
+    'apriori/changes/c/flow-state.md': 'change: c\ntier: medium\n',
     'apriori/changes/c/specs/a/spec.md': ADD_A,
-    ...Object.fromEntries(Object.entries(reqFiles).map(([n, b]) => [`requirement/${n}`, b])),
+    'apriori/changes/c/requirement/req-v1.md': 'v1',
+    'apriori/changes/c/requirement/req-final.md': 'final',
+    'apriori/changes/c/requirement/intent-card.md': 'card',
+    'apriori/changes/c/review/issues.md': '| ID | Issue | Risk | Round found | Status |\n|---|---|---|---|---|\n| Q-1 | i | low | 1 | verified |\n',
+    'apriori/changes/c/review/req-review-v1.md': 'VERDICT: no major issues\n',
+    'apriori/changes/c/review/req-review-v1-raw.txt': 'raw',
+    'apriori/changes/c/gap-report.md': 'gap',
     ...extra,
   });
 }
-const ARCHIVED = (root) => {
+const bundleArchived = (root) => {
   const dirs = fs.readdirSync(path.join(root, 'apriori/changes/archive')).filter((b) => b.endsWith('-c'));
   return path.join(root, 'apriori/changes/archive', dirs[0]);
 };
 
-test('AM-36 the requirement history travels inside the atomic move', () => {
-  const root = reqProject({
-    'c-req-v1.md': 'v1', 'c-req-v2.md': 'v2', 'c-req-final.md': 'final', 'c-intent-card.md': 'card',
-  });
+test('AM-36 the bundle travels whole', () => {
+  const root = bundleProject();
   const r = run(['archive', '--change', 'c', '--write', '--changes-dir', 'apriori/changes'], root);
   assert.strictEqual(r.status, 0, r.stdout + r.stderr);
-  assert.match(r.stdout, /staged: 4 requirement file\(s\) → changes\/c\/requirement\//);
-  const dest = path.join(ARCHIVED(root), 'requirement');
-  assert.deepStrictEqual(fs.readdirSync(dest).sort(), ['c-intent-card.md', 'c-req-final.md', 'c-req-v1.md', 'c-req-v2.md']);
-  for (const n of ['c-req-v1.md', 'c-req-v2.md', 'c-req-final.md', 'c-intent-card.md'])
-    assert.ok(!fs.existsSync(path.join(root, 'requirement', n)), `${n} still live`);
+  assert.doesNotMatch(r.stdout, /staged:|copy/);
+  const A = bundleArchived(root);
+  assert.deepStrictEqual(fs.readdirSync(path.join(A, 'requirement')).sort(), ['intent-card.md', 'req-final.md', 'req-v1.md']);
+  assert.deepStrictEqual(fs.readdirSync(path.join(A, 'review')).sort(), ['issues.md', 'req-review-v1-raw.txt', 'req-review-v1.md']);
+  assert.strictEqual(fs.readFileSync(path.join(A, 'gap-report.md'), 'utf8'), 'gap');
+  assert.ok(!fs.existsSync(path.join(root, 'apriori/changes/c')), 'nothing left behind');
 });
 
-test('AM-37 attribution is exact and near-misses never match', () => {
-  const root = reqProject({
-    'c-req-v1.md': 'mine', 'c-req-vdraft.md': 'near1', 'c-req-v1-notes.md': 'near2',
-    'c-b-req-v1.md': 'other change c-b', 'c-extra.md': 'unrelated',
-  });
+test('AM-37 the command touches nothing outside the moved dir', () => {
+  // a stray file at the OLD requirement/ location is a bystander now — never read, never moved
+  const root = bundleProject({ 'requirement/c-req-v1.md': 'legacy bystander' });
   const r = run(['archive', '--change', 'c', '--write', '--changes-dir', 'apriori/changes'], root);
   assert.strictEqual(r.status, 0, r.stdout + r.stderr);
-  assert.match(r.stdout, /staged: 1 requirement file\(s\)/);
-  assert.deepStrictEqual(fs.readdirSync(path.join(ARCHIVED(root), 'requirement')), ['c-req-v1.md']);
-  for (const n of ['c-req-vdraft.md', 'c-req-v1-notes.md', 'c-b-req-v1.md', 'c-extra.md'])
-    assert.ok(fs.existsSync(path.join(root, 'requirement', n)), `${n} wrongly swept`);
-  // intent-card-only change stages just the card
-  const root2 = reqProject({ 'c-intent-card.md': 'card only' });
-  const r2 = run(['archive', '--change', 'c', '--write', '--changes-dir', 'apriori/changes'], root2);
-  assert.strictEqual(r2.status, 0);
-  assert.match(r2.stdout, /staged: 1 requirement file\(s\)/);
-  assert.deepStrictEqual(fs.readdirSync(path.join(ARCHIVED(root2), 'requirement')), ['c-intent-card.md']);
+  assert.strictEqual(fs.readFileSync(path.join(root, 'requirement/c-req-v1.md'), 'utf8'), 'legacy bystander');
+  assert.doesNotMatch(r.stdout + r.stderr, /staging|staged/);
 });
 
-test('AM-38 staging failures stop before the move and reruns complete', () => {
-  // DI: fail the rename whose SOURCE is under requirement/ (path-class injection, not ordinal)
-  const root = reqProject({ 'c-req-v1.md': 'v1' });
-  let failed = false;
+test('AM-38 move failure keeps the bundle intact and rerunnable', () => {
+  const root = bundleProject();
+  let renames = 0;
   const ops = {
     writeFileSync: fs.writeFileSync.bind(fs), rmSync: fs.rmSync.bind(fs),
     renameSync: (a, b) => {
-      if (!failed && a.includes(`requirement${path.sep}c-req-v1.md`)) { failed = true; throw new Error('injected staging failure'); }
+      renames++;
+      if (String(b).includes('archive')) throw new Error('injected move failure');
       fs.renameSync(a, b);
     },
   };
   const res = am.archiveChange({ cwd: root, change: 'c', changesDir: 'apriori/changes', changesDirExplicit: true, write: true, ops });
   assert.strictEqual(res.code, 1);
-  assert.match(res.err.join('\n'), /requirement staging failed/);
-  assert.match(res.err.join('\n'), /c-req-v1\.md/);              // the failure NAMES the artifact
   assert.match(res.err.join('\n'), /rerun to complete/);
-  assert.ok(fs.existsSync(path.join(root, 'apriori/changes/c')), 'change dir must NOT have moved');
-  assert.match(fs.readFileSync(path.join(root, 'apriori/specs/a/spec.md'), 'utf8'), /Alpha2/);   // stores committed
-  // rerun (no injection) completes staging + move
+  assert.ok(fs.existsSync(path.join(root, 'apriori/changes/c/requirement/req-v1.md')), 'bundle intact in flight');
   const res2 = am.archiveChange({ cwd: root, change: 'c', changesDir: 'apriori/changes', changesDirExplicit: true, write: true });
   assert.strictEqual(res2.code, 0, res2.err.join('\n'));
-  assert.ok(fs.existsSync(path.join(ARCHIVED(root), 'requirement', 'c-req-v1.md')));
-  // a MATCHING symlink fails before the move (posix only for creation)
-  if (process.platform !== 'win32') {
-    const root3 = reqProject({});
-    fs.mkdirSync(path.join(root3, 'requirement'), { recursive: true });
-    fs.writeFileSync(path.join(root3, 'outside.md'), 'outside');
-    fs.symlinkSync(path.join(root3, 'outside.md'), path.join(root3, 'requirement', 'c-req-final.md'));
-    const r3 = run(['archive', '--change', 'c', '--write', '--changes-dir', 'apriori/changes'], root3);
-    assert.strictEqual(r3.status, 1);
-    assert.match(r3.stdout + r3.stderr, /symlink/);
-    assert.ok(fs.existsSync(path.join(root3, 'apriori/changes/c')), 'must stop before the move');
-    // planted destination symlink pointing outside the change tree → stop before the move
-    const root4 = reqProject({ 'c-req-v1.md': 'v1' });
-    const outside = path.join(root4, 'elsewhere');
-    fs.mkdirSync(outside);
-    fs.symlinkSync(outside, path.join(root4, 'apriori/changes/c/requirement'));
-    const r4 = run(['archive', '--change', 'c', '--write', '--changes-dir', 'apriori/changes'], root4);
-    assert.strictEqual(r4.status, 1);
-    assert.ok(fs.existsSync(path.join(root4, 'apriori/changes/c')), 'must stop before the move');
-    assert.strictEqual(fs.readdirSync(outside).length, 0, 'nothing written outside the change tree');
-    // source requirement/ itself symlinked outside cwd → containment stop before the move
-    const root5 = mkProject({ 'apriori/specs/a/spec.md': STORE_A, 'apriori/changes/c/specs/a/spec.md': ADD_A });
-    const ext = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-ext-'));
-    fs.writeFileSync(path.join(ext, 'c-req-v1.md'), 'external');
-    fs.symlinkSync(ext, path.join(root5, 'requirement'));
-    const r5 = run(['archive', '--change', 'c', '--write', '--changes-dir', 'apriori/changes'], root5);
-    assert.strictEqual(r5.status, 1);
-    assert.match(r5.stdout + r5.stderr, /escapes/);
-    assert.ok(fs.existsSync(path.join(root5, 'apriori/changes/c')), 'must stop before the move');
-  }
-  // a matching DIRECTORY is not a regular file → named failure, never travels (all platforms)
-  const root6 = mkProject({ 'apriori/specs/a/spec.md': STORE_A, 'apriori/changes/c/specs/a/spec.md': ADD_A });
-  fs.mkdirSync(path.join(root6, 'requirement', 'c-req-final.md'), { recursive: true });
-  const r6 = run(['archive', '--change', 'c', '--write', '--changes-dir', 'apriori/changes'], root6);
-  assert.strictEqual(r6.status, 1);
-  assert.match(r6.stdout + r6.stderr, /not a regular file/);
-  assert.ok(fs.existsSync(path.join(root6, 'apriori/changes/c')));
-  // requirement/ being a FILE cannot hold candidates → treated as absent, archive proceeds
-  const root7 = mkProject({ 'apriori/specs/a/spec.md': STORE_A, 'apriori/changes/c/specs/a/spec.md': ADD_A, 'requirement': 'a stray file' });
-  const r7 = run(['archive', '--change', 'c', '--write', '--changes-dir', 'apriori/changes'], root7);
-  assert.strictEqual(r7.status, 0, r7.stdout + r7.stderr);
+  assert.ok(fs.existsSync(path.join(bundleArchived(root), 'requirement', 'req-v1.md')));
 });
 
-test('AM-39 non-staging paths are unaffected', () => {
-  // zero matches → no staged-line, archive as today
-  const root = reqProject({});
-  const r = run(['archive', '--change', 'c', '--write', '--changes-dir', 'apriori/changes'], root);
-  assert.strictEqual(r.status, 0);
-  assert.doesNotMatch(r.stdout, /staged:/);
-  // dry-run / no --changes-dir never stage
-  const root2 = reqProject({ 'c-req-v1.md': 'v1' });
-  const rDry = run(['archive', '--change', 'c'], root2);
+test('AM-39 non-move paths are unaffected', () => {
+  const root = bundleProject();
+  const rDry = run(['archive', '--change', 'c'], root);
   assert.strictEqual(rDry.status, 0);
-  assert.ok(fs.existsSync(path.join(root2, 'requirement', 'c-req-v1.md')));
-  const rNoMove = run(['archive', '--change', 'c', '--write'], root2);
+  assert.ok(fs.existsSync(path.join(root, 'apriori/changes/c/requirement/req-v1.md')));
+  const rNoMove = run(['archive', '--change', 'c', '--write'], root);
   assert.strictEqual(rNoMove.status, 0);
-  assert.doesNotMatch(rNoMove.stdout, /staged:/);
-  assert.ok(fs.existsSync(path.join(root2, 'requirement', 'c-req-v1.md')));
+  assert.ok(fs.existsSync(path.join(root, 'apriori/changes/c/requirement/req-v1.md')), 'no move without --changes-dir');
+  const root2 = mkProject({ 'store.md': STORE_A, 'delta.md': ADD_A });
+  assert.strictEqual(run(['archive', '--store', 'store.md', '--delta', 'delta.md', '--change', 'c', '--write'], root2).status, 0);
 });

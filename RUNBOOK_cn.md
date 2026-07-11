@@ -252,7 +252,7 @@ gates:                  # 只增不改的人工决定日志
 
 - **P9 之前:**确保本变更的工作已**提交**——`source-commit` 必须指向一个真实存在、包含契约节所校对实现的 commit(全新仓库同样:先提交,再盖标)。
 - **动作:**执行 **archive 接口动作**,用 **P9**——按上文接口的 archive 算法合并;更新 `apriori/truth/<module>.md`(契约节按最终实现更新+刷新 `source-commit`;决策节追加本次变更的新决策/不变式);列出改了哪些文件/段落。探索轨变更:在此删除或隔离 `spike/`。
-- **退出:**增量规格已合并 + 知识库已更新 → **闸口 ④**:人批准知识库 diff(同仓库布局下就是 PR 评审)。然后置 `current-step: DONE`。
+- **退出:**增量规格已合并 + 知识库已更新 + 归档后再跑一次 `apriori gate --change <name>`(此时解析到 archived 归档态——C4 要求台账每行都是终态),其结果放进**闸口 ④**的材料包 → 人批准知识库 diff(同仓库布局下就是 PR 评审)。然后置 `current-step: DONE`。
 
 
 ---
@@ -280,10 +280,13 @@ gates:                  # 只增不改的人工决定日志
 | REQ-3 | `ttlMs<=0` 行为未定义 | 中 | 1 | fixed (v2) |
 | SPEC-1 | 内存 map 缺"清理"时机 | 高 | 1 | verified |
 | SPEC-2 | 把 `del` 改名为 `delete` | 低 | 2 | rejected —— 纯外观,超出范围 |
+| SPEC-3 | 高负载下淘汰抖动无上界 | 中 | 2 | waived —— 所有者接受 v1 风险(gates: 条目 2026-07-12) |
 ```
 
-- **评审方**:追加新行;确认修复落地后把 `fixed → verified`;再次发现的问题**重开旧 ID**——绝不另起新行。
-- **生产方**:把 `open → fixed` 或 `open → rejected`;拒绝必须给理由——人工闸口最先看拒绝项。
+- **评审方**:追加新行;确认修复落地后把 `fixed → verified`;认同某项拒绝后把 `rejected → rejected-verified`——单元格保留原始拒绝理由外加认同证据引用(如 `rejected-verified — 纯外观,超范围; reviewer concurred (review-v2)`);再次发现的问题**重开旧 ID**回到 `open`——重开是事件而非状态,绝不另起新行。
+- **生产方**:把 `open → fixed` 或 `open → rejected`;拒绝必须给理由——人工闸口最先看拒绝项。生产方永不给自己的发现定终态:`verified` 和 `rejected-verified` 归评审方,`waived` 归人。
+- **人(独有)**:可置 `waived + 理由`——接受该风险——同时在 `gates:` 落一条记录该决定的条目(条目须含该行 ID 和"waived"字样;gate C4 机器核查的正是这个)。
+- **归档终态集**:`verified` · `rejected-verified` · `waived` · `advisory-acked`。归档态闸口拦下其余一切——`fixed` 是待核实的声明,裸 `rejected` 等待认同,词汇表之外的状态在任何阶段都非法。
 - **advisory(范围纪律):**只有影响**正确性、安全或既定需求**的缺口才立正式行;其余由评审方标 `advisory`。标注权**评审方独占**——生产方永远不得把 open 行降级为 advisory。逐条 advisory 只存于评审文档;台账每轮只落**一行批量行**(`advisory batch acknowledged (n 条)`),终态 `advisory-acked`——"原文代录"(R2)约束的是评审方增量的*内容*,而行的*形态*一律归一为这个批量形式,所以评审方自创格式的 advisory 行按归一处理、不逐字照抄;"忽略"=不逐条处理,批量行仍落。评审方可在后续轮把 advisory **升级为 open**(须给理由,新行标 `upgraded-from-advisory`):计入数据包的 reopened 统计,但**不单独触发闸口⑤**(⑤仍只由已闭合正式 ID 复发触发)。**正确性与安全类发现永远不得标 advisory。**误标处置:STEP3(Medium+)、闸口④、或合并前 PR 评审(Trivial)抽查;发现真缺口被误标→升级+记档;漏到合并后按 post-merge miss 处理(触发上限恢复,§6)。
 
 ### P1 —— STEP0 评审方(异构,R2)

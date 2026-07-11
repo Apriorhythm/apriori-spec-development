@@ -320,3 +320,102 @@ test('GT-12 gate is read-only', () => {
   gate.runGate({ cwd: root, change: 'nope', testCmd: TAP_OK });
   assert.strictEqual(snap(), before);
 });
+
+// ---- ledger-states (GT-13..15): C4 speaks the terminal-state vocabulary ----
+
+const LEDGER_HDR = '| ID | Issue | Risk | Round found | Status |\n|---|---|---|---|---|\n';
+const ledgerWith = (...rows) => LEDGER_HDR + rows.map((r) => `| ${r[0]} | i | low | 1 | ${r[1]} |\n`).join('');
+// FLOW plus an extra gates: entry line (the human waive record)
+const FLOW_G = (name, extra) => FLOW(name) + (extra ? `  - ${extra}\n` : '');
+
+function archProject(ledger, flowExtra) {
+  return mkProject({
+    'apriori/specs/kv/spec.md': STORE + '\n### Requirement: Beta\n\n#### Scenario: XB-01 new\n- t\n',
+    'apriori/changes/archive/2026-07-10T1200-c/flow-state.md': FLOW_G('c', flowExtra),
+    'apriori/changes/archive/2026-07-10T1200-c/tasks.md': '- [x] T1\n',
+    'apriori/changes/archive/2026-07-10T1200-c/specs/kv/spec.md': DELTA,
+    'apriori/review/c-issues.md': ledger,
+  });
+}
+const c4Of = (root) => gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK }).checks.find((x) => x.id === 'C4');
+
+test('GT-13 archived ledgers must be terminal', () => {
+  // fixed at archived stage → blocked with the reviewer-verify cure
+  const f = c4Of(archProject(ledgerWith(['Q-1', 'fixed (v2)'])));
+  assert.strictEqual(f.status, 'blocked');
+  assert.match(f.detail, /reviewer must verify|never verified/);
+  // plain reasoned rejected → blocked with the concurrence cure
+  const r = c4Of(archProject(ledgerWith(['Q-1', 'rejected — cosmetic, out of scope'])));
+  assert.strictEqual(r.status, 'blocked');
+  assert.match(r.detail, /rejected-verified|reviewer concurrence/);
+  // unknown status → blocked naming the vocabulary
+  const u = c4Of(archProject(ledgerWith(['Q-1', 'done'])));
+  assert.strictEqual(u.status, 'blocked');
+  assert.match(u.detail, /vocabulary/);
+  // all-terminal → pass (waived backed by a gates: entry naming the ID)
+  const ok = c4Of(archProject(
+    ledgerWith(['Q-1', 'verified'],
+               ['Q-2', 'rejected-verified — cosmetic; reviewer concurred (review-v2)'],
+               ['Q-3', 'waived — owner accepts the perf risk'],
+               ['Q-4', 'advisory-acked']),
+    '2026-07-12T01:00 gate: owner waived Q-3 (perf risk accepted for this release)'));
+  assert.strictEqual(ok.status, 'pass', ok.detail);
+});
+
+test('GT-14 waives belong to humans, unknown states belong to nobody', () => {
+  // in-flight: waived without any gates: evidence → blocked
+  const root1 = healthy();
+  fs.writeFileSync(path.join(root1, 'apriori/review/c-issues.md'), ledgerWith(['Q-1', 'waived — accepted']));
+  const w1 = c4Of(root1);
+  assert.strictEqual(w1.status, 'blocked');
+  assert.match(w1.detail, /gates: entry/);
+  // same row passes once the human decision is recorded in gates:
+  const root2 = healthy();
+  fs.writeFileSync(path.join(root2, 'apriori/review/c-issues.md'), ledgerWith(['Q-1', 'waived — accepted']));
+  fs.appendFileSync(path.join(root2, 'apriori/changes/c/flow-state.md'),
+    '  - 2026-07-12T01:00 owner waived Q-1: risk accepted\n');
+  assert.strictEqual(c4Of(root2).status, 'pass');
+  // exact ID token: an entry waiving Q-10 never satisfies row Q-1
+  const root3 = healthy();
+  fs.writeFileSync(path.join(root3, 'apriori/review/c-issues.md'), ledgerWith(['Q-1', 'waived — accepted']));
+  fs.appendFileSync(path.join(root3, 'apriori/changes/c/flow-state.md'),
+    '  - 2026-07-12T01:00 owner waived Q-10: a different row\n');
+  assert.strictEqual(c4Of(root3).status, 'blocked');
+  // ID in one entry + 'waived' in another entry never passes (same-entry rule)
+  const root4 = healthy();
+  fs.writeFileSync(path.join(root4, 'apriori/review/c-issues.md'), ledgerWith(['Q-1', 'waived — accepted']));
+  fs.appendFileSync(path.join(root4, 'apriori/changes/c/flow-state.md'),
+    '  - 2026-07-12T01:00 note: Q-1 discussed\n  - 2026-07-12T01:01 something else waived here\n');
+  assert.strictEqual(c4Of(root4).status, 'blocked');
+  // unknown status blocks IN-FLIGHT too; reasonless terminals block
+  const root5 = healthy();
+  fs.writeFileSync(path.join(root5, 'apriori/review/c-issues.md'), ledgerWith(['Q-1', 'verifed']));
+  assert.strictEqual(c4Of(root5).status, 'blocked');
+  const root6 = healthy();
+  fs.writeFileSync(path.join(root6, 'apriori/review/c-issues.md'), ledgerWith(['Q-1', 'rejected-verified']));
+  assert.strictEqual(c4Of(root6).status, 'blocked');
+  // in-flight fixed and reasoned rejected still pass (the loop is running)
+  const root7 = healthy();
+  fs.writeFileSync(path.join(root7, 'apriori/review/c-issues.md'),
+    ledgerWith(['Q-1', 'fixed (v2)'], ['Q-2', 'rejected — cosmetic, out of scope']));
+  assert.strictEqual(c4Of(root7).status, 'pass');
+});
+
+test('GT-15 every archived ledger in this repo parses legal and terminal', () => {
+  const archRoot = path.join(__dirname, '..', 'apriori', 'changes', 'archive');
+  if (!fs.existsSync(archRoot)) return;                     // corpus is local-only
+  const { classifyStatus } = gate;
+  assert.strictEqual(typeof classifyStatus, 'function');
+  for (const d of fs.readdirSync(archRoot)) {
+    const name = d.replace(/^\d{4}-\d{2}-\d{2}T\d{4}-/, '');
+    const lp = path.join(__dirname, '..', 'apriori', 'review', `${name}-issues.md`);
+    if (name === d || !fs.existsSync(lp)) continue;
+    const { parseLedger } = require('../lib/status');
+    for (const row of parseLedger(fs.readFileSync(lp, 'utf8'))) {
+      const c = classifyStatus(row.status);
+      assert.ok(c.legal, `${name} ${row.id}: illegal status '${row.status}'`);
+      assert.ok(c.terminal, `${name} ${row.id}: non-terminal archived status '${row.status}'`);
+      if (c.needsReason) assert.ok(c.hasReason, `${name} ${row.id}: reasonless '${row.status}'`);
+    }
+  }
+});

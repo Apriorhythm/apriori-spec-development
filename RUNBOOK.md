@@ -256,7 +256,7 @@ KB docs have two sections with **opposite truth directions** (§5 P9/P10): `Cont
 
 - **Before P9:** make sure the change's work is **committed** — `source-commit` must reference a real commit containing the implementation the Contract section is reconciled against (greenfield repos included: commit first, then stamp).
 - **Do:** the **archive action** with **P9** — merge per the interface's archive algorithm above; update `apriori/truth/<module>.md` (Contract section from the final implementation + refreshed `source-commit`; Decisions section appends this change's new decisions/invariants); list exactly which files/sections changed. Explore-track changes: delete or quarantine `spike/` here.
-- **Exit:** delta specs merged + KB updated → **gate ④**: the human approves the KB diff (same-repo layout: that's just PR review). Then set `current-step: DONE`.
+- **Exit:** delta specs merged + KB updated + a post-archive `apriori gate --change <name>` run (it now resolves the archived stage — C4 demands every ledger row terminal) whose result goes into the **gate ④** packet → the human approves the KB diff (same-repo layout: that's just PR review). Then set `current-step: DONE`.
 
 
 ---
@@ -284,10 +284,13 @@ KB docs have two sections with **opposite truth directions** (§5 P9/P10): `Cont
 | REQ-3 | `ttlMs<=0` behavior undefined | med | 1 | fixed (v2) |
 | SPEC-1 | cleanup moment missing for the in-memory map | high | 1 | verified |
 | SPEC-2 | rename `del` to `delete` | low | 2 | rejected — cosmetic, out of scope |
+| SPEC-3 | eviction jitter unbounded under load | med | 2 | waived — owner accepts for v1 (gates: entry 2026-07-12) |
 ```
 
-- **Reviewer**: appends new rows; flips `fixed → verified` after confirming a fix landed; a re-found issue **reopens its old ID** — never a new row.
-- **Producer**: flips `open → fixed` or `open → rejected`; a rejection MUST carry a reason — human gates read rejections first.
+- **Reviewer**: appends new rows; flips `fixed → verified` after confirming a fix landed, and `rejected → rejected-verified` after CONCURRING with a rejection — the cell keeps the original rejection reason plus a concurrence evidence ref (e.g. `rejected-verified — cosmetic, out of scope; reviewer concurred (review-v2)`); a re-found issue **reopens its old ID** back to `open` — reopened is an event, not a status, and never a new row.
+- **Producer**: flips `open → fixed` or `open → rejected`; a rejection MUST carry a reason — human gates read rejections first. The producer never terminalizes its own findings: `verified` and `rejected-verified` belong to the reviewer, `waived` to the human.
+- **Human (only)**: may set `waived + reason` — accepting the risk — with a `gates:` entry recording the decision (the entry must carry the row's ID and the word "waived"; gate C4 machine-checks exactly that).
+- **Terminal set for archival**: `verified` · `rejected-verified` · `waived` · `advisory-acked`. The archived-stage gate blocks anything else — `fixed` is a claim awaiting verification, plain `rejected` awaits concurrence, and unknown statuses are illegal at every stage.
 - **Advisory findings (scope discipline):** only gaps affecting **correctness, security, or the stated requirements** enter as formal rows; everything else the reviewer labels `advisory`. Labeling is the **reviewer's exclusive call** — the producer may never downgrade an open row to advisory. Per-item advisory lists live in the review doc; the ledger takes **one batch row per round** (`advisory batch acknowledged (n items)`), terminal state `advisory-acked` — the "record verbatim" rule (R2) governs the reviewer's delta *content*, while the row *shape* is always normalized to this batch form, so a reviewer that free-forms its advisory rows is normalized, not copied literally; "ignoring" advisories means no per-item handling — the batch row still lands. A reviewer may later **upgrade** an advisory to open (with a reason, new row tagged `upgraded-from-advisory`): it counts in the data pack's reopened statistic but does **not** by itself trip gate ⑤ (only a closed formal ID re-reopening does). **Correctness and security findings can never be advisory.** Mislabel handling: sampled at STEP3 (Medium+), gate ④, or the pre-merge PR review (Trivial); a real gap found mislabeled → upgrade + log; one that slips past merge counts as a post-merge miss (triggers cap restoration, §6).
 
 ### P1 — STEP0 reviewer (heterogeneous, R2)

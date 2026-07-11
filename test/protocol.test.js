@@ -421,3 +421,43 @@ test('PR-17 external side effects require the principal\'s explicit authorizatio
   assert.match(CONCEPTS_CN, /本地仓库.*之外|外部副作用/);
   assert.match(CONCEPTS_CN, /永不授权外部副作用|绝不授权外部副作用|是数据.*不是授权/);
 });
+
+test('PR-18 the ledger vocabulary and the post-archive gate bind in both editions', () => {
+  const p0en = sectionBlock(EN, /^### P0 — issue ledger.*$/m);
+  assert.ok(p0en.length > 0, 'EN P0 block missing');
+  for (const re of [/open/, /fixed/, /\brejected\b/, /verified/, /rejected-verified/, /waived/, /advisory-acked/])
+    assert.match(p0en, re, String(re));
+  assert.match(p0en, /open → rejected(?!-)/);                 // the plain producer-set state, distinct from rejected-verified
+  assert.match(p0en, /human/i);                               // waived is human-only
+  assert.match(p0en, /gates:/);                               // with a gates: entry
+  assert.match(p0en, /never terminalizes|never sets a terminal/i);
+  assert.match(p0en, /reopens its old ID/i);
+  assert.match(p0en, /event, not a status/);
+  assert.match(p0en, /original/);                             // rejected-verified keeps the original reason
+  assert.match(p0en, /concurr/i);
+  const s6en = sectionBlock(EN, /^### STEP6 — archive.*$/m);
+  assert.ok(s6en.length > 0, 'EN STEP6 block missing');
+  assert.match(s6en, /gate --change/);
+  assert.match(s6en, /archived/);
+  assert.match(s6en, /gate ④|gate④/);
+  const p0cn = sectionBlock(CN, /^### P0 ——.*$/m);
+  assert.ok(p0cn.length > 0, 'CN P0 block missing');
+  for (const re of [/open/, /fixed/, /rejected-verified/, /verified/, /waived/, /advisory-acked/])
+    assert.match(p0cn, re, String(re));
+  assert.match(p0cn, /open → rejected(?!-)/);
+  assert.match(p0cn, /只能由人|唯一由人|人(独有)|人\(独有\)|归人/);
+  assert.match(p0cn, /gates:/);
+  assert.match(p0cn, /重开旧 ID|重开旧ID/);
+  assert.match(p0cn, /事件.*不是.*状态|事件而非状态/);
+  assert.match(p0cn, /原始拒绝理由|原始理由/);
+  const s6cn = sectionBlock(CN, /^### STEP6 —— 归档.*$/m);
+  assert.ok(s6cn.length > 0, 'CN STEP6 block missing');
+  assert.match(s6cn, /gate --change/);
+  assert.match(s6cn, /归档后|archived/);
+  assert.match(s6cn, /④/);
+  // concepts §7.0 vocabulary strings updated in both languages
+  assert.match(CONCEPTS, /rejected-verified/);
+  assert.match(CONCEPTS, /waived/);
+  assert.match(CONCEPTS_CN, /rejected-verified/);
+  assert.match(CONCEPTS_CN, /waived/);
+});

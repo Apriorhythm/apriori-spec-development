@@ -432,20 +432,22 @@ const MOD_SAME = '## MODIFIED Requirements\n\n### Requirement: Alpha\n\n#### Sce
 const MOD_DIFF = '## MODIFIED Requirements\n\n### Requirement: Alpha\n\n#### Scenario: XA-01 a\n- CHANGED\n';
 const STALE = `<!-- apriori-base: sha256:${'0'.repeat(64)} -->\n`;
 
-test('AM-32 unstamped mutation deltas warn on both archive forms', () => {
-  // high-level form: warns AND merges
+test('AM-32 unstamped mutation deltas are denied on both archive forms', () => {
+  // high-level form: errors, writes nothing
   const root = twoModuleProject({ 'apriori/changes/c/specs/a/spec.md': MOD_DIFF });
   const r = run(['archive', '--change', 'c', '--write'], root);
-  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+  assert.strictEqual(r.status, 1, r.stdout + r.stderr);
   assert.match(r.stdout + r.stderr, /unstamped mutation delta/);
   assert.match(r.stdout + r.stderr, /apriori stamp/);
-  assert.match(fs.readFileSync(path.join(root, 'apriori/specs/a/spec.md'), 'utf8'), /CHANGED/);
-  // single-file form warns too
+  assert.doesNotMatch(fs.readFileSync(path.join(root, 'apriori/specs/a/spec.md'), 'utf8'), /CHANGED/);
+  assert.ok(fs.existsSync(path.join(root, 'apriori/changes/c')), 'change dir not moved');
+  // single-file form denies too
   const root2 = mkProject({ 'store.md': STORE_A, 'delta.md': MOD_DIFF });
   const r2 = run(['archive', '--store', 'store.md', '--delta', 'delta.md', '--change', 'c', '--write'], root2);
-  assert.strictEqual(r2.status, 0);
+  assert.strictEqual(r2.status, 1);
   assert.match(r2.stdout + r2.stderr, /unstamped mutation delta/);
-  // ADDED-only stays quiet
+  assert.doesNotMatch(fs.readFileSync(path.join(root2, 'store.md'), 'utf8'), /CHANGED/);
+  // ADDED-only stays exempt and quiet
   const root3 = twoModuleProject();
   const r3 = run(['archive', '--change', 'c', '--write'], root3);
   assert.strictEqual(r3.status, 0);
@@ -589,4 +591,38 @@ test('AM-39 non-move paths are unaffected', () => {
   assert.ok(fs.existsSync(path.join(root, 'apriori/changes/c/requirement/req-v1.md')), 'no move without --changes-dir');
   const root2 = mkProject({ 'store.md': STORE_A, 'delta.md': ADD_A });
   assert.strictEqual(run(['archive', '--store', 'store.md', '--delta', 'delta.md', '--change', 'c', '--write'], root2).status, 0);
+});
+
+test('AM-40 the waiver is visible and downgrades to warn-and-merge', () => {
+  // --no-cas flag
+  const root = twoModuleProject({ 'apriori/changes/c/specs/a/spec.md': MOD_DIFF });
+  const r = run(['archive', '--change', 'c', '--write', '--no-cas'], root);
+  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout + r.stderr, /unstamped mutation delta/);
+  assert.match(r.stdout + r.stderr, /waived.*--no-cas|--no-cas.*waiv/i);
+  assert.match(fs.readFileSync(path.join(root, 'apriori/specs/a/spec.md'), 'utf8'), /CHANGED/);
+  // config row waiver
+  const root2 = twoModuleProject({
+    'apriori/changes/c/specs/a/spec.md': MOD_DIFF,
+    'apriori/process-config.md': '| cas | optional |\n',
+  });
+  const r2 = run(['archive', '--change', 'c', '--write'], root2);
+  assert.strictEqual(r2.status, 0, r2.stdout + r2.stderr);
+  assert.match(r2.stdout + r2.stderr, /waived.*process-config|process-config.*waiv/i);
+  // flag wins over config (config says optional, flag also present → flag named)
+  const root3 = twoModuleProject({
+    'apriori/changes/c/specs/a/spec.md': MOD_DIFF,
+    'apriori/process-config.md': '| cas | optional |\n',
+  });
+  const r3 = run(['archive', '--change', 'c', '--write', '--no-cas'], root3);
+  assert.strictEqual(r3.status, 0);
+  assert.match(r3.stdout + r3.stderr, /--no-cas/);
+});
+
+test('AM-41 the projection surface stays informative', () => {
+  const root = twoModuleProject({ 'apriori/changes/c/specs/a/spec.md': MOD_DIFF });
+  const v = run(['verify', '--change', 'c', '--test-cmd',
+    `node -e "console.log('ok 1 - XA-01 a');console.log('ok 2 - XB-01 b')"`], root);
+  assert.match(v.stderr, /unstamped mutation delta/);
+  assert.notStrictEqual(v.status, 2, 'projection never fails the run for a missing stamp: ' + v.stderr);
 });

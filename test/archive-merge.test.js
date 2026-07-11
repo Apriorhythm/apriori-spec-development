@@ -1,7 +1,8 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { parseDelta, deltaOpCount, merge, archiveStamp, archiveChangeDir, cli } = require('../lib/archive-merge');
+const { parseDelta, deltaOpCount, merge, archiveStamp, archiveChangeDir, cli, fingerprint,
+} = require('../lib/archive-merge');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -67,7 +68,8 @@ test('AM-05 the action lists every merged/modified/deprecated ID', () => {
   assert.deepStrictEqual([r.merged, r.modified, r.deprecated], [['Gamma'], ['Beta'], ['Alpha']]);
   // CLI layer: clean dry-run → exit 0, store untouched (no --write), and stdout lists IDs by category
   const store = tmpFile(STORE);
-  const dfile = tmpFile('## ADDED Requirements\n### Requirement: Gamma\nG.\n' +
+  const dfile = tmpFile(`<!-- apriori-base: ${fingerprint(STORE)} -->\n` +
+    '## ADDED Requirements\n### Requirement: Gamma\nG.\n' +
     '## MODIFIED Requirements\n### Requirement: Beta\nB2.\n' +
     '## REMOVED Requirements\n### Requirement: Alpha\nA.\n');
   const before = fs.readFileSync(store, 'utf8');
@@ -97,7 +99,7 @@ test('AM-07 RENAMED renames a requirement in place, preserving content', () => {
   const store = tmpFile(STORE);
   const orig = console.log, out = [];
   console.log = (...a) => out.push(a.join(' '));
-  try { assert.strictEqual(cli(['--store', store, '--delta', tmpFile('## RENAMED Requirements\n- Beta -> Bravo\n'), '--change', 'c']), 0); }
+  try { assert.strictEqual(cli(['--store', store, '--delta', tmpFile(`<!-- apriori-base: ${fingerprint(STORE)} -->\n## RENAMED Requirements\n- Beta -> Bravo\n`), '--change', 'c']), 0); }
   finally { console.log = orig; }
   assert.match(out.join('\n'), /renamed \(RENAMED\): Beta -> Bravo/);
   const store2 = tmpFile(STORE), before = fs.readFileSync(store2, 'utf8');

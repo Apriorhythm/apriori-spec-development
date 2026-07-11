@@ -494,3 +494,24 @@ test('PR-21 the bundle layout binds and the legacy roots are gone', () => {
   assert.ok(promise.length > 0, 'stability sentence missing');
   assert.ok(!/layout/.test(promise), 'the stability sentence still carries the layout clause');
 });
+
+test('PR-22 the promise and the pointers are current', () => {
+  const fsx = require('node:fs');
+  // runbooks: present-tense denial, both waivers named, no future-tense phrasing
+  for (const [label, doc] of [['EN', EN], ['CN', CN]]) {
+    assert.ok(!/mandatory in 4\.0|4\.0 起强制/.test(doc), `${label}: future-tense CAS phrasing survives`);
+    assert.match(doc, /--no-cas/, `${label}: flag waiver named`);
+    assert.match(doc, /\|\s*cas\s*\|\s*optional\s*\|/, `${label}: config waiver named`);
+  }
+  assert.match(EN, /den(y|ies|ied|ial)/i);
+  assert.match(CN, /拒绝|硬拒/);
+  // MIGRATING.md: a 4.0 section naming the five legacy roots
+  const mig = fsx.readFileSync(path.join(ROOT, 'MIGRATING.md'), 'utf8');
+  const sec = mig.slice(mig.search(/^##.*4\.0/m));
+  assert.ok(sec.length > 0, 'MIGRATING has a 4.0 section');
+  for (const root of ['requirement/', 'spike/', 'apriori/review/', 'apriori/design/', 'apriori/explore/'])
+    assert.ok(sec.includes(root), `MIGRATING 4.0 section names ${root}`);
+  // homepage → v4
+  const pkg = JSON.parse(fsx.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+  assert.ok(pkg.homepage.endsWith('tree/v4#readme'), pkg.homepage);
+});

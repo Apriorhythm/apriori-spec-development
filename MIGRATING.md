@@ -2,6 +2,27 @@
 
 The 3.0.0 stability promise: CLI surface & flags, `--json` shapes, the delta format, the flow-state schema and the `apriori/` layout only break in a major. Everything below is either additive or a declared fail-closed tightening.
 
+## 3.4.x → 4.0.0 — the change bundle
+
+Everything a change produces now lives in ONE directory: `apriori/changes/<name>/`. The five pre-4.0 scattered roots cease to exist: `requirement/`, `spike/`, `apriori/review/`, `apriori/design/`, `apriori/explore/`.
+
+**Detection.** `apriori doctor` (D8) and `apriori update` name any legacy root they find. A project that still carries them after a CLI upgrade is in a MIXED layout — the protocol files speak 4.0 while the artifacts sit in 3.x paths; migrate before starting the next change.
+
+**Manual migration mapping** (per change; `<name>-` prefixes are stripped, collisions mean stop and resolve by hand):
+
+| legacy | bundle home |
+|---|---|
+| `requirement/<name>-req-v{N}.md` / `-req-final.md` / `-intent-card.md` | `apriori/changes/<name>/requirement/req-v{N}.md` / `req-final.md` / `intent-card.md` |
+| `apriori/review/<name>-issues.md` | `…/<name>/review/issues.md` |
+| `apriori/review/<name>-req-review-vN(.md/-raw.*)` | `…/review/req-review-vN(.md/-raw.*)` |
+| `apriori/design/<name>-review-vN.md` (+ its raws) | `…/review/spec-review-vN.md` (+ `-raw.*`) |
+| `apriori/review/<name>-{impl,p8,step5}-review-vN(…)` | `…/review/step5-review-vN(…)` |
+| `apriori/explore/<name>-gap-report.md` | `…/<name>/gap-report.md` |
+| `spike/` (explore track) | `…/<name>/spike/` — or delete it (it is disposable by protocol) |
+| anything else `<name>-X` under review/design | `…/review/X` (prefix stripped, basename kept) |
+
+Archived changes get the same treatment inside `apriori/changes/archive/<stamp>-<name>/`. Node ≥ 22 is required; the CAS stamp on mutation deltas is now enforced by `archive` (deny by default — `--no-cas` / `| cas | optional |` waive visibly).
+
 ## 3.4.0 → 3.4.1
 
 Convention-only (no CLI behavior change): name requirement docs `requirement/<change>-req-v{N}.md` (finalized `<change>-req-final.md`; explore track `<change>-intent-card.md`) instead of the old global names, and at STEP6 copy them into the archived change dir per the runbook's new preservation clause. Existing archived changes keep their old names — nothing parses these filenames.

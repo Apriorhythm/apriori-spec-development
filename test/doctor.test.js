@@ -275,3 +275,23 @@ test('DR-12 the Node floor is enforced testably', () => {
   const ok = doctor.runDoctor({ cwd: root, testCmd: TAP_OK, nodeVersion: '22.0.0' });
   assert.strictEqual(byId(ok, 'D1')[0].status, 'ok');
 });
+
+test('DR-13 mixed 3.x layouts are named, clean ones pass', () => {
+  const root = healthy();
+  fs.mkdirSync(path.join(root, 'apriori', 'review'), { recursive: true });
+  fs.mkdirSync(path.join(root, 'requirement'), { recursive: true });
+  fs.mkdirSync(path.join(root, 'spike'), { recursive: true });
+  const r = doctor.runDoctor({ cwd: root, testCmd: TAP_OK });
+  const d8 = r.checks.filter((c) => c.id === 'D8');
+  assert.strictEqual(d8.length, 1);
+  assert.strictEqual(d8[0].status, 'finding');
+  assert.match(d8[0].detail, /apriori[\/\\]review/);
+  assert.match(d8[0].detail, /requirement/);
+  assert.match(d8[0].detail, /spike/);
+  assert.doesNotMatch(d8[0].detail, /design|explore/);
+  assert.match(d8[0].fix, /MIGRATING/i);
+  // clean project: D8 ok
+  const clean = healthy();
+  const r2 = doctor.runDoctor({ cwd: clean, testCmd: TAP_OK });
+  assert.strictEqual(r2.checks.find((c) => c.id === 'D8').status, 'ok');
+});

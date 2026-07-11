@@ -243,3 +243,21 @@ test('UP-11 the shipped-generation list stays honest', () => {
   assert.ok(managed.TEMPLATE_GENERATIONS.includes(shaFile(path.join(__dirname, '..', 'templates', 'command.md'))),
     'templates/command.md changed without appending its hash to TEMPLATE_GENERATIONS');
 });
+
+test('UP-12 updating a legacy-layout project is loud', () => {
+  const root = agedProject();
+  fs.mkdirSync(path.join(root, 'apriori', 'review'), { recursive: true });
+  fs.mkdirSync(path.join(root, 'requirement'), { recursive: true });
+  const r = update.run(root);
+  assert.ok(Array.isArray(r.warnings), 'run() exposes warnings');
+  const w = r.warnings.join('\n');
+  assert.match(w, /apriori[\/\\]review/);
+  assert.match(w, /requirement/);
+  assert.match(w, /MIGRATING/i);
+  // the update itself still proceeded
+  assert.strictEqual(fs.readFileSync(path.join(root, 'apriori', 'runbook.md'), 'utf8'), PKG_RUNBOOK);
+  // clean project: no legacy warning
+  const clean = agedProject();
+  const r2 = update.run(clean);
+  assert.strictEqual((r2.warnings || []).filter((x) => /MIGRATING/i.test(x)).length, 0);
+});

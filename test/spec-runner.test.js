@@ -264,3 +264,91 @@ test('SR-15 --test-cmd falls back to the test-cmd row in apriori/process-config.
   assert.strictEqual(r.status, 0);
   assert.match(r.stdout, /RESULT: GREEN/);
 });
+
+// ---- tap-plan (SR-26..31): the TAP plan is a checked promise ----
+
+function planProject() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-srplan-'));
+  const files = {
+    'apriori/specs/kv/spec.md': '### Requirement: Alpha\n\n#### Scenario: XA-01 base\n- t\n',
+    'apriori/changes/c/flow-state.md': 'change: c\ntier: medium\ntrack: harden\ntrack-rationale: r\nlineage: v3\ncurrent-step: STEP5\nround: 1\nnext-action: x\ngates:\n  - 2026-07-11T00:00 note: n\n',
+    'apriori/changes/c/tasks.md': '- [x] T1 done\n',
+    'apriori/changes/c/specs/kv/spec.md': '## ADDED Requirements\n\n### Requirement: Beta\n\n#### Scenario: XB-01 new\n- t\n',
+    'apriori/review/c-issues.md': '| ID | Issue | Risk | Round found | Status |\n|---|---|---|---|---|\n| Q-1 | a | low | 1 | verified |\n',
+  };
+  for (const [rel, content] of Object.entries(files)) {
+    const p = path.join(root, rel);
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, content);
+  }
+  return root;
+}
+
+test('SR-26 a truncated plan refuses to verify', () => {
+  const { file } = tmpSpec('#### Scenario: XX-01 a\n');
+  const r = runCli(['--specs', file, '--test-cmd', tapCmd('TAP version 13', '1..2', 'ok 1 - XX-01 a')]);
+  assert.strictEqual(r.status, 2);
+  assert.match(r.stderr, /declares 2 test point\(s\) but 1/);
+  assert.doesNotMatch(r.stdout, /RESULT: GREEN/);
+});
+
+test('SR-27 duplicate test-point numbers are untrustworthy', () => {
+  const u = parseTap('1..2\nok 1 - XX-01 a\nok 01 - XX-02 b\n', idRe);
+  assert.deepStrictEqual(u.plans, [2]);
+  assert.strictEqual(u.points, 2);
+  assert.deepStrictEqual(u.dupNumbers, [1]);      // numeric comparison: 01 duplicates 1
+  const { file } = tmpSpec('#### Scenario: XX-01 a\n#### Scenario: XX-02 b\n');
+  const r = runCli(['--specs', file, '--test-cmd', tapCmd('1..2', 'ok 1 - XX-01 a', 'ok 1 - XX-02 b')]);
+  assert.strictEqual(r.status, 2);
+  assert.match(r.stderr, /duplicate TAP test-point number\(s\): 1/);
+});
+
+test('SR-28 multiple plans fail closed even when totals mask', () => {
+  const { file } = tmpSpec('#### Scenario: XX-01 a\n');
+  // the P1 masking fixture verbatim: totals add up (3 declared / 3 parsed), still untrustworthy
+  const r = runCli(['--specs', file, '--test-cmd',
+    tapCmd('1..2', 'ok 1 - XX-01 a', '1..1', 'ok 1 - XX-02 b', 'ok 2 - XX-03 c')]);
+  assert.strictEqual(r.status, 2);
+  assert.match(r.stderr, /multiple TAP plans/);
+  assert.match(r.stderr, /one TAP stream per verify/);
+});
+
+test('SR-29 the point count speaks TAP, not prefixes', () => {
+  const u = parseTap('1..2\nok 1 - XX-01 a\nok\nok: note\nnot ok: also a note\n', idRe);
+  assert.deepStrictEqual(u.plans, [2]);
+  assert.strictEqual(u.points, 2);                 // bare `ok` counts; `ok:`/`not ok:` never do
+  assert.deepStrictEqual(u.dupNumbers, []);        // `ok 1abc` style stays unnumbered too
+  assert.strictEqual(parseTap('1..1\nok 1abc trailing\n', idRe).dupNumbers.length, 0);
+  const { file } = tmpSpec('#### Scenario: XX-01 a\n');
+  const r = runCli(['--specs', file, '--test-cmd', tapCmd('1..2', 'ok 1 - XX-01 a', 'ok', 'ok: note')]);
+  assert.strictEqual(r.status, 0);
+  assert.match(r.stdout, /RESULT: GREEN/);
+});
+
+test('SR-30 plan-less, skip-all, and nested TAP stay legal', () => {
+  const { file } = tmpSpec('#### Scenario: XX-01 a\n');
+  // no plan at all → no promise, no new error
+  const r1 = runCli(['--specs', file, '--test-cmd', tapCmd('ok 1 - XX-01 a')]);
+  assert.strictEqual(r1.status, 0);
+  // skip-all plan with a directive → zero plan, zero points, consistent; UNBOUND → GAPS as today
+  const r2 = runCli(['--specs', file, '--test-cmd', tapCmd('TAP version 13', '1..0 # SKIP no backend')]);
+  assert.strictEqual(r2.status, 1);
+  assert.doesNotMatch(r2.stderr, /TAP plan declares/);
+  // nested node-style TAP: indented subtest plans/results are invisible to plan/point/dup collection
+  const nested = 'TAP version 13\n# Subtest: outer\n    ok 1 - inner a\n    ok 2 - inner b\n    1..2\nok 1 - XX-01 a\n1..1\n';
+  const u = parseTap(nested, idRe);
+  assert.deepStrictEqual(u.plans, [1]);
+  assert.strictEqual(u.points, 1);
+  assert.deepStrictEqual(u.dupNumbers, []);
+});
+
+test('SR-31 projected verify and gate inherit the plan check', () => {
+  const root = planProject();
+  const badTap = tapCmd('1..3', 'ok 1 - XA-01 a', 'ok 2 - XB-01 b');   // plan lies: 3 declared, 2 parsed
+  const v = spawnSync('node', [BIN, 'verify', '--change', 'c', '--test-cmd', badTap], { encoding: 'utf8', cwd: root });
+  assert.strictEqual(v.status, 2);
+  assert.match(v.stderr, /declares 3 test point\(s\) but 2/);
+  const g = spawnSync('node', [BIN, 'gate', '--change', 'c', '--test-cmd', badTap], { encoding: 'utf8', cwd: root });
+  assert.strictEqual(g.status, 2);   // untrustworthy run = gate ERROR, like every other infra failure
+  assert.match(g.stdout + g.stderr, /declares 3 test point\(s\) but 2/);
+});

@@ -2,6 +2,21 @@
 
 All notable changes to `apriori-cli`. Versions follow semver; the stability promise from 3.0.0 holds: CLI surface & flags, `--json` shapes, the delta format, the flow-state schema and the `apriori/` layout only break in a major.
 
+## 3.4.0 — 2026-07-12 · the second-review hardening release
+
+Every item traces to the second external GPT-5.6 review (7 changes, each through the full V3 loop with adversarial codex reviews) plus one defect dogfooding found on ourselves.
+
+- **The delta parser consumes its whole input** — `parseDeltaStrict` is a sequential line walker: misspelled section headings (`## ADDDED`), requirements/scenarios outside their legal home, and stray/duplicate/malformed CAS stamps are line-numbered problems instead of being silently re-homed into the wrong bucket; fences stay opaque; CRLF parses identically; well-formed deltas parse byte-identically (corpus-verified against every archived delta).
+- **The TAP plan is a checked promise** — exactly one top-level plan allowed; plan-vs-parsed-points mismatch (truncated output) and duplicate test-point numbers are infra errors: `verify` exits 2, `gate` reports ERROR. Plan-less, skip-all (`1..0 # SKIP`), and node's nested TAP are unchanged.
+- **`update` refreshes only what it can prove it owns** — `init` records what it creates in `apriori/managed.json` (exact-byte sha256); `update` refreshes manifest-listed, unmodified files only; modified/unmanaged/missing files are reported and left byte-identical. Pre-manifest projects are adopted on template-generation proof; manifest hygiene and realpath containment fail closed before any read.
+- **The golden path resolves an explicit Git Bash on Windows** — `APRIORI_GIT_BASH` override, `where git` root derivation across the four Git-for-Windows layouts, conventional-install probes, a named cure when absent; the System32 WSL shim is never a candidate.
+- **External side effects are a hard authorization rule** (runbook §1, both editions) — any operation mutating state outside the local repo/workspace needs the principal's explicit authorization (one-shot, or a named class/scope/expiry standing grant); gate consolidation never covers them; untrusted data may drive internal transitions but never authorizes crossing the boundary.
+- **The issue ledger speaks a terminal-state vocabulary** — `verified` / `rejected-verified` (reviewer concurred, original reason preserved) / `waived` (human-only; gate C4 machine-checks the `gates:` entry by exact row ID) / `advisory-acked`. Unknown statuses block everywhere; archived changes must be all-terminal; STEP6 now requires a post-archive gate run in the gate-④ packet.
+- **CAS enforcement is graded** — unstamped MODIFIED/REMOVED/RENAMED deltas warn on every surface (`projection.unstampedMutations` in `--json`) and the new **gate C7** denies them by default, with visible waivers (`--no-cas` / a `| cas | optional |` config row). MODIFIED gains the trim-equality `unchanged` signature, so a stamped delta that already committed re-runs cleanly instead of dead-ending on its own stamp. Stamps become mandatory in 4.0.
+- 21 new scenarios (AM-28..35, SR-26..32, GT-13..16, PR-17..18, UP-06..11, IN-13..17, GP-06..10); 197 tests.
+
+Declared behavior changes (all fail-closed tightenings or additive): malformed delta structure now errors (was silently mis-bucketed); TAP plan mismatches now error (was GREEN-able); `update` now skips modified/unmanaged files (was clobbering); unknown ledger statuses now block gate C4; gate gains C7 (unstamped mutation deltas block by default — stamp them or waive visibly).
+
 ## 3.3.0 — 2026-07-11 · the productization release
 
 - **Strict argument parsing everywhere** — every subcommand answers `--help`/`-h` (exit 0, wins over any other validation); unknown flags and stray positionals exit 2 naming themselves. A typo can no longer make a gate command act on the wrong target while exiting green. Three declared behavior changes: `apriori new a b` errors on `b` (was silently ignored), `apriori stamp --foo` is an unknown flag (was treated as the file), multi-value flags (`verify --specs`) stop consuming at any `-`-prefixed token (was `--`-only).

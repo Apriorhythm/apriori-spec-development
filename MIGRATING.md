@@ -2,6 +2,20 @@
 
 The 3.0.0 stability promise: CLI surface & flags, `--json` shapes, the delta format, the flow-state schema and the `apriori/` layout only break in a major. Everything below is either additive or a declared fail-closed tightening.
 
+## 3.3.x → 3.4.0
+
+Nothing on a documented success path changes. Five error-path behaviors are new — all fail-closed tightenings; each names its cure when it fires:
+
+| situation | before | now |
+|---|---|---|
+| delta with a misspelled section heading / misplaced structure / stray stamp | content silently landed in the wrong bucket or vanished | line-numbered problem; `verify --change` exit 2, `archive` exit 1 |
+| test output whose TAP plan doesn't match the parsed results (or duplicate test numbers, or two plans) | could verify GREEN | infra error: verify exit 2, gate ERROR |
+| `apriori update` on a file it didn't create, or one you edited | overwritten with the template | reported (`unmanaged` / `modified`) and left byte-identical — delete + `apriori init --tools <t>` to hand a file back |
+| ledger row with a status outside the vocabulary; archived change with non-terminal rows | gate C4 passed | C4 blocks naming the row (vocabulary: `open / fixed / rejected+reason / verified / rejected-verified / waived / advisory-acked`) |
+| unstamped MODIFIED/REMOVED/RENAMED delta at the gate | passed silently | **C7 blocks by default** — run `apriori stamp <store-file>`, or waive visibly (`gate --no-cas`, or a `| cas | optional |` process-config row). verify/archive only warn this minor; stamps become mandatory in 4.0 |
+
+Additive: `apriori/managed.json` (written by init/update — track it in git), `projection.unstampedMutations` + `projection.notes` in `verify --change --json`, gate C7 in output/`--json`, the runbook's external-side-effect authorization rule and ledger vocabulary sections (both editions), a post-archive `gate` run required at STEP6, and a stamped delta that already fully committed now re-runs cleanly (the CAS rerun repair).
+
 ## 3.2.x → 3.3.0
 
 **Strict argument parsing.** Nothing on a documented success path changes. Three error-path behaviors are new, all fail-closed:

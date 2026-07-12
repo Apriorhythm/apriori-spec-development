@@ -1,5 +1,5 @@
 ### Requirement: gate aggregates the mechanical exit conditions for one change
-`apriori gate --change <name>` SHALL evaluate the machine-checkable gate conditions for exactly one change and encode the aggregate in its exit code: 0 = every applicable check passed (`GATE: PASS`), 1 = at least one check blocked (`GATE: BLOCKED (<n> item(s))`), 2 = the evaluation itself is untrustworthy (usage error, invalid or escaping name, change found nowhere, unreadable flow-state, or an untrustworthy C1 verify run). It SHALL be strictly read-only and SHALL state in its output that PASS covers mechanical checks only — human gates remain human.
+`apriori gate --change <name>` SHALL evaluate the machine-checkable gate conditions for exactly one change and encode the aggregate in its exit code: 0 = every applicable check passed (`GATE: PASS`), 1 = at least one check blocked (`GATE: BLOCKED (<n> item(s))`), 2 = the evaluation itself is untrustworthy (usage error, invalid or escaping name, change found nowhere, unreadable flow-state, or an untrustworthy C1 verify run). It SHALL be strictly read-only and SHALL state in its output that PASS covers mechanical checks only — human gates remain human. C6 (KB freshness) SHALL bind each touched store module to its truth doc through an index rather than a filename assumption: a truth doc MAY declare, in its header region (before the first `##`), `store-module: <name>...` (the store modules it covers; default = the doc's basename) and `source-files: <path>...` (space-separated repo-relative code paths; default = `lib/<module>.js`); a covered module with a valid `source-commit` stamp is always mechanically checked, never silently skipped.
 
 #### Scenario: GT-01 a clean in-flight change passes
 - WHEN every applicable check passes for an in-flight change
@@ -37,9 +37,25 @@
 - WHEN flow-state declares `tier: trivial` and tasks.md or the bundle ledger `<changeDir>/review/issues.md` is absent
 - THEN C2/C4 report `–` (not applicable) instead of blocking; on medium/large the same absences block naming the exact bundle path
 
-#### Scenario: GT-10 KB freshness degrades honestly
-- WHEN a touched module `<m>` (first path segment of the change's delta-spec suffixes) has `apriori/truth/<m>.md` with a `source-commit` stamp, `lib/<m>.js` exists, and git reports commits in `<stamp>..HEAD -- lib/<m>.js`
-- THEN C6 blocks with the commit count; an up-to-date stamp passes; a missing truth doc, missing lib file, missing git, or a non-zero git exit yields `–` with the reason — an infra failure never fabricates a block
+#### Scenario: GT-10 KB freshness degrades honestly through the truth index
+- WHEN a touched module `<m>` (first path segment of the change's delta-spec suffixes) resolves through the truth index to a truth doc carrying a canonical `source-commit` stamp (a fence-outside line-start `source-commit: <ref>`), whose resolved `source-files` are all verifiable, and git reports commits in `<ref>..HEAD -- <source-files...>`
+- THEN C6 blocks with the commit count; an up-to-date stamp passes; a module with no truth doc at all yields `–` (KB is optional — a genuine absence, not a silent skip); a missing git or a non-zero git exit yields `–` with the reason — an infra failure never fabricates a block
+
+#### Scenario: GT-18 the truth index binds by declaration, not filename
+- WHEN a store module's truth doc lives under a DIFFERENT basename (e.g. `apriori/truth/poll.md` covering store module `quick-poll`) and declares `store-module: quick-poll`
+- THEN C6 finds it through the index and mechanically checks it (blocking when its `source-commit` is stale) — never reporting "no truth doc" for a module that a declaration covers; and two truth docs declaring the same module is a C6 block naming both files
+
+#### Scenario: GT-19 an explicit source-files declaration is a complete promise
+- WHEN a truth doc declares `source-files: src/server.js src/model.js` (code outside `lib/`) with a stale stamp
+- THEN C6 runs git over exactly those paths (a declared DIRECTORY path is valid — git logs the whole tree) and blocks on commits since the stamp; and if an EXPLICIT `source-files` carries any token that is missing, malformed, a dangling or resolving symlink, or escapes the repo (realpath), C6 BLOCKS naming that token — partial-missing, partial-symlink, all-symlink, and one bad token beside good ones alike — because a declaration is a complete promise, while a field-less truth doc whose default `lib/<module>.js` is absent stays a `–` note (existing-layout compatibility)
+
+#### Scenario: GT-20 malformed source-commit stamps are diagnosed, not silently skipped
+- WHEN a truth doc's `source-commit` appears only in a non-canonical form — a blockquote `> \`source-commit: …\``, an HTML comment `<!-- source-commit: … -->`, an indented line, or backtick-wrapped — with no fence-outside bare line-start form
+- THEN C6 reports a `–` note pointing at the required format (a fence-outside line-start `source-commit: <ref>`) rather than a vague "has no source-commit"; a `source-commit:` occurring only inside a code fence is a documentation example and raises no diagnostic
+
+#### Scenario: GT-21 field-less truth docs behave exactly as before
+- WHEN a truth doc carries neither `store-module` nor `source-files` (this repo's own docs)
+- THEN C6 falls back to module = basename and source-files = `lib/<module>.js`, producing the byte-identical `{status, detail}` it produced before this change for that module — the index and declarations add coverage for non-default layouts without altering any default-layout result
 
 #### Scenario: GT-11 --json is pure JSON in every outcome class
 - WHEN `gate --change <name> --json` runs — PASS, BLOCKED, or any exit-2 class (usage error, invalid name, not found, unreadable flow-state, untrustworthy verify)

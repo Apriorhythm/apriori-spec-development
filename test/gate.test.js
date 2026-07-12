@@ -524,3 +524,110 @@ test('GT-17 bad cas config blocks instead of waiving', () => {
   const r3 = gate.runGate({ cwd: fenced, change: 'c', testCmd: tapCmd('ok 1 - XA-01 a'), noCas: true });
   assert.strictEqual(r3.checks.find((x) => x.id === 'C7').status, 'pass', '--no-cas waives either way');
 });
+
+// ---- c6-truth-binding (GT-18..21): C6 binds through the truth index ----
+function gitKB(root) {
+  const env = { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' };
+  const git = (...a) => { const r = spawnSync('git', ['-C', root, ...a], { encoding: 'utf8', env }); assert.strictEqual(r.status, 0, r.stderr); return r; };
+  return git;
+}
+// a change touching store module `mod`, with a clean projected verify under TAP_OK
+function kbProject(mod, extra = {}) {
+  return mkProject({
+    [`apriori/specs/${mod}/spec.md`]: STORE,
+    'apriori/changes/c/flow-state.md': FLOW('c'),
+    'apriori/changes/c/tasks.md': '- [x] T1\n',
+    [`apriori/changes/c/specs/${mod}/spec.md`]: DELTA,
+    'apriori/changes/c/review/issues.md': LEDGER_OK,
+    ...extra,
+  });
+}
+const c6of = (root) => gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK }).checks.find((x) => x.id === 'C6');
+const gitAvail = (() => { const g = spawnSync('git', ['--version'], { encoding: 'utf8' }); return !g.error && g.status === 0; })();
+
+test('GT-18 the truth index binds by declaration, not filename', () => {
+  if (!gitAvail) return;
+  // store module `quick-poll`, truth doc under a DIFFERENT basename declaring store-module
+  const root = kbProject('quick-poll', {
+    'apriori/truth/poll.md': 'no fields yet',   // overwritten below after commit
+  });
+  const git = gitKB(root);
+  git('init', '-q');
+  fs.mkdirSync(path.join(root, 'lib'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'lib/quick-poll.js'), '1');
+  git('add', '-A'); git('commit', '-q', '-m', 'one');
+  const c1 = git('rev-parse', 'HEAD').stdout.trim();
+  fs.writeFileSync(path.join(root, 'apriori/truth/poll.md'), `store-module: quick-poll\nsource-commit: ${c1}\n\n## Contract\n`);
+  assert.strictEqual(c6of(root).status, 'pass', c6of(root).detail);   // found via store-module, up to date
+  fs.writeFileSync(path.join(root, 'lib/quick-poll.js'), '2');
+  git('add', '-A'); git('commit', '-q', '-m', 'two');
+  assert.strictEqual(c6of(root).status, 'blocked');                    // stale, no longer a silent skip
+  // two truth docs declaring the same module → conflict block
+  fs.writeFileSync(path.join(root, 'apriori/truth/other.md'), 'store-module: quick-poll\nsource-commit: abc1234\n');
+  const conf = c6of(root);
+  assert.strictEqual(conf.status, 'blocked');
+  assert.match(conf.detail, /quick-poll|conflict|two/i);
+});
+
+test('GT-19 an explicit source-files declaration is a complete promise', () => {
+  if (!gitAvail) return;
+  const root = kbProject('kv');
+  const git = gitKB(root);
+  git('init', '-q');
+  fs.mkdirSync(path.join(root, 'src'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'src/a.js'), '1');
+  git('add', '-A'); git('commit', '-q', '-m', 'one');
+  const c1 = git('rev-parse', 'HEAD').stdout.trim();
+  fs.mkdirSync(path.join(root, 'apriori/truth'), { recursive: true });
+  // src-layout: declared source-files points outside lib/
+  fs.writeFileSync(path.join(root, 'apriori/truth/kv.md'), `source-files: src/a.js\nsource-commit: ${c1}\n`);
+  assert.strictEqual(c6of(root).status, 'pass', c6of(root).detail);
+  fs.writeFileSync(path.join(root, 'src/a.js'), '2');
+  git('add', '-A'); git('commit', '-q', '-m', 'two');
+  assert.strictEqual(c6of(root).status, 'blocked');                    // git logged the declared src path
+  // an explicit token that is missing → blocked (a declaration is a complete promise)
+  fs.writeFileSync(path.join(root, 'apriori/truth/kv.md'), `source-files: src/a.js src/gone.js\nsource-commit: ${c1}\n`);
+  const miss = c6of(root);
+  assert.strictEqual(miss.status, 'blocked');
+  assert.match(miss.detail, /gone\.js/);
+  // an escaping token → blocked
+  fs.writeFileSync(path.join(root, 'apriori/truth/kv.md'), `source-files: ../outside.js\nsource-commit: ${c1}\n`);
+  assert.strictEqual(c6of(root).status, 'blocked');
+  // a malformed absolute token → blocked even if path.join would resolve it inside the repo (C6IMPL-1)
+  fs.writeFileSync(path.join(root, 'apriori/truth/kv.md'), `source-files: /src/a.js\nsource-commit: ${c1}\n`);
+  const mal = c6of(root);
+  assert.strictEqual(mal.status, 'blocked');
+  assert.match(mal.detail, /malformed/);
+});
+
+test('GT-20 malformed source-commit stamps are diagnosed, not silently skipped', () => {
+  const root = kbProject('kv', {
+    'apriori/truth/kv.md': '# T\n\n> `source-commit: deadbeef`\n',   // blockquote form, not the bare line
+  });
+  const c6 = c6of(root);
+  assert.strictEqual(c6.status, 'n/a');
+  assert.match(c6.detail, /canonical|line-start/i);        // points at the format, not vague "no source-commit"
+  // a source-commit only inside a code fence raises no diagnostic
+  fs.writeFileSync(path.join(root, 'apriori/truth/kv.md'), '# T\n\n```\nsource-commit: deadbeef\n```\n');
+  const fenced = c6of(root);
+  assert.strictEqual(fenced.status, 'n/a');
+  assert.doesNotMatch(fenced.detail, /format|line-start/i);           // fenced example → no diagnostic (just "no truth"/"no stamp")
+});
+
+test('GT-21 field-less truth docs behave exactly as before', () => {
+  if (!gitAvail) return;
+  // this is the pre-change default-layout path: bare stamp + lib/<module>.js
+  const root = kbProject('kv');
+  const git = gitKB(root);
+  git('init', '-q');
+  fs.mkdirSync(path.join(root, 'lib'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'lib/kv.js'), '1');
+  git('add', '-A'); git('commit', '-q', '-m', 'one');
+  const c1 = git('rev-parse', 'HEAD').stdout.trim();
+  fs.mkdirSync(path.join(root, 'apriori/truth'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'apriori/truth/kv.md'), `source-commit: ${c1}\n`);   // no fields
+  assert.strictEqual(c6of(root).status, 'pass', c6of(root).detail);   // default fallback: module=kv, lib/kv.js
+  // default lib file absent (no declaration) stays a note/n-a, never a block
+  const root2 = kbProject('kv', { 'apriori/truth/kv.md': 'source-commit: deadbeef\n' });
+  assert.strictEqual(c6of(root2).status, 'n/a');
+});

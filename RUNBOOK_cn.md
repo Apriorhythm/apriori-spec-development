@@ -167,7 +167,7 @@ gates:                  # 只增不改的人工决定日志
 | 规格 / 设计 / 任务 | `apriori/changes/<change>/specs/`、`…/design.md`、`…/tasks.md` |
 | living 规格库 | `apriori/specs/` |
 | 规格评审 | `apriori/changes/<change>/review/spec-review-v{N}.md` |
-| 知识库(TRUTH-DOC) | `apriori/truth/<module>.md`——必须带 `source-commit` 标记(只覆盖契约节,§5 P9/P10) |
+| 知识库(TRUTH-DOC) | `apriori/truth/<module>.md`——必须带围栏外行首裸行 `source-commit: <ref>` 标记(只覆盖契约节,§5 P9/P10);C6 默认按文件基名把 truth 绑到 store 模块、比对 `lib/<module>.js`——文件名异名或代码不在 `lib/` 时,在头部区声明 `store-module:` / `source-files:` |
 | 流程状态 | `apriori/changes/<change>/flow-state.md` |
 | 意图卡(探索轨) | `apriori/changes/<change>/requirement/intent-card.md` |
 | 提取评审(探索轨) | `apriori/changes/<change>/review/extraction-review-v{N}.md` |

@@ -171,7 +171,7 @@ Update it immediately after each step and each round; append every gate decision
 | Spec / design / tasks | `apriori/changes/<change>/specs/`, `…/design.md`, `…/tasks.md` |
 | Living spec store | `apriori/specs/` |
 | Spec evaluation | `apriori/changes/<change>/review/spec-review-v{N}.md` |
-| Knowledge base (TRUTH-DOC) | `apriori/truth/<module>.md` — `source-commit` stamp required (covers the Contract section only, §5 P9/P10) |
+| Knowledge base (TRUTH-DOC) | `apriori/truth/<module>.md` — a fence-outside line-start `source-commit: <ref>` stamp required (covers the Contract section only, §5 P9/P10); C6 binds a truth doc to its store module by filename basename and checks `lib/<module>.js` by default — for an aliased filename or non-`lib/` code, declare `store-module:` / `source-files:` in the header region |
 | Flow state | `apriori/changes/<change>/flow-state.md` |
 | Intent card (explore track) | `apriori/changes/<change>/requirement/intent-card.md` |
 | Extraction review (explore track) | `apriori/changes/<change>/review/extraction-review-v{N}.md` |

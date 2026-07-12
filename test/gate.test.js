@@ -221,7 +221,7 @@ test('GT-07 resolution is validated and deterministic', () => {
   if (canSymlink) {
     const r3 = gate.runGate({ cwd: arch, change: 'c', testCmd: TAP_OK });
     assert.strictEqual(r3.code, 2);
-    assert.ok(r3.errors.some((e) => e.includes('escape')), r3.errors.join());
+    assert.ok(r3.errors.some((e) => /escape|symlink/.test(e)), r3.errors.join());   // resolver-trust: a symlinked candidate is structural before containment even runs
   }
 });
 

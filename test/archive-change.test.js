@@ -248,13 +248,16 @@ test('AM-24 a diverged stamp stops archive before any write, on both surfaces', 
   assert.strictEqual(fs.readFileSync(path.join(root2, 'store.md'), 'utf8'), STORE_A);
 });
 
-test('AM-25 stamp-free deltas behave exactly as before, on both surfaces', () => {
+test('AM-25 stamp-free ADDED-only deltas keep the pre-3.1 behavior', () => {
   const root1 = twoModuleProject();
   assert.strictEqual(run(['archive', '--change', 'c', '--write'], root1).status, 0);
   assert.match(fs.readFileSync(path.join(root1, 'apriori/specs/a/spec.md'), 'utf8'), /Alpha2/);
   const root2 = mkProject({ 'store.md': STORE_A, 'delta.md': ADD_A });
   assert.strictEqual(run(['archive', '--store', 'store.md', '--delta', 'delta.md', '--change', 'c', '--write'], root2).status, 0);
   assert.match(fs.readFileSync(path.join(root2, 'store.md'), 'utf8'), /Alpha2/);
+  // "no stamp, no check" never means "no stamp, no rules": a mutation falls to the deny rule
+  const root3 = twoModuleProject({ 'apriori/changes/c/specs/a/spec.md': MOD_DIFF });
+  assert.strictEqual(run(['archive', '--change', 'c', '--write'], root3).status, 1);
 });
 
 test('AM-26 the new sentinel matches only an absent store', () => {

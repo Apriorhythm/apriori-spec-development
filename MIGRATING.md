@@ -60,7 +60,7 @@ If a script of yours relied on silent-ignore, the exit-2 message names exactly w
 
 **Deprecated blocks stop being demanded (the one behavior change).** Before 3.1, a requirement archived via `## REMOVED Requirements` kept demanding its scenarios' tests forever (the deprecated block still carried `#### Scenario:` headings). From 3.1, every `verify` form excludes deprecated blocks; a test still tagged with a removed scenario's ID reports as ORPHAN. **Action:** delete tests for removed scenarios — ORPHAN is the reminder, not a bug.
 
-**New, all opt-in / additive:** `verify --change` (use it as the mid-change STEP5 gate — the runbook was updated accordingly), `archive --change`, CAS base stamps (`apriori stamp`; unstamped deltas behave exactly as before), stricter delta hygiene (deltas that were silently collapsing — duplicate requirement names, malformed stamps — now error; they were corrupt input all along).
+**New, all opt-in / additive:** `verify --change` (use it as the mid-change STEP5 gate — the runbook was updated accordingly), `archive --change`, CAS base stamps (`apriori stamp`; unstamped deltas behaved exactly as before THEN — since 4.0.1 archive denies unstamped mutation deltas by default), stricter delta hygiene (deltas that were silently collapsing — duplicate requirement names, malformed stamps — now error; they were corrupt input all along).
 
 ## 2.x / 1.x → 3.x
 

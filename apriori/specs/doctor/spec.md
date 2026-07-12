@@ -62,3 +62,10 @@ Doctor SHALL check (D8) for the five pre-4.0 scattered roots — top-level `requ
 #### Scenario: DR-14 the D5 matrix follows the lexer
 - WHEN probes emit: a failing `not ok` with exit 0; a `TAP version 99` stream; TAP on stderr with empty stdout; and a healthy TAP-13 stream
 - THEN D5 reports ok (failures noted as verify's business), finding (version named), finding (`2>&1` fix), and ok respectively — with doctor's exit taxonomy unchanged
+
+### Requirement: doctor reads config through the structured reader
+Doctor's config consumption (the D5 probe's test-cmd fallback) SHALL use the shared structured reader; a `test-cmd` CONFLICT is a D5 finding naming the config problem rather than a probe run over an arbitrary row.
+
+#### Scenario: DR-15 doctor refuses to probe on conflicted config
+- WHEN doctor runs (no explicit test command) in a project whose process-config carries two live conflicting `test-cmd` rows
+- THEN D5 is a finding naming the config conflict and no probe command executes

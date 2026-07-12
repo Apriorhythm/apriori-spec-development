@@ -170,3 +170,30 @@ test('ST-08 the JSON contract carries stage and path', () => {
   assert.strictEqual(b.stage, 'archived');
   assert.match(b.path, /archive[\/\\]2026-07-10T1200-demo/);
 });
+
+test('ST-09 identity and ancestors are checked, absence stays benign', () => {
+  // archived identity mismatch
+  const arch = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-st-'));
+  const d = path.join(arch, 'apriori/changes/archive/2026-07-10T1200-demo');
+  fs.mkdirSync(path.join(d, 'review'), { recursive: true });
+  fs.writeFileSync(path.join(d, 'flow-state.md'), FLOW.replace('change: demo', 'change: other'));
+  const r1 = runStatus(['--change', 'demo'], arch);
+  assert.strictEqual(r1.status, 2, r1.stdout + r1.stderr);
+  assert.match(r1.stderr, /other|identity|mismatch/i);
+  // active identity mismatch
+  const act = project({ demo: { flow: FLOW.replace('change: demo', 'change: other'), ledger: LEDGER } });
+  assert.strictEqual(runStatus(['--change', 'demo'], act).status, 2);
+  // dangling review/ ancestor -> exit 2, never "0 open"
+  let can = true;
+  const root = project({ demo: { flow: FLOW } });
+  fs.rmSync(path.join(root, 'apriori/changes/demo/review'), { recursive: true, force: true });
+  try { fs.symlinkSync(path.join(root, 'nowhere'), path.join(root, 'apriori/changes/demo/review')); } catch { can = false; }
+  if (can) {
+    const r3 = runStatus(['--change', 'demo'], root);
+    assert.strictEqual(r3.status, 2, r3.stdout + r3.stderr);
+  }
+  // plain absence stays benign
+  const plain = project({ demo: { flow: FLOW } });
+  fs.rmSync(path.join(plain, 'apriori/changes/demo/review'), { recursive: true, force: true });
+  assert.strictEqual(runStatus(['--change', 'demo'], plain).status, 0);
+});

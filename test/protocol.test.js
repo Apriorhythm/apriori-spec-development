@@ -515,3 +515,18 @@ test('PR-22 the promise and the pointers are current', () => {
   const pkg = JSON.parse(fsx.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
   assert.ok(pkg.homepage.endsWith('tree/v4#readme'), pkg.homepage);
 });
+
+test('PR-23 the pointer is packaged and dual-form', () => {
+  const fsx = require('node:fs');
+  const pkg = JSON.parse(fsx.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+  assert.ok(pkg.files.includes('MIGRATING.md'), 'MIGRATING.md ships in the npm package');
+  const doctorSrc = fsx.readFileSync(path.join(ROOT, 'lib', 'doctor.js'), 'utf8');
+  const updateSrc = fsx.readFileSync(path.join(ROOT, 'lib', 'update.js'), 'utf8');
+  const url = 'https://github.com/Apriorhythm/apriori-spec-development/blob/v4/MIGRATING.md';
+  for (const [label, src] of [['doctor', doctorSrc], ['update', updateSrc]]) {
+    assert.ok(src.includes('MIGRATING.md'), `${label} names the local file`);
+    assert.ok(src.includes(url), `${label} carries the stable URL`);
+  }
+  const mig = fsx.readFileSync(path.join(ROOT, 'MIGRATING.md'), 'utf8');
+  assert.match(mig, /4\.0\.1[^\n]*(den|拒绝)/, 'the old CAS table carries the deny-by-default correction');
+});

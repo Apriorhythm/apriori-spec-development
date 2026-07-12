@@ -210,3 +210,10 @@ The TAP stream SHALL be handled by a version-aware line lexer over **stdout only
 #### Scenario: SR-48 YAML must close and pragma is the only pass
 - WHEN one stream opens a top-level `---` never closed before EOF; another carries `pragma +bail` between points under a matching plan
 - THEN the first is RESULT: ERROR naming the unterminated block\'s opening line; the second raises no plan error and no point-count drift (pragma lines are never points)
+
+### Requirement: the configured test command parses as structure
+`configTestCmd` SHALL read through the shared structured reader: fenced/commented `test-cmd` rows never take effect, and a `test-cmd` CONFLICT (two live rows, different values) is an infra ERROR (exit 2) naming the conflict — verify never silently picks a row; a missing row keeps today's usage-error path; gate inherits through verify.
+
+#### Scenario: SR-49 a conflicted test-cmd refuses to run
+- WHEN process-config carries two live `test-cmd` rows with different values (and, separately, only a fenced `test-cmd` row) and verify runs without --test-cmd
+- THEN the conflicted run is RESULT: ERROR (exit 2) naming the config conflict, and the fenced-only run behaves as if no test-cmd were configured (usage error) — never executing the fenced example

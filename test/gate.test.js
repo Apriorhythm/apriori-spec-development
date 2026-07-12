@@ -505,3 +505,22 @@ test('SR-38 gate C1 inherits the unattributed-failure GAPS class', () => {
   assert.strictEqual(c1.status, 'blocked', c1.detail);
   assert.match(c1.detail, /unattributed/, 'the gap count names the unattributed class');
 });
+
+test('GT-17 bad cas config blocks instead of waiving', () => {
+  const conflicted = healthy();
+  fs.writeFileSync(path.join(conflicted, 'apriori/process-config.md'), '| cas | optional |\n| cas | required |\n');
+  fs.writeFileSync(path.join(conflicted, 'apriori/changes/c/specs/kv/spec.md'),
+    '## MODIFIED Requirements\n\n### Requirement: Alpha\n\n#### Scenario: XA-01 base\n- t2\n');
+  const r = gate.runGate({ cwd: conflicted, change: 'c', testCmd: tapCmd('ok 1 - XA-01 a') });
+  const c7 = r.checks.find((x) => x.id === 'C7');
+  assert.strictEqual(c7.status, 'blocked', c7.detail);
+  assert.match(c7.detail, /conflict/i);
+  const fenced = healthy();
+  fs.writeFileSync(path.join(fenced, 'apriori/process-config.md'), '```\n| cas | optional |\n```\n');
+  fs.writeFileSync(path.join(fenced, 'apriori/changes/c/specs/kv/spec.md'),
+    '## MODIFIED Requirements\n\n### Requirement: Alpha\n\n#### Scenario: XA-01 base\n- t2\n');
+  const r2 = gate.runGate({ cwd: fenced, change: 'c', testCmd: tapCmd('ok 1 - XA-01 a') });
+  assert.strictEqual(r2.checks.find((x) => x.id === 'C7').status, 'blocked', 'fenced rows grant nothing');
+  const r3 = gate.runGate({ cwd: fenced, change: 'c', testCmd: tapCmd('ok 1 - XA-01 a'), noCas: true });
+  assert.strictEqual(r3.checks.find((x) => x.id === 'C7').status, 'pass', '--no-cas waives either way');
+});

@@ -565,3 +565,20 @@ test('SR-48 YAML must close and pragma is the only pass', () => {
   const pragma = runCli(['--specs', file, '--test-cmd', tapFile('TAP version 14\nok 1 - XX-01 a\npragma +bail\nok 2 - XX-01 b\n1..2\n')]);
   assert.strictEqual(pragma.status, 0, pragma.stdout + pragma.stderr);
 });
+
+test('SR-49 a conflicted test-cmd refuses to run', () => {
+  const os2 = require('node:os');
+  const root = fs.mkdtempSync(path.join(os2.tmpdir(), 'apriori-sr-cfg-'));
+  fs.mkdirSync(path.join(root, 'apriori', 'specs'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'apriori/specs/spec.md'), '#### Scenario: XX-01 a\n- t\n');
+  fs.mkdirSync(path.join(root, 'apriori'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'apriori/process-config.md'), '| test-cmd | node -e "1" |\n| test-cmd | node -e "2" |\n');
+  const r = runCli(['--specs', 'apriori/specs'], { cwd: root });
+  assert.strictEqual(r.status, 2, r.stdout + r.stderr);
+  assert.match(r.stderr, /conflict/i);
+  // fenced-only test-cmd row = not configured (usage error)
+  fs.writeFileSync(path.join(root, 'apriori/process-config.md'), '```\n| test-cmd | node -e "1" |\n```\n');
+  const r2 = runCli(['--specs', 'apriori/specs'], { cwd: root });
+  assert.strictEqual(r2.status, 2, r2.stdout + r2.stderr);
+  assert.match(r2.stderr, /usage/i);
+});

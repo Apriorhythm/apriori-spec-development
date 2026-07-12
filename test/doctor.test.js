@@ -317,3 +317,12 @@ test('DR-14 the D5 matrix follows the lexer', () => {
   assert.strictEqual(r5.status, 'finding');
   assert.match((r5.fix || '') + r5.detail, /2>&1/);
 });
+
+test('DR-15 doctor refuses to probe on conflicted config', () => {
+  const root = healthy();
+  fs.writeFileSync(path.join(root, 'apriori', 'process-config.md'), '| test-cmd | node -e "1" |\n| test-cmd | node -e "2" |\n');
+  const r = doctor.runDoctor({ cwd: root });
+  const d5 = r.checks.find((c) => c.id === 'D5');
+  assert.strictEqual(d5.status, 'finding', d5.detail);
+  assert.match(d5.detail, /conflict/i);
+});

@@ -55,3 +55,10 @@ Doctor SHALL check (D8) for the five pre-4.0 scattered roots — top-level `requ
 #### Scenario: DR-13 mixed 3.x layouts are named, clean ones pass
 - WHEN a project carries any of the five legacy roots (a directory or a symlink at that path both count), and another project carries none
 - THEN doctor reports a D8 finding naming exactly the roots present with a fix pointing at the migration guidance, and the clean project's D8 is ok — with no file content read and nothing written
+
+### Requirement: the probe speaks the same TAP as verify
+`classifyProbe` SHALL consume the shared version-aware lexer and judge by the D5 matrix: probe TAP containing failures (any shape, unattributed included) is D5 **ok** with a detail noting the failures are verify's business and the TAP channel itself is healthy; an unsupported TAP version is D5 **finding** naming the version and the supported matrix; a stdout-empty probe whose stderr carries TAP-shaped output is D5 **finding** with a `2>&1` fix; every other classification and doctor's exit taxonomy stay unchanged.
+
+#### Scenario: DR-14 the D5 matrix follows the lexer
+- WHEN probes emit: a failing `not ok` with exit 0; a `TAP version 99` stream; TAP on stderr with empty stdout; and a healthy TAP-13 stream
+- THEN D5 reports ok (failures noted as verify's business), finding (version named), finding (`2>&1` fix), and ok respectively — with doctor's exit taxonomy unchanged

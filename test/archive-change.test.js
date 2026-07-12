@@ -626,3 +626,28 @@ test('AM-41 the projection surface stays informative', () => {
   assert.match(v.stderr, /unstamped mutation delta/);
   assert.notStrictEqual(v.status, 2, 'projection never fails the run for a missing stamp: ' + v.stderr);
 });
+
+test('AM-42 the reviewer fenced-waiver bypass is dead', () => {
+  const mk = (config) => twoModuleProject({
+    'apriori/changes/c/specs/a/spec.md': MOD_DIFF,
+    'apriori/process-config.md': config,
+  });
+  const fenced = mk('```md\n| cas | optional |\n```\n\n| cas | required |\n');
+  const r1 = run(['archive', '--change', 'c', '--write'], fenced);
+  assert.strictEqual(r1.status, 1, r1.stdout + r1.stderr);
+  assert.doesNotMatch(fs.readFileSync(path.join(fenced, 'apriori/specs/a/spec.md'), 'utf8'), /CHANGED/);
+  const conflicted = mk('| cas | optional |\n| cas | required |\n');
+  const r2 = run(['archive', '--change', 'c', '--write'], conflicted);
+  assert.strictEqual(r2.status, 1);
+  assert.match(r2.stdout + r2.stderr, /conflict/i);
+  // stamped run unaffected by the broken config
+  const { fingerprint } = require('../lib/archive-merge');
+  const stamped = mk('| cas | optional |\n| cas | required |\n');
+  fs.writeFileSync(path.join(stamped, 'apriori/changes/c/specs/a/spec.md'),
+    `<!-- apriori-base: ${fingerprint(STORE_A)} -->\n` + MOD_DIFF);
+  const r3 = run(['archive', '--change', 'c', '--write'], stamped);
+  assert.strictEqual(r3.status, 0, r3.stdout + r3.stderr);
+  // --no-cas still waives the fenced case explicitly
+  const flag = mk('```md\n| cas | optional |\n```\n\n| cas | required |\n');
+  assert.strictEqual(run(['archive', '--change', 'c', '--write', '--no-cas'], flag).status, 0);
+});

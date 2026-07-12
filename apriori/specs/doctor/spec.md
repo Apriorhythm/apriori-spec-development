@@ -1,5 +1,5 @@
 ### Requirement: doctor diagnoses the project-apriori seam
-`apriori doctor` SHALL run seven read-only checks (D1 Node floor · D2 init scaffold · D3 runbook freshness · D4 tool pointers · D5 TAP probe · D6 store health · D7 changes overview), each reporting ok/finding/not-applicable with a fix hint on findings, and SHALL encode the aggregate in its exit code: 0 = zero findings (`DOCTOR: HEALTHY`), 1 = ≥1 finding (`DOCTOR: <n> finding(s)`), 2 = unusable (Node below floor, `apriori/` missing entirely, positional-arg usage error) — printing whatever checks already ran. Doctor never repairs and never writes; its ONLY side effect is D5 executing the project's test command once, removed by `--no-run`.
+`apriori doctor` SHALL run eight read-only checks (D1 Node floor (≥22) · D2 init scaffold · D3 runbook freshness · D4 tool pointers · D5 TAP probe · D6 store health · D7 changes overview · D8 legacy 3.x layout roots), each reporting ok/finding/not-applicable with a fix hint on findings, and SHALL encode the aggregate in its exit code: 0 = zero findings (`DOCTOR: HEALTHY`), 1 = ≥1 finding (`DOCTOR: <n> finding(s)`), 2 = unusable (Node below floor, `apriori/` missing entirely, positional-arg usage error) — printing whatever checks already ran. Doctor never repairs and never writes; its ONLY side effect is D5 executing the project's test command once, removed by `--no-run`.
 
 #### Scenario: DR-01 a healthy initialized project reports HEALTHY
 - WHEN every applicable check passes on a freshly initialized project with a valid TAP test command
@@ -46,8 +46,8 @@
 - THEN no file is created, modified, or deleted; WHEN any positional argument is given THEN doctor exits 2 with usage (pure JSON under `--json`)
 
 #### Scenario: DR-12 the Node floor is enforced testably
-- WHEN the detected Node major version (injectable for tests) is below 18
-- THEN D1 is a finding entry and doctor exits 2 (`result: "UNUSABLE"`), with D1 listed in the checks; at or above 18 → ok
+- WHEN the detected Node major version (injectable for tests) is below 22
+- THEN D1 is a finding entry and doctor exits 2 (`result: "UNUSABLE"`), with D1 listed in the checks; at or above 22 → ok
 
 ### Requirement: doctor detects legacy 3.x layout roots
 Doctor SHALL check (D8) for the five pre-4.0 scattered roots — top-level `requirement/`, top-level `spike/`, `apriori/review/`, `apriori/design/`, `apriori/explore/` — using existence-level probes only (lstat/exists, never following or reading through); any hit is a finding listing every root found, with a fix pointing at the MIGRATING.md 4.0 section. A clean 4.0 project reports D8 ok; the check performs zero writes.

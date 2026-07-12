@@ -106,3 +106,10 @@ Both runbook editions SHALL state the CAS rule in the present tense — unstampe
 #### Scenario: PR-22 the promise and the pointers are current
 - WHEN the two runbook editions, MIGRATING.md, and package.json are read
 - THEN the runbooks state archive's default denial in the present tense with both waivers named and carry no future-tense mandatory-in-4.0 phrasing; MIGRATING.md has a 4.0 section naming the five legacy roots; the homepage field ends in `tree/v4#readme`
+
+### Requirement: the migration pointer reaches npm users
+The npm package SHALL ship `MIGRATING.md` (listed in `package.json` `files`), and the legacy-layout messages (doctor D8's fix, update's warning) SHALL carry both the local path and the stable URL `https://github.com/Apriorhythm/apriori-spec-development/blob/v4/MIGRATING.md` — a pointer the diagnosed user can actually open.
+
+#### Scenario: PR-23 the pointer is packaged and dual-form
+- WHEN the npm files list and the D8/update message templates are read
+- THEN `MIGRATING.md` appears in `package.json` `files`, both messages carry the local file reference and the stable blob URL, and MIGRATING's pre-4.0 CAS wording carries the "archive denies by default since 4.0.1" correction so the old table cannot be read as current behavior

@@ -2,6 +2,15 @@
 
 All notable changes to `apriori-cli`. Versions follow semver; the stability promise: CLI surface & flags, `--json` shapes, the delta format and the flow-state schema only break in a major.
 
+## 4.0.2 — 2026-07-12 · the judge's input boundaries harden
+
+Every item answers the GPT-5.6 fourth review (each defect reproduced first; three changes through the full loop with adversarial codex reviews). The theme: the three places a verdict-maker touched raw input — TAP, markdown config, the filesystem — now treat it as protocol, structure, and trust chain.
+
+- **TAP is a version-aware protocol** — a line lexer replaces the regex pile: closed version matrix (12/13/14/absent accepted; anything else, `banana` included, is an infra ERROR), `\#` escapes never open a directive (the reviewer's TAP-14 false-green dies), `bail out!` matches any casing at any indent, lone-CR streams cannot hide failures, mid-stream plans and out-of-plan numbers are untrustworthy, unterminated top-level YAML fails closed, `pragma` lines are the only ignored construct, dashless descriptions bind and `# SKIPPED:` skips. **stdout/stderr split (behavior change)**: TAP parses from stdout only; stderr becomes a reported diagnostics channel (report group + constant `--json` `stderr` field); TAP misrouted to stderr — bail-outs included — gets a `2>&1` remedy. Doctor's D5 probe speaks the same lexer.
+- **process-config parses as structure** — the fenced-example waiver bypass dies: fenced/commented rows grant nothing (inline comments are spans), conflicting or illegal values fail closed at consumption (archive denies, gate C7 blocks, verify/doctor refuse a conflicted `test-cmd`), same-value duplicates stay benign, `--no-cas` stays supreme and is now discoverable (usage texts + a template `cas` row).
+- **Resolution validates its trust chain** — the four gate-PASS bypasses die: symlinked/non-directory `changes/` or `archive/` roots are structural errors, a broken active entry never falls back to the archive, the reserved name `archive` and date-prefixed names are rejected on every by-name surface (one `validateChangeName`, kind-classified), pseudo-stamps like `9999-99-99T9999` and `2026-02-31` neither sort nor resolve (Gregorian round-trip), `status` checks flow-state identity, and file reads speak structured defect kinds (a dangling `review/` ancestor is a defect, not an empty ledger).
+- `MIGRATING.md` now ships in the npm package and the D8/update pointers carry a stable URL; stale spec/doc sentences (AM-25, the gate waiver line, doctor's check list, MIGRATING's old CAS table) say what the code does. 247 tests.
+
 ## 4.0.1 — 2026-07-12 · the false-green dies and CAS keeps its word
 
 Both fixes trace to the GPT-5.6 external review of 4.0.0 (each reproduced before work started; two changes through the full loop with adversarial codex reviews).

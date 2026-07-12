@@ -103,9 +103,9 @@ A delta file MAY carry exactly one base stamp `<!-- apriori-base: sha256:<64 low
 - WHEN a stamped delta's store file fingerprint no longer matches (including a `new` stamp whose store now exists) — whether archive is invoked as `--change <name>` or as single-file `--store <f> --delta <f>`
 - THEN each form reports the store path with expected vs actual fingerprint, writes nothing, and exits 1 — the §4.11 serialize rule made mechanical; both surfaces are exercised, not just one
 
-#### Scenario: AM-25 stamp-free deltas behave exactly as before, on both surfaces
+#### Scenario: AM-25 stamp-free ADDED-only deltas keep the pre-3.1 behavior
 - WHEN a delta carries no base stamp — in the high-level `--change` form and in the single-file form alike
-- THEN no CAS check runs and behavior is identical to pre-3.1 for that file
+- THEN no CAS divergence check runs for that file; an ADDED-only delta merges exactly as pre-3.1, while a stamp-free MUTATION delta falls to the deny-by-default rule (its own requirement) — "no stamp, no check" never means "no stamp, no rules"
 
 #### Scenario: AM-26 the new sentinel matches only an absent store
 - WHEN a delta is stamped `<!-- apriori-base: new -->`

@@ -367,7 +367,7 @@ test('SR-33 the teardown false-green is dead', () => {
 
 test('SR-34 bare and half-shaped not-ok points block even on exit 0', () => {
   const { file } = tmpSpec('#### Scenario: XX-01 a\n');
-  for (const bad of ['not ok', 'not ok 3', 'not ok 4 teardown', 'not ok - teardown failed']) {
+  for (const bad of ['not ok', 'not ok 2', 'not ok 2 teardown', 'not ok - teardown failed']) {
     const r = runCli(['--specs', file, '--test-cmd',
       `node -e "console.log('ok 1 - XX-01 a');console.log('${bad}');console.log('1..2')"`]);
     assert.strictEqual(r.status, 1, `${bad}: ${r.stdout}`);
@@ -438,4 +438,130 @@ test('SR-37 the reporting contract is exact', () => {
   const g = runCli(['--specs', file, '--test-cmd', `node -e "console.log('ok 1 - XX-01 a')"`, '--json']);
   const gj = JSON.parse(g.stdout);
   assert.deepStrictEqual(gj.unattributedFailures, { count: 0, lines: [] });
+});
+
+// ---- tap-contract (SR-39..48): TAP is a version-aware protocol ----
+
+// write a raw TAP stream to a file and emit it verbatim via node (cross-platform, byte-exact)
+function tapFile(content, toStderr = false) {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-tap-'));
+  const f = path.join(d, 'stream.txt');
+  fs.writeFileSync(f, content);
+  const target = toStderr ? 'process.stderr' : 'process.stdout';
+  return `node -e "${target}.write(require('fs').readFileSync(process.argv[1],'utf8'))" ${JSON.stringify(f)}`;
+}
+
+test('SR-39 a mid-stream plan is untrustworthy', () => {
+  const { file } = tmpSpec('#### Scenario: XX-01 a\n');
+  const r = runCli(['--specs', file, '--test-cmd', tapFile('ok 1 - XX-01 a\n1..2\nok 2 - XX-01 b\n')]);
+  assert.strictEqual(r.status, 2, r.stdout + r.stderr);
+  assert.match(r.stderr, /mid-stream|middle/i);
+});
+
+test('SR-40 out-of-plan point numbers are untrustworthy', () => {
+  const { file } = tmpSpec('#### Scenario: XX-01 a\n');
+  const r = runCli(['--specs', file, '--test-cmd', tapFile('1..1\nok 2 - XX-01 a\n')]);
+  assert.strictEqual(r.status, 2, r.stdout + r.stderr);
+  assert.match(r.stderr, /range|outside/i);
+});
+
+test('SR-41 the version matrix is closed', () => {
+  const { file } = tmpSpec('#### Scenario: XX-01 a\n');
+  const okBody = 'ok 1 - XX-01 a\n1..1\n';
+  for (const v of ['TAP version 12\n', 'TAP version 13\n', 'TAP version 14\n', '']) {
+    const r = runCli(['--specs', file, '--test-cmd', tapFile(v + okBody)]);
+    assert.strictEqual(r.status, 0, `${v || '(none)'}: ${r.stdout}${r.stderr}`);
+  }
+  for (const v of ['0', '9', '11', '15', '99', 'banana']) {
+    const r = runCli(['--specs', file, '--test-cmd', tapFile(`TAP version ${v}\n` + okBody)]);
+    assert.strictEqual(r.status, 2, `version ${v}: ${r.stdout}${r.stderr}`);
+    assert.match(r.stderr, /version/i);
+  }
+  // indented and closed-YAML version strings are diagnostics
+  const ind = runCli(['--specs', file, '--test-cmd', tapFile('ok 1 - XX-01 a\n    TAP version 99\n1..1\n')]);
+  assert.strictEqual(ind.status, 0, ind.stdout + ind.stderr);
+  const yml = runCli(['--specs', file, '--test-cmd', tapFile('ok 1 - XX-01 a\n---\nTAP version 99\n...\n1..1\n')]);
+  assert.strictEqual(yml.status, 0, yml.stdout + yml.stderr);
+});
+
+test('SR-42 a version line is single and leading', () => {
+  const { file } = tmpSpec('#### Scenario: XX-01 a\n');
+  const dup = runCli(['--specs', file, '--test-cmd', tapFile('TAP version 13\nTAP version 13\nok 1 - XX-01 a\n1..1\n')]);
+  assert.strictEqual(dup.status, 2, dup.stdout + dup.stderr);
+  const late = runCli(['--specs', file, '--test-cmd', tapFile('ok 1 - XX-01 a\nTAP version 13\n1..1\n')]);
+  assert.strictEqual(late.status, 2, late.stdout + late.stderr);
+});
+
+test('SR-43 escaped hashes are description, not directives', () => {
+  const { file } = tmpSpec('#### Scenario: XX-01 a\n');
+  // the reviewer's reproduced false-green: \# is a literal hash, the point is a REAL failure
+  const r = runCli(['--specs', file, '--test-cmd',
+    tapFile('TAP version 14\nok 1 - XX-01 pass\nnot ok 2 - XX-01 cleanup \\# TODO is literal text\n1..2\n')]);
+  assert.strictEqual(r.status, 1, r.stdout + r.stderr);
+  assert.match(r.stdout, /BOUND-RED/);
+  // an escaped hash on a PASSING point stays an attributed pass
+  const p = runCli(['--specs', file, '--test-cmd',
+    tapFile('TAP version 14\nok 1 - XX-01 pass \\# SKIP nope\n1..1\n')]);
+  assert.strictEqual(p.status, 0, p.stdout + p.stderr);
+  // \\# — the backslash escapes the backslash, the hash IS a directive delimiter
+  const s = runCli(['--specs', file, '--test-cmd',
+    tapFile('TAP version 14\nok 1 - XX-01 pass\nnot ok 2 - XX-01 x \\\\# SKIP later\n1..2\n')]);
+  assert.strictEqual(s.status, 0, s.stdout + s.stderr);
+});
+
+test('SR-44 bail-out is case-insensitive and indentation-blind', () => {
+  const { file } = tmpSpec('#### Scenario: XX-01 a\n');
+  for (const b of ['bAiL OuT! environment lost', '  Bail out! nested']) {
+    const r = runCli(['--specs', file, '--test-cmd', tapFile(`ok 1 - XX-01 a\n${b}\n1..1\n`)]);
+    assert.strictEqual(r.status, 2, `${b}: ${r.stdout}${r.stderr}`);
+    assert.match(r.stderr, /abort/i);
+  }
+});
+
+test('SR-45 lone-CR streams cannot hide failures', () => {
+  const { file } = tmpSpec('#### Scenario: XX-01 a\n');
+  const r = runCli(['--specs', file, '--test-cmd', tapFile('ok 1 - XX-01 a\rnot ok 2 - XX-01 broken\r1..2\r')]);
+  assert.strictEqual(r.status, 1, r.stdout + r.stderr);
+  assert.match(r.stdout, /BOUND-RED/);
+});
+
+test('SR-46 dashless descriptions bind and SKIP-suffixes skip', () => {
+  const { file } = tmpSpec('#### Scenario: XX-01 a\n');
+  const dashless = runCli(['--specs', file, '--test-cmd', tapFile('ok 1 XX-01 pass\n1..1\n')]);
+  assert.strictEqual(dashless.status, 0, dashless.stdout + dashless.stderr);
+  assert.match(dashless.stdout, /BOUND-GREEN/);
+  const skipped = runCli(['--specs', file, '--test-cmd',
+    tapFile('ok 1 - XX-01 pass\nnot ok 2 - XX-01 cleanup # SKIPPED: platform\n1..2\n')]);
+  assert.strictEqual(skipped.status, 0, skipped.stdout + skipped.stderr);
+  assert.doesNotMatch(skipped.stdout, /BOUND-RED/);
+});
+
+test('SR-47 stderr is a diagnostics channel with an exact contract', () => {
+  const { file } = tmpSpec('#### Scenario: XX-01 a\n');
+  const both = `node -e "process.stdout.write('ok 1 - XX-01 a\\n1..1\\n');process.stderr.write('not ok 2 - noise from logger\\n')"`;
+  const r = runCli(['--specs', file, '--test-cmd', both]);
+  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /STDERR DIAGNOSTICS/);
+  assert.match(r.stdout, /noise from logger/);
+  const j = JSON.parse(runCli(['--specs', file, '--test-cmd', both, '--json']).stdout);
+  assert.match(j.stderr, /noise from logger/);
+  const clean = JSON.parse(runCli(['--specs', file, '--test-cmd', tapFile('ok 1 - XX-01 a\n1..1\n'), '--json']).stdout);
+  assert.strictEqual(clean.stderr, '');
+  // stderr-only TAP stays zero-TAP with the 2>&1 remedy
+  const errOnly = runCli(['--specs', file, '--test-cmd', tapFile('ok 1 - XX-01 a\n1..1\n', true)]);
+  assert.strictEqual(errOnly.status, 2, errOnly.stdout + errOnly.stderr);
+  assert.match(errOnly.stderr, /2>&1/);
+  // a bail-out misrouted to stderr gets the same remedy (TCIMPL-1)
+  const bailErr = runCli(['--specs', file, '--test-cmd', tapFile('bAiL OuT! env lost\n', true)]);
+  assert.strictEqual(bailErr.status, 2, bailErr.stdout + bailErr.stderr);
+  assert.match(bailErr.stderr, /2>&1/);
+});
+
+test('SR-48 YAML must close and pragma is the only pass', () => {
+  const { file } = tmpSpec('#### Scenario: XX-01 a\n');
+  const open = runCli(['--specs', file, '--test-cmd', tapFile('ok 1 - XX-01 a\n---\nnever closed\n')]);
+  assert.strictEqual(open.status, 2, open.stdout + open.stderr);
+  assert.match(open.stderr, /YAML|unterminated/i);
+  const pragma = runCli(['--specs', file, '--test-cmd', tapFile('TAP version 14\nok 1 - XX-01 a\npragma +bail\nok 2 - XX-01 b\n1..2\n')]);
+  assert.strictEqual(pragma.status, 0, pragma.stdout + pragma.stderr);
 });

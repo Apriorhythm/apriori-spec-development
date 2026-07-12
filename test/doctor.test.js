@@ -295,3 +295,25 @@ test('DR-13 mixed 3.x layouts are named, clean ones pass', () => {
   const r2 = doctor.runDoctor({ cwd: clean, testCmd: TAP_OK });
   assert.strictEqual(r2.checks.find((c) => c.id === 'D8').status, 'ok');
 });
+
+test('DR-14 the D5 matrix follows the lexer', () => {
+  const failProbe = `node -e "console.log('not ok 1 - broken')"`;
+  const r1 = doctor.runDoctor({ cwd: healthy(), testCmd: failProbe });
+  const d5a = r1.checks.find((c) => c.id === 'D5');
+  assert.strictEqual(d5a.status, 'ok', d5a.detail);
+  assert.match(d5a.detail, /verify/i);
+  const r2 = doctor.runDoctor({ cwd: healthy(), testCmd: `node -e "console.log('TAP version 99');console.log('ok 1 - x')"` });
+  const d5b = r2.checks.find((c) => c.id === 'D5');
+  assert.strictEqual(d5b.status, 'finding');
+  assert.match(d5b.detail, /99/);
+  const r3 = doctor.runDoctor({ cwd: healthy(), testCmd: `node -e "process.stderr.write('ok 1 - x\\n1..1\\n')"` });
+  const d5c = r3.checks.find((c) => c.id === 'D5');
+  assert.strictEqual(d5c.status, 'finding');
+  assert.match((d5c.fix || '') + d5c.detail, /2>&1/);
+  const r4 = doctor.runDoctor({ cwd: healthy(), testCmd: `node -e "console.log('TAP version 13');console.log('ok 1 - x');console.log('1..1')"` });
+  assert.strictEqual(r4.checks.find((c) => c.id === 'D5').status, 'ok');
+  // a stderr-only bail-out is misrouted TAP, not "no output" (TCIMPL-1)
+  const r5 = doctor.classifyProbe({ out: '', stderr: 'bAiL OuT! env lost\n', status: 0, signal: null, error: null });
+  assert.strictEqual(r5.status, 'finding');
+  assert.match((r5.fix || '') + r5.detail, /2>&1/);
+});

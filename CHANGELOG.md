@@ -2,6 +2,15 @@
 
 All notable changes to `apriori-cli`. Versions follow semver; the stability promise: CLI surface & flags, `--json` shapes, the delta format and the flow-state schema only break in a major.
 
+## 4.0.3 — 2026-07-12 · the gate's KB check stops lying, the runbook version stops drifting
+
+Both fixes trace to the 4.0.2 dogfooding experiments — two independent sub-agents (Opus, Sonnet) each ran a full change on a real project (quick-poll, mini-kv) — and echo GPT-5.6's earlier P2 note. Each change went through the full loop with adversarial codex review.
+
+- **C6 binds through a truth index, not a filename guess** — gate's KB-freshness check was silently skipping whole classes of real project three ways: the truth doc's filename differed from the store basename (`poll.md` vs `quick-poll`), the `source-commit` sat in a non-bare form, or the code lived outside `lib/`. Now a truth doc may declare `store-module:` and `source-files:` in its header region (defaulting to the basename and `lib/<module>.js`); a covered module with a valid stamp is ALWAYS mechanically checked, never a silent skip; two docs claiming one module conflict-block; a non-canonical `source-commit` yields a format-pointing note instead of a vague "no source-commit"; and an explicit `source-files` is a complete promise — any missing, malformed, symlinked, escaping, or non-file token blocks (a declared directory is valid). Field-less truth docs — this repo's own — keep the byte-identical pre-change verdict, verified by the repo's own gate checking the `gate` module through the new index.
+- **CK-11 keeps the runbook version aligned with the CLI major** — the runbook header declared `runbook-version: 3.0` while shipping with the 4.x CLI and being refreshed by `update`. `apriori check --self` now asserts RUNBOOK.md (canonical, required) and RUNBOOK_cn.md (optional) each carry exactly one header-region `runbook-version` blockquote entry whose major equals `package.json`'s — failing on missing, duplicate, malformed, or mismatch, never matching body-text or fenced occurrences — and both headers are corrected to `4.0`.
+
+254 tests.
+
 ## 4.0.2 — 2026-07-12 · the judge's input boundaries harden
 
 Every item answers the GPT-5.6 fourth review (each defect reproduced first; three changes through the full loop with adversarial codex reviews). The theme: the three places a verdict-maker touched raw input — TAP, markdown config, the filesystem — now treat it as protocol, structure, and trust chain.

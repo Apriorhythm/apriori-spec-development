@@ -237,3 +237,61 @@ test('CK-10 committed secrets in review evidence fail the check', () => {
     assert.match(r3.stdout, /d[\/\\]review.*symlink|symlink/);
   }
 });
+
+// ---- runbook-version-sync (CK-11): runbook major tracks the CLI major ----
+test('CK-11 the runbook major tracks the CLI major', () => {
+  const { checkRunbookVersion } = require('../lib/check');
+  const os3 = require('node:os'); const fs3 = require('node:fs'); const p3 = require('node:path');
+  const root = fs3.mkdtempSync(p3.join(os3.tmpdir(), 'apriori-ck11-'));
+  fs3.writeFileSync(p3.join(root, 'package.json'), JSON.stringify({ version: '4.0.3' }));
+  const EN = '# R\n\n> `runbook-version: 4.0` · upstream: x\n';
+  const CN = '# R\n\n> `runbook-version: 4.0` · 上游:x\n';
+  const files = (en, cn) => ({ 'RUNBOOK.md': en, ...(cn !== undefined ? { 'RUNBOOK_cn.md': cn } : {}) });
+  // aligned -> pass
+  assert.deepStrictEqual(checkRunbookVersion(root, files(EN, CN)), []);
+  // EN flipped to 3.0 -> fail naming file + both majors
+  const bad = checkRunbookVersion(root, files(EN.replace('4.0', '3.0'), CN));
+  assert.strictEqual(bad.length, 1);
+  assert.match(bad[0], /RUNBOOK\.md/);
+  assert.match(bad[0], /3.*4|major/);
+  // CN flipped -> fail names CN
+  assert.match(checkRunbookVersion(root, files(EN, CN.replace('4.0', '5.0')))[0], /RUNBOOK_cn\.md/);
+});
+
+test('CK-12 malformed, missing, duplicate, and body occurrences', () => {
+  const { checkRunbookVersion } = require('../lib/check');
+  const os3 = require('node:os'); const fs3 = require('node:fs'); const p3 = require('node:path');
+  const root = fs3.mkdtempSync(p3.join(os3.tmpdir(), 'apriori-ck11b-'));
+  fs3.writeFileSync(p3.join(root, 'package.json'), JSON.stringify({ version: '4.0.3' }));
+  const one = (body) => ({ 'RUNBOOK.md': `# R\n\n${body}\n` });
+  // missing entry
+  assert.match(checkRunbookVersion(root, one('just prose, no version'))[0], /no.*runbook-version|missing/i);
+  // duplicate
+  assert.match(checkRunbookVersion(root, one('> `runbook-version: 4.0`\n> `runbook-version: 4.0`'))[0], /one required|duplicate|2 /i);
+  // malformed value
+  assert.match(checkRunbookVersion(root, one('> `runbook-version: vier`'))[0], /malformed/i);
+  // body-text occurrence (not a blockquote-backtick entry) is never matched -> treated as missing
+  assert.match(checkRunbookVersion(root, one('the field runbook-version: 4.0 in prose'))[0], /no.*runbook-version|missing/i);
+  // inside a code fence -> never matched -> missing
+  assert.match(checkRunbookVersion(root, one('```\n> `runbook-version: 4.0`\n```'))[0], /no.*runbook-version|missing/i);
+  // a real blockquote AFTER the first h2 (body region) is never matched -> missing (RVIMPL-2)
+  assert.match(checkRunbookVersion(root, { 'RUNBOOK.md': '# R\n\n## Body\n\n> `runbook-version: 4.0`\n' })[0], /no.*runbook-version|missing/i);
+  // RUNBOOK.md absent under --self -> the canonical runbook is required (RVIMPL-1)
+  assert.match(checkRunbookVersion(root, { 'RUNBOOK_cn.md': '# R\n\n> `runbook-version: 4.0`\n' })[0], /canonical|missing/i);
+});
+
+test('CK-11 runs under --self and not in consumer mode', () => {
+  const os3 = require('node:os'); const fs3 = require('node:fs'); const p3 = require('node:path');
+  const { spawnSync } = require('node:child_process');
+  const BIN3 = p3.join(__dirname, '..', 'bin', 'apriori.js');
+  const root = fs3.mkdtempSync(p3.join(os3.tmpdir(), 'apriori-ck11s-'));
+  fs3.mkdirSync(p3.join(root, 'apriori', 'specs'), { recursive: true });
+  fs3.writeFileSync(p3.join(root, 'apriori/specs/x.md'), '#### Scenario: XX-01 a\n- t\n');
+  fs3.writeFileSync(p3.join(root, 'package.json'), JSON.stringify({ version: '4.0.3' }));
+  fs3.writeFileSync(p3.join(root, 'RUNBOOK.md'), '# R\n\n> `runbook-version: 3.0`\n');
+  fs3.writeFileSync(p3.join(root, 'RUNBOOK_cn.md'), '# R\n\n> `runbook-version: 3.0`\n');
+  const self = spawnSync('node', [BIN3, 'check', '--self'], { cwd: root, encoding: 'utf8' });
+  assert.match(self.stdout + self.stderr, /runbook-version|CK-11/i);
+  const consumer = spawnSync('node', [BIN3, 'check'], { cwd: root, encoding: 'utf8' });
+  assert.doesNotMatch(consumer.stdout + consumer.stderr, /runbook-version major|CK-11/i);
+});

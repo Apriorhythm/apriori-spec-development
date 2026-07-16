@@ -2,6 +2,14 @@
 
 All notable changes to `apriori-cli`. Versions follow semver; the stability promise: CLI surface & flags, `--json` shapes, the delta format and the flow-state schema only break in a major.
 
+## 4.0.4 — 2026-07-16 · the Quickstart leads with the agent
+
+Docs only — no CLI, flag, or behavior change.
+
+- **README Quickstart restructured into two routes** — Route A is how you'll actually use it: drive an agent in Claude Code (`apriori init`'s interactive tool picker, then `/apriori` with no argument to brainstorm, or `/apriori <change>` to run the loop to the next human gate), never hand-writing a spec or state file. Route B keeps the deterministic run-it-by-hand walk (install → red → green → gate → archive) — the same 4-block sequence the golden-path check executes against this file, now labeled as the non-interactive / CI form of Route A's menu. Applied to both `README.md` and `README_cn.md`; the golden-path extractor scopes to Route B's runnable blocks, so the executable-Quickstart guarantee is unchanged.
+
+254 tests.
+
 ## 4.0.3 — 2026-07-12 · the gate's KB check stops lying, the runbook version stops drifting
 
 Both fixes trace to the 4.0.2 dogfooding experiments — two independent sub-agents (Opus, Sonnet) each ran a full change on a real project (quick-poll, mini-kv) — and echo GPT-5.6's earlier P2 note. Each change went through the full loop with adversarial codex review.

@@ -18,7 +18,33 @@ Humans start with the Quickstart below; AI agents read the self-contained [RUNBO
 
 ## Quickstart
 
-Ten minutes, from an empty directory to a spec-bound green. Requires Node ≥ 22 and a POSIX shell.
+apriori is built to be **driven by an AI agent** — you talk, it runs the loop, you approve at the gates. **Route A** is how you'll actually use it; **Route B** runs the same loop by hand once, so you can see (and trust) every command the agent issues. Requires Node ≥ 22 and a POSIX shell.
+
+### Route A — the way you'll actually use it (Claude Code)
+
+Install once (`npm i -g apriori-cli`), then in your project run `apriori init`. It asks which AI tools to wire up — pick **Claude Code** with the arrow keys (↑/↓ move, space to toggle, enter to confirm):
+
+```text
+  Select AI tools  (↑/↓ move · space toggle · a all · enter confirm):
+❯ ◉ Claude Code
+  ◯ Codex
+  ◯ Cursor
+  ◯ GitHub Copilot
+  ◯ OpenCode
+  ◯ Windsurf
+  selected: Claude Code
+```
+
+It previews what it'll write, asks `Proceed? (Y/n)`, then scaffolds `apriori/` and gives Claude Code its two pointers: a `CLAUDE.md` rule and a `/apriori` slash command. Now launch Claude Code (`claude`) and drive it in plain language:
+
+- **Idea still fuzzy** → type `/apriori` with no arguments. It brainstorms with you first — asking the edge questions you didn't think of — and **writes nothing durable until you approve**.
+- **Change already clear** → type `/apriori add-reopen` (any change name). The agent reads the runbook, runs `apriori new` / `verify` / `gate` / `archive` in the background, pulls a *different* model for the adversarial review, and **stops at each human gate** to report and wait for your nod.
+
+You do two things: **say what you want, and approve at the gates** — you never hand-write a spec or a state file. (The same protocol runs in Codex / Cursor / Windsurf / Copilot; `init --tools <tool>` just writes each one its own pointer.)
+
+### Route B — see the engine (run the loop by hand once)
+
+Route A's agent runs exactly the commands below. Doing them yourself once — ten minutes, empty directory to a spec-bound green — is the fastest way to trust what the agent does, and it's the deterministic path, so every output is checkable.
 
 ```shell
 npm i -g apriori-cli
@@ -27,7 +53,7 @@ apriori init --tools claude --test-cmd "node --test --test-reporter=tap" --yes
 apriori doctor --no-run
 ```
 
-`init` scaffolds `apriori/` and a runbook pointer for your AI tool; `doctor` confirms the seam is healthy (expect `DOCTOR: HEALTHY`; exit 0).
+`init` here uses `--tools claude --yes` — the non-interactive form of Route A's menu (handy for scripts and CI); `doctor` confirms the seam is healthy (expect `DOCTOR: HEALTHY`; exit 0).
 
 ```shell
 apriori new hello
@@ -82,9 +108,7 @@ apriori verify --specs apriori/specs
 apriori check
 ```
 
-`gate` aggregates the mechanical checks into one exit code (its PASS never replaces a human gate). `archive --change` merges the delta into the living store `apriori/specs/` and files the change away; plain `verify` now proves the merged store, and `check` is your CI guard. That's the loop: **spec → red → green → gate → archive**.
-
-From here, work WITH an agent instead of by hand: idea still fuzzy → run */apriori* with no arguments (brainstorm first, nothing written until you approve); change already clear → *"Follow the apriori runbook for change `<name>`"* and answer at each human gate.
+`gate` aggregates the mechanical checks into one exit code (its PASS never replaces a human gate). `archive --change` merges the delta into the living store `apriori/specs/` and files the change away; plain `verify` now proves the merged store, and `check` is your CI guard. That's the loop Route A automates for you: **spec → red → green → gate → archive**.
 
 ## Where everything else lives
 

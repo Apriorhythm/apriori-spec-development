@@ -18,7 +18,33 @@
 
 ## Quickstart
 
-十分钟,从空目录到规格绑定的绿。需要 Node ≥ 22 和 POSIX shell。
+apriori 天生就是**让 AI agent 来驱动**的——你说话,它跑循环,你在闸口点头。**路线 A** 是你实际会怎么用;**路线 B** 把同一个循环手敲一遍,让你看清(并信任)agent 替你下的每一条命令。需要 Node ≥ 22 和 POSIX shell。
+
+### 路线 A —— 你实际会怎么用它(Claude Code)
+
+先装一次(`npm i -g apriori-cli`),然后在你的项目里跑 `apriori init`。它会问你要接哪些 AI 工具——用方向键选 **Claude Code**(↑/↓ 移动,空格勾选,enter 确认):
+
+```text
+  Select AI tools  (↑/↓ move · space toggle · a all · enter confirm):
+❯ ◉ Claude Code
+  ◯ Codex
+  ◯ Cursor
+  ◯ GitHub Copilot
+  ◯ OpenCode
+  ◯ Windsurf
+  selected: Claude Code
+```
+
+它会预览要写哪些文件,问 `Proceed? (Y/n)`,然后搭好 `apriori/`,并给 Claude Code 写两个指针:一份 `CLAUDE.md` 规则和一个 `/apriori` 斜杠命令。现在启动 Claude Code(`claude`),用大白话驱动它:
+
+- **想法还模糊** → 直接敲 `/apriori`(不带参数)。它先和你脑暴——追问你没想到的边界问题——**在你点头前什么都不落盘**。
+- **变更已清楚** → 敲 `/apriori add-reopen`(任意变更名)。agent 读 runbook,在后台跑 `apriori new` / `verify` / `gate` / `archive`,拉一个*不同的*模型做对抗评审,并**在每个人工闸口停下来**汇报、等你点头。
+
+你只做两件事:**说出你要什么,在闸口点头**——你从不手写规格文件或状态文件。(同一套协议在 Codex / Cursor / Windsurf / Copilot 里一样跑;`init --tools <工具>` 只是给每个工具写各自的指针。)
+
+### 路线 B —— 看看引擎(手敲一遍这个循环)
+
+路线 A 的 agent 跑的正是下面这些命令。自己手敲一遍——十分钟,从空目录到规格绑定的绿——是信任 agent 所作所为的最快方式,而且它是确定性路径,每个输出都可核对。
 
 ```shell
 npm i -g apriori-cli
@@ -27,7 +53,7 @@ apriori init --tools claude --test-cmd "node --test --test-reporter=tap" --yes
 apriori doctor --no-run
 ```
 
-`init` 搭好 `apriori/` 和你 AI 工具的 runbook 指针;`doctor` 确认接缝健康(预期 `DOCTOR: HEALTHY`,退出码 0)。
+这里的 `init` 用了 `--tools claude --yes`——就是路线 A 那个菜单的非交互形式(方便脚本和 CI);`doctor` 确认接缝健康(预期 `DOCTOR: HEALTHY`,退出码 0)。
 
 ```shell
 apriori new hello
@@ -82,9 +108,7 @@ apriori verify --specs apriori/specs
 apriori check
 ```
 
-`gate` 把机械检查合成一个退出码(它的 PASS 绝不替代人工闸口)。`archive --change` 把增量并入 living 规格库 `apriori/specs/` 并归档变更;普通 `verify` 现在证明合并后的库,`check` 是 CI 守卫。循环就是:**规格 → 红 → 绿 → gate → 归档**。
-
-从这里开始换成和 agent 协作:想法还模糊 → 跑不带参数的 */apriori*(先脑暴,你点头前什么都不写);变更已清楚 → 对 agent 说 *"按 apriori runbook 推进变更 `<名字>`"*,在每个人工闸口应答。
+`gate` 把机械检查合成一个退出码(它的 PASS 绝不替代人工闸口)。`archive --change` 把增量并入 living 规格库 `apriori/specs/` 并归档变更;普通 `verify` 现在证明合并后的库,`check` 是 CI 守卫。这正是路线 A 替你自动跑的循环:**规格 → 红 → 绿 → gate → 归档**。
 
 ## Where everything else lives
 

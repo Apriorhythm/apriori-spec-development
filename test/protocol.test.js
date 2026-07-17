@@ -511,9 +511,9 @@ test('PR-22 the promise and the pointers are current', () => {
   assert.ok(sec.length > 0, 'MIGRATING has a 4.0 section');
   for (const root of ['requirement/', 'spike/', 'apriori/review/', 'apriori/design/', 'apriori/explore/'])
     assert.ok(sec.includes(root), `MIGRATING 4.0 section names ${root}`);
-  // homepage → v4
+  // homepage → repository root (no branch segment; follows the default branch)
   const pkg = JSON.parse(fsx.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
-  assert.ok(pkg.homepage.endsWith('tree/v4#readme'), pkg.homepage);
+  assert.ok(pkg.homepage.endsWith('apriori-spec-development#readme') && !pkg.homepage.includes('/tree/'), pkg.homepage);
 });
 
 test('PR-23 the pointer is packaged and dual-form', () => {
@@ -522,7 +522,7 @@ test('PR-23 the pointer is packaged and dual-form', () => {
   assert.ok(pkg.files.includes('MIGRATING.md'), 'MIGRATING.md ships in the npm package');
   const doctorSrc = fsx.readFileSync(path.join(ROOT, 'lib', 'doctor.js'), 'utf8');
   const updateSrc = fsx.readFileSync(path.join(ROOT, 'lib', 'update.js'), 'utf8');
-  const url = 'https://github.com/Apriorhythm/apriori-spec-development/blob/v4/MIGRATING.md';
+  const url = 'https://github.com/Apriorhythm/apriori-spec-development/blob/main/MIGRATING.md';
   for (const [label, src] of [['doctor', doctorSrc], ['update', updateSrc]]) {
     assert.ok(src.includes('MIGRATING.md'), `${label} names the local file`);
     assert.ok(src.includes(url), `${label} carries the stable URL`);

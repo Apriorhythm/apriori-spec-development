@@ -2,6 +2,14 @@
 
 All notable changes to `apriori-cli`. Versions follow semver; the stability promise: CLI surface & flags, `--json` shapes, the delta format and the flow-state schema only break in a major.
 
+## 4.0.5 — 2026-07-17 · v4 becomes the trunk
+
+Repository/release plumbing only — no CLI, flag, or behavior change; the published files are byte-identical to 4.0.4.
+
+- **The v4 line is promoted to `main`** — `main` now carries the product (the old V1 `main` is preserved on the `v1` branch). CI triggers moved from `[v4]` to `[main]`, and `package.json`'s `homepage` now points at the repository root (`#readme`, following the default branch) instead of `tree/v4`. Development continues on `main`; the `v4` branch is retired.
+
+254 tests.
+
 ## 4.0.4 — 2026-07-16 · the Quickstart leads with the agent
 
 Docs only — no CLI, flag, or behavior change.

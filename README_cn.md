@@ -16,11 +16,21 @@
 
 人类从下面的 Quickstart 开始;AI agent 读自包含的 [RUNBOOK_cn.md](./RUNBOOK_cn.md),不需要本手册。apriori **用你书写的语言干活**(想固定语言就 `apriori init --language 中文`)。
 
+<p align="center">
+  <img src="docs/demo.gif" alt="apriori CLI 循环:verify 报 GAPS(红),绑定到场景的测试让它变 GREEN,gate PASS,archive 归档" width="820">
+  <br><sub><b>规格 → 红 → 绿 → gate → 归档。</b> 每个场景没绑定到通过的测试,<code>verify</code> 就不给绿——一句“搞定了”的假绿由命令抓出来,而不是靠肉眼看 diff。<br><i>(CLI 输出按设计恒为英文,中英文档共用此图。)</i></sub>
+</p>
+
 ## Quickstart
 
 apriori 天生就是**让 AI agent 来驱动**的——你说话,它跑循环,你在闸口点头。**路线 A** 是你实际会怎么用;**路线 B** 把同一个循环手敲一遍,让你看清(并信任)agent 替你下的每一条命令。需要 Node ≥ 22 和 POSIX shell。
 
 ### 路线 A —— 你实际会怎么用它(Claude Code)
+
+<p align="center">
+  <img src="docs/onboard-goal-demo-cn.gif" alt="Claude Code 全流程:装 apriori、apriori init 选 Claude Code、/apriori 造一个命令行加法器、/goal 自动跑完整条 apriori 流水线并归档,最后运行生成的工具" width="880">
+  <br><sub>真实录制(等待已剪):<code>npm i</code> → <code>apriori init</code>(选 Claude Code)→ <code>/apriori</code> 提一个小需求 → <code>/goal</code> 自动跑完 规格→评审→实现→verify→gate→归档,只在唯一的人工闸口停下等你点头,最后你亲手运行它造出来的工具。你只需说要什么、点一次头。</sub>
+</p>
 
 先装一次(`npm i -g apriori-cli`),然后在你的项目里跑 `apriori init`。它会问你要接哪些 AI 工具——用方向键选 **Claude Code**(↑/↓ 移动,空格勾选,enter 确认):
 

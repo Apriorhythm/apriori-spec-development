@@ -16,11 +16,21 @@
 
 Humans start with the Quickstart below; AI agents read the self-contained [RUNBOOK.md](./RUNBOOK.md) instead and never need this handbook. apriori answers in **whatever language you write in** (pin it with `apriori init --language 中文` if you prefer).
 
+<p align="center">
+  <img src="docs/demo.gif" alt="apriori CLI loop: verify reports GAPS in red, a test bound to the scenario turns it GREEN, gate PASS, archive merged" width="820">
+  <br><sub><b>spec → red → green → gate → archive.</b> <code>verify</code> refuses to go green until every scenario is bound to a passing test — a false &ldquo;done&rdquo; is caught by a command, not by eyeballing a diff.</sub>
+</p>
+
 ## Quickstart
 
 apriori is built to be **driven by an AI agent** — you talk, it runs the loop, you approve at the gates. **Route A** is how you'll actually use it; **Route B** runs the same loop by hand once, so you can see (and trust) every command the agent issues. Requires Node ≥ 22 and a POSIX shell.
 
 ### Route A — the way you'll actually use it (Claude Code)
+
+<p align="center">
+  <img src="docs/onboard-goal-demo.gif" alt="Full Claude Code flow: install apriori, apriori init picks Claude Code, /apriori builds a CLI adder, /goal drives the whole apriori pipeline to archived, then the generated tool runs" width="880">
+  <br><sub>Real, unedited run (waits cut): <code>npm i</code> → <code>apriori init</code> → <code>/apriori</code> a tiny change → <code>/goal</code> drives spec → review → implement → verify → gate → archive on its own, stops at the one human gate for your OK, then you run the tool it built. You say what you want and nod once.</sub>
+</p>
 
 Install once (`npm i -g apriori-cli`), then in your project run `apriori init`. It asks which AI tools to wire up — pick **Claude Code** with the arrow keys (↑/↓ move, space to toggle, enter to confirm):
 

@@ -2,6 +2,14 @@
 
 All notable changes to `apriori-cli`. Versions follow semver; the stability promise: CLI surface & flags, `--json` shapes, the delta format and the flow-state schema only break in a major.
 
+## 4.0.6 — 2026-07-18 · the READMEs show the demos
+
+Docs only — no CLI, flag, or behavior change; `bin/`, `lib/`, `templates/`, and the runbook files are byte-identical to 4.0.5.
+
+- **Both READMEs now embed the demo GIFs** — the hero shows the CLI loop (`verify` GAPS → a scenario-bound test → GREEN → gate → archive), and Route A shows the full Claude Code onboarding (`npm i` → `apriori init` picks Claude Code → `/apriori` a tiny change → `/goal` drives spec → review → implement → verify → gate → archive, stopping only at the one human gate). The GIFs live in `docs/` and stay out of the npm tarball (the `files` allowlist covers `bin/`/`lib/`/`templates/`/runbooks only); npm resolves the relative image paths against the repository, so the package page renders them from `main`. `README_cn.md` embeds the Chinese-language run of the same flow.
+
+254 tests.
+
 ## 4.0.5 — 2026-07-17 · v4 becomes the trunk
 
 Repository/release plumbing only — no CLI, flag, or behavior change; the published files are byte-identical to 4.0.4.

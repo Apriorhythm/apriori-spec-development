@@ -2,6 +2,14 @@
 
 All notable changes to `apriori-cli`. Versions follow semver; the stability promise: CLI surface & flags, `--json` shapes, the delta format and the flow-state schema only break in a major.
 
+## 4.0.7 — 2026-07-18 · drop the broken npm badge
+
+Docs only — no CLI, flag, or behavior change; the published files are byte-identical to 4.0.6 apart from `README.md`.
+
+- **The shields.io npm version badge is removed from both READMEs** — it rendered as a broken image on the npm package page; both READMEs now open directly on the language switcher.
+
+254 tests.
+
 ## 4.0.6 — 2026-07-18 · the READMEs show the demos
 
 Docs only — no CLI, flag, or behavior change; `bin/`, `lib/`, `templates/`, and the runbook files are byte-identical to 4.0.5.

@@ -2,7 +2,27 @@
 
 All notable changes to `apriori-cli`. Versions follow semver; the stability promise: CLI surface & flags, `--json` shapes, the delta format and the flow-state schema only break in a major.
 
-## Unreleased · the hotfix lane, and verification strength that scales mechanically (change hotfix-lane)
+## 4.1.0 — 2026-08-14 · the brownfield P0 answers land: the change verdict judges the change, MODIFIED fidelity is mechanical, id-pattern is project config, and small records finally have a lane
+
+Four changes, each run through the full loop with adversarial heterogeneous review, all
+tracing to one brownfield deployment's feedback. Three of them harden what the tool already
+claimed to do; the fourth adds the first new command since 4.0 — a lane for the records that
+were too small to survive the formal process, with a verification floor built in so the light
+path is not a hole.
+
+**Upgrading from 4.0.x:** `npm i -g apriori-cli@latest`, then `apriori update` (refreshes
+`apriori/runbook.md` to `runbook-version: 4.1`, which gains §2b the hotfix lane and §2c
+verification scaling), then `apriori doctor`. Nothing else changes for existing projects — no
+flag, no `--json` shape, and no gate check behaves differently. `apriori/process-config.md` is
+user-owned and is never touched, so the new `verification-profile` row does **not** appear
+automatically; an absent row means nothing escalates, which is the safe default. Add it by hand
+to opt in:
+
+    | verification-profile | ui | ui / backend / fullstack / docs / none | absent or `none` = nothing escalates |
+
+375 tests.
+
+### the hotfix lane, and verification strength that scales mechanically (change hotfix-lane)
 
 Brownfield feedback P0-4 plus the verification-scaling half of the same problem: a conclusion too small for a change bundle went unwritten (a typo fix, a config correction, a two-hour "nothing is broken" investigation), and a "light path" without a declared verification floor would just have been a hole in the process. The two ship together on purpose — the lane defines the light path, the scaling rule defines the floor on it.
 
@@ -15,9 +35,9 @@ Brownfield feedback P0-4 plus the verification-scaling half of the same problem:
 - **Mapping m1 at the gate**: a hotfix bundle is refused with a pointer at `apriori hotfix archive`, and the seven checks are neither run nor reinterpreted — their logic is untouched. `status` lists and labels the lane; `--change` on a bundle reports it instead of erroring about the absent flow-state; `--json` carries `hotfix`. A directory holding both state files is an identity error at every consumption point.
 - New truth docs: `truth/hotfix.md`, plus the previously missing `truth/new.md`, `truth/resolve.md` and `truth/config.md`. RUNBOOK §2b/§2c (bilingual), `runbook-version` 4.0 → 4.1.
 
-374 tests (318 + 56: CF-13..17, HF-01..42, SR-69..72, GT-28/29, ST-10/11, CL-18).
+375 tests (318 + 57: CF-13..17, HF-01..42, SR-69..72, GT-28/29, ST-10/11, CL-18, CK-17).
 
-## Unreleased · MODIFIED replacement fidelity becomes a mechanical report (change modified-block-integrity)
+### MODIFIED replacement fidelity becomes a mechanical report (change modified-block-integrity)
 
 Brownfield feedback P0-3: "MODIFIED replaces the whole block" fidelity was guarded only by LLM reviewer attention (a real deployment confirmed 11/13 preserved lines by manual subsequence comparison — the one ⚠ row in its defense table, "build it into the CLI").
 
@@ -28,7 +48,7 @@ Brownfield feedback P0-3: "MODIFIED replaces the whole block" fidelity was guard
 
 318 tests (306 + 12: AM-43..47, SR-65..68).
 
-## Unreleased · the change verdict separates from store health (change verify-change-scope)
+### the change verdict separates from store health (change verify-change-scope)
 
 Brownfield feedback P0-2: with 8 parallel unarchived changes, `verify --change` drowned in historical UNBOUND (real replay: 107 scenarios, 61 unbound) while `--specs <delta>` false-orphaned every other change's tests (46) — "is THIS change done" took two commands plus a hand-written disclaimer per change.
 
@@ -41,7 +61,7 @@ Brownfield feedback P0-2: with 8 parallel unarchived changes, `verify --change` 
 
 296 tests (284 + 12: SR-56..64, GT-26..27, plus byte-golden replay).
 
-## Unreleased · id-pattern becomes project configuration (change gate-id-pattern)
+### id-pattern becomes project configuration (change gate-id-pattern)
 
 Brownfield feedback P0-1: on a real store with letter-suffixed (`AC-08a`) and multi-segment (`AC-BIS-01`) IDs, `gate` C1 was permanently BLOCKED (no id-pattern channel) and `check` CK-04 false-failed — a forever-red gate carries no signal.
 

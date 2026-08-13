@@ -39,3 +39,14 @@
 #### Scenario: ST-09 identity and ancestors are checked, absence stays benign
 - WHEN an archived bundle's flow-state declares `change: other` under a `…-demo` stamp dir (and an ACTIVE bundle `changes/demo/` declares the same mismatch); and a second bundle's `review/` is a dangling symlink; and a third simply has no `review/issues.md`
 - THEN `status --change demo` exits 2 naming the identity mismatch at BOTH stages; the second exits 2 naming the bad ancestor (never "0 open"); the third reports 0 open rows as before
+
+### Requirement: status lists and labels hotfix bundles
+`status` SHALL list a hotfix bundle alongside formal changes and label it as the hotfix lane rather than reporting a missing flow-state. `--change` on a hotfix bundle SHALL resolve and report instead of erroring on the absent `flow-state.md`, and the JSON contract SHALL carry a `hotfix` boolean for every change. A directory carrying both identities is an error naming both files.
+
+#### Scenario: ST-10 a hotfix bundle is listed and labelled, not reported as broken
+- WHEN `status` lists active changes and one of them holds `hotfix-state.md`
+- THEN that row reads as the hotfix lane, and `--change` on it reports the lane instead of erroring about a missing flow-state
+
+#### Scenario: ST-11 the JSON contract carries the hotfix flag and both identities are an error
+- WHEN `--json` reports a hotfix bundle and a formal change, and separately when a directory holds both state files
+- THEN the flag is true for the first and false for the second, and the both-identities case is an error naming both files

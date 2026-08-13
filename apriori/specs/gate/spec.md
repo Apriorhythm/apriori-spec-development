@@ -120,3 +120,14 @@ Gate SHALL run a seventh check: the change's projection carrying `unstampedMutat
 #### Scenario: GT-27 only provably out-of-scope reds are non-blocking for C1
 - WHEN the only failures in the TAP stream are tagged reds BOUND to projection scenarios outside change A's scope, and change A's own scenarios are all bound green
 - THEN change A's C1 passes and the store suffix still shows the outstanding counts; conversely WHEN the stream carries an ID-less `not ok` or a FAILING true orphan THEN change A's C1 is BLOCKED (no provenance — fail closed), whatever change A's own scenarios say
+
+### Requirement: a hotfix bundle is refused by the gate with a pointer, not adapted
+The gate's object is a formal change. When the resolved directory carries `hotfix-state.md` the gate SHALL refuse the run as an evaluation error and name `apriori hotfix archive <name>` as the surface that judges the lane — the seven checks are neither run nor reinterpreted, and none of their logic changes. A directory carrying BOTH `flow-state.md` and `hotfix-state.md` is refused as an identity error naming both files, since neither reading can be trusted.
+
+#### Scenario: GT-28 the gate points a hotfix bundle at its own preflight
+- WHEN `gate --change <name>` resolves a directory holding `hotfix-state.md` and no `flow-state.md`
+- THEN the gate exits 2 with an error naming the hotfix lane and `apriori hotfix archive`, and reports no check results at all
+
+#### Scenario: GT-29 a bundle carrying both identities is an error at the gate too
+- WHEN the resolved directory holds both `flow-state.md` and `hotfix-state.md`
+- THEN the gate exits 2 naming both files rather than judging either one

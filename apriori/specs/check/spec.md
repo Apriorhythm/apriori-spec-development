@@ -79,3 +79,10 @@
 #### Scenario: CK-16 a terminated config-pattern match is a check ERROR
 - WHEN the config pattern is catastrophic against the store's own titles (both repository inputs) and `apriori check` runs
 - THEN the child is killed within its budget and check prints a sanitized error naming `process-config` with `RESULT: ERROR`, exit 2 — CI cannot be hung by a config row
+
+### Requirement: the phrase table admits the hotfix lane's verdict phrases
+The canonical verdict phrase table SHALL carry the lane's two new passing phrases (`VERDICT: no findings` for the `inspection` role) and its new failing phrase (`VERDICT: gaps found` for the `p8` role) alongside the existing entries, and both runbooks SHALL contain every canonical phrase as before. A lane verdict line is recognized by the SAME prefix rule as every other: the mandatory `role=` / `digest=` trailers and the conditional `boundary=` trailer follow the phrase, so a real line still starts with a table entry and the existing consumers are unaffected. A `VERDICT:` string appearing anywhere in the scanned docs that does not start with a table entry stays a failure.
+
+#### Scenario: CK-17 the lane's phrases are table entries and its trailers do not break recognition
+- WHEN the runbooks carry the lane's phrase-table rows, and separately when a documented line reads `VERDICT: no findings role=inspection digest=<64 hex> boundary=within`
+- THEN the phrase-table check passes and the trailered line is recognized as its table entry — while an unregistered phrase such as `VERDICT: looks fine to me` still fails, naming the file and line

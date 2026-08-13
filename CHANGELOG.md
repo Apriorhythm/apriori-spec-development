@@ -2,6 +2,23 @@
 
 All notable changes to `apriori-cli`. Versions follow semver; the stability promise: CLI surface & flags, `--json` shapes, the delta format and the flow-state schema only break in a major.
 
+## Unreleased · the SR-64 byte-golden guard becomes platform-correct
+
+The `--specs` byte goldens were captured on POSIX and compared byte-for-byte on every
+platform, but spec file paths in the JSON come from a filesystem walk and are therefore
+platform-native — as they were in state A too, which is what the guard compares against. On
+Windows the run emitted `apriori\\specs\\m\\spec.md` against a golden holding
+`apriori/specs/m/spec.md`, so SR-64 failed there and only there. The replay now folds the path
+separator — and only the separator: a separator appears in the JSON text as two backslashes
+while an escape like `\n` carries one, so folding pairs leaves escapes untouched, and the fold
+itself is asserted in the test. No product behavior changes; the published 4.1.0 tarball ships
+`bin/`, `lib/`, `templates/` and the two docs, so it is unaffected.
+
+Found by CI the first time these commits reached `main` — the branch had never been through
+the Windows matrix.
+
+375 tests.
+
 ## 4.1.0 — 2026-08-14 · the brownfield P0 answers land: the change verdict judges the change, MODIFIED fidelity is mechanical, id-pattern is project config, and small records finally have a lane
 
 Four changes, each run through the full loop with adversarial heterogeneous review, all

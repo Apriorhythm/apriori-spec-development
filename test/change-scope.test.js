@@ -250,11 +250,18 @@ test('SR-64 --specs outputs stay byte-identical to the state-A goldens', () => {
   const G = path.join(__dirname, 'fixtures', 'specs-golden');
   const manifest = JSON.parse(fs.readFileSync(path.join(G, 'manifest.json'), 'utf8'));
   const root = path.join(G, 'proj');
+  // The goldens were captured on POSIX (see capture.mjs). Spec file paths in the JSON come
+  // from a filesystem walk, so they are platform-NATIVE by construction — and were in state A
+  // too, which is what this guard is comparing against. So the byte compare folds the
+  // separator, and only the separator: in the JSON text a path separator is two backslashes,
+  // while an escape like \n carries one, so folding pairs leaves escapes untouched.
+  const foldSep = (s) => (path.sep === '\\' ? s.split('\\\\').join('/') : s);
+  assert.strictEqual(foldSep('a\\\\b "x\\n"'), path.sep === '\\' ? 'a/b "x\\n"' : 'a\\\\b "x\\n"', 'the fold takes separators, not escapes');
   for (const [key, c] of Object.entries(manifest)) {
     const r = spawnSync('node', [BIN, ...c.args], { encoding: 'utf8', cwd: root });
     assert.strictEqual(r.status, c.status, `${key}: exit`);
-    assert.strictEqual(r.stdout, fs.readFileSync(path.join(G, `${key}.stdout`), 'utf8'), `${key}: stdout bytes`);
-    assert.strictEqual(r.stderr, fs.readFileSync(path.join(G, `${key}.stderr`), 'utf8'), `${key}: stderr bytes`);
+    assert.strictEqual(foldSep(r.stdout), fs.readFileSync(path.join(G, `${key}.stdout`), 'utf8'), `${key}: stdout bytes`);
+    assert.strictEqual(foldSep(r.stderr), fs.readFileSync(path.join(G, `${key}.stderr`), 'utf8'), `${key}: stderr bytes`);
   }
 });
 

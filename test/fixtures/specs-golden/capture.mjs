@@ -1,5 +1,7 @@
 // Captures --specs byte goldens (SR-64 / SPEC-4). Run ONCE against state A, commit the
-// outputs; the byte-golden test replays the same fixtures and compares byte-identically.
+// outputs, ON POSIX; the byte-golden test replays the same fixtures and compares
+// byte-identically. Spec file paths in the JSON are platform-native, so the replay folds the
+// path separator — that is why these goldens serve Windows too (see change-scope.test.js).
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';

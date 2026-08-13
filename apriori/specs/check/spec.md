@@ -60,3 +60,22 @@
 #### Scenario: CK-12 malformed, missing, duplicate, and body occurrences
 - WHEN a runbook edition has no `runbook-version` blockquote entry, has two of them, carries a malformed value (`runbook-version: vier`), or mentions `runbook-version:` only in body text or inside a code fence
 - THEN the missing/duplicate/malformed cases FAIL (self-mode) naming the file and the reason, while the body-text and code-fence occurrences are never matched (they alone do not satisfy or fail the check — a real header entry is still required)
+
+### Requirement: CK-04 recognizes IDs through the shared contract
+`check`'s CK-04 SHALL resolve its id-pattern from the config `id-pattern` row (else `DEFAULT_ID`; check gains NO CLI flag — a CI gate consumes the project constant) and SHALL recognize scenario IDs through the same `leadId` semantics as verify — replacing its private `^(…)\b` anchoring — so the four consumers can never disagree on the same title. An invalid config row is `RESULT: ERROR`, exit 2, through check's existing error channel.
+
+#### Scenario: CK-13 CK-04 honors the config id-pattern row
+- WHEN the config carries `| id-pattern | [A-Z]+(-[A-Z]+)*-\d+[a-z]* |` and the store contains scenarios `AC-08a` and `AC-BIS-01`
+- THEN `apriori check` reports no CK-04 failure for them (without the row, both fail CK-04)
+
+#### Scenario: CK-14 check and verify judge identically at the edges
+- WHEN the same title set (letter suffix, multi-segment, trailing `_`, adjacent alphanumeric, a pattern ending in a non-word char, a source carrying its own `^`, an alternation source) is judged by CK-04 and by verify's scenario collection under the same pattern
+- THEN the identified/rejected split is identical — no title is bindable to one consumer and unbindable to the other
+
+#### Scenario: CK-15 an invalid config id-pattern is a check ERROR
+- WHEN the config `id-pattern` row does not compile and `apriori check` runs
+- THEN check prints an error naming `process-config` and `RESULT: ERROR`, exit 2 — CK-04 never silently falls back to the default
+
+#### Scenario: CK-16 a terminated config-pattern match is a check ERROR
+- WHEN the config pattern is catastrophic against the store's own titles (both repository inputs) and `apriori check` runs
+- THEN the child is killed within its budget and check prints a sanitized error naming `process-config` with `RESULT: ERROR`, exit 2 — CI cannot be hung by a config row

@@ -109,3 +109,14 @@ Gate SHALL run a seventh check: the change's projection carrying `unstampedMutat
 #### Scenario: GT-24 an invalid effective pattern is a gate ERROR
 - WHEN gate runs with an uncompilable `--id-pattern`, or with a present-but-EMPTY `--id-pattern` over a valid (or invalid) config row, or without a flag over an uncompilable config row
 - THEN gate exits 2 with `result: ERROR`, the message in `errors[]` names `--id-pattern` (uncompilable and empty flag alike — the empty flag never falls back to the config) or `process-config` respectively, and `--json` output is still pure JSON
+
+### Requirement: C1 in-flight judges the change scope
+`gate`'s C1 SHALL consume the change-scoped verdict and change-scoped duplicates on the in-flight stage, so parallel changes go green independently: a red test or gap belonging to another change's scope never blocks this change's C1. The passing detail reads `verify GREEN (in-flight, change-scoped)`; a blocking detail lists the change-scope gap classes; either detail carries an informative store-summary suffix with the six store-report counts (`; store: <boundRed> red, <unbound> unbound, <orphan> orphan, <unidentified> unidentified, <unattributed> unattributed, <duplicates> duplicate(s) outstanding`). The archived stage (whole-store verify) is unchanged.
+
+#### Scenario: GT-26 parallel changes go green independently
+- WHEN two in-flight changes have disjoint scopes and tests, and a red test belongs to change B's scope (B's scenario lives only in B's delta — invisible to A's projection; the sibling-delta scan attributes it)
+- THEN change A's `gate --change` C1 passes (detail names change-scoped and carries the store suffix) while change B's C1 blocks — in the same repository, from the same TAP stream, even when the test command exits 1
+
+#### Scenario: GT-27 only provably out-of-scope reds are non-blocking for C1
+- WHEN the only failures in the TAP stream are tagged reds BOUND to projection scenarios outside change A's scope, and change A's own scenarios are all bound green
+- THEN change A's C1 passes and the store suffix still shows the outstanding counts; conversely WHEN the stream carries an ID-less `not ok` or a FAILING true orphan THEN change A's C1 is BLOCKED (no provenance — fail closed), whatever change A's own scenarios say

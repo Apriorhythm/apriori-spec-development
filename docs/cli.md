@@ -26,6 +26,8 @@ Example: `apriori doctor`
 
 Exit: 0 HEALTHY · 1 findings · 2 unusable (uninitialized / old Node).
 
+D6 scans the store with the `id-pattern` row (no flag; detail names the source, `config` or `default`). An invalid or terminated row is a D6 finding and the D5 probe is skipped — the test command never runs under a broken id-pattern (§8.0).
+
 ## apriori new
 
 scaffold a change dir + flow-state skeleton
@@ -57,12 +59,15 @@ bind every spec scenario ID to a passing TAP test — the STEP5 gate; `--change`
 ```text
 usage: apriori verify --specs <dir...> --test-cmd "<cmd>" [--id-pattern <re>] [--cwd <dir>] [--json]
    or: apriori verify --change <name> --test-cmd "<cmd>" [--id-pattern <re>] [--cwd <dir>] [--json]
-(--test-cmd may be omitted when apriori/process-config.md has a test-cmd row)
+(--test-cmd may be omitted when apriori/process-config.md has a test-cmd row;
+ --id-pattern may be omitted when apriori/process-config.md has an id-pattern row)
 ```
 
 Example: `apriori verify --change add-playback --test-cmd "npm test"`
 
-Exit: 0 GREEN · 1 gaps (unbound/red/orphan/duplicate) · 2 untrustworthy run (missing inputs, non-TAP output, crash, merge conflict, CAS mismatch).
+Exit: 0 GREEN · 1 gaps · 2 untrustworthy run (missing inputs, non-TAP output, crash, merge conflict, CAS mismatch).
+
+`--change` runs are **change-scoped**: the verdict (exit 0/1) judges only this change's requirement blocks (their scenarios bound green, no scoped duplicate/unidentified, no unprovable failure signal — an ID-less failure or a failing ID that no sibling active change declares still blocks, fail-closed); a red bound to an out-of-scope scenario, or one attributed to a sibling change's cleanly-parsed delta (only its ADDED/MODIFIED block scenarios grant the exemption), never blocks. The same run prints an informative **store report** (whole projection, six classes) so parallel changes go green independently while historical gaps stay visible. `--change --json` adds `storeReport`, `changeScope` and `modifiedIntegrity` on GREEN/GAPS (absent on every ERROR); `--specs` output is byte-identical to before. `modifiedIntegrity` reports every MODIFIED block's replacement fidelity (retained/titleChanged/dropped/added/ambiguous scenarios plus lost lines, requirement prose included) — informative only, never a verdict change; the human `— MODIFIED INTEGRITY —` section prints when a risk class is non-empty.
 
 ## apriori archive
 
@@ -94,12 +99,14 @@ Exit: 0 printed (absent file → the `new` form) · 2 usage/directory/unreadable
 aggregate the mechanical gate checks for one change into one exit code (binding verify, tasks, flow-state, ledger, verdict↔raw evidence, KB freshness); PASS ≠ human gates
 
 ```text
-usage: apriori gate --change <name> [--test-cmd "<cmd>"] [--cwd <dir>] [--json]
+usage: apriori gate --change <name> [--test-cmd "<cmd>"] [--id-pattern <re>] [--cwd <dir>] [--json] [--no-cas]
 ```
 
 Example: `apriori gate --change add-playback --json`
 
 Exit: 0 PASS · 1 BLOCKED · 2 untrustworthy evaluation.
+
+In-flight C1 consumes the change-scoped verdict (detail `verify GREEN (in-flight, change-scoped)` with a six-count store summary suffix) — parallel changes' gates go green independently; the archived stage still verifies the whole store.
 
 ## apriori check
 
@@ -111,7 +118,9 @@ usage: apriori check [--specs <dir>] [--self]
 
 Example: `apriori check`
 
-Exit: 0 PASS · 1 FAIL(n) · 2 missing store path.
+Exit: 0 PASS · 1 FAIL(n) · 2 missing store path or invalid/terminated `id-pattern` config (`RESULT: ERROR`).
+
+CK-04 recognizes scenario IDs with the project's `id-pattern` row (no flag — a CI gate consumes the project constant; see §8.0), through the same recognition contract as verify.
 
 ## apriori update
 
@@ -126,6 +135,14 @@ Example: `apriori update --dry-run`
 Exit: 0 done · 1 uninitialized.
 
 ## 8. Configuration Reference
+
+### 8.0 process-config keys: id-pattern
+
+`| id-pattern | <bare JS regex source> |` in `apriori/process-config.md` declares the project's scenario-ID shape once, for every consumer. Resolution order: the `--id-pattern` flag (verify and gate only; judged by presence — an empty flag is an error, never a fallback) > the config row > the built-in default `[A-Z]+-\d+`. `check` (CK-04) and `doctor` (D6) consume the row with no flag. All four consumers recognize IDs through the same contract: the match starts at the title's first character, a following letter/digit/underscore rejects it, no `\b` is appended, the source compiles as written.
+
+Pipe escaping has two layers — never conflate them: inside a table cell every pipe belonging to the value is written `\|` (so an alternation cell `(AC\|BR)-\d+` parses to the regex source `(AC|BR)-\d+`, where the bare `|` is alternation); a regex that must MATCH a literal pipe character uses a character class, written `[\|]` in the cell and parsing to `[|]`. This escape rule applies to every config key uniformly.
+
+Errors are consumption-time and fail closed, naming their origin (`--id-pattern` or `process-config`): verify and gate exit 2 through their existing text/JSON error shapes, check prints `RESULT: ERROR` (exit 2), doctor reports a D6 finding and skips the D5 probe (result FINDINGS, exit 1) — never a silent fallback to the default. A config-sourced pattern is repository input that CI consumes automatically, so its matching runs inside a terminable child process (killed on budget — a catastrophic-backtracking row cannot hang CI); the flag is operator-interactive input and runs in-process.
 
 ### 8.1 Spec-authoring rules
 

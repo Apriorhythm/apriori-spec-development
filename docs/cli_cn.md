@@ -26,6 +26,8 @@ usage: apriori doctor [--test-cmd "<cmd>"] [--no-run] [--cwd <dir>] [--json]
 
 退出码:0 HEALTHY · 1 有发现 · 2 不可用(未初始化 / Node 过老)。
 
+D6 用 `id-pattern` 配置行扫描 store(无 flag;detail 标注来源 `config` 或 `default`)。配置行非法或匹配被终止时 D6 报 finding 且 D5 探针跳过——坏 id-pattern 下 test command 绝不运行(§8.0)。
+
 ## apriori new
 
 搭建变更目录 + flow-state 骨架
@@ -57,12 +59,15 @@ usage: apriori status [--change <name>] [--json]
 ```text
 usage: apriori verify --specs <dir...> --test-cmd "<cmd>" [--id-pattern <re>] [--cwd <dir>] [--json]
    or: apriori verify --change <name> --test-cmd "<cmd>" [--id-pattern <re>] [--cwd <dir>] [--json]
-(--test-cmd may be omitted when apriori/process-config.md has a test-cmd row)
+(--test-cmd may be omitted when apriori/process-config.md has a test-cmd row;
+ --id-pattern may be omitted when apriori/process-config.md has an id-pattern row)
 ```
 
 示例:`apriori verify --change add-playback --test-cmd "npm test"`
 
-退出码:0 GREEN · 1 有缺口(unbound/red/orphan/重复 ID)· 2 运行不可信(输入缺失、非 TAP 输出、崩溃、合并冲突、CAS 不匹配)。
+退出码:0 GREEN · 1 有缺口 · 2 运行不可信(输入缺失、非 TAP 输出、崩溃、合并冲突、CAS 不匹配)。
+
+`--change` 运行是**变更收窄**的:verdict(exit 0/1)只判本 change 的 Requirement 块(场景全绿、无收窄范围内重复/无 ID 场景、无不可归属失败信号——无 ID 的失败、任何兄弟活 change 都不认领的失败 ID 照旧阻断,fail-closed);绑定到范围外场景的 red、或可归因于兄弟 change **完整解析** delta 的失败(仅其 ADDED/MODIFIED 块内场景可授予豁免),不阻断。同一次运行打印信息性 **store report**(全投影六类)——并行 change 各自独立变绿,历史缺口持续可见。`--change --json` 在 GREEN/GAPS 附 `storeReport`、`changeScope` 与 `modifiedIntegrity`(一切 ERROR 缺省);`--specs` 输出与之前 byte 级一致。`modifiedIntegrity` 报告每个 MODIFIED 块的替换保真性(retained/titleChanged/dropped/added/ambiguous 场景与丢失行,含 requirement 散文)——仅信息性,绝不改判;human 的 `— MODIFIED INTEGRITY —` 段在存在风险类时打印。
 
 ## apriori archive
 
@@ -94,12 +99,14 @@ usage: apriori stamp <store-file>
 把一个变更的机械闸口检查合成一个退出码(绑定 verify、tasks、flow-state、台账、verdict↔raw 证据、KB 新鲜度);PASS ≠ 人工闸口
 
 ```text
-usage: apriori gate --change <name> [--test-cmd "<cmd>"] [--cwd <dir>] [--json]
+usage: apriori gate --change <name> [--test-cmd "<cmd>"] [--id-pattern <re>] [--cwd <dir>] [--json] [--no-cas]
 ```
 
 示例:`apriori gate --change add-playback --json`
 
 退出码:0 PASS · 1 BLOCKED · 2 评估不可信。
+
+in-flight 的 C1 消费变更收窄 verdict(detail 为 `verify GREEN (in-flight, change-scoped)` + 六类 store 摘要尾缀)——并行 change 的 gate 各自独立变绿;archived 阶段仍验证全库。
 
 ## apriori check
 
@@ -111,7 +118,9 @@ usage: apriori check [--specs <dir>] [--self]
 
 示例:`apriori check`
 
-退出码:0 PASS · 1 FAIL(n) · 2 规格库路径缺失。
+退出码:0 PASS · 1 FAIL(n) · 2 规格库路径缺失或 `id-pattern` 配置非法/被终止(`RESULT: ERROR`)。
+
+CK-04 用项目的 `id-pattern` 配置行识别场景 ID(无 flag——CI 门吃项目恒量,见 §8.0),识别契约与 verify 完全一致。
 
 ## apriori update
 
@@ -126,6 +135,14 @@ usage: apriori update [--dry-run]
 退出码:0 完成 · 1 未初始化。
 
 ## 八、配置参考
+
+### 8.0 process-config 配置键：id-pattern
+
+在 `apriori/process-config.md` 写一行 `| id-pattern | <裸 JS 正则源串> |`，一处声明项目的场景 ID 形状，处处生效。解析优先级：`--id-pattern` flag（仅 verify 与 gate；按存在性判定——空 flag 是错误，绝不回退）> 配置行 > 内置默认 `[A-Z]+-\d+`。`check`（CK-04）与 `doctor`（D6）只吃配置行、无 flag。四个消费点用同一识别契约：从标题第一个字符开始匹配，后继为字母/数字/下划线则拒绝，不额外拼接 `\b`，源串按原样编译。
+
+pipe 转义分两层，切勿混为一谈：表格单元格内属于值的每个 pipe 都写 `\|`（如 alternation 单元格 `(AC\|BR)-\d+` 解析为正则源串 `(AC|BR)-\d+`，裸 `|` 即 alternation）；正则要**匹配**字面 pipe 字符时用字符类——单元格里写 `[\|]`，解析为 `[|]`。该转义规则对全部配置键统一生效。
+
+错误在消费时上浮且 fail-closed，消息指明来源（`--id-pattern` 或 `process-config`）：verify 与 gate 按既有文本/JSON 错误形状 exit 2；check 打印 `RESULT: ERROR`（exit 2）；doctor 报 D6 finding 并跳过 D5 探针（结果 FINDINGS，exit 1）——绝不静默回退默认。配置来源的 pattern 是 CI 自动消费的仓库输入，其匹配在可终止子进程内执行（超预算即杀——灾难性回溯的配置行无法挂死 CI）；flag 是操作者交互输入，进程内执行。
 
 ### 8.1 规格撰写规则
 

@@ -25,7 +25,16 @@ async function main() {
     case 'new':     return require('../lib/new').cli(rest);
     case 'status':  return require('../lib/status').cli(rest);
     case 'verify':  return require('../lib/spec-runner').cli(rest);
-    case 'archive': return require('../lib/archive-merge').cli(rest);
+    case 'archive': return require('../lib/archive-merge').cli(rest, {
+      // the bin seam: archive-merge never requires spec-runner; the integrity report's
+      // terminable id matcher (config > default) is composed here and injected lazily
+      idMatcherFactory: (cwd) => {
+        const { resolveIdPattern } = require('../lib/config');
+        const r = resolveIdPattern(cwd, null);
+        if (r.error) return { error: r.error };
+        return require('../lib/spec-runner').makeIdMatcher(r);
+      },
+    });
     case 'stamp':   return require('../lib/archive-merge').stampCli(rest);
     case 'gate':    return require('../lib/gate').cli(rest);
     case 'doctor':  return require('../lib/doctor').cli(rest);

@@ -2,6 +2,43 @@
 
 All notable changes to `apriori-cli`. Versions follow semver; the stability promise: CLI surface & flags, `--json` shapes, the delta format and the flow-state schema only break in a major.
 
+## Unreleased · MODIFIED replacement fidelity becomes a mechanical report (change modified-block-integrity)
+
+Brownfield feedback P0-3: "MODIFIED replaces the whole block" fidelity was guarded only by LLM reviewer attention (a real deployment confirmed 11/13 preserved lines by manual subsequence comparison — the one ⚠ row in its defense table, "build it into the CLI").
+
+- **A pure integrity engine** (`compareModifiedBlock`) compares every MODIFIED block against its store baseline at the projection's own snapshot (`buildProjection` returns `modifiedBlocks`; rename-then-modify baselines the complete pre-rename block; repaired reruns included): occurrence-level cardinality classification (retained / titleChanged / dropped / added / ambiguous), order-preserving greedy-subsequence line comparison (requirement prose and fenced content included), trim-equal fast path.
+- **`verify --change` carries the report** — JSON `modifiedIntegrity` always present on GREEN/GAPS (absent on ERROR and on `--specs`, byte-golden proven); the human `— MODIFIED INTEGRITY —` section prints when a risk class is non-empty (`!`-prefixed, control chars sanitized, 120-unit field truncation). Old-block titles ride the existing single matcher batch; the verdict and exit codes never change — the report is informative by contract (a machine cannot tell an intended deletion from a slipped one; it puts the difference on the table for humans and the P8 review).
+- **`archive --change` prints the same section** (high-level form; dry-run and pre-write) after every preflight guard; the id matcher is injected at the bin seam (archive-merge still never requires spec-runner); a broken id-pattern channel degrades to one bounded `warning: modified-integrity …` line and changes nothing else.
+- The frozen live-specimen regression: the previous change's real nine-scenario MODIFIED rewrite reports exactly retained 9 / two lost THEN lines — hand-derived before implementation (the derivation itself corrected the spec author's wrong assumption, which is the point).
+
+318 tests (306 + 12: AM-43..47, SR-65..68).
+
+## Unreleased · the change verdict separates from store health (change verify-change-scope)
+
+Brownfield feedback P0-2: with 8 parallel unarchived changes, `verify --change` drowned in historical UNBOUND (real replay: 107 scenarios, 61 unbound) while `--specs <delta>` false-orphaned every other change's tests (46) — "is THIS change done" took two commands plus a hand-written disclaimer per change.
+
+- **`verify --change` is now change-scoped** — the verdict (exit 0/1) judges only this change's requirement blocks (provenance: the projection blocks its ADDED/MODIFIED/RENAMED produce; occurrence-level; rename-then-modify carries `operations: ["RENAMED","MODIFIED"]`; final-deprecated blocks excluded). Cross-boundary duplicate IDs and scoped unidentified scenarios still block.
+- **Failure signals stay fail-closed** — only provably attributable failures are non-blocking: a red bound to an out-of-scope projection scenario, or a failing ID declared inside a sibling active change's CLEANLY-PARSED delta (strict parse; only ADDED/MODIFIED block bodies grant the exemption — malformed/REMOVED/symlinked sibling material grants nothing; the sibling scan joins the same single matcher batch). ID-less failures and unattributable failing orphans block, exactly as before.
+- **The store report** — the same run prints a complete informative evaluation of the whole projection (bound-green count, bound-red, unbound, orphan, unidentified, unattributed, duplicates): historical gaps stay visible, they just stop drowning the verdict. `--change --json` adds `storeReport` + `changeScope` on GREEN/GAPS (absent on every ERROR class).
+- **Explained non-zero exits can be GREEN (`--change` only)** — a test-process exit explained by parsed failures with a clean change verdict no longer forces a non-zero verify exit (a scoped amendment to the non-zero rule; unexplained non-zero stays ERROR 2). Zero-scope changes (removal-only and friends) are vacuous-GREEN with an explicit note; an all-empty projection stays ERROR.
+- **gate C1 (in-flight) goes change-scoped** — detail `verify GREEN (in-flight, change-scoped)` with a six-count store summary suffix; parallel changes' gates go green independently. The archived stage still verifies the whole store.
+- `--specs` runs are byte-identical to before (proven by golden captures); `am.buildProjection` additionally returns `deltaOps` (the per-suffix operation buckets from its own parse — single-snapshot provenance).
+
+296 tests (284 + 12: SR-56..64, GT-26..27, plus byte-golden replay).
+
+## Unreleased · id-pattern becomes project configuration (change gate-id-pattern)
+
+Brownfield feedback P0-1: on a real store with letter-suffixed (`AC-08a`) and multi-segment (`AC-BIS-01`) IDs, `gate` C1 was permanently BLOCKED (no id-pattern channel) and `check` CK-04 false-failed — a forever-red gate carries no signal.
+
+- **New process-config key `id-pattern`** (bare JS regex source) — one declaration, four consumers. Resolution: `--id-pattern` flag (verify + **gate, new flag**; judged by presence — an empty flag errors, never falls back) > config row > built-in `[A-Z]+-\d+`. `check` CK-04 and `doctor` D6 consume the row (no new flags); D6 names its pattern source (`config`/`default`).
+- **One recognition contract** — `check` drops its private `^(…)\b` anchoring and recognizes through the same `leadId` semantics as verify/gate/doctor; the four consumers can no longer disagree on the same title.
+- **Markdown cell escaping, all keys** — `parseConfig` cells now honor `\|` by backslash parity (odd escapes the pipe into the value, even separates); a regex matching a literal pipe is written `[\|]` in the cell (parses to `[|]`). Behavior change is additive: configs without backslash-pipe sequences parse identically. The template documents both layers.
+- **Fail-closed errors naming their origin** — invalid patterns error at consumption before any spec read or test spawn: verify/gate exit 2 through their existing text/JSON shapes (`--change --json` keeps its `projection` field), check `RESULT: ERROR` exit 2, doctor D6 finding + skipped D5 probe (FINDINGS, exit 1). Messages are sanitized whole (control chars stripped, ≤200 chars; the engine message never re-leaks the source).
+- **Config-origin matching is terminable** — a config row is repository input CI consumes automatically, so its actual matching runs in a SIGKILL-able child (`lib/id-match-child.js`, stdin data channel, 2s budget); every child failure class fails closed. A catastrophic-backtracking row cannot hang CI. The flag stays in-process (operator-trusted, documented).
+- An unreadable `process-config.md` (e.g. a directory) is now a consumption-time problem for every key, never a thrown exception.
+
+276 tests (254 + 22: CF-08..12, SR-50..55, GT-22..25, CK-13..16, DR-16..18).
+
 ## 4.0.7 — 2026-07-18 · drop the broken npm badge
 
 Docs only — no CLI, flag, or behavior change; the published files are byte-identical to 4.0.6 apart from `README.md`.

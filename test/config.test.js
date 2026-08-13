@@ -97,3 +97,58 @@ test('CF-07 the template names the cas row', () => {
   const tpl = fs.readFileSync(path.join(__dirname, '..', 'templates', 'process-config.md'), 'utf8');
   assert.match(tpl, /\|\s*cas\s*\|/);
 });
+
+// ---- gate-id-pattern: CF-08..CF-12 — cell escaping, unreadable config, template row ----
+const { parseConfig, getConfig } = require('../lib/config');
+
+test('CF-08 odd backslash runs keep the pipe in the value', () => {
+  const { values } = parseConfig('| id-pattern | (AC\\|BR)-\\d+ |\n');
+  assert.strictEqual(values.get('id-pattern'), '(AC|BR)-\\d+');
+  const three = parseConfig('| k | a\\\\\\|b |\n');           // raw cell: a\\\|b (3 backslashes + pipe)
+  assert.strictEqual(three.values.get('k'), 'a\\\\|b');       // one escape removed, two kept, pipe joins
+});
+
+test('CF-09 even backslash runs keep the pipe a separator', () => {
+  const two = parseConfig('| k | a\\\\|b |\n');                // raw: a\\|b — even, separator
+  assert.strictEqual(two.values.get('k'), 'a\\\\');            // value ends with two literal backslashes
+  const four = parseConfig('| k | a\\\\\\\\|b |\n');           // raw: a\\\\|b — even (4), separator
+  assert.strictEqual(four.values.get('k'), 'a\\\\\\\\');
+});
+
+test('CF-10 unescaped configs parse exactly as before', () => {
+  const text = [
+    '| test-cmd | node scripts/run-tests.mjs --test-reporter=tap |',
+    '| cas | optional | 备注列 |',
+    '```md', '| cas | required |', '```',
+    '<!-- | test-cmd | echo nope | -->',
+  ].join('\n') + '\n';
+  const { values, conflicts } = parseConfig(text);
+  assert.strictEqual(values.get('test-cmd'), 'node scripts/run-tests.mjs --test-reporter=tap');
+  assert.strictEqual(values.get('cas'), 'optional');
+  assert.strictEqual(conflicts.size, 0);
+});
+
+test('CF-11 an unreadable config is a consumption-time problem', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-cfg-'));
+  fs.mkdirSync(path.join(root, 'apriori', 'process-config.md'), { recursive: true });   // a DIRECTORY
+  const { value, problem } = getConfig(root, 'id-pattern');
+  assert.strictEqual(value, null);
+  assert.match(String(problem), /process-config/);
+});
+
+test('CF-12 the template names the id-pattern row with two-layer pipe wording', () => {
+  const tplPath = path.join(__dirname, '..', 'templates', 'process-config.md');
+  const tpl = fs.readFileSync(tplPath, 'utf8');
+  const { values } = parseConfig(tpl);
+  assert.strictEqual(values.get('id-pattern'), '[A-Z]+-\\d+');           // parsed value = built-in default
+  assert.strictEqual(values.get('cas'), 'required');                     // table structure survives end-to-end
+  assert.match(tpl, /\\\|/);                                             // guidance shows the \| spelling
+  assert.match(tpl, /\[\\\|\]/);                                         // and the [\|] literal-pipe spelling
+  assert.doesNotMatch(tpl, /literal pipe[^.\n]*written\s*`?\\\|`?(?!\])/i); // no "literal pipe is \|" phrasing
+  const rowLine = tpl.split('\n').find((l) => /^\|\s*id-pattern\s*\|/.test(l));
+  assert.ok(rowLine, 'id-pattern row exists');
+  const { splitCells } = require('../lib/config');
+  const cells = splitCells(rowLine);
+  assert.strictEqual(cells.length, 6, 'row splits into exactly 4 cells + 2 edges (no in-cell pipes)');
+  for (const c of cells) assert.doesNotMatch(c, /\|/, 'cells stay pipe-free');
+});

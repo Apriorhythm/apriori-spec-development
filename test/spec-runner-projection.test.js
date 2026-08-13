@@ -41,8 +41,9 @@ test('SR-16 ADDED delta scenarios join the projection alongside store scenarios'
   });
   const run = verify({ change: 'c', cwd: root, testCmd: tapCmd('ok 1 - XA-01 a', 'ok 2 - XB-01 b') });
   assert.strictEqual(run.errors.length, 0);
-  assert.deepStrictEqual(run.verdict.boundGreen, ['XA-01', 'XB-01']);   // both demanded, both green
-  assert.strictEqual(run.duplicates.length, 0);                          // overlay produced no dup-ID error
+  assert.deepStrictEqual(run.verdict.boundGreen, ['XB-01']);   // the change verdict demands the delta's scenarios
+  assert.strictEqual(run.storeReport.boundGreen, 2);           // store scenario bindings report informatively
+  assert.strictEqual(run.duplicates.length, 0);                // overlay produced no dup-ID error
   assert.strictEqual(run.verdict.clean, true);
 });
 
@@ -61,13 +62,17 @@ test('SR-17 MODIFIED delta replaces the demanded scenario set', () => {
 
 test('SR-18 REMOVED delta scenarios are not demanded and their lingering tests orphan', () => {
   const root = mkProject({
-    'apriori/specs/kv/spec.md': STORE_KV,
+    // a second block keeps the projection non-empty (an all-empty projection is the
+    // global vacuous ERROR — SR-62); the REMOVED block's lingering test is the subject
+    'apriori/specs/kv/spec.md': STORE_KV + '\n### Requirement: Keep\n\n#### Scenario: XK-01 stays\n- t\n',
     'apriori/changes/c/specs/kv/spec.md': '## REMOVED Requirements\n\n### Requirement: Alpha\n',
   });
   const run = verify({ change: 'c', cwd: root, testCmd: tapCmd('ok 1 - XA-01 lingering') });
-  assert.deepStrictEqual(run.verdict.orphan, ['XA-01']);    // test survives, scenario gone → ORPHAN
+  assert.deepStrictEqual(run.storeReport.orphan, ['XA-01']);  // test survives, scenario gone → store-report ORPHAN
   assert.deepStrictEqual(run.verdict.unbound, []);
-  assert.strictEqual(run.verdict.clean, false);             // exit 1 until the test is deleted
+  assert.strictEqual(run.verdict.clean, true);                // a PASSING lingering test no longer blocks
+  const red = verify({ change: 'c', cwd: root, testCmd: tapCmd('not ok 1 - XA-01 lingering') });
+  assert.strictEqual(red.verdict.clean, false);               // a FAILING one still does (no sibling declares it)
 });
 
 test('SR-19 RENAMED delta demands exactly the post-rename picture', () => {

@@ -6,7 +6,7 @@
 
 # Apriori RUNBOOK — the Executable Protocol for AI Agents
 
-> `runbook-version: 4.0` · upstream: `https://github.com/Apriorhythm/apriori-spec-development`
+> `runbook-version: 4.1` · upstream: `https://github.com/Apriorhythm/apriori-spec-development`
 > Local state lives ONLY in `apriori/process-config.md` and the flow-state file — this file is stateless, so **upgrading = overwriting it with the upstream version**.
 
 > **Audience: AI agents** (plus §6 for the human operating them). This file is self-contained: everything an agent needs at runtime is here — hard rules, state machine, artifact paths, prompts.
@@ -106,6 +106,73 @@ Anything touching external shared state or crossing module boundaries is **Large
 | Exploration reveals the goal is actually clear | switch to **harden** immediately |
 
 **Tripwires outrank the certainty axis**: anything touching external shared state / production data / module boundaries / migrations is barred from the explore track no matter how vague — run it on the harden track, optionally with a **research spike** (the STEP1 variant, §4). Default when unsure: **harden** — the opposite direction from the size axis, because the risks point the opposite way.
+
+---
+
+## 2b. The Hotfix Lane (records too small for a change)
+
+Not every true thing that happens deserves a change bundle. A typo fix, a one-line
+config correction, a two-hour investigation that concluded "nothing is broken" — these
+produce a real conclusion and, under the formal flow, produce it at a cost nobody pays.
+So the conclusion goes unwritten, and the next person re-derives it.
+
+The **hotfix lane** is the minimal write-back unit: a conclusion, an optional spec delta
+with its test bindings, and a direct archive. It targets ten minutes of work, not an hour.
+
+```
+apriori hotfix new summary-wording        # scaffold
+# … write the conclusion; add a delta only if the spec actually changed …
+apriori hotfix archive summary-wording    # zero-write preflight: grade, scope, digest, write set, token
+apriori hotfix archive summary-wording --approve <token>
+```
+
+**Admission is mechanical, and it is not negotiable.** The lane grades a bundle by blast
+radius from its declared fields and the shape of its delta:
+
+| grade | what it is | what the lane asks for |
+|---|---|---|
+| `(R0, n/a)` | no code changed — the conclusion IS the record | a point-check only when decisions are attached |
+| `(R1, n/a)` | single-module trivial fix, no spec change | nothing further |
+| `(R2, behavior)` | a spec-preserving behavior fix | one `inspection` round |
+| `(R2, whitelist)` | a spec change confined to blocks a human marked `blast: low` | one `inspection` round carrying `boundary=` |
+| `(R3, n/a)` | everything else | **refused** — open a formal change |
+
+`R3` is a refusal, not a warning. A REMOVED or RENAMED block, a bundle spanning two
+modules, a dual-end (frontend *and* backend) touch, a decision that supersedes another,
+a MODIFIED/ADDED block with no scenario, or any delta block the store has not whitelisted
+— each grades `R3` and is sent to the formal process by name.
+
+The bias is deliberate: **what cannot be told apart mechanically grades to the stricter
+side**. The defect account that motivated this lane is full of small-looking changes that
+were not small — a rewritten GROUP BY, a redefined "latest" — and every one of them lands
+on `R3` by construction rather than by anyone's judgement on the day.
+
+Three rules make the lane cheap without making it a hole in the process:
+
+- **One identity.** A directory is a formal change or a hotfix, never both. `flow-state.md`
+  and `hotfix-state.md` side by side is an error at every consumption point.
+- **No no-test escape.** Every delta target key binds a test, declared in exactly one place
+  (the state file's `## Bindings` section). There is no "not worth testing" line to write.
+- **Two-step signoff.** The dry run prints the write set and issues a token; `--approve`
+  refuses unless the bundle and every store/truth baseline still hash to that token.
+
+### 2c. Scaling verification strength
+
+`| verification-profile | ui / backend / fullstack / docs / none |` in `apriori/process-config.md`
+declares once what kind of repository this is. The row is **human-owned** — agents read it
+and never write it, exactly like `test-cmd`, so an agent cannot quietly lower the bar its
+own work must clear.
+
+What the profile scales is coverage, not existence:
+
+| tier | what is asked | what happens when it is missing |
+|---|---|---|
+| **full** (formal changes, medium/large) | E2E evidence over the change's scenarios; under a `ui`/`fullstack` profile, a screenshot observation record for the affected pages | a process requirement, reported at the gate |
+| **incremental** (the hotfix lane, trivial) | the bound tests for the affected scenarios only; a screenshot record when frontend files were touched | an **advisory** — it prints a reminder and never blocks |
+
+A record that IS present is validated in full at both tiers — providing one buys no
+leniency. A backend-only bundle waives with `ui: not-applicable — <reason>`; a waiver with
+no reason is not a waiver.
 
 ---
 
@@ -271,6 +338,13 @@ KB docs have two sections with **opposite truth directions** (§5 P9/P10): `Cont
 | P5 | `VERDICT: no major issues, ready to proceed to execution` | `VERDICT: <N> issues open` |
 | P8 | `VERDICT: no spec-vs-code gaps` | `VERDICT: <N> issues open` |
 | P12 | `VERDICT: extraction accepted` | `VERDICT: extraction rejected` |
+| hotfix point-check (§2b) | `VERDICT: no findings` | `VERDICT: <N> issues open` |
+| hotfix docs duty (§2b) | `VERDICT: no spec-vs-code gaps` | `VERDICT: gaps found` |
+
+The hotfix lane's rows carry two mandatory trailers and one conditional one — the line reads
+`<verdict phrase> role=<inspection|p8> digest=<64 lowercase hex>`, plus `boundary=<within|exceeds>`
+exactly when the γ' whitelist point-check stands in for a human signoff. The phrases and their
+`^VERDICT:` prefix are unchanged, so every existing consumer still reads them.
 
 `<N>` = the total count of formal ledger rows with status `open` at the end of that review round (whole ledger, no stage filtering — mechanically decidable; a positive integer; advisory/rejected/fixed rows don't count). P12 uses fixed phrases only, never the count form.
 

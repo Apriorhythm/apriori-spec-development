@@ -93,3 +93,23 @@ test('CL-07 unexpected subcommand failures exit cleanly — one line, no stack t
   assert.match(r.stderr, /^apriori: /);
   assert.doesNotMatch(r.stderr, /\n\s+at /);   // no stack frames reach the user
 });
+
+test('CL-18 hotfix subcommand appears in usage and dispatches by verb', () => {
+  assert.match(run(['--help']).stdout, /\n  hotfix\s/);
+
+  const bare = run(['hotfix']);
+  assert.strictEqual(bare.status, 0, bare.stderr);
+  assert.match(bare.stdout, /apriori hotfix new <name>/);
+
+  const nonsense = run(['hotfix', 'nonsense']);
+  assert.strictEqual(nonsense.status, 2);
+  assert.match(nonsense.stderr, /unknown subcommand 'nonsense'/);
+
+  // both known verbs reach the lane rather than the dispatcher's unknown-command path
+  const scaffold = run(['hotfix', 'new', 'Not Kebab']);
+  assert.strictEqual(scaffold.status, 1);
+  assert.match(scaffold.stderr, /bare kebab-case/);
+  const arch = run(['hotfix', 'archive', 'no-such-hotfix']);
+  assert.notStrictEqual(arch.status, 0);
+  assert.match(arch.stderr, /no bundle at apriori\/changes\/no-such-hotfix/);
+});

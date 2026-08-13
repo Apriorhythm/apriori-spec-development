@@ -295,3 +295,17 @@ test('CK-11 runs under --self and not in consumer mode', () => {
   const consumer = spawnSync('node', [BIN3, 'check'], { cwd: root, encoding: 'utf8' });
   assert.doesNotMatch(consumer.stdout + consumer.stderr, /runbook-version major|CK-11/i);
 });
+
+test('CK-17 the lane phrases are table entries and its trailers do not break recognition', () => {
+  const { checkVerdictPhrases, VERDICT_PHRASES } = require('../lib/check.js');
+  assert.ok(VERDICT_PHRASES.includes('VERDICT: no findings'), 'inspection pass phrase registered');
+  assert.ok(VERDICT_PHRASES.includes('VERDICT: gaps found'), 'p8 fail phrase registered');
+
+  // a real lane line: phrase + mandatory trailers + the conditional one
+  const line = 'VERDICT: no findings role=inspection digest=' + 'a'.repeat(64) + ' boundary=within';
+  const runbooks = Object.fromEntries(['RUNBOOK.md', 'RUNBOOK_cn.md'].map((n) => [n, VERDICT_PHRASES.join('\n')]));
+  assert.deepStrictEqual(checkVerdictPhrases({ ...runbooks, 'docs/cli.md': line }), [], 'trailers do not break recognition');
+
+  const bad = checkVerdictPhrases({ ...runbooks, 'docs/cli.md': 'VERDICT: looks fine to me' });
+  assert.ok(bad.some((f) => /not in table: VERDICT: looks fine to me/.test(f)), `unregistered phrase still fails: ${bad}`);
+});

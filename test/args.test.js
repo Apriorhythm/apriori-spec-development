@@ -10,7 +10,7 @@ const { parseStrict } = require('../lib/args');
 const BIN = path.join(__dirname, '..', 'bin', 'apriori.js');
 function run(args, cwd) { return spawnSync('node', [BIN, ...args], { encoding: 'utf8', cwd: cwd || fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-args-')) }); }
 
-const SUBS = ['new', 'status', 'verify', 'archive', 'check', 'init', 'update', 'stamp', 'gate', 'doctor'];
+const SUBS = ['new', 'hotfix', 'status', 'verify', 'archive', 'check', 'init', 'update', 'stamp', 'gate', 'doctor'];
 
 function mkProject(files) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-args-'));
@@ -69,6 +69,8 @@ test('CL-13 positional arity is enforced', () => {
   assert.strictEqual(run(['new']).status, 2);
   assert.strictEqual(run(['stamp']).status, 2);
   assert.strictEqual(run(['stamp', 'a', 'b']).status, 2);
+  assert.strictEqual(run(['hotfix', 'new']).status, 2);              // the verb is consumed, the name is the one positional
+  assert.match(run(['hotfix', 'new', 'a', 'b']).stderr, /'b'/);
   const sf = run(['stamp', '--foo']);              // declared change: unknown flag, not a positional
   assert.strictEqual(sf.status, 2);
   assert.match(sf.stderr, /--foo/);

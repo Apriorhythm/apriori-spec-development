@@ -40,6 +40,35 @@ usage: apriori new <change-name>   (bare kebab-case, e.g. add-playback)
 
 退出码:0 已创建 · 1 名字非法/已存在 · 2 用法错误。
 
+## apriori hotfix
+
+最小回写通道：一条结论、可选的 spec delta 及其测试绑定、直接归档——给那些小到不值得开正式 change 的记录
+
+```text
+usage: apriori hotfix new <name>
+       apriori hotfix archive <name> [--approve <token>] [--test-cmd "<cmd>"] [--cwd <dir>]
+```
+
+`hotfix new` 生成 `apriori/changes/<name>/hotfix-state.md`——头部字段块、必须替换的 `## Conclusion`、以及 `## Bindings` 节。一个 bundle 要么是正式 change、要么是 hotfix，绝不同时是两者：同时存在 `flow-state.md` 与 `hotfix-state.md` 的目录，在每个消费点都被拒绝。
+
+`hotfix archive` 先跑零写入的 preflight 并把结果印出来：分级、验证范围、评审摘要、写集合、签收令牌。在你带 `--approve <token>` 重跑之前不写任何东西；期间 bundle 或任何 store/truth 基线发生变动，令牌即不再匹配，归档被拒。
+
+准入**按爆炸半径机械判定**——不靠论证：
+
+| 分级 | 含义 | 通道要求的评审 |
+|---|---|---|
+| `(R0, n/a)` | 没改代码；结论本身就是全部记录 | 仅当附带 decisions 时做一轮点检 |
+| `(R1, n/a)` | 单模块琐碎修复，无 spec 变更 | 无 |
+| `(R2, behavior)` | 不改 spec 的行为修复 | 一轮 `inspection` |
+| `(R2, whitelist)` | spec 变更且全部落在人工标注 `blast: low` 的块内 | 一轮带 `boundary=` 的 `inspection` |
+| `(R3, n/a)` | 其余一切 | **拒绝**——去开正式 change |
+
+`R3` 不是警告。REMOVED/RENAMED 块、跨两个模块、前后端双端命中、decision 取代、无 scenario 的 MODIFIED/ADDED 块、以及任何 store 未白名单的 delta 块，一律判 `R3` 并给出指向正式流程的拒绝信息。**fail-up 是有意为之**：机械上分不清的，一律归到更严的一侧。
+
+例：`apriori hotfix new summary-wording` → 填写 → `apriori hotfix archive summary-wording` → `apriori hotfix archive summary-wording --approve <token>`
+
+退出码：0 preflight 通过 / 已归档 · 1 被拒（分级、字段契约、评审、verdict 或令牌）· 2 用法错误或 bundle 不可读。
+
 ## apriori status
 
 每个变更走到哪了:步骤、下一动作、台账 open 项
@@ -143,6 +172,14 @@ usage: apriori update [--dry-run]
 pipe 转义分两层，切勿混为一谈：表格单元格内属于值的每个 pipe 都写 `\|`（如 alternation 单元格 `(AC\|BR)-\d+` 解析为正则源串 `(AC|BR)-\d+`，裸 `|` 即 alternation）；正则要**匹配**字面 pipe 字符时用字符类——单元格里写 `[\|]`，解析为 `[|]`。该转义规则对全部配置键统一生效。
 
 错误在消费时上浮且 fail-closed，消息指明来源（`--id-pattern` 或 `process-config`）：verify 与 gate 按既有文本/JSON 错误形状 exit 2；check 打印 `RESULT: ERROR`（exit 2）；doctor 报 D6 finding 并跳过 D5 探针（结果 FINDINGS，exit 1）——绝不静默回退默认。配置来源的 pattern 是 CI 自动消费的仓库输入，其匹配在可终止子进程内执行（超预算即杀——灾难性回溯的配置行无法挂死 CI）；flag 是操作者交互输入，进程内执行。
+
+### 8.0b process-config 配置键：verification-profile
+
+`| verification-profile | ui / backend / fullstack / docs / none |` 一次性声明这个仓库是什么类型的东西——从而声明它的验证要什么证据。该行**由人拥有**：agent 只读不写，与 `test-cmd` 同一语义。
+
+行缺失、单元格为空、字面值 `none`，三者含义相同：什么都不升格。在 `ui` 或 `fullstack` 下，触及前端文件的 bundle 会被要求一份截图观察记录（`evidence/screenshots.md`）；在 `backend` 或 `docs` 下不会。该义务**按档参数化**：全量档（正式 change）该记录是必需项，hotfix 通道下缺失只打印提示、绝不阻塞。但无论哪一档，**已提供的记录一律全谱校验**——提供记录并不换来宽松。
+
+记录行定式：`- path=<仓根相对，须在 apriori/tmp/ 下> obs=<一行观察> time=<ISO UTC 秒> baseline=<仓库 HEAD> run=<标识>`。纯后端 bundle 用 `ui: not-applicable — <理由>` 豁免；没有理由的豁免不算豁免。
 
 ### 8.1 规格撰写规则
 

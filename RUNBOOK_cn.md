@@ -6,7 +6,7 @@
 
 # Apriori RUNBOOK —— 给 AI Agent 的可执行协议
 
-> `runbook-version: 4.0` · 上游:`https://github.com/Apriorhythm/apriori-spec-development`
+> `runbook-version: 4.1` · 上游:`https://github.com/Apriorhythm/apriori-spec-development`
 > 项目本地状态只存在于 `apriori/process-config.md` 与 flow-state 文件——本文件无状态,因此**升级=用上游新版整文件覆盖**。
 
 > **读者:AI Agent**(§6 除外,那节给操作它的人)。本文件自包含:Agent 运行时需要的一切都在这里——铁律、状态机、产物路径、提示词。
@@ -106,6 +106,67 @@ cd your-project && apriori init  # 交互式:勾选要接入的 AI 工具
 | 探索中发现目标其实明确 | 立即转**加固轨** |
 
 **绊线优先于确定性轴**:凡触及外部共享状态 / 生产数据 / 模块边界 / 迁移的变更,不管多模糊都禁止探索轨——走加固轨,可选用**调研 spike**(STEP1 变体,§4)。拿不准时默认:**加固**——与尺寸轴的方向相反,因为两轴的风险方向相反。
+
+---
+
+## 2b. Hotfix 通道（小到不配开 change 的记录）
+
+不是每一件为真的事都值得开一个 change bundle。一处错别字、一行配置修正、一次两小时
+最终结论是「没坏」的排查——它们都产出了真实的结论，而在正式流程下产出这个结论的代价
+没人愿意付。于是结论不被写下，下一个人再推导一遍。
+
+**hotfix 通道**就是那个最小回写单元：一条结论、可选的 spec delta 及其测试绑定、直接归档。
+它瞄准的是十分钟，不是一小时。
+
+```
+apriori hotfix new summary-wording        # 生成骨架
+# …… 写结论；只有 spec 真的变了才加 delta ……
+apriori hotfix archive summary-wording    # 零写入 preflight：分级、范围、摘要、写集合、令牌
+apriori hotfix archive summary-wording --approve <token>
+```
+
+**准入是机械判定的，且不接受商量。** 通道按申报字段与 delta 形态判爆炸半径：
+
+| 分级 | 含义 | 通道要求 |
+|---|---|---|
+| `(R0, n/a)` | 没改代码——结论本身就是记录 | 仅在附带 decisions 时做一轮点检 |
+| `(R1, n/a)` | 单模块琐碎修复，无 spec 变更 | 无 |
+| `(R2, behavior)` | 不改 spec 的行为修复 | 一轮 `inspection` |
+| `(R2, whitelist)` | spec 变更全部落在人工标注 `blast: low` 的块内 | 一轮带 `boundary=` 的 `inspection` |
+| `(R3, n/a)` | 其余一切 | **拒绝**——去开正式 change |
+
+`R3` 是拒绝，不是警告。REMOVED/RENAMED 块、跨两个模块、前后端双端命中、取代既有
+decision、无 scenario 的 MODIFIED/ADDED 块、以及任何 store 未白名单的 delta 块——每一种
+都判 `R3`，并被指名送回正式流程。
+
+这个偏向是有意的：**机械上分不清的，一律归到更严的一侧**。催生本通道的缺陷账里满是
+「看着小其实不小」的改动——一次改写的 GROUP BY、一次重定义的「最新」——它们全都由构造
+落在 `R3` 上，而不是靠当天某个人的判断。
+
+三条规则让通道便宜，但不让它成为流程上的洞：
+
+- **单一身份。** 一个目录要么是正式 change、要么是 hotfix，绝不同时是两者。`flow-state.md`
+  与 `hotfix-state.md` 并存，在每个消费点都是错误。
+- **没有 no-test 逃逸。** 每个 delta 目标键都绑定测试，且只在一个地方声明（状态文件的
+  `## Bindings` 节）。没有「不值得测」这一行可写。
+- **两步签收。** dry-run 印出写集合并签发令牌；`--approve` 在 bundle 或任一 store/truth
+  基线不再散列为该令牌时拒绝执行。
+
+### 2c. 验证强度的缩放
+
+`apriori/process-config.md` 里的 `| verification-profile | ui / backend / fullstack / docs / none |`
+一次性声明这个仓库是什么类型。该行**由人拥有**——agent 只读不写，与 `test-cmd` 同一语义，
+因此 agent 无法悄悄降低自己工作要过的那道坎。
+
+profile 缩放的是覆盖面，不是存在性：
+
+| 档 | 要求什么 | 缺失时如何 |
+|---|---|---|
+| **全量档**（正式 change，medium/large） | 覆盖本 change scenario 的 E2E 证据；`ui`/`fullstack` profile 下还要受影响页面的截图观察记录 | 流程要求，在 gate 上报告 |
+| **增量档**（hotfix 通道、trivial） | 只跑受影响 scenario 的绑定测试；触及前端文件时要一份截图记录 | **advisory**——打印提示，绝不阻塞 |
+
+**已提供的记录在两档下同样全谱校验**——提供记录不换来宽松。纯后端 bundle 用
+`ui: not-applicable — <理由>` 豁免；没有理由的豁免不算豁免。
 
 ---
 
@@ -267,6 +328,12 @@ gates:                  # 只增不改的人工决定日志
 | P5 | `VERDICT: no major issues, ready to proceed to execution` | `VERDICT: <N> issues open` |
 | P8 | `VERDICT: no spec-vs-code gaps` | `VERDICT: <N> issues open` |
 | P12 | `VERDICT: extraction accepted` | `VERDICT: extraction rejected` |
+| hotfix 点检（§2b） | `VERDICT: no findings` | `VERDICT: <N> issues open` |
+| hotfix 文档职责（§2b） | `VERDICT: no spec-vs-code gaps` | `VERDICT: gaps found` |
+
+hotfix 通道的判定行带两个必填尾注、一个条件尾注——行形为
+`<判定短语> role=<inspection|p8> digest=<64 位小写 hex>`；当 γ' 白名单点检替代人工签收时，
+再带 `boundary=<within|exceeds>`。短语本身与其 `^VERDICT:` 前缀不变，既有消费者照读不误。
 
 `<N>` = 本轮评审结束时,台账中状态为 `open` 的正式行总数(全台账口径,不分阶段——机械可判;正整数;advisory/rejected/fixed 行不计)。P12 只用固定短语,永不用计数形态。
 

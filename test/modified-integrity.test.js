@@ -290,18 +290,26 @@ test('AM-46 archive prints the integrity section without changing its semantics'
 });
 
 test('AM-47 the archive id-pattern channel is resolved, terminable and degradable', () => {
-  // custom config pattern recognizes letter-suffixed IDs
-  const store = '### Requirement: R-S\n\n#### Scenario: AC-08a suffixed\n- a\n\n#### Scenario: AC-09b other\n- b\n';
-  const delta = '## MODIFIED Requirements\n\n### Requirement: R-S\n\n#### Scenario: AC-08a suffixed\n- a\n';
-  const root = proj({
+  // A custom config pattern over IDs the BUILT-IN DEFAULT deliberately does not recognise (a
+  // lowercase-led shape). The discriminator has to be a report line that PAIRS BY ID: a dropped
+  // line prints the scenario's heading text either way, so it stays green even if the row were
+  // ignored. `titleChanged` cannot be produced without recognising the ID on both sides.
+  const store = '### Requirement: R-S\n\n#### Scenario: ac-08a old title\n- a\n';
+  const delta = '## MODIFIED Requirements\n\n### Requirement: R-S\n\n#### Scenario: ac-08a new title\n- a\n';
+  const files = {
     'apriori/specs/m/spec.md': store,
     'apriori/changes/c/flow-state.md': FLOW('c'),
     'apriori/changes/c/specs/m/spec.md': `<!-- apriori-base: ${am.fingerprint(store)} -->\n\n` + delta,
-    'apriori/process-config.md': '| id-pattern | [A-Z]+-\\d+[a-z]* |\n',
-  });
+  };
+  const root = proj({ ...files, 'apriori/process-config.md': '| id-pattern | [a-z]+-\\d+[a-z]* |\n' });
   const r = run(root, ['archive', '--change', 'c']);
   assert.strictEqual(r.status, 0, r.stdout + r.stderr);
-  assert.match(r.stdout, /! dropped: AC-09b/);
+  assert.match(r.stdout, /titleChanged: ac-08a old title -> ac-08a new title/, r.stdout);
+  // the same tree WITHOUT the row: the default cannot see those IDs, so nothing pairs
+  const noRow = proj(files);
+  const rn = run(noRow, ['archive', '--change', 'c']);
+  assert.doesNotMatch(rn.stdout, /titleChanged/, 'the row is what made the pairing possible');
+  assert.match(rn.stdout, /! dropped: ac-08a old title/, rn.stdout);
   // default positive path
   const root2 = archiveProj(stamped(MOD_DROP));
   assert.match(run(root2, ['archive', '--change', 'c']).stdout, /! .*KV-02/);

@@ -2,6 +2,54 @@
 
 All notable changes to `apriori-cli`. Versions follow semver; the stability promise: CLI surface & flags, `--json` shapes, the delta format and the flow-state schema only break in a major.
 
+## Unreleased · the default ID pattern recognises the IDs real projects write, and delta gains a legal home for commentary
+
+**Behavior change — the built-in `id-pattern` default is wider.** It was `[A-Z]+-\d+`; it is now
+`[A-Z]+(?:-[A-Z]+)*-\d+[a-z]*`, so multi-segment IDs (`AC-BIS-01`, `LIFE-DWS-01`) and
+lowercase-suffixed ones (`AC-30f`) bind out of the box. In one real brownfield project 50 of 151
+scenarios were permanently unbindable under the old default — verify reported GAPS, gate C1 blocked,
+and every change carried a hand-written paragraph explaining that this was a tool limitation rather
+than a defect. 4.1.0 made the pattern configurable but left the default alone, and the escape hatch
+lives in `apriori/process-config.md` — a file the agent may never write — so the fix never actually
+reached anyone: that project upgraded and its config file is still the untouched template.
+
+Compatibility is a `leadId`-level property, and that is the level to check it at: for every title
+the old pattern BOUND, the new one binds the byte-identical ID. (A raw `.match()` comparison would
+differ — `AC-30f` used to yield `AC-30` — but that was never a binding, because `leadId` requires
+the match to start at the title's first character and rejects a trailing word character.) This
+repo's own store is unmoved: identical ID set, identical unidentified and duplicate counts.
+
+**What you may newly see.** Scenarios that were UNIDENTIFIED can become UNBOUND (recognised, but no
+test carries the ID) — that is the more honest message. And if two previously-unidentified scenarios
+now resolve to the same ID, they are reported as DUPLICATES: a defect that was always there, hidden
+behind the narrower pattern. A project that wants the old behavior can pin it with an
+`| id-pattern | [A-Z]+-\d+ |` row, which still outranks the default.
+
+**`apriori doctor` stops sending you to the wrong repair.** D6 used to answer every unbindable
+scenario with "add leading IDs" — advice that would have had that project rewrite fifty perfectly
+good IDs. It now separates a title whose leading token is ID-shaped (a digit plus a `-` or `_`),
+whose fix names the `id-pattern` row, from a title with no ID at all, which keeps the original
+advice. Each class produces one finding naming only its own scenarios, with at most three samples.
+
+**D5 no longer borrows the project's ID vocabulary.** Its TAP probe judges plumbing, not identity,
+but it read `DEFAULT_ID` — so widening that constant could reclassify a healthy stream: a tagged
+`# SKIP` contributes nothing to the parsed count, and `ok 1 - AC-30f pending # SKIP` moves from
+untagged to tagged the moment `AC-30f` becomes recognisable, dropping the count to zero and
+reporting `truncated or malformed`. D5 now keeps its own frozen classification regex.
+
+**Delta files gain `## Notes`, and lose a silent hole.** A `## Notes` section is commentary the
+merge ignores entirely — content, requirement and scenario markers, and stamp-shaped lines alike.
+It exists because authors kept writing explanatory headings that the parser read as instructions:
+one was refused loudly, and the worse one was not refused at all. A `###` heading that is not
+`### Requirement:` inside a requirement block used to be absorbed as body text and written verbatim
+into the living store; on a MODIFIED operation the integrity report surfaced it, on an ADDED one
+nothing did. It is now a line-numbered problem pointing at `## Notes`. Two consequences worth
+knowing: a stamp meant for the delta must sit BEFORE the Notes section, since the section is opaque;
+and a Notes-only delta still fails the zero-operation guard, because commentary is not an operation.
+Every archived delta in this repo (70 files) still parses with zero problems.
+
+419 tests.
+
 ## Unreleased · gate degrades the check it cannot run — `INCOMPLETE`, exit code 3
 
 **Exit-code semantics extended.** `apriori gate` gains a fourth outcome: `GATE: INCOMPLETE`

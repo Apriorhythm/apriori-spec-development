@@ -140,7 +140,7 @@ test('CF-12 the template names the id-pattern row with two-layer pipe wording', 
   const tplPath = path.join(__dirname, '..', 'templates', 'process-config.md');
   const tpl = fs.readFileSync(tplPath, 'utf8');
   const { values } = parseConfig(tpl);
-  assert.strictEqual(values.get('id-pattern'), '[A-Z]+-\\d+');           // parsed value = built-in default
+  assert.strictEqual(values.get('id-pattern'), require('../lib/config').DEFAULT_ID);  // parsed value = built-in default, whatever it currently is
   assert.strictEqual(values.get('cas'), 'required');                     // table structure survives end-to-end
   assert.match(tpl, /\\\|/);                                             // guidance shows the \| spelling
   assert.match(tpl, /\[\\\|\]/);                                         // and the [\|] literal-pipe spelling

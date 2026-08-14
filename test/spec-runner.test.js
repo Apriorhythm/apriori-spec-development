@@ -74,7 +74,7 @@ test('SR-07 delegates execution to the given test command (TAP is the only coupl
   assert.deepStrictEqual(verdict.boundGreen, ['XX-01']);
 });
 
-test('SR-08 the id-pattern is configurable, default [A-Z]+-\\d+', () => {
+test('SR-08 the id-pattern is configurable; the default recognises multi-segment and suffixed IDs', () => {
   // default pattern ignores lowercase-led ids
   const def = run('#### Scenario: ab-1 lower\n', '');
   assert.strictEqual(def.verdict.unidentified.length, 1);
@@ -225,9 +225,11 @@ test('SR-13 spec hygiene: duplicate IDs fail; fenced examples excluded; ID suffi
   const { byId } = collectScenarios([tmpSpec('```\n#### Scenario: YY-01 example only\n```\n#### Scenario: YY-02 real\n').file], idRe);
   assert.ok(!byId.has('YY-01'));
   assert.ok(byId.has('YY-02'));
-  // XX-01b is NOT XX-01: the ID must end at a word boundary
+  // an ID is never silently TRUNCATED: under the built-in default the lowercase suffix is part
+  // of the ID, while a trailing digit or underscore still rejects the whole match
   const { leadId } = require('../lib/spec-runner');
-  assert.strictEqual(leadId('XX-01b something', idRe), null);
+  assert.strictEqual(leadId('XX-01b something', idRe), 'XX-01b');
+  assert.strictEqual(leadId('XX-01b2 something', idRe), null);
   assert.strictEqual(leadId('XX-01_more', idRe), null);      // underscore is a word character too
   assert.strictEqual(leadId('XX-01 something', idRe), 'XX-01');
   assert.strictEqual(leadId('XX-01: colon ok', idRe), 'XX-01');

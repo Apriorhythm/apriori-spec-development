@@ -10,6 +10,9 @@ const { spawnSync } = require('node:child_process');
 
 const BIN = path.join(__dirname, '..', 'bin', 'apriori.js');
 const PATTERN = '[A-Z]+(-[A-Z]+)*-\\d+[a-z]*';
+// a row NARROWER than the built-in default: the only way left to prove config precedence,
+// now that the default recognises the multi-segment and suffixed shapes itself
+const NARROW = '[A-Z]+-\\d+';
 const SPEC3 = '#### Scenario: AC-01 plain\n#### Scenario: AC-08a suffixed\n#### Scenario: AC-BIS-01 multi\n';
 const TAP3 = `node -e "['AC-01 plain','AC-08a suffixed','AC-BIS-01 multi'].forEach((t,i)=>console.log('ok '+(i+1)+' - '+t))"`;
 const CTRL = new RegExp('[\\x00-\\x1f\\x7f]');
@@ -30,15 +33,17 @@ const markerCmd = (root) => `node -e "require('fs').writeFileSync(${JSON.stringi
 // ---- SR: verify ----
 
 test('SR-50 the config row takes effect without a flag', () => {
+  // The row is proven to govern by making the run STRICTER than the built-in default — an
+  // assertion the default alone cannot satisfy now that it recognises these shapes itself.
   const files = { 'apriori/specs/m/spec.md': SPEC3 };
   const bare = proj(files);
-  const r1 = JSON.parse(vrun(bare, ['--specs', 'apriori/specs', '--test-cmd', TAP3, '--json']).stdout);
-  assert.strictEqual(r1.unidentified.length, 2, 'without the row only AC-01 is identified');
-  const cfg = proj({ ...files, 'apriori/process-config.md': `| id-pattern | ${PATTERN} |\n` });
+  const out1 = vrun(bare, ['--specs', 'apriori/specs', '--test-cmd', TAP3, '--json']);
+  const r1 = JSON.parse(out1.stdout);
+  assert.strictEqual(r1.unidentified.length, 0, 'without a row the default identifies all three: ' + out1.stdout);
+  const cfg = proj({ ...files, 'apriori/process-config.md': `| id-pattern | ${NARROW} |\n` });
   const out = vrun(cfg, ['--specs', 'apriori/specs', '--test-cmd', TAP3, '--json']);
   const r2 = JSON.parse(out.stdout);
-  assert.strictEqual(r2.unidentified.length, 0, 'config row identifies all three: ' + out.stdout + out.stderr);
-  assert.strictEqual(r2.result, 'GREEN');
+  assert.strictEqual(r2.unidentified.length, 2, 'the narrower row governs: ' + out.stdout + out.stderr);
 });
 
 test('SR-51 the flag overrides and shields the config', () => {
@@ -130,7 +135,7 @@ test('SR-52 validation precedes every spec read, and sanitization survives adver
   assert.match(rt.stdout, /RESULT: ERROR/);
 });
 
-test('SR-53 absent flag and config the default binds unchanged', () => {
+test('SR-53 absent flag and config, resolution still runs through the default channel', () => {
   const root = proj({ 'apriori/specs/m/spec.md': '#### Scenario: XX-01 a\n' });
   const r = JSON.parse(vrun(root, ['--specs', 'apriori/specs', '--test-cmd', `node -e "console.log('ok 1 - XX-01 a')"`, '--json']).stdout);
   assert.strictEqual(r.result, 'GREEN');
@@ -153,10 +158,17 @@ test('SR-54 catastrophic config matching is terminated, adversarial titles inclu
   assert.match(errText, /process-config/);
   assert.match(errText, /timeout|terminated/, 'the message names the termination, not a spawn error');
   assert.ok(!fs.existsSync(marker(root)), 'test command never spawned');
-  // the real multi-segment pattern completes normally through the child
-  const ok = proj({ 'apriori/specs/m/spec.md': SPEC3, 'apriori/process-config.md': `| id-pattern | ${PATTERN} |\n` });
-  const rok = vrun(ok, ['--specs', 'apriori/specs', '--test-cmd', TAP3, '--json']);
-  assert.strictEqual(JSON.parse(rok.stdout).result, 'GREEN');
+  // A benign config pattern completes normally through the child. It must be one the BUILT-IN
+  // DEFAULT does not already cover, or this control stays green even if the row is ignored.
+  const LOWER_SPEC = '#### Scenario: ac-01 plain\n#### Scenario: ac-bis-01 multi\n';
+  const LOWER_TAP = `node -e "['ac-01 plain','ac-bis-01 multi'].forEach((t,i)=>console.log('ok '+(i+1)+' - '+t))"`;
+  const ok = proj({ 'apriori/specs/m/spec.md': LOWER_SPEC, 'apriori/process-config.md': '| id-pattern | [a-z]+(-[a-z]+)*-\\d+ |\n' });
+  const rok = vrun(ok, ['--specs', 'apriori/specs', '--test-cmd', LOWER_TAP, '--json']);
+  assert.strictEqual(JSON.parse(rok.stdout).result, 'GREEN', rok.stdout + rok.stderr);
+  // without the row the default cannot bind those IDs — the row is what made it GREEN
+  const bare = proj({ 'apriori/specs/m/spec.md': LOWER_SPEC });
+  const rbare = vrun(bare, ['--specs', 'apriori/specs', '--test-cmd', LOWER_TAP, '--json']);
+  assert.notStrictEqual(JSON.parse(rbare.stdout).result, 'GREEN', rbare.stdout);
 });
 
 test('SR-55 every child failure class fails closed', () => {
@@ -198,10 +210,13 @@ test('SR-55 every child failure class fails closed', () => {
 const gate = require('../lib/gate');
 const FLOW = (name) => `change: ${name}\ntier: medium\ntrack: harden\ntrack-rationale: r\nlineage: main\ncurrent-step: STEP5\nround: 1\nnext-action: x\ngates:\n  - 2026-08-13T00:00 note: n\n`;
 const LEDGER_OK = '| ID | Issue | Risk | Round found | Status |\n|---|---|---|---|---|\n| Q-1 | a | low | 1 | verified |\n';
-const SUFFIX_STORE = '### Requirement: Alpha\n\n#### Scenario: XA-01b base\n- t\n';
+// A LOWERCASE id: the built-in default deliberately does not recognise it, so a flag or config
+// row genuinely changes the outcome. (The old `XA-01b` fixture stopped discriminating once the
+// default learned lowercase suffixes — both sides then passed and the test proved nothing.)
+const SUFFIX_STORE = '### Requirement: Alpha\n\n#### Scenario: xa-01 base\n- t\n';
 const PLAIN_DELTA = '## ADDED Requirements\n\n### Requirement: Beta\n\n#### Scenario: XB-01 new\n- t\n';
-const SUFFIX_PATTERN = '[A-Z]+-\\d+[a-z]*';
-const SUFFIX_TAP = `node -e "console.log('ok 1 - XA-01b a');console.log('ok 2 - XB-01 b')"`;
+const SUFFIX_PATTERN = '[A-Za-z]+-\\d+';   // covers the lowercase store ID and the delta's uppercase one
+const SUFFIX_TAP = `node -e "console.log('ok 1 - xa-01 a');console.log('ok 2 - XB-01 b')"`;
 
 function gateProj(extra) {
   return proj({
@@ -222,7 +237,7 @@ test('GT-22 gate accepts --id-pattern for C1', () => {
   assert.strictEqual(c1.status, 'pass', c1 && c1.detail);
   const bare = gate.runGate({ cwd: root, change: 'c', testCmd: SUFFIX_TAP });
   const c1b = bare.checks.find((x) => x.id === 'C1');
-  assert.match(c1b.detail, /unidentified/, 'without the pattern the suffixed ID is unidentified');
+  assert.match(c1b.detail, /[1-9]\d* unidentified/, 'without the pattern the lowercase ID is unidentified — a bare /unidentified/ would also match the store summary\'s `0 unidentified`');
   // archived stage
   const aroot = proj({
     'apriori/specs/kv/spec.md': SUFFIX_STORE,
@@ -230,7 +245,7 @@ test('GT-22 gate accepts --id-pattern for C1', () => {
     'apriori/changes/archive/2026-01-01T0000-z/tasks.md': '- [x] T1\n',
     'apriori/changes/archive/2026-01-01T0000-z/review/issues.md': LEDGER_OK,
   });
-  const ra = gate.runGate({ cwd: aroot, change: 'z', testCmd: `node -e "console.log('ok 1 - XA-01b a')"`, idPattern: SUFFIX_PATTERN });
+  const ra = gate.runGate({ cwd: aroot, change: 'z', testCmd: `node -e "console.log('ok 1 - xa-01 a')"`, idPattern: SUFFIX_PATTERN });
   const c1a = ra.checks.find((x) => x.id === 'C1');
   assert.strictEqual(c1a.status, 'pass', c1a && c1a.detail);
 });
@@ -318,11 +333,12 @@ test('CK-13 CK-04 honors the config id-pattern row', () => {
   const files = { 'apriori/specs/m/spec.md': '#### Scenario: AC-08a suffixed\n#### Scenario: AC-BIS-01 multi\n' };
   const bare = proj(files);
   const r1 = run(bare, ['check']);
-  assert.strictEqual(r1.status, 1, r1.stdout);
-  assert.match(r1.stdout, /without a bindable ID/);
-  const cfg = proj({ ...files, 'apriori/process-config.md': `| id-pattern | ${PATTERN} |\n` });
+  assert.strictEqual(r1.status, 0, 'the built-in default recognises both shapes: ' + r1.stdout);
+  // a row NARROWER than the default proves precedence by making check stricter
+  const cfg = proj({ ...files, 'apriori/process-config.md': `| id-pattern | ${NARROW} |\n` });
   const r2 = run(cfg, ['check']);
-  assert.strictEqual(r2.status, 0, r2.stdout + r2.stderr);
+  assert.strictEqual(r2.status, 1, r2.stdout + r2.stderr);
+  assert.match(r2.stdout, /bindable/);
 });
 
 test('CK-14 check and verify judge identically at the edges', () => {
@@ -408,7 +424,7 @@ test('DR-16 D6 names its pattern source', () => {
   const bare = drProject('', '#### Scenario: AC-08a s\n');
   const r2 = doctor.runDoctor({ cwd: bare, testCmd: DR_TAP });
   const d6b = r2.checks.find((c) => c.id === 'D6');
-  assert.strictEqual(d6b.status, 'finding', d6b.detail);   // suffixed ID unbindable under default
+  assert.strictEqual(d6b.status, 'ok', d6b.detail);        // the built-in default recognises AC-08a
   assert.match(d6b.detail, /default/, 'names the default source');
 });
 
@@ -488,7 +504,7 @@ test('CF-12 template, docs and changelog carry the full id-pattern story', () =>
   // the whole template table survives parsing: full expected key/value map
   const { values, conflicts } = parseConfig(tpl);
   assert.strictEqual(conflicts.size, 0);
-  for (const [k, v] of [['language', 'auto'], ['id-pattern', '[A-Z]+-\\d+'], ['cas', 'required'],
+  for (const [k, v] of [['language', 'auto'], ['id-pattern', require('../lib/config').DEFAULT_ID], ['cas', 'required'],
     ['step0-cap', '5'], ['step2-cap', '4'], ['step5-cap', '25'], ['step6-cap', '4'],
     ['spike-cap', '10'], ['extraction-review-cap', '2'], ['shrink-state', 'none'],
     ['rejected-ratio-guard', '50%'], ['shrink-proposal-freq', '5'], ['post-merge-review-freq', '1 in 5']])
@@ -620,15 +636,31 @@ test('SR-54 a TAP-batch failure after the test command still fails closed, and t
     assert.match(run2.errors.join(' '), /process-config/);
     for (const e of run2.errors) { assert.doesNotMatch(e, CTRL); assert.ok(e.length <= 200); }
   }
-  // same-store contrast: the real multi-segment pattern over the SAME adversarial-title store
-  // completes through the child — no matcher failure (the evil title is merely unidentified)
+  // Same-store contrast: a benign config pattern over the SAME adversarial-title store completes
+  // through the child — no matcher failure (the evil title is merely unidentified). The pattern
+  // alone cannot prove the CHILD ran, because a language-equivalent built-in default would give
+  // the same three answers in process; so instrument the seam and assert both batches went
+  // through it, echoing the configured source back.
   const sameStore = proj({
     'apriori/specs/m/spec.md': `#### Scenario: AC-01 ok\n#### Scenario: ${evilTitle}\n`,
     'apriori/process-config.md': `| id-pattern | ${PATTERN} |\n`,
   });
-  const rok = vrun(sameStore, ['--specs', 'apriori/specs', '--test-cmd', `node -e "console.log('ok 1 - AC-01 ok')"`, '--json']);
-  const jok = JSON.parse(rok.stdout);
-  assert.strictEqual(jok.result, 'GAPS', rok.stdout);                 // ordinary gap, not a matcher failure
-  assert.strictEqual(jok.errors.length, 0, 'no matcher failure');
-  assert.strictEqual(jok.unidentified.length, 1);
+  let calls = 0, sawSource = null;
+  let jok;
+  try {
+    sr._setChildRunner((payload) => {
+      calls++;
+      const { pattern, texts } = JSON.parse(payload);
+      sawSource = pattern;
+      const re = new RegExp(pattern);
+      return { status: 0, signal: null, error: null,
+        stdout: JSON.stringify({ ids: texts.map((t) => sr.leadId(t, re)) }) };
+    });
+    jok = sr.verify({ specs: [path.join(sameStore, 'apriori/specs')], cwd: sameStore,
+      testCmd: `node -e "console.log('ok 1 - AC-01 ok')"` });
+  } finally { sr._setChildRunner(null); }
+  assert.ok(calls >= 2, `both application branches went through the config-origin child (${calls})`);
+  assert.strictEqual(sawSource, PATTERN, 'and it was handed the CONFIGURED source, not the default');
+  assert.deepStrictEqual(jok.errors, [], 'no matcher failure');
+  assert.strictEqual(jok.verdict.unidentified.length, 1);
 });

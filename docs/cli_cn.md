@@ -169,7 +169,7 @@ usage: apriori update [--dry-run]
 
 ### 8.0 process-config 配置键：id-pattern
 
-在 `apriori/process-config.md` 写一行 `| id-pattern | <裸 JS 正则源串> |`，一处声明项目的场景 ID 形状，处处生效。解析优先级：`--id-pattern` flag（仅 verify 与 gate；按存在性判定——空 flag 是错误，绝不回退）> 配置行 > 内置默认 `[A-Z]+-\d+`。`check`（CK-04）与 `doctor`（D6）只吃配置行、无 flag。四个消费点用同一识别契约：从标题第一个字符开始匹配，后继为字母/数字/下划线则拒绝，不额外拼接 `\b`，源串按原样编译。
+在 `apriori/process-config.md` 写一行 `| id-pattern | <裸 JS 正则源串> |`，一处声明项目的场景 ID 形状，处处生效。解析优先级：`--id-pattern` flag（仅 verify 与 gate；按存在性判定——空 flag 是错误，绝不回退）> 配置行 > 内置默认 `[A-Z]+(?:-[A-Z]+)*-\d+[a-z]*`——它本身就认得多段（`AC-BIS-01`）与带小写后缀（`AC-30f`）的 ID，所以多数项目根本不需要写那一行。`check`（CK-04）与 `doctor`（D6）只吃配置行、无 flag。四个消费点用同一识别契约：从标题第一个字符开始匹配，后继为字母/数字/下划线则拒绝，不额外拼接 `\b`，源串按原样编译。
 
 pipe 转义分两层，切勿混为一谈：表格单元格内属于值的每个 pipe 都写 `\|`（如 alternation 单元格 `(AC\|BR)-\d+` 解析为正则源串 `(AC|BR)-\d+`，裸 `|` 即 alternation）；正则要**匹配**字面 pipe 字符时用字符类——单元格里写 `[\|]`，解析为 `[|]`。该转义规则对全部配置键统一生效。
 

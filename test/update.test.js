@@ -218,7 +218,7 @@ test('UP-10 manifest hygiene fails closed', () => {
   }
 });
 
-test('UP-10b a manifest-listed file that vanished is reported missing; escaping symlinks fail before hashing', (t) => {
+test('UP-10 a manifest-listed file that vanished is reported missing; escaping symlinks fail before hashing', (t) => {
   // missing: delete a managed file → `missing` row, no write (UMIMPL-1 refutation made durable)
   const root = agedProject();
   fs.rmSync(path.join(root, '.claude', 'commands', 'apriori.md'));

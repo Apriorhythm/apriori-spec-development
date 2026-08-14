@@ -20,7 +20,13 @@ the match to start at the title's first character and rejects a trailing word ch
 repo's own store is unmoved: identical ID set, identical unidentified and duplicate counts.
 
 **What you may newly see.** Scenarios that were UNIDENTIFIED can become UNBOUND (recognised, but no
-test carries the ID) — that is the more honest message. And if two previously-unidentified scenarios
+test carries the ID) — that is the more honest message. **And test names using a lowercase-suffix
+convention now bind differently**: a test called `XX-10b …`, written as "a second test for `XX-10`",
+used to carry no ID at all (the trailing letter rejected the match); it now binds to the ID `XX-10b`,
+and if no such scenario exists it is reported as an ORPHAN. This repo's own suite had exactly three
+— the post-archive gate caught them — and they were renamed to the IDs they were always meant to
+carry. If you use that convention, expect the same and rename likewise; it was never a real
+binding. And if two previously-unidentified scenarios
 now resolve to the same ID, they are reported as DUPLICATES: a defect that was always there, hidden
 behind the narrower pattern. A project that wants the old behavior can pin it with an
 `| id-pattern | [A-Z]+-\d+ |` row, which still outranks the default.

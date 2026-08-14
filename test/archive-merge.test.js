@@ -192,7 +192,7 @@ test('AM-10 re-running an already-merged delta is an idempotent no-op', () => {
   assert.strictEqual(code2, 1);
 });
 
-test('AM-10b rename-aware idempotency: same-delta RENAMED+ADDED collides; rename rerun is a no-op', () => {
+test('AM-10 rename-aware idempotency: same-delta RENAMED+ADDED collides; rename rerun is a no-op', () => {
   // same delta renames Alpha->Gamma AND adds an identical Gamma → collision, not no-op
   const d1 = parseDelta('## RENAMED Requirements\n- Alpha -> Gamma\n## ADDED Requirements\n### Requirement: Gamma\nAlpha behaves.\n\n#### Scenario: AL-01 alpha\n- THEN ok\n');
   const r1 = merge(STORE, d1, 'c');

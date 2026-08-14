@@ -65,8 +65,8 @@
 `check`'s CK-04 SHALL resolve its id-pattern from the config `id-pattern` row (else `DEFAULT_ID`; check gains NO CLI flag — a CI gate consumes the project constant) and SHALL recognize scenario IDs through the same `leadId` semantics as verify — replacing its private `^(…)\b` anchoring — so the four consumers can never disagree on the same title. An invalid config row is `RESULT: ERROR`, exit 2, through check's existing error channel.
 
 #### Scenario: CK-13 CK-04 honors the config id-pattern row
-- WHEN the config carries `| id-pattern | [A-Z]+(-[A-Z]+)*-\d+[a-z]* |` and the store contains scenarios `AC-08a` and `AC-BIS-01`
-- THEN `apriori check` reports no CK-04 failure for them (without the row, both fail CK-04)
+- WHEN the config carries a row NARROWER than the built-in default — `| id-pattern | [A-Z]+-\d+ |` — and the store contains scenarios `AC-08a` and `AC-BIS-01`
+- THEN `apriori check` reports a CK-04 failure for both, because the row governs; WITHOUT the row the built-in default recognises them and CK-04 passes — the row is proven to take effect by making check STRICTER, which the default alone can no longer produce
 
 #### Scenario: CK-14 check and verify judge identically at the edges
 - WHEN the same title set (letter suffix, multi-segment, trailing `_`, adjacent alphanumeric, a pattern ending in a non-word char, a source carrying its own `^`, an alternation source) is judged by CK-04 and by verify's scenario collection under the same pattern

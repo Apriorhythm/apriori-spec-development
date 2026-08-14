@@ -386,7 +386,7 @@ test('AM-30 free text and fences stay legal; CRLF parses identically', () => {
   assert.deepStrictEqual([...crlf.delta.ADDED.entries()], [...lf.delta.ADDED.entries()], 'CRLF block text identical to LF');
 });
 
-test('AM-30b regression corpus: every archived delta parses clean and identical to the old grammar', () => {
+test('AM-30 regression corpus: every archived delta parses clean and identical to the old grammar', () => {
   const archRoot = path.join(__dirname, '..', 'apriori', 'changes', 'archive');
   if (!fs.existsSync(archRoot)) return;   // corpus is local-only (apriori/* untracked)
   const files = [];

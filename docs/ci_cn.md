@@ -36,5 +36,6 @@ living 规格库里每条 scenario 都有绿测试、无孤儿。跑你自己的
 | 0 | PASS | GREEN | PASS(机械面) |
 | 1 | FAIL(n) | 缺口:unbound/red/orphan/重复 | BLOCKED(n) |
 | 2 | 规格库路径缺失 | 运行不可信(非 TAP、崩溃、冲突、CAS) | 评估不可信 |
+| 3 | — | — | INCOMPLETE — 能跑的检查都过了,但至少一项被跳过(没有测试命令 → C1 跑不了)。按"未通过"对待。
 
 接入新 runner?`npx apriori-cli doctor --no-run` 不执行你的测试命令就能体检整条接缝。

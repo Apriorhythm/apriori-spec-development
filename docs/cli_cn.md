@@ -133,7 +133,9 @@ usage: apriori gate --change <name> [--test-cmd "<cmd>"] [--id-pattern <re>] [--
 
 示例:`apriori gate --change add-playback --json`
 
-退出码:0 PASS · 1 BLOCKED · 2 评估不可信。
+退出码:0 PASS · 1 BLOCKED · 2 评估不可信 · 3 INCOMPLETE。
+
+完全没有测试命令时(既无 `--test-cmd`,也无 `test-cmd` 配置行),C1 报 `skipped`,其余六项照常执行——总结果是 `GATE: INCOMPLETE`,退出码 3。测试命令来源**坏掉**(配置冲突/不可读、`--test-cmd` 传了空值)仍是退出码 2:坏掉不等于没有。已确证的阻断优先于跳过,所以退出码 1 仍压过 3。
 
 in-flight 的 C1 消费变更收窄 verdict(detail 为 `verify GREEN (in-flight, change-scoped)` + 六类 store 摘要尾缀)——并行 change 的 gate 各自独立变绿;archived 阶段仍验证全库。
 

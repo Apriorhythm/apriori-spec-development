@@ -2,6 +2,40 @@
 
 All notable changes to `apriori-cli`. Versions follow semver; the stability promise: CLI surface & flags, `--json` shapes, the delta format and the flow-state schema only break in a major.
 
+## Unreleased · gate degrades the check it cannot run — `INCOMPLETE`, exit code 3
+
+**Exit-code semantics extended.** `apriori gate` gains a fourth outcome: `GATE: INCOMPLETE`
+with **exit code 3**, and `checks[].status` gains `skipped`. If your CI treats any non-zero
+exit as failure, an INCOMPLETE gate will now fail the job — that is the intended reading: a
+gate that could not run its binding check has not passed. The `--json` key set is unchanged
+(`{change, stage, checks, result, blocked, errors}` — still no `code` field); only the value
+domains of `result` and `checks[].status` grew, and `blocked` still counts blocked checks
+only, never skipped ones.
+
+**Why.** A project whose `apriori/process-config.md` lacked a `test-cmd` row got exit 2 from
+`apriori gate` before a single check ran — so C2 (tasks all checked) and C4 (ledger terminal)
+never executed either, though neither needs a test command. In a real brownfield project that
+meant the gate ran zero times across an entire change's life, while 45 unchecked tasks and
+zero consistency reviews sailed through. Now a missing test command skips C1 alone: the other
+six checks run and report real conclusions, and the aggregate says so. A *broken* test-command
+source (conflicting or unreadable config, an empty or whitespace-only `--test-cmd`, a
+non-string value through the API) stays exit 2 — broken is not absent. `--test-cmd` is now
+judged by PRESENCE, matching `--id-pattern`: an empty flag is an error, never a config
+fallback. A confirmed block still outranks a skip.
+
+**`apriori doctor` stops calling that project healthy.** D5 reported `n/a` when no test
+command was configured, and `n/a` is not a finding — so doctor printed `DOCTOR: HEALTHY` about
+a project whose gate was dead. It is now a finding naming the consequence, with the
+`process-config.md` fix. An explicit `--no-run` is still `n/a`: a deliberate skip is not a
+defect, and that branch now sorts ahead of the missing-command one.
+
+**Internals.** `lib/spec-runner.js` exports the change-projection builder plus a call-time
+resolver and two test-only seams, so gate's skipped-C1 path provably shares verify's one
+projection implementation rather than growing a second — a divergence there would have
+silently un-blocked C7.
+
+392 tests.
+
 ## Unreleased · the SR-64 byte-golden guard becomes platform-correct
 
 The `--specs` byte goldens were captured on POSIX and compared byte-for-byte on every

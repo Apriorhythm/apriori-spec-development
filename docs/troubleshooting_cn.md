@@ -21,6 +21,7 @@ apriori-cli 需要 Node ≥ 22。先升级 Node,否则一切免谈。
 - *无输出 / 非 TAP*:runner 在用人类报告器。Node 加 `--test-reporter=tap`;pytest 用 `pytest --tap-stream`(插件 `pytest-tap`)。
 - *TAP 流截断或畸形*:出现了 version/plan 行但零结果行——运行中途死了。
 - *退出码 N 无 TAP 解释*:命令失败却没有对应的 `not ok`——常见于崩溃的测试文件或配置错误的 runner。
+- *未配置测试命令*:这是一条 **finding**,不是中性提示——没有它,`apriori gate` 的 C1(绑定检查)**根本跑不了**,其余检查全过时 gate 只会给出 `GATE: INCOMPLETE`(退出码 3);真有阻断仍报 `BLOCKED`(退出码 1),评估不可信仍压过前两者(退出码 2)。修法:往 `apriori/process-config.md` 加一行 `test-cmd`(那个文件归你,agent 只读),或每次调用传 `--test-cmd`。显式 `--no-run` 仍是 n/a:主动跳过不是缺陷。
 - 测试红不是 doctor 发现——那是 `verify` 的事。
 
 ### D6 —— scenario 无可绑定 ID / ID 重复

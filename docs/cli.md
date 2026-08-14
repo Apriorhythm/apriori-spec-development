@@ -133,7 +133,9 @@ usage: apriori gate --change <name> [--test-cmd "<cmd>"] [--id-pattern <re>] [--
 
 Example: `apriori gate --change add-playback --json`
 
-Exit: 0 PASS · 1 BLOCKED · 2 untrustworthy evaluation.
+Exit: 0 PASS · 1 BLOCKED · 2 untrustworthy evaluation · 3 INCOMPLETE.
+
+With no test command anywhere (no `--test-cmd`, no `test-cmd` config row) C1 is reported `skipped` and the other six checks still run — the aggregate is `GATE: INCOMPLETE` with exit code 3. A BROKEN test-command source (conflicting or unreadable config, an empty `--test-cmd`) stays exit 2: broken is not absent. A confirmed block outranks a skip, so exit 1 still wins over exit 3.
 
 In-flight C1 consumes the change-scoped verdict (detail `verify GREEN (in-flight, change-scoped)` with a six-count store summary suffix) — parallel changes' gates go green independently; the archived stage still verifies the whole store.
 

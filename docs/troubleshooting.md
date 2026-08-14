@@ -21,6 +21,7 @@ A detected AI tool's rules file no longer points at `apriori/runbook.md`, or its
 - *produced no output / not TAP*: your runner uses a human reporter. Node: add `--test-reporter=tap`; pytest: `pytest --tap-stream` (plugin `pytest-tap`).
 - *TAP stream truncated or malformed*: a version/plan line appeared but zero result lines — the run died mid-stream.
 - *exit N unexplained by TAP*: the command failed without a corresponding `not ok` — often a crashing test file or a misconfigured runner.
+- *no test command configured*: this is a FINDING, not a neutral note — without one, `apriori gate` cannot run C1 (its binding check) at all, and gate reports `GATE: INCOMPLETE` (exit 3) whenever every other applicable check passes — a real block still wins (`BLOCKED`, exit 1), and an untrustworthy evaluation still wins over both (exit 2). Fix: add a `test-cmd` row to `apriori/process-config.md` (that file is yours — the agent only reads it), or pass `--test-cmd` per invocation. An explicit `--no-run` stays not-applicable: a deliberate skip is not a defect.
 - Red tests are NOT doctor findings — that is `verify`'s business.
 
 ### D6 — scenario without a bindable ID / duplicate IDs

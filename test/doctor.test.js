@@ -165,14 +165,45 @@ test('DR-06 the TAP probe classifies every plumbing edge', () => {
   assert.strictEqual(planOnly.status, 'finding');
 });
 
-test('DR-07 the probe is skippable and degrades honestly', () => {
+test('DR-07 an explicit skip is not-applicable', () => {
   const root = healthy();   // healthy() has no test-cmd row in its config
-  const none = byId(doctor.runDoctor({ cwd: root }), 'D5')[0];
-  assert.strictEqual(none.status, 'n/a');
-  assert.match(none.detail, /--test-cmd|init/);
   const skipped = byId(doctor.runDoctor({ cwd: root, testCmd: TAP_OK, noRun: true }), 'D5')[0];
   assert.strictEqual(skipped.status, 'n/a');
   assert.match(skipped.detail, /skipped/);
+  // the combination that used to be swallowed by the missing-command branch: NO command
+  // configured anywhere AND an explicit --no-run. An explicit human skip is never a finding.
+  const both = byId(doctor.runDoctor({ cwd: root, noRun: true }), 'D5')[0];
+  assert.strictEqual(both.status, 'n/a', `--no-run outranks the missing command: ${both.detail}`);
+  assert.match(both.detail, /--no-run/);
+});
+
+test('DR-07 a missing test command is a finding that names its consequence', () => {
+  const root = healthy();
+  const r = doctor.runDoctor({ cwd: root });
+  const none = byId(r, 'D5')[0];
+  assert.strictEqual(none.status, 'finding');
+  assert.match(none.detail, /gate/i, 'the detail names the consequence');
+  assert.match(none.detail, /C1|binding/i);
+  assert.match(none.fix, /process-config\.md|test-cmd/);
+  assert.strictEqual(r.result, 'FINDINGS');
+  assert.strictEqual(r.code, 1, 'a dead gate is not a healthy seam');
+
+  // a BROKEN config stays the pre-existing config finding, with a distinguishable detail
+  const conflict = healthy();
+  fs.writeFileSync(path.join(conflict, 'apriori/process-config.md'),
+    '| Field | Value |\n|---|---|\n| test-cmd | a |\n| test-cmd | b |\n');
+  const bad = byId(doctor.runDoctor({ cwd: conflict }), 'D5')[0];
+  assert.strictEqual(bad.status, 'finding');
+  assert.match(bad.detail, /config:/);
+  assert.notStrictEqual(bad.detail, none.detail, 'broken and absent read differently');
+
+  // an uncompilable id-pattern still outranks everything: the probe is n/a, not a finding
+  const idbad = healthy();
+  fs.writeFileSync(path.join(idbad, 'apriori/process-config.md'),
+    '| Field | Value |\n|---|---|\n| id-pattern | [ |\n');
+  const skipped = byId(doctor.runDoctor({ cwd: idbad }), 'D5')[0];
+  assert.strictEqual(skipped.status, 'n/a');
+  assert.match(skipped.detail, /id-pattern/);
 });
 
 test('DR-08 store health flags unbindable and ambiguous scenarios', () => {

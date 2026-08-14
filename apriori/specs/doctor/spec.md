@@ -25,9 +25,9 @@
 - WHEN the test command (from `--test-cmd` or the config row) runs
 - THEN D5 classifies: spawn error, signal kill, `Bail out!`, empty output, zero parsed TAP without a version/plan line (naming `--test-reporter=tap`), a TAP version or non-`1..0` plan with zero result lines ("truncated or malformed"), and a non-zero exit unexplained by parsed TAP failures — each a finding; parsed TAP whose failures explain any non-zero exit is ok (counts as info — test failures are NOT doctor findings), and an exactly-`1..0` plan with exit status 0 is ok ("empty suite") — a `1..0` plan with a NON-ZERO exit is the unexplained-exit finding, classified first
 
-#### Scenario: DR-07 the probe is skippable and degrades honestly
-- WHEN no test command is configured anywhere, or `--no-run` is given
-- THEN D5 reports not-applicable with the reason (the `apriori init --test-cmd` hint, or "probe skipped") — never a finding
+#### Scenario: DR-07 an explicit skip is not-applicable, a missing test command is a finding
+- WHEN `--no-run` is given, or the effective id-pattern config is uncompilable
+- THEN D5 reports not-applicable with the reason ("probe skipped (--no-run)" / "probe skipped (invalid id-pattern config)") — an explicit human skip is never a finding; WHEN instead NO test command is configured anywhere and no `--no-run` was given THEN D5 is a FINDING whose detail names the CONSEQUENCE (`apriori gate` cannot run C1, the binding check, at all) and whose fix names the `test-cmd` row in `apriori/process-config.md`, so the aggregate is `DOCTOR: <n> finding(s)` with exit 1 rather than `HEALTHY`; a CONFLICTING `test-cmd` row stays the pre-existing config finding, whose detail is distinguishable from the missing-command one — while a whole `process-config.md` that cannot be read is classified upstream as an id-pattern problem and lands in the first branch (`n/a`), not here; the branch order is: invalid id-pattern → config problem → `--no-run` → missing command → run the probe
 
 #### Scenario: DR-08 store health flags unbindable and ambiguous scenarios
 - WHEN `apriori/specs/` contains scenarios without a leading default-pattern ID, or the same ID in more than one scenario

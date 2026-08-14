@@ -1,5 +1,5 @@
 ### Requirement: gate aggregates the mechanical exit conditions for one change
-`apriori gate --change <name>` SHALL evaluate the machine-checkable gate conditions for exactly one change and encode the aggregate in its exit code: 0 = every applicable check passed (`GATE: PASS`), 1 = at least one check blocked (`GATE: BLOCKED (<n> item(s))`), 2 = the evaluation itself is untrustworthy (usage error, invalid or escaping name, change found nowhere, unreadable flow-state, or an untrustworthy C1 verify run). It SHALL be strictly read-only and SHALL state in its output that PASS covers mechanical checks only — human gates remain human. C6 (KB freshness) SHALL bind each touched store module to its truth doc through an index rather than a filename assumption: a truth doc MAY declare, in its header region (before the first `##`), `store-module: <name>...` (the store modules it covers; default = the doc's basename) and `source-files: <path>...` (space-separated repo-relative code paths; default = `lib/<module>.js`); a covered module with a valid `source-commit` stamp is always mechanically checked, never silently skipped.
+`apriori gate --change <name>` SHALL evaluate the machine-checkable gate conditions for exactly one change and encode the aggregate in its exit code: 0 = every applicable check passed (`GATE: PASS`), 1 = at least one check blocked (`GATE: BLOCKED (<n> item(s))`), 2 = the evaluation itself is untrustworthy (usage error, invalid or escaping name, change found nowhere, unreadable flow-state, an unusable test-command source, or an untrustworthy C1 verify run), 3 = every check that COULD run passed but at least one was skipped (`GATE: INCOMPLETE`). The aggregate is a strict total order: ERROR(2) outranks BLOCKED(1) outranks INCOMPLETE(3) outranks PASS(0) — a confirmed block is never softened by an unrun check, and `blocked` counts `blocked` statuses only, never `skipped`. It SHALL be strictly read-only and SHALL state in its output that PASS covers mechanical checks only — human gates remain human. C6 (KB freshness) SHALL bind each touched store module to its truth doc through an index rather than a filename assumption: a truth doc MAY declare, in its header region (before the first `##`), `store-module: <name>...` (the store modules it covers; default = the doc's basename) and `source-files: <path>...` (space-separated repo-relative code paths; default = `lib/<module>.js`); a covered module with a valid `source-commit` stamp is always mechanically checked, never silently skipped.
 
 #### Scenario: GT-01 a clean in-flight change passes
 - WHEN every applicable check passes for an in-flight change
@@ -58,8 +58,8 @@
 - THEN C6 falls back to module = basename and source-files = `lib/<module>.js`, producing the byte-identical `{status, detail}` it produced before this change for that module — the index and declarations add coverage for non-default layouts without altering any default-layout result
 
 #### Scenario: GT-11 --json is pure JSON in every outcome class
-- WHEN `gate --change <name> --json` runs — PASS, BLOCKED, or any exit-2 class (usage error, invalid name, not found, unreadable flow-state, untrustworthy verify)
-- THEN stdout parses as JSON shaped `{ change, stage: "in-flight"|"archived"|null, checks:[{id,status,detail}], result: "PASS"|"BLOCKED"|"ERROR", blocked, errors }` — `stage: null` when resolution never happened, `change: null` when `--change` was missing
+- WHEN `gate --change <name> --json` runs — PASS, BLOCKED, INCOMPLETE, or any exit-2 class (usage error, invalid name, not found, unreadable flow-state, unusable test-command source, untrustworthy verify)
+- THEN stdout parses as JSON shaped `{ change, stage: "in-flight"|"archived"|null, checks:[{id,status,detail}], result: "PASS"|"BLOCKED"|"INCOMPLETE"|"ERROR", blocked, errors }` — the key set is EXACTLY those six and never grows a `code` field (the process exit code is the mapping PASS→0, BLOCKED→1, ERROR→2, INCOMPLETE→3); `checks[].status` ranges over `pass`/`blocked`/`n/a`/`skipped`; `stage: null` when resolution never happened, `change: null` when `--change` was missing
 
 #### Scenario: GT-12 gate is read-only
 - WHEN gate runs to any outcome against a project tree
@@ -131,3 +131,42 @@ The gate's object is a formal change. When the resolved directory carries `hotfi
 #### Scenario: GT-29 a bundle carrying both identities is an error at the gate too
 - WHEN the resolved directory holds both `flow-state.md` and `hotfix-state.md`
 - THEN the gate exits 2 naming both files rather than judging either one
+
+### Requirement: gate degrades the checks it cannot run instead of refusing to run at all
+A missing test command SHALL disable C1 alone, never the whole evaluation. When no usable test-command source exists (no `--test-cmd` flag and no live `test-cmd` row in `apriori/process-config.md`), `apriori gate` SHALL report C1 with status `skipped`, SHALL still execute C2..C7 and report their real conclusions, and SHALL exit 3 (`GATE: INCOMPLETE`) when nothing blocked. A BROKEN test-command source is a different thing from an ABSENT one and SHALL remain an exit-2 evaluation error. The effective id-pattern SHALL still be resolved and compile-checked even when C1 is skipped — a broken pattern is a broken config, not an absent one.
+
+#### Scenario: GT-30 an absent test command skips C1 and runs the rest
+- WHEN `apriori gate --change <name>` runs with no `--test-cmd` flag and no live `test-cmd` config row, against an in-flight change whose other checks all pass
+- THEN C1 reports status `skipped` with a detail carrying BOTH the fact it did not run AND the cure (`--test-cmd` or a `test-cmd` row), C2..C7 each report their real status, the final line is `GATE: INCOMPLETE`, and the exit code is 3
+
+#### Scenario: GT-31 a confirmed block outranks an unrun check
+- WHEN the test command is absent AND at least one of C2..C7 blocks
+- THEN the result is `BLOCKED` with exit code 1 and `blocked` counts only the blocked checks — the skipped C1 never softens a confirmed block, and never inflates the count
+
+#### Scenario: GT-32 an empty, whitespace-only, or non-string test command is an error, not an absence
+- WHEN `--test-cmd ""` or `--test-cmd "   "` is passed (the flag's PRESENCE is judged, never its truthiness), or `runGate` is called with a `testCmd` that is neither a string nor null/undefined
+- THEN gate exits 2 naming the flag-origin problem (the type is named for a non-string) — it never falls back to the config row and never degrades to `skipped`
+
+#### Scenario: GT-33 a broken config is an error while an empty config value is an absence
+- WHEN `apriori/process-config.md` is unreadable, or carries conflicting `test-cmd` rows
+- THEN gate exits 2 as today; WHEN the file instead carries a `test-cmd` row whose value is empty or whitespace-only THEN the shared config reader has already normalised it to "no such row" and gate treats it as ABSENT (C1 `skipped`, exit 3) — gate never re-litigates the reader's contract
+
+#### Scenario: GT-34 a skipped C1 still produces a real C7
+- WHEN the test command is absent and the change carries an unstamped mutation delta
+- THEN C7 still blocks naming the delta suffix and the `apriori stamp` cure — the projection C7 consumes is built by the SAME shared builder `verify` uses, on a path that spawns no test process
+
+#### Scenario: GT-35 an untrustworthy projection still fails closed with no test command
+- WHEN the test command is absent and the change's projection fails for ANY reason the shared builder reports — merge conflict, malformed delta, diverged CAS base, or a delta-discovery validation failure such as no delta files at all
+- THEN gate exits 2 carrying the builder's errors and C7 draws no conclusion from an untrustworthy projection; AND WHEN the builder returns no trustworthy `texts` while its `errors` are empty THEN gate STILL exits 2, synthesising a deterministic diagnostic of its own so `errors` is never empty on an ERROR — an untrustworthy projection fails closed even when nothing explained why
+
+#### Scenario: GT-36 a broken id-pattern is an error even when C1 is skipped
+- WHEN the test command is absent AND the effective id-pattern fails to resolve — an empty `--id-pattern` flag, an uncompilable flag value, an uncompilable config value, or conflicting `id-pattern` config rows
+- THEN gate exits 2 exactly as it does today, at both stages; AND WHEN the test command is absent while a VALID config-origin id-pattern is in force THEN the pattern is compile-checked but no scenario matching is performed — the matcher child process is spawned ZERO times, observably
+
+#### Scenario: GT-37 the earlier refusals still win over the degradation
+- WHEN the test command is absent AND the resolved bundle is a hotfix bundle
+- THEN gate still exits 2 with the mapping-m1 pointer at `apriori hotfix archive` — the hotfix identity is decided before flow-state and before the test-command source, so a lane bundle (which carries no flow-state by design) is never misreported as a missing flow-state; WHEN the bundle is a formal change with no readable flow-state THEN gate still exits 2 for that reason
+
+#### Scenario: GT-38 the degradation reaches the archived stage too
+- WHEN the test command is absent and the change resolves only under `apriori/changes/archive/<stamp>-<name>/`
+- THEN C1 is `skipped`, C7 is `–` (deltas already merged), C4 still demands every ledger row be terminal, and the exit code follows the same total order; the shared projection builder is invoked ZERO times on this path, observably — an archived bundle's deltas are already in the store, so building a projection could only manufacture a false block

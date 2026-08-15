@@ -10,8 +10,8 @@ The toolchain SHALL ship as one npm package `apriori-cli` exposing a `bin` named
 - THEN it behaves per the spec-runner requirements (SR-01..25)
 
 #### Scenario: CL-03 archive subcommand is archive-merge
-- WHEN `apriori archive --store <f> --delta <f> --change <name> [--write]` or `apriori archive --change <name> [--write] [--changes-dir <dir>]` runs
-- THEN it behaves per the archive-merge requirements (AM-01..27)
+- WHEN `apriori archive --store <f> --delta <f> --change <name> [--write]` or `apriori archive --change <name> [--write] [--changes-dir <dir>] [--force]` runs
+- THEN it behaves per the archive-merge requirements (AM-01..AM-98, AM-107..AM-115) — note the flags are no longer symmetric: `--changes-dir` and `--force` belong to the high-level form alone
 
 #### Scenario: CL-04 check subcommand is the doc checker
 - WHEN `apriori check` runs

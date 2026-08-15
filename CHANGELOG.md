@@ -2,7 +2,16 @@
 
 All notable changes to `apriori-cli`. Versions follow semver; the stability promise: CLI surface & flags, `--json` shapes, the delta format and the flow-state schema only break in a major.
 
-## Unreleased · archive refuses a change that is not finished
+## 5.0.0 — 2026-08-16 · the mechanical gates stop lying: gate degrades instead of stopping, the ID pattern recognises real IDs, and archive refuses an unfinished change
+
+**Why a major.** Three CLI-surface breaks, and the stability promise above says those only happen
+in a major: the single-file `archive` form no longer accepts `--changes-dir`, `gate` gained exit
+code 3, and the built-in `id-pattern` default changed. Read the three "Behavior change" blocks
+below before upgrading; the migration is one line each.
+
+---
+
+### archive refuses a change that is not finished
 
 **Behavior change (1/3) — `apriori archive --change` now has a precondition.** It refuses, in
 dry-run and `--write` alike, with `RESULT: NOT READY — nothing written` (exit 1) unless the bundle
@@ -61,7 +70,9 @@ callers that only report and unsound for one that writes — an `EACCES` reporte
 `n/a` at trivial tier and the archive proceeds. The archive layer classifies by `e.code` in a single
 pass: only `ENOENT`/`ENOTDIR` mean "does not resolve"; everything else refuses and is never forceable.
 
-## Unreleased · the default ID pattern recognises the IDs real projects write, and delta gains a legal home for commentary
+---
+
+### the default ID pattern recognises the IDs real projects write, and delta gains a legal home for commentary
 
 **Behavior change — the built-in `id-pattern` default is wider.** It was `[A-Z]+-\d+`; it is now
 `[A-Z]+(?:-[A-Z]+)*-\d+[a-z]*`, so multi-segment IDs (`AC-BIS-01`, `LIFE-DWS-01`) and
@@ -115,7 +126,9 @@ Every archived delta in this repo (70 files) still parses with zero problems.
 
 419 tests.
 
-## Unreleased · gate degrades the check it cannot run — `INCOMPLETE`, exit code 3
+---
+
+### gate degrades the check it cannot run — `INCOMPLETE`, exit code 3
 
 **Exit-code semantics extended.** `apriori gate` gains a fourth outcome: `GATE: INCOMPLETE`
 with **exit code 3**, and `checks[].status` gains `skipped`. If your CI treats any non-zero
@@ -149,7 +162,9 @@ silently un-blocked C7.
 
 392 tests.
 
-## Unreleased · the SR-64 byte-golden guard becomes platform-correct
+---
+
+### the SR-64 byte-golden guard becomes platform-correct
 
 The `--specs` byte goldens were captured on POSIX and compared byte-for-byte on every
 platform, but spec file paths in the JSON come from a filesystem walk and are therefore

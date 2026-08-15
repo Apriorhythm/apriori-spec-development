@@ -176,9 +176,9 @@ test('SR-68 the frozen live-specimen fixture reports exactly as hand-derived', (
 const STORE_KV = '### Requirement: R-K\nkeep me\n\n#### Scenario: KV-01 one\n- WHEN w\n- THEN t\n- AND a\n\n#### Scenario: KV-02 two\n- b\n';
 function mkChange(delta, extra = {}) {
   return proj({
+    ...require('./helpers/ready-bundle').readyFiles('c'),
     'apriori/specs/m/spec.md': STORE_KV,
-    'apriori/changes/c/flow-state.md': FLOW('c'),
-    'apriori/changes/c/specs/m/spec.md': delta,
+        'apriori/changes/c/specs/m/spec.md': delta,
     ...extra,
   });
 }
@@ -249,8 +249,8 @@ test('SR-67 the old-block titles join the one batch and bind nothing', () => {
 
 function archiveProj(delta, extra = {}) {
   return proj({
+    ...require('./helpers/ready-bundle').readyFiles('c'),
     'apriori/specs/m/spec.md': STORE_KV,
-    'apriori/changes/c/flow-state.md': FLOW('c'),
     'apriori/changes/c/specs/m/spec.md': delta,
     ...extra,
   });
@@ -297,9 +297,9 @@ test('AM-47 the archive id-pattern channel is resolved, terminable and degradabl
   const store = '### Requirement: R-S\n\n#### Scenario: ac-08a old title\n- a\n';
   const delta = '## MODIFIED Requirements\n\n### Requirement: R-S\n\n#### Scenario: ac-08a new title\n- a\n';
   const files = {
+    ...require('./helpers/ready-bundle').readyFiles('c'),
     'apriori/specs/m/spec.md': store,
-    'apriori/changes/c/flow-state.md': FLOW('c'),
-    'apriori/changes/c/specs/m/spec.md': `<!-- apriori-base: ${am.fingerprint(store)} -->\n\n` + delta,
+        'apriori/changes/c/specs/m/spec.md': `<!-- apriori-base: ${am.fingerprint(store)} -->\n\n` + delta,
   };
   const root = proj({ ...files, 'apriori/process-config.md': '| id-pattern | [a-z]+-\\d+[a-z]* |\n' });
   const r = run(root, ['archive', '--change', 'c']);
@@ -326,9 +326,9 @@ test('AM-47 the archive id-pattern channel is resolved, terminable and degradabl
   // inline-fence heading pairs by ID through the archive matcher channel too (IMPL-5)
   const storeI = '### Requirement: R-I\n```x```#### Scenario: KV-01 old title\n- a\n';
   const rootI = proj({
+    ...require('./helpers/ready-bundle').readyFiles('c'),
     'apriori/specs/m/spec.md': storeI,
-    'apriori/changes/c/flow-state.md': FLOW('c'),
-    'apriori/changes/c/specs/m/spec.md': `<!-- apriori-base: ${am.fingerprint(storeI)} -->\n\n` +
+        'apriori/changes/c/specs/m/spec.md': `<!-- apriori-base: ${am.fingerprint(storeI)} -->\n\n` +
       '## MODIFIED Requirements\n\n### Requirement: R-I\n```x```#### Scenario: KV-01 new title\n- a\n',
   });
   const factory = () => ({ batch: (ts) => ({ ids: ts.map((t) => sr.leadId(t, /[A-Z]+-\d+/)) }) });
@@ -349,6 +349,7 @@ test('AM-45 buildProjection captures old blocks at the right points', () => {
   const store = '### Requirement: A\nprose\n\n#### Scenario: KV-01 one\n- a\n';
   const delta = '## RENAMED Requirements\n\n- A -> G\n\n## MODIFIED Requirements\n\n### Requirement: G\nprose\n\n#### Scenario: KV-01 one\n- a\n- b\n';
   const root = proj({
+    ...require('./helpers/ready-bundle').readyFiles('c'),
     'apriori/specs/m/spec.md': store,
     'apriori/changes/c/specs/m/spec.md': `<!-- apriori-base: ${am.fingerprint(store)} -->\n\n` + delta,
   });
@@ -362,6 +363,7 @@ test('AM-45 buildProjection captures old blocks at the right points', () => {
   // repaired-rerun path still contributes its pair
   const storeApplied = '### Requirement: R-K\nkeep me\n\n#### Scenario: KV-01 one\n- WHEN w\n- THEN t\n';
   const root2 = proj({
+    ...require('./helpers/ready-bundle').readyFiles('c'),
     'apriori/specs/m/spec.md': storeApplied,
     'apriori/changes/c/specs/m/spec.md': `<!-- apriori-base: ${am.fingerprint(STORE_KV)} -->\n\n` +
       '## MODIFIED Requirements\n\n### Requirement: R-K\nkeep me\n\n#### Scenario: KV-01 one\n- WHEN w\n- THEN t\n',
@@ -376,6 +378,7 @@ test('AM-45 buildProjection captures old blocks at the right points', () => {
   const storeDone = '### Requirement: G\nprose\n\n#### Scenario: KV-01 one\n- a\n- b\n';
   const storeBefore = '### Requirement: A\nprose\n\n#### Scenario: KV-01 one\n- a\n';
   const root3 = proj({
+    ...require('./helpers/ready-bundle').readyFiles('c'),
     'apriori/specs/m/spec.md': storeDone,
     'apriori/changes/c/specs/m/spec.md': `<!-- apriori-base: ${am.fingerprint(storeBefore)} -->\n\n` +
       '## RENAMED Requirements\n\n- A -> G\n\n## MODIFIED Requirements\n\n### Requirement: G\nprose\n\n#### Scenario: KV-01 one\n- a\n- b\n',

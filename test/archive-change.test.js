@@ -5,6 +5,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('node:child_process');
+const { readyFiles } = require('./helpers/ready-bundle');
 const am = require('../lib/archive-merge');
 
 const BIN = path.join(__dirname, '..', 'bin', 'apriori.js');
@@ -27,6 +28,7 @@ const ADD_B = '## ADDED Requirements\n\n### Requirement: Bravo2\n\n#### Scenario
 
 function twoModuleProject(extra = {}) {
   return mkProject({
+    ...readyFiles('c'),
     'apriori/specs/a/spec.md': STORE_A,
     'apriori/specs/b/spec.md': STORE_B,
     'apriori/changes/c/specs/a/spec.md': ADD_A,
@@ -264,6 +266,7 @@ test('AM-26 the new sentinel matches only an absent store', () => {
   const delta = `<!-- apriori-base: new -->\n${ADD_A}`;
   // store absent → passes, creates module file on write
   const root = mkProject({
+    ...readyFiles('c'),
     'apriori/specs/b/spec.md': STORE_B,
     'apriori/changes/c/specs/newmod/spec.md': delta,
   });
@@ -272,6 +275,7 @@ test('AM-26 the new sentinel matches only an absent store', () => {
   assert.match(fs.readFileSync(path.join(root, 'apriori/specs/newmod/spec.md'), 'utf8'), /Alpha2/);
   // store now exists → the same stamped delta is a mismatch
   const root2 = mkProject({
+    ...readyFiles('c'),
     'apriori/specs/newmod/spec.md': STORE_A,
     'apriori/changes/c/specs/newmod/spec.md': delta,
   });
@@ -460,6 +464,7 @@ test('AM-32 unstamped mutation deltas are denied on both archive forms', () => {
 test('AM-33 an already-applied stamped delta reruns to completion', () => {
   // store already carries the merged content; the stamp records a stale base → mismatch + all-unchanged
   const root = mkProject({
+    ...readyFiles('c'),
     'apriori/specs/a/spec.md': STORE_A,
     'apriori/changes/c/specs/a/spec.md': STALE + MOD_SAME,     // MODIFIED-only, trim-equal (the CE-1 case)
   });
@@ -475,6 +480,7 @@ test('AM-33 an already-applied stamped delta reruns to completion', () => {
 test('AM-34 divergence with pending work never repairs; the resumed mix completes', () => {
   // (a) stale stamp + a REAL pending op → hard fail, nothing written or moved
   const rootA = mkProject({
+    ...readyFiles('c'),
     'apriori/specs/a/spec.md': STORE_A,
     'apriori/changes/c/specs/a/spec.md': STALE + MOD_DIFF,
   });
@@ -487,6 +493,7 @@ test('AM-34 divergence with pending work never repairs; the resumed mix complete
   // (b) the resumed-partial-commit mix: A stale-but-applied + B matching-with-real-ops → completes
   const goodB = am.fingerprint(STORE_B);
   const rootB = mkProject({
+    ...readyFiles('c'),
     'apriori/specs/a/spec.md': STORE_A,
     'apriori/specs/b/spec.md': STORE_B,
     'apriori/changes/c/specs/a/spec.md': STALE + MOD_SAME,
@@ -498,6 +505,7 @@ test('AM-34 divergence with pending work never repairs; the resumed mix complete
   assert.match(fs.readFileSync(path.join(rootB, 'apriori/specs/b/spec.md'), 'utf8'), /Bravo2/);
   // (c) mixed with a diverged pending file → whole preflight fails, B untouched too
   const rootC = mkProject({
+    ...readyFiles('c'),
     'apriori/specs/a/spec.md': STORE_A,
     'apriori/specs/b/spec.md': STORE_B,
     'apriori/changes/c/specs/a/spec.md': STALE + MOD_SAME,
@@ -522,8 +530,8 @@ test('AM-35 MODIFIED speaks the idempotence vocabulary', () => {
 
 function bundleProject(extra = {}) {
   return mkProject({
+    ...readyFiles('c'),
     'apriori/specs/a/spec.md': STORE_A,
-    'apriori/changes/c/flow-state.md': 'change: c\ntier: medium\n',
     'apriori/changes/c/specs/a/spec.md': ADD_A,
     'apriori/changes/c/requirement/req-v1.md': 'v1',
     'apriori/changes/c/requirement/req-final.md': 'final',

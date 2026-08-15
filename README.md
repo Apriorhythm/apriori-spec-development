@@ -69,9 +69,9 @@ tier: trivial
 track: harden
 track-rationale: quickstart demo
 lineage: main
-current-step: STEP5
+current-step: STEP6
 round: 0
-next-action: verify, then archive
+next-action: archive
 gates:
   - 2026-01-01T00:00 note: quickstart demo
 EOF
@@ -114,7 +114,7 @@ apriori verify --specs apriori/specs
 apriori check
 ```
 
-`gate` aggregates the mechanical checks into one exit code (its PASS never replaces a human gate). `archive --change` merges the delta into the living store `apriori/specs/` and files the change away; plain `verify` now proves the merged store, and `check` is your CI guard. That's the loop Route A automates for you: **spec → red → green → gate → archive**.
+`gate` aggregates the mechanical checks into one exit code (its PASS never replaces a human gate). `archive --change` merges the delta into the living store `apriori/specs/` and files the change away — it **refuses a change that is not finished**, which is why the flow-state above already says `current-step: STEP6` (the archiving step) and why a non-trivial change would also need every task checked and every ledger row terminal; plain `verify` now proves the merged store, and `check` is your CI guard. That's the loop Route A automates for you: **spec → red → green → gate → archive**.
 
 ## Where everything else lives
 

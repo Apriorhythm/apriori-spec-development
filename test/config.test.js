@@ -15,8 +15,8 @@ const MOD = '## MODIFIED Requirements\n\n### Requirement: Alpha\nCHANGED\n\n####
 function proj(config) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-cfg-'));
   for (const [rel, c] of Object.entries({
+    ...require('./helpers/ready-bundle').readyFiles('c'),
     'apriori/specs/a/spec.md': STORE,
-    'apriori/changes/c/flow-state.md': 'change: c\ntier: medium\n',
     'apriori/changes/c/specs/a/spec.md': MOD,
     'apriori/process-config.md': config,
   })) { fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true }); fs.writeFileSync(path.join(root, rel), c); }

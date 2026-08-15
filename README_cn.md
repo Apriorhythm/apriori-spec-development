@@ -69,9 +69,9 @@ tier: trivial
 track: harden
 track-rationale: quickstart demo
 lineage: main
-current-step: STEP5
+current-step: STEP6
 round: 0
-next-action: verify, then archive
+next-action: archive
 gates:
   - 2026-01-01T00:00 note: quickstart demo
 EOF
@@ -114,7 +114,7 @@ apriori verify --specs apriori/specs
 apriori check
 ```
 
-`gate` 把机械检查合成一个退出码(它的 PASS 绝不替代人工闸口)。`archive --change` 把增量并入 living 规格库 `apriori/specs/` 并归档变更;普通 `verify` 现在证明合并后的库,`check` 是 CI 守卫。这正是路线 A 替你自动跑的循环:**规格 → 红 → 绿 → gate → 归档**。
+`gate` 把机械检查合成一个退出码(它的 PASS 绝不替代人工闸口)。`archive --change` 把增量并入 living 规格库 `apriori/specs/` 并归档变更——它**会拒绝一个还没做完的变更**,这正是上面的 flow-state 已经写 `current-step: STEP6`(归档所在的那一步)的原因;非 trivial 层还要求任务全勾、台账行全终态。普通 `verify` 现在证明合并后的库,`check` 是 CI 守卫。这正是路线 A 替你自动跑的循环:**规格 → 红 → 绿 → gate → 归档**。
 
 ## Where everything else lives
 

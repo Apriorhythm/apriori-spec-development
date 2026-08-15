@@ -103,13 +103,26 @@ Exit: 0 GREEN · 1 gaps · 2 untrustworthy run (missing inputs, non-TAP output, 
 merge a change's delta specs into the living store; `--change` discovers the whole change, dry-runs by default, commits failure-atomically on `--write`
 
 ```text
-usage: apriori archive --store <f> --delta <f> --change <name> [--write] [--changes-dir <dir>]
-   or: apriori archive --change <name> [--write] [--changes-dir <dir>]
+usage: apriori archive --store <f> --delta <f> --change <name> [--write] [--no-cas]
+   or: apriori archive --change <name> [--write] [--changes-dir <dir>] [--no-cas] [--force]
 ```
 
 Example: `apriori archive --change add-playback --write --changes-dir apriori/changes`
 
-Exit: 0 merged/no-op · 1 conflict/CAS/malformed/stage-commit-move failure · 2 usage/not-found/containment.
+**Readiness.** The high-level form refuses a change that is not finished, in dry-run and `--write` alike, and prints `RESULT: NOT READY — nothing written` (exit 1): **R1** the flow-state must be structurally sound, pass the same legality checks `gate`'s C3 runs, and say `current-step: STEP6`; **R2** `tasks.md` must have zero unchecked boxes; **R3** `review/issues.md` must pass the ledger check at the archived stage. R1 reports its first hit alone; R2 and R3 report together. At trivial tier a genuinely absent `tasks.md`/ledger is `n/a` — but an *unreadable* one never is: only a true `ENOENT` takes the tier branch, and every other error code (EACCES, EIO, ELOOP …) is a structural refusal. Readiness is evaluated after every other preflight guard, so existing diagnoses and exit codes are unchanged, and it is one look rather than a lock — nothing is re-read between the check and the commit.
+
+**`--force`** belongs to the high-level form and overrides **progress only**: unchecked tasks, and ledger rows that are `open`, `fixed`, or `rejected` *with* a reason. It never overrides R1 (`ABANDONED` above all), a structural defect, a missing artifact at medium/large tier, an illegal status, a missing reason, or a `waived` row lacking its human record. It takes effect only when the bundle's flow-state already carries an anchored record naming the class:
+
+```text
+  - <YYYY-MM-DDTHH:MM> gate⑤ (owner): archive-force tasks — <the human's reason, verbatim>
+  - <YYYY-MM-DDTHH:MM> gate⑤ (owner): archive-force ledger — <the human's reason, verbatim>
+```
+
+One record authorises exactly the one class it names; the keyword must open the entry's decision text, so `do not archive-force tasks — …` authorises nothing. Revocation appends `archive-force-revoke <class> <reason>` (`gates:` is an append-only log) and the last decision for a class wins. The authorisation is **standing** for the bundle's lifetime, not per-run. Every overridden blocker is printed with the record's raw first line.
+
+**Single-file form.** `--store/--delta` is one-module surgery on a store file. It does not accept `--changes-dir` (and therefore never moves a change dir) or `--force`, and it refuses any `--delta` that resolves inside `apriori/changes` — judged by both the lexical spelling and the realpath, at path-segment boundaries. A change bundle is archived whole, by name.
+
+Exit: 0 merged/no-op · 1 conflict/CAS/malformed/not-ready/out-of-scope delta/stage-commit-move failure · 2 usage/not-found/containment.
 
 ## apriori stamp
 

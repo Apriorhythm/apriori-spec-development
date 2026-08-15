@@ -103,13 +103,26 @@ usage: apriori verify --specs <dir...> --test-cmd "<cmd>" [--id-pattern <re>] [-
 把变更的增量规格并入 living 规格库;`--change` 自动发现整个变更,默认 dry-run,`--write` 失败原子地提交
 
 ```text
-usage: apriori archive --store <f> --delta <f> --change <name> [--write] [--changes-dir <dir>]
-   or: apriori archive --change <name> [--write] [--changes-dir <dir>]
+usage: apriori archive --store <f> --delta <f> --change <name> [--write] [--no-cas]
+   or: apriori archive --change <name> [--write] [--changes-dir <dir>] [--no-cas] [--force]
 ```
 
 示例:`apriori archive --change add-playback --write --changes-dir apriori/changes`
 
-退出码:0 已合并/幂等空转 · 1 冲突/CAS/格式坏/暂存-提交-移动失败 · 2 用法/未找到/路径越界。
+**就绪度。** 高层形式会拒绝一个还没做完的变更(dry-run 与 `--write` 一视同仁),打印 `RESULT: NOT READY — nothing written`(退出码 1):**R1** flow-state 结构完好、通过 `gate` C3 的同一套合法性检查、且 `current-step: STEP6`;**R2** `tasks.md` 零个未勾选框;**R3** `review/issues.md` 按 archived 阶段通过台账检查。R1 只报第一个命中项;R2 与 R3 一次报全。trivial 层**真的不存在**的 `tasks.md`/台账判 `n/a`——但**读不出来**的永远不是:只有真正的 `ENOENT` 走 tier 分支,其余错误码(EACCES、EIO、ELOOP……)一律结构性拒绝。就绪度排在其余所有 preflight 守卫之后,故既有诊断与退出码不变;它是**看一眼,不是上锁**——检查与提交之间不会重读。
+
+**`--force`** 只属于高层形式,且**只解进度类**:未勾选的任务,以及状态为 `open`、`fixed`、或**带理由的** `rejected` 的台账行。它绝不解 R1(尤其 `ABANDONED`)、结构性缺陷、medium/large 层缺失的 artifact、非法状态词、缺理由、以及缺人类记录的 `waived`。它生效的前提是 bundle 的 flow-state 里**已经**有一条按类具名的锚定记录:
+
+```text
+  - <YYYY-MM-DDTHH:MM> gate⑤ (owner): archive-force tasks — <人类的理由,逐字>
+  - <YYYY-MM-DDTHH:MM> gate⑤ (owner): archive-force ledger — <人类的理由,逐字>
+```
+
+一条记录只授权它点名的那一类;关键字必须位于条目决策正文的开头,因此 `do not archive-force tasks — …` 什么也不授权。撤销是**追加**一条 `archive-force-revoke <class> <reason>`(`gates:` 是只追加的日志),同类以最后一条为准。该授权在本 bundle 生命周期内**持续有效**,不是"本次运行"的证据。每一条被越过的阻断项都会连同记录的原始首行一起打印。
+
+**单文件形式。** `--store/--delta` 是对某个规格库文件的单模块手术。它**不再接受** `--changes-dir`(因此永不移动变更目录),也不接受 `--force`,并且会拒绝任何解析到 `apriori/changes` 之内的 `--delta`——词法拼写与 realpath 两种量度、按路径段边界判定。变更 bundle 一律整个按名字归档。
+
+退出码:0 已合并/幂等空转 · 1 冲突/CAS/格式坏/未就绪/delta 越界/暂存-提交-移动失败 · 2 用法/未找到/路径越界。
 
 ## apriori stamp
 

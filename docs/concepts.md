@@ -548,11 +548,12 @@ Verify by hand (the snippet below assumes a class `KV` is exported — adjust to
 node -e "const KV=require('./src/mini-kv'); const k=new KV(); k.set('a',1,50); console.log(k.get('a')); setTimeout(()=>console.log(k.get('a')), 80);"
 # expected: prints 1 first, then undefined after expiry
 ```
-Once satisfied, archive:
+Once satisfied, archive. Note the form: a change bundle is archived **whole**, by name —
+`archive` refuses a change that is not finished (`current-step: STEP6`, every task checked,
+every ledger row terminal), and the single-file `--store/--delta` form is reserved for
+one-module surgery on a store file that lives outside `apriori/changes/`.
 ```shell
-apriori archive --store apriori/specs/mini-kv.md \\
-  --delta apriori/changes/add-mini-kv/specs/mini-kv.md \\
-  --change add-mini-kv --changes-dir apriori/changes --write
+apriori archive --change add-mini-kv --changes-dir apriori/changes --write
 # merged (ADDED): <your requirement IDs> · change dir → apriori/changes/archive/<stamp>-add-mini-kv/
 ```
 A new project's first archive **produces the initial TRUTH-DOC** (per §6's default: `apriori/truth/mini-kv.md`, in the same repo) — congratulations, your mini-kv now has a system knowledge base, and the next feature can start from the "knowledge base exists" path in Section 6. To calibrate granularity, here's roughly what that first KB doc should look like:

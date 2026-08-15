@@ -2,6 +2,65 @@
 
 All notable changes to `apriori-cli`. Versions follow semver; the stability promise: CLI surface & flags, `--json` shapes, the delta format and the flow-state schema only break in a major.
 
+## Unreleased · archive refuses a change that is not finished
+
+**Behavior change (1/3) — `apriori archive --change` now has a precondition.** It refuses, in
+dry-run and `--write` alike, with `RESULT: NOT READY — nothing written` (exit 1) unless the bundle
+is actually done: the flow-state is structurally sound, passes the legality checks `gate`'s C3
+already runs, and says `current-step: STEP6`; `tasks.md` has zero unchecked boxes; `review/issues.md`
+is terminal at the archived stage. The predicates are the *same code* the gate runs — `gate` and
+`archive` cannot judge a bundle differently.
+
+Why: `archive` performs an irreversible write (it merges into the living store AND moves the change
+dir) and until now read nothing about whether the change was finished. In one real project a change
+was archived with 6 of 51 tasks checked and nothing stopped it. `gate` reports after the fact; this
+refuses beforehand.
+
+**Behavior change (2/3) — the single-file form no longer accepts `--changes-dir`.** `apriori archive
+--store <f> --delta <f>` is one-module surgery on a store file; it never moves a change dir now, and
+it never accepts `--force`. Consequence: the living-spec scenario `AM-12` ("the store commit and the
+dir move are one transaction (single-file form)") loses its subject and is **removed** — this
+release's only deletion of an existing promise. The high-level form's move-failure rule (AM-18) is
+unchanged.
+
+**Behavior change (3/3) — the single-file form refuses a `--delta` inside `apriori/changes`.** Both
+the lexical spelling and the realpath are checked, at path-segment boundaries (`apriori/changes-other`
+stays outside). This closes a path by which an ABANDONED change's delta could be written into the
+living store. `SECURITY.md`'s "explicit operator-given file arguments are used as given" is narrowed
+accordingly, and the bilingual `docs/concepts` STEP6 tutorial now uses the high-level form.
+
+**If you have a script that archives with `--store/--delta` plus `--changes-dir`**, switch it to
+`apriori archive --change <name> --changes-dir <dir> --write`. Nothing else changes for surgery on a
+store file outside the changes root — that path is byte-for-byte what it was.
+
+**`--force`, and why it needs a record.** `--force` overrides *progress* only: unchecked tasks, and
+ledger rows that are `open`, `fixed`, or `rejected` with a reason. It never overrides the flow-state
+class (`ABANDONED` above all), a structural defect, a missing artifact at medium/large tier, an
+illegal status token, a missing reason, or a `waived` row without its human record. And it does
+nothing at all unless the flow-state already carries an anchored `gates:` entry naming the class:
+
+```text
+  - <YYYY-MM-DDTHH:MM> gate⑤ (owner): archive-force tasks — <the human's reason, verbatim>
+```
+
+The keyword must open the entry's decision text, so `do not archive-force tasks — …` authorises
+nothing. Revocation appends `archive-force-revoke <class> <reason>` — `gates:` is an append-only log
+— and the last decision for a class wins. Note the honest limit: the authorisation is **standing**
+for the bundle's lifetime, not per-run, so a later failure of the same class reuses it until revoked.
+
+**Two limits stated rather than papered over.** Readiness is one look, not a lock: nothing is
+re-read between the check and the commit, so a caller must not modify the bundle across the run.
+And a *reason* now means "contains a letter or digit in any script", not `\w` — the ASCII-only class
+would have made every Chinese reason illegal in a log that is written in Chinese.
+
+**New module `lib/readiness.js`, in two layers.** The base layer is the gate's predicates moved
+verbatim (`gate` consumes them; its observable behaviour is pinned byte-for-byte against a golden
+captured before the move). The archive layer is separate on purpose: state A's `fileReadDefect`,
+`reviewDirDefect` and `containsReal` all funnel every exception into a default, which is right for
+callers that only report and unsound for one that writes — an `EACCES` reported as "missing" becomes
+`n/a` at trivial tier and the archive proceeds. The archive layer classifies by `e.code` in a single
+pass: only `ENOENT`/`ENOTDIR` mean "does not resolve"; everything else refuses and is never forceable.
+
 ## Unreleased · the default ID pattern recognises the IDs real projects write, and delta gains a legal home for commentary
 
 **Behavior change — the built-in `id-pattern` default is wider.** It was `[A-Z]+-\d+`; it is now

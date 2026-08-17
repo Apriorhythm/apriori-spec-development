@@ -9,6 +9,7 @@ const path = require('path');
 const { spawnSync } = require('node:child_process');
 
 const am = require('../lib/archive-merge');
+const { canSymlink } = require('./helpers/can-symlink');
 const BIN = path.join(__dirname, '..', 'bin', 'apriori.js');
 const run = (args, cwd) => spawnSync('node', [BIN, ...args], { encoding: 'utf8', cwd });
 
@@ -60,7 +61,7 @@ test('AM-94 a sibling directory sharing a prefix is not inside', () => {
   assert.match(fs.readFileSync(path.join(root, 'store.md'), 'utf8'), /Beta/, 'containment is by path segment');
 });
 
-test('AM-95 an external symlink into a bundle is refused on the realpath measure', () => {
+test('AM-95 an external symlink into a bundle is refused on the realpath measure', { skip: canSymlink() ? false : 'platform refuses symlinks' }, () => {
   const root = project();
   const link = path.join(root, 'outside-link.md');
   fs.symlinkSync(path.join(root, 'apriori', 'changes', 'c', 'specs', 'a', 'spec.md'), link);
@@ -71,7 +72,7 @@ test('AM-95 an external symlink into a bundle is refused on the realpath measure
   assert.strictEqual(fs.readFileSync(path.join(root, 'store.md'), 'utf8'), before);
 });
 
-test('AM-96 a symlinked root is caught by the lexical measure', () => {
+test('AM-96 a symlinked root is caught by the lexical measure', { skip: canSymlink() ? false : 'platform refuses symlinks' }, () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-sfs-'));
   w(path.join(root, 'store.md'), STORE);
   // the real bundles live elsewhere; apriori/changes is a symlink to them
@@ -96,13 +97,15 @@ test('AM-97 an unresolvable path produces no hit and no new failure', () => {
   assert.strictEqual(ok.status, 0, ok.stdout + ok.stderr);
 
   // a dangling delta falls through to the pre-existing "cannot read" failure, unchanged
-  const root2 = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-sfs-'));
-  w(path.join(root2, 'store.md'), STORE);
-  fs.symlinkSync(path.join(root2, 'nope.md'), path.join(root2, 'dangling.md'));
-  assert.strictEqual(am.deltaScope(root2, 'dangling.md').inside, false);
-  const r2 = run(['archive', '--store', 'store.md', '--delta', 'dangling.md', '--change', 'c'], root2);
-  assert.notStrictEqual(r2.status, 0);
-  assert.doesNotMatch(r2.stderr, /resolves inside apriori\/changes/, 'the scope check must not claim this one');
+  if (canSymlink()) {
+    const root2 = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-sfs-'));
+    w(path.join(root2, 'store.md'), STORE);
+    fs.symlinkSync(path.join(root2, 'nope.md'), path.join(root2, 'dangling.md'));
+    assert.strictEqual(am.deltaScope(root2, 'dangling.md').inside, false);
+    const r2 = run(['archive', '--store', 'store.md', '--delta', 'dangling.md', '--change', 'c'], root2);
+    assert.notStrictEqual(r2.status, 0);
+    assert.doesNotMatch(r2.stderr, /resolves inside apriori\/changes/, 'the scope check must not claim this one');
+  }
 });
 
 test('AM-98 surgery outside the changes root is untouched', () => {

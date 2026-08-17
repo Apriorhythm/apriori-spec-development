@@ -68,7 +68,7 @@ const CASES = [
   { id: 'ledger-fixed-archived', change: 'c', stage: 'archived', led: ledger('Q-1 | a | low | 1 | fixed') },
   { id: 'ledger-rejected-archived', change: 'c', stage: 'archived', led: ledger('Q-1 | a | low | 1 | rejected because x') },
   { id: 'ledger-terminal-archived', change: 'c', stage: 'archived', led: ledger('Q-1 | a | low | 1 | rejected-verified because x') },
-  { id: 'review-root-symlink', change: 'c', reviewRoot: 'symlink' },
+  { id: 'review-root-symlink', change: 'c', reviewRoot: 'symlink', needsSymlink: true },
   { id: 'review-root-file', change: 'c', reviewRoot: 'file' },
 ];
 

@@ -13,6 +13,7 @@ const { spawnSync } = require('node:child_process');
 const am = require('../lib/archive-merge');
 const rd = require('../lib/readiness');
 const { readyFiles, FLOW, TASKS, LEDGER } = require('./helpers/ready-bundle');
+const { canSymlink } = require('./helpers/can-symlink');
 
 const BIN = path.join(__dirname, '..', 'bin', 'apriori.js');
 const run = (args, cwd) => spawnSync('node', [BIN, ...args], { encoding: 'utf8', cwd });
@@ -56,9 +57,11 @@ test('AM-74 the safe layer classifies every artifact defect, and tier decides on
       }
       // symlink, not-file, bad-ancestor, escape — structural at BOTH tiers
       for (const [label, build] of [
-        ['symlink', (p) => { const t2 = p + '.real'; fs.writeFileSync(t2, 'x'); rm(p); fs.symlinkSync(t2, p); }],
         ['not-file', (p) => { rm(p); fs.mkdirSync(p); }],
-        ['escape', (p) => { const out = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-out-')); fs.writeFileSync(path.join(out, 'f'), 'x'); rm(p); fs.symlinkSync(path.join(out, 'f'), p); }],
+        ...(canSymlink() ? [
+          ['symlink', (p) => { const t2 = p + '.real'; fs.writeFileSync(t2, 'x'); rm(p); fs.symlinkSync(t2, p); }],
+          ['escape', (p) => { const out = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-out-')); fs.writeFileSync(path.join(out, 'f'), 'x'); rm(p); fs.symlinkSync(path.join(out, 'f'), p); }],
+        ] : []),
       ]) {
         const root = proj({}, tier);
         build(path.join(bundle(root), rel));
@@ -70,7 +73,7 @@ test('AM-74 the safe layer classifies every artifact defect, and tier decides on
   }
 });
 
-test('AM-75 an external STEP6 file cannot launder an ABANDONED bundle', () => {
+test('AM-75 an external STEP6 file cannot launder an ABANDONED bundle', { skip: canSymlink() ? false : 'platform refuses symlinks' }, () => {
   const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-out-'));
   fs.writeFileSync(path.join(outside, 'flow-state.md'), FLOW('c'));      // a perfectly good STEP6
   const root = proj();
@@ -85,7 +88,7 @@ test('AM-75 an external STEP6 file cannot launder an ABANDONED bundle', () => {
   }
 });
 
-test('AM-76 the review root is guarded before the ledger leaf', () => {
+test('AM-76 the review root is guarded before the ledger leaf', { skip: canSymlink() ? false : 'platform refuses symlinks' }, () => {
   const root = proj();
   const b = bundle(root);
   fs.mkdirSync(path.join(b, 'elsewhere'));

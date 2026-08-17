@@ -14,12 +14,19 @@ const corpus = require('./helpers/gate-corpus');
 const rd = require('../lib/readiness');
 const gate = require('../lib/gate');
 const resolve = require('../lib/resolve');
+const { canSymlink } = require('./helpers/can-symlink');
 
 const GOLDEN = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'gate-state-a.golden.json'), 'utf8')).cases;
 
 // same scrubbing the capture used, so a diagnosis carrying the temp root still compares
+// The golden was captured on one platform; path separators must not decide the comparison.
+// Normalising to '/' is a no-op where the details already use it.
 function scrub(value, roots) {
-  if (typeof value === 'string') { let s = value; for (const r of roots) s = s.split(r).join('<CORPUS>'); return s; }
+  if (typeof value === 'string') {
+    let s = value;
+    for (const r of roots) s = s.split(r).join('<CORPUS>');
+    return s.split('\\').join('/');
+  }
   if (Array.isArray(value)) return value.map((v) => scrub(v, roots));
   if (value && typeof value === 'object') {
     const o = {}; for (const [k, v] of Object.entries(value)) o[k] = scrub(v, roots); return o;
@@ -38,6 +45,7 @@ test('RY-01 the base predicates and the gate agree item by item', () => {
     const g = GOLDEN[c.id];
     assert.ok(g, `golden has no case '${c.id}' — regenerate only if the corpus grew, never after the move`);
     if (g.threw) continue;
+    if (c.needsSymlink && !canSymlink()) continue;   // the platform, not the code
     const { root, change } = corpus.build(c);
     const roots = rootsOf(root);
     const loc = gate.resolveChange(root, change);
@@ -64,6 +72,7 @@ test('RY-01 the base predicates and the gate agree item by item', () => {
 test('RY-02 the gate observable behaviour does not move', () => {
   for (const c of corpus.CASES) {
     const g = GOLDEN[c.id];
+    if (c.needsSymlink && !canSymlink()) continue;
     const { root, change } = corpus.build(c);
     const roots = rootsOf(root);
     let got;
@@ -159,9 +168,11 @@ test('RY-07 the base layer takes its containment check from resolve', () => {
   const cases = [
     ['clean dir', (r) => fs.mkdirSync(path.join(r, 'review'))],
     ['absent', () => {}],
-    ['symlink', (r) => { fs.mkdirSync(path.join(r, 'other')); fs.symlinkSync(path.join(r, 'other'), path.join(r, 'review')); }],
     ['not a dir', (r) => fs.writeFileSync(path.join(r, 'review'), 'x')],
-    ['escaping', (r) => { const out = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-out-')); fs.symlinkSync(out, path.join(r, 'review')); }],
+    ...(canSymlink() ? [
+      ['symlink', (r) => { fs.mkdirSync(path.join(r, 'other')); fs.symlinkSync(path.join(r, 'other'), path.join(r, 'review')); }],
+      ['escaping', (r) => { const out = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-out-')); fs.symlinkSync(out, path.join(r, 'review')); }],
+    ] : []),
   ];
   for (const [label, build] of cases) {
     const dir = mk(build);
@@ -173,7 +184,7 @@ test('RY-07 the base layer takes its containment check from resolve', () => {
       `${label}: the two containsReal implementations must agree at this call shape`);
   }
   // and the reviewDirDefect answers themselves, against the state-A goldens that carry them
-  for (const id of ['review-root-symlink', 'review-root-file']) {
+  for (const id of canSymlink() ? ['review-root-symlink', 'review-root-file'] : ['review-root-file']) {
     const c = corpus.CASES.find((x) => x.id === id);
     const { root, change } = corpus.build(c);
     const loc = gate.resolveChange(root, change);

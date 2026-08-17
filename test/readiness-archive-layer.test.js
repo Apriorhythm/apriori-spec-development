@@ -11,6 +11,7 @@ const path = require('path');
 const rd = require('../lib/readiness');
 const resolve = require('../lib/resolve');
 const gate = require('../lib/gate');
+const { canSymlink } = require('./helpers/can-symlink');
 
 const mk = () => fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-ral-'));
 const w = (p, s = 'x') => { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, s); return p; };
@@ -21,7 +22,7 @@ function fileShapes() {
   {
     const d = mk(); out.push(['clean', d, w(path.join(d, 'a.md'))]);
   }
-  {
+  if (canSymlink()) {
     const d = mk(); const real = w(path.join(d, 'real.md'));
     const link = path.join(d, 'a.md'); fs.symlinkSync(real, link);
     out.push(['symlink', d, link]);
@@ -30,7 +31,7 @@ function fileShapes() {
     const d = mk(); const p = path.join(d, 'a.md'); fs.mkdirSync(p);
     out.push(['not-file', d, p]);
   }
-  {
+  if (canSymlink()) {
     const d = mk(); const outside = mk(); w(path.join(outside, 'x.md'));
     const sub = path.join(d, 'sub'); fs.mkdirSync(sub); fs.symlinkSync(outside, path.join(sub, 'esc'));
     out.push(['escape', d, path.join(sub, 'esc', 'x.md')]);
@@ -55,7 +56,7 @@ test('RY-08 the archive artifact check matches state A everywhere state A has an
     assert.strictEqual(mineKind, theirsKind, `${label}: state A says ${theirsKind}, archive layer says ${mineKind}`);
     n++;
   }
-  assert.strictEqual(n, 6, 'all six state-A-answerable shapes must be compared');
+  assert.strictEqual(n, canSymlink() ? 6 : 4, 'every state-A-answerable shape the platform can build must be compared');
   // the seventh outcome is one state A cannot produce
   const d = mk();
   const io = rd.artifactDefect(d, path.join(d, 'a.md'), {
@@ -80,9 +81,11 @@ test('RY-09 the archive review-root check matches the gate check, absence includ
   const cases = [
     ['clean', (d) => fs.mkdirSync(path.join(d, 'review')), null],
     ['absent', () => {}, null],
-    ['symlink', (d) => { fs.mkdirSync(path.join(d, 'other')); fs.symlinkSync(path.join(d, 'other'), path.join(d, 'review')); }, 'symlink'],
     ['not-dir', (d) => fs.writeFileSync(path.join(d, 'review'), 'x'), 'not-dir'],
-    ['escape', (d) => fs.symlinkSync(mk(), path.join(d, 'review')), 'symlink'],
+    ...(canSymlink() ? [
+      ['symlink', (d) => { fs.mkdirSync(path.join(d, 'other')); fs.symlinkSync(path.join(d, 'other'), path.join(d, 'review')); }, 'symlink'],
+      ['escape', (d) => fs.symlinkSync(mk(), path.join(d, 'review')), 'symlink'],
+    ] : []),
   ];
   for (const [label, build, wantKind] of cases) {
     const d = mk(); build(d);

@@ -437,7 +437,7 @@ SPEC-DOC + DESIGN-DOC_V2  ──评审模型──►  SPEC-EVALUATION-DOC_V2
 
 | 阶段 | 一个可靠的 `/goal` 条件（transcript 可判） | 循环内部由什么支撑 |
 |---|---|---|
-| STEP0 | REQ-REVIEW-DOC 已产出且结论行 = `VERDICT: no major issues`，或 step0-cap 轮（默认 5） | 每轮一次异构评审调用 |
+| STEP0 | REQ-REVIEW-DOC 已产出且结论行 = `VERDICT: no major issues`，或派生的评审循环停止（手册 §1 R4） | 每轮一次异构评审调用 |
 | STEP2 | SPEC-EVALUATION-DOC 结论行 = `VERDICT: no major issues, ready to proceed to execution`，或 N 轮 | 每轮一次异构评审调用 |
 | STEP5 | `npm test` 退出码 0 **且** lint/静态分析全绿(where configured) **且** tasks.md 全 `[x]` **且** E2E/Playwright 全绿 **且** 一致性评审无缺口，或 N 轮——按 §4.8 项目类型矩阵替换（纯文档：`apriori check`） | 真跑测试 + E2E + 评审调用 |
 | STEP6 | 增量规格已合并 **且** 该模块知识库文件已更新 | archive 动作+ 回写 |

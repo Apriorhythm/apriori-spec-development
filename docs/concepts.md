@@ -437,7 +437,7 @@ That layering is what lets you automate **even adversarial review** without viol
 
 | Phase | A sound `/goal` condition (transcript-checkable) | Backed inside the loop by |
 |---|---|---|
-| STEP0 | REQ-REVIEW-DOC written and its verdict line = `VERDICT: no major issues`, or step0-cap rounds (default 5) | a heterogeneous reviewer call each round |
+| STEP0 | REQ-REVIEW-DOC written and its verdict line = `VERDICT: no major issues`, or the derived review loop stops (runbook §1 R4) | a heterogeneous reviewer call each round |
 | STEP2 | SPEC-EVALUATION-DOC verdict line = `VERDICT: no major issues, ready to proceed to execution`, or N rounds | a heterogeneous reviewer call each round |
 | STEP5 | `npm test` exits 0 **and** lint/static analysis green (where configured) **and** every tasks.md item is `[x]` **and** the E2E/Playwright run is green **and** the consistency review reports no gaps, or N turns — substitute per §4.8's project-type matrix (docs-only: `apriori check`) | real test + E2E run + reviewer call |
 | STEP6 | delta specs merged **and** the module's KB file updated | archive action + writeback |

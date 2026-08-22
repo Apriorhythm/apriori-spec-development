@@ -58,7 +58,7 @@ cd your-project && apriori init  # 交互式:勾选要接入的 AI 工具
 
 ## 1. 铁律
 
-**R1 —— 每个人工闸口必停。** 闸口清单:① STEP0 触顶时的定稿裁决 ② gap 报告过目(standard 模式)③ STEP3 技术评审 ④ STEP6 知识库 diff 批准 ⑤ 任何触顶或振荡(台账 ID 被重开)。探索轨(§4)另有三个具备闸口地位的**命名决策点**:`intent-card sign-off`(意图卡签核)、`extraction review`(提取评审)、`STEP2 full review`(汇入后全量评审)。到达闸口:更新状态文件,汇报——当前步骤、评审方结论行**原文**、台账中 open/rejected 项、需要人做的决定——然后停下。绝不替人批准闸口;"人还没回复"绝不等于批准。
+**R1 —— 每个人工闸口必停。** 闸口清单:① STEP0 评审循环停止时的定稿裁决 ② gap 报告过目(standard 模式)③ STEP3 技术评审 ④ STEP6 知识库 diff 批准 ⑤ 任何评审循环停止、escalation、触顶或振荡(台账 ID 被重开)。探索轨(§4)另有三个具备闸口地位的**命名决策点**:`intent-card sign-off`(意图卡签核)、`extraction review`(提取评审)、`STEP2 full review`(汇入后全量评审)。到达闸口:更新状态文件,汇报——当前步骤、评审方结论行**原文**、台账中 open/rejected 项、需要人做的决定——然后停下。绝不替人批准闸口;"人还没回复"绝不等于批准。
 
 **闸口整合(显式授权)。** 默认逐闸必停。人可以显式把中间闸口整合到某个靠后的闸口(如"一路跑到终审");该决定必须记入 `gates:`(范围+撤销方式),且随时可撤销。三个闸口**永远不可**被此类授权覆盖:**收缩决策**(§6)、**知识库签核**(闸口④)、**意图卡签核**(`intent-card sign-off`)。整合只覆盖闸口——外部副作用(见下方 §1 硬规则)永远不在整合的一揽子授权之内。
 
@@ -75,9 +75,29 @@ cd your-project && apriori init  # 交互式:勾选要接入的 AI 工具
 
 **R2 —— 评审必须真实外调。** 生产会话永远不出评审结论。真实调起异构评审方:`codex exec -s read-only "<提示词>"`(第 2 轮起:`codex exec resume -c sandbox_mode="read-only" <session-id> "..."`——codex CLI ≥0.14x 的 resume 子命令不接受 `-s`;旧版本在 session id 之前用 `-s read-only`);没有 Codex 就**新开**一个不同档位的 `claude` 会话,喂给它产物加问题台账(P0)。把评审方的结论行**原文**贴回。评审方通常跑在只读沙箱里、无法自己写台账:由评审方在输出末尾给出**台账增量**(新行+状态翻转),生产方原样落盘并注明"代评审方录入";评审方原始输出全文存档于 `apriori/changes/<change>/review/<stem>-raw.* (the stem = its review doc)`,代录增量随时可与其对照;落盘 raw 时在文件头预置单行来源标注 `<!-- provenance: provider=<name> model=<id> session=<id> date=<YYYY-MM-DD> -->`(未知字段写 `unknown`;既有旧 raw 不追溯)。同一代录机制也覆盖**评审文档本体**:只读评审方把文档正文打印到 stdout,生产方原样落到固定路径——这就是设计内的流程,不是权宜之计。非交互/后台调用 codex 时必须关闭 stdin——命令末尾加 `< /dev/null`(PowerShell 没有 /dev/null:改用管道 `$null | codex exec …`)——否则它会打印 "Reading additional input from stdin..." 并挂起。评审方在结论行落盘前死亡(评审中途网络/服务故障)→ **resume 同一会话**让它续完——绝不代填结论行。要让它也扛得住*生产方*侧的中断,第 1 轮一打印评审方的 session id 就记进 flow-state 的 `reviewer-session` 字段——否则崩溃后 resume 无会话可重连。只读评审方的**动态观测不可信**——跑测试、构建、任何需要写入的操作在其沙箱内都可能降级并产生幻影发现;只有它的静态阅读作数,生产方以真实环境的证据拒绝此类沙箱伪象发现。如果无法真实调起评审方,停下来说明——**禁止模拟评审**。
 
-**R3 —— 一切落盘;`/goal` 属于人;配置也属于人。** 产物写到 §4 表格的确切路径;每完成一步、每轮评审后都更新状态文件。所有轮次上限读取项目根的 `process-config.md`——**人类持有,agent 绝不写它**;文件缺失时,§4 打印的默认值生效。**每个评审环节的上限有硬性地板:每变更 1 轮——配置值小于 1 或不可解析,一律按默认值生效并警告;任何评审环节绝不归零。** `/goal` 是人执行的命令(§6)——绝不声称自己在跑 `/goal`,也不模仿它的评估器。你在会话内自行驱动的循环,同样遵守上限。
+**R3 —— 一切落盘;`/goal` 属于人;配置也属于人。** 产物写到 §4 表格的确切路径;每完成一步、每轮评审后都更新状态文件。仍然存在的轮数上限(`step5-cap`、`step6-cap`、`spike-cap`)与 `extraction-review-cap` 读取项目根的 `process-config.md`——**人类持有,agent 绝不写它**;文件缺失时,§4 打印的默认值生效。**每个评审环节的上限有硬性地板:每变更 1 轮——配置值小于 1 或不可解析,一律按默认值生效并警告;任何评审环节绝不归零。** `/goal` 是人执行的命令(§6)——绝不声称自己在跑 `/goal`,也不模仿它的评估器。你在会话内自行驱动的循环,同样遵守上限。
 
-**强制层级**(举例式,非穷尽;下列强制项在本仓库现状为*可配置而非已生效*)。劝告性文本在压力下会被忽略——按可强制方式给规则分层:①**现在即可确定性强制**——`process-config.md` 只读(hook 拦截写入)、`apriori check` 作 pre-commit/CI 必过、`apriori verify` 作 STEP5 绑定闸口、以及**结论行证据检查**:每个 verdict 行必须有对应 raw 存档文件(命名规则:主干名为 `S` 的评审文档,其原始归档为 `apriori/changes/<change>/review/S-raw.*`)——对模拟评审的机械化后盾,由 **`apriori gate --change <name>`** 落地,它同时把 verify/tasks/flow-state/台账/KB 新鲜度合成一个退出码(其 PASS 只覆盖机械面——人工闸口仍归人);②**闸口级**——Stop hooks 与 `/goal` 条件;③**本质劝告性**——评审方的独立判断质量、对 P 提示词的语义遵循。参考实现为 Claude Code hooks;任何 CI 都能强制同样的检查。示例(拦配置写入的 PreToolUse hook——示意伪配置;确切 schema 见 Claude Code hooks 文档):
+**R4 —— 评审轮次由评审证据派生,不手写,且逐 family 单独计数。** 一个 *family* 就是一条评审轨——`req-review`、`spec-review`、`step5-review`。每个 family 跑自己的循环、拥有自己的轮次号;各 family 的轮次绝不相加——跑完两条健康的 2 轮循环的变更并没有到达第 5 轮,不能被告知它到了。6.0 直接拒绝 `round:` 字段(见 MIGRATING.md)。
+
+规则分两个阶段,而且这两个阶段的松紧方向是**故意相反**的。
+
+**阶段一——结论"什么意思",读得宽。** 一条结论行只要属于以下之一即可理解:接受类措辞(`no major issues` · `no major issues, ready to proceed` · `… to execution` · `no spec-vs-code gaps` · `no findings` · `extraction accepted`)、修订类措辞(`gaps found` · `extraction rejected`)、或一个计数——`N issues open` 或 `N issues found`,单复数皆可、大小写不限、句末句号无妨。**`0` 判 accept**;正数判 revise,并作为该 family 的未关闭数展示。这个集合是**封闭的,绝不做前缀匹配**:结论行写成 `no major issues, but 3 blockers remain` 时,它以接受措辞开头却不是接受,因此宁可拒绝也不误读。
+
+**阶段二——证据"完不完整",判得严。** 只有评审文档、它的结论行、以及它的原始记录(`<stem>-raw.*`)三者齐备才计一轮;并且同一 family 的轮次必须 **1..N 连续、不许有洞**——否则删掉第 1 轮就能把停在第 2 轮的循环变回崭新的第 1 轮。以下**阻断**:结论行不在词汇表内、一篇文档声明两个**不同**结果、两份文档争同一 family 同一轮、摘要的结论行被删而原始记录还在、以原始记录名义声称某一轮但摘要缺失、以及轮次断档。以下**只提示,绝不拒绝**:文档正文被粘贴两遍但两次结论完全相同、以及压根不是评审轮次的原始记录(如 `kb-check-raw.txt`)。台账重排、标题改写、flow-state 重新排版都不触碰这些,既换不来一轮,也丢不掉一轮。
+
+两个控制点逐 family 分别适用(`apriori gate --change <name>` 的 **C8**;`apriori status --change <name> --json` 逐 family 报告):
+
+- **某个 family 在它自己的第 2 轮后仍是 `revise` → 该循环停止。** 不要在同一套方案上开第 3 轮。在 `gates:` 记下 拆分 / 补测试 / 重做方案 三者之一——`reframe <family> round <n> <split|tests|redo> — <理由>`——该 family 的循环才重开。这条记录同时点名 family 与它所答复的轮次,因此不授权任何其他东西;它也永远豁免不了证据问题——那些是拿去修的,不是拿去表决的。
+
+- **某个 family 到达它自己的第 5 轮 → 产生 escalation**,无论结论是什么。`apriori status --json` 为每个升级的 family 带出一条 `escalation`,C8 持续阻断,直到所有者以 `reframe <family> round <n> <split|tests|redo|accept-risk> — <理由>` 作答。预授权可以让工作继续,但永远不能把 escalation 从报告里拿掉。
+
+`apriori archive` 通过就绪度规则 **R4** 消费同一套判定:循环已停止或存在证据问题时,在写入或移动任何东西之前就被拒绝;advisory 从不拒绝。停在第 2 轮的循环**不可** force——第 2 轮之后的答案是改变做法。第 5 轮的止损沿用 archive 一贯的双重授权:`gates:` 里**已记录**的所有者决定**加上**显式 `--force`;单独一行 `gates:` 记录(agent 自己就能追加)永远不足以授权归档。
+
+CLI 只报告某个 family 最新一轮声明了什么——它的结论,以及计数形式下仍未关闭的问题数。它**不**报告逐轮新增问题的趋势:盘上的证据给的是未关闭数,不是增量;推导不出来的数字就不该打印。
+
+**强制边界。** 本仓库不附带任何 Stop hook,`apriori init` 也不写 hook。CLI 提供的是可机器读取的信号——gate 退出码 1 且 C8 为 blocked、archive 的 `RESULT: NOT READY`、以及 `apriori status --json` 的 `review` 与 `escalation` 字段。把它接进 Stop hook、`/goal` 条件或 CI 是项目自己的一步;接上之前,C8 是你必须去跑的检查,不是会自动落到你身上的停止。
+
+**强制层级**(举例式,非穷尽;下列强制项在本仓库现状为*可配置而非已生效*)。劝告性文本在压力下会被忽略——按可强制方式给规则分层:①**现在即可确定性强制**——`process-config.md` 只读(hook 拦截写入)、`apriori check` 作 pre-commit/CI 必过、`apriori verify` 作 STEP5 绑定闸口、以及**结论行证据检查**:每个 verdict 行必须有对应 raw 存档文件(命名规则:主干名为 `S` 的评审文档,其原始归档为 `apriori/changes/<change>/review/S-raw.*`)——对模拟评审的机械化后盾,由 **`apriori gate --change <name>`** 落地,它同时把 verify/tasks/flow-state/台账/KB 新鲜度与派生的评审循环(C8,R4)合成一个退出码(其 PASS 只覆盖机械面——人工闸口仍归人);②**闸口级**——Stop hooks 与 `/goal` 条件;③**本质劝告性**——评审方的独立判断质量、对 P 提示词的语义遵循。参考实现为 Claude Code hooks;任何 CI 都能强制同样的检查。示例(拦配置写入的 PreToolUse hook——示意伪配置;确切 schema 见 Claude Code hooks 文档):
 
 ```text
 # 伪配置: PreToolUse 对 Write|Edit 匹配并运行守卫命令;
@@ -243,11 +263,11 @@ gates:                  # 只增不改的人工决定日志
 
 **汇入——人来定夺,火种随行。** "说得清"由人判定,不由你:方案对比给出之后你才可以*提议*退出;只有人的批准才结束这个姿态——且**必须漏斗进流程**。人批准了一个说得清的目标,就开 **STEP0**;目标仍然说不清,就转**探索轨的意图卡**(§4)——与 §2 的目标确定性同一分界。没有第三个停留处:脑暴只喂这两条之一。汇入时把一切带走:把结晶的共识写成 kickoff 需求草稿——目标、用户、选定方案(以及胜出的界面草图,如有)、成功判据、约束、非目标**连同砍掉它们的理由**、遗留开放问题——作为 STEP0 的 `req-v1` 起始材料。脑暴绝不替代 STEP0 的需求纪律——它喂给它。
 
-### STEP0 —— 需求精细化 · 对抗循环 · 上限:`step0-cap`(默认 5)
+### STEP0 —— 需求精细化 · 对抗循环 · 由派生轮次治理(§1 R4)
 
 - **输入:**`apriori/changes/<change>/requirement/req-v{N}.md`;知识库(如有)。需求必须声明**目标谱系**(主线/哪条分支线)——多谱系仓库中谱系缺失是第四个访谈触发条件。若需求缺"目标 / 范围外 / 可测验收"三要素之一——**先结构化提问采访人**,再出 req-v1。
 - **每轮:**(1)若已有评审,据其修订 → `req-v{N+1}.md`,逐条注明采纳/拒绝+理由并更新台账;(2)用 **P1** 调起评审方(R2)→ 评审文档 + 台账;(3)记录结论行。
-- **退出:**结论行 = `VERDICT: no major issues`(无重大问题)→ 复制为 `apriori/changes/<change>/requirement/req-final.md`,前进。触顶 → **闸口 ①**。发现目标根本说不清 → 提议 harden→explore(经人工闸口确认后切轨)。
+- **退出:**结论行 = `VERDICT: no major issues`(无重大问题)→ 复制为 `apriori/changes/<change>/requirement/req-final.md`,前进。循环停止(§1 R4)→ **闸口 ①**。发现目标根本说不清 → 提议 harden→explore(经人工闸口确认后切轨)。
 
 ### 探索轨(EXPLORE)—— §2 把变更分到这里时
 
@@ -275,10 +295,10 @@ gates:                  # 只增不改的人工决定日志
 - **调研 spike 变体**(模糊但触绊线的变更,§2):允许在 `changes/<change>/spike/` 下写探针代码——探索轨的全部隔离规则适用——上限 `spike-cap`(默认 10);结论作为 gap 报告的"调研结论"附录。P3 带对应变体条款。
 - **退出:**standard → **闸口 ②**(人过目 gap 报告)。fast:把报告的主要风险并入下次汇报,继续前进。
 
-### STEP2 —— propose · 对抗循环 · 上限:`step2-cap`(默认 4)
+### STEP2 —— propose · 对抗循环 · 由派生轮次治理(§1 R4)
 
 - **动作:**执行 **propose 接口动作**,用 **P4**;然后循环:评审方 **P5**(R2)→ 生产方用 **P6** 修订(只改 spec/design——绝不动源码);每轮更新台账。
-- **退出:**结论行 = `VERDICT: no major issues, ready to proceed to execution`(无重大问题,可进入执行阶段)→ 前进。触顶或振荡 → **闸口 ⑤**。
+- **退出:**结论行 = `VERDICT: no major issues, ready to proceed to execution`(无重大问题,可进入执行阶段)→ 前进。循环停止(§1 R4)或振荡 → **闸口 ⑤**。
 
 ### STEP3 —— 技术评审 —— **闸口 ③(人工)**
 
@@ -544,28 +564,28 @@ rejected+意图假设被证伪 → 回 SPIKE 或 ABANDONED(状态机的失败分
 ## 6. 人类操作员附录
 
 > 本节内容全部**由人执行**。Agent 绝不执行或模拟 `/goal`(R3)。架构原理与注意事项:手册 §4.10。
-> 以下配方中的所有上限都是**默认值**——`process-config.md` 可覆盖(地板:每评审环节 1 轮)。
+> 以下配方中的**轮数**上限都是默认值——`process-config.md` 可覆盖(地板:每评审环节 1 轮)。评审轮次不设上限:由 §1 R4 的派生循环治理。
 
 **STEP0 循环:**
 ```text
-/goal "目标:apriori/changes/<change>/requirement/req-final.md 存在,且最新一轮评审报告 'VERDICT: no major issues'。上限:step0-cap 轮(默认 5)。
+/goal "目标:apriori/changes/<change>/requirement/req-final.md 存在,且最新一轮评审报告 'VERDICT: no major issues'。不设轮数上限——由 §1 R4 的派生循环治理:第 2 轮后仍在修订,就停下来汇报,而不是开第 3 轮。
 每一轮:
 1. 若 apriori/changes/<change>/review/req-review-v{N}.md 存在,据其修订 apriori/changes/<change>/requirement/req-v{N}.md,升到 v{N+1},逐条注明 采纳/拒绝+理由,并同步更新 apriori/changes/<change>/review/issues.md 里对应问题的状态。
 2. 用一个不同的模型对当前版本跑评审,输出存到 apriori/changes/<change>/review/req-review-v{N}.md,例如:
    codex exec -s read-only \"<P1 提示词> —— 目标:apriori/changes/<change>/requirement/req-v{N}.md\"
    (没有 Codex?新开一个 claude,把 P1 连同问题台账一起交给它)
 3. 把评审方的结论行贴回本对话。
-当结论行为 'VERDICT: no major issues' 时停(并复制为 apriori/changes/<change>/requirement/req-final.md),或触顶停。"
+当结论行为 'VERDICT: no major issues' 时停(并复制为 apriori/changes/<change>/requirement/req-final.md),或 §1 R4 停掉循环时停。"
 ```
 
 **STEP2 循环:**
 ```text
-/goal "目标:apriori/changes/<change>/有 SPEC-DOC+DESIGN-DOC,且最新评审结论行为 'VERDICT: no major issues, ready to proceed to execution'。上限:step2-cap 轮(默认 4)。
+/goal "目标:apriori/changes/<change>/有 SPEC-DOC+DESIGN-DOC,且最新评审结论行为 'VERDICT: no major issues, ready to proceed to execution'。不设轮数上限——由 §1 R4 的派生循环治理:第 2 轮后仍在修订,就停下来汇报,而不是开第 3 轮。
 每一轮:
 1. 据最新评审修订 spec/design 文件——绝不动源码——并同步更新 apriori/changes/<change>/review/issues.md 里已处理问题的状态。
 2. 重跑异构评审,用 P5 提示词(第 1 轮:codex exec,记下打印的 session id;之后各轮:codex exec resume -c sandbox_mode=\"read-only\" <session-id>——codex ≥0.14x 的 resume 不接受 -s;旧版在 id 前用 -s read-only),产出 apriori/changes/<change>/review/spec-review-v{N}.md 并更新台账。
 3. 把评审结论行贴回这里。
-当结论行为 'VERDICT: no major issues, ready to proceed to execution' 时停,或触顶停。"
+当结论行为 'VERDICT: no major issues, ready to proceed to execution' 时停,或 §1 R4 停掉循环时停。"
 ```
 
 **STEP5 循环:**
@@ -583,7 +603,7 @@ rejected+意图假设被证伪 → 回 SPIKE 或 ABANDONED(状态机的失败分
 当两者都成立时停。"
 ```
 
-**闸口清单(由你亲自决定的事):**① STEP0 触顶时的定稿裁决 ② gap 报告过目(standard)③ STEP3 技术评审 ④ 知识库 diff 批准 ⑤ 任何触顶 / 台账 ID 重开——升级处理,绝不悄悄放低标准。探索轨另加:`intent-card sign-off` 与 `extraction review` 的结论裁决。闸口整合(§1)由你授予——但永远不覆盖收缩决策、知识库签核、意图卡签核。
+**闸口清单(由你亲自决定的事):**① STEP0 评审循环停止时的定稿裁决 ② gap 报告过目(standard)③ STEP3 技术评审 ④ 知识库 diff 批准 ⑤ 任何循环停止、第 5 轮 escalation、触顶 / 台账 ID 重开——升级处理,绝不悄悄放低标准。探索轨另加:`intent-card sign-off` 与 `extraction review` 的结论裁决。闸口整合(§1)由你授予——但永远不覆盖收缩决策、知识库签核、意图卡签核。
 
 **收缩治理(新陈代谢规则)。** 每 N 个变更(默认 5,`shrink-proposal-freq`)由 agent **汇报——绝不自行执行**——一份收缩/恢复建议,数据包必含:verified 数;rejected 数(附理由抽样);reopened ID 数(含 `upgraded-from-advisory` 行);advisory 占比(**仅监控,永不作决策阈值**);每变更总时长与各评审环节时长(由状态文件时间戳推导;**墙钟口径,含人工闸口等待——注明,防成本曲线被闸口延迟主导的误读**;时间戳缺失记 `n/a`,绝不估算)。`rejected-ratio-guard`(默认 50%)的口径**只计正式发现——分子分母均不含 advisory**(防改标稀释守卫)。收缩任何评审环节都是**人工闸口决策**;守卫触发或变更类别触绊线(共享状态/迁移/安全/生产数据)时一律不得收缩。收缩=下调该环节轮次上限——**地板 1,任何环节绝不归零**——且**可收缩评审轮数,不可用评审轮数置换确定性检查**(lint/测试/追溯不做交易)。合并后复查(采样率 `post-merge-review-freq`,默认每 5 个合并变更抽 1 个)发现 ≥1 个高风险漏网——含被误标 advisory 的真缺口——→ 恢复该环节原上限,同样记档。两个方向都要提防:生产方靠拒单可以把指标压零(守卫防的就是这个);评审方轻率 verify 只会推迟收缩(方向安全)。
 

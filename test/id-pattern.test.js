@@ -506,7 +506,7 @@ test('CF-12 template, docs and changelog carry the full id-pattern story', () =>
   const { values, conflicts } = parseConfig(tpl);
   assert.strictEqual(conflicts.size, 0);
   for (const [k, v] of [['language', 'auto'], ['id-pattern', require('../lib/config').DEFAULT_ID], ['cas', 'required'],
-    ['step0-cap', '5'], ['step2-cap', '4'], ['step5-cap', '25'], ['step6-cap', '4'],
+    ['step5-cap', '25'], ['step6-cap', '4'],
     ['spike-cap', '10'], ['extraction-review-cap', '2'], ['shrink-state', 'none'],
     ['rejected-ratio-guard', '50%'], ['shrink-proposal-freq', '5'], ['post-merge-review-freq', '1 in 5']])
     assert.strictEqual(values.get(k), v, `template key ${k}`);

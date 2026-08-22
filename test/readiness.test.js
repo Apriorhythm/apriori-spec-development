@@ -37,11 +37,15 @@ const TO_ORACLE = {
 // born in 6.0: the oracle cannot have an opinion about it (MD-08 owns its behaviour)
 const NOT_IN_ORACLE = new Set(['flow-legacy-identity']);
 const oracleId = (id) => TO_ORACLE[id] || id;
+// checks that did not exist when the oracle was captured. The oracle is silent about them by
+// construction, so they are compared out — but the SET is pinned here, so a future check
+// cannot be added to gate without this line changing and someone noticing (RL-17 owns C8).
+const BORN_IN_6 = new Set(['C8']);
 
-// the decision, with every detail string dropped
+// the decision, with every detail string dropped and the post-oracle checks held aside
 const decisions = (res) => ({
   result: res.result, code: res.code,
-  checks: res.checks.map((c) => ({ id: c.id, status: c.status })),
+  checks: res.checks.filter((c) => !BORN_IN_6.has(c.id)).map((c) => ({ id: c.id, status: c.status })),
 });
 
 test('RY-00 the oracle is the 5.0 capture, untouched', () => {
@@ -91,13 +95,19 @@ test('RY-02 no gate decision drifts across the rename', () => {
     if (c.needsSymlink && !canSymlink()) continue;
     const g = GOLDEN[oracleId(c.id)];
     const { root, change } = corpus.build(c);
-    let got;
-    try { got = { threw: false, ...decisions(gate.runGate({ cwd: root, change, testCmd: corpus.TAP_OK })) }; }
+    let got, live = null;
+    try { live = gate.runGate({ cwd: root, change, testCmd: corpus.TAP_OK }); got = { threw: false, ...decisions(live) }; }
     catch (e) { got = { threw: true, name: e.constructor.name }; }
     const want = g.threw
       ? { threw: true, name: g.error.name }
       : { threw: false, ...decisions(g.result) };
     assert.deepStrictEqual(got, want, `gate decision drifted on '${c.id}'`);
+    // whatever gate grew since the capture must be exactly the declared set — never a surprise
+    if (live) {
+      const oracleIds = new Set(g.result.checks.map((x) => x.id));
+      const extra = live.checks.map((x) => x.id).filter((id) => !oracleIds.has(id));
+      assert.deepStrictEqual(new Set(extra), BORN_IN_6, `unexpected post-oracle check on '${c.id}'`);
+    }
     compared++;
   }
   assert.ok(compared >= 24, `expected every mapped case, got ${compared}`);

@@ -12,8 +12,6 @@
 | id-pattern | [A-Z]+(?:-[A-Z]+)*-\d+[a-z]* | bare JS regex source for scenario IDs; pipe escaping: see the comment below this table | [A-Z]+(?:-[A-Z]+)*-\d+[a-z]* |
 | verification-profile | none | ui / backend / fullstack / docs / none | absent or `none` = nothing escalates |
 | cas | required | required = archive denies unstamped mutation deltas / optional = warn only (waiver visible) | required |
-| step0-cap | 5 | ≥ 1 | 5 |
-| step2-cap | 4 | ≥ 1 | 4 |
 | step5-cap | 25 | ≥ 1 | 25 |
 | step6-cap | 4 | ≥ 1 | 4 |
 | spike-cap | 10 | ≥ 1 | 10 |
@@ -32,5 +30,5 @@
      error (verify/gate/check exit 2; doctor reports a D6 finding) — never a silent fallback. -->
 
 <!-- shrink-state is written only after a human gate approves a shrink proposal (RUNBOOK §6),
-     e.g. `shrink-state: step2-cap: 2 (approved 2026-07-04, gates log)`.
+     e.g. `shrink-state: step6-cap: 2 (approved 2026-07-04, gates log)`.
      A post-merge re-review that finds a high-risk miss restores the previous cap. -->

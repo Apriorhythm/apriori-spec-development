@@ -2,6 +2,57 @@
 
 The 3.0.0 stability promise: CLI surface & flags, `--json` shapes, the delta format, the flow-state schema and the `apriori/` layout only break in a major. Everything below is either additive or a declared fail-closed tightening.
 
+## 6.0 slice 1 → slice 2 — the review round is derived, per family
+
+`step0-cap` and `step2-cap` are gone from `templates/process-config.md`. Nothing ever read
+them: they were prose caps on the STEP0 and STEP2 review loops, and 6.0 governs those loops
+mechanically instead (`gate` C8, archive readiness R4, runbook §1 R4). If your
+`apriori/process-config.md` still carries the two rows, delete them — the file is human-held and
+the CLI never rewrites it; an unread row is inert, so this is tidying, not a break.
+
+The eight remaining supervision parameters are deliberately untouched: `step5-cap`,
+`step6-cap` and `spike-cap` cap *turns* rather than review rounds, `extraction-review-cap`
+belongs to the explore track, and `shrink-state` / `rejected-ratio-guard` /
+`shrink-proposal-freq` / `post-merge-review-freq` are the shrink governance.
+
+**What to write instead of a round number.** Nothing — each review family's round is counted
+from its review docs and their raw transcripts. The one thing you write by hand is the answer
+when a family's loop stops, as a `gates:` entry naming that family:
+
+```text
+gates:
+  - 2026-08-23T10:00 gate⑤ (owner): reframe spec-review round 2 split — the change is two changes
+```
+
+Legal decisions are `split`, `tests` and `redo`; at round 5 the owner also has `accept-risk`.
+The entry names the family AND the round it answers, so it never silently pre-authorizes the
+next round or another family's loop. It does not waive evidence problems — those are fixed.
+
+**Your existing review documents almost certainly already pass.** The verdict vocabulary accepts
+`N issues open` and `N issues found`, singular or plural, any case, with or without a trailing
+period, plus the accept and revise phrasings and the hotfix lane's `role=`/`digest=`/`boundary=`
+trailers. `0 issues open` reads as an accept. A document whose body was pasted twice with the
+same verdict both times is an advisory, not a refusal, and a stray transcript like
+`kb-check-raw.txt` is an advisory too.
+
+**What does need fixing**, because each one can hide a round: a verdict phrased outside that
+vocabulary; one document declaring two *different* outcomes; two documents claiming the same
+family and round; a `<stem>-raw.*` whose `<stem>.md` lost its verdict line or is missing while
+the name claims a round; and a gap in a family's `v1..vN` sequence.
+
+**Archiving past round 5** needs both halves of archive's usual human authorization: the
+`reframe … accept-risk` decision recorded in `gates:` and an explicit `--force`.
+
+**Already-archived changes are not judged retroactively.** The round-2 stop and the round-5
+escalation govern a change in flight; on a bundle the resolver finds under
+`apriori/changes/archive/`, `gate` C8 reports the rounds and any escalation as history and
+does not block on them. Evidence-integrity checks still apply at every stage — a frozen
+bundle whose evidence does not add up is misreporting its own past, so an unclassifiable or
+conflicting verdict, a duplicated family/round claim, a missing summary or verdict, or a gap
+in a family's ordinals still refuses.
+
+---
+
 ## 5.x → 6.0 — one identity field
 
 `flow-state.md` carried four identity fields. Reality-checking the CLI found that three of

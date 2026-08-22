@@ -71,7 +71,7 @@ usage: apriori hotfix new <name>
 
 ## apriori status
 
-每个变更走到哪了:步骤、下一动作、台账 open 项
+每个变更走到哪了:步骤、下一动作、台账 open 项、派生的评审轮次与 escalation
 
 ```text
 usage: apriori status [--change <name>] [--json]
@@ -80,6 +80,8 @@ usage: apriori status [--change <name>] [--json]
 示例:`apriori status --change add-playback --json`
 
 退出码:成功路径恒为 0(status 只报告,不守门)。
+
+**评审轮次与 escalation。** `--change` 多输出两个派生字段——这里没有任何东西读自手写 `round:`。`review.families` **逐评审 family**(`req-review`、`spec-review`、`step5-review`……)各一条:`{family, round, verdict, issuesOpen, stopped}`。轮次在 family 内计数,**绝不跨 family 相加**——三个 family 各 2、2、1 轮就是这样,不是"第 5 轮"。`verdict` 取该 family 最高序号那一轮(计数形式的 `0 issues open` / `0 issues found` 判 accept);`issuesOpen` 在结论行用计数形式时给出该数,否则为 `null`;`stopped` 在 gate 的 C8 阻断该 family 期间为 true。`review.problems` 列出无法被读成一轮、**并且阻断**的证据:结论行不在词汇表内、一篇文档声明两个不同结果、重复的 family/轮次主张、摘要结论行被删而原始记录还在、以轮次命名的原始记录却没有摘要、轮次断档。`review.advisories` 列出**只值得一提、从不阻断**的东西:正文被粘贴两遍但两次结论相同的文档,以及压根不是评审轮次的原始记录(`kb-check-raw.txt`)。`review/` 目录本身是 symlink、逃逸出 bundle 或不是目录时,改为设置 `review.defect`:status 点名它并拒绝读穿,与 gate 一致。`escalation` 在任一 family 到达它自己的第 5 轮之前为 `null`,之后是 `{family, round, verdict, acknowledged, decision}` 数组;所有者在 `gates:` 里的决定只会把 `acknowledged` 翻成 true,别处的畸形文档也永远不会把这条拿掉。**没有**逐轮新增问题趋势:证据给的是未关闭数,不是增量。hotfix bundle、以及 flow-state 不可读的 bundle,两个字段均为 `null`。这两个字段汇报的规则写在 RUNBOOK §1 R4。
 
 ## apriori verify
 
@@ -109,9 +111,9 @@ usage: apriori archive --store <f> --delta <f> --change <name> [--write] [--no-c
 
 示例:`apriori archive --change add-playback --write --changes-dir apriori/changes`
 
-**就绪度。** 高层形式会拒绝一个还没做完的变更(dry-run 与 `--write` 一视同仁),打印 `RESULT: NOT READY — nothing written`(退出码 1):**R1** flow-state 结构完好、通过 `gate` C3 的同一套合法性检查、且 `current-step: STEP6`;**R2** `tasks.md` 零个未勾选框;**R3** `review/issues.md` 按 archived 阶段通过台账检查。R1 只报第一个命中项;R2 与 R3 一次报全。trivial 层**真的不存在**的 `tasks.md`/台账判 `n/a`——但**读不出来**的永远不是:只有真正的 `ENOENT` 走 tier 分支,其余错误码(EACCES、EIO、ELOOP……)一律结构性拒绝。就绪度排在其余所有 preflight 守卫之后,故既有诊断与退出码不变;它是**看一眼,不是上锁**——检查与提交之间不会重读。
+**就绪度。** 高层形式会拒绝一个还没做完的变更(dry-run 与 `--write` 一视同仁),打印 `RESULT: NOT READY — nothing written`(退出码 1):**R1** flow-state 结构完好、通过 `gate` C3 的同一套合法性检查、且 `current-step: STEP6`;**R2** `tasks.md` 零个未勾选框;**R3** `review/issues.md` 按 archived 阶段通过台账检查;**R4** 每个评审 family 的循环都已收敛或带着已记录的 reframe(与 gate 的 C8 同一套派生——见下文)。R1 只报第一个命中项;R2 与 R3 一次报全。fast 模式下**真的不存在**的 `tasks.md`/台账判 `n/a`——但**读不出来**的永远不是:只有真正的 `ENOENT` 走 mode 分支,其余错误码(EACCES、EIO、ELOOP……)一律结构性拒绝。就绪度排在其余所有 preflight 守卫之后,故既有诊断与退出码不变;它是**看一眼,不是上锁**——检查与提交之间不会重读。
 
-**`--force`** 只属于高层形式,且**只解进度类**:未勾选的任务,以及状态为 `open`、`fixed`、或**带理由的** `rejected` 的台账行。它绝不解 R1(尤其 `ABANDONED`)、结构性缺陷、medium/large 层缺失的 artifact、非法状态词、缺理由、以及缺人类记录的 `waived`。它生效的前提是 bundle 的 flow-state 里**已经**有一条按类具名的锚定记录:
+**`--force`** 只属于高层形式,且**只解进度类**:未勾选的任务,以及状态为 `open`、`fixed`、或**带理由的** `rejected` 的台账行。它绝不解 R1(尤其 `ABANDONED`)、结构性缺陷、standard 模式下缺失的 artifact、非法状态词、缺理由、以及缺人类记录的 `waived`。它生效的前提是 bundle 的 flow-state 里**已经**有一条按类具名的锚定记录:
 
 ```text
   - <YYYY-MM-DDTHH:MM> gate⑤ (owner): archive-force tasks — <人类的理由,逐字>
@@ -138,7 +140,7 @@ usage: apriori stamp <store-file>
 
 ## apriori gate
 
-把一个变更的机械闸口检查合成一个退出码(绑定 verify、tasks、flow-state、台账、verdict↔raw 证据、KB 新鲜度);PASS ≠ 人工闸口
+把一个变更的机械闸口检查合成一个退出码(绑定 verify、tasks、flow-state、台账、verdict↔raw 证据、KB 新鲜度、评审循环收敛);PASS ≠ 人工闸口
 
 ```text
 usage: apriori gate --change <name> [--test-cmd "<cmd>"] [--id-pattern <re>] [--cwd <dir>] [--json] [--no-cas]
@@ -148,7 +150,11 @@ usage: apriori gate --change <name> [--test-cmd "<cmd>"] [--id-pattern <re>] [--
 
 退出码:0 PASS · 1 BLOCKED · 2 评估不可信 · 3 INCOMPLETE。
 
-完全没有测试命令时(既无 `--test-cmd`,也无 `test-cmd` 配置行),C1 报 `skipped`,其余六项照常执行——总结果是 `GATE: INCOMPLETE`,退出码 3。测试命令来源**坏掉**(配置冲突/不可读、`--test-cmd` 传了空值)仍是退出码 2:坏掉不等于没有。已确证的阻断优先于跳过,所以退出码 1 仍压过 3。
+完全没有测试命令时(既无 `--test-cmd`,也无 `test-cmd` 配置行),C1 报 `skipped`,其余七项照常执行——总结果是 `GATE: INCOMPLETE`,退出码 3。测试命令来源**坏掉**(配置冲突/不可读、`--test-cmd` 传了空值)仍是退出码 2:坏掉不等于没有。已确证的阻断优先于跳过,所以退出码 1 仍压过 3。
+
+**C8 —— 评审循环,逐 family。** 轮次由评审证据派生(与 C5 同一次目录扫描),并在每个 family 内部计数,绝不跨 family 相加。派生分两个阶段:结论**含义**从封闭词汇表里读得宽(接受/修订类措辞,加上 `N issues open` / `N issues found`,`0` 判 accept——但绝不做前缀匹配,所以带矛盾尾巴的接受措辞宁可拒绝也不误读);证据**完整性**判得严。任何 family 完成第一轮之前 C8 为 `n/a`;以下情形阻断:某 family 在它自己的第 2 轮后仍为 `revise` 且 `gates:` 里没有 `reframe <family> round <n> <split|tests|redo> — <理由>`;某 family 到达它自己的第 5 轮且所有者尚未以 `reframe <family> round <n> <split|tests|redo|accept-risk> — <理由>` 作答;以及任何证据 **problem**——结论行不可读、一篇文档声明两个不同结果、两份文档争同一 family 同一轮、摘要结论行被删而原始记录还在、以轮次命名的原始记录却没有摘要、或某 family 的 1..N 轮次出现断档。problem 一律 fail-closed 且没有任何 reframe 能豁免:处置是把证据修好,不是对它表决。**advisory 从不阻断**——正文粘贴两遍但结论相同、以及压根不是评审轮次的原始记录。已被确认的 escalation 放行,并依然打印 ESCALATION 行。`review/` 不可读时 C8 为 `n/a`:C4 与 C5 已经阻断了。
+
+`apriori archive` 经就绪度规则 **R4** 消费同一套判定:循环已停止或存在证据 problem 时归档被拒,什么都不写、什么都不移动;advisory 放行。停在第 2 轮的循环不可 force;第 5 轮止损需要所有者已记录的 `reframe` 决定**加上**显式 `--force`。
 
 in-flight 的 C1 消费变更收窄 verdict(detail 为 `verify GREEN (in-flight, change-scoped)` + 六类 store 摘要尾缀)——并行 change 的 gate 各自独立变绿;archived 阶段仍验证全库。
 

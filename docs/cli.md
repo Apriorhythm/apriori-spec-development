@@ -71,7 +71,7 @@ Exit: 0 preflight clean / archived · 1 refused (grade, contract, review, verdic
 
 ## apriori status
 
-where each change is: step, next action, open ledger items
+where each change is: step, next action, open ledger items, the derived review round and any escalation
 
 ```text
 usage: apriori status [--change <name>] [--json]
@@ -80,6 +80,8 @@ usage: apriori status [--change <name>] [--json]
 Example: `apriori status --change add-playback --json`
 
 Exit: always 0 on success paths (status reports, never gates).
+
+**Review rounds and escalation.** `--change` adds two derived fields — nothing here is read off a hand-written `round:`. `review.families` carries one entry **per review family** (`req-review`, `spec-review`, `step5-review`, …): `{family, round, verdict, issuesOpen, stopped}`. Rounds are counted inside a family and never summed across families, so three families at 2 + 2 + 1 rounds is exactly that, not "round 5". `verdict` comes from the family's highest ordinal — a `0 issues open` / `0 issues found` count is an accept — `issuesOpen` is the number when the verdict used a counted form and `null` otherwise, and `stopped` is true while gate's C8 blocks that family. `review.problems` lists evidence that refuses to be read as a round and blocks: a verdict outside the vocabulary, one document declaring two different outcomes, a duplicated family/round claim, a summary whose verdict was removed while its transcript remains, a round-named transcript with no summary, an ordinal gap. `review.advisories` lists what is merely worth mentioning and never blocks: a document whose body was pasted twice with the same verdict both times, and a transcript that was never a review round (`kb-check-raw.txt`). `review.defect` is set instead when the `review/` directory itself is a symlink, escapes the bundle or is not a directory — status names it and refuses to read through it, exactly as gate does. `escalation` is `null` until some family reaches its round 5 and then an array of `{family, round, verdict, acknowledged, decision}`; an owner decision in `gates:` flips `acknowledged`, and a malformed document elsewhere never removes the entry. There is no per-round trend of newly-found issues: the evidence carries an open count, not a delta. A hotfix bundle and a bundle with no readable flow-state get `null` for both fields. Runbook §1 R4 is the rule these fields report.
 
 ## apriori verify
 
@@ -109,9 +111,9 @@ usage: apriori archive --store <f> --delta <f> --change <name> [--write] [--no-c
 
 Example: `apriori archive --change add-playback --write --changes-dir apriori/changes`
 
-**Readiness.** The high-level form refuses a change that is not finished, in dry-run and `--write` alike, and prints `RESULT: NOT READY — nothing written` (exit 1): **R1** the flow-state must be structurally sound, pass the same legality checks `gate`'s C3 runs, and say `current-step: STEP6`; **R2** `tasks.md` must have zero unchecked boxes; **R3** `review/issues.md` must pass the ledger check at the archived stage. R1 reports its first hit alone; R2 and R3 report together. At trivial tier a genuinely absent `tasks.md`/ledger is `n/a` — but an *unreadable* one never is: only a true `ENOENT` takes the tier branch, and every other error code (EACCES, EIO, ELOOP …) is a structural refusal. Readiness is evaluated after every other preflight guard, so existing diagnoses and exit codes are unchanged, and it is one look rather than a lock — nothing is re-read between the check and the commit.
+**Readiness.** The high-level form refuses a change that is not finished, in dry-run and `--write` alike, and prints `RESULT: NOT READY — nothing written` (exit 1): **R1** the flow-state must be structurally sound, pass the same legality checks `gate`'s C3 runs, and say `current-step: STEP6`; **R2** `tasks.md` must have zero unchecked boxes; **R3** `review/issues.md` must pass the ledger check at the archived stage; **R4** every review family's loop must have converged or carry its recorded reframe (the same derivation gate's C8 reads — see below). R1 reports its first hit alone; R2 and R3 report together. In fast mode a genuinely absent `tasks.md`/ledger is `n/a` — but an *unreadable* one never is: only a true `ENOENT` takes the mode branch, and every other error code (EACCES, EIO, ELOOP …) is a structural refusal. Readiness is evaluated after every other preflight guard, so existing diagnoses and exit codes are unchanged, and it is one look rather than a lock — nothing is re-read between the check and the commit.
 
-**`--force`** belongs to the high-level form and overrides **progress only**: unchecked tasks, and ledger rows that are `open`, `fixed`, or `rejected` *with* a reason. It never overrides R1 (`ABANDONED` above all), a structural defect, a missing artifact at medium/large tier, an illegal status, a missing reason, or a `waived` row lacking its human record. It takes effect only when the bundle's flow-state already carries an anchored record naming the class:
+**`--force`** belongs to the high-level form and overrides **progress only**: unchecked tasks, and ledger rows that are `open`, `fixed`, or `rejected` *with* a reason. It never overrides R1 (`ABANDONED` above all), a structural defect, a missing artifact in standard mode, an illegal status, a missing reason, or a `waived` row lacking its human record. It takes effect only when the bundle's flow-state already carries an anchored record naming the class:
 
 ```text
   - <YYYY-MM-DDTHH:MM> gate⑤ (owner): archive-force tasks — <the human's reason, verbatim>
@@ -138,7 +140,7 @@ Exit: 0 printed (absent file → the `new` form) · 2 usage/directory/unreadable
 
 ## apriori gate
 
-aggregate the mechanical gate checks for one change into one exit code (binding verify, tasks, flow-state, ledger, verdict↔raw evidence, KB freshness); PASS ≠ human gates
+aggregate the mechanical gate checks for one change into one exit code (binding verify, tasks, flow-state, ledger, verdict↔raw evidence, KB freshness, review-loop convergence); PASS ≠ human gates
 
 ```text
 usage: apriori gate --change <name> [--test-cmd "<cmd>"] [--id-pattern <re>] [--cwd <dir>] [--json] [--no-cas]
@@ -148,7 +150,11 @@ Example: `apriori gate --change add-playback --json`
 
 Exit: 0 PASS · 1 BLOCKED · 2 untrustworthy evaluation · 3 INCOMPLETE.
 
-With no test command anywhere (no `--test-cmd`, no `test-cmd` config row) C1 is reported `skipped` and the other six checks still run — the aggregate is `GATE: INCOMPLETE` with exit code 3. A BROKEN test-command source (conflicting or unreadable config, an empty `--test-cmd`) stays exit 2: broken is not absent. A confirmed block outranks a skip, so exit 1 still wins over exit 3.
+With no test command anywhere (no `--test-cmd`, no `test-cmd` config row) C1 is reported `skipped` and the other seven checks still run — the aggregate is `GATE: INCOMPLETE` with exit code 3. A BROKEN test-command source (conflicting or unreadable config, an empty `--test-cmd`) stays exit 2: broken is not absent. A confirmed block outranks a skip, so exit 1 still wins over exit 3.
+
+**C8 — the review loop, per family.** Rounds are derived from the review evidence (the same scan C5 uses) and counted inside each family, never summed across families. The derivation runs in two phases: verdict MEANING is read leniently from a closed vocabulary (accept/revise phrasings plus `N issues open` / `N issues found`, `0` being an accept — but never by prefix, so an accept phrase with a contradicting tail is refused rather than misread), while evidence COMPLETENESS is judged strictly. C8 is `n/a` before the first complete round anywhere; it blocks when a family is still `revise` after ITS round 2 with no `reframe <family> round <n> <split|tests|redo> — <reason>` entry in `gates:`, when a family reaches ITS round 5 until the owner answers with `reframe <family> round <n> <split|tests|redo|accept-risk> — <reason>`, and on any evidence **problem** — an unreadable verdict, one document declaring two different outcomes, two documents claiming the same family and round, a summary whose verdict was deleted while its transcript remains, a round-named transcript with no summary, or a gap in a family's 1..N ordinals. Problems are fail-closed and no reframe waives them: the cure is fixing the evidence, not deciding about it. **Advisories never block** — a body pasted twice with the same verdict, or a transcript that was never a review round. An acknowledged escalation passes and still prints its ESCALATION line. An unreadable `review/` leaves C8 `n/a`: C4 and C5 already block on it.
+
+`apriori archive` consults the same loop through readiness rule **R4**, so a stopped loop or an evidence problem refuses the archive with nothing written and nothing moved, while advisories pass. A stalled round-2 loop is not forceable; the round-5 stop-loss needs both the owner's recorded `reframe` decision and an explicit `--force`.
 
 In-flight C1 consumes the change-scoped verdict (detail `verify GREEN (in-flight, change-scoped)` with a six-count store summary suffix) — parallel changes' gates go green independently; the archived stage still verifies the whole store.
 

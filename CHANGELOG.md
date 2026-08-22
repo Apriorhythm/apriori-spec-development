@@ -2,6 +2,70 @@
 
 All notable changes to `apriori-cli`. Versions follow semver; the stability promise: CLI surface & flags, `--json` shapes, the delta format and the flow-state schema only break in a major.
 
+## Unreleased — 6.0 slice 2 · the review round is derived per family, in two phases
+
+**New: `gate` check C8 and archive readiness rule R4 — the review loop.** The round is no longer
+a number anyone writes; it is counted from the review evidence itself, **inside each review
+family** (`req-review`, `spec-review`, `step5-review`, …). Rounds are never summed across
+families: a change that ran two healthy 2-round loops did not reach round 5 and is not told it
+did. `lib/review.js` is the one reader of `review/` and the one verdict classifier, and it works
+in two deliberately opposite phases.
+
+**Phase 1 — verdict MEANING, read leniently, from a CLOSED vocabulary.** Accept phrasings
+(`no major issues`, `… , ready to proceed`, `… to execution`, `no spec-vs-code gaps`,
+`no findings`, `extraction accepted`), revise phrasings (`gaps found`, `extraction rejected`),
+and counts — `N issues open` **or** `N issues found`, singular or plural, any case, a trailing
+period fine. **`0` is an accept**; a positive count becomes that family's `issuesOpen`. It is
+not a prefix rule: a line reading `no major issues, but 3 blockers remain` opens with an accept
+and is refused rather than misread. The hotfix lane's structured trailers (`role=`, `digest=`,
+`boundary=`) are stripped as a closed `key=value` grammar; any other tail still fails to
+classify.
+
+**Phase 2 — evidence COMPLETENESS, judged strictly.** A round needs a summary, its verdict and
+its transcript, and a family's rounds must run **1..N with no gap** — otherwise deleting round 1
+would turn a stalled round-2 loop back into a fresh round-1 loop. These **block**: a verdict
+outside the vocabulary, one document declaring two *different* outcomes, two documents claiming
+the same family and round (refused deterministically, not by readdir order), a summary whose
+verdict was removed while its transcript remains, a round-named transcript with no summary, and
+an ordinal gap. These are **advisories and never block**: a document whose body was pasted twice
+declaring the same verdict both times, and a transcript that was never a review round at all
+(`kb-check-raw.txt`). Housekeeping touches neither phase.
+
+- **Round 2 is the control point, per family.** A family still `revise` after ITS round 2 → C8
+  blocks that family. The cure is one `gates:` line: `reframe <family> round <n>
+  <split|tests|redo> — <reason>`. It names the family AND the round, so it pre-authorizes
+  nothing else — and it never waives an evidence problem: those are fixed, not decided.
+- **Round 5 is the stop-loss, per family.** Reaching it escalates whatever the verdict says.
+  `status --json` grows an `escalation` array of `{family, round, verdict, acknowledged,
+  decision}`; a pre-authorization lets the work continue but can never take the escalation out
+  of the report, and a malformed document elsewhere never nulls it out.
+- **`archive` refuses a stopped loop or an evidence problem** through readiness R4 — nothing
+  merged, nothing moved; advisories pass. A stalled round-2 loop is **not** forceable. The
+  round-5 stop-loss keeps archive's existing double authorization: the owner's decision recorded
+  in `gates:` **and** an explicit `--force`.
+- `status` reports `review.families`, `review.problems`, `review.advisories`, `review.defect`
+  and `escalation`, and crosses the same trust boundary gate does: a symlinked, escaping or
+  non-directory `review/` is named, never read through. There is deliberately **no** global
+  `round` field and no per-round trend of newly-found issues — the evidence carries an open
+  count, not a delta.
+- **One verdict vocabulary.** CK-03 now calls the shared `isKnownVerdict` instead of keeping its
+  own prefix matcher, so a phrase the docs checker calls legal is a phrase the loop can read.
+  (Side effects: a CRLF-authored verdict line no longer fails CK-03, and a real count such as
+  `VERDICT: 3 issues open` is accepted in prose where only the literal `<N>` form was before.)
+- C5's verdict↔raw decision is unchanged, but consumes the same scan.
+- **Removed:** `step0-cap` and `step2-cap` — the two review-loop caps C8 replaces. Neither was
+  ever read by any command. The remaining `process-config.md` parameters are untouched:
+  `step5-cap` / `step6-cap` / `spike-cap` cap *turns*, `extraction-review-cap` belongs to the
+  explore track, and the shrink governance still has objects to govern.
+
+**Enforcement boundary (stated, not papered over).** This repository ships no Stop hook and
+`apriori init` writes none. What 6.0 provides is the machine-readable signal — `gate` exit code
+1 with a blocked C8, archive's `RESULT: NOT READY`, and the `review` / `escalation` fields of
+`status --json`. Wiring that into a Stop hook, a `/goal` condition or CI is the project's own
+step. The runbook says so in §1 R4 rather than claiming an enforcement that does not exist here.
+
+---
+
 ## Unreleased — 6.0 slice 1 · the change identity collapses to one field
 
 **Behavior change (flow-state schema).** `tier`, `track`, `track-rationale` and `round` are
@@ -13,8 +77,8 @@ Migration: `MIGRATING.md`, one line in and four out.
 - `gate` C2/C4 and archive readiness R2/R3 take their waiver from `mode: fast` (same
   behaviour `tier: trivial` had — the recapture moved 0 of 25 corpus verdicts).
 - `status --json` drops `tier`/`track`, gains `mode`.
-- `process-config.md` is unchanged in this slice; the ten never-read supervision parameters
-  go out with slice 2, which replaces them with a round count derived from review artifacts.
+- `process-config.md` is unchanged in this slice; slice 2 removes the two review-loop caps it
+  replaces and leaves the other eight never-read parameters to the slice that replaces them.
 - A 5.x identity key refuses **unconditionally** — a legal `mode` beside it is not a cure, so
   a stale row cannot ride along into a bundle that looks migrated. `gate`, `archive`, `status`
   and `doctor` all say the same thing and all point at `MIGRATING.md`.

@@ -28,7 +28,7 @@ function mkProject(files) {
 
 const STORE = '### Requirement: Alpha\n\n#### Scenario: XA-01 base\n- t\n';
 const DELTA = '## ADDED Requirements\n\n### Requirement: Beta\n\n#### Scenario: XB-01 new\n- t\n';
-const FLOW = (name, tier = 'medium') => `change: ${name}\ntier: ${tier}\ntrack: harden\ntrack-rationale: r\nlineage: v4\ncurrent-step: STEP5\nround: 1\nnext-action: x\ngates:\n  - 2026-08-14T00:00 note: n\n`;
+const FLOW = (name, mode = 'standard') => `change: ${name}\nmode: ${mode}\nlineage: v4\ncurrent-step: STEP5\nnext-action: x\ngates:\n  - 2026-08-14T00:00 note: n\n`;
 const LEDGER_OK = '| ID | Issue | Risk | Round found | Status |\n|---|---|---|---|---|\n| Q-1 | a | low | 1 | verified |\n';
 
 // a healthy in-flight change with NO test-cmd anywhere (no process-config.md at all)

@@ -18,8 +18,7 @@ function project(changes) {
 }
 
 const FLOW = `change: demo
-tier: medium
-track: harden
+mode: standard
 current-step: STEP2
 next-action: spawn P5 reviewer   # 2026-07-07
 gates:
@@ -78,8 +77,9 @@ test('ST-04 --json emits a machine-consumable report (single + list), pure JSON'
     const single = JSON.parse(out.join('\n'));            // parses = pure JSON, no prose
     assert.strictEqual(single.change, 'demo');
     assert.strictEqual(single.step, 'STEP2');
-    assert.strictEqual(single.tier, 'medium');
-    assert.strictEqual(single.track, 'harden');
+    assert.strictEqual(single.mode, 'standard');
+    for (const gone of ['tier', 'track', 'round'])
+      assert.ok(!(gone in single), `5.x '${gone}' must not survive in the JSON contract`);
     assert.strictEqual(single.hasFlowState, true);
     assert.match(single.nextAction, /spawn P5 reviewer/);
     assert.match(single.lastGate, /gate③: approved/);

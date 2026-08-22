@@ -20,14 +20,16 @@ const DELTA = '## ADDED Requirements\n\n### Requirement: Beta\n\n#### Scenario: 
 
 const flow = (name, over = {}) => {
   const base = {
-    change: name, tier: 'medium', track: 'harden', 'track-rationale': 'r',
-    lineage: 'v4', 'current-step': 'STEP5', round: '1', 'next-action': 'x',
+    change: name, mode: 'standard',
+    lineage: 'v4', 'current-step': 'STEP5', 'next-action': 'x',
   };
   const merged = { ...base, ...over };
-  const keys = Object.keys(merged).filter((k) => merged[k] !== null);
+  const keys = Object.keys(merged).filter((k) => merged[k] !== null && !k.startsWith('__'));
   const body = keys.map((k) => `${k}: ${merged[k]}`).join('\n');
   const gates = over.__gates || '  - 2026-07-11T00:00 note: n\n';
-  return `${body}\ngates:\n${gates}`;
+  // one case reproduces a 5.x bundle verbatim: the four keys 6.0 replaced with `mode`
+  const legacy = over.__legacy ? 'tier: medium\ntrack: harden\ntrack-rationale: r\nround: 1\n' : '';
+  return `${body}\n${legacy}gates:\n${gates}`;
 };
 
 const ledger = (...rows) =>
@@ -41,22 +43,23 @@ const TASKS_OPEN = '- [x] T1 done\n- [ ] T2\n- [ ] T3\n- [ ] T4\n';
 const TAP_OK = `node -e "${['ok 1 - XA-01 a', 'ok 2 - XB-01 b'].map((l) => `console.log('${l}')`).join(';')}"`;
 
 // Every case: {id, files, change, stage} — stage 'in-flight' | 'archived'.
-// Coverage: C2 pass/blocked/n-a, C3 pass and every blocked branch,
+// Coverage: C2 pass/blocked/n-a, C3 pass and every blocked branch (5.x identity included),
 // C4 pass/blocked (each bad-row kind)/n-a, the review-root guard, and both stages.
 const CASES = [
-  { id: 'healthy-medium', change: 'c', tier: 'medium', tasks: TASKS_DONE, led: ledger('Q-1 | a | low | 1 | verified') },
-  { id: 'trivial-no-tasks-no-ledger', change: 'c', tier: 'trivial', tasks: null, led: null },
-  { id: 'medium-tasks-missing', change: 'c', tier: 'medium', tasks: null, led: ledger('Q-1 | a | low | 1 | verified') },
-  { id: 'tasks-unchecked', change: 'c', tier: 'medium', tasks: TASKS_OPEN, led: ledger('Q-1 | a | low | 1 | verified') },
+  { id: 'healthy-standard', change: 'c', mode: 'standard', tasks: TASKS_DONE, led: ledger('Q-1 | a | low | 1 | verified') },
+  { id: 'fast-no-tasks-no-ledger', change: 'c', mode: 'fast', tasks: null, led: null },
+  { id: 'standard-tasks-missing', change: 'c', mode: 'standard', tasks: null, led: ledger('Q-1 | a | low | 1 | verified') },
+  { id: 'tasks-unchecked', change: 'c', mode: 'standard', tasks: TASKS_OPEN, led: ledger('Q-1 | a | low | 1 | verified') },
   { id: 'flow-missing-key', change: 'c', over: { lineage: null } },
   { id: 'flow-placeholder', change: 'c', over: { lineage: '<fill me>' } },
   { id: 'flow-name-mismatch', change: 'c', over: { change: 'other' } },
   { id: 'flow-illegal-step', change: 'c', over: { 'current-step': 'STEP9' } },
-  { id: 'flow-illegal-tier', change: 'c', over: { tier: 'huge' } },
+  { id: 'flow-illegal-mode', change: 'c', over: { mode: 'huge' } },
+  { id: 'flow-legacy-identity', change: 'c', over: { mode: null, __legacy: true } },
   { id: 'flow-step-abandoned', change: 'c', over: { 'current-step': 'ABANDONED' } },
   { id: 'flow-step-done', change: 'c', over: { 'current-step': 'DONE' } },
   { id: 'flow-step6', change: 'c', over: { 'current-step': 'STEP6' } },
-  { id: 'medium-ledger-missing', change: 'c', tier: 'medium', tasks: TASKS_DONE, led: null },
+  { id: 'standard-ledger-missing', change: 'c', mode: 'standard', tasks: TASKS_DONE, led: null },
   { id: 'ledger-open-row', change: 'c', led: ledger('Q-1 | a | low | 1 | open') },
   { id: 'ledger-illegal-status', change: 'c', led: ledger('Q-1 | a | low | 1 | frobnicated') },
   { id: 'ledger-rejected-no-reason', change: 'c', led: ledger('Q-1 | a | low | 1 | rejected') },
@@ -83,7 +86,7 @@ function build(c) {
   const write = (p, s) => { fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, s); };
 
   write(path.join(root, 'apriori', 'specs', 'kv', 'spec.md'), STORE);
-  write(path.join(dir, 'flow-state.md'), flow(name, { tier: c.tier || 'medium', ...(c.over || {}) }));
+  write(path.join(dir, 'flow-state.md'), flow(name, { mode: c.mode || 'standard', ...(c.over || {}) }));
   write(path.join(dir, 'specs', 'kv', 'spec.md'), DELTA);
   if (c.tasks !== null) write(path.join(dir, 'tasks.md'), c.tasks || TASKS_DONE);
 

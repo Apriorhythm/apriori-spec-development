@@ -7,9 +7,9 @@
 // Spread it FIRST in a fixture map so a test that deliberately wants a broken bundle
 // can still override any of the three.
 
-const FLOW = (name, tier = 'medium') =>
-  `change: ${name}\ntier: ${tier}\ntrack: harden\ntrack-rationale: fixture\n` +
-  `lineage: fixture\ncurrent-step: STEP6\nround: 1\nnext-action: archive\n` +
+const FLOW = (name, mode = 'standard') =>
+  `change: ${name}\nmode: ${mode}\n` +
+  `lineage: fixture\ncurrent-step: STEP6\nnext-action: archive\n` +
   `gates:\n  - 2026-07-11T00:00 note: fixture\n`;
 
 const TASKS = '- [x] T1 done\n';
@@ -19,7 +19,7 @@ const LEDGER = '| ID | Issue | Risk | Round found | Status |\n|---|---|---|---|-
 function readyFiles(name, opts = {}) {
   const base = opts.base || `apriori/changes/${name}`;
   return {
-    [`${base}/flow-state.md`]: FLOW(name, opts.tier),
+    [`${base}/flow-state.md`]: FLOW(name, opts.mode),
     [`${base}/tasks.md`]: TASKS,
     [`${base}/review/issues.md`]: LEDGER,
   };

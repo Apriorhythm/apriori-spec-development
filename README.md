@@ -65,12 +65,9 @@ apriori doctor --no-run
 apriori new hello
 cat > apriori/changes/hello/flow-state.md <<'EOF'
 change: hello
-tier: trivial
-track: harden
-track-rationale: quickstart demo
+mode: fast
 lineage: main
 current-step: STEP6
-round: 0
 next-action: archive
 gates:
   - 2026-01-01T00:00 note: quickstart demo

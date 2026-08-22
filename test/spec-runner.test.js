@@ -273,7 +273,7 @@ function planProject() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-srplan-'));
   const files = {
     'apriori/specs/kv/spec.md': '### Requirement: Alpha\n\n#### Scenario: XA-01 base\n- t\n',
-    'apriori/changes/c/flow-state.md': 'change: c\ntier: medium\ntrack: harden\ntrack-rationale: r\nlineage: v3\ncurrent-step: STEP5\nround: 1\nnext-action: x\ngates:\n  - 2026-07-11T00:00 note: n\n',
+    'apriori/changes/c/flow-state.md': 'change: c\nmode: standard\nlineage: v3\ncurrent-step: STEP5\nnext-action: x\ngates:\n  - 2026-07-11T00:00 note: n\n',
     'apriori/changes/c/tasks.md': '- [x] T1 done\n',
     'apriori/changes/c/specs/kv/spec.md': '## ADDED Requirements\n\n### Requirement: Beta\n\n#### Scenario: XB-01 new\n- t\n',
     'apriori/changes/c/review/issues.md': '| ID | Issue | Risk | Round found | Status |\n|---|---|---|---|---|\n| Q-1 | a | low | 1 | verified |\n',

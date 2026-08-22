@@ -19,11 +19,11 @@ const ADD = '## ADDED Requirements\n\n### Requirement: Beta\n\n#### Scenario: XB
 const ROW = (status) => `| ID | Issue | Risk | Round found | Status |\n|---|---|---|---|---|\n| Q-1 | i | low | 1 | ${status} |\n`;
 
 // a bundle whose gates: block carries the given entries verbatim
-function proj({ gates = [], tasks = null, ledger = null, tier = 'medium' } = {}) {
+function proj({ gates = [], tasks = null, ledger = null, mode = 'standard' } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-force-'));
-  const flow = FLOW('c', tier) + gates.map((g) => `${g}\n`).join('');
+  const flow = FLOW('c', mode) + gates.map((g) => `${g}\n`).join('');
   const files = {
-    ...readyFiles('c', { tier }),
+    ...readyFiles('c', { mode }),
     'apriori/changes/c/flow-state.md': flow,
     'apriori/specs/a/spec.md': STORE,
     'apriori/changes/c/specs/a/spec.md': ADD,

@@ -32,7 +32,7 @@ cd your-project && apriori init  # interactive: pick the AI tools to configure
 **Session start (agent, every session):**
 
 1. Kickoff session: read this runbook in full. Resume session: read at least the minimal set listed in the **Context economy** block below.
-2. Read `apriori/changes/<change>/flow-state.md`. If it doesn't exist and you were asked to start a change: size the change (§2), create the state file (§3), then begin at the tier's first step.
+2. Read `apriori/changes/<change>/flow-state.md`. If it doesn't exist and you were asked to start a change: pick the mode (§2), create the state file (§3), then begin at STEP0.
 3. Continue from `next-action`. The state file is authoritative — never reconstruct progress from memory or guesswork.
 
 **Two doors in.** A change that is already stateable enters through the kickoff prompt below. An idea that is still fuzzy enters through **Brainstorm** (§4, via P13) — the `/apriori` command with no arguments opens that door directly; nothing durable is written until the human approves the funnel exit.
@@ -40,13 +40,13 @@ cd your-project && apriori init  # interactive: pick the AI tools to configure
 **Kickoff prompt (human — copy and fill in):**
 
 ```text
-Follow the apriori runbook (apriori/runbook.md) for change <change-name>, tier <trivial|medium|large>, track <harden|explore> (unsure: harden).
+Follow the apriori runbook (apriori/runbook.md) for change <change-name>, mode <fast|standard> (unsure: standard).
 Read the runbook and apriori/changes/<change-name>/flow-state.md first and continue from the recorded position.
 (If the artifact root is externalized: artifact-root=<path>. Otherwise omit — project root.)
 Advance ONLY to the next human gate, then stop and report.
 ```
 
-> On the **harden** track, this kickoff (or the sign-off of the requirement doc) *is* the human intent acknowledgment — the intent card exists only on the **explore** track (§4). When the artifact root is externalized, the kickoff prompt must state it, because the flow-state file itself lives under it.
+> This kickoff (or the sign-off of the requirement doc) *is* the human intent acknowledgment — the intent card belongs to the exploratory positions (§4). When the artifact root is externalized, the kickoff prompt must state it, because the flow-state file itself lives under it.
 
 **Context economy.** The context window is the agent's scarcest resource — performance degrades as it fills, so manage it deliberately:
 
@@ -58,7 +58,7 @@ Advance ONLY to the next human gate, then stop and report.
 
 ## 1. Hard Rules
 
-**R1 — Stop at every human gate.** The gates are: ① STEP0 verdict at round cap ② gap-report sign-off (Large tier only) ③ STEP3 technical review ④ STEP6 KB-diff approval ⑤ any cap hit or oscillation (a reopened ledger ID). The explore track (§4) adds three **named decision points** with gate status: `intent-card sign-off`, `extraction review`, `STEP2 full review`. At a gate: update the state file, report — current step, reviewer verdict lines **verbatim**, open/rejected ledger items, the decision you need — then stop. Never approve a gate yourself; never treat "the human hasn't answered" as approval.
+**R1 — Stop at every human gate.** The gates are: ① STEP0 verdict at round cap ② gap-report sign-off (standard mode) ③ STEP3 technical review ④ STEP6 KB-diff approval ⑤ any cap hit or oscillation (a reopened ledger ID). The explore track (§4) adds three **named decision points** with gate status: `intent-card sign-off`, `extraction review`, `STEP2 full review`. At a gate: update the state file, report — current step, reviewer verdict lines **verbatim**, open/rejected ledger items, the decision you need — then stop. Never approve a gate yourself; never treat "the human hasn't answered" as approval.
 
 **Gate consolidation (explicit authorization).** The default is stop-at-every-gate. A human may explicitly consolidate intermediate gates into a later one (e.g. "run to the final merge review"); the decision must be recorded in `gates:` (scope + how to revoke) and is revocable at any time. Three gates can NEVER be covered by such an authorization: the **shrink decision** (§6), the **KB sign-off** (gate ④), and **`intent-card sign-off`**. Consolidation covers gates only — external side effects (§1 hard rule below) are never inside a consolidation blanket.
 
@@ -86,26 +86,16 @@ ANY operation that mutates state outside the local repository/workspace requires
 
 ---
 
-## 2. Size the Change (once, at kickoff)
+## 2. Pick the Mode (once, at kickoff)
 
-| Tier | Typical shape | Steps to run |
+| Mode | When | What runs |
 |---|---|---|
-| **Trivial** | Bugfix / single file; no new user-visible behavior; no shared-state change | Light explore (facts only) → STEP5 with tests + one consistency review → STEP6 writeback if any KB fact changed |
-| **Medium** | One module; new user-visible behavior | STEP0 (1–2 rounds) → STEP1 → STEP2 (1–2 rounds) → STEP5 → STEP6; STEP3 shrinks to an async design look-over |
-| **Large** | Cross-module / external shared state / data migration / new subsystem | Full STEP0–STEP6, every gate included |
+| **fast** | A reproducible defect, a local fix, and no public contract / data shape / permission / deploy / cross-system surface touched | reproduce → fix → regression → **one** independent review |
+| **standard** | Everything else | evidence proportional to the risks actually hit — never more documents, never more rounds |
 
-Anything touching external shared state or crossing module boundaries is **Large**, regardless of diff size. When unsure, start one tier lower and escalate on the first surprise; record the tier — and any escalation — in the state file.
+The mode is not a size estimate; it is a question about blast radius. **These situations must be standard** — migration / schema / DDL · transactions or locks · permission or auth · external configuration · public API · cross-repo reference · a new route or page. Choosing `fast` for any of them is a rule you broke, and it is **not enforced by the CLI**: no scanner reads your diff today, so nothing but your own judgement stands between the list and the wrong answer. (Making it mechanical is a later slice's job.)
 
-**Second axis — goal certainty** (decided at kickoff; recorded as `track` + `track-rationale` in the state file; reported at the next human gate):
-
-| Situation | Track |
-|---|---|
-| Goal and acceptance are stateable, even roughly | **harden** — the STEP0 loop refines them |
-| Goal clear, technical approach unknown | **harden** — approach uncertainty is design work, not goal uncertainty |
-| Neither the goal nor its acceptance can be stated | **explore** (§4's explore track) |
-| Exploration reveals the goal is actually clear | switch to **harden** immediately |
-
-**Tripwires outrank the certainty axis**: anything touching external shared state / production data / module boundaries / migrations is barred from the explore track no matter how vague — run it on the harden track, optionally with a **research spike** (the STEP1 variant, §4). Default when unsure: **harden** — the opposite direction from the size axis, because the risks point the opposite way.
+Re-ask after every substantial diff: a change that starts fast and grows a migration is standard from that moment on. When unsure: **standard**.
 
 ---
 
@@ -167,8 +157,8 @@ What the profile scales is coverage, not existence:
 
 | tier | what is asked | what happens when it is missing |
 |---|---|---|
-| **full** (formal changes, medium/large) | E2E evidence over the change's scenarios; under a `ui`/`fullstack` profile, a screenshot observation record for the affected pages | a process requirement, reported at the gate |
-| **incremental** (the hotfix lane, trivial) | the bound tests for the affected scenarios only; a screenshot record when frontend files were touched | an **advisory** — it prints a reminder and never blocks |
+| **full** (formal changes, standard mode) | E2E evidence over the change's scenarios; under a `ui`/`fullstack` profile, a screenshot observation record for the affected pages | a process requirement, reported at the gate |
+| **incremental** (the hotfix lane) | the bound tests for the affected scenarios only; a screenshot record when frontend files were touched | an **advisory** — it prints a reminder and never blocks |
 
 A record that IS present is validated in full at both tiers — providing one buys no
 leniency. A backend-only bundle waives with `ui: not-applicable — <reason>`; a waiver with
@@ -182,20 +172,16 @@ no reason is not a waiver.
 
 ```markdown
 change: <change-name>
-tier: trivial | medium | large
-track: harden | explore
-track-rationale: <one line: why this track — reported at the next human gate>
+mode: fast | standard   # fast = a reproducible defect, a local fix, and no public
+                        # contract / data shape / permission / deploy / cross-system
+                        # surface touched. Anything else is standard. One field: 6.0
+                        # replaced 5.x's tier + track + track-rationale + round with it.
 lineage: <target branch/line + its merge taboo, e.g. "v2 (never merge to main)">
                         # copied from the requirement at kickoff; a lineage
                         # conflict discovered mid-change is an immediate stop
 current-step: STEP0 | STEP1 | STEP2 | STEP3 | STEP4 | STEP5 | STEP6 |
-              INTENT-CARD | SPIKE | EXTRACTION |     # explore-track positions
+              INTENT-CARD | SPIKE | EXTRACTION |     # exploratory positions
               DONE | ABANDONED
-round: 0                # review round / apply turn; log round-started/round-ended
-                        # timestamps (ISO, minute precision) when it changes.
-                        # When one ledger is shared across steps, label rounds with
-                        # their step (STEP0·r1, STEP5·r1) so the same number in two
-                        # steps is never ambiguous.
 reviewer-session: <id or n/a>   # the heterogeneous reviewer's resumable session id
                         # (e.g. codex's printed session id), recorded the moment round 1
                         # prints it — so a mid-review interruption resumes the SAME
@@ -295,7 +281,7 @@ KB docs have two sections with **opposite truth directions** (§5 P9/P10): `Cont
 
 - **Do:** the **explore action** with **P3**. **Out:** the gap report.
 - **Research-spike variant** (vague-but-tripwired changes, §2): probe code is allowed under `changes/<change>/spike/` — the explore track's full isolation rules apply — capped by `spike-cap` (default 10); findings land as a "research conclusions" appendix to the gap report. P3 carries the matching variant clause.
-- **Exit:** Large tier → **gate ②** (human skims the gap report). Other tiers: fold the report's top risks into your next report and proceed.
+- **Exit:** standard mode → **gate ②** (human skims the gap report). fast mode: fold the report's top risks into your next report and proceed.
 
 ### STEP2 — propose · adversarial loop · cap: `step2-cap` (default 4)
 
@@ -305,7 +291,7 @@ KB docs have two sections with **opposite truth directions** (§5 P9/P10): `Cont
 ### STEP3 — technical review — **gate ③ (human)**
 
 - **Agent's job:** assemble the packet — proposal.md, design doc, spec, ledger with rejections on top — present it, stop. Record the outcome as DESIGN-REVIEW-DOC and in `gates:`. Major design change → back to STEP2.
-- Medium tier: an async look-over replaces the meeting — the outcome still gets recorded. Solo developer: the decision record must still come from outside the producer's context (fresh-session review).
+- standard mode: an async look-over replaces the meeting — the outcome still gets recorded. Solo developer: the decision record must still come from outside the producer's context (fresh-session review).
 
 ### STEP4 — update docs
 
@@ -365,7 +351,7 @@ exactly when the γ' whitelist point-check stands in for a human signoff. The ph
 - **Producer**: flips `open → fixed` or `open → rejected`; a rejection MUST carry a reason — human gates read rejections first. The producer never terminalizes its own findings: `verified` and `rejected-verified` belong to the reviewer, `waived` to the human.
 - **Human (only)**: may set `waived + reason` — accepting the risk — with a `gates:` entry recording the decision (the entry must carry the row's ID and the word "waived"; gate C4 machine-checks exactly that).
 - **Terminal set for archival**: `verified` · `rejected-verified` · `waived` · `advisory-acked`. The archived-stage gate blocks anything else — `fixed` is a claim awaiting verification, plain `rejected` awaits concurrence, and unknown statuses are illegal at every stage.
-- **Advisory findings (scope discipline):** only gaps affecting **correctness, security, or the stated requirements** enter as formal rows; everything else the reviewer labels `advisory`. Labeling is the **reviewer's exclusive call** — the producer may never downgrade an open row to advisory. Per-item advisory lists live in the review doc; the ledger takes **one batch row per round** (`advisory batch acknowledged (n items)`), terminal state `advisory-acked` — the "record verbatim" rule (R2) governs the reviewer's delta *content*, while the row *shape* is always normalized to this batch form, so a reviewer that free-forms its advisory rows is normalized, not copied literally; "ignoring" advisories means no per-item handling — the batch row still lands. A reviewer may later **upgrade** an advisory to open (with a reason, new row tagged `upgraded-from-advisory`): it counts in the data pack's reopened statistic but does **not** by itself trip gate ⑤ (only a closed formal ID re-reopening does). **Correctness and security findings can never be advisory.** Mislabel handling: sampled at STEP3 (Medium+), gate ④, or the pre-merge PR review (Trivial); a real gap found mislabeled → upgrade + log; one that slips past merge counts as a post-merge miss (triggers cap restoration, §6).
+- **Advisory findings (scope discipline):** only gaps affecting **correctness, security, or the stated requirements** enter as formal rows; everything else the reviewer labels `advisory`. Labeling is the **reviewer's exclusive call** — the producer may never downgrade an open row to advisory. Per-item advisory lists live in the review doc; the ledger takes **one batch row per round** (`advisory batch acknowledged (n items)`), terminal state `advisory-acked` — the "record verbatim" rule (R2) governs the reviewer's delta *content*, while the row *shape* is always normalized to this batch form, so a reviewer that free-forms its advisory rows is normalized, not copied literally; "ignoring" advisories means no per-item handling — the batch row still lands. A reviewer may later **upgrade** an advisory to open (with a reason, new row tagged `upgraded-from-advisory`): it counts in the data pack's reopened statistic but does **not** by itself trip gate ⑤ (only a closed formal ID re-reopening does). **Correctness and security findings can never be advisory.** Mislabel handling: sampled at STEP3 (standard mode), gate ④, or the pre-merge PR review (fast mode); a real gap found mislabeled → upgrade + log; one that slips past merge counts as a post-merge miss (triggers cap restoration, §6).
 
 ### P1 — STEP0 reviewer (heterogeneous, R2)
 
@@ -614,7 +600,7 @@ Run the archive action, then update apriori/truth/<module>.md and list exactly w
 Stop when both hold."
 ```
 
-**Gate checklist (what you personally decide):** ① STEP0 finalization when the cap is hit ② gap-report skim (Large) ③ STEP3 technical review ④ KB-diff approval ⑤ any cap hit / reopened ledger ID — escalation, never quietly lowering the bar. Explore track adds: `intent-card sign-off` and the `extraction review` outcome. Gate consolidation (§1) is yours to grant — but never over the shrink decision, the KB sign-off, or `intent-card sign-off`.
+**Gate checklist (what you personally decide):** ① STEP0 finalization when the cap is hit ② gap-report skim (standard mode) ③ STEP3 technical review ④ KB-diff approval ⑤ any cap hit / reopened ledger ID — escalation, never quietly lowering the bar. Explore track adds: `intent-card sign-off` and the `extraction review` outcome. Gate consolidation (§1) is yours to grant — but never over the shrink decision, the KB sign-off, or `intent-card sign-off`.
 
 **Shrink governance (the metabolism rule).** Every N changes (default 5, `shrink-proposal-freq`) the agent **reports — never applies** — a shrink/expand proposal whose data pack MUST contain: verified count; rejected count (with sampled reasons); reopened-ID count (including `upgraded-from-advisory` rows); advisory ratio (monitoring only — never a decision threshold); total wall-clock per change and per review stage (derived from the state file's timestamps; wall-clock includes human-gate waits — note this so cost curves aren't misread; missing timestamps → `n/a`, never estimated). The rejected ratio for `rejected-ratio-guard` (default 50%) counts **formal findings only — advisories are excluded from both numerator and denominator** (so relabeling can't dilute the guard). Shrinking a review stage is a **human gate decision**, blocked outright when the guard trips or the change class is tripwired (shared state / migration / security / production data). Shrinking means lowering a stage's round cap — **floor 1; no stage ever reaches zero** — and shrunk review rounds can never be traded for fewer deterministic checks: **you may shrink review rounds, you may not substitute them for lint, tests or traceability**. Post-merge re-review (sampling rate `post-merge-review-freq`, default 1 in 5 merged changes) finding ≥1 high-risk miss — including a real gap that had been mislabeled advisory — → restore the stage's previous cap, logged the same way. Beware both directions: producers can zero the metric by rejecting findings (that's what the guard is for); reviewers can inflate it by careless verifies (which merely delays shrinking).
 

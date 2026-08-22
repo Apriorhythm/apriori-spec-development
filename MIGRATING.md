@@ -2,6 +2,42 @@
 
 The 3.0.0 stability promise: CLI surface & flags, `--json` shapes, the delta format, the flow-state schema and the `apriori/` layout only break in a major. Everything below is either additive or a declared fail-closed tightening.
 
+## 5.x → 6.0 — one identity field
+
+`flow-state.md` carried four identity fields. Reality-checking the CLI found that three of
+them decided nothing: `round` was written and then discarded (no code path read it), `track`
+was only ever required to be *present* (no branch ever read `harden` vs `explore`), and
+`track-rationale` was prose. Only `tier` decided anything — four times, always
+`trivial` → relax a requirement. 6.0 replaces all four with `mode`:
+
+```diff
+ change: add-playback
+-tier: medium
+-track: harden
+-track-rationale: goal and acceptance are stateable
+-round: 0
++mode: standard
+ lineage: main
+ current-step: STEP5
+```
+
+- `tier: trivial` → `mode: fast` · `tier: medium` / `tier: large` → `mode: standard`
+- delete `track`, `track-rationale` and `round` outright
+
+`fast` means the same thing to the CLI that `trivial` did — `tasks.md` and `review/issues.md`
+may be absent (gate C2/C4 `n/a`, archive readiness R2/R3 `n/a`). What it means to *you* is
+narrower: a reproducible defect, a local fix, and no public contract / data shape / permission
+/ deploy / cross-system surface touched. Anything else is `standard`.
+
+**There is no compatibility window, and a legal `mode` does not buy one.** Any of the four
+keys refuses on its own — even standing next to a correct `mode` line — because a stale row
+that rides along is exactly how a bundle comes to *look* migrated without being it. `gate`
+(C3), `archive` (RESULT: NOT READY) and `status` all name the keys they found; `doctor`
+reports it as a D7 finding without blocking its other diagnostics. Edit the file: one line in,
+four lines out.
+
+---
+
 ## 3.4.x → 4.0.0 — the change bundle
 
 Everything a change produces now lives in ONE directory: `apriori/changes/<name>/`. The five pre-4.0 scattered roots cease to exist: `requirement/`, `spike/`, `apriori/review/`, `apriori/design/`, `apriori/explore/`.

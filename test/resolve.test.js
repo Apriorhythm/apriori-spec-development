@@ -12,7 +12,7 @@ const BIN = path.join(__dirname, '..', 'bin', 'apriori.js');
 function run(args, cwd) { return spawnSync('node', [BIN, ...args], { encoding: 'utf8', cwd }); }
 
 const STORE = '### Requirement: Alpha\n\n#### Scenario: XA-01 a\n- t\n';
-const FLOW = (n) => `change: ${n}\ntier: medium\ntrack: harden\ntrack-rationale: r\nlineage: x\ncurrent-step: DONE\nnext-action: n\ngates:\n  - 2026-01-01T00:00 note: n\n`;
+const FLOW = (n) => `change: ${n}\nmode: standard\nlineage: x\ncurrent-step: DONE\nnext-action: n\ngates:\n  - 2026-01-01T00:00 note: n\n`;
 const LEDGER = '| ID | Issue | Risk | Round found | Status |\n|---|---|---|---|---|\n';
 
 function mk(files) {

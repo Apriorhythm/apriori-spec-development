@@ -10,11 +10,12 @@ const { spawnSync } = require('node:child_process');
 
 const BIN = path.join(__dirname, '..', 'bin', 'apriori.js');
 const sr = require('../lib/spec-runner');
+const { canSymlink } = require('./helpers/can-symlink');
 const gate = require('../lib/gate');
 
 const STORE_AB = '### Requirement: R-A\n\n#### Scenario: XA-01 a\n- t\n\n### Requirement: R-B\n\n#### Scenario: XB-01 b\n- t\n';
 const DELTA_C = '## ADDED Requirements\n\n### Requirement: R-C\n\n#### Scenario: XC-01 c\n- t\n';
-const FLOW = (n) => `change: ${n}\ntier: medium\ntrack: harden\ntrack-rationale: r\nlineage: main\ncurrent-step: STEP5\nround: 1\nnext-action: x\ngates:\n  - 2026-08-13T00:00 note: n\n`;
+const FLOW = (n) => `change: ${n}\nmode: standard\nlineage: main\ncurrent-step: STEP5\nnext-action: x\ngates:\n  - 2026-08-13T00:00 note: n\n`;
 const LEDGER = '| ID | Issue | Risk | Round found | Status |\n|---|---|---|---|---|\n| Q-1 | a | low | 1 | verified |\n';
 
 function proj(files) {
@@ -332,17 +333,22 @@ test('SR-56 sibling attribution is strict: anomalies grant nothing', () => {
   // a cleanly-parsed ADDED sibling declaring the ID: attributed, non-blocking
   const m3 = mk({ 'apriori/changes/s/specs/m/spec.md': '## ADDED Requirements\n\n### Requirement: R-Z\n\n#### Scenario: ZZ-99 owned\n- t\n' });
   assert.strictEqual(chg(m3, ['--test-cmd', failTap]).status, 0, 'valid sibling ADDED attributes');
-  // an escaping symlinked sibling specs dir grants nothing
-  const outside = proj({ 'evil.md': '## ADDED Requirements\n\n### Requirement: R-Z\n\n#### Scenario: ZZ-99 outside\n- t\n' });
-  const m4 = mk({});
-  fs.mkdirSync(path.join(m4, 'apriori/changes/s'), { recursive: true });
-  fs.symlinkSync(outside, path.join(m4, 'apriori/changes/s/specs'));
-  assert.strictEqual(chg(m4, ['--test-cmd', failTap]).status, 1, 'escaping specs symlink grants nothing');
-  // a symlinked .md file inside a real specs dir grants nothing
-  const m5 = mk({});
-  fs.mkdirSync(path.join(m5, 'apriori/changes/s/specs'), { recursive: true });
-  fs.symlinkSync(path.join(outside, 'evil.md'), path.join(m5, 'apriori/changes/s/specs/evil.md'));
-  assert.strictEqual(chg(m5, ['--test-cmd', failTap]).status, 1, 'symlinked sibling file grants nothing');
+  // The last two shapes need real symlinks, which a Windows account may not be privileged to
+  // create. Guard only those two: m1..m3 above assert the same rule without one, so the whole
+  // test does not have to stand down for a platform capability.
+  if (canSymlink()) {
+    // an escaping symlinked sibling specs dir grants nothing
+    const outside = proj({ 'evil.md': '## ADDED Requirements\n\n### Requirement: R-Z\n\n#### Scenario: ZZ-99 outside\n- t\n' });
+    const m4 = mk({});
+    fs.mkdirSync(path.join(m4, 'apriori/changes/s'), { recursive: true });
+    fs.symlinkSync(outside, path.join(m4, 'apriori/changes/s/specs'));
+    assert.strictEqual(chg(m4, ['--test-cmd', failTap]).status, 1, 'escaping specs symlink grants nothing');
+    // a symlinked .md file inside a real specs dir grants nothing
+    const m5 = mk({});
+    fs.mkdirSync(path.join(m5, 'apriori/changes/s/specs'), { recursive: true });
+    fs.symlinkSync(path.join(outside, 'evil.md'), path.join(m5, 'apriori/changes/s/specs/evil.md'));
+    assert.strictEqual(chg(m5, ['--test-cmd', failTap]).status, 1, 'symlinked sibling file grants nothing');
+  }
 });
 
 test('SR-59 cross-boundary duplicate provenance carries every occurrence file', () => {

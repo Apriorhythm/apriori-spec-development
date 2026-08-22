@@ -21,10 +21,10 @@ const run = (args, cwd) => spawnSync('node', [BIN, ...args], { encoding: 'utf8',
 const STORE = '### Requirement: Alpha\n\n#### Scenario: XA-01 a\n- t\n';
 const ADD = '## ADDED Requirements\n\n### Requirement: Beta\n\n#### Scenario: XB-09 n\n- t\n';
 
-function proj(over = {}, tier = 'medium') {
+function proj(over = {}, mode = 'standard') {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-rdy-'));
   const files = {
-    ...readyFiles('c', { tier }),
+    ...readyFiles('c', { mode }),
     'apriori/specs/a/spec.md': STORE,
     'apriori/changes/c/specs/a/spec.md': ADD,
     ...over,
@@ -43,17 +43,17 @@ const rm = (p) => fs.rmSync(p, { recursive: true, force: true });
 
 // ---------------------------------------------------------------------------
 
-test('AM-74 the safe layer classifies every artifact defect, and tier decides only absence', () => {
+test('AM-74 the safe layer classifies every artifact defect, and mode decides only absence', () => {
   const artifacts = ['flow-state.md', 'tasks.md', path.join('review', 'issues.md')];
-  for (const tier of ['trivial', 'medium']) {
+  for (const mode of ['fast', 'standard']) {
     for (const rel of artifacts) {
-      // missing — the ONLY kind the tier rule may soften
+      // missing — the ONLY kind the mode rule may soften
       {
-        const root = proj({}, tier);
+        const root = proj({}, mode);
         rm(path.join(bundle(root), rel));
         const r = run(['archive', '--change', 'c'], root);
-        const softenable = rel !== 'flow-state.md' && tier === 'trivial';
-        assert.strictEqual(r.status, softenable ? 0 : 1, `${tier}/${rel} missing`);
+        const softenable = rel !== 'flow-state.md' && mode === 'fast';
+        assert.strictEqual(r.status, softenable ? 0 : 1, `${mode}/${rel} missing`);
       }
       // symlink, not-file, bad-ancestor, escape — structural at BOTH tiers
       for (const [label, build] of [
@@ -63,11 +63,11 @@ test('AM-74 the safe layer classifies every artifact defect, and tier decides on
           ['escape', (p) => { const out = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-out-')); fs.writeFileSync(path.join(out, 'f'), 'x'); rm(p); fs.symlinkSync(path.join(out, 'f'), p); }],
         ] : []),
       ]) {
-        const root = proj({}, tier);
+        const root = proj({}, mode);
         build(path.join(bundle(root), rel));
         const r = run(['archive', '--change', 'c'], root);
-        assert.strictEqual(r.status, 1, `${tier}/${rel}/${label} must refuse`);
-        assert.match(r.stdout, /RESULT: NOT READY/, `${tier}/${rel}/${label}`);
+        assert.strictEqual(r.status, 1, `${mode}/${rel}/${label} must refuse`);
+        assert.match(r.stdout, /RESULT: NOT READY/, `${mode}/${rel}/${label}`);
       }
     }
   }
@@ -113,7 +113,7 @@ test('AM-77 a read that fails after the guard is structural and carries the code
   assert.ok(res.err.join('\n').includes('tasks.md: unreadable (EIO)'), res.err.join('\n'));
 });
 
-test('AM-107 a non-ENOENT at any probe point refuses, at every tier', () => {
+test('AM-107 a non-ENOENT at any probe point refuses, at every mode', () => {
   const points = [
     ['artifact lstat', (b) => ({ lstatSync: (p) => { if (String(p).endsWith('tasks.md')) throw code('EACCES'); return fs.lstatSync(p); }, realpathSync: fs.realpathSync })],
     ['ancestor walk', (b) => ({ lstatSync: (p) => { if (String(p).endsWith('tasks.md')) throw code('ENOENT'); if (p === b) throw code('EIO'); return fs.lstatSync(p); }, realpathSync: fs.realpathSync })],
@@ -122,39 +122,39 @@ test('AM-107 a non-ENOENT at any probe point refuses, at every tier', () => {
     ['review-root realpath', () => ({ lstatSync: fs.lstatSync, realpathSync: (p) => { if (String(p).endsWith(path.sep + 'review')) throw code('EACCES'); return fs.realpathSync(p); } })],
   ];
   function code(c) { const e = new Error(c); e.code = c; return e; }
-  for (const tier of ['trivial', 'medium']) {
+  for (const mode of ['fast', 'standard']) {
     for (const [label, mkOps] of points) {
-      const root = proj({}, tier);
+      const root = proj({}, mode);
       const b = bundle(root);
       const res = am.archiveChange({
         cwd: root, change: 'c', write: false,
         readinessOf: (opts) => rd.readinessOf({ ...opts, ops: mkOps(b) }),
       });
-      assert.strictEqual(res.code, 1, `${tier}/${label} must refuse`);
-      assert.match(res.err.join('\n'), /io-error \((EACCES|EIO|ELOOP)\)/, `${tier}/${label}`);
+      assert.strictEqual(res.code, 1, `${mode}/${label} must refuse`);
+      assert.match(res.err.join('\n'), /io-error \((EACCES|EIO|ELOOP)\)/, `${mode}/${label}`);
     }
   }
 });
 
-test('AM-108 a true ENOENT still takes the tier-sensitive branch', () => {
+test('AM-108 a true ENOENT still takes the mode-sensitive branch', () => {
   for (const rel of ['tasks.md', path.join('review', 'issues.md')]) {
-    const trivial = proj({}, 'trivial'); rm(path.join(bundle(trivial), rel));
-    assert.strictEqual(run(['archive', '--change', 'c'], trivial).status, 0, `trivial/${rel}`);
-    const medium = proj({}, 'medium'); rm(path.join(bundle(medium), rel));
-    assert.strictEqual(run(['archive', '--change', 'c'], medium).status, 1, `medium/${rel}`);
+    const fast = proj({}, 'fast'); rm(path.join(bundle(fast), rel));
+    assert.strictEqual(run(['archive', '--change', 'c'], fast).status, 0, `fast/${rel}`);
+    const standard = proj({}, 'standard'); rm(path.join(bundle(standard), rel));
+    assert.strictEqual(run(['archive', '--change', 'c'], standard).status, 1, `standard/${rel}`);
   }
 });
 
 test('AM-115 an ENOENT raised at the realpath stage is not a structural defect either', () => {
   function code(c) { const e = new Error(c); e.code = c; return e; }
-  // artifact side: falls through to the ancestor walk and ends as missing → tier decides
-  for (const [tier, want] of [['trivial', 0], ['medium', 1]]) {
-    const root = proj({}, tier);
+  // artifact side: falls through to the ancestor walk and ends as missing → mode decides
+  for (const [mode, want] of [['fast', 0], ['standard', 1]]) {
+    const root = proj({}, mode);
     const res = am.archiveChange({
       cwd: root, change: 'c', write: false,
       readinessOf: (o) => rd.readinessOf({ ...o, ops: { lstatSync: fs.lstatSync, realpathSync: (p) => { if (String(p).endsWith('tasks.md')) throw code('ENOENT'); return fs.realpathSync(p); } } }),
     });
-    assert.strictEqual(res.code, want, `artifact realpath ENOENT at ${tier}`);
+    assert.strictEqual(res.code, want, `artifact realpath ENOENT at ${mode}`);
   }
   // review-root side: reports nothing at all
   const root = proj();
@@ -176,11 +176,11 @@ test('AM-112 a completely normal bundle stays archivable', () => {
 });
 
 test('AM-113 an absent review directory is not a structural defect', () => {
-  for (const [tier, want] of [['trivial', 0], ['medium', 1]]) {
-    const root = proj({}, tier);
+  for (const [mode, want] of [['fast', 0], ['standard', 1]]) {
+    const root = proj({}, mode);
     rm(path.join(bundle(root), 'review'));
     const r = run(['archive', '--change', 'c'], root);
-    assert.strictEqual(r.status, want, tier);
+    assert.strictEqual(r.status, want, mode);
     if (want) assert.match(r.stderr, /ledger missing/);
   }
 });
@@ -246,9 +246,9 @@ test('AM-81 a broken flow-state reports the C3 diagnosis, not the step wording',
   assert.doesNotMatch(r.stderr, /ABANDONED/);
 });
 
-test('AM-82 tier decides what a missing artifact means, and absence is never forceable', () => {
+test('AM-82 mode decides what a missing artifact means, and absence is never forceable', () => {
   for (const rel of ['tasks.md', path.join('review', 'issues.md')]) {
-    const root = proj({}, 'medium');
+    const root = proj({}, 'standard');
     rm(path.join(bundle(root), rel));
     // even with a grant on record, an ABSENT artifact is not a progress blocker
     const flow = FLOW('c') + '  - 2026-08-15T18:00 gate⑤ (owner): archive-force tasks — 补一条授权\n' +

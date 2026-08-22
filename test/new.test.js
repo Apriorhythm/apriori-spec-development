@@ -16,8 +16,9 @@ test('NW-01 scaffolds flow-state skeleton and specs dir', () => {
   const flow = fs.readFileSync(path.join(root, 'apriori', 'changes', 'add-playback', 'flow-state.md'), 'utf8');
   assert.match(flow, /^change: add-playback$/m);
   assert.match(flow, /^current-step: STEP0$/m);
-  assert.match(flow, /tier: <trivial \| medium \| large>/);       // placeholders, not guesses
-  assert.match(flow, /track: <harden \| explore>/);
+  assert.match(flow, /mode: <fast \| standard>/);                 // placeholder, not a guess
+  for (const gone of ['tier', 'track', 'track-rationale', 'round'])
+    assert.doesNotMatch(flow, new RegExp(`^${gone}:`, 'm'), `5.x '${gone}:' must not be scaffolded`);
   assert.match(flow, /lineage: <target branch\/line/);
   assert.match(flow, /2026-07-07T03:05 note: change scaffolded by `apriori new`/);
   assert.ok(fs.existsSync(path.join(root, 'apriori', 'changes', 'add-playback', 'specs')));
@@ -48,8 +49,8 @@ test('NW-03 enforces bare kebab-case names (dates stamped at archive time, not h
 test('NW-04 the skeleton carries every flow-state schema field the runbook defines', () => {
   const { flowStateSkeleton } = require('../lib/new');
   const s = flowStateSkeleton('my-change', new Date(2026, 0, 2, 3, 4));
-  for (const field of ['change:', 'tier:', 'track:', 'track-rationale:', 'lineage:',
-                       'current-step:', 'round:', 'reviewer-session:', 'next-action:', 'artifact-root:', 'gates:'])
+  for (const field of ['change:', 'mode:', 'lineage:',
+                       'current-step:', 'reviewer-session:', 'next-action:', 'artifact-root:', 'gates:'])
     assert.ok(s.includes(field), `skeleton missing ${field}`);
   assert.match(s, /reviewer-session: n\/a/);
   assert.match(s, /artifact-root: \./);
@@ -67,6 +68,6 @@ test('NW-05 the scaffold is a bundle', () => {
   assert.ok(rpFs.statSync(rpPath.join(dir, 'requirement')).isDirectory(), 'requirement/ skeleton missing');
   assert.ok(rpFs.statSync(rpPath.join(dir, 'review')).isDirectory(), 'review/ skeleton missing');
   const flow = rpFs.readFileSync(rpPath.join(dir, 'flow-state.md'), 'utf8');
-  assert.match(flow, /next-action: draft apriori\/changes\/my-change\/requirement\/req-v1\.md \(or the intent card on the explore track\)/);
+  assert.match(flow, /next-action: draft apriori\/changes\/my-change\/requirement\/req-v1\.md/);
   assert.ok(!/draft requirement\//.test(flow), 'legacy-root next-action survives');
 });

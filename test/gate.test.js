@@ -25,7 +25,7 @@ function mkProject(files) {
 
 const STORE = '### Requirement: Alpha\n\n#### Scenario: XA-01 base\n- t\n';
 const DELTA = '## ADDED Requirements\n\n### Requirement: Beta\n\n#### Scenario: XB-01 new\n- t\n';
-const FLOW = (name, tier = 'medium') => `change: ${name}\ntier: ${tier}\ntrack: harden\ntrack-rationale: r\nlineage: v3\ncurrent-step: STEP5\nround: 1\nnext-action: x\ngates:\n  - 2026-07-11T00:00 note: n\n`;
+const FLOW = (name, mode = 'standard') => `change: ${name}\nmode: ${mode}\nlineage: v3\ncurrent-step: STEP5\nnext-action: x\ngates:\n  - 2026-07-11T00:00 note: n\n`;
 const LEDGER_OK = '| ID | Issue | Risk | Round found | Status |\n|---|---|---|---|---|\n| Q-1 | a | low | 1 | verified |\n';
 
 // a healthy in-flight medium change
@@ -83,9 +83,10 @@ test('GT-03 ledger blocks on open rows and reasonless rejections', () => {
 
 test('GT-04 flow-state legality is enforced', () => {
   for (const [flow, offender] of [
-    [FLOW('c').replace('tier: medium', 'tier: <trivial | medium | large>'), /tier/],
+    [FLOW('c').replace('mode: standard', 'mode: <fast | standard>'), /mode/],
     [FLOW('c').replace('current-step: STEP5', 'current-step: STEP9'), /current-step/],
-    [FLOW('c').replace('tier: medium', 'tier: huge'), /tier/],
+    [FLOW('c').replace('mode: standard', 'mode: huge'), /mode/],
+    [FLOW('c').replace('mode: standard', 'tier: medium\ntrack: harden'), /5\.x identity/],
     [FLOW('wrong-name'), /change/],
     [FLOW('c').replace('lineage: v3\n', ''), /lineage/],
   ]) {
@@ -237,17 +238,17 @@ test('GT-08 a missing or mismatched flow-state fails closed', () => {
   assert.strictEqual(gate.runGate({ cwd: root2, change: 'c', testCmd: TAP_OK }).code, 1);
 });
 
-test('GT-09 trivial tier is not asked for artifacts it never produces', () => {
+test('GT-09 fast mode is not asked for artifacts it never produces', () => {
   const root = mkProject({
     'apriori/specs/kv/spec.md': STORE,
-    'apriori/changes/c/flow-state.md': FLOW('c', 'trivial'),
+    'apriori/changes/c/flow-state.md': FLOW('c', 'fast'),
     'apriori/changes/c/specs/kv/spec.md': DELTA,
   });
   const r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
   assert.strictEqual(r.checks.find((x) => x.id === 'C2').status, 'n/a');
   assert.strictEqual(r.checks.find((x) => x.id === 'C4').status, 'n/a');
   assert.strictEqual(r.code, 0, JSON.stringify(r.checks));
-  // medium: same absences block
+  // standard: same absences block
   const root2 = mkProject({
     'apriori/specs/kv/spec.md': STORE,
     'apriori/changes/c/flow-state.md': FLOW('c'),

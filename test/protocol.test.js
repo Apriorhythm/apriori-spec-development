@@ -259,9 +259,9 @@ test('PR-12 flow-state persists the reviewer resumable session id (schema + R2)'
   assert.match(EN, /record the reviewer's session id in flow-state's `reviewer-session` field/);
   assert.match(CN, /reviewer-session: <id 或 n\/a>/);
   assert.match(CN, /记进 flow-state 的 `reviewer-session` 字段/);
-  // ledger round stage-prefix disambiguation
-  assert.match(EN, /label rounds with\s*\n?\s*#*\s*their step \(STEP0·r1, STEP5·r1\)/);
-  assert.match(CN, /前缀\(STEP0·r1、STEP5·r1\)/);
+  // the ledger round stage-prefix rule went out with the hand-written `round:` field
+  // (6.0 slice 1): nothing ever read it, and slice 2 derives rounds from review artifacts.
+  for (const doc of [EN, CN]) assert.doesNotMatch(doc, /^round: 0/m);
 });
 
 test('PR: P4 produces tasks.md as a STEP2 output (both languages)', () => {

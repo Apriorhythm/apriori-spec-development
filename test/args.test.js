@@ -26,7 +26,7 @@ function mkProject(files) {
 function sentinelProject() {
   return mkProject({
     'apriori/specs/m/spec.md': '### Requirement: R\n\n#### Scenario: XA-01 a\n- t\n',
-    'apriori/changes/c/flow-state.md': 'change: c\ntier: trivial\ntrack: harden\nlineage: v3\ncurrent-step: STEP5\n',
+    'apriori/changes/c/flow-state.md': 'change: c\nmode: fast\nlineage: v3\ncurrent-step: STEP5\n',
     'apriori/changes/c/specs/m/spec.md': '## ADDED Requirements\n\n### Requirement: S\n\n#### Scenario: XB-01 b\n- t\n',
     'apriori/process-config.md': `| language | auto |\n| test-cmd | node -e "require('fs').writeFileSync('SENTINEL','x');console.log('ok 1 - XA-01')" | x | (none) |\n`,
   });

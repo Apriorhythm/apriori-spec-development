@@ -7,6 +7,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawnSync } = require('node:child_process');
+const { canSymlink } = require('./helpers/can-symlink');
 
 const BIN = path.join(__dirname, '..', 'bin', 'apriori.js');
 const PATTERN = '[A-Z]+(-[A-Z]+)*-\\d+[a-z]*';
@@ -89,7 +90,7 @@ test('SR-52 an invalid effective pattern refuses to run', () => {
   // --change --json keeps the projection field on the error path
   const ch = proj({
     'apriori/specs/m/spec.md': '### Requirement: R1\n\n#### Scenario: AC-01 plain\n- t\n',
-    'apriori/changes/z/flow-state.md': 'change: z\ntier: medium\n',
+    'apriori/changes/z/flow-state.md': 'change: z\nmode: standard\n',
     'apriori/changes/z/specs/m/spec.md': '## ADDED Requirements\n\n### Requirement: R2\n\n#### Scenario: AC-02 b\n- t\n',
     'apriori/process-config.md': '| id-pattern | ( |\n',
   });
@@ -208,7 +209,7 @@ test('SR-55 every child failure class fails closed', () => {
 
 // ---- GT: gate ----
 const gate = require('../lib/gate');
-const FLOW = (name) => `change: ${name}\ntier: medium\ntrack: harden\ntrack-rationale: r\nlineage: main\ncurrent-step: STEP5\nround: 1\nnext-action: x\ngates:\n  - 2026-08-13T00:00 note: n\n`;
+const FLOW = (name) => `change: ${name}\nmode: standard\nlineage: main\ncurrent-step: STEP5\nnext-action: x\ngates:\n  - 2026-08-13T00:00 note: n\n`;
 const LEDGER_OK = '| ID | Issue | Risk | Round found | Status |\n|---|---|---|---|---|\n| Q-1 | a | low | 1 | verified |\n';
 // A LOWERCASE id: the built-in default deliberately does not recognise it, so a flag or config
 // row genuinely changes the outcome. (The old `XA-01b` fixture stopped discriminating once the
@@ -479,7 +480,7 @@ test('CF-11 an unreadable config fails closed across all four consumers', () => 
   assert.match(JSON.parse(v.stdout).errors.join(' '), /process-config/);
   const groot = mk();
   fs.mkdirSync(path.join(groot, 'apriori/changes/c/specs/m'), { recursive: true });
-  fs.writeFileSync(path.join(groot, 'apriori/changes/c/flow-state.md'), 'change: c\ntier: medium\ntrack: harden\ntrack-rationale: r\nlineage: main\ncurrent-step: STEP5\nround: 1\nnext-action: x\n');
+  fs.writeFileSync(path.join(groot, 'apriori/changes/c/flow-state.md'), 'change: c\nmode: standard\nlineage: main\ncurrent-step: STEP5\nnext-action: x\n');
   fs.writeFileSync(path.join(groot, 'apriori/changes/c/specs/m/spec.md'), '## ADDED Requirements\n\n### Requirement: R\n\n#### Scenario: AC-02 b\n- t\n');
   const g = run(groot, ['gate', '--change', 'c', '--test-cmd', 'node -e ""', '--json']);
   assert.strictEqual(g.status, 2);
@@ -532,7 +533,7 @@ test('CF-12 template, docs and changelog carry the full id-pattern story', () =>
 // ---- P8 r2 hardening: IMPL-1 dangling symlink, IMPL-2 budget contract, IMPL-3 end-to-end
 // sanitization, IMPL-9 second-application branch + same-store contrast ----
 
-test('CF-11 a dangling-symlink config is present-but-unreadable, never absent', () => {
+test('CF-11 a dangling-symlink config is present-but-unreadable, never absent', { skip: canSymlink() ? false : 'platform refuses symlinks' }, () => {
   const { getConfig } = require('../lib/config');
   const root = proj({ 'apriori/specs/m/spec.md': '#### Scenario: AC-01 a\n' });
   fs.symlinkSync(path.join(root, 'no-such-target.md'), path.join(root, 'apriori', 'process-config.md'));

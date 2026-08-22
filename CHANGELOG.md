@@ -2,6 +2,31 @@
 
 All notable changes to `apriori-cli`. Versions follow semver; the stability promise: CLI surface & flags, `--json` shapes, the delta format and the flow-state schema only break in a major.
 
+## Unreleased — 6.0 slice 1 · the change identity collapses to one field
+
+**Behavior change (flow-state schema).** `tier`, `track`, `track-rationale` and `round` are
+replaced by a single `mode: fast | standard`. Three of the four decided nothing: `round` was
+parsed and discarded, `track` was only checked for presence, `track-rationale` was prose. A
+5.x flow-state is **refused** by `gate` C3 naming the keys it found — there is no dual read.
+Migration: `MIGRATING.md`, one line in and four out.
+
+- `gate` C2/C4 and archive readiness R2/R3 take their waiver from `mode: fast` (same
+  behaviour `tier: trivial` had — the recapture moved 0 of 25 corpus verdicts).
+- `status --json` drops `tier`/`track`, gains `mode`.
+- `process-config.md` is unchanged in this slice; the ten never-read supervision parameters
+  go out with slice 2, which replaces them with a round count derived from review artifacts.
+- A 5.x identity key refuses **unconditionally** — a legal `mode` beside it is not a cure, so
+  a stale row cannot ride along into a bundle that looks migrated. `gate`, `archive`, `status`
+  and `doctor` all say the same thing and all point at `MIGRATING.md`.
+- Fixed: an empty `mode:` used to swallow the following line (the key regex matched `\s*`
+  across the newline), so a blank field read as a filled one.
+- `test/fixtures/gate-state-a.golden.json` is untouched. The 5.0 oracle stays immutable and is
+  now compared by DECISION — result, exit code, per-check status — across a five-entry id map,
+  because slice 1 changed the detail wording on purpose. Regenerating it from the current
+  implementation would have destroyed the only independent witness this repo has.
+
+---
+
 ## 5.0.0 — 2026-08-16 · the mechanical gates stop lying: gate degrades instead of stopping, the ID pattern recognises real IDs, and archive refuses an unfinished change
 
 **Why a major.** Three CLI-surface breaks, and the stability promise above says those only happen

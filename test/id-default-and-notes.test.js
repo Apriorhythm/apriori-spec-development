@@ -256,7 +256,7 @@ test('AM-73 commentary is not an operation', () => {
 
 test('AM-73 the declared consequences hold end to end, not only in the parser', () => {
   const STORE = '### Requirement: Alpha\n\n#### Scenario: XA-01 base\n- t\n';
-  const FLOW = 'change: c\ntier: medium\ntrack: harden\ntrack-rationale: r\nlineage: v4\ncurrent-step: STEP6\nround: 1\nnext-action: x\ngates:\n  - 2026-08-15T00:00 note: n\n';
+  const FLOW = 'change: c\nmode: standard\nlineage: v4\ncurrent-step: STEP6\nnext-action: x\ngates:\n  - 2026-08-15T00:00 note: n\n';
   const stamp = '<!-- apriori-base: sha256:' + 'c'.repeat(64) + ' -->';
 
   // (a) a Notes-only delta is refused by the real command, with the existing zero-op wording
@@ -409,7 +409,7 @@ test('CF-18 a freshly initialised project inherits the current pattern end to en
   fs.mkdirSync(path.join(bundle, 'specs', 'm'), { recursive: true });
   fs.mkdirSync(path.join(bundle, 'review'), { recursive: true });
   fs.writeFileSync(path.join(bundle, 'flow-state.md'),
-    'change: c\ntier: medium\ntrack: harden\ntrack-rationale: r\nlineage: main\ncurrent-step: STEP5\nround: 1\nnext-action: x\ngates:\n  - 2026-08-15T00:00 note: n\n');
+    'change: c\nmode: standard\nlineage: main\ncurrent-step: STEP5\nnext-action: x\ngates:\n  - 2026-08-15T00:00 note: n\n');
   fs.writeFileSync(path.join(bundle, 'tasks.md'), '- [x] T1 done\n');
   fs.writeFileSync(path.join(bundle, 'review', 'issues.md'),
     '| ID | Issue | Risk | Round found | Status |\n|---|---|---|---|---|\n| Q-1 | a | low | 1 | verified |\n');

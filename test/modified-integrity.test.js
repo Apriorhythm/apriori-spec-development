@@ -22,7 +22,7 @@ function proj(files) {
   }
   return root;
 }
-const FLOW = (n) => `change: ${n}\ntier: medium\ntrack: harden\ntrack-rationale: r\nlineage: main\ncurrent-step: STEP5\nround: 1\nnext-action: x\ngates:\n  - 2026-08-13T00:00 note: n\n`;
+const FLOW = (n) => `change: ${n}\nmode: standard\nlineage: main\ncurrent-step: STEP5\nnext-action: x\ngates:\n  - 2026-08-13T00:00 note: n\n`;
 function tap(lines, exit = 0) {
   const body = lines.map((l) => `console.log(${JSON.stringify(l)})`).join(';');
   return `node -e "${body.replace(/"/g, '\\"')};process.exit(${exit})"`;

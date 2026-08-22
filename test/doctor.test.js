@@ -225,7 +225,7 @@ test('DR-09 changes overview validates flow-states and surfaces pending gates', 
   const root = healthy();
   fs.mkdirSync(path.join(root, 'apriori/changes/no-flow'), { recursive: true });                        // missing file
   fs.mkdirSync(path.join(root, 'apriori/changes/no-key'), { recursive: true });
-  fs.writeFileSync(path.join(root, 'apriori/changes/no-key/flow-state.md'), 'tier: medium\n');          // no change:
+  fs.writeFileSync(path.join(root, 'apriori/changes/no-key/flow-state.md'), 'mode: standard\n');        // no change:
   fs.mkdirSync(path.join(root, 'apriori/changes/wrong'), { recursive: true });
   fs.writeFileSync(path.join(root, 'apriori/changes/wrong/flow-state.md'), 'change: other\n');          // mismatch
   fs.mkdirSync(path.join(root, 'apriori/changes/good'), { recursive: true });

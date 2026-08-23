@@ -15,7 +15,7 @@ const gate = require('../lib/gate');
 
 const STORE_AB = '### Requirement: R-A\n\n#### Scenario: XA-01 a\n- t\n\n### Requirement: R-B\n\n#### Scenario: XB-01 b\n- t\n';
 const DELTA_C = '## ADDED Requirements\n\n### Requirement: R-C\n\n#### Scenario: XC-01 c\n- t\n';
-const FLOW = (n) => `change: ${n}\nmode: standard\nlineage: main\ncurrent-step: STEP5\nnext-action: x\ngates:\n  - 2026-08-13T00:00 note: n\n`;
+const FLOW = (n) => `change: ${n}\nmode: standard\nlineage: main\nphase: build\nnext-action: x\ngates:\n  - 2026-08-13T00:00 note: n\n`;
 const LEDGER = '| ID | Issue | Risk | Round found | Status |\n|---|---|---|---|---|\n| Q-1 | a | low | 1 | verified |\n';
 
 function proj(files) {

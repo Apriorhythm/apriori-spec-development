@@ -21,7 +21,7 @@ const DELTA = '## ADDED Requirements\n\n### Requirement: Beta\n\n#### Scenario: 
 const flow = (name, over = {}) => {
   const base = {
     change: name, mode: 'standard',
-    lineage: 'v4', 'current-step': 'STEP5', 'next-action': 'x',
+    lineage: 'v4', phase: 'build',
   };
   const merged = { ...base, ...over };
   const keys = Object.keys(merged).filter((k) => merged[k] !== null && !k.startsWith('__'));
@@ -29,7 +29,12 @@ const flow = (name, over = {}) => {
   const gates = over.__gates || '  - 2026-07-11T00:00 note: n\n';
   // one case reproduces a 5.x bundle verbatim: the four keys 6.0 replaced with `mode`
   const legacy = over.__legacy ? 'tier: medium\ntrack: harden\ntrack-rationale: r\nround: 1\n' : '';
-  return `${body}\n${legacy}gates:\n${gates}`;
+  // the state's own answer to C9/R5 — the producer's diff plus one substantive row. `__evidence`
+  // is how a case says "this bundle answers nothing", which is itself a C9 refusal.
+  const evidence = over.__evidence === null ? ''
+    : over.__evidence || '\n## Evidence\n- producer-diff: done — read the whole diff, known P0/P1 zero\n'
+      + '- data-schema: done — ran the migration against a copy of the real schema\n\n';
+  return `${body}\n${legacy}${evidence}gates:\n${gates}`;
 };
 
 const ledger = (...rows) =>
@@ -43,8 +48,8 @@ const TASKS_OPEN = '- [x] T1 done\n- [ ] T2\n- [ ] T3\n- [ ] T4\n';
 const TAP_OK = `node -e "${['ok 1 - XA-01 a', 'ok 2 - XB-01 b'].map((l) => `console.log('${l}')`).join(';')}"`;
 
 // Every case: {id, files, change, stage} — stage 'in-flight' | 'archived'.
-// Coverage: C2 pass/blocked/n-a, C3 pass and every blocked branch (5.x identity included),
-// C4 pass/blocked (each bad-row kind)/n-a, the review-root guard, and both stages.
+// Coverage: C2 (diagnostic only), C3 pass and every blocked branch (5.x identity included),
+// C4 pass/blocked (the open row) and each bookkeeping note, the review-root guard, and both stages.
 const CASES = [
   { id: 'healthy-standard', change: 'c', mode: 'standard', tasks: TASKS_DONE, led: ledger('Q-1 | a | low | 1 | verified') },
   { id: 'fast-no-tasks-no-ledger', change: 'c', mode: 'fast', tasks: null, led: null },
@@ -53,12 +58,12 @@ const CASES = [
   { id: 'flow-missing-key', change: 'c', over: { lineage: null } },
   { id: 'flow-placeholder', change: 'c', over: { lineage: '<fill me>' } },
   { id: 'flow-name-mismatch', change: 'c', over: { change: 'other' } },
-  { id: 'flow-illegal-step', change: 'c', over: { 'current-step': 'STEP9' } },
+  { id: 'flow-illegal-phase', change: 'c', over: { phase: 'STEP6' } },
   { id: 'flow-illegal-mode', change: 'c', over: { mode: 'huge' } },
   { id: 'flow-legacy-identity', change: 'c', over: { mode: null, __legacy: true } },
-  { id: 'flow-step-abandoned', change: 'c', over: { 'current-step': 'ABANDONED' } },
-  { id: 'flow-step-done', change: 'c', over: { 'current-step': 'DONE' } },
-  { id: 'flow-step6', change: 'c', over: { 'current-step': 'STEP6' } },
+  { id: 'flow-abandoned', change: 'c', over: { phase: 'abandoned' } },
+  { id: 'flow-done', change: 'c', over: { phase: 'done' } },
+  { id: 'flow-review', change: 'c', over: { phase: 'review' } },
   { id: 'standard-ledger-missing', change: 'c', mode: 'standard', tasks: TASKS_DONE, led: null },
   { id: 'ledger-open-row', change: 'c', led: ledger('Q-1 | a | low | 1 | open') },
   { id: 'ledger-illegal-status', change: 'c', led: ledger('Q-1 | a | low | 1 | frobnicated') },
@@ -66,7 +71,7 @@ const CASES = [
   { id: 'ledger-rejected-with-reason', change: 'c', led: ledger('Q-1 | a | low | 1 | rejected because x') },
   { id: 'ledger-waived-no-evidence', change: 'c', led: ledger('Q-1 | a | low | 1 | waived by human') },
   { id: 'ledger-waived-with-evidence', change: 'c', led: ledger('Q-1 | a | low | 1 | waived by human'),
-    over: { __gates: '  - 2026-07-11T00:00 gate⑤ (owner): Q-1 waived — reason\n' } },
+    over: { __gates: '  - 2026-07-11T00:00 owner: Q-1 waived — reason\n' } },
   { id: 'ledger-fixed-in-flight', change: 'c', led: ledger('Q-1 | a | low | 1 | fixed') },
   { id: 'ledger-fixed-archived', change: 'c', stage: 'archived', led: ledger('Q-1 | a | low | 1 | fixed') },
   { id: 'ledger-rejected-archived', change: 'c', stage: 'archived', led: ledger('Q-1 | a | low | 1 | rejected because x') },

@@ -60,10 +60,21 @@ function reviewRound(dir, family, n, verdict) {
   w(path.join(dir, 'review', `${family}-v${n}-raw.txt`), '<!-- provenance: provider=codex model=x session=y date=2026-08-23 -->\nraw transcript\n');
 }
 
+// What C9/R5 read. A FAST change with no machine risk owes only the producer's own diff — that
+// is the whole fast lane: C1 plus a read diff. A STANDARD change owes one substantive row on top,
+// so these fixtures fail on the review floor and the mode rules, never on the evidence predicate.
+// A MUTATING delta is a §6 risk the CLI PROVES, so the state must answer it by name whatever the
+// declared mode says — that is the one row no fixture can leave out and still be judged ready.
+const EVIDENCE = (mode, delta) => '\n## Evidence\n- producer-diff: done — read the whole diff, known P0/P1 zero\n'
+  + (mode === 'standard' ? '- data-schema: done — ran against the real schema\n' : '')
+  + (delta && /^## (MODIFIED|REMOVED|RENAMED)/m.test(delta)
+    ? '- contract-mutation: done — re-ran the published scenarios against the new store text\n' : '')
+  + '\n';
+
 // A gate-able project. `archived` places the bundle under changes/archive/<stamp>-<name>.
 function project(opts = {}) {
-  const { mode = 'fast', delta = ADDED, deltaPath = 'kv/spec.md', step = 'STEP5',
-    tasks = null, ledger = null, review = null, archived = false, gates = '' } = opts;
+  const { mode = 'fast', delta = ADDED, deltaPath = 'kv/spec.md', phase = 'build',
+    tasks = null, ledger = null, review = null, archived = false, gates = '', evidence = null } = opts;
   const root = mk();
   const dir = archived
     ? path.join(root, 'apriori', 'changes', 'archive', '2026-01-01T0000-c')
@@ -75,7 +86,7 @@ function project(opts = {}) {
   // an archived bundle's deltas are already merged: C1 verifies the STORE, not a projection
   w(path.join(root, 'tap.js'), tapFor(archived || delta === null ? BASE_IDS : IDS.get(delta) || BASE_IDS));
   w(path.join(dir, 'flow-state.md'),
-    `change: c\nmode: ${mode}\nlineage: fixture\ncurrent-step: ${step}\nnext-action: x\n`
+    `change: c\nmode: ${mode}\nlineage: fixture\nphase: ${phase}\n${evidence || EVIDENCE(mode, delta)}`
     + `gates:\n  - 2026-07-11T00:00 note: fixture\n${gates}`);
   if (tasks !== null) w(path.join(dir, 'tasks.md'), tasks);
   if (ledger !== null) w(path.join(dir, 'review', 'issues.md'), ledger);
@@ -107,18 +118,18 @@ test('FF-01 a fast change with no review evidence is refused, and C5 stops claim
 });
 
 test('FF-02 a fast change with one complete, attributable review round passes', () => {
-  const { root } = project({ review: (d) => reviewRound(d, 'step5-review', 1, 'no major issues') });
+  const { root } = project({ review: (d) => reviewRound(d, 'code-review', 1, 'no major issues') });
   const g = gate(root);
   assert.strictEqual(g.status, 0, `a reviewed fast change must PASS, got exit ${g.status}:\n${g.stdout}${g.stderr}`);
   assert.match(g.stdout, /GATE: PASS/);
-  assert.match(line(g.stdout, 'C8'), /step5-review round 1/);
+  assert.match(line(g.stdout, 'C8'), /code-review round 1/);
   // and the round is counted by slice 2's scanner, not by a second counter
   assert.match(line(g.stdout, 'C5'), /^✓ C5 1 review doc/);
 });
 
 test('FF-03 a verdict without its raw transcript is not an independent review', () => {
   const { root } = project({
-    review: (d) => w(path.join(d, 'review', 'step5-review-v1.md'), 'VERDICT: no major issues\n'),
+    review: (d) => w(path.join(d, 'review', 'code-review-v1.md'), 'VERDICT: no major issues\n'),
   });
   const g = gate(root);
   assert.strictEqual(g.status, 1, `an unattributable verdict must BLOCK, got exit ${g.status}:\n${g.stdout}`);
@@ -129,7 +140,7 @@ test('FF-03 a verdict without its raw transcript is not an independent review', 
 
 test('FF-04 a verdict outside the vocabulary is not an independent review either', () => {
   const { root } = project({
-    review: (d) => reviewRound(d, 'step5-review', 1, 'looks fine to me, shipping it'),
+    review: (d) => reviewRound(d, 'code-review', 1, 'looks fine to me, shipping it'),
   });
   const g = gate(root);
   assert.strictEqual(g.status, 1, `an unclassifiable verdict must BLOCK, got exit ${g.status}:\n${g.stdout}`);
@@ -140,8 +151,8 @@ test('FF-04 a verdict outside the vocabulary is not an independent review either
 });
 
 test('FF-05 archive refuses a fast bundle that never had a review, and --force cannot buy one', () => {
-  const forced = '  - 2026-07-11T00:01 gate⑤ (owner): archive-force ledger — owner says ship it\n';
-  const { root } = project({ step: 'STEP6', gates: forced });
+  const forced = '  - 2026-07-11T00:01 owner: archive-force ledger — owner says ship it\n';
+  const { root } = project({ phase: 'review', gates: forced });
   for (const args of [['archive', '--change', 'c'], ['archive', '--change', 'c', '--force']]) {
     const a = run(args, root);
     assert.strictEqual(a.status, 1, `${args.join(' ')} must refuse, got exit ${a.status}:\n${a.stdout}${a.stderr}`);
@@ -164,7 +175,7 @@ test('FF-06 status names the missing round, in text and in JSON', () => {
 test('FF-07 what is fast\'s alone is the WAIVER, not the review', () => {
   // the floor itself belongs to both modes (FF-16); what fast still drops is material
   const { root } = project({ mode: 'fast',
-    review: (d) => reviewRound(d, 'step5-review', 1, 'no major issues') });
+    review: (d) => reviewRound(d, 'code-review', 1, 'no major issues') });
   const g = gate(root);
   assert.strictEqual(g.status, 0, g.stdout);
   assert.match(line(g.stdout, 'C2'), /^– C2 .*no tasks\.md/);
@@ -179,7 +190,7 @@ test('FF-16 a standard change with no review evidence is refused too', () => {
   // §7 lists "the required independent review is missing" as blocking, and says nothing about
   // mode. Leaving standard exempt would mean editing one word of flow-state to buy the exemption
   // fast was just denied.
-  const { root } = project({ mode: 'standard', tasks: '- [x] T1\n', ledger: LEDGER, step: 'STEP6' });
+  const { root } = project({ mode: 'standard', tasks: '- [x] T1\n', ledger: LEDGER, phase: 'review' });
   const g = gate(root);
   assert.strictEqual(g.status, 1, `standard + zero review must BLOCK, got exit ${g.status}:\n${g.stdout}`);
   assert.match(line(g.stdout, 'C8'), /BLOCKED/);
@@ -193,7 +204,7 @@ test('FF-16 a standard change with no review evidence is refused too', () => {
 
 for (const [label, verdict] of [['gaps found', 'gaps found'], ['a positive open count', '2 issues open']]) {
   test(`FF-17 a fast change whose latest review round says ${label} is not deliverable`, () => {
-    const { root } = project({ step: 'STEP6', review: (d) => reviewRound(d, 'step5-review', 1, verdict) });
+    const { root } = project({ phase: 'review', review: (d) => reviewRound(d, 'code-review', 1, verdict) });
     const g = gate(root);
     assert.strictEqual(g.status, 1, `an unresolved fast review must BLOCK, got exit ${g.status}:\n${g.stdout}`);
     const c8 = line(g.stdout, 'C8');
@@ -208,23 +219,32 @@ for (const [label, verdict] of [['gaps found', 'gaps found'], ['a positive open 
 
 test('FF-17b a later accepting round converges — the rule reads the LATEST round, not any round', () => {
   const { root } = project({ review: (d) => {
-    reviewRound(d, 'step5-review', 1, '2 issues open');
-    reviewRound(d, 'step5-review', 2, '0 issues open');
+    reviewRound(d, 'code-review', 1, '2 issues open');
+    reviewRound(d, 'code-review', 2, '0 issues open');
   } });
   const g = gate(root);
   assert.strictEqual(g.status, 0, `a resolved fast loop must pass, got exit ${g.status}:\n${g.stdout}`);
-  assert.match(line(g.stdout, 'C8'), /step5-review round 2/);
+  assert.match(line(g.stdout, 'C8'), /code-review round 2/);
 });
 
-test('FF-18 standard\'s round-1 revise keeps its existing loop governance', () => {
-  // the resolved-verdict rule is fast's, because fast carries no ledger to hold the findings.
-  // standard's loop is governed by C8's round-2 control point and must not move.
+test('FF-18 standard\'s round-1 revise stops at the floor, not at the round-2 control point', () => {
+  // The LOOP rule is untouched: round 1 is not the control point, so nothing "stops here". What
+  // refuses is the floor — the reviewer's latest word is `revise`, and a full issue ledger cannot
+  // stand in for it. This is the exemption an earlier 6.0 draft gave standard and this slice
+  // withdrew: a file the producer edits may not outrank the reviewer's own verdict.
   const { root } = project({ mode: 'standard', tasks: '- [x] T1\n', ledger: LEDGER,
     review: (d) => reviewRound(d, 'spec-review', 1, 'gaps found') });
   const g = gate(root);
-  assert.strictEqual(g.status, 0,
-    `standard round 1 revise must still pass — that is the existing loop rule:\n${g.stdout}`);
-  assert.match(line(g.stdout, 'C8'), /spec-review round 1 \(revise\)/);
+  assert.strictEqual(g.status, 1, g.stdout);
+  const c8 = line(g.stdout, 'C8');
+  assert.match(c8, /spec-review round 1 \(revise\)/);
+  assert.match(c8, /the independent review has not resolved \(spec-review round 1, revise\)/);
+  assert.match(c8, /no ledger state can stand in for it/);
+  assert.doesNotMatch(c8, /this review loop stops here/, 'round 1 is not the round-2 control point');
+  // a round-2 accept is what closes it — the loop rule itself did not move
+  const ok = project({ mode: 'standard', tasks: '- [x] T1\n', ledger: LEDGER,
+    review: (d) => { reviewRound(d, 'spec-review', 1, 'gaps found'); reviewRound(d, 'spec-review', 2, 'no major issues'); } });
+  assert.strictEqual(gate(ok.root).status, 0, gate(ok.root).stdout);
 });
 
 // The round-5 stop-loss is the blueprint's ONE Owner exit (§6: "Owner 明确接受风险"), and it
@@ -233,12 +253,12 @@ test('FF-18 standard\'s round-1 revise keeps its existing loop governance', () =
 // exactly the state that exit exists for, so a fast change would otherwise lose the only way
 // out that standard keeps. Measured against 705eadb: fast round-5 + accept-risk + --force
 // merged there and stopped merging here, while standard kept merging.
-const ACK5 = '  - 2026-07-11T00:02 gate⑤ (owner): reframe step5-review round 5 accept-risk — owner accepts the residual risk\n';
-const REDO4 = '  - 2026-07-11T00:02 gate⑤ (owner): reframe step5-review round 4 redo — rework the approach\n';
-const rounds = (n, verdict) => (d) => { for (let i = 1; i <= n; i++) reviewRound(d, 'step5-review', i, verdict); };
+const ACK5 = '  - 2026-07-11T00:02 owner: reframe code-review round 5 accept-risk — owner accepts the residual risk\n';
+const REDO4 = '  - 2026-07-11T00:02 owner: reframe code-review round 4 redo — rework the approach\n';
+const rounds = (n, verdict) => (d) => { for (let i = 1; i <= n; i++) reviewRound(d, 'code-review', i, verdict); };
 
 test('FF-22 a fast round-5 escalation the owner answered still archives on --force', () => {
-  const { root } = project({ step: 'STEP6', gates: ACK5, review: rounds(5, 'gaps found') });
+  const { root } = project({ phase: 'review', gates: ACK5, review: rounds(5, 'gaps found') });
   const c8 = line(gate(root).stdout, 'C8');
   assert.doesNotMatch(c8, /not resolved/,
     `the floor must hand round 5 back to the escalation branch, got: ${c8}`);
@@ -257,7 +277,7 @@ test('FF-23 the exit stays narrow — anything short of both halves still refuse
     ['round 5, owner decision but no --force', { gates: ACK5, review: rounds(5, 'gaps found') }, []],
     ['round 4, reframed and still revising', { gates: REDO4, review: rounds(4, 'gaps found') }, ['--force']],
   ]) {
-    const { root } = project({ step: 'STEP6', ...opts });
+    const { root } = project({ phase: 'review', ...opts });
     const a = run(['archive', '--change', 'c', ...extra], root);
     assert.strictEqual(a.status, 1, `${label} must refuse, got exit ${a.status}:\n${a.stdout}${a.stderr}`);
     assert.match(a.stdout, /RESULT: NOT READY/, label);
@@ -265,7 +285,7 @@ test('FF-23 the exit stays narrow — anything short of both halves still refuse
 });
 
 test('FF-24 standard\'s round-5 escalation behaves exactly as it did before slice 3', () => {
-  const { root } = project({ mode: 'standard', step: 'STEP6', tasks: '- [x] T1\n', ledger: LEDGER,
+  const { root } = project({ mode: 'standard', phase: 'review', tasks: '- [x] T1\n', ledger: LEDGER,
     gates: ACK5, review: rounds(5, 'gaps found') });
   const a = run(['archive', '--change', 'c', '--force'], root);
   assert.strictEqual(a.status, 0, `standard must be untouched, got exit ${a.status}:\n${a.stdout}${a.stderr}`);
@@ -274,13 +294,13 @@ test('FF-24 standard\'s round-5 escalation behaves exactly as it did before slic
 });
 
 test('FF-19 archive is not blind to evidence gate refuses: a symlinked summary', { skip: !canSymlink() }, () => {
-  const forced = '  - 2026-07-11T00:01 gate⑤ (owner): archive-force ledger — owner says ship it\n';
+  const forced = '  - 2026-07-11T00:01 owner: archive-force ledger — owner says ship it\n';
   for (const mode of ['fast', 'standard']) {
-    const { root, dir } = project({ mode, step: 'STEP6', gates: forced,
+    const { root, dir } = project({ mode, phase: 'review', gates: forced,
       tasks: '- [x] T1\n', ledger: mode === 'standard' ? LEDGER : null });
     w(path.join(root, 'elsewhere.md'), 'VERDICT: no major issues\n');
-    fs.symlinkSync(path.join(root, 'elsewhere.md'), path.join(dir, 'review', 'step5-review-v1.md'));
-    w(path.join(dir, 'review', 'step5-review-v1-raw.txt'), 'raw\n');
+    fs.symlinkSync(path.join(root, 'elsewhere.md'), path.join(dir, 'review', 'code-review-v1.md'));
+    w(path.join(dir, 'review', 'code-review-v1-raw.txt'), 'raw\n');
 
     const g = gate(root);
     assert.strictEqual(g.status, 1, `${mode}: gate must refuse`);
@@ -297,8 +317,8 @@ test('FF-19 archive is not blind to evidence gate refuses: a symlinked summary',
 });
 
 test('FF-20 archive refuses a verdict with no raw archive, as gate does', () => {
-  const { root, dir } = project({ mode: 'standard', step: 'STEP6', tasks: '- [x] T1\n', ledger: LEDGER });
-  w(path.join(dir, 'review', 'step5-review-v1.md'), 'VERDICT: no major issues\n');
+  const { root, dir } = project({ mode: 'standard', phase: 'review', tasks: '- [x] T1\n', ledger: LEDGER });
+  w(path.join(dir, 'review', 'code-review-v1.md'), 'VERDICT: no major issues\n');
   const g = gate(root);
   assert.match(line(g.stdout, 'C5'), /BLOCKED.*without a raw archive/, line(g.stdout, 'C5'));
   const a = run(['archive', '--change', 'c'], root);
@@ -308,7 +328,7 @@ test('FF-20 archive refuses a verdict with no raw archive, as gate does', () => 
 
 test('FF-21 none of the three new refusals is applied to frozen history', () => {
   // zero review, and an unresolved fast review — both report, neither blocks
-  for (const build of [undefined, (d) => reviewRound(d, 'step5-review', 1, '3 issues open')]) {
+  for (const build of [undefined, (d) => reviewRound(d, 'code-review', 1, '3 issues open')]) {
     const { root } = project({ archived: true, step: 'DONE', review: build });
     const g = gate(root);
     assert.notStrictEqual(g.status, 1, `frozen history must not be retro-blocked:\n${g.stdout}${g.stderr}`);
@@ -316,7 +336,7 @@ test('FF-21 none of the three new refusals is applied to frozen history', () => 
   }
   // but integrity inside a frozen bundle still refuses (unchanged claim, re-pinned here)
   const { root } = project({ archived: true, step: 'DONE', mode: 'standard',
-    review: (d) => w(path.join(d, 'review', 'step5-review-v1.md'), 'VERDICT: no major issues\n') });
+    review: (d) => w(path.join(d, 'review', 'code-review-v1.md'), 'VERDICT: no major issues\n') });
   assert.strictEqual(gate(root).status, 1, 'a frozen bundle whose evidence does not add up still refuses');
 });
 
@@ -326,21 +346,32 @@ test('FF-21 none of the three new refusals is applied to frozen history', () => 
 
 for (const [label, delta, op] of [['MODIFIED', MODIFIED, /MODIFIED/], ['REMOVED', REMOVED, /REMOVED/], ['RENAMED', RENAMED, /RENAMED/]]) {
   test(`FF-08 a ${label} delta upgrades fast to standard, with a short reason`, () => {
-    const { root } = project({ delta, review: (d) => reviewRound(d, 'step5-review', 1, 'no major issues') });
+    // the producer read its own diff and nothing else — the mutation the tool PROVED is
+    // deliberately left unanswered, which is what the review-ready assertion below is about
+    const { root } = project({ delta, evidence: EVIDENCE('fast', null),
+      review: (d) => reviewRound(d, 'code-review', 1, 'no major issues') });
     const g = gate(root);
-    assert.strictEqual(g.status, 1, `a ${label} delta must close the fast lane, got exit ${g.status}:\n${g.stdout}`);
+    // The upgrade is a JUDGEMENT that is announced, not a demand for paperwork. 5.x/6.0-slice-3
+    // withdrew fast's tasks.md and ledger waivers here; slice 5 removed both artifacts from
+    // every mode, so there is no waiver left to withdraw. What survives — and what this pins —
+    // is that the CLI states the upgrade, names the operation and the file, and that a change
+    // carrying a mutated contract is not review-ready until it declares the evidence for it.
     const c3 = line(g.stdout, 'C3');
     assert.match(c3, /fast → standard/, `C3 must state the upgrade, got: ${c3}`);
     assert.match(c3, op, `the reason must name the operation it found, got: ${c3}`);
     assert.match(c3, /kv\/spec\.md/, `and the file, got: ${c3}`);
-    // the fast waivers are withdrawn — that IS the upgrade
-    assert.match(line(g.stdout, 'C2'), /BLOCKED — tasks\.md missing/, line(g.stdout, 'C2'));
-    assert.match(line(g.stdout, 'C4'), /BLOCKED — ledger missing/, line(g.stdout, 'C4'));
+    // it demands no artifact of either mode
+    assert.match(line(g.stdout, 'C2'), /^– C2 /, line(g.stdout, 'C2'));
+    assert.match(line(g.stdout, 'C4'), /^– C4 /, line(g.stdout, 'C4'));
+    // …and with no evidence declared, the change cannot enter review
+    const rr = run(['gate', '--change', 'c', '--test-cmd', 'node tap.js', '--no-cas', '--review-ready'], root);
+    assert.strictEqual(rr.status, 1, `an upgraded change with no evidence must not be review-ready:\n${rr.stdout}`);
+    assert.match(rr.stdout, /✗ evidence/, rr.stdout);
   });
 }
 
 test('FF-09 an ADDED-only delta does not upgrade — the additive case stays fast', () => {
-  const { root } = project({ delta: ADDED, review: (d) => reviewRound(d, 'step5-review', 1, 'no major issues') });
+  const { root } = project({ delta: ADDED, review: (d) => reviewRound(d, 'code-review', 1, 'no major issues') });
   const g = gate(root);
   assert.strictEqual(g.status, 0, `an additive fast change must stay fast, got exit ${g.status}:\n${g.stdout}`);
   const c3 = line(g.stdout, 'C3');
@@ -350,8 +381,8 @@ test('FF-09 an ADDED-only delta does not upgrade — the additive case stays fas
 });
 
 test('FF-10 gate, archive readiness and status report the same upgrade', () => {
-  const { root } = project({ delta: MODIFIED, step: 'STEP6',
-    review: (d) => reviewRound(d, 'step5-review', 1, 'no major issues') });
+  const { root } = project({ delta: MODIFIED, phase: 'review',
+    review: (d) => reviewRound(d, 'code-review', 1, 'no major issues') });
   // the REASON is the shared artefact: one derivation, quoted verbatim by all three surfaces
   const REASON = "contract-mutation: kv/spec.md MODIFIED 'Alpha'";
   const g = gate(root);
@@ -359,9 +390,8 @@ test('FF-10 gate, archive readiness and status report the same upgrade', () => {
   assert.ok(line(g.stdout, 'C3').includes(REASON), `gate must quote the reason, got: ${line(g.stdout, 'C3')}`);
 
   const a = run(['archive', '--change', 'c', '--no-cas'], root);
-  assert.strictEqual(a.status, 1, `archive must apply the same upgrade, got exit ${a.status}:\n${a.stdout}${a.stderr}`);
-  assert.match(a.stderr, /upgraded to standard/, `archive must say the lane closed, got: ${a.stderr}`);
-  assert.ok(a.stderr.includes(REASON), `archive must quote the same reason, got: ${a.stderr}`);
+  assert.match(a.stdout, /upgraded to standard/, `archive must say the lane closed, got: ${a.stdout}`);
+  assert.ok(a.stdout.includes(REASON), `archive must quote the same reason, got: ${a.stdout}`);
 
   const s = run(['status', '--change', 'c'], root);
   assert.match(s.stdout, /fast → standard/, `status must state it too, got:\n${s.stdout}`);
@@ -375,7 +405,7 @@ test('FF-10 gate, archive readiness and status report the same upgrade', () => {
 
 test('FF-11 the upgrade withdraws waivers and demands no artifact standard does not already demand', () => {
   const { root } = project({ delta: MODIFIED, tasks: '- [x] T1\n', ledger: LEDGER,
-    review: (d) => reviewRound(d, 'step5-review', 1, 'no major issues') });
+    review: (d) => reviewRound(d, 'code-review', 1, 'no major issues') });
   const g = gate(root);
   assert.strictEqual(g.status, 0,
     `an upgraded change that meets standard's OWN requirements must pass — nothing new may be invented:\n${g.stdout}`);
@@ -401,7 +431,7 @@ test('FF-12 an archived bundle is never re-judged by either new rule', () => {
 
 test('FF-12b evidence integrity still refuses inside a frozen bundle', () => {
   const { root } = project({ archived: true, step: 'DONE',
-    review: (d) => w(path.join(d, 'review', 'step5-review-v1.md'), 'VERDICT: no major issues\n') });
+    review: (d) => w(path.join(d, 'review', 'code-review-v1.md'), 'VERDICT: no major issues\n') });
   const g = gate(root);
   assert.strictEqual(g.status, 1, `a frozen bundle whose evidence does not add up still refuses:\n${g.stdout}`);
   assert.match(line(g.stdout, 'C5'), /BLOCKED/);
@@ -409,7 +439,7 @@ test('FF-12b evidence integrity still refuses inside a frozen bundle', () => {
 
 test('FF-13 the signal names its file in POSIX form, from any nesting depth, on every platform', () => {
   const { root } = project({ delta: MODIFIED, deltaPath: 'kv/nested/spec.md',
-    review: (d) => reviewRound(d, 'step5-review', 1, 'no major issues') });
+    review: (d) => reviewRound(d, 'code-review', 1, 'no major issues') });
   const c3 = line(gate(root).stdout, 'C3');
   assert.match(c3, /kv\/nested\/spec\.md/, `the reason must be platform-stable, got: ${c3}`);
   assert.doesNotMatch(c3, /\\/, `no backslash may reach the reason string, got: ${c3}`);
@@ -417,7 +447,7 @@ test('FF-13 the signal names its file in POSIX form, from any nesting depth, on 
 
 test('FF-14b a dangling specs/ is fail-closed too — existsSync would have read it as "no risk"', { skip: !canSymlink() }, () => {
   const { root, dir } = project({ delta: null,
-    review: (d) => reviewRound(d, 'step5-review', 1, 'no major issues') });
+    review: (d) => reviewRound(d, 'code-review', 1, 'no major issues') });
   fs.symlinkSync(path.join(dir, 'nowhere'), path.join(dir, 'specs'));
   const j = JSON.parse(run(['status', '--change', 'c', '--json'], root).stdout);
   assert.strictEqual(j.effectiveMode, 'standard', JSON.stringify(j.risk));
@@ -426,7 +456,7 @@ test('FF-14b a dangling specs/ is fail-closed too — existsSync would have read
 
 test('FF-14 a delta the scan cannot read closes the fast lane rather than opening it', { skip: !canSymlink() }, () => {
   const { root, dir } = project({ delta: null,
-    review: (d) => reviewRound(d, 'step5-review', 1, 'no major issues') });
+    review: (d) => reviewRound(d, 'code-review', 1, 'no major issues') });
   // a dangling link: the name claims a delta, the bytes cannot be judged
   fs.mkdirSync(path.join(dir, 'specs', 'kv'), { recursive: true });
   fs.symlinkSync(path.join(dir, 'specs', 'kv', 'gone.md'), path.join(dir, 'specs', 'kv', 'spec.md'));

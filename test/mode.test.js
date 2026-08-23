@@ -42,8 +42,13 @@ function project(flow, { tasks = '- [x] T1 done\n', ledger = LEDGER } = {}) {
   return { root, dir };
 }
 
+// the state's own answer to C9/R5: the producer's diff plus one substantive row. These fixtures
+// are about the mode keys, so they carry what both modes owe and fail on their own subject.
+const EVIDENCE = '\n## Evidence\n- producer-diff: done — read the whole diff, known P0/P1 zero\n'
+  + '- data-schema: done — ran the migration against a copy of the real schema\n\n';
+
 const flowWith = (body) =>
-  `change: c\n${body}lineage: fixture\ncurrent-step: STEP5\nnext-action: x\n` +
+  `change: c\n${body}lineage: fixture\nphase: build\nnext-action: x\n` + EVIDENCE +
   'gates:\n  - 2026-07-11T00:00 note: fixture\n';
 
 // the C-line for one check id out of `apriori gate` plain output
@@ -78,10 +83,10 @@ test('MD-02 status reports mode, and its JSON has no trace of the removed four',
 
 test('MD-03 C3 accepts exactly the two modes', () => {
   for (const mode of ['fast', 'standard'])
-    assert.strictEqual(rd.checkFlowState({ change: 'c', mode, lineage: 'l', 'current-step': 'STEP5' }, 'c').status,
+    assert.strictEqual(rd.checkFlowState({ change: 'c', mode, lineage: 'l', phase: 'build' }, 'c').status,
       'pass', mode);
   for (const bad of ['trivial', 'medium', 'large', 'harden', 'Fast', ''])
-    assert.strictEqual(rd.checkFlowState({ change: 'c', mode: bad, lineage: 'l', 'current-step': 'STEP5' }, 'c').status,
+    assert.strictEqual(rd.checkFlowState({ change: 'c', mode: bad, lineage: 'l', phase: 'build' }, 'c').status,
       'blocked', `'${bad}' must not be a legal mode`);
   assert.ok(!('TIER_ENUM' in rd), 'the tier vocabulary must be gone, not merely unused');
   assert.deepStrictEqual(rd.MODE_ENUM, ['fast', 'standard']);
@@ -100,37 +105,31 @@ test('MD-04 a 5.x flow-state is refused with a migration pointer, never silently
   assert.doesNotMatch(c3, /legal \(/, 'C3 must not have accepted the legacy spelling');
 });
 
-test('MD-05 fast waives tasks.md; standard does not', () => {
-  const fast = project(flowWith('mode: fast\n'), { tasks: null });
-  const gf = run(['gate', '--change', 'c'], fast.root);
-  assert.match(checkLine(gf.stdout, 'C2'), /^– C2 .*no tasks\.md/, checkLine(gf.stdout, 'C2'));
-
-  const std = project(flowWith('mode: standard\n'), { tasks: null });
-  const gs = run(['gate', '--change', 'c'], std.root);
-  assert.strictEqual(gs.status, 1, 'a standard change without tasks.md must BLOCK');
-  assert.match(checkLine(gs.stdout, 'C2'), /BLOCKED — tasks\.md missing/);
-
-  // and the waiver is spelled by the mode, not by a leftover tier word
-  assert.doesNotMatch(gf.stdout, /trivial/, 'the C2 waiver still explains itself in tier language');
+test('MD-05 neither mode is asked for tasks.md — the mode stopped deciding it', () => {
+  for (const mode of ['fast', 'standard']) {
+    const p = project(flowWith(`mode: ${mode}\n`), { tasks: null });
+    const g = run(['gate', '--change', 'c'], p.root);
+    assert.match(checkLine(g.stdout, 'C2'), /^– C2 .*no tasks\.md — 6\.0 requires none/, `${mode}: ${checkLine(g.stdout, 'C2')}`);
+    assert.doesNotMatch(g.stdout, /trivial/, 'a leftover tier word survives in the C2 line');
+  }
 });
 
-test('MD-06 archive readiness takes its R2/R3 waivers from fast, not from a tier', () => {
+test('MD-06 archive readiness no longer branches on the mode at all', () => {
   const mkBundle = (mode) => {
-    const { dir } = project(flowWith(`mode: ${mode}\n`).replace('current-step: STEP5', 'current-step: STEP6'),
+    const { dir } = project(flowWith(`mode: ${mode}\n`).replace('phase: build', 'phase: review'),
       { tasks: null, ledger: null });
-    // R2/R3 are the subject here; R4's one independent review is fast's floor, not its waiver
-    w(path.join(dir, 'review', 'step5-review-v1.md'), 'VERDICT: no major issues\n');
-    w(path.join(dir, 'review', 'step5-review-v1-raw.txt'), 'raw\n');
+    // R4's one independent review is the floor both modes owe; the artifacts are what went away
+    w(path.join(dir, 'review', 'code-review-v1.md'), 'VERDICT: no major issues\n');
+    w(path.join(dir, 'review', 'code-review-v1-raw.txt'), 'raw\n');
     return dir;
   };
-  const fast = rd.readinessOf({ bundleDir: mkBundle('fast'), name: 'c' });
-  assert.strictEqual(fast.ready, true, JSON.stringify(fast.blockers));
-  assert.deepStrictEqual(fast.na.sort(), ['R2', 'R3']);
-
-  const std = rd.readinessOf({ bundleDir: mkBundle('standard'), name: 'c' });
-  assert.strictEqual(std.ready, false, 'standard must still owe tasks.md and a ledger');
-  assert.deepStrictEqual(std.na, []);
-  assert.strictEqual(std.blockers.length, 2);
+  for (const mode of ['fast', 'standard']) {
+    const r = rd.readinessOf({ bundleDir: mkBundle(mode), name: 'c' });
+    assert.strictEqual(r.ready, true, `${mode}: ${JSON.stringify(r.blockers)}`);
+    // R2 does not exist any more, and an absent ledger is `n/a` in BOTH modes
+    assert.deepStrictEqual(r.na, ['R3'], mode);
+    assert.ok(!r.blockers.some((b) => b.rule === 'R2'), 'the retired R2 rule came back');
+  }
 });
 
 test('MD-07 no decision anywhere in lib/ still reads the removed four', () => {
@@ -187,7 +186,7 @@ test('MD-08 a legacy key rejects even when a legal mode sits beside it', () => {
 test('MD-09 an empty mode: never swallows the next line', () => {
   const { parseFlowState } = require('../lib/status');
   // the parser first: `\s*` matched the newline, so `mode:` took `lineage: main` as its value
-  const text = 'change: c\nmode:\nlineage: main\ncurrent-step: STEP5\n';
+  const text = 'change: c\nmode:\nlineage: main\nphase: build\n';
   const st = parseFlowState(text);
   assert.strictEqual(st.mode, undefined, `an empty key has no value, got ${JSON.stringify(st.mode)}`);
   assert.strictEqual(st.lineage, 'main', 'and the next line is still itself');
@@ -219,7 +218,7 @@ test('MD-10 a mode value is trimmed, and only the two spellings pass', () => {
 
 test('MD-11 archive gives the same migration diagnosis the gate gives', () => {
   const legacy = flowWith('mode: standard\ntier: medium\ntrack: harden\n')
-    .replace('current-step: STEP5', 'current-step: STEP6');
+    .replace('phase: build', 'phase: review');
   const { root } = project(legacy);
   const r = run(['archive', '--change', 'c'], root);
   assert.strictEqual(r.status, 1, r.stdout + r.stderr);
@@ -289,6 +288,8 @@ test('MD-15 the mechanical floor claims exactly what the CLI actually does', () 
   // resolved-verdict rule that is fast's alone because fast keeps no ledger
   assert.match(en, /Neither mode may drop the one independent review/);
   assert.match(cn, /两种模式都不能省那一次独立评审/);
-  assert.match(en, /the review must also have CLOSED/);
-  assert.match(cn, /评审还必须已经收敛/);
+  // slice 5: what decides whether the review itself must close is no longer the MODE but where
+  // the findings live — a mode is one edited word, a ledger is a file with rows in it.
+  assert.match(en, /The review must also have CLOSED — in either mode/);
+  assert.match(cn, /评审还必须已经收敛——两种模式都一样/);
 });

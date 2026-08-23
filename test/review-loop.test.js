@@ -36,10 +36,15 @@ const DELTA = '## ADDED Requirements\n\n### Requirement: Beta\n\n#### Scenario: 
 const TAP_OK = `node -e "${['ok 1 - XA-01 a', 'ok 2 - XB-01 b'].map((l) => `console.log('${l}')`).join(';')}"`;
 const LEDGER_OK = '| ID | Issue | Risk | Round found | Status |\n|---|---|---|---|---|\n| Q-1 | a | low | 1 | verified |\n';
 
+// What C9/R5 ask of every change's state, so these fixtures fail on the REVIEW loop and not on
+// the evidence predicate (which lives in its own file).
+const EVIDENCE = '\n## Evidence\n- producer-diff: done — read the whole diff, known P0/P1 zero\n'
+  + '- data-schema: done — ran against the real schema\n\n';
+
 const ACCEPT = 'VERDICT: no major issues';
 const REVISE = 'VERDICT: 3 issues open';
 
-function project(gates = '  - 2026-08-23T00:00 note: n\n', step = 'STEP5') {
+function project(gates = '  - 2026-08-23T00:00 note: n\n', phase = 'build') {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-rl-'));
   const w = (rel, body) => {
     const p = path.join(root, rel);
@@ -48,7 +53,7 @@ function project(gates = '  - 2026-08-23T00:00 note: n\n', step = 'STEP5') {
   };
   w('apriori/specs/kv/spec.md', STORE);
   w('apriori/changes/c/flow-state.md',
-    `change: c\nmode: standard\nlineage: v6\ncurrent-step: ${step}\nnext-action: x\ngates:\n${gates}`);
+    `change: c\nmode: standard\nlineage: v6\nphase: ${phase}\n${EVIDENCE}gates:\n${gates}`);
   w('apriori/changes/c/tasks.md', '- [x] T1 done\n');
   w('apriori/changes/c/specs/kv/spec.md', DELTA);
   w('apriori/changes/c/review/issues.md', LEDGER_OK);
@@ -193,7 +198,12 @@ test('RL-08 a repeated IDENTICAL verdict is an advisory, never a block', () => {
   assert.deepStrictEqual(advKinds(f), ['repeated-verdict']);
   assert.strictEqual(famOf(f, 'spec-review').round, 1, 'and it is still one round');
   assert.strictEqual(famOf(f, 'spec-review').verdict, 'revise');
-  assert.strictEqual(c8(root).status, 'pass');
+  // C8 still refuses — but for the REVIEW's reason (the latest verdict is revise), never for the
+  // duplicated paragraph, which travels as an advisory.
+  const c = c8(root);
+  assert.strictEqual(c.status, 'blocked');
+  assert.match(c.detail, /the independent review has not resolved/);
+  assert.match(c.detail, /advisory: .*repeats the same verdict/);
 });
 
 test('RL-09 verdicts that actually disagree DO block', () => {
@@ -232,8 +242,8 @@ test('RL-10 an unreadable verdict blocks, and asks for the summary to be normali
 
 test('RL-11 no reframe can wave an unreadable or conflicting verdict through', () => {
   const { root, bundle } = project(
-    '  - 2026-08-23T10:00 gate⑤ (owner): reframe req-review round 1 redo — try to wave it through\n'
-    + '  - 2026-08-23T10:01 gate⑤ (owner): reframe req-review round 5 accept-risk — and again\n');
+    '  - 2026-08-23T10:00 owner: reframe req-review round 1 redo — try to wave it through\n'
+    + '  - 2026-08-23T10:01 owner: reframe req-review round 5 accept-risk — and again\n');
   landRound(bundle, 'req-review-v1', 'VERDICT: looks good to me');
   assert.strictEqual(c8(root).status, 'blocked');
 });
@@ -336,10 +346,10 @@ test('RL-19 three families each keep their own round; nothing is summed', () => 
   const { root, bundle } = project();
   landFamily(bundle, 'req-review', [REVISE, ACCEPT]);
   landFamily(bundle, 'spec-review', [REVISE, ACCEPT]);
-  landFamily(bundle, 'step5-review', [ACCEPT]);
+  landFamily(bundle, 'code-review', [ACCEPT]);
   const l = loopOf(bundle);
   assert.deepStrictEqual(l.families.map((f) => [f.family, f.round, f.verdict]),
-    [['req-review', 2, 'accept'], ['spec-review', 2, 'accept'], ['step5-review', 1, 'accept']]);
+    [['code-review', 1, 'accept'], ['req-review', 2, 'accept'], ['spec-review', 2, 'accept']]);
   assert.strictEqual(l.escalation, null, '2 + 2 + 1 is not "round 5"');
   assert.strictEqual(l.status, 'pass', l.detail);
   assert.strictEqual(c8(root).status, 'pass');
@@ -348,19 +358,19 @@ test('RL-19 three families each keep their own round; nothing is summed', () => 
 test('RL-20 one family stalling never stops another family', () => {
   const { root, bundle } = project();
   landFamily(bundle, 'spec-review', [REVISE, REVISE]);
-  landFamily(bundle, 'step5-review', [ACCEPT]);
+  landFamily(bundle, 'code-review', [ACCEPT]);
   const l = loopOf(bundle);
   assert.strictEqual(famOf(l, 'spec-review').stopped, true);
-  assert.strictEqual(famOf(l, 'step5-review').stopped, false);
+  assert.strictEqual(famOf(l, 'code-review').stopped, false);
   const c = c8(root);
   assert.strictEqual(c.status, 'blocked');
   assert.match(c.detail, /spec-review/);
-  assert.doesNotMatch(c.detail, /step5-review round 1[^;]*stops/);
+  assert.doesNotMatch(c.detail, /code-review round 1[^;]*stops/);
 });
 
 test('RL-21 the reframe names the family it answers', () => {
   const { root, bundle } = project(
-    '  - 2026-08-23T10:00 gate⑤ (owner): reframe spec-review round 2 split — this is two changes\n');
+    '  - 2026-08-23T10:00 owner: reframe spec-review round 2 split — this is two changes\n');
   landFamily(bundle, 'spec-review', [REVISE, REVISE]);
   landFamily(bundle, 'req-review', [REVISE, REVISE]);
   const c = c8(root);
@@ -369,15 +379,26 @@ test('RL-21 the reframe names the family it answers', () => {
   assert.doesNotMatch(c.detail, /reframe spec-review round 2 <split/);
 
   fs.appendFileSync(path.join(bundle, 'flow-state.md'),
-    '  - 2026-08-23T11:00 gate⑤ (owner): reframe req-review round 2 tests — add the missing coverage\n');
-  assert.strictEqual(c8(root).status, 'pass');
+    '  - 2026-08-23T11:00 owner: reframe req-review round 2 tests — add the missing coverage\n');
+  // Both loops are released to run another round — and neither has CONVERGED. A reframe buys the
+  // next round (decision card §5), never the delivery: the latest verdict of both families is
+  // still revise, so the floor keeps refusing until an accepting round lands.
+  const c2 = c8(root);
+  assert.strictEqual(c2.status, 'blocked');
+  assert.doesNotMatch(c2.detail, /this review loop stops here/, 'both reframes were consumed');
+  assert.match(c2.detail, /the independent review has not resolved/);
 });
 
 test('RL-22 round 1 at REVISE is normal and never stops the loop', () => {
   const { root, bundle } = project();
   landFamily(bundle, 'req-review', [REVISE]);
   assert.strictEqual(famOf(loopOf(bundle), 'req-review').stopped, false);
-  assert.strictEqual(c8(root).status, 'pass');
+  // the LOOP is not stopped — round 2 is the control point, not round 1. The change still has
+  // not shipped-quality converged, which is the floor's separate claim.
+  const c = c8(root);
+  assert.strictEqual(c.status, 'blocked');
+  assert.doesNotMatch(c.detail, /this review loop stops here/);
+  assert.match(c.detail, /the independent review has not resolved \(req-review round 1, 3 open\)/);
 });
 
 test('RL-23 a reframe that does not answer THIS family and round releases nothing', () => {
@@ -390,7 +411,7 @@ test('RL-23 a reframe that does not answer THIS family and round releases nothin
     'reframe spec-review round 2 redo',
     'reframe round 2 split — the old family-less grammar',
   ]) {
-    const { root, bundle } = project(`  - 2026-08-23T10:00 gate⑤ (owner): ${entry}\n`);
+    const { root, bundle } = project(`  - 2026-08-23T10:00 owner: ${entry}\n`);
     landFamily(bundle, 'spec-review', [REVISE, REVISE]);
     assert.strictEqual(c8(root).status, 'blocked', entry);
   }
@@ -398,8 +419,14 @@ test('RL-23 a reframe that does not answer THIS family and round releases nothin
 
 test('RL-24 split, tests and redo are equal exits at round 2', () => {
   for (const d of ['split', 'tests', 'redo']) {
-    const { root, bundle } = project(`  - 2026-08-23T10:00 gate⑤ (owner): reframe spec-review round 2 ${d} — reason\n`);
+    const { root, bundle } = project(`  - 2026-08-23T10:00 owner: reframe spec-review round 2 ${d} — reason\n`);
     landFamily(bundle, 'spec-review', [REVISE, REVISE]);
+    // each releases the STOP identically; none of them closes the review
+    const c = c8(root);
+    assert.doesNotMatch(c.detail, /this review loop stops here/, d);
+    assert.match(c.detail, /the independent review has not resolved/, d);
+    // and a later accepting round is what actually converges it
+    landFamily(bundle, 'spec-review', [REVISE, REVISE, ACCEPT]);
     assert.strictEqual(c8(root).status, 'pass', d);
   }
 });
@@ -419,7 +446,7 @@ test('RL-25 a family reaching its own round 5 escalates, whatever the verdict', 
 
 test('RL-26 the owner decision is acknowledged per family and per round', () => {
   const { root, bundle } = project(
-    '  - 2026-08-23T11:00 gate⑤ (owner): reframe spec-review round 5 accept-risk — owner accepts\n');
+    '  - 2026-08-23T11:00 owner: reframe spec-review round 5 accept-risk — owner accepts\n');
   landFamily(bundle, 'spec-review', [REVISE, REVISE, REVISE, REVISE, REVISE]);
   const l = loopOf(bundle);
   assert.strictEqual(l.escalation[0].acknowledged, true);
@@ -503,14 +530,15 @@ test('RL-30 an unreadable review root leaves C8 without an opinion, not a second
 test('RL-31 status shows every family, its verdict, its open count, advisories and escalation', () => {
   const { root, bundle } = project();
   landFamily(bundle, 'spec-review', [REVISE, REVISE, REVISE, REVISE, REVISE]);
-  landFamily(bundle, 'step5-review', [ACCEPT]);
+  landFamily(bundle, 'code-review', [ACCEPT]);
   raw(bundle, 'kb-check');
 
   const s = status.changeStatus(root, 'c', bundle, 'in-flight');
   const j = status.toJson(s);
   assert.deepStrictEqual(j.review.families.map((f) => [f.family, f.round, f.verdict]),
-    [['spec-review', 5, 'revise'], ['step5-review', 1, 'accept']]);
-  assert.strictEqual(j.review.families[0].issuesOpen, 3);
+    [['code-review', 1, 'accept'], ['spec-review', 5, 'revise']]);
+  assert.strictEqual(j.review.families[1].issuesOpen, 3, 'the counted spec-review verdict');
+  assert.strictEqual(j.review.families[0].issuesOpen, null, 'the uncounted code-review accept');
   assert.deepStrictEqual(j.review.problems, []);
   assert.strictEqual(j.review.advisories.length, 1);
   assert.strictEqual(j.escalation[0].round, 5);
@@ -518,7 +546,7 @@ test('RL-31 status shows every family, its verdict, its open count, advisories a
 
   const text = status.formatOne(s);
   assert.match(text, /spec-review round 5/);
-  assert.match(text, /step5-review round 1/);
+  assert.match(text, /code-review round 1/);
   assert.match(text, /ESCALATION/);
 
   const cli = run(['status', '--change', 'c', '--json'], root);
@@ -559,7 +587,7 @@ test('RL-33 gate prints C8 and exits 1 on a stopped loop', () => {
 // ===========================================================================
 
 function archiveProject(gates, verdicts, extra) {
-  const { root, bundle } = project(gates, 'STEP6');
+  const { root, bundle } = project(gates, 'review');
   for (const [family, list] of Object.entries(verdicts)) landFamily(bundle, family, list);
   if (extra) extra(bundle);
   return { root, bundle };
@@ -585,9 +613,11 @@ test('RL-35 readinessOf reports R4 through the same loop, not a second parser', 
   const rdy = rd.readinessOf({ bundleDir: bundle, name: 'c' });
   assert.strictEqual(rdy.ready, false);
   const r4 = rdy.blockers.filter((b) => b.rule === 'R4');
-  assert.strictEqual(r4.length, 1);
-  assert.strictEqual(r4[0].forceable, false, 'a stalled round-2 loop is never forceable');
-  assert.match(r4[0].detail, /spec-review/);
+  // two findings, one per claim: the loop stalled at ITS round 2, and the review never resolved.
+  // Neither is forceable — `--force` overrides progress, and neither of these is progress.
+  assert.deepStrictEqual(r4.map((b) => b.class).sort(), ['loop', 'review']);
+  assert.ok(r4.every((b) => b.forceable === false), 'a stalled round-2 loop is never forceable');
+  assert.ok(r4.every((b) => /spec-review/.test(b.detail)));
   const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'readiness.js'), 'utf8');
   const body = src.slice(src.indexOf('function readinessOf'), src.indexOf('module.exports'));
   assert.match(body, /reviewFacts\(/, 'R4 must consume the shared scan');
@@ -604,7 +634,7 @@ test('RL-36 archive advisories never block', () => {
 
 test('RL-37 a round-2 stall cannot be forced through archive', () => {
   const { root } = archiveProject(
-    NOTE + '  - 2026-08-23T10:00 gate⑤ (owner): archive-force ledger — try everything\n',
+    NOTE + '  - 2026-08-23T10:00 owner: archive-force ledger — try everything\n',
     { 'spec-review': [REVISE, REVISE] });
   const before = storeOf(root);
   const r = run(['archive', '--change', 'c', '--write', '--force', '--changes-dir', 'apriori/changes'], root);
@@ -615,7 +645,7 @@ test('RL-37 a round-2 stall cannot be forced through archive', () => {
 
 test('RL-38 round 5 needs BOTH the recorded human decision and --force', () => {
   const five = { 'spec-review': [REVISE, REVISE, REVISE, REVISE, REVISE] };
-  const ACK = '  - 2026-08-23T11:00 gate⑤ (owner): reframe spec-review round 5 accept-risk — owner accepts\n';
+  const ACK = '  - 2026-08-23T11:00 owner: reframe spec-review round 5 accept-risk — owner accepts\n';
   {
     const { root } = archiveProject(NOTE + ACK, five);
     const r = run(['archive', '--change', 'c', '--write', '--changes-dir', 'apriori/changes'], root);
@@ -640,7 +670,7 @@ test('RL-38 round 5 needs BOTH the recorded human decision and --force', () => {
 
 test('RL-39 a converged bundle still archives — R4 adds no new tax', () => {
   const { root } = archiveProject(NOTE,
-    { 'req-review': [REVISE, ACCEPT], 'spec-review': [ACCEPT], 'step5-review': [ACCEPT] });
+    { 'req-review': [REVISE, ACCEPT], 'spec-review': [ACCEPT], 'code-review': [ACCEPT] });
   const r = run(['archive', '--change', 'c', '--write', '--changes-dir', 'apriori/changes'], root);
   assert.strictEqual(r.status, 0, r.stdout + r.stderr);
   assert.match(r.stdout, /RESULT: MERGED/);
@@ -782,7 +812,7 @@ function archivedFixture(verdicts, extra) {
   // the store already carries the merged delta — an archived change verifies against it
   w('apriori/specs/kv/spec.md', STORE + '\n### Requirement: Beta\n\n#### Scenario: XB-01 new\n- t\n');
   w(`${base}/flow-state.md`,
-    'change: c\nmode: standard\nlineage: v6\ncurrent-step: DONE\nnext-action: none\n'
+    'change: c\nmode: standard\nlineage: v6\nphase: done\nnext-action: none\n'
     + 'gates:\n  - 2026-07-10T00:00 note: archived\n');
   w(`${base}/tasks.md`, '- [x] T1 done\n');
   w(`${base}/specs/kv/spec.md`, DELTA);

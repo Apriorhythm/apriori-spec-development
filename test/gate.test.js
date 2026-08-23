@@ -25,7 +25,10 @@ function mkProject(files) {
 
 const STORE = '### Requirement: Alpha\n\n#### Scenario: XA-01 base\n- t\n';
 const DELTA = '## ADDED Requirements\n\n### Requirement: Beta\n\n#### Scenario: XB-01 new\n- t\n';
-const FLOW = (name, mode = 'standard') => `change: ${name}\nmode: ${mode}\nlineage: v3\ncurrent-step: STEP5\nnext-action: x\ngates:\n  - 2026-07-11T00:00 note: n\n`;
+// the `## Evidence` section is what C9/R5 read: a bundle that answers nothing has not
+// answered. These fixtures are about other checks, so they carry the two rows a standard
+// change owes and fail on their own subject.
+const FLOW = (name, mode = 'standard') => `change: ${name}\nmode: ${mode}\nlineage: v3\nphase: build\nnext-action: x\n\n## Evidence\n- producer-diff: done — read the whole diff, known P0/P1 zero\n- data-schema: done — ran the migration against a copy of the real schema\n\ngates:\n  - 2026-07-11T00:00 note: n\n`;
 const LEDGER_OK = '| ID | Issue | Risk | Round found | Status |\n|---|---|---|---|---|\n| Q-1 | a | low | 1 | verified |\n';
 
 // a healthy in-flight medium change
@@ -37,8 +40,8 @@ function healthy(name = 'c') {
     [`apriori/changes/${name}/specs/kv/spec.md`]: DELTA,
     [`apriori/changes/${name}/review/issues.md`]: LEDGER_OK,
     // a healthy bundle carries its one independent review — the floor is not fast's alone
-    [`apriori/changes/${name}/review/step5-review-v1.md`]: 'VERDICT: no major issues\n',
-    [`apriori/changes/${name}/review/step5-review-v1-raw.txt`]: 'raw\n',
+    [`apriori/changes/${name}/review/code-review-v1.md`]: 'VERDICT: no major issues\n',
+    [`apriori/changes/${name}/review/code-review-v1-raw.txt`]: 'raw\n',
   });
 }
 const TAP_OK = tapCmd('ok 1 - XA-01 a', 'ok 2 - XB-01 b');
@@ -55,43 +58,59 @@ test('GT-01 a clean in-flight change passes (exit 0, all checks ✓)', () => {
   }
 });
 
-test('GT-02 an unchecked task blocks', () => {
+test('GT-02 a legacy task list is a diagnostic, never a block', () => {
+  // 6.0 requires no tasks.md. A 5.x one is still READ so its unchecked boxes are visible, but
+  // C2 has exactly one status left: it can never reach `blocked`, whatever the file says.
   const root = healthy();
-  fs.appendFileSync(path.join(root, 'apriori/changes/c/tasks.md'), '- [ ] T3 not done\n');
-  const r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
-  assert.strictEqual(r.code, 1);
-  assert.strictEqual(r.result, 'BLOCKED');
-  const c2 = r.checks.find((x) => x.id === 'C2');
-  assert.strictEqual(c2.status, 'blocked');
-  assert.match(c2.detail, /tasks\.md/);
+  fs.writeFileSync(path.join(root, 'apriori/changes/c/tasks.md'), '- [x] T1 done\n- [ ] T3 not done\n');
+  let r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
+  let c2 = r.checks.find((x) => x.id === 'C2');
+  assert.strictEqual(c2.status, 'n/a');
+  assert.match(c2.detail, /legacy tasks\.md: 1 unchecked box/);
+  assert.match(c2.detail, /diagnostic only/);
+  assert.strictEqual(r.code, 0, 'an unchecked legacy task must not block the gate');
+  // and an absent tasks.md is normal, not a finding
+  fs.rmSync(path.join(root, 'apriori/changes/c/tasks.md'));
+  r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
+  c2 = r.checks.find((x) => x.id === 'C2');
+  assert.strictEqual(c2.status, 'n/a');
+  assert.match(c2.detail, /no tasks\.md — 6\.0 requires none/);
+  assert.strictEqual(r.code, 0);
 });
 
-test('GT-03 ledger blocks on open rows and reasonless rejections', () => {
-  for (const [row, blocked] of [
-    ['| Q-2 | b | high | 1 | open |', true],
-    ['| Q-2 | b | high | 1 | rejected |', true],
-    ['| Q-2 | b | high | 1 | rejected: |', true],
-    ['| Q-2 | b | high | 1 | rejected - |', true],
-    ['| Q-2 | b | high | 1 | rejected: duplicate of Q-1 |', false],
-    ['| Q-2 | b | high | 1 | advisory-acked |', false],
+test('GT-03 the ledger blocks on open rows and reports the rest', () => {
+  // ONE finding is a product fact; the rest are record-keeping and are printed as notes.
+  // [row, blocks, is a finding at all]
+  for (const [row, blocked, finding] of [
+    ['| Q-2 | b | high | 1 | open |', true, true],
+    ['| Q-2 | b | high | 1 | rejected |', false, true],
+    ['| Q-2 | b | high | 1 | rejected: |', false, true],
+    ['| Q-2 | b | high | 1 | rejected - |', false, true],
+    ['| Q-2 | b | high | 1 | frobnicated |', false, true],
+    ['| Q-2 | b | high | 1 | waived by the owner |', false, true],
+    ['| Q-2 | b | high | 1 | rejected: duplicate of Q-1 |', false, false],
+    ['| Q-2 | b | high | 1 | advisory-acked |', false, false],
   ]) {
     const root = healthy();
     fs.appendFileSync(path.join(root, 'apriori/changes/c/review/issues.md'), row + '\n');
     const r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
     const c4 = r.checks.find((x) => x.id === 'C4');
     assert.strictEqual(c4.status, blocked ? 'blocked' : 'pass', row);
-    if (blocked) assert.match(c4.detail, /Q-2/);
+    if (finding) assert.match(c4.detail, /Q-2/, row);              // named either way — never hidden
+    if (finding && !blocked) assert.match(c4.detail, /bookkeeping \(not blocking\)/, row);
   }
 });
 
 test('GT-04 flow-state legality is enforced', () => {
   for (const [flow, offender] of [
     [FLOW('c').replace('mode: standard', 'mode: <fast | standard>'), /mode/],
-    [FLOW('c').replace('current-step: STEP5', 'current-step: STEP9'), /current-step/],
+    [FLOW('c').replace('phase: build', 'phase: STEP9'), /not in the legal vocabulary/],
+    [FLOW('c').replace('phase: build', 'current-step: STEP6'), /5\.x identity/],
     [FLOW('c').replace('mode: standard', 'mode: huge'), /mode/],
     [FLOW('c').replace('mode: standard', 'tier: medium\ntrack: harden'), /5\.x identity/],
     [FLOW('wrong-name'), /change/],
     [FLOW('c').replace('lineage: v3\n', ''), /lineage/],
+    [FLOW('c').replace('phase: build', ''), /required key 'phase' missing/],
   ]) {
     const root = healthy();
     fs.writeFileSync(path.join(root, 'apriori/changes/c/flow-state.md'), flow);
@@ -208,13 +227,15 @@ test('GT-07 resolution is validated and deterministic', () => {
     'apriori/changes/archive/2026-07-10T1400-c/specs/kv/spec.md': DELTA,
     'apriori/changes/archive/2026-07-10T1400-c/review/issues.md': LEDGER_OK,
   });
+  // C2 is a diagnostic now, so its DETAIL — not its status — is what says which dir was read
+  const readTasks = (res) => res.checks.find((x) => x.id === 'C2').detail;
   const r = gate.runGate({ cwd: arch, change: 'c', testCmd: TAP_OK });
-  assert.strictEqual(r.checks.find((x) => x.id === 'C2').status, 'pass');   // newer dir used
+  assert.match(readTasks(r), /all boxes checked/);   // newer dir used
   // a stray FILE with a stamp-shaped name is ignored, older real dir still wins deterministically
   fs.writeFileSync(path.join(arch, 'apriori/changes/archive/2026-07-10T1600-c'), 'not a dir');
   const r2 = gate.runGate({ cwd: arch, change: 'c', testCmd: TAP_OK });
   assert.strictEqual(r2.stage, 'archived');
-  assert.strictEqual(r2.checks.find((x) => x.id === 'C2').status, 'pass'); // still the 1400 dir, not the file
+  assert.match(readTasks(r2), /all boxes checked/); // still the 1400 dir, not the file
   // an archived entry symlinking OUTSIDE archive/ (but inside changes/) is an escape → exit 2
   let canSymlink = true;
   const elsewhere = path.join(arch, 'apriori/changes/elsewhere-c');
@@ -241,33 +262,26 @@ test('GT-08 a missing or mismatched flow-state fails closed', () => {
   assert.strictEqual(gate.runGate({ cwd: root2, change: 'c', testCmd: TAP_OK }).code, 1);
 });
 
-test('GT-09 fast mode is not asked for artifacts it never produces', () => {
-  // the review round is NOT one of them (6.0 slice 3): fast drops tasks and the ledger and
-  // keeps its one independent review, so the fixture carries it and C2/C4 stay the subject
+test('GT-09 neither mode is asked for artifacts 6.0 does not require', () => {
+  // The review round is NOT one of them: both modes keep their one independent review, so the
+  // fixture carries it and the absent tasks.md / ledger stay the subject. Slice 5's change is
+  // that the MODE no longer decides — 6.0 asks for neither file, in either mode.
   const REVIEWED = {
-    'apriori/changes/c/review/step5-review-v1.md': 'VERDICT: no major issues\n',
-    'apriori/changes/c/review/step5-review-v1-raw.txt': 'raw\n',
+    'apriori/changes/c/review/code-review-v1.md': 'VERDICT: no major issues\n',
+    'apriori/changes/c/review/code-review-v1-raw.txt': 'raw\n',
   };
-  const root = mkProject({
-    'apriori/specs/kv/spec.md': STORE,
-    'apriori/changes/c/flow-state.md': FLOW('c', 'fast'),
-    'apriori/changes/c/specs/kv/spec.md': DELTA,
-    ...REVIEWED,
-  });
-  const r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
-  assert.strictEqual(r.checks.find((x) => x.id === 'C2').status, 'n/a');
-  assert.strictEqual(r.checks.find((x) => x.id === 'C4').status, 'n/a');
-  assert.strictEqual(r.code, 0, JSON.stringify(r.checks));
-  // standard: same absences block
-  const root2 = mkProject({
-    'apriori/specs/kv/spec.md': STORE,
-    'apriori/changes/c/flow-state.md': FLOW('c'),
-    'apriori/changes/c/specs/kv/spec.md': DELTA,
-    ...REVIEWED,
-  });
-  const r2 = gate.runGate({ cwd: root2, change: 'c', testCmd: TAP_OK });
-  assert.strictEqual(r2.checks.find((x) => x.id === 'C2').status, 'blocked');
-  assert.strictEqual(r2.checks.find((x) => x.id === 'C4').status, 'blocked');
+  for (const mode of ['fast', 'standard']) {
+    const root = mkProject({
+      'apriori/specs/kv/spec.md': STORE,
+      'apriori/changes/c/flow-state.md': FLOW('c', mode),
+      'apriori/changes/c/specs/kv/spec.md': DELTA,
+      ...REVIEWED,
+    });
+    const r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
+    assert.strictEqual(r.checks.find((x) => x.id === 'C2').status, 'n/a', mode);
+    assert.strictEqual(r.checks.find((x) => x.id === 'C4').status, 'n/a', mode);
+    assert.strictEqual(r.code, 0, `${mode}: ${JSON.stringify(r.checks)}`);
+  }
 });
 
 test('GT-10 KB freshness degrades honestly', () => {
@@ -322,8 +336,8 @@ test('GT-11 --json is pure JSON in every outcome class', () => {
     assert.ok(Array.isArray(j.checks) && Array.isArray(j.errors));
   }
   assert.strictEqual(JSON.parse(run(['gate', '--json'], root).stdout).change, null);
-  // BLOCKED class
-  fs.appendFileSync(path.join(root, 'apriori/changes/c/tasks.md'), '- [ ] nope\n');
+  // BLOCKED class — an open ledger row, which is the one finding that still refuses
+  fs.appendFileSync(path.join(root, 'apriori/changes/c/review/issues.md'), '| Q-9 | b | high | 1 | open |\n');
   const b = run(['gate', '--change', 'c', '--test-cmd', TAP_OK, '--json'], root);
   assert.strictEqual(b.status, 1);
   assert.strictEqual(JSON.parse(b.stdout).result, 'BLOCKED');
@@ -374,66 +388,72 @@ function archProject(ledger, flowExtra) {
 }
 const c4Of = (root) => gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK }).checks.find((x) => x.id === 'C4');
 
-test('GT-13 archived ledgers must be terminal', () => {
-  // fixed at archived stage → blocked with the reviewer-verify cure
+test('GT-13 archived ledgers report their bookkeeping instead of refusing', () => {
+  // 5.x refused an archive over a `fixed` that was never flipped to `verified`. That is
+  // record-keeping, and the product was already green — so it is a NOTE now, and only an open
+  // row still refuses.
   const f = c4Of(archProject(ledgerWith(['Q-1', 'fixed (v2)'])));
-  assert.strictEqual(f.status, 'blocked');
+  assert.strictEqual(f.status, 'pass');
+  assert.match(f.detail, /bookkeeping \(not blocking\)/);
   assert.match(f.detail, /reviewer must verify|never verified/);
-  // plain reasoned rejected → blocked with the concurrence cure
   const r = c4Of(archProject(ledgerWith(['Q-1', 'rejected — cosmetic, out of scope'])));
-  assert.strictEqual(r.status, 'blocked');
+  assert.strictEqual(r.status, 'pass');
   assert.match(r.detail, /rejected-verified|reviewer concurrence/);
-  // unknown status → blocked naming the vocabulary
   const u = c4Of(archProject(ledgerWith(['Q-1', 'done'])));
-  assert.strictEqual(u.status, 'blocked');
+  assert.strictEqual(u.status, 'pass');
   assert.match(u.detail, /vocabulary/);
-  // all-terminal → pass (waived backed by a gates: entry naming the ID)
+  // an OPEN row at the archived stage still blocks — that is the product fact
+  const o = c4Of(archProject(ledgerWith(['Q-1', 'open'])));
+  assert.strictEqual(o.status, 'blocked');
+  assert.match(o.detail, /Q-1 is open/);
+  // all-terminal → pass with no notes at all
   const ok = c4Of(archProject(
     ledgerWith(['Q-1', 'verified'],
                ['Q-2', 'rejected-verified — cosmetic; reviewer concurred (review-v2)'],
                ['Q-3', 'waived — owner accepts the perf risk'],
                ['Q-4', 'advisory-acked']),
-    '2026-07-12T01:00 gate: owner waived Q-3 (perf risk accepted for this release)'));
+    '2026-07-12T01:00 owner: waived Q-3 (perf risk accepted for this release)'));
   assert.strictEqual(ok.status, 'pass', ok.detail);
+  assert.doesNotMatch(ok.detail, /bookkeeping/);
 });
 
-test('GT-14 waives belong to humans, unknown states belong to nobody', () => {
-  // in-flight: waived without any gates: evidence → blocked
+test('GT-14 an unrecorded waive is reported, an open row refuses', () => {
+  // in-flight: waived without any gates: evidence → a NOTE, not a refusal
   const root1 = healthy();
   fs.writeFileSync(path.join(root1, 'apriori/changes/c/review/issues.md'), ledgerWith(['Q-1', 'waived — accepted']));
   const w1 = c4Of(root1);
-  assert.strictEqual(w1.status, 'blocked');
+  assert.strictEqual(w1.status, 'pass');
+  assert.match(w1.detail, /bookkeeping \(not blocking\)/);
   assert.match(w1.detail, /gates: entry/);
-  // same row passes once the human decision is recorded in gates:
+  // the same row is note-free once the human decision is recorded in gates:
   const root2 = healthy();
   fs.writeFileSync(path.join(root2, 'apriori/changes/c/review/issues.md'), ledgerWith(['Q-1', 'waived — accepted']));
   fs.appendFileSync(path.join(root2, 'apriori/changes/c/flow-state.md'),
     '  - 2026-07-12T01:00 owner waived Q-1: risk accepted\n');
-  assert.strictEqual(c4Of(root2).status, 'pass');
-  // exact ID token: an entry waiving Q-10 never satisfies row Q-1
+  const w2 = c4Of(root2);
+  assert.strictEqual(w2.status, 'pass');
+  assert.doesNotMatch(w2.detail, /bookkeeping/);
+  // exact ID token: an entry waiving Q-10 never satisfies row Q-1 — the note stays
   const root3 = healthy();
   fs.writeFileSync(path.join(root3, 'apriori/changes/c/review/issues.md'), ledgerWith(['Q-1', 'waived — accepted']));
   fs.appendFileSync(path.join(root3, 'apriori/changes/c/flow-state.md'),
     '  - 2026-07-12T01:00 owner waived Q-10: a different row\n');
-  assert.strictEqual(c4Of(root3).status, 'blocked');
-  // ID in one entry + 'waived' in another entry never passes (same-entry rule)
+  assert.match(c4Of(root3).detail, /bookkeeping \(not blocking\)/);
+  // ID in one entry + 'waived' in another entry never satisfies it either (same-entry rule)
   const root4 = healthy();
   fs.writeFileSync(path.join(root4, 'apriori/changes/c/review/issues.md'), ledgerWith(['Q-1', 'waived — accepted']));
   fs.appendFileSync(path.join(root4, 'apriori/changes/c/flow-state.md'),
     '  - 2026-07-12T01:00 note: Q-1 discussed\n  - 2026-07-12T01:01 something else waived here\n');
-  assert.strictEqual(c4Of(root4).status, 'blocked');
-  // unknown status blocks IN-FLIGHT too; reasonless terminals block
+  assert.match(c4Of(root4).detail, /bookkeeping \(not blocking\)/);
+  // an unknown status and a reasonless terminal are notes at either stage
   const root5 = healthy();
   fs.writeFileSync(path.join(root5, 'apriori/changes/c/review/issues.md'), ledgerWith(['Q-1', 'verifed']));
-  assert.strictEqual(c4Of(root5).status, 'blocked');
-  const root6 = healthy();
-  fs.writeFileSync(path.join(root6, 'apriori/changes/c/review/issues.md'), ledgerWith(['Q-1', 'rejected-verified']));
-  assert.strictEqual(c4Of(root6).status, 'blocked');
-  // in-flight fixed and reasoned rejected still pass (the loop is running)
+  assert.strictEqual(c4Of(root5).status, 'pass');
+  assert.match(c4Of(root5).detail, /vocabulary/);
+  // …and an open row is what actually refuses, at either stage
   const root7 = healthy();
-  fs.writeFileSync(path.join(root7, 'apriori/changes/c/review/issues.md'),
-    ledgerWith(['Q-1', 'fixed (v2)'], ['Q-2', 'rejected — cosmetic, out of scope']));
-  assert.strictEqual(c4Of(root7).status, 'pass');
+  fs.writeFileSync(path.join(root7, 'apriori/changes/c/review/issues.md'), ledgerWith(['Q-1', 'open']));
+  assert.strictEqual(c4Of(root7).status, 'blocked');
 });
 
 test('GT-15 every archived ledger in this repo parses legal and terminal', () => {

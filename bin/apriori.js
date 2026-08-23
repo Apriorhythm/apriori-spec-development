@@ -8,9 +8,9 @@ const rest = process.argv.slice(3);
 const USAGE = `apriori <command>
 
   new       scaffold a change dir + flow-state skeleton (bare kebab-case name)
-  status    show where a change is: step, next-action, open ledger items (--json)
-  verify    bind spec scenarios to test runs (STEP5 gate) (--json)
-  archive   merge a change's delta specs into the living store (STEP6)
+  status    show where a change is: phase, reality check, evidence, next actions (--json)
+  verify    bind spec scenarios to test runs (the Build & Test binding gate) (--json)
+  archive   merge a change's delta specs into the living store (freezes the bundle)
   stamp     print the CAS base-stamp line for a store file (delta authoring)
   gate      aggregate the mechanical gate checks for one change (CI-friendly)
   doctor    diagnose the project↔apriori seam (onboarding health check)

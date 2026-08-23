@@ -35,7 +35,7 @@
 
 #### Scenario: DR-09 changes overview validates flow-states and surfaces pending gates
 - WHEN an active change dir has no readable flow-state.md, or `parseFlowState` yields an empty `change`, or its `change` mismatches the dir name
-- THEN D7 reports a finding naming the dir and the failed clause; healthy active changes are info lines; archived candidates (basenames matching `<YYYY-MM-DDThhmm>-<name>`, directories only) are read ONLY when they satisfy realpath containment under `apriori/changes/archive/` — an escaping symlinked entry is skipped with an info note, never read; contained not-DONE/ABANDONED archived changes are listed as info ("gate ④ possibly pending") — never a finding
+- THEN D7 reports a finding naming the dir and the failed clause; healthy active changes are info lines; archived candidates (basenames matching `<YYYY-MM-DDThhmm>-<name>`, directories only) are read ONLY when they satisfy realpath containment under `apriori/changes/archive/` — an escaping symlinked entry is skipped with an info note, never read; contained archived changes whose phase is neither `done` nor `abandoned` are listed as info ("archived <dir> @ <phase> — closeout pending") — never a finding
 
 #### Scenario: DR-10 output is machine-consumable in every class
 - WHEN `apriori doctor --json` runs — HEALTHY, FINDINGS, or UNUSABLE (incl. the positional-arg usage error)

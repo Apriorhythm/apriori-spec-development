@@ -18,13 +18,16 @@ const init = require('../lib/init');
 
 const REPO = path.join(__dirname, '..');
 
-const CLI_KEYS = ['id-pattern', 'verification-profile', 'cas', 'test-cmd'];
+const CLI_KEYS = ['id-pattern', 'cas', 'test-cmd'];
 const AGENT_KEYS = ['language'];
-const SCAFFOLD_KEYS = ['language', 'id-pattern', 'verification-profile', 'cas'];
+const SCAFFOLD_KEYS = ['language', 'id-pattern', 'cas'];
 
 // Removed in 6.0 slice 2b: read by nobody — not the CLI, not the agent's protocol.
+// `verification-profile` joined them in slice 5: it had a reader and no consumer, and it scaled
+// evidence by PROJECT TYPE — the second list §6's risk rows replaced.
 const REMOVED_PARAMS = ['step5-cap', 'step6-cap', 'spike-cap', 'extraction-review-cap',
-  'shrink-state', 'rejected-ratio-guard', 'shrink-proposal-freq', 'post-merge-review-freq'];
+  'shrink-state', 'rejected-ratio-guard', 'shrink-proposal-freq', 'post-merge-review-freq',
+  'verification-profile'];
 
 // 'Field' is the table header row the shared parser cannot distinguish from a key
 const keysOf = (text) => [...parseConfig(text).values.keys()].filter((k) => k !== 'Field').sort();

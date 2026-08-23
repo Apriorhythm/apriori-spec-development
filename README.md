@@ -67,8 +67,12 @@ cat > apriori/changes/hello/flow-state.md <<'EOF'
 change: hello
 mode: fast
 lineage: main
-current-step: STEP6
-next-action: archive
+phase: review
+delivery: released
+
+## Evidence
+- producer-diff: done — read the whole diff, known P0/P1 zero
+
 gates:
   - 2026-01-01T00:00 note: quickstart demo
 EOF
@@ -121,13 +125,13 @@ apriori verify --specs apriori/specs
 apriori check
 ```
 
-The two review files are what `mode: fast` costs: fast drops the task list and the ledger, but **never the one independent review** — `gate` and `archive` refuse a fast change that has none. Here they are hand-written because this is a demo; in a real change the `.md` carries the reviewer's verdict and the `-raw.*` file its output verbatim, from a *different* model (runbook R2). `gate` aggregates the mechanical checks into one exit code (its PASS never replaces a human gate). `archive --change` merges the delta into the living store `apriori/specs/` and files the change away — it **refuses a change that is not finished**, which is why the flow-state above already says `current-step: STEP6` (the archiving step) and why a standard change would also need every task checked and every ledger row terminal; plain `verify` now proves the merged store, and `check` is your CI guard. That's the loop Route A automates for you: **spec → red → green → review → gate → archive**.
+The two review files are the one thing neither mode may drop: **the single independent review** — `gate` and `archive` refuse a change that has none, `fast` and `standard` alike. Here they are hand-written because this is a demo; in a real change the `.md` carries the reviewer's verdict and the `-raw.*` file its output verbatim, from a *different* model (runbook R2). Note what is NOT in this bundle: no requirement doc, no proposal, no design doc, no gap report, no task list — 6.0 asks for none of them, in either mode. `gate` aggregates the mechanical checks into one exit code (its PASS never replaces a human decision). `archive --change` merges the delta into the living store `apriori/specs/` and files the change away — it **refuses a change that is not finished**, which is why the flow-state above already says `phase: review` (the delivering phase); then it declares three states and freezes the bundle. Plain `verify` now proves the merged store, and `check` is your CI guard. That's the loop Route A automates for you: **ground → spec → red → green → review → gate → archive**.
 
 ## Where everything else lives
 
 | doc | what's in it |
 |---|---|
-| [docs/concepts.md](./docs/concepts.md) | why it works this way: core concepts, the AI toolbox, the full STEP0–STEP6 workflow, the mini-kv worked example, the prompt library |
+| [docs/concepts.md](./docs/concepts.md) | why it works this way: core concepts, the AI toolbox, the four-phase workflow, the mini-kv worked example, the prompt library |
 | [docs/legacy.md](./docs/legacy.md) | existing codebases: the knowledge-base loop, doctor-first onboarding |
 | [docs/ci.md](./docs/ci.md) | ready-to-paste CI snippets for `check` / `verify` / `gate`, exit-code table |
 | [docs/cli.md](./docs/cli.md) | all ten subcommands: exact synopses, flags, exit codes, configuration reference |
@@ -141,11 +145,11 @@ The two review files are what `mode: fast` costs: fast drops the task list and t
 | `apriori init` | once per project | scaffold `apriori/` + per-tool pointers |
 | `apriori doctor` | onboarding / anytime | diagnose the project↔apriori seam; findings name their fixer |
 | `apriori new <name>` | change kickoff | scaffold `apriori/changes/<name>/` + a flow-state skeleton |
-| `apriori status` | anytime | where each change is: step, next action, open ledger items (`--json`) |
-| `apriori verify` | STEP5 exit gate | bind every scenario ID to a passing test; `--change <name>` = the projected, mid-change form |
+| `apriori status` | anytime | where each change is: phase, reality check, evidence, next actions (`--json`; `--escalation` exits 3) |
+| `apriori verify` | Build & Test exit gate | bind every scenario ID to a passing test; `--change <name>` = the projected, mid-change form |
 | `apriori stamp <store-file>` | delta authoring | print the CAS base-stamp line — verify/archive refuse if the store diverged since |
-| `apriori gate --change <name>` | STEP5/6, CI | one exit code over the mechanical checks (PASS ≠ human gates) |
-| `apriori archive` | STEP6 | merge delta specs into the living store; `--change <name>` = whole-change, failure-atomic (up to the commit point) |
+| `apriori gate --change <name>` | Build & Test / Review, CI | one exit code over the mechanical checks (PASS ≠ a human decision); `--review-ready` is the transient admission view |
+| `apriori archive` | Review & Deliver | merge delta specs into the living store; `--change <name>` = whole-change, failure-atomic (up to the commit point) |
 | `apriori check` | CI / pre-commit | structural consistency (scenario IDs bindable) |
 | `apriori update` | after a CLI upgrade | refresh the runbook copy + command pointers (never your files) |
 

@@ -2,6 +2,96 @@
 
 All notable changes to `apriori-cli`. Versions follow semver; the stability promise: CLI surface & flags, `--json` shapes, the delta format and the flow-state schema only break in a major.
 
+## Unreleased — 6.0 slice 5 · the fixed artifact family is gone
+
+**The 5.x seven-step artifact machine is removed from the runtime, the living specs, the tests
+and both doc editions in one slice.** A half-removed state would have left the old obligations
+and the new minimal flow running side by side, which is exactly what the blueprint's rule 0
+forbids: a pilot that runs both proves nothing about either.
+
+- **`current-step` → `phase`.** The state carries the four phases plus two exits — `ground`,
+  `specify`, `build`, `review`, `done`, `abandoned`. `current-step` joins `tier`/`track`/
+  `track-rationale`/`round` as a refused 5.x identity key: named by `gate` C3, `archive` and
+  `status`, never silently read. Archiving happens at `phase: review`.
+- **No document family, in either mode.** `apriori new` scaffolds `flow-state.md` plus empty
+  `specs/` and `review/`; it no longer creates `requirement/` and names no document to draft.
+  Readiness **R2** (the task list) is deleted outright. `gate` C2 can only report `–` — a 5.x
+  `tasks.md` is read as a diagnostic and can never block. An absent ledger is `n/a` in both
+  modes. Nothing anywhere requires a requirement doc, a proposal, a design doc, a gap report or
+  a task list.
+- **The ledger blocks on one finding.** A row still reading `open`. An unknown status token, a
+  reasonless rejection, an unrecorded `waived`, and an archive-stage `fixed` that never became
+  `verified` are reported as **bookkeeping notes** and never refuse — 5.x refused archives over
+  those, on changes whose tests were already green. `archive-force` keeps one class, `ledger`.
+- **One new refusal, and it is about reality.** The flow-state's `## Evidence` section carries
+  one row per risk the change hits (`done | blocked | owner-accepted | n/a`). A `blocked` row
+  blocks delivery — `gate` **C9**, archive **R5** — until the owner decides; an
+  `owner-accepted` row blocks unless a `gates:` entry names it and accepts it. `--force` is not
+  an owner decision, and acceptance never changes the change's mode. Absent section = `n/a`.
+- **The Reality Check replaced the gap report.** `## Reality Check` in the one state holds
+  `observed` / `decision` / `assumption` lines; `status` reports the counts, names every
+  unverified assumption, and reports a kind-less entry as unreadable rather than dropping it.
+  No second file was created.
+- **`apriori gate --change <name> --review-ready`** re-faces the same evaluation as an
+  admission answer and **writes nothing** — no receipt file, no state field, no cache. Four
+  items from facts the run already produced: real tests, the evidence rows, the producer's own
+  `producer-diff` declaration, and whether the reviewer's default context is available. Exit 0
+  ready / 1 not — and a skipped C1 is never ready.
+- **`ACCEPT | REVISE | ESCALATE`.** `VERDICT: escalate` joins the closed vocabulary: the
+  approach is wrong rather than the details, and it escalates at whatever round it happened.
+  Per-family derived rounds, the round-2 reframe, the round-5 stop-loss and the independent
+  review floor are all unchanged. What decides whether the review itself must close is no
+  longer the mode but whether the change keeps a ledger.
+- **`apriori status --change <name> --escalation`** prints every reason a human is being waited
+  on — the state's own `escalation:` line, each escalating family, each blocked evidence row —
+  and **exits 3**. That exit code is the whole hard-stop mechanism; this repository still ships
+  no hook and no supervision system.
+- **The numbered gates are gone.** No gate ①–⑤ ladder, no consolidation authorization. Four
+  things stop for a human: an escalation, blocked critical evidence, an external side effect,
+  abandonment. `gates:` keeps two labels, `owner` and `note`.
+- **`apriori archive` declares three states and freezes.** Implementation complete, critical
+  evidence complete, released or pending external acceptance — in dry-run and `--write` alike.
+  A defect found later becomes a short outcome note or a new change, never an edit to the
+  archived bundle. No new mandatory document was introduced to say any of it.
+- **`verification-profile` is gone.** The config row had a reader in `lib/config.js` and no
+  consumer anywhere: it scaled evidence by PROJECT TYPE, which is the second list §6's risk rows
+  replaced. The row, its reader, its spec and its tests are removed; `apriori init` no longer
+  scaffolds it. Nothing consumed it, so nothing changes behaviour.
+- **Docs and prompts shrank with the machine.** The prompt library went from twelve per-step
+  prompts to six: Ground, the producer's contract → review-ready handoff, the independent
+  review, the external-side-effect authorization ask, KB reverse-capture, and brainstorm. The
+  per-project-type verification matrix is gone — what a change owes is one `## Evidence` row
+  per risk it actually hits. The `2c. Scaling verification strength` section went with it.
+- **Retired with their premises:** the 5.0 gate golden fixture and its capture script (an
+  oracle that would have to declare every case divergent is no longer testifying), the
+  `archive-force tasks` class, and the tests that pinned the old artifact obligations.
+  Replaced by `test/slice5-subtraction.test.js` — GT-39/40, RY-16..19, ST-12..14, AM-118/119.
+
+**Already-archived bundles are unaffected.** Nothing here is applied retroactively.
+
+**Not yet:** the package and runbook versions stay at 5.0. 6.0.0 identity waits on three pilot
+changes, a 7-day observation window after the last archive, and the Owner's release
+authorization.
+
+---
+
+## Unreleased — 6.0 slice 4 · one flow, no parallel lanes
+
+- **The hotfix lane is removed.** `apriori hotfix` refuses with a pointer to `apriori new
+  <name>` + `mode: fast` rather than an unknown-command error; `lib/hotfix.js`, its dedicated
+  tests and its dedicated spec are gone.
+- **Leftover lane bundles are diagnosed, never read as changes.** A directory with
+  `hotfix-state.md` and no `flow-state.md` is named by `gate` (exit 2) and `status`, with a
+  **stage-aware** message: an in-flight leftover is told how to migrate, an archived one is
+  told it is frozen history — a write-back instruction aimed at a finished record is an
+  instruction to rewrite history. Residue beside a readable flow-state is just residue.
+- **The explore track's three positions stopped being legal steps** (`INTENT-CARD`, `SPIKE`,
+  `EXTRACTION`); slice 5 retired the whole numbered vocabulary that contained them.
+- Living specs and doc text were corrected in the same slice where they still described the
+  retired lanes.
+
+---
+
 ## Unreleased — 6.0 slice 3 · fast gets a floor, and one risk signal closes its lane
 
 **The hole, reproduced before it was fixed.** A `mode: fast` bundle with an empty `review/`

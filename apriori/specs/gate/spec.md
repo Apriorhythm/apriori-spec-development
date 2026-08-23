@@ -5,16 +5,16 @@
 - WHEN every applicable check passes for an in-flight change
 - THEN each check reports `✓`, the final line is `GATE: PASS` (with the mechanical-only caveat), and the exit code is 0
 
-#### Scenario: GT-02 an unchecked task blocks
-- WHEN the resolved change dir's tasks.md contains an unchecked `- [ ]` box (while `- [x]` and `- [X]` count as checked)
-- THEN C2 reports `✗` naming the file, the final line is `GATE: BLOCKED` with the count, and the exit code is 1
+#### Scenario: GT-02 a legacy task list is a diagnostic, never a block
+- WHEN the resolved change dir carries a 5.x `tasks.md`, with or without unchecked `- [ ]` boxes
+- THEN C2 reports `–` naming what it found and saying 6.0 requires no task list; it can never reach the `blocked` status, and an absent tasks.md reports `–` too
 
-#### Scenario: GT-03 the ledger blocks on open rows and reasonless rejections
-- WHEN the bundle ledger at `<changeDir>/review/issues.md` contains a row whose status starts `open` (case-insensitive), or a `rejected` row with no reason text beyond the word itself
-- THEN C4 blocks naming the row ID; a `rejected` row passes only when, after stripping the leading word `rejected`, the remaining text contains at least one word character (`rejected: duplicate` passes; `rejected`, `rejected:`, `rejected -` block); `advisory*`/`fixed`/`verified` rows never block
+#### Scenario: GT-03 the ledger blocks on open rows and reports the rest
+- WHEN the bundle ledger at `<changeDir>/review/issues.md` contains a row whose status starts `open` (case-insensitive)
+- THEN C4 blocks naming the row ID; a reasonless `rejected`, an unknown status token and an unrecorded `waived` are printed as non-blocking bookkeeping notes beside the verdict; `advisory*`/`fixed`/`verified` rows never block
 
 #### Scenario: GT-04 flow-state legality is enforced
-- WHEN a required flow-state key (`change`, `mode`, `lineage`, `current-step`) is missing, still a `<placeholder>`, has a `current-step` outside the exact vocabulary (STEP0..STEP6, DONE, ABANDONED), a `mode` outside {fast, standard}, or a `change` value that does not equal `--change`
+- WHEN a required flow-state key (`change`, `mode`, `lineage`, `phase`) is missing, still a `<placeholder>`, has a `phase` outside the exact vocabulary (ground, specify, build, review, done, abandoned), a `mode` outside {fast, standard}, or a `change` value that does not equal `--change`
 - THEN C3 blocks naming the offending key; a fully legal flow-state passes
 
 #### Scenario: GT-05 verdict evidence is mechanical
@@ -33,9 +33,9 @@
 - WHEN the resolved change dir has no readable flow-state.md
 - THEN gate exits 2 (mode-aware checks are impossible); a readable flow-state whose `change` key mismatches `--change` is C3-blocked, not exit 2
 
-#### Scenario: GT-09 fast mode is not asked for artifacts it never produces
-- WHEN flow-state declares `mode: fast` and tasks.md or the bundle ledger `<changeDir>/review/issues.md` is absent
-- THEN C2/C4 report `–` (not applicable) instead of blocking; on `standard` the same absences block naming the exact bundle path
+#### Scenario: GT-09 neither mode is asked for artifacts 6.0 does not require
+- WHEN flow-state declares `mode: fast`, and again when it declares `mode: standard`, and neither a task list nor the bundle ledger `<changeDir>/review/issues.md` is present — 6.0 requires neither
+- THEN C2/C4 report `–` (not applicable) in BOTH modes — 6.0 asks for neither file, so their absence is never a block and the mode never changes that answer
 
 #### Scenario: GT-10 KB freshness degrades honestly through the truth index
 - WHEN a touched module `<m>` (first path segment of the change's delta-spec suffixes) resolves through the truth index to a truth doc carrying a canonical `source-commit` stamp (a fence-outside line-start `source-commit: <ref>`), whose resolved `source-files` are all verifiable, and git reports commits in `<ref>..HEAD -- <source-files...>`
@@ -65,16 +65,34 @@
 - WHEN gate runs to any outcome against a project tree
 - THEN no file in the tree is created, modified, or deleted (only the C1 test command's own side effects, which gate does not add to)
 
-### Requirement: C4 speaks the terminal-state vocabulary
-Gate C4 SHALL parse every ledger row's status against the legal vocabulary (leading token, case-insensitive): non-terminal `open` / `fixed` / `rejected + reason`; terminal `verified` / `rejected-verified + reason` / `waived + reason` / `advisory-acked`. ANY other status blocks at BOTH stages. `rejected`, `rejected-verified`, and `waived` without a word-character reason block at both stages. A `waived` row additionally requires machine-checked human evidence at both stages: the change's flow-state `gates:` block must contain the row's ID and the text `waiv` (case-insensitive) — a producer-written row alone never passes. At the ARCHIVED stage every row must be terminal: `fixed` and plain `rejected` block with a cure naming the reviewer's verify/concur duty or the human waive. In-flight, `fixed` and reasoned `rejected` pass as today. The ledger lives at `<changeDir>/review/issues.md` at both stages.
+### Requirement: C9 is the one substantive evidence predicate
+Gate SHALL run a ninth check over the flow-state's `## Evidence` section, and it SHALL be the only place a missing piece of REALITY blocks. Each row reads `- <risk>: done | blocked | owner-accepted | n/a — <detail>`. A `blocked` row blocks: critical evidence that was never run is the one gap no extra review and no extra document can fill. An unreadable row or an unknown status token blocks, because a check that could not be made must never read as "no risk found". A section carrying NO rows blocks too — silence is not an answer. An `owner-accepted` row blocks unless the owner's own decision is recorded in the append-only `gates:` log in the CLOSED grammar `- <YYYY-MM-DDTHH:MM> owner: evidence-accept <exact-row-id> — <reason>`; owner acceptance is a human act, and a producer may not grant itself the §6 exit. C9 SHALL ALSO refuse what the CLI already PROVED about the delta and what the state claims about itself: a mutating delta makes a row named exactly `contract-mutation` owe `done` or a canonically recorded acceptance; a delta the scan could not read is fail-closed and no row cures it; a non-placeholder `## Open` item, a standing Reality Check `assumption` and a Reality Check line naming no kind each block. A `standard` change SHALL owe at least one substantive row that is not `producer-diff`; a `fast` change with no machine risk MAY answer with C1 plus `producer-diff`. C9 SHALL NOT change the change's mode: an accepted risk is still whatever mode the change declared. An ARCHIVED bundle SHALL be reported, never re-judged.
 
-#### Scenario: GT-13 archived ledgers must be terminal
+#### Scenario: GT-39 blocked evidence refuses and owner acceptance is a recorded human act
+- WHEN the flow-state declares an evidence row as `blocked`, then as `owner-accepted` with no `gates:` entry, then as `owner-accepted` with the canonical `gates:` entry accepting it, then with an unknown status token, then with no `## Evidence` section at all
+- THEN C9 is BLOCKED for the first, second, fourth and fifth and `pass` for the third; and in every case the change's `mode` and `effectiveMode` are unchanged by the acceptance
+
+#### Scenario: GT-41 gate hands C9 the delta scan and the effective mode, and every surface judges on both
+- WHEN a change DECLARED `standard` carries a mutating delta — the case where the mode derivation short-circuits and reports no signals of its own — and then when the same bundle is archived
+- THEN gate passes C9 the SCAN's signals rather than the derivation's, so the mutation is still owed an answer; archive's R5 and `status` report the identical findings from the identical two inputs; and the archived bundle is passed no signals at all, reported `n/a` by gate and RECORDED rather than blocking by `status`, which raises no escalation against frozen history
+
+### Requirement: review-ready is a transient view, never a document
+`apriori gate --change <name> --review-ready` SHALL re-face the SAME evaluation as a review-admission answer and SHALL write nothing: no receipt file, no state mutation, no cached verdict. It SHALL report exactly THREE items, each a fact this run measured — the real test/binding result (C1), the evidence rows (C9), and the producer's own diff check (the reserved `producer-diff` evidence row), which SHALL hold only when that row is SETTLED: `done`, or an owner acceptance recorded in the canonical entry. `n/a` and a self-declared acceptance SHALL NOT clear it. It SHALL NOT report an item derived from another item's result, and SHALL NOT state what a reviewer will receive — it cannot observe that; facts the run already holds (the projected delta specs, C1's binding counts) MAY be printed instead. It SHALL exit 0 when every item holds and 1 when any does not, saying that an unready change goes back to Build & Test rather than into a review round. A skipped C1 SHALL never read as ready: the reviewer must not be the first to run the suite.
+
+#### Scenario: GT-40 review-ready answers from the run's own facts and persists nothing
+- WHEN `gate --change <name> --review-ready` runs against a change whose tests pass, whose evidence rows are complete and whose state declares `producer-diff`
+- THEN it prints the three items with the transient-view notice and exits 0; removing the `producer-diff` row, blocking an evidence row, or omitting the test command each flips it to exit 1 naming the missing item — and a missing test command is ONE item, never two; and in every case the project tree is byte-identical afterwards
+
+### Requirement: C4 reports the ledger vocabulary and blocks on open findings alone
+Gate C4 SHALL parse every ledger row's status against the legal vocabulary (leading token, case-insensitive): non-terminal `open` / `fixed` / `rejected + reason`; terminal `verified` / `rejected-verified + reason` / `waived + reason` / `advisory-acked`. Exactly ONE finding kind blocks: a row still `open`, at either stage. Every other finding — an unknown status token, a `rejected`/`rejected-verified`/`waived` without a word-character reason, a `waived` row with no flow-state `gates:` entry carrying its ID and the text `waiv`, and, at the ARCHIVED stage, a `fixed` or plain `rejected` row that never reached a terminal state — SHALL be reported as a bookkeeping note beside the verdict and SHALL NOT block. This is deliberate subtraction: record-keeping state was producing product review rounds on changes whose tests were already green. The ledger lives at `<changeDir>/review/issues.md` at both stages, and an absent ledger is `n/a` in both modes.
+
+#### Scenario: GT-13 archived ledgers report their bookkeeping instead of refusing
 - WHEN gate resolves a change at the archived stage whose ledger carries a `fixed` row, a plain reasoned `rejected` row, or an unknown status like `done`
-- THEN C4 reports BLOCKED naming each row and a cure, while an all-terminal ledger (verified / rejected-verified + reason / gates:-backed waived + reason / advisory-acked) passes
+- THEN C4 passes and each of them is named as a non-blocking bookkeeping note; an `open` row at the same stage still blocks
 
-#### Scenario: GT-14 waives belong to humans, unknown states belong to nobody
-- WHEN a ledger carries a `waived — reason` row without a matching flow-state gates: entry (the ID plus "waiv"), or any row whose status is outside the vocabulary, at either stage
-- THEN C4 reports BLOCKED naming the row — and the same waived row passes once the gates: entry records the human decision
+#### Scenario: GT-14 an unrecorded waive is reported, an open row refuses
+- WHEN a ledger carries a `waived — reason` row without a matching flow-state gates: entry (the ID plus "waiv"), or a row whose status is outside the vocabulary, at either stage
+- THEN C4 names each as a bookkeeping note without blocking, while a row reading `open` in the same ledger is what makes C4 report BLOCKED
 
 #### Scenario: GT-15 every archived ledger in this repo parses legal and terminal
 - WHEN the corpus of archived changes (apriori/changes/archive/*) is walked and each bundle's ledger at `<archived dir>/review/issues.md` is parsed
@@ -122,21 +140,21 @@ Gate SHALL run a seventh check: the change's projection carrying `unstampedMutat
 - THEN change A's C1 passes and the store suffix still shows the outstanding counts; conversely WHEN the stream carries an ID-less `not ok` or a FAILING true orphan THEN change A's C1 is BLOCKED (no provenance — fail closed), whatever change A's own scenarios say
 
 ### Requirement: a bundle left behind by the retired hotfix lane is diagnosed, not gated
-6.0 removed the hotfix lane. A directory carrying `hotfix-state.md` and NO `flow-state.md` cannot be read as a change at all, so the gate SHALL refuse it as an evaluation error that names the file it found and the migration (`apriori new <name>`, `mode: fast`, or finishing it with apriori-cli 5.x) — it is never reported as a generic missing flow-state, and never passed. `hotfix-state.md` sitting BESIDE a readable `flow-state.md` is residue, not a second identity: the change is gated exactly as any other change, and the seven checks are unchanged in both cases.
+6.0 removed the hotfix lane. A directory carrying `hotfix-state.md` and NO `flow-state.md` cannot be read as a change at all, so the gate SHALL refuse it as an evaluation error that names the file it found and the migration (`apriori new <name>`, `mode: fast`, or finishing it with apriori-cli 5.x) — it is never reported as a generic missing flow-state, and never passed. `hotfix-state.md` sitting BESIDE a readable `flow-state.md` is residue, not a second identity: the change is gated exactly as any other change, and the check set is unchanged in both cases.
 
 #### Scenario: GT-28 a leftover lane bundle gets the migration, not a missing-file message
-- WHEN `gate --change <name>` resolves a directory holding `hotfix-state.md` and no `flow-state.md`
+- WHEN `gate --change <name>` resolves a directory left behind by the RETIRED hotfix lane — holding `hotfix-state.md` and no `flow-state.md`
 - THEN the gate exits 2 with an error naming `hotfix-state.md` and the `apriori new` migration, reports no check results, and never names the retired `apriori hotfix` command
 
 ### Requirement: gate degrades the checks it cannot run instead of refusing to run at all
-A missing test command SHALL disable C1 alone, never the whole evaluation. When no usable test-command source exists (no `--test-cmd` flag and no live `test-cmd` row in `apriori/process-config.md`), `apriori gate` SHALL report C1 with status `skipped`, SHALL still execute C2..C7 and report their real conclusions, and SHALL exit 3 (`GATE: INCOMPLETE`) when nothing blocked. A BROKEN test-command source is a different thing from an ABSENT one and SHALL remain an exit-2 evaluation error. The effective id-pattern SHALL still be resolved and compile-checked even when C1 is skipped — a broken pattern is a broken config, not an absent one.
+A missing test command SHALL disable C1 alone, never the whole evaluation. When no usable test-command source exists (no `--test-cmd` flag and no live `test-cmd` row in `apriori/process-config.md`), `apriori gate` SHALL report C1 with status `skipped`, SHALL still execute C2..C9 and report their real conclusions, and SHALL exit 3 (`GATE: INCOMPLETE`) when nothing blocked. A BROKEN test-command source is a different thing from an ABSENT one and SHALL remain an exit-2 evaluation error. The effective id-pattern SHALL still be resolved and compile-checked even when C1 is skipped — a broken pattern is a broken config, not an absent one.
 
 #### Scenario: GT-30 an absent test command skips C1 and runs the rest
 - WHEN `apriori gate --change <name>` runs with no `--test-cmd` flag and no live `test-cmd` config row, against an in-flight change whose other checks all pass
-- THEN C1 reports status `skipped` with a detail carrying BOTH the fact it did not run AND the cure (`--test-cmd` or a `test-cmd` row), C2..C7 each report their real status, the final line is `GATE: INCOMPLETE`, and the exit code is 3
+- THEN C1 reports status `skipped` with a detail carrying BOTH the fact it did not run AND the cure (`--test-cmd` or a `test-cmd` row), C2..C9 each report their real status, the final line is `GATE: INCOMPLETE`, and the exit code is 3
 
 #### Scenario: GT-31 a confirmed block outranks an unrun check
-- WHEN the test command is absent AND at least one of C2..C7 blocks
+- WHEN the test command is absent AND at least one of C2..C9 blocks
 - THEN the result is `BLOCKED` with exit code 1 and `blocked` counts only the blocked checks — the skipped C1 never softens a confirmed block, and never inflates the count
 
 #### Scenario: GT-32 an empty, whitespace-only, or non-string test command is an error, not an absence
@@ -165,4 +183,12 @@ A missing test command SHALL disable C1 alone, never the whole evaluation. When 
 
 #### Scenario: GT-38 the degradation reaches the archived stage too
 - WHEN the test command is absent and the change resolves only under `apriori/changes/archive/<stamp>-<name>/`
-- THEN C1 is `skipped`, C7 is `–` (deltas already merged), C4 still demands every ledger row be terminal, and the exit code follows the same total order; the shared projection builder is invoked ZERO times on this path, observably — an archived bundle's deltas are already in the store, so building a projection could only manufacture a false block
+- THEN C1 is `skipped`, C7 is `–` (deltas already merged), C4 still blocks on an `open` row and notes the rest, and the exit code follows the same total order; the shared projection builder is invoked ZERO times on this path, observably — an archived bundle's deltas are already in the store, so building a projection could only manufacture a false block
+
+#### Scenario: GT-43 producer-diff must be settled — `n/a` clears nothing
+- WHEN the reserved `producer-diff` row reads `n/a`, `blocked`, or `owner-accepted` with no canonical `gates:` entry
+- THEN `--review-ready` refuses and names the item; it holds only for `done` or an owner acceptance really recorded
+
+#### Scenario: GT-44 review-ready reports three measured items and promises nothing
+- WHEN `--review-ready` runs on a ready change, in text and in `--json`
+- THEN exactly three items are reported (`tests`, `evidence`, `producer-diff`), no item is derived from another item's result, no line claims what a reviewer receives, the closing line is bare, a fact the run already holds is printed instead (the projected delta specs), and nothing is written to disk

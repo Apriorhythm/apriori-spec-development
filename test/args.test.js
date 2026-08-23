@@ -26,7 +26,7 @@ function mkProject(files) {
 function sentinelProject() {
   return mkProject({
     'apriori/specs/m/spec.md': '### Requirement: R\n\n#### Scenario: XA-01 a\n- t\n',
-    'apriori/changes/c/flow-state.md': 'change: c\nmode: fast\nlineage: v3\ncurrent-step: STEP5\n',
+    'apriori/changes/c/flow-state.md': 'change: c\nmode: fast\nlineage: v3\nphase: build\n',
     'apriori/changes/c/specs/m/spec.md': '## ADDED Requirements\n\n### Requirement: S\n\n#### Scenario: XB-01 b\n- t\n',
     'apriori/process-config.md': `| language | auto |\n| test-cmd | node -e "require('fs').writeFileSync('SENTINEL','x');console.log('ok 1 - XA-01')" | x | (none) |\n`,
   });
@@ -93,7 +93,7 @@ test('CL-15 repeats and aliases behave declaredly', () => {
   const r = run(['verify', '--specs', 'a', '--specs', 'b', '--test-cmd', tap], root);
   assert.strictEqual(r.status, 0, r.stdout + r.stderr);
   // value last-write-wins
-  const root2 = mkProject({ 'apriori/changes/b/flow-state.md': 'change: b\ncurrent-step: STEP0\n' });
+  const root2 = mkProject({ 'apriori/changes/b/flow-state.md': 'change: b\nphase: ground\n' });
   const r2 = run(['status', '--change', 'a', '--change', 'b'], root2);
   assert.match(r2.stdout, /\bb\b/);
   // boolean idempotent

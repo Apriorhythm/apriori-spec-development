@@ -27,8 +27,8 @@ A detected AI tool's rules file no longer points at `apriori/runbook.md`, or its
 ### D6 — scenario without a bindable ID / duplicate IDs
 Every `#### Scenario:` heading must start with an ID like `KV-03`, unique across the store. Fix the spec files; `check` enforces the same rule in CI.
 
-### D7 — flow-state problems / "gate ④ possibly pending"
-An active change dir without a parseable `flow-state.md` (or whose `change:` mismatches the dir name) needs manual repair. The "gate ④ possibly pending" line is information, not a problem: an archived change awaiting its human KB sign-off is the designed sequence.
+### D7 — flow-state problems / "closeout pending"
+An active change dir without a parseable `flow-state.md` (or whose `change:` mismatches the dir name) needs manual repair. A 5.x identity key (`tier`, `track`, `track-rationale`, `round`, `current-step`) is reported here too — replace it per MIGRATING.md. The "closeout pending" line is information, not a problem: an archived change whose `phase` is not yet `done` simply has not had its closeout recorded.
 
 ## Classic traps
 

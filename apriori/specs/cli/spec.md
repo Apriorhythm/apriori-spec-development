@@ -42,7 +42,7 @@ The toolchain SHALL ship as one npm package `apriori-cli` exposing a `bin` named
 - THEN the printed usage lists `doctor` alongside the other subcommands (behavior per DR-01..12); `apriori doctor <positional>` prints its own usage and exits 2
 
 #### Scenario: CL-18 the retired hotfix verb is refused with a pointer and gone from usage
-- WHEN `apriori` runs with no arguments or `--help`, and separately any `apriori hotfix …` form runs
+- WHEN `apriori` runs with no arguments or `--help`, and separately any `apriori hotfix …` form runs (the verb was retired in 6.0 and refuses with a pointer)
 - THEN the usage never lists `hotfix`; every `hotfix` form exits 2 on stderr naming its removal in 6.0 and the replacement (`apriori new <name>` with `mode: fast`) — a retired verb is refused with a pointer, never left to the dispatcher's unknown-command path
 
 ### Requirement: uniform argument strictness across subcommands

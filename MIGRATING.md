@@ -2,6 +2,148 @@
 
 The 3.0.0 stability promise: CLI surface & flags, `--json` shapes, the delta format, the flow-state schema and the `apriori/` layout only break in a major. Everything below is either additive or a declared fail-closed tightening.
 
+## 6.0 slice 4 → slice 5 (Unreleased) — the artifact family is gone
+
+**This is the subtraction the 6.0 blueprint is for.** 5.x demanded a requirement doc, a
+proposal, a design doc, a gap report and a task list of every change; the practices that fed
+this design show the cost landing on reviewers rather than on defects. Slice 5 removes the
+obligation from the runtime, the living specs, the tests and both doc editions at once — a
+half-removed state would leave old and new running side by side.
+
+**1. `current-step` → `phase`.** The seven numbered steps are gone; the four phases are the
+state:
+
+```diff
+ change: add-playback
+ mode: standard
+ lineage: main
+-current-step: STEP5
+-next-action: implement task 3
++phase: build
++
++## Reality Check
++- observed: src/player.js has no seek handler — read 2026-08-23
++- decision: seek is in scope
++
++## Evidence
++- producer-diff: done — read the whole diff, known P0/P1 zero
++
++## Next
++- write the failing test for AP-04
+```
+
+- `STEP0`/`STEP1` → `phase: ground` · `STEP2`/`STEP3` → `phase: specify` · `STEP4`/`STEP5` →
+  `phase: build` · `STEP6` → `phase: review` · `DONE` → `done` · `ABANDONED` → `abandoned`
+- `next-action:` becomes the `## Next` section (at most three entries; the first is the resume point)
+- optional new keys: `delivery: released | pending-external-acceptance` (the third state an
+  archive declares) and `escalation: none | <what a human must decide>`
+
+`current-step` now refuses the same way `tier`/`track`/`round` do: a bundle that still spells
+it is named by `gate` C3, `archive` (RESULT: NOT READY) and `status`, never silently read.
+Archiving happens at `phase: review`.
+
+**2. No document family, in either mode.** `apriori new` scaffolds `flow-state.md` plus empty
+`specs/` and `review/` — it no longer creates `requirement/` and names no document to draft.
+Readiness rule **R2** (the task list) does not exist. `gate` C2 can only report `–`: a
+`tasks.md` a 5.x bundle still carries is read as a diagnostic, its unchecked boxes named, and
+it can never block. An absent ledger is `n/a` in **both** modes.
+
+**3. The ledger blocks on one thing.** A row still reading `open` refuses a delivery. An
+unknown status token, a reasonless rejection, a `waived` with no `gates:` record, and an
+archive-stage `fixed` that never became `verified` are printed as **bookkeeping notes** and
+never refuse. 5.x refused archives over those, on changes whose product tests were already
+green. The `archive-force` grammar keeps one class, `ledger`; an `archive-force tasks` record
+is inert.
+
+**4. One new refusal, and it is about reality.** The flow-state's `## Evidence` section holds
+one row per risk the change actually hits:
+
+```markdown
+## Evidence
+- producer-diff: done — read the whole diff, known P0/P1 zero
+- data-schema: blocked — the staging DB is offline
+```
+
+A `blocked` row blocks delivery (gate **C9**, archive **R5**) until the owner decides. An
+`owner-accepted` row blocks unless the owner's OWN decision is on record, in a closed grammar:
+
+```markdown
+gates:
+  - 2026-08-23T11:00 owner: evidence-accept data-schema — the staging DB is offline until Q4
+```
+
+Every part is load-bearing — a real timestamp, the actor spelled exactly `owner`, the lowercase
+keyword opening the payload, the row id whole and case-sensitive, the em dash, and a reason.
+`producer:`, `note:`, a `gate⑤ (owner):` prefix, an undated line, a missing dash or reason, a
+near-miss id, and generic accept prose authorize nothing — a producer may not grant itself the
+owner's exit. Revoke by APPENDING `evidence-accept-revoke <id> — <reason>`; the last decision
+wins. `--force` cannot substitute for the decision, and acceptance never changes the change's
+mode.
+
+Two more things C9/R5 read. A delta that MUTATES a published requirement makes a row named
+exactly `contract-mutation` owe `done` or a recorded acceptance — `n/a` contradicts a proven
+fact. A `standard` change owes at least one substantive row that is not `producer-diff`; a
+`fast` change with no machine risk may answer with the binding run plus `producer-diff`. **No
+`## Evidence` section at all now blocks** — in 5.x there was nothing to answer; in 6.0 silence
+is not an answer, and a bundle you carry over needs at least
+`- producer-diff: done — <what you checked>`.
+
+**5. Review-ready, and a third verdict.** `apriori gate --change <name> --review-ready` prints
+a transient admission view over the same run's facts — tests really executed, evidence
+complete or explicitly blocked/accepted, the producer's own `producer-diff` row, and the
+reviewer's default context — and writes nothing. Reviewers gained `VERDICT: escalate`: the
+approach is wrong rather than the details, and it escalates at whatever round it happened.
+`apriori status --change <name> --escalation` prints every reason a human is being waited on
+and exits **3** — that exit code is the whole hard-stop mechanism; this repository still ships
+no hook.
+
+**6. The numbered gates are gone.** There is no gate ①–⑤ ladder and no consolidation
+authorization. Four things stop for a human: an escalation, critical evidence still `blocked`,
+an external side effect, and abandonment. The `gates:` block stays, with two labels — `owner`
+and `note`. **A `gate⑤ (owner):` prefix no longer authorizes anything.** All three owner
+decisions — `evidence-accept`, `archive-force` and `reframe` — now read ONE canonical entry:
+
+```markdown
+gates:
+  - 2026-08-23T10:00 owner: reframe spec-review round 2 split — the change is two changes
+```
+
+A real timestamp, the actor spelled exactly `owner`, the lowercase verb opening the payload, the
+target matched whole, an em dash, a reason. `producer:`, `note:`, `agent:`, the retired
+`gate⑤ (owner):` prefix, an undated line, a missing dash or reason, and a near-miss target
+authorize none of the three. If a bundle you carry over records a decision under the old prefix,
+rewrite that line as `owner:` — nothing else about it changes. `note:` entries stay legal as
+HISTORY; they simply never authorized anything and now say so.
+
+**7. `verification-profile` is gone.** The `process-config` row had a reader and no consumer —
+it scaled evidence by project type, and §6's risk rows are the only list now. Delete the row if
+you carry one; nothing read it, so nothing changes. (`apriori init` stopped scaffolding it.)
+
+**8. The archive declares three states.** Implementation complete, critical evidence complete,
+released or pending external acceptance — printed in dry-run and `--write` alike. The bundle
+is frozen afterwards: a defect found later becomes a short outcome note or a NEW change, never
+an edit to the archived record.
+
+**Already-archived bundles are untouched.** Nothing here is applied retroactively.
+
+---
+
+## 6.0 slice 3 → slice 4 — one flow, no parallel lanes
+
+**The hotfix lane and the explore track are gone.** `apriori hotfix` refuses with a pointer
+rather than an unknown-command error: new work is `apriori new <name>` with `mode: fast`
+(reproduce → fix → regression → one independent review). A directory that still carries
+`hotfix-state.md` and no `flow-state.md` cannot be read as a change — `gate` and `status`
+diagnose it by name and tell you to convert it (`apriori new <name>`, `mode: fast`) or finish
+it with apriori-cli 5.x. An **archived** lane record is frozen history and is told so: it is
+never handed a write-back instruction. `hotfix-state.md` sitting beside a readable
+`flow-state.md` is residue, and the change is gated as the change it is.
+
+The explore track's positions (`INTENT-CARD`, `SPIKE`, `EXTRACTION`) stopped being legal steps
+in the same slice; slice 5 retired the whole numbered vocabulary that contained them.
+
+---
+
 ## 6.0 slice 2b → slice 3 — fast owes one review, and a contract-mutating delta is standard
 
 **Two tightenings, both fail-closed, both declared.**
@@ -12,11 +154,12 @@ The 3.0.0 stability promise: CLI surface & flags, `--json` shapes, the delta for
 you already write satisfies this — a summary whose verdict line is in the known vocabulary,
 with its `<stem>-raw.*` transcript beside it. Nothing new to author, no matrix to fill in.
 
-**On `fast` the review must also have closed.** Standard's open findings are held by the
-ledger, which archive already drives to terminal states; fast keeps no ledger, so a fast change
-whose latest round still says `gaps found` or `N issues open` (N > 0) is refused. Land the
-next round. Standard's loop is unchanged: a round-1 revise is still fine, and round 2 is still
-its control point.
+**The review must also have closed.** Where a change keeps a ledger, archive drives its rows
+to terminal states; where it keeps none, a change whose latest round still says `gaps found` or
+`N issues open` (N > 0) is refused. Land the next round. The loop itself is unchanged: a
+round-1 revise is still fine, and round 2 is still its control point.
+*(Slice 5 widened this from `fast` to every change that keeps no ledger — which, since slice 5
+requires none, is the default in both modes.)*
 
 **Evidence `gate` cannot read, `archive` no longer merges.** A symlinked review summary, or a
 verdict document with no `-raw` archive, now refuses the merge (R4) exactly as it refuses the
@@ -25,8 +168,8 @@ gate (C5). Neither is forceable. Before this, `gate` said `C5 BLOCKED` and `arch
 
 **What to do:** if you have an in-flight change with an empty `review/`, run the review; if its
 last round is still revising, run the next one; if a review file is a symlink, land the real
-bytes. That is the entire migration. If the work genuinely needs no outside look, it is not a
-change — see the hotfix lane (RUNBOOK §2b).
+bytes. That is the entire migration. There is no lane that exempts work from the outside look:
+6.0 has one flow, and both of its modes keep the single independent review.
 
 **2. A delta that MUTATES a published requirement makes the change standard.** If
 `apriori/changes/<name>/specs/**.md` carries a `## MODIFIED`, `## REMOVED` or
@@ -34,12 +177,14 @@ change — see the hotfix lane (RUNBOOK §2b).
 the same reason, e.g.:
 
 ```text
-✓ C3 legal (mode fast → standard (contract-mutation: kv/spec.md MODIFIED 'Alpha'), STEP5)
+✓ C3 legal (mode fast → standard (contract-mutation: kv/spec.md MODIFIED 'Alpha'), build)
 ```
 
-You do not edit `mode:` — the tool judges by the effective mode and reports both. The cost is
-standard's own `tasks.md` and ledger; **no new document is required and no extra review round
-is added**. An `## ADDED`-only delta is untouched and stays fast.
+You do not edit `mode:` — the tool judges by the effective mode and reports both. **No new
+document is required and no extra review round is added.** An `## ADDED`-only delta is
+untouched and stays fast. *(Slice 5 removed the artifacts the upgrade used to withdraw, so the
+upgrade is now a reported judgement: `gate`, `status` and `archive` all state it, and an
+upgraded change with no `## Evidence` row is not review-ready.)*
 
 There is deliberately **no override**. The signal is not a heuristic that could be a
 misjudgement — it is the delta grammar restating what the change itself declares — so the
@@ -82,15 +227,15 @@ exist through a loop no code ran. Nothing takes its place: no ledger, no metric 
 dynamic cap, no shrink engine, no new gate.
 
 **What was removed is the *configurable* cap, not every bound.** The `process-config` rows had
-no consumer, so the dynamic caps they claimed to set are gone. STEP5's `/goal` recipe in
-RUNBOOK §6 still carries a fixed **25-turn safety bound** — it is simply no longer configurable:
-reaching turn 25 with any success condition unmet means stop and report the failing evidence,
-never a pass. STEP6's recipe has no bound and stops on its exit conditions.
+no consumer, so the dynamic caps they claimed to set are gone. The implement-and-test `/goal`
+recipe in RUNBOOK §6 still carries a fixed **25-turn safety bound** — it is simply no longer
+configurable: reaching turn 25 with any success condition unmet means stop and report the
+failing evidence, never a pass. The deliver recipe has no bound and stops on its exit conditions.
 
 **What still stops a review loop** is exactly what slice 2 made mechanical: the derived
-per-family review round (`gate` C8), archive readiness R4, and the human gates. Those govern
-**review rounds only** — they do not govern, and never terminate, STEP5's implementation/test
-turns.
+per-family review round (`gate` C8), archive readiness R4, and the human decisions of §1 R1.
+Those govern **review rounds only** — they do not govern, and never terminate, the
+implementation/test turns.
 
 **Two consequences worth knowing before you re-read the runbook.** Gate consolidation used to
 name three gates it could never cover — the shrink decision, the KB sign-off,
@@ -117,17 +262,17 @@ when a family's loop stops, as a `gates:` entry naming that family:
 
 ```text
 gates:
-  - 2026-08-23T10:00 gate⑤ (owner): reframe spec-review round 2 split — the change is two changes
+  - 2026-08-23T10:00 owner: reframe spec-review round 2 split — the change is two changes
 ```
 
 Legal decisions are `split`, `tests` and `redo`; at round 5 the owner also has `accept-risk`.
 The entry names the family AND the round it answers, so it never silently pre-authorizes the
-next round or another family's loop. It does not waive evidence problems — those are fixed.
+next round or another family's loop. The prefix is binding — the actor must be spelled exactly
+`owner` and the timestamp must be real, as for every owner decision (see above). It does not waive evidence problems — those are fixed.
 
 **Your existing review documents almost certainly already pass.** The verdict vocabulary accepts
 `N issues open` and `N issues found`, singular or plural, any case, with or without a trailing
-period, plus the accept and revise phrasings and the hotfix lane's `role=`/`digest=`/`boundary=`
-trailers. `0 issues open` reads as an accept. A document whose body was pasted twice with the
+period, plus the accept and revise phrasings. `0 issues open` reads as an accept. A document whose body was pasted twice with the
 same verdict both times is an advisory, not a refusal, and a stray transcript like
 `kb-check-raw.txt` is an advisory too.
 
@@ -171,10 +316,11 @@ was only ever required to be *present* (no branch ever read `harden` vs `explore
 - `tier: trivial` → `mode: fast` · `tier: medium` / `tier: large` → `mode: standard`
 - delete `track`, `track-rationale` and `round` outright
 
-`fast` means the same thing to the CLI that `trivial` did — `tasks.md` and `review/issues.md`
-may be absent (gate C2/C4 `n/a`, archive readiness R2/R3 `n/a`). What it means to *you* is
-narrower: a reproducible defect, a local fix, and no public contract / data shape / permission
-/ deploy / cross-system surface touched. Anything else is `standard`.
+At the time, `fast` meant to the CLI what `trivial` did: `tasks.md` and `review/issues.md
+` could be absent. Slice 5 removed both obligations from **both** modes, so what `fast` means
+now is only what it always meant to *you*: a reproducible defect, a local fix, and no public
+contract / data shape / permission / deploy / cross-system surface touched. Anything else is
+`standard`. (`current-step` in the diff above is itself retired — see the slice-5 section.)
 
 **There is no compatibility window, and a legal `mode` does not buy one.** Any of the four
 keys refuses on its own — even standing next to a correct `mode` line — because a stale row

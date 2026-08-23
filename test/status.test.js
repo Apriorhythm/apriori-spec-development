@@ -19,10 +19,25 @@ function project(changes) {
 
 const FLOW = `change: demo
 mode: standard
-current-step: STEP2
-next-action: spawn P5 reviewer   # 2026-07-07
+phase: specify
+delivery: pending-external-acceptance
+
+## Reality Check
+- observed: lib/kv.js exports set/get/del — read 2026-07-07
+- decision: TTL is optional
+- assumption: get cleans up lazily
+
+## Evidence
+- producer-diff: n/a — not built yet
+
+## Open
+- D-1 is still open
+
+## Next
+- spawn the P3 reviewer
+
 gates:
-  - 2026-07-07T02:00 gate③: approved
+  - 2026-07-07T02:00 owner: approved
 `;
 const LEDGER = `| ID | Issue | Risk | Round | Status |
 |---|---|---|---|---|
@@ -35,18 +50,23 @@ const LEDGER = `| ID | Issue | Risk | Round | Status |
 test('ST-01 --change reports step, next-action, and open-ledger count/IDs', () => {
   const root = project({ demo: { flow: FLOW, ledger: LEDGER } });
   const s = status.changeStatus(root, 'demo');
-  assert.strictEqual(s.state['current-step'], 'STEP2');
-  assert.match(s.state['next-action'], /spawn P5 reviewer/);
+  assert.strictEqual(s.state.phase, 'specify');
+  assert.deepStrictEqual(s.state.next, ['spawn the P3 reviewer']);
   assert.deepStrictEqual(s.open.map((r) => r.id), ['D-1', 'D-3']);
   const out = status.formatOne(s);
-  assert.match(out, /step:.*STEP2/);
-  assert.match(out, /next-action:.*spawn P5 reviewer/);
-  assert.match(out, /last gate:.*gate③: approved/);          // last gate surfaced
+  assert.match(out, /phase:.*specify/);
+  assert.match(out, /next 1:.*spawn the P3 reviewer/);
+  assert.match(out, /last decision:.*owner: approved/);      // the last human decision surfaced
   assert.match(out, /open ledger:  2 — D-1, D-3/);
+  // the ONE state's own content is read back too
+  assert.match(out, /reality:      1 observed, 1 decision, 1 assumption/);
+  assert.match(out, /assumption:   get cleans up lazily/);
+  assert.match(out, /open:         D-1 is still open/);
+  assert.match(out, /evidence:     producer-diff: n\/a/);
 });
 
 test('ST-02 no args lists active changes (with step + open count), excluding archive/', () => {
-  const root = project({ demo: { flow: FLOW, ledger: LEDGER }, other: { flow: 'change: other\ncurrent-step: STEP0\n' } });
+  const root = project({ demo: { flow: FLOW, ledger: LEDGER }, other: { flow: 'change: other\nphase: ground\n' } });
   fs.mkdirSync(path.join(root, 'apriori', 'changes', 'archive', '2026-07-01-old'), { recursive: true });
   assert.deepStrictEqual(status.activeChanges(root), ['demo', 'other']);   // archive/ excluded
   // the no-args CLI output lists each change with its step and open count
@@ -55,8 +75,8 @@ test('ST-02 no args lists active changes (with step + open count), excluding arc
   try { process.chdir(root); assert.strictEqual(status.cli([]), 0); }
   finally { console.log = log; process.chdir(cwd); }
   const printed = out.join('\n');
-  assert.match(printed, /demo  —  STEP2, 2 open/);
-  assert.match(printed, /other  —  STEP0, 0 open/);
+  assert.match(printed, /demo  —  specify, 2 open/);
+  assert.match(printed, /other  —  ground, 0 open/);
   assert.doesNotMatch(printed, /2026-07-01-old/);            // archive not listed
 });
 
@@ -76,13 +96,27 @@ test('ST-04 --json emits a machine-consumable report (single + list), pure JSON'
     assert.strictEqual(status.cli(['--change', 'demo', '--json']), 0);
     const single = JSON.parse(out.join('\n'));            // parses = pure JSON, no prose
     assert.strictEqual(single.change, 'demo');
-    assert.strictEqual(single.step, 'STEP2');
+    assert.strictEqual(single.phase, 'specify');
     assert.strictEqual(single.mode, 'standard');
-    for (const gone of ['tier', 'track', 'round'])
+    for (const gone of ['tier', 'track', 'round', 'step', 'nextAction'])
       assert.ok(!(gone in single), `5.x '${gone}' must not survive in the JSON contract`);
     assert.strictEqual(single.hasFlowState, true);
-    assert.match(single.nextAction, /spawn P5 reviewer/);
-    assert.match(single.lastGate, /gate③: approved/);
+    assert.deepStrictEqual(single.next, ['spawn the P3 reviewer']);
+    assert.deepStrictEqual(single.openIssues, ['D-1 is still open']);
+    assert.deepStrictEqual(single.reality.assumption, ['get cleans up lazily']);
+    assert.strictEqual(single.delivery, 'pending-external-acceptance');
+    assert.deepStrictEqual(single.evidence.rows.map((x) => x.name), ['producer-diff']);
+    // `escalations` is the field a Stop hook reads, and it carries what gate C9 / archive R5
+    // refuse on — from the SAME predicate, fed the same effective mode and delta scan. This
+    // change is standard, still at `specify`, and its own state says an issue is open and an
+    // assumption is unproven: every one of those is a reason a human is being waited on.
+    assert.deepStrictEqual(single.escalations, [
+      "a standard change owes at least one substantive evidence row that is not 'producer-diff'"
+        + ' — silence is not evidence; name the §6 risk it hits and what you ran',
+      'open substantive issue: D-1 is still open — close it, or move it to a new change',
+      'unverified assumption: get cleans up lazily — verify it, or promote it to an ## Evidence row',
+    ]);
+    assert.match(single.lastGate, /owner: approved/);
     assert.deepStrictEqual(single.openLedger, ['D-1', 'D-3']);
     out.length = 0;
     assert.strictEqual(status.cli(['--json']), 0);         // list mode
@@ -101,7 +135,7 @@ function archivedProject() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-st-'));
   const dir = path.join(root, 'apriori', 'changes', 'archive', '2026-07-10T1200-demo');
   fs.mkdirSync(path.join(dir, 'review'), { recursive: true });
-  fs.writeFileSync(path.join(dir, 'flow-state.md'), FLOW.replace('STEP2', 'DONE'));
+  fs.writeFileSync(path.join(dir, 'flow-state.md'), FLOW.replace('phase: specify', 'phase: done'));
   fs.writeFileSync(path.join(dir, 'review', 'issues.md'), LEDGER.replace(/open/g, 'verified'));
   return root;
 }
@@ -111,7 +145,7 @@ test('ST-05 an archived change is visible with its stage', () => {
   const r = runStatus(['--change', 'demo'], root);
   assert.strictEqual(r.status, 0, r.stdout + r.stderr);
   assert.match(r.stdout, /archived/);
-  assert.match(r.stdout, /DONE/);
+  assert.match(r.stdout, /phase:        done/);
   assert.doesNotMatch(r.stdout, /no flow-state file found/);
 });
 

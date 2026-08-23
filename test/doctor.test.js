@@ -229,9 +229,9 @@ test('DR-09 changes overview validates flow-states and surfaces pending gates', 
   fs.mkdirSync(path.join(root, 'apriori/changes/wrong'), { recursive: true });
   fs.writeFileSync(path.join(root, 'apriori/changes/wrong/flow-state.md'), 'change: other\n');          // mismatch
   fs.mkdirSync(path.join(root, 'apriori/changes/good'), { recursive: true });
-  fs.writeFileSync(path.join(root, 'apriori/changes/good/flow-state.md'), 'change: good\ncurrent-step: STEP5\n');
+  fs.writeFileSync(path.join(root, 'apriori/changes/good/flow-state.md'), 'change: good\nphase: build\n');
   fs.mkdirSync(path.join(root, 'apriori/changes/archive/2026-07-10T1200-old'), { recursive: true });
-  fs.writeFileSync(path.join(root, 'apriori/changes/archive/2026-07-10T1200-old/flow-state.md'), 'change: old\ncurrent-step: STEP6\n');
+  fs.writeFileSync(path.join(root, 'apriori/changes/archive/2026-07-10T1200-old/flow-state.md'), 'change: old\nphase: review\n');
   const r = doctor.runDoctor({ cwd: root, testCmd: TAP_OK });
   const findings = byId(r, 'D7').filter((c) => c.status === 'finding');
   const details = findings.map((c) => c.detail).join(' ');
@@ -246,7 +246,7 @@ test('DR-09 changes overview validates flow-states and surfaces pending gates', 
   let canSymlink = true;
   const outside = path.join(root, 'elsewhere');
   fs.mkdirSync(outside, { recursive: true });
-  fs.writeFileSync(path.join(outside, 'flow-state.md'), 'change: evil\ncurrent-step: STEP0\n');
+  fs.writeFileSync(path.join(outside, 'flow-state.md'), 'change: evil\nphase: ground\n');
   try { fs.symlinkSync(outside, path.join(root, 'apriori/changes/archive/2026-07-10T1300-evil')); }
   catch { canSymlink = false; }
   if (canSymlink) {
@@ -256,7 +256,7 @@ test('DR-09 changes overview validates flow-states and surfaces pending gates', 
     assert.match(t, /skipped|escape/);             // and the skip is surfaced as info
     // per-FILE containment: an active change whose flow-state.md symlinks outside is diagnosed, never read
     const secret = path.join(outside, 'secret-flow.md');
-    fs.writeFileSync(secret, 'change: leak-me\ncurrent-step: STEP0\n');
+    fs.writeFileSync(secret, 'change: leak-me\nphase: ground\n');
     fs.mkdirSync(path.join(root, 'apriori/changes/linked'), { recursive: true });
     fs.symlinkSync(secret, path.join(root, 'apriori/changes/linked/flow-state.md'));
     const r3 = doctor.runDoctor({ cwd: root, testCmd: TAP_OK });

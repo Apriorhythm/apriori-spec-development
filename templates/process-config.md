@@ -9,7 +9,6 @@
 |---|---|---|---|
 | language | auto | auto (match the human) / any language name, e.g. `中文`, `English` | auto |
 | id-pattern | [A-Z]+(?:-[A-Z]+)*-\d+[a-z]* | bare JS regex source for scenario IDs; pipe escaping: see the comment below this table | [A-Z]+(?:-[A-Z]+)*-\d+[a-z]* |
-| verification-profile | none | ui / backend / fullstack / docs / none | absent or `none` = nothing escalates |
 | cas | required | required = archive denies unstamped mutation deltas / optional = warn only (waiver visible) | required |
 
 <!-- id-pattern pipe escaping (two separate layers — do not conflate them):

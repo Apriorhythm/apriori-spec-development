@@ -209,7 +209,7 @@ test('SR-55 every child failure class fails closed', () => {
 
 // ---- GT: gate ----
 const gate = require('../lib/gate');
-const FLOW = (name) => `change: ${name}\nmode: standard\nlineage: main\ncurrent-step: STEP5\nnext-action: x\ngates:\n  - 2026-08-13T00:00 note: n\n`;
+const FLOW = (name) => `change: ${name}\nmode: standard\nlineage: main\nphase: build\nnext-action: x\ngates:\n  - 2026-08-13T00:00 note: n\n`;
 const LEDGER_OK = '| ID | Issue | Risk | Round found | Status |\n|---|---|---|---|---|\n| Q-1 | a | low | 1 | verified |\n';
 // A LOWERCASE id: the built-in default deliberately does not recognise it, so a flag or config
 // row genuinely changes the outcome. (The old `XA-01b` fixture stopped discriminating once the
@@ -480,7 +480,7 @@ test('CF-11 an unreadable config fails closed across all four consumers', () => 
   assert.match(JSON.parse(v.stdout).errors.join(' '), /process-config/);
   const groot = mk();
   fs.mkdirSync(path.join(groot, 'apriori/changes/c/specs/m'), { recursive: true });
-  fs.writeFileSync(path.join(groot, 'apriori/changes/c/flow-state.md'), 'change: c\nmode: standard\nlineage: main\ncurrent-step: STEP5\nnext-action: x\n');
+  fs.writeFileSync(path.join(groot, 'apriori/changes/c/flow-state.md'), 'change: c\nmode: standard\nlineage: main\nphase: build\nnext-action: x\n');
   fs.writeFileSync(path.join(groot, 'apriori/changes/c/specs/m/spec.md'), '## ADDED Requirements\n\n### Requirement: R\n\n#### Scenario: AC-02 b\n- t\n');
   const g = run(groot, ['gate', '--change', 'c', '--test-cmd', 'node -e ""', '--json']);
   assert.strictEqual(g.status, 2);

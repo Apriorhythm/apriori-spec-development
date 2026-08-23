@@ -1,9 +1,9 @@
 ### Requirement: new scaffolds an in-flight change
-`apriori new <name>` SHALL create `apriori/changes/<name>/` with a flow-state skeleton (STEP0, placeholders for `mode`/`lineage` — 6.0 carries ONE identity field and neither `tier` nor `track` is emitted, a scaffold note in gates) and a `specs/` staging dir, enforcing the bare-name discipline.
+`apriori new <name>` SHALL create `apriori/changes/<name>/` with a flow-state skeleton (`phase: ground`, placeholders for `mode`/`lineage` — 6.0 carries `mode` plus `phase`, and neither `tier`, `track` nor `current-step` is emitted, a scaffold note in gates) and a `specs/` staging dir, enforcing the bare-name discipline.
 
 #### Scenario: NW-01 scaffolds flow-state skeleton and specs dir
 - WHEN `apriori new add-playback` runs in a project
-- THEN `apriori/changes/add-playback/flow-state.md` exists with `change: add-playback`, `current-step: STEP0`, a `mode: <fast | standard>` placeholder and a `lineage` placeholder — and no `tier:`, `track:` or lane/track wording anywhere in it — plus a dated scaffold note in gates; `apriori/changes/add-playback/specs/` exists
+- THEN `apriori/changes/add-playback/flow-state.md` exists with `change: add-playback`, `phase: ground`, a `mode: <fast | standard>` placeholder and a `lineage` placeholder — and neither a `tier:`, a `track:`, a retired `current-step:` nor any lane/track wording anywhere in it — plus a dated scaffold note in gates; `apriori/changes/add-playback/specs/` exists
 
 #### Scenario: NW-02 refuses an existing change or the reserved archive name
 - WHEN the target change dir already exists, or the name is `archive`
@@ -15,11 +15,15 @@
 
 #### Scenario: NW-04 the skeleton carries the full flow-state schema
 - WHEN `apriori new` scaffolds flow-state.md
-- THEN every field of the runbook §3 schema is present — including `reviewer-session: n/a` and `artifact-root: .` — so the scaffold never drifts behind the schema
+- THEN every field of the runbook §3 schema is present — the keys `mode`/`lineage`/`phase`/`reviewer-session`/`delivery`/`escalation`/`artifact-root`, and the four short sections `## Reality Check`, `## Evidence`, `## Open`, `## Next` — so the scaffold never drifts behind the schema
 
-### Requirement: the scaffold builds the bundle skeleton
-`apriori new <name>` SHALL scaffold the bundle skeleton: `flow-state.md` plus empty `requirement/` and `review/` directories under `apriori/changes/<name>/`, with the flow-state `next-action` line reading `draft apriori/changes/<name>/requirement/req-v1.md` — the change's own name substituted, no legacy-root literal emitted. The next-action is advisory text; no behavior depends on the empty dirs existing.
+### Requirement: the scaffold builds the bundle skeleton and no document family
+`apriori new <name>` SHALL scaffold exactly `flow-state.md` plus empty `specs/` and `review/` directories under `apriori/changes/<name>/`. It SHALL NOT create `requirement/`, and it SHALL NOT write or name any fixed per-change document — no requirement doc, proposal, design, gap report, task list or issue ledger — because 6.0 produces material on demand rather than by obligation. The state's `## Next` line is advisory text; no behavior depends on the empty dirs existing.
 
-#### Scenario: NW-05 the scaffold is a bundle
+#### Scenario: NW-05 the scaffold is a two-directory bundle with no artifact obligations
 - WHEN `apriori new my-change` runs
-- THEN `apriori/changes/my-change/` contains flow-state.md plus empty `requirement/` and `review/` dirs, the next-action line reads `draft apriori/changes/my-change/requirement/req-v1.md`, and the flow-state contains no standalone legacy-root literal
+- THEN `apriori/changes/my-change/` contains flow-state.md plus empty `specs/` and `review/` dirs and nothing else; no `requirement/` dir exists; and neither the created tree nor the flow-state text names `req-v1.md`, `req-final.md`, `proposal.md`, `design.md`, `tasks.md`, `gap-report.md` or `issues.md`
+
+#### Scenario: NW-06 the scaffold states the split test rather than a first document to write
+- WHEN `apriori new my-change` prints its next step
+- THEN it points at Ground and the Reality Check, and states the one-result / one-evidence-chain split test — it never instructs the human to draft a fixed artifact

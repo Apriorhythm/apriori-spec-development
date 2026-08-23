@@ -15,9 +15,9 @@ test('NW-01 scaffolds flow-state skeleton and specs dir', () => {
   assert.strictEqual(r.ok, true);
   const flow = fs.readFileSync(path.join(root, 'apriori', 'changes', 'add-playback', 'flow-state.md'), 'utf8');
   assert.match(flow, /^change: add-playback$/m);
-  assert.match(flow, /^current-step: STEP0$/m);
+  assert.match(flow, /^phase: ground /m);
   assert.match(flow, /mode: <fast \| standard>/);                 // placeholder, not a guess
-  for (const gone of ['tier', 'track', 'track-rationale', 'round'])
+  for (const gone of ['tier', 'track', 'track-rationale', 'round', 'current-step'])
     assert.doesNotMatch(flow, new RegExp(`^${gone}:`, 'm'), `5.x '${gone}:' must not be scaffolded`);
   assert.match(flow, /lineage: <target branch\/line/);
   assert.match(flow, /2026-07-07T03:05 note: change scaffolded by `apriori new`/);
@@ -49,14 +49,19 @@ test('NW-03 enforces bare kebab-case names (dates stamped at archive time, not h
 test('NW-04 the skeleton carries every flow-state schema field the runbook defines', () => {
   const { flowStateSkeleton } = require('../lib/new');
   const s = flowStateSkeleton('my-change', new Date(2026, 0, 2, 3, 4));
-  for (const field of ['change:', 'mode:', 'lineage:',
-                       'current-step:', 'reviewer-session:', 'next-action:', 'artifact-root:', 'gates:'])
+  for (const field of ['change:', 'mode:', 'lineage:', 'phase:', 'reviewer-session:',
+                       'delivery:', 'escalation:', 'artifact-root:', 'gates:'])
     assert.ok(s.includes(field), `skeleton missing ${field}`);
+  // and the four short sections the ONE state carries
+  for (const section of ['## Reality Check', '## Evidence', '## Open', '## Next'])
+    assert.ok(s.includes(section), `skeleton missing ${section}`);
   assert.match(s, /reviewer-session: n\/a/);
   assert.match(s, /artifact-root: \./);
+  assert.match(s, /escalation: none/);
+  assert.match(s, /delivery: pending-external-acceptance/);
 });
 
-test('NW-05 the scaffold is a bundle', () => {
+test('NW-05 the scaffold is a two-directory bundle with no artifact obligations', () => {
   const rpFs = require('node:fs');
   const rpPath = require('node:path');
   const rpOs = require('node:os');
@@ -65,9 +70,27 @@ test('NW-05 the scaffold is a bundle', () => {
   const r = rpSpawn('node', [rpPath.join(__dirname, '..', 'bin', 'apriori.js'), 'new', 'my-change'], { cwd: root, encoding: 'utf8' });
   assert.strictEqual(r.status, 0, r.stdout + r.stderr);
   const dir = rpPath.join(root, 'apriori', 'changes', 'my-change');
-  assert.ok(rpFs.statSync(rpPath.join(dir, 'requirement')).isDirectory(), 'requirement/ skeleton missing');
+  // exactly two dirs and one file — `requirement/` went with the artifact family
+  assert.deepStrictEqual(rpFs.readdirSync(dir).sort(), ['flow-state.md', 'review', 'specs']);
+  assert.ok(rpFs.statSync(rpPath.join(dir, 'specs')).isDirectory(), 'specs/ skeleton missing');
   assert.ok(rpFs.statSync(rpPath.join(dir, 'review')).isDirectory(), 'review/ skeleton missing');
+  // and neither the tree nor the state names a retired artifact
   const flow = rpFs.readFileSync(rpPath.join(dir, 'flow-state.md'), 'utf8');
-  assert.match(flow, /next-action: draft apriori\/changes\/my-change\/requirement\/req-v1\.md/);
-  assert.ok(!/draft requirement\//.test(flow), 'legacy-root next-action survives');
+  for (const gone of ['req-v1.md', 'req-final.md', 'proposal.md', 'design.md', 'tasks.md', 'gap-report.md', 'issues.md'])
+    assert.ok(!flow.includes(gone), `the scaffold still names ${gone}`);
+});
+
+test('NW-06 the scaffold states the split test, not a first document to write', () => {
+  const rpFs = require('node:fs');
+  const rpPath = require('node:path');
+  const rpOs = require('node:os');
+  const { spawnSync: rpSpawn } = require('node:child_process');
+  const root = rpFs.mkdtempSync(rpPath.join(rpOs.tmpdir(), 'apriori-nw06-'));
+  const r = rpSpawn('node', [rpPath.join(__dirname, '..', 'bin', 'apriori.js'), 'new', 'my-change'], { cwd: root, encoding: 'utf8' });
+  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /Ground/);
+  assert.match(r.stdout, /## Reality Check/);
+  assert.match(r.stdout, /ONE main result and ONE evidence chain/);
+  assert.match(r.stdout, /split it first/);
+  assert.ok(!/draft |req-v1|tasks\.md/.test(r.stdout), 'the scaffold still tells the human to draft an artifact');
 });

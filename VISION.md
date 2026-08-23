@@ -10,14 +10,14 @@
 
 ## 1. The Endgame
 
-Scenarios become **executable**: the spec *is* the test suite. Every scenario is an assertion that runs; the prose handbook of a system is *generated from* its assertions, not maintained beside them. At that point the STEP2↔STEP5 consistency problem — "spec'd but not implemented, implemented but never spec'd" — disappears by construction, and the LLM's role in verification shrinks to judging what assertions cannot express: intent, taste, product fit.
+Scenarios become **executable**: the spec *is* the test suite. Every scenario is an assertion that runs; the prose handbook of a system is *generated from* its assertions, not maintained beside them. At that point the Specify↔Build consistency problem — "spec'd but not implemented, implemented but never spec'd" — disappears by construction, and the LLM's role in verification shrinks to judging what assertions cannot express: intent, taste, product fit.
 
 ## 2. Trigger Conditions — fired on the V3 line
 
 The endgame became the requirement for **V3** when the second condition below was met by a self-built tool:
 
 - ~~OpenSpec (or its successor) supports executable scenarios natively~~ — it does not, and shows no movement toward it; or
-- **an equivalent tool clears the same bar: scenario IDs, delta specs, archive-merge semantics** — met by the self-contained `apriori` CLI (`apriori verify` binds scenario IDs to test runs; `apriori archive` implements delta merge natively). V3 realizes the weak form: `apriori verify` GREEN is the deterministic STEP5 gate, and P8 narrows to what binding cannot prove.
+- **an equivalent tool clears the same bar: scenario IDs, delta specs, archive-merge semantics** — met by the self-contained `apriori` CLI (`apriori verify` binds scenario IDs to test runs; `apriori archive` implements delta merge natively). V3 realizes the weak form: `apriori verify` GREEN is the deterministic Build & Test gate, and P8 narrows to what binding cannot prove.
 
 The strong form (the prose handbook *generated from* assertions; scenarios compiled to test code) remains ahead — deliberately excluded, to keep the LLM's judgment role in the loop.
 

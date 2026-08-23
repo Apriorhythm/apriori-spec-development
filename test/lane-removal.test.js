@@ -88,18 +88,24 @@ test('LN-03 new scaffolds one shape — no track, tier, intent card or lane', ()
     assert.doesNotMatch(flow, dead, `scaffold still carries ${dead}`);
   // the scaffolded dirs are the bundle's, and spike/ is not one of them
   const subs = fs.readdirSync(path.join(root, 'apriori', 'changes', 'ordinary')).sort();
-  assert.deepStrictEqual(subs, ['flow-state.md', 'requirement', 'review', 'specs']);
+  assert.deepStrictEqual(subs, ['flow-state.md', 'review', 'specs']);
 });
 
-test('LN-11 the explore track\'s three positions are no longer legal steps', () => {
-  // INTENT-CARD / SPIKE / EXTRACTION were `current-step` values. The track is gone, so a
-  // bundle parked on one is refused by C3 rather than read — the same rule the 5.x identity
-  // keys get: a retired path does not survive as a synonym.
+test('LN-11 the explore track\'s positions, and the numbered steps, are no longer legal', () => {
+  // INTENT-CARD / SPIKE / EXTRACTION were `current-step` values; slice 5 retired the whole
+  // numbered vocabulary along with the artifacts hung on it. A bundle parked on any of them is
+  // refused rather than read — a retired path does not survive as a synonym.
   const rd = require('../lib/readiness');
-  for (const dead of ['INTENT-CARD', 'SPIKE', 'EXTRACTION'])
-    assert.ok(!rd.STEP_ENUM.includes(dead), `${dead} is still a legal step`);
-  for (const live of ['STEP0', 'STEP6', 'DONE', 'ABANDONED'])
-    assert.ok(rd.STEP_ENUM.includes(live), `${live} went missing`);
+  for (const dead of ['INTENT-CARD', 'SPIKE', 'EXTRACTION', 'STEP0', 'STEP5', 'STEP6', 'DONE', 'ABANDONED'])
+    assert.ok(!rd.PHASE_ENUM.includes(dead), `${dead} is still a legal phase`);
+  assert.deepStrictEqual(rd.PHASE_ENUM, ['ground', 'specify', 'build', 'review', 'done', 'abandoned']);
+  assert.ok(!('STEP_ENUM' in rd), 'the numbered vocabulary must be gone, not merely unused');
+  // and the key itself refuses, with a migration pointer
+  const c3 = rd.checkFlowState({ change: 'c', mode: 'fast', lineage: 'v6', phase: 'review' }, 'c',
+    'change: c\nmode: fast\nlineage: v6\ncurrent-step: STEP6\nphase: review\n');
+  assert.strictEqual(c3.status, 'blocked');
+  assert.match(c3.detail, /current-step/);
+  assert.match(c3.detail, /MIGRATING\.md/);
 });
 
 // ---- what happens to bundles the retired lane left behind ----------------------------

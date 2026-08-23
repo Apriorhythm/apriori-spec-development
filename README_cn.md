@@ -67,8 +67,12 @@ cat > apriori/changes/hello/flow-state.md <<'EOF'
 change: hello
 mode: fast
 lineage: main
-current-step: STEP6
-next-action: archive
+phase: review
+delivery: released
+
+## Evidence
+- producer-diff: done — read the whole diff, known P0/P1 zero
+
 gates:
   - 2026-01-01T00:00 note: quickstart demo
 EOF
@@ -121,13 +125,13 @@ apriori verify --specs apriori/specs
 apriori check
 ```
 
-那两个评审文件就是 `mode: fast` 的代价:fast 省掉任务清单和台账,但**绝不省掉那一次独立评审**——没有它,`gate` 与 `archive` 都会拒绝一个 fast 变更。这里是手写的,因为这是演示;真实变更里 `.md` 承载评审方的 verdict,`-raw.*` 逐字承载它的原始输出,而且来自**另一个**模型(runbook R2)。`gate` 把机械检查合成一个退出码(它的 PASS 绝不替代人工闸口)。`archive --change` 把增量并入 living 规格库 `apriori/specs/` 并归档变更——它**会拒绝一个还没做完的变更**,这正是上面的 flow-state 已经写 `current-step: STEP6`(归档所在的那一步)的原因;standard 模式还要求任务全勾、台账行全终态。普通 `verify` 现在证明合并后的库,`check` 是 CI 守卫。这正是路线 A 替你自动跑的循环:**规格 → 红 → 绿 → 评审 → gate → 归档**。
+那两个评审文件是两种模式都不能省的那一样东西:**唯一一次独立评审**——没有它,`gate` 与 `archive` 都会拒绝这个变更,`fast` 与 `standard` 一视同仁。这里是手写的,因为这是演示;真实变更里 `.md` 承载评审方的 verdict,`-raw.*` 逐字承载它的原始输出,而且来自**另一个**模型(runbook R2)。注意这个 bundle 里**没有**什么:没有需求文档、没有提案、没有设计文档、没有 gap 报告、没有任务清单——6.0 两种模式都不要它们。`gate` 把机械检查合成一个退出码(它的 PASS 绝不替代人做的决定)。`archive --change` 把增量并入 living 规格库 `apriori/specs/` 并归档变更——它**会拒绝一个还没做完的变更**,这正是上面的 flow-state 已经写 `phase: review`(交付所在的那个阶段)的原因;然后它声明三个状态并冻结这个 bundle。普通 `verify` 现在证明合并后的库,`check` 是 CI 守卫。这正是路线 A 替你自动跑的循环:**核对现实 → 规格 → 红 → 绿 → 评审 → gate → 归档**。
 
 ## Where everything else lives
 
 | 文档 | 内容 |
 |---|---|
-| [docs/concepts_cn.md](./docs/concepts_cn.md) | 为什么这么设计:核心概念、AI 工具箱、完整 STEP0–STEP6 工作流、mini-kv 实例、提示词库 |
+| [docs/concepts_cn.md](./docs/concepts_cn.md) | 为什么这么设计:核心概念、AI 工具箱、四阶段工作流、mini-kv 实例、提示词库 |
 | [docs/legacy_cn.md](./docs/legacy_cn.md) | 存量代码库:知识库循环、doctor 先行的接入法 |
 | [docs/ci_cn.md](./docs/ci_cn.md) | 可直接粘贴的 CI 片段:`check` / `verify` / `gate`,退出码表 |
 | [docs/cli_cn.md](./docs/cli_cn.md) | 全部十个子命令:精确用法行、旗标、退出码、配置参考 |
@@ -141,11 +145,11 @@ apriori check
 | `apriori init` | 每项目一次 | 搭建 `apriori/` + 各工具指针 |
 | `apriori doctor` | 接入时/任何时候 | 体检项目与 apriori 的接缝;每个发现指名修复命令 |
 | `apriori new <name>` | 变更启动 | 搭建 `apriori/changes/<name>/` + flow-state 骨架 |
-| `apriori status` | 任何时候 | 每个变更走到哪了:步骤、下一动作、台账 open 项(`--json`) |
-| `apriori verify` | STEP5 退出闸口 | 把每条 scenario ID 绑定到绿测试;`--change <name>` = 投影的、变更进行中的形式 |
+| `apriori status` | 任何时候 | 每个变更走到哪了:阶段、现实核对、证据、下一步(`--json`;`--escalation` 以 3 退出) |
+| `apriori verify` | Build & Test 退出闸口 | 把每条 scenario ID 绑定到绿测试;`--change <name>` = 投影的、变更进行中的形式 |
 | `apriori stamp <store-file>` | 写增量规格时 | 打印 CAS 基线章——库分叉后 verify/archive 会拒绝 |
-| `apriori gate --change <name>` | STEP5/6、CI | 机械检查合成一个退出码(PASS ≠ 人工闸口) |
-| `apriori archive` | STEP6 | 把增量规格并入 living 规格库;`--change <name>` = 整变更、失败原子(直到提交点为止) |
+| `apriori gate --change <name>` | Build & Test / Review、CI | 机械检查合成一个退出码(PASS ≠ 人做的决定);`--review-ready` 是临时的准入视图 |
+| `apriori archive` | Review & Deliver | 把增量规格并入 living 规格库;`--change <name>` = 整变更、失败原子(直到提交点为止) |
 | `apriori check` | CI / pre-commit | 结构一致性(scenario ID 可绑定) |
 | `apriori update` | CLI 升级后 | 刷新 runbook 副本 + 命令指针(绝不动你的文件) |
 

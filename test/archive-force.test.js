@@ -9,7 +9,7 @@ const path = require('path');
 const { spawnSync } = require('node:child_process');
 
 const rd = require('../lib/readiness');
-const { readyFiles, FLOW, LEDGER } = require('./helpers/ready-bundle');
+const { readyFiles, FLOW, withEvidence, LEDGER } = require('./helpers/ready-bundle');
 
 const BIN = path.join(__dirname, '..', 'bin', 'apriori.js');
 const run = (args, cwd) => spawnSync('node', [BIN, ...args], { encoding: 'utf8', cwd });
@@ -37,140 +37,148 @@ function proj({ gates = [], tasks = null, ledger = null, mode = 'standard' } = {
   }
   return root;
 }
-const GRANT = (cls, reason = '还差两项文档') => `  - 2026-08-15T18:00 gate⑤ (owner): archive-force ${cls} — ${reason}`;
-const REVOKE = (cls, reason = '收回授权') => `  - 2026-08-15T19:00 gate⑤ (owner): archive-force-revoke ${cls} — ${reason}`;
+const GRANT = (cls, reason = '还差两项文档') => `  - 2026-08-15T18:00 owner: archive-force ${cls} — ${reason}`;
+const REVOKE = (cls, reason = '收回授权') => `  - 2026-08-15T19:00 owner: archive-force-revoke ${cls} — ${reason}`;
 
-test('AM-86 progress blockers are forceable when the record is on file', () => {
-  // unchecked tasks
-  const t = proj({ gates: [GRANT('tasks')], tasks: '- [x] a\n- [ ] b\n' });
-  const rt = run(['archive', '--change', 'c', '--force'], t);
-  assert.strictEqual(rt.status, 0, rt.stdout + rt.stderr);
-  assert.match(rt.stdout, /forced: R2 tasks\.md has 1 unchecked/);
-  // open / fixed / rejected-with-reason
-  for (const status of ['open', 'fixed', 'rejected because x']) {
-    const l = proj({ gates: [GRANT('ledger')], ledger: ROW(status) });
-    const r = run(['archive', '--change', 'c', '--force'], l);
-    assert.strictEqual(r.status, 0, `${status}: ${r.stdout}${r.stderr}`);
-    assert.match(r.stdout, /forced: R3 /, status);
+test('AM-86 an open ledger row is forceable when the record is on file', () => {
+  // `tasks` left the grammar with the rule it authorized: 6.0 has no task rule to force past,
+  // and an unchecked box never blocks in the first place.
+  const t = proj({ tasks: '- [x] a\n- [ ] b\n' });
+  assert.strictEqual(run(['archive', '--change', 'c'], t).status, 0, 'an unchecked task must not block at all');
+  // an OPEN row is the one progress blocker left, and the record is what opens it
+  const l = proj({ gates: [GRANT('ledger')], ledger: ROW('open') });
+  const r = run(['archive', '--change', 'c', '--force'], l);
+  assert.strictEqual(r.status, 0, `${r.stdout}${r.stderr}`);
+  assert.match(r.stdout, /forced: R3 Q-1 is open/);
+  // the non-blocking bookkeeping kinds need no grant at all
+  for (const status of ['fixed', 'rejected because x']) {
+    const b = proj({ ledger: ROW(status) });
+    assert.strictEqual(run(['archive', '--change', 'c'], b).status, 0, status);
   }
 });
 
 test('AM-87 everything else is not forceable', () => {
-  const gates = [GRANT('tasks'), GRANT('ledger')];
+  const gates = [GRANT('ledger')];
   // R1 — every branch
-  for (const step of ['STEP2', 'ABANDONED', 'DONE']) {
+  for (const phase of ['specify', 'abandoned', 'done']) {
     const root = proj({ gates });
     fs.writeFileSync(path.join(root, 'apriori/changes/c/flow-state.md'),
-      FLOW('c').replace('STEP6', step) + gates.map((g) => `${g}\n`).join(''));
-    assert.strictEqual(run(['archive', '--change', 'c', '--force'], root).status, 1, step);
+      FLOW('c').replace('phase: review', `phase: ${phase}`) + gates.map((g) => `${g}\n`).join(''));
+    assert.strictEqual(run(['archive', '--change', 'c', '--force'], root).status, 1, phase);
   }
-  // structural
-  const st = proj({ gates });
-  const p = path.join(st, 'apriori/changes/c/tasks.md');
+  // structural — on an artifact readiness still reads
+  const st = proj({ gates, ledger: ROW('verified') });
+  const p = path.join(st, 'apriori/changes/c/review/issues.md');
   fs.rmSync(p); fs.mkdirSync(p);
   assert.strictEqual(run(['archive', '--change', 'c', '--force'], st).status, 1, 'not-file');
-  // format / evidence classes
-  for (const status of ['frobnicated', 'rejected', 'waived by someone']) {
-    const l = proj({ gates, ledger: ROW(status) });
-    assert.strictEqual(run(['archive', '--change', 'c', '--force'], l).status, 1, status);
-  }
+  // R5 — blocked critical evidence is not progress, and no grant reaches it
+  const ev = proj({ gates });
+  fs.writeFileSync(path.join(ev, 'apriori/changes/c/flow-state.md'),
+    withEvidence(FLOW('c'), ['data-schema: blocked — staging DB offline']) + gates.map((g) => `${g}\n`).join(''));
+  assert.strictEqual(run(['archive', '--change', 'c', '--force'], ev).status, 1, 'blocked evidence');
 });
 
 test('AM-88 without the record the flag does nothing and a copyable template is printed', () => {
-  const noRecord = proj({ tasks: '- [ ] b\n' });
+  const noRecord = proj({ ledger: ROW('open') });
   const r = run(['archive', '--change', 'c', '--force'], noRecord);
   assert.strictEqual(r.status, 1);
-  assert.match(r.stderr, /archive-force tasks — <the human's reason, verbatim>/);
-  assert.match(r.stderr, /gate⑤ \(owner\)/);
+  assert.match(r.stderr, /archive-force ledger — <the human's reason, verbatim>/);
+  assert.match(r.stderr, /owner: archive-force/);
   // the template is a skeleton, never a claim about a reason the human has not written
   assert.doesNotMatch(r.stderr, /还差两项文档/);
 
   // a reason with no letter or digit in any script is not a reason
-  const noReason = proj({ gates: ['  - 2026-08-15T18:00 gate⑤ (owner): archive-force tasks — ——'], tasks: '- [ ] b\n' });
+  const noReason = proj({ gates: ['  - 2026-08-15T18:00 owner: archive-force ledger — ——'], ledger: ROW('open') });
   assert.strictEqual(run(['archive', '--change', 'c', '--force'], noReason).status, 1);
-  // ...and a Chinese one IS: \w is ASCII-only and this log is written in Chinese (step2-amendment)
-  const chinese = proj({ gates: [GRANT('tasks', '还差两项文档')], tasks: '- [ ] b\n' });
+  // ...and a Chinese one IS: \w is ASCII-only and this log is written in Chinese
+  const chinese = proj({ gates: [GRANT('ledger', '还差两项文档')], ledger: ROW('open') });
   assert.strictEqual(run(['archive', '--change', 'c', '--force'], chinese).status, 0);
 });
 
-test('AM-89 a record authorizes its own class and no other', () => {
-  const both = { tasks: '- [ ] b\n', ledger: ROW('open') };
-  const onlyTasks = proj({ gates: [GRANT('tasks')], ...both });
-  const rT = run(['archive', '--change', 'c', '--force'], onlyTasks);
+test('AM-89 the retired class authorizes nothing, and ledger authorizes only itself', () => {
+  // `ledger` is the only class in the grammar now: an `archive-force tasks` record is inert.
+  const retired = proj({ gates: [GRANT('tasks')], ledger: ROW('open') });
+  const rT = run(['archive', '--change', 'c', '--force'], retired);
   assert.strictEqual(rT.status, 1);
   assert.match(rT.stderr, /R3 Q-1 is open/);
-  assert.doesNotMatch(rT.stderr, /R2 tasks\.md has/);
 
-  const onlyLedger = proj({ gates: [GRANT('ledger')], ...both });
-  const rL = run(['archive', '--change', 'c', '--force'], onlyLedger);
-  assert.strictEqual(rL.status, 1);
-  assert.match(rL.stderr, /R2 tasks\.md has/);
-  assert.doesNotMatch(rL.stderr, /R3 Q-1 is open/);
-
-  const bothGranted = proj({ gates: [GRANT('tasks'), GRANT('ledger')], ...both });
-  assert.strictEqual(run(['archive', '--change', 'c', '--force'], bothGranted).status, 0);
+  const onlyLedger = proj({ gates: [GRANT('ledger')], ledger: ROW('open') });
+  assert.strictEqual(run(['archive', '--change', 'c', '--force'], onlyLedger).status, 0);
 });
 
 test('AM-110 the record is anchored and fully consumed', () => {
-  const tasks = '- [ ] b\n', ledger = ROW('open');
+  const ledger = ROW('open');
   // the class word inside a REASON never authorizes that class
-  const reasonMentions = proj({ gates: [GRANT('tasks', 'ledger cleanup deferred')], tasks, ledger });
+  const reasonMentions = proj({ gates: [GRANT('tasks', 'ledger cleanup deferred')], ledger });
   const r1 = run(['archive', '--change', 'c', '--force'], reasonMentions);
   assert.strictEqual(r1.status, 1);
   assert.match(r1.stderr, /R3 Q-1 is open/, 'the reason text must not grant ledger');
-  assert.doesNotMatch(r1.stderr, /R2 tasks\.md has/, 'and tasks must still be granted');
 
   // token boundaries
   for (const entry of [
-    '  - 2026-08-15T18:00 gate⑤ (owner): archive-force tasks2 — x',
-    '  - 2026-08-15T18:00 gate⑤ (owner): archive-force-2 tasks — x',
-    '  - 2026-08-15T18:00 gate⑤ (owner): archive-force tasks',
+    '  - 2026-08-15T18:00 owner: archive-force ledger2 — x',
+    '  - 2026-08-15T18:00 owner: archive-force-2 ledger — x',
+    '  - 2026-08-15T18:00 owner: archive-force ledger',
   ]) {
-    const root = proj({ gates: [entry], tasks });
+    const root = proj({ gates: [entry], ledger });
     assert.strictEqual(run(['archive', '--change', 'c', '--force'], root).status, 1, entry);
   }
   // a keyword preceded by free text is not a decision
-  const negated = proj({ gates: ['  - 2026-08-15T18:00 note: do not archive-force tasks — 还没做完'], tasks });
+  const negated = proj({ gates: ['  - 2026-08-15T18:00 note: do not archive-force ledger — 还没做完'], ledger });
   assert.strictEqual(run(['archive', '--change', 'c', '--force'], negated).status, 1,
     'substring search would have authorized a refusal');
-  // the canonical template from the docs must work, and so must a plain note: prefix
-  for (const g of [GRANT('tasks'), '  - 2026-08-15T18:00 note: archive-force tasks — 补一条']) {
-    const root = proj({ gates: [g], tasks });
-    assert.strictEqual(run(['archive', '--change', 'c', '--force'], root).status, 0, g);
+  // the canonical template from the docs must work
+  const canonical = proj({ gates: [GRANT('ledger')], ledger });
+  assert.strictEqual(run(['archive', '--change', 'c', '--force'], canonical).status, 0);
+  // …and the ACTOR is part of it. `note:` used to authorize here because this grammar read a
+  // payload with "everything up to the first colon" removed; the §6 evidence exit was closed
+  // against exactly that and this one was not, which left the same hole one door over.
+  for (const g of ['  - 2026-08-15T18:00 note: archive-force ledger — 补一条',
+    '  - 2026-08-15T18:00 producer: archive-force ledger — 我自己批准',
+    '  - 2026-08-15T18:00 agent: archive-force ledger — 我自己批准',
+    '  - 2026-08-15T18:00 gate\u2464 (owner): archive-force ledger — 旧写法',
+    '  - owner: archive-force ledger — 没有时间戳',
+    '  - 9999-99-99T99:99 owner: archive-force ledger — 假时间戳',
+    '  - 2026-08-15T18:00 owner: archive-force ledger 补一条',
+    '  - 2026-08-15T18:00 owner: archive-force ledger - 补一条']) {
+    const root = proj({ gates: [g], ledger });
+    const r = run(['archive', '--change', 'c', '--force'], root);
+    assert.strictEqual(r.status, 1, g);
+    assert.match(r.stderr, /R3 Q-1 is open/, g);
   }
 });
 
 test('AM-111 revocation appends and the last decision wins', () => {
-  const tasks = '- [ ] b\n';
+  const ledger = ROW('open');
   const seq = [
-    [[GRANT('tasks')], 0],
-    [[GRANT('tasks'), REVOKE('tasks')], 1],
-    [[GRANT('tasks'), REVOKE('tasks'), GRANT('tasks', '重新授权')], 0],
-    [[REVOKE('tasks')], 1],
+    [[GRANT('ledger')], 0],
+    [[GRANT('ledger'), REVOKE('ledger')], 1],
+    [[GRANT('ledger'), REVOKE('ledger'), GRANT('ledger', '重新授权')], 0],
+    [[REVOKE('ledger')], 1],
   ];
   for (const [gates, want] of seq) {
-    const root = proj({ gates, tasks });
+    const root = proj({ gates, ledger });
     assert.strictEqual(run(['archive', '--change', 'c', '--force'], root).status, want, gates.join(' | '));
   }
   // a revoke with no reason is ignored exactly as a reasonless grant is
-  const ignored = proj({ gates: [GRANT('tasks'), '  - 2026-08-15T19:00 gate⑤ (owner): archive-force-revoke tasks — ——'], tasks });
+  const ignored = proj({ gates: [GRANT('ledger'), '  - 2026-08-15T19:00 owner: archive-force-revoke ledger — ——'], ledger });
   assert.strictEqual(run(['archive', '--change', 'c', '--force'], ignored).status, 0,
     'an unreasoned revoke does not revoke');
 });
 
 test('AM-109 every forced item is named with the record it rests on', () => {
-  const multi = '  - 2026-08-15T18:00 gate⑤ (owner): archive-force tasks — 第一行理由\n    续行不该被打印';
-  const root = proj({ gates: [multi], tasks: '- [ ] b\n- [ ] c\n' });
+  const multi = '  - 2026-08-15T18:00 owner: archive-force ledger — 第一行理由\n    续行不该被打印';
+  const root = proj({ gates: [multi], ledger: ROW('open') });
   const r = run(['archive', '--change', 'c', '--force'], root);
   assert.strictEqual(r.status, 0, r.stdout + r.stderr);
-  assert.match(r.stdout, /forced: R2 tasks\.md has 2 unchecked box\(es\)/);
-  assert.match(r.stdout, /archive-force tasks — 第一行理由/);
+  assert.match(r.stdout, /forced: R3 Q-1 is open/);
+  assert.match(r.stdout, /archive-force ledger — 第一行理由/);
   assert.doesNotMatch(r.stdout, /续行不该被打印/, 'the RAW first line, not the continuation-joined entry');
   assert.doesNotMatch(r.stdout, /^forced$/m, 'never a bare "forced"');
 });
 
 test('AM-90 force changes the verdict in dry-run too, without touching the disk', () => {
-  const root = proj({ gates: [GRANT('tasks')], tasks: '- [ ] b\n' });
+  const root = proj({ gates: [GRANT('ledger')], ledger: ROW('open') });
   const before = fs.readFileSync(path.join(root, 'apriori/specs/a/spec.md'), 'utf8');
   const without = run(['archive', '--change', 'c'], root);
   assert.strictEqual(without.status, 1);
@@ -192,11 +200,28 @@ test('AM-91 the single-file form does not take --force', () => {
   assert.match(r.stderr, /--change <name>.*--force/s);
 });
 
-test('AM-116 the decision payload is extracted the same way for every legal prefix', () => {
-  const p = rd.decisionPayload;
-  assert.strictEqual(p('- 2026-08-15T18:00 gate⑤ (owner): archive-force tasks — r'), 'archive-force tasks — r');
-  assert.strictEqual(p('- 2026-08-15T1800 note: archive-force ledger — r'), 'archive-force ledger — r');
-  assert.strictEqual(p('- note: archive-force tasks — r'), 'archive-force tasks — r');
-  assert.strictEqual(p('- archive-force tasks — r'), 'archive-force tasks — r');
-  assert.strictEqual(p('- 2026-08-15T18:00 note: do not archive-force tasks — r'), 'do not archive-force tasks — r');
+test('AM-116 one canonical owner entry supplies the payload for every decision verb', () => {
+  // There is ONE parser now. It answers `null` for anything that is not an owner decision, and
+  // the verb regexes below it never see those entries at all — so no verb can be stricter or
+  // looser than another about who is allowed to speak.
+  const p = rd.ownerPayload;
+  assert.strictEqual(p('- 2026-08-15T18:00 owner: archive-force ledger — r'), 'archive-force ledger — r');
+  assert.strictEqual(p('- 2026-08-15T1800 owner: reframe cr round 2 split — r'), 'reframe cr round 2 split — r');
+  assert.strictEqual(p('- 2026-08-15T18:00 owner: evidence-accept data-schema — r'), 'evidence-accept data-schema — r');
+  for (const bad of [
+    '- 2026-08-15T1800 note: archive-force ledger — r',      // the actor is not the owner
+    '- 2026-08-15T18:00 producer: archive-force ledger — r',
+    '- 2026-08-15T18:00 agent: archive-force ledger — r',
+    '- 2026-08-15T18:00 gate\u2464 (owner): archive-force ledger — r',
+    '- note: archive-force ledger — r',                      // …and there is no timestamp either
+    '- archive-force ledger — r',                            // no prefix at all
+    '- 2026-13-01T18:00 owner: archive-force ledger — r',    // a timestamp-shaped non-timestamp
+    '- 2026-08-15T24:00 owner: archive-force ledger — r',
+    '- 2026-08-15T18:60 owner: archive-force ledger — r',
+    '- 2026-08-15T18:00 ownership: archive-force ledger — r',
+  ]) assert.strictEqual(p(bad), null, bad);
+  // a negated verb still yields a payload — it is the VERB regex that refuses it, and it must,
+  // because the keyword has to OPEN the payload
+  assert.strictEqual(p('- 2026-08-15T18:00 owner: do not archive-force ledger — r'), 'do not archive-force ledger — r');
+  assert.strictEqual(rd.forceGrant('gates:\n  - 2026-08-15T18:00 owner: do not archive-force ledger — r\n'), null);
 });

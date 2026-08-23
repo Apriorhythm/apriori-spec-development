@@ -522,16 +522,22 @@ test('RL-31 status shows every family, its verdict, its open count, advisories a
   assert.strictEqual(JSON.parse(cli.stdout).escalation[0].family, 'spec-review');
 });
 
-test('RL-32 a change with no review yet draws no conclusion', () => {
+test('RL-32 a change with no review yet has no ROUND, and that is now the conclusion', () => {
+  // 6.0 slice 3: "no round yet" stopped being a neutral observation. Blueprint §7 lists a
+  // missing independent review as blocking, for either mode, so the loop draws exactly one
+  // conclusion from an empty review/ — the floor — while still counting zero families and
+  // manufacturing no escalation out of nothing.
   const { root, bundle } = project();
   const l = loopOf(bundle);
   assert.deepStrictEqual(l.families, []);
   assert.strictEqual(l.escalation, null);
-  assert.strictEqual(l.status, 'n/a');
-  assert.strictEqual(c8(root).status, 'n/a');
+  assert.strictEqual(l.status, 'blocked');
+  assert.match(l.reviewFloor, /no completed independent review round/);
+  assert.strictEqual(c8(root).status, 'blocked');
   const j = status.toJson(status.changeStatus(root, 'c', bundle, 'in-flight'));
   assert.deepStrictEqual(j.review.families, []);
   assert.strictEqual(j.escalation, null);
+  assert.match(j.review.reviewFloor, /no completed independent review round/);
 });
 
 test('RL-33 gate prints C8 and exits 1 on a stopped loop', () => {

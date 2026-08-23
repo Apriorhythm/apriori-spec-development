@@ -112,9 +112,19 @@ The CLI reports what a family's latest round declared — its verdict, and for t
 | **fast** | A reproducible defect, a local fix, and no public contract / data shape / permission / deploy / cross-system surface touched | reproduce → fix → regression → **one** independent review |
 | **standard** | Everything else | evidence proportional to the risks actually hit — never more documents, never more rounds |
 
-The mode is not a size estimate; it is a question about blast radius. **These situations must be standard** — migration / schema / DDL · transactions or locks · permission or auth · external configuration · public API · cross-repo reference · a new route or page. Choosing `fast` for any of them is a rule you broke, and it is **not enforced by the CLI**: no scanner reads your diff today, so nothing but your own judgement stands between the list and the wrong answer. (Making it mechanical is a later slice's job.)
+The mode is not a size estimate; it is a question about blast radius. **These situations must be standard** — migration / schema / DDL · transactions or locks · permission or auth · external configuration · public API · cross-repo reference · a new route or page.
 
-Re-ask after every substantial diff: a change that starts fast and grows a migration is standard from that moment on. When unsure: **standard**.
+**One of them is now mechanical, and the rest are still yours.** If this change's delta declares a MUTATION of an already-published requirement — a `## MODIFIED`, `## REMOVED` or `## RENAMED Requirements` section — the CLI closes the fast lane itself: `gate`, `archive` and `status` judge the change as **standard** and print the reason (`contract-mutation: <file> <op> '<requirement>'`). You do not edit `mode:` to make that happen and you cannot argue with it; it is read off the delta grammar, not guessed from your prose. What it costs is standard's own `tasks.md` and ledger — **no new document is invented, and no extra review round is added**.
+
+Every other situation on that list needs your product's routes, schema, auth or deploy config, and the CLI reads none of them. **`fast` on one of those is still a rule only you can keep.** When unsure: `standard` — it is one word, and it costs a task list.
+
+Re-ask after every substantial diff: a change that starts fast and grows a migration is standard from that moment on.
+
+**Neither mode may drop the one independent review.** A change with no completed review round is refused by `gate` (C8), by `archive` (R4) and reported by `status` — `fast` and `standard` alike, because §7's "the required independent review is missing" says nothing about mode and an exemption you can buy by editing one word is not an exemption. A round counts only when its summary carries a verdict line from the closed vocabulary AND its `<stem>-raw.*` transcript sits beside it (R2). `--force` cannot buy one, and neither can a symlinked or unreadable evidence file — `archive` refuses exactly what `gate` refuses.
+
+**On `fast`, the review must also have CLOSED.** Standard's outstanding findings live in the ledger, which C4/R3 already drive to terminal states; fast keeps no ledger, so its review is the only thing that can close. If a family's **latest** round still says `gaps found` or a positive `N issues open`, a fast change is refused. A round-1 revise answered by a round-2 accept has converged and passes. Standard's loop is unchanged — its control point is still round 2.
+
+What `fast` reduces is **material**: no `tasks.md`, no ledger. That is all it reduces.
 
 ---
 
@@ -191,10 +201,8 @@ no reason is not a waiver.
 
 ```markdown
 change: <change-name>
-mode: fast | standard   # fast = a reproducible defect, a local fix, and no public
-                        # contract / data shape / permission / deploy / cross-system
-                        # surface touched. Anything else is standard. One field: 6.0
-                        # replaced 5.x's tier + track + track-rationale + round with it.
+mode: fast | standard   # §2 picks it; a contract-mutating delta upgrades fast to
+                        # standard mechanically. Unsure → standard.
 lineage: <target branch/line + its merge taboo, e.g. "v2 (never merge to main)">
                         # copied from the requirement at kickoff; a lineage
                         # conflict discovered mid-change is an immediate stop

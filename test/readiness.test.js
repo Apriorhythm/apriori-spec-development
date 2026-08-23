@@ -48,6 +48,38 @@ const decisions = (res) => ({
   checks: res.checks.filter((c) => !BORN_IN_6.has(c.id)).map((c) => ({ id: c.id, status: c.status })),
 });
 
+// 6.0 slice 3 moves two things the 5.0 oracle recorded. Both are DECLARED here instead of by
+// re-running the capture — regenerating it would legalise whatever else moved alongside them,
+// which is the one thing this oracle exists to prevent.
+//
+//   1. C5 over an EMPTY review/ was a vacuous `pass`: "every verdict has raw evidence" is true
+//      of zero verdicts and attests nothing. It is `n/a` now. Every oracle case carries an
+//      empty review/, so the substitution is uniform — and it is applied in that one direction
+//      only, so a C5 that moves any OTHER way still fails here.
+//   2. The REVIEW FLOOR. §7 lists a missing independent review as blocking and says nothing
+//      about mode, so C8 refuses an in-flight change with no completed round. NOT ONE corpus
+//      case carries review evidence, so every case the 5.0 capture recorded as PASS/0 is
+//      BLOCKED/1 now — one rule, one uniform effect, not eight unrelated drifts. The set is
+//      pinned BY NAME so a ninth cannot appear without this line changing, and each member is
+//      re-checked below to have actually been a PASS in the oracle, so the declaration cannot
+//      launder a case that was failing for some other reason. FF-01/FF-16 own the behaviour.
+const EMPTY_REVIEW_C5 = { from: 'pass', to: 'n/a' };
+const REVERSED_BY_REVIEW_FLOOR = new Set([
+  'healthy-standard', 'fast-no-tasks-no-ledger', 'flow-step-abandoned', 'flow-step-done',
+  'flow-step6', 'ledger-rejected-with-reason', 'ledger-waived-with-evidence', 'ledger-fixed-in-flight',
+]);
+
+// the oracle's decision with those two divergences applied — and nothing else
+function oracleExpectation(caseId, result) {
+  const d = decisions(result);
+  d.checks = d.checks.map((c) =>
+    (c.id === 'C5' && c.status === EMPTY_REVIEW_C5.from) ? { id: 'C5', status: EMPTY_REVIEW_C5.to } : c);
+  if (!REVERSED_BY_REVIEW_FLOOR.has(caseId)) return d;
+  assert.deepStrictEqual({ result: d.result, code: d.code }, { result: 'PASS', code: 0 },
+    `'${caseId}' is declared reversed by the review floor, but the oracle did not record it as a pass`);
+  return { ...d, result: 'BLOCKED', code: 1 };
+}
+
 test('RY-00 the oracle is the 5.0 capture, untouched', () => {
   assert.match(ORACLE.note, /Do not regenerate/, 'the oracle stopped being an oracle if this changed');
   assert.strictEqual(Object.keys(GOLDEN).length, 25, 'the 5.0 capture had 25 cases; growth means someone re-ran it');
@@ -100,7 +132,7 @@ test('RY-02 no gate decision drifts across the rename', () => {
     catch (e) { got = { threw: true, name: e.constructor.name }; }
     const want = g.threw
       ? { threw: true, name: g.error.name }
-      : { threw: false, ...decisions(g.result) };
+      : { threw: false, ...oracleExpectation(c.id, g.result) };
     assert.deepStrictEqual(got, want, `gate decision drifted on '${c.id}'`);
     // whatever gate grew since the capture must be exactly the declared set — never a surprise
     if (live) {

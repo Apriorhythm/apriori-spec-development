@@ -36,6 +36,9 @@ function healthy(name = 'c') {
     [`apriori/changes/${name}/tasks.md`]: '- [x] T1 done\n- [X] T2 done\n',
     [`apriori/changes/${name}/specs/kv/spec.md`]: DELTA,
     [`apriori/changes/${name}/review/issues.md`]: LEDGER_OK,
+    // a healthy bundle carries its one independent review — the floor is not fast's alone
+    [`apriori/changes/${name}/review/step5-review-v1.md`]: 'VERDICT: no major issues\n',
+    [`apriori/changes/${name}/review/step5-review-v1-raw.txt`]: 'raw\n',
   });
 }
 const TAP_OK = tapCmd('ok 1 - XA-01 a', 'ok 2 - XB-01 b');
@@ -239,10 +242,17 @@ test('GT-08 a missing or mismatched flow-state fails closed', () => {
 });
 
 test('GT-09 fast mode is not asked for artifacts it never produces', () => {
+  // the review round is NOT one of them (6.0 slice 3): fast drops tasks and the ledger and
+  // keeps its one independent review, so the fixture carries it and C2/C4 stay the subject
+  const REVIEWED = {
+    'apriori/changes/c/review/step5-review-v1.md': 'VERDICT: no major issues\n',
+    'apriori/changes/c/review/step5-review-v1-raw.txt': 'raw\n',
+  };
   const root = mkProject({
     'apriori/specs/kv/spec.md': STORE,
     'apriori/changes/c/flow-state.md': FLOW('c', 'fast'),
     'apriori/changes/c/specs/kv/spec.md': DELTA,
+    ...REVIEWED,
   });
   const r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
   assert.strictEqual(r.checks.find((x) => x.id === 'C2').status, 'n/a');
@@ -253,6 +263,7 @@ test('GT-09 fast mode is not asked for artifacts it never produces', () => {
     'apriori/specs/kv/spec.md': STORE,
     'apriori/changes/c/flow-state.md': FLOW('c'),
     'apriori/changes/c/specs/kv/spec.md': DELTA,
+    ...REVIEWED,
   });
   const r2 = gate.runGate({ cwd: root2, change: 'c', testCmd: TAP_OK });
   assert.strictEqual(r2.checks.find((x) => x.id === 'C2').status, 'blocked');

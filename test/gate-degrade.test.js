@@ -39,6 +39,10 @@ function noCmdProject(name = 'c', extra = {}) {
     [`apriori/changes/${name}/tasks.md`]: '- [x] T1 done\n',
     [`apriori/changes/${name}/specs/kv/spec.md`]: DELTA,
     [`apriori/changes/${name}/review/issues.md`]: LEDGER_OK,
+    // a healthy bundle carries its one independent review (6.0 slice 3, R4/C8) — these tests
+    // are about the C1 skip and the exit-code lattice, not about the review floor
+    [`apriori/changes/${name}/review/step5-review-v1.md`]: 'VERDICT: no major issues\n',
+    [`apriori/changes/${name}/review/step5-review-v1-raw.txt`]: 'raw\n',
     ...extra,
   });
 }

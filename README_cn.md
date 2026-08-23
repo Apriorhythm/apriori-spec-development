@@ -86,7 +86,7 @@ EOF
 apriori verify --change hello
 ```
 
-每个变更带一个小状态文件(`flow-state.md`——tier 决定流程规模;通常由 agent 替你维护)和它的增量规格。`verify --change` 对**投影**规格库(本变更合并后规格库的样子)做绑定。一条 scenario、零测试 → `RESULT: GAPS`,退出码 1。fail-closed 正是要点。现在把它变绿:
+每个变更带一个小状态文件(`flow-state.md`——`mode` 决定流程规模;通常由 agent 替你维护)和它的增量规格。`verify --change` 对**投影**规格库(本变更合并后规格库的样子)做绑定。一条 scenario、零测试 → `RESULT: GAPS`,退出码 1。fail-closed 正是要点。现在把它变绿:
 
 ```shell
 mkdir -p test
@@ -105,13 +105,23 @@ apriori verify --change hello
 测试名携带 scenario ID——绑定契约就这一条。预期 `RESULT: GREEN — spec is the test suite`,退出码 0。
 
 ```shell
+mkdir -p apriori/changes/hello/review
+cat > apriori/changes/hello/review/step5-review-v1.md <<'EOF'
+# step5 review, round 1
+
+VERDICT: no major issues
+EOF
+cat > apriori/changes/hello/review/step5-review-v1-raw.txt <<'EOF'
+<!-- provenance: provider=example model=example session=example date=2026-01-01 -->
+the reviewer's own output, landed verbatim
+EOF
 apriori gate --change hello --json
 apriori archive --change hello --write --changes-dir apriori/changes
 apriori verify --specs apriori/specs
 apriori check
 ```
 
-`gate` 把机械检查合成一个退出码(它的 PASS 绝不替代人工闸口)。`archive --change` 把增量并入 living 规格库 `apriori/specs/` 并归档变更——它**会拒绝一个还没做完的变更**,这正是上面的 flow-state 已经写 `current-step: STEP6`(归档所在的那一步)的原因;非 trivial 层还要求任务全勾、台账行全终态。普通 `verify` 现在证明合并后的库,`check` 是 CI 守卫。这正是路线 A 替你自动跑的循环:**规格 → 红 → 绿 → gate → 归档**。
+那两个评审文件就是 `mode: fast` 的代价:fast 省掉任务清单和台账,但**绝不省掉那一次独立评审**——没有它,`gate` 与 `archive` 都会拒绝一个 fast 变更。这里是手写的,因为这是演示;真实变更里 `.md` 承载评审方的 verdict,`-raw.*` 逐字承载它的原始输出,而且来自**另一个**模型(runbook R2)。`gate` 把机械检查合成一个退出码(它的 PASS 绝不替代人工闸口)。`archive --change` 把增量并入 living 规格库 `apriori/specs/` 并归档变更——它**会拒绝一个还没做完的变更**,这正是上面的 flow-state 已经写 `current-step: STEP6`(归档所在的那一步)的原因;standard 模式还要求任务全勾、台账行全终态。普通 `verify` 现在证明合并后的库,`check` 是 CI 守卫。这正是路线 A 替你自动跑的循环:**规格 → 红 → 绿 → 评审 → gate → 归档**。
 
 ## Where everything else lives
 

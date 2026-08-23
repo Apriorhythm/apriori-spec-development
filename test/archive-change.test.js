@@ -555,7 +555,8 @@ test('AM-36 the bundle travels whole', () => {
   assert.doesNotMatch(r.stdout, /staged:|copy/);
   const A = bundleArchived(root);
   assert.deepStrictEqual(fs.readdirSync(path.join(A, 'requirement')).sort(), ['intent-card.md', 'req-final.md', 'req-v1.md']);
-  assert.deepStrictEqual(fs.readdirSync(path.join(A, 'review')).sort(), ['issues.md', 'req-review-v1-raw.txt', 'req-review-v1.md']);
+  assert.deepStrictEqual(fs.readdirSync(path.join(A, 'review')).sort(),
+    ['issues.md', 'req-review-v1-raw.txt', 'req-review-v1.md', 'step5-review-v1-raw.txt', 'step5-review-v1.md']);
   assert.strictEqual(fs.readFileSync(path.join(A, 'gap-report.md'), 'utf8'), 'gap');
   assert.ok(!fs.existsSync(path.join(root, 'apriori/changes/c')), 'nothing left behind');
 });

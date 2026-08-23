@@ -86,7 +86,7 @@ EOF
 apriori verify --change hello
 ```
 
-Every change carries a tiny state file (`flow-state.md` — the tier sizes the workflow; an agent normally maintains it for you) and its delta specs. `verify --change` binds scenarios against the **projected** store (the store as it will look after this change merges). One scenario, zero tests → `RESULT: GAPS`, exit 1. Fail-closed is the point. Now make it green:
+Every change carries a tiny state file (`flow-state.md` — `mode` sizes the workflow; an agent normally maintains it for you) and its delta specs. `verify --change` binds scenarios against the **projected** store (the store as it will look after this change merges). One scenario, zero tests → `RESULT: GAPS`, exit 1. Fail-closed is the point. Now make it green:
 
 ```shell
 mkdir -p test
@@ -105,13 +105,23 @@ apriori verify --change hello
 The test name carries the scenario ID — that is the whole binding contract. Expect `RESULT: GREEN — spec is the test suite`, exit 0.
 
 ```shell
+mkdir -p apriori/changes/hello/review
+cat > apriori/changes/hello/review/step5-review-v1.md <<'EOF'
+# step5 review, round 1
+
+VERDICT: no major issues
+EOF
+cat > apriori/changes/hello/review/step5-review-v1-raw.txt <<'EOF'
+<!-- provenance: provider=example model=example session=example date=2026-01-01 -->
+the reviewer's own output, landed verbatim
+EOF
 apriori gate --change hello --json
 apriori archive --change hello --write --changes-dir apriori/changes
 apriori verify --specs apriori/specs
 apriori check
 ```
 
-`gate` aggregates the mechanical checks into one exit code (its PASS never replaces a human gate). `archive --change` merges the delta into the living store `apriori/specs/` and files the change away — it **refuses a change that is not finished**, which is why the flow-state above already says `current-step: STEP6` (the archiving step) and why a non-trivial change would also need every task checked and every ledger row terminal; plain `verify` now proves the merged store, and `check` is your CI guard. That's the loop Route A automates for you: **spec → red → green → gate → archive**.
+The two review files are what `mode: fast` costs: fast drops the task list and the ledger, but **never the one independent review** — `gate` and `archive` refuse a fast change that has none. Here they are hand-written because this is a demo; in a real change the `.md` carries the reviewer's verdict and the `-raw.*` file its output verbatim, from a *different* model (runbook R2). `gate` aggregates the mechanical checks into one exit code (its PASS never replaces a human gate). `archive --change` merges the delta into the living store `apriori/specs/` and files the change away — it **refuses a change that is not finished**, which is why the flow-state above already says `current-step: STEP6` (the archiving step) and why a standard change would also need every task checked and every ledger row terminal; plain `verify` now proves the merged store, and `check` is your CI guard. That's the loop Route A automates for you: **spec → red → green → review → gate → archive**.
 
 ## Where everything else lives
 

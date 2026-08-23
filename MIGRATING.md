@@ -2,6 +2,64 @@
 
 The 3.0.0 stability promise: CLI surface & flags, `--json` shapes, the delta format, the flow-state schema and the `apriori/` layout only break in a major. Everything below is either additive or a declared fail-closed tightening.
 
+## 6.0 slice 2b → slice 3 — fast owes one review, and a contract-mutating delta is standard
+
+**Two tightenings, both fail-closed, both declared.**
+
+**1. Every in-flight change needs one completed review round — `fast` and `standard` alike.**
+`gate` C8 blocks without it, `archive` reports `RESULT: NOT READY` (R4), and `status` names it.
+`--force` does not help: it authorizes *progress*, not a review that did not happen. The round
+you already write satisfies this — a summary whose verdict line is in the known vocabulary,
+with its `<stem>-raw.*` transcript beside it. Nothing new to author, no matrix to fill in.
+
+**On `fast` the review must also have closed.** Standard's open findings are held by the
+ledger, which archive already drives to terminal states; fast keeps no ledger, so a fast change
+whose latest round still says `gaps found` or `N issues open` (N > 0) is refused. Land the
+next round. Standard's loop is unchanged: a round-1 revise is still fine, and round 2 is still
+its control point.
+
+**Evidence `gate` cannot read, `archive` no longer merges.** A symlinked review summary, or a
+verdict document with no `-raw` archive, now refuses the merge (R4) exactly as it refuses the
+gate (C5). Neither is forceable. Before this, `gate` said `C5 BLOCKED` and `archive` said
+`RESULT: MERGED` about the same bundle.
+
+**What to do:** if you have an in-flight change with an empty `review/`, run the review; if its
+last round is still revising, run the next one; if a review file is a symlink, land the real
+bytes. That is the entire migration. If the work genuinely needs no outside look, it is not a
+change — see the hotfix lane (RUNBOOK §2b).
+
+**2. A delta that MUTATES a published requirement makes the change standard.** If
+`apriori/changes/<name>/specs/**.md` carries a `## MODIFIED`, `## REMOVED` or
+`## RENAMED Requirements` section, the fast lane closes automatically and every surface prints
+the same reason, e.g.:
+
+```text
+✓ C3 legal (mode fast → standard (contract-mutation: kv/spec.md MODIFIED 'Alpha'), STEP5)
+```
+
+You do not edit `mode:` — the tool judges by the effective mode and reports both. The cost is
+standard's own `tasks.md` and ledger; **no new document is required and no extra review round
+is added**. An `## ADDED`-only delta is untouched and stays fast.
+
+There is deliberately **no override**. The signal is not a heuristic that could be a
+misjudgement — it is the delta grammar restating what the change itself declares — so the
+blueprint's "only when the signal is proven wrong" escape hatch has nothing to open.
+
+**The other five §6 risk rows are not implemented**, on purpose: UI/prototype,
+data/transaction, config/deploy/environment, permission/security and the source-diff half of
+migration/compatibility all need files this CLI does not read. Choosing `fast` when one of them
+applies is still a rule only you can keep; RUNBOOK §2 says so in as many words.
+
+**Already-archived changes are unaffected.** Neither rule is applied retroactively: a frozen
+bundle keeps its declared mode, no risk is derived from its already-merged delta, and it is
+never told it owed a review round. Evidence-integrity checks still apply at every stage.
+
+**One reporting fix rides along.** `status` used to mark a *frozen* review loop "(loop
+stopped)" while `gate` said the stop rule does not apply retroactively. They now agree:
+`stopped` is `false` on an archived bundle in both, and the round history is still reported.
+
+---
+
 ## 6.0 slice 2 → slice 2b — the parameters nothing reads are gone
 
 Eight rows leave `templates/process-config.md`: `step5-cap`, `step6-cap`, `spike-cap`,

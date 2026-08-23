@@ -2,6 +2,70 @@
 
 All notable changes to `apriori-cli`. Versions follow semver; the stability promise: CLI surface & flags, `--json` shapes, the delta format and the flow-state schema only break in a major.
 
+## Unreleased — 6.0 slice 3 · fast gets a floor, and one risk signal closes its lane
+
+**The hole, reproduced before it was fixed.** A `mode: fast` bundle with an empty `review/`
+reached `GATE: PASS`, exit 0, and `archive` merged it. C5 was passing *vacuously* — "0 review
+doc(s), every verdict has raw evidence" is true of zero verdicts and attests nothing — and C8
+reported `n/a` because no family existed. Blueprint §3 gives fast exactly one independent
+review and §7 lists a missing one as blocking; the CLI was enforcing neither.
+
+- **Every in-flight change must carry one COMPLETE, ATTRIBUTABLE review round — either mode.**
+  `gate` C8 blocks, archive readiness R4 refuses, `status` reports it, and `--force` cannot buy
+  one: after-the-fact authorization is for progress, not for an outside look that never
+  happened. §7 lists "the required independent review is missing" as blocking and says nothing
+  about mode, and an exemption bought by editing `fast` to `standard` is not an exemption. A
+  round is what slice 2's scanner already counts as a family: a summary with a verdict line
+  from the closed vocabulary AND its `<stem>-raw.*` transcript. **No review matrix, receipt,
+  ledger field or second counter was added** — the rule reuses the one reader of `review/`.
+- **On `fast`, that review must also have CLOSED.** Standard's outstanding findings live in the
+  ledger, which C4/R3 already drive to terminal states; fast keeps no ledger, so its review is
+  the only thing that can close. A family whose **latest** round still says `gaps found` or a
+  positive `N issues open` refuses a fast change at `gate`, at archive readiness and in
+  `status`. A round-1 revise answered by a round-2 accept has converged and passes. **Standard's
+  loop governance is untouched** — its control point is still round 2.
+- **`archive` stops being blind to evidence `gate` refuses.** Readiness R4 now reads the same
+  `reviewFacts` C5 reads, so a **symlinked** review summary or a verdict with **no raw archive**
+  refuses the merge instead of sailing through it — previously `gate` printed `C5 BLOCKED` while
+  `archive` printed `RESULT: MERGED` on the same bundle. Neither is forceable: evidence that
+  cannot be read is not progress an owner can vouch for. `status` names the symlink as an
+  unreadable-evidence defect rather than reporting the empty scan as "no review yet".
+- **C5 stops claiming a vacuous pass.** With no verdict document it now reports `n/a` — "nothing
+  to attest" — instead of a green tick. Whether that absence is *legal* is the loop's question,
+  per mode, and it is answered in exactly one place.
+- **One §6 risk signal is now mechanical: a contract-mutating delta.** If the change's own
+  delta declares `## MODIFIED`, `## REMOVED` or `## RENAMED Requirements`, an already-published
+  requirement is being changed or withdrawn — read off the delta grammar, not guessed from
+  prose — and the fast lane closes: `gate`, `archive` and `status` judge the change as
+  **standard** and print one shared reason,
+  `contract-mutation: <file> <op> '<requirement>'`. An ADDED-only delta does not upgrade.
+- **The upgrade is subtractive.** It withdraws fast's two waivers and demands *nothing standard
+  does not already demand*: no document is generated, no artifact kind invented, no extra review
+  round added. An upgraded change that meets standard's own requirements passes.
+- **The five §6 rows this CLI cannot see stay unimplemented, and say so.** UI/prototype,
+  data/transaction, config/deploy/environment, permission/security and the source-diff half of
+  migration/compatibility need the product's routes, schema, auth or startup config; apriori
+  reads none of them, and deriving them would mean the keyword taxonomy §9 and §11 forbid.
+  RUNBOOK §2 now states both halves — what the CLI forces, and what is still only your rule.
+- **Frozen history is not re-judged.** On an archived bundle neither rule applies: the declared
+  mode stands, no signal is derived from an already-merged delta, and the review floor is not
+  applied retroactively. Evidence INTEGRITY still refuses at every stage, unchanged.
+- **`status` and `gate` now speak the same stage.** `status` was calling a frozen loop
+  "stopped" while gate said the stop rule does not apply retroactively — one claim, two
+  contradictory answers. `stopped` is now false on a frozen bundle in both, and the history
+  stays in the report.
+- **What this deletes.** RUNBOOK §2's paragraph promising that the blast-radius list is "**not
+  enforced by the CLI** — no scanner reads your diff today" is retired together with the half
+  that became mechanical (MD-15 now pins the new boundary in both editions), the `mode:`
+  comment injected into every scaffolded flow-state drops from four lines to two, and `new`'s
+  skeleton stops asking the human to self-certify the contract surface the CLI now checks.
+  The README Quickstart gains the review round it was silently skipping — it walked a fast
+  change to archive with no review at all, which is how the hole survived a golden-path test.
+- **`--json` gains `effectiveMode` and `risk`** on `status`, plus `review.reviewFloor` (null,
+  or why the floor is unmet). `mode` still reports the DECLARED mode and is unchanged.
+
+---
+
 ## Unreleased — 6.0 slice 2b · the supervision parameters nothing reads are deleted
 
 **Removed from `templates/process-config.md`:** `step5-cap`, `step6-cap`, `spike-cap`,

@@ -118,6 +118,9 @@ test('MD-06 archive readiness takes its R2/R3 waivers from fast, not from a tier
   const mkBundle = (mode) => {
     const { dir } = project(flowWith(`mode: ${mode}\n`).replace('current-step: STEP5', 'current-step: STEP6'),
       { tasks: null, ledger: null });
+    // R2/R3 are the subject here; R4's one independent review is fast's floor, not its waiver
+    w(path.join(dir, 'review', 'step5-review-v1.md'), 'VERDICT: no major issues\n');
+    w(path.join(dir, 'review', 'step5-review-v1-raw.txt'), 'raw\n');
     return dir;
   };
   const fast = rd.readinessOf({ bundleDir: mkBundle('fast'), name: 'c' });
@@ -268,12 +271,24 @@ test('MD-14 the runbook kickoff and session-start no longer ask for the removed 
   }
 });
 
-test('MD-15 the mechanical floor claims only what the CLI actually does today', () => {
+test('MD-15 the mechanical floor claims exactly what the CLI actually does', () => {
   const en = fs.readFileSync(path.join(__dirname, '..', 'RUNBOOK.md'), 'utf8');
   const cn = fs.readFileSync(path.join(__dirname, '..', 'RUNBOOK_cn.md'), 'utf8');
-  // no scanner ships in this slice; the runbook must not imply the CLI forces the choice
-  assert.doesNotMatch(en, /Mechanical floor/, 'the CLI enforces nothing here yet');
-  assert.doesNotMatch(cn, /机械下界/);
-  assert.match(en, /not enforced by the CLI/, 'and it must say so out loud');
-  assert.match(cn, /CLI 目前不做机械强制/);
+  // slice 3 made ONE of §2's situations mechanical. The runbook must claim that one...
+  assert.match(en, /contract-mutation/, 'the mechanical half must be named, with its reason token');
+  assert.match(cn, /contract-mutation/);
+  // ...and must still say plainly that the others are the human's, so it never over-claims a
+  // diff scanner this CLI does not have. The slice-1 sentence "not enforced by the CLI" is
+  // retired WITH the thing it described — a rule that becomes mechanical takes its own
+  // disclaimer with it, rather than leaving a false statement standing beside a true one.
+  assert.doesNotMatch(en, /not enforced by the CLI/, 'the blanket disclaimer outlived its truth');
+  assert.doesNotMatch(cn, /CLI 目前不做机械强制/);
+  assert.match(en, /reads none of them/, 'the unimplemented rows must still be declared unimplemented');
+  assert.match(cn, /CLI 一个都不读/);
+  // and the review floor is stated where the mode is chosen — for BOTH modes, plus the
+  // resolved-verdict rule that is fast's alone because fast keeps no ledger
+  assert.match(en, /Neither mode may drop the one independent review/);
+  assert.match(cn, /两种模式都不能省那一次独立评审/);
+  assert.match(en, /the review must also have CLOSED/);
+  assert.match(cn, /评审还必须已经收敛/);
 });

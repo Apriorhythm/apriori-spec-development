@@ -176,12 +176,19 @@ test('AM-112 a completely normal bundle stays archivable', () => {
 });
 
 test('AM-113 an absent review directory is not a structural defect', () => {
-  for (const [mode, want] of [['fast', 0], ['standard', 1]]) {
+  // Removing review/ takes the ledger AND the review round with it, so both modes now owe
+  // something — but the CLASS is the whole point: absence is never reported as structural.
+  // Both owe the review round (R4); only standard also owes its ledger (R3).
+  for (const [mode, want] of [['fast', /R4 no completed independent review/], ['standard', /R3 ledger missing/]]) {
     const root = proj({}, mode);
     rm(path.join(bundle(root), 'review'));
     const r = run(['archive', '--change', 'c'], root);
-    assert.strictEqual(r.status, want, mode);
-    if (want) assert.match(r.stderr, /ledger missing/);
+    assert.strictEqual(r.status, 1, mode);
+    assert.match(r.stderr, want, `${mode}: ${r.stderr}`);
+    const rdy = rd.readinessOf({ bundleDir: bundle(root), name: 'c' });
+    assert.ok(rdy.blockers.every((b) => b.class !== 'structural'),
+      `${mode}: an absent review/ must never be classified structural — ${JSON.stringify(rdy.blockers)}`);
+    if (mode === 'fast') assert.deepStrictEqual(rdy.na, ['R3'], 'and fast still waives the ledger that went with it');
   }
 });
 

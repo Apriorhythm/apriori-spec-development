@@ -502,13 +502,10 @@ test('CF-12 template, docs and changelog carry the full id-pattern story', () =>
   const { parseConfig } = require('../lib/config');
   const repo = path.join(__dirname, '..');
   const tpl = fs.readFileSync(path.join(repo, 'templates', 'process-config.md'), 'utf8');
-  // the whole template table survives parsing: full expected key/value map
+  // the template table survives parsing with its values intact (CF-19 pins the key set itself)
   const { values, conflicts } = parseConfig(tpl);
   assert.strictEqual(conflicts.size, 0);
-  for (const [k, v] of [['language', 'auto'], ['id-pattern', require('../lib/config').DEFAULT_ID], ['cas', 'required'],
-    ['step5-cap', '25'], ['step6-cap', '4'],
-    ['spike-cap', '10'], ['extraction-review-cap', '2'], ['shrink-state', 'none'],
-    ['rejected-ratio-guard', '50%'], ['shrink-proposal-freq', '5'], ['post-merge-review-freq', '1 in 5']])
+  for (const [k, v] of [['language', 'auto'], ['id-pattern', require('../lib/config').DEFAULT_ID], ['cas', 'required']])
     assert.strictEqual(values.get(k), v, `template key ${k}`);
   // the escaping guidance lives in an HTML comment (non-content), stating both layers
   const comments = [...tpl.matchAll(/<!--[\s\S]*?-->/g)].map((m) => m[0]);

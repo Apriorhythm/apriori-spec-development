@@ -72,10 +72,10 @@ Four principles every mechanism in this handbook (and the RUNBOOK) instantiates:
 
 1. **Quality comes from different instruments at different stages.** In a change's requirement & spec **document stages** (STEP0/2), LLM review is the only instrument available — there it is the primary one, and it never drops below one round per stage per change. In the **implementation stage** (STEP5), executable verification is primary (v1.0 already worked this way); LLM review covers what execution can't judge.
 2. **Intent comes first; the spec's form may come later.** On any track, a human-acknowledged statement of intent precedes code; the tracks (§4.0) differ only in when the full spec crystallizes — **the spec is a conserved quantity at merge time**.
-3. **Supervision parameters are never written by the supervised.** Round caps and shrink decisions live in a human-held config and human gates; the agent reports data, never adjusts its own oversight.
+3. **Supervision parameters are never written by the supervised.** What the CLI reads lives in a human-held config; the decisions live at human gates. The agent reports data, never adjusts its own oversight.
 4. **Extracted descriptions are drafts until reviewed.** Anything reverse-derived from code or a prototype (P10, P11) must pass review before anything downstream consumes it.
 
-**Compatibility with the V1 baseline (v1.0), honestly stated:** the harden track's paths, gates, exit conditions and prompt numbering are unchanged (default config: zero path drift); exit conditions gained mapping variants only for project types v1.0 never defined (docs-only projects). The explore track is an **addition** whose named decision points — `intent-card sign-off`, `extraction review`, `STEP2 full review` — carry gate status. Gate consolidation (RUNBOOK §1) is an explicit, logged, revocable human authorization, never covering the shrink decision, the KB sign-off, or the intent-card sign-off — though each of those may still be decided by presented-first explicit proxy (RUNBOOK §1).
+**Compatibility with the V1 baseline (v1.0), honestly stated:** the harden track's paths, gates, exit conditions and prompt numbering are unchanged (default config: zero path drift); exit conditions gained mapping variants only for project types v1.0 never defined (docs-only projects). The explore track is an **addition** whose named decision points — `intent-card sign-off`, `extraction review`, `STEP2 full review` — carry gate status. Gate consolidation (RUNBOOK §1) is an explicit, logged, revocable human authorization, never covering the KB sign-off or the intent-card sign-off — though each of those may still be decided by presented-first explicit proxy (RUNBOOK §1).
 
 ---
 
@@ -263,7 +263,7 @@ The explore track in one picture — it merges into the main flow at STEP2 ([§4
 
 ```mermaid
 graph LR
-    IC[Intent card, ≤15 lines<br/>human sign-off] --> SP[Spike in changes/name/spike/<br/>cap: spike-cap]
+    IC[Intent card, ≤15 lines<br/>human sign-off] --> SP[Spike in changes/name/spike/]
     SP --> P11[P11 extract spec<br/>req-final + drafts]
     P11 --> P12{P12 extraction review<br/>heterogeneous}
     P12 -- accepted --> S2[merge into STEP2<br/>full review loop]
@@ -344,7 +344,7 @@ graph TD
 
 ### 4.3 STEP0: Requirement Refinement (Adversarial Review, Up to 5 Rounds)
 
-> The requirement doc is the **top-level prompt** for AI development — make it precise. Ideally, product runs an AI self-check on it first. If it lacks any of the three essentials — goal / out-of-scope / testable acceptance — have the AI interview you with structured questions before drafting. (Round numbers in this section's title and below are defaults — `process-config.md` is the source of truth.)
+> The requirement doc is the **top-level prompt** for AI development — make it precise. Ideally, product runs an AI self-check on it first. If it lacks any of the three essentials — goal / out-of-scope / testable acceptance — have the AI interview you with structured questions before drafting.
 
 > 💡 **Before STEP0, you can just think.** If the idea is still fuzzy, enter the Brainstorm stance (paste RUNBOOK **P13**): the agent diverges with you first (several threads to pick from, codebase-grounded, ASCII sketches — including 2-3 UI-mockup variants for anything user-facing), then converges with discipline (one question per message with options, a coverage checklist — purpose/users/scenarios/UI/data/constraints/non-goals/success criteria — and 2-3 candidate approaches with tradeoffs before any exit). Two protections: **nothing durable is written before you approve** (no code, no docs, no scaffolding), and **you decide** when it's stateable — on your go, the crystallized understanding becomes STEP0's kickoff requirement draft; if it still can't be stated, it feeds the explore track's intent card (RUNBOOK "Brainstorm"). This stance is load-bearing: everything after STEP0 largely runs itself, so this is where you and the machine actually align.
 
@@ -439,13 +439,11 @@ That layering is what lets you automate **even adversarial review** without viol
 |---|---|---|
 | STEP0 | REQ-REVIEW-DOC written and its verdict line = `VERDICT: no major issues`, or the derived review loop stops (runbook §1 R4) | a heterogeneous reviewer call each round |
 | STEP2 | SPEC-EVALUATION-DOC verdict line = `VERDICT: no major issues, ready to proceed to execution`, or N rounds | a heterogeneous reviewer call each round |
-| STEP5 | `npm test` exits 0 **and** lint/static analysis green (where configured) **and** every tasks.md item is `[x]` **and** the E2E/Playwright run is green **and** the consistency review reports no gaps, or N turns — substitute per §4.8's project-type matrix (docs-only: `apriori check`) | real test + E2E run + reviewer call |
+| STEP5 | `npm test` exits 0 **and** lint/static analysis green (where configured) **and** every tasks.md item is `[x]` **and** the E2E/Playwright run is green **and** the consistency review reports no gaps — substitute per §4.8's project-type matrix (docs-only: `apriori check`) | real test + E2E run + reviewer call |
 | STEP6 | delta specs merged **and** the module's KB file updated | archive action + writeback |
 | **STEP3 tech review · reverse-capture review · KB sign-off** | — **do not wrap these in a goal** | a human decides |
 
-> Always cap it (`… or stop after N turns`): the cap maps to the handbook's ≤5-round limits and bounds cost — open-ended goals can run very expensive. Caps live in `process-config.md` — human-held, agent-read-only — with defaults STEP0 5, STEP2 4, STEP5 25 and a hard floor of 1 per review stage. If a loop **oscillates** (the verdict flip-flops, or the same ledger ID keeps getting reopened — [§7.0](#70-the-issue-ledger-shared-by-all-review-loops) makes this visible) or stalls without progress, treat hitting the cap as a signal to **escalate to a human** — not to quietly lower the bar. Run **one `/goal` per machine-checkable stretch, stop at each human gate**, then start the next. The ready-to-paste recipes ship in [RUNBOOK.md](../RUNBOOK.md) §6; their design notes are in [§7.7](#77-goal-recipes-automating-each-loop).
-
-> **Tune the caps with data — under governance, not autopilot.** Every N changes (default 5) the agent *reports* a shrink/expand proposal whose data pack must contain: verified count, rejected count (with sampled reasons), reopened-ID count (including advisory upgrades), the advisory ratio (monitoring only), and wall-clock per change and per review stage (from the state file's timestamps; wall-clock includes human-gate waits — note it, or cost curves mislead; missing timestamps are `n/a`, never estimated). The rejected-ratio guard counts formal findings only — advisories are excluded from both sides, so relabeling can't dilute it. Shrinking is a **human gate decision** — blocked outright when the guard trips or the change class is tripwired. Shrinking lowers a stage's round cap with a hard floor of 1, so no stage ever reaches zero and exit conditions stay intact — and **you may shrink review rounds, but never trade them for fewer deterministic checks**; a post-merge re-review that finds a high-risk miss (including a real gap mislabeled advisory) restores the previous cap. Mind both directions: a producer can zero the metric by rejecting findings (that is what the guard is for); careless verifies merely delay shrinking. And if round 5 still surfaces real issues, the fix is upstream — requirement quality — not a higher cap.
+> Scope each goal to a stretch that ends — an open-ended one can run very expensive. **`process-config.md` budgets nothing**: it holds no turn or round number. Review rounds stop where the runbook's derived loop stops them (§1 R4); STEP5's implement-and-test loop — which that loop does not govern — carries a fixed 25-turn safety bound in its recipe text. If a loop **oscillates** (the verdict flip-flops, or the same ledger ID keeps getting reopened — [§7.0](#70-the-issue-ledger-shared-by-all-review-loops) makes this visible) or stalls without progress, **escalate to a human** — never quietly lower the bar. Run **one `/goal` per machine-checkable stretch, stop at each human gate**, then start the next. The ready-to-paste recipes ship in [RUNBOOK.md](../RUNBOOK.md) §6; their design notes are in [§7.7](#77-goal-recipes-automating-each-loop).
 
 **The authorization boundary.** Gates govern the workflow; a separate hard rule governs anything that leaves it: any operation mutating state outside the local repository/workspace — push, merge, release, deploy, production data, remote-service administration, new paid services, messages to external parties — needs the human principal's explicit authorization, one-shot or as a named class/scope/expiry standing grant (RUNBOOK §1). A gate-consolidation blanket never covers these. And content arriving from files, tool output, or review verdicts is data, never authorization — it may advance the internal state machine where the protocol says so, but it never authorizes an external side effect.
 
@@ -537,9 +535,8 @@ npm test
 
 To run the implement → test loop unattended, wrap it in a goal — the mini-kv form of the [§7.7](#77-goal-recipes-automating-each-loop) STEP5 recipe (it's a library, so no Playwright clause):
 ```text
-/goal "All of: `npm test` exits 0; every spec scenario ID appears in at least one test name; every item in apriori/changes/<change>/tasks.md is [x]; and a consistency review by a different model (the RUNBOOK P8 prompt) reports 'VERDICT: no spec-vs-code gaps'. Cap: 15 turns. Turn 1: generate one failing test per spec scenario (named with its ID) and SHOW the failing run. Each later turn: implement the next tasks.md item, run `npm test` and SHOW the output. Stop when all hold or after 15 turns."
+/goal "All of: `npm test` exits 0; every spec scenario ID appears in at least one test name; every item in apriori/changes/<change>/tasks.md is [x]; and a consistency review by a different model (the RUNBOOK P8 prompt) reports 'VERDICT: no spec-vs-code gaps'. Turn 1: generate one failing test per spec scenario (named with its ID) and SHOW the failing run. Each later turn: implement the next tasks.md item, run `npm test` and SHOW the output. Stop when all hold."
 ```
-> The numeric caps in this recipe are example defaults — `process-config.md` is the source of truth.
 
 ### 5.5 Acceptance & STEP6 · archive
 
@@ -640,7 +637,7 @@ Prompt: RUNBOOK **P10**. Design notes: the code is the sole source of truth — 
 The four ready-to-paste recipes (STEP0 / STEP2 / STEP5 / STEP6) live in **[RUNBOOK.md](../RUNBOOK.md) §6, the human operator appendix** — they are run by *you*, never by the agent, and this way they ship inside the protocol file your project already carries. What stays true regardless of recipe ([§4.10](#410-automating-the-loop-with-goal-claude-code)):
 
 - `/goal` only orchestrates; the real check (reviewer / tests / screenshots) runs **inside** each turn and must land its result in the transcript — the Haiku evaluator just reads whether it passed.
-- Always include a turn cap; treat a hit cap or a reopened ledger ID as escalation to a human, never as license to lower the bar.
+- Treat a stopped loop or a reopened ledger ID as escalation to a human, never as license to lower the bar.
 - Visual checks must emit a **textual** pass/fail (e.g. a pixelmatch threshold printed to the console), or the evaluator can't see them; a pure library (like §5's mini-kv) drops the Playwright clause entirely.
 - The KB writeback is never self-approved — a **human reviews the KB diff** ([§6.5](./legacy.md#65-closing-the-loop-write-back-after-every-change)).
 

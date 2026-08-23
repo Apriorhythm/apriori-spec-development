@@ -2,6 +2,60 @@
 
 All notable changes to `apriori-cli`. Versions follow semver; the stability promise: CLI surface & flags, `--json` shapes, the delta format and the flow-state schema only break in a major.
 
+## Unreleased — 6.0 slice 2b · the supervision parameters nothing reads are deleted
+
+**Removed from `templates/process-config.md`:** `step5-cap`, `step6-cap`, `spike-cap`,
+`extraction-review-cap`, `shrink-state`, `rejected-ratio-guard`, `shrink-proposal-freq` and
+`post-merge-review-freq`. **Not one of them was ever executed.** `getConfig()` is the only door
+into that file and every call site names a literal key: `id-pattern`, `verification-profile`,
+`cas` and `test-cmd`. Instrumenting that door and running the full suite records 665 reads
+across exactly those four keys — none of the eight appears once. They were prose formatted as a
+control plane: they read like supervision and were obeyed by nobody. The evidence that this is
+not hypothetical is in the corpus — `step5-cap = 25` was hit and exceeded by seven turns in a
+real change, and nothing reported it, because nothing could.
+
+- **The shrink governance is deleted with them, not replaced.** RUNBOOK §6's metabolism rule —
+  a shrink/expand proposal every N changes, its mandatory data pack, the rejected-ratio guard,
+  the post-merge re-review sampling rate and cap restoration — described a control loop no code
+  ran and no command could observe. 6.0 adds **no** ledger, metric store, dynamic cap, shrink
+  engine or gate in its place. The four outcome measures in the 6.0 blueprint are the whole
+  measurement surface.
+- **The `/goal` recipes lose their *configurable* `Cap:` clauses — not every bound.** STEP5
+  keeps a fixed, non-configurable **25-turn safety bound** written into its recipe text: if turn
+  25 ends with any success condition unmet, the loop STOPS and reports the failing evidence —
+  which conditions failed, plus the last test and reviewer output — and that is **never a pass**,
+  it is a stopped loop for the human. STEP6 carries no such bound and stops on its own exit
+  conditions. §6's preamble now says plainly that `process-config.md` budgets neither.
+  `gate` C8 and archive readiness R4 govern **review rounds**, per family; they do **not** govern
+  STEP5's implementation/test turns and never terminate that loop.
+- **Gate consolidation goes from three exclusions to two.** The shrink decision was one of the
+  three gates a consolidation authorization could never cover; it no longer exists, so the KB
+  sign-off and `intent-card sign-off` are the list. Gate ⑤ loses "turn-cap hit" as a trigger for
+  the same reason — a cap that nothing enforces cannot be hit.
+- **The STEP5 heading loses its cap** (`### STEP5 — apply · cap: step5-cap (default 25)` →
+  `### STEP5 — apply`), the spike is bounded by its intent-card questions rather than by a turn
+  number, and `extraction-review-cap` leaves P12 in both editions.
+- **No CLI or runtime behaviour changes** — `lib/` is untouched, and C8, R4, archive readiness
+  and the review-loop semantics accepted in slice 2 are byte-identical. **The agent-facing
+  protocol does change**, and "lib is untouched" does not say otherwise: the runbook the agent
+  executes loses the configurable turn caps and the whole shrink-governance rule. STEP5 keeps a
+  worst case — a fixed **25-turn safety bound** written into its `/goal` recipe — but it is no
+  longer configurable, and it is a bound on the implement-and-test loop, not on review rounds.
+- **Two loops, two bounds, stated in §6 so they stop being conflated.** `gate` C8 and readiness
+  R4 govern *review rounds*, per family, with no number written anywhere; C8 never terminates
+  an implementation loop. STEP5's implement-and-test loop is bounded only by the literal 25
+  turns in its recipe, and reaching it means stop and report the failing evidence — a stopped
+  loop for the human, never a pass.
+- **Three reader populations, not one list.** `id-pattern`, `verification-profile`, `cas` and
+  `test-cmd` are read by the CLI through `getConfig()`; `language` is read by the *agent* out of
+  the same file and by no command; the default `init` scaffold ships `language`, `id-pattern`,
+  `verification-profile` and `cas`, with `test-cmd` added only by `init --test-cmd`. New tests
+  CF-19/CF-20/CF-21 pin those three sets separately, and CF-12 drops its assertions on the eight.
+- **Your config needs no migration.** The file is human-held and the CLI never rewrites it; a
+  row you leave behind is as inert as it always was.
+
+---
+
 ## Unreleased — 6.0 slice 2 · the review round is derived per family, in two phases
 
 **New: `gate` check C8 and archive readiness rule R4 — the review loop.** The round is no longer
@@ -54,9 +108,8 @@ declaring the same verdict both times, and a transcript that was never a review 
   `VERDICT: 3 issues open` is accepted in prose where only the literal `<N>` form was before.)
 - C5's verdict↔raw decision is unchanged, but consumes the same scan.
 - **Removed:** `step0-cap` and `step2-cap` — the two review-loop caps C8 replaces. Neither was
-  ever read by any command. The remaining `process-config.md` parameters are untouched:
-  `step5-cap` / `step6-cap` / `spike-cap` cap *turns*, `extraction-review-cap` belongs to the
-  explore track, and the shrink governance still has objects to govern.
+  ever read by any command. The eight remaining `process-config.md` parameters are left for
+  slice 2b, which removes them for the same reason.
 
 **Enforcement boundary (stated, not papered over).** This repository ships no Stop hook and
 `apriori init` writes none. What 6.0 provides is the machine-readable signal — `gate` exit code

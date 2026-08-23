@@ -2,6 +2,46 @@
 
 The 3.0.0 stability promise: CLI surface & flags, `--json` shapes, the delta format, the flow-state schema and the `apriori/` layout only break in a major. Everything below is either additive or a declared fail-closed tightening.
 
+## 6.0 slice 2 → slice 2b — the parameters nothing reads are gone
+
+Eight rows leave `templates/process-config.md`: `step5-cap`, `step6-cap`, `spike-cap`,
+`extraction-review-cap`, `shrink-state`, `rejected-ratio-guard`, `shrink-proposal-freq` and
+`post-merge-review-freq`. **No command ever read one of them, at any exit.** The CLI reaches
+that file through a single reader, and every call site asks for a literal key: `id-pattern`,
+`verification-profile`, `cas`, `test-cmd`. The eight were never wired to anything — they were
+prose that looked like configuration, which is worse than no configuration, because a number
+in a config table reads as a control someone is honouring. In one real change `step5-cap = 25`
+was hit and then exceeded by seven turns, and nothing reported it.
+
+**What to do:** delete the rows from your `apriori/process-config.md` if you carry them. The
+file is human-held and the CLI never rewrites it; an unread row was always inert, so this is
+tidying, not a break. Leaving them costs nothing but confusion.
+
+**The shrink governance is deleted, not replaced.** RUNBOOK §6's metabolism rule — the
+every-N-changes shrink/expand proposal, its data pack, the rejected-ratio guard, the post-merge
+re-review sampling rate and the cap restoration it triggered — governed caps that no longer
+exist through a loop no code ran. Nothing takes its place: no ledger, no metric store, no
+dynamic cap, no shrink engine, no new gate.
+
+**What was removed is the *configurable* cap, not every bound.** The `process-config` rows had
+no consumer, so the dynamic caps they claimed to set are gone. STEP5's `/goal` recipe in
+RUNBOOK §6 still carries a fixed **25-turn safety bound** — it is simply no longer configurable:
+reaching turn 25 with any success condition unmet means stop and report the failing evidence,
+never a pass. STEP6's recipe has no bound and stops on its exit conditions.
+
+**What still stops a review loop** is exactly what slice 2 made mechanical: the derived
+per-family review round (`gate` C8), archive readiness R4, and the human gates. Those govern
+**review rounds only** — they do not govern, and never terminate, STEP5's implementation/test
+turns.
+
+**Two consequences worth knowing before you re-read the runbook.** Gate consolidation used to
+name three gates it could never cover — the shrink decision, the KB sign-off,
+`intent-card sign-off`; the shrink decision is gone, so two remain. And gate ⑤ no longer lists
+"turn-cap hit" among its triggers: a stopped review loop, an escalation and a reopened ledger
+ID still trigger it.
+
+---
+
 ## 6.0 slice 1 → slice 2 — the review round is derived, per family
 
 `step0-cap` and `step2-cap` are gone from `templates/process-config.md`. Nothing ever read
@@ -10,10 +50,8 @@ mechanically instead (`gate` C8, archive readiness R4, runbook §1 R4). If your
 `apriori/process-config.md` still carries the two rows, delete them — the file is human-held and
 the CLI never rewrites it; an unread row is inert, so this is tidying, not a break.
 
-The eight remaining supervision parameters are deliberately untouched: `step5-cap`,
-`step6-cap` and `spike-cap` cap *turns* rather than review rounds, `extraction-review-cap`
-belongs to the explore track, and `shrink-state` / `rejected-ratio-guard` /
-`shrink-proposal-freq` / `post-merge-review-freq` are the shrink governance.
+The eight remaining supervision parameters were left for slice 2b, which deletes them on the
+same finding — see the section above.
 
 **What to write instead of a round number.** Nothing — each review family's round is counted
 from its review docs and their raw transcripts. The one thing you write by hand is the answer

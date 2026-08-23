@@ -94,22 +94,15 @@ test('CL-07 unexpected subcommand failures exit cleanly — one line, no stack t
   assert.doesNotMatch(r.stderr, /\n\s+at /);   // no stack frames reach the user
 });
 
-test('CL-18 hotfix subcommand appears in usage and dispatches by verb', () => {
-  assert.match(run(['--help']).stdout, /\n  hotfix\s/);
+test('CL-18 the retired hotfix verb is refused with a pointer, and is gone from usage', () => {
+  // 6.0 removed the lane (LN-01 pins the whole boundary). The dispatcher keeps ONE line for it
+  // so an old habit or an old script is told what replaced it instead of "unknown command".
+  assert.doesNotMatch(run(['--help']).stdout, /hotfix/i);
 
-  const bare = run(['hotfix']);
-  assert.strictEqual(bare.status, 0, bare.stderr);
-  assert.match(bare.stdout, /apriori hotfix new <name>/);
-
-  const nonsense = run(['hotfix', 'nonsense']);
-  assert.strictEqual(nonsense.status, 2);
-  assert.match(nonsense.stderr, /unknown subcommand 'nonsense'/);
-
-  // both known verbs reach the lane rather than the dispatcher's unknown-command path
-  const scaffold = run(['hotfix', 'new', 'Not Kebab']);
-  assert.strictEqual(scaffold.status, 1);
-  assert.match(scaffold.stderr, /bare kebab-case/);
-  const arch = run(['hotfix', 'archive', 'no-such-hotfix']);
-  assert.notStrictEqual(arch.status, 0);
-  assert.match(arch.stderr, /no bundle at apriori\/changes\/no-such-hotfix/);
+  for (const argv of [['hotfix'], ['hotfix', 'new', 'x'], ['hotfix', 'archive', 'x']]) {
+    const r = run(argv);
+    assert.strictEqual(r.status, 2, argv.join(' '));
+    assert.match(r.stderr, /removed in 6\.0/);
+    assert.match(r.stderr, /apriori new <name>/);
+  }
 });

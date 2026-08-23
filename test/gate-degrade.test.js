@@ -220,8 +220,11 @@ test('GT-37 the earlier refusals still win over the degradation', () => {
   });
   const rh = gate.runGate({ cwd: hot, change: 'h' });
   assert.strictEqual(rh.code, 2);
-  assert.ok(rh.errors.some((e) => /hotfix archive/.test(e)), `m1 pointer, not a flow-state message: ${rh.errors}`);
-  assert.ok(!rh.errors.some((e) => /flow-state\.md/.test(e)), 'a lane bundle is never reported as a missing flow-state');
+  // the lane is gone, so the refusal is now a migration diagnosis — it still names what it
+  // found and still beats the generic missing-flow-state message to the punch
+  assert.ok(rh.errors.some((e) => /hotfix-state\.md/.test(e) && /apriori new /.test(e)),
+    `migration diagnosis, not a bare flow-state message: ${rh.errors}`);
+  assert.ok(!rh.errors.some((e) => /apriori hotfix/.test(e)), 'the retired command is still being advertised');
 
   const noFlow = mkProject({
     'apriori/specs/kv/spec.md': STORE,

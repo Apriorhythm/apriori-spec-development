@@ -46,7 +46,7 @@ cd your-project && apriori init  # 交互式:勾选要接入的 AI 工具
 只推进到下一个人工闸口,然后停下来汇报。
 ```
 
-> 这句 kickoff(或需求文档的签核)*就是*人对意图的认可——意图卡属于探索位置(§4)。产物根外置时,kickoff 必须写明它,因为 flow-state 文件本身就在它下面。
+> 这句 kickoff(或需求文档的签核)*就是*人对意图的认可。产物根外置时,kickoff 必须写明它,因为 flow-state 文件本身就在它下面。
 
 **上下文经济。** 上下文窗口是 agent 最稀缺的资源——填满即退化,须刻意管理:
 
@@ -58,9 +58,9 @@ cd your-project && apriori init  # 交互式:勾选要接入的 AI 工具
 
 ## 1. 铁律
 
-**R1 —— 每个人工闸口必停。** 闸口清单:① STEP0 评审循环停止时的定稿裁决 ② gap 报告过目(standard 模式)③ STEP3 技术评审 ④ STEP6 知识库 diff 批准 ⑤ 任何评审循环停止、escalation 或振荡(台账 ID 被重开)。探索轨(§4)另有三个具备闸口地位的**命名决策点**:`intent-card sign-off`(意图卡签核)、`extraction review`(提取评审)、`STEP2 full review`(汇入后全量评审)。到达闸口:更新状态文件,汇报——当前步骤、评审方结论行**原文**、台账中 open/rejected 项、需要人做的决定——然后停下。绝不替人批准闸口;"人还没回复"绝不等于批准。
+**R1 —— 每个人工闸口必停。** 闸口清单:① STEP0 评审循环停止时的定稿裁决 ② gap 报告过目(standard 模式)③ STEP3 技术评审 ④ STEP6 知识库 diff 批准 ⑤ 任何评审循环停止、escalation 或振荡(台账 ID 被重开)。到达闸口:更新状态文件,汇报——当前步骤、评审方结论行**原文**、台账中 open/rejected 项、需要人做的决定——然后停下。绝不替人批准闸口;"人还没回复"绝不等于批准。
 
-**闸口整合(显式授权)。** 默认逐闸必停。人可以显式把中间闸口整合到某个靠后的闸口(如"一路跑到终审");该决定必须记入 `gates:`(范围+撤销方式),且随时可撤销。两个闸口**永远不可**被此类授权覆盖:**知识库签核**(闸口④)与**意图卡签核**(`intent-card sign-off`)。整合只覆盖闸口——外部副作用(见下方 §1 硬规则)永远不在整合的一揽子授权之内。
+**闸口整合(显式授权)。** 默认逐闸必停。人可以显式把中间闸口整合到某个靠后的闸口(如"一路跑到终审");该决定必须记入 `gates:`(范围+撤销方式),且随时可撤销。一个闸口**永远不可**被此类授权覆盖:**知识库签核**(闸口④)。整合只覆盖闸口——外部副作用(见下方 §1 硬规则)永远不在整合的一揽子授权之内。
 
 > 这条保护禁止的是*被一揽子授权静默覆盖*——不是所有者的显式选择。受保护闸口仍可由**显式代行**决定,须同时满足:① agent 先呈报待决闸口——**每个受保护闸口独立列项**(编号、批的是什么、产物路径、可选决定),绝不与进度性提问捆绑;② 人的授权答复发生在呈报*之后*,并**原文**记入 `gates:`,一闸一条;③ 代行是**一次性的**——只覆盖该次呈报中列项的闸口,绝不继承到未来同类闸口。一句答复可以覆盖多个受保护闸口,当且仅当每个都被独立列项;先前存在的一揽子授权永远不算数。列项呈报的*多步端到端运行*也**不**隐含覆盖其内部嵌套的受保护闸口:运行途中浮现未列项的受保护闸口时,停下、单独呈报——这次中断本身记入 `gates:`;事先已列项的闸口不受影响。
 
@@ -81,15 +81,17 @@ cd your-project && apriori init  # 交互式:勾选要接入的 AI 工具
 
 规则分两个阶段,而且这两个阶段的松紧方向是**故意相反**的。
 
-**阶段一——结论"什么意思",读得宽。** 一条结论行只要属于以下之一即可理解:接受类措辞(`no major issues` · `no major issues, ready to proceed` · `… to execution` · `no spec-vs-code gaps` · `no findings` · `extraction accepted`)、修订类措辞(`gaps found` · `extraction rejected`)、或一个计数——`N issues open` 或 `N issues found`,单复数皆可、大小写不限、句末句号无妨。**`0` 判 accept**;正数判 revise,并作为该 family 的未关闭数展示。这个集合是**封闭的,绝不做前缀匹配**:结论行写成 `no major issues, but 3 blockers remain` 时,它以接受措辞开头却不是接受,因此宁可拒绝也不误读。
+**阶段一——结论"什么意思",读得宽。** 一条结论行只要属于以下之一即可理解:接受类措辞(`no major issues` · `no major issues, ready to proceed` · `… to execution` · `no spec-vs-code gaps`)、修订类措辞(`gaps found`)、或一个计数——`N issues open` 或 `N issues found`,单复数皆可、大小写不限、句末句号无妨。**`0` 判 accept**;正数判 revise,并作为该 family 的未关闭数展示。这个集合是**封闭的,绝不做前缀匹配**:结论行写成 `no major issues, but 3 blockers remain` 时,它以接受措辞开头却不是接受,因此宁可拒绝也不误读。
 
 **阶段二——证据"完不完整",判得严。** 只有评审文档、它的结论行、以及它的原始记录(`<stem>-raw.*`)三者齐备才计一轮;并且同一 family 的轮次必须 **1..N 连续、不许有洞**——否则删掉第 1 轮就能把停在第 2 轮的循环变回崭新的第 1 轮。以下**阻断**:结论行不在词汇表内、一篇文档声明两个**不同**结果、两份文档争同一 family 同一轮、摘要的结论行被删而原始记录还在、以原始记录名义声称某一轮但摘要缺失、以及轮次断档。以下**只提示,绝不拒绝**:文档正文被粘贴两遍但两次结论完全相同、以及压根不是评审轮次的原始记录(如 `kb-check-raw.txt`)。台账重排、标题改写、flow-state 重新排版都不触碰这些,既换不来一轮,也丢不掉一轮。
+
+**目标是 2 轮内收敛**——第 1 轮找盲区,第 2 轮验证修复。5 不是允许你连续打 5 次补丁的预算:第 3～5 轮**只用于验证改变做法之后的关键修复**,真正的控制点是第 2 轮。
 
 两个控制点逐 family 分别适用(`apriori gate --change <name>` 的 **C8**;`apriori status --change <name> --json` 逐 family 报告):
 
 - **某个 family 在它自己的第 2 轮后仍是 `revise` → 该循环停止。** 不要在同一套方案上开第 3 轮。在 `gates:` 记下 拆分 / 补测试 / 重做方案 三者之一——`reframe <family> round <n> <split|tests|redo> — <理由>`——该 family 的循环才重开。这条记录同时点名 family 与它所答复的轮次,因此不授权任何其他东西;它也永远豁免不了证据问题——那些是拿去修的,不是拿去表决的。
 
-- **某个 family 到达它自己的第 5 轮 → 产生 escalation**,无论结论是什么。`apriori status --json` 为每个升级的 family 带出一条 `escalation`,C8 持续阻断,直到所有者以 `reframe <family> round <n> <split|tests|redo|accept-risk> — <理由>` 作答。预授权可以让工作继续,但永远不能把 escalation 从报告里拿掉。
+- **某个 family 到达它自己的第 5 轮 → 产生 escalation**,无论结论是什么。`apriori status --json` 为每个升级的 family 带出一条 `escalation`,C8 持续阻断,直到所有者以 `reframe <family> round <n> <split|tests|redo|accept-risk> — <理由>` 作答。**由人决定**——拆分、补测试、重做方案,或接受风险;CLI 既不替人决定,也不抬高上限。预授权可以让工作继续,但永远不能把 escalation 从报告里拿掉。
 
 `apriori archive` 通过就绪度规则 **R4** 消费同一套判定:循环已停止或存在证据问题时,在写入或移动任何东西之前就被拒绝;advisory 从不拒绝。停在第 2 轮的循环**不可** force——第 2 轮之后的答案是改变做法。第 5 轮的止损沿用 archive 一贯的双重授权:`gates:` 里**已记录**的所有者决定**加上**显式 `--force`;单独一行 `gates:` 记录(agent 自己就能追加)永远不足以授权归档。
 
@@ -129,63 +131,16 @@ CLI 只报告某个 family 最新一轮声明了什么——它的结论,以及�
 
 ---
 
-## 2b. Hotfix 通道（小到不配开 change 的记录）
-
-不是每一件为真的事都值得开一个 change bundle。一处错别字、一行配置修正、一次两小时
-最终结论是「没坏」的排查——它们都产出了真实的结论，而在正式流程下产出这个结论的代价
-没人愿意付。于是结论不被写下，下一个人再推导一遍。
-
-**hotfix 通道**就是那个最小回写单元：一条结论、可选的 spec delta 及其测试绑定、直接归档。
-它瞄准的是十分钟，不是一小时。
-
-```
-apriori hotfix new summary-wording        # 生成骨架
-# …… 写结论；只有 spec 真的变了才加 delta ……
-apriori hotfix archive summary-wording    # 零写入 preflight：分级、范围、摘要、写集合、令牌
-apriori hotfix archive summary-wording --approve <token>
-```
-
-**准入是机械判定的，且不接受商量。** 通道按申报字段与 delta 形态判爆炸半径：
-
-| 分级 | 含义 | 通道要求 |
-|---|---|---|
-| `(R0, n/a)` | 没改代码——结论本身就是记录 | 仅在附带 decisions 时做一轮点检 |
-| `(R1, n/a)` | 单模块琐碎修复，无 spec 变更 | 无 |
-| `(R2, behavior)` | 不改 spec 的行为修复 | 一轮 `inspection` |
-| `(R2, whitelist)` | spec 变更全部落在人工标注 `blast: low` 的块内 | 一轮带 `boundary=` 的 `inspection` |
-| `(R3, n/a)` | 其余一切 | **拒绝**——去开正式 change |
-
-`R3` 是拒绝，不是警告。REMOVED/RENAMED 块、跨两个模块、前后端双端命中、取代既有
-decision、无 scenario 的 MODIFIED/ADDED 块、以及任何 store 未白名单的 delta 块——每一种
-都判 `R3`，并被指名送回正式流程。
-
-这个偏向是有意的：**机械上分不清的，一律归到更严的一侧**。催生本通道的缺陷账里满是
-「看着小其实不小」的改动——一次改写的 GROUP BY、一次重定义的「最新」——它们全都由构造
-落在 `R3` 上，而不是靠当天某个人的判断。
-
-三条规则让通道便宜，但不让它成为流程上的洞：
-
-- **单一身份。** 一个目录要么是正式 change、要么是 hotfix，绝不同时是两者。`flow-state.md`
-  与 `hotfix-state.md` 并存，在每个消费点都是错误。
-- **没有 no-test 逃逸。** 每个 delta 目标键都绑定测试，且只在一个地方声明（状态文件的
-  `## Bindings` 节）。没有「不值得测」这一行可写。
-- **两步签收。** dry-run 印出写集合并签发令牌；`--approve` 在 bundle 或任一 store/truth
-  基线不再散列为该令牌时拒绝执行。
-
 ### 2c. 验证强度的缩放
 
 `apriori/process-config.md` 里的 `| verification-profile | ui / backend / fullstack / docs / none |`
 一次性声明这个仓库是什么类型。该行**由人拥有**——agent 只读不写，与 `test-cmd` 同一语义，
 因此 agent 无法悄悄降低自己工作要过的那道坎。
 
-profile 缩放的是覆盖面，不是存在性：
+profile 缩放的是覆盖面，不是存在性。要求的是：覆盖本 change scenario 的 E2E 证据；`ui`/
+`fullstack` profile 下还要受影响页面的截图观察记录。缺失是流程要求，在 gate 上报告。
 
-| 档 | 要求什么 | 缺失时如何 |
-|---|---|---|
-| **全量档**（正式 change，standard 模式） | 覆盖本 change scenario 的 E2E 证据；`ui`/`fullstack` profile 下还要受影响页面的截图观察记录 | 流程要求，在 gate 上报告 |
-| **增量档**（hotfix 通道） | 只跑受影响 scenario 的绑定测试；触及前端文件时要一份截图记录 | **advisory**——打印提示，绝不阻塞 |
-
-**已提供的记录在两档下同样全谱校验**——提供记录不换来宽松。纯后端 bundle 用
+**已提供的记录一律全谱校验**——提供记录不换来宽松。纯后端 bundle 用
 `ui: not-applicable — <理由>` 豁免；没有理由的豁免不算豁免。
 
 ---
@@ -202,7 +157,6 @@ lineage: <目标分支/线 + 合并禁忌,如 "v2(永不合入 main)">
                         # kickoff 时从需求文档抄录;变更中途发现谱系冲突
                         # =立即停下
 current-step: STEP0 | STEP1 | STEP2 | STEP3 | STEP4 | STEP5 | STEP6 |
-              INTENT-CARD | SPIKE | EXTRACTION |     # 探索位置
               DONE | ABANDONED
 reviewer-session: <id 或 n/a>   # 异构评审方可 resume 的会话 id(如 codex 打印的
                         # session id),第 1 轮一打印就记下——这样中途中断能 resume
@@ -219,8 +173,7 @@ artifact-root: .        # 可选;默认=项目根。
 gates:                  # 只增不改的人工决定日志
   - <YYYY-MM-DDTHH:MM> <标签>: <人的决定,原文>
                         # 标签取固定词表:gate① … gate⑤ | KB 签核 |
-                        # intent-card sign-off | extraction review |
-                        # STEP2 full review | consolidation | note
+                        # consolidation | note
                         # (note=非决策事件:降级、收官等)
                         # 格式只约束前缀——决定内容仍是逐字自由文本;
                         # 固定前缀让 §6 的墙钟时长字段可被机器提取
@@ -231,6 +184,17 @@ gates:                  # 只增不改的人工决定日志
 ---
 
 ## 4. 状态机
+
+**只有四个阶段。STEP0-6 只是本 runbook 对它们的编号,仅此而已。**
+
+| 阶段 | 它要解决什么 | 实现它的步骤 |
+|---|---|---|
+| **Ground** | 核对真实代码、schema、接口、原型、配置、部署拓扑与运行环境。事实分三类:`observed`(已读取或执行,附路径/命令/响应)、`decision`(来自需求或 Owner)、`assumption`(尚未证实——实现前必须验证) | 知识库前置检查、STEP1 |
+| **Specify** | 写最小行为契约与验收标准;一条证据链证不完的 change,先拆 | STEP0、STEP2 |
+| **Build & Test** | 先拿到失败证据,再实现,并跑与真实风险相匹配的真实测试 | STEP5 |
+| **Review & Deliver** | 达到 review-ready 后做一次独立评审;实质问题关闭后交付 | STEP2/STEP5 评审循环、STEP3、STEP6 |
+
+步骤编号是本文件与 CLI `current-step` 字段的实现细节——**四个阶段才是概念**。阶段不等于一套文档:**材料按需产出**,下文没有任何一处是固定的全家桶义务。
 
 **产物路径**(每一步都写到这里——绝不自行发明路径):
 
@@ -246,9 +210,6 @@ gates:                  # 只增不改的人工决定日志
 | 规格评审 | `apriori/changes/<change>/review/spec-review-v{N}.md` |
 | 知识库(TRUTH-DOC) | `apriori/truth/<module>.md`——必须带围栏外行首裸行 `source-commit: <ref>` 标记(只覆盖契约节,§5 P9/P10);C6 默认按文件基名把 truth 绑到 store 模块、比对 `lib/<module>.js`——文件名异名或代码不在 `lib/` 时,在头部区声明 `store-module:` / `source-files:` |
 | 流程状态 | `apriori/changes/<change>/flow-state.md` |
-| 意图卡(探索轨) | `apriori/changes/<change>/requirement/intent-card.md` |
-| 提取评审(探索轨) | `apriori/changes/<change>/review/extraction-review-v{N}.md` |
-| 原型(探索轨) | `apriori/changes/<change>/spike/`——archive 时删除或隔离;tasks.md 绝不引用 |
 | 评审方原始输出 | `apriori/changes/<change>/review/<stem>-raw.* (the stem = its review doc)` |
 
 **产物接口(规范性)。** 上表路径即纯文件——无外部 SDD 工具、无工具持有的规格目录。`apriori` CLI 直接作用于它们。
@@ -269,24 +230,17 @@ gates:                  # 只增不改的人工决定日志
 
 **收敛——一次一个问题。** 形状浮现后切换到纪律(并且说出来——宣告换挡能帮人跟上节奏):**每条消息恰好一个问题**,凡是给选项不失真的地方就给具体选项供人挑(只在选项会误导时才开放式提问),并保持每轮一眼可读——问题绝不能淹没在正文里。过一遍覆盖清单——*目的 · 目标用户 · 核心场景 · 界面形态(面向用户时) · 数据与内容 · 约束 · 非目标 · 成功判据*——直到每一项要么已回答、要么**经人同意明确搁置**;悄悄跳过一项就是缺陷。两个情境招式:人中途加想法时,**先探它的成色再吸收**——是观察到的真需求,还是"觉得会好玩"?把代价说白,并先给出缓做/分级路线(记成带升级路径的非目标)再考虑放进范围;人表现出疲劳或不耐烦时,**把剩余清单折叠成推荐默认值**打包一次批准,不再逐项追问。点子横跨多个独立部分时,说出来并拆开——每块将来各是一个变更。任何退出之前:呈上 **2-3 个候选方案的取舍对比和你的推荐**——绝不悄悄顺着人的第一个说法走。全程 YAGNI。
 
-**汇入——人来定夺,火种随行。** "说得清"由人判定,不由你:方案对比给出之后你才可以*提议*退出;只有人的批准才结束这个姿态——且**必须漏斗进流程**。人批准了一个说得清的目标,就开 **STEP0**;目标仍然说不清,就转**探索轨的意图卡**(§4)——与 §2 的目标确定性同一分界。没有第三个停留处:脑暴只喂这两条之一。汇入时把一切带走:把结晶的共识写成 kickoff 需求草稿——目标、用户、选定方案(以及胜出的界面草图,如有)、成功判据、约束、非目标**连同砍掉它们的理由**、遗留开放问题——作为 STEP0 的 `req-v1` 起始材料。脑暴绝不替代 STEP0 的需求纪律——它喂给它。
+**汇入——人来定夺,火种随行。** "说得清"由人判定,不由你:方案对比给出之后你才可以*提议*退出;只有人的批准才结束这个姿态——且**必须漏斗进流程**。人批准了一个说得清的目标,就开 **STEP0**;目标仍然说不清,就留在姿态里——事实不明由同一个 change 内的 Ground(§4 STEP1)去落实。没有第二条轨道可转。汇入时把一切带走:把结晶的共识写成 kickoff 需求草稿——目标、用户、选定方案(以及胜出的界面草图,如有)、成功判据、约束、非目标**连同砍掉它们的理由**、遗留开放问题——作为 STEP0 的 `req-v1` 起始材料。脑暴绝不替代 STEP0 的需求纪律——它喂给它。
 
 ### STEP0 —— 需求精细化 · 对抗循环 · 由派生轮次治理(§1 R4)
 
 - **输入:**`apriori/changes/<change>/requirement/req-v{N}.md`;知识库(如有)。需求必须声明**目标谱系**(主线/哪条分支线)——多谱系仓库中谱系缺失是第四个访谈触发条件。若需求缺"目标 / 范围外 / 可测验收"三要素之一——**先结构化提问采访人**,再出 req-v1。
 - **每轮:**(1)若已有评审,据其修订 → `req-v{N+1}.md`,逐条注明采纳/拒绝+理由并更新台账;(2)用 **P1** 调起评审方(R2)→ 评审文档 + 台账;(3)记录结论行。
-- **退出:**结论行 = `VERDICT: no major issues`(无重大问题)→ 复制为 `apriori/changes/<change>/requirement/req-final.md`,前进。循环停止(§1 R4)→ **闸口 ①**。发现目标根本说不清 → 提议 harden→explore(经人工闸口确认后切轨)。
+- **退出:**结论行 = `VERDICT: no major issues`(无重大问题)→ 复制为 `apriori/changes/<change>/requirement/req-final.md`,前进。循环停止(§1 R4)→ **闸口 ①**。发现目标根本说不清 → 停下汇报:缺的事实在同一个 change 内的 Ground(STEP1)落实,不切轨。
 
-### 探索轨(EXPLORE)—— §2 把变更分到这里时
+### ABANDONED —— 任何步骤都合法的退出
 
-0. **意图卡先行(不可豁免):**≤15 行,路径 `apriori/changes/<change>/requirement/intent-card.md`——目标假设 / 成功判据 / spike 要回答的问题。须经**人签核**(`intent-card sign-off`;异构评审可作为签核前的参考,但不能替代)。在这条轨上,意图卡是独立评审基准——提取出的规格绝不只对照原型自证。
-1. **spike(以问题为界):**在 `changes/<change>/spike/` 下自由做原型;退出=意图卡问题逐条有答案。迟迟收敛不到答案 → 停下来汇报 → **闸口 ⑤**。
-2. **P11 —— 规格提取:**输入=意图卡+原型+spike 结论;输出=spec 草案,置于 `apriori/changes/<change>/specs/`,是意图侧的**唯一权威**;另加 `apriori/changes/<change>/requirement/req-final.md` 薄索引(§5 P11——绝不另写第二份验收叙述)。显式声明的提取时决策(`EXT-n`)在 `extraction review` 决策点终裁。
-3. **P12 —— 提取评审(异构,R2):**结论行 `VERDICT: extraction accepted` → 第 4 步;`VERDICT: extraction rejected` + 提取不忠实 → 重跑 P11;`VERDICT: extraction rejected` + 意图假设被证伪 → 回 SPIKE,或 `ABANDONED`(归档意图卡与结论;记台账)。
-4. **汇入:**进入 STEP2 的 P5/P6 全量循环——此后两轨完全无差别。
-5. **原型是一次性的,且机器可查:**STEP5 从失败测试重建;tasks.md 不得引用 `spike` 目录;`changes/<change>/spike/` 在 archive 之前删除(或隔离归档)。
-6. **轨道转移:**explore→harden(提取通过,或目标已然明确);harden→explore(STEP0 发现目标说不清——经人工闸口);explore→ABANDONED(假设证伪)。每次转移保留意图卡、结论与台账;只丢弃 `spike` 目录。
-7. **harden 变更的弃案(人改主意了,任何步骤都可以):**ABANDONED 在 harden 轨同样是合法出口——但只凭人的一句话(这是人的独享决定;agent 绝不许把它当作躲避评审不过关的出路来提议):台账落一行 `abandoned —— <人的原话理由>`,变更目录移入 `apriori/changes/archive/<戳>-<名>/`(flow-state 置 `current-step: ABANDONED`),KB 与规格库一概不写,变更已动过的代码听人的指挥处置(回滚/留分支——要问,不许自作主张)。需求文档和台账保留:弃案是一个被记录的决定,不是被抹掉的决定。
+**弃案(人改主意了,任何步骤都可以):**ABANDONED 是任何步骤都合法的退出——但只凭人的一句话(这是人的独享决定;agent 绝不许把它当作躲避评审不过关的出路来提议):台账落一行 `abandoned —— <人的原话理由>`,变更目录移入 `apriori/changes/archive/<戳>-<名>/`(flow-state 置 `current-step: ABANDONED`),KB 与规格库一概不写,变更已动过的代码听人的指挥处置(回滚/留分支——要问,不许自作主张)。需求文档和台账保留:弃案是一个被记录的决定,不是被抹掉的决定。
 
 ### 知识库前置检查 —— STEP1 之前,凡项目已有代码就做
 
@@ -300,7 +254,7 @@ gates:                  # 只增不改的人工决定日志
 ### STEP1 —— explore
 
 - **动作:**执行 **explore 接口动作**,用 **P3**。**产出:**gap 报告。
-- **调研 spike 变体**(模糊但触绊线的变更,§2):允许在 `changes/<change>/spike/` 下写探针代码——探索轨的全部隔离规则适用;结论作为 gap 报告的"调研结论"附录。P3 带对应变体条款。
+- **事实读不出来时:**允许写探针代码,用完即弃,tasks.md 绝不引用它——它产出的是 gap 报告里的一条 `observed` 事实,不是 change 往下带的产物。P3 带对应条款。
 - **退出:**standard → **闸口 ②**(人过目 gap 报告)。fast:把报告的主要风险并入下次汇报,继续前进。
 
 ### STEP2 —— propose · 对抗循环 · 由派生轮次治理(§1 R4)
@@ -328,7 +282,7 @@ gates:                  # 只增不改的人工决定日志
 ### STEP6 —— 归档 + 知识库回写
 
 - **P9 之前:**确保本变更的工作已**提交**——`source-commit` 必须指向一个真实存在、包含契约节所校对实现的 commit(全新仓库同样:先提交,再盖标)。
-- **动作:**执行 **archive 接口动作**,用 **P9**——按上文接口的 archive 算法合并;更新 `apriori/truth/<module>.md`(契约节按最终实现更新+刷新 `source-commit`;决策节追加本次变更的新决策/不变式);列出改了哪些文件/段落。探索轨变更:在归档动作**之前**删除或隔离 `changes/<change>/spike/`。**原子移动携带整个 bundle:**`apriori/changes/<change>/` 下的一切——flow-state、`requirement` 需求史、`gap-report.md`、proposal、design、tasks、`specs/`、`review/` 证据——作为一个整体落至 `apriori/changes/archive/<stamp>-<change>/`;你剩下的唯一职责是收尾提交。
+- **动作:**执行 **archive 接口动作**,用 **P9**——按上文接口的 archive 算法合并;更新 `apriori/truth/<module>.md`(契约节按最终实现更新+刷新 `source-commit`;决策节追加本次变更的新决策/不变式);列出改了哪些文件/段落。**原子移动携带整个 bundle:**`apriori/changes/<change>/` 下的一切——flow-state、`requirement` 需求史、`gap-report.md`、proposal、design、tasks、`specs/`、`review/` 证据——作为一个整体落至 `apriori/changes/archive/<stamp>-<change>/`;你剩下的唯一职责是收尾提交。
 - **退出:**增量规格已合并 + 知识库已更新 + 归档后再跑一次 `apriori gate --change <name>`(此时解析到 archived 归档态——C4 要求台账每行都是终态),其结果放进**闸口 ④**的材料包 → 人批准知识库 diff(同仓库布局下就是 PR 评审)。然后置 `current-step: DONE`。
 
 
@@ -342,16 +296,9 @@ gates:                  # 只增不改的人工决定日志
 |---|---|---|
 | P1 | `VERDICT: no major issues` | `VERDICT: <N> issues open` |
 | P5 | `VERDICT: no major issues, ready to proceed to execution` | `VERDICT: <N> issues open` |
-| P8 | `VERDICT: no spec-vs-code gaps` | `VERDICT: <N> issues open` |
-| P12 | `VERDICT: extraction accepted` | `VERDICT: extraction rejected` |
-| hotfix 点检（§2b） | `VERDICT: no findings` | `VERDICT: <N> issues open` |
-| hotfix 文档职责（§2b） | `VERDICT: no spec-vs-code gaps` | `VERDICT: gaps found` |
+| P8 | `VERDICT: no spec-vs-code gaps` | `VERDICT: gaps found` · `VERDICT: <N> issues open` |
 
-hotfix 通道的判定行带两个必填尾注、一个条件尾注——行形为
-`<判定短语> role=<inspection|p8> digest=<64 位小写 hex>`；当 γ' 白名单点检替代人工签收时，
-再带 `boundary=<within|exceeds>`。短语本身与其 `^VERDICT:` 前缀不变，既有消费者照读不误。
-
-`<N>` = 本轮评审结束时,台账中状态为 `open` 的正式行总数(全台账口径,不分阶段——机械可判;正整数;advisory/rejected/fixed 行不计)。P12 只用固定短语,永不用计数形态。
+`<N>` = 本轮评审结束时,台账中状态为 `open` 的正式行总数(全台账口径,不分阶段——机械可判;正整数;advisory/rejected/fixed 行不计)。
 
 ### P0 —— 问题台账(下面每条提示词都读写它)
 
@@ -413,8 +360,8 @@ advisory 可整批确认或忽略,无需逐条理由——只有对正式发现�
 * 代码: 当前仓库
 【输出】
 apriori/changes/<change>/gap-report.md:当前状态 A、目标状态 B,以及两者之间的差异点与风险。
-【调研 spike 变体——仅限 §2 分派到此的"模糊但触绊线"变更】
-允许在 changes/<change>/spike/ 下写探针代码(探索轨隔离规则适用);
+【事实读不出来时】
+允许写探针代码,用完即弃,tasks.md 绝不引用它;
 结论作为 gap 报告的"调研结论"附录。其余情况:不要写代码。
 ```
 
@@ -522,32 +469,6 @@ advisory 可整批确认或忽略,无需逐条理由——只有对正式发现�
 【约束】契约节只写代码里确实存在的事实;决策节只写被明确确认过的意图。不确定处标"待人工确认";绝不编造抽象意图。
 ```
 
-### P11 —— 探索轨:规格提取(生产方)
-
-```text
-【输入】apriori/changes/<change>/requirement/intent-card.md;spike/ 下的原型;spike 结论。
-【任务】提取原型的*已验证*行为所蕴含的规格——绝不发明意图卡与 spike 观察都不支持的行为。产出:
-* 带 scenario ID 的 spec 草案,置于 apriori/changes/<change>/specs/——意图侧的唯一权威;
-* apriori/changes/<change>/requirement/req-final.md——仅为薄索引:一句目标引意图卡 + 验收=对 spec 场景 ID 清单的引用。绝不在此另写第二份验收叙述——同一意图的两份行文必然互漂。
-【约束】未验证的假设标"待确认"。意图卡与 spike 观察都不支撑、但规格完整性所需的行为,必须以显式的提取时决策声明——专节集中的 `EXT-n` 条目(内容+推理),绝不混入提取事实;EXT-n 在提取评审(extraction review)处终裁。原型是观察来源,不是权威来源:意图与原型冲突处,以意图卡为准并显式列出分歧。
-完成后停下,等待提取评审(P12)。
-```
-
-### P12 —— 探索轨:提取评审(异构,R2)
-
-```text
-【输入】apriori/changes/<change>/requirement/intent-card.md;P11 的产出;问题台账。
-【检查表】P1 的五个维度,另加:
-6. 意图卡符合性——每个目标与成功判据都出现在提取出的 specs/ 里(唯一权威;req-final 薄索引只查"薄且一致");
-7. 无凭空发明——每条规格可溯源到意图卡或某次 spike 观察(抽查溯源),已声明的 EXT-n 除外:EXT-n 按提案评审,逐条给 accepted / rejected / needs-human 三态推荐。
-【EXT-n 语义】你的结论行只裁提取忠实性(声明外发明、意图卡符合度)——EXT-n 推荐永不改变结论行。EXT-n 的终裁属于 `extraction review` 决策点(既有人工闸口):人裁 rejected → 生产方删除对应 spec 行,删除以机械核查确认(grep:该 EXT-n 场景 ID 已消失),不重跑 P12;人裁 accepted → 该条目补记回意图卡。未终裁的 EXT-n 阻塞决策点、不阻塞你的结论行——在结论行前显式列出它们。
-【范围】只把提取不忠实或意图假设被证伪计入结论行;advisory 发现不落入任何 rejected 分支(P0 规则)。
-【输出】apriori/changes/<change>/review/extraction-review-v{N}.md——问题按 P0 列出,advisory 单列,附 EXT-n 推荐;末尾给出你的台账增量,
-然后是严格二选一的结论行(§5 短语表):"VERDICT: extraction accepted" 或 "VERDICT: extraction rejected"。
-rejected+提取不忠实 → 生产方重跑 P11;
-rejected+意图假设被证伪 → 回 SPIKE 或 ABANDONED(状态机的失败分支)。
-```
-
 ### P13 —— 脑暴启动(STEP0 前姿态)
 
 ```text
@@ -564,7 +485,7 @@ rejected+意图假设被证伪 → 回 SPIKE 或 ABANDONED(状态机的失败分
 提议退出之前,先给 2-3 个候选方案的取舍对比和你的推荐。什么时候"说得清"由我判定。
 我批准后,写出 kickoff 需求草稿(目标、用户、选定方案及胜出的界面草图如有、成功判据、
 约束、非目标连同砍掉理由、开放问题),以它作为 `req-v1` 起始材料开 STEP0;
-仍说不清就转探索轨的意图卡。
+仍说不清就留在姿态里,先把缺的事实在 Ground(§4 STEP1)落实——没有第二条轨道。
 ```
 
 ---
@@ -611,7 +532,7 @@ rejected+意图假设被证伪 → 回 SPIKE 或 ABANDONED(状态机的失败分
 当两者都成立时停。"
 ```
 
-**闸口清单(由你亲自决定的事):**① STEP0 评审循环停止时的定稿裁决 ② gap 报告过目(standard)③ STEP3 技术评审 ④ 知识库 diff 批准 ⑤ 任何循环停止、第 5 轮 escalation / 台账 ID 重开——升级处理,绝不悄悄放低标准。探索轨另加:`intent-card sign-off` 与 `extraction review` 的结论裁决。闸口整合(§1)由你授予——但永远不覆盖知识库签核、意图卡签核。
+**闸口清单(由你亲自决定的事):**① STEP0 评审循环停止时的定稿裁决 ② gap 报告过目(standard)③ STEP3 技术评审 ④ 知识库 diff 批准 ⑤ 任何循环停止、第 5 轮 escalation / 台账 ID 重开——升级处理,绝不悄悄放低标准。闸口整合(§1)由你授予——但永远不覆盖知识库签核。
 
 ---
 

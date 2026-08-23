@@ -17,9 +17,9 @@ The V3 runbook SHALL make scenario-to-test binding a deterministic gate, narrow 
 - WHEN any runbook/README section references artifact paths
 - THEN it names only the `apriori/` plain-files layout; no `(adapter: openspec/…)` dual-path parentheticals remain (CK-05 enforces this)
 
-#### Scenario: PR-05 the disposable prototype rule still holds
-- WHEN an explore-track change archives
-- THEN `spike/` is deleted or quarantined and STEP5 is rebuilt from failing tests (unchanged from v2)
+#### Scenario: PR-05 probe code is disposable and never becomes an artifact
+- WHEN the runbook describes what to do when a fact will not yield to reading
+- THEN probe code is allowed, thrown away afterwards and never referenced by `tasks.md` — its product is an `observed` fact in the gap report, not an artifact the change carries; no `spike/` path and no separate prototype track survives in either edition
 
 #### Scenario: PR-06 a configurable language governs human-facing prose, machine tokens stay English
 - WHEN the runbook describes output language
@@ -27,7 +27,7 @@ The V3 runbook SHALL make scenario-to-test binding a deterministic gate, narrow 
 
 #### Scenario: PR-07 the brainstorm stance is a structured diverge→converge→funnel, entered via P13
 - WHEN the runbook describes what to do with a still-fuzzy idea
-- THEN it offers a **Brainstorm** stance (a stance, not a tracked step; no required output; entered via a P13 kickoff prompt) with three movements: **diverge** — open threads not interrogations, codebase-grounded, ASCII sketches including 2-3 UI-mockup variants for anything user-facing, risks surfaced unprompted; **converge** — exactly one question per message with concrete options, a coverage checklist (purpose, target users, core scenarios, UI shape, data & content, constraints, non-goals, success criteria) where every item is answered or explicitly deferred by the human, mid-conversation additions probed as observed-need vs speculation (cost stated, staged path offered first), human fatigue collapsing the remaining checklist into batch-approved recommended defaults, and 2-3 candidate approaches with tradeoffs before any exit; **funnel** — into STEP0 when the human approves a stateable goal, or the explore-track intent card when it cannot be stated ("no third resting place")
+- THEN it offers a **Brainstorm** stance (a stance, not a tracked step; no required output; entered via a P13 kickoff prompt) with three movements: **diverge** — open threads not interrogations, codebase-grounded, ASCII sketches including 2-3 UI-mockup variants for anything user-facing, risks surfaced unprompted; **converge** — exactly one question per message with concrete options, a coverage checklist (purpose, target users, core scenarios, UI shape, data & content, constraints, non-goals, success criteria) where every item is answered or explicitly deferred by the human, mid-conversation additions probed as observed-need vs speculation (cost stated, staged path offered first), human fatigue collapsing the remaining checklist into batch-approved recommended defaults, and 2-3 candidate approaches with tradeoffs before any exit; **funnel** — into STEP0 when the human approves a stateable goal, or, when it still cannot be stated, the stance continues and the missing facts are settled in Ground (STEP1) inside the same change — there is no second track to route to
 
 #### Scenario: PR-08 proposal.md is a STEP2 artifact
 - WHEN STEP2 (propose / P4) runs
@@ -57,8 +57,8 @@ The V3 runbook SHALL make scenario-to-test binding a deterministic gate, narrow 
 - WHEN a human has only a fuzzy idea (no change name yet)
 - THEN the scaffolded `/apriori` command with NO arguments enters the Brainstorm stance via P13 (thinking only, nothing durable until the approved exit), the runbook's §0 names the two doors explicitly (fuzzy idea → Brainstorm; stateable change → kickoff prompt), and `apriori init`'s closing hint presents both doors
 
-#### Scenario: PR-15 ABANDONED is a legal harden-track exit, on the human's word only
-- WHEN the human decides mid-change to drop a harden-track change (any step)
+#### Scenario: PR-15 ABANDONED is a legal exit at any step, on the human's word only
+- WHEN the human decides mid-change to drop a change (any step)
 - THEN the runbook prescribes: one ledger row `abandoned` carrying the human's verbatim reason, the change dir archived with flow-state `current-step: ABANDONED`, nothing written to KB or spec store, touched code disposed only as the human directs; the agent may never propose abandonment as an escape from failing reviews; requirement docs and ledger are kept as a recorded decision
 
 #### Scenario: PR-16 legacy-project clarity clauses from the inherited-poll lab
@@ -94,11 +94,11 @@ The runbook STEP6 section (both editions) SHALL state that the archive action it
 - THEN it states the archive action carries the requirement history automatically (destination named), the executor's duty is the closeout commit alone, and the old copy-it-yourself phrasing ("copy every"/"拷入") appears nowhere in the section
 
 ### Requirement: per-change artifacts live in the change bundle
-The runbook (both editions) and the concepts handbook (both languages) SHALL define the bundle as the ONLY layout: everything a change owns lives in `apriori/changes/<name>/` — `flow-state.md`; `requirement/` holding `req-v{N}.md`/`req-final.md`/`intent-card.md` under PLAIN names (the directory is the identity); `gap-report.md`; `proposal.md`/`design.md`/`tasks.md`; `specs/<module>/`; `review/` holding the ledger `issues.md`, every review doc (`req-review-v{N}.md`, `spec-review-v{N}.md`, `step5-review-v{N}.md`, `extraction-review-v{N}.md`) and each doc's raw beside it under the unchanged `<stem>-raw.*` rule; and `spike/` on the explore track, which the EXECUTOR deletes or quarantines BEFORE the archive action (the command never deletes anything). The five legacy roots (`requirement/`, `spike/`, `apriori/review/`, `apriori/design/`, `apriori/explore/`) appear nowhere as standalone paths: after stripping every `changes/<…>/` bundle form from the four live docs, zero occurrences of those roots remain. The archive action carries the whole bundle in its one atomic move; STEP6 carries no preservation or staging text. The v4 stability sentence states its promise over the CLI surface & flags, `--json` shapes, the delta format, and the flow-state schema — without a layout clause.
+The runbook (both editions) and the concepts handbook (both languages) SHALL define the bundle as the ONLY layout: everything a change owns lives in `apriori/changes/<name>/` — `flow-state.md`; `requirement/` holding `req-v{N}.md`/`req-final.md` under PLAIN names (the directory is the identity); `gap-report.md`; `proposal.md`/`design.md`/`tasks.md`; `specs/<module>/`; and `review/` holding the ledger `issues.md`, every review doc (`req-review-v{N}.md`, `spec-review-v{N}.md`, `step5-review-v{N}.md`) and each doc's raw beside it under the unchanged `<stem>-raw.*` rule. 6.0 retired the explore track, so the bundle has no `spike/` member and STEP6 carries no pre-archive disposition duty. The five legacy roots (`requirement/`, `spike/`, `apriori/review/`, `apriori/design/`, `apriori/explore/`) appear nowhere as standalone paths — they survive only as `doctor`'s pre-4.0 migration probe (D8) — : after stripping every `changes/<…>/` bundle form from the four live docs, zero occurrences of those roots remain. The archive action carries the whole bundle in its one atomic move; STEP6 carries no preservation or staging text. The v4 stability sentence states its promise over the CLI surface & flags, `--json` shapes, the delta format, and the flow-state schema — without a layout clause.
 
 #### Scenario: PR-21 the bundle layout binds and the legacy roots are gone
 - WHEN the four live docs (runbook EN/CN, concepts EN/CN) are scanned
-- THEN the artifact table names the bundle paths (requirement/, review/ with the ledger and docs+raws, gap-report.md, spike/ under changes/<name>/), the STEP6 text says the move carries the bundle with no staging/copy instruction, the spike disposition is the executor's pre-archive duty, and the strip-scan finds zero standalone occurrences of the five legacy roots — while the stability sentence carries no layout clause
+- THEN the artifact table names the bundle paths (requirement/, review/ with the ledger and docs+raws, gap-report.md under changes/<name>/) and names no `spike/` member, the STEP6 text says the move carries the bundle with no staging/copy instruction and carries no pre-archive disposition duty, and the strip-scan finds zero standalone occurrences of the five legacy roots — while the stability sentence carries no layout clause
 
 ### Requirement: the CAS promise speaks the present tense and the release surface points at the repository root
 Both runbook editions SHALL state the CAS rule in the present tense — unstamped mutation deltas are denied by archive by default, naming the two visible waivers (`--no-cas`, `| cas | optional |`) — with no future-tense "mandatory in 4.0 / 4.0 起强制" phrasing left; MIGRATING.md SHALL carry a 4.0 section with the legacy-root detection guidance and the manual migration mapping; `package.json`'s homepage SHALL point at the repository root (`#readme`, carrying no branch segment) so it follows the default branch.

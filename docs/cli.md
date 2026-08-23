@@ -40,35 +40,6 @@ Example: `apriori new add-playback`
 
 Exit: 0 created · 1 name/exists error · 2 usage.
 
-## apriori hotfix
-
-the minimal write-back lane: a conclusion, an optional spec delta with its bindings, and a direct archive — for records too small to deserve a formal change
-
-```text
-usage: apriori hotfix new <name>
-       apriori hotfix archive <name> [--approve <token>] [--test-cmd "<cmd>"] [--cwd <dir>]
-```
-
-`hotfix new` scaffolds `apriori/changes/<name>/hotfix-state.md` — a header block, a `## Conclusion` you must replace, and a `## Bindings` section. A bundle is a formal change **or** a hotfix, never both: a directory holding `flow-state.md` and `hotfix-state.md` at once is refused everywhere it is consumed.
-
-`hotfix archive` runs a zero-write preflight and prints what it found: the grade, the verification scope, the review digest, the write set and an approval token. Nothing is written until you re-run with `--approve <token>`; if the bundle or any store/truth baseline moved in between, the token no longer matches and the archive is refused.
-
-Admission is decided **mechanically by blast radius** — you do not argue for it:
-
-| grade | what it is | review the lane demands |
-|---|---|---|
-| `(R0, n/a)` | no code changed; the conclusion is the whole record | a point-check only when decisions are attached |
-| `(R1, n/a)` | a single-module trivial fix, no spec change | none |
-| `(R2, behavior)` | a spec-preserving behavior fix | one `inspection` round |
-| `(R2, whitelist)` | a spec change confined to blocks a human marked `blast: low` | one `inspection` round carrying `boundary=` |
-| `(R3, n/a)` | everything else | **refused** — open a formal change |
-
-`R3` is not a warning. A REMOVED/RENAMED block, a bundle spanning two modules, a dual-end (frontend *and* backend) touch, a decision supersession, a MODIFIED/ADDED block with no scenario, or any delta block the store has not whitelisted all grade `R3` and are rejected with a pointer at the formal process. Fail-up is deliberate: what cannot be told apart mechanically grades to the stricter side.
-
-Example: `apriori hotfix new summary-wording` → fill in → `apriori hotfix archive summary-wording` → `apriori hotfix archive summary-wording --approve <token>`
-
-Exit: 0 preflight clean / archived · 1 refused (grade, contract, review, verdict or token) · 2 usage or an unreadable bundle.
-
 ## apriori status
 
 where each change is: step, next action, open ledger items, the derived review round and any escalation
@@ -81,7 +52,7 @@ Example: `apriori status --change add-playback --json`
 
 Exit: always 0 on success paths (status reports, never gates).
 
-**Review rounds and escalation.** `--change` adds two derived fields — nothing here is read off a hand-written `round:`. `review.families` carries one entry **per review family** (`req-review`, `spec-review`, `step5-review`, …): `{family, round, verdict, issuesOpen, stopped}`. Rounds are counted inside a family and never summed across families, so three families at 2 + 2 + 1 rounds is exactly that, not "round 5". `verdict` comes from the family's highest ordinal — a `0 issues open` / `0 issues found` count is an accept — `issuesOpen` is the number when the verdict used a counted form and `null` otherwise, and `stopped` is true while gate's C8 blocks that family. `review.problems` lists evidence that refuses to be read as a round and blocks: a verdict outside the vocabulary, one document declaring two different outcomes, a duplicated family/round claim, a summary whose verdict was removed while its transcript remains, a round-named transcript with no summary, an ordinal gap. `review.advisories` lists what is merely worth mentioning and never blocks: a document whose body was pasted twice with the same verdict both times, and a transcript that was never a review round (`kb-check-raw.txt`). `review.defect` is set instead when the `review/` directory itself is a symlink, escapes the bundle or is not a directory — status names it and refuses to read through it, exactly as gate does. `escalation` is `null` until some family reaches its round 5 and then an array of `{family, round, verdict, acknowledged, decision}`; an owner decision in `gates:` flips `acknowledged`, and a malformed document elsewhere never removes the entry. There is no per-round trend of newly-found issues: the evidence carries an open count, not a delta. A hotfix bundle and a bundle with no readable flow-state get `null` for both fields. Runbook §1 R4 is the rule these fields report.
+**Review rounds and escalation.** `--change` adds two derived fields — nothing here is read off a hand-written `round:`. `review.families` carries one entry **per review family** (`req-review`, `spec-review`, `step5-review`, …): `{family, round, verdict, issuesOpen, stopped}`. Rounds are counted inside a family and never summed across families, so three families at 2 + 2 + 1 rounds is exactly that, not "round 5". `verdict` comes from the family's highest ordinal — a `0 issues open` / `0 issues found` count is an accept — `issuesOpen` is the number when the verdict used a counted form and `null` otherwise, and `stopped` is true while gate's C8 blocks that family. `review.problems` lists evidence that refuses to be read as a round and blocks: a verdict outside the vocabulary, one document declaring two different outcomes, a duplicated family/round claim, a summary whose verdict was removed while its transcript remains, a round-named transcript with no summary, an ordinal gap. `review.advisories` lists what is merely worth mentioning and never blocks: a document whose body was pasted twice with the same verdict both times, and a transcript that was never a review round (`kb-check-raw.txt`). `review.defect` is set instead when the `review/` directory itself is a symlink, escapes the bundle or is not a directory — status names it and refuses to read through it, exactly as gate does. `escalation` is `null` until some family reaches its round 5 and then an array of `{family, round, verdict, acknowledged, decision}`; an owner decision in `gates:` flips `acknowledged`, and a malformed document elsewhere never removes the entry. There is no per-round trend of newly-found issues: the evidence carries an open count, not a delta. A bundle with no readable flow-state gets `null` for both fields. Runbook §1 R4 is the rule these fields report.
 
 ## apriori verify
 
@@ -198,7 +169,7 @@ Errors are consumption-time and fail closed, naming their origin (`--id-pattern`
 
 `| verification-profile | ui / backend / fullstack / docs / none |` declares once, for the whole project, what kind of thing this repository is — and therefore what evidence its verification asks for. The row is **human-owned**: agents read it, never write it, exactly like `test-cmd`.
 
-An absent row, an empty cell and the literal `none` all mean the same thing: nothing escalates. Under `ui` or `fullstack` a bundle that touched frontend files is asked for a screenshot observation record (`evidence/screenshots.md`); under `backend` or `docs` it is not. The obligation is **tier-parameterized**: at the full tier (formal changes) the record is required, and in the hotfix lane a missing record prints an advisory and never blocks. Whatever the tier, a record that IS present is validated in full — providing one buys no leniency.
+An absent row, an empty cell and the literal `none` all mean the same thing: nothing escalates. Under `ui` or `fullstack` a bundle that touched frontend files is asked for a screenshot observation record (`evidence/screenshots.md`); under `backend` or `docs` it is not. The record is required, and a record that IS present is validated in full — providing one buys no leniency.
 
 A record line reads `- path=<repo-relative, under apriori/tmp/> obs=<one line> time=<ISO UTC seconds> baseline=<repo HEAD> run=<id>`. A backend-only bundle waives with `ui: not-applicable — <reason>`; a waiver without a reason is not a waiver.
 

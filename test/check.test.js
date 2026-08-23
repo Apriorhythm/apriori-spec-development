@@ -296,16 +296,21 @@ test('CK-11 runs under --self and not in consumer mode', () => {
   assert.doesNotMatch(consumer.stdout + consumer.stderr, /runbook-version major|CK-11/i);
 });
 
-test('CK-17 the lane phrases are table entries and its trailers do not break recognition', () => {
+test('CK-17 the retired lanes leave the phrase table, and the table stays closed', () => {
   const { checkVerdictPhrases, VERDICT_PHRASES } = require('../lib/check.js');
-  assert.ok(VERDICT_PHRASES.includes('VERDICT: no findings'), 'inspection pass phrase registered');
-  assert.ok(VERDICT_PHRASES.includes('VERDICT: gaps found'), 'p8 fail phrase registered');
+  // the lane's `inspection` phrase and the explore track's P12 pair went with their owners
+  for (const gone of ['VERDICT: no findings', 'VERDICT: extraction accepted', 'VERDICT: extraction rejected'])
+    assert.ok(!VERDICT_PHRASES.includes(gone), `retired phrase still registered: ${gone}`);
+  // what P8 and the fast floor actually use is still there
+  for (const kept of ['VERDICT: no spec-vs-code gaps', 'VERDICT: gaps found', 'VERDICT: no major issues'])
+    assert.ok(VERDICT_PHRASES.includes(kept), `live phrase missing: ${kept}`);
 
-  // a real lane line: phrase + mandatory trailers + the conditional one
-  const line = 'VERDICT: no findings role=inspection digest=' + 'a'.repeat(64) + ' boundary=within';
   const runbooks = Object.fromEntries(['RUNBOOK.md', 'RUNBOOK_cn.md'].map((n) => [n, VERDICT_PHRASES.join('\n')]));
-  assert.deepStrictEqual(checkVerdictPhrases({ ...runbooks, 'docs/cli.md': line }), [], 'trailers do not break recognition');
+  assert.deepStrictEqual(checkVerdictPhrases(runbooks), [], 'the canonical table checks clean against itself');
 
-  const bad = checkVerdictPhrases({ ...runbooks, 'docs/cli.md': 'VERDICT: looks fine to me' });
-  assert.ok(bad.some((f) => /not in table: VERDICT: looks fine to me/.test(f)), `unregistered phrase still fails: ${bad}`);
+  // an unregistered phrase still fails — including one a retired lane used to license
+  for (const bad of ['VERDICT: looks fine to me', 'VERDICT: no findings']) {
+    const fails = checkVerdictPhrases({ ...runbooks, 'docs/cli.md': bad });
+    assert.ok(fails.some((f) => f.includes(`not in table: ${bad}`)), `${bad} should fail: ${fails}`);
+  }
 });

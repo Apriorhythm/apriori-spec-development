@@ -46,7 +46,7 @@ Read the runbook and apriori/changes/<change-name>/flow-state.md first and conti
 Advance ONLY to the next human gate, then stop and report.
 ```
 
-> This kickoff (or the sign-off of the requirement doc) *is* the human intent acknowledgment — the intent card belongs to the exploratory positions (§4). When the artifact root is externalized, the kickoff prompt must state it, because the flow-state file itself lives under it.
+> This kickoff (or the sign-off of the requirement doc) *is* the human intent acknowledgment. When the artifact root is externalized, the kickoff prompt must state it, because the flow-state file itself lives under it.
 
 **Context economy.** The context window is the agent's scarcest resource — performance degrades as it fills, so manage it deliberately:
 
@@ -58,9 +58,9 @@ Advance ONLY to the next human gate, then stop and report.
 
 ## 1. Hard Rules
 
-**R1 — Stop at every human gate.** The gates are: ① STEP0 verdict when the review loop stops ② gap-report sign-off (standard mode) ③ STEP3 technical review ④ STEP6 KB-diff approval ⑤ any stopped review loop, escalation or oscillation (a reopened ledger ID). The explore track (§4) adds three **named decision points** with gate status: `intent-card sign-off`, `extraction review`, `STEP2 full review`. At a gate: update the state file, report — current step, reviewer verdict lines **verbatim**, open/rejected ledger items, the decision you need — then stop. Never approve a gate yourself; never treat "the human hasn't answered" as approval.
+**R1 — Stop at every human gate.** The gates are: ① STEP0 verdict when the review loop stops ② gap-report sign-off (standard mode) ③ STEP3 technical review ④ STEP6 KB-diff approval ⑤ any stopped review loop, escalation or oscillation (a reopened ledger ID). At a gate: update the state file, report — current step, reviewer verdict lines **verbatim**, open/rejected ledger items, the decision you need — then stop. Never approve a gate yourself; never treat "the human hasn't answered" as approval.
 
-**Gate consolidation (explicit authorization).** The default is stop-at-every-gate. A human may explicitly consolidate intermediate gates into a later one (e.g. "run to the final merge review"); the decision must be recorded in `gates:` (scope + how to revoke) and is revocable at any time. Two gates can NEVER be covered by such an authorization: the **KB sign-off** (gate ④) and **`intent-card sign-off`**. Consolidation covers gates only — external side effects (§1 hard rule below) are never inside a consolidation blanket.
+**Gate consolidation (explicit authorization).** The default is stop-at-every-gate. A human may explicitly consolidate intermediate gates into a later one (e.g. "run to the final merge review"); the decision must be recorded in `gates:` (scope + how to revoke) and is revocable at any time. One gate can NEVER be covered by such an authorization: the **KB sign-off** (gate ④). Consolidation covers gates only — external side effects (§1 hard rule below) are never inside a consolidation blanket.
 
 > The protection forbids *silent coverage by a blanket authorization* — not the owner's explicit choice. A protected gate may still be decided by **explicit proxy**, under all of the following: ① the agent first presents the pending gate — **each protected gate itemized independently** (numbered, what is being approved, artifact path, the decision options) — never bundled into a progress question; ② the human's delegating reply comes *after* that presentation and is recorded **verbatim** in `gates:`, one entry per gate; ③ the proxy is **one-shot** — it covers exactly the gates itemized in that presentation and never inherits to future gates of the same kind. A reply may cover several protected gates only if each was itemized; a pre-existing blanket authorization never qualifies. An itemized *multi-step end-to-end run* does **not** implicitly cover protected gates nested inside it: when an un-itemized protected gate surfaces mid-run, stop and present it — the interruption itself is logged in `gates:`; gates that were itemized up front are unaffected.
 
@@ -81,14 +81,16 @@ ANY operation that mutates state outside the local repository/workspace requires
 
 The rules come in two phases, and they pull in opposite directions on purpose.
 
-**Phase 1 — what the verdict MEANS is read leniently.** A verdict line is understood if it is one of the accept phrasings (`no major issues` · `no major issues, ready to proceed` · `… to execution` · `no spec-vs-code gaps` · `no findings` · `extraction accepted`), one of the revise phrasings (`gaps found` · `extraction rejected`), or a count — `N issues open` or `N issues found`, singular or plural, any case, a trailing period fine. **`0` is an accept**; a positive count is a revise and is reported as that family's open count. The set is CLOSED, never a prefix rule: a verdict line reading `no major issues, but 3 blockers remain` opens with an accept phrase and is not an accept, so it is refused rather than misread.
+**Phase 1 — what the verdict MEANS is read leniently.** A verdict line is understood if it is one of the accept phrasings (`no major issues` · `no major issues, ready to proceed` · `… to execution` · `no spec-vs-code gaps`), the revise phrasing (`gaps found`), or a count — `N issues open` or `N issues found`, singular or plural, any case, a trailing period fine. **`0` is an accept**; a positive count is a revise and is reported as that family's open count. The set is CLOSED, never a prefix rule: a verdict line reading `no major issues, but 3 blockers remain` opens with an accept phrase and is not an accept, so it is refused rather than misread.
 
 **Phase 2 — whether the EVIDENCE is complete is judged strictly.** A round counts only when a review doc, its verdict line, and its raw transcript (`<stem>-raw.*`) are all present, and a family's rounds must run **1..N with no gap** — otherwise deleting round 1 would turn a stalled round-2 loop back into a fresh round-1 loop. These **block**: a verdict outside the vocabulary, one document declaring two *different* outcomes, two documents claiming the same family and round, a summary whose verdict line was removed while its transcript remains, a transcript named as a round whose summary is missing, and an ordinal gap. These are **advisories only** — reported, never a refusal: a document whose body was pasted twice but declares the same verdict both times, and a transcript that was never a review round at all (`kb-check-raw.txt`). Housekeeping — reformatting the ledger, retitling a doc, reflowing the flow-state — touches none of this and can never buy or lose a round.
+
+**The target is to converge within 2 rounds** — round 1 finds the blind spots, round 2 verifies the fixes. 5 is not a budget you may spend patching: rounds 3-5 exist ONLY to verify the key fixes after the approach itself changed, and the real control point is round 2.
 
 Two control points, applied to each family on its own (`apriori gate --change <name>` check **C8**; `apriori status --change <name> --json` reports them per family):
 
 - **A family still `revise` after ITS round 2 → that loop stops.** Do not open round 3 on the same plan. Record ONE of split / add tests / redo the approach in `gates:` — `reframe <family> round <n> <split|tests|redo> — <reason>` — and that family's loop reopens. The entry names both the family and the round it answers, so it authorizes nothing else, and it never waives an evidence problem: those are fixed, not decided.
-- **A family reaching ITS round 5 → an escalation**, whatever the verdict. `apriori status --json` carries an `escalation` entry per escalating family and C8 blocks until the owner answers with `reframe <family> round <n> <split|tests|redo|accept-risk> — <reason>`. A pre-authorization may let the work continue; it may never take the escalation out of the report.
+- **A family reaching ITS round 5 → an escalation**, whatever the verdict. `apriori status --json` carries an `escalation` entry per escalating family and C8 blocks until the owner answers with `reframe <family> round <n> <split|tests|redo|accept-risk> — <reason>`. **The owner decides** — split, add tests, redo the approach, or accept the risk; the CLI never decides it and never raises a cap. A pre-authorization may let the work continue; it may never take the escalation out of the report.
 
 `apriori archive` consults the same loop as readiness rule **R4**, so a stopped loop or an evidence problem is refused before anything is written or moved; advisories never refuse. A stalled round-2 loop is **not** forceable — after round 2 the answer is to change how the work is done. The round-5 stop-loss keeps archive's usual double authorization: the owner's decision already recorded in `gates:` **and** an explicit `--force`; one `gates:` line, which an agent can append by itself, is never enough to archive.
 
@@ -128,53 +130,6 @@ What `fast` reduces is **material**: no `tasks.md`, no ledger. That is all it re
 
 ---
 
-## 2b. The Hotfix Lane (records too small for a change)
-
-Not every true thing that happens deserves a change bundle. A typo fix, a one-line
-config correction, a two-hour investigation that concluded "nothing is broken" — these
-produce a real conclusion and, under the formal flow, produce it at a cost nobody pays.
-So the conclusion goes unwritten, and the next person re-derives it.
-
-The **hotfix lane** is the minimal write-back unit: a conclusion, an optional spec delta
-with its test bindings, and a direct archive. It targets ten minutes of work, not an hour.
-
-```
-apriori hotfix new summary-wording        # scaffold
-# … write the conclusion; add a delta only if the spec actually changed …
-apriori hotfix archive summary-wording    # zero-write preflight: grade, scope, digest, write set, token
-apriori hotfix archive summary-wording --approve <token>
-```
-
-**Admission is mechanical, and it is not negotiable.** The lane grades a bundle by blast
-radius from its declared fields and the shape of its delta:
-
-| grade | what it is | what the lane asks for |
-|---|---|---|
-| `(R0, n/a)` | no code changed — the conclusion IS the record | a point-check only when decisions are attached |
-| `(R1, n/a)` | single-module trivial fix, no spec change | nothing further |
-| `(R2, behavior)` | a spec-preserving behavior fix | one `inspection` round |
-| `(R2, whitelist)` | a spec change confined to blocks a human marked `blast: low` | one `inspection` round carrying `boundary=` |
-| `(R3, n/a)` | everything else | **refused** — open a formal change |
-
-`R3` is a refusal, not a warning. A REMOVED or RENAMED block, a bundle spanning two
-modules, a dual-end (frontend *and* backend) touch, a decision that supersedes another,
-a MODIFIED/ADDED block with no scenario, or any delta block the store has not whitelisted
-— each grades `R3` and is sent to the formal process by name.
-
-The bias is deliberate: **what cannot be told apart mechanically grades to the stricter
-side**. The defect account that motivated this lane is full of small-looking changes that
-were not small — a rewritten GROUP BY, a redefined "latest" — and every one of them lands
-on `R3` by construction rather than by anyone's judgement on the day.
-
-Three rules make the lane cheap without making it a hole in the process:
-
-- **One identity.** A directory is a formal change or a hotfix, never both. `flow-state.md`
-  and `hotfix-state.md` side by side is an error at every consumption point.
-- **No no-test escape.** Every delta target key binds a test, declared in exactly one place
-  (the state file's `## Bindings` section). There is no "not worth testing" line to write.
-- **Two-step signoff.** The dry run prints the write set and issues a token; `--approve`
-  refuses unless the bundle and every store/truth baseline still hash to that token.
-
 ### 2c. Scaling verification strength
 
 `| verification-profile | ui / backend / fullstack / docs / none |` in `apriori/process-config.md`
@@ -182,16 +137,13 @@ declares once what kind of repository this is. The row is **human-owned** — ag
 and never write it, exactly like `test-cmd`, so an agent cannot quietly lower the bar its
 own work must clear.
 
-What the profile scales is coverage, not existence:
+What the profile scales is coverage, not existence. What is asked: E2E evidence over the
+change's scenarios, and — under a `ui`/`fullstack` profile — a screenshot observation record
+for the affected pages. Missing it is a process requirement, reported at the gate.
 
-| tier | what is asked | what happens when it is missing |
-|---|---|---|
-| **full** (formal changes, standard mode) | E2E evidence over the change's scenarios; under a `ui`/`fullstack` profile, a screenshot observation record for the affected pages | a process requirement, reported at the gate |
-| **incremental** (the hotfix lane) | the bound tests for the affected scenarios only; a screenshot record when frontend files were touched | an **advisory** — it prints a reminder and never blocks |
-
-A record that IS present is validated in full at both tiers — providing one buys no
-leniency. A backend-only bundle waives with `ui: not-applicable — <reason>`; a waiver with
-no reason is not a waiver.
+A record that IS present is validated in full — providing one buys no leniency. A
+backend-only bundle waives with `ui: not-applicable — <reason>`; a waiver with no reason is
+not a waiver.
 
 ---
 
@@ -207,7 +159,6 @@ lineage: <target branch/line + its merge taboo, e.g. "v2 (never merge to main)">
                         # copied from the requirement at kickoff; a lineage
                         # conflict discovered mid-change is an immediate stop
 current-step: STEP0 | STEP1 | STEP2 | STEP3 | STEP4 | STEP5 | STEP6 |
-              INTENT-CARD | SPIKE | EXTRACTION |     # exploratory positions
               DONE | ABANDONED
 reviewer-session: <id or n/a>   # the heterogeneous reviewer's resumable session id
                         # (e.g. codex's printed session id), recorded the moment round 1
@@ -225,8 +176,7 @@ artifact-root: .        # optional; default = project root.
 gates:                  # append-only log of human decisions
   - <YYYY-MM-DDTHH:MM> <label>: <the human's decision, verbatim>
                         # label from the fixed vocabulary: gate① … gate⑤ | KB sign-off |
-                        # intent-card sign-off | extraction review |
-                        # STEP2 full review | consolidation | note
+                        # consolidation | note
                         # (note = non-decision events: degradations, closeout, …)
                         # the format constrains the prefix ONLY — the decision text
                         # stays verbatim free text; the fixed prefix is what lets
@@ -238,6 +188,17 @@ Update it immediately after each step and each round; append every gate decision
 ---
 
 ## 4. State Machine
+
+**There are four phases. STEP0-6 are how this runbook numbers them, nothing more.**
+
+| Phase | What it is for | Steps that implement it |
+|---|---|---|
+| **Ground** | Check the real code, schema, interfaces, prototype, config, deploy topology and runtime. Facts are `observed` (read or executed, with the path/command/response), `decision` (from the requirement or the owner), or `assumption` (unproven — verify before implementing) | KB pre-check, STEP1 |
+| **Specify** | Write the minimal behavior contract and its acceptance criteria; split the change first if one evidence chain cannot prove it | STEP0, STEP2 |
+| **Build & Test** | Get the failing evidence first, then implement and run the real tests that match the actual risks | STEP5 |
+| **Review & Deliver** | Once review-ready, one independent review; deliver when the substantive issues are closed | STEP2/STEP5 review loops, STEP3, STEP6 |
+
+The step numbers are an implementation detail of this file and of the CLI's `current-step` field — the four phases are the concepts. A phase is not a document set: **materials are produced on demand**, and nothing below is a fixed full-set obligation.
 
 **Artifact paths** (every step writes here — never invent paths):
 
@@ -253,9 +214,6 @@ Update it immediately after each step and each round; append every gate decision
 | Spec evaluation | `apriori/changes/<change>/review/spec-review-v{N}.md` |
 | Knowledge base (TRUTH-DOC) | `apriori/truth/<module>.md` — a fence-outside line-start `source-commit: <ref>` stamp required (covers the Contract section only, §5 P9/P10); C6 binds a truth doc to its store module by filename basename and checks `lib/<module>.js` by default — for an aliased filename or non-`lib/` code, declare `store-module:` / `source-files:` in the header region |
 | Flow state | `apriori/changes/<change>/flow-state.md` |
-| Intent card (explore track) | `apriori/changes/<change>/requirement/intent-card.md` |
-| Extraction review (explore track) | `apriori/changes/<change>/review/extraction-review-v{N}.md` |
-| Prototype (explore track) | `apriori/changes/<change>/spike/` — deleted or quarantined at archive; never referenced by tasks.md |
 | Reviewer raw output | `apriori/changes/<change>/review/<stem>-raw.* (the stem = its review doc)` |
 
 **The artifact interface (normative).** The paths above are plain files — no external SDD tool, no tool-owned spec directory. The `apriori` CLI acts on them directly.
@@ -276,24 +234,17 @@ Before a change is even stateable, you may enter a **thinking-partner stance** (
 
 **Converge — one question at a time.** When a shape emerges, switch to discipline (and say so — announcing the gear-change helps the human follow): **exactly one question per message**, offering concrete options to pick from wherever options are honest (open-ended only where they would mislead), and keep each turn scannable — the question must never drown in prose. Work the coverage checklist — *purpose · target users · core scenarios · UI shape (when user-facing) · data & content · constraints · non-goals · success criteria* — until every item is either answered or **explicitly deferred with the human's consent**; an item silently skipped is a defect. Two situational moves: when the human adds a want mid-conversation, **probe its reality before absorbing it** — is it an observed need or a speculation? state its cost plainly, and offer a deferred/staged path (record it as a non-goal with an upgrade route) before letting it into scope; when the human signals fatigue or impatience, **collapse the remaining checklist into recommended defaults** presented for one batch approval instead of grinding on question-by-question. If the idea spans several independent pieces, say so and split — each piece becomes its own change. Before any exit: present **2-3 candidate approaches with tradeoffs and your recommendation** — never silently adopt the human's first framing. YAGNI throughout.
 
-**Funnel — the human decides, and the fire is carried.** "Stateable" is the human's judgment, not yours: after the approaches comparison you may *propose* exiting; only the human's approval ends the stance — and it **must funnel into the pipeline**. On approval of a stateable goal, start **STEP0**; if the goal still cannot be stated, route to the **explore track's intent card** (§4) — the same goal-certainty split as §2. There is no third resting place: brainstorm feeds one of the two. On funnel, carry everything: write the crystallized understanding as the kickoff requirement draft — goal, users, chosen approach (and the UI sketch that won, if any), success criteria, constraints, non-goals **with the reasons they were cut**, open questions — which becomes STEP0's `req-v1` starting material. Brainstorm never replaces STEP0's requirement discipline — it feeds it.
+**Funnel — the human decides, and the fire is carried.** "Stateable" is the human's judgment, not yours: after the approaches comparison you may *propose* exiting; only the human's approval ends the stance — and it **must funnel into the pipeline**. On approval of a stateable goal, start **STEP0**; if the goal still cannot be stated, the stance continues — Ground (§4 STEP1) is where an unclear fact gets settled, inside the same change. There is no second track to route to. On funnel, carry everything: write the crystallized understanding as the kickoff requirement draft — goal, users, chosen approach (and the UI sketch that won, if any), success criteria, constraints, non-goals **with the reasons they were cut**, open questions — which becomes STEP0's `req-v1` starting material. Brainstorm never replaces STEP0's requirement discipline — it feeds it.
 
 ### STEP0 — requirement refinement · adversarial loop · governed by the derived round (§1 R4)
 
 - **In:** `apriori/changes/<change>/requirement/req-v{N}.md`; KB if any. The requirement must state its **target lineage** (mainline / which branch line) — in multi-lineage repos a missing lineage is a fourth interview trigger. If the requirement lacks any of the three essentials — goal / out-of-scope / testable acceptance — **interview the human first** with structured questions, then draft req-v1.
 - **Each round:** (1) if a review exists, revise per it → `req-v{N+1}.md`, noting accept/reject + reason per issue and updating the ledger; (2) spawn the reviewer with **P1** (R2) → review doc + ledger; (3) record the verdict line.
-- **Exit:** verdict line = `VERDICT: no major issues` → copy to `apriori/changes/<change>/requirement/req-final.md`, advance. The loop stops (§1 R4) → **gate ①**. Goal turns out unstateable → propose harden→explore (a human gate confirms the switch).
+- **Exit:** verdict line = `VERDICT: no major issues` → copy to `apriori/changes/<change>/requirement/req-final.md`, advance. The loop stops (§1 R4) → **gate ①**. Goal turns out unstateable → stop and report: the missing facts are settled in Ground (STEP1) inside this same change, not by switching tracks.
 
-### EXPLORE track — when §2 routes the change here
+### ABANDONED — a legal exit at any step
 
-0. **Intent card first (non-waivable):** ≤15 lines at `apriori/changes/<change>/requirement/intent-card.md` — goal hypothesis / success criteria / the questions the spike must answer. Requires **human sign-off** (`intent-card sign-off`; a heterogeneous review may inform it, but cannot replace it). On this track the intent card is the independent review baseline — the extracted spec is never judged against the prototype alone.
-1. **Spike (bounded by its questions):** prototype freely under `changes/<change>/spike/`; exit = every intent-card question answered. Not converging on them → stop and report — **gate ⑤**.
-2. **P11 — spec extraction:** inputs = intent card + prototype + spike findings; outputs = spec drafts under `apriori/changes/<change>/specs/` as the **sole intent-side authority**, plus `apriori/changes/<change>/requirement/req-final.md` as a thin index over them (§5 P11 — never a second acceptance narrative). Declared extraction-time decisions (`EXT-n`) get their final ruling at the `extraction review` decision point.
-3. **P12 — extraction review (heterogeneous, R2):** the verdict line `VERDICT: extraction accepted` → step 4. `VERDICT: extraction rejected` + unfaithful extraction → redo P11; `VERDICT: extraction rejected` + intent hypothesis falsified → back to SPIKE, or `ABANDONED` (archive the intent card + findings; log in the ledger).
-4. **Merge:** enter STEP2's full P5/P6 loop — from here the tracks are identical.
-5. **The prototype is disposable, machine-checkably:** STEP5 rebuilds from failing tests; tasks.md must not reference the `spike` dir; `changes/<change>/spike/` is deleted (or quarantined) before archive.
-6. **Track transitions:** explore→harden (extraction accepted, or the goal turns out clear); harden→explore (STEP0 finds the goal unstateable — via a human gate); explore→ABANDONED (hypothesis falsified). Each transition keeps the intent card, findings and ledger; only the `spike` dir is dropped.
-7. **Abandoning a harden change (the human changes their mind, any step):** ABANDONED is a legal exit on the harden track too — on the human's word (their call alone; never proposed by the agent as a way out of failing reviews): land one ledger row `abandoned — <the human's reason, verbatim>`, move the change dir to `apriori/changes/archive/<stamp>-<name>/` (flow-state `current-step: ABANDONED`), write nothing to the KB or spec store, and leave any code the change already touched exactly where the human directs (revert / keep on a branch — ask, don't assume). The requirement docs and ledger are kept: an abandoned change is a recorded decision, not an erased one.
+The human changes their mind: ABANDONED is a legal exit from any step — on the human's word (their call alone; never proposed by the agent as a way out of failing reviews). Land one ledger row `abandoned — <the human's reason, verbatim>`, move the change dir to `apriori/changes/archive/<stamp>-<name>/` (flow-state `current-step: ABANDONED`), write nothing to the KB or spec store, and leave any code the change already touched exactly where the human directs (revert / keep on a branch — ask, don't assume). The requirement docs and ledger are kept: an abandoned change is a recorded decision, not an erased one.
 
 ### KB pre-check — before STEP1, whenever the project already has code
 
@@ -307,7 +258,7 @@ KB docs have two sections with **opposite truth directions** (§5 P9/P10): `Cont
 ### STEP1 — explore
 
 - **Do:** the **explore action** with **P3**. **Out:** the gap report.
-- **Research-spike variant** (vague-but-tripwired changes, §2): probe code is allowed under `changes/<change>/spike/` — the explore track's full isolation rules apply; findings land as a "research conclusions" appendix to the gap report. P3 carries the matching variant clause.
+- **When a fact will not yield to reading:** probe code is allowed, thrown away, and never referenced by `tasks.md` — what it produces is an `observed` fact in the gap report, never an artifact the change carries forward. P3 carries the matching clause.
 - **Exit:** standard mode → **gate ②** (human skims the gap report). fast mode: fold the report's top risks into your next report and proceed.
 
 ### STEP2 — propose · adversarial loop · governed by the derived round (§1 R4)
@@ -335,7 +286,7 @@ KB docs have two sections with **opposite truth directions** (§5 P9/P10): `Cont
 ### STEP6 — archive + KB writeback
 
 - **Before P9:** make sure the change's work is **committed** — `source-commit` must reference a real commit containing the implementation the Contract section is reconciled against (greenfield repos included: commit first, then stamp).
-- **Do:** the **archive action** with **P9** — merge per the interface's archive algorithm above; update `apriori/truth/<module>.md` (Contract section from the final implementation + refreshed `source-commit`; Decisions section appends this change's new decisions/invariants); list exactly which files/sections changed. Explore-track changes: delete or quarantine `changes/<change>/spike/` **before** the archive action. **The atomic move carries the whole bundle:** everything under `apriori/changes/<change>/` — flow-state, the `requirement` history, `gap-report.md`, proposal, design, tasks, `specs/`, `review/` evidence — lands as one unit at `apriori/changes/archive/<stamp>-<change>/`; your only residual duty is the closeout commit.
+- **Do:** the **archive action** with **P9** — merge per the interface's archive algorithm above; update `apriori/truth/<module>.md` (Contract section from the final implementation + refreshed `source-commit`; Decisions section appends this change's new decisions/invariants); list exactly which files/sections changed. **The atomic move carries the whole bundle:** everything under `apriori/changes/<change>/` — flow-state, the `requirement` history, `gap-report.md`, proposal, design, tasks, `specs/`, `review/` evidence — lands as one unit at `apriori/changes/archive/<stamp>-<change>/`; your only residual duty is the closeout commit.
 - **Exit:** delta specs merged + KB updated + a post-archive `apriori gate --change <name>` run (it now resolves the archived stage — C4 demands every ledger row terminal) whose result goes into the **gate ④** packet → the human approves the KB diff (same-repo layout: that's just PR review). Then set `current-step: DONE`.
 
 
@@ -349,17 +300,12 @@ KB docs have two sections with **opposite truth directions** (§5 P9/P10): `Cont
 |---|---|---|
 | P1 | `VERDICT: no major issues` | `VERDICT: <N> issues open` |
 | P5 | `VERDICT: no major issues, ready to proceed to execution` | `VERDICT: <N> issues open` |
-| P8 | `VERDICT: no spec-vs-code gaps` | `VERDICT: <N> issues open` |
-| P12 | `VERDICT: extraction accepted` | `VERDICT: extraction rejected` |
-| hotfix point-check (§2b) | `VERDICT: no findings` | `VERDICT: <N> issues open` |
-| hotfix docs duty (§2b) | `VERDICT: no spec-vs-code gaps` | `VERDICT: gaps found` |
+| P8 | `VERDICT: no spec-vs-code gaps` | `VERDICT: gaps found` · `VERDICT: <N> issues open` |
 
-The hotfix lane's rows carry two mandatory trailers and one conditional one — the line reads
-`<verdict phrase> role=<inspection|p8> digest=<64 lowercase hex>`, plus `boundary=<within|exceeds>`
 exactly when the γ' whitelist point-check stands in for a human signoff. The phrases and their
 `^VERDICT:` prefix are unchanged, so every existing consumer still reads them.
 
-`<N>` = the total count of formal ledger rows with status `open` at the end of that review round (whole ledger, no stage filtering — mechanically decidable; a positive integer; advisory/rejected/fixed rows don't count). P12 uses fixed phrases only, never the count form.
+`<N>` = the total count of formal ledger rows with status `open` at the end of that review round (whole ledger, no stage filtering — mechanically decidable; a positive integer; advisory/rejected/fixed rows don't count).
 
 ### P0 — issue ledger (every prompt below reads/writes it)
 
@@ -421,8 +367,8 @@ Align all known facts first — do not write code.
 * Code: this repo
 [Output]
 apriori/changes/<change>/gap-report.md: current state A, target state B, and the gaps and risks between them.
-[Research-spike variant — ONLY for vague-but-tripwired changes routed here by §2]
-Probe code is allowed under changes/<change>/spike/ (explore-track isolation rules apply);
+[When a fact will not yield to reading]
+Probe code is allowed — thrown away afterwards, never referenced by tasks.md;
 findings land as a "research conclusions" appendix of the gap report. Otherwise: do not write code.
 ```
 
@@ -534,32 +480,6 @@ commission an audit separately if wanted.)
 [Constraints] Contract: only facts present in the code. Decisions: only explicitly confirmed intent. Mark uncertainties "needs human confirmation"; never invent abstract intent.
 ```
 
-### P11 — explore track: spec extraction (producer)
-
-```text
-[Input] apriori/changes/<change>/requirement/intent-card.md; the prototype under changes/<change>/spike/; the spike findings.
-[Task] Extract the specification implied by the prototype's *validated* behaviors — never invent behavior that neither the intent card nor an observed spike run supports. Produce:
-* spec drafts with scenario IDs under apriori/changes/<change>/specs/ — the SOLE intent-side authority;
-* apriori/changes/<change>/requirement/req-final.md — a THIN INDEX only: one goal line citing the intent card + acceptance = a reference to the spec scenario-ID list. Never write a second acceptance narrative there — two prose versions of the same intent drift apart.
-[Constraints] Mark unvalidated assumptions "needs confirmation". Behavior that neither the intent card nor an observed spike run supports, but the spec needs for completeness, MUST be declared as an explicit extraction-time decision — an `EXT-n` entry (content + reasoning) in a dedicated section, never mixed into extracted facts; EXT-n entries are ruled on at the extraction review. The prototype is a source of observations, not of authority: where intent and prototype disagree, the intent card wins and the disagreement is listed explicitly.
-Stop and wait for the extraction review (P12).
-```
-
-### P12 — explore track: extraction review (heterogeneous, R2)
-
-```text
-[Input] apriori/changes/<change>/requirement/intent-card.md; P11's outputs; the issue ledger.
-[Checklist] P1's five dimensions, plus:
-6. Intent-card conformance — every goal and success criterion appears in the extracted specs/ (the sole authority; the req-final thin index is checked only for being thin and consistent);
-7. No invention — every spec line traces to the intent card or an observed spike behavior (spot-check the tracing), EXCEPT declared EXT-n entries, which are reviewed as proposals: recommend each as accepted / rejected / needs-human.
-[EXT-n semantics] Your verdict line judges extraction faithfulness only (invention outside declared EXT-n, intent conformance) — EXT-n recommendations never change it. Final EXT-n rulings belong to the `extraction review` decision point (the existing human gate): human-rejected → the producer deletes those spec lines, deletion confirmed mechanically (grep: the EXT-n scenario IDs are gone) with no P12 rerun; human-accepted → the entry is back-noted on the intent card. Unruled EXT-n block the decision point, not your verdict line — list them explicitly before it.
-[Scope] Count toward the verdict only unfaithful extraction or a falsified intent hypothesis; advisory findings never land in either rejected branch (P0 rules).
-[Output] apriori/changes/<change>/review/extraction-review-v{N}.md — issues per P0, advisories listed separately, EXT-n recommendations; end with your ledger delta,
-then exactly one verdict line (§5 phrase table): "VERDICT: extraction accepted" or "VERDICT: extraction rejected".
-Rejected + unfaithful extraction → producer redoes P11;
-rejected + intent hypothesis falsified → back to SPIKE or ABANDONED (the state machine's failure branches).
-```
-
 ### P13 — brainstorm kickoff (pre-STEP0 stance)
 
 ```text
@@ -579,8 +499,8 @@ defaults for one batch approval. Before proposing an exit, present 2-3 candidate
 tradeoffs and your recommendation. I decide when it is stateable. On my approval, write the
 kickoff requirement draft (goal, users, chosen approach and the winning UI sketch if any,
 success criteria, constraints, non-goals with reasons, open questions) and start STEP0 with it
-as the `req-v1` starting material; if it still cannot be stated, route to the explore track's
-intent card.
+as the `req-v1` starting material; if it still cannot be stated, stay in the stance and settle
+the missing facts first (§4 STEP1) — there is no second track.
 ```
 
 ---
@@ -627,7 +547,7 @@ Run the archive action, then update apriori/truth/<module>.md and list exactly w
 Stop when both hold."
 ```
 
-**Gate checklist (what you personally decide):** ① STEP0 finalization when the review loop stops ② gap-report skim (standard mode) ③ STEP3 technical review ④ KB-diff approval ⑤ any stopped loop, round-5 escalation / reopened ledger ID — escalate, never quietly lower the bar. Explore track adds: `intent-card sign-off` and the `extraction review` outcome. Gate consolidation (§1) is yours to grant — but never over the KB sign-off or `intent-card sign-off`.
+**Gate checklist (what you personally decide):** ① STEP0 finalization when the review loop stops ② gap-report skim (standard mode) ③ STEP3 technical review ④ KB-diff approval ⑤ any stopped loop, round-5 escalation / reopened ledger ID — escalate, never quietly lower the bar. Gate consolidation (§1) is yours to grant — but never over the KB sign-off.
 
 ---
 

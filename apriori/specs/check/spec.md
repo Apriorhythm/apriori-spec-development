@@ -80,9 +80,9 @@
 - WHEN the config pattern is catastrophic against the store's own titles (both repository inputs) and `apriori check` runs
 - THEN the child is killed within its budget and check prints a sanitized error naming `process-config` with `RESULT: ERROR`, exit 2 — CI cannot be hung by a config row
 
-### Requirement: the phrase table admits the hotfix lane's verdict phrases
-The canonical verdict phrase table SHALL carry the lane's two new passing phrases (`VERDICT: no findings` for the `inspection` role) and its new failing phrase (`VERDICT: gaps found` for the `p8` role) alongside the existing entries, and both runbooks SHALL contain every canonical phrase as before. A lane verdict line is recognized by the SAME prefix rule as every other: the mandatory `role=` / `digest=` trailers and the conditional `boundary=` trailer follow the phrase, so a real line still starts with a table entry and the existing consumers are unaffected. A `VERDICT:` string appearing anywhere in the scanned docs that does not start with a table entry stays a failure.
+### Requirement: the canonical verdict phrase table is closed and carries no retired lane
+The canonical table SHALL carry exactly the phrases the live review loops use — the `no major issues` family, `no spec-vs-code gaps` and `gaps found` (P8 and the fast floor), plus the `<N> issues open` prose placeholder — and SHALL NOT carry the phrases retired with the hotfix lane and the explore track (`no findings`, `extraction accepted`, `extraction rejected`). Both runbooks SHALL contain every canonical phrase. A `VERDICT:` string appearing anywhere in the scanned docs that does not start with a table entry stays a failure, retired phrases included; recognition is the SAME prefix rule as every other consumer, with no trailer grammar of its own.
 
-#### Scenario: CK-17 the lane's phrases are table entries and its trailers do not break recognition
-- WHEN the runbooks carry the lane's phrase-table rows, and separately when a documented line reads `VERDICT: no findings role=inspection digest=<64 hex> boundary=within`
-- THEN the phrase-table check passes and the trailered line is recognized as its table entry — while an unregistered phrase such as `VERDICT: looks fine to me` still fails, naming the file and line
+#### Scenario: CK-17 the retired lanes leave the table and the table stays closed
+- WHEN the phrase table is checked against the runbooks, and separately when a scanned doc carries `VERDICT: looks fine to me` or the retired `VERDICT: no findings`
+- THEN the retired phrases are absent from the table while P8's and the fast floor's remain, the runbooks check clean, and both unregistered lines fail naming the file and line

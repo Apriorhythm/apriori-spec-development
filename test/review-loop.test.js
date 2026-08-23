@@ -99,20 +99,22 @@ test('RL-02 the accept and revise phrasings are a CLOSED set, not a prefix rule'
     'VERDICT: no major issues, ready to proceed',                 // 24× in the corpus
     'VERDICT: no major issues, ready to proceed to execution',
     'VERDICT: no spec-vs-code gaps',
-    'VERDICT: no findings',
-    'VERDICT: extraction accepted',
     'VERDICT: NO MAJOR ISSUES.',
   ]) assert.strictEqual(review.classifyVerdict(line).cls, 'accept', line);
 
-  for (const line of ['VERDICT: gaps found', 'VERDICT: extraction rejected'])
-    assert.strictEqual(review.classifyVerdict(line).cls, 'revise', line);
+  assert.strictEqual(review.classifyVerdict('VERDICT: gaps found').cls, 'revise');
+
+  // 6.0 retired the two lanes that owned these, so they no longer classify — fail-closed,
+  // which is what an unreadable verdict has always meant here.
+  for (const line of ['VERDICT: no findings', 'VERDICT: extraction accepted', 'VERDICT: extraction rejected'])
+    assert.strictEqual(review.classifyVerdict(line), null, `retired phrase must not classify: ${line}`);
 });
 
 test('RL-03 an accept phrase with a contradicting tail is NOT an accept', () => {
   // the exact failure a prefix matcher produces, and the reason the set is closed
   for (const line of [
     'VERDICT: no major issues, but 3 blockers remain',
-    'VERDICT: no findings — except the 4 P0s above',
+    'VERDICT: no major issues — except the 4 P0s above',
     'VERDICT: no spec-vs-code gaps yet',
     'VERDICT: no major issues, ready to proceed once the migration lands',
   ]) {
@@ -121,18 +123,20 @@ test('RL-03 an accept phrase with a contradicting tail is NOT an accept', () => 
   }
 });
 
-test('RL-03b the hotfix lane\'s structured trailers do not break recognition', () => {
-  // the lane writes `<phrase> role=… digest=<64 hex> [boundary=…]`. That is a CLOSED trailer
-  // grammar, not free text, so stripping it is not the prefix matcher coming back: a tail that
-  // is not one of those three key=value tokens still refuses to classify.
+test('RL-03b the retired lane trailers no longer buy recognition', () => {
+  // the lane wrote `<phrase> role=… digest=<64 hex> [boundary=…]` and review.js stripped it
+  // before matching. With the lane gone nothing emits those trailers, so the stripper went
+  // too — a trailered line is now just an unrecognized line, which is fail-closed.
   const d = 'a'.repeat(64);
-  assert.strictEqual(review.classifyVerdict(`VERDICT: no findings role=inspection digest=${d}`).cls, 'accept');
-  assert.strictEqual(review.classifyVerdict(`VERDICT: no findings role=inspection digest=${d} boundary=within`).cls, 'accept');
-  assert.strictEqual(review.classifyVerdict(`VERDICT: gaps found role=p8 digest=${d}`).cls, 'revise');
-  assert.strictEqual(review.classifyVerdict(`VERDICT: 2 issues open role=p8 digest=${d}`).issuesOpen, 2);
-  // not a lane trailer -> still unclassified
-  assert.strictEqual(review.classifyVerdict('VERDICT: no findings notes=whatever'), null);
-  assert.strictEqual(review.classifyVerdict('VERDICT: no findings and 3 more'), null);
+  for (const line of [
+    `VERDICT: no major issues role=inspection digest=${d}`,
+    `VERDICT: gaps found role=p8 digest=${d}`,
+    `VERDICT: 2 issues open role=p8 digest=${d} boundary=within`,
+  ]) assert.strictEqual(review.classifyVerdict(line), null, `must not classify: ${line}`);
+
+  // and the bare phrases still read exactly as before
+  assert.strictEqual(review.classifyVerdict('VERDICT: gaps found').cls, 'revise');
+  assert.strictEqual(review.classifyVerdict('VERDICT: 2 issues open').issuesOpen, 2);
 });
 
 test('RL-04 the unfilled table placeholder is legal prose and never an outcome', () => {

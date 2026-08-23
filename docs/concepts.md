@@ -73,9 +73,9 @@ Four principles every mechanism in this handbook (and the RUNBOOK) instantiates:
 1. **Quality comes from different instruments at different stages.** In a change's requirement & spec **document stages** (STEP0/2), LLM review is the only instrument available — there it is the primary one, and it never drops below one round per stage per change. In the **implementation stage** (STEP5), executable verification is primary (v1.0 already worked this way); LLM review covers what execution can't judge.
 2. **Intent comes first; the spec's form may come later.** On any track, a human-acknowledged statement of intent precedes code; the tracks (§4.0) differ only in when the full spec crystallizes — **the spec is a conserved quantity at merge time**.
 3. **Supervision parameters are never written by the supervised.** What the CLI reads lives in a human-held config; the decisions live at human gates. The agent reports data, never adjusts its own oversight.
-4. **Extracted descriptions are drafts until reviewed.** Anything reverse-derived from code or a prototype (P10, P11) must pass review before anything downstream consumes it.
+4. **Extracted descriptions are drafts until reviewed.** Anything reverse-derived from code (P10) must pass review before anything downstream consumes it.
 
-**Compatibility with the V1 baseline (v1.0), honestly stated:** the harden track's paths, gates, exit conditions and prompt numbering are unchanged (default config: zero path drift); exit conditions gained mapping variants only for project types v1.0 never defined (docs-only projects). The explore track is an **addition** whose named decision points — `intent-card sign-off`, `extraction review`, `STEP2 full review` — carry gate status. Gate consolidation (RUNBOOK §1) is an explicit, logged, revocable human authorization, never covering the KB sign-off or the intent-card sign-off — though each of those may still be decided by presented-first explicit proxy (RUNBOOK §1).
+**Compatibility with the V1 baseline (v1.0), honestly stated:** paths, gates, exit conditions and prompt numbering are unchanged (default config: zero path drift); exit conditions gained mapping variants only for project types v1.0 never defined (docs-only projects). Gate consolidation (RUNBOOK §1) is an explicit, logged, revocable human authorization, never covering the KB sign-off — though it may still be decided by presented-first explicit proxy (RUNBOOK §1).
 
 ---
 
@@ -236,40 +236,27 @@ npm -v    # e.g. 10.x.x
 
 ## 4. The Complete Workflow
 
-### 4.0 Size the Change First
+### 4.0 Four Phases, Two Modes
 
-STEP0–STEP6 below describe the **full** pipeline. Running all of it on a typo-level fix is how teams end up abandoning the process altogether — so before anything else, size the change and run only the steps that pay for themselves:
+Every change runs the same four phases. There is no second track and no size tier — what varies is the **mode**, and mode changes the evidence required, never the number of documents or rounds.
 
-| Tier | Typical shape | Steps to run |
+| Phase | What it settles | Steps that implement it |
 |---|---|---|
-| **Trivial** | Bugfix / single file; no new user-visible behavior; no shared-state change | Light `explore` (facts only) → STEP5 `apply` with tests + one consistency-review pass → STEP6 writeback if any KB fact changed |
-| **Medium** | One module; new user-visible behavior | STEP0 (1–2 rounds) → STEP1 → STEP2 (1–2 review rounds) → STEP5 → STEP6; STEP3 shrinks to an async design look-over |
-| **Large** | Cross-module / touches external shared state / data migration / new subsystem | The full STEP0–STEP6, every gate included |
+| **Ground** | The real code, schema, interfaces, prototype, config, deploy topology, runtime. Each fact is `observed` (read or executed — cite the path, command or response), `decision` (from the requirement or the owner), or `assumption` (unproven, and verified before implementation) | KB pre-check, STEP1 |
+| **Specify** | The minimal behavior contract and its acceptance criteria — and whether the change needs splitting first | STEP0, STEP2 |
+| **Build & Test** | Failing evidence first, then the implementation and the real tests that match the actual risks | STEP5 |
+| **Review & Deliver** | One independent review once review-ready; delivery once substantive issues are closed | STEP2/STEP5 review loops, STEP3, STEP6 |
 
-Two rules of thumb: **anything touching external shared state (§8.1's three-moments rule) or crossing module boundaries is Large, no matter how small the diff looks**; and when in doubt, start one tier lower and escalate the moment `explore` or a review surfaces a surprise — escalating early is cheap, discovering a missing spec in production is not.
+STEP0–STEP6 are how the RUNBOOK and the CLI's `current-step` field number these phases — an implementation detail, not a fifth concept. **Materials are produced on demand:** no phase obliges a fixed document set.
 
-**The second axis: goal certainty.** Sizing decides how much process; certainty decides *which track*. On both tracks intent comes first and **the spec is a conserved quantity at merge time** — the tracks differ only in when it crystallizes ([§1.5](#15-where-quality-comes-from)).
+| Mode | When | What runs |
+|---|---|---|
+| **fast** | A reproducible defect, a local fix, and none of the risk signals below | reproduce → fix → regression → **one** independent review |
+| **standard** | Everything else | evidence proportional to the risks actually hit — never more documents, never more rounds |
 
-| Situation | Track |
-|---|---|
-| Goal and acceptance stateable, even roughly | **Harden** (default) — the STEP0 loop refines them |
-| Goal clear, approach unknown | **Harden** — approach uncertainty is design work, not goal uncertainty |
-| Neither goal nor acceptance stateable | **Explore** |
-| Exploration reveals a clear goal | switch to Harden immediately |
+The signals that force **standard** are facts, not estimates: UI / prototype · cross-process or cross-repo · data / transactions · config / deploy / environment · permission / security · migration / compatibility. Hitting one is not negotiable by self-report — only proving the signal itself was a misread can overturn it. One signal is mechanical: a delta declaring `## MODIFIED`, `## REMOVED` or `## RENAMED` against an already-published requirement closes the fast lane in the CLI itself (RUNBOOK §2).
 
-**Tripwires outrank certainty**: shared-state / production-data / cross-module / migration changes never take the explore track, however vague — they go Harden, optionally with a research spike (RUNBOOK §4's STEP1 variant). When in doubt: **Harden** — the opposite default from the size axis, because the risks point the other way. The track and its rationale land in the state file and are reported at the next human gate.
-
-The explore track in one picture — it merges into the main flow at STEP2 ([§4.2](#42-overview-flowchart)):
-
-```mermaid
-graph LR
-    IC[Intent card, ≤15 lines<br/>human sign-off] --> SP[Spike in changes/name/spike/]
-    SP --> P11[P11 extract spec<br/>req-final + drafts]
-    P11 --> P12{P12 extraction review<br/>heterogeneous}
-    P12 -- accepted --> S2[merge into STEP2<br/>full review loop]
-    P12 -- unfaithful --> P11
-    P12 -- hypothesis falsified --> AB[ABANDONED<br/>keep card + findings]
-```
+**A change should have one main result and one main evidence chain.** Split it when it spans several boundaries that each need a different real environment, when a reviewer must switch between unrelated contexts to judge correctness, or when fixing one area keeps widening the review surface in another. This is not a line or file-count threshold — the question is whether one clear, repeatable evidence chain can prove the change done.
 
 ### 4.1 Glossary
 
@@ -282,10 +269,8 @@ graph LR
 | SPEC-EVALUATION-DOC | Spec review doc | In **STEP2** adversarial review, another model's audit of SPEC-DOC + DESIGN-DOC |
 | DESIGN-REVIEW-DOC | Technical review record | The conclusions and revisions from the human **STEP3** technical review meeting |
 | Issue ledger | Cumulative issue table | One per change, shared by every review loop; each issue carries an ID and a status — see [§7.0](#70-the-issue-ledger-shared-by-all-review-loops) |
-| Intent card | Explore-track intent statement | ≤15 lines: goal hypothesis / success criteria / spike questions; human-signed **before** any spike (RUNBOOK §4) |
-| P11 / P12 | Extraction & its review | P11 extracts the spec from a validated prototype; P12 (heterogeneous) reviews it against the intent card |
 | P13 | Brainstorm kickoff | Enters the pre-STEP0 thinking-partner stance: diverge → converge → human-approved funnel (RUNBOOK "Brainstorm") |
-| track | Certainty-axis routing | `harden` or `explore`, with a rationale, in the state file ([§4.0](#40-size-the-change-first)) |
+| mode | The one identity field | `fast` or `standard`, in the state file ([§4.0](#40-four-phases-two-modes)) — it scales evidence, never document count |
 
 **Where each artifact lives** (these paths are the conventions used throughout the RUNBOOK's prompts — adjust to your repo; process artifacts can also be relocated wholesale via the state file's `artifact-root` field, whose semantics live in RUNBOOK §3):
 
@@ -298,20 +283,14 @@ graph LR
 | proposal.md (why / what / scope) | `apriori/changes/<change>/proposal.md` |
 | SPEC-DOC / DESIGN-DOC / tasks.md | `apriori/changes/<change>/specs/`, `…/design.md`, `…/tasks.md` |
 | SPEC-EVALUATION-DOC | `apriori/changes/<change>/review/spec-review-v{N}.md` |
-| Intent card (explore track) | `apriori/changes/<change>/requirement/intent-card.md` |
-| Extraction review (explore track) | `apriori/changes/<change>/review/extraction-review-v{N}.md` |
-| Prototype (explore track) | `apriori/changes/<change>/spike/` — deleted or quarantined at archive; never referenced by tasks.md |
 | TRUTH-DOC (knowledge base) | `apriori/truth/<module>.md`, **in the same repo as the code** (a separate KB repo also works if every doc carries a `source-commit` stamp — see §6) |
 
 ### 4.2 Overview Flowchart
 
 > The flowchart explicitly draws the **STEP0 requirement-doc adversarial review loop**, as well as the **loop-backs** between phases.
 
-> **This chart is the harden track — the default.** Vague-goal changes run the explore track ([§4.0](#40-size-the-change-first)'s small chart) and merge into this one at STEP2, drawn below as the dashed arrival.
-
 ```mermaid
 graph TD
-    X0([explore track, §4.0]) -.-> C
     subgraph S0[STEP0 Requirement Refinement · Adversarial Loop]
         A1[Requirement Doc v_n] --> A2[Reviewing model audits<br/>produces REQ-REVIEW-DOC]
         A2 --> A3{Major issues?}
@@ -342,25 +321,25 @@ graph TD
 
 > One loop-back the chart doesn't draw: if implementation reveals the **requirement itself** was wrong, go all the way back to STEP0 — coding around a wrong goal is the most expensive loop in the diagram.
 
-### 4.3 STEP0: Requirement Refinement (Adversarial Review, Up to 5 Rounds)
+### 4.3 STEP0: Requirement Refinement (Adversarial Review, Target 2 Rounds)
 
 > The requirement doc is the **top-level prompt** for AI development — make it precise. Ideally, product runs an AI self-check on it first. If it lacks any of the three essentials — goal / out-of-scope / testable acceptance — have the AI interview you with structured questions before drafting.
 
-> 💡 **Before STEP0, you can just think.** If the idea is still fuzzy, enter the Brainstorm stance (paste RUNBOOK **P13**): the agent diverges with you first (several threads to pick from, codebase-grounded, ASCII sketches — including 2-3 UI-mockup variants for anything user-facing), then converges with discipline (one question per message with options, a coverage checklist — purpose/users/scenarios/UI/data/constraints/non-goals/success criteria — and 2-3 candidate approaches with tradeoffs before any exit). Two protections: **nothing durable is written before you approve** (no code, no docs, no scaffolding), and **you decide** when it's stateable — on your go, the crystallized understanding becomes STEP0's kickoff requirement draft; if it still can't be stated, it feeds the explore track's intent card (RUNBOOK "Brainstorm"). This stance is load-bearing: everything after STEP0 largely runs itself, so this is where you and the machine actually align.
+> 💡 **Before STEP0, you can just think.** If the idea is still fuzzy, enter the Brainstorm stance (paste RUNBOOK **P13**): the agent diverges with you first (several threads to pick from, codebase-grounded, ASCII sketches — including 2-3 UI-mockup variants for anything user-facing), then converges with discipline (one question per message with options, a coverage checklist — purpose/users/scenarios/UI/data/constraints/non-goals/success criteria — and 2-3 candidate approaches with tradeoffs before any exit). Two protections: **nothing durable is written before you approve** (no code, no docs, no scaffolding), and **you decide** when it's stateable — on your go, the crystallized understanding becomes STEP0's kickoff requirement draft; if it still can't be stated, the stance continues and the missing facts get settled in Ground (RUNBOOK "Brainstorm"). This stance is load-bearing: everything after STEP0 largely runs itself, so this is where you and the machine actually align.
 
 This step is itself an adversarial loop:
 
 ```
 Requirement Doc v1.0 ──► reviewing model audits ──► REQ-REVIEW-DOC (issue list)
         ▲                                                  │
-        └────────── revise to v2.0 ◄───────────────────────┘   … (up to 5 rounds)
+        └────────── revise to v2.0 ◄───────────────────────┘   … (target: 2 rounds)
                                           │
                           until "VERDICT: no major issues" ──► finalized
 ```
 
 - **The reviewing model should differ from the one that drafted the requirement** (e.g. draft with Claude, review with GPT).
 - Fix the review dimensions as a checklist: **is target state B clear / any ambiguity / are edge cases and exceptions covered / any implied-but-undeclared state changes / are acceptance criteria testable**.
-- **Exit condition**: the reviewing model explicitly outputs "VERDICT: no major issues", or a human decides after hitting the 5-round cap.
+- **Exit condition**: the reviewing model explicitly outputs "VERDICT: no major issues". The target is 2 rounds; still revising after round 2 means reframing first — split / add tests / redo the approach — not opening round 3 on the same plan. A family reaching round 5 raises an escalation the owner answers (§1 R4).
 - **Every round also logs to the issue ledger** (`apriori/changes/<change>/review/issues.md`, [§7.0](#70-the-issue-ledger-shared-by-all-review-loops)): new findings get IDs, fixes flip statuses, and a reopened ID is your early warning that the loop isn't converging.
 
 For the prompt, see [§7.1](#71-step0-requirement-doc-adversarial-review).
@@ -384,12 +363,12 @@ The **propose action**. Produce `proposal.md` (the human-readable one-pager: why
 SPEC-DOC + DESIGN-DOC_V1  ──reviewing model──►  SPEC-EVALUATION-DOC_V1
 SPEC-EVALUATION-DOC_V1    ──producer revises──►  SPEC-DOC + DESIGN-DOC_V2
 SPEC-DOC + DESIGN-DOC_V2  ──reviewing model──►  SPEC-EVALUATION-DOC_V2
-… (up to N rounds)
+… (target: 2 rounds — see §1 R4)
 ```
 
 Each round mirrors its findings into the issue ledger ([§7.0](#70-the-issue-ledger-shared-by-all-review-loops)), so the producer's accept/reject calls stay visible to the STEP3 human gate.
 
-**Exit condition**: the reviewing model explicitly outputs "VERDICT: no major issues, ready to proceed to execution", or a human decides after the cap. Prompt: see [§7.3](#73-step2-adversarial-review-and-revision).
+**Exit condition**: the reviewing model explicitly outputs "VERDICT: no major issues, ready to proceed to execution". The target is 2 rounds; after round 2 the answer is to reframe (split / add tests / redo), and round 5 escalates to the owner (§1 R4). Prompt: see [§7.3](#73-step2-adversarial-review-and-revision).
 
 ### 4.6 STEP3: Technical Review
 
@@ -431,14 +410,14 @@ Every loop above already has a **machine-checkable exit condition** — which is
 
 > `/goal`'s built-in evaluator only **reads the transcript** and only judges *"is the condition met?"* — it is a weak model, and it is **NOT** the adversarial reviewer. So the real check must happen **inside the loop and leave its verdict in the transcript**. `/goal` orchestrates the loop; it never replaces the test run, the E2E suite, or the heterogeneous reviewer.
 
-That layering is what lets you automate **even adversarial review** without violating [§1.4](#14-adversarial-review): inside each turn Claude **calls the reviewer** (Codex via [§2.3](#23-driving-codex-non-interactively-multi-round-adversarial-review), or a fresh Claude session via [§2.4](#24-adversarial-review-with-only-claude-code)), pastes its verdict back, and the goal condition is simply *"the reviewer's verdict line is 'VERDICT: no major issues', or N rounds reached."* The judgment stays heterogeneous + fresh-context; `/goal` only reads whether that judgment landed in the transcript.
+That layering is what lets you automate **even adversarial review** without violating [§1.4](#14-adversarial-review): inside each turn Claude **calls the reviewer** (Codex via [§2.3](#23-driving-codex-non-interactively-multi-round-adversarial-review), or a fresh Claude session via [§2.4](#24-adversarial-review-with-only-claude-code)), pastes its verdict back, and the goal condition is simply *"the reviewer's verdict line is 'VERDICT: no major issues'"* — no round number goes in the condition; RUNBOOK §1 R4's derived loop stops it (still revising after round 2 → stop and report, do not open round 3). The judgment stays heterogeneous + fresh-context; `/goal` only reads whether that judgment landed in the transcript.
 
 **What to automate, and what to leave as a human gate:**
 
 | Phase | A sound `/goal` condition (transcript-checkable) | Backed inside the loop by |
 |---|---|---|
 | STEP0 | REQ-REVIEW-DOC written and its verdict line = `VERDICT: no major issues`, or the derived review loop stops (runbook §1 R4) | a heterogeneous reviewer call each round |
-| STEP2 | SPEC-EVALUATION-DOC verdict line = `VERDICT: no major issues, ready to proceed to execution`, or N rounds | a heterogeneous reviewer call each round |
+| STEP2 | SPEC-EVALUATION-DOC verdict line = `VERDICT: no major issues, ready to proceed to execution` (no round cap in the condition — §1 R4 stops the loop) | a heterogeneous reviewer call each round |
 | STEP5 | `npm test` exits 0 **and** lint/static analysis green (where configured) **and** every tasks.md item is `[x]` **and** the E2E/Playwright run is green **and** the consistency review reports no gaps — substitute per §4.8's project-type matrix (docs-only: `apriori check`) | real test + E2E run + reviewer call |
 | STEP6 | delta specs merged **and** the module's KB file updated | archive action + writeback |
 | **STEP3 tech review · reverse-capture review · KB sign-off** | — **do not wrap these in a goal** | a human decides |
@@ -600,11 +579,11 @@ Prompts: RUNBOOK **P1** (reviewer) / **P2** (producer's revise). Design notes:
 
 - Run P1 with a **model/tool different from the one that drafted the requirement**, and feed it the ledger so it can verify earlier fixes.
 - The five review dimensions are fixed on purpose — target-state clarity / edge & exception coverage / undeclared state changes / testable acceptance criteria / conflicts with state A — a stable checklist keeps rounds comparable.
-- The reviewer only reviews, never edits the requirement doc; the producer answers every formal issue with accept/reject + reason (advisories batch-acknowledge, RUNBOOK P0). Loop until "VERDICT: no major issues", finalize as `apriori/changes/<change>/requirement/req-final.md` (max 5 rounds).
+- The reviewer only reviews, never edits the requirement doc; the producer answers every formal issue with accept/reject + reason (advisories batch-acknowledge, RUNBOOK P0). Loop until "VERDICT: no major issues", finalize as `apriori/changes/<change>/requirement/req-final.md` — the target is 2 rounds, and after round 2 the answer is to change the approach, not to spend more rounds (§1 R4).
 
 ### 7.2 STEP1: explore
 
-Prompt: RUNBOOK **P3**. Design notes: facts only — no code. The KB and the finalized requirement doc go in as inputs, and the output is pinned to `apriori/changes/<change>/gap-report.md` so the cheap pre-propose gate ([§4.4](#44-step1-explore--align)) has something concrete to read. One carve-out: the **research-spike variant** (vague-but-tripwired changes, [§4.0](#40-size-the-change-first)) allows probe code under `changes/<change>/spike/`, with findings landing as a gap-report appendix.
+Prompt: RUNBOOK **P3**. Design notes: facts only — no code. The KB and the finalized requirement doc go in as inputs, and the output is pinned to `apriori/changes/<change>/gap-report.md` so the cheap pre-propose gate ([§4.4](#44-step1-explore--align)) has something concrete to read. One carve-out: when a fact will not yield to reading, probe code is allowed — thrown away afterwards, never referenced by `tasks.md` — with the finding landing as a gap-report appendix.
 
 ### 7.3 STEP2: Adversarial Review and Revision
 
@@ -622,7 +601,6 @@ Prompts: RUNBOOK **P7** (apply) / **P8** (consistency reviewer). Design notes:
 
 - P7 is tests-first: one failing test per spec scenario, test names carrying scenario IDs, shown failing *before* implementation — then implement in tasks.md order. Scenario coverage is the hard bar; line coverage stays a signal ([§4.8](#48-step5-code--test--implementation-review)).
 - `apriori verify` has already done the mechanical binding check (every scenario has a passing test), so P8 is narrowed to **semantic faithfulness** — whether each test actually exercises its scenario's intent, not just shares its ID. Its scope clause keeps style findings advisory. Like every review, it runs on a heterogeneous model ([§2.3](#23-driving-codex-non-interactively-multi-round-adversarial-review)).
-- The explore track's **P11** (spec extraction) and **P12** (extraction review, heterogeneous) follow the same pattern: the intent card — never the prototype — is the review baseline; P12 runs P1's five dimensions plus intent-conformance and no-invention checks; its verdict line (`VERDICT: extraction accepted`) is the track's machine-checkable merge condition (RUNBOOK §4/§5). Extraction-time decisions that neither the intent card nor the spike observations support are declared as explicit `EXT-n` proposals — P12 recommends, the human rules at the extraction-review decision point (mechanics in RUNBOOK P11/P12).
 
 ### 7.5 STEP6: archive
 

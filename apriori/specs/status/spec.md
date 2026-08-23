@@ -15,7 +15,7 @@
 
 #### Scenario: ST-04 --json emits a machine-consumable report
 - WHEN `apriori status --json` (or `--change <name> --json`) runs
-- THEN it prints valid JSON — per change: change/step/tier/track/lineage/nextAction/lastGate/hasFlowState/openLedger (IDs) — with no prose mixed in, so an agent can parse instead of scraping text
+- THEN it prints valid JSON — per change: change/step/mode/effectiveMode/lineage/nextAction/lastGate/hasFlowState/openLedger (IDs) — with no prose mixed in, so an agent can parse instead of scraping text
 
 ### Requirement: status resolves archived changes with path protection
 `apriori status --change <name>` SHALL resolve the change like the gate does — the shared resolver validates the bare-kebab name, prefers the active bundle, falls back to the newest archived stamp-dir, and enforces realpath containment — and report `stage: in-flight|archived` alongside the existing fields, reading the flow-state and ledger from the resolved bundle. After resolution the read surface is file-guarded through the structured defect contract (`fileReadDefect` → `{kind, path}`): `flow-state.md` must resolve defect-free (any kind — missing, symlink, not-file, bad-ancestor, escape — exits 2 naming the kind and path); `review/issues.md` reads as 0 open rows ONLY on kind `missing` — every other kind (a dangling or symlinked `review/` ancestor included) exits 2. The parsed flow-state's `change:` must equal the queried name, else exit 2 (identity check). An invalid name, a nonexistent change, or an escaping path exits 2. `--json` gains `stage` and `path`. The no-args listing keeps its active-only shape while reusing the same file guards internally. The resolver and the process-config CAS lookup live in a shared module — no gate↔status require cycle.
@@ -40,13 +40,13 @@
 - WHEN an archived bundle's flow-state declares `change: other` under a `…-demo` stamp dir (and an ACTIVE bundle `changes/demo/` declares the same mismatch); and a second bundle's `review/` is a dangling symlink; and a third simply has no `review/issues.md`
 - THEN `status --change demo` exits 2 naming the identity mismatch at BOTH stages; the second exits 2 naming the bad ancestor (never "0 open"); the third reports 0 open rows as before
 
-### Requirement: status lists and labels hotfix bundles
-`status` SHALL list a hotfix bundle alongside formal changes and label it as the hotfix lane rather than reporting a missing flow-state. `--change` on a hotfix bundle SHALL resolve and report instead of erroring on the absent `flow-state.md`, and the JSON contract SHALL carry a `hotfix` boolean for every change. A directory carrying both identities is an error naming both files.
+### Requirement: status diagnoses a bundle left behind by the retired hotfix lane
+6.0 removed the hotfix lane. `status` SHALL still SEE a `hotfix-state.md` so a leftover bundle is diagnosed rather than read as a change with a missing flow-state: it is listed, its row says the bundle must be migrated, and `--change` on it resolves and reports the migration instead of erroring. The JSON contract keeps its `hotfix` boolean, which now reports exactly what it always detected — whether the bundle carries that file. Residue beside a readable `flow-state.md` is just residue: the change is reported as the change it is, review loop included.
 
-#### Scenario: ST-10 a hotfix bundle is listed and labelled, not reported as broken
-- WHEN `status` lists active changes and one of them holds `hotfix-state.md`
-- THEN that row reads as the hotfix lane, and `--change` on it reports the lane instead of erroring about a missing flow-state
+#### Scenario: ST-10 a leftover lane bundle is listed and told how to migrate
+- WHEN `status` lists active changes and one of them holds `hotfix-state.md` and no flow-state
+- THEN that row reads as a leftover bundle to migrate, `--change` on it reports the migration rather than erroring, and neither names the retired lane as a live option
 
-#### Scenario: ST-11 the JSON contract carries the hotfix flag and both identities are an error
-- WHEN `--json` reports a hotfix bundle and a formal change, and separately when a directory holds both state files
-- THEN the flag is true for the first and false for the second, and the both-identities case is an error naming both files
+#### Scenario: ST-11 the JSON contract still parses with a leftover bundle present
+- WHEN `--json` reports a leftover lane bundle alongside a formal change
+- THEN the `hotfix` flag is true for the first and false for the second, and the document parses

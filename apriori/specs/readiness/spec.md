@@ -35,7 +35,7 @@
 
 #### Scenario: RY-09 the archive review-root check matches the gate's, absence included
 - WHEN `reviewRootDefect` is compared against the gate's `reviewDirDefect` on a clean directory, an ABSENT directory, a symlink, a non-directory and an escaping path
-- THEN all five agree — the absent case returning nothing is the one that keeps a missing `review/` flowing to the tier rule instead of becoming a new failure class
+- THEN all five agree — the absent case returning nothing is the one that keeps a missing `review/` flowing to the mode rule instead of becoming a new failure class
 
 #### Scenario: RY-10 the archive layer owns its error semantics end to end
 - WHEN `artifactDefect`, `reviewRootDefect` and `containDefect` are inspected statically
@@ -47,7 +47,7 @@
 
 #### Scenario: RY-12 a non-ENOENT beats a co-occurring ENOENT
 - WHEN the containment check's two realpath calls fail with different codes — one absent, one denied
-- THEN both calls are still attempted and the answer is the io-error, because letting the absence win would hand a permission failure to the tier rule and archive an unread bundle
+- THEN both calls are still attempted and the answer is the io-error, because letting the absence win would hand a permission failure to the mode rule and archive an unread bundle
 
 #### Scenario: RY-13 the ancestor walk classifies its own failures
 - WHEN a non-ENOENT error is raised while walking up from an absent artifact toward the bundle root
@@ -55,7 +55,7 @@
 
 #### Scenario: RY-14 the review root's own guard failures are classified, and ENOENT stays benign
 - WHEN the review root's lstat or realpath fails
-- THEN a non-ENOENT is io-error while an unresolvable path answers exactly as an absent directory does — the tier rule still decides, and no new failure class is introduced
+- THEN a non-ENOENT is io-error while an unresolvable path answers exactly as an absent directory does — the mode rule still decides, and no new failure class is introduced
 
 #### Scenario: RY-15 the structural set is closed and gate is untouched by it
 - WHEN the kinds the archive layer can return are enumerated

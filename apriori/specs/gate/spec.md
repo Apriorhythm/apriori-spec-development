@@ -14,7 +14,7 @@
 - THEN C4 blocks naming the row ID; a `rejected` row passes only when, after stripping the leading word `rejected`, the remaining text contains at least one word character (`rejected: duplicate` passes; `rejected`, `rejected:`, `rejected -` block); `advisory*`/`fixed`/`verified` rows never block
 
 #### Scenario: GT-04 flow-state legality is enforced
-- WHEN a required flow-state key (`change`, `tier`, `track`, `lineage`, `current-step`) is missing, still a `<placeholder>`, has a `current-step` outside the exact vocabulary (STEP0..STEP6, INTENT-CARD, SPIKE, EXTRACTION, DONE, ABANDONED), a `tier` outside {trivial, medium, large}, or a `change` value that does not equal `--change`
+- WHEN a required flow-state key (`change`, `mode`, `lineage`, `current-step`) is missing, still a `<placeholder>`, has a `current-step` outside the exact vocabulary (STEP0..STEP6, DONE, ABANDONED), a `mode` outside {fast, standard}, or a `change` value that does not equal `--change`
 - THEN C3 blocks naming the offending key; a fully legal flow-state passes
 
 #### Scenario: GT-05 verdict evidence is mechanical
@@ -31,11 +31,11 @@
 
 #### Scenario: GT-08 a missing or mismatched flow-state fails closed
 - WHEN the resolved change dir has no readable flow-state.md
-- THEN gate exits 2 (tier-aware checks are impossible); a readable flow-state whose `change` key mismatches `--change` is C3-blocked, not exit 2
+- THEN gate exits 2 (mode-aware checks are impossible); a readable flow-state whose `change` key mismatches `--change` is C3-blocked, not exit 2
 
-#### Scenario: GT-09 trivial tier is not asked for artifacts it never produces
-- WHEN flow-state declares `tier: trivial` and tasks.md or the bundle ledger `<changeDir>/review/issues.md` is absent
-- THEN C2/C4 report `–` (not applicable) instead of blocking; on medium/large the same absences block naming the exact bundle path
+#### Scenario: GT-09 fast mode is not asked for artifacts it never produces
+- WHEN flow-state declares `mode: fast` and tasks.md or the bundle ledger `<changeDir>/review/issues.md` is absent
+- THEN C2/C4 report `–` (not applicable) instead of blocking; on `standard` the same absences block naming the exact bundle path
 
 #### Scenario: GT-10 KB freshness degrades honestly through the truth index
 - WHEN a touched module `<m>` (first path segment of the change's delta-spec suffixes) resolves through the truth index to a truth doc carrying a canonical `source-commit` stamp (a fence-outside line-start `source-commit: <ref>`), whose resolved `source-files` are all verifiable, and git reports commits in `<ref>..HEAD -- <source-files...>`
@@ -121,16 +121,12 @@ Gate SHALL run a seventh check: the change's projection carrying `unstampedMutat
 - WHEN the only failures in the TAP stream are tagged reds BOUND to projection scenarios outside change A's scope, and change A's own scenarios are all bound green
 - THEN change A's C1 passes and the store suffix still shows the outstanding counts; conversely WHEN the stream carries an ID-less `not ok` or a FAILING true orphan THEN change A's C1 is BLOCKED (no provenance — fail closed), whatever change A's own scenarios say
 
-### Requirement: a hotfix bundle is refused by the gate with a pointer, not adapted
-The gate's object is a formal change. When the resolved directory carries `hotfix-state.md` the gate SHALL refuse the run as an evaluation error and name `apriori hotfix archive <name>` as the surface that judges the lane — the seven checks are neither run nor reinterpreted, and none of their logic changes. A directory carrying BOTH `flow-state.md` and `hotfix-state.md` is refused as an identity error naming both files, since neither reading can be trusted.
+### Requirement: a bundle left behind by the retired hotfix lane is diagnosed, not gated
+6.0 removed the hotfix lane. A directory carrying `hotfix-state.md` and NO `flow-state.md` cannot be read as a change at all, so the gate SHALL refuse it as an evaluation error that names the file it found and the migration (`apriori new <name>`, `mode: fast`, or finishing it with apriori-cli 5.x) — it is never reported as a generic missing flow-state, and never passed. `hotfix-state.md` sitting BESIDE a readable `flow-state.md` is residue, not a second identity: the change is gated exactly as any other change, and the seven checks are unchanged in both cases.
 
-#### Scenario: GT-28 the gate points a hotfix bundle at its own preflight
+#### Scenario: GT-28 a leftover lane bundle gets the migration, not a missing-file message
 - WHEN `gate --change <name>` resolves a directory holding `hotfix-state.md` and no `flow-state.md`
-- THEN the gate exits 2 with an error naming the hotfix lane and `apriori hotfix archive`, and reports no check results at all
-
-#### Scenario: GT-29 a bundle carrying both identities is an error at the gate too
-- WHEN the resolved directory holds both `flow-state.md` and `hotfix-state.md`
-- THEN the gate exits 2 naming both files rather than judging either one
+- THEN the gate exits 2 with an error naming `hotfix-state.md` and the `apriori new` migration, reports no check results, and never names the retired `apriori hotfix` command
 
 ### Requirement: gate degrades the checks it cannot run instead of refusing to run at all
 A missing test command SHALL disable C1 alone, never the whole evaluation. When no usable test-command source exists (no `--test-cmd` flag and no live `test-cmd` row in `apriori/process-config.md`), `apriori gate` SHALL report C1 with status `skipped`, SHALL still execute C2..C7 and report their real conclusions, and SHALL exit 3 (`GATE: INCOMPLETE`) when nothing blocked. A BROKEN test-command source is a different thing from an ABSENT one and SHALL remain an exit-2 evaluation error. The effective id-pattern SHALL still be resolved and compile-checked even when C1 is skipped — a broken pattern is a broken config, not an absent one.
@@ -164,8 +160,8 @@ A missing test command SHALL disable C1 alone, never the whole evaluation. When 
 - THEN gate exits 2 exactly as it does today, at both stages; AND WHEN the test command is absent while a VALID config-origin id-pattern is in force THEN the pattern is compile-checked but no scenario matching is performed — the matcher child process is spawned ZERO times, observably
 
 #### Scenario: GT-37 the earlier refusals still win over the degradation
-- WHEN the test command is absent AND the resolved bundle is a hotfix bundle
-- THEN gate still exits 2 with the mapping-m1 pointer at `apriori hotfix archive` — the hotfix identity is decided before flow-state and before the test-command source, so a lane bundle (which carries no flow-state by design) is never misreported as a missing flow-state; WHEN the bundle is a formal change with no readable flow-state THEN gate still exits 2 for that reason
+- WHEN the test command is absent AND the resolved bundle is a leftover lane bundle
+- THEN gate still exits 2 with the migration diagnosis — the leftover is detected before the test-command source, so it is never misreported as a missing flow-state; WHEN the bundle is a formal change with no readable flow-state THEN gate still exits 2 for that reason
 
 #### Scenario: GT-38 the degradation reaches the archived stage too
 - WHEN the test command is absent and the change resolves only under `apriori/changes/archive/<stamp>-<name>/`

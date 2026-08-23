@@ -8,7 +8,6 @@ const rest = process.argv.slice(3);
 const USAGE = `apriori <command>
 
   new       scaffold a change dir + flow-state skeleton (bare kebab-case name)
-  hotfix    the minimal write-back lane: scaffold and archive a hotfix bundle
   status    show where a change is: step, next-action, open ledger items (--json)
   verify    bind spec scenarios to test runs (STEP5 gate) (--json)
   archive   merge a change's delta specs into the living store (STEP6)
@@ -24,7 +23,15 @@ Run 'apriori <command>' with no args for that command's usage.`;
 async function main() {
   switch (sub) {
     case 'new':     return require('../lib/new').cli(rest);
-    case 'hotfix':  return require('../lib/hotfix').cli(rest);
+    // retired in 6.0: the lane was a parallel process, not a shortcut. Refused with a
+    // pointer rather than deleted outright — `apriori hotfix new x` in an old habit or
+    // an old script should say what replaced it, not 'unknown command'.
+    case 'hotfix':
+      console.error("apriori hotfix: removed in 6.0 — there is one flow now.\n"
+        + "  New work:  apriori new <name>  then set  mode: fast  in flow-state.md\n"
+        + "             (fast = reproduce -> fix -> regression -> one independent review)\n"
+        + "  A bundle the lane left behind: convert it to a change, or finish it with apriori-cli 5.x.");
+      return 2;
     case 'status':  return require('../lib/status').cli(rest);
     case 'verify':  return require('../lib/spec-runner').cli(rest);
     case 'archive': return require('../lib/archive-merge').cli(rest, {

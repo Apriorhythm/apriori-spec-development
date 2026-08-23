@@ -40,9 +40,15 @@ test('PR-04 the interface is single-path plain-files (runbook AND handbook)', ()
   }
 });
 
-test('PR-05 the disposable prototype rule still holds', () => {
-  assert.match(EN, /prototype is disposable|`spike\/` is deleted/);
-  assert.match(CN, /原型是一次性|`spike\/`/);
+test('PR-05 probe code is disposable and never becomes an artifact', () => {
+  // 6.0 removed the explore track, and with it the `spike/` dir as a carried artifact. The
+  // rule that survives is the track-free one: a probe is thrown away, and tasks.md never
+  // references it — so probing a fact can never quietly grow into a second deliverable.
+  assert.match(EN, /Probe code is allowed[\s\S]{0,120}thrown away/);
+  assert.match(EN, /never referenced by tasks\.md/);
+  assert.match(CN, /允许写探针代码[\s\S]{0,60}用完即弃/);
+  assert.match(CN, /tasks\.md 绝不引用/);
+  for (const doc of [EN, CN]) assert.doesNotMatch(doc, /spike\//, 'the spike dir survives as a path');
 });
 
 test('PR-06 a configurable language governs prose; machine tokens stay English', () => {
@@ -94,8 +100,8 @@ test('PR-07 the brainstorm stance is a structured diverge→converge→funnel, e
   // funnel
   assert.match(en, /must funnel into the pipeline/);
   assert.match(en, /start \*\*STEP0\*\*/);                     // branch 1
-  assert.match(en, /explore track's intent card/);            // branch 2
-  assert.match(en, /no third resting place/);                 // the binary is exhaustive
+  assert.match(en, /no second track to route to/);            // branch 2: there is no second track
+  assert.match(en, /Ground \(§4 STEP1\)/);                     // an unclear fact is settled in-change
   // P13 exists in §5 AND its body mirrors the stance (hard gate, diverge, converge, funnel)
   const p13en = block(EN, /^### P13 — brainstorm kickoff.*$/m);
   assert.ok(p13en, 'EN P13 block present');
@@ -135,7 +141,7 @@ test('PR-07 the brainstorm stance is a structured diverge→converge→funnel, e
   assert.match(cn, /2-3 个候选方案的取舍对比和你的推荐/);
   assert.match(cn, /必须漏斗进流程/);
   assert.match(cn, /STEP0/);                                   // branch 1
-  assert.match(cn, /探索轨的意图卡/);                          // branch 2
+  assert.match(cn, /没有第二条轨道/);                          // branch 2: there is no second track
   // CN P13 body mirrors the stance too
   const p13cn = block(CN, /^### P13 —— 脑暴启动.*$/m);
   assert.ok(p13cn, 'CN P13 block present');
@@ -311,9 +317,9 @@ test('PR-14 two entry doors: bare /apriori opens Brainstorm via P13', () => {
   assert.match(initSrc, /change is clear\?\s+\/apriori <change>/);
 });
 
-test('PR-15 ABANDONED is a legal harden-track exit, human-only', () => {
+test('PR-15 ABANDONED is a legal exit at any step, human-only', () => {
   const en = EN;
-  assert.match(en, /Abandoning a harden change/);
+  assert.match(en, /ABANDONED is a legal exit from any step/);
   assert.match(en, /their call alone; never proposed by the agent as a way out of failing reviews/);
   assert.match(en, /`abandoned — <the human's reason, verbatim>`/);
   assert.match(en, /write nothing to the KB or spec store/);
@@ -321,7 +327,7 @@ test('PR-15 ABANDONED is a legal harden-track exit, human-only', () => {
   assert.match(en, /move the change dir to `apriori\/changes\/archive\/<stamp>-<name>\/`/);
   assert.match(en, /`current-step: ABANDONED`/);
   assert.match(en, /a recorded decision, not an erased one/);
-  assert.match(CN, /harden 变更的弃案/);
+  assert.match(CN, /ABANDONED 是任何步骤都合法的退出/);
   assert.match(CN, /agent 绝不许把它当作躲避评审不过关的出路来提议/);
   assert.match(CN, /KB 与规格库一概不写/);
   assert.match(CN, /要问,不许自作主张/);
@@ -477,17 +483,16 @@ test('PR-21 the bundle layout binds and the legacy roots are gone', () => {
     assert.match(doc, /changes\/<change>\/requirement\//);
     assert.match(doc, /changes\/<change>\/review\//);
     assert.match(doc, /changes\/<change>\/gap-report\.md/);
-    assert.match(doc, /changes\/<change>\/spike\//);
   }
   // STEP6: the move carries the bundle; no staging/copy instruction; spike is executor duty pre-archive
   const s6en = sectionBlock(EN, /^### STEP6 — archive.*$/m);
   assert.match(s6en, /move carries the (whole )?bundle|carries the bundle/i);
   assert.ok(!/staged?:|copy every|stages every/.test(s6en), 'staging/copy instruction survives in EN STEP6');
-  assert.match(s6en, /delete or quarantine/);
+  assert.doesNotMatch(s6en, /delete or quarantine/);   // the track's pre-archive duty went with the track
   const s6cn = sectionBlock(CN, /^### STEP6 —— 归档.*$/m);
   assert.match(s6cn, /随.*移动|移动携带|一并带走/);
   assert.ok(!/暂存|拷入|拷贝每/.test(s6cn), 'staging/copy instruction survives in CN STEP6');
-  assert.match(s6cn, /删除或隔离/);
+  assert.doesNotMatch(s6cn, /删除或隔离/);
   // the v4 stability sentence carries no layout clause
   const CHANGELOG = require('node:fs').readFileSync(path.join(ROOT, 'CHANGELOG.md'), 'utf8');
   const promise = CHANGELOG.split('\n').find((l) => l.includes('stability promise')) || '';

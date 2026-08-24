@@ -293,3 +293,20 @@ test('MD-15 the mechanical floor claims exactly what the CLI actually does', () 
   assert.match(en, /The review must also have CLOSED — in either mode/);
   assert.match(cn, /评审还必须已经收敛——两种模式都一样/);
 });
+
+test('MD-16 every session loads the mode/phase minimum instead of the full runbook', () => {
+  const en = fs.readFileSync(path.join(__dirname, '..', 'RUNBOOK.md'), 'utf8');
+  const cn = fs.readFileSync(path.join(__dirname, '..', 'RUNBOOK_cn.md'), 'utf8');
+  assert.doesNotMatch(en, /read this runbook in full/i);
+  assert.doesNotMatch(cn, /完整读本 RUNBOOK/);
+  for (const token of ['§1 hard rules', '§3 state-file rules', "recorded mode's §2 entry",
+                        'recorded phase in §5', "phase's §4 entry"])
+    assert.ok(en.includes(token), `EN context map is missing ${token}`);
+  for (const token of ['§1 铁律', '§3 状态文件规则', 'mode 在 §2', 'phase 在 §5', '阶段在 §4'])
+    assert.ok(cn.includes(token), `CN context map is missing ${token}`);
+
+  const command = fs.readFileSync(path.join(__dirname, '..', 'templates', 'command.md'), 'utf8');
+  assert.match(command, /current mode\/phase minimal set/);
+  assert.match(command, /Never preload the full runbook/);
+  assert.match(require('../lib/init').POINTER, /current mode\/phase minimal set/);
+});

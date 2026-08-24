@@ -53,6 +53,8 @@ test('IN-05 per-tool native location and format (Cursor MDC frontmatter, Claude 
   assert.match(mdc, /alwaysApply: true/);
   assert.ok(fs.existsSync(path.join(root, '.claude/commands/apriori.md')));
   assert.ok(read(root, 'CLAUDE.md').includes('apriori/runbook.md'));
+  assert.match(read(root, 'CLAUDE.md'), /current mode\/phase minimal set/);
+  assert.match(read(root, '.claude/commands/apriori.md'), /Never preload the full runbook/);
 });
 
 test('IN-06 additive and non-clobbering; re-running is safe', () => {

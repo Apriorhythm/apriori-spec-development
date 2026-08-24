@@ -31,9 +31,9 @@ cd your-project && apriori init  # interactive: pick the AI tools to configure
 
 **Session start (agent, every session):**
 
-1. Kickoff session: read this runbook in full. Resume session: read at least the minimal set listed in the **Context economy** block below.
+1. Read this **Session start** block and the **Context economy** map below — never preload the full runbook.
 2. Read `apriori/changes/<change>/flow-state.md`. If it doesn't exist and you were asked to start a change: run `apriori new <change>`, pick the mode (§2), fill in the state (§3), then begin at **Ground**.
-3. Continue from the state's `## Next` list — its first entry is the resume point. The state file is authoritative — never reconstruct progress from memory or guesswork.
+3. Load only the map's minimal set for the recorded mode and phase, then continue from the state's first `## Next` entry. The state file is authoritative — never reconstruct progress from memory or guesswork.
 
 **Two doors in.** A change that is already stateable enters through the kickoff prompt below. An idea that is still fuzzy enters through **Brainstorm** (§4, via P6) — the `/apriori` command with no arguments opens that door directly; nothing durable is written until the human approves the funnel exit.
 
@@ -41,7 +41,7 @@ cd your-project && apriori init  # interactive: pick the AI tools to configure
 
 ```text
 Follow the apriori runbook (apriori/runbook.md) for change <change-name>, mode <fast|standard> (unsure: standard).
-Read the runbook and apriori/changes/<change-name>/flow-state.md first and continue from the recorded position.
+Read the runbook's Session start/Context economy map and apriori/changes/<change-name>/flow-state.md first; load only the current mode/phase minimal set and continue from the recorded position.
 (If the artifact root is externalized: artifact-root=<path>. Otherwise omit — project root.)
 Advance ONLY to the next point where I have to decide (§1 R1), then stop and report.
 ```
@@ -51,7 +51,7 @@ Advance ONLY to the next point where I have to decide (§1 R1), then stop and re
 **Context economy.** The context window is the agent's scarcest resource — performance degrades as it fills, so manage it deliberately:
 
 - **Session hygiene:** each phase may run in a fresh session — the state file (§3) guarantees lossless resume, so accumulating one giant session is a cost, not a safety feature. A handoff carries the state's own content: phase, decisions, open issues, evidence references. It never carries raw review output or another change's documents.
-- **Resume minimal set** (the single source of this list — §0's session-start rule references it): §1 hard rules; §3 state-file rules; the prompt(s) of the phase the state points at; and that phase's §4 entry (including its exit conditions; for Review & Deliver, the archive algorithm).
+- **Mode/phase minimal set** (the single source of this list — §0's session-start rule references it): §1 hard rules; §3 state-file rules; the recorded mode's §2 entry; the prompt(s) of the recorded phase in §5; and that phase's §4 entry (including its exit conditions; for Review & Deliver, the archive algorithm). Read another section only when one of these sections points to it for the fact at hand.
 - **Just-in-time knowledge:** load KB docs per touched module (P1 already scopes this way) — never preload the whole store.
 
 ---

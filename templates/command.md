@@ -1,7 +1,8 @@
 Follow the apriori runbook (apriori/runbook.md) for change: $ARGUMENTS
 
-If a change name was given above: read apriori/runbook.md per its session-start rule and
-apriori/changes/<change>/flow-state.md, then continue from the recorded position.
+If a change name was given above: read the runbook's Session start/Context economy map and
+apriori/changes/<change>/flow-state.md, load only the current mode/phase minimal set, then
+continue from the recorded position. Never preload the full runbook.
 Advance ONLY to the next point where a human has to decide (runbook §1 R1: an escalation,
 critical evidence still blocked, an external side effect, or abandonment), then stop and report.
 

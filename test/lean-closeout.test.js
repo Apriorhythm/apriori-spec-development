@@ -61,11 +61,11 @@ test('LC-06 action 4 — a local closeout commit, then stop', () => {
   assert.match(cnRD, /本地提交收尾,然后停止/);
 });
 
-test('LC-07 KB truth update (source-commit + Contract/Decisions) is a precondition, not a closeout step', () => {
-  assert.match(enRD, /KB update is a precondition, not a closeout step/);
+test('LC-07 KB truth update (source-commit + Contract/Decisions) is a precondition, owed only conditionally', () => {
+  assert.match(enRD, /KB update is a precondition, not a closeout step — and it is owed only when/);
   assert.match(enRD, /commit the implementation and point `source-commit` at it/);
   assert.match(enRD, /update `apriori\/truth\/<module>\.md` — Contract section from the final implementation/);
-  assert.match(cnRD, /知识库更新是前置条件,不是收尾步骤/);
+  assert.match(cnRD, /知识库更新是前置条件,不是收尾步骤——而且只在欠着的时候才做/);
   assert.match(cnRD, /提交实现,让 `source-commit` 指向它/);
   assert.match(cnRD, /更新 `apriori\/truth\/<module>\.md`——Contract 段按最终实现写/);
 });

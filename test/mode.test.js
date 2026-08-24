@@ -294,19 +294,27 @@ test('MD-15 the mechanical floor claims exactly what the CLI actually does', () 
   assert.match(cn, /评审还必须已经收敛——两种模式都一样/);
 });
 
-test('MD-16 every session loads the mode/phase minimum instead of the full runbook', () => {
+test('MD-16 every session runs status + flow-state + Next first, reading the runbook only on demand', () => {
   const en = fs.readFileSync(path.join(__dirname, '..', 'RUNBOOK.md'), 'utf8');
   const cn = fs.readFileSync(path.join(__dirname, '..', 'RUNBOOK_cn.md'), 'utf8');
   assert.doesNotMatch(en, /read this runbook in full/i);
   assert.doesNotMatch(cn, /完整读本 RUNBOOK/);
+  // the old fixed default reading set (read §1/§3/§2/§5/§4 every session) is gone
   for (const token of ['§1 hard rules', '§3 state-file rules', "recorded mode's §2 entry",
                         'recorded phase in §5', "phase's §4 entry"])
-    assert.ok(en.includes(token), `EN context map is missing ${token}`);
+    assert.ok(!en.includes(token), `EN still declares the old default reading set: ${token}`);
   for (const token of ['§1 铁律', '§3 状态文件规则', 'mode 在 §2', 'phase 在 §5', '阶段在 §4'])
-    assert.ok(cn.includes(token), `CN context map is missing ${token}`);
+    assert.ok(!cn.includes(token), `CN still declares the old default reading set: ${token}`);
+  // the on-demand entry point: status first, then flow-state's Next, then a runbook section
+  // only when status/Next/a blocked command/an uncertain fact points there
+  assert.match(en, /Run `apriori status --change <name>`/);
+  assert.match(en, /Read a runbook section only when `status`, `## Next`, a blocked command, or an uncertain fact points you there/);
+  assert.match(cn, /先跑 `apriori status --change <name>`/);
+  assert.match(cn, /只有当 `status`、`## Next`、一个被阻塞的命令、或一个不确定的事实指向某节时,才去读那一节 runbook/);
 
   const command = fs.readFileSync(path.join(__dirname, '..', 'templates', 'command.md'), 'utf8');
-  assert.match(command, /current mode\/phase minimal set/);
-  assert.match(command, /Never preload the full runbook/);
-  assert.match(require('../lib/init').POINTER, /current mode\/phase minimal set/);
+  assert.doesNotMatch(command, /current mode\/phase minimal set/);
+  assert.match(command, /never preload the full runbook/i);
+  assert.doesNotMatch(require('../lib/init').POINTER, /current mode\/phase minimal set/);
+  assert.match(require('../lib/init').POINTER, /never preload the full runbook/i);
 });

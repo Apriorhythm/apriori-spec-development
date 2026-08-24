@@ -116,7 +116,7 @@ usage: apriori stamp <store-file>
 
 ## apriori gate
 
-把一个变更的机械闸口检查合成一个退出码(绑定 verify、tasks、flow-state、台账、verdict↔raw 证据、KB 新鲜度、评审循环收敛);PASS ≠ 人工闸口
+把一个变更的机械闸口检查合成一个退出码(绑定 verify、tasks、flow-state、台账、verdict 证据、KB 新鲜度、评审循环收敛);PASS ≠ 人工闸口
 
 ```text
 usage: apriori gate --change <name> [--test-cmd "<cmd>"] [--id-pattern <re>] [--cwd <dir>] [--json] [--no-cas]

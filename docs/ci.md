@@ -22,7 +22,7 @@ Every scenario in the living store has a passing test, no orphans. Runs your own
 
 ## gate — per in-flight change
 
-One exit code over the mechanical exit conditions of a change: stage-aware binding verify, tasks all checked, legal flow-state, clean ledger, verdict↔raw evidence, KB freshness. `PASS` covers the mechanical face only — human gates remain human.
+One exit code over the mechanical exit conditions of a change: stage-aware binding verify, tasks all checked, legal flow-state, clean ledger, verdict evidence, KB freshness. `PASS` covers the mechanical face only — human gates remain human.
 
 ```yaml
 - name: apriori gate

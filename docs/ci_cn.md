@@ -22,7 +22,7 @@ living 规格库里每条 scenario 都有绿测试、无孤儿。跑你自己的
 
 ## gate —— 按在途变更
 
-把一个变更的机械退出条件合成一个退出码:阶段感知的绑定 verify、tasks 全勾、flow-state 合法、台账干净、verdict↔raw 证据、KB 新鲜度。`PASS` 只覆盖机械面——人工闸口仍归人。
+把一个变更的机械退出条件合成一个退出码:阶段感知的绑定 verify、tasks 全勾、flow-state 合法、台账干净、verdict 证据、KB 新鲜度。`PASS` 只覆盖机械面——人工闸口仍归人。
 
 ```yaml
 - name: apriori gate

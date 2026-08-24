@@ -116,7 +116,7 @@ Exit: 0 printed (absent file → the `new` form) · 2 usage/directory/unreadable
 
 ## apriori gate
 
-aggregate the mechanical gate checks for one change into one exit code (binding verify, flow-state, ledger, verdict↔raw evidence, KB freshness, review-loop convergence, critical evidence); PASS ≠ a human decision
+aggregate the mechanical gate checks for one change into one exit code (binding verify, flow-state, ledger, verdict evidence, KB freshness, review-loop convergence, critical evidence); PASS ≠ a human decision
 
 ```text
 usage: apriori gate --change <name> [--test-cmd "<cmd>"] [--id-pattern <re>] [--cwd <dir>] [--json] [--no-cas] [--review-ready]

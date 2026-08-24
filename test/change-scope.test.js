@@ -63,10 +63,11 @@ test('SR-56 the change verdict judges only the change scope', () => {
   assert.strictEqual(forphan.status, 1, 'failing orphan blocks');
 });
 
-test('SR-57 change gaps still fail', () => {
+test('SR-57 a real bound failure still fails; an unbound scenario alone is advisory', () => {
   const root = mkChange(STORE_AB, DELTA_C);
+  // R02 subtraction #1: XC-01 has no test at all, but nothing failed either — advisory, GREEN
   const un = chg(root, ['--test-cmd', tap(['ok 1 - XA-01 a']), '--json']);
-  assert.strictEqual(un.status, 1);
+  assert.strictEqual(un.status, 0, 'an unbound scenario alone is advisory, never a block');
   assert.deepStrictEqual(JSON.parse(un.stdout).unbound, ['XC-01']);
   const red = chg(root, ['--test-cmd', tap(['not ok 1 - XC-01 c'], 1), '--json']);
   assert.strictEqual(red.status, 1);
@@ -112,9 +113,9 @@ test('SR-58 operation semantics bound the scope', () => {
 });
 
 test('SR-59 in-scope strictness blocks the verdict', () => {
-  // scoped unidentified
+  // scoped unidentified: advisory, non-blocking by default (R02 subtraction #1) — nothing failed
   const uni = mkChange(STORE_AB, '## ADDED Requirements\n\n### Requirement: R-C\n\n#### Scenario: no id here\n- t\n');
-  assert.strictEqual(chg(uni, ['--test-cmd', tap(['ok 1 - XA-01 a'])]).status, 1);
+  assert.strictEqual(chg(uni, ['--test-cmd', tap(['ok 1 - XA-01 a'])]).status, 0);
   // cross-boundary duplicate: scoped XA-01 collides with untouched store XA-01
   const dup = mkChange(STORE_AB, '## ADDED Requirements\n\n### Requirement: R-C\n\n#### Scenario: XA-01 clash\n- t\n');
   const rd = chg(dup, ['--test-cmd', tap(['ok 1 - XA-01 a', 'ok 2 - XB-01 b']), '--json']);
@@ -165,9 +166,9 @@ test('SR-62 the zero-scope truth table holds', () => {
   // all-empty projection: global vacuous ERROR
   const empty = mkChange('### Requirement: R-A\nprose\n', '## ADDED Requirements\n\n### Requirement: R-E\nprose\n');
   assert.strictEqual(chg(empty, ['--test-cmd', tap(['1..0'])]).status, 2);
-  // scope whose only occurrences are unidentified: GAPS (SR-59 case, asserted here for the table)
+  // scope whose only occurrences are unidentified: advisory, GREEN (SR-59 case, asserted here for the table)
   const uni = mkChange(STORE_AB, '## ADDED Requirements\n\n### Requirement: R-C\n\n#### Scenario: nameless\n- t\n');
-  assert.strictEqual(chg(uni, ['--test-cmd', tap(['ok 1 - XA-01 a'])]).status, 1);
+  assert.strictEqual(chg(uni, ['--test-cmd', tap(['ok 1 - XA-01 a'])]).status, 0);
   // malformed delta keeps today's projection-failure ERROR
   const bad = mkChange(STORE_AB, '## NONSENSE Requirements\n\n### Requirement: R-X\n');
   assert.strictEqual(chg(bad, ['--test-cmd', tap(['1..0'])]).status, 2);
@@ -227,8 +228,8 @@ test('SR-64 the JSON contract is pinned for all four outcome classes', () => {
   assert.strictEqual(typeof g.storeReport.boundGreen, 'number');
   assert.ok(Array.isArray(g.storeReport.unbound));
   assert.deepStrictEqual(g.changeScope.requirements, [{ file: 'm/spec.md', name: 'R-C', operations: ['ADDED'] }]);
-  // GAPS
-  const p = JSON.parse(chg(root, ['--test-cmd', tap(['ok 1 - XA-01 a']), '--json']).stdout);
+  // GAPS: a real bound-red failure (an unbound-only run is advisory-GREEN under R02 subtraction #1)
+  const p = JSON.parse(chg(root, ['--test-cmd', tap(['not ok 1 - XC-01 c'], 1), '--json']).stdout);
   assert.strictEqual(p.result, 'GAPS');
   assert.ok(p.storeReport && p.changeScope);
   // pre-test ERROR (invalid config pattern): both fields absent
@@ -597,11 +598,11 @@ test('SR-64 four full deep-equal JSON oracles', () => {
     changeScope: { requirements: [{ file: 'm/spec.md', name: 'R-C', operations: ['ADDED'] }], scenarioIds: ['XC-01'] },
     modifiedIntegrity: [],
   });
-  // GAPS
+  // GREEN with an advisory-only gap (XC-01 unbound, nothing failed — R02 subtraction #1)
   const p2 = mk(null);
   const rp = chg(p2, ['--test-cmd', tap(['ok 1 - XA-01 a', 'ok 2 - XB-01 b']), '--json']);
   assert.deepStrictEqual(JSON.parse(rp.stdout), {
-    clean: false, result: 'GAPS', errors: [], specFiles: 1,
+    clean: true, result: 'GREEN', errors: [], specFiles: 1,
     exec: { status: 0, signal: null, error: null },
     duplicates: [],
     boundGreen: [], boundRed: [], unbound: ['XC-01'], orphan: [], unidentified: [],

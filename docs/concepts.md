@@ -357,9 +357,9 @@ For the prompts, see [§7.2](#72-specify-contract-adversarial-review-and-revisio
 
 ### 4.5 Build & Test: Failing Evidence First
 
-The **Build & Test action** (RUNBOOK **P2**). Write code per the contract — **tests first**: derive one failing test per spec scenario (named with the scenario's ID), then implement until everything is green. "All tests passing" is still the bar, and the failing-first run proves the tests can actually fail. There is no task list to follow: the contract's scenarios are the work.
+The **Build & Test action** (RUNBOOK **P2**). Write code per the contract — **tests first**: derive one failing test per spec scenario (naming it with the scenario's ID is a suggestion, never mandatory), then implement until everything is green. "All tests passing" is still the bar, and the failing-first run proves the tests can actually fail. There is no task list to follow: the contract's scenarios are the work.
 
-- **Traceability beats coverage numbers**: the hard requirement is *scenario coverage* — every spec scenario has at least one test carrying its ID, which a grep-level CI check can enforce ([§4.8](#48-mapping-the-workflow-onto-git--pr--ci)). Line coverage is a signal worth watching, not a target: a model told to "hit 100%" will happily pad with assertion-free tests. For high-risk logic, spot-check test quality with mutation testing.
+- **Traceability beats coverage numbers**: genuine scenario coverage is Build & Test's (and review's) responsibility, not a tool's. `apriori verify` only confirms tests actually ran and nothing attributable is failing — UNBOUND is a diagnostic, never a block by itself. Naming a test with its scenario ID is advisory, for traceability, never a gate. Line coverage is a signal worth watching, not a target: a model told to "hit 100%" will happily pad with assertion-free tests. For high-risk logic, spot-check test quality with mutation testing.
 - **Run the tests the risks call for, not a matrix.** 6.0 keeps no per-project-type evidence table: what a change owes is one `## Evidence` row per risk it actually hits. Scenario IDs bind to `apriori verify` through unit/component tests — verify's gate speaks TAP, which Playwright does not emit, so an E2E/visual layer sits on top of the binding gate as an additional exit condition and its visual checks must emit a textual pass/fail. Implementation-time screenshot self-checks land in the gitignored `apriori/tmp/`, never in version control, while visual-regression baseline images belong to the project's own test suite. Where no executable instrument exists for a risk (no deploy surface; solo; library; docs), the independent review is the instrument there — not a downgrade ([§1.5](#15-where-quality-comes-from)).
 - **Prefer a stronger model (Opus) for complex logic, and a faster/cheaper model (Sonnet) for routine coding.**
 - **Fill in the `## Evidence` rows as you go.** One row per risk this change actually hits, each `done` / `blocked` / `owner-accepted` / `n/a` with what you really ran. A `blocked` row is a stop for the owner (§4.0) — it is the one gap no extra review and no extra document can fill.
@@ -412,7 +412,7 @@ Everything above is convention; a branch + CI mapping is what makes it *enforced
 |---|---|
 | One change | One branch (`change/<change-name>`), one PR |
 | Delta specs / review docs / the state file | Committed on the branch — reviewers see the contract and the code in the same diff |
-| Build & Test exit conditions | CI jobs on the PR: tests green; lint/static analysis green (where configured); every spec scenario ID appears in ≥1 test name (a grep-able traceability check); `apriori gate --change <name>` PASS — docs-only projects map "tests" to `apriori check` (§4.5) |
+| Build & Test exit conditions | CI jobs on the PR: tests green (naming a test with its scenario ID is a suggestion, never mandatory); lint/static analysis green (where configured); `apriori gate --change <name>` PASS — docs-only projects map "tests" to `apriori check` (§4.5) |
 | Consistency-review verdict (§7.4) | Posted on the PR as a comment / required check before merge |
 | The KB writeback | Part of the same PR — "code merged but KB not updated" becomes visible in review instead of silently accumulating |
 | The hard stop | `apriori status --change <name> --escalation` exits 3 — wire it into a Stop hook or a required CI step if you want one |
@@ -472,7 +472,7 @@ codex exec resume -c sandbox_mode="read-only" <session-id> "I revised per your l
 ### 5.3 Build & Test · Code + Test
 
 ```text
-First derive one failing test per spec scenario (test names carry the scenario IDs) and show me the failing run.
+First derive one failing test per spec scenario (naming a test with its scenario ID is a suggestion, never mandatory) and show me the failing run.
 Then implement until all tests pass and the contract is satisfied.
 ```
 Expect output along the lines of:
@@ -488,7 +488,7 @@ Then fill in the state's `## Evidence` rows. mini-kv is a pure library with no U
 
 To run the implement → test loop unattended, wrap it in a goal — the mini-kv form of the [§4.7](#47-automating-the-loop-with-goal-claude-code) Build & Test recipe (it's a library, so no Playwright clause):
 ```text
-/goal "All of: `npm test` exits 0; every spec scenario ID appears in at least one test name; every ## Evidence row in apriori/changes/<change>/flow-state.md is filled in; and `apriori gate --change <change> --review-ready --test-cmd \"npm test\"` exits 0. Turn 1: generate one failing test per spec scenario (named with its ID) and SHOW the failing run. Each later turn: implement the next scenario, run `npm test` and SHOW the output. Stop when all hold."
+/goal "All of: `npm test` exits 0 (naming a test with its scenario ID is a suggestion, never mandatory); every ## Evidence row in apriori/changes/<change>/flow-state.md is filled in; and `apriori gate --change <change> --review-ready --test-cmd \"npm test\"` exits 0. Turn 1: generate one failing test per spec scenario and SHOW the failing run. Each later turn: implement the next scenario, run `npm test` and SHOW the output. Stop when all hold."
 ```
 
 ### 5.4 Review & Deliver · Acceptance and Archive
@@ -570,14 +570,14 @@ Prompts: RUNBOOK **P2** (the producer's contract → review-ready handoff) / **P
 
 ### 7.3 Build & Test: Code + Test
 
-Prompt: RUNBOOK **P2**. Design notes: P2 is tests-first — one failing test per spec scenario, test names carrying scenario IDs, shown failing *before* implementation. There is no task list to execute in order: the contract's scenarios are the work, which removes the one artifact 5.x's apply step depended on. Scenario coverage is the hard bar; line coverage stays a signal ([§4.5](#45-build--test-failing-evidence-first)). The prompt ends by requiring two things the reviewer would otherwise have to establish itself: every `## Evidence` row filled in, and the `producer-diff` row declared after reading the complete diff.
+Prompt: RUNBOOK **P2**. Design notes: P2 is tests-first — one failing test per spec scenario, shown failing *before* implementation; naming a test with its scenario ID is a suggestion, never mandatory. There is no task list to execute in order: the contract's scenarios are the work, which removes the one artifact 5.x's apply step depended on. Scenario coverage with real test evidence is the hard bar; line coverage stays a signal ([§4.5](#45-build--test-failing-evidence-first)). The prompt ends by requiring two things the reviewer would otherwise have to establish itself: every `## Evidence` row filled in, and the `producer-diff` row declared after reading the complete diff.
 
 ### 7.4 Review & Deliver: Consistency Review and Archive
 
 Prompt: RUNBOOK **P3** (independent review); the archive itself needs none. Design notes:
 
 - Before P3 runs at all, `apriori gate --review-ready` must exit 0. That check is a **transient view** over the run's own facts — no receipt document, nothing persisted — and its whole purpose is that the reviewer is never the first person to compile the code or run the suite.
-- `apriori verify` has already done the mechanical binding check (every scenario has a passing test), so P3 is narrowed to **semantic faithfulness** — whether each test actually exercises its scenario's intent, not just shares its ID. Its default context is four things: contract, diff, evidence summary, uncovered boundaries. Its scope clause keeps style findings advisory. Like every review, it runs on a heterogeneous model ([§2.3](#23-driving-codex-non-interactively-multi-round-adversarial-review)).
+- `apriori verify` has already confirmed tests actually ran with no real failure (UNBOUND is advisory, not proof of coverage), so P3's **semantic faithfulness** check also covers genuine coverage — whether each test actually exercises its scenario's intent, not just shares its ID. Its default context is four things: contract, diff, evidence summary, uncovered boundaries. Its scope clause keeps style findings advisory. Like every review, it runs on a heterogeneous model ([§2.3](#23-driving-codex-non-interactively-multi-round-adversarial-review)).
 - The archive action merges delta specs into the living spec store per RUNBOOK §4's algorithm (`apriori/specs/`, [§4.6](#46-review--deliver-review-ready-one-review-archive)) and additionally forces the KB writeback to `apriori/truth/<module>.md`, the `source-commit` refresh, and an explicit list of what changed. The archive then declares three states — implementation, critical evidence, released-or-pending — and freezes: a defect found later becomes an outcome note or a new change, never an edit to the archived bundle.
 
 ### 7.5 Reverse Knowledge Capture for Legacy Projects

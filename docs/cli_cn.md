@@ -60,7 +60,7 @@ usage: apriori status [--change <name>] [--json] [--escalation]
 
 ## apriori verify
 
-把每条 spec scenario ID 绑定到绿的 TAP 测试——Build & Test 闸口;`--change` 对投影(合并后)规格库验证,变更进行中用这个形式
+确认测试确实跑过,且没有可归属的真实失败——Build & Test 闸口;scenario-ID 绑定缺口(UNBOUND/ORPHAN/UNIDENTIFIED)只作诊断,不是 gate——用 scenario ID 命名测试是便于追踪的建议,从不强制;`--change` 对投影(合并后)规格库验证,变更进行中用这个形式
 
 ```text
 usage: apriori verify --specs <dir...> --test-cmd "<cmd>" [--id-pattern <re>] [--cwd <dir>] [--json]
@@ -199,7 +199,7 @@ rules:
     - 只写行为契约（变更 specs/ 下的增量规格），不得修改任何源代码文件
     - 完成后停下来，等待评审,然后进 Build & Test
     - 每个"用户可见的输出"必须有独立的 scenario；若同一个需求包含多个可见侧效果（如"过滤"与"展示被过滤结果"），必须分开写成两个 scenario，不得合并为一句描述
-    - 给每个 scenario 一个稳定 ID（如 KV-03）；后续测试必须引用这些 ID(`apriori verify` 据此绑定,`apriori check` 拒绝无 ID 的 scenario)
+    - 给每个 scenario 一个稳定 ID（如 KV-03）——`apriori check` 拒绝无 ID 的 scenario。真正的覆盖是 Build & Test 自己的责任,不是 `verify` 的:`verify` 只确认测试确实跑过、且没有真实失败(UNBOUND 只是建议性提示);用 scenario ID 给测试命名是建议,不是强制
     - |
       凡 spec 中涉及"外部共享状态"（Redis、DB 字段、全局单例等），
       MUST 额外描述以下三个时机的行为：
@@ -211,7 +211,7 @@ rules:
     - 契约里的 scenario 就是工作本身——没有任务清单要照着走
     - `apriori verify` GREEN、每条 ## Evidence 行填完、`apriori gate --review-ready` 退出 0 之后停下
     - 凡代码中出现 continue / 静默忽略 / skip 分支，必须回查 spec 确认该分支的内容是否需要对用户可见；若 spec 有要求，则必须产出对应记录，不能只满足"排除主路径"而遗漏"展示侧"
-    - 每条测试都以其覆盖的 scenario ID 命名（如 `test('KV-03 …')`）；存在没有对应测试的 spec scenario,即视为未通过 `apriori verify`
+    - 每个 scenario 都需要真实通过的测试证据;以其 scenario ID 命名测试(如 `test('KV-03 …')`)是便于追踪的建议,不是强制——`apriori verify` 是在真实失败或运行完全没有证据时阻断,不是单纯因为名字没带 ID
     - 代码中所有关键的分支或者函数开始，都需要打印日志，日志的格式是 `[UUID]-文字说明,XXX:[{}],YYY:[{}]`（该格式是示例——请换成你团队自己的日志规范，见 §8.2 规则文件）
 ```
 
@@ -278,7 +278,7 @@ rules:
 * 基类 / 框架：<约定>
 * mock 策略：<哪些该 mock（如外部远程调用）、哪些尽量不 mock（如本地数据访问，尽量真实操作）>
 * 用例编号 / 命名：<约定，例如成功场景与失败场景的编号区间>
-* 覆盖率要求：<scenario 覆盖是硬性标准——每个 spec scenario ↔ 至少一条带其 ID 的测试；行/分支覆盖率只作排查信号（如低于 85% 就去看看），绝不当追逐目标——被要求冲数字的模型会拿无断言测试凑数>
+* 覆盖率要求：<有真实测试证据的 scenario 覆盖是硬性标准——每个 spec scenario 都真的被测试执行到；把它绑定/命名到其 ID 是便于追踪的建议,不是强制;行/分支覆盖率只作排查信号（如低于 85% 就去看看），绝不当追逐目标——被要求冲数字的模型会拿无断言测试凑数>
 * 测试方法体模板：<给出一个空壳示例，统一风格>
 ````
 

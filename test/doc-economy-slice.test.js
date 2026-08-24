@@ -10,6 +10,12 @@ const path = require('node:path');
 const ROOT = path.join(__dirname, '..');
 const EN = fs.readFileSync(path.join(ROOT, 'RUNBOOK.md'), 'utf8');
 const CN = fs.readFileSync(path.join(ROOT, 'RUNBOOK_cn.md'), 'utf8');
+const README = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
+const README_CN = fs.readFileSync(path.join(ROOT, 'README_cn.md'), 'utf8');
+const CONCEPTS = fs.readFileSync(path.join(ROOT, 'docs', 'concepts.md'), 'utf8');
+const CONCEPTS_CN = fs.readFileSync(path.join(ROOT, 'docs', 'concepts_cn.md'), 'utf8');
+const CI_DOC = fs.readFileSync(path.join(ROOT, 'docs', 'ci.md'), 'utf8');
+const CI_DOC_CN = fs.readFileSync(path.join(ROOT, 'docs', 'ci_cn.md'), 'utf8');
 const ok = (t, s) => assert.ok(t.includes(s), `expected: ${s}`);
 const not = (t, s) => assert.ok(!t.includes(s), `unexpected: ${s}`);
 
@@ -23,10 +29,31 @@ test('DE-A no format shopping, no self-measurement', () => {
 test('DE-B scenarios modeled by observable outcome, every ID still bound RED-first', () => {
   ok(EN, 'Model by observable outcome, not by input example');
   ok(CN, '按可观察结果类别建模,不按输入样例');
-  ok(EN, 'a failing test bound to every Scenario ID');
-  ok(CN, '让每个 Scenario ID 都绑定一条失败测试');
+  ok(EN, "a failing test that proves every scenario's behavior with real evidence");
+  ok(CN, '能用真实证据证明每个 scenario 行为的失败测试');
   not(EN, 'one failing test per spec scenario');
   not(CN, '每个 spec 场景一条失败测试');
+  // R02-05 regression guard: the /goal template must not reintroduce a hard "every scenario ID
+  // must appear in a test name" gate — that directly conflicts with the advisory default and
+  // is what drove R01's TAP-adapter busywork.
+  not(EN, 'appears in at least one test name');
+  not(CN, 'appears in at least one test name');
+  not(EN, 'list any missing IDs');
+  not(CN, 'list any missing IDs');
+  // R02-06 regression guard: same-root-cause residue named by review round 2 — README's
+  // command cheat sheet and docs/concepts.md must not reassert ID-in-test-name as a hard gate.
+  not(README, 'bind every scenario ID to a passing test');
+  not(README_CN, '把每条 scenario ID 绑定到绿测试');
+  not(CONCEPTS, 'named with the scenario');
+  not(CONCEPTS_CN, '测试名带 scenario ID）');
+  not(CONCEPTS, 'grep-level CI check can enforce');
+  not(CONCEPTS_CN, '可 grep 的可追溯性检查');
+  // R02-07 regression guard: docs/ci(_cn).md must not reassert verify as "every scenario
+  // passing, no orphans" or list unbound/orphan as exit-1 gaps.
+  not(CI_DOC, 'no orphans');
+  not(CI_DOC_CN, '无孤儿');
+  not(CI_DOC, 'unbound/red/orphan/duplicate');
+  not(CI_DOC_CN, 'unbound/red/orphan/重复');
 });
 
 test('DE-C flow-state stays a checkpoint: Evidence/Open/Next/gates', () => {

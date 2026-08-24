@@ -38,7 +38,7 @@ test('PR-01 the Build & Test exit adds a deterministic spec-runner gate', () => 
 
 test('PR-02 the review scope narrows to semantic faithfulness', () => {
   assert.match(EN, /Semantic faithfulness/);
-  assert.match(CONCEPTS, /already done the mechanical binding check/);
+  assert.match(CONCEPTS, /already confirmed tests actually ran/);
   assert.match(CN, /语义忠实/);
 });
 

@@ -166,10 +166,12 @@ test('SR-54 catastrophic config matching is terminated, adversarial titles inclu
   const ok = proj({ 'apriori/specs/m/spec.md': LOWER_SPEC, 'apriori/process-config.md': '| id-pattern | [a-z]+(-[a-z]+)*-\\d+ |\n' });
   const rok = vrun(ok, ['--specs', 'apriori/specs', '--test-cmd', LOWER_TAP, '--json']);
   assert.strictEqual(JSON.parse(rok.stdout).result, 'GREEN', rok.stdout + rok.stderr);
-  // without the row the default cannot bind those IDs — the row is what made it GREEN
+  // without the row the default cannot bind those IDs at all — the row is what identified them.
+  // (R02 subtraction #1: UNIDENTIFIED alone is advisory and does not flip `result`, so the
+  // control here checks the underlying binding fact directly rather than the overall verdict.)
   const bare = proj({ 'apriori/specs/m/spec.md': LOWER_SPEC });
   const rbare = vrun(bare, ['--specs', 'apriori/specs', '--test-cmd', LOWER_TAP, '--json']);
-  assert.notStrictEqual(JSON.parse(rbare.stdout).result, 'GREEN', rbare.stdout);
+  assert.strictEqual(JSON.parse(rbare.stdout).unidentified.length, 2, rbare.stdout);
 });
 
 test('SR-55 every child failure class fails closed', () => {

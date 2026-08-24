@@ -235,13 +235,16 @@ test('SR-13 spec hygiene: duplicate IDs fail; fenced examples excluded; ID suffi
   assert.strictEqual(leadId('XX-01: colon ok', idRe), 'XX-01');
 });
 
-test('SR-14 TAP directives and aborts: SKIP/TODO never count green; Bail out! is an error', () => {
-  // a scenario whose only result is SKIP stays UNBOUND
+test('SR-14 TAP directives and aborts: SKIP/TODO never count as a PASS; Bail out! is an error', () => {
+  // a scenario whose only result is SKIP stays UNBOUND — never counted bound-green
   const { results } = parseTap('ok 1 - XX-01 a # SKIP flaky\n', idRe);
   assert.deepStrictEqual(results.get('XX-01'), { pass: 0, fail: 0, skip: 1 });
   const { file } = tmpSpec('#### Scenario: XX-01 a\n');
+  // R02 subtraction #1 relaxes UNBOUND, but a directive is parsed TAP structure, never
+  // execution evidence: an all-SKIP run has zero EXECUTED points, so it still blocks
+  // (a real focused run that covers other scenarios alongside a skip is unaffected — see below)
   const skip = runCli(['--specs', file, '--test-cmd', `node -e "console.log('ok 1 - XX-01 a # SKIP flaky')"`]);
-  assert.strictEqual(skip.status, 1);                       // UNBOUND → GAPS, not GREEN
+  assert.strictEqual(skip.status, 1, 'all-SKIP carries no execution evidence — still blocks');
   assert.match(skip.stdout, /UNBOUND/);
   // TODO likewise never counts as pass
   const { results: todo } = parseTap('not ok 1 - XX-01 a # TODO later\n', idRe);
@@ -250,6 +253,21 @@ test('SR-14 TAP directives and aborts: SKIP/TODO never count green; Bail out! is
   const bail = runCli(['--specs', file, '--test-cmd', `node -e "console.log('ok 1 - XX-01 a');console.log('Bail out! db down')"`]);
   assert.strictEqual(bail.status, 2);
   assert.match(bail.stderr, /aborted/);
+});
+
+test('R02-04 an all-SKIP or all-TODO run blocks (no real execution evidence, even though it advisory-parses)', () => {
+  const { file } = tmpSpec('#### Scenario: XX-01 a\n#### Scenario: XX-02 b\n');
+  const allSkip = runCli(['--specs', file, '--test-cmd',
+    `node -e "console.log('ok 1 - XX-01 a # SKIP later');console.log('ok 2 - XX-02 b # SKIP later')"`]);
+  assert.strictEqual(allSkip.status, 1, 'all-SKIP: zero executed points, still blocks');
+  const allTodo = runCli(['--specs', file, '--test-cmd',
+    `node -e "console.log('not ok 1 - XX-01 a # TODO later');console.log('not ok 2 - XX-02 b # TODO later')"`]);
+  assert.strictEqual(allTodo.status, 1, 'all-TODO: zero executed points, still blocks');
+  // a mix — one scenario genuinely executed and green, the other left unbound — passes:
+  // real execution evidence exists, and the unbound scenario is advisory-only
+  const mixed = runCli(['--specs', file, '--test-cmd',
+    `node -e "console.log('ok 1 - XX-01 a')"`]);
+  assert.strictEqual(mixed.status, 0, 'one real executed point is enough evidence; XX-02 unbound is advisory');
 });
 
 test('SR-15 --test-cmd falls back to the test-cmd row in apriori/process-config.md', () => {

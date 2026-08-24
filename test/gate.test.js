@@ -189,11 +189,12 @@ test('GT-06 the binding gate is stage-aware (in-flight projected; archived plain
   const inflight = healthy();
   const r1 = gate.runGate({ cwd: inflight, change: 'c', testCmd: TAP_OK });
   assert.strictEqual(r1.checks.find((x) => x.id === 'C1').status, 'pass');
-  // gaps → blocked with counts
+  // a missing scenario-to-TAP binding (XB-01 unbound) is advisory, non-blocking by default:
+  // the native test command still succeeded and left real evidence for the scenarios it did cover
   const r1b = gate.runGate({ cwd: inflight, change: 'c', testCmd: tapCmd('ok 1 - XA-01 a') });
   const c1b = r1b.checks.find((x) => x.id === 'C1');
-  assert.strictEqual(c1b.status, 'blocked');
-  assert.match(c1b.detail, /unbound/);
+  assert.strictEqual(c1b.status, 'pass', c1b.detail);
+  assert.match(c1b.detail, /advisory.*unbound/);
   // archived: change only under archive/, store already merged, plain verify runs
   const arch = mkProject({
     'apriori/specs/kv/spec.md': STORE + '\n### Requirement: Beta\n\n#### Scenario: XB-01 new\n- t\n',
@@ -205,6 +206,37 @@ test('GT-06 the binding gate is stage-aware (in-flight projected; archived plain
   const r2 = gate.runGate({ cwd: arch, change: 'c', testCmd: TAP_OK });
   assert.strictEqual(r2.stage, 'archived');
   assert.strictEqual(r2.code, 0, JSON.stringify(r2.checks));
+});
+
+// R02 subtraction #1: scenario-to-TAP binding is advisory, never a forced merger/promoter script.
+// Facts still fail closed: a real failing test, or zero parsed test evidence, still blocks C1.
+test('R02-01 unbound/orphan/unidentified/duplicate binding never blocks a real green run', () => {
+  const root = healthy();
+  // native, unrelated-looking test names — none of them carry a bound scenario ID at all
+  const r = gate.runGate({ cwd: root, change: 'c', testCmd: tapCmd('ok 1 - renders the widget', 'ok 2 - handles click') });
+  const c1 = r.checks.find((x) => x.id === 'C1');
+  assert.strictEqual(c1.status, 'pass', c1.detail);
+  assert.match(c1.detail, /advisory/);
+  assert.strictEqual(r.code, 0, 'a producer must not be forced to write a TAP merger/scenario-ID promoter to pass C1');
+});
+
+test('R02-02 a real bound failure still blocks C1 (fail-closed preserved)', () => {
+  const root = healthy();
+  // XB-01 is this change's own in-scope scenario (from DELTA); XA-01 is store-only/out-of-scope
+  const r = gate.runGate({ cwd: root, change: 'c', testCmd: tapCmd('ok 1 - XA-01 a', 'not ok 2 - XB-01 b') });
+  const c1 = r.checks.find((x) => x.id === 'C1');
+  assert.strictEqual(c1.status, 'blocked', c1.detail);
+  assert.match(c1.detail, /red/);
+  assert.strictEqual(r.code, 1);
+});
+
+test('R02-03 zero parsed test evidence still blocks C1 even on a clean exit', () => {
+  const root = healthy();
+  // the command exits 0 and prints nothing TAP-shaped at all — no evidence anything ran
+  const r = gate.runGate({ cwd: root, change: 'c', testCmd: 'node -e "1"' });
+  const c1 = r.checks.find((x) => x.id === 'C1');
+  assert.strictEqual(c1.status, 'blocked', c1.detail);
+  assert.match(c1.detail, /no evidence of tests actually running/);
 });
 
 test('GT-07 resolution is validated and deterministic', () => {

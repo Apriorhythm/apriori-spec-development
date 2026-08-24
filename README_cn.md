@@ -14,7 +14,7 @@
 
 <p align="center">
   <img src="docs/demo.gif" alt="apriori CLI 循环:verify 报 GAPS(红),绑定到场景的测试让它变 GREEN,gate PASS,archive 归档" width="820">
-  <br><sub><b>规格 → 红 → 绿 → gate → 归档。</b> 每个场景没绑定到通过的测试,<code>verify</code> 就不给绿——一句“搞定了”的假绿由命令抓出来,而不是靠肉眼看 diff。<br><i>(CLI 输出按设计恒为英文,中英文档共用此图。)</i></sub>
+  <br><sub><b>规格 → 红 → 绿 → gate → 归档。</b> 这个变更没有真实的、通过的测试证据,<code>verify</code> 就不给绿——一句“搞定了”的假绿由命令抓出来,而不是靠肉眼看 diff。<br><i>(CLI 输出按设计恒为英文,中英文档共用此图。)</i></sub>
 </p>
 
 ## Quickstart
@@ -106,7 +106,7 @@ EOF
 apriori verify --change hello
 ```
 
-测试名携带 scenario ID——绑定契约就这一条。预期 `RESULT: GREEN — spec is the test suite`,退出码 0。
+测试名携带 scenario ID,`verify` 就能据此绑定——这样命名是为了方便,不是强制要求。预期 `RESULT: GREEN — spec is the test suite`,退出码 0。
 
 ```shell
 mkdir -p apriori/changes/hello/review
@@ -146,7 +146,7 @@ apriori check
 | `apriori doctor` | 接入时/任何时候 | 体检项目与 apriori 的接缝;每个发现指名修复命令 |
 | `apriori new <name>` | 变更启动 | 搭建 `apriori/changes/<name>/` + flow-state 骨架 |
 | `apriori status` | 任何时候 | 每个变更走到哪了:阶段、现实核对、证据、下一步(`--json`;`--escalation` 以 3 退出) |
-| `apriori verify` | Build & Test 退出闸口 | 把每条 scenario ID 绑定到绿测试;`--change <name>` = 投影的、变更进行中的形式 |
+| `apriori verify` | Build & Test 退出闸口 | 确认测试确实跑过,且没有可归属的真实失败;scenario-ID 绑定缺口只作诊断,不是 gate;`--change <name>` = 投影的、变更进行中的形式 |
 | `apriori stamp <store-file>` | 写增量规格时 | 打印 CAS 基线章——库分叉后 verify/archive 会拒绝 |
 | `apriori gate --change <name>` | Build & Test / Review、CI | 机械检查合成一个退出码(PASS ≠ 人做的决定);`--review-ready` 是临时的准入视图 |
 | `apriori archive` | Review & Deliver | 把增量规格并入 living 规格库;`--change <name>` = 整变更、失败原子(直到提交点为止) |

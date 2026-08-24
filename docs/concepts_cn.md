@@ -357,9 +357,9 @@ graph TD
 
 ### 4.5 Build & Test｜先失败证据
 
-**Build & Test 动作**(RUNBOOK **P2**)。按契约写代码——**测试先行**:每个 spec 场景派生一条失败测试(以场景 ID 命名),然后实现到全绿。"测试全过"仍是底线,而先失败的那次运行证明了这些测试真的会失败。没有任务清单要照着走:契约里的场景就是工作本身。
+**Build & Test 动作**(RUNBOOK **P2**)。按契约写代码——**测试先行**:每个 spec 场景派生一条失败测试(以场景 ID 命名是建议,不是强制),然后实现到全绿。"测试全过"仍是底线,而先失败的那次运行证明了这些测试真的会失败。没有任务清单要照着走:契约里的场景就是工作本身。
 
-- **可追溯性胜过覆盖率数字**:硬要求是*场景覆盖*——每个 spec 场景至少有一条带其 ID 的测试,这条可以用 grep 级 CI 检查强制([§4.8](#48-把流程落到-git--pr--ci))。行覆盖率是值得看的信号,不是目标:被要求"打到 100%"的模型会心安理得地灌无断言测试。高风险逻辑用变异测试抽查测试质量。
+- **可追溯性胜过覆盖率数字**:真正的场景覆盖是 Build & Test(和评审)的责任,不是工具的。`apriori verify` 只确认测试确实跑过、且没有可归属的真实失败——UNBOUND 只是诊断,本身从不阻断。用 scenario ID 给测试命名是建议,为了可追溯性,从不是 gate。行覆盖率是值得看的信号,不是目标:被要求"打到 100%"的模型会心安理得地灌无断言测试。高风险逻辑用变异测试抽查测试质量。
 - **跑风险要求的测试,而不是一张矩阵。** 6.0 不保留按项目类型划分的证据表:一个 change 欠下的,是它真正命中的每条风险各一行 `## Evidence`。scenario ID 经单测/组件测绑定给 `apriori verify`——verify 的闸口只认 TAP,而 Playwright 不输出 TAP,所以 E2E/视觉层叠在绑定闸口之上作为额外退出条件,其视觉检查必须输出文本化 pass/fail。实现期的截图自查落在已被 gitignore 的 `apriori/tmp/`,绝不进版本库,而视觉回归基线图属于项目自己的测试套件。某条风险不存在可执行仪器时(没有部署面;单人;库;文档),独立评审就是那里的仪器——不是降级([§1.5](#15-质量从哪里来))。
 - **复杂逻辑优先用更强的模型(Opus),常规编码用更快更便宜的(Sonnet)。**
 - **边做边填 `## Evidence` 行。** 本 change 真正命中的每条风险一行,各自为 `done` / `blocked` / `owner-accepted` / `n/a`,并写清你到底跑了什么。`blocked` 行是给所有者的一次停顿(§4.0)——它是任何额外评审和额外文档都填不上的那个缺口。
@@ -412,7 +412,7 @@ graph TD
 |---|---|
 | 一个 change | 一个分支(`change/<change-name>`)、一个 PR |
 | 增量 spec / 评审文档 / 状态文件 | 提交在分支上——评审者在同一个 diff 里同时看到契约与代码 |
-| Build & Test 退出条件 | PR 上的 CI 作业:测试全绿;lint/静态分析全绿(已配置时);每条 spec 场景 ID 至少出现在一个测试名里(可 grep 的可追溯性检查);`apriori gate --change <name>` PASS——纯文档项目把"测试"映射成 `apriori check`(§4.5) |
+| Build & Test 退出条件 | PR 上的 CI 作业:测试全绿(用 scenario ID 命名测试是建议,不是强制);lint/静态分析全绿(已配置时);`apriori gate --change <name>` PASS——纯文档项目把"测试"映射成 `apriori check`(§4.5) |
 | 一致性评审结论(§7.4) | 以评论/必过检查的形式发在 PR 上,合并前必须有 |
 | 知识库回写 | 同一个 PR 的一部分——"代码合了但知识库没更新"会在评审里显形,而不是悄悄堆积 |
 | 硬停 | `apriori status --change <name> --escalation` 以 3 退出——想要 Stop hook 或必过 CI 步骤就接它 |
@@ -472,7 +472,7 @@ codex exec resume -c sandbox_mode="read-only" <session-id> "我已按上轮意�
 ### 5.3 Build & Test · 编码 + 测试
 
 ```text
-先从 spec 的每个 scenario 派生一条失败测试（测试名带 scenario ID），把失败的运行结果给我看。
+先从 spec 的每个 scenario 派生一条失败测试(测试名带 scenario ID 是建议,不是强制),把失败的运行结果给我看。
 然后实现，直到测试全部通过、契约被满足。
 ```
 预期它会产出类似：
@@ -488,7 +488,7 @@ npm test
 
 想让"实现 → 测试"循环无人值守地跑，就用 goal 包起来——这是 [§4.7](#47-用-goal-自动化整个流程) Build & Test 配方的 mini-kv 版（它是个库，所以没有 Playwright 那一条）：
 ```text
-/goal "目标——以下全部成立:`npm test` 退出码 0;每个 spec scenario ID 至少出现在一个测试名里;apriori/changes/<change>/flow-state.md 的每条 ## Evidence 行都已填写;且 `apriori gate --change <change> --review-ready --test-cmd \"npm test\"` 退出码 0。第 1 轮:为每个 spec scenario 生成一条失败测试(以其 ID 命名)并把失败运行结果打印出来。之后每一轮:实现下一个 scenario,跑 `npm test` 并把输出打印出来。全部成立则停。"
+/goal "目标——以下全部成立:`npm test` 退出码 0(用 scenario ID 命名测试是建议,不是强制);apriori/changes/<change>/flow-state.md 的每条 ## Evidence 行都已填写;且 `apriori gate --change <change> --review-ready --test-cmd \"npm test\"` 退出码 0。第 1 轮:为每个 spec scenario 生成一条失败测试并把失败运行结果打印出来。之后每一轮:实现下一个 scenario,跑 `npm test` 并把输出打印出来。全部成立则停。"
 ```
 
 ### 5.4 Review & Deliver · 验收与归档
@@ -566,14 +566,14 @@ source-commit: <归档时的 commit sha>   # 只覆盖契约节
 
 ### 7.3 Build & Test｜编码 + 测试
 
-提示词:RUNBOOK **P2**。设计说明:P2 测试先行——每个 spec scenario 一条失败测试,测试名带 scenario ID,在实现*之前*先展示失败运行。没有任务清单要按顺序执行:契约里的 scenario 就是工作本身,这去掉了 5.x apply 步骤唯一依赖的那份产物。scenario 覆盖是硬标准,行覆盖率只是信号([§4.5](#45-build--test先失败证据))。提示词末尾强制两件本来要评审方自己去建立的事实:每条 `## Evidence` 行都填完,以及看完完整 diff 之后声明 `producer-diff` 行。
+提示词:RUNBOOK **P2**。设计说明:P2 测试先行——每个 spec scenario 一条失败测试,在实现*之前*先展示失败运行;用 scenario ID 给测试命名是建议,不是强制。没有任务清单要按顺序执行:契约里的 scenario 就是工作本身,这去掉了 5.x apply 步骤唯一依赖的那份产物。有真实测试证据的 scenario 覆盖是硬标准,行覆盖率只是信号([§4.5](#45-build--test先失败证据))。提示词末尾强制两件本来要评审方自己去建立的事实:每条 `## Evidence` 行都填完,以及看完完整 diff 之后声明 `producer-diff` 行。
 
 ### 7.4 Review & Deliver｜一致性评审与归档
 
 提示词:RUNBOOK **P3**(独立评审);归档本身不需要提示词。设计说明:
 
 - P3 跑起来之前,`apriori gate --review-ready` 必须先退出 0。那道检查是对本次运行自身事实的**临时视图**——没有 receipt 文档,什么也不持久化——它存在的全部意义,是评审方永远不是第一个编译代码或跑测试的人。
-- `apriori verify` 已做完机械绑定检查(每条 scenario 有绿测试),所以 P3 收窄为**语义忠实**——每条测试是否真的检验了 scenario 的意图,而不只是共享 ID。它的默认上下文是四样:契约、diff、证据摘要、未覆盖边界。其范围条款把风格类发现留在 advisory;和所有评审一样跑在异构模型上([§2.3](#23-用命令行驱动-codex多轮对抗评审))。
+- `apriori verify` 已确认测试确实跑过且没有真实失败(UNBOUND 只是建议性提示,不证明覆盖到位),所以 P3 的**语义忠实**检查也覆盖真正的覆盖情况——每条测试是否真的检验了 scenario 的意图,而不只是共享 ID。它的默认上下文是四样:契约、diff、证据摘要、未覆盖边界。其范围条款把风格类发现留在 advisory;和所有评审一样跑在异构模型上([§2.3](#23-用命令行驱动-codex多轮对抗评审))。
 - 归档动作按 RUNBOOK §4 的算法把增量规格并入 living 规格库(`apriori/specs/`,[§4.6](#46-review--deliver先-review-ready一次评审然后归档)),并额外强制知识库回写到 `apriori/truth/<module>.md`、刷新 `source-commit` 标记,并列出改了什么。归档随后声明三个状态——实现、关键证据、已发布或待验收——然后冻结:之后发现的缺陷记为一条 outcome 或一个新 change,绝不是对已归档 bundle 的一次编辑。
 
 ### 7.5 旧项目反向知识沉淀 / 知识库校对

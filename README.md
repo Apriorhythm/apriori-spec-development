@@ -14,7 +14,7 @@ Humans start with the Quickstart below; AI agents read the self-contained [RUNBO
 
 <p align="center">
   <img src="docs/demo.gif" alt="apriori CLI loop: verify reports GAPS in red, a test bound to the scenario turns it GREEN, gate PASS, archive merged" width="820">
-  <br><sub><b>spec → red → green → gate → archive.</b> <code>verify</code> refuses to go green until every scenario is bound to a passing test — a false &ldquo;done&rdquo; is caught by a command, not by eyeballing a diff.</sub>
+  <br><sub><b>spec → red → green → gate → archive.</b> <code>verify</code> refuses to go green until there is real, passing test evidence for the change — a false &ldquo;done&rdquo; is caught by a command, not by eyeballing a diff.</sub>
 </p>
 
 ## Quickstart
@@ -106,7 +106,7 @@ EOF
 apriori verify --change hello
 ```
 
-The test name carries the scenario ID — that is the whole binding contract. Expect `RESULT: GREEN — spec is the test suite`, exit 0.
+The test name carries the scenario ID, so `verify` can bind it — naming it this way is a convenience, never a requirement. Expect `RESULT: GREEN — spec is the test suite`, exit 0.
 
 ```shell
 mkdir -p apriori/changes/hello/review
@@ -146,7 +146,7 @@ The two review files are the one thing neither mode may drop: **the single indep
 | `apriori doctor` | onboarding / anytime | diagnose the project↔apriori seam; findings name their fixer |
 | `apriori new <name>` | change kickoff | scaffold `apriori/changes/<name>/` + a flow-state skeleton |
 | `apriori status` | anytime | where each change is: phase, reality check, evidence, next actions (`--json`; `--escalation` exits 3) |
-| `apriori verify` | Build & Test exit gate | bind every scenario ID to a passing test; `--change <name>` = the projected, mid-change form |
+| `apriori verify` | Build & Test exit gate | confirms tests actually ran and nothing attributable is failing; scenario-ID binding gaps are reported as diagnostics, not gates; `--change <name>` = the projected, mid-change form |
 | `apriori stamp <store-file>` | delta authoring | print the CAS base-stamp line — verify/archive refuse if the store diverged since |
 | `apriori gate --change <name>` | Build & Test / Review, CI | one exit code over the mechanical checks (PASS ≠ a human decision); `--review-ready` is the transient admission view |
 | `apriori archive` | Review & Deliver | merge delta specs into the living store; `--change <name>` = whole-change, failure-atomic (up to the commit point) |

@@ -60,7 +60,7 @@ Exit: 0 on success paths (status reports, never gates) — except `--escalation`
 
 ## apriori verify
 
-bind every spec scenario ID to a passing TAP test — the Build & Test gate; `--change` verifies against the projected (post-merge) store, the mid-change form
+confirms tests actually ran and nothing attributable is failing — the Build & Test gate; scenario-ID binding gaps (UNBOUND/ORPHAN/UNIDENTIFIED) are reported as diagnostics, not gates — naming a test with its scenario ID is advisory, for traceability, never required; `--change` verifies against the projected (post-merge) store, the mid-change form
 
 ```text
 usage: apriori verify --specs <dir...> --test-cmd "<cmd>" [--id-pattern <re>] [--cwd <dir>] [--json]
@@ -199,7 +199,7 @@ rules:
     - Only write the behavior contract (delta specs under the change's specs/); do not modify any source files
     - Stop when done and wait for review, then Build & Test
     - Every "user-visible output" must have its own scenario; if one requirement has multiple visible side-effects (e.g. "filtering" and "showing the filtered-out results"), write them as two separate scenarios, never merged into one sentence
-    - Give every scenario a stable ID (e.g. KV-03); downstream tests must reference these IDs (`apriori verify` binds them, `apriori check` rejects an ID-less scenario)
+    - Give every scenario a stable ID (e.g. KV-03) — `apriori check` rejects an ID-less scenario. Genuine coverage is Build & Test's own job, not `verify`'s: `verify` only confirms tests ran with no real failure (UNBOUND is advisory); naming a test with its scenario ID is a suggestion, never a requirement
     - |
       For any spec involving "external shared state" (Redis, DB fields, global singletons, etc.),
       you MUST additionally describe behavior at these three moments:
@@ -211,7 +211,7 @@ rules:
     - The contract's scenarios are the work — there is no task list to follow
     - Stop when `apriori verify` is GREEN, every ## Evidence row is filled in, and `apriori gate --review-ready` exits 0
     - For any continue / silent-ignore / skip branch in the code, re-check the spec to confirm whether that branch must be user-visible; if the spec requires it, produce the corresponding record — don't satisfy only the "exclude the main path" while dropping the "display side"
-    - Name every test after the scenario ID it covers (e.g. `test('KV-03 …')`); a spec scenario with no matching test fails `apriori verify`
+    - Every scenario needs real, passing test evidence; naming a test after its scenario ID (e.g. `test('KV-03 …')`) is a suggestion for cheap traceability, never a requirement — `apriori verify` blocks on a real failure or on the run leaving no evidence at all, not on the name alone
     - Every key branch or function entry in the code must log; the log format is `[UUID]-description,XXX:[{}],YYY:[{}]` (this format is an example — swap in your own team's logging convention from the rules file, §8.2)
 ```
 
@@ -278,7 +278,7 @@ A unified format, for global search and pinpointing:
 * Base class / framework: <convention>
 * Mock strategy: <what to mock (e.g. external remote calls), what to avoid mocking (e.g. local data access — operate for real where possible)>
 * Test numbering / naming: <convention, e.g. numbering ranges for success vs failure scenarios>
-* Coverage requirement: <scenario coverage is the hard bar — every spec scenario ↔ at least one test carrying its ID; treat line/branch coverage as a signal to investigate (e.g. anything below 85%), never a target to chase — a model told to hit a number will pad with assertion-free tests>
+* Coverage requirement: <scenario coverage with real test evidence is the hard bar — every spec scenario genuinely exercised by a test; naming/binding it to its ID is advisory, for traceability, never required; treat line/branch coverage as a signal to investigate (e.g. anything below 85%), never a target to chase — a model told to hit a number will pad with assertion-free tests>
 * Test method-body template: <give an empty-shell example to unify the style>
 ````
 

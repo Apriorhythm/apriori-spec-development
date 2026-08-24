@@ -13,7 +13,7 @@ Structural consistency of the spec store: every scenario carries a bindable ID. 
 
 ## verify — the post-merge binding gate
 
-Every scenario in the living store has a passing test, no orphans. Runs your own test command; it must emit TAP (node: `--test-reporter=tap`).
+Confirms tests actually ran with no real failure. UNBOUND, a non-failing ORPHAN, and UNIDENTIFIED are diagnostics, not gates. Runs your own test command; it must emit TAP (node: `--test-reporter=tap`).
 
 ```yaml
 - name: apriori verify
@@ -34,7 +34,7 @@ One exit code over the mechanical exit conditions of a change: stage-aware bindi
 | code | check | verify | gate |
 |---|---|---|---|
 | 0 | PASS | GREEN | PASS (mechanical) |
-| 1 | FAIL(n) | gaps: unbound/red/orphan/duplicate | BLOCKED(n) |
+| 1 | FAIL(n) | gaps: red/failing-orphan/unattributed/duplicate/no execution evidence | BLOCKED(n) |
 | 2 | store path missing | untrustworthy run (non-TAP, crash, conflict, CAS) | untrustworthy evaluation |
 | 3 | — | — | INCOMPLETE — every check that could run passed, but at least one was skipped (no test command → C1 could not run). Treat as not-passing.
 

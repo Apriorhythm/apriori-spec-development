@@ -13,7 +13,7 @@
 
 ## verify —— 合并后的绑定闸口
 
-living 规格库里每条 scenario 都有绿测试、无孤儿。跑你自己的测试命令;必须输出 TAP(node 加 `--test-reporter=tap`)。
+确认测试确实跑过、且没有真实失败。UNBOUND、不失败的 ORPHAN、UNIDENTIFIED 只是诊断,不是 gate。跑你自己的测试命令;必须输出 TAP(node 加 `--test-reporter=tap`)。
 
 ```yaml
 - name: apriori verify
@@ -34,7 +34,7 @@ living 规格库里每条 scenario 都有绿测试、无孤儿。跑你自己的
 | 码 | check | verify | gate |
 |---|---|---|---|
 | 0 | PASS | GREEN | PASS(机械面) |
-| 1 | FAIL(n) | 缺口:unbound/red/orphan/重复 | BLOCKED(n) |
+| 1 | FAIL(n) | 缺口:red/failing-orphan/unattributed/重复/零执行证据 | BLOCKED(n) |
 | 2 | 规格库路径缺失 | 运行不可信(非 TAP、崩溃、冲突、CAS) | 评估不可信 |
 | 3 | — | — | INCOMPLETE — 能跑的检查都过了,但至少一项被跳过(没有测试命令 → C1 跑不了)。按"未通过"对待。
 

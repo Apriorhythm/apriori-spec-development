@@ -144,8 +144,8 @@ mode: fast | standard   # §2 决定;变更类增量会把 fast 机械升级为 
 lineage: <目标分支/线 + 合并禁忌,如 "v2(永不合入 main)">
                         # 变更中途发现谱系冲突=立即停下
 phase: ground | specify | build | review | done | abandoned
-                        # §4 的四个阶段,加两个出口。归档发生在 `review`;
-                        # 收官之后才置 `done`。
+                        # §4 的四个阶段,加两个出口。正常归档在 `review` 搬移 bundle,
+                        # 归档态即终态——`done` 仍是合法可读值,但没有东西会回写它。
 reviewer-session: <id 或 n/a>   # 异构评审方可 resume 的会话 id(如 codex 打印的
                         # session id),第 1 轮一打印就记下——这样中途中断能 resume
                         # 同一会话(R2),不必去考古;评审开始前为 n/a
@@ -272,9 +272,11 @@ change 需要的其他任何东西——一张草稿、一幅图、给人看的�
 - **先过 review-ready。** 跑 `apriori gate --change <name> --review-ready --test-cmd "…"`。它把同一次评估换一张脸作为"能否进评审"的答复,并且**什么也不写**——没有 receipt 文件、没有状态字段、没有缓存裁决。**三项**,全部来自这次运行已经产生的事实:编译和测试**真的**执行过(绝不是零测试的 `BUILD SUCCESS`);§6 证据要么跑过、要么明确是 `blocked` / `owner-accepted`;生产方自己看完了完整 diff——用保留行 `producer-diff` 声明、已知 P0/P1 为零,且必须是 `done` 或所有者已接受,因为 `n/a` 说的是"根本没有 diff 可读"。它只报告自己量到的东西,对评审本身不作任何承诺;评审方的默认上下文是 R2/§5 给人的规矩,不是这条命令能观察到的事实。**没准备好不算一轮评审。** 回到 Build & Test;什么都不计数。
 - **然后一次独立评审**(**P3**,R2)。评审方的默认输入恰好是四样:**行为契约**、**diff**、**证据摘要**、**仍未覆盖的边界**。它可以自行查全仓、调用者、配置和原型。原始评审输出、已关闭问题、其他 change 的文档**不是**默认输入——它们作为证据留在盘上,不被注入。评审方的输出只保留三样:新发现的实质问题;已查与未查的风险面;以及 `ACCEPT | REVISE | ESCALATE` 之一。
 - **评审方不做生产方的活。** 它不是来编译、不是来逐条补测试、不是来重写方案的。如果它必须那么做,说明这个 change 根本没到 review-ready。
-- **然后归档。** 先确认 change 的工作已**提交** —— `source-commit` 必须指向一个真实存在、且包含 Contract 段所校对实现的提交(绿地仓库同理:先提交,再打戳)。执行**归档动作**——按上面接口的归档算法合并;更新 `apriori/truth/<module>.md`(Contract 段依最终实现更新 + 刷新 `source-commit`;Decisions 段追加本次 change 的新决定/不变量);列出到底改了哪些文件与段落。**那一次原子移动携带整个 bundle:** `apriori/changes/<change>/` 下的一切——flow-state、`specs/`、`review/` 证据,以及这个 change 自行选择写下的任何东西——作为一个整体落到 `apriori/changes/archive/<stamp>-<change>/`;你唯一的剩余职责是收官提交。
+- **知识库更新是前置条件,不是收尾步骤。** review-ready 之前:提交实现,让 `source-commit` 指向它(绿地仓库:先提交,再打戳);更新 `apriori/truth/<module>.md`——Contract 段按最终实现写,Decisions 段追加本次 change 的新决定/不变量。评审方看到的 diff 里已经带着这份知识库 diff;`apriori archive` 从不碰 `apriori/truth/`。
+- **然后归档——直接执行,不 dry-run。** ACCEPT 落地、且产品代码与测试自 review-ready 起未再变化时,正常收尾恰好四个逻辑动作,不多不少:(1)把评审方的输出落成一个 self-contained 评审文件,外加一次简短的 flow-state 更新;(2)一个验证动作——跑一次 `apriori check`,再跑一次完整的 `apriori gate --change <name>`(不带 `--review-ready`),在这些仍未变化的输入上绑定 C1;(3)直接跑 `apriori archive --change <name> --write --changes-dir apriori/changes`——`--write` 执行的 flow-state/ledger/评审收敛/CAS 前置检查与 dry-run 完全相同,先跑一次 dry-run 不会多核实出任何东西;归档把增量 spec 合并进 `apriori/specs` 并搬移 bundle,仅此而已;(4)本地提交收尾,然后停止。**那一次原子移动携带整个 bundle:** flow-state、`specs/`、`review/` 证据,以及这个 change 在 `apriori/changes/<change>/` 下写下的其他一切,作为一个整体落到 `apriori/changes/archive/<stamp>-<change>/`。
 - **归档声明三个状态然后冻结。** `apriori archive` 从它刚刚判定过的状态里打印它们:实现是否完成、关键证据是否完成、以及已发布还是仍待外部验收(`delivery:`)。这就是一次归档所做的全部声明。**之后发现的缺陷记为一条简短的 outcome 或一个新 change——绝不回写已归档的 bundle。** 回写旧归档会制造"当时就已经完成"的假时间线,而那正是实践反复产出的那个谎。
-- **退出:** 增量 spec 已合并 + 知识库已更新 + 归档后的 `apriori gate --change <name>` 运行(此时它解析归档态)为绿,且人批准了知识库 diff(同仓布局下,这就是普通的 PR review)。然后置 `phase: done`。
+- **退出(正常路径)。** 默认:不在动作二的 gate 之前单独重跑一次测试命令——`--test-cmd` 已经跑过;归档之后不重跑 `apriori verify`、`check`、`gate` 或 `status`——动作二已经在这些输入上绑定过 C1,动作三已经复核过归档自身的就绪度和 CAS,两者之间什么都没变,四个命令谁也学不到新东西;也不把完整的评审、flow-state 和命令输出向人复述一遍。**归档后的 bundle 是冻结的:任何东西,包括 `phase:`,都不再回写。** 退出即:增量 spec 已合并(归档的产出)+ 前置条件里的知识库 diff 已经人批准(同仓布局下,这就是普通的 PR review)。
+- **以下情况改为重新验证:** 评审结论为 REVISE 且产品代码或测试发生了变化;归档报告冲突、CAS、就绪度或结构问题;gate(动作二)与归档(动作三)之间业务文件发生了变化;或 `apriori check` 失败——以上任一种都把 change 送回 Build & Test 重新走一次 gate;绝不带着半通过状态归档。
 
 ### ABANDONED —— 任何时候都合法的退出
 

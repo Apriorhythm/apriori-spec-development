@@ -19,27 +19,11 @@ const CI_DOC_CN = fs.readFileSync(path.join(ROOT, 'docs', 'ci_cn.md'), 'utf8');
 const ok = (t, s) => assert.ok(t.includes(s), `expected: ${s}`);
 const not = (t, s) => assert.ok(!t.includes(s), `unexpected: ${s}`);
 
-test('DE-A no format shopping, no self-measurement, no watch loops', () => {
+test('DE-A no format shopping, no self-measurement', () => {
   ok(EN, 'another active or archived change to learn a formatting convention');
   ok(CN, '另一个 active 或 archive 的 change');
   ok(EN, 'Claude/session transcripts or logs');
   ok(CN, 'Claude/会话记录或日志');
-  // R03 root cause: a finite install/build/test/gate run was launched, then polled and
-  // narrated across many wakeups. Anchor only the operative semantics, not every sentence.
-  ok(EN, 'start it ONCE');
-  ok(CN, '**只启动一次**');
-  ok(EN, 'Unchanged waiting is not state and not evidence');
-  ok(CN, '没有变化的等待不是状态，也不是证据');
-  ok(EN, 'reattach to that same handle');
-  ok(CN, '回到同一个句柄上重新查');
-  ok(EN, 'permits a rerun only when the command is safe to repeat');
-  ok(CN, '只有该命令可以安全重跑才允许重跑');
-  ok(EN, 'a real exit status or result is required');
-  ok(CN, '仍然要拿到真实的退出码或结果');
-  ok(EN, 'watch mode is not finite');
-  ok(CN, 'watch 模式不是有限命令');
-  ok(EN, 'a rerun after a code change is new work');
-  ok(CN, '代码改动后的定向重跑是新工作');
 });
 
 test('DE-B scenarios modeled by observable outcome, every ID still bound RED-first', () => {

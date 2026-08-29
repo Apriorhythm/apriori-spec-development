@@ -174,6 +174,8 @@ artifact-root: .        # optional; default = project root.
 
 ## Evidence              # one row per §6 risk this change actually hits — NO rows is a refusal
 - <risk>: done | blocked | owner-accepted | n/a — <the command or artifact pointer, one line — never a retelling of the implementation or tests>
+                        # `fixed`, `resolved`, `closed`, `verified`, `pass` and `passed` are
+                        # read as `done` — the word is a spelling, never a round of its own.
                         # `blocked` blocks delivery (gate C9, archive R5). `owner-accepted`
                         # needs the owner's OWN decision, in the closed gates: grammar
                         #   - <YYYY-MM-DDTHH:MM> owner: evidence-accept <this row's id> — <reason>

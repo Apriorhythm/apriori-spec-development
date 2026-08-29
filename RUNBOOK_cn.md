@@ -173,6 +173,8 @@ artifact-root: .        # 可选;默认=项目根。
 
 ## Evidence              # 本 change 真正命中的每条 §6 风险,一行一条——一行都没有即拒绝
 - <风险>: done | blocked | owner-accepted | n/a — <命令或产物指针,一行——绝不复述实现或测试>
+                        # `fixed`、`resolved`、`closed`、`verified`、`pass`、`passed` 一律按
+                        # `done` 读——用词只是拼法,不该为它多跑一轮。
                         # `blocked` 阻断交付(gate C9、archive R5)。`owner-accepted`
                         # 需要所有者**本人**的决定,写成这条封闭 gates: 文法:
                         #   - <YYYY-MM-DDTHH:MM> owner: evidence-accept <该行 ID> — <理由>

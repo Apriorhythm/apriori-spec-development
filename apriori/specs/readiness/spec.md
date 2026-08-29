@@ -126,3 +126,7 @@ EVERY owner decision in the `gates:` log — the §6 evidence acceptance, the `a
 #### Scenario: RY-32 the scaffold path runs end to end
 - WHEN `apriori new <name>` scaffolds a change, its delta is written, and only the fields the scaffold asks for are filled in (mode, lineage, phase, the `producer-diff` row) with one attributable review round landed
 - THEN the scaffolded bundle states no claim nobody made (bare `## Open` and `## Reality Check` headings, one unfilled `## Evidence` row) and is refused by `--review-ready`; after filling in, `gate` PASSes, `--review-ready` exits 0, and `archive --write` merges and declares implementation and critical evidence complete
+
+#### Scenario: RY-33 a completion synonym is the same claim, and only an unknown word blocks
+- WHEN an `## Evidence` row spells its completion state `fixed`, `resolved`, `closed`, `verified`, `pass` or `passed` instead of `done`, and separately when it carries a word in none of those sets
+- THEN every synonym is normalised to `done` before any reader sees the row — it is counted as `done`, is `settled`, gates green, is review-ready and archives — while `blocked`, `owner-accepted` and `n/a` keep their own meaning and the unknown word is still fail-closed, the refusal quoting what the producer wrote

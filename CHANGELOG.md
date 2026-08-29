@@ -67,6 +67,18 @@ forbids: a pilot that runs both proves nothing about either.
   `archive-force tasks` class, and the tests that pinned the old artifact obligations.
   Replaced by `test/slice5-subtraction.test.js` — GT-39/40, RY-16..19, ST-12..14, AM-118/119.
 
+- **The default id-pattern is spelled formatter-stably.** The built-in default is now
+  `[A-Z]+(?:-[A-Z]+){0,}-\d+[a-z]{0,}` — the exact same language as the `*`-spelled
+  `[A-Z]+(?:-[A-Z]+)*-\d+[a-z]*` it replaces, and the accepted ID set is byte-identical. The
+  respelling exists because the pattern ships inside a markdown table cell: a `*` pair in a cell
+  reads as emphasis, so a host project's markdown formatter or lint `--fix` rewrites it to `_`
+  and silently corrupts the scaffolded `apriori/process-config.md` row into a wrong or
+  uncompilable regex — observed in the field, and pure toolchain friction rather than a product
+  fault. `{0,}` has no markdown meaning. `lib/config.js`, the template's three copies and both
+  doc editions state the one pattern; **CF-12** now also pins the VALUE and DEFAULT cells as
+  `*`-free and fixed points of the emphasis rewrite, and **SR-08** pins the two spellings as the
+  same language over a systematic title sweep. No new phase, doc, workflow step or lint adapter.
+
 **Already-archived bundles are unaffected.** Nothing here is applied retroactively.
 
 **Not yet:** the package and runbook versions stay at 5.0. 6.0.0 identity waits on three pilot

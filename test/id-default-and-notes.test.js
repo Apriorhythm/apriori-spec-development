@@ -17,6 +17,9 @@ const doctor = require('../lib/doctor');
 
 const BIN = path.join(__dirname, '..', 'bin', 'apriori.js');
 const OLD_ID = '[A-Z]+-\\d+';                 // the pre-change default, kept as the comparison base
+// the `*`-spelled ancestor of the current default: same language, markdown-hostile spelling.
+// Kept as the equivalence base so the `{0,}` respelling can never drift into a real widening.
+const STAR_ID = '[A-Z]+(?:-[A-Z]+)*-\\d+[a-z]*';
 const run = (root, args) => spawnSync('node', [BIN, ...args], { encoding: 'utf8', cwd: root });
 
 function proj(files) {
@@ -350,6 +353,37 @@ test('AM-73 Notes terminates the skipped region', () => {
   assert.strictEqual(d.delta.ADDED.size, 1, 'and parsing resumed after Notes');
 });
 
+test('SR-08 the {0,} spelling is the same language as the `*` spelling it replaced', () => {
+  assert.ok(!DEFAULT_ID.includes('*'), `the default must carry no bare *: ${DEFAULT_ID}`);
+  const starRe = new RegExp(STAR_ID), newRe = new RegExp(DEFAULT_ID);
+  // a systematic sweep over the shapes the pattern is meant to discriminate, plus near-misses
+  const prefixes = ['A', 'AC', 'ABC', 'LONGPREFIX', 'a', 'Ac'];
+  const segments = ['', '-BIS', '-BIS-X', '-b', '_U', '.D'];
+  const digits = ['', '0', '1', '01', '999'];
+  const suffixes = ['', 'a', 'ab', 'A', '1', '_'];
+  const tails = ['', ' rest of title', ' 01', '-dash', ':colon', '.', '_x', 'Z', '\ttab'];
+  let checked = 0, bound = 0;
+  for (const p of prefixes) for (const seg of segments) for (const d of digits)
+    for (const suf of suffixes) for (const t of tails) {
+      const title = `${p}${seg}-${d}${suf}${t}`;
+      const a = leadId(title, starRe), b = leadId(title, newRe);
+      assert.strictEqual(b, a, `divergence on ${JSON.stringify(title)}: star=${a} new=${b}`);
+      checked++; if (a) bound++;
+    }
+  assert.ok(checked > 3000 && bound > 100, `sweep too thin: ${checked} titles, ${bound} bindings`);
+  // and the named shapes, stated positively rather than only differentially
+  for (const [title, want] of [
+    ['AC-01 plain', 'AC-01'],
+    ['AC-BIS-01 multi', 'AC-BIS-01'],
+    ['LIFE-DWS-01 three', 'LIFE-DWS-01'],
+    ['AC-30f suffixed', 'AC-30f'],
+    ['ac-01 lowercase prefix', null],
+    ['AC-01x alnum-adjacent', 'AC-01x'],   // the default's own suffix rule, unchanged by the respelling
+    ['AC-01_tail underscore-adjacent', null],
+    ['AC- no digits', null],
+  ]) assert.strictEqual(leadId(title, newRe), want, title);
+});
+
 // ---------------------------------------------------------------- template
 
 test('CF-12 the template carries one pattern in all three places, each pinned separately', () => {
@@ -369,6 +403,19 @@ test('CF-12 the template carries one pattern in all three places, each pinned se
   // and nothing stale anywhere
   for (const line of t.split('\n'))
     assert.ok(!(line.includes('[A-Z]+-\\d+') && !line.includes(want)), `stale pattern: ${line}`);
+  // (4) formatter stability: a bare `*` pair in a table cell is markdown emphasis, and a
+  // formatter / lint --fix rewrites it to `_`, corrupting the scaffolded row. The VALUE cell
+  // must therefore carry no `*` at all — the equivalent `{0,}` spelling instead.
+  const valueCell = cells[2];
+  assert.strictEqual(valueCell, want, `VALUE cell text: ${row}`);
+  assert.ok(!valueCell.includes('*'), `VALUE cell must contain no bare *: ${valueCell}`);
+  assert.ok(!cells[cells.length - 2].includes('*'), `DEFAULT cell must contain no bare *: ${row}`);
+  // simulate the corruption the old spelling invited: emphasis-pair `*`→`_` over the row
+  const corrupt = (text) => text.replace(/\*([^*|]*)\*/g, '_$1_');
+  assert.strictEqual(corrupt(row), row, `the row is a fixed point of the formatter rewrite: ${row}`);
+  // the same rewrite applied to the `*`-spelled ancestor is what R08 hit in the field
+  const legacyRow = row.replace(want, STAR_ID);
+  assert.notStrictEqual(corrupt(legacyRow), legacyRow, 'the ancestor spelling was genuinely at risk');
 });
 
 test('CF-18 a freshly initialised project inherits the current pattern end to end', () => {

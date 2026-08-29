@@ -497,6 +497,22 @@ test('PR-22 the promise and the pointers are current', () => {
   assert.ok(pkg.homepage.endsWith('apriori-spec-development#readme') && !pkg.homepage.includes('/tree/'), pkg.homepage);
 });
 
+test('Ground keeps ONE output and the reading-order guidance stays artifact-free', () => {
+  // R03 guards the invariants, not the wording: the priority reading order must not grow into a
+  // second Ground output, must not duplicate the fate-proof obligation, and must not acquire an
+  // artifact, field or command of its own. (No scenario ID — this asserts a subtraction.)
+  for (const [doc, tail, proof] of [
+    [EN, /\*\*Out:\*\* the `## Reality Check` section of the flow-state, and nothing else\./g,
+      /prove it in one user-flow test at the highest common container/g],
+    [CN, /\*\*产出:\*\* flow-state 的 `## Reality Check` 段,别无其他。/g,
+      /用最高共同容器的一个用户流测试证明它/g],
+  ]) {
+    assert.strictEqual((doc.match(tail) || []).length, 1, 'Ground still owes exactly one output');
+    assert.strictEqual((doc.match(proof) || []).length, 1, 'the fate-proof obligation is stated once');
+    assert.doesNotMatch(doc, /## Implementation Map|implementation-map:|apriori map\b/, 'no new artifact/field/command');
+  }
+});
+
 test('PR-23 the pointer is packaged and dual-form', () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
   assert.ok(pkg.files.includes('MIGRATING.md'), 'MIGRATING.md ships in the npm package');

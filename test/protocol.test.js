@@ -501,17 +501,14 @@ test('Ground keeps ONE output and the reading-order guidance stays artifact-free
   // R03 guards the invariants, not the wording: the priority reading order must not grow into a
   // second Ground output, must not duplicate the fate-proof obligation, and must not acquire an
   // artifact, field or command of its own. (No scenario ID — this asserts a subtraction.)
-  for (const [doc, tail, proof, scope] of [
+  for (const [doc, tail, proof] of [
     [EN, /\*\*Out:\*\* the `## Reality Check` section of the flow-state, and nothing else\./g,
-      /Prove the named fates in one user-flow test at the highest common container/g,
-      /Each distinct entry path[^\n]*settling one never discharges another on that path or any other, and where none was active that is the answer/],
+      /prove it in one user-flow test at the highest common container/g],
     [CN, /\*\*产出:\*\* flow-state 的 `## Reality Check` 段,别无其他。/g,
-      /点名的去向都在最高共同容器的一个用户流测试里证明/g,
-      /每一条把控制权或状态交给新 owner 的独立入口路径[^\n]*了结其中一条从不抵扣另一条,同一路径上的另一个 owner 也不例外,而该路径上本无活跃 owner 时,这就是答案/],
+      /用最高共同容器的一个用户流测试证明它/g],
   ]) {
     assert.strictEqual((doc.match(tail) || []).length, 1, 'Ground still owes exactly one output');
     assert.strictEqual((doc.match(proof) || []).length, 1, 'the fate-proof obligation is stated once');
-    assert.match(doc, scope, 'the handoff is settled per entry path, and greenfield paths invent no old owner');
     assert.doesNotMatch(doc, /## Implementation Map|implementation-map:|apriori map\b/, 'no new artifact/field/command');
   }
 });

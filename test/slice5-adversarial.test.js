@@ -304,9 +304,13 @@ test('RY-27 the state own claims block review-ready and archive; the Next cap on
   }
   // A new change is not born unfinished — because the scaffold writes BARE headings, not because
   // a text heuristic guesses which claims are real. An `## Open` line is a claim whatever it says.
+  // (the project() helper writes its own empty Open section; the scaffold headings REPLACE it —
+  // since 6.2 a section written twice is a structural defect, see FC-10)
   const scaffold = project({ sections:
     '## Open                  # substantive unresolved items — one line each: - <ID>: <text>\n\n'
     + '## Reality Check         # observed / decision / assumption\n\n' });
+  fs.writeFileSync(path.join(scaffold.dir, 'flow-state.md'),
+    fs.readFileSync(path.join(scaffold.dir, 'flow-state.md'), 'utf8').replace('\n## Open\n\n\n', '\n'));
   assert.strictEqual(gate(scaffold).status, 0, gate(scaffold).stdout);
   assert.strictEqual(gate(scaffold, ['--review-ready']).status, 0);
   // and a line that merely LOOKS like a placeholder is still a claim nobody closed

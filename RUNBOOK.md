@@ -171,6 +171,12 @@ artifact-root: .        # optional; default = project root. Applies ONLY to the 
                         # "accepted, still present" until the risk is actually resolved.
                         # A line without an id is still an item: it blocks and cannot be accepted.
                         # A duplicated id is refused, both lines named. An empty section owes nothing.
+                        # The reader accepts ONE Markdown subset: `- `/`* ` items, an INDENTED
+                        # continuation line, headings with a trailing `# annotation`; fenced or
+                        # commented text is inert (never an item, a fact, or a decision). A
+                        # numbered or bare line here, a section or key written twice, or an
+                        # unclosed fence/comment is a structural defect naming its line —
+                        # it blocks C9/R5 and review-ready; it is never read as an empty section.
 
 ## Next                  # at most THREE; the first is the resume point after a crash — the next step only, never a task list or history
 - <one concrete action>
@@ -182,6 +188,10 @@ gates:                  # append-only log of human decisions
                         # (revoke by appending evidence-accept-revoke <ID> — <reason>; last wins).
                         # `producer:`/`note:`, no timestamp, no em dash, no reason, or a
                         # near-miss id authorize NOTHING — you cannot accept your own risk.
+                        # The stamp is RANGE-checked (month 01-12, day 01-31, hour 00-23,
+                        # minute 00-59; `T11:00` and `T1100` both legal), NOT calendar-checked:
+                        # a 31st of February is a typo, not a forgery. A fenced or commented
+                        # entry is an example and authorizes nothing.
                         # two labels: `owner` (a human decided) and `note`
                         # (non-decision events: degradations, closeout, …)
                         # a mechanical check's `note:` stays one short command+result line

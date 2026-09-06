@@ -36,6 +36,17 @@ already carries a valid acceptance is treated as an accepted item; every other r
 with one note. Move what is still unresolved to `## Open` and delete the section. Archived bundles
 are recorded, never re-judged — nothing to migrate there.
 
+**The flow-state reader is one Markdown subset, fail-closed on the rest (`lib/flow.js`).**
+Still read exactly as before: annotated headings (`## Open # …`, `### Open`), `*` bullets,
+indented continuation lines, CRLF, case-different titles, `T1100` and `T11:00` stamps, a reason
+in any script, and a 31st of February (the stamp is range-checked, not calendar-checked). Now a
+STRUCTURAL DEFECT naming its line — blocking C9/R5 and review-ready `open`, never read as an
+empty section: a numbered or bare line under `## Open` / `## Reality Check` (rewrite it as
+`- <ID>: <text>`), a section written twice, a scalar set twice with different values (C3/R1
+refuse it too), an unclosed fence or comment. Fenced or commented content is inert everywhere —
+an example `evidence-accept` inside a code block authorizes nothing. Archived bundles: reported,
+never refused, never migrated.
+
 **`mode:` is optional and inert.** Delete the line or leave it: absent is fine, `fast` and
 `standard` are accepted and echoed, anything else (the unfilled placeholder included) still blocks
 C3. There is no upgrade any more — a mutating delta is reported as `risk: contract-mutation: …`

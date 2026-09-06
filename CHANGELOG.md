@@ -31,6 +31,15 @@ already stopped teaching are retired, and risk acceptance is unified on ONE mech
 - **C2 is a placeholder** (`n/a`, nothing read); `tasks.md` is never opened.
 - **`apriori new`** writes no `mode:` line and no `## Evidence` section; `## Open` shows the id
   form. The archive declaration derives from `## Open`.
+- **Batch A-2 — one flow-state reader (`lib/flow.js`, a leaf), one explicit Markdown subset.**
+  A compatibility corpus (`test/fixtures/flow-corpus/`, FC-01..21) pins what stays readable
+  (annotated headings, `*` bullets, indented continuation, CRLF, case-different titles, `T1100`
+  / `T11:00`, Chinese reasons, 2026-02-31 — range-checked, not calendar-checked) and what is now
+  a structural defect naming its line: a numbered or bare line under `## Open` / `## Reality
+  Check`, a section written twice, a scalar set twice with different values (C3/R1 too), an
+  unclosed fence or comment. Fenced and commented content is inert everywhere (an example
+  acceptance authorizes nothing). Defects block C9/R5 and review-ready `open` on an active bundle
+  and are recorded on an archived one. `lastGate` reads the gates block only.
 - **Fix:** `sectionItems` matched a heading's annotation across newlines, so an empty section
   followed directly by another heading swallowed that heading and read the next section's items
   as its own. Horizontal whitespace only now.

@@ -149,7 +149,7 @@ The two review files are the one thing neither mode may drop: **the single indep
 | `apriori gate --change <name>` | Build & Test / Review, CI | one exit code over the mechanical checks (PASS ≠ a human decision); `--review-ready` is the transient admission view |
 | `apriori archive` | Review & Deliver | merge delta specs into the living store; `--change <name>` = whole-change, failure-atomic (up to the commit point) |
 | `apriori check` | CI / pre-commit | structural consistency (scenario IDs bindable) |
-| `apriori update` | after a CLI upgrade | refresh the runbook copy + command pointers (never your files) |
+| `apriori update` | after a CLI upgrade | refresh the runbook copy + command pointers (never your files — one exception, stated: a pre-manifest `apriori/runbook.md`, written by a CLI older than `managed.json`, is adopted and overwritten once, then protected like any managed file; an old tool-written pointer paragraph in a rules file is upgraded in place, the rest of the file untouched) |
 
 ## Acknowledgments
 

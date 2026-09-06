@@ -149,7 +149,7 @@ apriori check
 | `apriori gate --change <name>` | Build & Test / Review、CI | 机械检查合成一个退出码(PASS ≠ 人做的决定);`--review-ready` 是临时的准入视图 |
 | `apriori archive` | Review & Deliver | 把增量规格并入 living 规格库;`--change <name>` = 整变更、失败原子(直到提交点为止) |
 | `apriori check` | CI / pre-commit | 结构一致性(scenario ID 可绑定) |
-| `apriori update` | CLI 升级后 | 刷新 runbook 副本 + 命令指针(绝不动你的文件) |
+| `apriori update` | CLI 升级后 | 刷新 runbook 副本 + 命令指针(绝不动你的文件——唯一的例外明说:早于 `managed.json` 的 CLI 写下的 `apriori/runbook.md` 会被认领并覆盖一次,此后像任何受管文件一样受保护;规则文件里工具写的旧指针段落会原地升级,文件其余部分不动) |
 
 ## Acknowledgments
 

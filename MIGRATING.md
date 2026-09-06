@@ -58,6 +58,16 @@ bundle it is history. `apriori new` no longer writes it. `status --json` adds `a
 and `historical` beside `escalations` (now the pending list only), and each `escalation[]`
 entry carries `state`.
 
+**Boundaries (A-7).** `init --tools` refuses any unknown key before writing anything.
+`update` recreates a lone missing `apriori/tmp/`, upgrades an old tool-written pointer paragraph
+in a rules file in place (exact previous generations only; hand-edited pointers are left alone),
+and says `N modified (skipped)` instead of "everything already matches" when it declined a file;
+the pre-manifest runbook adoption (overwritten once) is now stated in README. gate resolves the
+flow-state through archive's trust root (a symlinked flow-state is C3 structural); `risk.scanDeltas`
+reports lstat/read failures as `unreadable-delta`; `mdFilesUnder` refuses an escaping symlinked
+directory before entering it and terminates loops. A 0-byte `-raw` sibling is a missing raw.
+doctor D7 no longer calls an archive frozen at `phase: review` "closeout pending".
+
 **`--json` envelopes are fixed, for success and error (see docs/cli).** `verify.clean` is a
 boolean; verify, status and doctor print their envelope on argument and resolve errors too
 (exit 2); `gate --review-ready --json` is one shape, `{change, ready, items, errors}` — the

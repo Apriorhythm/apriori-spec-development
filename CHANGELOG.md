@@ -49,6 +49,18 @@ already stopped teaching are retired, and risk acceptance is unified on ONE mech
   absent/`none`/`n/a` fine; archived → history. `apriori new` stops writing it. `status --json`
   adds `acknowledged` / `historical`; `--escalation --json` is `{change, escalations,
   acknowledged, historical}`. Tests: `escalation-states.test.js` (ES-01..09); ST-14, NW-04 updated.
+- **Batch A-7 — init / update / read boundaries / raw evidence / doctor D7.** `init --tools`
+  validates the whole list before any write (`claude,claud` → exit 2, nothing written). `update`:
+  a lone missing `apriori/tmp/` is recreated; old tool-written pointer paragraphs in rules files
+  (`init.POINTER_GENERATIONS`, verbatim) are upgraded in place, user text untouched, hand-edited
+  pointers left alone; the summary says `N modified (skipped)` when anything was declined; README
+  states the pre-manifest adoption policy. Trust-root parity: gate resolves the flow-state through
+  `artifactDefect` (symlink → C3 structural, C8/C9 n/a); `risk.scanDeltas` treats lstat/read
+  failures as `unreadable-delta` (fs seam for tests); `mdFilesUnder` checks containment and a
+  visited-realpath set before descending (escape refused, loops terminate; discovery and the store
+  walk report it). A 0-byte `-raw` sibling is a missing raw, named. doctor D7: an archive at
+  `phase: review` is the frozen norm; one archived before review is information. Tests:
+  `boundaries.test.js` (BD-01..10); CF-18, UP-02-adjacent behaviour, the D7 doctor case follow.
 - **Batch A-6 — `--json` contracts and argument semantics.** One fixed envelope per view for
   success AND error: verify (`clean` boolean; argument/config/projection errors print the
   envelope, exit 2), gate, gate `--review-ready` (`{change, ready, items, errors}` for the judged

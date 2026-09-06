@@ -230,8 +230,12 @@ test('DR-09 changes overview validates flow-states and surfaces pending gates', 
   fs.writeFileSync(path.join(root, 'apriori/changes/wrong/flow-state.md'), 'change: other\n');          // mismatch
   fs.mkdirSync(path.join(root, 'apriori/changes/good'), { recursive: true });
   fs.writeFileSync(path.join(root, 'apriori/changes/good/flow-state.md'), 'change: good\nphase: build\n');
+  // an archive frozen at `phase: review` is the normal state (silent); one archived BEFORE
+  // review is surfaced as info (6.2 A-7, BD-10)
+  fs.mkdirSync(path.join(root, 'apriori/changes/archive/2026-07-10T1100-frozen'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'apriori/changes/archive/2026-07-10T1100-frozen/flow-state.md'), 'change: frozen\nphase: review\n');
   fs.mkdirSync(path.join(root, 'apriori/changes/archive/2026-07-10T1200-old'), { recursive: true });
-  fs.writeFileSync(path.join(root, 'apriori/changes/archive/2026-07-10T1200-old/flow-state.md'), 'change: old\nphase: review\n');
+  fs.writeFileSync(path.join(root, 'apriori/changes/archive/2026-07-10T1200-old/flow-state.md'), 'change: old\nphase: build\n');
   const r = doctor.runDoctor({ cwd: root, testCmd: TAP_OK });
   const findings = byId(r, 'D7').filter((c) => c.status === 'finding');
   const details = findings.map((c) => c.detail).join(' ');
@@ -240,8 +244,8 @@ test('DR-09 changes overview validates flow-states and surfaces pending gates', 
   assert.match(details, /wrong/);
   assert.doesNotMatch(details, /\bgood\b/);
   const info = byId(r, 'D7').map((c) => c.detail).join(' ');
-  assert.match(info, /old/);                       // archived not-DONE surfaced as info
-  assert.match(info, /gate ④|pending/);
+  assert.match(info, /old @ build — archived before review; frozen as is/);   // archived before review: info
+  assert.doesNotMatch(info, /frozen @|closeout pending/);                    // frozen at review: silent
   // symlinked archived entry escaping archive/ is skipped, never read (where symlinks work)
   let canSymlink = true;
   const outside = path.join(root, 'elsewhere');

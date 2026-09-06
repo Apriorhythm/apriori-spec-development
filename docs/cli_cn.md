@@ -14,11 +14,13 @@ usage: apriori init [--tools <a,b,...>] [--test-cmd "<cmd>"] [--language <lang>]
 
 退出码:0 完成/你主动放弃 · 1 空选择 · 2 非交互且未给 --tools,或 `--test-cmd` / `--language` 的值是配置表格装不下的。
 
+**`--tools` 在写入任何东西之前整体校验(6.2)。** 只要有一个未知键——`claud`、`Claude`、`claude,claud` 都一样——就以 2 退出并打印 `unknown tool '…' — known tools: claude, codex, cursor, copilot, opencode, windsurf`,什么都不创建,连 `apriori/` 根目录也不。规则文件里若已有工具写的**旧**指针段落(与某个历史版本逐字相同),该段落会原地升级(`pointer updated`);当前版本或手改过的指针保持原样(`skipped`)。
+
 **`--test-cmd` 逐字节往返(6.2)。** 命令经读取器的序列化孪生(`config.encodeCell` / `splitCells`)写入 `apriori/process-config.md`:`|` 存为 `\|`,反斜线保持原样,`$&`、`$1` 以及任何长得像替换模式的东西都逐字写入(回调替换,绝不用模板字符串),unicode 原样——`getConfig(root, 'test-cmd')` 返回的正是你传入的,所以 `verify` 跑的也正是它。以下在写入任何东西之前就以清楚的错误拒绝(退出码 2):空值(要继承什么都不传就省略该 flag)、含换行的命令(配置行只有一行——把它包进脚本再写脚本名)、以及单元格文法唯一表示不了的形状:紧贴管道符之前的奇数个反斜线。首尾空白会被裁掉。`--language` 走同一对函数。
 
 ## apriori doctor
 
-体检项目与 apriori 的接缝:Node 地板、脚手架、runbook 新鲜度、工具指针、TAP 管道探针(`--no-run` 跳过)、规格库健康、变更总览——每个发现指名修复命令
+体检项目与 apriori 的接缝:Node 地板、脚手架、runbook 新鲜度、工具指针、TAP 管道探针(`--no-run` 跳过)、规格库健康、变更总览——每个发现指名修复命令。D7 读每个活动变更的状态并列出归档:冻结在 `phase: review` 的归档是正常状态,不提;评审**之前**就归档的会作为信息浮现(`archived <stamp>-<name> @ build — archived before review; frozen as is`),绝不是 finding。
 
 ```text
 usage: apriori doctor [--test-cmd "<cmd>"] [--no-run] [--cwd <dir>] [--json]
@@ -98,6 +100,8 @@ usage: apriori archive --store <f> --delta <f> --change <name> [--write] [--no-c
 
 **结构预检(6.2)。** 在写入任何东西之前——dry-run 与 `--write` 一视同仁,单文件形式也一样——增量**新增或修改**的每个场景(change scope;REMOVED 或已弃用的块不在其中)都必须带一个别处不重复的稳定 id,判定走受控的 id matcher(`--id-pattern` / 配置行 / 默认值,批量经可终止通道——绝不对配置正则在进程内 `new RegExp`)。以下情形按**增量**文件:行号逐条列出并拒绝,打印 `RESULT: FAILED PREFLIGHT — nothing written`(退出码 1):场景没有可绑定 id(`kv/spec.md:8: scenario without a bindable id: '…' — this change adds or modifies it; give it a leading id`)、本次引入了两次的 id(每一行都点名)、与本次未替换的 store 块冲突的 id(点名 store 文件)。matcher 跑不了(配置正则无效或被终止)同样是拒绝——`the structural check could not run — …`——绝不是跳过检查。范围之外的历史债务(store 里没有 id 的旧场景、store 已经重复携带的 id)只是注记(`note: store debt outside this change (reported, not a block): …`),绝不阻断本次变更——它仍归 `apriori check` 管。已识别场景与测试的绑定仍是劝告性的:没有以场景命名测试的原生测试命令仍然合法。`verify --change` 对同一投影以同样方式拒绝(`structural: …` 错误,退出码 2),且在任何测试命令运行之前,因此 `check → verify → gate → archive` 再也归档不出一个随后被 `check` 判失败的 store。
 
+**遍历。** 增量发现与 store 遍历在**进入**目录之前先判定它:解析到遍历根之外的软链接目录被拒绝(`specs dir cannot be walked: symlinked directory escapes the walk root: …`,退出码 2——绝不静默跳过,绝不进入),已访问过的目录不再进入,所以软链接环会终止。`risk.scanDeltas` 把任何并非单纯缺失的 lstat 或读取失败报为 `unreadable-delta`(fail-closed),绝不当作"没发现风险"。
+
 **就绪度。** 高层形式会拒绝一个还没做完的变更(dry-run 与 `--write` 一视同仁),打印 `RESULT: NOT READY — nothing written`(退出码 1):**R1** flow-state 结构完好、通过 `gate` C3 的同一套合法性检查、且 `phase: review`;**R4** 每个评审 family 的循环都已收敛或带着已记录的 reframe(与 gate 的 C8 同一套派生——见下文),且 `review/` 根必须是真实的、包含在 bundle 内的目录;**R5** 唯一的实质状态判定,与 `gate` 的 C9 是同一份代码、同一个输入(增量扫描)——没有所有者未接受的 open 条目、没有缺 id 的条目、没有重复 id、没有仍为 `blocked` 的遗留 `## Evidence` 行、没有读不出来的增量、没有悬着的 assumption。R5 永不可 force:`--force` 只覆盖进度,而缺失的现实不是进度。**不存在 R2,也不存在 R3** —— 6.0 不要任务清单,6.2 不读问题台账,所以没有任何一次归档会被这两个文件挡住,它们也不会被读。R1 只报第一个命中项;其余规则一次报全。`review/` 不存在不是缺陷(R4 随后报告缺失的评审轮次)——但**读不出来**的 review 根永远不是:只有真正的 `ENOENT` 走"不存在"分支,其余错误码(EACCES、EIO、ELOOP……)一律结构性拒绝。就绪度排在其余所有 preflight 守卫之后,故既有诊断与退出码不变;它是**看一眼,不是上锁**——检查与提交之间不会重读。
 
 **归档声明。** 它同时是一道**兜底**:一次运行如果自己的声明会写成 `implementation: INCOMPLETE`,即使就绪度放行了也会被拒(`RESULT: NOT READY — nothing written`)——成功的归档永远不可能声明活儿没干完。就绪的一次运行只打印三个状态,别无其他——实现是否完成(计入 pending 的 open 条目与未证实的 assumption)、关键证据是否完成(没有未接受的 open 条目;已接受的逐个点名并报告为仍然在场)、以及已发布还是仍待外部验收(`delivery:`)。这次运行还会打印判定的注记——open 条目摘要、匹配不到条目的接受记录、`contract-mutation` 信号、被忽略的遗留段。已归档的 bundle 是**冻结**的:之后发现的缺陷记为一条简短 outcome 或一个新 change,绝不回改归档。
@@ -144,7 +148,7 @@ usage: apriori gate --change <name> [--test-cmd "<cmd>"] [--id-pattern <re>] [--
 
 **C2 与 C4 是占位项。** 两个 id 都留在 `checks[]` 里,让按 id 索引的 `--json` 消费者继续可用,且永远报 `–`:C2(`retired in 6.2 — nothing is read`)曾把 5.x 任务清单读作诊断;C4(`ledger retired in 6.2 — open items live in ## Open`)曾读问题台账。这两个文件不再被打开——存在与否、内容如何,都一样。
 
-**C3 —— flow-state 合法性,外加两项 6.2 迁移。** 活动 bundle 的遗留 `review/issues.md` 若有 `open` 行(旧表格契约:首格 id、末格状态,`open` 为首 token,不分大小写),在 C3、archive R1 与 review-ready 一律拒绝——`legacy ledger has N open row(s) — move each into ## Open as \`- <ID>: <text>\` and delete it from review/issues.md (or delete the file): line 3: Q-1 (…)`——同一句话也是 `status --escalation` 的停;带空格的旧 id 会被要求改键(`data schema` → `data-schema`)。只有关闭行或文件缺失则什么也没有;读不出来、或有内容却没有可读的行,是结构错误(读不出的台账无法证明已关闭)。这道门是一次性的:没有 open 行剩下时永不再触发——把行**移走**,绝不复制。冻结的归档永不扫描,工具也永不改写该文件。另一项迁移是已退役的 `escalation:` 字段(见 `status`)。**文档陈述、CLI 无法证明的 ID 规则:** 同一 bundle 内,关闭的 id 不复用给另一个风险;因此一条 `evidence-accept` 的 id 后来指向另一条条目,是文档层面的违规,不是工具能检测的东西。`change`、`lineage`、`phase` 必填;`mode:` 自 6.2 起**可选且不起作用**——缺失或为空都合法,`fast` / `standard` 被接受并回显(`legal (mode fast, build)`),其他任何值(包括未填的 `<fast | standard>` 占位)照旧阻断。没有任何判定依据这个词:没有升级、没有配额、没有车道。
+**C3 —— flow-state 合法性,外加两项 6.2 迁移。** flow-state 经由与 archive R1 **同一个**信任根解析:软链接、越界或非常规文件的 `flow-state.md` 是 `C3 BLOCKED — flow-state.md: symlink at …`,绝不透过它读,随后 C8/C9 报 `flow-state not read — see C3` 而不是第二种意见(`status` 也以同样方式拒绝)。 活动 bundle 的遗留 `review/issues.md` 若有 `open` 行(旧表格契约:首格 id、末格状态,`open` 为首 token,不分大小写),在 C3、archive R1 与 review-ready 一律拒绝——`legacy ledger has N open row(s) — move each into ## Open as \`- <ID>: <text>\` and delete it from review/issues.md (or delete the file): line 3: Q-1 (…)`——同一句话也是 `status --escalation` 的停;带空格的旧 id 会被要求改键(`data schema` → `data-schema`)。只有关闭行或文件缺失则什么也没有;读不出来、或有内容却没有可读的行,是结构错误(读不出的台账无法证明已关闭)。这道门是一次性的:没有 open 行剩下时永不再触发——把行**移走**,绝不复制。冻结的归档永不扫描,工具也永不改写该文件。另一项迁移是已退役的 `escalation:` 字段(见 `status`)。**文档陈述、CLI 无法证明的 ID 规则:** 同一 bundle 内,关闭的 id 不复用给另一个风险;因此一条 `evidence-accept` 的 id 后来指向另一条条目,是文档层面的违规,不是工具能检测的东西。`change`、`lineage`、`phase` 必填;`mode:` 自 6.2 起**可选且不起作用**——缺失或为空都合法,`fast` / `standard` 被接受并回显(`legal (mode fast, build)`),其他任何值(包括未填的 `<fast | standard>` 占位)照旧阻断。没有任何判定依据这个词:没有升级、没有配额、没有车道。
 
 **C9 —— 唯一的实质状态判定。** 一次检查,一个问题:这个 change 自己的状态是否还欠着真东西?gate C9、archive R5、归档声明与 `status` 调用**同一个**函数、读同一个输入;不存在第二份状态。
 
@@ -159,6 +163,8 @@ usage: apriori gate --change <name> [--test-cmd "<cmd>"] [--id-pattern <re>] [--
 *遗留的 `## Evidence` 段*(6.0 的行表,已经没有读者)在在途 bundle 里按规则迁移:写着 `blocked` 的行阻断,并给出 `legacy Evidence row '<name>' is blocked — move it to ## Open as an item (or accept it via evidence-accept <name>)`;声称 `owner-accepted` 却没有有效接受记录的行同样阻断(`… claims owner acceptance with no canonical gates: entry — move it to ## Open, or record: <模板>`——自己签的声明不能让风险消失);名字带有效接受记录的行按已接受的条目处理;其余各行(`done`、`n/a`、`fixed`、未填的脚手架行……)一律忽略,只留一条注记:`legacy ## Evidence section ignored (6.2: risks live in ## Open)`。**archived** 的 bundle 只汇报,绝不追溯重判——它的结论是 `recorded`。
 
 **`--review-ready`** 把**同一次**评估换一张脸作为"能否进评审"的答复,并且什么也不写——没有 receipt 文件、没有状态字段、没有缓存裁决;下一次运行重新算。**两项**,每一项都是这次运行真正量到的事实:`tests`(真实的测试/绑定结果,C1)与 `open`(状态可读且自己没有声明任何未了结的东西——每条都带稳定 id、没有重复 id、没有仍悬着的 Reality Check `assumption`、没有不点明类别的 Reality Check 行,每一条都用 C9 自己的措辞拒绝)。pending 的条目不会让 review-ready 失败:那正是评审要看的东西,该项的 detail 会这么说。早先的两项已经删掉(6.2):`evidence` 随行表一起离开,`producer-diff`——一种没有任何东西能观察到的自我认证——也随之删掉;P2 里"读完完整 diff"的指令仍然是指令,只是没有东西检查它。取而代之打印的是这次运行本来就握有的事实:它投影的增量 spec,以及 C1 自己的绑定计数。JSON 信封对已判定视图、求值错误与参数错误是**同一个**形状(6.2):`{change: string|null, ready: boolean|null, items: [{id, ok, detail}], errors: string[]}`——`ready: null` 加 `errors[]`(且没有 items)是错误,退出码 2;已判定视图带 `errors: []`。早先的 `{reviewReady: null, errors}` 与 gate 信封两种错误形式已不存在。两项都成立时退出 0,任何一项不成立退出 1——没准备好的 change 回到 Build & Test,而不是进入一轮评审。C1 被跳过时永远读不成 ready:评审方不该是第一个跑测试套件的人。
+
+**C5 —— 原始证据。** 每份结论文档旁边都要有它的 transcript:一个**非空**的 `<stem>-raw.*` 同名文件——0 字节的文件就是缺 raw,报为 `<stem>.md (<stem>-raw.txt is empty)`——或者自包含 provenance 形式,后者不需要同名文件。工具判定的是证据的形状与在场,不是产出者的独立性。
 
 **C8 —— 评审循环,逐 family。** 轮次由评审证据派生(与 C5 同一次目录扫描),并在每个 family 内部计数,绝不跨 family 相加。派生分两个阶段:结论**含义**从封闭词汇表里读得宽(接受/修订类措辞,加上 `N issues open` / `N issues found`,`0` 判 accept——但绝不做前缀匹配,所以带矛盾尾巴的接受措辞宁可拒绝也不误读);证据**完整性**判得严。任何 family 完成第一轮之前 C8 为 `n/a`;以下情形阻断:某 family 在它自己的第 2 轮后仍为 `revise` 且 `gates:` 里没有 `reframe <family> round <n> <split|tests|redo> — <理由>`;某 family 到达它自己的第 5 轮且所有者尚未以 `reframe <family> round <n> <split|tests|redo|accept-risk> — <理由>` 作答;以及任何证据 **problem**——结论行不可读、一篇文档声明两个不同结果、两份文档争同一 family 同一轮、摘要结论行被删而原始记录还在、以轮次命名的原始记录却没有摘要、或某 family 的 1..N 轮次出现断档。problem 一律 fail-closed 且没有任何 reframe 能豁免:处置是把证据修好,不是对它表决。**advisory 从不阻断**——正文粘贴两遍但结论相同、以及压根不是评审轮次的原始记录。已被确认的 escalation 放行,并依然打印 ESCALATION 行。`review/` 不可读时 C8 为 `n/a`:C5 已经阻断了。
 
@@ -191,6 +197,8 @@ usage: apriori update [--dry-run]
 示例:`apriori update --dry-run`
 
 退出码:0 完成 · 1 未初始化。
+
+**一次运行做什么(6.2)。** runbook 副本与各工具的命令文件,只在 `apriori/managed.json` 证明它们由工具写下、且你此后没改过时才刷新(`updated` / `up-to-date`);本地改过的是 `modified (skipped — …)`,认不出来的是 `unmanaged (skipped — …)`。协议所需的脚手架逐项补齐、绝不修改:缺 `apriori/.gitignore` 就创建,单独缺 `apriori/tmp/` 也会创建(`apriori/tmp/  (created)`;那个位置上若是别的东西,只报告、绝不替换)。**规则文件是你的**;update 在 `CLAUDE.md` / `AGENTS.md` / `.cursor/rules/apriori.mdc` / … 里唯一可能改的,是工具自己写下的指针段落,且只在它与某个历史发布版本逐字相同时——该段落换成当前版本(`pointer updated`),文件其余部分逐字节不动;手改过的指针只报告(`pointer (skipped — not a shipped generation; hand-edited, left alone)`)、绝不改写;没有指针或已是当前指针的文件不算动作。**汇总是诚实的:** `N file(s) refreshed`;有任何被拒绝刷新的就是 `N modified (skipped) — locally modified, not refreshed; …`;只有真的什么都没动时才说 `everything already matches`。**唯一的认领例外,明说:** 由早于 `managed.json` 的 CLI 初始化的项目没有清单;它的 `apriori/runbook.md` 会在第一次 `update` 时被认领并覆盖一次(命令文件只在字节与某个发布版本一致时才认领),此后两者像任何受管文件一样受保护——如果你定制过那份旧 runbook,第一次 `update` 前先把你的笔记复制出来。
 
 ## 八、配置参考
 

@@ -420,7 +420,8 @@ test('CF-12 the template carries one pattern in all three places, each pinned se
 
 test('CF-18 a freshly initialised project inherits the current pattern end to end', () => {
   const root = proj({ 'package.json': '{"name":"x"}' });
-  const init = run(root, ['init', '--tools', 'none']);
+  // (6.2 A-7: an unknown tool key is refused before anything is written — `none` never was one)
+  const init = run(root, ['init', '--tools', 'claude']);
   assert.strictEqual(init.status, 0, init.stdout + init.stderr);
   const resolved = resolveIdPattern(root, null);
   assert.strictEqual(resolved.origin, 'config', 'the template row is live, not decorative');

@@ -89,9 +89,11 @@ test('CL-10 doctor subcommand appears in usage and dispatches', () => {
 test('CL-07 unexpected subcommand failures exit cleanly — one line, no stack trace', () => {
   // archive with an unreadable store file → fs throws deep inside the subcommand
   const r = run(['archive', '--store', 'no-such-store.md', '--delta', 'no-such-delta.md', '--change', 'x']);
-  assert.strictEqual(r.status, 1);
+  assert.strictEqual(r.status, 2, '6.2: an uncaught failure is an untrustworthy run — exit 2 (JC-08)');
   assert.match(r.stderr, /^apriori: /);
   assert.doesNotMatch(r.stderr, /\n\s+at /);   // no stack frames reach the user
+  // (the JSON face of the same seam — `{result: 'ERROR', errors}` under --json — is JC-08's,
+  // on a command that takes --json; archive does not)
 });
 
 test('CL-18 the retired hotfix verb is refused with a pointer, and is gone from usage', () => {

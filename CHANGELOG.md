@@ -49,6 +49,15 @@ already stopped teaching are retired, and risk acceptance is unified on ONE mech
   absent/`none`/`n/a` fine; archived → history. `apriori new` stops writing it. `status --json`
   adds `acknowledged` / `historical`; `--escalation --json` is `{change, escalations,
   acknowledged, historical}`. Tests: `escalation-states.test.js` (ES-01..09); ST-14, NW-04 updated.
+- **Batch A-6 — `--json` contracts and argument semantics.** One fixed envelope per view for
+  success AND error: verify (`clean` boolean; argument/config/projection errors print the
+  envelope, exit 2), gate, gate `--review-ready` (`{change, ready, items, errors}` for the judged
+  view, an evaluation error and an argument error alike), status (single/list/`--escalation`
+  carry `errors[]`; resolve and argument errors are JSON), doctor. `--test-cmd ""` refused at the
+  argument layer for verify/gate/doctor; `check --specs /abs` resolves; an uncaught exception
+  exits 2 (was 1) and emits `{result:'ERROR', errors}` under `--json`. `args.withStrict` hands
+  argv to `jsonError`. Tests: `json-contracts.test.js` (JC-01..08, types not key sets); CL-07,
+  OI-05 follow.
 - **Batch A-4 — `init --test-cmd` round-trips byte-for-byte.** Callback replacement plus an
   explicit cell serializer/parser pair (`config.encodeCell` ↔ `splitCells`); pipe, backslash,
   `$&`/`$1`, unicode pinned; an empty value, a newline, or an odd backslash run before a pipe is

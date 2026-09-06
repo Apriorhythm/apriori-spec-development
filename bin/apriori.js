@@ -59,7 +59,15 @@ async function main() {
   }
 }
 
+// An UNCAUGHT exception is an evaluation nobody can trust: exit 2, like every other
+// untrustworthy run — and under --json still JSON, `{result: 'ERROR', errors: [...]}`, so a
+// machine consumer never has to parse prose to learn that the run blew up (JC-08).
 main().then(
   (code) => process.exit(code),
-  (err) => { console.error(`apriori: ${err && err.message ? err.message : err}`); process.exit(1); }
+  (err) => {
+    const msg = err && err.message ? err.message : String(err);
+    if (process.argv.includes('--json')) console.log(JSON.stringify({ result: 'ERROR', errors: [msg] }, null, 2));
+    else console.error(`apriori: ${msg}`);
+    process.exit(2);
+  }
 );

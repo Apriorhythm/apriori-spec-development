@@ -26,7 +26,9 @@ usage: apriori doctor [--test-cmd "<cmd>"] [--no-run] [--cwd <dir>] [--json]
 
 示例:`apriori doctor`
 
-退出码:0 HEALTHY · 1 有发现 · 2 不可用(未初始化 / Node 过老)。
+退出码:0 HEALTHY · 1 有发现 · 2 不可用(未初始化 / Node 过老 / 参数错误,如 `--test-cmd ""`)。
+
+**`--json` 信封**在每一类里都是 `{result: 'HEALTHY'|'FINDINGS'|'UNUSABLE', findings: number, checks: [{id, status, detail, fix?}], errors: string[]}`,参数错误也不例外。`--test-cmd ""` 被拒绝(`empty --test-cmd — pass a command or omit the flag`),绝不回退到配置。
 
 D6 用 `id-pattern` 配置行扫描 store(无 flag;detail 标注来源 `config` 或 `default`)。配置行非法或匹配被终止时 D6 报 finding 且 D5 探针跳过——坏 id-pattern 下 test command 绝不运行(§8.0)。
 
@@ -52,7 +54,9 @@ usage: apriori status [--change <name>] [--json] [--escalation]
 
 示例:`apriori status --change add-playback --json`
 
-退出码:成功路径恒为 0(status 只报告,不守门)。
+退出码:成功路径恒为 0(status 只报告,不守门)——`--escalation` 例外,有人被等着时以 **3** 退出;解析或参数错误以 **2** 退出。
+
+**`--json` 信封(6.2)**,每个都对成功与错误固定,并都带 `errors: string[]`:单个视图(下述字段,外加 `errors: []`;解析、名称或参数错误时为 `{change, errors: [msg]}`——先读 `errors.length`)、列表视图 `{changes: [...], errors: []}`、以及 `--escalation` 的 `{change, escalations, acknowledged, historical, errors}`(`escalations` 是 Stop hook 读的 pending 列表;出错时三个列表为空,`errors` 说明原因)。`--json` 下的每个错误都是 JSON,退出码 2。
 
 **唯一状态,原样读回。** `--change` 汇报 flow-state 承载的内容:`phase`;`reality` —— `## Reality Check` 按 `observed` / `decision` / `assumption` 拆开,外加任何没有点明类别的条目(报为不可读,绝不静默丢弃);`openIssues` —— `## Open` 各行原文;`openItems` —— 同样的行解析成 `{id, text, accepted, acceptedAt}`(6.2:`id` 是冒号前的那个 token,行里没有时为 `null`;所有者的 `evidence-accept <id>` 在案时 `accepted` 为 true,`acceptedAt` 是那条记录的时间戳,按原文照抄、绝不规范化);`evidence` —— 只承载遗留的 `## Evidence` 行(`{rows, blocked, recorded}`,该段不存在时全空);`next` —— `## Next` 动作,状态最多承载三条(超出时打印前三条并说明原本有几条);以及 `delivery`。每条未证实的 `assumption` 单独占一行:它是 Reality Check 里唯一还欠着东西的那一类。
 
@@ -75,7 +79,9 @@ usage: apriori verify --specs <dir...> --test-cmd "<cmd>" [--id-pattern <re>] [-
 
 示例:`apriori verify --change add-playback --test-cmd "npm test"`
 
-退出码:0 GREEN · 1 有缺口 · 2 运行不可信(输入缺失、非 TAP 输出、崩溃、合并冲突、CAS 不匹配)。
+退出码:0 GREEN · 1 有缺口 · 2 运行不可信(输入缺失、非 TAP 输出、崩溃、合并冲突、CAS 不匹配、投影的结构拒绝、参数错误)。
+
+**`--json` 信封(6.2)** 对 GREEN、GAPS 与每一类 ERROR 都是**同一个**形状——参数错误、配置错误、坏投影、严格解析器拒绝都打印它并以 2 退出:`{clean: boolean, result: 'GREEN'|'GAPS'|'ERROR', errors: string[], specFiles: number, exec: {status: number|null, signal: string|null, error: string|null}, duplicates: [], boundGreen: [{id, pass, fail, skip}], boundRed: [...], unbound: string[], orphan: [...], unidentified: [{file, title}], unattributedFailures: {count: number, lines: string[]}, stderr: string}`;`--change` 运行多一个 `projection`,已判定的 `--change` 运行再多 `storeReport`、`changeScope`、`modifiedIntegrity`。`clean` 是布尔值且等于 `result === 'GREEN'`——仅删除或空范围的运行是 `clean: true`,绝不是那句 vacuous 注记字符串。`--test-cmd ""`(或全空白)在参数层就被拒绝——要继承配置行就省略该 flag。
 
 `--change` 运行是**变更收窄**的:verdict(exit 0/1)只判本 change 的 Requirement 块(场景全绿、无收窄范围内重复/无 ID 场景、无不可归属失败信号——无 ID 的失败、任何兄弟活 change 都不认领的失败 ID 照旧阻断,fail-closed);绑定到范围外场景的 red、或可归因于兄弟 change **完整解析** delta 的失败(仅其 ADDED/MODIFIED 块内场景可授予豁免),不阻断。同一次运行打印信息性 **store report**(全投影六类)——并行 change 各自独立变绿,历史缺口持续可见。`--change --json` 在 GREEN/GAPS 附 `storeReport`、`changeScope` 与 `modifiedIntegrity`(一切 ERROR 缺省);`--specs` 输出与之前 byte 级一致。`modifiedIntegrity` 报告每个 MODIFIED 块的替换保真性(retained/titleChanged/dropped/added/ambiguous 场景与丢失行,含 requirement 散文)——仅信息性,绝不改判;human 的 `— MODIFIED INTEGRITY —` 段在存在风险类时打印。
 
@@ -130,6 +136,8 @@ usage: apriori gate --change <name> [--test-cmd "<cmd>"] [--id-pattern <re>] [--
 
 示例:`apriori gate --change add-playback --json`
 
+**`--json` 信封**在每一类里都是 `{change: string|null, stage: 'in-flight'|'archived'|null, checks: [{id, status, detail}], result: 'PASS'|'BLOCKED'|'INCOMPLETE'|'ERROR', blocked: number, errors: string[]}`,参数错误也不例外;退出码是映射,绝不是字段。**每个命令:** 未捕获的异常就是不可信的运行——退出码 **2**,`--json` 下仍是 JSON:`{result: 'ERROR', errors: [message]}`。
+
 退出码:0 PASS · 1 BLOCKED · 2 评估不可信 · 3 INCOMPLETE。
 
 完全没有测试命令时(既无 `--test-cmd`,也无 `test-cmd` 配置行),C1 报 `skipped`,其余七项照常执行——总结果是 `GATE: INCOMPLETE`,退出码 3。测试命令来源**坏掉**(配置冲突/不可读、`--test-cmd` 传了空值)仍是退出码 2:坏掉不等于没有。已确证的阻断优先于跳过,所以退出码 1 仍压过 3。
@@ -150,7 +158,7 @@ usage: apriori gate --change <name> [--test-cmd "<cmd>"] [--id-pattern <re>] [--
 
 *遗留的 `## Evidence` 段*(6.0 的行表,已经没有读者)在在途 bundle 里按规则迁移:写着 `blocked` 的行阻断,并给出 `legacy Evidence row '<name>' is blocked — move it to ## Open as an item (or accept it via evidence-accept <name>)`;声称 `owner-accepted` 却没有有效接受记录的行同样阻断(`… claims owner acceptance with no canonical gates: entry — move it to ## Open, or record: <模板>`——自己签的声明不能让风险消失);名字带有效接受记录的行按已接受的条目处理;其余各行(`done`、`n/a`、`fixed`、未填的脚手架行……)一律忽略,只留一条注记:`legacy ## Evidence section ignored (6.2: risks live in ## Open)`。**archived** 的 bundle 只汇报,绝不追溯重判——它的结论是 `recorded`。
 
-**`--review-ready`** 把**同一次**评估换一张脸作为"能否进评审"的答复,并且什么也不写——没有 receipt 文件、没有状态字段、没有缓存裁决;下一次运行重新算。**两项**,每一项都是这次运行真正量到的事实:`tests`(真实的测试/绑定结果,C1)与 `open`(状态可读且自己没有声明任何未了结的东西——每条都带稳定 id、没有重复 id、没有仍悬着的 Reality Check `assumption`、没有不点明类别的 Reality Check 行,每一条都用 C9 自己的措辞拒绝)。pending 的条目不会让 review-ready 失败:那正是评审要看的东西,该项的 detail 会这么说。早先的两项已经删掉(6.2):`evidence` 随行表一起离开,`producer-diff`——一种没有任何东西能观察到的自我认证——也随之删掉;P2 里"读完完整 diff"的指令仍然是指令,只是没有东西检查它。取而代之打印的是这次运行本来就握有的事实:它投影的增量 spec,以及 C1 自己的绑定计数。JSON 形状不变(`{change, ready, items:[{id, ok, detail}]}`),只有 id 变了。两项都成立时退出 0,任何一项不成立退出 1——没准备好的 change 回到 Build & Test,而不是进入一轮评审。C1 被跳过时永远读不成 ready:评审方不该是第一个跑测试套件的人。
+**`--review-ready`** 把**同一次**评估换一张脸作为"能否进评审"的答复,并且什么也不写——没有 receipt 文件、没有状态字段、没有缓存裁决;下一次运行重新算。**两项**,每一项都是这次运行真正量到的事实:`tests`(真实的测试/绑定结果,C1)与 `open`(状态可读且自己没有声明任何未了结的东西——每条都带稳定 id、没有重复 id、没有仍悬着的 Reality Check `assumption`、没有不点明类别的 Reality Check 行,每一条都用 C9 自己的措辞拒绝)。pending 的条目不会让 review-ready 失败:那正是评审要看的东西,该项的 detail 会这么说。早先的两项已经删掉(6.2):`evidence` 随行表一起离开,`producer-diff`——一种没有任何东西能观察到的自我认证——也随之删掉;P2 里"读完完整 diff"的指令仍然是指令,只是没有东西检查它。取而代之打印的是这次运行本来就握有的事实:它投影的增量 spec,以及 C1 自己的绑定计数。JSON 信封对已判定视图、求值错误与参数错误是**同一个**形状(6.2):`{change: string|null, ready: boolean|null, items: [{id, ok, detail}], errors: string[]}`——`ready: null` 加 `errors[]`(且没有 items)是错误,退出码 2;已判定视图带 `errors: []`。早先的 `{reviewReady: null, errors}` 与 gate 信封两种错误形式已不存在。两项都成立时退出 0,任何一项不成立退出 1——没准备好的 change 回到 Build & Test,而不是进入一轮评审。C1 被跳过时永远读不成 ready:评审方不该是第一个跑测试套件的人。
 
 **C8 —— 评审循环,逐 family。** 轮次由评审证据派生(与 C5 同一次目录扫描),并在每个 family 内部计数,绝不跨 family 相加。派生分两个阶段:结论**含义**从封闭词汇表里读得宽(接受/修订类措辞,加上 `N issues open` / `N issues found`,`0` 判 accept——但绝不做前缀匹配,所以带矛盾尾巴的接受措辞宁可拒绝也不误读);证据**完整性**判得严。任何 family 完成第一轮之前 C8 为 `n/a`;以下情形阻断:某 family 在它自己的第 2 轮后仍为 `revise` 且 `gates:` 里没有 `reframe <family> round <n> <split|tests|redo> — <理由>`;某 family 到达它自己的第 5 轮且所有者尚未以 `reframe <family> round <n> <split|tests|redo|accept-risk> — <理由>` 作答;以及任何证据 **problem**——结论行不可读、一篇文档声明两个不同结果、两份文档争同一 family 同一轮、摘要结论行被删而原始记录还在、以轮次命名的原始记录却没有摘要、或某 family 的 1..N 轮次出现断档。problem 一律 fail-closed 且没有任何 reframe 能豁免:处置是把证据修好,不是对它表决。**advisory 从不阻断**——正文粘贴两遍但结论相同、以及压根不是评审轮次的原始记录。已被确认的 escalation 放行,并依然打印 ESCALATION 行。`review/` 不可读时 C8 为 `n/a`:C5 已经阻断了。
 

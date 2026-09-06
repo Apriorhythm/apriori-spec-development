@@ -58,6 +58,14 @@ bundle it is history. `apriori new` no longer writes it. `status --json` adds `a
 and `historical` beside `escalations` (now the pending list only), and each `escalation[]`
 entry carries `state`.
 
+**`--json` envelopes are fixed, for success and error (see docs/cli).** `verify.clean` is a
+boolean; verify, status and doctor print their envelope on argument and resolve errors too
+(exit 2); `gate --review-ready --json` is one shape, `{change, ready, items, errors}` — the
+`{reviewReady: null, errors}` form and the gate-envelope form on an argument error are gone;
+`status --json` views add `errors: []`. `--test-cmd ""` is refused by verify, gate and doctor
+alike (omit the flag to inherit the config row). `check --specs /absolute/path` is absolute. An
+uncaught exception exits 2 (was 1) and, under `--json`, prints `{result: 'ERROR', errors}`.
+
 **`init --test-cmd` persists the command byte-for-byte.** `|`, backslashes, `$&`/`$1` and
 unicode round-trip through `config.encodeCell` / `splitCells`; an empty value, a newline, or an
 odd run of backslashes right before a pipe is refused (exit 2) before anything is written. A

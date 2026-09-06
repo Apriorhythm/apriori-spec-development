@@ -314,7 +314,8 @@ test('OI-05 review-ready answers two items — tests, and a readable Open sectio
   assert.match(r.stdout, /^✓ open {2}1 open item\(s\): 0 accepted, 1 pending — pending items are what the review is for$/m);
   assert.match(r.stdout, /^REVIEW-READY: YES$/m);
   const j = JSON.parse(gate(ready, ['--review-ready', '--json']).stdout);
-  assert.deepStrictEqual(Object.keys(j).sort(), ['change', 'items', 'ready']);
+  assert.deepStrictEqual(Object.keys(j).sort(), ['change', 'errors', 'items', 'ready'], '6.2: one envelope, errors[] included (JC-03)');
+  assert.deepStrictEqual(j.errors, []);
   assert.deepStrictEqual(j.items.map((i) => [i.id, i.ok]), [['tests', true], ['open', true]]);
   // …while the same bundle is NOT gate-passable or archivable: the item is pending
   assert.strictEqual(gate(ready).status, 1);

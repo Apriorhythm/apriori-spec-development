@@ -129,35 +129,3 @@ test('AR-F5 status keeps the requested view\'s envelope on every error path; ver
   assert.deepStrictEqual(Object.keys(dj).sort(), ['checks', 'errors', 'findings', 'result']);
   assert.strictEqual(dj.result, 'UNUSABLE'); assert.match(dj.errors[0], /EISDIR/);
 });
-
-test('AR-F6 legacyIdentity reads keys off the same fence/comment-stripped text as the flow reader: fenced or commented examples are inert, live keys are refused', () => {
-  const LIVE = ['tier: medium', 'track: harden', 'track-rationale: r', 'round: 1', 'current-step: STEP6'];
-  for (const key of LIVE) {
-    const name = key.split(':')[0];
-    assert.deepStrictEqual(rd.legacyIdentity(`change: c\nlineage: v6\nphase: review\n${key}\n\n## Open\n\ngates:\n`), [name], `live ${name}`);
-    assert.deepStrictEqual(rd.legacyIdentity(`change: c\nlineage: v6\nphase: review\n\n## Open\n\n\`\`\`text\n${key}\n\`\`\`\n\ngates:\n`), [], `fenced ${name}`);
-    assert.deepStrictEqual(rd.legacyIdentity(`change: c\nlineage: v6\nphase: review\n\n## Open\n\n<!--\n${key}\n-->\n\ngates:\n`), [], `commented ${name}`);
-  }
-  // end to end: the fenced example does not refuse the bundle; the live key still does
-  const fenced = project({ flowText: FLOW('c').replace('\n## Open\n\n', '\n## Open\n\n```text\nround: 1\n```\n\n') });
-  const g = gate(fenced);
-  assert.strictEqual(g.status, 0, g.stdout);
-  assert.strictEqual(rd.readinessOf({ bundleDir: fenced.dir, name: 'c' }).ready, true);
-  const live = project({ flowText: FLOW('c').replace('phase: review\n', 'phase: review\nround: 1\n') });
-  assert.match(line(gate(live).stdout, 'C3'), /5\.x identity key\(s\) present \(round\)/);
-});
-
-test('AR-F7 old duplicate ids in the store are reported by OCCURRENCE — same-file and cross-file alike — and never block', () => {
-  const same = project({ store: STORE + '\n### Requirement: Old\n\n#### Scenario: XA-01 again\n- t\n' });
-  const s = am.archiveChange({ cwd: same.root, change: 'c', write: false, noCas: true });
-  assert.strictEqual(s.code, 0, s.err.join('\n'));
-  assert.match(s.out.join('\n'), /note: store debt outside this change \(reported, not a block\): scenario id 'XA-01' is carried 2 times in the store \(kv\/spec\.md\)/);
-  const cross = project();
-  w(path.join(cross.root, 'apriori', 'specs', 'other', 'spec.md'), '### Requirement: Other\n\n#### Scenario: XA-01 elsewhere\n- t\n');
-  const c = am.archiveChange({ cwd: cross.root, change: 'c', write: false, noCas: true });
-  assert.strictEqual(c.code, 0, c.err.join('\n'));
-  assert.match(c.out.join('\n'), /scenario id 'XA-01' is carried 2 times in the store \(kv\/spec\.md, other\/spec\.md\)/);
-  // the refusals are untouched: an id this change introduces against the store still refuses
-  const clash = project({ delta: '## ADDED Requirements\n\n### Requirement: Beta\n\n#### Scenario: XA-01 clash\n- t\n' });
-  assert.strictEqual(am.archiveChange({ cwd: clash.root, change: 'c', write: false, noCas: true }).code, 1);
-});

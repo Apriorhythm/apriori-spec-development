@@ -49,6 +49,15 @@ already stopped teaching are retired, and risk acceptance is unified on ONE mech
   absent/`none`/`n/a` fine; archived → history. `apriori new` stops writing it. `status --json`
   adds `acknowledged` / `historical`; `--escalation --json` is `{change, escalations,
   acknowledged, historical}`. Tests: `escalation-states.test.js` (ES-01..09); ST-14, NW-04 updated.
+- **Acceptance round 2 (Astra F5 partial).** The error views no longer re-guess argv: `args.consume`
+  is the ONE token walker (a value flag consumes the next token verbatim, a repeated value flag is
+  last-wins); `parseStrict` is its strict face and `args.recover` its lenient face, and every
+  `jsonError(msg, argv)` (status, gate, verify, doctor) recovers `{view, change, json}` through it
+  — returning null when `--json` was swallowed as a value — for the strict-parser rejection and
+  the top-level exception handler alike. `status --change --escalation --json` is a change-view
+  error for a change named `--escalation`; `--change c --change absent` errors for `absent`;
+  `gate … --test-cmd --review-ready --json --bad` is a gate-view error. Tests:
+  `accept-r2.test.js` (AR2-00..06). Advisories: AR-F6/F7 deduplicated; status.toJson comment fixed.
 - **Acceptance round 1 (Astra F1–F7).** F1 the fence scanner records the opening marker
   (backticks or tildes) and its length; only a same-marker, at-least-as-long, bare line closes —
   an owner entry inside a ```` block quoting a ``` block authorizes nothing. F2 inside a section

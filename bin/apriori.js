@@ -60,16 +60,18 @@ async function main() {
 }
 
 // An UNCAUGHT exception is an evaluation nobody can trust: exit 2, like every other
-// untrustworthy run — and under --json still the envelope of the VIEW that was asked for
-// (each command's own `jsonError`, the same constructor its strict parser uses), so a machine
-// consumer never has to parse prose, or guess a shape, to learn that the run blew up (JC-08, F5).
+// untrustworthy run — and, when JSON was asked for, still the envelope of the VIEW that was
+// asked for: the command's own `jsonError` recovers the request context with the parser's own
+// token rules (never a scan of argv — a `--json` swallowed as a value is not a JSON request) and
+// answers null when no JSON view was requested (JC-08, F5). Commands without a JSON face
+// answer in text.
 const JSON_FACES = { status: 'status', verify: 'spec-runner', gate: 'gate', doctor: 'doctor' };
 main().then(
   (code) => process.exit(code),
   (err) => {
     const msg = err && err.message ? err.message : String(err);
-    if (rest.includes('--json') && JSON_FACES[sub]) console.log(require(`../lib/${JSON_FACES[sub]}`).jsonError(msg, rest));
-    else if (rest.includes('--json')) console.log(JSON.stringify({ result: 'ERROR', errors: [msg] }, null, 2));
+    const out = JSON_FACES[sub] ? require(`../lib/${JSON_FACES[sub]}`).jsonError(msg, rest) : null;
+    if (out) console.log(out);
     else console.error(`apriori: ${msg}`);
     process.exit(2);
   }

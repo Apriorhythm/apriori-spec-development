@@ -102,7 +102,7 @@ test('RY-09 the archive review-root check matches the gate check, absence includ
     realpathSync: fs.realpathSync,
   }), null);
 
-  // the absent case is the one that keeps a missing review/ flowing to the tier rule
+  // the absent case is the one that keeps a missing review/ flowing to R4's review floor
   const empty = mk();
   assert.strictEqual(rd.reviewRootDefect(empty), null, 'an absent review/ is not a defect');
   assert.strictEqual(rd.reviewDirDefect(empty), null, 'and state A agrees');
@@ -170,7 +170,7 @@ test('RY-14 the review root classifies its own guard failures, and ENOENT stays 
     lstatSync: () => { const e = new Error('gone'); e.code = 'ENOENT'; throw e; },
     realpathSync: fs.realpathSync,
   });
-  assert.strictEqual(gone, null, 'an absent review root is handed to the tier rule, not refused');
+  assert.strictEqual(gone, null, 'an absent review root is handed to R4, not refused');
   // and a realpath-stage ENOENT lands the same way (AM-115's helper half)
   fs.mkdirSync(path.join(d, 'review'));
   const rpGone = rd.reviewRootDefect(d, {
@@ -183,6 +183,6 @@ test('RY-14 the review root classifies its own guard failures, and ENOENT stays 
 test('RY-15 every non-missing kind is structural, and gate is untouched by all of it', () => {
   for (const k of ['io-error', 'symlink', 'not-file', 'not-dir', 'escape', 'bad-ancestor'])
     assert.ok(rd.STRUCTURAL.has(k), `${k} must be structural (never forceable)`);
-  assert.ok(!rd.STRUCTURAL.has('missing'), 'missing is the one kind that takes the tier branch');
+  assert.ok(!rd.STRUCTURAL.has('missing'), 'missing is the one kind that is not a refusal');
   assert.strictEqual(typeof gate.runGate, 'function');
 });

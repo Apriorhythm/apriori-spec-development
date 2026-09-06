@@ -62,13 +62,13 @@ const line = (out, id) => (out.split('\n').find((l) => l.includes(` ${id} `)) ||
 // ---------------------------------------------------------------------------
 
 test('RY-01 the base predicates are what the gate reports', () => {
-  // The differential that matters after slice 5: gate does not re-decide C2/C3/C4/C9, it
-  // prints lib/readiness.js's own return values. A second copy in gate is how the archive
-  // and the gate came to disagree in 5.x.
+  // The differential that matters after slice 5: gate does not re-decide C3/C9, it prints
+  // lib/readiness.js's own return values; C2 and C4 are 6.2 placeholders with one fixed shape.
+  // A second copy in gate is how the archive and the gate came to disagree in 5.x.
   const { root, dir } = project();
   fs.writeFileSync(path.join(dir, 'tasks.md'), '- [ ] b\n');
   fs.writeFileSync(path.join(dir, 'review', 'issues.md'),
-    '| ID | Issue | Risk | Round found | Status |\n|---|---|---|---|---|\n| Q-1 | i | low | 1 | verified |\n');
+    '| ID | Issue | Risk | Round found | Status |\n|---|---|---|---|---|\n| Q-1 | i | low | 1 | open |\n');
   const flowText = fs.readFileSync(path.join(dir, 'flow-state.md'), 'utf8');
   const state = status.parseFlowState(flowText);
   const res = require('../lib/gate').runGate({ cwd: root, change: 'c', testCmd: TAP, noCas: true });
@@ -79,9 +79,9 @@ test('RY-01 the base predicates are what the gate reports', () => {
   const opts = { stage: 'in-flight', mode: 'standard', riskSignals: risk.scanDeltas(dir) };
   assert.deepStrictEqual(res.evidenceOpts, opts, 'gate must hand C9 the scan and the effective mode');
   const mine = {
-    C2: rd.checkTasks(dir),
+    C2: { id: 'C2', status: 'n/a', detail: 'retired in 6.2 — nothing is read' },
     C3: rd.checkFlowState(state, 'c', flowText),
-    C4: rd.checkLedger('in-flight', dir),
+    C4: { id: 'C4', status: 'n/a', detail: 'ledger retired in 6.2 — open items live in ## Open' },
     C9: rd.checkEvidenceStatus(flowText, opts),
   };
   for (const id of Object.keys(mine)) {
@@ -95,36 +95,36 @@ test('RY-01 the base predicates are what the gate reports', () => {
 // The scaffold, and what a change owes without one
 // ---------------------------------------------------------------------------
 
-test('RY-16 no rule asks for a task list, present or absent', () => {
-  // absent: archivable, and C2 says so
+test('RY-16 no rule reads a task list, present or absent', () => {
+  // absent: archivable, and C2 is the 6.2 placeholder
   const { root, dir } = project();
   assert.strictEqual(run(['archive', '--change', 'c', '--no-cas'], root).status, 0);
   assert.ok(!rd.readinessOf({ bundleDir: dir, name: 'c' }).blockers.some((b) => b.rule === 'R2'),
     'the retired R2 rule came back');
-  // present with unchecked boxes: still archivable, reported as a diagnostic
+  // present with unchecked boxes: still archivable, and the gate says nothing about it
   w(path.join(dir, 'tasks.md'), '- [x] a\n- [ ] b\n- [ ] c\n');
   assert.strictEqual(run(['archive', '--change', 'c', '--no-cas'], root).status, 0,
     'a legacy checklist must not stop an irreversible write');
   const c2 = line(gate(root).stdout, 'C2');
-  assert.match(c2, /^– C2 /);
-  assert.match(c2, /legacy tasks\.md: 2 unchecked box\(es\)/);
-  assert.match(c2, /diagnostic only/);
+  assert.match(c2, /^– C2 retired in 6\.2 — nothing is read$/);
 });
 
-test('RY-17 the ledger blocks on open findings and reports the rest', () => {
+test('RY-17 the ledger is never read: an open row neither blocks nor is reported', () => {
   const LED = (row) => '| ID | Issue | Risk | Round found | Status |\n|---|---|---|---|---|\n' + `| Q-1 | i | low | 1 | ${row} |\n`;
-  // an open row refuses, and --force needs the recorded decision
-  const open = project();
-  w(path.join(open.dir, 'review', 'issues.md'), LED('open'));
-  assert.strictEqual(run(['archive', '--change', 'c', '--no-cas'], open.root).status, 1);
-  // bookkeeping-only defects archive, each named as a note. `fixed` is the archive-stage one:
-  // 5.x refused a merge over it, which is exactly the round the blueprint deletes.
-  for (const row of ['frobnicated', 'rejected', 'waived by the owner', 'fixed']) {
+  for (const row of ['open', 'frobnicated', 'rejected', 'waived by the owner', 'fixed']) {
     const p = project();
     w(path.join(p.dir, 'review', 'issues.md'), LED(row));
+    const r = rd.readinessOf({ bundleDir: p.dir, name: 'c' });
+    assert.strictEqual(r.ready, true, `${row}: ${JSON.stringify(r.blockers)}`);
+    assert.ok(!r.blockers.some((b) => b.rule === 'R3'), `${row}: the retired R3 rule came back`);
+    assert.deepStrictEqual(r.na, [], `${row}: nothing is n/a — there is no ledger rule to be n/a`);
+    assert.ok(!r.notes.some((n) => /R3|ledger|Q-1/.test(n)), `${row}: nothing about the ledger is printed: ${r.notes}`);
     const a = run(['archive', '--change', 'c', '--no-cas'], p.root);
     assert.strictEqual(a.status, 0, `${row}: ${a.stdout}${a.stderr}`);
-    assert.match(a.stdout, /note: R3 bookkeeping \(not blocking\)/, `${row}: ${a.stdout}`);
+    assert.doesNotMatch(a.stdout + a.stderr, /Q-1|bookkeeping/, row);
+    assert.match(line(gate(p.root).stdout, 'C4'), /^– C4 ledger retired in 6\.2 — open items live in ## Open$/, row);
+    const j = JSON.parse(run(['status', '--change', 'c', '--json'], p.root).stdout);
+    assert.deepStrictEqual(j.openLedger, [], `${row}: the compat key stays and stays empty`);
   }
 });
 
@@ -390,14 +390,15 @@ test('RY-20 a standard change with no tasks and no ledger passes, archives and d
 
 test('RY-21 a 5.x bundle is diagnosed, not silently read, and its legacy files never block', () => {
   const { root, dir } = project({ evidence: READY_EV });
-  // legacy residue: a task list with open boxes and a ledger full of bookkeeping defects
+  // legacy residue: a task list with open boxes and a ledger with an open row — neither is read
   w(path.join(dir, 'tasks.md'), '- [ ] never finished\n');
   w(path.join(dir, 'review', 'issues.md'),
-    '| ID | Issue | Risk | Round found | Status |\n|---|---|---|---|---|\n| Q-1 | i | low | 1 | fixed |\n| Q-2 | j | low | 1 | frobnicated |\n');
+    '| ID | Issue | Risk | Round found | Status |\n|---|---|---|---|---|\n| Q-1 | i | low | 1 | open |\n| Q-2 | j | low | 1 | frobnicated |\n');
   const g = gate(root);
-  assert.strictEqual(g.status, 0, `legacy residue must be diagnostic, not blocking:\n${g.stdout}`);
-  assert.match(line(g.stdout, 'C2'), /legacy tasks\.md: 1 unchecked/);
-  assert.match(line(g.stdout, 'C4'), /bookkeeping \(not blocking\)/);
+  assert.strictEqual(g.status, 0, `legacy residue must be inert, not blocking:\n${g.stdout}`);
+  assert.match(line(g.stdout, 'C2'), /^– C2 retired in 6\.2/);
+  assert.match(line(g.stdout, 'C4'), /^– C4 ledger retired in 6\.2/);
+  assert.doesNotMatch(g.stdout, /Q-1|Q-2|unchecked/, 'nothing from the unread files reaches the report');
   // but the 5.x IDENTITY key is refused rather than read
   const flow = path.join(dir, 'flow-state.md');
   fs.writeFileSync(flow, fs.readFileSync(flow, 'utf8').replace('phase: review', 'current-step: STEP6\nphase: review'));

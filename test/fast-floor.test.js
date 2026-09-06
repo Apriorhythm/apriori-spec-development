@@ -178,8 +178,8 @@ test('FF-07 what is fast\'s alone is the WAIVER, not the review', () => {
     review: (d) => reviewRound(d, 'code-review', 1, 'no major issues') });
   const g = gate(root);
   assert.strictEqual(g.status, 0, g.stdout);
-  assert.match(line(g.stdout, 'C2'), /^– C2 .*no tasks\.md/);
-  assert.match(line(g.stdout, 'C4'), /^– C4 .*no ledger/);
+  assert.match(line(g.stdout, 'C2'), /^– C2 retired in 6\.2/);
+  assert.match(line(g.stdout, 'C4'), /^– C4 ledger retired in 6\.2/);
 });
 
 // ---------------------------------------------------------------------------
@@ -376,8 +376,8 @@ test('FF-09 an ADDED-only delta does not upgrade — the additive case stays fas
   assert.strictEqual(g.status, 0, `an additive fast change must stay fast, got exit ${g.status}:\n${g.stdout}`);
   const c3 = line(g.stdout, 'C3');
   assert.doesNotMatch(c3, /standard/, `no upgrade may be invented, got: ${c3}`);
-  assert.match(line(g.stdout, 'C2'), /^– C2 .*no tasks\.md/, 'the fast waivers must still apply');
-  assert.match(line(g.stdout, 'C4'), /^– C4 .*no ledger/, 'the fast waivers must still apply');
+  assert.match(line(g.stdout, 'C2'), /^– C2 retired in 6\.2/, 'the retired readers stay retired');
+  assert.match(line(g.stdout, 'C4'), /^– C4 ledger retired in 6\.2/, 'the retired readers stay retired');
 });
 
 test('FF-10 gate, archive readiness and status report the same upgrade', () => {

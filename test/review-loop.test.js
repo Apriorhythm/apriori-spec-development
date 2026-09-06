@@ -506,7 +506,7 @@ test('RL-29 a defective review root produces no round and no escalation, in gate
   fs.symlinkSync(outside, path.join(bundle, 'review'));
 
   const r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
-  assert.strictEqual(r.checks.find((x) => x.id === 'C4').status, 'blocked');
+  assert.strictEqual(r.checks.find((x) => x.id === 'C4').status, 'n/a', '6.2: C4 is a placeholder');
   assert.strictEqual(r.checks.find((x) => x.id === 'C5').status, 'blocked');
   assert.strictEqual(r.checks.find((x) => x.id === 'C8').status, 'n/a');
 
@@ -524,7 +524,7 @@ test('RL-30 an unreadable review root leaves C8 without an opinion, not a second
   fs.symlinkSync(path.join(root, 'no-such-target'), path.join(bundle, 'review'));
   const r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
   assert.strictEqual(r.checks.find((x) => x.id === 'C8').status, 'n/a');
-  assert.strictEqual(r.blocked, 2);
+  assert.strictEqual(r.blocked, 1, '6.2: C5 alone — C4 is a placeholder and reads nothing');
 });
 
 test('RL-31 status shows every family, its verdict, its open count, advisories and escalation', () => {

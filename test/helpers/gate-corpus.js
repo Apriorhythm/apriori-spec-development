@@ -7,9 +7,8 @@
 // independent oracle. Both the capture script and the differential test import this
 // module, so the two runs see byte-identical inputs.
 //
-// Capture entry point: gate.js exports only { runGate, resolveChange, classifyStatus, cli } —
-// checkTasks/checkFlowState/checkLedger are private, so C2/C3/C4 are read off
-// runGate(...).checks (STEP2·r2 A-5).
+// Capture entry point: gate.js exports { runGate, resolveChange, reviewReadyView, cli } —
+// checkFlowState is private, so C3 is read off runGate(...).checks (STEP2·r2 A-5).
 
 const fs = require('fs');
 const os = require('os');
@@ -37,24 +36,15 @@ const flow = (name, over = {}) => {
   return `${body}\n${legacy}${evidence}gates:\n${gates}`;
 };
 
-const ledger = (...rows) =>
-  '| ID | Issue | Risk | Round found | Status |\n|---|---|---|---|---|\n' +
-  rows.map((r) => `| ${r} |\n`).join('');
-
-const TASKS_DONE = '- [x] T1 done\n- [X] T2 done\n';
-const TASKS_OPEN = '- [x] T1 done\n- [ ] T2\n- [ ] T3\n- [ ] T4\n';
-
 // TAP that satisfies the binding check for both store scenarios.
 const TAP_OK = `node -e "${['ok 1 - XA-01 a', 'ok 2 - XB-01 b'].map((l) => `console.log('${l}')`).join(';')}"`;
 
 // Every case: {id, files, change, stage} — stage 'in-flight' | 'archived'.
-// Coverage: C2 (diagnostic only), C3 pass and every blocked branch (5.x identity included),
-// C4 pass/blocked (the open row) and each bookkeeping note, the review-root guard, and both stages.
+// Coverage: C3 pass and every blocked branch (5.x identity included), the review-root guard,
+// and both stages. 6.2 retired the task-list and ledger readers, so no case carries either file.
 const CASES = [
-  { id: 'healthy-standard', change: 'c', mode: 'standard', tasks: TASKS_DONE, led: ledger('Q-1 | a | low | 1 | verified') },
-  { id: 'fast-no-tasks-no-ledger', change: 'c', mode: 'fast', tasks: null, led: null },
-  { id: 'standard-tasks-missing', change: 'c', mode: 'standard', tasks: null, led: ledger('Q-1 | a | low | 1 | verified') },
-  { id: 'tasks-unchecked', change: 'c', mode: 'standard', tasks: TASKS_OPEN, led: ledger('Q-1 | a | low | 1 | verified') },
+  { id: 'healthy-standard', change: 'c', mode: 'standard' },
+  { id: 'fast', change: 'c', mode: 'fast' },
   { id: 'flow-missing-key', change: 'c', over: { lineage: null } },
   { id: 'flow-placeholder', change: 'c', over: { lineage: '<fill me>' } },
   { id: 'flow-name-mismatch', change: 'c', over: { change: 'other' } },
@@ -64,18 +54,6 @@ const CASES = [
   { id: 'flow-abandoned', change: 'c', over: { phase: 'abandoned' } },
   { id: 'flow-done', change: 'c', over: { phase: 'done' } },
   { id: 'flow-review', change: 'c', over: { phase: 'review' } },
-  { id: 'standard-ledger-missing', change: 'c', mode: 'standard', tasks: TASKS_DONE, led: null },
-  { id: 'ledger-open-row', change: 'c', led: ledger('Q-1 | a | low | 1 | open') },
-  { id: 'ledger-illegal-status', change: 'c', led: ledger('Q-1 | a | low | 1 | frobnicated') },
-  { id: 'ledger-rejected-no-reason', change: 'c', led: ledger('Q-1 | a | low | 1 | rejected') },
-  { id: 'ledger-rejected-with-reason', change: 'c', led: ledger('Q-1 | a | low | 1 | rejected because x') },
-  { id: 'ledger-waived-no-evidence', change: 'c', led: ledger('Q-1 | a | low | 1 | waived by human') },
-  { id: 'ledger-waived-with-evidence', change: 'c', led: ledger('Q-1 | a | low | 1 | waived by human'),
-    over: { __gates: '  - 2026-07-11T00:00 owner: Q-1 waived — reason\n' } },
-  { id: 'ledger-fixed-in-flight', change: 'c', led: ledger('Q-1 | a | low | 1 | fixed') },
-  { id: 'ledger-fixed-archived', change: 'c', stage: 'archived', led: ledger('Q-1 | a | low | 1 | fixed') },
-  { id: 'ledger-rejected-archived', change: 'c', stage: 'archived', led: ledger('Q-1 | a | low | 1 | rejected because x') },
-  { id: 'ledger-terminal-archived', change: 'c', stage: 'archived', led: ledger('Q-1 | a | low | 1 | rejected-verified because x') },
   { id: 'review-root-symlink', change: 'c', reviewRoot: 'symlink', needsSymlink: true },
   { id: 'review-root-file', change: 'c', reviewRoot: 'file' },
 ];
@@ -93,20 +71,17 @@ function build(c) {
   write(path.join(root, 'apriori', 'specs', 'kv', 'spec.md'), STORE);
   write(path.join(dir, 'flow-state.md'), flow(name, { mode: c.mode || 'standard', ...(c.over || {}) }));
   write(path.join(dir, 'specs', 'kv', 'spec.md'), DELTA);
-  if (c.tasks !== null) write(path.join(dir, 'tasks.md'), c.tasks || TASKS_DONE);
 
   if (c.reviewRoot === 'symlink') {
     fs.mkdirSync(path.join(dir, 'elsewhere'), { recursive: true });
-    fs.writeFileSync(path.join(dir, 'elsewhere', 'issues.md'), ledger('Q-1 | a | low | 1 | verified'));
+    fs.writeFileSync(path.join(dir, 'elsewhere', 'code-review-v1.md'), 'VERDICT: no major issues\n');
     fs.symlinkSync(path.join(dir, 'elsewhere'), path.join(dir, 'review'));
   } else if (c.reviewRoot === 'file') {
     fs.writeFileSync(path.join(dir, 'review'), 'not a directory\n');
-  } else if (c.led !== null) {
-    write(path.join(dir, 'review', 'issues.md'), c.led || ledger('Q-1 | a | low | 1 | verified'));
   } else {
     fs.mkdirSync(path.join(dir, 'review'), { recursive: true });
   }
   return { root, change: name, dir };
 }
 
-module.exports = { CASES, build, TAP_OK, STORE, DELTA, ledger, flow, TASKS_DONE, TASKS_OPEN };
+module.exports = { CASES, build, TAP_OK, STORE, DELTA, flow };

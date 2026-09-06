@@ -8,7 +8,7 @@
 //   · the owner's §6 evidence exit          — a CLOSED grammar, or it is not an owner decision
 //   · what the CLI PROVED about the delta    — answered by name, or fail-closed
 //   · the change's own recorded claims       — its words about itself are binding
-//   · the optional legacy ledger             — blocks on one thing and outranks nothing
+//   · the legacy ledger                      — never read, and it outranks nothing
 //
 // The tests drive the real CLI and the real predicates over real bundles; nothing here asserts
 // on a mock.
@@ -305,21 +305,15 @@ test('RY-25 an unreadable delta is fail-closed and no evidence row cures it',
 // RY-26 — the optional legacy ledger
 // ---------------------------------------------------------------------------
 
-test('RY-26 the legacy ledger blocks on a real open row and outranks nothing', () => {
-  // ONE row shape blocks, and it blocks as PROGRESS — forceable on the owner's record
-  for (const st of ['open', 'Open', 'open — still waiting on staging']) {
+test('RY-26 the legacy ledger is never read, and no ledger state closes the review floor', () => {
+  // 6.2: the ledger has no reader. An open row is not a finding, not a note, not an R3 rule.
+  for (const st of ['open', 'Open', 'open — still waiting on staging', 'verified', 'frobnicated']) {
     const p = project({ ledger: LED(st) });
     const r = rd.readinessOf({ bundleDir: p.dir, name: 'c' });
-    assert.strictEqual(r.ready, false, st);
-    assert.deepStrictEqual(r.blockers.map((b) => [b.rule, b.class, b.forceable]), [['R3', 'progress', true]], st);
+    assert.strictEqual(r.ready, true, `${st}: ${JSON.stringify(r.blockers)}`);
+    assert.ok(!r.blockers.some((b) => b.rule === 'R3') && !r.notes.some((n) => /R3|Q-1/.test(n)), st);
   }
-  // everything else in the vocabulary — and outside it — is bookkeeping, and bookkeeping ships
-  for (const st of ['opened', 'openly rejected', 'frobnicated', 'verified', 'fixed', 'rejected', 'waived by the owner'])
-    assert.strictEqual(rd.readinessOf({ bundleDir: project({ ledger: LED(st) }).dir, name: 'c' }).ready, true, st);
-
-  // and no ledger state closes the reviewer's latest word. This is the exemption an earlier 6.0
-  // draft gave a change that kept a ledger: C4/R3 would drive the rows terminal, and an empty or
-  // fully-closed ledger then outranked a `revise` nobody had answered.
+  // and no ledger state closes the reviewer's latest word — the floor is the evidence's alone
   for (const verdict of ['3 issues open', 'gaps found', 'escalate']) {
     for (const [why, ledger] of [
       ['no ledger at all', null],
@@ -330,12 +324,11 @@ test('RY-26 the legacy ledger blocks on a real open row and outranks nothing', (
       const r4 = rd.readinessOf({ bundleDir: p.dir, name: 'c' }).blockers.filter((b) => b.rule === 'R4');
       assert.ok(r4.some((b) => b.class === 'review'), `${verdict} / ${why}: ${JSON.stringify(r4)}`);
       assert.match(line(gate(p).stdout, 'C8'), /the independent review has not resolved/, `${verdict} / ${why}`);
-      assert.match(line(gate(p).stdout, 'C8'), /no ledger state can stand in for it/, `${verdict} / ${why}`);
       assert.strictEqual(archive(p).status, 1, `${verdict} / ${why}`);
     }
   }
   // an accepting latest verdict is what closes it — the ledger neither helps nor hinders
-  for (const ledger of [null, LED('verified')])
+  for (const ledger of [null, LED('verified'), LED('open')])
     assert.strictEqual(rd.readinessOf({ bundleDir: project({ ledger, verdict: '0 issues open' }).dir, name: 'c' }).ready,
       true, String(ledger));
 });
@@ -553,20 +546,16 @@ test('RY-29 the three owner decisions read ONE canonical entry, and no verb is l
   assert.deepStrictEqual(raw.map((e) => e.payload), [null, 'archive-force ledger — r', null]);
 });
 
-test('AM-121 the owner exits keep their double action, and the printed cure is copyable', () => {
-  const OPEN = LED('open');
-  // R3 — an open ledger row needs BOTH the recorded decision AND --force. Neither alone.
+test('AM-121 the owner exit keeps its double action, and the printed cure is copyable', () => {
+  // 6.2: the ledger class is gone, so `archive-force` has nothing left to force — the record is
+  // reported as a note and changes no verdict, with or without --force
   const rec = CANON('archive-force ledger — the owner says ship it') + '\n';
-  assert.strictEqual(archive(project({ ledger: OPEN, gates: rec })).status, 1, 'the record alone is not a --force');
-  assert.strictEqual(archive(project({ ledger: OPEN }), ['--force']).status, 1, '--force alone is not a decision');
-  assert.strictEqual(archive(project({ ledger: OPEN, gates: rec }), ['--force']).status, 0);
-  // …and the near misses buy neither half
-  for (const [why, prefix, lead] of NEAR_MISSES) {
-    const p = project({ ledger: OPEN, gates: nearMiss(prefix, lead, 'archive-force ledger — ship it') + '\n' });
-    assert.strictEqual(archive(p, ['--force']).status, 1, why);
-  }
+  const inert = archive(project({ ledger: LED('open'), gates: rec }));
+  assert.strictEqual(inert.status, 0, inert.stdout + inert.stderr);
+  assert.match(inert.stdout, /^note: archive-force has nothing left to force in 6\.2$/m);
+  assert.doesNotMatch(inert.stdout, /^forced:/m);
 
-  // R4 — a round-5 escalation, the other double action. Five rounds of one family.
+  // R4 — a round-5 escalation, the ONE double action left. Five rounds of one family.
   const five = (gates) => {
     const p = project({ gates });
     for (let i = 1; i <= 5; i++) {
@@ -589,18 +578,16 @@ test('AM-121 the owner exits keep their double action, and the printed cure is c
   // THE CURE THE TOOL PRINTS MUST WORK WHEN PASTED. A template that names only the verb was
   // handing a human a line that no longer authorizes anything once the prefix became binding.
   const stuck = five('');
-  w(path.join(stuck.dir, 'review', 'issues.md'), OPEN);          // both classes blocked at once
   const refusal = archive(stuck, ['--force']).stderr;
   const printed = refusal.split('\n').map((l) => l.trim())
     .filter((l) => /^- <YYYY-MM-DDTHH:MM> owner: /.test(l));
-  assert.strictEqual(printed.length, 2, `one copyable cure per class:\n${refusal}`);
+  assert.strictEqual(printed.length, 1, `exactly one copyable cure, for the one forceable class:\n${refusal}`);
+  assert.doesNotMatch(refusal, /archive-force/, 'no retired template is offered');
   const fill = (tmpl) => '  ' + tmpl
     .replace('<YYYY-MM-DDTHH:MM>', '2026-08-23T11:00')
     .replace(/<split\|tests\|redo(\|accept-risk)?>/, 'accept-risk')
-    .replace('<reason>', 'the owner accepts the residual risk')
-    .replace("<the human's reason, verbatim>", 'the owner says ship it');
+    .replace('<reason>', 'the owner accepts the residual risk');
   const pasted = five(printed.map(fill).join('\n') + '\n');
-  w(path.join(pasted.dir, 'review', 'issues.md'), OPEN);
   const after = archive(pasted, ['--force']);
   assert.strictEqual(after.status, 0,
     `a template the tool printed did not authorize when pasted:\n${printed.map(fill).join('\n')}\n${after.stderr}`);

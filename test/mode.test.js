@@ -105,12 +105,14 @@ test('MD-04 a 5.x flow-state is refused with a migration pointer, never silently
   assert.doesNotMatch(c3, /legal \(/, 'C3 must not have accepted the legacy spelling');
 });
 
-test('MD-05 neither mode is asked for tasks.md — the mode stopped deciding it', () => {
+test('MD-05 neither mode is asked for tasks.md — the reader is gone, whatever the mode says', () => {
   for (const mode of ['fast', 'standard']) {
-    const p = project(flowWith(`mode: ${mode}\n`), { tasks: null });
-    const g = run(['gate', '--change', 'c'], p.root);
-    assert.match(checkLine(g.stdout, 'C2'), /^– C2 .*no tasks\.md — 6\.0 requires none/, `${mode}: ${checkLine(g.stdout, 'C2')}`);
-    assert.doesNotMatch(g.stdout, /trivial/, 'a leftover tier word survives in the C2 line');
+    for (const tasks of [null, '- [ ] never finished\n']) {
+      const p = project(flowWith(`mode: ${mode}\n`), { tasks });
+      const g = run(['gate', '--change', 'c'], p.root);
+      assert.match(checkLine(g.stdout, 'C2'), /^– C2 retired in 6\.2 — nothing is read$/, `${mode}: ${checkLine(g.stdout, 'C2')}`);
+      assert.doesNotMatch(g.stdout, /trivial|unchecked/, 'a leftover word survives in the C2 line');
+    }
   }
 });
 
@@ -126,9 +128,9 @@ test('MD-06 archive readiness no longer branches on the mode at all', () => {
   for (const mode of ['fast', 'standard']) {
     const r = rd.readinessOf({ bundleDir: mkBundle(mode), name: 'c' });
     assert.strictEqual(r.ready, true, `${mode}: ${JSON.stringify(r.blockers)}`);
-    // R2 does not exist any more, and an absent ledger is `n/a` in BOTH modes
-    assert.deepStrictEqual(r.na, ['R3'], mode);
-    assert.ok(!r.blockers.some((b) => b.rule === 'R2'), 'the retired R2 rule came back');
+    // neither R2 nor R3 exists any more: nothing is n/a because no artifact rule is left to be n/a
+    assert.deepStrictEqual(r.na, [], mode);
+    assert.ok(!r.blockers.some((b) => /^R[23]$/.test(b.rule)), 'a retired artifact rule came back');
   }
 });
 

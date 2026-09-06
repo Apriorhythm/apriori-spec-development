@@ -4,11 +4,11 @@
 // What used to live at the top of this file was a differential against
 // test/fixtures/gate-state-a.golden.json, a capture of 5.0's gate taken before lib/readiness.js
 // existed. That oracle protected an EXTRACTION: the move had to change nothing. 6.0 slice 5
-// deliberately changes what C2, C3 and C4 DECIDE — the task list stops being demanded at all, the
-// ledger stops refusing on bookkeeping, and `current-step` is replaced by `phase`. An oracle whose
+// deliberately changed what C2, C3 and C4 DECIDE — and 6.2 retired the C2/C4 readers outright,
+// leaving `current-step` → `phase` as C3's business. An oracle whose
 // every case would have to be declared divergent is no longer testifying about anything, so it was
 // removed together with its fixture rather than rewritten into agreement with the code it watches.
-// The behaviours it covered are owned by the tests below plus GT-02/03/09/13/14 and MD-08.
+// The behaviours it covered are owned by the tests below plus GT-02/03/09 and MD-08.
 
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -65,9 +65,10 @@ test('RY-05 no layer reaches back into its caller', () => {
   const am = fs.readFileSync(path.join(__dirname, '..', 'lib', 'archive-merge.js'), 'utf8');
   assert.doesNotMatch(am, /require\(['"]\.\/gate['"]\)/, 'archive-merge must not require gate');
   const g = fs.readFileSync(path.join(__dirname, '..', 'lib', 'gate.js'), 'utf8');
-  for (const fn of ['function checkFlowState', 'function checkTasks', 'function checkLedger', 'function classifyStatus'])
+  for (const fn of ['function checkFlowState', 'function checkEvidenceStatus', 'function evidenceFindings'])
     assert.doesNotMatch(g, new RegExp(fn.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), `gate must not reimplement ${fn}`);
-  assert.strictEqual(typeof gate.classifyStatus, 'function', 'gate must keep re-exporting classifyStatus (GT-15 corpus test)');
+  // 6.2: the ledger classifier left with its consumer — gate re-exports nothing of it
+  assert.ok(!('classifyStatus' in gate), 'the retired ledger classifier must not survive as a gate export');
 });
 
 // comments explain WHY the base layer stays bare and necessarily name the helper it must not
@@ -81,7 +82,7 @@ test('RY-06 the base layer stays bare', () => {
   const base = stripComments(src.slice(0, src.indexOf('module.exports')));
   assert.doesNotMatch(base, /fileReadDefect/, 'a guard in the base layer would change gate behaviour (RY-02)');
   // control: the stripper must not be doing the work for us
-  assert.match(base, /function checkLedger/, 'stripComments removed real code');
+  assert.match(base, /function checkFlowState/, 'stripComments removed real code');
 });
 
 test('RY-07 the base layer takes its containment check from resolve', () => {
@@ -116,13 +117,15 @@ test('RY-07 the base layer takes its containment check from resolve', () => {
     assert.strictEqual(resolve.containsReal(dir, target), am.containsReal(dir, target),
       `${label}: the two containsReal implementations must agree at this call shape`);
   }
-  // and the reviewDirDefect answers themselves: an unusable review root blocks C4 and C5
+  // and the reviewDirDefect answers themselves: an unusable review root blocks C5 (C4 is a
+  // 6.2 placeholder and reads nothing)
   for (const id of canSymlink() ? ['review-root-symlink', 'review-root-file'] : ['review-root-file']) {
     const c = corpus.CASES.find((x) => x.id === id);
     const { root, change } = corpus.build(c);
     const loc = gate.resolveChange(root, change);
     assert.ok(rd.reviewDirDefect(loc.dir), `${id}: the review root must still be diagnosed`);
     const res = gate.runGate({ cwd: root, change, testCmd: corpus.TAP_OK });
-    assert.strictEqual(res.checks.find((x) => x.id === 'C4').status, 'blocked', id);
+    assert.strictEqual(res.checks.find((x) => x.id === 'C5').status, 'blocked', id);
+    assert.strictEqual(res.checks.find((x) => x.id === 'C4').status, 'n/a', id);
   }
 });

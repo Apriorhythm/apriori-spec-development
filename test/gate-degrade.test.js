@@ -32,16 +32,13 @@ const DELTA = '## ADDED Requirements\n\n### Requirement: Beta\n\n#### Scenario: 
 // answered. These fixtures are about other checks, so they carry the two rows a standard
 // change owes and fail on their own subject.
 const FLOW = (name, mode = 'standard') => `change: ${name}\nmode: ${mode}\nlineage: v4\nphase: build\nnext-action: x\n\n## Evidence\n- producer-diff: done — read the whole diff, known P0/P1 zero\n- data-schema: done — ran the migration against a copy of the real schema\n\ngates:\n  - 2026-08-14T00:00 note: n\n`;
-const LEDGER_OK = '| ID | Issue | Risk | Round found | Status |\n|---|---|---|---|---|\n| Q-1 | a | low | 1 | verified |\n';
 
 // a healthy in-flight change with NO test-cmd anywhere (no process-config.md at all)
 function noCmdProject(name = 'c', extra = {}) {
   return mkProject({
     'apriori/specs/kv/spec.md': STORE,
     [`apriori/changes/${name}/flow-state.md`]: FLOW(name),
-    [`apriori/changes/${name}/tasks.md`]: '- [x] T1 done\n',
     [`apriori/changes/${name}/specs/kv/spec.md`]: DELTA,
-    [`apriori/changes/${name}/review/issues.md`]: LEDGER_OK,
     // a healthy bundle carries its one independent review (6.0 slice 3, R4/C8) — these tests
     // are about the C1 skip and the exit-code lattice, not about the review floor
     [`apriori/changes/${name}/review/code-review-v1.md`]: 'VERDICT: no major issues\n',
@@ -70,7 +67,7 @@ test('GT-30 an absent test command skips C1 and runs the rest', () => {
 
 test('GT-31 a confirmed block outranks an unrun check', () => {
   const root = noCmdProject();
-  fs.appendFileSync(path.join(root, 'apriori/changes/c/review/issues.md'), '| Q-9 | b | high | 1 | open |\n');
+  fs.writeFileSync(path.join(root, 'apriori/changes/c/flow-state.md'), FLOW('c').replace('\ngates:', '\n## Open\n- the retry path is unproven\n\ngates:'));
   const r = gate.runGate({ cwd: root, change: 'c' });
   assert.strictEqual(r.result, 'BLOCKED');
   assert.strictEqual(r.code, 1);
@@ -157,8 +154,6 @@ test('GT-35 an untrustworthy projection still fails closed with no test command'
   const bare = mkProject({
     'apriori/specs/kv/spec.md': STORE,
     'apriori/changes/c/flow-state.md': FLOW('c'),
-    'apriori/changes/c/tasks.md': '- [x] T1\n',
-    'apriori/changes/c/review/issues.md': LEDGER_OK,
   });
   const rBare = gate.runGate({ cwd: bare, change: 'c' });
   assert.strictEqual(rBare.code, 2, `no delta files: ${rBare.errors}`);
@@ -199,8 +194,6 @@ test('GT-36 a broken id-pattern is an error even when C1 is skipped', () => {
   const arch = mkProject({
     'apriori/specs/kv/spec.md': STORE,
     'apriori/changes/archive/2026-08-14T0000-c/flow-state.md': FLOW('c').replace('STEP5', 'DONE'),
-    'apriori/changes/archive/2026-08-14T0000-c/tasks.md': '- [x] T1\n',
-    'apriori/changes/archive/2026-08-14T0000-c/review/issues.md': LEDGER_OK,
     'apriori/process-config.md': cfg('| id-pattern | [ |\n'),
   });
   assert.strictEqual(gate.runGate({ cwd: arch, change: 'c' }).code, 2, 'archived + broken pattern');
@@ -231,7 +224,7 @@ test('GT-37 the earlier refusals still win over the degradation', () => {
 
   const noFlow = mkProject({
     'apriori/specs/kv/spec.md': STORE,
-    'apriori/changes/c/tasks.md': '- [x] T1\n',
+    'apriori/changes/c/specs/kv/spec.md': DELTA,
   });
   const rn = gate.runGate({ cwd: noFlow, change: 'c' });
   assert.strictEqual(rn.code, 2);
@@ -242,8 +235,6 @@ test('GT-38 the degradation reaches the archived stage too', () => {
   const root = mkProject({
     'apriori/specs/kv/spec.md': STORE,
     'apriori/changes/archive/2026-08-14T0000-c/flow-state.md': FLOW('c').replace('phase: build', 'phase: done'),
-    'apriori/changes/archive/2026-08-14T0000-c/tasks.md': '- [x] T1\n',
-    'apriori/changes/archive/2026-08-14T0000-c/review/issues.md': LEDGER_OK,
   });
   let builderCalls = 0;
   let r;
@@ -257,12 +248,13 @@ test('GT-38 the degradation reaches the archived stage too', () => {
   assert.strictEqual(builderCalls, 0, 'an archived bundle needs no projection — building one could only manufacture a false block');
   assert.strictEqual(r.code, 3);
 
-  // an OPEN ledger row still blocks at the archived stage, and that outranks the skip
-  fs.writeFileSync(path.join(root, 'apriori/changes/archive/2026-08-14T0000-c/review/issues.md'),
-    '| ID | Issue | Risk | Round found | Status |\n|---|---|---|---|---|\n| Q-1 | a | low | 1 | open |\n');
+  // evidence integrity still blocks at the archived stage, and that outranks the skip
+  fs.mkdirSync(path.join(root, 'apriori/changes/archive/2026-08-14T0000-c/review'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'apriori/changes/archive/2026-08-14T0000-c/review/code-review-v1.md'),
+    'VERDICT: no major issues\n');
   const r2 = gate.runGate({ cwd: root, change: 'c' });
   assert.strictEqual(r2.code, 1);
-  assert.strictEqual(check(r2, 'C4').status, 'blocked');
+  assert.strictEqual(check(r2, 'C5').status, 'blocked');
 });
 
 test('GT-11 --json carries the INCOMPLETE class without growing a key', () => {
@@ -282,7 +274,7 @@ test('GT-11 --json carries the INCOMPLETE class without growing a key', () => {
   const withCmd = noCmdProject('p', { 'apriori/process-config.md': cfg('| test-cmd | node -e "console.log(\'ok 1 - XA-01 a\');console.log(\'ok 2 - XB-01 b\')" |\n') });
   const pass = run(['gate', '--change', 'p', '--json'], withCmd);
   assert.strictEqual(pass.status, 0, pass.stdout + pass.stderr);
-  fs.appendFileSync(path.join(withCmd, 'apriori/changes/p/review/issues.md'), '| Q-9 | b | high | 1 | open |\n');
+  fs.writeFileSync(path.join(withCmd, 'apriori/changes/p/flow-state.md'), FLOW('p').replace('\ngates:', '\n## Open\n- the retry path is unproven\n\ngates:'));
   const blocked = run(['gate', '--change', 'p', '--json'], withCmd);
   assert.strictEqual(blocked.status, 1, blocked.stdout + blocked.stderr);
   const resolveErr = run(['gate', '--change', 'nope', '--json'], root);          // resolved ERROR
@@ -344,8 +336,6 @@ test('SR-73 both consumers pass through the same replaceable builder', () => {
     const bare = mkProject({
       'apriori/specs/kv/spec.md': STORE,
       'apriori/changes/c/flow-state.md': FLOW('c'),
-      'apriori/changes/c/tasks.md': '- [x] T1\n',
-      'apriori/changes/c/review/issues.md': LEDGER_OK,
     });
     const cap2 = [];
     sr._setProjectionBuilder((...a) => { const out = sr.buildChangeProjection(...a); cap2.push(out); return out; });

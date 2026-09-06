@@ -1,6 +1,6 @@
 'use strict';
 // The process files a bundle needs before `apriori archive` will merge it
-// (change archive-readiness, R1/R3, plus R4's one independent review). Fixtures that only
+// (change archive-readiness, R1, plus R4's one independent review). Fixtures that only
 // ever exercised the merge engine predate these preconditions; this helper adds them WITHOUT
 // touching a single assertion.
 //
@@ -31,25 +31,20 @@ const FLOW = (name, mode = 'standard') =>
   `lineage: fixture\nphase: review\n` + EVIDENCE +
   `gates:\n  - 2026-07-11T00:00 note: fixture\n`;
 
-// 6.0 requires NEITHER of these two. They stay in the helper because a large part of the
-// archive corpus was written against bundles that carried them, and keeping them proves the
-// subtraction is a subtraction: the same bundles still archive, and so do bundles without them.
-const TASKS = '- [x] T1 done\n';
-const LEDGER = '| ID | Issue | Risk | Round found | Status |\n|---|---|---|---|---|\n| Q-1 | i | low | 1 | verified |\n';
 // One complete, attributable review round — a classifiable verdict plus the raw transcript
 // that attributes it. Neither mode ever waives this (R4).
 const REVIEW = '# code review, round 1\n\nVERDICT: no major issues\n';
 const REVIEW_RAW = '<!-- provenance: provider=fixture model=fixture session=fixture date=2026-01-01 -->\nraw\n';
 
-// readyFiles('c') → { …flow-state.md, …review/issues.md, …review/code-review-v1{,-raw} }
+// readyFiles('c') → { …flow-state.md, …review/code-review-v1{,-raw} }
+// 6.2 reads neither tasks.md nor review/issues.md, so the helper writes neither.
 function readyFiles(name, opts = {}) {
   const base = opts.base || `apriori/changes/${name}`;
   return {
     [`${base}/flow-state.md`]: FLOW(name, opts.mode),
-    [`${base}/review/issues.md`]: LEDGER,
     [`${base}/review/code-review-v1.md`]: REVIEW,
     [`${base}/review/code-review-v1-raw.txt`]: REVIEW_RAW,
   };
 }
 
-module.exports = { readyFiles, FLOW, EVIDENCE, withEvidence, TASKS, LEDGER, REVIEW, REVIEW_RAW };
+module.exports = { readyFiles, FLOW, EVIDENCE, withEvidence, REVIEW, REVIEW_RAW };

@@ -47,17 +47,17 @@ const LEDGER = `| ID | Issue | Risk | Round | Status |
 | D-4 | w | low | 2 | advisory-acked |
 `;
 
-test('ST-01 --change reports step, next-action, and open-ledger count/IDs', () => {
+test('ST-01 --change reports phase, next actions, and the open items — never the ledger', () => {
   const root = project({ demo: { flow: FLOW, ledger: LEDGER } });
   const s = status.changeStatus(root, 'demo');
   assert.strictEqual(s.state.phase, 'specify');
   assert.deepStrictEqual(s.state.next, ['spawn the P3 reviewer']);
-  assert.deepStrictEqual(s.open.map((r) => r.id), ['D-1', 'D-3']);
+  assert.ok(!('open' in s), 'the ledger rows left the status shape with their reader');
   const out = status.formatOne(s);
   assert.match(out, /phase:.*specify/);
   assert.match(out, /next 1:.*spawn the P3 reviewer/);
   assert.match(out, /last decision:.*owner: approved/);      // the last human decision surfaced
-  assert.match(out, /open ledger:  2 — D-1, D-3/);
+  assert.doesNotMatch(out, /open ledger|D-3/, 'nothing from the unread ledger is printed');
   // the ONE state's own content is read back too
   assert.match(out, /reality:      1 observed, 1 decision, 1 assumption/);
   assert.match(out, /assumption:   get cleans up lazily/);
@@ -65,7 +65,7 @@ test('ST-01 --change reports step, next-action, and open-ledger count/IDs', () =
   assert.match(out, /evidence:     producer-diff: n\/a/);
 });
 
-test('ST-02 no args lists active changes (with step + open count), excluding archive/', () => {
+test('ST-02 no args lists active changes (with phase + open-item count), excluding archive/', () => {
   const root = project({ demo: { flow: FLOW, ledger: LEDGER }, other: { flow: 'change: other\nphase: ground\n' } });
   fs.mkdirSync(path.join(root, 'apriori', 'changes', 'archive', '2026-07-01-old'), { recursive: true });
   assert.deepStrictEqual(status.activeChanges(root), ['demo', 'other']);   // archive/ excluded
@@ -75,16 +75,9 @@ test('ST-02 no args lists active changes (with step + open count), excluding arc
   try { process.chdir(root); assert.strictEqual(status.cli([]), 0); }
   finally { console.log = log; process.chdir(cwd); }
   const printed = out.join('\n');
-  assert.match(printed, /demo  —  specify, 2 open/);
+  assert.match(printed, /demo  —  specify, 1 open/);      // the ONE ## Open item, not the ledger's two rows
   assert.match(printed, /other  —  ground, 0 open/);
   assert.doesNotMatch(printed, /2026-07-01-old/);            // archive not listed
-});
-
-test('ST-03 open detection ignores fixed/verified/advisory-acked', () => {
-  const rows = status.parseLedger(LEDGER);
-  const open = rows.filter((r) => /^open\b/i.test(r.status));
-  assert.strictEqual(open.length, 2);
-  assert.ok(!open.some((r) => r.status.includes('advisory')));
 });
 
 test('ST-04 --json emits a machine-consumable report (single + list), pure JSON', () => {
@@ -117,7 +110,7 @@ test('ST-04 --json emits a machine-consumable report (single + list), pure JSON'
       'unverified assumption: get cleans up lazily — verify it, or promote it to an ## Evidence row',
     ]);
     assert.match(single.lastGate, /owner: approved/);
-    assert.deepStrictEqual(single.openLedger, ['D-1', 'D-3']);
+    assert.deepStrictEqual(single.openLedger, [], 'the compat key stays, and it is always empty');
     out.length = 0;
     assert.strictEqual(status.cli(['--json']), 0);         // list mode
     const list = JSON.parse(out.join('\n'));
@@ -165,7 +158,7 @@ test('ST-07 the read surface is containment-guarded', () => {
   const r = runStatus(['--change', 'demo'], root);
   assert.strictEqual(r.status, 2, r.stdout + r.stderr);
   assert.match(r.stderr, /flow-state/);
-  // symlinked flow-state / ledger → exit 2 (platform-guarded)
+  // symlinked flow-state → exit 2 (platform-guarded); a symlinked ledger is simply not read
   let can = true;
   const root2 = project({ demo: { flow: FLOW, ledger: LEDGER } });
   const outside = path.join(root2, 'outside.md');
@@ -182,15 +175,14 @@ test('ST-07 the read surface is containment-guarded', () => {
     fs.rmSync(path.join(root3, 'apriori/changes/demo/review/issues.md'));
     fs.symlinkSync(path.join(root3, 'outside2.md'), path.join(root3, 'apriori/changes/demo/review/issues.md'));
     const r3 = runStatus(['--change', 'demo'], root3);
-    assert.strictEqual(r3.status, 2, r3.stdout + r3.stderr);
-    assert.match(r3.stderr, /issues\.md/);
+    assert.strictEqual(r3.status, 0, `6.2 never reads issues.md, so it cannot be unsafe: ${r3.stderr}`);
   }
-  // absent ledger still reads as 0 open
+  // an absent review/ is benign
   const root4 = project({ demo: { flow: FLOW } });
   fs.rmSync(path.join(root4, 'apriori/changes/demo/review'), { recursive: true, force: true });
   const r4 = runStatus(['--change', 'demo'], root4);
   assert.strictEqual(r4.status, 0, r4.stdout + r4.stderr);
-  assert.match(r4.stdout, /open ledger:  0/);
+  assert.doesNotMatch(r4.stdout, /open ledger/);
 });
 
 test('ST-08 the JSON contract carries stage and path', () => {
@@ -217,7 +209,7 @@ test('ST-09 identity and ancestors are checked, absence stays benign', () => {
   // active identity mismatch
   const act = project({ demo: { flow: FLOW.replace('change: demo', 'change: other'), ledger: LEDGER } });
   assert.strictEqual(runStatus(['--change', 'demo'], act).status, 2);
-  // dangling review/ ancestor -> exit 2, never "0 open"
+  // dangling review/ root -> exit 2: the review root is guarded, though nothing under it is read for the ledger
   let can = true;
   const root = project({ demo: { flow: FLOW } });
   fs.rmSync(path.join(root, 'apriori/changes/demo/review'), { recursive: true, force: true });

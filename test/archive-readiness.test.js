@@ -12,7 +12,8 @@ const { spawnSync } = require('node:child_process');
 
 const am = require('../lib/archive-merge');
 const rd = require('../lib/readiness');
-const { readyFiles, FLOW, withEvidence, TASKS, LEDGER } = require('./helpers/ready-bundle');
+const { readyFiles, FLOW, withEvidence } = require('./helpers/ready-bundle');
+const LEDGER_OPEN = '| ID | Issue | Risk | Round found | Status |\n|---|---|---|---|---|\n| Q-1 | i | low | 1 | open |\n';
 const { canSymlink } = require('./helpers/can-symlink');
 
 const BIN = path.join(__dirname, '..', 'bin', 'apriori.js');
@@ -43,34 +44,39 @@ const rm = (p) => fs.rmSync(p, { recursive: true, force: true });
 
 // ---------------------------------------------------------------------------
 
-test('AM-74 the safe layer classifies every artifact defect, in both modes', () => {
-  // tasks.md left the rule set entirely in slice 5 — readiness never reads it, so it cannot be
-  // a defect of any kind. What the safe layer still guards is the flow-state and, when the
-  // change kept one, the ledger.
-  const artifacts = ['flow-state.md', path.join('review', 'issues.md')];
+test('AM-74 the safe layer classifies every flow-state defect, in both modes', () => {
+  // tasks.md left the rule set in slice 5 and the ledger left it in 6.2 — readiness reads
+  // neither, so neither can be a defect of any kind. What the safe layer still guards is the
+  // flow-state (and the review ROOT, AM-76).
   for (const mode of ['fast', 'standard']) {
-    for (const rel of artifacts) {
-      // missing — absence of the ledger is `n/a` in BOTH modes; the flow-state is structural
-      {
-        const root = proj({}, mode);
-        rm(path.join(bundle(root), rel));
-        const r = run(['archive', '--change', 'c'], root);
-        assert.strictEqual(r.status, rel === 'flow-state.md' ? 1 : 0, `${mode}/${rel} missing`);
-      }
-      // symlink, not-file, bad-ancestor, escape — structural at BOTH tiers
-      for (const [label, build] of [
-        ['not-file', (p) => { rm(p); fs.mkdirSync(p); }],
-        ...(canSymlink() ? [
-          ['symlink', (p) => { const t2 = p + '.real'; fs.writeFileSync(t2, 'x'); rm(p); fs.symlinkSync(t2, p); }],
-          ['escape', (p) => { const out = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-out-')); fs.writeFileSync(path.join(out, 'f'), 'x'); rm(p); fs.symlinkSync(path.join(out, 'f'), p); }],
-        ] : []),
-      ]) {
-        const root = proj({}, mode);
-        build(path.join(bundle(root), rel));
-        const r = run(['archive', '--change', 'c'], root);
-        assert.strictEqual(r.status, 1, `${mode}/${rel}/${label} must refuse`);
-        assert.match(r.stdout, /RESULT: NOT READY/, `${mode}/${rel}/${label}`);
-      }
+    // missing — structural
+    {
+      const root = proj({}, mode);
+      rm(path.join(bundle(root), 'flow-state.md'));
+      assert.strictEqual(run(['archive', '--change', 'c'], root).status, 1, `${mode}/flow-state.md missing`);
+    }
+    // symlink, not-file, escape — structural
+    for (const [label, build] of [
+      ['not-file', (p) => { rm(p); fs.mkdirSync(p); }],
+      ...(canSymlink() ? [
+        ['symlink', (p) => { const t2 = p + '.real'; fs.writeFileSync(t2, 'x'); rm(p); fs.symlinkSync(t2, p); }],
+        ['escape', (p) => { const out = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-out-')); fs.writeFileSync(path.join(out, 'f'), 'x'); rm(p); fs.symlinkSync(path.join(out, 'f'), p); }],
+      ] : []),
+    ]) {
+      const root = proj({}, mode);
+      build(path.join(bundle(root), 'flow-state.md'));
+      const r = run(['archive', '--change', 'c'], root);
+      assert.strictEqual(r.status, 1, `${mode}/flow-state.md/${label} must refuse`);
+      assert.match(r.stdout, /RESULT: NOT READY/, `${mode}/flow-state.md/${label}`);
+    }
+    // and the SAME shapes on the ledger are not even looked at
+    for (const [label, build] of [
+      ['not-file', (p) => { fs.mkdirSync(p, { recursive: true }); }],
+      ...(canSymlink() ? [['symlink', (p) => { fs.writeFileSync(p + '.real', 'x'); fs.symlinkSync(p + '.real', p); }]] : []),
+    ]) {
+      const root = proj({}, mode);
+      build(path.join(bundle(root), 'review', 'issues.md'));
+      assert.strictEqual(run(['archive', '--change', 'c'], root).status, 0, `${mode}/issues.md/${label}: never read, so never a defect`);
     }
   }
 });
@@ -90,16 +96,20 @@ test('AM-75 an external phase file cannot launder an abandoned bundle', { skip: 
   }
 });
 
-test('AM-76 the review root is guarded before the ledger leaf', { skip: canSymlink() ? false : 'platform refuses symlinks' }, () => {
+test('AM-76 the review root is guarded, and the guard is R4\'s', { skip: canSymlink() ? false : 'platform refuses symlinks' }, () => {
+  // 6.2: the ledger leaf under it is gone, so the root guard reports under the rule that still
+  // reads the directory — the review loop — and stays structural (never forceable)
   const root = proj();
   const b = bundle(root);
   fs.mkdirSync(path.join(b, 'elsewhere'));
-  fs.writeFileSync(path.join(b, 'elsewhere', 'issues.md'), LEDGER);      // a perfectly good ledger
+  fs.writeFileSync(path.join(b, 'elsewhere', 'code-review-v1.md'), 'VERDICT: no major issues\n');   // a perfectly good round
   rm(path.join(b, 'review'));
   fs.symlinkSync(path.join(b, 'elsewhere'), path.join(b, 'review'));
-  const r = run(['archive', '--change', 'c'], root);
+  const r = run(['archive', '--change', 'c', '--force'], root);
   assert.strictEqual(r.status, 1);
-  assert.match(r.stderr, /review\/: symlink/);
+  assert.match(r.stderr, /R4 review\/: symlink/);
+  const rdy = rd.readinessOf({ bundleDir: b, name: 'c', force: true });
+  assert.deepStrictEqual(rdy.blockers.map((x) => [x.rule, x.class, x.forceable]), [['R4', 'structural', false]]);
 });
 
 test('AM-77 a read that fails after the guard is structural and carries the code', () => {
@@ -108,19 +118,19 @@ test('AM-77 a read that fails after the guard is structural and carries the code
     cwd: root, change: 'c', write: false,
     readinessOf: (opts) => rd.readinessOf({
       ...opts,
-      fsImpl: { readFileSync: (p, e) => { if (String(p).endsWith('issues.md')) { const err = new Error('boom'); err.code = 'EIO'; throw err; } return fs.readFileSync(p, e); } },
+      fsImpl: { readFileSync: (p, e) => { if (String(p).endsWith('flow-state.md')) { const err = new Error('boom'); err.code = 'EIO'; throw err; } return fs.readFileSync(p, e); } },
     }),
   });
   assert.strictEqual(res.code, 1);
-  assert.ok(res.err.join('\n').includes('review/issues.md: unreadable (EIO)'), res.err.join('\n'));
+  assert.ok(res.err.join('\n').includes('flow-state.md: unreadable (EIO)'), res.err.join('\n'));
 });
 
 test('AM-107 a non-ENOENT at any probe point refuses, in both modes', () => {
   const points = [
-    ['artifact lstat', (b) => ({ lstatSync: (p) => { if (String(p).endsWith('issues.md')) throw code('EACCES'); return fs.lstatSync(p); }, realpathSync: fs.realpathSync })],
-    ['ancestor walk', (b) => ({ lstatSync: (p) => { if (String(p).endsWith('issues.md')) throw code('ENOENT'); if (String(p).endsWith(path.sep + 'review')) throw code('EIO'); return fs.lstatSync(p); }, realpathSync: fs.realpathSync })],
+    ['artifact lstat', (b) => ({ lstatSync: (p) => { if (String(p).endsWith('flow-state.md')) throw code('EACCES'); return fs.lstatSync(p); }, realpathSync: fs.realpathSync })],
+    ['ancestor walk', (b) => ({ lstatSync: (p) => { if (String(p).endsWith('flow-state.md')) throw code('ENOENT'); if (p === b) throw code('EIO'); return fs.lstatSync(p); }, realpathSync: fs.realpathSync })],
     ['review-root lstat', () => ({ lstatSync: (p) => { if (String(p).endsWith(path.sep + 'review')) throw code('ELOOP'); return fs.lstatSync(p); }, realpathSync: fs.realpathSync })],
-    ['artifact realpath', () => ({ lstatSync: fs.lstatSync, realpathSync: (p) => { if (String(p).endsWith('issues.md')) throw code('EACCES'); return fs.realpathSync(p); } })],
+    ['artifact realpath', () => ({ lstatSync: fs.lstatSync, realpathSync: (p) => { if (String(p).endsWith('flow-state.md')) throw code('EACCES'); return fs.realpathSync(p); } })],
     ['review-root realpath', () => ({ lstatSync: fs.lstatSync, realpathSync: (p) => { if (String(p).endsWith(path.sep + 'review')) throw code('EACCES'); return fs.realpathSync(p); } })],
   ];
   function code(c) { const e = new Error(c); e.code = c; return e; }
@@ -139,9 +149,9 @@ test('AM-107 a non-ENOENT at any probe point refuses, in both modes', () => {
 });
 
 test('AM-108 a true ENOENT is benign in both modes', () => {
-  // 5.x/slice-3 made this the mode-sensitive branch. 6.0 requires neither artifact of either
-  // mode, so a genuine absence is `n/a` on both sides — the DISTINCTION under test is now
-  // absence (benign) versus an unreadable probe (structural, AM-107).
+  // 5.x/slice-3 made this the mode-sensitive branch. 6.0 required neither artifact of either
+  // mode, and 6.2 reads neither at all — a genuine absence is nothing on both sides. The
+  // DISTINCTION under test is absence (benign) versus an unreadable probe (structural, AM-107).
   for (const rel of ['tasks.md', path.join('review', 'issues.md')]) {
     for (const mode of ['fast', 'standard']) {
       const root = proj({}, mode); rm(path.join(bundle(root), rel));
@@ -152,15 +162,11 @@ test('AM-108 a true ENOENT is benign in both modes', () => {
 
 test('AM-115 an ENOENT raised at the realpath stage is not a structural defect either', () => {
   function code(c) { const e = new Error(c); e.code = c; return e; }
-  // artifact side: falls through to the ancestor walk and ends as missing → benign in both modes
-  for (const [mode, want] of [['fast', 0], ['standard', 0]]) {
-    const root = proj({}, mode);
-    const res = am.archiveChange({
-      cwd: root, change: 'c', write: false,
-      readinessOf: (o) => rd.readinessOf({ ...o, ops: { lstatSync: fs.lstatSync, realpathSync: (p) => { if (String(p).endsWith('issues.md')) throw code('ENOENT'); return fs.realpathSync(p); } } }),
-    });
-    assert.strictEqual(res.code, want, `artifact realpath ENOENT at ${mode}`);
-  }
+  // artifact side: falls through to the ancestor walk and ends as `missing` — for the flow-state
+  // that is R1's own (non-io-error) refusal, never an io-error
+  const gone = rd.artifactDefect(bundle(proj()), path.join(bundle(proj()), 'flow-state.md'),
+    { lstatSync: fs.lstatSync, realpathSync: (p) => { if (String(p).endsWith('flow-state.md')) throw code('ENOENT'); return fs.realpathSync(p); } });
+  assert.strictEqual(gone.kind, 'missing');
   // review-root side: reports nothing at all
   const root = proj();
   const res = am.archiveChange({
@@ -181,9 +187,8 @@ test('AM-112 a completely normal bundle stays archivable', () => {
 });
 
 test('AM-113 an absent review directory is not a structural defect', () => {
-  // Removing review/ takes the ledger AND the review round with it. The ledger is `n/a` in
-  // either mode now, so what both modes still owe is the ROUND — but the CLASS is the whole
-  // point: absence is never reported as structural.
+  // Removing review/ takes the review round with it. What both modes still owe is the ROUND —
+  // but the CLASS is the whole point: absence is never reported as structural.
   for (const [mode, want] of [['fast', /R4 no completed independent review/], ['standard', /R4 no completed independent review/]]) {
     const root = proj({}, mode);
     rm(path.join(bundle(root), 'review'));
@@ -193,15 +198,14 @@ test('AM-113 an absent review directory is not a structural defect', () => {
     const rdy = rd.readinessOf({ bundleDir: bundle(root), name: 'c' });
     assert.ok(rdy.blockers.every((b) => b.class !== 'structural'),
       `${mode}: an absent review/ must never be classified structural — ${JSON.stringify(rdy.blockers)}`);
-    assert.deepStrictEqual(rdy.na, ['R3'], `${mode}: an absent ledger is n/a in either mode`);
+    assert.deepStrictEqual(rdy.na, [], `${mode}: no rule is left to be n/a`);
   }
 });
 
 test('AM-78 an unready change is refused with nothing written and nothing moved', () => {
   const cases = [
     ['phase', { 'apriori/changes/c/flow-state.md': FLOW('c').replace('phase: review', 'phase: specify') }],
-    ['ledger', { 'apriori/changes/c/review/issues.md': LEDGER.replace('verified', 'open') }],
-    // R5 — the one substantive evidence predicate replaces the task list as a refusal
+    // R5 — the one substantive state predicate is the refusal (the ledger is never read)
     ['evidence', { 'apriori/changes/c/flow-state.md': withEvidence(FLOW('c'), ['data-schema: blocked — staging DB offline']) }],
   ];
   for (const [label, over] of cases) {
@@ -221,19 +225,21 @@ test('AM-79 R1 reports first and alone, the later rules report together', () => 
   const root = proj({
     'apriori/changes/c/flow-state.md': withEvidence(FLOW('c'), ['data-schema: blocked — staging DB offline'])
       .replace('phase: review', 'phase: specify'),
-    'apriori/changes/c/review/issues.md': LEDGER.replace('verified', 'open'),
+    'apriori/changes/c/review/code-review-v1.md': null,
+    'apriori/changes/c/review/code-review-v1-raw.txt': null,
   });
   const r1 = run(['archive', '--change', 'c'], root);
   assert.match(r1.stderr, /R1 /);
-  assert.doesNotMatch(r1.stderr, /R3 |R5 /);
-  // R1 fine, R3 and R5 broken → both listed in one report
+  assert.doesNotMatch(r1.stderr, /R4 |R5 /);
+  // R1 fine, R4 and R5 broken → both listed in one report
   const root2 = proj({
     'apriori/changes/c/flow-state.md': withEvidence(FLOW('c'), ['data-schema: blocked — staging DB offline']),
-    'apriori/changes/c/review/issues.md': LEDGER.replace('verified', 'open'),
+    'apriori/changes/c/review/code-review-v1.md': null,
+    'apriori/changes/c/review/code-review-v1-raw.txt': null,
   });
   const r2 = run(['archive', '--change', 'c'], root2);
   assert.match(r2.stderr, /R5 critical evidence 'data-schema' is blocked/);
-  assert.match(r2.stderr, /R3 Q-1 is open/);
+  assert.match(r2.stderr, /R4 no completed independent review/);
 });
 
 test('AM-80 abandoned and done carry their own wording and are not forceable', () => {
@@ -261,12 +267,14 @@ test('AM-81 a broken flow-state reports the C3 diagnosis, not the phase wording'
 
 test('AM-82 an absent artifact is not an obligation, and R5 is never forceable', () => {
   // 5.x/slice-3: an absent tasks.md or ledger was a `standard` refusal that --force could not
-  // cure. 6.0 requires neither, so the absence is simply archivable — while the rule that
-  // REPLACED them, R5's blocked critical evidence, stays non-forceable in exactly that way.
+  // cure. 6.2 reads neither, present or absent — while the rule that REPLACED them, R5's
+  // blocked critical evidence, stays non-forceable in exactly that way.
   for (const rel of ['tasks.md', path.join('review', 'issues.md')]) {
-    const root = proj({}, 'standard');
-    rm(path.join(bundle(root), rel));
-    assert.strictEqual(run(['archive', '--change', 'c'], root).status, 0, rel);
+    for (const present of [false, true]) {
+      const root = proj({}, 'standard');
+      if (present) fs.writeFileSync(path.join(bundle(root), rel), rel === 'tasks.md' ? '- [ ] b\n' : LEDGER_OPEN);
+      assert.strictEqual(run(['archive', '--change', 'c'], root).status, 0, `${rel} ${present ? 'present' : 'absent'}`);
+    }
   }
   const blocked = proj({ 'apriori/changes/c/flow-state.md':
     withEvidence(FLOW('c'), ['data-schema: blocked — staging DB offline'])
@@ -302,14 +310,14 @@ test('AM-84 the integrity section is not printed for an unready change', () => {
   const ready = proj({ 'apriori/changes/c/specs/a/spec.md': stamped });
   assert.match(run(['archive', '--change', 'c'], ready).stdout, /MODIFIED INTEGRITY/);
   const unready = proj({ 'apriori/changes/c/specs/a/spec.md': stamped,
-    'apriori/changes/c/review/issues.md': LEDGER.replace('verified', 'open') });
+    'apriori/changes/c/flow-state.md': withEvidence(FLOW('c'), ['data-schema: blocked — staging DB offline']) });
   const r = run(['archive', '--change', 'c'], unready);
   assert.strictEqual(r.status, 1);
   assert.doesNotMatch(r.stdout, /MODIFIED INTEGRITY/);
 });
 
 test('AM-85 dry-run predicts what --write would do', () => {
-  const root = proj({ 'apriori/changes/c/review/issues.md': LEDGER.replace('verified', 'open') });
+  const root = proj({ 'apriori/changes/c/flow-state.md': withEvidence(FLOW('c'), ['data-schema: blocked — staging DB offline']) });
   const before = storeText(root);
   const r = run(['archive', '--change', 'c'], root);
   assert.strictEqual(r.status, 1);
@@ -324,7 +332,7 @@ test('AM-114 readiness is a single look, not a commit-time guarantee', () => {
     cwd: root, change: 'c', write: true, changesDir: path.join(root, 'apriori', 'changes'),
     ops: {
       writeFileSync: fs.writeFileSync.bind(fs), renameSync: fs.renameSync.bind(fs), rmSync: fs.rmSync.bind(fs),
-      afterReadiness: () => { fired++; fs.writeFileSync(path.join(bundle(root), 'review', 'issues.md'), LEDGER.replace('verified', 'open')); },
+      afterReadiness: () => { fired++; fs.writeFileSync(path.join(bundle(root), 'flow-state.md'), withEvidence(FLOW('c'), ['data-schema: blocked — staging DB offline'])); },
     },
   });
   assert.strictEqual(fired, 1, 'the hook must fire once, after readiness and before the first write');

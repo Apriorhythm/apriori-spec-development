@@ -1,9 +1,9 @@
 ### Requirement: new scaffolds an in-flight change
-`apriori new <name>` SHALL create `apriori/changes/<name>/` with a flow-state skeleton (`phase: ground`, placeholders for `mode`/`lineage` — 6.0 carries `mode` plus `phase`, and neither `tier`, `track` nor `current-step` is emitted, a scaffold note in gates) and a `specs/` staging dir, enforcing the bare-name discipline.
+`apriori new <name>` SHALL create `apriori/changes/<name>/` with a flow-state skeleton (`phase: ground`, a placeholder for `lineage` — 6.2 writes no `mode:` line, the field being optional and inert, and neither `tier`, `track` nor `current-step` is emitted; a scaffold note in gates) and a `specs/` staging dir, enforcing the bare-name discipline.
 
 #### Scenario: NW-01 scaffolds flow-state skeleton and specs dir
 - WHEN `apriori new add-playback` runs in a project
-- THEN `apriori/changes/add-playback/flow-state.md` exists with `change: add-playback`, `phase: ground`, a `mode: <fast | standard>` placeholder and a `lineage` placeholder — and neither a `tier:`, a `track:`, a retired `current-step:` nor any lane/track wording anywhere in it — plus a dated scaffold note in gates; `apriori/changes/add-playback/specs/` exists
+- THEN `apriori/changes/add-playback/flow-state.md` exists with `change: add-playback`, `phase: ground` and a `lineage` placeholder — and neither a `mode:`, a `tier:`, a `track:`, a retired `current-step:` nor any lane/track wording anywhere in it — plus a dated scaffold note in gates; `apriori/changes/add-playback/specs/` exists
 
 #### Scenario: NW-02 refuses an existing change or the reserved archive name
 - WHEN the target change dir already exists, or the name is `archive`
@@ -15,7 +15,7 @@
 
 #### Scenario: NW-04 the skeleton carries the full flow-state schema
 - WHEN `apriori new` scaffolds flow-state.md
-- THEN every field of the runbook §3 schema is present — the keys `mode`/`lineage`/`phase`/`reviewer-session`/`delivery`/`escalation`/`artifact-root`, and the four short sections `## Reality Check`, `## Evidence`, `## Open`, `## Next` — so the scaffold never drifts behind the schema
+- THEN every field of the runbook §3 schema is present — the keys `lineage`/`phase`/`reviewer-session`/`delivery`/`escalation`/`artifact-root`, and the three short sections `## Reality Check`, `## Open` (its comment showing `- <ID>: <text>`), `## Next` — and neither `mode:` nor `## Evidence`, so the scaffold never drifts behind the schema
 
 ### Requirement: the scaffold builds the bundle skeleton and no document family
 `apriori new <name>` SHALL scaffold exactly `flow-state.md` plus empty `specs/` and `review/` directories under `apriori/changes/<name>/`. It SHALL NOT create `requirement/`, and it SHALL NOT write or name any fixed per-change document — no requirement doc, proposal, design, gap report, task list or issue ledger — because 6.0 produces material on demand rather than by obligation. The state's `## Next` line is advisory text; no behavior depends on the empty dirs existing.

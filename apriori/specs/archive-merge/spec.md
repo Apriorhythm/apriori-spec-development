@@ -15,7 +15,7 @@
 
 #### Scenario: AM-04 same-ID conflict stops without writing
 - WHEN an ADDED ID already exists, or a MODIFIED/REMOVED target is missing
-- THEN the merge reports the conflict, writes nothing, and exits 1 (a human opens a ledger issue)
+- THEN the merge reports the conflict, writes nothing, and exits 1 (a human resolves it)
 
 #### Scenario: AM-05 the action lists every merged/modified/deprecated ID
 - WHEN a merge succeeds
@@ -196,7 +196,7 @@ With `--write` and an explicit `--changes-dir`, `archiveChange` SHALL, AFTER the
 `archiveChange` SHALL have no staging phase and no post-commit writes of any kind: with `--write` and an explicit `--changes-dir`, the change dir — which by the bundle layout already contains `requirement/`, `review/`, `gap-report.md`, and everything else the change owns — moves to `archive/<stamp>-<name>/` in the existing single atomic rename, carrying it all. The command reads and writes nothing under any legacy root; it never deletes anything (executor protocol). Dry-run and the single-file form behave as before.
 
 #### Scenario: AM-36 the bundle travels whole
-- WHEN a bundle carrying LEGACY 5.x files it no longer needs — requirement/ (req versions, final), a gap-report.md — alongside review/ (ledger, docs, raws) archives with --write --changes-dir
+- WHEN a bundle carrying LEGACY 5.x files it no longer needs — requirement/ (req versions, final), a gap-report.md — alongside review/ (docs, raws, a stale ledger) archives with --write --changes-dir
 - THEN the archived dir contains all of them byte-identically, nothing is left behind in the live changes dir, no staging or copy lines appear in the report, and the exit is 0
 
 #### Scenario: AM-37 the command touches nothing outside the moved dir
@@ -242,50 +242,50 @@ A pure shared helper SHALL compare a MODIFIED operation's old store block agains
 - THEN the first two produce correct reports through the injected terminable matcher — the pinned seam: `archiveMerge.cli(argv, deps)` and `archiveChange({..., idMatcherFactory})` accept an optional factory `(cwd) => matcher | {error}`; bin builds it lazily from `lib/config`'s resolveIdPattern plus spec-runner's makeIdMatcher; a MISSING factory degrades exactly like a factory error (warning + skip); archive-merge itself never requires spec-runner; the last two print exactly one stderr warning — the WHOLE line `warning: modified-integrity <reason>` passed through sanitizeMsg (control chars replaced with `·`, ≤200 UTF-16 units) — skip the report, and leave every other archive output and exit unchanged
 
 ### Requirement: archive refuses to merge a change that is not ready
-`apriori archive --change <name>` SHALL, in dry-run and with `--write` alike, evaluate the bundle's readiness AFTER every existing preflight guard and BEFORE the MODIFIED integrity section, and refuse with `RESULT: NOT READY — nothing written` (exit 1, nothing written and nothing moved) unless: R1 the flow-state is structurally sound, passes the C3 legality checks, and declares `phase: review`; R3 a PRESENT `review/issues.md` carries no `open` row; R4 the review loop has converged; R5 no critical evidence is still `blocked` without a recorded owner acceptance. There SHALL be no R2: 6.0 asks for no task list, so an archive is never stopped by one. The predicates SHALL be the SAME code the gate's C3/C4/C8/C9 run. Reads of the bundle's artifacts SHALL go through an archive-only safe layer that classifies `lstat`/`realpath` failures by `e.code` in a SINGLE pass — only a true `ENOENT` reaches the absent branch; every other code is a structural defect. Evaluation order is: structural → C3 legality → the phase overlay → R3/R4/R5.
+`apriori archive --change <name>` SHALL, in dry-run and with `--write` alike, evaluate the bundle's readiness AFTER every existing preflight guard and BEFORE the MODIFIED integrity section, and refuse with `RESULT: NOT READY — nothing written` (exit 1, nothing written and nothing moved) unless: R1 the flow-state is structurally sound, passes the C3 legality checks, and declares `phase: review`; R4 the review root is a real contained directory and the review loop has converged; R5 no open item is still pending (6.2: the one substantive state predicate). There SHALL be no R2 and no R3: 6.0 asks for no task list and 6.2 reads no issue ledger, so an archive is never stopped by either, and neither is read. The predicates SHALL be the SAME code the gate's C3/C8/C9 run. Reads of the flow-state SHALL go through an archive-only safe layer that classifies `lstat`/`realpath` failures by `e.code` in a SINGLE pass — only a true `ENOENT` reaches the absent branch; every other code is a structural defect. Evaluation order is: structural → C3 legality → the phase overlay → R4/R5.
 
-#### Scenario: AM-74 the safe layer classifies every artifact defect
-- WHEN each of `flow-state.md` and `review/issues.md` is in turn missing, a symlink, a non-file, escaping the bundle, or sitting under a bad ancestor, in both modes
-- THEN the outcome matches the artifact × defect-kind table: a true missing ledger is `n/a` in either mode; every other combination refuses, and every structural refusal is non-forceable
+#### Scenario: AM-74 the safe layer classifies every flow-state defect
+- WHEN `flow-state.md` is in turn missing, a symlink, a non-file or escaping the bundle, with and without a (inert) `mode:` line — and separately when `review/issues.md` takes the same shapes
+- THEN every flow-state defect refuses, non-forceably, whatever the mode says; the ledger shapes change nothing, because the file is never looked at
 
 #### Scenario: AM-75 an external phase file cannot launder an abandoned bundle
 - WHEN a bundle whose real flow-state says `phase: abandoned` has its `flow-state.md` replaced by a symlink pointing at a `phase: review` file outside the bundle
 - THEN archive refuses as a structural defect without following the link, and `--force` does not change the outcome
 
-#### Scenario: AM-76 the review root is guarded before the ledger leaf
-- WHEN `review/` is itself a symlink pointing at another directory inside the bundle while `review/issues.md` reads perfectly
-- THEN archive refuses — guarding only the leaf would let a bundle through that the gate's C4 would block
+#### Scenario: AM-76 the review root is guarded, and the guard is R4's
+- WHEN `review/` is itself a symlink pointing at another directory inside the bundle that holds a perfectly good review round
+- THEN archive refuses under R4 as a structural, non-forceable defect — the directory the loop reads is never read through a link
 
 #### Scenario: AM-77 a read that fails after the guard is a structural defect
-- WHEN the guard passes and the subsequent `readFileSync` throws (race or permission)
+- WHEN the flow-state guard passes and the subsequent `readFileSync` throws (race or permission)
 - THEN archive refuses, the diagnosis carries the original `e.code`, and the failure is non-forceable
 
 #### Scenario: AM-107 a non-ENOENT failure at any of the five probe points refuses, in every mode
-- WHEN a non-`ENOENT` error (`EACCES`/`EIO`/`ELOOP`) is injected at the artifact `lstat`, at the ancestor walk, at the review-root `lstat`, at the artifact realpath stage, or at the review-root realpath stage
-- THEN each one refuses as `io-error` with the original `e.code`, non-forceable — INCLUDING on `fast`, where classifying it as `missing` would have returned `n/a` and let the write proceed
+- WHEN a non-`ENOENT` error (`EACCES`/`EIO`/`ELOOP`) is injected at the flow-state `lstat`, at its ancestor walk, at the review-root `lstat`, at the flow-state realpath stage, or at the review-root realpath stage
+- THEN each one refuses as `io-error` with the original `e.code`, non-forceable — with and without a `mode:` line, because the mode decides nothing
 
-#### Scenario: AM-108 a true ENOENT still takes the absent branch
-- WHEN the ledger genuinely does not exist
-- THEN the rule is `n/a`, not a structural refusal — in either mode
+#### Scenario: AM-108 a true ENOENT is benign
+- WHEN `tasks.md` or `review/issues.md` genuinely does not exist
+- THEN nothing is refused and nothing is `n/a` — neither file has a rule left to be absent from
 
 #### Scenario: AM-115 an ENOENT raised at the realpath stage is not a structural defect either
-- WHEN the `lstat` succeeds but the containment check's realpath reports `ENOENT` — for the artifact, and separately for the review root
-- THEN the artifact case takes the ancestor walk and ends as missing, and the review-root case reports nothing, exactly as the earlier `lstat` ENOENT would have — the containment check has no third answer of its own
+- WHEN the `lstat` succeeds but the containment check's realpath reports `ENOENT` — for the flow-state, and separately for the review root
+- THEN the flow-state case takes the ancestor walk and ends as `missing` (R1's own refusal, never an io-error), and the review-root case reports nothing, exactly as the earlier `lstat` ENOENT would have — the containment check has no third answer of its own
 
 #### Scenario: AM-112 a completely normal bundle stays archivable
-- WHEN `review/` is an ordinary directory, `issues.md` an ordinary file and the flow-state at `phase: review`
+- WHEN `review/` is an ordinary directory holding one review round and the flow-state is at `phase: review`
 - THEN readiness passes and the archive completes — a file-type rule applied to the review DIRECTORY would have failed every well-formed bundle
 
 #### Scenario: AM-113 an absent review directory is not a structural defect
 - WHEN `review/` does not exist at all
-- THEN the review-root check reports nothing and the absent ledger is `n/a` in either mode
+- THEN the review-root check reports nothing structural — R4 reports the missing round — and nothing is `n/a`
 
 #### Scenario: AM-78 an unready change is refused with nothing written
-- WHEN the flow-state is at the wrong phase, or the ledger holds an open row, or critical evidence is blocked
+- WHEN the flow-state is at the wrong phase, or `## Open` holds a pending item
 - THEN archive prints `RESULT: NOT READY — nothing written`, exits 1, writes no store byte and moves no directory
 
 #### Scenario: AM-79 R1 reports first and alone, the later rules report together
-- WHEN a bundle fails R1 as well as R3 and R5
+- WHEN a bundle fails R1 as well as R4 and R5
 - THEN only the first R1 hit is reported; when R1 passes, every later blocker is listed in one report
 
 #### Scenario: AM-80 abandoned and done carry their own wording
@@ -296,9 +296,9 @@ A pure shared helper SHALL compare a MODIFIED operation's old store block agains
 - WHEN a bundle declares `abandoned` and also fails another C3 check (missing key, placeholder, name mismatch)
 - THEN the C3 diagnosis is reported verbatim and the abandoned wording is not used
 
-#### Scenario: AM-82 an absent ledger is not an artifact obligation
-- WHEN the ledger is absent
-- THEN readiness reports `n/a` in both modes and the archive proceeds — 6.0 requires no ledger, so its absence can never be the reason a change is unready
+#### Scenario: AM-82 an absent artifact is not an obligation, and R5 is never forceable
+- WHEN `tasks.md` and `review/issues.md` are absent, and then present with an unchecked box / an open row — and separately when `## Open` holds a pending item beside an `archive-force ledger` record
+- THEN the archive proceeds in the first four cases (neither file is read), and the pending item refuses with `--force` unable to buy it
 
 #### Scenario: AM-83 existing preflight failures keep their diagnosis and never reach readiness
 - WHEN any existing guard fails — discovery, validation, CAS denial, hygiene, base mismatch, conflict, a pre-existing temp file, or the archive-destination containment check
@@ -317,10 +317,10 @@ A pure shared helper SHALL compare a MODIFIED operation's old store block agains
 - THEN archive neither re-reads the readiness artifacts nor detects the change — the guarantee is one evaluation, and the caller must not modify the bundle across the run
 
 ### Requirement: an archive declares three states and nothing else
-A ready `apriori archive --change <name>` SHALL print an `ARCHIVE DECLARES` block — in dry-run and with `--write` alike — carrying exactly three states derived from the bundle's own state THROUGH THE SAME readiness predicate the gate and review-ready use — never a second walk over the state, which is how the declaration and R5 came to disagree about one bundle: whether the IMPLEMENTATION is complete (the predicate's own open-issue and assumption claims make it incomplete, and are counted); whether the CRITICAL EVIDENCE is complete, counting SETTLED rows only (`done`, or an owner acceptance really recorded) — a wall of `n/a` and a self-declared acceptance are `none declared`, not `complete`; blocked rows counted; owner-accepted risks named; and whether the change is RELEASED or still pending external acceptance (the state's `delivery:` key, defaulting to pending). It SHALL NOT introduce a new document, a new mandatory file or a fourth state. The declaration SHALL ALSO be a BACKSTOP: a run whose declaration would read `implementation: INCOMPLETE` SHALL be refused with `RESULT: NOT READY — nothing written`, whatever readiness concluded — a successful archive can never declare its own work unfinished. The block SHALL say that the bundle is frozen and that a defect found later becomes a short outcome note or a NEW change — an archive is never rewritten to claim a completeness that did not exist at the time.
+A ready `apriori archive --change <name>` SHALL print an `ARCHIVE DECLARES` block — in dry-run and with `--write` alike — carrying exactly three states derived from the bundle's own state THROUGH THE SAME readiness predicate the gate and review-ready use — never a second walk over the state, which is how the declaration and R5 came to disagree about one bundle: whether the IMPLEMENTATION is complete (the predicate's pending open items — an id-less item included — and standing assumptions make it incomplete, and are counted); whether the CRITICAL EVIDENCE is complete, which since 6.2 means no unaccepted open item — pending items counted, accepted ones named and reported as still present, a legacy `blocked` row named; and whether the change is RELEASED or still pending external acceptance (the state's `delivery:` key, defaulting to pending). It SHALL NOT introduce a new document, a new mandatory file or a fourth state. The declaration SHALL ALSO be a BACKSTOP: a run whose declaration would read `implementation: INCOMPLETE` SHALL be refused with `RESULT: NOT READY — nothing written`, whatever readiness concluded — a successful archive can never declare its own work unfinished. The block SHALL say that the bundle is frozen and that a defect found later becomes a short outcome note or a NEW change — an archive is never rewritten to claim a completeness that did not exist at the time.
 
 #### Scenario: AM-118 the archive declaration carries exactly the three states
-- WHEN a ready change is archived, first with a clean state and then with an open issue, an unverified assumption, a blocked evidence row and `delivery: released` in turn
+- WHEN a ready change is archived, first with a clean state and then with a pending open item, an unverified assumption, an accepted open item and `delivery: released` in turn
 - THEN the report carries an `ARCHIVE DECLARES` block with exactly the implementation / critical-evidence / delivery lines, each reflecting the state it was given, the frozen-snapshot sentence is present, and no new file is created anywhere in the tree
 
 #### Scenario: AM-119 the archived bundle is frozen
@@ -328,39 +328,23 @@ A ready `apriori archive --change <name>` SHALL print an `ARCHIVE DECLARES` bloc
 - THEN the whole bundle travelled as one unit (flow-state, `specs/`, `review/`) with nothing left at the in-flight path, and the later run reads the frozen record without modifying a byte of it
 
 ### Requirement: --force overrides progress only, on pre-recorded human authority
-`--force` SHALL belong to the high-level form alone and SHALL override ONLY progress blockers: ledger rows that are still `open`, and a review family's escalation the owner already answered. Everything else is non-forceable: every R1 outcome (`abandoned` above all), every structural defect (`io-error`, `symlink`, `not-file`, `not-dir`, `escape`, `bad-ancestor`), a stalled round-2 loop, an unmet review floor, and every R5 evidence refusal — critical evidence that was never run is not progress, and owner acceptance for it is spent in the state, not at the command line. There is no `tasks` force class, because there is no task rule to force. A ledger force takes effect only when the bundle's flow-state already carries the canonical owner entry `- <YYYY-MM-DDTHH:MM> owner: archive-force ledger — <reason>` — the SAME entry, and the same parser, the evidence acceptance and the `reframe` decision use, so no one of the three is a way around another. The DOUBLE action is preserved: the recorded decision alone is not a `--force`, and `--force` alone is not a decision. Revocation is by APPENDING `archive-force-revoke ledger <reason>` — the `gates:` block is an append-only log — and the last decision wins. The authorization is STANDING for the bundle's lifetime, not per-run.
+`--force` SHALL belong to the high-level form alone and SHALL override ONLY progress blockers, which since 6.2 is exactly one thing: a review family's escalation the owner already answered. Everything else is non-forceable: every R1 outcome (`abandoned` above all), every structural defect (`io-error`, `symlink`, `not-file`, `not-dir`, `escape`, `bad-ancestor`), a stalled round-2 loop, an unmet review floor, and every R5 refusal — an open item nobody accepted is not progress, and owner acceptance for it is spent in the state, not at the command line. There is no `tasks` force class and no live `ledger` class: the `archive-force ledger` grammar is still PARSED — the SAME entry, and the same parser, the item acceptance and the `reframe` decision use — but a grant is reported as `note: archive-force has nothing left to force in 6.2` and overrides nothing. Revocation is by APPENDING `archive-force-revoke ledger <reason>` and the last decision wins, for that note alone. The round-5 DOUBLE action is preserved: the recorded `reframe` alone is not a `--force`, and `--force` alone is not a decision.
 
-#### Scenario: AM-86 open ledger rows are forceable
-- WHEN a ledger row is still `open` and the matching record exists
-- THEN archive proceeds, naming the overridden row and the record it rests on
+#### Scenario: AM-89 an archive-force record is inert: nothing is forced, and the note says so
+- WHEN a bundle records the canonical `archive-force ledger — <reason>` beside an open ledger row, with and without `--force`, and then a revoked grant, an `archive-force tasks` record, a `note:` near miss and no record at all
+- THEN the first archives either way with `note: archive-force has nothing left to force in 6.2` and no `forced:` line, the unread row never reaches the report, and the other four print nothing about `archive-force`
 
-#### Scenario: AM-87 everything else is not
-- WHEN the blocker is any R1 outcome, any structural defect, a stalled loop, an unmet review floor, or an R5 evidence refusal
-- THEN `--force` does not change the refusal
+#### Scenario: AM-87 nothing but the answered round-5 escalation is forceable
+- WHEN the blocker is any R1 outcome, a structural flow-state defect, or a pending open item — each beside a standing `archive-force ledger` record
+- THEN `--force` does not change the refusal, no force advice is printed for the item, and readiness reports it `forceable: false` with nothing forced
 
-#### Scenario: AM-88 without the record the flag does nothing and the template is printed
-- WHEN `--force` is passed and no `archive-force ledger` record exists, or its reason carries no letter or digit in any script
-- THEN the refusal stands and a copyable template is printed — never a claim about a reason the human has not yet written
+#### Scenario: AM-110 the kept parser is anchored: only the canonical entry is a grant
+- WHEN the entry reads `archive-force ledger — cleanup deferred`, or `archive-force ledger2 …`, or `archive-force-2 ledger …`, or `do not archive-force ledger — 还没做完`, or the canonical payload under a `note:` / `producer:` / `agent:` / `gate⑤ (owner):` actor, or with no timestamp, or with no em dash, or with no reason
+- THEN `forceGrant` answers a grant for the first only — the class word inside a reason never authorizes, a keyword preceded by free text never authorizes, and the entry's PREFIX is as binding as its payload; a Chinese reason is a reason
 
-#### Scenario: AM-89 the retired class authorizes nothing
-- WHEN a bundle records `archive-force tasks <reason>`
-- THEN it grants nothing: 6.0 has no task rule, so the class is not in the grammar and the entry is inert
-
-#### Scenario: AM-110 the record is anchored and fully consumed
-- WHEN the entry reads `archive-force ledger — cleanup deferred`, or `archive-force ledger2 …`, or `archive-force-2 ledger …`, or `do not archive-force ledger — 还没做完`, or the canonical payload under a `note:` / `producer:` / `agent:` / `gate⑤ (owner):` actor, or with no timestamp, or with no em dash
-- THEN only the first grants — the class word inside a reason never authorizes, a keyword preceded by free text never authorizes, and the entry's PREFIX is as binding as its payload
-
-#### Scenario: AM-111 revocation appends and the last decision wins
+#### Scenario: AM-111 revocation appends and the last decision wins — in the parser and in the note
 - WHEN `archive-force ledger <reason>` is followed by `archive-force-revoke ledger <reason>` and later by another `archive-force ledger <reason>`, each carrying a reason
-- THEN the class is authorized, then not, then authorized again, in the order the entries appear; a revoke with no grant before it authorizes nothing, and a revoke carrying no reason is ignored exactly as a reasonless grant is
-
-#### Scenario: AM-109 every forced item is named with the record it rests on
-- WHEN a force takes effect
-- THEN each overridden blocker is printed on its own `forced: ` line followed by the record's RAW FIRST LINE — not the continuation-joined normalized entry, and never a bare "forced"
-
-#### Scenario: AM-90 force changes the verdict in dry-run too
-- WHEN `--force` is passed without `--write`
-- THEN the readiness verdict changes exactly as it would with `--write`, and nothing touches the disk
+- THEN the parser answers granted, then not, then granted again, in the order the entries appear, and the archive prints the nothing-left-to-force note exactly when the parser answers granted; a revoke with no grant before it grants nothing, and a revoke carrying no reason is ignored exactly as a reasonless grant is
 
 #### Scenario: AM-91 the single-file form does not take --force
 - WHEN `--force` accompanies `--store`/`--delta`
@@ -409,10 +393,18 @@ The single-file form `apriori archive --store <f> --delta <f>` SHALL NOT accept 
 - WHEN the readiness step is driven to READY — the state a softened or bypassed R5 would produce — on a bundle whose state records an open issue or a standing assumption, in dry-run and with `--write`
 - THEN the run still exits 1 with `RESULT: NOT READY — nothing written`, names the INCOMPLETE declaration as the reason, writes nothing to the store and moves no bundle; a clean bundle declares exactly the three states and merges
 
-#### Scenario: AM-121 the owner exits keep their double action, and the printed cure is copyable
-- WHEN an open ledger row and a round-5 escalation each face the recorded decision alone, `--force` alone, both together, and then each near miss of the canonical entry in place of the decision
-- THEN only "both together, canonically recorded" archives; AND WHEN the refusal's own copyable templates are filled in and pasted into the `gates:` block THEN the next run archives — a template the tool prints must authorize what it was printed to cure
+#### Scenario: AM-121 the owner exit keeps its double action, and the printed cure is copyable
+- WHEN an `archive-force ledger` record sits beside an open ledger row, and separately when a round-5 escalation faces the recorded `reframe` alone, `--force` alone, both together, and then each near miss of the canonical entry in place of the decision
+- THEN the first archives with the nothing-left-to-force note; for the escalation only "both together, canonically recorded" archives; AND WHEN the refusal's ONE copyable template (no `archive-force` template is offered) is filled in and pasted into the `gates:` block THEN the next run archives — a template the tool prints must authorize what it was printed to cure
 
-#### Scenario: AM-122 the declaration reads the readiness predicate, and "complete" means settled
-- WHEN a bundle records open issues or assumptions in any heading form, and separately when its evidence rows are all `n/a`, or a single self-declared `owner-accepted`, or one `done`, or one canonically accepted, or one `blocked`
-- THEN the implementation counts come from the SAME predicate readiness refuses on (the two can never disagree about one bundle), and the evidence state reads `none declared` for the unsettled sets, `complete` for the settled ones, the accepted risk named, and `N row(s) still blocked` for the blocked one
+#### Scenario: AM-122 the declaration reads the readiness predicate, and "complete" means accepted or absent
+- WHEN a bundle records pending or id-less open items, or assumptions, in any heading form, and separately when `## Open` is empty, holds one canonically accepted item, one pending item, or one item with a producer's self-acceptance
+- THEN the implementation counts come from the SAME predicate readiness refuses on (the two can never disagree about one bundle), and the evidence state reads `complete` for the empty section, `complete, N risk(s) accepted by the owner (<ids>), still present` for the accepted one, and `N open item(s) still pending` for the other two
+
+#### Scenario: OI-08 the archive declaration derives its three lines from the open items
+- WHEN the declaration is computed for an empty `## Open`, for pending and id-less items beside an assumption, for two accepted items with `delivery: released`, for one accepted and one pending item, and for a legacy `blocked` row — and separately when readiness is driven to READY over a pending item
+- THEN the three lines read `complete` / `INCOMPLETE — N pending open item(s), M unverified assumption(s)` / `complete, N risk(s) accepted by the owner (<ids>), still present` / `N open item(s) still pending` / `N legacy Evidence row(s) still blocked — move them to ## Open` accordingly, and the backstop still refuses the pending item with `RESULT: NOT READY — nothing written`
+
+#### Scenario: OI-10 an unaccepted open item is never forceable, with or without an archive-force record
+- WHEN a pending item sits beside an `archive-force ledger` record and `--force`, and separately when a five-round family carries the owner's `reframe … accept-risk` beside an accepted item
+- THEN the first refuses (`R5 open item <ID> is pending`, no force advice, nothing forced) while the second still needs both the record and `--force` and then prints `forced: R4 …` — the round-5 path never depended on the ledger class

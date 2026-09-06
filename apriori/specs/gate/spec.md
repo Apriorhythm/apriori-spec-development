@@ -5,17 +5,17 @@
 - WHEN every applicable check passes for an in-flight change
 - THEN each check reports `✓`, the final line is `GATE: PASS` (with the mechanical-only caveat), and the exit code is 0
 
-#### Scenario: GT-02 a legacy task list is a diagnostic, never a block
-- WHEN the resolved change dir carries a 5.x `tasks.md`, with or without unchecked `- [ ]` boxes
-- THEN C2 reports `–` naming what it found and saying 6.0 requires no task list; it can never reach the `blocked` status, and an absent tasks.md reports `–` too
+#### Scenario: GT-02 C2 is a placeholder — tasks.md is never read
+- WHEN the resolved change dir carries a 5.x `tasks.md`, with or without unchecked `- [ ]` boxes, and then carries none
+- THEN C2 reports `{id: 'C2', status: 'n/a', detail: 'retired in 6.2 — nothing is read'}` in every case, the gate is not blocked by it, and no reader of the file exists in `lib/readiness.js`
 
-#### Scenario: GT-03 the ledger blocks on open rows and reports the rest
-- WHEN the bundle ledger at `<changeDir>/review/issues.md` contains a row whose status starts `open` (case-insensitive)
-- THEN C4 blocks naming the row ID; a reasonless `rejected`, an unknown status token and an unrecorded `waived` are printed as non-blocking bookkeeping notes beside the verdict; `advisory*`/`fixed`/`verified` rows never block
+#### Scenario: GT-03 C4 is a placeholder — review/issues.md is never read
+- WHEN the bundle ledger at `<changeDir>/review/issues.md` holds an `open` row, and then is not even a readable file
+- THEN C4 reports `{id: 'C4', status: 'n/a', detail: 'ledger retired in 6.2 — open items live in ## Open'}` in every case and the gate is not blocked by it; the ledger classifier, `checkLedger`, `waiveEvidence` and `parseLedger` no longer exist
 
 #### Scenario: GT-04 flow-state legality is enforced
-- WHEN a required flow-state key (`change`, `mode`, `lineage`, `phase`) is missing, still a `<placeholder>`, has a `phase` outside the exact vocabulary (ground, specify, build, review, done, abandoned), a `mode` outside {fast, standard}, or a `change` value that does not equal `--change`
-- THEN C3 blocks naming the offending key; a fully legal flow-state passes
+- WHEN a required flow-state key (`change`, `lineage`, `phase`) is missing, still a `<placeholder>`, has a `phase` outside the exact vocabulary (ground, specify, build, review, done, abandoned), an optional `mode` outside {fast, standard} or still the `<fast | standard>` placeholder, or a `change` value that does not equal `--change`
+- THEN C3 blocks naming the offending key; a fully legal flow-state passes, with or without a `mode` line
 
 #### Scenario: GT-05 verdict evidence is mechanical
 - WHEN a review doc in the bundle (files matching `<changeDir>/review/*.md`, excluding `issues.md` and `*-raw` stems, regular files only) contains a `^VERDICT:` line but no file that is REGULAR by lstat (symlinks are not evidence) matches `<changeDir>/review/<stem>-raw.*`
@@ -31,11 +31,11 @@
 
 #### Scenario: GT-08 a missing or mismatched flow-state fails closed
 - WHEN the resolved change dir has no readable flow-state.md
-- THEN gate exits 2 (mode-aware checks are impossible); a readable flow-state whose `change` key mismatches `--change` is C3-blocked, not exit 2
+- THEN gate exits 2 (the state checks are impossible); a readable flow-state whose `change` key mismatches `--change` is C3-blocked, not exit 2
 
 #### Scenario: GT-09 neither mode is asked for artifacts 6.0 does not require
-- WHEN flow-state declares `mode: fast`, and again when it declares `mode: standard`, and neither a task list nor the bundle ledger `<changeDir>/review/issues.md` is present — 6.0 requires neither
-- THEN C2/C4 report `–` (not applicable) in BOTH modes — 6.0 asks for neither file, so their absence is never a block and the mode never changes that answer
+- WHEN flow-state declares `mode: fast`, and again when it declares `mode: standard`, and neither a task list nor the bundle ledger `<changeDir>/review/issues.md` is present
+- THEN C2/C4 report `–` in BOTH cases — 6.2 reads neither file, so their absence is never a block and the (inert) mode never changes that answer
 
 #### Scenario: GT-10 KB freshness degrades honestly through the truth index
 - WHEN a touched module `<m>` (first path segment of the change's delta-spec suffixes) resolves through the truth index to a truth doc carrying a canonical `source-commit` stamp (a fence-outside line-start `source-commit: <ref>`), whose resolved `source-files` are all verifiable, and git reports commits in `<ref>..HEAD -- <source-files...>`
@@ -65,38 +65,50 @@
 - WHEN gate runs to any outcome against a project tree
 - THEN no file in the tree is created, modified, or deleted (only the C1 test command's own side effects, which gate does not add to)
 
-### Requirement: C9 is the one substantive evidence predicate
-Gate SHALL run a ninth check over the flow-state's `## Evidence` section, and it SHALL be the only place a missing piece of REALITY blocks. Each row reads `- <risk>: done | blocked | owner-accepted | n/a — <detail>`, and the completion state SHALL accept the spellings a producer already uses elsewhere — `fixed`, `resolved`, `closed`, `verified`, `pass` and `passed` are read as `done` by every reader of the row, adding no fifth status; a word outside that set is still unknown and still blocks. A `blocked` row blocks: critical evidence that was never run is the one gap no extra review and no extra document can fill. An unreadable row or an unknown status token blocks, because a check that could not be made must never read as "no risk found". A section carrying NO rows blocks too — silence is not an answer. An `owner-accepted` row blocks unless the owner's own decision is recorded in the append-only `gates:` log in the CLOSED grammar `- <YYYY-MM-DDTHH:MM> owner: evidence-accept <exact-row-id> — <reason>`; owner acceptance is a human act, and a producer may not grant itself the §6 exit. C9 SHALL ALSO refuse what the CLI already PROVED about the delta and what the state claims about itself: a mutating delta makes a row named exactly `contract-mutation` owe `done` or a canonically recorded acceptance; a delta the scan could not read is fail-closed and no row cures it; a non-placeholder `## Open` item, a standing Reality Check `assumption` and a Reality Check line naming no kind each block. A `standard` change SHALL owe at least one substantive row that is not `producer-diff`; a `fast` change with no machine risk MAY answer with C1 plus `producer-diff`. C9 SHALL NOT change the change's mode: an accepted risk is still whatever mode the change declared. An ARCHIVED bundle SHALL be reported, never re-judged.
+### Requirement: C9 is the one substantive state predicate, and it reads the open items
+Gate SHALL run a ninth check over the flow-state's `## Open` section, and it SHALL be the only place a missing piece of REALITY blocks. Gate C9, archive R5, the archive declaration and `status` SHALL call ONE shared function on the same inputs (the state text and the delta scan); there SHALL be no second state. An open item is `- <ID>: <text>`, the id being one token in front of the colon (the former evidence-row id shape — `producer-diff`-style names are legal ids). An item is PENDING, and blocks, until the owner's decision is recorded in the append-only `gates:` log in the CLOSED grammar `- <YYYY-MM-DDTHH:MM> owner: evidence-accept <ID> — <reason>` (revoke by appending `evidence-accept-revoke <ID> — <reason>`; last decision wins; the actor must be exactly `owner`; the timestamp must be real). An ACCEPTED item SHALL NOT block but SHALL be reported as `accepted, still present` — in C9's detail, as an archive note and in `status` — and nothing SHALL delete it. A line without an id SHALL still be an open item: it blocks and cannot be accepted (`give it a stable id to accept it, or close it`). Duplicate ids SHALL fail closed, naming both lines. An acceptance whose id matches no item SHALL be a note, not a block. An empty or absent section owes nothing. C9 SHALL ALSO refuse a delta the scan could not read (fail-closed; no item or acceptance cures it), a standing Reality Check `assumption` and a Reality Check line naming no kind; a mutating delta SHALL be reported as the `contract-mutation` signal — information, demanding nothing. A legacy `## Evidence` section in an in-flight bundle SHALL migrate by rule: a `blocked` row blocks with the migration message, a row whose name carries a valid acceptance is an accepted item, every other row is ignored with one note. C9 SHALL read no mode. An ARCHIVED bundle SHALL be reported, never re-judged.
 
-#### Scenario: GT-39 blocked evidence refuses and owner acceptance is a recorded human act
-- WHEN the flow-state declares an evidence row as `blocked`, then as `owner-accepted` with no `gates:` entry, then as `owner-accepted` with the canonical `gates:` entry accepting it, then with an unknown status token, then with no `## Evidence` section at all
-- THEN C9 is BLOCKED for the first, second, fourth and fifth and `pass` for the third; and in every case the change's `mode` and `effectiveMode` are unchanged by the acceptance
+#### Scenario: OI-01 an open item is `- <ID>: <text>`; no id still blocks and cannot be accepted; duplicates fail closed
+- WHEN `## Open` carries id'd items, then a line without an id (prose, a token then prose, a generic like `Map<Key>`, a scaffold-looking `<…>` line), then two lines sharing an id, then nothing at all
+- THEN the id'd items are parsed `{id, text, accepted: false, acceptedAt: null}` and each blocks as `open item <ID> is pending … record the owner's decision: <template>`; the id-less line blocks as `open item has no id … give it a stable id to accept it, or close it` and no acceptance reaches it; the duplicate blocks naming both lines; an empty or absent section owes nothing and never swallows the heading that follows it; and gate C9, archive R5 (non-forceable) and `status` (`openItems`, `[pending]` lines) all agree
 
-#### Scenario: GT-41 gate hands C9 the delta scan and the effective mode, and every surface judges on both
-- WHEN a change DECLARED `standard` carries a mutating delta — the case where the mode derivation short-circuits and reports no signals of its own — and then when the same bundle is archived
-- THEN gate passes C9 the SCAN's signals rather than the derivation's, so the mutation is still owed an answer; archive's R5 and `status` report the identical findings from the identical two inputs; and the archived bundle is passed no signals at all, reported `n/a` by gate and RECORDED rather than blocking by `status`, which raises no escalation against frozen history
+#### Scenario: OI-02 evidence-accept <id> settles one item; revoke, near misses and unknown ids do not
+- WHEN the canonical `evidence-accept <ID> — <reason>` entry is recorded for a pending item, then each near miss (a `producer:` / `note:` / `agent:` / `gate⑤ (owner):` actor, no timestamp, a timestamp-shaped non-timestamp, no em dash, a hyphen, an empty or punctuation-only reason, the keyword preceded by prose or negated, an uppercase keyword, a superstring or differently-cased id, generic accept prose), then a revoke and a re-grant, then an acceptance naming no item
+- THEN only the canonical entry accepts (the item carries `acceptedAt`, stops blocking, and is reported `accepted, still present` by gate, archive and status — and the archived bundle still carries the line); every near miss leaves the item pending; the last decision wins; and the stray acceptance is the note `acceptance <ID> matches no open item`
+
+#### Scenario: OI-03 gate, archive and status judge the open items on the same inputs — the state and the delta scan
+- WHEN a mutating delta sits beside a pending item, an accepted item, an id-less item and a standing assumption
+- THEN gate hands C9 `{stage, riskSignals}` only, C9's detail, archive R5's findings and `status --json`'s `escalations` are the identical blockers (the pending item, the id-less item, the assumption), the mutation is the note `risk: contract-mutation: …` and `status`'s `risk[]`, and `evidence` is `{rows: [], blocked: [], recorded: []}`
+
+#### Scenario: OI-04 legacy Evidence rows migrate by rule
+- WHEN an in-flight bundle carries a legacy `## Evidence` section with a `blocked` row, then rows whose names carry valid acceptances, then rows reading `done` / `n/a` / `fixed` / a self-declared `owner-accepted` / an unfilled scaffold row / an unreadable line
+- THEN the blocked row blocks at gate, archive and status with `legacy Evidence row '<name>' is blocked — move it to ## Open as an item (or accept it via evidence-accept <name>)`; the accepted rows are accepted items (named in the declaration, nothing ignored); the rest are ignored with the one note `legacy ## Evidence section ignored (6.2: risks live in ## Open)`; and the retired vocabulary (`EVIDENCE_STATUS`, its alias table, `PRODUCER_DIFF_ROW`) no longer exists
+
+#### Scenario: GT-39 a pending open item refuses, and owner acceptance is a recorded human act
+- WHEN the state carries a pending item, then the same item with a `producer:` entry, then with the owner's canonical entry, then an id-less item beside an acceptance naming its first word, then no section at all
+- THEN C9 is BLOCKED for the first, second and fourth (`--force` never substituting for the decision), `pass` with `1 accepted, still present (<ID>)` for the third, and `pass` with `no open items` for the fifth
+
+#### Scenario: GT-41 gate, archive and status all judge the state on the same input — the delta scan
+- WHEN a change carries a mutating delta and a pending item, and then when the same bundle is archived
+- THEN gate passes C9 the SCAN's signals and no mode, archive's R5 and `status` report the identical findings, and the archived bundle is passed no signals at all, reported `n/a` by gate and RECORDED rather than blocking by `status`, which raises no escalation against frozen history
+
+#### Scenario: OI-09 an archived bundle keeps today's behavior: recorded, not re-judged
+- WHEN an archived bundle carries pending items, a legacy blocked row, a `mode:` line and a mutating (already merged) delta
+- THEN gate C9 is `n/a` with the findings under `recorded:`, `status` lists them under `recorded:` / `evidence.recorded`, raises no escalation, derives no signal, and reports `mode` and `effectiveMode` as declared
 
 ### Requirement: review-ready is a transient view, never a document
-`apriori gate --change <name> --review-ready` SHALL re-face the SAME evaluation as a review-admission answer and SHALL write nothing: no receipt file, no state mutation, no cached verdict. It SHALL report exactly THREE items, each a fact this run measured — the real test/binding result (C1), the evidence rows (C9), and the producer's own diff check (the reserved `producer-diff` evidence row), which SHALL hold only when that row is SETTLED: `done`, or an owner acceptance recorded in the canonical entry. `n/a` and a self-declared acceptance SHALL NOT clear it. It SHALL NOT report an item derived from another item's result, and SHALL NOT state what a reviewer will receive — it cannot observe that; facts the run already holds (the projected delta specs, C1's binding counts) MAY be printed instead. It SHALL exit 0 when every item holds and 1 when any does not, saying that an unready change goes back to Build & Test rather than into a review round. A skipped C1 SHALL never read as ready: the reviewer must not be the first to run the suite.
+`apriori gate --change <name> --review-ready` SHALL re-face the SAME evaluation as a review-admission answer and SHALL write nothing: no receipt file, no state mutation, no cached verdict. It SHALL report exactly TWO items, each a fact this run measured — `tests` (the real test/binding result, C1) and `open` (the `## Open` section is readable: every item carries a stable id and no id is duplicated). A PENDING item SHALL NOT fail review-ready — it is what the review is for. It SHALL NOT report an item derived from another item's result, and SHALL NOT state what a reviewer will receive — it cannot observe that; facts the run already holds (the projected delta specs, C1's binding counts) MAY be printed instead. The JSON shape `{change, ready, items:[{id, ok, detail}]}` is unchanged. It SHALL exit 0 when every item holds and 1 when any does not, saying that an unready change goes back to Build & Test rather than into a review round. A skipped C1 SHALL never read as ready: the reviewer must not be the first to run the suite.
 
 #### Scenario: GT-40 review-ready answers from the run's own facts and persists nothing
-- WHEN `gate --change <name> --review-ready` runs against a change whose tests pass, whose evidence rows are complete and whose state declares `producer-diff`
-- THEN it prints the three items with the transient-view notice and exits 0; removing the `producer-diff` row, blocking an evidence row, or omitting the test command each flips it to exit 1 naming the missing item — and a missing test command is ONE item, never two; and in every case the project tree is byte-identical afterwards
+- WHEN `gate --change <name> --review-ready` runs against a change whose tests pass and whose `## Open` carries a pending id'd item
+- THEN it prints the two items with the transient-view notice and exits 0; an id-less item, or omitting the test command, each flips it to exit 1 naming the item — and a missing test command is ONE item, never two; and in every case the project tree is byte-identical afterwards
 
-### Requirement: C4 reports the ledger vocabulary and blocks on open findings alone
-Gate C4 SHALL parse every ledger row's status against the legal vocabulary (leading token, case-insensitive): non-terminal `open` / `fixed` / `rejected + reason`; terminal `verified` / `rejected-verified + reason` / `waived + reason` / `advisory-acked`. Exactly ONE finding kind blocks: a row still `open`, at either stage. Every other finding — an unknown status token, a `rejected`/`rejected-verified`/`waived` without a word-character reason, a `waived` row with no flow-state `gates:` entry carrying its ID and the text `waiv`, and, at the ARCHIVED stage, a `fixed` or plain `rejected` row that never reached a terminal state — SHALL be reported as a bookkeeping note beside the verdict and SHALL NOT block. This is deliberate subtraction: record-keeping state was producing product review rounds on changes whose tests were already green. The ledger lives at `<changeDir>/review/issues.md` at both stages, and an absent ledger is `n/a` in both modes.
+#### Scenario: OI-05 review-ready answers two items — tests, and a readable Open section
+- WHEN `--review-ready` runs on a change with a pending item, then with an id-less item, then with a duplicated id, then with no items, then with no test command
+- THEN the items are exactly `tests` and `open`; the pending item reads `… — pending items are what the review is for` and is ready, the two unreadable sections are `✗ open` naming the defect, the empty section reads `no open items`, and the missing suite is `✗ tests`
 
-#### Scenario: GT-13 archived ledgers report their bookkeeping instead of refusing
-- WHEN gate resolves a change at the archived stage whose ledger carries a `fixed` row, a plain reasoned `rejected` row, or an unknown status like `done`
-- THEN C4 passes and each of them is named as a non-blocking bookkeeping note; an `open` row at the same stage still blocks
-
-#### Scenario: GT-14 an unrecorded waive is reported, an open row refuses
-- WHEN a ledger carries a `waived — reason` row without a matching flow-state gates: entry (the ID plus "waiv"), or a row whose status is outside the vocabulary, at either stage
-- THEN C4 names each as a bookkeeping note without blocking, while a row reading `open` in the same ledger is what makes C4 report BLOCKED
-
-#### Scenario: GT-15 every archived ledger in this repo parses legal and terminal
-- WHEN the corpus of archived changes (apriori/changes/archive/*) is walked and each bundle's ledger at `<archived dir>/review/issues.md` is parsed
-- THEN every row is legal AND terminal under the vocabulary (skip-if-absent for packaged environments)
+### Requirement: C2 and C4 are placeholders since 6.2
+Gate SHALL keep the ids `C2` and `C4` in `checks[]` for `--json` shape compatibility and SHALL report both as `n/a` with a detail that says why (`retired in 6.2 — nothing is read`; `ledger retired in 6.2 — open items live in ## Open`). Neither `tasks.md` nor `review/issues.md` SHALL be opened, present or absent, whatever they contain. An unusable review ROOT (symlink, escape, not a directory) SHALL be refused at C5 alone.
 
 ### Requirement: C7 denies unstamped mutation deltas unless visibly waived
 Gate SHALL run a seventh check: the change's projection carrying `unstampedMutations` → `C7 BLOCKED` naming each suffix and the stamp cure. Two escapes, flag over config: `gate --no-cas` → the check reports `waived (--no-cas)`; a process-config `cas` row read through the shared structured reader with value `optional` (leading token, case-insensitive; an absent row or `required` means required) → `waived (process-config)`. A cas CONFLICT or illegal value at consultation makes C7 BLOCKED naming the config error — bad config never equals a waiver, though the `--no-cas` flag still waives explicitly. A waiver is always visible in the gate output — never a silent skip. The waiver vocabulary is shared with `archive` (which denies by default since 4.0.1); verify's projection stays warn-only. In-flight only: at the archived stage the deltas are already merged and C7 reports n/a.
@@ -183,12 +195,8 @@ A missing test command SHALL disable C1 alone, never the whole evaluation. When 
 
 #### Scenario: GT-38 the degradation reaches the archived stage too
 - WHEN the test command is absent and the change resolves only under `apriori/changes/archive/<stamp>-<name>/`
-- THEN C1 is `skipped`, C7 is `–` (deltas already merged), C4 still blocks on an `open` row and notes the rest, and the exit code follows the same total order; the shared projection builder is invoked ZERO times on this path, observably — an archived bundle's deltas are already in the store, so building a projection could only manufacture a false block
+- THEN C1 is `skipped`, C7 is `–` (deltas already merged), evidence integrity (C5) still blocks at the archived stage, and the exit code follows the same total order; the shared projection builder is invoked ZERO times on this path, observably — an archived bundle's deltas are already in the store, so building a projection could only manufacture a false block
 
-#### Scenario: GT-43 producer-diff must be settled — `n/a` clears nothing
-- WHEN the reserved `producer-diff` row reads `n/a`, `blocked`, or `owner-accepted` with no canonical `gates:` entry
-- THEN `--review-ready` refuses and names the item; it holds only for `done` or an owner acceptance really recorded
-
-#### Scenario: GT-44 review-ready reports three measured items and promises nothing
+#### Scenario: GT-44 review-ready reports two measured items and promises nothing
 - WHEN `--review-ready` runs on a ready change, in text and in `--json`
-- THEN exactly three items are reported (`tests`, `evidence`, `producer-diff`), no item is derived from another item's result, no line claims what a reviewer receives, the closing line is bare, a fact the run already holds is printed instead (the projected delta specs), and nothing is written to disk
+- THEN exactly two items are reported (`tests`, `open`), no item is derived from another item's result, no line claims what a reviewer receives or names the retired `evidence` / `producer-diff` items, the closing line is bare, a fact the run already holds is printed instead (the projected delta specs), and nothing is written to disk

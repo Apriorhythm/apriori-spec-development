@@ -2,6 +2,41 @@
 
 All notable changes to `apriori-cli`. Versions follow semver; the stability promise: CLI surface & flags, `--json` shapes, the delta format and the flow-state schema only break in a major.
 
+## Unreleased — 6.2-sub-doc · the document layer loses weight (text only; tool behavior unchanged)
+
+**Branch `v6.2-sub-doc`, cut from `v6.0.0-rc1`.** Nothing under `lib/`, `bin/`, `templates/` or the
+CLI defaults changes; every `--json` shape, gate/archive predicate, delta grammar and flow-state
+field is exactly rc1's. What changes is what the agent reads.
+
+- **Twelve operating principles** open both RUNBOOK editions; the sections below them are their
+  operational detail. The runbook keeps only what an agent needs to act on a tool's output —
+  the algorithm lectures (CAS, verdict parsing, verify's diagnostic classes) and the 5.x
+  contrasts move to the concepts handbook, read on demand.
+- **P3 is three questions**, not seven items: established behavior / actual safety constraints;
+  real entry-point evidence (semantic faithfulness); scope beyond the goal or undecidable. The
+  security surfaces stay named inside question one.
+- **Self-added promises are retracted or narrowed by default.** The guarantee-claim discipline
+  and its fault-injection tutorials (fsync, root/chmod, kill-after-ack) are replaced by one
+  sentence in Build & Test, P2 and P3; established guarantees still need a success-path
+  injection test.
+- **No default brainstorm ritual.** The stance is "discuss first", entered only when the human
+  explicitly asks; nothing durable before approval, then `apriori new` → Ground. The
+  diverge→converge choreography (one question per message, 2-3 mockups, coverage checklist) is
+  gone from the runbook, P6 and concepts. `/apriori` with no arguments still opens that door.
+- **No label-triggered early spec-review.** The Specify loop runs only when the owner asks for an
+  early judgment on a specific approach, or the requirement is still substantially uncertain
+  after Ground — never because a change carries a risk label, and "when in doubt, run it" is
+  deleted.
+- **Two contradictions removed:** §2 no longer says standard "costs a task list", and verify's
+  GREEN is stated consistently with its advisory UNBOUND/ORPHAN/UNIDENTIFIED classes.
+- **Kept, deliberately:** the flow-state template and every closed `gates:` grammar, the Evidence
+  row obligation and its `owner-accepted` syntax, the `producer-diff` review-ready row, CAS
+  stamping, the verdict vocabulary, the lean four-action closeout, the ledger vocabulary for a
+  change that keeps one. Those are tool inputs; they leave with their consumers in 6.2's code
+  batch, not before.
+- Tests: the text-anchor tests for the retracted disciplines (PR-07/09/11) now pin the
+  subtraction; every behavioral test is untouched. 616/616.
+
 ## Unreleased — 6.0 slice 5 · the fixed artifact family is gone
 
 **The 5.x seven-step artifact machine is removed from the runtime, the living specs, the tests

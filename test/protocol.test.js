@@ -80,78 +80,39 @@ test('PR-06 a configurable language governs prose; machine tokens stay English',
   assert.match(cfg, /\| language \| auto \|/);
 });
 
-test('PR-07 the brainstorm stance is a structured diverge→converge→funnel, entered via P6', () => {
-  const en = block(EN, /^### Brainstorm — optional pre-Ground stance.*$/m);
-  assert.ok(en, 'EN Brainstorm block present');
-  assert.match(en, /never write code/);
-  assert.match(en, /no required output/);
-  assert.match(en, /no flow-state entry|not a tracked phase/);
-  assert.match(en, /\*\*P6\*\*/);                              // entered via P6
-  // diverge
-  assert.match(en, /Open threads, not interrogations/);
-  assert.match(en, /Ground everything in the actual codebase/);
-  assert.match(en, /2-3 ASCII UI-mockup variants/);
-  assert.match(en, /risks and unknowns unprompted/i);
-  // converge
-  assert.match(en, /exactly one question per message/);
-  assert.match(en, /purpose · target users · core scenarios · UI shape \(when user-facing\) · data & content · constraints · non-goals · success criteria/);
-  assert.match(en, /explicitly deferred with the human's consent/);
-  assert.match(en, /observed need or a speculation/);
-  assert.match(en, /deferred\/staged path/);
-  assert.match(en, /fatigue or impatience/);
-  assert.match(en, /recommended defaults/);
-  assert.match(en, /2-3 candidate approaches with tradeoffs and your recommendation/);
-  // funnel — into `apriori new` + Ground, and there is still no second track
-  assert.match(en, /must funnel into the flow/);
+test('PR-07 discuss-first is a short, human-requested stance: nothing durable before approval, then `apriori new` → Ground', () => {
+  const en = block(EN, /^### Discuss first — an optional stance.*$/m);
+  assert.ok(en, 'EN Discuss-first block present');
+  assert.match(en, /explicitly asks/);
+  assert.match(en, /\*\*P6\*\*/);
+  assert.match(en, /no code, no spec or design file, no `apriori new`, no flow-state/);
+  assert.match(en, /one plain sentence/);
+  assert.match(en, /run `apriori new <change>`/);
   assert.match(en, /start \*\*Ground\*\*/);
-  assert.match(en, /no second track to route to/);
-  assert.match(en, /Ground is where an unclear fact gets settled/);
-  // P6 exists in §5 and its body mirrors the stance
-  const p6en = block(EN, /^### P6 — brainstorm kickoff.*$/m);
+  assert.match(en, /never enter the stance unasked/);
+  // the 6.0 diverge→converge ritual is retracted: no default brainstorm, no question-per-message, no mockup quota
+  for (const doc of [EN, CN, CONCEPTS, CONCEPTS_CN]) {
+    assert.doesNotMatch(doc, /exactly one question per message|每条消息恰好一个问题/);
+    assert.doesNotMatch(doc, /2-3 ASCII UI-mockup variants|2-3 个界面草图变体|2-3 UI-mockup variants|2-3 个界面草图/);
+    assert.doesNotMatch(doc, /no idea is "too simple to brainstorm"|没有"简单到不用脑暴"的点子/);
+  }
+  const p6en = block(EN, /^### P6 — discuss first.*$/m);
   assert.ok(p6en, 'EN P6 block present');
   assert.match(p6en, /write NOTHING durable/);
   assert.match(p6en, /no `apriori new`, no flow-state/);
   assert.match(p6en, /one plain sentence/);
-  assert.match(p6en, /read the actual codebase/);
-  assert.match(p6en, /surface risks and unknowns without being asked/);
-  assert.match(p6en, /2-3 UI-mockup variants/);
-  assert.match(p6en, /the winning UI sketch if any/);
-  assert.match(p6en, /one question per message/);
-  assert.match(p6en, /staged path/);
-  assert.match(p6en, /recommended\s+defaults/);
-  assert.match(p6en, /2-3 candidate approaches/);
   assert.match(p6en, /I decide when it is stateable/);
-  assert.match(p6en, /## Reality Check/);                      // the seed lands in the ONE state
-  const cn = block(CN, /^### 脑暴 —— Ground 之前的可选姿态.*$/m);
-  assert.ok(cn, 'CN Brainstorm block present');
-  assert.match(cn, /绝不写代码/);
-  assert.match(cn, /无必需产出/);
-  assert.match(cn, /无 flow-state 条目|不是被追踪的阶段/);
+  assert.match(p6en, /## Reality Check/);
+  const cn = block(CN, /^### 先讨论 —— 人明确要求时的可选姿态.*$/m);
+  assert.ok(cn, 'CN Discuss-first block present');
   assert.match(cn, /P6/);
-  assert.match(cn, /开线头而非审问/);
-  assert.match(cn, /扎根真实代码库/);
-  assert.match(cn, /不等人问就把风险和未知摆出来/);
-  assert.match(cn, /2-3 个 ASCII 界面草图变体/);
-  assert.match(cn, /每条消息恰好一个问题/);
-  assert.match(cn, /给具体选项/);
-  assert.match(cn, /目的 · 目标用户 · 核心场景 · 界面形态\(面向用户时\) · 数据与内容 · 约束 · 非目标 · 成功判据/);
-  assert.match(cn, /经人同意明确搁置/);
-  assert.match(cn, /观察到的真需求/);
-  assert.match(cn, /把代价说白/);
-  assert.match(cn, /缓做\/分级路线/);
-  assert.match(cn, /疲劳或不耐烦/);
-  assert.match(cn, /推荐默认值/);
-  assert.match(cn, /2-3 个候选方案的取舍对比和你的推荐/);
-  assert.match(cn, /必须漏斗进流程/);
-  assert.match(cn, /从 \*\*Ground\*\* 开始/);
-  assert.match(cn, /没有第二条轨道/);
-  const p6cn = block(CN, /^### P6 —— 脑暴启动.*$/m);
+  assert.match(cn, /不写代码、不写 spec 或设计文件、不跑 `apriori new`、不建 flow-state/);
+  assert.match(cn, /`apriori new <change>`/);
+  assert.match(cn, /\*\*Ground\*\*/);
+  assert.match(cn, /人不要求时不主动进入/);
+  const p6cn = block(CN, /^### P6 —— 先讨论.*$/m);
   assert.ok(p6cn, 'CN P6 block present');
   assert.match(p6cn, /不留任何持久物/);
-  assert.match(p6cn, /不建 flow-state/);
-  assert.match(p6cn, /一句大白话/);
-  assert.match(p6cn, /读真实代码库/);
-  assert.match(p6cn, /不等我问就把风险和未知摆出来/);
   assert.match(p6cn, /## Reality Check/);
 });
 
@@ -185,26 +146,13 @@ test('PR-08 the four phases and the four decision points bind in both editions',
     assert.ok(!/gate ?[①②③④⑤]|闸口 ?[①②③④⑤]/.test(doc), 'a numbered workflow gate survives');
 });
 
-test('PR-09 brainstorm exit is human-gated, artifact-free until approval, seeds the ONE state', () => {
-  const en = block(EN, /^### Brainstorm — optional pre-Ground stance.*$/m);
-  assert.match(en, /never create workflow artifacts either/);
-  assert.match(en, /no spec or design file, no `apriori new`, no flow-state/);
-  assert.match(en, /plain-language sentence/);
-  assert.match(en, /never recite protocol internals/);
-  assert.match(en, /you may \*propose\* exiting/);
-  assert.match(en, /the human's judgment, not yours/);
-  // the seed goes into the ONE state, not into a requirement document
-  assert.match(en, /## Reality Check/);
-  assert.match(en, /non-goals \*\*with the reasons they were cut\*\*/);
-  assert.ok(!/requirement draft|req-v1/.test(en), 'the requirement-doc seed survives');
-  const cn = block(CN, /^### 脑暴 —— Ground 之前的可选姿态.*$/m);
-  assert.match(cn, /绝不创建工作流产物/);
-  assert.match(cn, /不跑 `apriori new`/);
-  assert.match(cn, /一句大白话/);
-  assert.match(cn, /绝不对人背诵协议内部词汇/);
-  assert.match(cn, /提议\*退出|\*提议\*退出/);
-  assert.match(cn, /由人判定,不由你/);
-  assert.match(cn, /## Reality Check/);
+test('PR-09 discuss-first exit is human-gated and seeds the ONE state', () => {
+  const en = block(EN, /^### Discuss first — an optional stance.*$/m);
+  assert.match(en, /Nothing durable before the human's explicit approval/);
+  assert.match(en, /as `decision` entries in the `## Reality Check`/);
+  const cn = block(CN, /^### 先讨论 —— 人明确要求时的可选姿态.*$/m);
+  assert.match(cn, /在人明确批准之前不留任何持久物/);
+  assert.match(cn, /作为 `decision` 写进 `## Reality Check`/);
   assert.ok(!/需求草稿|req-v1/.test(cn), 'the CN requirement-doc seed survives');
 });
 
@@ -227,28 +175,28 @@ test('PR-10 the E2E layer sits above the binding gate, and no project-type matri
   assert.match(CONCEPTS_CN, /基线图属于项目自己的测试套件/);
 });
 
-test('PR-11 hard guarantees must be exercised by a fault-injecting test', () => {
-  assert.match(EN, /Guarantee-claim discipline/);
-  assert.match(EN, /injects\*\* the adversarial condition|injects the adversarial condition/);
-  assert.match(EN, /crash durability/);
-  assert.match(EN, /scope the wording down to what is actually verified/);
-  assert.match(EN, /killing the process AFTER the success is acknowledged, then restarting/);
-  assert.match(EN, /error-path test does not prove a success-path guarantee/);
-  assert.match(EN, /both the temp file AND its containing directory/);
-  assert.match(EN, /reading the data back through the app's own load\s*\n?path|through the app's own load path/);
-  // the independent review names it a gap, never advisory
+test('PR-11 self-added promises are retracted or narrowed by default; established guarantees still need a success-path injection test', () => {
+  // Build & Test states the discipline once, P2 carries it to the producer, P3 checks only ESTABLISHED guarantees
+  assert.match(EN, /Self-added-promise discipline/);
+  assert.match(EN, /retracted or narrowed to what is actually verified, by default/);
+  assert.match(EN, /injects the adversarial condition on its \*\*success path\*\*/);
+  const p2en = block(EN, /^### P2 — producer.*$/m);
+  assert.match(p2en, /A self-added promise with no established requirement, valid decision or actual safety responsibility behind it is retracted or narrowed by default/);
   const p3en = block(EN, /^### P3 — independent review.*$/m);
-  assert.match(p3en, /Guarantee claims:/);
-  assert.match(p3en, /unexercised hard guarantee is a gap, not advisory/);
-  assert.match(CN, /保证声明纪律/);
-  assert.match(CN, /注入\*\*对抗条件|注入.{0,4}对抗条件/);
-  assert.match(CN, /把措辞收窄到实际验证到的程度/);
-  assert.match(CN, /在成功被确认之后杀掉进程、再重启/);
-  assert.match(CN, /测错误路径证明不了成功路径的保证/);
-  assert.match(CN, /临时文件和它的承载目录都做 `fsync`/);
+  assert.match(p3en, /an established hard guarantee with no test injecting the adversarial condition on its success path/);
+  assert.match(p3en, /self-added promises and mechanisms beyond the requirement/);
+  assert.match(CN, /自加承诺纪律/);
+  assert.match(CN, /默认撤回或收窄到实际验证到的程度/);
+  const p2cn = block(CN, /^### P2 —— 生产方.*$/m);
+  assert.match(p2cn, /无既定需求、有效决定或实际安全责任依据的自加承诺,默认撤回或收窄/);
   const p3cn = block(CN, /^### P3 —— 独立评审.*$/m);
-  assert.match(p3cn, /保证声明:/);
-  assert.match(p3cn, /未经验证的硬保证是缺口,不是 advisory/);
+  assert.match(p3cn, /既定硬保证没有在其成功路径上注入对抗条件的测试/);
+  // the generic fault-injection tutorials are gone from the runbook (fsync / root-chmod / kill-after-ack)
+  for (const doc of [EN, CN]) {
+    assert.doesNotMatch(doc, /fsync/);
+    assert.doesNotMatch(doc, /chmod/);
+    assert.doesNotMatch(doc, /Guarantee-claim discipline|保证声明纪律/);
+  }
 });
 
 test('PR-12 flow-state persists the reviewer resumable session id (schema + R2)', () => {
@@ -339,9 +287,6 @@ test('PR-16 legacy-project clarity clauses (both languages)', () => {
   // R2 transcription covers the review doc itself
   assert.match(EN, /The same transcription mechanism covers the \*\*review doc itself\*\*/);
   assert.match(CN, /同一代录机制也覆盖\*\*评审文档本体\*\*/);
-  // root chmod gotcha in the guarantee-claim discipline
-  assert.match(EN, /`chmod` does nothing to root; inject at the I\/O primitive/);
-  assert.match(CN, /`chmod` 对 root 无效;改为在 I\/O 原语处注入/);
   // archive prose: --changes-dir + the resumed-session rule
   assert.match(EN, /with `--changes-dir apriori\/changes`\*\*, moves the in-flight change dir/);
   assert.match(EN, /must look under `archive\/` once the move has happened/);

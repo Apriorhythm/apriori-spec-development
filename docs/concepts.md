@@ -270,7 +270,7 @@ The signals that force **standard** are facts, not estimates: UI / prototype · 
 | Reality Check | The state's Ground section | `observed` / `decision` / `assumption` lines in the flow-state. It **replaced** the gap report — one state, no second file |
 | Evidence row | The state's risk ledger | `- <risk>: done \| blocked \| owner-accepted \| n/a — <detail>`; a `blocked` row stops delivery until the owner decides |
 | Issue ledger | Cumulative issue table — **optional** | Kept only when a change is big enough to want per-issue status flips; each issue carries an ID and a status — see [§7.0](#70-the-issue-ledger-optional-shared-by-review-loops) |
-| P6 | Brainstorm kickoff | Enters the pre-Ground thinking-partner stance: diverge → converge → human-approved funnel (RUNBOOK "Brainstorm") |
+| P6 | Discuss first | Only when the human explicitly asks to discuss an idea first: nothing durable until they approve, then `apriori new` → Ground (RUNBOOK "Discuss first") |
 | mode | The one identity field | `fast` or `standard`, in the state file ([§4.0](#40-four-phases-two-modes)) — it scales evidence, never document count |
 | phase | Where the change is | `ground` / `specify` / `build` / `review`, plus `done` / `abandoned` |
 
@@ -323,7 +323,7 @@ graph TD
 
 ### 4.3 Ground: Check the Real Facts
 
-> 💡 **Before Ground, you can just think.** If the idea is still fuzzy, enter the Brainstorm stance (paste RUNBOOK **P6**): the agent diverges with you first (several threads to pick from, codebase-grounded, ASCII sketches — including 2-3 UI-mockup variants for anything user-facing), then converges with discipline (one question per message with options, a coverage checklist — purpose/users/scenarios/UI/data/constraints/non-goals/success criteria — and 2-3 candidate approaches with tradeoffs before any exit). Two protections: **nothing durable is written before you approve** (no code, no docs, no scaffolding), and **you decide** when it's stateable. This stance is load-bearing: everything after it largely runs itself, so this is where you and the machine actually align.
+> 💡 **Before Ground, you can just talk.** If the idea is still fuzzy and you say so, the agent discusses first (paste RUNBOOK **P6**): it reads the codebase, surfaces risks and unknowns, and presents candidate approaches with tradeoffs. Two protections: **nothing durable is written before you approve** (no code, no docs, no scaffolding), and **you decide** when it's stateable. A task you can already state starts directly; the agent never enters this stance unasked.
 
 The **Ground action** (RUNBOOK **P1**). Read the real code, schema, interfaces, prototype, config, deploy topology and runtime — including Windows/WSL semantics when the change touches paths or processes.
 

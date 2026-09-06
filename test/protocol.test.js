@@ -128,16 +128,20 @@ test('PR-08 the four phases and the four decision points bind in both editions',
   // the state's phase vocabulary
   assert.match(EN, /phase: ground \| specify \| build \| review \| done \| abandoned/);
   assert.match(CN, /phase: ground \| specify \| build \| review \| done \| abandoned/);
-  // §1 R1: exactly four human decisions, and no consolidation
+  // §1 R1: exactly five human decisions, and no consolidation
   const r1en = EN.slice(EN.indexOf('**R1 —'), EN.indexOf('### External side effects'));
   assert.match(r1en, /An escalation/);
   assert.match(r1en, /An `## Open` item that cannot be resolved/);
+  assert.match(r1en, /A review family stalled after its round 2 \(reframe\)/);
+  assert.match(r1en, /There are exactly five:/);
   assert.match(r1en, /An external side effect/);
   assert.match(r1en, /Abandonment/);
   assert.match(r1en, /There is no consolidation authorization/);
   const r1cn = CN.slice(CN.indexOf('**R1 ——'), CN.indexOf('### 外部副作用'));
   assert.match(r1cn, /升级\(escalation\)/);
   assert.match(r1cn, /无法解决的 `## Open` 条目/);
+  assert.match(r1cn, /评审 family 在它的第 2 轮后停滞\(reframe\)/);
+  assert.match(r1cn, /只有五种:/);
   assert.match(r1cn, /外部副作用/);
   assert.match(r1cn, /放弃\(abandon\)/);
   assert.match(r1cn, /不存在"整合授权"/);
@@ -314,7 +318,7 @@ test('PR-17 external side effects require the principal\'s explicit authorizatio
   assert.match(en, /unusual spend/);
   assert.match(en, /production-affecting/);
   assert.match(en, /non-public.*data|data outside the expected verification path/);
-  // R1 cross-references the rule, and names it as one of the four stops
+  // R1 cross-references the rule, and names it as one of the five stops
   const r1en = EN.slice(EN.indexOf('**R1 —'), EN.indexOf('### External side effects'));
   assert.match(r1en, /An external side effect.*Never inside any blanket/s);
   // and the authorization ASK is a first-class prompt now

@@ -10,7 +10,7 @@
 > Local state lives ONLY in `apriori/process-config.md` and the flow-state file — this file is stateless, so **upgrading = overwriting it with the upstream version**.
 
 > **Audience: AI agents** (plus §6 for the human operating them). This file is self-contained: everything an agent needs at runtime is here — hard rules, state machine, artifact paths, prompts.
-> The **why** — concepts, tool setup, worked example — lives in the human handbook ([README.md](./README.md)); the tool's finer behavior (verdict parsing, the CAS algorithm, verify's diagnostic classes) lives in [docs/concepts.md](./docs/concepts.md), read when a command's output points there. Where the two disagree on operational detail, **this runbook is canonical**.
+> The **why** — concepts, tool setup, worked example — lives in the human handbook: `README.md` and `docs/concepts.md` in the apriori-cli repository (not necessarily beside this copy); the tool's finer behavior (verdict parsing, the CAS algorithm, verify's diagnostic classes) is in that `docs/concepts.md`, read when a command's output points there. Where the two disagree on operational detail, **this runbook is canonical**.
 
 **Operating principles (twelve sentences; the sections below are their operational detail):**
 
@@ -76,12 +76,13 @@ Advance ONLY to the next point where I have to decide (§1 R1), then stop and re
 
 ## 1. Hard Rules
 
-**R1 — Stop when a human has to decide, and only then.** There are exactly four:
+**R1 — Stop when a human has to decide, and only then.** There are exactly five:
 
 1. **An escalation.** A reviewer returned `VERDICT: escalate`, or a review family reached round 5. `apriori status --change <name> --escalation` prints it and exits 3.
-2. **An `## Open` item that cannot be resolved.** The three exits are the owner's: make the evidence cheaper, split the change, or accept the risk (`evidence-accept <ID>` in `gates:`). Nothing else opens it.
-3. **An external side effect** (the hard rule below). Never inside any blanket.
-4. **Abandonment.** The human's word alone.
+2. **An `## Open` item that cannot be resolved** — critical evidence blocked, a pending item. The three exits are the owner's: make the evidence cheaper, split the change, or accept the risk (`evidence-accept <ID>` in `gates:`). Nothing else opens it.
+3. **A review family stalled after its round 2 (reframe).** Still `revise` after its own round 2, that loop stops (R4); only the owner's `reframe <family> round <n> <split|tests|redo> — <reason>` in `gates:` reopens it.
+4. **An external side effect** (the hard rule below). Never inside any blanket.
+5. **Abandonment.** The human's word alone.
 
 At a stop: update the state file, report — phase, reviewer verdict lines **verbatim**, the open substantive issues, the decision you need — then stop. Never decide it yourself; never treat "the human hasn't answered" as approval. **There is no consolidation authorization** — a pre-authorization to keep working never removes the report.
 
@@ -258,7 +259,7 @@ KB docs have two sections with **opposite truth directions** (§5 P5): `Contract
 
 - **Do, in order:** (1) a failing test that proves every scenario's behavior with real evidence — a Scenario's examples table may share ONE parametrized test, so the bar is "every scenario covered," never "one test per ID"; naming a test with its scenario ID is a suggestion, never mandatory — show the failing run; (2) implement with **P2**; (3) run until green; (4) `apriori verify` GREEN; (5) update `## Open`: delete what you resolved, and give every risk this change hits and has not resolved its own line with a stable id (`- <ID>: <text>`).
 - **The spec-runner gate (`apriori verify`).** Mid-change, use the projected form: `apriori verify --change <name> --test-cmd "<your test command>"` — it applies the delta to the store in memory and binds scenarios against that. Post-archive, the plain form `apriori verify --specs apriori/specs --test-cmd "…"`. Both report BOUND-GREEN / BOUND-RED / UNBOUND / ORPHAN / UNIDENTIFIED. **GREEN (exit 0) = within this change's scope no bound scenario's test fails, no failure is unattributable, and no ID is duplicated across boundaries; UNBOUND, a non-failing ORPHAN and UNIDENTIFIED are advisory only and never block** — do not write TAP mergers or ID promoters for them. Exit 1 = gaps; exit 2 = the run itself is untrustworthy (missing spec paths, zero scenarios, non-TAP output, test-command crash, merge conflict, diverged base stamp, malformed delta) — **a broken or vacuous run is never GREEN**. `apriori gate`'s C1 reads the identical result. The diagnostic classes are detailed in concepts.
-- **Run the tests the risks call for, not a matrix.** There is no per-project-type evidence table: what a change owes is the evidence its §6 risks actually call for, and whatever stays unverified is an `## Open` item. Scenario IDs bind to `apriori verify` through unit/component tests — verify's gate speaks TAP, which Playwright does not emit, so an E2E/visual layer sits **on top of** the binding gate as an additional exit condition and its visual checks must emit a textual pass/fail. Implementation-time screenshots go to the gitignored `apriori/tmp/`; visual-regression baseline images belong to the project's own test suite. Where no executable instrument exists for a risk (docs-only projects: `apriori check` stands in for `npm test`), the independent review is the instrument there.
+- **Run the tests the risks call for, not a matrix.** There is no per-project-type evidence table: what a change owes is the evidence the risks it actually hits call for, and whatever stays unverified is an `## Open` item. Scenario IDs bind to `apriori verify` through unit/component tests — verify's gate speaks TAP, which Playwright does not emit, so an E2E/visual layer sits **on top of** the binding gate as an additional exit condition and its visual checks must emit a textual pass/fail. Implementation-time screenshots go to the gitignored `apriori/tmp/`; visual-regression baseline images belong to the project's own test suite. Where no executable instrument exists for a risk (docs-only projects: `apriori check` stands in for `npm test`), the independent review is the instrument there.
 - **Self-added-promise discipline.** A self-added promise with no established requirement, valid decision or actual safety responsibility behind it — hard guarantees such as "always / under concurrency / crash-durable / atomic", and mechanisms beyond the requirement — is retracted or narrowed to what is actually verified, by default. An established guarantee needs a test that injects the adversarial condition on its **success path**; for any continue/skip/silently-ignored branch, re-check the spec for whether the failure state must be user-visible.
 - **Exit:** tests green; `apriori verify` GREEN (docs-only: `apriori check` green); lint/static analysis green (where configured); `## Open` holds only what is genuinely unresolved, each line with a stable id. Design infeasible or the requirement itself wrong → back to Specify or Ground (update the state file and tell the human).
 
@@ -314,7 +315,7 @@ Stop when nothing the work depends on is still an assumption. Anything you could
 * Split first: this change carries ONE main result and ONE main evidence chain. If it spans boundaries needing different real environments, forces a reviewer between unrelated contexts, or keeps enlarging another area's review surface — split now and record that decision in ## Reality Check.
 * One scenario per user-visible output, each with a stable ID (e.g. KV-03) and testable acceptance; state what is out of scope.
 * Any external shared state (Redis / DB field / global singleton / in-memory cache) describes three moments: init / runtime update / cleanup-invalidation.
-* List under ## Open, one id'd line each, every §6 risk this change hits and has not yet resolved.
+* List under ## Open, one id'd line each, every risk this change actually hits and has not yet resolved.
 [Build & Test] Derive a failing test that proves every scenario's behavior with real evidence — one parametrized test may cover a scenario's whole examples table, so the bar is every scenario covered, not one test per ID — and SHOW the failing run. Then implement — the scenarios are the work; there is no task list. Run the project's linter/static analysis where configured. For any continue/skip/silently-ignored branch, re-check the spec for whether the failure state must be user-visible. When a new path takes over, name the old owner and its fate (removed, disabled, migrated, or coexisting), prove it in one user-flow test at the highest common container with an assertion that fails if the fate is untrue, and delete only the low-level tests that test replaces. A self-added promise with no established requirement, valid decision or actual safety responsibility behind it is retracted or narrowed by default.
 [Review-ready] Update ## Open: delete what you resolved and say, on each remaining line, what you ran and what is still unverified — every line with a stable id (`- <ID>: <text>`); reclaim the probes, temporary files and dead code this change left behind; then read the COMPLETE diff with known P0/P1 at zero.
 Stop, and run `apriori gate --change <change> --review-ready --test-cmd "…"` before asking for review. Not ready is not a review round.
@@ -375,7 +376,7 @@ On my approval, run `apriori new <change>` and write the crystallized understand
 
 ## 6. Human Operator Appendix
 
-> Everything in this section is **run by the human**. The agent must never execute or simulate `/goal` (R3). Architecture and caveats: handbook §4.10.
+> Everything in this section is **run by the human**. The agent must never execute or simulate `/goal` (R3). Architecture and caveats: `docs/concepts.md` §4.7 (automating the loop with `/goal`) in the apriori-cli repository.
 > **Two loops, two bounds.** *Review rounds* are governed per family by the derived loop (§1 R4 / `gate` C8); *the implement-and-test loop* is bounded by a fixed worst-case **25 turns**, written into its recipe text below. `process-config.md` configures neither.
 
 **Specify loop (run only when the owner asks for an early judgment on a specific approach, or the requirement is still substantially uncertain — the default is to skip straight to Build & Test):**
@@ -398,20 +399,21 @@ Stop when every condition holds. If turn 25 ends with any condition still unmet,
 
 **Review & Deliver:**
 ```text
-/goal "Goal: an independent review by a DIFFERENT model (the P3 prompt) reports 'VERDICT: no spec-vs-code gaps', THEN the change is archived (`apriori archive` merges the delta specs into the living store apriori/specs/) AND — only if this change owes a KB update (§4 Review & Deliver: an existing truth doc for the touched module, or an explicit decision to persist one) — the KB file for module <module> reflects this change's new/changed facts with a refreshed source-commit stamp.
-Run the review-ready check first; if it does not exit 0, go back to Build & Test — that is not a review round. Then run the consistency reviewer (codex exec / fresh claude) and paste its verdict. Then run the archive action; if a KB update is owed, update apriori/truth/<module>.md and list exactly which files/sections changed.
+/goal "Goal: IF this change owes a KB update (§4 Review & Deliver: an existing truth doc for the touched module, or an explicit decision to persist one), apriori/truth/<module>.md already reflects this change's new/changed facts with a refreshed source-commit stamp — a precondition of review-ready, never a step after archive; THEN an independent review by a DIFFERENT model (the P3 prompt) reports 'VERDICT: no spec-vs-code gaps'; THEN the change is archived (`apriori archive` merges the delta specs into the living store apriori/specs/ and never touches apriori/truth/).
+If a KB update is owed, land it first and list exactly which files/sections changed. Then run the review-ready check; if it does not exit 0, go back to Build & Test — that is not a review round. Then run the consistency reviewer (codex exec / fresh claude) and paste its verdict. Then run the archive action.
 Stop when all of it holds, or immediately if the verdict is 'VERDICT: escalate'."
 ```
 
-**What you personally decide (there are four, and no others):**
+**What you personally decide (there are five, and no others):**
 
 1. **An escalation** — a `VERDICT: escalate`, or a family at round 5. `apriori status --change <name> --escalation` prints it and exits 3. Answer with `reframe <family> round <n> <split|tests|redo|accept-risk> — <reason>` in `gates:`. Escalate the bar, never quietly lower it.
-2. **An `## Open` item that cannot be resolved** — make the evidence cheaper, split the change, or accept the risk in `gates:` (`evidence-accept <ID>`). Accepting it settles that one item, and nothing else.
-3. **Every external side effect** (§1) — one-shot, named, recorded verbatim. No blanket ever covers one.
-4. **Abandonment** — your word alone.
+2. **An `## Open` item that cannot be resolved** (critical evidence blocked) — make the evidence cheaper, split the change, or accept the risk in `gates:` (`evidence-accept <ID>`). Accepting it settles that one item, and nothing else.
+3. **A review family stalled after its round 2** — answer with `reframe <family> round <n> <split|tests|redo> — <reason>` in `gates:`; that family's loop reopens, nothing else does.
+4. **Every external side effect** (§1) — one-shot, named, recorded verbatim. No blanket ever covers one.
+5. **Abandonment** — your word alone.
 
 Everything else the CLI decides mechanically, or nobody needs to: `apriori gate --change <name>` is the machine face, and `apriori status --change <name> --escalation` (exit 3) is the only hard stop this repository ships.
 
 ---
 
-> This runbook distills handbook §4 (workflow), §6 (knowledge base) and §7 (prompts). The handbook explains *why*; this file is *what*. For execution, this file wins.
+> This runbook distills the human handbook — `docs/concepts.md` in the apriori-cli repository (§4 the workflow, §7 the prompts). The handbook explains *why*; this file is *what*. For execution, this file wins.

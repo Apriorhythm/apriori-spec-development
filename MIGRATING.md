@@ -211,12 +211,9 @@ in the same slice; slice 5 retired the whole numbered vocabulary that contained 
 you already write satisfies this — a summary whose verdict line is in the known vocabulary,
 with its `<stem>-raw.*` transcript beside it. Nothing new to author, no matrix to fill in.
 
-**The review must also have closed.** Where a change keeps a ledger, archive drives its rows
-to terminal states; where it keeps none, a change whose latest round still says `gaps found` or
-`N issues open` (N > 0) is refused. Land the next round. The loop itself is unchanged: a
-round-1 revise is still fine, and round 2 is still its control point.
-*(Slice 5 widened this from `fast` to every change that keeps no ledger — which, since slice 5
-requires none, is the default in both modes.)*
+**The review must also have closed** — a change whose latest round still says `gaps found` or
+`N issues open` (N > 0) is refused; the ledger-driven variant of this rule is gone, see the 6.2
+section above.
 
 **Evidence `gate` cannot read, `archive` no longer merges.** A symlinked review summary, or a
 verdict document with no `-raw` archive, now refuses the merge (R4) exactly as it refuses the

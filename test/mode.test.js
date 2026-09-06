@@ -140,20 +140,25 @@ test('MD-07 no decision anywhere in lib/ still reads the removed four', () => {
   const strip = (s) => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
   const libDir = path.join(__dirname, '..', 'lib');
   // hotfix.js has its own `tier` (the screenshot grade incremental|full) — a different word.
-  // readiness.js is the ONE place allowed to say these words, and only to diagnose a 5.x
-  // bundle: naming what it found is the whole point of the migration message (MD-04).
-  const skip = new Set(['hotfix.js', 'readiness.js']);
+  // flow.js (the leaf reader) is the ONE place that spells these words — so the reader and C3
+  // see the same live keys through the same fence/comment-stripped pass (6.2 F6) — and
+  // readiness.js re-exports them to diagnose a 5.x bundle: naming what it found is the whole
+  // point of the migration message (MD-04). Neither may BRANCH on them.
+  const skip = new Set(['hotfix.js', 'readiness.js', 'flow.js']);
   for (const f of fs.readdirSync(libDir)) {
     if (!f.endsWith('.js') || skip.has(f)) continue;
     const src = strip(fs.readFileSync(path.join(libDir, f), 'utf8'));
     for (const dead of ['tier', 'track-rationale'])
       assert.ok(!new RegExp(`\\b${dead}\\b`).test(src), `lib/${f} still mentions '${dead}'`);
   }
-  // readiness may NAME them; it must never BRANCH on them
-  const rdSrc = strip(fs.readFileSync(path.join(libDir, 'readiness.js'), 'utf8'));
-  for (const branch of ['state.tier', "state\\['tier'\\]", "'trivial'", 'TIER_ENUM'])
-    assert.ok(!new RegExp(branch).test(rdSrc), `readiness.js still branches on ${branch}`);
-  assert.ok(/LEGACY_IDENTITY/.test(rdSrc), 'the 5.x keys must live in one named migration constant');
+  // flow and readiness may NAME them; neither may BRANCH on them
+  for (const f of ['readiness.js', 'flow.js']) {
+    const src = strip(fs.readFileSync(path.join(libDir, f), 'utf8'));
+    for (const branch of ['state.tier', "state\\['tier'\\]", "'trivial'", 'TIER_ENUM'])
+      assert.ok(!new RegExp(branch).test(src), `${f} still branches on ${branch}`);
+    assert.ok(/LEGACY_IDENTITY/.test(src), `${f}: the 5.x keys must live in one named migration constant`);
+  }
+  assert.match(fs.readFileSync(path.join(libDir, 'readiness.js'), 'utf8'), /const LEGACY_IDENTITY = flow\.LEGACY_IDENTITY/, 'readiness re-exports the leaf\'s list, it does not keep a second one');
 
   // status.js must no longer parse them at all
   const stat = strip(fs.readFileSync(path.join(libDir, 'status.js'), 'utf8'));

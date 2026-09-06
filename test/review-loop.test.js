@@ -34,12 +34,11 @@ const run = (args, cwd) => spawnSync('node', [BIN, ...args], { encoding: 'utf8',
 const STORE = '### Requirement: Alpha\n\n#### Scenario: XA-01 base\n- t\n';
 const DELTA = '## ADDED Requirements\n\n### Requirement: Beta\n\n#### Scenario: XB-01 new\n- t\n';
 const TAP_OK = `node -e "${['ok 1 - XA-01 a', 'ok 2 - XB-01 b'].map((l) => `console.log('${l}')`).join(';')}"`;
-const LEDGER_OK = '| ID | Issue | Risk | Round found | Status |\n|---|---|---|---|---|\n| Q-1 | a | low | 1 | verified |\n';
 
 // What C9/R5 ask of every change's state, so these fixtures fail on the REVIEW loop and not on
 // the evidence predicate (which lives in its own file).
-const EVIDENCE = '\n## Evidence\n- producer-diff: done — read the whole diff, known P0/P1 zero\n'
-  + '- data-schema: done — ran against the real schema\n\n';
+// 6.2: the state predicate reads `## Open`; empty means nothing owed
+const EVIDENCE = '\n## Open\n\n';
 
 const ACCEPT = 'VERDICT: no major issues';
 const REVISE = 'VERDICT: 3 issues open';
@@ -54,9 +53,8 @@ function project(gates = '  - 2026-08-23T00:00 note: n\n', phase = 'build') {
   w('apriori/specs/kv/spec.md', STORE);
   w('apriori/changes/c/flow-state.md',
     `change: c\nmode: standard\nlineage: v6\nphase: ${phase}\n${EVIDENCE}gates:\n${gates}`);
-  w('apriori/changes/c/tasks.md', '- [x] T1 done\n');
   w('apriori/changes/c/specs/kv/spec.md', DELTA);
-  w('apriori/changes/c/review/issues.md', LEDGER_OK);
+  fs.mkdirSync(path.join(root, 'apriori', 'changes', 'c', 'review'), { recursive: true });
   return { root, bundle: path.join(root, 'apriori', 'changes', 'c'), w };
 }
 
@@ -814,9 +812,8 @@ function archivedFixture(verdicts, extra) {
   w(`${base}/flow-state.md`,
     'change: c\nmode: standard\nlineage: v6\nphase: done\nnext-action: none\n'
     + 'gates:\n  - 2026-07-10T00:00 note: archived\n');
-  w(`${base}/tasks.md`, '- [x] T1 done\n');
   w(`${base}/specs/kv/spec.md`, DELTA);
-  w(`${base}/review/issues.md`, LEDGER_OK);
+  fs.mkdirSync(path.join(root, base, 'review'), { recursive: true });
   const bundle = path.join(root, base);
   for (const [family, list] of Object.entries(verdicts)) landFamily(bundle, family, list);
   if (extra) extra(bundle);

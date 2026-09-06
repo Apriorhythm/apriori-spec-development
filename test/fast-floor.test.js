@@ -16,11 +16,11 @@
 //      classifiable VERDICT line plus its `-raw` transcript. No second counter is introduced.
 //   2. The one §6 risk signal apriori can derive MECHANICALLY — the change's own delta
 //      declaring a MUTATION of an already-published requirement (MODIFIED / REMOVED /
-//      RENAMED) — closes the fast lane: the change is judged as standard, with a short
-//      reason. It adds no new artifact kind; it only stops waiving standard's own.
+//      RENAMED) — is reported with a short reason. 6.2 retired the mode branches, so the
+//      signal is INFORMATION: it closes no lane and demands nothing.
 //
-// Frozen history is exempt from both: an archived bundle keeps its declared mode and is
-// never told, years later, that it needed a round the rule did not exist to ask for.
+// Frozen history is exempt from both: an archived bundle is never told, years later, that it
+// needed a round the rule did not exist to ask for, and its merged delta is never re-scanned.
 // Evidence INTEGRITY still refuses at every stage — that claim is unchanged.
 
 const { test } = require('node:test');
@@ -60,21 +60,15 @@ function reviewRound(dir, family, n, verdict) {
   w(path.join(dir, 'review', `${family}-v${n}-raw.txt`), '<!-- provenance: provider=codex model=x session=y date=2026-08-23 -->\nraw transcript\n');
 }
 
-// What C9/R5 read. A FAST change with no machine risk owes only the producer's own diff — that
-// is the whole fast lane: C1 plus a read diff. A STANDARD change owes one substantive row on top,
-// so these fixtures fail on the review floor and the mode rules, never on the evidence predicate.
-// A MUTATING delta is a §6 risk the CLI PROVES, so the state must answer it by name whatever the
-// declared mode says — that is the one row no fixture can leave out and still be judged ready.
-const EVIDENCE = (mode, delta) => '\n## Evidence\n- producer-diff: done — read the whole diff, known P0/P1 zero\n'
-  + (mode === 'standard' ? '- data-schema: done — ran against the real schema\n' : '')
-  + (delta && /^## (MODIFIED|REMOVED|RENAMED)/m.test(delta)
-    ? '- contract-mutation: done — re-ran the published scenarios against the new store text\n' : '')
-  + '\n';
+// What C9/R5 read: the `## Open` section, empty here — nothing owed — so these fixtures fail on
+// the review floor, never on the state predicate. `mode:` is still written (6.2: inert), so the
+// "fast vs standard" cases below double as proof that the word decides nothing.
+const OPEN = '\n## Open\n\n';
 
 // A gate-able project. `archived` places the bundle under changes/archive/<stamp>-<name>.
 function project(opts = {}) {
   const { mode = 'fast', delta = ADDED, deltaPath = 'kv/spec.md', phase = 'build',
-    tasks = null, ledger = null, review = null, archived = false, gates = '', evidence = null } = opts;
+    tasks = null, ledger = null, review = null, archived = false, gates = '' } = opts;
   const root = mk();
   const dir = archived
     ? path.join(root, 'apriori', 'changes', 'archive', '2026-01-01T0000-c')
@@ -86,7 +80,7 @@ function project(opts = {}) {
   // an archived bundle's deltas are already merged: C1 verifies the STORE, not a projection
   w(path.join(root, 'tap.js'), tapFor(archived || delta === null ? BASE_IDS : IDS.get(delta) || BASE_IDS));
   w(path.join(dir, 'flow-state.md'),
-    `change: c\nmode: ${mode}\nlineage: fixture\nphase: ${phase}\n${evidence || EVIDENCE(mode, delta)}`
+    `change: c\nmode: ${mode}\nlineage: fixture\nphase: ${phase}\n${OPEN}`
     + `gates:\n  - 2026-07-11T00:00 note: fixture\n${gates}`);
   if (tasks !== null) w(path.join(dir, 'tasks.md'), tasks);
   if (ledger !== null) w(path.join(dir, 'review', 'issues.md'), ledger);
@@ -341,91 +335,86 @@ test('FF-21 none of the three new refusals is applied to frozen history', () => 
 });
 
 // ---------------------------------------------------------------------------
-// 2 — the one mechanically-derivable §6 signal closes the fast lane
+// 2 — the one mechanically-derivable §6 signal is INFORMATION (6.2): reported, never a mode
 // ---------------------------------------------------------------------------
 
 for (const [label, delta, op] of [['MODIFIED', MODIFIED, /MODIFIED/], ['REMOVED', REMOVED, /REMOVED/], ['RENAMED', RENAMED, /RENAMED/]]) {
-  test(`FF-08 a ${label} delta upgrades fast to standard, with a short reason`, () => {
-    // the producer read its own diff and nothing else — the mutation the tool PROVED is
-    // deliberately left unanswered, which is what the review-ready assertion below is about
-    const { root } = project({ delta, evidence: EVIDENCE('fast', null),
-      review: (d) => reviewRound(d, 'code-review', 1, 'no major issues') });
+  test(`FF-08 a ${label} delta is reported as a risk signal, with a short reason, and upgrades nothing`, () => {
+    const { root } = project({ delta, review: (d) => reviewRound(d, 'code-review', 1, 'no major issues') });
     const g = gate(root);
-    // The upgrade is a JUDGEMENT that is announced, not a demand for paperwork. 5.x/6.0-slice-3
-    // withdrew fast's tasks.md and ledger waivers here; slice 5 removed both artifacts from
-    // every mode, so there is no waiver left to withdraw. What survives — and what this pins —
-    // is that the CLI states the upgrade, names the operation and the file, and that a change
-    // carrying a mutated contract is not review-ready until it declares the evidence for it.
+    // 6.2: the signal names the operation and the file; it closes no lane and demands no row
+    assert.strictEqual(g.status, 0, `a mutating delta owes nothing by itself:\n${g.stdout}`);
     const c3 = line(g.stdout, 'C3');
-    assert.match(c3, /fast → standard/, `C3 must state the upgrade, got: ${c3}`);
-    assert.match(c3, op, `the reason must name the operation it found, got: ${c3}`);
-    assert.match(c3, /kv\/spec\.md/, `and the file, got: ${c3}`);
+    assert.doesNotMatch(c3, /→|upgrad/, `C3 must not announce an upgrade, got: ${c3}`);
+    assert.match(c3, /legal \(mode fast, build\)/, `the declared mode is echoed, and that is all: ${c3}`);
+    const c9 = line(g.stdout, 'C9');
+    assert.match(c9, /risk: contract-mutation:/, `C9 must carry the signal, got: ${c9}`);
+    assert.match(c9, op, `the reason must name the operation it found, got: ${c9}`);
+    assert.match(c9, /kv\/spec\.md/, `and the file, got: ${c9}`);
     // it demands no artifact of either mode
     assert.match(line(g.stdout, 'C2'), /^– C2 /, line(g.stdout, 'C2'));
     assert.match(line(g.stdout, 'C4'), /^– C4 /, line(g.stdout, 'C4'));
-    // …and with no evidence declared, the change cannot enter review
+    // …and the change is review-ready: nothing about the mutation is owed before the review
     const rr = run(['gate', '--change', 'c', '--test-cmd', 'node tap.js', '--no-cas', '--review-ready'], root);
-    assert.strictEqual(rr.status, 1, `an upgraded change with no evidence must not be review-ready:\n${rr.stdout}`);
-    assert.match(rr.stdout, /✗ evidence/, rr.stdout);
+    assert.strictEqual(rr.status, 0, `a mutating delta must not stop review-ready:\n${rr.stdout}`);
   });
 }
 
-test('FF-09 an ADDED-only delta does not upgrade — the additive case stays fast', () => {
+test('FF-09 an ADDED-only delta raises no signal', () => {
   const { root } = project({ delta: ADDED, review: (d) => reviewRound(d, 'code-review', 1, 'no major issues') });
   const g = gate(root);
-  assert.strictEqual(g.status, 0, `an additive fast change must stay fast, got exit ${g.status}:\n${g.stdout}`);
-  const c3 = line(g.stdout, 'C3');
-  assert.doesNotMatch(c3, /standard/, `no upgrade may be invented, got: ${c3}`);
+  assert.strictEqual(g.status, 0, `an additive change must pass, got exit ${g.status}:\n${g.stdout}`);
+  assert.doesNotMatch(line(g.stdout, 'C3'), /standard/, `no upgrade may be invented, got: ${line(g.stdout, 'C3')}`);
+  assert.match(line(g.stdout, 'C9'), /^✓ C9 no open items$/, 'no signal, no note');
   assert.match(line(g.stdout, 'C2'), /^– C2 retired in 6\.2/, 'the retired readers stay retired');
   assert.match(line(g.stdout, 'C4'), /^– C4 ledger retired in 6\.2/, 'the retired readers stay retired');
 });
 
-test('FF-10 gate, archive readiness and status report the same upgrade', () => {
+test('FF-10 gate, archive readiness and status report the same signal, and none of them an upgrade', () => {
   const { root } = project({ delta: MODIFIED, phase: 'review',
     review: (d) => reviewRound(d, 'code-review', 1, 'no major issues') });
-  // the REASON is the shared artefact: one derivation, quoted verbatim by all three surfaces
+  // the REASON is the shared artefact: one derivation, quoted verbatim by every surface
   const REASON = "contract-mutation: kv/spec.md MODIFIED 'Alpha'";
   const g = gate(root);
-  assert.match(line(g.stdout, 'C3'), /fast → standard/, 'gate must announce the upgrade');
-  assert.ok(line(g.stdout, 'C3').includes(REASON), `gate must quote the reason, got: ${line(g.stdout, 'C3')}`);
+  assert.ok(line(g.stdout, 'C9').includes(REASON), `gate must quote the reason, got: ${line(g.stdout, 'C9')}`);
+  assert.doesNotMatch(g.stdout, /→ standard|upgraded/, 'gate announces no upgrade');
 
   const a = run(['archive', '--change', 'c', '--no-cas'], root);
-  assert.match(a.stdout, /upgraded to standard/, `archive must say the lane closed, got: ${a.stdout}`);
-  assert.ok(a.stdout.includes(REASON), `archive must quote the same reason, got: ${a.stdout}`);
+  assert.strictEqual(a.status, 0, a.stdout + a.stderr);
+  assert.doesNotMatch(a.stdout, /upgraded|standard/, `archive announces no upgrade, got: ${a.stdout}`);
 
   const s = run(['status', '--change', 'c'], root);
-  assert.match(s.stdout, /fast → standard/, `status must state it too, got:\n${s.stdout}`);
   assert.ok(s.stdout.includes(REASON), `status must quote the same reason, got:\n${s.stdout}`);
+  assert.doesNotMatch(s.stdout, /→/, `status announces no upgrade, got:\n${s.stdout}`);
   const j = JSON.parse(run(['status', '--change', 'c', '--json'], root).stdout);
   assert.strictEqual(j.mode, 'fast', 'the DECLARED mode is reported unchanged');
-  assert.strictEqual(j.effectiveMode, 'standard', 'the effective mode is a separate, explicit field');
+  assert.strictEqual(j.effectiveMode, 'fast', 'effectiveMode equals mode in 6.2 — a compat field');
   assert.ok(Array.isArray(j.risk) && j.risk.length === 1, `one signal, got: ${JSON.stringify(j.risk)}`);
   assert.match(j.risk[0].detail, /MODIFIED/);
 });
 
-test('FF-11 the upgrade withdraws waivers and demands no artifact standard does not already demand', () => {
+test('FF-11 a mutating delta demands no artifact and no row — a reviewed change with one simply passes', () => {
   const { root } = project({ delta: MODIFIED, tasks: '- [x] T1\n', ledger: LEDGER,
     review: (d) => reviewRound(d, 'code-review', 1, 'no major issues') });
   const g = gate(root);
-  assert.strictEqual(g.status, 0,
-    `an upgraded change that meets standard's OWN requirements must pass — nothing new may be invented:\n${g.stdout}`);
-  assert.match(line(g.stdout, 'C3'), /fast → standard/, 'and it is still reported as upgraded');
+  assert.strictEqual(g.status, 0, `nothing new may be invented for a mutation:\n${g.stdout}`);
+  assert.match(line(g.stdout, 'C9'), /^✓ C9 no open items; risk: contract-mutation/, 'and it is still reported');
 });
 
 // ---------------------------------------------------------------------------
 // 3 — frozen history, path semantics, fail-closed
 // ---------------------------------------------------------------------------
 
-test('FF-12 an archived bundle is never re-judged by either new rule', () => {
+test('FF-12 an archived bundle is never re-judged, and its merged delta is never re-scanned', () => {
   const { root } = project({ archived: true, delta: MODIFIED, step: 'DONE' });
   const g = gate(root);
   assert.notStrictEqual(g.status, 1, `frozen history must not be retro-blocked:\n${g.stdout}${g.stderr}`);
   assert.doesNotMatch(line(g.stdout, 'C8'), /BLOCKED/, 'the fast floor is not applied retroactively');
-  assert.match(line(g.stdout, 'C2'), /^– C2 /, 'the upgrade is not applied retroactively either');
-  assert.doesNotMatch(line(g.stdout, 'C3'), /→ standard/, 'a frozen bundle keeps its declared mode');
+  assert.doesNotMatch(line(g.stdout, 'C9'), /contract-mutation/, 'a merged delta raises no signal');
+  assert.match(line(g.stdout, 'C3'), /legal \(mode fast, build\)/, 'a frozen bundle keeps its declared, inert mode');
 
   const j = JSON.parse(run(['status', '--change', 'c', '--json'], root).stdout);
-  assert.strictEqual(j.effectiveMode, 'fast', 'status must agree the frozen mode stands');
+  assert.strictEqual(j.effectiveMode, 'fast', 'status must agree: effectiveMode is the declared mode');
   assert.deepStrictEqual(j.risk, [], 'no signal is derived from a merged delta');
 });
 
@@ -440,9 +429,9 @@ test('FF-12b evidence integrity still refuses inside a frozen bundle', () => {
 test('FF-13 the signal names its file in POSIX form, from any nesting depth, on every platform', () => {
   const { root } = project({ delta: MODIFIED, deltaPath: 'kv/nested/spec.md',
     review: (d) => reviewRound(d, 'code-review', 1, 'no major issues') });
-  const c3 = line(gate(root).stdout, 'C3');
-  assert.match(c3, /kv\/nested\/spec\.md/, `the reason must be platform-stable, got: ${c3}`);
-  assert.doesNotMatch(c3, /\\/, `no backslash may reach the reason string, got: ${c3}`);
+  const c9 = line(gate(root).stdout, 'C9');
+  assert.match(c9, /kv\/nested\/spec\.md/, `the reason must be platform-stable, got: ${c9}`);
+  assert.doesNotMatch(c9, /\\/, `no backslash may reach the reason string, got: ${c9}`);
 });
 
 test('FF-14b a dangling specs/ is fail-closed too — existsSync would have read it as "no risk"', { skip: !canSymlink() }, () => {
@@ -450,20 +439,24 @@ test('FF-14b a dangling specs/ is fail-closed too — existsSync would have read
     review: (d) => reviewRound(d, 'code-review', 1, 'no major issues') });
   fs.symlinkSync(path.join(dir, 'nowhere'), path.join(dir, 'specs'));
   const j = JSON.parse(run(['status', '--change', 'c', '--json'], root).stdout);
-  assert.strictEqual(j.effectiveMode, 'standard', JSON.stringify(j.risk));
+  assert.deepStrictEqual(j.risk.map((r) => r.signal), ['unreadable-delta'], JSON.stringify(j.risk));
   assert.match(j.risk[0].detail, /specs\//);
+  assert.ok(j.escalations.some((e) => /the delta scan could not rule out a §6 risk/.test(e)), 'and it blocks the state predicate');
 });
 
-test('FF-14 a delta the scan cannot read closes the fast lane rather than opening it', { skip: !canSymlink() }, () => {
+test('FF-14 a delta the scan cannot read is fail-closed: a refusal, never "no risk found"', { skip: !canSymlink() }, () => {
   const { root, dir } = project({ delta: null,
     review: (d) => reviewRound(d, 'code-review', 1, 'no major issues') });
   // a dangling link: the name claims a delta, the bytes cannot be judged
   fs.mkdirSync(path.join(dir, 'specs', 'kv'), { recursive: true });
   fs.symlinkSync(path.join(dir, 'specs', 'kv', 'gone.md'), path.join(dir, 'specs', 'kv', 'spec.md'));
   const j = JSON.parse(run(['status', '--change', 'c', '--json'], root).stdout);
-  assert.strictEqual(j.effectiveMode, 'standard',
+  assert.deepStrictEqual(j.risk.map((r) => r.signal), ['unreadable-delta'],
     `an unjudgeable delta must not be read as "no risk", got: ${JSON.stringify(j.risk)}`);
-  assert.ok(j.risk.length >= 1 && /kv\/spec\.md/.test(j.risk[0].detail), JSON.stringify(j.risk));
+  assert.ok(/kv\/spec\.md/.test(j.risk[0].detail), JSON.stringify(j.risk));
+  assert.ok(j.escalations.some((e) => /the delta scan could not rule out a §6 risk/.test(e)), 'and it blocks the state predicate');
+  // the gate refuses too — delta DISCOVERY says so first (exit 2, the evaluation is untrustworthy)
+  assert.notStrictEqual(gate(root).status, 0);
 });
 
 test('FF-15 status and gate speak the same stage — a frozen loop is frozen in both', () => {

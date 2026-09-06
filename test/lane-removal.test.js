@@ -5,7 +5,7 @@
 // state file, its own grading, digest, approval token, preflight, review roles and archive
 // path (988 lines of runtime); the explore track had its own intent card, spike dir,
 // extraction review and three named human gates. Blueprint §2 retires both: new work is
-// ONE flow — `apriori new <name>` with `mode: fast | standard`.
+// ONE flow — `apriori new <name>` (6.2: with no mode to pick).
 //
 // These are removal pins, so most of them are negative. The two positive ones matter just
 // as much: a retired verb must REFUSE with a pointer (not vanish into "unknown subcommand"),
@@ -63,7 +63,7 @@ test('LN-01 the usage lists no hotfix and the retired verb refuses with a fast-c
     const r = run(argv);
     assert.strictEqual(r.status, 2, `${argv.join(' ')} → ${r.status}`);
     assert.match(r.stderr, /apriori new <name>/, `${argv.join(' ')} names no replacement`);
-    assert.match(r.stderr, /mode: fast/, `${argv.join(' ')} names no mode`);
+    assert.doesNotMatch(r.stderr, /mode/, `${argv.join(' ')} still asks for a mode (6.2: optional and inert)`);
     assert.strictEqual(r.stdout, '', 'a refusal writes nothing to stdout');
   }
 });
@@ -83,8 +83,7 @@ test('LN-03 new scaffolds one shape — no track, tier, intent card or lane', ()
   const r = run(['new', 'ordinary'], root);
   assert.strictEqual(r.status, 0, r.stderr);
   const flow = fs.readFileSync(path.join(root, 'apriori', 'changes', 'ordinary', 'flow-state.md'), 'utf8');
-  assert.match(flow, /^mode: <fast \| standard>/m, 'the one identity field is missing');
-  for (const dead of [/\btrack:/, /\btier:/, /intent[- ]card/i, /\bspike\b/i, /hotfix/i])
+  for (const dead of [/^mode:/m, /\btrack:/, /\btier:/, /intent[- ]card/i, /\bspike\b/i, /hotfix/i])
     assert.doesNotMatch(flow, dead, `scaffold still carries ${dead}`);
   // the scaffolded dirs are the bundle's, and spike/ is not one of them
   const subs = fs.readdirSync(path.join(root, 'apriori', 'changes', 'ordinary')).sort();

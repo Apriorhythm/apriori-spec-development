@@ -28,10 +28,9 @@ function mkProject(files) {
 
 const STORE = '### Requirement: Alpha\n\n#### Scenario: XA-01 base\n- t\n';
 const DELTA = '## ADDED Requirements\n\n### Requirement: Beta\n\n#### Scenario: XB-01 new\n- t\n';
-// the `## Evidence` section is what C9/R5 read: a bundle that answers nothing has not
-// answered. These fixtures are about other checks, so they carry the two rows a standard
-// change owes and fail on their own subject.
-const FLOW = (name, mode = 'standard') => `change: ${name}\nmode: ${mode}\nlineage: v4\nphase: build\nnext-action: x\n\n## Evidence\n- producer-diff: done — read the whole diff, known P0/P1 zero\n- data-schema: done — ran the migration against a copy of the real schema\n\ngates:\n  - 2026-08-14T00:00 note: n\n`;
+// the `## Open` section is what C9/R5 read; empty means nothing owed. These fixtures are about
+// the C1 skip and the exit-code lattice, so they carry it empty and fail on their own subject.
+const FLOW = (name) => `change: ${name}\nlineage: v4\nphase: build\nnext-action: x\n\n## Open\n\ngates:\n  - 2026-08-14T00:00 note: n\n`;
 
 // a healthy in-flight change with NO test-cmd anywhere (no process-config.md at all)
 function noCmdProject(name = 'c', extra = {}) {
@@ -67,7 +66,7 @@ test('GT-30 an absent test command skips C1 and runs the rest', () => {
 
 test('GT-31 a confirmed block outranks an unrun check', () => {
   const root = noCmdProject();
-  fs.writeFileSync(path.join(root, 'apriori/changes/c/flow-state.md'), FLOW('c').replace('\ngates:', '\n## Open\n- the retry path is unproven\n\ngates:'));
+  fs.writeFileSync(path.join(root, 'apriori/changes/c/flow-state.md'), FLOW('c').replace('\n## Open\n\n', '\n## Open\n- the retry path is unproven\n\n'));
   const r = gate.runGate({ cwd: root, change: 'c' });
   assert.strictEqual(r.result, 'BLOCKED');
   assert.strictEqual(r.code, 1);
@@ -274,7 +273,7 @@ test('GT-11 --json carries the INCOMPLETE class without growing a key', () => {
   const withCmd = noCmdProject('p', { 'apriori/process-config.md': cfg('| test-cmd | node -e "console.log(\'ok 1 - XA-01 a\');console.log(\'ok 2 - XB-01 b\')" |\n') });
   const pass = run(['gate', '--change', 'p', '--json'], withCmd);
   assert.strictEqual(pass.status, 0, pass.stdout + pass.stderr);
-  fs.writeFileSync(path.join(withCmd, 'apriori/changes/p/flow-state.md'), FLOW('p').replace('\ngates:', '\n## Open\n- the retry path is unproven\n\ngates:'));
+  fs.writeFileSync(path.join(withCmd, 'apriori/changes/p/flow-state.md'), FLOW('p').replace('\n## Open\n\n', '\n## Open\n- the retry path is unproven\n\n'));
   const blocked = run(['gate', '--change', 'p', '--json'], withCmd);
   assert.strictEqual(blocked.status, 1, blocked.stdout + blocked.stderr);
   const resolveErr = run(['gate', '--change', 'nope', '--json'], root);          // resolved ERROR

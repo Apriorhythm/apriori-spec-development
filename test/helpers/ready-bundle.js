@@ -7,32 +7,24 @@
 // Spread it FIRST in a fixture map so a test that deliberately wants a broken bundle
 // can still override any of them.
 
-// The `## Evidence` section is the ONE thing 6.0 added to this list, and it is not paperwork:
-// C9/R5 ask whether the change's own state still owes something real, and a bundle that answers
-// nothing has not answered. A standard fixture therefore carries the two rows a standard change
-// owes — the producer's own diff (hygiene) and one substantive row naming a §6 risk and what was
-// run for it. It sits BEFORE `gates:` because fixtures append their own gates entries.
-// `contract-mutation` is here because much of this corpus merges MODIFIED/REMOVED/RENAMED
-// deltas, and a mutating delta is the one §6 risk the CLI PROVES: the state must answer it by
-// name or nothing archives. The predicate itself is covered by its own adversarial tests.
-const EVIDENCE = '\n## Evidence\n'
-  + '- producer-diff: done — read the whole diff, known P0/P1 zero\n'
-  + '- data-schema: done — ran the migration against a copy of the real schema\n'
-  + '- contract-mutation: done — re-ran the published scenarios against the new store text\n\n';
+// The `## Open` section is where a change's unresolved items live (6.2 unified risk acceptance
+// on it: `- <ID>: <text>`, accepted by the owner's `evidence-accept <ID>`). A ready fixture
+// carries the section EMPTY — nothing owed — so C9/R5 pass on their own subject; a test that
+// wants an item in it uses `withOpen`. It sits BEFORE `gates:` because fixtures append their
+// own gates entries. No `mode:` line: the field is optional and inert since 6.2.
+const OPEN = '\n## Open\n\n';
 
-// Replace the fixture's evidence with a test's own rows (`[]` removes the section entirely).
-// A test that APPENDS a second `## Evidence` gets ignored — the reader takes the first section,
-// which is the one this helper already wrote.
-const withEvidence = (flow, rows) =>
-  flow.replace(EVIDENCE, rows.length ? `\n## Evidence\n${rows.map((r) => `- ${r}`).join('\n')}\n\n` : '\n');
+// Replace the fixture's (empty) Open section with a test's own items (`- ` is added here).
+const withOpen = (flow, items) =>
+  flow.replace(OPEN, `\n## Open\n${items.map((i) => `- ${i}`).join('\n')}\n\n`);
 
-const FLOW = (name, mode = 'standard') =>
-  `change: ${name}\nmode: ${mode}\n` +
-  `lineage: fixture\nphase: review\n` + EVIDENCE +
+const FLOW = (name) =>
+  `change: ${name}\n` +
+  `lineage: fixture\nphase: review\n` + OPEN +
   `gates:\n  - 2026-07-11T00:00 note: fixture\n`;
 
 // One complete, attributable review round — a classifiable verdict plus the raw transcript
-// that attributes it. Neither mode ever waives this (R4).
+// that attributes it. Nothing ever waives this (R4).
 const REVIEW = '# code review, round 1\n\nVERDICT: no major issues\n';
 const REVIEW_RAW = '<!-- provenance: provider=fixture model=fixture session=fixture date=2026-01-01 -->\nraw\n';
 
@@ -41,10 +33,10 @@ const REVIEW_RAW = '<!-- provenance: provider=fixture model=fixture session=fixt
 function readyFiles(name, opts = {}) {
   const base = opts.base || `apriori/changes/${name}`;
   return {
-    [`${base}/flow-state.md`]: FLOW(name, opts.mode),
+    [`${base}/flow-state.md`]: FLOW(name),
     [`${base}/review/code-review-v1.md`]: REVIEW,
     [`${base}/review/code-review-v1-raw.txt`]: REVIEW_RAW,
   };
 }
 
-module.exports = { readyFiles, FLOW, EVIDENCE, withEvidence, REVIEW, REVIEW_RAW };
+module.exports = { readyFiles, FLOW, OPEN, withOpen, REVIEW, REVIEW_RAW };

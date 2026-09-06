@@ -42,28 +42,26 @@ function project(flow, { tasks = '- [x] T1 done\n', ledger = LEDGER } = {}) {
   return { root, dir };
 }
 
-// the state's own answer to C9/R5: the producer's diff plus one substantive row. These fixtures
-// are about the mode keys, so they carry what both modes owe and fail on their own subject.
-const EVIDENCE = '\n## Evidence\n- producer-diff: done — read the whole diff, known P0/P1 zero\n'
-  + '- data-schema: done — ran the migration against a copy of the real schema\n\n';
+// the state's own answer to C9/R5: an empty `## Open` section — nothing owed. These fixtures
+// are about the identity keys, so they fail on their own subject.
+const OPEN = '\n## Open\n\n';
 
 const flowWith = (body) =>
-  `change: c\n${body}lineage: fixture\nphase: build\nnext-action: x\n` + EVIDENCE +
+  `change: c\n${body}lineage: fixture\nphase: build\nnext-action: x\n` + OPEN +
   'gates:\n  - 2026-07-11T00:00 note: fixture\n';
 
 // the C-line for one check id out of `apriori gate` plain output
 const checkLine = (stdout, id) => (stdout.split('\n').find((l) => l.includes(` ${id} `)) || '').trim();
 
-test('MD-01 the scaffold carries one identity field, and none of the four it replaces', () => {
+test('MD-01 the scaffold carries no identity field at all — neither mode nor the four it replaced', () => {
   const root = mk();
   const r = run(['new', 'demo'], root);
   assert.strictEqual(r.status, 0, r.stdout + r.stderr);
   const text = fs.readFileSync(path.join(root, 'apriori', 'changes', 'demo', 'flow-state.md'), 'utf8');
-  assert.match(text, /^mode: <fast \| standard>/m, 'the one identity field must be scaffolded');
-  for (const dead of ['tier', 'track', 'track-rationale', 'round'])
+  for (const dead of ['mode', 'tier', 'track', 'track-rationale', 'round'])
     assert.doesNotMatch(text, new RegExp(`^${dead}:`, 'm'), `${dead}: must not be scaffolded any more`);
   // the closing hint must not send the human to fill fields that no longer exist
-  assert.doesNotMatch(r.stdout, /tier|track/, 'the next-step hint still names a removed field');
+  assert.doesNotMatch(r.stdout, /tier|track|mode/, 'the next-step hint still names a removed field');
 });
 
 test('MD-02 status reports mode, and its JSON has no trace of the removed four', () => {
@@ -81,11 +79,15 @@ test('MD-02 status reports mode, and its JSON has no trace of the removed four',
     assert.ok(!(dead in o), `'${dead}' must not survive in the machine shape`);
 });
 
-test('MD-03 C3 accepts exactly the two modes', () => {
+test('MD-03 C3 accepts exactly the two modes, or none at all', () => {
   for (const mode of ['fast', 'standard'])
     assert.strictEqual(rd.checkFlowState({ change: 'c', mode, lineage: 'l', phase: 'build' }, 'c').status,
       'pass', mode);
-  for (const bad of ['trivial', 'medium', 'large', 'harden', 'Fast', ''])
+  // 6.2: the key is optional — absent and empty both read as "no mode", and that is legal
+  for (const none of [undefined, ''])
+    assert.strictEqual(rd.checkFlowState({ change: 'c', mode: none, lineage: 'l', phase: 'build' }, 'c').status,
+      'pass', String(none));
+  for (const bad of ['trivial', 'medium', 'large', 'harden', 'Fast'])
     assert.strictEqual(rd.checkFlowState({ change: 'c', mode: bad, lineage: 'l', phase: 'build' }, 'c').status,
       'blocked', `'${bad}' must not be a legal mode`);
   assert.ok(!('TIER_ENUM' in rd), 'the tier vocabulary must be gone, not merely unused');
@@ -193,11 +195,12 @@ test('MD-09 an empty mode: never swallows the next line', () => {
   assert.strictEqual(st.mode, undefined, `an empty key has no value, got ${JSON.stringify(st.mode)}`);
   assert.strictEqual(st.lineage, 'main', 'and the next line is still itself');
 
-  // and the consumers agree: gate says the key is missing, not that the mode is 'lineage: main'
+  // and the consumers agree: gate reads an empty mode as ABSENT (legal since 6.2), never as
+  // 'lineage: main'
   const { root } = project(flowWith('mode:\n'));
   const g = run(['gate', '--change', 'c'], root);
   const c3 = checkLine(g.stdout, 'C3');
-  assert.match(c3, /required key 'mode' missing/, c3);
+  assert.match(c3, /^✓ C3 legal \(build\)$/, c3);
   assert.doesNotMatch(c3, /lineage/, 'the diagnosis must not quote the line it swallowed');
 
   const j = JSON.parse(run(['status', '--change', 'c', '--json'], root).stdout);
@@ -213,7 +216,7 @@ test('MD-10 a mode value is trimmed, and only the two spellings pass', () => {
                                 ['Fast', false], ['FAST', false], ['fast standard', false]]) {
     const { root } = project(flowWith(`mode:${spelling}\n`.replace('mode:', 'mode: ')));
     const c3 = checkLine(run(['gate', '--change', 'c'], root).stdout, 'C3');
-    if (ok) assert.match(c3, /legal \(mode/, `'${spelling}' should pass — got ${c3}`);
+    if (ok) assert.match(c3, /legal \(mode (fast|standard), build\)/, `'${spelling}' should pass — got ${c3}`);
     else assert.match(c3, /not in \{fast, standard\}/, `'${spelling}' should fail — got ${c3}`);
   }
 });

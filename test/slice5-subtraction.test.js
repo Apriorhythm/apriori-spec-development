@@ -30,25 +30,18 @@ const MUTATION = '## MODIFIED Requirements\n\n### Requirement: Alpha\n\n#### Sce
 const TAP = 'node -e "console.log(\'TAP version 13\');console.log(\'1..2\');console.log(\'ok 1 - XA-01 a\');console.log(\'ok 2 - XB-01 b\')"';
 const TAP1 = 'node -e "console.log(\'TAP version 13\');console.log(\'1..1\');console.log(\'ok 1 - XA-01 a\')"';
 
-const EV = (rows) => `\n## Evidence\n${rows.map((r) => `- ${r}`).join('\n')}\n`;
-// What a STANDARD change owes before anything else is judged: the producer read its own diff
-// (hygiene, never evidence about the product) AND one substantive row naming a real §6 risk and
-// what was run for it. Fixtures that are not about the evidence predicate carry this pair so the
-// thing under test is the thing that fails.
-const READY_EV = ['producer-diff: done — read the whole diff, known P0/P1 zero',
-  'config-deploy: done — booted the target environment from the real config'];
-// the same pair, plus whatever risk a test is actually about
-const EV_WITH = (...rows) => [...READY_EV, ...rows];
+const OPEN = (items) => `\n## Open\n${items.map((r) => `- ${r}`).join('\n')}\n`;
+const ACCEPT = (id) => `  - 2026-08-23T11:00 owner: evidence-accept ${id} — the staging DB is offline until Q4\n`;
 
 // A bundle with NO document family at all: flow-state + delta + one attributable review round.
-function project({ mode = 'standard', phase = 'review', sections = '', gates = '', delta = ADDED,
-  evidence = READY_EV } = {}) {
+// The `## Open` section is empty unless a test hands items in; `mode:` is written only when given.
+function project({ mode = null, phase = 'review', sections = '', gates = '', delta = ADDED, open = [] } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-s5-'));
   w(path.join(root, 'apriori', 'specs', 'kv', 'spec.md'), STORE);
   const dir = path.join(root, 'apriori', 'changes', 'c');
   if (delta) w(path.join(dir, 'specs', 'kv', 'spec.md'), delta);
   w(path.join(dir, 'flow-state.md'),
-    `change: c\nmode: ${mode}\nlineage: v6\nphase: ${phase}\n${evidence ? EV(evidence) : ''}${sections}`
+    `change: c\n${mode ? `mode: ${mode}\n` : ''}lineage: v6\nphase: ${phase}\n${OPEN(open)}${sections}`
     + `\ngates:\n  - 2026-08-23T00:00 note: scaffolded\n${gates}`);
   w(path.join(dir, 'review', 'code-review-v1.md'), '# review r1\n\nVERDICT: no major issues\n');
   w(path.join(dir, 'review', 'code-review-v1-raw.txt'), 'raw\n');
@@ -72,12 +65,11 @@ test('RY-01 the base predicates are what the gate reports', () => {
   const flowText = fs.readFileSync(path.join(dir, 'flow-state.md'), 'utf8');
   const state = status.parseFlowState(flowText);
   const res = require('../lib/gate').runGate({ cwd: root, change: 'c', testCmd: TAP, noCas: true });
-  // C9 takes two INPUTS, and they are the whole reason it can be more than a row reader: the
-  // §6 signals the scan proved about this delta, and the mode the change is judged by. They are
-  // recomputed here from the bundle — if gate ever stops passing them, this equality breaks
-  // rather than the check quietly going quiet.
-  const opts = { stage: 'in-flight', mode: 'standard', riskSignals: risk.scanDeltas(dir) };
-  assert.deepStrictEqual(res.evidenceOpts, opts, 'gate must hand C9 the scan and the effective mode');
+  // C9 takes ONE input it cannot derive for itself: the §6 signals the scan proved about this
+  // delta. It is recomputed here from the bundle — if gate ever stops passing it, this equality
+  // breaks rather than the check quietly going quiet. (6.2: there is no mode input any more.)
+  const opts = { stage: 'in-flight', riskSignals: risk.scanDeltas(dir) };
+  assert.deepStrictEqual(res.evidenceOpts, opts, 'gate must hand C9 the scan');
   const mine = {
     C2: { id: 'C2', status: 'n/a', detail: 'retired in 6.2 — nothing is read' },
     C3: rd.checkFlowState(state, 'c', flowText),
@@ -132,62 +124,59 @@ test('RY-17 the ledger is never read: an open row neither blocks nor is reported
 // C9 / R5 — the one substantive evidence predicate
 // ---------------------------------------------------------------------------
 
-test('RY-18 blocked critical evidence refuses, and only the owner opens it', () => {
+test('RY-18 a pending open item refuses, and only the owner opens it', () => {
   // the readiness face of the same predicate: R5, non-forceable, cured only by the owner
-  const b = project({ evidence: EV_WITH('data-schema: blocked — staging DB offline') });
+  const b = project({ open: ['R-01: the staging DB is offline; restart recovery unverified'] });
   const r1 = rd.readinessOf({ bundleDir: b.dir, name: 'c', force: true });
   assert.strictEqual(r1.ready, false);
   const r5 = r1.blockers.filter((x) => x.rule === 'R5');
   assert.strictEqual(r5.length, 1, JSON.stringify(r1.blockers));
   assert.strictEqual(r5[0].forceable, false, 'missing reality is not progress an owner can force past');
 
-  const claimed = project({ evidence: EV_WITH('data-schema: owner-accepted — accepted') });
+  const claimed = project({ open: ['R-01: the staging DB is offline'],
+    gates: '  - 2026-08-23T11:00 producer: evidence-accept R-01 — I accept it\n' });
   assert.strictEqual(rd.readinessOf({ bundleDir: claimed.dir, name: 'c', force: true }).ready, false);
 
-  const ok = project({ evidence: EV_WITH('data-schema: owner-accepted — v1 risk'),
-    gates: '  - 2026-08-23T11:00 owner: evidence-accept data-schema — offline until Q4\n' });
+  const ok = project({ open: ['R-01: the staging DB is offline'], gates: ACCEPT('R-01') });
   assert.strictEqual(rd.readinessOf({ bundleDir: ok.dir, name: 'c' }).ready, true);
 });
 
-test('GT-39 blocked evidence refuses, and owner acceptance is a recorded human act', () => {
-  // 1. blocked, no decision → C9 blocked and archive refuses
-  const b = project({ evidence: EV_WITH('data-schema: blocked — staging DB offline') });
-  assert.match(line(gate(b.root).stdout, 'C9'), /BLOCKED — critical evidence 'data-schema' is blocked/);
+test('GT-39 a pending open item refuses, and owner acceptance is a recorded human act', () => {
+  // 1. pending, no decision → C9 blocked and archive refuses
+  const b = project({ open: ['R-01: the staging DB is offline'] });
+  assert.match(line(gate(b.root).stdout, 'C9'), /BLOCKED — open item R-01 is pending: the staging DB is offline/);
   const ab = run(['archive', '--change', 'c', '--no-cas', '--force'], b.root);
   assert.strictEqual(ab.status, 1, '--force is not an owner decision');
-  assert.match(ab.stderr, /R5 critical evidence 'data-schema' is blocked/);
+  assert.match(ab.stderr, /R5 open item R-01 is pending/);
 
-  // 2. owner-accepted with NO gates: entry → still blocked; a producer may not accept its own risk
-  const claimed = project({ evidence: EV_WITH('data-schema: owner-accepted — accepted') });
-  assert.match(line(gate(claimed.root).stdout, 'C9'),
-    /BLOCKED — evidence 'data-schema' claims owner acceptance with no canonical gates: entry/);
+  // 2. a producer's own entry → still pending; a producer may not accept its own risk
+  const claimed = project({ open: ['R-01: the staging DB is offline'],
+    gates: '  - 2026-08-23T11:00 producer: evidence-accept R-01 — accepted\n' });
+  assert.match(line(gate(claimed.root).stdout, 'C9'), /BLOCKED — open item R-01 is pending/);
 
-  // 3. owner-accepted WITH the recorded decision → passes
-  const ok = project({ evidence: EV_WITH('data-schema: owner-accepted — v1 risk'),
-    gates: '  - 2026-08-23T11:00 owner: evidence-accept data-schema — staging DB offline until Q4\n' });
-  assert.match(line(gate(ok.root).stdout, 'C9'), /^✓ C9 .*1 owner-accepted/);
+  // 3. the owner's recorded decision → passes, reported as accepted and still present
+  const ok = project({ open: ['R-01: the staging DB is offline'], gates: ACCEPT('R-01') });
+  assert.match(line(gate(ok.root).stdout, 'C9'), /^✓ C9 1 open item\(s\): 1 accepted, still present \(R-01\), 0 pending$/);
   assert.strictEqual(run(['archive', '--change', 'c', '--no-cas'], ok.root).status, 0);
 
-  // 4. an unreadable row / unknown status is fail-closed — a check that could not be made is
-  //    never "no risk found"
-  const bad = project({ evidence: EV_WITH('data-schema: probably-fine — eh') });
-  assert.match(line(gate(bad.root).stdout, 'C9'), /BLOCKED — evidence 'data-schema' carries status 'probably-fine'/);
+  // 4. an item with no id is fail-closed — it blocks, and no acceptance can name it
+  const bad = project({ open: ['probably fine'], gates: ACCEPT('probably') });
+  assert.match(line(gate(bad.root).stdout, 'C9'), /BLOCKED — open item has no id: 'probably fine'/);
 
-  // 5. no section at all → the question was never answered, and silence is not an answer
-  const silent = project({ evidence: null });
-  assert.match(line(gate(silent.root).stdout, 'C9'), /BLOCKED — .*no ## Evidence row answers anything/);
+  // 5. no section at all → nothing owed
+  const silent = project();
+  assert.match(line(gate(silent.root).stdout, 'C9'), /^✓ C9 no open items$/);
 });
 
-test('RY-19 owner acceptance buys evidence, never a softer mode', () => {
-  const { root, dir } = project({ mode: 'standard',
-    evidence: EV_WITH('data-schema: owner-accepted — v1 risk'),
-    gates: '  - 2026-08-23T11:00 owner: evidence-accept data-schema — offline until Q4\n' });
-  const j = JSON.parse(run(['status', '--change', 'c', '--json'], root).stdout);
-  assert.strictEqual(j.mode, 'standard');
-  assert.strictEqual(j.effectiveMode, 'standard', 'acceptance settles one risk, it never reclassifies the change');
-  // and the derivation itself never reads the evidence section
-  assert.strictEqual(risk.effectiveMode(dir, 'standard', 'in-flight').mode, 'standard');
-  assert.strictEqual(risk.effectiveMode(dir, 'fast', 'in-flight').mode, 'fast', 'an ADDED-only delta stays fast');
+test('RY-19 owner acceptance settles one item and never touches the (inert) mode', () => {
+  for (const mode of [null, 'fast', 'standard']) {
+    const { root } = project({ mode, open: ['R-01: the v1 risk'], gates: ACCEPT('R-01') });
+    const j = JSON.parse(run(['status', '--change', 'c', '--json'], root).stdout);
+    assert.strictEqual(j.mode, mode);
+    assert.strictEqual(j.effectiveMode, mode, 'effectiveMode is the declared mode (or null) — a compat field, never a judgement');
+    assert.deepStrictEqual(j.openItems.map((i) => [i.id, i.accepted]), [['R-01', true]]);
+  }
+  assert.ok(!('effectiveMode' in risk), 'the upgrade derivation left with the mode branches');
 });
 
 // ---------------------------------------------------------------------------
@@ -195,20 +184,21 @@ test('RY-19 owner acceptance buys evidence, never a softer mode', () => {
 // ---------------------------------------------------------------------------
 
 test('GT-40 review-ready answers from the run own facts and persists nothing', () => {
-  const ready = () => project({ evidence: EV_WITH('data-schema: n/a — no schema touched') });
+  const ready = () => project({ open: ['R-01: the target runtime could not be booted here'] });
 
-  // the happy path: THREE items, exit 0, and the transient-view notice
+  // the happy path: TWO items, exit 0, and the transient-view notice — a PENDING item is
+  // exactly what the review is for, so it does not stand in the way
   const ok = ready();
   const snapshot = (root) => spawnSync('find', [root, '-type', 'f'], { encoding: 'utf8' }).stdout.split('\n').sort().join('\n');
   const before = snapshot(ok.root);
   const r = gate(ok.root, ['--review-ready']);
   assert.strictEqual(r.status, 0, r.stdout + r.stderr);
   assert.match(r.stdout, /review-ready — transient view of this run; nothing was written/);
-  for (const item of ['tests', 'evidence', 'producer-diff'])
+  for (const item of ['tests', 'open'])
     assert.match(r.stdout, new RegExp(`✓ ${item}\\b`), `${item}: ${r.stdout}`);
-  assert.strictEqual((r.stdout.match(/^[✓✗] /gm) || []).length, 3, `three items, no invented fourth:\n${r.stdout}`);
+  assert.strictEqual((r.stdout.match(/^[✓✗] /gm) || []).length, 2, `two items, no invented third:\n${r.stdout}`);
   assert.match(r.stdout, /^REVIEW-READY: YES$/m);
-  assert.doesNotMatch(r.stdout, /reviewer gets|reviewer-context/,
+  assert.doesNotMatch(r.stdout, /reviewer gets|reviewer-context|producer-diff/,
     'review-ready may not claim what a reviewer will read — it cannot observe that');
   // …and it prints a fact the run already holds instead
   assert.match(r.stdout, /^delta specs: kv\/spec\.md$/m);
@@ -216,17 +206,12 @@ test('GT-40 review-ready answers from the run own facts and persists nothing', (
   // running it twice is the same answer, recomputed — nothing was cached
   assert.strictEqual(gate(ok.root, ['--review-ready']).stdout, r.stdout);
 
-  // no producer-diff row → not ready, and it says which item and what to write
-  const noDiff = project({ evidence: ['config-deploy: done — booted the target environment from the real config',
-    'data-schema: n/a — no schema touched'] });
-  const rd1 = gate(noDiff.root, ['--review-ready']);
+  // an Open section the review cannot read → not ready, and it says which item and why
+  const noId = project({ open: ['the target runtime could not be booted here'] });
+  const rd1 = gate(noId.root, ['--review-ready']);
   assert.strictEqual(rd1.status, 1);
-  assert.match(rd1.stdout, /✗ producer-diff  not declared/);
+  assert.match(rd1.stdout, /✗ open  open item has no id/);
   assert.match(rd1.stdout, /REVIEW-READY: NOT YET \(1 item\(s\)\) — go back to Build & Test; this is not a review round/);
-
-  // blocked evidence → not ready
-  const blocked = project({ evidence: EV_WITH('data-schema: blocked — staging DB offline') });
-  assert.strictEqual(gate(blocked.root, ['--review-ready']).status, 1);
 
   // NO test command → never ready: the reviewer must not be the first to run the suite
   const noCmd = ready();
@@ -287,11 +272,13 @@ test('ST-14 --escalation is the hard stop, and exit 3 is the whole mechanism', (
   assert.match(gate(esc.root).stdout, /✗ C8 BLOCKED/, 'and it blocks the gate at whatever round it happened');
   assert.strictEqual(run(['archive', '--change', 'c', '--no-cas'], esc.root).status, 1);
 
-  // 3. blocked critical evidence
-  const ev = project({ evidence: EV_WITH('data-schema: blocked — staging DB offline') });
+  // 3. a pending open item
+  const ev = project({ open: ['R-01: staging DB offline'] });
   const v = run(['status', '--change', 'c', '--escalation'], ev.root);
   assert.strictEqual(v.status, 3);
-  assert.match(v.stdout, /critical evidence 'data-schema' is blocked/);
+  assert.match(v.stdout, /open item R-01 is pending/);
+  // …and an accepted one is not a stop
+  assert.strictEqual(run(['status', '--change', 'c', '--escalation'], project({ open: ['R-01: x'], gates: ACCEPT('R-01') }).root).status, 0);
 
   // the owner's recorded decision closes the escalation loop
   const answered = project({ gates: '  - 2026-08-23T12:00 owner: reframe code-review round 1 redo — the approach was wrong\n' });
@@ -309,7 +296,7 @@ test('AM-118 the archive declaration carries exactly the three states', () => {
   const decl = (out) => out.slice(out.indexOf('ARCHIVE DECLARES')).split('\n').slice(0, 4).join('\n');
 
   // clean state
-  const clean = project({ evidence: READY_EV });
+  const clean = project();
   const r = run(['archive', '--change', 'c', '--no-cas'], clean.root);
   assert.strictEqual(r.status, 0, r.stdout + r.stderr);
   assert.match(r.stdout, /ARCHIVE DECLARES \(frozen; a later defect becomes an outcome note or a new change\):/);
@@ -323,23 +310,22 @@ test('AM-118 the archive declaration carries exactly the three states', () => {
   // that the work is unfinished — so the archive REFUSES rather than freezing a snapshot whose
   // own declaration would read INCOMPLETE. R5 is what refuses; the declaration backstop below
   // (AM-120) is what makes a successful-but-incomplete run impossible even if R5 ever softened.
-  const open = project({ sections: '\n## Open\n- the retry path is unproven\n'
-    + '\n## Reality Check\n- assumption: the schema matches\n' });
+  const open = project({ open: ['R-01: the retry path is unproven'],
+    sections: '\n## Reality Check\n- assumption: the schema matches\n' });
   const ro = run(['archive', '--change', 'c', '--no-cas'], open.root);
   assert.strictEqual(ro.status, 1, ro.stdout + ro.stderr);
-  assert.match(ro.stderr, /R5 open substantive issue: the retry path is unproven/);
+  assert.match(ro.stderr, /R5 open item R-01 is pending: the retry path is unproven/);
   assert.match(ro.stderr, /R5 unverified assumption: the schema matches/);
   assert.doesNotMatch(ro.stdout, /ARCHIVE DECLARES/, 'a refused archive declares nothing');
   // and the declaration the run WOULD have printed says so too
   assert.strictEqual(am.archiveDeclaration(open.dir).incomplete, true);
   assert.match(am.archiveDeclaration(open.dir).lines.join('\n'),
-    /implementation:    INCOMPLETE — 1 open issue\(s\), 1 unverified assumption\(s\)/);
+    /implementation:    INCOMPLETE — 1 pending open item\(s\), 1 unverified assumption\(s\)/);
 
-  // an owner-accepted risk is NAMED in the evidence state
-  const acc = project({ evidence: EV_WITH('data-schema: owner-accepted — v1 risk'),
-    gates: '  - 2026-08-23T11:00 owner: evidence-accept data-schema — offline until Q4\n' });
+  // an owner-accepted risk is NAMED in the evidence state, and stays present
+  const acc = project({ open: ['data-schema: the v1 risk'], gates: ACCEPT('data-schema') });
   assert.match(decl(run(['archive', '--change', 'c', '--no-cas'], acc.root).stdout),
-    /critical evidence: complete, 1 risk\(s\) accepted by the owner \(data-schema\)/);
+    /critical evidence: complete, 1 risk\(s\) accepted by the owner \(data-schema\), still present/);
 
   // `delivery: released` is the third state's other value
   const rel = project({ sections: 'delivery: released\n' });
@@ -354,7 +340,7 @@ test('AM-118 the archive declaration carries exactly the three states', () => {
 });
 
 test('AM-119 an archived bundle is frozen: the merge writes one unit and nothing rewrites it', () => {
-  const { root } = project({ evidence: READY_EV });
+  const { root } = project();
   const r = run(['archive', '--change', 'c', '--no-cas', '--write', '--changes-dir', 'apriori/changes'], root);
   assert.strictEqual(r.status, 0, r.stdout + r.stderr);
   const archived = path.join(root, 'apriori', 'changes', 'archive');
@@ -374,9 +360,8 @@ test('AM-119 an archived bundle is frozen: the merge writes one unit and nothing
 // the whole flow, end to end, with no document family anywhere
 // ---------------------------------------------------------------------------
 
-test('RY-20 a standard change with no tasks and no ledger passes, archives and declares', () => {
-  const { root, dir } = project({ mode: 'standard',
-    evidence: EV_WITH('ui-prototype: n/a — no UI in this change') });
+test('RY-20 a change with no tasks, no ledger and no mode passes, archives and declares', () => {
+  const { root, dir } = project();
   // the bundle carries no document family at all
   assert.deepStrictEqual(fs.readdirSync(dir).sort(), ['flow-state.md', 'review', 'specs']);
   const g = gate(root);
@@ -389,7 +374,7 @@ test('RY-20 a standard change with no tasks and no ledger passes, archives and d
 });
 
 test('RY-21 a 5.x bundle is diagnosed, not silently read, and its legacy files never block', () => {
-  const { root, dir } = project({ evidence: READY_EV });
+  const { root, dir } = project();
   // legacy residue: a task list with open boxes and a ledger with an open row — neither is read
   w(path.join(dir, 'tasks.md'), '- [ ] never finished\n');
   w(path.join(dir, 'review', 'issues.md'),

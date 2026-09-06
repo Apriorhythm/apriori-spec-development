@@ -28,12 +28,8 @@ const flow = (name, over = {}) => {
   const gates = over.__gates || '  - 2026-07-11T00:00 note: n\n';
   // one case reproduces a 5.x bundle verbatim: the four keys 6.0 replaced with `mode`
   const legacy = over.__legacy ? 'tier: medium\ntrack: harden\ntrack-rationale: r\nround: 1\n' : '';
-  // the state's own answer to C9/R5 — the producer's diff plus one substantive row. `__evidence`
-  // is how a case says "this bundle answers nothing", which is itself a C9 refusal.
-  const evidence = over.__evidence === null ? ''
-    : over.__evidence || '\n## Evidence\n- producer-diff: done — read the whole diff, known P0/P1 zero\n'
-      + '- data-schema: done — ran the migration against a copy of the real schema\n\n';
-  return `${body}\n${legacy}${evidence}gates:\n${gates}`;
+  // the state's own answer to C9/R5 — an empty `## Open` section: nothing owed
+  return `${body}\n${legacy}\n## Open\n\ngates:\n${gates}`;
 };
 
 // TAP that satisfies the binding check for both store scenarios.

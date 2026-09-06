@@ -25,7 +25,7 @@ test('RY-03 the archiving phase is an overlay on C3, not a replacement', () => {
   const st = (over) => ({ change: 'c', mode: 'standard', lineage: 'v4', phase: 'review', ...over });
   // a C3 failure surfaces the C3 diagnosis, never the phase wording
   for (const [over, needle] of [
-    [{ mode: undefined }, /required key 'mode' missing/],
+    [{ lineage: undefined }, /required key 'lineage' missing/],
     [{ lineage: '<fill me>' }, /unfilled placeholder/],
     [{ change: 'other' }, /'change' is 'other'/],
     [{ phase: 'STEP6' }, /not in the legal vocabulary/],
@@ -36,8 +36,10 @@ test('RY-03 the archiving phase is an overlay on C3, not a replacement', () => {
     assert.match(o.detail, needle);
     assert.doesNotMatch(o.detail, /archiving happens/);
   }
-  // a legal flow-state at the wrong phase surfaces the phase wording, and `review` passes
+  // a legal flow-state at the wrong phase surfaces the phase wording, and `review` passes —
+  // with or without the (inert) mode key
   assert.strictEqual(rd.phaseOverlay(st({}), 'c'), null);
+  assert.strictEqual(rd.phaseOverlay(st({ mode: undefined }), 'c'), null, '6.2: mode is optional');
   assert.strictEqual(rd.phaseOverlay(st({ phase: 'abandoned' }), 'c').class, 'phase');
   assert.match(rd.phaseOverlay(st({ phase: 'done' }), 'c').detail,
     /in-flight bundle declares done; archiving happens at 'phase: review'/);

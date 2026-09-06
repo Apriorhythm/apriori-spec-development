@@ -16,7 +16,7 @@ test('NW-01 scaffolds flow-state skeleton and specs dir', () => {
   const flow = fs.readFileSync(path.join(root, 'apriori', 'changes', 'add-playback', 'flow-state.md'), 'utf8');
   assert.match(flow, /^change: add-playback$/m);
   assert.match(flow, /^phase: ground /m);
-  assert.match(flow, /mode: <fast \| standard>/);                 // placeholder, not a guess
+  assert.doesNotMatch(flow, /^mode:/m);                             // 6.2: optional and inert — not scaffolded
   for (const gone of ['tier', 'track', 'track-rationale', 'round', 'current-step'])
     assert.doesNotMatch(flow, new RegExp(`^${gone}:`, 'm'), `5.x '${gone}:' must not be scaffolded`);
   assert.match(flow, /lineage: <target branch\/line/);
@@ -49,12 +49,14 @@ test('NW-03 enforces bare kebab-case names (dates stamped at archive time, not h
 test('NW-04 the skeleton carries every flow-state schema field the runbook defines', () => {
   const { flowStateSkeleton } = require('../lib/new');
   const s = flowStateSkeleton('my-change', new Date(2026, 0, 2, 3, 4));
-  for (const field of ['change:', 'mode:', 'lineage:', 'phase:', 'reviewer-session:',
+  for (const field of ['change:', 'lineage:', 'phase:', 'reviewer-session:',
                        'delivery:', 'escalation:', 'artifact-root:', 'gates:'])
     assert.ok(s.includes(field), `skeleton missing ${field}`);
-  // and the four short sections the ONE state carries
-  for (const section of ['## Reality Check', '## Evidence', '## Open', '## Next'])
+  assert.ok(!s.includes('mode:'), '6.2: mode is optional and inert, so the skeleton does not ask for it');
+  // and the three short sections the ONE state carries — the Evidence table went with its readers
+  for (const section of ['## Reality Check', '## Open', '## Next'])
     assert.ok(s.includes(section), `skeleton missing ${section}`);
+  assert.ok(!s.includes('## Evidence'), 'the retired Evidence section must not be scaffolded');
   assert.match(s, /reviewer-session: n\/a/);
   assert.match(s, /artifact-root: \./);
   assert.match(s, /escalation: none/);

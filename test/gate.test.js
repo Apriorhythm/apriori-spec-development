@@ -25,10 +25,10 @@ function mkProject(files) {
 
 const STORE = '### Requirement: Alpha\n\n#### Scenario: XA-01 base\n- t\n';
 const DELTA = '## ADDED Requirements\n\n### Requirement: Beta\n\n#### Scenario: XB-01 new\n- t\n';
-// the `## Evidence` section is what C9/R5 read: a bundle that answers nothing has not
-// answered. These fixtures are about other checks, so they carry the two rows a standard
-// change owes and fail on their own subject.
-const FLOW = (name, mode = 'standard') => `change: ${name}\nmode: ${mode}\nlineage: v3\nphase: build\nnext-action: x\n\n## Evidence\n- producer-diff: done — read the whole diff, known P0/P1 zero\n- data-schema: done — ran the migration against a copy of the real schema\n\ngates:\n  - 2026-07-11T00:00 note: n\n`;
+// the `## Open` section is what C9/R5 read; empty means nothing owed. These fixtures are about
+// other checks, so they carry it empty and fail on their own subject. `mode:` is written (6.2:
+// inert) because GT-04 still exercises its legality.
+const FLOW = (name, mode = 'standard') => `change: ${name}\nmode: ${mode}\nlineage: v3\nphase: build\nnext-action: x\n\n## Open\n\ngates:\n  - 2026-07-11T00:00 note: n\n`;
 // 6.2 reads neither of these; they appear below only where a test proves they are inert
 const LEDGER_OPEN = '| ID | Issue | Risk | Round found | Status |\n|---|---|---|---|---|\n| Q-1 | a | low | 1 | open |\n';
 
@@ -351,7 +351,7 @@ test('GT-11 --json is pure JSON in every outcome class', () => {
   assert.strictEqual(JSON.parse(run(['gate', '--json'], root).stdout).change, null);
   // BLOCKED class — an `## Open` item nobody closed, which is the finding that still refuses
   fs.writeFileSync(path.join(root, 'apriori/changes/c/flow-state.md'),
-    FLOW('c').replace('\ngates:', '\n## Open\n- the retry path is unproven\n\ngates:'));
+    FLOW('c').replace('\n## Open\n\n', '\n## Open\n- the retry path is unproven\n\n'));
   const b = run(['gate', '--change', 'c', '--test-cmd', TAP_OK, '--json'], root);
   assert.strictEqual(b.status, 1);
   assert.strictEqual(JSON.parse(b.stdout).result, 'BLOCKED');

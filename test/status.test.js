@@ -31,7 +31,8 @@ delivery: pending-external-acceptance
 - producer-diff: n/a — not built yet
 
 ## Open
-- D-1 is still open
+- D-1: the TTL path is still open
+- D-2 is a line without an id
 
 ## Next
 - spawn the P3 reviewer
@@ -61,8 +62,11 @@ test('ST-01 --change reports phase, next actions, and the open items — never t
   // the ONE state's own content is read back too
   assert.match(out, /reality:      1 observed, 1 decision, 1 assumption/);
   assert.match(out, /assumption:   get cleans up lazily/);
-  assert.match(out, /open:         D-1 is still open/);
-  assert.match(out, /evidence:     producer-diff: n\/a/);
+  assert.match(out, /open: {9}\[pending\] D-1: the TTL path is still open/);
+  assert.match(out, /open: {9}\[pending\] D-2 is a line without an id/);
+  assert.match(out, /evidence: {5}producer-diff: n\/a — not built yet {3}\(legacy ## Evidence, ignored\)/);
+  assert.match(out, /BLOCKED: {6}open item D-1 is pending/);
+  assert.match(out, /BLOCKED: {6}open item has no id: 'D-2 is a line without an id'/);
 });
 
 test('ST-02 no args lists active changes (with phase + open-item count), excluding archive/', () => {
@@ -75,7 +79,7 @@ test('ST-02 no args lists active changes (with phase + open-item count), excludi
   try { process.chdir(root); assert.strictEqual(status.cli([]), 0); }
   finally { console.log = log; process.chdir(cwd); }
   const printed = out.join('\n');
-  assert.match(printed, /demo  —  specify, 1 open/);      // the ONE ## Open item, not the ledger's two rows
+  assert.match(printed, /demo  —  specify, 2 open/);      // the TWO ## Open items, not the ledger's rows
   assert.match(printed, /other  —  ground, 0 open/);
   assert.doesNotMatch(printed, /2026-07-01-old/);            // archive not listed
 });
@@ -95,19 +99,23 @@ test('ST-04 --json emits a machine-consumable report (single + list), pure JSON'
       assert.ok(!(gone in single), `5.x '${gone}' must not survive in the JSON contract`);
     assert.strictEqual(single.hasFlowState, true);
     assert.deepStrictEqual(single.next, ['spawn the P3 reviewer']);
-    assert.deepStrictEqual(single.openIssues, ['D-1 is still open']);
+    assert.deepStrictEqual(single.openIssues, ['D-1: the TTL path is still open', 'D-2 is a line without an id'], 'compat: the raw lines');
+    assert.deepStrictEqual(single.openItems, [
+      { id: 'D-1', text: 'the TTL path is still open', accepted: false, acceptedAt: null },
+      { id: null, text: 'D-2 is a line without an id', accepted: false, acceptedAt: null }]);
+    assert.strictEqual(single.effectiveMode, single.mode, '6.2: the two are equal');
     assert.deepStrictEqual(single.reality.assumption, ['get cleans up lazily']);
     assert.strictEqual(single.delivery, 'pending-external-acceptance');
-    assert.deepStrictEqual(single.evidence.rows.map((x) => x.name), ['producer-diff']);
+    // the legacy Evidence row is carried under the compat key, and nothing else is
+    assert.deepStrictEqual(single.evidence, { rows: [{ name: 'producer-diff', status: 'n/a', detail: 'not built yet' }], blocked: [], recorded: [] });
     // `escalations` is the field a Stop hook reads, and it carries what gate C9 / archive R5
-    // refuse on — from the SAME predicate, fed the same effective mode and delta scan. This
-    // change is standard, still at `specify`, and its own state says an issue is open and an
-    // assumption is unproven: every one of those is a reason a human is being waited on.
-    assert.deepStrictEqual(single.escalations, [
-      "a standard change owes at least one substantive evidence row that is not 'producer-diff'"
-        + ' — silence is not evidence; name the §6 risk it hits and what you ran',
-      'open substantive issue: D-1 is still open — close it, or move it to a new change',
-      'unverified assumption: get cleans up lazily — verify it, or promote it to an ## Evidence row',
+    // refuse on — from the SAME predicate, fed the same delta scan. This change is still at
+    // `specify`, and its own state says two items are open and an assumption is unproven:
+    // every one of those is a reason a human is being waited on.
+    assert.deepStrictEqual(single.escalations.map((e) => e.split(' — ')[0]), [
+      'open item D-1 is pending: the TTL path is still open',
+      "open item has no id: 'D-2 is a line without an id'",
+      'unverified assumption: get cleans up lazily',
     ]);
     assert.match(single.lastGate, /owner: approved/);
     assert.deepStrictEqual(single.openLedger, [], 'the compat key stays, and it is always empty');

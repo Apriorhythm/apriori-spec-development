@@ -16,7 +16,7 @@ const path = require('path');
 const { spawnSync } = require('node:child_process');
 
 const rd = require('../lib/readiness');
-const { readyFiles, FLOW, withEvidence } = require('./helpers/ready-bundle');
+const { readyFiles, FLOW, withOpen } = require('./helpers/ready-bundle');
 
 const BIN = path.join(__dirname, '..', 'bin', 'apriori.js');
 const run = (args, cwd) => spawnSync('node', [BIN, ...args], { encoding: 'utf8', cwd });
@@ -81,14 +81,14 @@ test('AM-87 nothing but the answered round-5 escalation is forceable', () => {
   const p = path.join(st, 'apriori/changes/c/flow-state.md');
   fs.rmSync(p); fs.mkdirSync(p);
   assert.strictEqual(run(['archive', '--change', 'c', '--force'], st).status, 1, 'not-file');
-  // R5 — blocked critical evidence is not progress, and no grant reaches it
-  const ev = proj({ gates, flow: withEvidence(FLOW('c'), ['data-schema: blocked — staging DB offline']) });
+  // R5 — an open item nobody accepted is not progress, and no grant reaches it
+  const ev = proj({ gates, flow: withOpen(FLOW('c'), ['R-01: restart recovery is unverified in the target runtime']) });
   const r = run(['archive', '--change', 'c', '--force'], ev);
-  assert.strictEqual(r.status, 1, 'blocked evidence');
-  assert.match(r.stderr, /R5 critical evidence 'data-schema' is blocked/);
+  assert.strictEqual(r.status, 1, 'an unaccepted open item');
+  assert.match(r.stderr, /R5 open item R-01 is pending/);
   assert.doesNotMatch(r.stderr, /progress blockers|--force needs/, 'nothing here is forceable, so no force advice is printed');
   const rdy = rd.readinessOf({ bundleDir: path.join(ev, 'apriori/changes/c'), name: 'c', force: true });
-  assert.ok(rdy.blockers.length && rdy.blockers.every((b) => b.rule === 'R5' && b.forceable === false), JSON.stringify(rdy.blockers));
+  assert.deepStrictEqual(rdy.blockers.map((b) => [b.rule, b.forceable]), [['R5', false]]);
   assert.deepStrictEqual(rdy.forced, []);
 });
 

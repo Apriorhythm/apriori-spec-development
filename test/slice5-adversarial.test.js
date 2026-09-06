@@ -1,12 +1,12 @@
 'use strict';
-// Slice 5, adversarial — RY-22..RY-28, GT-41, AM-120.
+// Slice 5, adversarial — RY-22..RY-28, GT-41, AM-120 (6.2: Open items replace the Evidence rows).
 //
 // slice5-subtraction.test.js proves the happy paths of the subtraction. This file attacks them.
 // Every case here is a way a producer could have bought itself out of the one thing 6.0 refuses
-// to let it buy out of: real evidence about the product. The four predicates under attack are
+// to let it buy out of: real evidence about the product. The predicates under attack are
 //
-//   · the owner's §6 evidence exit          — a CLOSED grammar, or it is not an owner decision
-//   · what the CLI PROVED about the delta    — answered by name, or fail-closed
+//   · the owner's acceptance exit            — a CLOSED grammar, or it is not an owner decision
+//   · what the CLI PROVED about the delta    — an unreadable delta is fail-closed
 //   · the change's own recorded claims       — its words about itself are binding
 //   · the legacy ledger                      — never read, and it outranks nothing
 //
@@ -40,19 +40,19 @@ const TAP2 = 'node -e "console.log(\'TAP version 13\');console.log(\'1..2\');con
 const TAP1 = 'node -e "console.log(\'TAP version 13\');console.log(\'1..1\');console.log(\'ok 1 - XA-01 a\')"';
 const tapFor = (delta) => (delta === ADDED ? TAP2 : TAP1);
 
-// One bundle shape for the whole file: flow-state + delta + one accepting review round.
-// `fast` by default and `producer-diff` alone, which is exactly what a no-machine-risk fast
-// change owes: a test that is not about the standard demand must not collect it as a second
-// blocker and read as though its own subject fired.
-function project({ mode = 'fast', evidence = ['producer-diff: done — read the whole diff'],
-  sections = '', gates = '', delta = ADDED, ledger = null, verdict = 'no major issues' } = {}) {
+// One bundle shape for the whole file: flow-state + delta + one accepting review round. The
+// `## Open` section is EMPTY by default — nothing owed — so a test that is not about the state
+// predicate does not collect a second blocker and read as though its own subject fired.
+// `open` is a list of item lines (without the `- `); `mode` is written only when given (6.2: inert).
+function project({ mode = null, open = [], sections = '', gates = '', delta = ADDED, ledger = null,
+  verdict = 'no major issues' } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-adv-'));
   w(path.join(root, 'apriori', 'specs', 'kv', 'spec.md'), STORE);
   const dir = path.join(root, 'apriori', 'changes', 'c');
   if (delta) w(path.join(dir, 'specs', 'kv', 'spec.md'), delta);
-  const ev = evidence === null ? '' : `\n## Evidence\n${evidence.map((r) => `- ${r}`).join('\n')}\n\n`;
+  const op = `\n## Open\n${open.map((r) => `- ${r}`).join('\n')}\n\n`;
   w(path.join(dir, 'flow-state.md'),
-    `change: c\nmode: ${mode}\nlineage: v6\nphase: review\n${ev}${sections}`
+    `change: c\n${mode ? `mode: ${mode}\n` : ''}lineage: v6\nphase: review\n${op}${sections}`
     + `gates:\n  - 2026-08-23T00:00 note: scaffolded\n${gates}`);
   w(path.join(dir, 'review', 'code-review-v1.md'), `# review r1\n\nVERDICT: ${verdict}\n`);
   w(path.join(dir, 'review', 'code-review-v1-raw.txt'), 'raw\n');
@@ -71,16 +71,17 @@ const LED = (st) => '| ID | Issue | Risk | Round found | Status |\n|---|---|---|
 // RY-22 — the owner's evidence exit, and every near miss
 // ---------------------------------------------------------------------------
 
-test('RY-22 the owner evidence exit has one grammar and every near miss is refused', () => {
-  const flow = (entry) => 'change: c\nmode: standard\nlineage: v6\nphase: review\n'
-    + '\n## Evidence\n- producer-diff: done — read\n- data-schema: owner-accepted — the v1 risk\n\n'
+test('RY-22 the owner acceptance exit has one grammar and every near miss is refused', () => {
+  const flow = (entry) => 'change: c\nlineage: v6\nphase: review\n'
+    + '\n## Open\n- data-schema: the v1 risk is unverified\n\n'
     + `gates:\n  - 2026-08-23T00:00 note: scaffolded\n${entry}\n`;
   const grants = (entry) => rd.ownerAccepted(flow(entry), 'data-schema');
 
   // the ONE form that authorizes
   const CANON = '  - 2026-08-23T11:00 owner: evidence-accept data-schema — the staging DB is offline until Q4';
   assert.strictEqual(grants(CANON), true, 'the documented template must authorize');
-  assert.strictEqual(rd.evidenceFindings(flow(CANON), { mode: 'standard' }).blockers.length, 0);
+  assert.strictEqual(rd.evidenceFindings(flow(CANON)).blockers.length, 0);
+  assert.deepStrictEqual(rd.evidenceFindings(flow(CANON)).items.map((i) => [i.id, i.accepted]), [['data-schema', true]]);
 
   // and every near miss, each named by the way it used to get through
   const refused = [
@@ -105,15 +106,15 @@ test('RY-22 the owner evidence exit has one grammar and every near miss is refus
   ];
   for (const [why, entry] of refused) {
     assert.strictEqual(grants(entry), false, `${why}: ${entry}`);
-    const b = rd.evidenceFindings(flow(entry), { mode: 'standard' }).blockers;
-    assert.ok(b.some((x) => /claims owner acceptance with no canonical gates: entry/.test(x)), why);
+    const b = rd.evidenceFindings(flow(entry)).blockers;
+    assert.ok(b.some((x) => /^open item data-schema is pending/.test(x)), why);
   }
 
   // a shorter timestamp form the archive stamp itself uses is still a timestamp
   assert.strictEqual(grants('  - 2026-08-23T1100 owner: evidence-accept data-schema — offline'), true);
 
   // an entry about LS-10 never satisfies LS-1, in either direction
-  const ids = 'change: c\nmode: standard\nlineage: v6\nphase: review\ngates:\n'
+  const ids = 'change: c\nlineage: v6\nphase: review\ngates:\n'
     + '  - 2026-08-23T11:00 owner: evidence-accept LS-10 — the owner took it\n';
   assert.strictEqual(rd.ownerAccepted(ids, 'LS-1'), false);
   assert.strictEqual(rd.ownerAccepted(ids, 'LS-10'), true);
@@ -131,9 +132,9 @@ test('RY-22 the owner evidence exit has one grammar and every near miss is refus
   assert.strictEqual(seq(CANON, '  - 2026-08-23T12:00 owner: evidence-accept-revoke data-schema — ——'), true);
 
   // the decision must live in the append-only log — a line pasted into a prose section is not one
-  const outside = 'change: c\nmode: standard\nlineage: v6\nphase: review\n'
+  const outside = 'change: c\nlineage: v6\nphase: review\n'
     + 'gates:\n  - 2026-08-23T00:00 note: scaffolded\n'
-    + '\n## Evidence\n- data-schema: owner-accepted — the v1 risk\n'
+    + '\n## Open\n- data-schema: the v1 risk\n'
     + '- 2026-08-23T11:00 owner: evidence-accept data-schema — offline\n';
   assert.strictEqual(rd.ownerAccepted(outside, 'data-schema'), false, 'the gates: block ends at the heading');
 
@@ -148,121 +149,59 @@ test('RY-22 the owner evidence exit has one grammar and every near miss is refus
 test('RY-28 the owner exit is spent end to end, at the gate and at the archive', () => {
   const CANON = '  - 2026-08-23T11:00 owner: evidence-accept data-schema — the staging DB is offline until Q4\n';
   const FAKE = '  - 2026-08-23T11:00 producer: evidence-accept data-schema — I accept my own risk\n';
-  const rows = ['producer-diff: done — read the whole diff', 'data-schema: blocked — the staging DB is offline'];
+  const ITEM = ['data-schema: the staging DB is offline, restart recovery unverified'];
 
-  // blocked evidence, self-authorized: refused at both surfaces, and --force is not a decision
-  const fake = project({ evidence: rows, gates: FAKE });
-  assert.match(line(gate(fake).stdout, 'C9'), /BLOCKED — critical evidence 'data-schema' is blocked/);
+  // a pending item, self-authorized: refused at both surfaces, and --force is not a decision
+  const fake = project({ open: ITEM, gates: FAKE });
+  assert.match(line(gate(fake).stdout, 'C9'), /BLOCKED — open item data-schema is pending/);
   assert.strictEqual(archive(fake, ['--force']).status, 1);
   assert.strictEqual(r5of(fake, true).length, 1);
   assert.strictEqual(r5of(fake, true)[0].forceable, false, 'missing reality is not progress');
 
-  // the owner's own decision, recorded: the row flips to owner-accepted and both surfaces open
-  const real = project({ evidence: ['producer-diff: done — read the whole diff',
-    'data-schema: owner-accepted — the v1 risk'], gates: CANON });
+  // the owner's own decision, recorded: the item is accepted, still present, and both surfaces open
+  const real = project({ open: ITEM, gates: CANON });
   assert.strictEqual(gate(real).status, 0, gate(real).stdout);
   assert.strictEqual(archive(real).status, 0, archive(real).stdout + archive(real).stderr);
   // and the archive NAMES the accepted risk in its frozen declaration
-  assert.match(archive(real).stdout, /critical evidence: complete, 1 risk\(s\) accepted by the owner \(data-schema\)/);
+  assert.match(archive(real).stdout, /critical evidence: complete, 1 risk\(s\) accepted by the owner \(data-schema\), still present/);
 });
 
 // ---------------------------------------------------------------------------
 // RY-23 — the mutation the tool PROVED
 // ---------------------------------------------------------------------------
 
-test('RY-23 a proven contract mutation is answered by name or nothing ships', () => {
-  const base = ['producer-diff: done — read the whole diff', 'data-schema: done — read the real schema'];
-  const p = (extra, gates) => project({ delta: MUTATION, evidence: extra ? [...base, extra] : base, gates });
-
-  for (const [why, row] of [
-    ['no such row', null],
-    ['n/a contradicts a proven fact', 'contract-mutation: n/a — nothing to see here'],
-    ['blocked is not an answer', 'contract-mutation: blocked — the consumer is offline'],
-    ['a row cannot accept itself', 'contract-mutation: owner-accepted — I accept it'],
-  ]) {
-    const b = p(row);
-    assert.match(line(gate(b).stdout, 'C9'), /mutates a published requirement, so 'contract-mutation' owes an answer/, why);
-    assert.strictEqual(archive(b).status, 1, why);
-    assert.ok(r5of(b, true).some((x) => /contract-mutation/.test(x.detail)), why);
-    assert.ok(r5of(b, true).every((x) => x.forceable === false), `${why}: --force must not reach it`);
+test('RY-23 a proven contract mutation is reported as a signal and demands no reserved row', () => {
+  // 6.2: the `contract-mutation` row demand is gone. The scan still proves the mutation, and
+  // every surface still says so — as information, whatever `mode:` says or does not say.
+  for (const mode of [null, 'fast', 'standard']) {
+    const b = project({ mode, delta: MUTATION });
+    assert.deepStrictEqual(risk.scanDeltas(b.dir).map((s) => s.signal), ['contract-mutation'], `${mode}: the scan sees it`);
+    const g = gate(b);
+    assert.strictEqual(g.status, 0, `${mode}: nothing is owed for it\n${g.stdout}`);
+    assert.match(line(g.stdout, 'C9'), /^✓ C9 no open items; risk: contract-mutation: kv\/spec\.md MODIFIED 'Alpha'$/, String(mode));
+    assert.doesNotMatch(g.stdout, /owes an answer|→ standard/, String(mode));
+    assert.strictEqual(r5of(b).length, 0, String(mode));
+    assert.strictEqual(archive(b).status, 0, String(mode));
+    const j = JSON.parse(run(['status', '--change', 'c', '--json'], b.root).stdout);
+    assert.deepStrictEqual(j.risk.map((s) => s.signal), ['contract-mutation'], String(mode));
+    assert.strictEqual(j.effectiveMode, mode, 'effectiveMode is the declared mode, or null');
   }
-  // the two answers that ARE answers
-  const done = p('contract-mutation: done — re-ran the published scenarios against the new store text');
-  assert.match(line(gate(done).stdout, 'C9'), /^✓ C9 /);
-  assert.strictEqual(r5of(done).length, 0);
-  const accepted = p('contract-mutation: owner-accepted — the consumer ships next quarter',
-    '  - 2026-08-23T11:00 owner: evidence-accept contract-mutation — the consumer ships next quarter\n');
-  assert.match(line(gate(accepted).stdout, 'C9'), /^✓ C9 /);
-  assert.strictEqual(r5of(accepted).length, 0);
-
-  // THE differential that proves the signals come from the SCAN and not from the mode derivation:
-  // `effectiveMode` short-circuits the moment a change is already standard, so a caller that
-  // passed `effectiveMode(...).signals` would ask a fast change for the row and let a standard
-  // one through with the same mutated contract. Both modes must owe it.
-  for (const mode of ['fast', 'standard']) {
-    const b = project({ mode, delta: MUTATION, evidence: base });
-    assert.strictEqual(risk.effectiveMode(b.dir, mode, 'in-flight').signals.length, mode === 'fast' ? 1 : 0,
-      `${mode}: the mode derivation's own short circuit`);
-    assert.deepStrictEqual(risk.scanDeltas(b.dir).map((s) => s.signal), ['contract-mutation'],
-      `${mode}: the scan itself always sees it`);
-    assert.match(line(gate(b).stdout, 'C9'), /'contract-mutation' owes an answer/, mode);
-    assert.strictEqual(archive(b).status, 1, mode);
-  }
-});
-
-// ---------------------------------------------------------------------------
-// RY-24 — what each mode owes
-// ---------------------------------------------------------------------------
-
-test('RY-24 fast is C1 plus a read diff; standard owes one substantive row', () => {
-  const DIFF = 'producer-diff: done — read the whole diff, known P0/P1 zero';
-  // fast, no machine risk: the binding run plus the producer's own diff IS the evidence
-  const fast = project({ mode: 'fast', evidence: [DIFF] });
-  const gf = gate(fast);
-  assert.strictEqual(gf.status, 0, gf.stdout);
-  assert.match(line(gf.stdout, 'C1'), /verify GREEN/);
-  assert.strictEqual(gate(fast, ['--review-ready']).status, 0);
-  assert.strictEqual(archive(fast).status, 0);
-
-  // standard: reading your own diff is hygiene, and an `n/a` answers nothing
-  for (const [why, rows] of [
-    ['the diff alone', [DIFF]],
-    ['a wall of n/a', [DIFF, 'ui-prototype: n/a — no UI', 'data-schema: n/a — no schema']],
-    ['a blocked row is not a settled one', [DIFF, 'data-schema: blocked — staging offline']],
-    ['an unrecorded acceptance settles nothing', [DIFF, 'data-schema: owner-accepted — trust me']],
-  ]) {
-    const b = project({ mode: 'standard', evidence: rows });
-    assert.match(line(gate(b).stdout, 'C9'),
-      /a standard change owes at least one substantive evidence row that is not 'producer-diff'/, why);
-    assert.strictEqual(gate(b, ['--review-ready']).status, 1, why);
-    assert.strictEqual(archive(b).status, 1, why);
-  }
-  // one real row is the whole demand — nothing else is invented
-  const ok = project({ mode: 'standard', evidence: [DIFF, 'data-schema: done — ran the migration on a copy'] });
-  assert.strictEqual(gate(ok).status, 0, gate(ok).stdout);
-  // and an owner-ACCEPTED row counts as substantive once the owner actually recorded it
-  const acc = project({ mode: 'standard', evidence: [DIFF, 'data-schema: owner-accepted — the v1 risk'],
-    gates: '  - 2026-08-23T11:00 owner: evidence-accept data-schema — the staging DB is offline until Q4\n' });
-  assert.strictEqual(gate(acc).status, 0, gate(acc).stdout);
-
-  // a fast change that mutates a contract is judged standard, and owes standard's row too
-  const upgraded = project({ mode: 'fast', delta: MUTATION, evidence: [DIFF] });
-  assert.match(line(gate(upgraded).stdout, 'C3'), /fast → standard/);
-  const c9 = line(gate(upgraded).stdout, 'C9');
-  assert.match(c9, /'contract-mutation' owes an answer/);
-  assert.match(c9, /a standard change owes at least one substantive evidence row/);
+  // an open item spelled `contract-mutation` is just an item: pending until accepted, like any other
+  const named = project({ delta: MUTATION, open: ['contract-mutation: the consumer ships next quarter'] });
+  assert.match(line(gate(named).stdout, 'C9'), /open item contract-mutation is pending/);
+  const acc = project({ delta: MUTATION, open: ['contract-mutation: the consumer ships next quarter'],
+    gates: '  - 2026-08-23T11:00 owner: evidence-accept contract-mutation — the consumer ships next quarter\n' });
+  assert.match(line(gate(acc).stdout, 'C9'), /^✓ C9 1 open item\(s\): 1 accepted, still present \(contract-mutation\), 0 pending; risk: contract-mutation/);
 });
 
 // ---------------------------------------------------------------------------
 // RY-25 — a scan that could not rule the risk out
 // ---------------------------------------------------------------------------
 
-test('RY-25 an unreadable delta is fail-closed and no evidence row cures it',
+test('RY-25 an unreadable delta is fail-closed and no open item or acceptance cures it',
   { skip: canSymlink() ? false : 'platform refuses symlinks' }, () => {
-  // every row settled, plus an owner acceptance aimed straight at the signal name: the most
+  // no open item at all, plus an owner acceptance aimed straight at the signal name: the most
   // complete answer a producer can write, against a scan that could not be made.
-  const EV = ['producer-diff: done — read the whole diff', 'data-schema: done — read the real schema',
-    'contract-mutation: done — re-ran the published scenarios', 'unreadable-delta: owner-accepted — nothing to see'];
   const GRANT = '  - 2026-08-23T11:00 owner: evidence-accept unreadable-delta — please just ship it\n';
 
   const cases = [
@@ -282,7 +221,7 @@ test('RY-25 an unreadable delta is fail-closed and no evidence row cures it',
     }],
   ];
   for (const [why, breakIt] of cases) {
-    const p = project({ mode: 'fast', evidence: EV, gates: GRANT });
+    const p = project({ gates: GRANT });
     breakIt(p.root, p.dir);
     assert.deepStrictEqual(risk.scanDeltas(p.dir).map((s) => s.signal), ['unreadable-delta'], why);
     // the archive predicate refuses, and it is not forceable
@@ -338,20 +277,24 @@ test('RY-26 the legacy ledger is never read, and no ledger state closes the revi
 // ---------------------------------------------------------------------------
 
 test('RY-27 the state own claims block review-ready and archive; the Next cap only reports', () => {
+  // [why, the Open items / sections, what C9 says, whether review-ready also refuses]. An open
+  // item WITH an id is what a review is for, so it never fails review-ready; a claim the Open
+  // section cannot carry (no id) or that lives outside it (an assumption) blocks the gate and
+  // the archive, and only the unreadable Open section fails review-ready too.
   const claims = [
-    ['an open substantive issue', '## Open\n- the retry path is unproven\n\n', /open substantive issue: the retry path is unproven/],
-    ['an unverified assumption', '## Reality Check\n- assumption: the staging schema matches production\n\n',
-      /unverified assumption: the staging schema matches production/],
-    ['a Reality Check line naming no kind', '## Reality Check\n- I forgot to name a kind\n\n',
-      /Reality Check entry names no kind/],
+    ['an open item without an id', { open: ['the retry path is unproven'] }, /open item has no id: 'the retry path is unproven'/, true],
+    ['an open item with an id', { open: ['R-01: the retry path is unproven'] }, /open item R-01 is pending: the retry path is unproven/, false],
+    ['an unverified assumption', { sections: '## Reality Check\n- assumption: the staging schema matches production\n\n' },
+      /unverified assumption: the staging schema matches production/, false],
+    ['a Reality Check line naming no kind', { sections: '## Reality Check\n- I forgot to name a kind\n\n' },
+      /Reality Check entry names no kind/, false],
   ];
-  for (const [why, sections, re] of claims) {
-    const p = project({ mode: 'fast', sections });
+  for (const [why, opts, re, failsReviewReady] of claims) {
+    const p = project(opts);
     assert.match(line(gate(p).stdout, 'C9'), re, why);
     const rr = gate(p, ['--review-ready']);
-    assert.strictEqual(rr.status, 1, `${why}: ${rr.stdout}`);
-    assert.match(rr.stdout, /✗ evidence/, why);
-    assert.match(rr.stdout, re, `${why}: review-ready must say the same thing C9 says`);
+    assert.strictEqual(rr.status, failsReviewReady ? 1 : 0, `${why}: ${rr.stdout}`);
+    if (failsReviewReady) assert.match(rr.stdout, /✗ open/, why);
     const a = archive(p, ['--force']);
     assert.strictEqual(a.status, 1, why);
     assert.match(a.stderr, re, why);
@@ -359,17 +302,17 @@ test('RY-27 the state own claims block review-ready and archive; the Next cap on
   }
   // A new change is not born unfinished — because the scaffold writes BARE headings, not because
   // a text heuristic guesses which claims are real. An `## Open` line is a claim whatever it says.
-  const scaffold = project({ mode: 'fast', sections:
-    '## Open                  # substantive issues nobody has closed yet\n\n'
+  const scaffold = project({ sections:
+    '## Open                  # substantive unresolved items — one line each: - <ID>: <text>\n\n'
     + '## Reality Check         # observed / decision / assumption\n\n' });
   assert.strictEqual(gate(scaffold).status, 0, gate(scaffold).stdout);
   assert.strictEqual(gate(scaffold, ['--review-ready']).status, 0);
   // and a line that merely LOOKS like a placeholder is still a claim nobody closed
-  const looksLike = project({ mode: 'fast', sections: '## Open\n- <a substantive issue nobody has closed yet>\n\n' });
+  const looksLike = project({ open: ['<a substantive issue nobody has closed yet>'] });
   assert.strictEqual(gate(looksLike).status, 1, gate(looksLike).stdout);
 
   // more than three next actions is a DIAGNOSTIC: the state is over its budget, the product is not
-  const many = project({ mode: 'fast', sections: '## Next\n- one\n- two\n- three\n- four\n- five\n\n' });
+  const many = project({ sections: '## Next\n- one\n- two\n- three\n- four\n- five\n\n' });
   assert.strictEqual(gate(many).status, 0, gate(many).stdout);
   assert.strictEqual(gate(many, ['--review-ready']).status, 0);
   assert.strictEqual(archive(many).status, 0);
@@ -383,37 +326,31 @@ test('RY-27 the state own claims block review-ready and archive; the Next cap on
 // GT-41 — the two inputs C9 cannot derive for itself
 // ---------------------------------------------------------------------------
 
-test('GT-41 gate, archive and status all judge the evidence on the same two inputs', () => {
-  // DECLARED standard, with a mutating delta: `effectiveMode` short-circuits there and reports no
-  // signals, so this is the one bundle where "the scan" and "the mode derivation's signals" differ.
-  // A caller that handed C9 the latter would ask nothing about a contract it had just proved
-  // changed — and the equality below would still look right on a fast bundle.
-  const p = project({ mode: 'standard', delta: MUTATION,
-    evidence: ['producer-diff: done — read the whole diff'] });
-  assert.deepStrictEqual(risk.effectiveMode(p.dir, 'standard', 'in-flight').signals, [],
-    'the mode derivation has nothing left to decide and stops scanning');
+test('GT-41 gate, archive and status all judge the state on the same input — the delta scan', () => {
+  // 6.2: the effective mode is gone, so the ONE thing C9 cannot derive for itself is the scan.
+  // A mutating delta with a pending open item: the mutation is a note, the item is the refusal.
+  const p = project({ mode: 'standard', delta: MUTATION, open: ['R-01: the consumer ships next quarter'] });
   const res = gateLib.runGate({ cwd: p.root, change: 'c', testCmd: TAP1, noCas: true });
-  assert.deepStrictEqual(res.evidenceOpts,
-    { stage: 'in-flight', mode: 'standard', riskSignals: risk.scanDeltas(p.dir) });
-  assert.strictEqual(res.evidenceOpts.riskSignals.length, 1, 'the mutation is in the opts, not just in the mode');
+  assert.deepStrictEqual(res.evidenceOpts, { stage: 'in-flight', riskSignals: risk.scanDeltas(p.dir) });
+  assert.strictEqual(res.evidenceOpts.riskSignals.length, 1, 'the mutation is in the opts');
 
-  // archive's R5 refuses on exactly the same findings, from the same two inputs
+  // archive's R5 refuses on exactly the same findings, from the same input
   const want = rd.evidenceFindings(fs.readFileSync(path.join(p.dir, 'flow-state.md'), 'utf8'),
-    { mode: 'standard', riskSignals: risk.scanDeltas(p.dir) }).blockers;
-  assert.deepStrictEqual(r5of(p).map((b) => b.detail), want);
+    { riskSignals: risk.scanDeltas(p.dir) });
+  assert.deepStrictEqual(want.blockers.map((b) => b.split(':')[0]), ['open item R-01 is pending']);
+  assert.deepStrictEqual(want.notes, ["risk: contract-mutation: kv/spec.md MODIFIED 'Alpha'"]);
+  assert.deepStrictEqual(r5of(p).map((b) => b.detail), want.blockers);
   // …and status reports them rather than being the one permissive surface
   const j = JSON.parse(run(['status', '--change', 'c', '--json'], p.root).stdout);
-  assert.deepStrictEqual(j.evidence.blocked, want);
-  for (const b of want) assert.ok(j.escalations.includes(b), b);
+  assert.deepStrictEqual(j.escalations, want.blockers);
+  assert.deepStrictEqual(j.risk, risk.scanDeltas(p.dir));
 
-  // frozen history is never re-scanned: an archived bundle keeps the mode it declared and C9
-  // reports instead of re-judging
-  const arch = project({ mode: 'fast', delta: MUTATION, evidence: ['producer-diff: done — read'],
-    sections: '## Open\n- the retry path is unproven\n\n' });
+  // frozen history is never re-scanned: an archived bundle's C9 reports instead of re-judging
+  const arch = project({ mode: 'fast', delta: MUTATION, open: ['the retry path is unproven'] });
   fs.mkdirSync(path.join(arch.root, 'apriori', 'changes', 'archive'), { recursive: true });
   fs.renameSync(arch.dir, path.join(arch.root, 'apriori', 'changes', 'archive', '2026-01-01T0000-c'));
   const ares = gateLib.runGate({ cwd: arch.root, change: 'c', testCmd: TAP1, noCas: true });
-  assert.deepStrictEqual(ares.evidenceOpts.riskSignals, []);
+  assert.deepStrictEqual(ares.evidenceOpts, { stage: 'archived', riskSignals: [] });
   assert.strictEqual(ares.checks.find((c) => c.id === 'C9').status, 'n/a');
   assert.match(ares.checks.find((c) => c.id === 'C9').detail, /does not apply retroactively/);
   // status takes the stage for the same reason. A frozen record reporting a live refusal was
@@ -421,17 +358,13 @@ test('GT-41 gate, archive and status all judge the evidence on the same two inpu
   // work that shipped. The findings stay visible as RECORDED; they stop being escalations.
   const aj = JSON.parse(run(['status', '--change', 'c', '--json'], arch.root).stdout);
   assert.strictEqual(aj.stage, 'archived');
-  assert.deepStrictEqual(aj.evidence.blocked, []);
-  assert.ok(aj.evidence.recorded.some((b) => /open substantive issue: the retry path is unproven/.test(b)),
-    JSON.stringify(aj.evidence));
-  // the delta is not re-scanned either — the mutation signal that refuses in flight is simply
-  // absent here, rather than recorded as a debt against a record nobody can pay
-  assert.ok(!aj.evidence.recorded.some((b) => /contract-mutation/.test(b)), JSON.stringify(aj.evidence));
+  assert.deepStrictEqual(aj.openItems.map((i) => [i.id, i.accepted]), [[null, false]]);
+  assert.deepStrictEqual(aj.risk, [], 'the delta is not re-scanned either');
   assert.deepStrictEqual(aj.escalations, [], 'frozen history is not a reason to wait on a human');
   const ae = run(['status', '--change', 'c', '--escalation'], arch.root);
   assert.strictEqual(ae.status, 0);
   assert.match(run(['status', '--change', 'c'], arch.root).stdout,
-    /evidence:     recorded, not re-judged \(archived\)/);
+    /^recorded: {5}not re-judged \(archived\) — open item has no id: 'the retry path is unproven'/m);
 });
 
 // ---------------------------------------------------------------------------
@@ -442,11 +375,12 @@ test('AM-120 an archive may not succeed while its own declaration says INCOMPLET
   // R5 is what refuses in production. This drives the readiness seam to READY — the state a
   // softened or bypassed R5 would produce — and proves the declaration itself still refuses.
   const READY = () => ({ ready: true, blockers: [], forced: [], na: [], notes: [], grant: null });
-  for (const [why, sections] of [
-    ['an open issue', '## Open\n- the retry path is unproven\n\n'],
-    ['a standing assumption', '## Reality Check\n- assumption: the schema matches\n\n'],
+  for (const [why, opts] of [
+    ['a pending open item', { open: ['R-01: the retry path is unproven'] }],
+    ['an open item without an id', { open: ['the retry path is unproven'] }],
+    ['a standing assumption', { sections: '## Reality Check\n- assumption: the schema matches\n\n' }],
   ]) {
-    const p = project({ mode: 'fast', sections });
+    const p = project(opts);
     const r = am.archiveChange({ cwd: p.root, change: 'c', noCas: true, readinessOf: READY });
     assert.strictEqual(r.code, 1, why);
     assert.match(r.out.join('\n'), /implementation:    INCOMPLETE/, why);
@@ -461,7 +395,7 @@ test('AM-120 an archive may not succeed while its own declaration says INCOMPLET
     assert.ok(fs.existsSync(p.dir), `${why}: the bundle must not have moved`);
   }
   // the clean bundle declares three states and exactly three
-  const clean = project({ mode: 'fast' });
+  const clean = project();
   const d = am.archiveDeclaration(clean.dir);
   assert.strictEqual(d.incomplete, false);
   assert.deepStrictEqual(d.lines.filter((l) => /^ {2}\w/.test(l)).map((l) => l.trim().split(':')[0]),
@@ -494,7 +428,7 @@ function nearMiss(prefix, lead, payload) {
   return `  - 2026-08-23T11:00 ${prefix}${lead}${payload}`;
 }
 const CANON = (payload) => `  - 2026-08-23T11:00 owner: ${payload}`;
-const gatesOf = (entries) => 'change: c\nmode: fast\nlineage: v6\nphase: review\ngates:\n'
+const gatesOf = (entries) => 'change: c\nlineage: v6\nphase: review\ngates:\n'
   + `  - 2026-08-23T00:00 note: scaffolded\n${entries.join('\n')}\n`;
 
 test('RY-29 the three owner decisions read ONE canonical entry, and no verb is looser', () => {
@@ -612,114 +546,88 @@ test('RY-30 an annotated heading is a heading — a claim under one does not van
     ['annotated, one space', '## Open # substantive issues'],
     ['deeper level, annotated', '### Open   # still a heading'],
   ]) {
-    const p = project({ mode: 'fast', sections: `${head}\n- the retry path is unproven\n\n` });
-    assert.deepStrictEqual(status.sectionItems(fs.readFileSync(path.join(p.dir, 'flow-state.md'), 'utf8'), 'Open'),
-      ['the retry path is unproven'], why);
+    // the project() helper writes its own (empty) Open section; this test writes the heading it is about
+    const p = project({ sections: `${head}\n- R-01: the retry path is unproven\n\n` });
+    const flow = fs.readFileSync(path.join(p.dir, 'flow-state.md'), 'utf8').replace('\n## Open\n\n\n', '\n');
+    fs.writeFileSync(path.join(p.dir, 'flow-state.md'), flow);
+    assert.deepStrictEqual(status.sectionItems(flow, 'Open'), ['R-01: the retry path is unproven'], why);
     assert.strictEqual(gate(p).status, 1, `${why}: ${gate(p).stdout}`);
-    assert.match(line(gate(p).stdout, 'C9'), /open substantive issue: the retry path is unproven/, why);
+    assert.match(line(gate(p).stdout, 'C9'), /open item R-01 is pending: the retry path is unproven/, why);
   }
   // the same for the Reality Check, whose `assumption` lines are the other blocking claim
-  const rc = project({ mode: 'fast',
+  const rc = project({
     sections: '## Reality Check         # §4 Ground writes this\n- assumption: the staging schema matches\n\n' });
   assert.match(line(gate(rc).stdout, 'C9'), /unverified assumption: the staging schema matches/);
   assert.match(run(['status', '--change', 'c'], rc.root).stdout, /assumption:   the staging schema matches/);
   // and a heading is still matched WHOLE — `## Openness` is not `## Open`
-  const other = project({ mode: 'fast', sections: '## Openness\n- not an open issue\n\n' });
+  const other = project({ sections: '## Openness\n- not an open issue\n\n' });
   assert.strictEqual(gate(other).status, 0, gate(other).stdout);
 });
 
-test('RY-31 a claim carrying angle brackets is a claim; only a scaffold FIELD is unfilled', () => {
-  // The broad `<…> anywhere` rule deleted exactly the claims a real project writes.
-  for (const [why, sections, re] of [
-    ['a generic in an open issue', '## Open\n- Map<Key> lookups are unproven under contention\n\n', /Map<Key> lookups are unproven/],
-    ['a generic in an assumption', '## Reality Check\n- assumption: List<T> ordering is stable\n\n', /List<T> ordering is stable/],
-    ['a generic in an unreadable line', '## Reality Check\n- List<T> ordering — I forgot the kind\n\n', /names no kind/],
+test('RY-31 a claim carrying angle brackets is a claim; nothing is filtered as a scaffold', () => {
+  // The broad `<…> anywhere` rule deleted exactly the claims a real project writes. 6.2 keeps no
+  // scaffold filter at all: `apriori new` writes bare headings, so there is no unfilled row to skip.
+  for (const [why, opts, re] of [
+    ['a generic in an open item', { open: ['R-01: Map<Key> lookups are unproven under contention'] }, /open item R-01 is pending: Map<Key> lookups are unproven/],
+    ['a generic in an id-less open item', { open: ['Map<Key> lookups are unproven under contention'] }, /open item has no id: 'Map<Key> lookups are unproven/],
+    ['a generic in an assumption', { sections: '## Reality Check\n- assumption: List<T> ordering is stable\n\n' }, /List<T> ordering is stable/],
+    ['a generic in an unreadable line', { sections: '## Reality Check\n- List<T> ordering — I forgot the kind\n\n' }, /names no kind/],
   ]) {
-    const p = project({ mode: 'fast', sections });
+    const p = project(opts);
     assert.match(line(gate(p).stdout, 'C9'), re, why);
-    assert.strictEqual(gate(p, ['--review-ready']).status, 1, why);
     assert.strictEqual(archive(p, ['--force']).status, 1, why);
   }
-  // …and an Evidence row about generics is a real row, not a scaffold one
-  const real = project({ mode: 'standard',
-    evidence: ['producer-diff: done — read the whole diff', 'data-schema: done — the Map<Key> column shape matched'] });
+  // an accepted item carrying generics is a real, accepted item
+  const real = project({ open: ['R-01: the Map<Key> column shape is unverified'],
+    gates: '  - 2026-08-23T11:00 owner: evidence-accept R-01 — the shape matched on staging\n' });
   assert.strictEqual(gate(real).status, 0, gate(real).stdout);
-  const rows = rd.evidenceFindings(fs.readFileSync(path.join(real.dir, 'flow-state.md'), 'utf8')).rows;
-  assert.deepStrictEqual(rows.map((r) => r.name), ['producer-diff', 'data-schema']);
-
-  // ONE narrow exemption survives, and it is a FIELD: the scaffold's own unfilled row.
-  for (const [why, row] of [
-    ['the status is still the scaffold token', 'producer-diff: <done | blocked | owner-accepted | n/a> — <you read the whole diff>'],
-    ['the risk name is still the scaffold token', '<risk>: done | blocked | owner-accepted | n/a — <what was run>'],
-  ]) {
-    const p = project({ mode: 'fast', evidence: [row] });
-    const f = rd.evidenceFindings(fs.readFileSync(path.join(p.dir, 'flow-state.md'), 'utf8'));
-    assert.deepStrictEqual(f.rows, [], why);
-    assert.ok(f.blockers.some((b) => /no ## Evidence row answers anything/.test(b)), why);
-  }
+  const items = rd.evidenceFindings(fs.readFileSync(path.join(real.dir, 'flow-state.md'), 'utf8')).items;
+  assert.deepStrictEqual(items.map((i) => [i.id, i.text, i.accepted]), [['R-01', 'the Map<Key> column shape is unverified', true]]);
+  // the scaffold's own unfilled-looking token is an id-less item like any other — it blocks
+  const scaffoldish = project({ open: ['<ID>: <text>'] });
+  assert.match(line(gate(scaffoldish).stdout, 'C9'), /open item <ID> is pending: <text>/);
 });
 
-test('AM-122 the declaration reads the predicate, and "complete" means settled', () => {
+test('AM-122 the declaration reads the predicate, and "complete" means accepted or absent', () => {
   const flow = (dir) => fs.readFileSync(path.join(dir, 'flow-state.md'), 'utf8');
   // ONE count. The declaration used to walk the state again, and the two walks disagreed.
-  for (const sections of ['## Open\n- Map<Key> is unproven\n\n',
-    '## Reality Check\n- assumption: the schema matches\n\n',
-    '## Open                  # annotated, as the scaffold writes it\n- one\n- two\n\n']) {
-    const p = project({ mode: 'fast', sections });
+  for (const opts of [{ open: ['R-01: Map<Key> is unproven'] },
+    { sections: '## Reality Check\n- assumption: the schema matches\n\n' },
+    { open: ['one', 'two'] }]) {
+    const p = project(opts);
     const decl = am.archiveDeclaration(p.dir);
-    const claims = rd.evidenceFindings(flow(p.dir)).claims;
-    assert.strictEqual(decl.incomplete, true, sections);
+    const f = rd.evidenceFindings(flow(p.dir));
+    const pending = f.items.filter((i) => !i.accepted).length;
+    assert.strictEqual(decl.incomplete, true, JSON.stringify(opts));
     assert.ok(decl.lines.join('\n').includes(
-      `INCOMPLETE — ${claims.open.length} open issue(s), ${claims.assumption.length} unverified assumption(s)`),
-    `${sections}\n${decl.lines.join('\n')}`);
+      `INCOMPLETE — ${pending} pending open item(s), ${f.claims.assumption.length} unverified assumption(s)`),
+    `${JSON.stringify(opts)}\n${decl.lines.join('\n')}`);
     // …and readiness refuses the same bundle, so the backstop can never contradict R5
-    assert.strictEqual(rd.readinessOf({ bundleDir: p.dir, name: 'c' }).ready, false, sections);
+    assert.strictEqual(rd.readinessOf({ bundleDir: p.dir, name: 'c' }).ready, false, JSON.stringify(opts));
   }
-  // `critical evidence: complete` counts SETTLED rows only
-  const ev = (rows, gates) => am.archiveDeclaration(project({ mode: 'fast', evidence: rows, gates }).dir).lines[3];
-  assert.match(ev(['producer-diff: n/a — nothing to read']), /critical evidence: none declared/);
-  assert.match(ev(['a: n/a — none', 'b: n/a — none']), /critical evidence: none declared/);
-  assert.match(ev(['data-schema: owner-accepted — I accept my own risk']), /critical evidence: none declared/);
-  assert.match(ev(['producer-diff: done — read the whole diff']), /critical evidence: complete$/);
-  assert.match(ev(['data-schema: owner-accepted — the v1 risk'],
-    '  - 2026-08-23T11:00 owner: evidence-accept data-schema — the staging DB is offline\n'),
-  /critical evidence: complete, 1 risk\(s\) accepted by the owner \(data-schema\)/);
-  assert.match(ev(['data-schema: blocked — staging offline']), /critical evidence: 1 row\(s\) still blocked/);
+  // `critical evidence` counts ACCEPTED items, and names them
+  const ev = (open, gates) => am.archiveDeclaration(project({ open, gates }).dir).lines[3];
+  assert.match(ev([]), /critical evidence: complete$/);
+  assert.match(ev(['R-01: a'], '  - 2026-08-23T11:00 owner: evidence-accept R-01 — the staging DB is offline\n'),
+    /critical evidence: complete, 1 risk\(s\) accepted by the owner \(R-01\), still present$/);
+  assert.match(ev(['R-01: a']), /critical evidence: 1 open item\(s\) still pending$/);
+  assert.match(ev(['R-01: a'], '  - 2026-08-23T11:00 producer: evidence-accept R-01 — I accept my own risk\n'),
+    /critical evidence: 1 open item\(s\) still pending$/);
 });
 
-test('GT-43 producer-diff must be SETTLED — n/a and a self-accepted row clear nothing', () => {
-  const rr = (rows, gates) => gate(project({ mode: 'fast', evidence: rows, gates }), ['--review-ready']);
-  for (const [why, row] of [
-    ['n/a says there was no diff to read', 'producer-diff: n/a — nothing to read'],
-    ['blocked is not read', 'producer-diff: blocked — the diff is huge'],
-    ['a row cannot accept itself', 'producer-diff: owner-accepted — I accept it'],
-  ]) {
-    const r = rr([row, 'data-schema: done — read the real schema']);
-    assert.strictEqual(r.status, 1, `${why}: ${r.stdout}`);
-    assert.match(r.stdout, /✗ producer-diff/, why);
-  }
-  // the two that DO settle it
-  assert.strictEqual(rr(['producer-diff: done — read the whole diff, known P0/P1 zero']).status, 0);
-  const accepted = rr(['producer-diff: owner-accepted — the diff is machine-generated'],
-    '  - 2026-08-23T11:00 owner: evidence-accept producer-diff — the diff is machine-generated\n');
-  assert.strictEqual(accepted.status, 0, accepted.stdout);
-  assert.match(accepted.stdout, /✓ producer-diff/);
-});
-
-test('GT-44 review-ready reports three measured items and promises nothing', () => {
-  const p = project({ mode: 'fast', evidence: ['producer-diff: done — read the whole diff'] });
+test('GT-44 review-ready reports two measured items and promises nothing', () => {
+  const p = project();
   const r = gate(p, ['--review-ready']);
   assert.strictEqual(r.status, 0, r.stdout);
-  assert.deepStrictEqual((r.stdout.match(/^[✓✗] (\S+)/gm) || []).map((l) => l.slice(2)),
-    ['tests', 'evidence', 'producer-diff'], r.stdout);
-  // the deleted item and the deleted promise, by name
-  assert.doesNotMatch(r.stdout, /reviewer-context/);
+  assert.deepStrictEqual((r.stdout.match(/^[✓✗] (\S+)/gm) || []).map((l) => l.slice(2)), ['tests', 'open'], r.stdout);
+  // the deleted items and the deleted promise, by name
+  assert.doesNotMatch(r.stdout, /reviewer-context|producer-diff|evidence/);
   assert.doesNotMatch(r.stdout, /uncovered boundaries/);
   assert.doesNotMatch(r.stdout, /the reviewer gets/);
   assert.match(r.stdout, /^REVIEW-READY: YES$/m);
-  // the JSON face carries the same three and no fourth
+  // the JSON face carries the same two and no third
   const j = JSON.parse(gate(p, ['--review-ready', '--json']).stdout);
-  assert.deepStrictEqual(j.items.map((i) => i.id), ['tests', 'evidence', 'producer-diff']);
+  assert.deepStrictEqual(j.items.map((i) => i.id), ['tests', 'open']);
   assert.strictEqual(j.ready, true);
   // what it prints instead is a fact the run already held
   assert.match(r.stdout, /^delta specs: kv\/spec\.md$/m);
@@ -727,45 +635,4 @@ test('GT-44 review-ready reports three measured items and promises nothing', () 
   const before = snapshot();
   gate(p, ['--review-ready']);
   assert.strictEqual(snapshot(), before, 'review-ready wrote a file');
-});
-
-test('RY-32 the scaffold path runs end to end: new -> gate -> review-ready -> archive', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-e2e-'));
-  w(path.join(root, 'apriori', 'specs', 'kv', 'spec.md'), STORE);
-  assert.strictEqual(run(['new', 'hello'], root).status, 0);
-  const flowPath = path.join(root, 'apriori', 'changes', 'hello', 'flow-state.md');
-  const scaffold = fs.readFileSync(flowPath, 'utf8');
-  // the scaffold states no claim nobody made: bare headings, one unfilled Evidence row
-  assert.match(scaffold, /^## Open {2,}#/m);
-  assert.match(scaffold, /^## Reality Check {2,}#/m);
-  assert.deepStrictEqual(status.sectionItems(scaffold, 'Open'), []);
-  assert.deepStrictEqual(status.realityCheck(scaffold).assumption, []);
-  assert.deepStrictEqual(rd.evidenceFindings(scaffold).rows, [], 'the unfilled row answers nothing');
-  // …and it is not review-ready, because nothing has been done yet
-  w(path.join(root, 'apriori', 'changes', 'hello', 'specs', 'kv', 'spec.md'), ADDED);
-  const g = (extra = []) => run(['gate', '--change', 'hello', '--test-cmd', TAP2, '--no-cas', ...extra], root);
-  assert.strictEqual(g(['--review-ready']).status, 1);
-  assert.match(g(['--review-ready']).stdout, /✗ evidence/);
-
-  // fill in exactly what the scaffold asks for, and nothing else
-  fs.writeFileSync(flowPath, scaffold
-    .replace('mode: <fast | standard>', 'mode: fast')
-    .replace('lineage: <target branch/line + merge taboo>', 'lineage: main')
-    .replace('phase: ground', 'phase: review')
-    .replace(/^- producer-diff: <[^\n]*$/m, '- producer-diff: done — read the whole diff, known P0/P1 zero'));
-  const rev = path.join(root, 'apriori', 'changes', 'hello', 'review');
-  w(path.join(rev, 'code-review-v1.md'), '# code review, round 1\n\nVERDICT: no major issues\n');
-  w(path.join(rev, 'code-review-v1-raw.txt'), 'raw\n');
-
-  assert.strictEqual(g().status, 0, g().stdout);
-  assert.match(g().stdout, /GATE: PASS/);
-  const rr = g(['--review-ready']);
-  assert.strictEqual(rr.status, 0, rr.stdout);
-  assert.match(rr.stdout, /^REVIEW-READY: YES$/m);
-  const a = run(['archive', '--change', 'hello', '--no-cas', '--write', '--changes-dir', 'apriori/changes'], root);
-  assert.strictEqual(a.status, 0, a.stdout + a.stderr);
-  assert.match(a.stdout, /implementation: {4}complete/);
-  assert.match(a.stdout, /critical evidence: complete/);
-  assert.match(a.stdout, /RESULT: MERGED/);
-  assert.ok(!fs.existsSync(path.join(root, 'apriori', 'changes', 'hello')), 'the bundle moved');
 });

@@ -28,8 +28,8 @@ async function main() {
     // an old script should say what replaced it, not 'unknown command'.
     case 'hotfix':
       console.error("apriori hotfix: removed in 6.0 — there is one flow now.\n"
-        + "  New work:  apriori new <name>  then set  mode: fast  in flow-state.md\n"
-        + "             (fast = reproduce -> fix -> regression -> one independent review)\n"
+        + "  New work:  apriori new <name>\n"
+        + "             (reproduce -> fix -> regression -> one independent review)\n"
         + "  A bundle the lane left behind: convert it to a change, or finish it with apriori-cli 5.x.");
       return 2;
     case 'status':  return require('../lib/status').cli(rest);

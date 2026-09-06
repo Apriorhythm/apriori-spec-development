@@ -12,7 +12,7 @@ const { spawnSync } = require('node:child_process');
 
 const am = require('../lib/archive-merge');
 const rd = require('../lib/readiness');
-const { readyFiles, FLOW, withEvidence } = require('./helpers/ready-bundle');
+const { readyFiles, FLOW, withOpen } = require('./helpers/ready-bundle');
 const LEDGER_OPEN = '| ID | Issue | Risk | Round found | Status |\n|---|---|---|---|---|\n| Q-1 | i | low | 1 | open |\n';
 const { canSymlink } = require('./helpers/can-symlink');
 
@@ -22,10 +22,13 @@ const run = (args, cwd) => spawnSync('node', [BIN, ...args], { encoding: 'utf8',
 const STORE = '### Requirement: Alpha\n\n#### Scenario: XA-01 a\n- t\n';
 const ADD = '## ADDED Requirements\n\n### Requirement: Beta\n\n#### Scenario: XB-09 n\n- t\n';
 
-function proj(over = {}, mode = 'standard') {
+// `mode` is written into the flow-state when given — 6.2 keeps it optional and inert, and the
+// "both modes" loops below now prove exactly that: the answer never depends on it.
+function proj(over = {}, mode = null) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-rdy-'));
   const files = {
-    ...readyFiles('c', { mode }),
+    ...readyFiles('c'),
+    ...(mode ? { 'apriori/changes/c/flow-state.md': FLOW('c').replace('change: c\n', `change: c\nmode: ${mode}\n`) } : {}),
     'apriori/specs/a/spec.md': STORE,
     'apriori/changes/c/specs/a/spec.md': ADD,
     ...over,
@@ -206,7 +209,7 @@ test('AM-78 an unready change is refused with nothing written and nothing moved'
   const cases = [
     ['phase', { 'apriori/changes/c/flow-state.md': FLOW('c').replace('phase: review', 'phase: specify') }],
     // R5 — the one substantive state predicate is the refusal (the ledger is never read)
-    ['evidence', { 'apriori/changes/c/flow-state.md': withEvidence(FLOW('c'), ['data-schema: blocked — staging DB offline']) }],
+    ['open item', { 'apriori/changes/c/flow-state.md': withOpen(FLOW('c'), ['R-01: restart recovery is unverified']) }],
   ];
   for (const [label, over] of cases) {
     const root = proj(over);
@@ -223,7 +226,7 @@ test('AM-78 an unready change is refused with nothing written and nothing moved'
 test('AM-79 R1 reports first and alone, the later rules report together', () => {
   // everything broken → only R1 surfaces
   const root = proj({
-    'apriori/changes/c/flow-state.md': withEvidence(FLOW('c'), ['data-schema: blocked — staging DB offline'])
+    'apriori/changes/c/flow-state.md': withOpen(FLOW('c'), ['R-01: restart recovery is unverified'])
       .replace('phase: review', 'phase: specify'),
     'apriori/changes/c/review/code-review-v1.md': null,
     'apriori/changes/c/review/code-review-v1-raw.txt': null,
@@ -233,12 +236,12 @@ test('AM-79 R1 reports first and alone, the later rules report together', () => 
   assert.doesNotMatch(r1.stderr, /R4 |R5 /);
   // R1 fine, R4 and R5 broken → both listed in one report
   const root2 = proj({
-    'apriori/changes/c/flow-state.md': withEvidence(FLOW('c'), ['data-schema: blocked — staging DB offline']),
+    'apriori/changes/c/flow-state.md': withOpen(FLOW('c'), ['R-01: restart recovery is unverified']),
     'apriori/changes/c/review/code-review-v1.md': null,
     'apriori/changes/c/review/code-review-v1-raw.txt': null,
   });
   const r2 = run(['archive', '--change', 'c'], root2);
-  assert.match(r2.stderr, /R5 critical evidence 'data-schema' is blocked/);
+  assert.match(r2.stderr, /R5 open item R-01 is pending/);
   assert.match(r2.stderr, /R4 no completed independent review/);
 });
 
@@ -268,7 +271,7 @@ test('AM-81 a broken flow-state reports the C3 diagnosis, not the phase wording'
 test('AM-82 an absent artifact is not an obligation, and R5 is never forceable', () => {
   // 5.x/slice-3: an absent tasks.md or ledger was a `standard` refusal that --force could not
   // cure. 6.2 reads neither, present or absent — while the rule that REPLACED them, R5's
-  // blocked critical evidence, stays non-forceable in exactly that way.
+  // pending open item, stays non-forceable in exactly that way.
   for (const rel of ['tasks.md', path.join('review', 'issues.md')]) {
     for (const present of [false, true]) {
       const root = proj({}, 'standard');
@@ -277,11 +280,11 @@ test('AM-82 an absent artifact is not an obligation, and R5 is never forceable',
     }
   }
   const blocked = proj({ 'apriori/changes/c/flow-state.md':
-    withEvidence(FLOW('c'), ['data-schema: blocked — staging DB offline'])
+    withOpen(FLOW('c'), ['R-01: restart recovery is unverified'])
     + '  - 2026-08-15T18:00 owner: archive-force ledger — 补一条授权\n' }, 'standard');
   const r = run(['archive', '--change', 'c', '--force'], blocked);
-  assert.strictEqual(r.status, 1, 'blocked critical evidence is not progress and --force cannot buy it');
-  assert.match(r.stderr, /R5 critical evidence 'data-schema' is blocked/);
+  assert.strictEqual(r.status, 1, 'a pending open item is not progress and --force cannot buy it');
+  assert.match(r.stderr, /R5 open item R-01 is pending/);
 });
 
 test('AM-83 existing preflight failures keep their diagnosis and never reach readiness', () => {
@@ -310,14 +313,14 @@ test('AM-84 the integrity section is not printed for an unready change', () => {
   const ready = proj({ 'apriori/changes/c/specs/a/spec.md': stamped });
   assert.match(run(['archive', '--change', 'c'], ready).stdout, /MODIFIED INTEGRITY/);
   const unready = proj({ 'apriori/changes/c/specs/a/spec.md': stamped,
-    'apriori/changes/c/flow-state.md': withEvidence(FLOW('c'), ['data-schema: blocked — staging DB offline']) });
+    'apriori/changes/c/flow-state.md': withOpen(FLOW('c'), ['R-01: restart recovery is unverified']) });
   const r = run(['archive', '--change', 'c'], unready);
   assert.strictEqual(r.status, 1);
   assert.doesNotMatch(r.stdout, /MODIFIED INTEGRITY/);
 });
 
 test('AM-85 dry-run predicts what --write would do', () => {
-  const root = proj({ 'apriori/changes/c/flow-state.md': withEvidence(FLOW('c'), ['data-schema: blocked — staging DB offline']) });
+  const root = proj({ 'apriori/changes/c/flow-state.md': withOpen(FLOW('c'), ['R-01: restart recovery is unverified']) });
   const before = storeText(root);
   const r = run(['archive', '--change', 'c'], root);
   assert.strictEqual(r.status, 1);
@@ -332,7 +335,7 @@ test('AM-114 readiness is a single look, not a commit-time guarantee', () => {
     cwd: root, change: 'c', write: true, changesDir: path.join(root, 'apriori', 'changes'),
     ops: {
       writeFileSync: fs.writeFileSync.bind(fs), renameSync: fs.renameSync.bind(fs), rmSync: fs.rmSync.bind(fs),
-      afterReadiness: () => { fired++; fs.writeFileSync(path.join(bundle(root), 'flow-state.md'), withEvidence(FLOW('c'), ['data-schema: blocked — staging DB offline'])); },
+      afterReadiness: () => { fired++; fs.writeFileSync(path.join(bundle(root), 'flow-state.md'), withOpen(FLOW('c'), ['R-01: restart recovery is unverified'])); },
     },
   });
   assert.strictEqual(fired, 1, 'the hook must fire once, after readiness and before the first write');

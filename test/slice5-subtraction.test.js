@@ -60,8 +60,9 @@ test('RY-01 the base predicates are what the gate reports', () => {
   // A second copy in gate is how the archive and the gate came to disagree in 5.x.
   const { root, dir } = project();
   fs.writeFileSync(path.join(dir, 'tasks.md'), '- [ ] b\n');
+  // a CLOSED legacy row: nothing is read off it (an open one is the A-5 migration at C3, LM-01)
   fs.writeFileSync(path.join(dir, 'review', 'issues.md'),
-    '| ID | Issue | Risk | Round found | Status |\n|---|---|---|---|---|\n| Q-1 | i | low | 1 | open |\n');
+    '| ID | Issue | Risk | Round found | Status |\n|---|---|---|---|---|\n| Q-1 | i | low | 1 | fixed |\n');
   const flowText = fs.readFileSync(path.join(dir, 'flow-state.md'), 'utf8');
   const state = status.parseFlowState(flowText);
   const res = require('../lib/gate').runGate({ cwd: root, change: 'c', testCmd: TAP, noCas: true });
@@ -101,9 +102,20 @@ test('RY-16 no rule reads a task list, present or absent', () => {
   assert.match(c2, /^– C2 retired in 6\.2 — nothing is read$/);
 });
 
-test('RY-17 the ledger is never read: an open row neither blocks nor is reported', () => {
+test('RY-17 the ledger is never read to judge a change: a closed or unknown row neither blocks nor is reported', () => {
   const LED = (row) => '| ID | Issue | Risk | Round found | Status |\n|---|---|---|---|---|\n' + `| Q-1 | i | low | 1 | ${row} |\n`;
-  for (const row of ['open', 'frobnicated', 'rejected', 'waived by the owner', 'fixed']) {
+  // an OPEN row is the one-shot migration refusal (6.2 A-5, LM-01) — never the retired R3 rule
+  {
+    const p = project();
+    w(path.join(p.dir, 'review', 'issues.md'), LED('open'));
+    const r = rd.readinessOf({ bundleDir: p.dir, name: 'c' });
+    assert.strictEqual(r.ready, false);
+    assert.deepStrictEqual(r.blockers.map((b) => b.rule), ['R1']);
+    assert.match(r.blockers[0].detail, /^legacy ledger has 1 open row\(s\)/);
+    assert.match(line(gate(p.root).stdout, 'C3'), /BLOCKED — legacy ledger has 1 open row/);
+    assert.match(line(gate(p.root).stdout, 'C4'), /^– C4 ledger retired in 6\.2 — open items live in ## Open$/);
+  }
+  for (const row of ['frobnicated', 'rejected', 'waived by the owner', 'fixed']) {
     const p = project();
     w(path.join(p.dir, 'review', 'issues.md'), LED(row));
     const r = rd.readinessOf({ bundleDir: p.dir, name: 'c' });
@@ -380,6 +392,14 @@ test('RY-21 a 5.x bundle is diagnosed, not silently read, and its legacy files n
   w(path.join(dir, 'tasks.md'), '- [ ] never finished\n');
   w(path.join(dir, 'review', 'issues.md'),
     '| ID | Issue | Risk | Round found | Status |\n|---|---|---|---|---|\n| Q-1 | i | low | 1 | open |\n| Q-2 | j | low | 1 | frobnicated |\n');
+  // the open ledger row is the A-5 migration refusal at C3 — named, never silently inert (LM-01)
+  const g0 = gate(root);
+  assert.strictEqual(g0.status, 1);
+  assert.match(line(g0.stdout, 'C3'), /legacy ledger has 1 open row\(s\) — .*line 3: Q-1/);
+  assert.doesNotMatch(line(g0.stdout, 'C3'), /Q-2/, 'an unknown status is not open');
+  // moved out (the row deleted), the residue is inert: the task list, the unknown-status row
+  w(path.join(dir, 'review', 'issues.md'),
+    '| ID | Issue | Risk | Round found | Status |\n|---|---|---|---|---|\n| Q-2 | j | low | 1 | frobnicated |\n');
   const g = gate(root);
   assert.strictEqual(g.status, 0, `legacy residue must be inert, not blocking:\n${g.stdout}`);
   assert.match(line(g.stdout, 'C2'), /^– C2 retired in 6\.2/);

@@ -58,6 +58,18 @@ bundle it is history. `apriori new` no longer writes it. `status --json` adds `a
 and `historical` beside `escalations` (now the pending list only), and each `escalation[]`
 entry carries `state`.
 
+**The legacy issue ledger: a one-shot migration gate, move not copy.** In an ACTIVE bundle,
+`review/issues.md` with `open` rows (old table contract) is refused at C3 / R1 / review-ready
+listing each row and its line; move each into `## Open` as `- <ID>: <text>` and delete it from
+the ledger (or delete the file) — the gate never fires again once no open row remains. Closed-
+only or missing: nothing. Unreadable, or content with no readable row: a structural error.
+Frozen archives are never scanned. ID rules: an Open id is `[^\s:]+` (re-key spaced names); a
+closed id is never reused for a different risk within the same bundle — the CLI cannot prove it,
+so an acceptance whose id later names a different item is a documentation violation. Reality
+Check `assumption` lifecycle: verified → `observed`; carried forward → an `## Open` item (delete
+the assumption line); the two must not coexist — C9 blocks on the assumption and says so;
+`malformed` lines are structural, never acceptable.
+
 **`mode:` is optional and inert.** Delete the line or leave it: absent is fine, `fast` and
 `standard` are accepted and echoed, anything else (the unfilled placeholder included) still blocks
 C3. There is no upgrade any more — a mutating delta is reported as `risk: contract-mutation: …`

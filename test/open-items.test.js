@@ -234,7 +234,7 @@ test('OI-03 gate, archive and status judge the open items on the same inputs —
   // SIGNAL now (reported, demanding nothing), and the accepted item is not a refusal
   assert.deepStrictEqual(want.blockers.map((b) => b.split(/[:—]/)[0].trim()),
     ['open item R-01 is pending', 'open item has no id', 'unverified assumption']);
-  assert.match(want.blockers[2], /verify it, or move it to ## Open as an item$/);
+  assert.match(want.blockers[2], /verified\? rewrite it as `- observed: …`; carried forward unverified\? move it to ## Open as/);
   assert.deepStrictEqual(want.notes, ["risk: contract-mutation: kv/spec.md MODIFIED 'Alpha'"]);
   assert.deepStrictEqual(j.risk, [{ signal: 'contract-mutation', detail: "kv/spec.md MODIFIED 'Alpha'" }]);
   assert.match(run(['status', '--change', 'c'], p.root).stdout, /^risk: {9}contract-mutation: kv\/spec\.md MODIFIED 'Alpha'$/m);
@@ -325,7 +325,7 @@ test('OI-05 review-ready answers two items — tests, and a readable Open sectio
   for (const [why, open, re, sections] of [
     ['no id', '- the retry path is unproven\n', /✗ open {2}open item has no id/],
     ['duplicate', '- R-01: a\n- R-01: b\n', /✗ open {2}open item id 'R-01' is duplicated/],
-    ['assumption', '', /✗ open {2}unverified assumption: the schema matches — verify it, or move it to ## Open as an item/, '## Reality Check\n- assumption: the schema matches\n\n'],
+    ['assumption', '', /✗ open {2}unverified assumption: the schema matches — verified\? rewrite it as `- observed: …`; carried forward unverified\? move it to ## Open as `- <ID>: the schema matches` and delete this line/, '## Reality Check\n- assumption: the schema matches\n\n'],
     ['kind-less line', '', /✗ open {2}Reality Check entry names no kind: 'I forgot'/, '## Reality Check\n- I forgot\n\n'],
   ]) {
     const p = project({ open, sections: sections || '' });

@@ -78,13 +78,18 @@ test('GT-03 C4 is a placeholder — review/issues.md is never read', () => {
   fs.writeFileSync(path.join(root, 'apriori/changes/c/review/issues.md'), LEDGER_OPEN);
   const r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
   assert.deepStrictEqual(r.checks.find((x) => x.id === 'C4'), PLACEHOLDER);
-  assert.strictEqual(r.code, 0, 'an open ledger row is not a fact the tool reads any more');
-  // an unreadable ledger is not read either — only the review ROOT is still guarded, at C5
+  // 6.2 A-5: an open row is not a C4 fact — it is a one-shot MIGRATION refusal at C3 (LM-01)
+  assert.strictEqual(r.code, 1);
+  assert.match(r.checks.find((x) => x.id === 'C3').detail, /^legacy ledger has 1 open row\(s\)/);
+  fs.writeFileSync(path.join(root, 'apriori/changes/c/review/issues.md'), LEDGER_OPEN.replace('| open |', '| fixed |'));
+  assert.strictEqual(gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK }).code, 0, 'a closed row is nothing');
+  // an unreadable ledger cannot be proven closed: structural at C3; the review ROOT is still guarded at C5
   fs.rmSync(path.join(root, 'apriori/changes/c/review/issues.md'));
   fs.mkdirSync(path.join(root, 'apriori/changes/c/review/issues.md'));
   const r2 = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
   assert.deepStrictEqual(r2.checks.find((x) => x.id === 'C4'), PLACEHOLDER);
-  assert.strictEqual(r2.code, 0);
+  assert.strictEqual(r2.code, 1);
+  assert.match(r2.checks.find((x) => x.id === 'C3').detail, /^legacy ledger review\/issues\.md: not-file/);
   const rd = require('../lib/readiness');
   for (const gone of ['checkLedger', 'ledgerFindings', 'classifyStatus', 'waiveEvidence', 'SUBSTANTIVE_LEDGER'])
     assert.ok(!(gone in rd), `${gone} must be gone, not merely unused`);

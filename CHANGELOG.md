@@ -49,6 +49,15 @@ already stopped teaching are retired, and risk acceptance is unified on ONE mech
   absent/`none`/`n/a` fine; archived → history. `apriori new` stops writing it. `status --json`
   adds `acknowledged` / `historical`; `--escalation --json` is `{change, escalations,
   acknowledged, historical}`. Tests: `escalation-states.test.js` (ES-01..09); ST-14, NW-04 updated.
+- **Batch A-5 — legacy ledger migration gate (one-shot, move not copy).** Active bundles only:
+  `review/issues.md` with `open` rows (old table contract, brought back as a private helper)
+  refuses at C3 / R1 / review-ready listing each row and its line, and stops `status
+  --escalation`; closed-only or missing → nothing; unreadable or unparseable content →
+  structural; frozen archives never scanned; the gate never re-fires once no open row remains.
+  ID rules documented (one token; closed ids never reused — the CLI cannot prove it). The C9
+  assumption message carries the lifecycle (verified → `observed`; carried forward → `## Open`
+  item; never both). `status --json` adds `migrations: []`. Tests:
+  `legacy-ledger-migration.test.js` (LM-01..10).
 - **Fix:** `sectionItems` matched a heading's annotation across newlines, so an empty section
   followed directly by another heading swallowed that heading and read the next section's items
   as its own. Horizontal whitespace only now.

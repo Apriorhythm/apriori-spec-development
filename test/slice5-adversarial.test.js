@@ -244,9 +244,17 @@ test('RY-25 an unreadable delta is fail-closed and no open item or acceptance cu
 // RY-26 — the optional legacy ledger
 // ---------------------------------------------------------------------------
 
-test('RY-26 the legacy ledger is never read, and no ledger state closes the review floor', () => {
-  // 6.2: the ledger has no reader. An open row is not a finding, not a note, not an R3 rule.
-  for (const st of ['open', 'Open', 'open — still waiting on staging', 'verified', 'frobnicated']) {
+test('RY-26 the legacy ledger is never read to judge a change, and no ledger state closes the review floor', () => {
+  // 6.2: the ledger has no reader. A closed or unknown row is not a finding, not a note, not an
+  // R3 rule; an OPEN row is the one-shot migration refusal at R1 (A-5, LM-01) — never R3.
+  for (const st of ['open', 'Open', 'open — still waiting on staging']) {
+    const p = project({ ledger: LED(st) });
+    const r = rd.readinessOf({ bundleDir: p.dir, name: 'c' });
+    assert.strictEqual(r.ready, false, st);
+    assert.deepStrictEqual(r.blockers.map((b) => [b.rule, b.class]), [['R1', 'structural']], st);
+    assert.match(r.blockers[0].detail, /^legacy ledger has 1 open row\(s\)/, st);
+  }
+  for (const st of ['verified', 'frobnicated']) {
     const p = project({ ledger: LED(st) });
     const r = rd.readinessOf({ bundleDir: p.dir, name: 'c' });
     assert.strictEqual(r.ready, true, `${st}: ${JSON.stringify(r.blockers)}`);
@@ -266,10 +274,12 @@ test('RY-26 the legacy ledger is never read, and no ledger state closes the revi
       assert.strictEqual(archive(p).status, 1, `${verdict} / ${why}`);
     }
   }
-  // an accepting latest verdict is what closes it — the ledger neither helps nor hinders
-  for (const ledger of [null, LED('verified'), LED('open')])
+  // an accepting latest verdict is what closes it — a closed ledger neither helps nor hinders,
+  // and an open row is the migration refusal whatever the verdict says
+  for (const ledger of [null, LED('verified')])
     assert.strictEqual(rd.readinessOf({ bundleDir: project({ ledger, verdict: '0 issues open' }).dir, name: 'c' }).ready,
       true, String(ledger));
+  assert.strictEqual(rd.readinessOf({ bundleDir: project({ ledger: LED('open'), verdict: '0 issues open' }).dir, name: 'c' }).ready, false);
 });
 
 // ---------------------------------------------------------------------------
@@ -287,7 +297,7 @@ test('RY-27 the state own claims block review-ready and archive; the Next cap on
     ['an open item without an id', { open: ['the retry path is unproven'] }, /open item has no id: 'the retry path is unproven'/, true],
     ['an open item with an id', { open: ['R-01: the retry path is unproven'] }, /open item R-01 is pending: the retry path is unproven/, false],
     ['an unverified assumption', { sections: '## Reality Check\n- assumption: the staging schema matches production\n\n' },
-      /unverified assumption: the staging schema matches production — verify it, or move it to ## Open as an item/, true],
+      /unverified assumption: the staging schema matches production — verified\? rewrite it as `- observed: …`; carried forward unverified\? move it to ## Open as `- <ID>: the staging schema matches production` and delete this line/, true],
     ['a Reality Check line naming no kind', { sections: '## Reality Check\n- I forgot to name a kind\n\n' },
       /Reality Check entry names no kind/, true],
   ];
@@ -490,10 +500,15 @@ test('AM-121 the owner exit keeps its double action, and the printed cure is cop
   // 6.2: the ledger class is gone, so `archive-force` has nothing left to force — the record is
   // reported as a note and changes no verdict, with or without --force
   const rec = CANON('archive-force ledger — the owner says ship it') + '\n';
-  const inert = archive(project({ ledger: LED('open'), gates: rec }));
+  const inert = archive(project({ ledger: LED('fixed'), gates: rec }));
   assert.strictEqual(inert.status, 0, inert.stdout + inert.stderr);
   assert.match(inert.stdout, /^note: archive-force has nothing left to force in 6\.2$/m);
   assert.doesNotMatch(inert.stdout, /^forced:/m);
+  // and an OPEN row is the A-5 migration refusal — structural, which no force record ever opens
+  const open = archive(project({ ledger: LED('open'), gates: rec }), ['--force']);
+  assert.strictEqual(open.status, 1);
+  assert.match(open.stderr, /archive: R1 legacy ledger has 1 open row/);
+  assert.doesNotMatch(open.stdout, /^forced:/m);
 
   // R4 — a round-5 escalation, the ONE double action left. Five rounds of one family.
   const five = (gates) => {

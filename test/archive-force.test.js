@@ -47,14 +47,24 @@ const GRANT = (cls, reason = '还差两项文档') => `  - 2026-08-15T18:00 owne
 const REVOKE = (cls, reason = '收回授权') => `  - 2026-08-15T19:00 owner: archive-force-revoke ${cls} — ${reason}`;
 
 test('AM-89 an archive-force record is inert: nothing is forced, and the note says so', () => {
-  // the ledger is not read, so an open row is not a blocker — the grant has nothing to open
-  const l = proj({ gates: [GRANT('ledger')], ledger: ROW('open'), tasks: '- [ ] b\n' });
+  // the ledger is not read to judge the change, so a closed row is nothing — the grant has
+  // nothing to open
+  const l = proj({ gates: [GRANT('ledger')], ledger: ROW('fixed'), tasks: '- [ ] b\n' });
   for (const args of [['archive', '--change', 'c'], ['archive', '--change', 'c', '--force']]) {
     const r = run(args, l);
     assert.strictEqual(r.status, 0, `${args.join(' ')}: ${r.stdout}${r.stderr}`);
     assert.match(r.stdout, /^note: archive-force has nothing left to force in 6\.2$/m, args.join(' '));
     assert.doesNotMatch(r.stdout, /^forced:/m, 'nothing was forced, so nothing may say it was');
     assert.doesNotMatch(r.stdout + r.stderr, /Q-1/, 'the unread ledger never reaches the report');
+  }
+  // an OPEN row is the one-shot migration refusal (6.2 A-5): structural at R1, and a force
+  // record — with or without --force — opens nothing
+  const o = proj({ gates: [GRANT('ledger')], ledger: ROW('open') });
+  for (const args of [['archive', '--change', 'c'], ['archive', '--change', 'c', '--force']]) {
+    const r = run(args, o);
+    assert.strictEqual(r.status, 1, args.join(' '));
+    assert.match(r.stderr, /archive: R1 legacy ledger has 1 open row\(s\)/, args.join(' '));
+    assert.doesNotMatch(r.stdout, /^forced:/m);
   }
   // the note is about a GRANT — a revoked one, a retired class, or a near miss prints nothing
   for (const [why, gates] of [
@@ -63,7 +73,7 @@ test('AM-89 an archive-force record is inert: nothing is forced, and the note sa
     ['a note is not a decision', ['  - 2026-08-15T18:00 note: archive-force ledger — 补一条']],
     ['no record at all', []],
   ]) {
-    const r = run(['archive', '--change', 'c'], proj({ gates, ledger: ROW('open') }));
+    const r = run(['archive', '--change', 'c'], proj({ gates, ledger: ROW('fixed') }));
     assert.strictEqual(r.status, 0, why);
     assert.doesNotMatch(r.stdout, /archive-force/, why);
   }

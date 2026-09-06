@@ -72,14 +72,17 @@ test('AM-74 the safe layer classifies every flow-state defect, in both modes', (
       assert.strictEqual(r.status, 1, `${mode}/flow-state.md/${label} must refuse`);
       assert.match(r.stdout, /RESULT: NOT READY/, `${mode}/flow-state.md/${label}`);
     }
-    // and the SAME shapes on the ledger are not even looked at
+    // the SAME shapes on the legacy ledger: 6.2 A-5 probes it once, for the migration — a
+    // ledger that cannot be read cannot be proven closed, so these are structural at R1 (LM-05)
     for (const [label, build] of [
       ['not-file', (p) => { fs.mkdirSync(p, { recursive: true }); }],
       ...(canSymlink() ? [['symlink', (p) => { fs.writeFileSync(p + '.real', 'x'); fs.symlinkSync(p + '.real', p); }]] : []),
     ]) {
       const root = proj({}, mode);
       build(path.join(bundle(root), 'review', 'issues.md'));
-      assert.strictEqual(run(['archive', '--change', 'c'], root).status, 0, `${mode}/issues.md/${label}: never read, so never a defect`);
+      const r = run(['archive', '--change', 'c'], root);
+      assert.strictEqual(r.status, 1, `${mode}/issues.md/${label}: cannot be proven closed`);
+      assert.match(r.stderr, new RegExp(`R1 legacy ledger review/issues\\.md: ${label}`), `${mode}/issues.md/${label}`);
     }
   }
 });
@@ -275,9 +278,17 @@ test('AM-82 an absent artifact is not an obligation, and R5 is never forceable',
   for (const rel of ['tasks.md', path.join('review', 'issues.md')]) {
     for (const present of [false, true]) {
       const root = proj({}, 'standard');
-      if (present) fs.writeFileSync(path.join(bundle(root), rel), rel === 'tasks.md' ? '- [ ] b\n' : LEDGER_OPEN);
+      // a legacy ledger whose rows are all closed is nothing; an OPEN row is the A-5 migration (LM-01)
+      if (present) fs.writeFileSync(path.join(bundle(root), rel), rel === 'tasks.md' ? '- [ ] b\n' : LEDGER_OPEN.replace('| open |', '| fixed |'));
       assert.strictEqual(run(['archive', '--change', 'c'], root).status, 0, `${rel} ${present ? 'present' : 'absent'}`);
     }
+  }
+  {
+    const root = proj({}, 'standard');
+    fs.writeFileSync(path.join(bundle(root), 'review', 'issues.md'), LEDGER_OPEN);
+    const r = run(['archive', '--change', 'c', '--force'], root);
+    assert.strictEqual(r.status, 1, 'an open legacy row is the migration refusal, and --force cannot buy it');
+    assert.match(r.stderr, /R1 legacy ledger has 1 open row/);
   }
   const blocked = proj({ 'apriori/changes/c/flow-state.md':
     withOpen(FLOW('c'), ['R-01: restart recovery is unverified'])

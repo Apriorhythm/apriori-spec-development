@@ -363,7 +363,9 @@ test('PR-18 there is no ledger: ## Open is the only home of open issues, and one
   assert.ok(en.length > 0, 'EN §5 block missing');
   assert.match(en, /There is no issue ledger/);
   assert.match(en, /`## Open` section is where a change's open substantive issues live/);
-  assert.match(en, /`review\/issues\.md` is never opened/);
+  assert.match(en, /`review\/issues\.md` is never read to judge a change/);
+  assert.match(en, /Migration, once:/);
+  assert.match(en, /MOVED/);
   assert.match(en, /reopens its old id/i);
   assert.match(en, /reopened is an event, not a new line/);
   assert.match(en, /Exactly one thing blocks: an item nobody has accepted/);
@@ -374,7 +376,8 @@ test('PR-18 there is no ledger: ## Open is the only home of open issues, and one
   const cn = sectionBlock(CN, /^## 5\. 提示词$/m);
   assert.ok(cn.length > 0, 'CN §5 block missing');
   assert.match(cn, /没有问题台账/);
-  assert.match(cn, /`review\/issues\.md` 永远不会被打开/);
+  assert.match(cn, /`review\/issues\.md` 不再用来判定 change/);
+  assert.match(cn, /一次性迁移/);
   assert.match(cn, /重开旧 id/);
   assert.match(cn, /重开是事件,不是新的一行/);
   assert.match(cn, /只有一件事阻断:没有人接受的条目/);

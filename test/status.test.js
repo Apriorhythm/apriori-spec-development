@@ -58,7 +58,9 @@ test('ST-01 --change reports phase, next actions, and the open items — never t
   assert.match(out, /phase:.*specify/);
   assert.match(out, /next 1:.*spawn the P3 reviewer/);
   assert.match(out, /last decision:.*owner: approved/);      // the last human decision surfaced
-  assert.doesNotMatch(out, /open ledger|D-3/, 'nothing from the unread ledger is printed');
+  // 6.2 A-5: the ledger's OPEN rows are the one-shot migration; closed rows are never mentioned
+  assert.match(out, /^migration: {4}legacy ledger has 2 open row\(s\) — .*line 3: D-1 \(x\); line 5: D-3 \(z\)/m);
+  assert.doesNotMatch(out, /D-4|advisory-acked|fixed/, 'nothing about a closed row is printed');
   // the ONE state's own content is read back too
   assert.match(out, /reality:      1 observed, 1 decision, 1 assumption/);
   assert.match(out, /assumption:   get cleans up lazily/);
@@ -113,12 +115,15 @@ test('ST-04 --json emits a machine-consumable report (single + list), pure JSON'
     // `specify`, and its own state says two items are open and an assumption is unproven:
     // every one of those is a reason a human is being waited on.
     assert.deepStrictEqual(single.escalations.map((e) => e.split(' — ')[0]), [
+      'legacy ledger has 2 open row(s)',                                   // the A-5 migration (LM-01)
       'open item D-1 is pending: the TTL path is still open',
       "open item has no id: 'D-2 is a line without an id'",
       'unverified assumption: get cleans up lazily',
     ]);
     assert.match(single.lastGate, /owner: approved/);
     assert.deepStrictEqual(single.openLedger, [], 'the compat key stays, and it is always empty');
+    assert.strictEqual(single.migrations.length, 1, 'the migrations this bundle still owes');
+    assert.match(single.migrations[0], /^legacy ledger has 2 open row/);
     out.length = 0;
     assert.strictEqual(status.cli(['--json']), 0);         // list mode
     const list = JSON.parse(out.join('\n'));

@@ -19,6 +19,21 @@ new file, no code — three sentences in the protocol, in both editions:
 Evidence and the attribution behind it: the milestone-1 scorecard §八 (judge zone). Deliberately not a
 mechanical check — the failure was semantic, and the replay showed scenario coverage was already complete.
 
+**Three closure disciplines from the same replay's code-quality verdict** (three implementations of one
+change, judged on one rubric) — again protocol text only, both editions:
+
+- **P3 item 6** now covers every gap the producer admitted *anywhere* — code comments, notes, commit
+  messages — not only the evidence summary. Each must end fixed, accepted in `gates:`, or rejected. (The
+  v6 arm's author wrote "the upload side does not accumulate, only confirm catches it" in a Javadoc; six
+  review rounds never ruled on it.)
+- **Reclaim before review** (Review & Deliver bullet + P2): the producer removes dead code and
+  comments/DDL headers that now contradict the implementation before review-ready. Multi-round revision
+  produced "exactly nine classes" over an enum of eleven, a column written and never read, and "adds no
+  table" above a CREATE TABLE, on two of three arms.
+- **User-visible error discipline** (Build & Test bullet + P2): every user-triggerable call has a failure
+  face — visible error, no stale rendering, no unhandled dialog cancel — proven by one failing-call test
+  per surface. All three arms shipped zero `catch` on the upload/list/submit paths.
+
 ## Unreleased — 6.0 slice 5 · the fixed artifact family is gone
 
 **The 5.x seven-step artifact machine is removed from the runtime, the living specs, the tests

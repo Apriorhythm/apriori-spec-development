@@ -12,7 +12,9 @@ usage: apriori init [--tools <a,b,...>] [--test-cmd "<cmd>"] [--language <lang>]
 
 Example: `apriori init --tools claude,cursor --test-cmd "npm test" --yes`
 
-Exit: 0 done/aborted-by-you · 1 empty selection · 2 non-interactive without --tools.
+Exit: 0 done/aborted-by-you · 1 empty selection · 2 non-interactive without --tools, or a `--test-cmd` / `--language` value the config table cannot carry.
+
+**`--test-cmd` round-trips byte-for-byte (6.2).** The command is written into `apriori/process-config.md` through the serializer twin of the reader (`config.encodeCell` / `splitCells`): a `|` is stored as `\|`, backslashes stay literal, `$&`, `$1` and any other replacement-pattern lookalike are written verbatim (callback replacement, never a template string), unicode untouched — `getConfig(root, 'test-cmd')` returns exactly what you passed, so `verify` runs exactly that. Refused with a clear error BEFORE anything is written (exit 2): an empty value (omit the flag to inherit nothing), a command containing a newline (a config row is one line — wrap it in a script and name that), and the one shape the cell grammar cannot represent, an odd run of backslashes directly before a pipe. Leading and trailing whitespace is trimmed. `--language` goes through the same pair.
 
 ## apriori doctor
 

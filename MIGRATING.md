@@ -58,6 +58,12 @@ bundle it is history. `apriori new` no longer writes it. `status --json` adds `a
 and `historical` beside `escalations` (now the pending list only), and each `escalation[]`
 entry carries `state`.
 
+**`init --test-cmd` persists the command byte-for-byte.** `|`, backslashes, `$&`/`$1` and
+unicode round-trip through `config.encodeCell` / `splitCells`; an empty value, a newline, or an
+odd run of backslashes right before a pipe is refused (exit 2) before anything is written. A
+command persisted by an earlier `init` that contained `|` or `$…` was silently truncated — check
+the `test-cmd` row of `apriori/process-config.md` once.
+
 **A structural preflight before the projection is written.** `archive` (both forms) and
 `verify --change` refuse, per delta file:line and with nothing written, a scenario the change
 adds or modifies that has no bindable id under the controlled matcher, an id the change

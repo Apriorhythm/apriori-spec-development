@@ -49,6 +49,11 @@ already stopped teaching are retired, and risk acceptance is unified on ONE mech
   absent/`none`/`n/a` fine; archived → history. `apriori new` stops writing it. `status --json`
   adds `acknowledged` / `historical`; `--escalation --json` is `{change, escalations,
   acknowledged, historical}`. Tests: `escalation-states.test.js` (ES-01..09); ST-14, NW-04 updated.
+- **Batch A-4 — `init --test-cmd` round-trips byte-for-byte.** Callback replacement plus an
+  explicit cell serializer/parser pair (`config.encodeCell` ↔ `splitCells`); pipe, backslash,
+  `$&`/`$1`, unicode pinned; an empty value, a newline, or an odd backslash run before a pipe is
+  refused before any write; `--language` goes through the same pair. Tests:
+  `init-test-cmd.test.js` (IT-01..06).
 - **Batch A-1 — structural preflight before the projection is written.** In `archive` (both
   forms) and `verify --change`: a scenario the delta adds or modifies with no bindable id, an id
   introduced twice, or an id colliding with the store outside the replaced blocks is refused at

@@ -12,7 +12,9 @@ usage: apriori init [--tools <a,b,...>] [--test-cmd "<cmd>"] [--language <lang>]
 
 示例:`apriori init --tools claude,cursor --test-cmd "npm test" --yes`
 
-退出码:0 完成/你主动放弃 · 1 空选择 · 2 非交互且未给 --tools。
+退出码:0 完成/你主动放弃 · 1 空选择 · 2 非交互且未给 --tools,或 `--test-cmd` / `--language` 的值是配置表格装不下的。
+
+**`--test-cmd` 逐字节往返(6.2)。** 命令经读取器的序列化孪生(`config.encodeCell` / `splitCells`)写入 `apriori/process-config.md`:`|` 存为 `\|`,反斜线保持原样,`$&`、`$1` 以及任何长得像替换模式的东西都逐字写入(回调替换,绝不用模板字符串),unicode 原样——`getConfig(root, 'test-cmd')` 返回的正是你传入的,所以 `verify` 跑的也正是它。以下在写入任何东西之前就以清楚的错误拒绝(退出码 2):空值(要继承什么都不传就省略该 flag)、含换行的命令(配置行只有一行——把它包进脚本再写脚本名)、以及单元格文法唯一表示不了的形状:紧贴管道符之前的奇数个反斜线。首尾空白会被裁掉。`--language` 走同一对函数。
 
 ## apriori doctor
 

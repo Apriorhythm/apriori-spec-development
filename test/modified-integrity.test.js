@@ -305,24 +305,28 @@ test('AM-47 the archive id-pattern channel is resolved, terminable and degradabl
   const r = run(root, ['archive', '--change', 'c']);
   assert.strictEqual(r.status, 0, r.stdout + r.stderr);
   assert.match(r.stdout, /titleChanged: ac-08a old title -> ac-08a new title/, r.stdout);
-  // the same tree WITHOUT the row: the default cannot see those IDs, so nothing pairs
+  // the same tree WITHOUT the row: the default cannot see those IDs — since 6.2 (A-1) a scenario
+  // this change modifies with no recognisable id is refused at preflight, through the SAME
+  // recognition the integrity report would have paired by (nothing is written)
   const noRow = proj(files);
   const rn = run(noRow, ['archive', '--change', 'c']);
-  assert.doesNotMatch(rn.stdout, /titleChanged/, 'the row is what made the pairing possible');
-  assert.match(rn.stdout, /! dropped: ac-08a old title/, rn.stdout);
+  assert.strictEqual(rn.status, 1, rn.stdout + rn.stderr);
+  assert.match(rn.stderr, /archive: m\/spec\.md:7: scenario without a bindable id: 'ac-08a new title'/);
+  assert.doesNotMatch(rn.stdout, /titleChanged|MODIFIED INTEGRITY/, 'a refused archive prints no integrity section');
   // default positive path
   const root2 = archiveProj(stamped(MOD_DROP));
   assert.match(run(root2, ['archive', '--change', 'c']).stdout, /! .*KV-02/);
-  // invalid config row: warning + skip, archive unchanged
+  // invalid config row: since 6.2 (A-1) the structural preflight cannot run, and a check that
+  // cannot run is a refusal (fail-closed), never a warning-and-skip — sanitized, bounded
   const root3 = archiveProj(stamped(MOD_DROP), { 'apriori/process-config.md': '| id-pattern | ( |\n' });
   const r3 = run(root3, ['archive', '--change', 'c']);
-  assert.strictEqual(r3.status, 0, 'archive result unchanged');
+  assert.strictEqual(r3.status, 1, r3.stdout + r3.stderr);
   assert.doesNotMatch(r3.stdout, /MODIFIED INTEGRITY/);
-  const wline = r3.stderr.split('\n').find((l) => l.includes('modified-integrity'));
-  assert.ok(wline && wline.startsWith('warning: modified-integrity '), wline);
-  assert.ok(wline.length <= 200);
+  const wline = r3.stderr.split('\n').find((l) => l.includes('structural check could not run'));
+  assert.ok(wline && wline.startsWith('archive: the structural check could not run — process-config id-pattern row is invalid'), wline);
+  assert.ok(wline.length <= 260);
   assert.doesNotMatch(wline, /[\x00-\x1f\x7f]/);
-  assert.match(r3.stdout, /RESULT: MERGED/);
+  assert.match(r3.stdout, /RESULT: FAILED PREFLIGHT — nothing written/);
   // inline-fence heading pairs by ID through the archive matcher channel too (IMPL-5)
   const storeI = '### Requirement: R-I\n```x```#### Scenario: KV-01 old title\n- a\n';
   const rootI = proj({
@@ -336,12 +340,13 @@ test('AM-47 the archive id-pattern channel is resolved, terminable and degradabl
   assert.strictEqual(resI.code, 0, resI.err.join('\n'));
   const outI = resI.out.join('\n');
   assert.match(outI, /titleChanged: .*old title.*->.*new title/, 'inline-fence titles pair by ID: ' + outI);
-  // programmatic call without a factory degrades the same way (module-level)
+  // programmatic call without a factory: since 6.2 the module composes the controlled matcher
+  // itself (lazily — the graph stays acyclic), so the preflight AND the integrity section run
   const root4 = archiveProj(stamped(MOD_DROP));
   const res = am.archiveChange({ change: 'c', cwd: root4, write: false });
-  assert.strictEqual(res.code, 0);
-  assert.ok(!res.out.join('\n').includes('MODIFIED INTEGRITY'), 'missing factory = skip');
-  assert.ok(res.err.some((l) => l.includes('modified-integrity')), 'missing factory warns');
+  assert.strictEqual(res.code, 0, res.err.join('\n'));
+  assert.ok(res.out.join('\n').includes('MODIFIED INTEGRITY'), 'no factory = the module\'s own controlled matcher');
+  assert.ok(!res.err.some((l) => l.includes('modified-integrity')), 'nothing to warn about');
 });
 
 test('AM-45 buildProjection captures old blocks at the right points', () => {

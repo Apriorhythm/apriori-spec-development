@@ -345,7 +345,6 @@ test('CK-13 CK-04 honors the config id-pattern row', () => {
 });
 
 test('CK-14 check and verify judge identically at the edges', () => {
-  const { checkScenarioIds } = require('../lib/check');
   const sr = require('../lib/spec-runner');
   // EXPECTED is the independent oracle (never derived from the implementation): each case
   // states whether the title's leading token is a legal ID under the pattern.
@@ -359,8 +358,11 @@ test('CK-14 check and verify judge identically at the edges', () => {
     ['(AC|BR)-\\d+', 'BR-2 alternation', true],
   ];
   for (const [pattern, title, expected] of cases) {
-    // path 1: checkScenarioIds (CK-04's helper)
-    const checkSide = checkScenarioIds(`#### Scenario: ${title}\n`, 'f.md', pattern).length === 0;
+    // path 1: the `check` CLI with the pattern as a config row (6.2: the in-process helper is gone,
+    // so CK-04 IS the controlled batch — a config-origin pattern runs in the child)
+    // a `|` inside the pattern is escaped in the table cell exactly as config.splitCells decodes it (CF-08)
+    const ck = proj({ 'apriori/specs/m/spec.md': `#### Scenario: ${title}\n`, 'apriori/process-config.md': `| id-pattern | ${pattern.replace(/\|/g, '\\|')} |\n` });
+    const checkSide = run(ck, ['check']).status === 0;
     assert.strictEqual(checkSide, expected, `check: ${pattern} vs '${title}'`);
     // path 2: verify's collection (inline matcher)
     const d = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-ck14-'));

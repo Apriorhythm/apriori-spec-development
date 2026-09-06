@@ -113,14 +113,19 @@ test('SR-58 operation semantics bound the scope', () => {
 });
 
 test('SR-59 in-scope strictness blocks the verdict', () => {
-  // scoped unidentified: advisory, non-blocking by default (R02 subtraction #1) — nothing failed
+  // scoped UNIDENTIFIED: since 6.2 (A-1) a scenario this change adds with no id is a structural
+  // refusal of the projection (exit 2), not an advisory — the binding of an IDENTIFIED scenario
+  // to a test stays advisory (R02 subtraction #1, SP-04)
   const uni = mkChange(STORE_AB, '## ADDED Requirements\n\n### Requirement: R-C\n\n#### Scenario: no id here\n- t\n');
-  assert.strictEqual(chg(uni, ['--test-cmd', tap(['ok 1 - XA-01 a'])]).status, 0);
-  // cross-boundary duplicate: scoped XA-01 collides with untouched store XA-01
+  const ru = chg(uni, ['--test-cmd', tap(['ok 1 - XA-01 a'])]);
+  assert.strictEqual(ru.status, 2, ru.stdout + ru.stderr);
+  assert.match(ru.stderr, /structural: m\/spec\.md:5: scenario without a bindable id: 'no id here'/);
+  // cross-boundary duplicate: scoped XA-01 collides with untouched store XA-01 — since 6.2 (A-1)
+  // an id this change introduces against the store is a structural refusal of the projection
   const dup = mkChange(STORE_AB, '## ADDED Requirements\n\n### Requirement: R-C\n\n#### Scenario: XA-01 clash\n- t\n');
   const rd = chg(dup, ['--test-cmd', tap(['ok 1 - XA-01 a', 'ok 2 - XB-01 b']), '--json']);
-  assert.strictEqual(rd.status, 1, 'cross-boundary duplicate blocks');
-  assert.ok(JSON.parse(rd.stdout).duplicates.some((d) => d.id === 'XA-01'));
+  assert.strictEqual(rd.status, 2, 'cross-boundary duplicate refuses the projection');
+  assert.ok(JSON.parse(rd.stdout).errors.some((e) => /structural: m\/spec\.md:5: scenario id 'XA-01' collides with the store \(m\/spec\.md\)/.test(e)), rd.stdout);
   // duplicate entirely outside the scope stays informative
   const outsideDup = mkChange(STORE_AB + '\n### Requirement: R-B2\n\n#### Scenario: XB-01 again\n- t\n', DELTA_C);
   const ro = chg(outsideDup, ['--test-cmd', tap(['ok 1 - XC-01 c', 'ok 2 - XA-01 a', 'ok 3 - XB-01 b']), '--json']);
@@ -166,9 +171,9 @@ test('SR-62 the zero-scope truth table holds', () => {
   // all-empty projection: global vacuous ERROR
   const empty = mkChange('### Requirement: R-A\nprose\n', '## ADDED Requirements\n\n### Requirement: R-E\nprose\n');
   assert.strictEqual(chg(empty, ['--test-cmd', tap(['1..0'])]).status, 2);
-  // scope whose only occurrences are unidentified: advisory, GREEN (SR-59 case, asserted here for the table)
+  // scope whose only occurrences are unidentified: a structural refusal since 6.2 (SR-59, SP-01)
   const uni = mkChange(STORE_AB, '## ADDED Requirements\n\n### Requirement: R-C\n\n#### Scenario: nameless\n- t\n');
-  assert.strictEqual(chg(uni, ['--test-cmd', tap(['ok 1 - XA-01 a'])]).status, 0);
+  assert.strictEqual(chg(uni, ['--test-cmd', tap(['ok 1 - XA-01 a'])]).status, 2);
   // malformed delta keeps today's projection-failure ERROR
   const bad = mkChange(STORE_AB, '## NONSENSE Requirements\n\n### Requirement: R-X\n');
   assert.strictEqual(chg(bad, ['--test-cmd', tap(['1..0'])]).status, 2);
@@ -360,9 +365,10 @@ test('SR-59 cross-boundary duplicate provenance carries every occurrence file', 
     'apriori/changes/c/specs/m/spec.md': '## ADDED Requirements\n\n### Requirement: R-C\n\n#### Scenario: XN-01 clash across files\n- t\n',
   });
   const r = chg(root, ['--test-cmd', tap(['ok 1 - XN-01 n', 'ok 2 - XA-01 a', 'ok 3 - XB-01 b']), '--json']);
-  assert.strictEqual(r.status, 1);
-  const dup = JSON.parse(r.stdout).duplicates.find((d) => d.id === 'XN-01');
-  assert.deepStrictEqual([...dup.files].sort(), ['m/spec.md', 'n/spec.md'], 'both files named');
+  // 6.2 (A-1): a structural refusal, and it names the colliding store file
+  assert.strictEqual(r.status, 2);
+  const err = JSON.parse(r.stdout).errors.find((e) => /XN-01/.test(e));
+  assert.match(err, /^structural: m\/spec\.md:5: scenario id 'XN-01' collides with the store \(n\/spec\.md\)/, 'the other file is named');
 });
 
 test('SR-63 the projection builds exactly once per path, and sibling titles ride the first batch', () => {

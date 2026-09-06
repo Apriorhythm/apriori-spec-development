@@ -58,6 +58,17 @@ bundle it is history. `apriori new` no longer writes it. `status --json` adds `a
 and `historical` beside `escalations` (now the pending list only), and each `escalation[]`
 entry carries `state`.
 
+**A structural preflight before the projection is written.** `archive` (both forms) and
+`verify --change` refuse, per delta file:line and with nothing written, a scenario the change
+adds or modifies that has no bindable id under the controlled matcher, an id the change
+introduces twice, or an id colliding with the store outside the blocks it replaces; a matcher
+that cannot run refuses too. Historical store debt outside the scope is reported (`note: store
+debt outside this change …`, `storeReport.unidentified`), never a block; `check` still owns it.
+An in-scope scenario without an id used to be an advisory in `verify` — it is a refusal now (exit
+2); a cross-boundary duplicate used to be `duplicates` (exit 1) — it is a structural refusal now.
+`check.checkScenarioIds` (the in-process-regex helper) is deleted; CK-04 is the CLI scan through
+the terminable matcher.
+
 **The legacy issue ledger: a one-shot migration gate, move not copy.** In an ACTIVE bundle,
 `review/issues.md` with `open` rows (old table contract) is refused at C3 / R1 / review-ready
 listing each row and its line; move each into `## Open` as `- <ID>: <text>` and delete it from

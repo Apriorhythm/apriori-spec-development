@@ -40,16 +40,25 @@ test('CK-03 verdict-phrase and codex-command checks catch drift', () => {
   assert.ok(c.checkCodexKnownForms({ 'RUNBOOK.md': 'codex exec resume -c sandbox_mode="read-only" <id> "x"' }).some((f) => /dev\/null/.test(f)));
 });
 
-test('CK-04 every spec scenario must carry a bindable ID', () => {
-  const good = '#### Scenario: PB-01 plays\n#### Scenario: PB-02 pauses\n';
-  assert.strictEqual(c.checkScenarioIds(good, 'spec.md').length, 0);
-  const bad = '#### Scenario: PB-01 plays\n#### Scenario: no id here\n';
-  const fails = c.checkScenarioIds(bad, 'spec.md');
-  assert.strictEqual(fails.length, 1);
-  assert.match(fails[0], /scenario without a bindable ID: no id here/);
+test('CK-04 every spec scenario must carry a bindable ID (through the CLI, i.e. the controlled matcher)', () => {
+  // 6.2: the in-process helper is gone (A-1); CK-04 is the CLI scan, batched through makeIdMatcher
+  const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
+  const { spawnSync } = require('node:child_process');
+  const BIN = path.join(__dirname, '..', 'bin', 'apriori.js');
+  const proj = (spec) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-ck04-'));
+    fs.mkdirSync(path.join(root, 'apriori', 'specs', 'm'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'apriori', 'specs', 'm', 'spec.md'), spec);
+    return spawnSync('node', [BIN, 'check'], { encoding: 'utf8', cwd: root });
+  };
+  assert.strictEqual(proj('#### Scenario: PB-01 plays\n#### Scenario: PB-02 pauses\n').status, 0);
+  const bad = proj('#### Scenario: PB-01 plays\n#### Scenario: no id here\n');
+  assert.strictEqual(bad.status, 1);
+  assert.strictEqual((bad.stdout.match(/scenario without a bindable ID/g) || []).length, 1);
+  assert.match(bad.stdout, /scenario without a bindable ID: no id here/);
   // fenced scenarios are documentation — same rule as the spec-runner (SR-13)
-  const fenced = c.checkScenarioIds('```\n#### Scenario: no id fenced example\n```\n#### Scenario: PB-02 real\n', 'spec.md');
-  assert.strictEqual(fenced.length, 0);
+  assert.strictEqual(proj('```\n#### Scenario: no id fenced example\n```\n#### Scenario: PB-02 real\n').status, 0);
+  assert.ok(!('checkScenarioIds' in c), 'the in-process-regex helper is deleted');
 });
 
 test('CK-05 no residual OpenSpec adapter references remain', () => {

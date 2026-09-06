@@ -49,6 +49,17 @@ already stopped teaching are retired, and risk acceptance is unified on ONE mech
   absent/`none`/`n/a` fine; archived → history. `apriori new` stops writing it. `status --json`
   adds `acknowledged` / `historical`; `--escalation --json` is `{change, escalations,
   acknowledged, historical}`. Tests: `escalation-states.test.js` (ES-01..09); ST-14, NW-04 updated.
+- **Batch A-1 — structural preflight before the projection is written.** In `archive` (both
+  forms) and `verify --change`: a scenario the delta adds or modifies with no bindable id, an id
+  introduced twice, or an id colliding with the store outside the replaced blocks is refused at
+  preflight, per delta file:line, nothing written (archive exit 1, verify `structural:` error
+  exit 2); recognition is the controlled matcher (`makeIdMatcher(...).batch`), and a matcher that
+  cannot run refuses (fail-closed, replacing the integrity report's warning-and-skip). Store debt
+  outside the scope is a note, never a block; native tests with no scenario-named tests stay
+  legal. `collectChangePairs` moved to archive-merge (one scope derivation for verify and
+  archive); `parseDeltaStrict` returns `scenarios` with delta lines; `check.checkScenarioIds`
+  deleted (CK-04 is the CLI scan; CK-14 path 1 is the CLI). Tests:
+  `structural-preflight.test.js` (SP-01..10); SR-59, AM-47 follow the contract.
 - **Batch A-5 — legacy ledger migration gate (one-shot, move not copy).** Active bundles only:
   `review/issues.md` with `open` rows (old table contract, brought back as a private helper)
   refuses at C3 / R1 / review-ready listing each row and its line, and stops `status

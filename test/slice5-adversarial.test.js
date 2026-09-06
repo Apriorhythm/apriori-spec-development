@@ -226,7 +226,7 @@ test('RY-25 an unreadable delta is fail-closed and no open item or acceptance cu
     assert.deepStrictEqual(risk.scanDeltas(p.dir).map((s) => s.signal), ['unreadable-delta'], why);
     // the archive predicate refuses, and it is not forceable
     const r5 = r5of(p, true);
-    assert.ok(r5.some((b) => /the delta scan could not rule out a §6 risk/.test(b.detail)), `${why}: ${JSON.stringify(r5)}`);
+    assert.ok(r5.some((b) => /the delta scan could not rule out a contract risk/.test(b.detail)), `${why}: ${JSON.stringify(r5)}`);
     assert.ok(r5.every((b) => b.forceable === false), why);
     // Neither surface ships it. The exit code is whichever guard speaks first — delta DISCOVERY
     // refuses the same unreadable path with exit 2 (the evaluation is untrustworthy) before R5

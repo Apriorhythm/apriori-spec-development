@@ -49,6 +49,14 @@ already stopped teaching are retired, and risk acceptance is unified on ONE mech
   absent/`none`/`n/a` fine; archived → history. `apriori new` stops writing it. `status --json`
   adds `acknowledged` / `historical`; `--escalation --json` is `{change, escalations,
   acknowledged, historical}`. Tests: `escalation-states.test.js` (ES-01..09); ST-14, NW-04 updated.
+- **Batch A-9 — identity, docs, install-time links.** Pinned on the PACKED artifact
+  (`identity.test.js`): `--version` = `6.2.0-rc.0`, both runbook headers `runbook-version: 6.2`,
+  the copied `apriori/runbook.md` and `update`'s target are the packed runbook byte for byte; the
+  installed copy links nothing as if it were beside it. MIGRATING has ONE 6.2 section with an
+  index of the nine changes. Extras from batch B: the readiness message says "could not rule out a
+  contract risk"; docs/legacy labels `§4.8` (the anchor it always pointed at); concepts cites
+  `cli §8.1 Spec-authoring rules` by link; concepts §7.4 no longer says archive "forces the KB
+  writeback" — archive never touches `apriori/truth/`.
 - **Batch A-8 — the docs-only exception is gone.** Both RUNBOOK editions and docs/concepts no
   longer say a documentation project may substitute `apriori check` for the test command (it
   emits no TAP, so C1 could never pass). One sentence replaces it: a change with no executable

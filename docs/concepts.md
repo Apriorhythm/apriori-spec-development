@@ -422,7 +422,7 @@ Everything above is convention; a branch + CI mapping is what makes it *enforced
 
 ## 5. Example Project: mini-kv (In-Memory Cache with TTL)
 
-We'll run the whole workflow end-to-end on a small library with **real state and easy tests**. It's chosen because it lands squarely on a key spec rule — **"external shared state MUST describe the three moments: init / update / cleanup"** (see §8.1) — making it a good way to feel out the right spec granularity.
+We'll run the whole workflow end-to-end on a small library with **real state and easy tests**. It's chosen because it lands squarely on a key spec rule — **"external shared state MUST describe the three moments: init / update / cleanup"** (see [cli §8.1 Spec-authoring rules](./cli.md#81-spec-authoring-rules)) — making it a good way to feel out the right spec granularity.
 
 > Goal: a Node.js library `mini-kv` providing in-memory key-value storage with time-to-live (TTL).
 
@@ -561,7 +561,7 @@ Prompt: RUNBOOK **P1**. Design notes: facts only — no code. The goal and the K
 
 Prompts: RUNBOOK **P2** (the producer's contract → review-ready handoff) / **P3** (the independent reviewer). Design notes:
 
-- P2 bakes in the split test (one result, one evidence chain) and the two spec-quality rules from §8.1: one scenario per user-visible output (with a stable ID), and the three moments for any external shared state. It writes the contract and **nothing else** — 5.x had this prompt produce a proposal, a design doc and a task list alongside it.
+- P2 bakes in the split test (one result, one evidence chain) and the two spec-quality rules from [cli §8.1](./cli.md#81-spec-authoring-rules): one scenario per user-visible output (with a stable ID), and the three moments for any external shared state. It writes the contract and **nothing else** — 5.x had this prompt produce a proposal, a design doc and a task list alongside it.
 - The producer's revise pass touches spec/design content only — never source — and must answer every substantive finding with accept/reject + reason; on `escalate`, or on a round-2 verdict that is still revise, it stops instead of opening another round.
 
 > 💡 To run this review loop through Codex from the CLI — open the session in round 1, `resume <session-id>` each subsequent round so the reviewer keeps full context — see [§2.3](#23-driving-codex-non-interactively-multi-round-adversarial-review).
@@ -576,7 +576,7 @@ Prompt: RUNBOOK **P3** (independent review); the archive itself needs none. Desi
 
 - Before P3 runs at all, `apriori gate --review-ready` must exit 0. That check is a **transient view** over the run's own facts — no receipt document, nothing persisted — and its whole purpose is that the reviewer is never the first person to compile the code or run the suite.
 - `apriori verify` has already confirmed tests actually ran with no real failure (UNBOUND is advisory, not proof of coverage), so P3's **semantic faithfulness** check also covers genuine coverage — whether each test actually exercises its scenario's intent, not just shares its ID. Its default context is four things: contract, diff, evidence summary, uncovered boundaries. Its scope clause keeps style findings advisory. Like every review, it runs on a heterogeneous model ([§2.3](#23-driving-codex-non-interactively-multi-round-adversarial-review)).
-- The archive action merges delta specs into the living spec store per RUNBOOK §4's algorithm (`apriori/specs/`, [§4.6](#46-review--deliver-review-ready-one-review-archive)) and additionally forces the KB writeback to `apriori/truth/<module>.md`, the `source-commit` refresh, and an explicit list of what changed. The archive then declares three states — implementation, critical evidence, released-or-pending — and freezes: a defect found later becomes an outcome note or a new change, never an edit to the archived bundle.
+- The archive action merges delta specs into the living spec store per RUNBOOK §4's algorithm (`apriori/specs/`, [§4.6](#46-review--deliver-review-ready-one-review-archive)) — and nothing else: archive never touches `apriori/truth/` (§4). The KB writeback to `apriori/truth/<module>.md`, with its `source-commit` refresh and an explicit list of what changed, is the separate, human-reviewed step that happens BEFORE review-ready when the change owes one. The archive then declares three states — implementation, critical evidence, released-or-pending — and freezes: a defect found later becomes an outcome note or a new change, never an edit to the archived bundle.
 
 ### 7.5 Reverse Knowledge Capture for Legacy Projects
 

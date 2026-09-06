@@ -4,6 +4,15 @@ The 3.0.0 stability promise — CLI surface & flags, `--json` shapes, the delta 
 
 ## 6.2 code layer (Unreleased) — one mechanism of risk acceptance
 
+**In this section:** ① `## Open` items + `evidence-accept` replace the Evidence rows · ② the
+issue ledger is retired, with a one-shot migration gate for still-open rows · ③ the hand-written
+`escalation:` field is retired, escalation is derived (pending / acknowledged / historical), with
+a migration refusal · ④ `mode:` is optional and inert · ⑤ `--review-ready` has two items ·
+⑥ the flow-state reader is one Markdown subset (`lib/flow.js`) · ⑦ `init --test-cmd` persists
+byte-for-byte · ⑧ every `--json` view has a fixed envelope · ⑨ the docs-only exception is removed.
+Also: a structural preflight before the projection is written, and the read boundaries (A-7).
+Node ≥ 22; package `6.2.0-rc.0`; runbook headers `runbook-version: 6.2` (CK-11 compares major.minor).
+
 **What moved where.** The `## Evidence` row table, its status vocabulary (`done | blocked |
 owner-accepted | n/a` and the completion synonyms), the reserved `producer-diff` and
 `contract-mutation` rows, the `standard`-owes-one-row quota, the `mode:` upgrade and the issue
@@ -57,6 +66,11 @@ the owner's reframe if it restated a review round), then delete the field; in an
 bundle it is history. `apriori new` no longer writes it. `status --json` adds `acknowledged`
 and `historical` beside `escalations` (now the pending list only), and each `escalation[]`
 entry carries `state`.
+
+**The docs-only exception is removed.** No document says any more that a documentation project may
+substitute `apriori check` for the test command — `check` emits no TAP, so C1 could never pass.
+A change with no executable test evidence has no C1 evidence; a documentation project that wants
+the workflow must provide a real TAP-emitting check. No new mode, no fake TAP adapter.
 
 **Boundaries (A-7).** `init --tools` refuses any unknown key before writing anything.
 `update` recreates a lone missing `apriori/tmp/`, upgrades an old tool-written pointer paragraph

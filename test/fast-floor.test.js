@@ -441,7 +441,7 @@ test('FF-14b a dangling specs/ is fail-closed too — existsSync would have read
   const j = JSON.parse(run(['status', '--change', 'c', '--json'], root).stdout);
   assert.deepStrictEqual(j.risk.map((r) => r.signal), ['unreadable-delta'], JSON.stringify(j.risk));
   assert.match(j.risk[0].detail, /specs\//);
-  assert.ok(j.escalations.some((e) => /the delta scan could not rule out a §6 risk/.test(e)), 'and it blocks the state predicate');
+  assert.ok(j.escalations.some((e) => /the delta scan could not rule out a contract risk/.test(e)), 'and it blocks the state predicate');
 });
 
 test('FF-14 a delta the scan cannot read is fail-closed: a refusal, never "no risk found"', { skip: !canSymlink() }, () => {
@@ -454,7 +454,7 @@ test('FF-14 a delta the scan cannot read is fail-closed: a refusal, never "no ri
   assert.deepStrictEqual(j.risk.map((r) => r.signal), ['unreadable-delta'],
     `an unjudgeable delta must not be read as "no risk", got: ${JSON.stringify(j.risk)}`);
   assert.ok(/kv\/spec\.md/.test(j.risk[0].detail), JSON.stringify(j.risk));
-  assert.ok(j.escalations.some((e) => /the delta scan could not rule out a §6 risk/.test(e)), 'and it blocks the state predicate');
+  assert.ok(j.escalations.some((e) => /the delta scan could not rule out a contract risk/.test(e)), 'and it blocks the state predicate');
   // the gate refuses too — delta DISCOVERY says so first (exit 2, the evaluation is untrustworthy)
   assert.notStrictEqual(gate(root).status, 0);
 });

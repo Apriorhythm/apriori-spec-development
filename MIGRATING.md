@@ -47,6 +47,17 @@ refuse it too), an unclosed fence or comment. Fenced or commented content is ine
 an example `evidence-accept` inside a code block authorizes nothing. Archived bundles: reported,
 never refused, never migrated.
 
+**`escalation:` is retired; escalation is derived — stage × decision status.** Each review
+family's escalation is `pending` (active, no owner `reframe` on record — `status --escalation`
+exits 3), `acknowledged` (the reframe is on record — still reported, not a stop by itself; C8/R4
+judge convergence separately) or `historical` (archived — shown, never a stop; RL-43). The
+hand-written field: absent, `none` or `n/a` is fine; any other content in an ACTIVE bundle is a
+migration refusal at C3/R1 and review-ready — move it to `## Open` as `- <ID>: <text>` (or record
+the owner's reframe if it restated a review round), then delete the field; in an archived
+bundle it is history. `apriori new` no longer writes it. `status --json` adds `acknowledged`
+and `historical` beside `escalations` (now the pending list only), and each `escalation[]`
+entry carries `state`.
+
 **`mode:` is optional and inert.** Delete the line or leave it: absent is fine, `fast` and
 `standard` are accepted and echoed, anything else (the unfilled placeholder included) still blocks
 C3. There is no upgrade any more — a mutating delta is reported as `risk: contract-mutation: …`

@@ -40,6 +40,15 @@ already stopped teaching are retired, and risk acceptance is unified on ONE mech
   unclosed fence or comment. Fenced and commented content is inert everywhere (an example
   acceptance authorizes nothing). Defects block C9/R5 and review-ready `open` on an active bundle
   and are recorded on an archived one. `lastGate` reads the gates block only.
+- **Batch A-3 — `escalation:` retired; escalation is derived (stage × decision status).**
+  `pending` exits 3 (`status --escalation`); `acknowledged` (owner reframe on record) is shown,
+  never a stop by itself — C8/R4 still judge convergence; `historical` (archived) is shown as
+  history and never exits 3 (RL-43), while evidence corruption in an archive still errors
+  (RL-44). A hand-written `escalation:` with content in an ACTIVE bundle is a migration refusal
+  at C3/R1, review-ready and the hard stop (`move it to ## Open …, then delete the field`);
+  absent/`none`/`n/a` fine; archived → history. `apriori new` stops writing it. `status --json`
+  adds `acknowledged` / `historical`; `--escalation --json` is `{change, escalations,
+  acknowledged, historical}`. Tests: `escalation-states.test.js` (ES-01..09); ST-14, NW-04 updated.
 - **Fix:** `sectionItems` matched a heading's annotation across newlines, so an empty section
   followed directly by another heading swallowed that heading and read the next section's items
   as its own. Horizontal whitespace only now.

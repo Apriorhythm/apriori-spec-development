@@ -149,9 +149,11 @@ reviewer-session: <id or n/a>   # the heterogeneous reviewer's resumable session
                         # interruption resumes the SAME session (R2)
 delivery: pending-external-acceptance | released
                         # the delivery state `archive` declares. Default: pending.
-escalation: none | <what a human must decide>
-                        # `apriori status --change <name> --escalation` prints this plus
-                        # every derived escalation and exits 3.
+                        # (6.2) there is no `escalation:` field: a decision a human owes is an
+                        # `## Open` item, and a review family's escalation is DERIVED from the
+                        # evidence — `apriori status --change <name> --escalation` exits 3 on
+                        # what is still pending. A leftover field with content is a migration
+                        # refusal (C3/R1): move it to ## Open, then delete the field.
 artifact-root: .        # optional; default = project root. Applies ONLY to the change
                         # bundles under apriori/changes/, NEVER to apriori/truth/ or
                         # apriori/specs/. When externalized, the kickoff prompt must
@@ -296,7 +298,7 @@ The human changes their mind: abandonment is a legal exit from any phase — on 
 | contract (P3 on a contract) | `VERDICT: no major issues, ready to proceed to execution` | `VERDICT: <N> issues open` | `VERDICT: escalate` |
 | implementation (P3 on a diff) | `VERDICT: no spec-vs-code gaps` | `VERDICT: gaps found` · `VERDICT: <N> issues open` | `VERDICT: escalate` |
 
-`VERDICT: escalate` means **the approach is wrong, not the details** — return it instead of opening another patching round, and put the reason in the review document and in `escalation:`. It is a human's to answer: `apriori gate` blocks and `apriori status --escalation` exits 3 until the owner records `reframe <family> round <n> <split|tests|redo|accept-risk> — <reason>` in `gates:`.
+`VERDICT: escalate` means **the approach is wrong, not the details** — return it instead of opening another patching round, and put the reason in the review document and as an `## Open` item. It is a human's to answer: `apriori gate` blocks and `apriori status --escalation` exits 3 until the owner records `reframe <family> round <n> <split|tests|redo|accept-risk> — <reason>` in `gates:`.
 
 `<N>` = the count of substantive issues still open at the end of that round — a positive integer; `0` is an accept however it is phrased. Advisories never count.
 

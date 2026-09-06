@@ -257,11 +257,12 @@ test('ST-14 --escalation is the hard stop, and exit 3 is the whole mechanism', (
   assert.strictEqual(c.status, 0);
   assert.match(c.stdout, /^ESCALATION: none$/m);
 
-  // 1. the state's own escalation line
+  // 1. the state's own escalation line (6.2: a retired field — its content is a pending decision
+  //    the machine has no reading for, so the stop is the migration refusal, see ES-01)
   const declared = project({ sections: 'escalation: the approach needs the owner\n' });
   const d = run(['status', '--change', 'c', '--escalation'], declared.root);
   assert.strictEqual(d.status, 3);
-  assert.match(d.stdout, /flow-state: the approach needs the owner/);
+  assert.match(d.stdout, /escalation: carries a pending decision \('the approach needs the owner'\) — move it to ## Open/);
 
   // 2. a reviewer's ESCALATE verdict, at round 1 — the approach is wrong, not the details
   const esc = project();
@@ -284,8 +285,8 @@ test('ST-14 --escalation is the hard stop, and exit 3 is the whole mechanism', (
   const answered = project({ gates: '  - 2026-08-23T12:00 owner: reframe code-review round 1 redo — the approach was wrong\n' });
   fs.writeFileSync(path.join(answered.dir, 'review', 'code-review-v1.md'), '# r1\n\nVERDICT: escalate\n');
   const a = run(['status', '--change', 'c', '--escalation'], answered.root);
-  assert.strictEqual(a.status, 3, 'a pre-authorization may let work continue; it never removes the report');
-  assert.match(a.stdout, /owner decision on record: redo/);
+  assert.strictEqual(a.status, 0, '6.2: an acknowledged escalation is not a pending one — it never leaves the report, but it is not the hard stop by itself (ES-05)');
+  assert.match(a.stdout, /^acknowledged: .*owner decision on record: redo/m);
 });
 
 // ---------------------------------------------------------------------------

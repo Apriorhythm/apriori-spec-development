@@ -147,9 +147,11 @@ reviewer-session: <id 或 n/a>   # 异构评审方可 resume 的会话 id,第 1 
                         # 这样中途中断能 resume 同一会话(R2)
 delivery: pending-external-acceptance | released
                         # archive 声明的交付状态。默认:待外部验收。
-escalation: none | <需要人决定的事>
-                        # `apriori status --change <name> --escalation` 会连同
-                        # 所有派生出的 escalation 一起打印,并以 3 退出。
+                        # (6.2)没有 `escalation:` 字段:需要人决定的事是一条 `## Open`
+                        # 条目,评审 family 的 escalation 从证据**派生**——
+                        # `apriori status --change <name> --escalation` 对仍然 pending 的
+                        # 内容以 3 退出。遗留的、带内容的字段是迁移拒绝(C3/R1):
+                        # 移到 ## Open,然后删掉该字段。
 artifact-root: .        # 可选;默认=项目根。只作用于 apriori/changes/ 下的
                         # 各变更 bundle,绝不作用于 apriori/truth/ 或 apriori/specs/。
                         # 外置时 kickoff 提示词必须写明——本文件自己就在它下面。
@@ -288,7 +290,7 @@ change 需要的其他任何东西——一张草稿、一幅图、给人看的�
 | 契约(P3 评契约) | `VERDICT: no major issues, ready to proceed to execution` | `VERDICT: <N> issues open` | `VERDICT: escalate` |
 | 实现(P3 评 diff) | `VERDICT: no spec-vs-code gaps` | `VERDICT: gaps found` · `VERDICT: <N> issues open` | `VERDICT: escalate` |
 
-`VERDICT: escalate` 的意思是**方案错了,不是细节错了**——把它返回来,而不是再开一轮打补丁,并把理由写进评审文档和 `escalation:`。它由人来回答:在所有者把 `reframe <family> round <n> <split|tests|redo|accept-risk> — <理由>` 记入 `gates:` 之前,`apriori gate` 阻断,`apriori status --escalation` 以 3 退出。
+`VERDICT: escalate` 的意思是**方案错了,不是细节错了**——把它返回来,而不是再开一轮打补丁,并把理由写进评审文档,并作为一条 `## Open` 条目。它由人来回答:在所有者把 `reframe <family> round <n> <split|tests|redo|accept-risk> — <理由>` 记入 `gates:` 之前,`apriori gate` 阻断,`apriori status --escalation` 以 3 退出。
 
 `<N>` = 该轮结束时仍开放的实质问题数——正整数;`0` 无论怎么措辞都算 accept。advisory 永不计数。
 

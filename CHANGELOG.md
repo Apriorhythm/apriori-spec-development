@@ -49,6 +49,22 @@ already stopped teaching are retired, and risk acceptance is unified on ONE mech
   absent/`none`/`n/a` fine; archived → history. `apriori new` stops writing it. `status --json`
   adds `acknowledged` / `historical`; `--escalation --json` is `{change, escalations,
   acknowledged, historical}`. Tests: `escalation-states.test.js` (ES-01..09); ST-14, NW-04 updated.
+- **Acceptance round 1 (Astra F1–F7).** F1 the fence scanner records the opening marker
+  (backticks or tildes) and its length; only a same-marker, at-least-as-long, bare line closes —
+  an owner entry inside a ```` block quoting a ``` block authorizes nothing. F2 inside a section
+  only a heading, `gates:` or a known state key ends it; a bare `risk: …` under `## Open` or
+  `assumption: …` under `## Reality Check` is a located structural defect, never a scalar. F3 the
+  legacy-ledger probe consumes the scan's own defects: an unclosed fence/comment in
+  `review/issues.md` is a migration error, never "no open rows". F4 `init --test-cmd` validates
+  the RAW argument and proves the round-trip through the real reader: comment markers, edge
+  whitespace and newlines are refused before any write. F5 one JSON constructor per view for
+  success, strict-parser errors and uncaught exceptions alike (status change/list/escalation
+  views, verify, gate, doctor); the bin seam asks the command for its view. F6 `legacyIdentity`
+  reads the five 5.x keys off the same fence/comment-stripped structured pass (`flow.legacyKeys`);
+  fenced or commented examples are inert, live keys still refuse. F7 archive's old-duplicate
+  debt counts occurrences (same-file too), still report-only. Tests:
+  `accept-r1-reader.test.js` (AR-F1/F2/F3/F6/F7), `accept-r1-contracts.test.js` (AR-F4/F5);
+  JC-04/JC-08 oracles replaced; MD-07 names `lib/flow.js` as the one place spelling the legacy keys.
 - **Batch A-9 — identity, docs, install-time links.** Pinned on the PACKED artifact
   (`identity.test.js`): `--version` = `6.2.0-rc.0`, both runbook headers `runbook-version: 6.2`,
   the copied `apriori/runbook.md` and `update`'s target are the packed runbook byte for byte; the

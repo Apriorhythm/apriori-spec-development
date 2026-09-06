@@ -175,20 +175,25 @@ test('JC-04 status: the single view, the list view and --escalation each carry e
   expectShape(list, { changes: 'array', errors: 'array' }, 'list');
   const esc = parse(run(['status', '--change', 'c', '--escalation', '--json'], root), 'escalation');
   expectShape(esc, { change: 'string', escalations: 'array', acknowledged: 'array', historical: 'array', errors: 'array' }, 'escalation');
-  // errors: a resolve error, an invalid name, --escalation without --change, a strict-parser error
-  for (const [label, args, want] of [
-    ['resolve', ['status', '--change', 'nope', '--json'], { change: 'string', errors: 'array' }],
-    ['invalid name', ['status', '--change', '../evil', '--json'], { change: 'string', errors: 'array' }],
-    ['resolve, --escalation', ['status', '--change', 'nope', '--escalation', '--json'], { change: 'string', escalations: 'array', acknowledged: 'array', historical: 'array', errors: 'array' }],
-    ['--escalation without --change', ['status', '--escalation', '--json'], { change: 'null', escalations: 'array', acknowledged: 'array', historical: 'array', errors: 'array' }],
-    ['strict parser', ['status', 'stray', '--json'], { change: 'null', errors: 'array' }],
+  // errors keep the REQUESTED view's envelope (F5): the change view on a resolve/name error, the
+  // escalation view under --escalation, the list view when no change was asked for
+  const CHANGE_VIEW = Object.keys(single).sort();
+  const ESC_VIEW = ['acknowledged', 'change', 'errors', 'escalations', 'historical'];
+  for (const [label, args, keys] of [
+    ['resolve', ['status', '--change', 'nope', '--json'], CHANGE_VIEW],
+    ['invalid name', ['status', '--change', '../evil', '--json'], CHANGE_VIEW],
+    ['strict parser, change view', ['status', '--change', 'c', '--bogus', '--json'], CHANGE_VIEW],
+    ['resolve, --escalation', ['status', '--change', 'nope', '--escalation', '--json'], ESC_VIEW],
+    ['--escalation without --change', ['status', '--escalation', '--json'], ESC_VIEW],
+    ['strict parser, list view', ['status', 'stray', '--json'], ['changes', 'errors']],
   ]) {
     const r = run(args, root);
     assert.strictEqual(r.status, 2, `${label}: ${r.stdout}${r.stderr}`);
     const j = parse(r, label);
-    expectShape(j, want, label);
+    assert.deepStrictEqual(Object.keys(j).sort(), keys, `${label}: the view's own envelope`);
     strings(j.errors, `${label}.errors`);
     assert.strictEqual(j.errors.length, 1, label);
+    if (keys === CHANGE_VIEW) { assert.strictEqual(j.hasFlowState, false, label); assert.strictEqual(j.stage, null, label); }
   }
 });
 
@@ -261,7 +266,7 @@ test('JC-08 an uncaught exception still emits JSON with errors[] under --json, a
   const j = run(['verify', '--specs', 'specs', '--test-cmd', 'true', '--json'], root);
   assert.strictEqual(j.status, 2, j.stdout + j.stderr);
   const o = parse(j, 'uncaught');
-  expectShape(o, { result: 'string', errors: 'array' }, 'uncaught');
+  checkVerify(o, 'uncaught');                                 // the verify envelope, not a generic one (F5)
   assert.strictEqual(o.result, 'ERROR');
   assert.match(o.errors[0], /EISDIR/);
   const t = run(['verify', '--specs', 'specs', '--test-cmd', 'true'], root);

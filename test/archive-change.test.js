@@ -169,11 +169,11 @@ test('AM-22 realpath containment governs every participating path', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-cont-'));
   fs.mkdirSync(path.join(root, 'inside', 'sub'), { recursive: true });
   fs.mkdirSync(path.join(root, 'outside'));
-  assert.strictEqual(am.containsReal(path.join(root, 'inside'), path.join(root, 'inside', 'sub')), true);
-  assert.strictEqual(am.containsReal(path.join(root, 'inside'), path.join(root, 'outside')), false);
-  assert.strictEqual(am.containsReal(path.join(root, 'inside'), path.join(root, 'inside', 'new', 'file.md')), true);   // ancestor walk
-  assert.strictEqual(am.containsReal(path.join(root, 'inside'), path.join(root, 'outside', 'new', 'file.md')), false);
-  assert.strictEqual(am.containsReal(path.join(root, 'inside'), path.join(root, 'inside')), false);                    // strict: root itself not "inside"
+  assert.strictEqual(am.containsFuturePath(path.join(root, 'inside'), path.join(root, 'inside', 'sub')), true);
+  assert.strictEqual(am.containsFuturePath(path.join(root, 'inside'), path.join(root, 'outside')), false);
+  assert.strictEqual(am.containsFuturePath(path.join(root, 'inside'), path.join(root, 'inside', 'new', 'file.md')), true);   // ancestor walk
+  assert.strictEqual(am.containsFuturePath(path.join(root, 'inside'), path.join(root, 'outside', 'new', 'file.md')), false);
+  assert.strictEqual(am.containsFuturePath(path.join(root, 'inside'), path.join(root, 'inside')), false);                    // strict: root itself not "inside"
   // integration with a symlinked delta escaping the change root — where the platform allows symlinks
   let canSymlink = true;
   const probeTarget = path.join(root, 'outside', 'real.md');

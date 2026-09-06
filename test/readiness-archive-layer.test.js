@@ -115,7 +115,7 @@ test('RY-10 the archive layer owns its error semantics end to end', () => {
   const end = src.indexOf('module.exports');
   const layer = strip(src.slice(start, end));
   assert.ok(layer.includes('function artifactDefect') && layer.includes('function reviewRootDefect'), 'span check');
-  for (const forbidden of ['fileReadDefect', 'containsReal', 'reviewDirDefect'])
+  for (const forbidden of ['fileReadDefect', 'containsExistingPath', 'reviewDirDefect'])
     assert.ok(!layer.includes(forbidden),
       `the archive layer must not call ${forbidden} — a second hop into a swallowing helper reopens the window`);
 });

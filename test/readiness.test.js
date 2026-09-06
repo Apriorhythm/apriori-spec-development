@@ -93,7 +93,7 @@ test('RY-07 the base layer takes its containment check from resolve', () => {
     'readiness must not require archive-merge — that closes archive-merge → readiness → archive-merge');
   assert.match(src, /require\(['"]\.\/resolve['"]\)/);
 
-  // five-case differential: swapping containsReal must not move a single answer
+  // five-case differential: swapping the containment helper must not move a single answer
   const am = require('../lib/archive-merge');
   const os = require('os');
   const mk = (build) => {
@@ -116,8 +116,8 @@ test('RY-07 the base layer takes its containment check from resolve', () => {
     let st = null;
     try { st = fs.lstatSync(target); } catch { /* absent */ }
     if (!st || st.isSymbolicLink() || !st.isDirectory()) continue;   // containment only decides the clean-dir branch
-    assert.strictEqual(resolve.containsReal(dir, target), am.containsReal(dir, target),
-      `${label}: the two containsReal implementations must agree at this call shape`);
+    assert.strictEqual(resolve.containsExistingPath(dir, target), am.containsFuturePath(dir, target),
+      `${label}: the two containment helpers must agree at this call shape`);
   }
   // and the reviewDirDefect answers themselves: an unusable review root blocks C5 (C4 is a
   // 6.2 placeholder and reads nothing)

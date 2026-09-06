@@ -205,7 +205,7 @@ test('AM-10 rename-aware idempotency: same-delta RENAMED+ADDED collides; rename 
 });
 
 test('AM-11 change name is validated and the move can never escape changes-dir', () => {
-  const { CHANGE_NAME_RE } = require('../lib/archive-merge');
+  const { CHANGE_NAME_RE } = require('../lib/resolve');   // the one source of the name rule
   assert.ok(CHANGE_NAME_RE.test('add-playback'));
   assert.ok(!CHANGE_NAME_RE.test('../victim'));
   assert.ok(!CHANGE_NAME_RE.test('a/b'));

@@ -49,6 +49,11 @@ already stopped teaching are retired, and risk acceptance is unified on ONE mech
   absent/`none`/`n/a` fine; archived → history. `apriori new` stops writing it. `status --json`
   adds `acknowledged` / `historical`; `--escalation --json` is `{change, escalations,
   acknowledged, historical}`. Tests: `escalation-states.test.js` (ES-01..09); ST-14, NW-04 updated.
+- **Batch A-8 — the docs-only exception is gone.** Both RUNBOOK editions and docs/concepts no
+  longer say a documentation project may substitute `apriori check` for the test command (it
+  emits no TAP, so C1 could never pass). One sentence replaces it: a change with no executable
+  test evidence has no C1 evidence; a documentation project that wants the workflow must provide
+  a real TAP-emitting check. No new mode, no fake TAP adapter. Test: `docs-only-exception.test.js`.
 - **Batch A-7 — init / update / read boundaries / raw evidence / doctor D7.** `init --tools`
   validates the whole list before any write (`claude,claud` → exit 2, nothing written). `update`:
   a lone missing `apriori/tmp/` is recreated; old tool-written pointer paragraphs in rules files

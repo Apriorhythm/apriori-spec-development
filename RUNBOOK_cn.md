@@ -263,9 +263,9 @@ change 需要的其他任何东西——一张草稿、一幅图、给人看的�
 
 - **按顺序做:**(1)一条能用真实证据证明每个 scenario 行为的失败测试——一个 Scenario 的示例表可以共用**一条**参数化测试,标准是"每个 scenario 都覆盖到",不是"一个 ID 一条测试";用 scenario ID 给测试命名是建议,不是强制——展示失败运行;(2)用 **P2** 实现;(3)跑到全绿;(4)`apriori verify` GREEN;(5)更新 `## Open`:删掉已解决的,为本 change 命中且尚未解决的每条风险各写一行,带稳定 id(`- <ID>: <文字>`)。
 - **spec-runner 闸口(`apriori verify`)。** 变更进行中用投影形式:`apriori verify --change <name> --test-cmd "<你的测试命令>"`——在内存里把增量应用到存储上再绑定场景。归档后用朴素形式 `apriori verify --specs apriori/specs --test-cmd "…"`。两者都报告 BOUND-GREEN / BOUND-RED / UNBOUND / ORPHAN / UNIDENTIFIED。**GREEN(退出 0)= 本 change 范围内没有已绑定场景的测试失败、没有无法归因的失败、没有跨边界的重复 ID;UNBOUND、不失败的 ORPHAN 与 UNIDENTIFIED 只作提示,从不阻断**——不要为它们去写 TAP 合并器或 ID 提升器。退出 1 = 有缺口;退出 2 = 这次运行本身不可信(spec 路径缺失、零场景、非 TAP 输出、测试命令崩溃、合并冲突、基线戳分叉、增量格式错误)——**损坏或空洞的运行永远不是 GREEN**。`apriori gate` 的 C1 读同一份结果。诊断分类的细节见 concepts。
-- **跑风险要求的测试,而不是一张矩阵。** 没有按项目类型划分的证据表:一个 change 欠下的,是它实际命中的风险真正要求的证据,而尚未验证的,就是一条 `## Open` 条目。scenario ID 经单测/组件测绑定给 `apriori verify`——verify 的闸口只认 TAP,而 Playwright 不输出 TAP,所以 E2E/视觉层**叠在**绑定闸口之上作为额外退出条件,其视觉检查必须输出文本化 pass/fail。实现期的截图写到被 gitignore 的 `apriori/tmp/`;视觉回归基线图属于项目自己的测试套件。某条风险不存在可执行仪器时(纯文档项目:`apriori check` 顶替 `npm test`),独立评审就是那里的仪器。
+- **跑风险要求的测试,而不是一张矩阵。** 没有按项目类型划分的证据表:一个 change 欠下的,是它实际命中的风险真正要求的证据,而尚未验证的,就是一条 `## Open` 条目。scenario ID 经单测/组件测绑定给 `apriori verify`——verify 的闸口只认 TAP,而 Playwright 不输出 TAP,所以 E2E/视觉层**叠在**绑定闸口之上作为额外退出条件,其视觉检查必须输出文本化 pass/fail。实现期的截图写到被 gitignore 的 `apriori/tmp/`;视觉回归基线图属于项目自己的测试套件。某条风险不存在可执行仪器时,独立评审就是那里的仪器。
 - **自加承诺纪律。** 无既定需求、有效决定或实际安全责任依据的自加承诺——"始终 / 并发下 / 崩溃持久 / 原子"之类的硬保证,以及需求之外的机制——默认撤回或收窄到实际验证到的程度。既定的保证要有在其**成功路径**上注入对抗条件的测试;凡 continue/skip/静默忽略分支,回查 spec 确认失败状态是否需要对用户可见。
-- **退出:** 测试全绿;`apriori verify` GREEN(纯文档项目:`apriori check` 全绿);lint/静态分析全绿(已配置时);`## Open` 只剩真正未解决的条目,每行带稳定 id。方案不可行或需求本身有错 → 退回 Specify 或 Ground(更新状态文件并告知人)。
+- **退出:** 测试全绿;`apriori verify` GREEN;lint/静态分析全绿(已配置时);`## Open` 只剩真正未解决的条目,每行带稳定 id。方案不可行或需求本身有错 → 退回 Specify 或 Ground(更新状态文件并告知人)。 不存在纯文档替代品:没有可执行测试证据的 change 就没有 C1 证据;想走这套流程的文档项目必须提供一个真正会输出 TAP 的检查。
 
 ### Review & Deliver —— 先 review-ready,一次独立评审,然后归档
 
@@ -399,7 +399,7 @@ Stop on 'VERDICT: no major issues, ready to proceed to execution', on 'VERDICT: 
 Turn 1: derive a failing test that proves every scenario's behavior with real evidence (one parametrized test may cover a scenario's whole examples table; naming it with the scenario ID is a suggestion, never mandatory), and SHOW the failing run. Each later turn: implement the next scenario, then run `npm test` (and the Playwright run for UI projects) and SHOW the output so the result is in the transcript. When the code is complete, update ## Open and run the review-ready check.
 Stop when every condition holds. If turn 25 ends with any condition still unmet, STOP anyway and report the failing evidence — which conditions failed, plus the last test output. Reaching the bound is a stopped loop for the human to judge, NEVER a pass."
 ```
-> 纯文档项目:把 `npm test` 换成 `apriori check`,去掉 Playwright 那一条。
+> 文档项目没有替身:没有可执行测试证据的 change 就没有 C1 证据;想走这套流程的文档项目必须提供一个真正会输出 TAP 的检查(`apriori check` 不输出 TAP,当不了这个检查)。没有 UI 的项目去掉 Playwright 那一条。
 
 **Review & Deliver:**
 ```text

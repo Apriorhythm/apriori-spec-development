@@ -75,7 +75,7 @@ Four principles every mechanism in this handbook (and the RUNBOOK) instantiates:
 3. **Supervision parameters are never written by the supervised.** What the CLI reads lives in a human-held config; the decisions live at human gates. The agent reports data, never adjusts its own oversight.
 4. **Extracted descriptions are drafts until reviewed.** Anything reverse-derived from code (P5) must pass review before anything downstream consumes it.
 
-**Compatibility with the V1 baseline (v1.0), honestly stated:** paths and exit conditions are unchanged (default config: zero path drift); exit conditions gained mapping variants only for project types v1.0 never defined (docs-only projects). What 6.0 did NOT keep is v1.0's gate ladder: there is no numbered gate ladder at all and no consolidation authorization, because a stop that fires on a step number stops changes that had nothing to decide. Five things stop for a human instead (RUNBOOK §1 R1), and the prompt library shrank from twelve per-step prompts to six.
+**Compatibility with the V1 baseline (v1.0), honestly stated:** paths and exit conditions are unchanged (default config: zero path drift); there are no per-project-type variants of the exit conditions — a change with no executable test evidence has no C1 evidence; a documentation project that wants the workflow must provide a real TAP-emitting check. What 6.0 did NOT keep is v1.0's gate ladder: there is no numbered gate ladder at all and no consolidation authorization, because a stop that fires on a step number stops changes that had nothing to decide. Five things stop for a human instead (RUNBOOK §1 R1), and the prompt library shrank from twelve per-step prompts to six.
 
 ---
 
@@ -395,7 +395,7 @@ That layering is what lets you automate **even adversarial review** without viol
 | Phase | A sound `/goal` condition (transcript-checkable) | Backed inside the loop by |
 |---|---|---|
 | Specify | the review doc is written and its verdict line = `VERDICT: no major issues, ready to proceed to execution`, or the derived review loop stops (RUNBOOK §1 R4) | a heterogeneous reviewer call each round |
-| Build & Test | `npm test` exits 0 **and** lint/static analysis green (where configured) **and** every `## Open` item carries a stable id **and** the E2E/Playwright run is green **and** `apriori gate --review-ready` exits 0 (docs-only projects: `apriori check` in place of `npm test`) | a real test + E2E run |
+| Build & Test | `npm test` exits 0 **and** lint/static analysis green (where configured) **and** every `## Open` item carries a stable id **and** the E2E/Playwright run is green **and** `apriori gate --review-ready` exits 0 | a real test + E2E run |
 | Review & Deliver | the consistency review reports no gaps **and** the delta specs are merged **and** the module's KB file is updated | reviewer call + archive action + writeback |
 | **an escalation · an open item nobody can resolve · an external side effect · abandonment** | — **do not wrap these in a goal** | a human decides (RUNBOOK §1 R1) |
 
@@ -411,7 +411,7 @@ Everything above is convention; a branch + CI mapping is what makes it *enforced
 |---|---|
 | One change | One branch (`change/<change-name>`), one PR |
 | Delta specs / review docs / the state file | Committed on the branch — reviewers see the contract and the code in the same diff |
-| Build & Test exit conditions | CI jobs on the PR: tests green (naming a test with its scenario ID is a suggestion, never mandatory); lint/static analysis green (where configured); `apriori gate --change <name>` PASS — docs-only projects map "tests" to `apriori check` (§4.5) |
+| Build & Test exit conditions | CI jobs on the PR: tests green (naming a test with its scenario ID is a suggestion, never mandatory); lint/static analysis green (where configured); `apriori gate --change <name>` PASS — a change with no executable test evidence has no C1 evidence; a documentation project that wants the workflow must provide a real TAP-emitting check |
 | Consistency-review verdict (§7.4) | Posted on the PR as a comment / required check before merge |
 | The KB writeback | Part of the same PR — "code merged but KB not updated" becomes visible in review instead of silently accumulating |
 | The hard stop | `apriori status --change <name> --escalation` exits 3 — wire it into a Stop hook or a required CI step if you want one |

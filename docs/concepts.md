@@ -58,7 +58,7 @@ Claude Code (Opus/Claude)  ──produces──►  SPEC-DOC + DESIGN-DOC
 
 > The last two levers matter *more* than the first, and neither requires a second tool. A **freshly-started session explicitly told to refute** catches most issues even when it runs the same model as the producer — because it isn't bound to its own earlier reasoning. The worst anti-pattern is **asking the model to "review what you just wrote" in the same conversation**: its context is full of its own justifications, so it rubber-stamps. Switching models but staying in one session is *weaker* than the same model in a fresh one. If you only have Claude Code, see [§2.4](#24-adversarial-review-with-only-claude-code).
 
-**Fresh context vs. cross-round memory — the issue ledger.** Multi-round review has a built-in tension: each round's reviewer should be *fresh* (the second lever), yet it must remember earlier rounds to verify "was issue #3 actually fixed?" Keeping one long-lived reviewer session buys memory at the cost of freshness — after round 1, the reviewer is anchored to *its own* past findings too. The fix is to move the memory out of the session and into a file: a cumulative **issue ledger** per change ([§7.0](#70-the-issue-ledger-optional-shared-by-review-loops)), where every issue carries an ID and a status (`open / fixed / rejected + reason / verified / rejected-verified / waived (human, gates:) / advisory-acked`). Each round's reviewer can then be a brand-new session: it reads the ledger to verify fixes and appends new findings, staying unanchored. The ledger doubles as the audit trail for human gates — rejections stay visible with their reasons, and a resurfacing issue reopens its old ID instead of masquerading as a new finding.
+**Fresh context vs. cross-round memory — the issue ledger.** Multi-round review has a built-in tension: each round's reviewer should be *fresh* (the second lever), yet it must remember earlier rounds to verify "was issue #3 actually fixed?" Keeping one long-lived reviewer session buys memory at the cost of freshness — after round 1, the reviewer is anchored to *its own* past findings too. The fix is to move the memory out of the session and into a file: a cumulative **issue ledger** per change ([§7.0](#70-the-issue-ledger-optional-shared-by-review-loops)), where every issue carries an ID and a status. (Since 6.2 this is the reviewer's own notebook: the CLI never reads it — what blocks a delivery is an `## Open` item in the state, §7.0.) Each round's reviewer can then be a brand-new session: it reads the ledger to verify fixes and appends new findings, staying unanchored. The ledger doubles as the audit trail for human gates — rejections stay visible with their reasons, and a resurfacing issue reopens its old ID instead of masquerading as a new finding.
 
 Adversarial review runs at two points: **① the behavior-contract review (Specify) ② the code-implementation review (Review & Deliver)** — and every round of each one records its findings in the same one state file.
 
@@ -238,13 +238,13 @@ npm -v    # e.g. 10.x.x
 
 ### 4.0 Four Phases, Two Modes
 
-Every change runs the same four phases. There is no second track and no size tier — what varies is the **mode**, and mode changes the evidence required, never the number of documents or rounds.
+Every change runs the same four phases. There is no second track, no size tier and — since 6.2 — no mode: what varies is the evidence a change owes, which follows the risks it actually hits, never the number of documents or rounds. (A `mode:` line may still sit in the state file; it is optional and inert.)
 
 | Phase | What it settles | Done when |
 |---|---|---|
 | **Ground** | The real code, schema, interfaces, prototype, config, deploy topology, runtime. Each fact is `observed` (read or executed — cite the path, command or response), `decision` (from the requirement or the owner), or `assumption` (unproven, and verified before implementation) | nothing the work depends on is still an assumption |
 | **Specify** | The minimal behavior contract and its acceptance criteria — and whether the change needs splitting first | the delta specs state the behavior, each scenario carrying a stable ID |
-| **Build & Test** | Failing evidence first, then the implementation and the real tests that match the actual risks | tests green, `apriori verify` GREEN, the evidence rows filled in |
+| **Build & Test** | Failing evidence first, then the implementation and the real tests that match the actual risks | tests green, `apriori verify` GREEN, `## Open` holding only what is genuinely unresolved |
 | **Review & Deliver** | One independent review once review-ready; delivery once substantive issues are closed | verdict accepted, `apriori gate` PASS, archived |
 
 The state file's `phase` field carries exactly these four words plus the two exits (`done`, `abandoned`). There is no step number: 5.x numbered seven of them and hung a fixed artifact on each, and **6.0 produces materials on demand** — no phase obliges a document set.
@@ -256,7 +256,7 @@ The state file's `phase` field carries exactly these four words plus the two exi
 | **fast** | A reproducible defect, a local fix, and none of the risk signals below | reproduce → fix → regression → **one** independent review |
 | **standard** | Everything else | evidence proportional to the risks actually hit — never more documents, never more rounds |
 
-The signals that force **standard** are facts, not estimates: UI / prototype · cross-process or cross-repo · data / transactions · config / deploy / environment · permission / security · migration / compatibility. Hitting one is not negotiable by self-report — only proving the signal itself was a misread can overturn it. One signal is mechanical: a delta declaring `## MODIFIED`, `## REMOVED` or `## RENAMED` against an already-published requirement closes the fast lane in the CLI itself (RUNBOOK §2).
+The signals that call for real evidence are facts, not estimates: UI / prototype · cross-process or cross-repo · data / transactions · config / deploy / environment · permission / security · migration / compatibility. Hitting one is not negotiable by self-report — what stays unverified becomes an `## Open` item, and only the owner's `evidence-accept <ID>` settles it. One signal is mechanical: a delta declaring `## MODIFIED`, `## REMOVED` or `## RENAMED` against an already-published requirement is reported by the CLI itself as `contract-mutation` — information, since 6.2, not a mode (RUNBOOK §2).
 
 **A change should have one main result and one main evidence chain.** Split it when it spans several boundaries that each need a different real environment, when a reviewer must switch between unrelated contexts to judge correctness, or when fixing one area keeps widening the review surface in another. This is not a line or file-count threshold — the question is whether one clear, repeatable evidence chain can prove the change done.
 
@@ -268,10 +268,10 @@ The signals that force **standard** are facts, not estimates: UI / prototype · 
 | SPEC-DOC | The behavior contract | The delta specs produced in Specify, describing every scenario of this change |
 | SPEC-EVALUATION-DOC | Contract review doc | In **Specify**'s adversarial review, another model's audit of the delta specs |
 | Reality Check | The state's Ground section | `observed` / `decision` / `assumption` lines in the flow-state. It **replaced** the gap report — one state, no second file |
-| Evidence row | The state's risk ledger | `- <risk>: done \| blocked \| owner-accepted \| n/a — <detail>`; a `blocked` row stops delivery until the owner decides |
-| Issue ledger | Cumulative issue table — **optional** | Kept only when a change is big enough to want per-issue status flips; each issue carries an ID and a status — see [§7.0](#70-the-issue-ledger-optional-shared-by-review-loops) |
+| Open item | The state's unresolved items | `- <ID>: <text>` under `## Open`; pending until the owner records `evidence-accept <ID>` in `gates:`, and reported as still present after — the one mechanism of risk acceptance since 6.2 |
+| Issue ledger | A reviewer's cross-round notebook — **optional, never read by the CLI** | A human practice for cross-round memory; since 6.2 `gate`/`archive`/`status` never open it and nothing in it blocks — see [§7.0](#70-the-issue-ledger-optional-shared-by-review-loops) |
 | P6 | Discuss first | Only when the human explicitly asks to discuss an idea first: nothing durable until they approve, then `apriori new` → Ground (RUNBOOK "Discuss first") |
-| mode | The one identity field | `fast` or `standard`, in the state file ([§4.0](#40-four-phases-two-modes)) — it scales evidence, never document count |
+| mode | An optional, inert field | `fast` or `standard` may still be written in the state file; since 6.2 nothing decides anything by it ([§4.0](#40-four-phases-two-modes)) |
 | phase | Where the change is | `ground` / `specify` / `build` / `review`, plus `done` / `abandoned` |
 
 **Where each artifact lives** (these paths are the conventions used throughout the RUNBOOK's prompts — adjust to your repo; process artifacts can also be relocated wholesale via the state file's `artifact-root` field, whose semantics live in RUNBOOK §3):
@@ -282,7 +282,6 @@ The signals that force **standard** are facts, not estimates: UI / prototype · 
 | SPEC-DOC (the behavior contract) | `apriori/changes/<change>/specs/<module>/` |
 | SPEC-EVALUATION-DOC | `apriori/changes/<change>/review/spec-review-v{N}.md` |
 | Reviewer raw output | `apriori/changes/<change>/review/<stem>-raw.*` |
-| Issue ledger — optional | `apriori/changes/<change>/review/issues.md` |
 | TRUTH-DOC (knowledge base) | `apriori/truth/<module>.md`, **in the same repo as the code** (a separate KB repo also works if every doc carries a `source-commit` stamp — see §6) |
 
 Note what is absent: no requirement doc, no proposal, no design doc, no gap report, no task list. 6.0 demanded all five of every 5.x change and the practices showed the cost landing on reviewers rather than on defects — so `apriori new` scaffolds none of them, and neither `gate` nor `archive` asks for one.
@@ -308,7 +307,7 @@ graph TD
 
     D2 -- ESCALATE, or still revising after round 2 --> X[A human decides:<br/>split / add tests / redo]
     D2 -- ACCEPT --> H[Build and Test<br/>failing tests first, then implement]
-    H --> H2{Tests green, verify GREEN,<br/>evidence rows filled in?}
+    H --> H2{Tests green, verify GREEN,<br/>Open items id'd?}
     H2 -- No, fix --> H
     H2 -- No, the design itself is infeasible --> C
     H2 -- Yes --> R{review-ready?}
@@ -328,7 +327,7 @@ graph TD
 The **Ground action** (RUNBOOK **P1**). Read the real code, schema, interfaces, prototype, config, deploy topology and runtime — including Windows/WSL semantics when the change touches paths or processes.
 
 - **Output: the `## Reality Check` section of the state file, and nothing else.** There is no gap report to produce and no sign-off to collect. 5.x had both; what they bought was a document nobody re-read and a gate that fired whether or not anything was in doubt.
-- **Three kinds, one line each.** `observed` cites the path, command, response or screenshot that produced it. `decision` names who decided. `assumption` is a fact nobody has proven — **verify it before implementing**, and if you cannot, it becomes an `## Evidence` row and follows the §6 rules.
+- **Three kinds, one line each.** `observed` cites the path, command, response or screenshot that produced it. `decision` names who decided. `assumption` is a fact nobody has proven — **verify it before implementing**, and if you cannot, it becomes an `## Open` item until it is resolved or the owner accepts it.
 - **The risk-table product facts may never be written from memory.** Routes, schema, auth, config, deploy topology: read them, or list them as `assumption`. Across the practices that fed this design, every skipped read was paid for *after* archive rather than before it.
 - **When a fact will not yield to reading**, probe code is allowed — thrown away afterwards, never a deliverable, and never referenced later. What it produces is an `observed` line.
 - **Exit:** nothing the work depends on is still an `assumption`.
@@ -360,9 +359,9 @@ For the prompts, see [§7.2](#72-specify-contract-adversarial-review-and-revisio
 The **Build & Test action** (RUNBOOK **P2**). Write code per the contract — **tests first**: derive one failing test per spec scenario (naming it with the scenario's ID is a suggestion, never mandatory), then implement until everything is green. "All tests passing" is still the bar, and the failing-first run proves the tests can actually fail. There is no task list to follow: the contract's scenarios are the work.
 
 - **Traceability beats coverage numbers**: genuine scenario coverage is Build & Test's (and review's) responsibility, not a tool's. `apriori verify` only confirms tests actually ran and nothing attributable is failing — UNBOUND is a diagnostic, never a block by itself. Naming a test with its scenario ID is advisory, for traceability, never a gate. Line coverage is a signal worth watching, not a target: a model told to "hit 100%" will happily pad with assertion-free tests. For high-risk logic, spot-check test quality with mutation testing.
-- **Run the tests the risks call for, not a matrix.** 6.0 keeps no per-project-type evidence table: what a change owes is one `## Evidence` row per risk it actually hits. Scenario IDs bind to `apriori verify` through unit/component tests — verify's gate speaks TAP, which Playwright does not emit, so an E2E/visual layer sits on top of the binding gate as an additional exit condition and its visual checks must emit a textual pass/fail. Implementation-time screenshot self-checks land in the gitignored `apriori/tmp/`, never in version control, while visual-regression baseline images belong to the project's own test suite. Where no executable instrument exists for a risk (no deploy surface; solo; library; docs), the independent review is the instrument there — not a downgrade ([§1.5](#15-where-quality-comes-from)).
+- **Run the tests the risks call for, not a matrix.** 6.0 keeps no per-project-type evidence table: what a change owes is the evidence its risks actually call for, and whatever stays unverified is an `## Open` item. Scenario IDs bind to `apriori verify` through unit/component tests — verify's gate speaks TAP, which Playwright does not emit, so an E2E/visual layer sits on top of the binding gate as an additional exit condition and its visual checks must emit a textual pass/fail. Implementation-time screenshot self-checks land in the gitignored `apriori/tmp/`, never in version control, while visual-regression baseline images belong to the project's own test suite. Where no executable instrument exists for a risk (no deploy surface; solo; library; docs), the independent review is the instrument there — not a downgrade ([§1.5](#15-where-quality-comes-from)).
 - **Prefer a stronger model (Opus) for complex logic, and a faster/cheaper model (Sonnet) for routine coding.**
-- **Fill in the `## Evidence` rows as you go.** One row per risk this change actually hits, each `done` / `blocked` / `owner-accepted` / `n/a` with what you really ran. A `blocked` row is a stop for the owner (§4.0) — it is the one gap no extra review and no extra document can fill.
+- **Keep `## Open` true as you go.** One line per risk this change hits and has not resolved, a stable id first (`- <ID>: <text>`), saying what you ran and what is still unverified; delete the line when the risk is resolved. An item nobody can resolve is a stop for the owner — it is the one gap no extra review and no extra document can fill, and only `evidence-accept <ID>` in `gates:` settles it.
 - **Tests span layers**: unit tests for logic (always); for a project **with a UI**, add E2E and visual-regression checks (e.g. Playwright screenshots). A pure library like §5's mini-kv has no UI, so it needs only unit tests — skip the Playwright clause in the [§4.7](#47-automating-the-loop-with-goal-claude-code) recipe.
 
 ### 4.6 Review & Deliver: Review-Ready, One Review, Archive
@@ -396,9 +395,9 @@ That layering is what lets you automate **even adversarial review** without viol
 | Phase | A sound `/goal` condition (transcript-checkable) | Backed inside the loop by |
 |---|---|---|
 | Specify | the review doc is written and its verdict line = `VERDICT: no major issues, ready to proceed to execution`, or the derived review loop stops (RUNBOOK §1 R4) | a heterogeneous reviewer call each round |
-| Build & Test | `npm test` exits 0 **and** lint/static analysis green (where configured) **and** every `## Evidence` row is filled in **and** the E2E/Playwright run is green **and** `apriori gate --review-ready` exits 0 — substitute per §4.5's project-type matrix (docs-only: `apriori check`) | a real test + E2E run |
+| Build & Test | `npm test` exits 0 **and** lint/static analysis green (where configured) **and** every `## Open` item carries a stable id **and** the E2E/Playwright run is green **and** `apriori gate --review-ready` exits 0 — substitute per §4.5's project-type matrix (docs-only: `apriori check`) | a real test + E2E run |
 | Review & Deliver | the consistency review reports no gaps **and** the delta specs are merged **and** the module's KB file is updated | reviewer call + archive action + writeback |
-| **an escalation · blocked critical evidence · an external side effect · abandonment** | — **do not wrap these in a goal** | a human decides (RUNBOOK §1 R1) |
+| **an escalation · an open item nobody can resolve · an external side effect · abandonment** | — **do not wrap these in a goal** | a human decides (RUNBOOK §1 R1) |
 
 > Scope each goal to a stretch that ends — an open-ended one can run very expensive. **`process-config.md` budgets nothing**: it holds no turn or round number. Review rounds stop where the runbook's derived loop stops them (§1 R4); the implement-and-test loop — which that loop does not govern — carries a fixed 25-turn safety bound in its recipe text. If a loop **oscillates** (the verdict flip-flops, or the same open issue keeps coming back) or stalls without progress, **escalate to a human** — never quietly lower the bar. Run **one `/goal` per machine-checkable stretch, stop wherever a human has to decide**, then start the next. The ready-to-paste recipes ship in [RUNBOOK.md](../RUNBOOK.md) §6; The three ready-to-paste recipes (Specify / Build & Test / Review & Deliver) live in **[RUNBOOK.md](../RUNBOOK.md) §6, the human operator appendix** — run by *you*, never by the agent, so they ship inside the protocol file your project already carries. Three things stay true of every recipe: the real check runs **inside** each turn and must land its result in the transcript; a stopped loop, a `VERDICT: escalate` or blocked critical evidence escalates to a human (`apriori status --escalation` exits 3 on exactly those) and is never license to lower the bar; and visual checks must emit a **textual** pass/fail or the evaluator cannot see them — a pure library like §5's mini-kv drops the Playwright clause entirely. The KB writeback is never self-approved ([§6.5](./legacy.md#65-closing-the-loop-write-back-after-every-change)).
 
@@ -484,11 +483,11 @@ Run it to confirm:
 npm test
 ```
 
-Then fill in the state's `## Evidence` rows. mini-kv is a pure library with no UI, no cross-process surface and no schema, so most rows read `n/a — <why>` — and the one that always applies is `producer-diff: done — read the whole diff, known P0/P1 zero`.
+Then look at the state's `## Open` section. mini-kv is a pure library with no UI, no cross-process surface and no schema, so nothing there is unverified and the section stays empty — a change owes nothing it does not actually hit.
 
 To run the implement → test loop unattended, wrap it in a goal — the mini-kv form of the [§4.7](#47-automating-the-loop-with-goal-claude-code) Build & Test recipe (it's a library, so no Playwright clause):
 ```text
-/goal "All of: `npm test` exits 0 (naming a test with its scenario ID is a suggestion, never mandatory); every ## Evidence row in apriori/changes/<change>/flow-state.md is filled in; and `apriori gate --change <change> --review-ready --test-cmd \"npm test\"` exits 0. Turn 1: generate one failing test per spec scenario and SHOW the failing run. Each later turn: implement the next scenario, run `npm test` and SHOW the output. Stop when all hold."
+/goal "All of: `npm test` exits 0 (naming a test with its scenario ID is a suggestion, never mandatory); every ## Open item in apriori/changes/<change>/flow-state.md carries a stable id; and `apriori gate --change <change> --review-ready --test-cmd \"npm test\"` exits 0. Turn 1: generate one failing test per spec scenario and SHOW the failing run. Each later turn: implement the next scenario, run `npm test` and SHOW the output. Stop when all hold."
 ```
 
 ### 5.4 Review & Deliver · Acceptance and Archive
@@ -549,14 +548,14 @@ Notice the two fixed sections and their **opposite truth directions**: the Contr
 
 ### 7.0 The Issue Ledger (Optional; Shared by Review Loops)
 
-**6.0 requires no ledger** — the state's `## Open` section holds a change's open substantive issues, and `gate`/`archive` read them there. The optional table and its status vocabulary are specified once, in RUNBOOK §5. Two design notes are all that belong here:
+**The CLI reads no ledger** (6.2) — the state's `## Open` section holds a change's open substantive issues, one `- <ID>: <text>` line each, and `gate`/`archive`/`status` read them there and nowhere else; `review/issues.md` is never opened. Whether a reviewer still keeps such a table for its own cross-round memory is a human practice with no protocol weight. Two design notes are all that belong here:
 
 - **Why the form exists at all:** cross-round memory lives in a file instead of a session, so every round's reviewer can be a **fresh** session without losing the thread ([§1.4](#14-adversarial-review)). A re-found issue reopens its old ID — that reopened ID is the oscillation alarm [§4.7](#47-automating-the-loop-with-goal-claude-code) watches for.
-- **Why exactly one finding blocks:** a row still reading `open`. Unknown status tokens, reasonless rejections, unrecorded waives and archive-time `fixed` rows are bookkeeping, and 5.x refused archives over them — on changes whose product tests were already green. Fix them because the record should be true, not because a gate is holding the release. Reviews also follow a **scope discipline** (per Anthropic's fully-verified warning that gap-hunting reviewers report gaps even in sound work): only correctness/security/stated-requirement gaps become rows; the rest are `advisory`.
+- **Why exactly one thing blocks:** an `## Open` item nobody has accepted. 5.x refused archives over ledger bookkeeping — unknown status tokens, reasonless rejections, unrecorded waives — on changes whose product tests were already green; 6.2 reads none of it, and an accepted item is reported as still present rather than deleted, because the record should be true. Reviews also follow a **scope discipline** (per Anthropic's fully-verified warning that gap-hunting reviewers report gaps even in sound work): only correctness/security/stated-requirement gaps become rows; the rest are `advisory`.
 
 ### 7.1 Ground: Reality Check
 
-Prompt: RUNBOOK **P1**. Design notes: facts only — no code. The goal and the KB go in as inputs, and the output is pinned to the state's `## Reality Check` section rather than a separate document — the gap report was the thing 5.x produced here, and folding it into the one state is what stops progress from being written in two places that drift. Three kinds and no fourth: `observed` carries its path/command/response, `decision` names who decided, and `assumption` is the one that owes something — verify it before implementing, or promote it to an `## Evidence` row. One carve-out: when a fact will not yield to reading, probe code is allowed — thrown away afterwards, never referenced later — with the finding landing as an `observed` line.
+Prompt: RUNBOOK **P1**. Design notes: facts only — no code. The goal and the KB go in as inputs, and the output is pinned to the state's `## Reality Check` section rather than a separate document — the gap report was the thing 5.x produced here, and folding it into the one state is what stops progress from being written in two places that drift. Three kinds and no fourth: `observed` carries its path/command/response, `decision` names who decided, and `assumption` is the one that owes something — verify it before implementing, or move it to `## Open` as an item. One carve-out: when a fact will not yield to reading, probe code is allowed — thrown away afterwards, never referenced later — with the finding landing as an `observed` line.
 
 ### 7.2 Specify: Contract Adversarial Review and Revision
 
@@ -570,7 +569,7 @@ Prompts: RUNBOOK **P2** (the producer's contract → review-ready handoff) / **P
 
 ### 7.3 Build & Test: Code + Test
 
-Prompt: RUNBOOK **P2**. Design notes: P2 is tests-first — one failing test per spec scenario, shown failing *before* implementation; naming a test with its scenario ID is a suggestion, never mandatory. There is no task list to execute in order: the contract's scenarios are the work, which removes the one artifact 5.x's apply step depended on. Scenario coverage with real test evidence is the hard bar; line coverage stays a signal ([§4.5](#45-build--test-failing-evidence-first)). The prompt ends by requiring two things the reviewer would otherwise have to establish itself: every `## Evidence` row filled in, and the `producer-diff` row declared after reading the complete diff.
+Prompt: RUNBOOK **P2**. Design notes: P2 is tests-first — one failing test per spec scenario, shown failing *before* implementation; naming a test with its scenario ID is a suggestion, never mandatory. There is no task list to execute in order: the contract's scenarios are the work, which removes the one artifact 5.x's apply step depended on. Scenario coverage with real test evidence is the hard bar; line coverage stays a signal ([§4.5](#45-build--test-failing-evidence-first)). The prompt ends by requiring two things the reviewer would otherwise have to establish itself: `## Open` brought up to date (every remaining item id'd, saying what is still unverified), and the complete diff read with known P0/P1 at zero — an instruction, since 6.2, that nothing checks.
 
 ### 7.4 Review & Deliver: Consistency Review and Archive
 

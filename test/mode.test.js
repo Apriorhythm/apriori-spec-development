@@ -264,8 +264,11 @@ test('MD-14 the runbook kickoff and session-start no longer ask for the removed 
     const doc = read(f);
     // the kickoff prompt block is the copy-and-fill line a human actually pastes
     const kickoff = doc.split('\n').filter((l) => /apriori runbook|apriori\/runbook\.md/.test(l)).join('\n');
-    for (const dead of ['tier', 'track', '级别', '轨道'])
+    for (const dead of ['tier', 'track', 'mode', '级别', '轨道', '模式'])
       assert.ok(!kickoff.includes(dead), `${f}: the kickoff prompt still asks for '${dead}'`);
+    // 6.2: no section asks the human to pick a mode, and the state template writes no mode line
+    assert.doesNotMatch(doc, /Pick the Mode|选择模式/, f);
+    assert.doesNotMatch(doc, /^mode: /m, `${f}: the state template still carries a mode line`);
     // the session-start rule must not route by a vocabulary that no longer exists
     assert.doesNotMatch(doc, /begin at the tier's first step/, f);
     assert.doesNotMatch(doc, /从该级别的第一步开始/, f);
@@ -289,14 +292,15 @@ test('MD-15 the mechanical floor claims exactly what the CLI actually does', () 
   assert.doesNotMatch(cn, /CLI 目前不做机械强制/);
   assert.match(en, /reads none of them/, 'the unimplemented rows must still be declared unimplemented');
   assert.match(cn, /CLI 一个都不读/);
-  // and the review floor is stated where the mode is chosen — for BOTH modes, plus the
-  // resolved-verdict rule that is fast's alone because fast keeps no ledger
-  assert.match(en, /Neither mode may drop the one independent review/);
-  assert.match(cn, /两种模式都不能省那一次独立评审/);
-  // slice 5: what decides whether the review itself must close is no longer the MODE but where
-  // the findings live — a mode is one edited word, a ledger is a file with rows in it.
-  assert.match(en, /The review must also have CLOSED — in either mode/);
-  assert.match(cn, /评审还必须已经收敛——两种模式都一样/);
+  // and the review floor is stated in §2, for every change — 6.2 has no mode to say it per
+  assert.match(en, /No change may drop the one independent review/);
+  assert.match(cn, /任何 change 都不能省那一次独立评审/);
+  assert.match(en, /The review must also have CLOSED\.\*\*/);
+  assert.match(cn, /评审还必须已经收敛。\*\*/);
+  // …and the signal is stated as information, never as a mode
+  assert.match(en, /information, not a demand/);
+  assert.match(cn, /它是信息,不是要求/);
+  for (const d of [en, cn]) assert.doesNotMatch(d, /fast → standard|upgrade[sd]? fast|机械升级/, 'the retired upgrade survives');
 });
 
 test('MD-16 every session runs status + flow-state + Next first, reading the runbook only on demand', () => {

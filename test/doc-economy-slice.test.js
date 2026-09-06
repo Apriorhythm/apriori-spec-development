@@ -56,7 +56,7 @@ test('DE-B scenarios modeled by observable outcome, every ID still bound RED-fir
   not(CI_DOC_CN, 'unbound/red/orphan/重复');
 });
 
-test('DE-C flow-state stays a checkpoint: Evidence/Open/Next/gates', () => {
+test('DE-C flow-state stays a checkpoint: Open/Next/gates', () => {
   ok(EN, 'never a retelling of the implementation or tests');
   ok(CN, '绝不复述实现或测试');
   ok(EN, 'delete the line on close, never a resolution history');

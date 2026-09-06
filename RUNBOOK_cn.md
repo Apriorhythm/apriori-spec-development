@@ -46,8 +46,8 @@ cd your-project && apriori init  # 交互式:勾选要接入的 AI 工具
 
 **会话启动(Agent,每个会话都做):**
 
-1. 先跑 `apriori status --change <name>`——阶段、模式、escalation、派生出的评审循环状态。
-2. 读 `apriori/changes/<change>/flow-state.md`。若不存在且你被要求启动一个变更:先跑 `apriori new <change>`,选模式(§2),填好状态(§3),再从 **Ground** 开始。
+1. 先跑 `apriori status --change <name>`——阶段、open 条目、escalation、派生出的评审循环状态。
+2. 读 `apriori/changes/<change>/flow-state.md`。若不存在且你被要求启动一个变更:先跑 `apriori new <change>`,填好状态(§3)——§2 说的是一个 change 欠什么——再从 **Ground** 开始。
 3. 从状态的第一条 `## Next` 继续。状态文件是唯一权威——绝不凭记忆或猜测重建进度。
 4. 只有当 `status`、`## Next`、一个被阻塞的命令、或一个不确定的事实指向某节时,才去读那一节 runbook。没有默认要读的清单——绝不预载完整 RUNBOOK,也绝不"以防万一"去读一节。
 
@@ -56,7 +56,7 @@ cd your-project && apriori init  # 交互式:勾选要接入的 AI 工具
 **启动提示词(人用——复制并填空):**
 
 ```text
-按 apriori runbook(apriori/runbook.md)推进变更 <change-name>,模式 <fast|standard>(拿不准:standard)。
+按 apriori runbook(apriori/runbook.md)推进变更 <change-name>。
 先跑 `apriori status --change <change-name>`,读 apriori/changes/<change-name>/flow-state.md,从它第一条 `## Next` 继续。只有当 status、Next、一个被阻塞的命令、或一个不确定的事实指向某节 runbook 时才去读它——绝不预载完整 runbook。
 (产物根若外置:artifact-root=<路径>。否则省略——即项目根。)
 只推进到下一个需要我做决定的地方(§1 R1),然后停下来汇报。
@@ -79,13 +79,13 @@ cd your-project && apriori init  # 交互式:勾选要接入的 AI 工具
 **R1 —— 需要人做决定时才停,也只在那时停。** 只有四种:
 
 1. **升级(escalation)。** 评审方给出 `VERDICT: escalate`,或某个 review family 打到第 5 轮。`apriori status --change <name> --escalation` 会打印它并以 3 退出。
-2. **关键证据仍为 `blocked`。** §6 的三条出路属于所有者:把证据做便宜、拆小 change、或明确接受风险。别无他途。
+2. **无法解决的 `## Open` 条目。** 三条出路属于所有者:把证据做便宜、拆小 change、或明确接受风险(在 `gates:` 里 `evidence-accept <ID>`)。别无他途。
 3. **外部副作用**(见下方硬规则)。永远不在任何一揽子授权之内。
 4. **放弃(abandon)。** 只凭人的一句话。
 
 停下时:更新状态文件,汇报——当前阶段、评审方结论行**原文**、开放的实质问题、需要人做的决定——然后停下。绝不自己替人决定;"人还没回复"绝不等于批准。**不存在"整合授权"**——"继续跑"的预授权也从不取消这次汇报。
 
-> 所有者的决定**原文**记入 `gates:`,一条决定一行,并且是**一次性的**:只了结它点名的那一件事,绝不继承到下一件同类的事。`apriori gate` 与 `apriori archive` 会机器校验这一点:被接受的证据风险需要一条点名该行的 `gates:` 记录,第 5 轮 escalation 则同时需要已记录的决定**和**命令行上显式的 `--force`。agent 自己追加的一行,永远不够。
+> 所有者的决定**原文**记入 `gates:`,一条决定一行,并且是**一次性的**:只了结它点名的那一件事,绝不继承到下一件同类的事。`apriori gate` 与 `apriori archive` 会机器校验这一点:被接受的 open 条目需要一条点名其 id 的 `gates:` 记录,第 5 轮 escalation 则同时需要已记录的决定**和**命令行上显式的 `--force`。agent 自己追加的一行,永远不够。
 
 ### 外部副作用(硬规则)
 
@@ -117,18 +117,15 @@ cd your-project && apriori init  # 交互式:勾选要接入的 AI 工具
 
 ---
 
-## 2. 选择模式(启动时做一次)
+## 2. 一个 change 欠什么
 
-| 模式 | 何时 | 跑什么 |
-|---|---|---|
-| **fast** | 可稳定复现的缺陷 + 局部修改,且不触及公共契约 / 数据结构 / 权限 / 部署 / 跨系统 | 复现 → 修复 → 回归 → **一次**独立评审 |
-| **standard** | 其余一律 | 只按实际命中的风险加证据——不加文档,不加轮次 |
+一个 change 欠的是**与它真正命中的风险成比例的证据**——不多加文档,不多加轮次。没有模式可选:状态文件里的 `mode:` 自 6.2 起可选且不起作用,没有任何判定依据它。
 
-模式是爆炸半径问题,不是规模估计。**以下情形必须选 standard**——迁移 / schema / DDL · 事务或锁 · 权限或鉴权 · 外部配置 · 公开 API · 跨仓引用 · 新路由或页面。其中一项是机械的:增量声明了 `## MODIFIED` / `## REMOVED` / `## RENAMED Requirements` 时,`gate`、`archive` 与 `status` 一律按 **standard** 判定并打印理由(`contract-mutation: <文件> <操作> '<需求名>'`)。其余各项需要读你产品的路由、schema、鉴权或部署配置,CLI 一个都不读——**对那些情形选 fast,仍然是只有你能守的规则。** 每次重大 diff 后重问一次:起步是 fast、中途长出一次迁移,从那一刻起就是 standard。
+**触及以下任一项时必须小心**——迁移 / schema / DDL · 事务或锁 · 权限或鉴权 · 外部配置 · 公开 API · 跨仓引用 · 新路由或页面。每一项都是需要真实证据的风险;你验证不了的每一项,都成为一条 `## Open` 条目(§3),直到它被解决或所有者接受。其中一项是机械的:增量声明了 `## MODIFIED` / `## REMOVED` / `## RENAMED Requirements` 时,`gate`、`archive` 与 `status` 会报告该信号(`contract-mutation: <文件> <操作> '<需求名>'`)——它是信息,不是要求。其余各项需要读你产品的路由、schema、鉴权或部署配置,CLI 一个都不读——**点名那些风险,仍然是只有你能守的规则。** 每次重大 diff 后重问一次:起步是局部修改、中途长出一次迁移,从那一刻起就欠迁移的证据。
 
-**两种模式都不能省那一次独立评审。** 没有任何已完成评审轮次的变更,会被 `gate`(C8)与 `archive`(R4)拒绝。**评审还必须已经收敛——两种模式都一样。** 若某 family 的**最新**一轮仍是 `gaps found`、`escalate` 或带正数的 `N issues open`,该变更会被拒绝;第 1 轮 revise、第 2 轮 accept 属于已收敛。`--force` 买不到评审;评审证据是 symlink 或不可读时同样买不到。
+**任何 change 都不能省那一次独立评审。** 没有任何已完成评审轮次的变更,会被 `gate`(C8)与 `archive`(R4)拒绝。**评审还必须已经收敛。** 若某 family 的**最新**一轮仍是 `gaps found`、`escalate` 或带正数的 `N issues open`,该变更会被拒绝;第 1 轮 revise、第 2 轮 accept 属于已收敛。`--force` 买不到评审;评审证据是 symlink 或不可读时同样买不到。
 
-`fast` 减少的是**流程**:复现 → 修复 → 回归 → 一次独立评审,没有自己的 Specify 循环。它不减少证据,也不减少那次评审。**`standard` 默认也是同一个形状:一次最终独立评审,同时评判 spec、代码和测试。** 单独的 Specify 阶段 spec-review 循环默认不跑;只有所有者要求提前判断某个具体方案、或 Ground 之后需求本身仍有实质不确定性时才加,并记为 `## Reality Check` 里的一条 `decision`。
+每个 change 的默认形状都一样:复现或 specify → 实现 → 一次最终独立评审,同时评判 spec、代码和测试。单独的 Specify 阶段 spec-review 循环默认不跑;只有所有者要求提前判断某个具体方案、或 Ground 之后需求本身仍有实质不确定性时才加,并记为 `## Reality Check` 里的一条 `decision`。
 
 ---
 
@@ -140,7 +137,6 @@ cd your-project && apriori init  # 交互式:勾选要接入的 AI 工具
 
 ```markdown
 change: <change-name>
-mode: fast | standard   # §2 决定;变更类增量会把 fast 机械升级为 standard。
 lineage: <目标分支/线 + 合并禁忌,如 "v2(永不合入 main)">
                         # 变更中途发现谱系冲突=立即停下
 phase: ground | specify | build | review | done | abandoned
@@ -161,29 +157,26 @@ artifact-root: .        # 可选;默认=项目根。只作用于 apriori/changes
 - observed: <读到或跑出来的事实> — <路径 / 命令 / 响应 / 截图位置>
 - decision: <需求或所有者定下的决定>
 
-## Evidence              # 本 change 真正命中的每条 §6 风险,一行一条——一行都没有即拒绝
-- <风险>: done | blocked | owner-accepted | n/a — <命令或产物指针,一行——绝不复述实现或测试>
-                        # `fixed`、`resolved`、`closed`、`verified`、`pass`、`passed` 一律按 `done` 读。
-                        # `blocked` 阻断交付(gate C9、archive R5)。`owner-accepted`
-                        # 需要所有者**本人**的决定,写成这条封闭 gates: 文法:
-                        #   - <YYYY-MM-DDTHH:MM> owner: evidence-accept <该行 ID> — <理由>
-                        #(撤销靠追加 evidence-accept-revoke <ID> — <理由>;最后一条生效)。
-                        # `producer:`/`note:`、没有时间戳、没有破折号、没有理由、
-                        # 或 ID 近似不等,一律**不构成授权**——不能自己接受自己的风险。
-                        # 改动契约的增量(## MODIFIED/REMOVED/RENAMED)会让正好叫
-                        # `contract-mutation` 的一行欠一个 done 或已接受;`n/a` 会被拒绝。
-                        # `standard` 欠一条**不是** `producer-diff` 的实质证据行;
-                        # 没有机器可判风险的 `fast` 可以只用 C1 + producer-diff 作答。
-                        # `producer-diff` 是保留行名,意为"我看完了完整 diff,
-                        # 已知 P0/P1 为零";review-ready 会找它。
-
-## Open                  # 尚未关闭的实质问题——一行一条;关闭后删掉这一行,绝不留解决史
+## Open                  # 尚未解决的实质条目——一行一条,稳定 id 在前;关闭后删掉这一行,绝不留解决史
+- R-01: 无法在目标运行环境验证重启恢复;本次交付仍依赖这条证据。
+- R-02: <评审发现、尚无人关闭的缺陷——一行,绝不复述实现或测试>
+                        # 条目在所有者接受之前处于 PENDING:阻断交付(gate C9、archive R5),
+                        # 且永不可 force。所有者**本人**的决定,按下面 gates: 的封闭文法,
+                        # 按 id 结清**一条**条目。已接受的条目不再阻断,但仍留在这里,
+                        # 并报告为"accepted, still present",直到风险真正解决。
+                        # 没有 id 的行仍是条目:它阻断,且无法被接受。
+                        # 重复的 id 会被拒绝并点名两行。空段即不欠任何东西。
 
 ## Next                  # 最多**三条**;第一条是崩溃后的续点——只写下一步,绝不是任务清单或历史
 - <一个具体动作>
 
 gates:                  # 只增不改的人工决定日志
   - <YYYY-MM-DDTHH:MM> owner: <人的决定,原文>
+  - <YYYY-MM-DDTHH:MM> owner: evidence-accept R-01 — <所有者的理由,原文>
+                        # 接受出口:`evidence-accept <ID>` 结清那一条条目
+                        #(撤销靠追加 evidence-accept-revoke <ID> — <理由>;最后一条生效)。
+                        # `producer:`/`note:`、没有时间戳、没有破折号、没有理由、
+                        # 或 ID 近似不等,一律**不构成授权**——不能自己接受自己的风险。
                         # 只有两个标签:`owner`(人做了决定)与 `note`
                         # (非决策事件:降级、收官等)
                         # 一次机械检查的 `note:` 只留一行简短的命令+结果
@@ -202,7 +195,7 @@ gates:                  # 只增不改的人工决定日志
 |---|---|---|
 | **Ground** | 核对真实代码、schema、接口、原型、配置、部署拓扑与运行环境。每条事实要么是 `observed`(读过或跑过,附路径/命令/响应),要么是 `decision`(来自需求或所有者),要么是 `assumption`(未证实) | `## Reality Check` 里不再有本次工作所依赖的 assumption |
 | **Specify** | 写最小行为契约与验收标准——若一条证据闭环证明不了它,就先拆 change | 增量 spec 说清了行为,每个场景都带稳定 ID |
-| **Build & Test** | 先拿到失败证据,再实现,并跑与真实命中风险相匹配的真实测试 | 测试全绿、`apriori verify` GREEN、§6 证据行填完 |
+| **Build & Test** | 先拿到失败证据,再实现,并跑与真实命中风险相匹配的真实测试 | 测试全绿、`apriori verify` GREEN、`## Open` 只剩真正未解决的条目,每行带稳定 id |
 | **Review & Deliver** | 达到 review-ready 后做一次独立评审;实质问题关闭即交付 | 结论已接受、`apriori gate` PASS、已归档 |
 
 **材料按需产生。** 没有必填的需求文档、提案、设计文档、gap 报告和任务清单。当写文档确实是把事情做对的最便宜手段时才写,而不是因为某个阶段要求写。
@@ -216,7 +209,6 @@ gates:                  # 只增不改的人工决定日志
 | 活的 spec 存储 | `apriori/specs/` |
 | 评审摘要 | `apriori/changes/<change>/review/<family>-v{N}.md` |
 | 评审方原始输出 | `apriori/changes/<change>/review/<stem>-raw.*(stem=对应评审文档)` |
-| 问题台账 —— **可选** | `apriori/changes/<change>/review/issues.md` |
 | 知识库(TRUTH-DOC) | `apriori/truth/<module>.md` —— 必须带围栏外、行首的 `source-commit: <ref>` 戳(只覆盖 Contract 段,§5 P5);文件名别名或代码不在 `lib/` 时,在头部区声明 `store-module:` / `source-files:` |
 
 change 需要的其他任何东西——一张草稿、一幅图、给人看的一页纸——都由生产方自行决定,不带任何流程分量。
@@ -236,7 +228,7 @@ change 需要的其他任何东西——一张草稿、一幅图、给人看的�
 ### Ground —— 提方案之前先核对真实事实
 
 - **做:** 用 **P1** 执行 **Ground 动作**。读本 change 真正依赖的真实代码、schema、接口、原型、配置、部署拓扑与运行环境——对着已写下的目标读它的入口、现有 owner、最高共同测试边界和验证它的最小命令,而不是横扫整个仓库。**产出:** flow-state 的 `## Reality Check` 段,别无其他。只记会影响后续动作的内容。
-- **只有三类。** `observed` 附上产生它的路径、命令、响应或截图位置。`decision` 点名是谁决定的。`assumption` 是没人证实过的事实——**实现前先验证**,验证不了就变成一条 `## Evidence` 行,按 §6 处理。
+- **只有三类。** `observed` 附上产生它的路径、命令、响应或截图位置。`decision` 点名是谁决定的。`assumption` 是没人证实过的事实——**实现前先验证**,验证不了就变成一条 `## Open` 条目(`- <ID>: <文字>`),直到被解决或所有者接受。
 - **产品事实绝不可凭印象写。** 路由、schema、鉴权、配置、部署拓扑:要么读过,要么列为 `assumption`。某个事实读不出来时,允许写探针把它敲定——用完即弃,它的产物是一条 `observed` 行。
 - **退出:** 本次工作依赖的东西里,不再有 `assumption`。
 
@@ -259,16 +251,16 @@ change 需要的其他任何东西——一张草稿、一幅图、给人看的�
 
 ### Build & Test —— 先失败证据,再真实测试
 
-- **按顺序做:**(1)一条能用真实证据证明每个 scenario 行为的失败测试——一个 Scenario 的示例表可以共用**一条**参数化测试,标准是"每个 scenario 都覆盖到",不是"一个 ID 一条测试";用 scenario ID 给测试命名是建议,不是强制——展示失败运行;(2)用 **P2** 实现;(3)跑到全绿;(4)`apriori verify` GREEN;(5)为本 change 真正命中的每条 §6 风险填好 `## Evidence` 行。
+- **按顺序做:**(1)一条能用真实证据证明每个 scenario 行为的失败测试——一个 Scenario 的示例表可以共用**一条**参数化测试,标准是"每个 scenario 都覆盖到",不是"一个 ID 一条测试";用 scenario ID 给测试命名是建议,不是强制——展示失败运行;(2)用 **P2** 实现;(3)跑到全绿;(4)`apriori verify` GREEN;(5)更新 `## Open`:删掉已解决的,为本 change 命中且尚未解决的每条风险各写一行,带稳定 id(`- <ID>: <文字>`)。
 - **spec-runner 闸口(`apriori verify`)。** 变更进行中用投影形式:`apriori verify --change <name> --test-cmd "<你的测试命令>"`——在内存里把增量应用到存储上再绑定场景。归档后用朴素形式 `apriori verify --specs apriori/specs --test-cmd "…"`。两者都报告 BOUND-GREEN / BOUND-RED / UNBOUND / ORPHAN / UNIDENTIFIED。**GREEN(退出 0)= 本 change 范围内没有已绑定场景的测试失败、没有无法归因的失败、没有跨边界的重复 ID;UNBOUND、不失败的 ORPHAN 与 UNIDENTIFIED 只作提示,从不阻断**——不要为它们去写 TAP 合并器或 ID 提升器。退出 1 = 有缺口;退出 2 = 这次运行本身不可信(spec 路径缺失、零场景、非 TAP 输出、测试命令崩溃、合并冲突、基线戳分叉、增量格式错误)——**损坏或空洞的运行永远不是 GREEN**。`apriori gate` 的 C1 读同一份结果。诊断分类的细节见 concepts。
-- **跑风险要求的测试,而不是一张矩阵。** 没有按项目类型划分的证据表:一个 change 欠下的,是它真正命中的每条 §6 风险各一行 `## Evidence`。scenario ID 经单测/组件测绑定给 `apriori verify`——verify 的闸口只认 TAP,而 Playwright 不输出 TAP,所以 E2E/视觉层**叠在**绑定闸口之上作为额外退出条件,其视觉检查必须输出文本化 pass/fail。实现期的截图写到被 gitignore 的 `apriori/tmp/`;视觉回归基线图属于项目自己的测试套件。某条风险不存在可执行仪器时(纯文档项目:`apriori check` 顶替 `npm test`),独立评审就是那里的仪器。
+- **跑风险要求的测试,而不是一张矩阵。** 没有按项目类型划分的证据表:一个 change 欠下的,是它 §6 风险真正要求的证据,而尚未验证的,就是一条 `## Open` 条目。scenario ID 经单测/组件测绑定给 `apriori verify`——verify 的闸口只认 TAP,而 Playwright 不输出 TAP,所以 E2E/视觉层**叠在**绑定闸口之上作为额外退出条件,其视觉检查必须输出文本化 pass/fail。实现期的截图写到被 gitignore 的 `apriori/tmp/`;视觉回归基线图属于项目自己的测试套件。某条风险不存在可执行仪器时(纯文档项目:`apriori check` 顶替 `npm test`),独立评审就是那里的仪器。
 - **自加承诺纪律。** 无既定需求、有效决定或实际安全责任依据的自加承诺——"始终 / 并发下 / 崩溃持久 / 原子"之类的硬保证,以及需求之外的机制——默认撤回或收窄到实际验证到的程度。既定的保证要有在其**成功路径**上注入对抗条件的测试;凡 continue/skip/静默忽略分支,回查 spec 确认失败状态是否需要对用户可见。
-- **退出:** 测试全绿;`apriori verify` GREEN(纯文档项目:`apriori check` 全绿);lint/静态分析全绿(已配置时);本 change 命中的每条 §6 风险都有 `## Evidence` 行。方案不可行或需求本身有错 → 退回 Specify 或 Ground(更新状态文件并告知人)。
+- **退出:** 测试全绿;`apriori verify` GREEN(纯文档项目:`apriori check` 全绿);lint/静态分析全绿(已配置时);`## Open` 只剩真正未解决的条目,每行带稳定 id。方案不可行或需求本身有错 → 退回 Specify 或 Ground(更新状态文件并告知人)。
 
 ### Review & Deliver —— 先 review-ready,一次独立评审,然后归档
 
-- **先过 review-ready。** 跑 `apriori gate --change <name> --review-ready --test-cmd "…"`。它什么也不写,只从这次运行已经产生的事实答**三项**:编译和测试**真的**执行过(绝不是零测试的 `BUILD SUCCESS`);§6 证据要么跑过、要么明确是 `blocked` / `owner-accepted`;生产方自己看完了完整 diff——保留行 `producer-diff` 为 `done` 或所有者已接受(`n/a` 说的是"根本没有 diff 可读")。**没准备好不算一轮评审。** 回到 Build & Test。
-- **然后一次独立评审**(**P3**,R2)。评审方的默认输入恰好是四样:**行为契约**、**diff**、**证据摘要**、**仍未覆盖的边界**;它可以自行查全仓、调用者、配置和原型。原始评审输出、已关闭问题、其他 change 的文档不是默认输入。评审方的输出只保留三样:新发现的实质问题;已查与未查的风险面;以及 `ACCEPT | REVISE | ESCALATE` 之一。**评审方不做生产方的活**——它不是来编译、补测试或重写方案的;如果它必须那么做,说明这个 change 没到 review-ready。
+- **先过 review-ready。** 跑 `apriori gate --change <name> --review-ready --test-cmd "…"`。它什么也不写,只从这次运行已经产生的事实答**两项**:编译和测试**真的**执行过(绝不是零测试的 `BUILD SUCCESS`);以及 `## Open` 段可读——每条都带稳定 id,没有重复 id。pending 的条目不挡 review-ready:那正是评审要看的东西。**没准备好不算一轮评审。** 回到 Build & Test。
+- **然后一次独立评审**(**P3**,R2)。评审方的默认输入恰好是四样:**行为契约**、**diff**、**`## Open` 条目**、**仍未覆盖的边界**;它可以自行查全仓、调用者、配置和原型。原始评审输出、已关闭问题、其他 change 的文档不是默认输入。评审方的输出只保留三样:新发现的实质问题;已查与未查的风险面;以及 `ACCEPT | REVISE | ESCALATE` 之一。**评审方不做生产方的活**——它不是来编译、补测试或重写方案的;如果它必须那么做,说明这个 change 没到 review-ready。
 - **知识库更新是前置条件,不是收尾步骤——而且只在欠着的时候才做。** 只有当 `apriori/truth/<module>.md` 已经覆盖被触达的模块,或所有者/change 明确决定沉淀一份新的持久契约时才欠;绝不为了收官时有一份而凭空造一份。欠着时,review-ready 之前:提交实现,让 `source-commit` 指向它;更新 `apriori/truth/<module>.md`——Contract 段按最终实现写,Decisions 段追加本次的新决定。评审方看到的 diff 里已经带着这份 KB diff;`apriori archive` 从不碰 `apriori/truth/`。
 - **然后归档——直接执行,不 dry-run。** ACCEPT 落地、且产品代码与测试自 review-ready 起未再变化时,正常收尾恰好四个逻辑动作,不多不少:(1)把评审方的输出落成一个 self-contained 评审文件,外加一次简短的 flow-state 更新;(2)跑一次 `apriori check`,再跑一次完整的 `apriori gate --change <name>`(不带 `--review-ready`),在这些仍未变化的输入上绑定 C1;(3)直接跑 `apriori archive --change <name> --write --changes-dir apriori/changes`——`--write` 执行与 dry-run 完全相同的前置检查,先跑一次 dry-run 不会多核实出任何东西;归档把增量 spec 合并进 `apriori/specs` 并搬移 bundle,仅此而已;(4)本地提交收尾,然后停止。那一次原子移动携带整个 bundle 到 `apriori/changes/archive/<stamp>-<change>/`。
 - **归档不是发布。** `apriori archive` 只声明它刚判定过的状态(实现与关键证据是否完成、`delivery:` 是已发布还是仍待外部验收),不冒充发布或外部验收。**归档后的 bundle 是冻结的:任何东西,包括 `phase:`,都不再回写。** 之后发现的缺陷记为一条简短的 outcome 或一个新 change。
@@ -294,7 +286,7 @@ change 需要的其他任何东西——一张草稿、一幅图、给人看的�
 
 **单文件证据自己的词汇表。** 自包含文档(§1 R2)以三种规范整行之一收尾,整行匹配、大小写不敏感:`VERDICT: ACCEPT`、`VERDICT: REVISE`、`VERDICT: ESCALATE`。上表里的措辞在两种形态下都继续合法。这行必须整句匹配:ACCEPT 后面跟着限定从句,或 REVISE 把理由写进了机器行本身,都会被拒绝——理由属于文档正文,永远不属于机器行。
 
-**问题台账是可选的——默认不建。** 状态里的 `## Open` 段就是一个 change 开放实质问题的所在。保留了 `review/issues.md` 的 change 里,状态词表是 `open` / `fixed` / `rejected + 理由` / `verified` / `rejected-verified + 理由` / `waived + 理由` / `advisory-acked`。评审方把 `fixed → verified`、`rejected → rejected-verified`(保留原始理由并附认同引用);生产方把 `open → fixed|rejected`,且永不给自己的发现定终态;只有人能置 `waived`,并在 `gates:` 落一条带该行 ID 和 "waived" 字样的记录。同一问题被再次发现时**重开旧 ID**——重开是事件,不是状态。**只有一件事阻断:仍是 `open` 的行。** 其余记账问题只提示,永不拒绝交付。只有正确性、安全与既定需求的缺口才立行;其余一律 `advisory`,而这个标注权由评审方独占。
+**没有问题台账。** 状态里的 `## Open` 段就是一个 change 开放实质问题的所在——一行一条,稳定 id 在前——也是 `gate`、`archive` 与 `status` 读取它们的唯一位置(6.2:`review/issues.md` 永远不会被打开,里面的东西既不阻断也不被报告)。同一问题被再次发现时**重开旧 id**——重开是事件,不是新的一行。**只有一件事阻断:没有人接受的条目。** 已接受的条目报告为仍然在场,工具绝不删除它;风险真正解决时由生产方删掉那一行。只有正确性、安全与既定需求的缺口才立为条目;其余一律 `advisory`,而这个标注权由评审方独占。
 
 ### P1 —— Ground(可选的启动提示词)
 
@@ -307,7 +299,7 @@ change 需要的其他任何东西——一张草稿、一幅图、给人看的�
 * assumption: <尚未证实> — 实现前先验证它
 产品事实绝不可凭印象写:路由、schema、鉴权、配置、部署拓扑,要么读过,要么就是 assumption。
 某个事实读不出来时,允许写探针把它敲定——用完即弃,不是交付物。它的产物是一条 `observed` 行。
-本次工作依赖的东西里不再有 assumption 时停下。任何你验证不了的,变成一条 ## Evidence 行并按 §6 处理。
+本次工作依赖的东西里不再有 assumption 时停下。任何你验证不了的,变成一条 ## Open 条目(`- <ID>: <文字>`),留在那里直到被解决或所有者接受。
 ```
 
 ### P2 —— 生产方:最小契约,然后 review-ready
@@ -317,9 +309,9 @@ change 需要的其他任何东西——一张草稿、一幅图、给人看的�
 * 先拆:这个 change 只承载**一个**主要结果和**一条**主要证据闭环。若它跨越多个各需不同真实环境的边界、逼评审方在互不相关的上下文之间切换、或不断扩大另一个区域的审查面——现在就拆,并把该决定记入 ## Reality Check。
 * 每个用户可见输出各自一个 scenario,带稳定 ID(如 KV-03)与可测验收;写明什么不在范围内。
 * 任何外部共享状态(Redis / DB 字段 / 全局单例 / 内存缓存)都描述三个时机:初始化 / 运行期更新 / 清理失效。
-* 在 ## Evidence 里列出本 change 命中的每条 §6 风险。
+* 在 ## Open 里列出本 change 命中且尚未解决的每条 §6 风险,一行一条,带 id。
 【Build & Test】推导出一条能用真实证据证明每个 scenario 行为的失败测试——一条参数化测试可以覆盖一个 scenario 的整张示例表,标准是每个 scenario 都覆盖到,不是一个 ID 一条测试——并**展示**失败运行。然后实现——scenario 就是工作本身,没有任务清单。已配置时跑项目的 linter/静态分析。凡 continue/skip/静默忽略分支,回查 spec 确认失败状态是否需要对用户可见。当一条新路径接管时,点名旧的 owner 及其去向(移除、禁用、迁移或有意共存),用最高共同容器的一个用户流测试证明它,其中一条断言要在去向不成立时失败;只删除该测试替代掉的低层测试。无既定需求、有效决定或实际安全责任依据的自加承诺,默认撤回或收窄。
-【review-ready】把每条 ## Evidence 行填完(done / blocked / owner-accepted / n/a)并写清你到底跑了什么;回收本 change 留下的探针、临时文件与失效代码;然后读完**完整** diff,在已知 P0/P1 为零之后声明 `- producer-diff: done — <你检查了什么>`。
+【review-ready】更新 ## Open:删掉已解决的,剩下的每一行写清你跑了什么、还有什么没验证——每行带稳定 id(`- <ID>: <文字>`);回收本 change 留下的探针、临时文件与失效代码;然后读完**完整** diff,做到已知 P0/P1 为零。
 停下,并在请求评审之前跑 `apriori gate --change <change> --review-ready --test-cmd "…"`。没准备好不算一轮评审。
 ```
 
@@ -330,12 +322,12 @@ change 需要的其他任何东西——一张草稿、一幅图、给人看的�
 【输入】—— 这就是你的**默认**上下文,而且仅此而已:
 * 行为契约:apriori/changes/<change>/specs/
 * diff
-* 证据摘要与仍未覆盖的边界:apriori/changes/<change>/flow-state.md,以及 `apriori gate --change <change> --json`
+* ## Open 条目与仍未覆盖的边界:apriori/changes/<change>/flow-state.md,以及 `apriori gate --change <change> --json`
 你可以自行查全仓、调用者、配置与原型。不要索取原始评审记录、已关闭问题或其他 change 的文档。
 你**不是**来编译代码、不是来逐条补生产方缺的测试、也不是来重写方案的。如果需要那样做,说明这个 change 根本没到 review-ready——直说并停下。
 【三问】
 1. 是否违反既定行为或实际安全约束:契约要求、代码却没实现或只在 happy path 上实现的行为;触及外部输入或权限处的未校验输入、缺失鉴权、日志中的密钥、注入面;既定硬保证没有在其成功路径上注入对抗条件的测试。
-2. 语义忠实——真实入口证据是否支持实现:每条测试是否断言了其 scenario 的行为,还是只共享 ID 却断言更弱的东西;被替代的旧 owner 有没有"它仍存活就会失败"的断言;证据摘要自己点名的那些未覆盖边界,每一条真的可以接受吗,还是那条就是缺陷。
+2. 语义忠实——真实入口证据是否支持实现:每条测试是否断言了其 scenario 的行为,还是只共享 ID 却断言更弱的东西;被替代的旧 owner 有没有"它仍存活就会失败"的断言;## Open 条目自己点名的那些未覆盖边界,每一条真的可以接受吗,还是那条就是缺陷。
 3. 范围是否超出目标或无法判断:需求、有效决定或安全责任之外的自加承诺与机制;一条清晰、可重复的证据链能否证明这个 change 完成——不能就说 SPLIT。
 【范围】只有以上计入结论行。风格、品味与锦上添花一律标 advisory。若你在只读沙箱里跑测试,降级的输出按沙箱伪象处理,不作为发现(R2)。
 【输出】新发现的实质问题(描述 / 风险 / 修复建议);你查过与没查过哪些风险面;advisory 单列。落到 apriori/changes/<change>/review/<family>-v{N}.md。
@@ -381,7 +373,7 @@ change 需要的其他任何东西——一张草稿、一幅图、给人看的�
 > 本节的一切都**由人执行**。agent 绝不可执行或模拟 `/goal`(R3)。架构与注意事项见手册 §4.10。
 > **两个循环、两个上界。** *评审轮次*由派生循环按 family 治理(§1 R4 / `gate` C8);*实现与测试循环*的最坏情况是固定的 **25 轮**,写在下面的配方文本里。`process-config.md` 两个都不配置。
 
-**Specify 循环(只在所有者要求提前判断某个具体方案、或需求仍有实质不确定性时才跑——`standard` 默认直接进入 Build & Test):**
+**Specify 循环(只在所有者要求提前判断某个具体方案、或需求仍有实质不确定性时才跑——默认直接进入 Build & Test):**
 ```text
 /goal "Goal: apriori/changes/<change>/specs/ holds the behavior contract and the latest review verdict line is 'VERDICT: no major issues, ready to proceed to execution'. No round cap — §1 R4's derived loop governs: still revising after round 2, stop and report instead of opening round 3.
 Each round:
@@ -393,8 +385,8 @@ Stop on 'VERDICT: no major issues, ready to proceed to execution', on 'VERDICT: 
 
 **Build & Test 循环:**
 ```text
-/goal "Goal — ALL must hold: `npm test` exits 0 (naming a test with its scenario ID is a suggestion, never mandatory); lint/static analysis green (where configured); (UI projects only) the Playwright E2E suite passes and screenshot diffs are within threshold; every ## Evidence row in the flow-state is filled in; AND `apriori gate --change <change> --review-ready --test-cmd \"npm test\"` exits 0. Safety bound: 25 turns.
-Turn 1: derive a failing test that proves every scenario's behavior with real evidence (one parametrized test may cover a scenario's whole examples table; naming it with the scenario ID is a suggestion, never mandatory), and SHOW the failing run. Each later turn: implement the next scenario, then run `npm test` (and the Playwright run for UI projects) and SHOW the output so the result is in the transcript. When the code is complete, fill in the ## Evidence rows and run the review-ready check.
+/goal "Goal — ALL must hold: `npm test` exits 0 (naming a test with its scenario ID is a suggestion, never mandatory); lint/static analysis green (where configured); (UI projects only) the Playwright E2E suite passes and screenshot diffs are within threshold; every ## Open item in the flow-state carries a stable id (`- <ID>: <text>`) and says what is still unverified; AND `apriori gate --change <change> --review-ready --test-cmd \"npm test\"` exits 0. Safety bound: 25 turns.
+Turn 1: derive a failing test that proves every scenario's behavior with real evidence (one parametrized test may cover a scenario's whole examples table; naming it with the scenario ID is a suggestion, never mandatory), and SHOW the failing run. Each later turn: implement the next scenario, then run `npm test` (and the Playwright run for UI projects) and SHOW the output so the result is in the transcript. When the code is complete, update ## Open and run the review-ready check.
 Stop when every condition holds. If turn 25 ends with any condition still unmet, STOP anyway and report the failing evidence — which conditions failed, plus the last test output. Reaching the bound is a stopped loop for the human to judge, NEVER a pass."
 ```
 > 纯文档项目:把 `npm test` 换成 `apriori check`,去掉 Playwright 那一条。
@@ -409,7 +401,7 @@ Stop when all of it holds, or immediately if the verdict is 'VERDICT: escalate'.
 **你亲自决定的事(只有四件,再没有别的):**
 
 1. **一次 escalation** —— 一条 `VERDICT: escalate`,或某个 family 到了第 5 轮。`apriori status --change <name> --escalation` 打印它并以 3 退出。用 `gates:` 里的 `reframe <family> round <n> <split|tests|redo|accept-risk> — <理由>` 回答。要升级标准,绝不悄悄降低它。
-2. **关键证据仍为 `blocked`** —— 把证据做便宜、拆小 change、或在 `gates:` 里接受风险。接受它并不会让这个 change 变成 `fast`。
+2. **无法解决的 `## Open` 条目** —— 把证据做便宜、拆小 change、或在 `gates:` 里接受风险(`evidence-accept <ID>`)。接受它只结清那一条条目,别无其他。
 3. **每一次外部副作用**(§1)—— 一次性、点名、原文记录。任何一揽子授权都永不覆盖它。
 4. **放弃** —— 只凭你的一句话。
 

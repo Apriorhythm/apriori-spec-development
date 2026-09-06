@@ -22,7 +22,7 @@ Confirms tests actually ran with no real failure. UNBOUND, a non-failing ORPHAN,
 
 ## gate — per in-flight change
 
-One exit code over the mechanical exit conditions of a change: stage-aware binding verify, tasks all checked, legal flow-state, clean ledger, verdict evidence, KB freshness. `PASS` covers the mechanical face only — human gates remain human.
+One exit code over the mechanical exit conditions of a change: stage-aware binding verify, legal flow-state, verdict evidence, KB freshness, review-loop convergence, and the state's open items (every `## Open` item accepted by the owner or closed). Nothing reads a task list or an issue ledger. `PASS` covers the mechanical face only — human gates remain human.
 
 ```yaml
 - name: apriori gate

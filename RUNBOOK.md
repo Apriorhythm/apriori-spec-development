@@ -46,8 +46,8 @@ cd your-project && apriori init  # interactive: pick the AI tools to configure
 
 **Session start (agent, every session):**
 
-1. Run `apriori status --change <name>` — phase, mode, escalation, the derived review-loop state.
-2. Read `apriori/changes/<change>/flow-state.md`. If it doesn't exist and you were asked to start a change: run `apriori new <change>`, pick the mode (§2), fill in the state (§3), then begin at **Ground**.
+1. Run `apriori status --change <name>` — phase, open items, escalation, the derived review-loop state.
+2. Read `apriori/changes/<change>/flow-state.md`. If it doesn't exist and you were asked to start a change: run `apriori new <change>`, fill in the state (§3) — §2 says what a change owes — then begin at **Ground**.
 3. Continue from the state's first `## Next` entry. The state file is authoritative — never reconstruct progress from memory or guesswork.
 4. Read a runbook section only when `status`, `## Next`, a blocked command, or an uncertain fact points you there. There is no default reading list — never preload the full runbook, and never read a section "just in case".
 
@@ -56,7 +56,7 @@ cd your-project && apriori init  # interactive: pick the AI tools to configure
 **Kickoff prompt (human — copy and fill in):**
 
 ```text
-Follow the apriori runbook (apriori/runbook.md) for change <change-name>, mode <fast|standard> (unsure: standard).
+Follow the apriori runbook (apriori/runbook.md) for change <change-name>.
 Run `apriori status --change <change-name>`, read apriori/changes/<change-name>/flow-state.md, and continue from its first `## Next` entry. Read a runbook section only when status, Next, a blocked command, or an uncertain fact points there — never preload the full runbook.
 (If the artifact root is externalized: artifact-root=<path>. Otherwise omit — project root.)
 Advance ONLY to the next point where I have to decide (§1 R1), then stop and report.
@@ -79,13 +79,13 @@ Advance ONLY to the next point where I have to decide (§1 R1), then stop and re
 **R1 — Stop when a human has to decide, and only then.** There are exactly four:
 
 1. **An escalation.** A reviewer returned `VERDICT: escalate`, or a review family reached round 5. `apriori status --change <name> --escalation` prints it and exits 3.
-2. **Critical evidence that is `blocked`.** §6's three exits are the owner's: make the evidence cheaper, split the change, or accept the risk. Nothing else opens it.
+2. **An `## Open` item that cannot be resolved.** The three exits are the owner's: make the evidence cheaper, split the change, or accept the risk (`evidence-accept <ID>` in `gates:`). Nothing else opens it.
 3. **An external side effect** (the hard rule below). Never inside any blanket.
 4. **Abandonment.** The human's word alone.
 
 At a stop: update the state file, report — phase, reviewer verdict lines **verbatim**, the open substantive issues, the decision you need — then stop. Never decide it yourself; never treat "the human hasn't answered" as approval. **There is no consolidation authorization** — a pre-authorization to keep working never removes the report.
 
-> An owner decision is recorded **verbatim** in `gates:`, one entry per decision, and it is **one-shot**: it settles exactly the thing it names and never inherits to the next one of its kind. `apriori gate` and `apriori archive` machine-check that: an accepted evidence risk needs a `gates:` entry naming that row, and a round-5 escalation needs both the recorded decision AND an explicit `--force`. A decision an agent appended by itself is never enough.
+> An owner decision is recorded **verbatim** in `gates:`, one entry per decision, and it is **one-shot**: it settles exactly the thing it names and never inherits to the next one of its kind. `apriori gate` and `apriori archive` machine-check that: an accepted open item needs a `gates:` entry naming its id, and a round-5 escalation needs both the recorded decision AND an explicit `--force`. A decision an agent appended by itself is never enough.
 
 ### External side effects (hard rule)
 
@@ -117,18 +117,15 @@ ANY operation that mutates state outside the local repository/workspace requires
 
 ---
 
-## 2. Pick the Mode (once, at kickoff)
+## 2. What a Change Owes
 
-| Mode | When | What runs |
-|---|---|---|
-| **fast** | A reproducible defect, a local fix, and no public contract / data shape / permission / deploy / cross-system surface touched | reproduce → fix → regression → **one** independent review |
-| **standard** | Everything else | evidence proportional to the risks actually hit — never more documents, never more rounds |
+What a change owes is **evidence proportional to the risks it actually hits** — never more documents, never more rounds. There is no mode to pick: `mode:` in the state file is optional and inert since 6.2, and nothing decides anything by it.
 
-The mode is a question about blast radius, not a size estimate. **These situations must be standard** — migration / schema / DDL · transactions or locks · permission or auth · external configuration · public API · cross-repo reference · a new route or page. One of them is mechanical: when the delta declares `## MODIFIED` / `## REMOVED` / `## RENAMED Requirements`, `gate`, `archive` and `status` judge the change as **standard** and print the reason (`contract-mutation: <file> <op> '<requirement>'`). Every other situation on that list needs your product's routes, schema, auth or deploy config, and the CLI reads none of them — **`fast` on one of those is still a rule only you can keep.** Re-ask after every substantial diff: a change that starts fast and grows a migration is standard from that moment on.
+**Be careful when the change touches any of these** — migration / schema / DDL · transactions or locks · permission or auth · external configuration · public API · cross-repo reference · a new route or page. Each is a risk that wants real evidence, and each one you cannot verify becomes an `## Open` item (§3) until it is resolved or the owner accepts it. One of them is mechanical: when the delta declares `## MODIFIED` / `## REMOVED` / `## RENAMED Requirements`, `gate`, `archive` and `status` report the signal (`contract-mutation: <file> <op> '<requirement>'`) — information, not a demand. Every other item on that list needs your product's routes, schema, auth or deploy config, and the CLI reads none of them — **naming those risks is still a rule only you can keep.** Re-ask after every substantial diff: a change that starts local and grows a migration owes migration evidence from that moment on.
 
-**Neither mode may drop the one independent review.** A change with no completed review round is refused by `gate` (C8) and `archive` (R4). **The review must also have CLOSED — in either mode.** If a family's **latest** round still says `gaps found`, `escalate`, or a positive `N issues open`, the change is refused; a round-1 revise answered by a round-2 accept has converged. `--force` cannot buy a review, and neither can a symlinked or unreadable evidence file.
+**No change may drop the one independent review.** A change with no completed review round is refused by `gate` (C8) and `archive` (R4). **The review must also have CLOSED.** If a family's **latest** round still says `gaps found`, `escalate`, or a positive `N issues open`, the change is refused; a round-1 revise answered by a round-2 accept has converged. `--force` cannot buy a review, and neither can a symlinked or unreadable evidence file.
 
-What `fast` reduces is **process**: reproduce → fix → regression → one independent review, with no Specify loop of its own. It does not reduce evidence, and it does not reduce the review. **`standard` defaults to that same shape: one final independent review, covering spec, code and tests together.** A separate Specify-phase spec-review loop is not run by default; it is added only when the owner asks for an early judgment on a specific approach, or the requirement itself is still substantially uncertain after Ground — recorded as a `decision` in `## Reality Check`.
+The default shape is the same for every change: reproduce or specify → build → one final independent review covering spec, code and tests together. A separate Specify-phase spec-review loop is not run by default; it is added only when the owner asks for an early judgment on a specific approach, or the requirement itself is still substantially uncertain after Ground — recorded as a `decision` in `## Reality Check`.
 
 ---
 
@@ -140,7 +137,6 @@ What `fast` reduces is **process**: reproduce → fix → regression → one ind
 
 ```markdown
 change: <change-name>
-mode: fast | standard   # §2 picks it; a contract-mutating delta upgrades fast to standard mechanically.
 lineage: <target branch/line + its merge taboo, e.g. "v2 (never merge to main)">
                         # a lineage conflict discovered mid-change is an immediate stop
 phase: ground | specify | build | review | done | abandoned
@@ -164,29 +160,27 @@ artifact-root: .        # optional; default = project root. Applies ONLY to the 
 - observed: <a fact you read or ran> — <path / command / response / screenshot>
 - decision: <what the requirement or the owner decided>
 
-## Evidence              # one row per §6 risk this change actually hits — NO rows is a refusal
-- <risk>: done | blocked | owner-accepted | n/a — <the command or artifact pointer, one line — never a retelling of the implementation or tests>
-                        # `fixed`, `resolved`, `closed`, `verified`, `pass` and `passed` are read as `done`.
-                        # `blocked` blocks delivery (gate C9, archive R5). `owner-accepted`
-                        # needs the owner's OWN decision, in the closed gates: grammar
-                        #   - <YYYY-MM-DDTHH:MM> owner: evidence-accept <this row's id> — <reason>
-                        # (revoke by appending evidence-accept-revoke <id> — <reason>; last wins).
-                        # `producer:`/`note:`, no timestamp, no em dash, no reason, or a
-                        # near-miss id authorize NOTHING — you cannot accept your own risk.
-                        # A MUTATING delta (## MODIFIED/REMOVED/RENAMED) makes a row named
-                        # exactly `contract-mutation` owe done-or-accepted; `n/a` is refused.
-                        # `standard` owes one substantive row that is NOT `producer-diff`;
-                        # `fast` with no machine risk may answer with C1 + producer-diff.
-                        # `producer-diff` is the reserved row for "I read the whole diff,
-                        # known P0/P1 zero"; review-ready looks for it.
-
-## Open                  # substantive issues nobody has closed yet — one line each; delete the line on close, never a resolution history
+## Open                  # substantive unresolved items — one line each, stable id first; delete the line on close, never a resolution history
+- R-01: could not verify restart recovery in the target runtime; this delivery still depends on that evidence.
+- R-02: <a defect the review found and nobody has closed — one line, never a retelling of the implementation or tests>
+                        # An item is PENDING until the owner accepts it: it blocks delivery
+                        # (gate C9, archive R5) and is never forceable. The owner's OWN decision,
+                        # in the closed gates: grammar below, settles ONE item by its id.
+                        # An accepted item does not block, but stays here and is reported as
+                        # "accepted, still present" until the risk is actually resolved.
+                        # A line without an id is still an item: it blocks and cannot be accepted.
+                        # A duplicated id is refused, both lines named. An empty section owes nothing.
 
 ## Next                  # at most THREE; the first is the resume point after a crash — the next step only, never a task list or history
 - <one concrete action>
 
 gates:                  # append-only log of human decisions
   - <YYYY-MM-DDTHH:MM> owner: <the human's decision, verbatim>
+  - <YYYY-MM-DDTHH:MM> owner: evidence-accept R-01 — <the owner's verbatim reason>
+                        # the acceptance exit: `evidence-accept <ID>` settles that one item
+                        # (revoke by appending evidence-accept-revoke <ID> — <reason>; last wins).
+                        # `producer:`/`note:`, no timestamp, no em dash, no reason, or a
+                        # near-miss id authorize NOTHING — you cannot accept your own risk.
                         # two labels: `owner` (a human decided) and `note`
                         # (non-decision events: degradations, closeout, …)
                         # a mechanical check's `note:` stays one short command+result line
@@ -206,7 +200,7 @@ Update it immediately after each phase change and each review round; append ever
 |---|---|---|
 | **Ground** | Check the real code, schema, interfaces, prototype, config, deploy topology and runtime. Every fact is `observed` (read or executed, with the path/command/response), `decision` (from the requirement or the owner), or `assumption` (unproven) | the `## Reality Check` holds no assumption that the work depends on |
 | **Specify** | Write the minimal behavior contract and its acceptance criteria — and split the change first if one evidence chain cannot prove it | the delta specs state the behavior, each scenario carrying a stable ID |
-| **Build & Test** | Get the failing evidence first, then implement and run the real tests that match the risks actually hit | tests green, `apriori verify` GREEN, the §6 evidence rows filled in |
+| **Build & Test** | Get the failing evidence first, then implement and run the real tests that match the risks actually hit | tests green, `apriori verify` GREEN, `## Open` holds only what is genuinely unresolved, each line with a stable id |
 | **Review & Deliver** | Once review-ready, one independent review; deliver when the substantive issues are closed | verdict accepted, `apriori gate` PASS, archived |
 
 **Materials are produced on demand.** There is no requirement doc, no proposal, no design doc, no gap report and no task list to fill in. Write a document when a document is the cheapest way to be right, and not because a phase asked for one.
@@ -220,7 +214,6 @@ Update it immediately after each phase change and each review round; append ever
 | Living spec store | `apriori/specs/` |
 | Review summary | `apriori/changes/<change>/review/<family>-v{N}.md` |
 | Reviewer raw output | `apriori/changes/<change>/review/<stem>-raw.* (the stem = its review doc)` |
-| Issue ledger — OPTIONAL | `apriori/changes/<change>/review/issues.md` |
 | Knowledge base (TRUTH-DOC) | `apriori/truth/<module>.md` — a fence-outside line-start `source-commit: <ref>` stamp required (covers the Contract section only, §5 P5); for an aliased filename or non-`lib/` code, declare `store-module:` / `source-files:` in the header region |
 
 Anything else a change needs — a scratch note, a diagram, a one-pager for a human — is the producer's call and carries no protocol weight.
@@ -240,7 +233,7 @@ When the human asks to discuss an idea that is not yet stateable (via **P6**), o
 ### Ground — check the real facts before proposing anything
 
 - **Do:** the **Ground action** with **P1**. Read the real code, schema, interfaces, prototype, config, deploy topology and runtime this change actually depends on — against the stated goal, its entry point, the existing owner, the highest common test boundary and the minimal command that verifies it — rather than sweeping the repo. **Out:** the `## Reality Check` section of the flow-state, and nothing else. Only what later actions depend on goes there.
-- **Three kinds only.** `observed` carries the path, command, response or screenshot location that produced it. `decision` names who decided. `assumption` is a fact nobody has proven — **verify it before implementing**, and if you cannot, it becomes an `## Evidence` row and follows §6.
+- **Three kinds only.** `observed` carries the path, command, response or screenshot location that produced it. `decision` names who decided. `assumption` is a fact nobody has proven — **verify it before implementing**, and if you cannot, it becomes an `## Open` item (`- <ID>: <text>`) until it is resolved or the owner accepts it.
 - **Product facts may never be written from memory.** Routes, schema, auth, config, deploy topology: read them or list them as `assumption`. When a fact will not yield to reading, probe code is allowed — thrown away afterwards; what it produces is an `observed` line.
 - **Exit:** nothing the work depends on is still an `assumption`.
 
@@ -263,16 +256,16 @@ KB docs have two sections with **opposite truth directions** (§5 P5): `Contract
 
 ### Build & Test — failing evidence first, then the real tests
 
-- **Do, in order:** (1) a failing test that proves every scenario's behavior with real evidence — a Scenario's examples table may share ONE parametrized test, so the bar is "every scenario covered," never "one test per ID"; naming a test with its scenario ID is a suggestion, never mandatory — show the failing run; (2) implement with **P2**; (3) run until green; (4) `apriori verify` GREEN; (5) fill in the `## Evidence` rows for every §6 risk this change actually hits.
+- **Do, in order:** (1) a failing test that proves every scenario's behavior with real evidence — a Scenario's examples table may share ONE parametrized test, so the bar is "every scenario covered," never "one test per ID"; naming a test with its scenario ID is a suggestion, never mandatory — show the failing run; (2) implement with **P2**; (3) run until green; (4) `apriori verify` GREEN; (5) update `## Open`: delete what you resolved, and give every risk this change hits and has not resolved its own line with a stable id (`- <ID>: <text>`).
 - **The spec-runner gate (`apriori verify`).** Mid-change, use the projected form: `apriori verify --change <name> --test-cmd "<your test command>"` — it applies the delta to the store in memory and binds scenarios against that. Post-archive, the plain form `apriori verify --specs apriori/specs --test-cmd "…"`. Both report BOUND-GREEN / BOUND-RED / UNBOUND / ORPHAN / UNIDENTIFIED. **GREEN (exit 0) = within this change's scope no bound scenario's test fails, no failure is unattributable, and no ID is duplicated across boundaries; UNBOUND, a non-failing ORPHAN and UNIDENTIFIED are advisory only and never block** — do not write TAP mergers or ID promoters for them. Exit 1 = gaps; exit 2 = the run itself is untrustworthy (missing spec paths, zero scenarios, non-TAP output, test-command crash, merge conflict, diverged base stamp, malformed delta) — **a broken or vacuous run is never GREEN**. `apriori gate`'s C1 reads the identical result. The diagnostic classes are detailed in concepts.
-- **Run the tests the risks call for, not a matrix.** There is no per-project-type evidence table: what a change owes is one `## Evidence` row per §6 risk it actually hits. Scenario IDs bind to `apriori verify` through unit/component tests — verify's gate speaks TAP, which Playwright does not emit, so an E2E/visual layer sits **on top of** the binding gate as an additional exit condition and its visual checks must emit a textual pass/fail. Implementation-time screenshots go to the gitignored `apriori/tmp/`; visual-regression baseline images belong to the project's own test suite. Where no executable instrument exists for a risk (docs-only projects: `apriori check` stands in for `npm test`), the independent review is the instrument there.
+- **Run the tests the risks call for, not a matrix.** There is no per-project-type evidence table: what a change owes is the evidence its §6 risks actually call for, and whatever stays unverified is an `## Open` item. Scenario IDs bind to `apriori verify` through unit/component tests — verify's gate speaks TAP, which Playwright does not emit, so an E2E/visual layer sits **on top of** the binding gate as an additional exit condition and its visual checks must emit a textual pass/fail. Implementation-time screenshots go to the gitignored `apriori/tmp/`; visual-regression baseline images belong to the project's own test suite. Where no executable instrument exists for a risk (docs-only projects: `apriori check` stands in for `npm test`), the independent review is the instrument there.
 - **Self-added-promise discipline.** A self-added promise with no established requirement, valid decision or actual safety responsibility behind it — hard guarantees such as "always / under concurrency / crash-durable / atomic", and mechanisms beyond the requirement — is retracted or narrowed to what is actually verified, by default. An established guarantee needs a test that injects the adversarial condition on its **success path**; for any continue/skip/silently-ignored branch, re-check the spec for whether the failure state must be user-visible.
-- **Exit:** tests green; `apriori verify` GREEN (docs-only: `apriori check` green); lint/static analysis green (where configured); every §6 risk this change hits carries an `## Evidence` row. Design infeasible or the requirement itself wrong → back to Specify or Ground (update the state file and tell the human).
+- **Exit:** tests green; `apriori verify` GREEN (docs-only: `apriori check` green); lint/static analysis green (where configured); `## Open` holds only what is genuinely unresolved, each line with a stable id. Design infeasible or the requirement itself wrong → back to Specify or Ground (update the state file and tell the human).
 
 ### Review & Deliver — review-ready, one independent review, then archive
 
-- **Review-ready comes first.** Run `apriori gate --change <name> --review-ready --test-cmd "…"`. It writes nothing and answers THREE items from facts the run already produced: compilation and tests really executed (never `BUILD SUCCESS` with zero tests); the §6 evidence either run or explicitly `blocked` / `owner-accepted`; and the producer's own full-diff check — the reserved `producer-diff` row at `done` or owner-accepted (`n/a` says there was no diff to read). **Not ready is not a review round.** Go back to Build & Test.
-- **Then one independent review** (**P3**, R2). The reviewer's default input is exactly four things: the **behavior contract**, the **diff**, the **evidence summary** and the **boundaries still uncovered**; it may read the whole repo, callers, config and prototypes on its own. Raw review output, closed issues and other changes' documents are not default inputs. The reviewer's output keeps three things: newly found substantive issues; which risk surfaces it did and did not examine; and one of `ACCEPT | REVISE | ESCALATE`. **The reviewer does not do the producer's job** — it is not there to compile, add tests or rewrite the approach; if it has to, the change was not review-ready.
+- **Review-ready comes first.** Run `apriori gate --change <name> --review-ready --test-cmd "…"`. It writes nothing and answers TWO items from facts the run already produced: compilation and tests really executed (never `BUILD SUCCESS` with zero tests); and the `## Open` section is readable — every item carries a stable id and no id is duplicated. A pending item does not stop review-ready: it is what the review is for. **Not ready is not a review round.** Go back to Build & Test.
+- **Then one independent review** (**P3**, R2). The reviewer's default input is exactly four things: the **behavior contract**, the **diff**, the **`## Open` items** and the **boundaries still uncovered**; it may read the whole repo, callers, config and prototypes on its own. Raw review output, closed issues and other changes' documents are not default inputs. The reviewer's output keeps three things: newly found substantive issues; which risk surfaces it did and did not examine; and one of `ACCEPT | REVISE | ESCALATE`. **The reviewer does not do the producer's job** — it is not there to compile, add tests or rewrite the approach; if it has to, the change was not review-ready.
 - **KB update is a precondition, not a closeout step — and it is owed only when** `apriori/truth/<module>.md` already covers the touched module, or the owner/change explicitly decided to persist a new durable contract. Never fabricate one just to have one at closeout. When owed, before review-ready: commit the implementation and point `source-commit` at it; update `apriori/truth/<module>.md` — Contract section from the final implementation, Decisions section appending this change's new decisions. The reviewer's diff already carries this KB diff; `apriori archive` never touches `apriori/truth/`.
 - **Then archive — directly, not a dry-run.** ACCEPT, plus no product-code or test change since review-ready, means the normal close is four logical actions, no more: (1) land the reviewer's output as one self-contained review file, plus a short flow-state update; (2) run `apriori check`, then a full `apriori gate --change <name>` (not `--review-ready`), which binds C1 on these still-unchanged inputs; (3) run `apriori archive --change <name> --write --changes-dir apriori/changes` directly — `--write` runs the same preflight a dry-run would, so dry-running first re-checks nothing; archive merges the delta specs into `apriori/specs` and moves the bundle, and nothing else; (4) commit the closeout locally, and stop. The atomic move carries the whole bundle to `apriori/changes/archive/<stamp>-<change>/`.
 - **An archive is not a release.** `apriori archive` declares only the state it just judged (whether the implementation and the critical evidence are complete, and whether `delivery:` is released or still pending external acceptance); it never poses as a release or external acceptance. **The archived bundle is frozen: nothing, including `phase:`, is written back to it.** A defect found afterwards becomes a short outcome note or a new change.
@@ -298,7 +291,7 @@ The human changes their mind: abandonment is a legal exit from any phase — on 
 
 **Single-file evidence's own vocabulary.** A self-contained doc (§1 R2) closes with one of three canonical full-line forms, matched whole and case-insensitively: `VERDICT: ACCEPT`, `VERDICT: REVISE`, `VERDICT: ESCALATE`. The phrasings in the table above stay legal on either format. The line must match whole: an ACCEPT followed by a qualifying clause, or a REVISE whose reason rides the machine line, is refused — the reason belongs in the document body, never on the machine line.
 
-**The issue ledger is OPTIONAL — none by default.** The state's `## Open` section is where a change's open substantive issues live. When a change keeps `review/issues.md`, the status vocabulary is `open` / `fixed` / `rejected + reason` / `verified` / `rejected-verified + reason` / `waived + reason` / `advisory-acked`. The reviewer flips `fixed → verified` and `rejected → rejected-verified` (keeping the original reason plus a concurrence reference); the producer flips `open → fixed|rejected` and never terminalizes its own findings; only a human sets `waived`, with a `gates:` entry carrying the row's ID and the word "waived". A re-found issue reopens its old ID — reopened is an event, not a status. **Exactly one thing blocks: a row still reading `open`.** Every other bookkeeping problem is reported as a note; such notes never refuse a delivery. Only correctness, security and stated-requirement gaps become rows at all; everything else is `advisory`, and that label is the reviewer's exclusive call.
+**There is no issue ledger.** The state's `## Open` section is where a change's open substantive issues live — one line each, a stable id first — and it is the only place `gate`, `archive` and `status` read them (6.2: `review/issues.md` is never opened, and nothing in it blocks or is reported). A re-found issue reopens its old id — reopened is an event, not a new line. **Exactly one thing blocks: an item nobody has accepted.** An accepted item is reported as still present and never deleted by a tool; the producer deletes the line when the risk is actually resolved. Only correctness, security and stated-requirement gaps become items at all; everything else is `advisory`, and that label is the reviewer's exclusive call.
 
 ### P1 — Ground (optional kickoff)
 
@@ -311,7 +304,7 @@ Write the ## Reality Check section of apriori/changes/<change>/flow-state.md, an
 * assumption: <not proven yet> — verify it before implementing
 Never write a product fact from memory: routes, schema, auth, config and deploy topology are read, or they are assumptions.
 A probe is allowed to settle a fact that will not yield to reading — thrown away afterwards, never a deliverable. Its product is an `observed` line.
-Stop when nothing the work depends on is still an assumption. Anything you could not verify becomes an ## Evidence row and follows §6.
+Stop when nothing the work depends on is still an assumption. Anything you could not verify becomes an ## Open item (`- <ID>: <text>`) and stays there until it is resolved or the owner accepts it.
 ```
 
 ### P2 — producer: the minimal contract, then review-ready
@@ -321,9 +314,9 @@ Stop when nothing the work depends on is still an assumption. Anything you could
 * Split first: this change carries ONE main result and ONE main evidence chain. If it spans boundaries needing different real environments, forces a reviewer between unrelated contexts, or keeps enlarging another area's review surface — split now and record that decision in ## Reality Check.
 * One scenario per user-visible output, each with a stable ID (e.g. KV-03) and testable acceptance; state what is out of scope.
 * Any external shared state (Redis / DB field / global singleton / in-memory cache) describes three moments: init / runtime update / cleanup-invalidation.
-* List, in ## Evidence, every §6 risk this change hits.
+* List under ## Open, one id'd line each, every §6 risk this change hits and has not yet resolved.
 [Build & Test] Derive a failing test that proves every scenario's behavior with real evidence — one parametrized test may cover a scenario's whole examples table, so the bar is every scenario covered, not one test per ID — and SHOW the failing run. Then implement — the scenarios are the work; there is no task list. Run the project's linter/static analysis where configured. For any continue/skip/silently-ignored branch, re-check the spec for whether the failure state must be user-visible. When a new path takes over, name the old owner and its fate (removed, disabled, migrated, or coexisting), prove it in one user-flow test at the highest common container with an assertion that fails if the fate is untrue, and delete only the low-level tests that test replaces. A self-added promise with no established requirement, valid decision or actual safety responsibility behind it is retracted or narrowed by default.
-[Review-ready] Fill in every ## Evidence row (done / blocked / owner-accepted / n/a) with what you actually ran; reclaim the probes, temporary files and dead code this change left behind; then read the COMPLETE diff and declare `- producer-diff: done — <what you checked>` with known P0/P1 at zero.
+[Review-ready] Update ## Open: delete what you resolved and say, on each remaining line, what you ran and what is still unverified — every line with a stable id (`- <ID>: <text>`); reclaim the probes, temporary files and dead code this change left behind; then read the COMPLETE diff with known P0/P1 at zero.
 Stop, and run `apriori gate --change <change> --review-ready --test-cmd "…"` before asking for review. Not ready is not a review round.
 ```
 
@@ -334,12 +327,12 @@ You are an independent reviewer. Judge the product, not the paperwork.
 [Input] — this is your DEFAULT context, and it is all of it:
 * the behavior contract: apriori/changes/<change>/specs/
 * the diff
-* the evidence summary and the boundaries still uncovered: apriori/changes/<change>/flow-state.md, plus `apriori gate --change <change> --json`
+* the ## Open items and the boundaries still uncovered: apriori/changes/<change>/flow-state.md, plus `apriori gate --change <change> --json`
 You may read the whole repo, its callers, config and prototypes on your own initiative. Do NOT ask for raw review transcripts, closed issues, or other changes' documents.
 You are NOT here to compile the code, to add the producer's missing tests one by one, or to rewrite the approach. If any of that is needed, the change was not review-ready — say so and stop.
 [Three questions]
 1. Does it violate established behavior or an actual safety constraint: behavior the contract requires that the code does not implement, or implements only on the happy path; where external input or permissions are touched, unvalidated input, missing authz, secrets in logs, injection surfaces; an established hard guarantee with no test injecting the adversarial condition on its success path.
-2. Semantic faithfulness — does real entry-point evidence support the implementation: does each test assert its scenario's behavior, or share its ID while asserting less; does a replaced owner have an assertion that fails if it is still live; the uncovered boundaries the evidence summary itself names — is each genuinely acceptable, or is it the defect.
+2. Semantic faithfulness — does real entry-point evidence support the implementation: does each test assert its scenario's behavior, or share its ID while asserting less; does a replaced owner have an assertion that fails if it is still live; the uncovered boundaries the ## Open items themselves name — is each genuinely acceptable, or is it the defect.
 3. Does the scope exceed the goal, or defy judgment: self-added promises and mechanisms beyond the requirement, valid decisions or safety responsibility; can one clear, repeatable evidence chain prove this change done — if not, say SPLIT.
 [Scope] Only the above count toward the verdict. Style, taste and nice-to-haves — label advisory. If you run tests in a read-only sandbox, treat degraded output as a sandbox artifact, not a finding (R2).
 [Output] The newly found substantive issues (description / risk / suggested fix); which risk surfaces you did and did not examine; advisories separately. Land it at apriori/changes/<change>/review/<family>-v{N}.md.
@@ -385,7 +378,7 @@ On my approval, run `apriori new <change>` and write the crystallized understand
 > Everything in this section is **run by the human**. The agent must never execute or simulate `/goal` (R3). Architecture and caveats: handbook §4.10.
 > **Two loops, two bounds.** *Review rounds* are governed per family by the derived loop (§1 R4 / `gate` C8); *the implement-and-test loop* is bounded by a fixed worst-case **25 turns**, written into its recipe text below. `process-config.md` configures neither.
 
-**Specify loop (run only when the owner asks for an early judgment on a specific approach, or the requirement is still substantially uncertain — `standard`'s default is to skip straight to Build & Test):**
+**Specify loop (run only when the owner asks for an early judgment on a specific approach, or the requirement is still substantially uncertain — the default is to skip straight to Build & Test):**
 ```text
 /goal "Goal: apriori/changes/<change>/specs/ holds the behavior contract and the latest review verdict line is 'VERDICT: no major issues, ready to proceed to execution'. No round cap — §1 R4's derived loop governs: still revising after round 2, stop and report instead of opening round 3.
 Each round:
@@ -397,8 +390,8 @@ Stop on 'VERDICT: no major issues, ready to proceed to execution', on 'VERDICT: 
 
 **Build & Test loop:**
 ```text
-/goal "Goal — ALL must hold: `npm test` exits 0 (naming a test with its scenario ID is a suggestion, never mandatory); lint/static analysis green (where configured); (UI projects only) the Playwright E2E suite passes and screenshot diffs are within threshold; every ## Evidence row in the flow-state is filled in; AND `apriori gate --change <change> --review-ready --test-cmd \"npm test\"` exits 0. Safety bound: 25 turns.
-Turn 1: derive a failing test that proves every scenario's behavior with real evidence (one parametrized test may cover a scenario's whole examples table; naming it with the scenario ID is a suggestion, never mandatory), and SHOW the failing run. Each later turn: implement the next scenario, then run `npm test` (and the Playwright run for UI projects) and SHOW the output so the result is in the transcript. When the code is complete, fill in the ## Evidence rows and run the review-ready check.
+/goal "Goal — ALL must hold: `npm test` exits 0 (naming a test with its scenario ID is a suggestion, never mandatory); lint/static analysis green (where configured); (UI projects only) the Playwright E2E suite passes and screenshot diffs are within threshold; every ## Open item in the flow-state carries a stable id (`- <ID>: <text>`) and says what is still unverified; AND `apriori gate --change <change> --review-ready --test-cmd \"npm test\"` exits 0. Safety bound: 25 turns.
+Turn 1: derive a failing test that proves every scenario's behavior with real evidence (one parametrized test may cover a scenario's whole examples table; naming it with the scenario ID is a suggestion, never mandatory), and SHOW the failing run. Each later turn: implement the next scenario, then run `npm test` (and the Playwright run for UI projects) and SHOW the output so the result is in the transcript. When the code is complete, update ## Open and run the review-ready check.
 Stop when every condition holds. If turn 25 ends with any condition still unmet, STOP anyway and report the failing evidence — which conditions failed, plus the last test output. Reaching the bound is a stopped loop for the human to judge, NEVER a pass."
 ```
 > Docs-only projects: replace `npm test` with `apriori check`, drop the Playwright clause.
@@ -413,7 +406,7 @@ Stop when all of it holds, or immediately if the verdict is 'VERDICT: escalate'.
 **What you personally decide (there are four, and no others):**
 
 1. **An escalation** — a `VERDICT: escalate`, or a family at round 5. `apriori status --change <name> --escalation` prints it and exits 3. Answer with `reframe <family> round <n> <split|tests|redo|accept-risk> — <reason>` in `gates:`. Escalate the bar, never quietly lower it.
-2. **Critical evidence that is `blocked`** — make the evidence cheaper, split the change, or accept the risk in `gates:`. Accepting it does not make the change `fast`.
+2. **An `## Open` item that cannot be resolved** — make the evidence cheaper, split the change, or accept the risk in `gates:` (`evidence-accept <ID>`). Accepting it settles that one item, and nothing else.
 3. **Every external side effect** (§1) — one-shot, named, recorded verbatim. No blanket ever covers one.
 4. **Abandonment** — your word alone.
 

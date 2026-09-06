@@ -22,7 +22,7 @@
 
 ## gate —— 按在途变更
 
-把一个变更的机械退出条件合成一个退出码:阶段感知的绑定 verify、tasks 全勾、flow-state 合法、台账干净、verdict 证据、KB 新鲜度。`PASS` 只覆盖机械面——人工闸口仍归人。
+把一个变更的机械退出条件合成一个退出码:阶段感知的绑定 verify、flow-state 合法、verdict 证据、KB 新鲜度、评审循环收敛、以及状态里的 open 条目(每条 `## Open` 条目要么被所有者接受、要么已关闭)。不读任务清单,也不读问题台账。`PASS` 只覆盖机械面——人工闸口仍归人。
 
 ```yaml
 - name: apriori gate

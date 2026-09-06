@@ -65,13 +65,11 @@ apriori doctor --no-run
 apriori new hello
 cat > apriori/changes/hello/flow-state.md <<'EOF'
 change: hello
-mode: fast
 lineage: main
 phase: review
 delivery: released
 
-## Evidence
-- producer-diff: done — read the whole diff, known P0/P1 zero
+## Open
 
 gates:
   - 2026-01-01T00:00 note: quickstart demo

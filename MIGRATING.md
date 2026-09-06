@@ -2,7 +2,62 @@
 
 The 3.0.0 stability promise: CLI surface & flags, `--json` shapes, the delta format, the flow-state schema and the `apriori/` layout only break in a major. Everything below is either additive or a declared fail-closed tightening.
 
+## 6.2 code layer (Unreleased) — one mechanism of risk acceptance
+
+**What moved where.** The `## Evidence` row table, its status vocabulary (`done | blocked |
+owner-accepted | n/a` and the completion synonyms), the reserved `producer-diff` and
+`contract-mutation` rows, the `standard`-owes-one-row quota, the `mode:` upgrade and the issue
+ledger reader are gone. What remains is ONE mechanism, read by gate C9, archive R5, the archive
+declaration and `status` through one function:
+
+```markdown
+## Open                  # substantive unresolved items — one line each, stable id first
+- R-01: could not verify restart recovery in the target runtime; this delivery still depends on that evidence.
+- R-02: <a defect the review found and nobody has closed>
+
+gates:
+  - <YYYY-MM-DDTHH:MM> owner: evidence-accept R-01 — <the owner's verbatim reason>
+```
+
+An item is `- <ID>: <text>` (the id is one token in front of the colon — `R-01`, `data-schema`,
+`producer-diff` are all legal). It is PENDING until the owner records `evidence-accept <ID>` —
+the grammar, parser and last-write-wins revoke are exactly 6.0's — and a pending item blocks and
+is never forceable. An accepted item does not block, but it is reported as `accepted, still
+present` (gate detail, archive note, `status`) and nothing deletes it: remove the line when the
+risk is actually resolved. A line without an id is still an open item — it blocks and cannot be
+accepted (`give it a stable id to accept it, or close it`). Duplicate ids are refused, both lines
+named. An empty or absent section owes nothing: **the "no rows is a refusal" rule is gone.**
+
+**The legacy `## Evidence` section, in an in-flight bundle.** A row reading `blocked` blocks with
+`legacy Evidence row '<name>' is blocked — move it to ## Open as an item (or accept it via
+evidence-accept <name>)`; a row whose name already carries a valid acceptance is treated as an
+accepted item; every other row (`done`, `n/a`, `fixed`, an unfilled scaffold row, …) is ignored
+with one note. Move what is still unresolved to `## Open` and delete the section. Archived bundles
+are recorded, never re-judged — nothing to migrate there.
+
+**`mode:` is optional and inert.** Delete the line or leave it: absent is fine, `fast` and
+`standard` are accepted and echoed, anything else (the unfilled placeholder included) still blocks
+C3. There is no upgrade any more — a mutating delta is reported as `risk: contract-mutation: …`
+and demands nothing. `apriori new` writes no `mode:` line and no `## Evidence` section.
+
+**`--review-ready` has two items:** `tests` (C1 really ran) and `open` (every item carries a
+stable id, no id duplicated). A pending item does not fail it — that is what the review is for.
+The `evidence` and `producer-diff` items are gone; the JSON shape `{change, ready, items}` is
+unchanged, only the ids changed.
+
+**Compat placeholders, kept for `--json` shapes:** gate `C2` (`retired in 6.2 — nothing is
+read`) and `C4` (`ledger retired in 6.2 — open items live in ## Open`) stay in `checks[]` as
+`n/a` and read nothing; `status --json` keeps `openLedger` (always `[]`), `effectiveMode` (equal
+to `mode`, or `null`) and `evidence` (legacy rows only — `{rows:[], blocked:[], recorded:[]}`
+when there are none), and ADDS `openItems: [{id, text, accepted, acceptedAt}]`. `review/issues.md`
+and `tasks.md` are never opened. Archive readiness has no R2 and no R3; an `archive-force ledger`
+record is parsed and reported as `note: archive-force has nothing left to force in 6.2`, and
+`--force` still opens exactly one thing — an answered round-5 escalation.
+
 ## 6.0 slice 4 → slice 5 (Unreleased) — the artifact family is gone
+
+> **Read with the 6.2 section above:** the `## Evidence` rows, the ledger rule (R3 / C4) and the
+> mode upgrade described below were retired in 6.2. This section is kept as the 5.x → 6.0 record.
 
 **This is the subtraction the 6.0 blueprint is for.** 5.x demanded a requirement doc, a
 proposal, a design doc, a gap report and a task list of every change; the practices that fed

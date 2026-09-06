@@ -131,13 +131,13 @@ test('PR-08 the four phases and the four decision points bind in both editions',
   // §1 R1: exactly four human decisions, and no consolidation
   const r1en = EN.slice(EN.indexOf('**R1 —'), EN.indexOf('### External side effects'));
   assert.match(r1en, /An escalation/);
-  assert.match(r1en, /Critical evidence that is `blocked`/);
+  assert.match(r1en, /An `## Open` item that cannot be resolved/);
   assert.match(r1en, /An external side effect/);
   assert.match(r1en, /Abandonment/);
   assert.match(r1en, /There is no consolidation authorization/);
   const r1cn = CN.slice(CN.indexOf('**R1 ——'), CN.indexOf('### 外部副作用'));
   assert.match(r1cn, /升级\(escalation\)/);
-  assert.match(r1cn, /关键证据仍为 `blocked`/);
+  assert.match(r1cn, /无法解决的 `## Open` 条目/);
   assert.match(r1cn, /外部副作用/);
   assert.match(r1cn, /放弃\(abandon\)/);
   assert.match(r1cn, /不存在"整合授权"/);
@@ -215,12 +215,12 @@ test('PR-13 the reviewer default context is fixed, and it does not do the produc
   assert.match(p3en, /this is your DEFAULT context, and it is all of it/);
   assert.match(p3en, /the behavior contract/);
   assert.match(p3en, /the diff/);
-  assert.match(p3en, /the evidence summary and the boundaries still uncovered/);
+  assert.match(p3en, /the ## Open items and the boundaries still uncovered/);
   assert.match(p3en, /Do NOT ask for raw review transcripts, closed issues, or other changes' documents/);
   assert.match(p3en, /NOT here to compile the code, to add the producer's missing tests one by one, or to rewrite the approach/);
   assert.match(p3en, /the change was not review-ready/);
   assert.match(p3en, /implements only on the happy path/);
-  assert.match(p3en, /uncovered boundaries the evidence summary itself names/);
+  assert.match(p3en, /uncovered boundaries the ## Open items themselves name/);
   assert.match(p3en, /say SPLIT/);
   const p3cn = block(CN, /^### P3 —— 独立评审.*$/m);
   assert.ok(p3cn, 'CN P3 block present');
@@ -229,7 +229,7 @@ test('PR-13 the reviewer default context is fixed, and it does not do the produc
   assert.match(p3cn, /你\*\*不是\*\*来编译代码/);
   assert.match(p3cn, /根本没到 review-ready/);
   assert.match(p3cn, /只在 happy path 上实现的行为/);
-  assert.match(p3cn, /证据摘要自己点名的那些未覆盖边界/);
+  assert.match(p3cn, /## Open 条目自己点名的那些未覆盖边界/);
   assert.match(p3cn, /就说 SPLIT/);
 });
 
@@ -354,40 +354,35 @@ test('PR-17 external side effects require the principal\'s explicit authorizatio
   assert.match(CONCEPTS_CN, /永不授权外部副作用|绝不授权外部副作用|是数据.*不是授权/);
 });
 
-test('PR-18 the ledger vocabulary and the one blocking finding bind in both editions', () => {
+test('PR-18 there is no ledger: ## Open is the only home of open issues, and one thing blocks — in both editions', () => {
   const en = sectionBlock(EN, /^## 5\. Prompts$/m);
   assert.ok(en.length > 0, 'EN §5 block missing');
-  assert.match(en, /The issue ledger is OPTIONAL/);
+  assert.match(en, /There is no issue ledger/);
   assert.match(en, /`## Open` section is where a change's open substantive issues live/);
-  for (const re of [/open/, /fixed/, /\brejected\b/, /verified/, /rejected-verified/, /waived/, /advisory-acked/])
-    assert.match(en, re, String(re));
-  assert.match(en, /`open → fixed\|rejected`/);
-  assert.match(en, /only a human sets `waived`/);
-  assert.match(en, /never terminalizes its own findings/);
-  assert.match(en, /reopens its old ID/i);
-  assert.match(en, /reopened is an event, not a status/);
-  assert.match(en, /keeping the original reason/);
-  assert.match(en, /concurrence/i);
-  // exactly one blocking finding, and the bookkeeping list is explicitly non-blocking
-  assert.match(en, /Exactly one thing blocks: a row still reading `open`/);
-  assert.match(en, /never refuse a delivery/);
+  assert.match(en, /`review\/issues\.md` is never opened/);
+  assert.match(en, /reopens its old id/i);
+  assert.match(en, /reopened is an event, not a new line/);
+  assert.match(en, /Exactly one thing blocks: an item nobody has accepted/);
+  assert.match(en, /never deleted by a tool/);
+  // the retired vocabulary and its setters are gone with the reader
+  for (const dead of [/rejected-verified/, /advisory-acked/, /only a human sets `waived`/, /a row still reading `open`/])
+    assert.doesNotMatch(en, dead, String(dead));
   const cn = sectionBlock(CN, /^## 5\. 提示词$/m);
   assert.ok(cn.length > 0, 'CN §5 block missing');
-  assert.match(cn, /问题台账是可选的/);
-  for (const re of [/open/, /fixed/, /rejected-verified/, /verified/, /waived/, /advisory-acked/])
-    assert.match(cn, re, String(re));
-  assert.match(cn, /只有人能置 `waived`/);
-  assert.match(cn, /重开旧 ID/);
-  assert.match(cn, /重开是事件,不是状态/);
-  assert.match(cn, /只有一件事阻断:仍是 `open` 的行/);
-  assert.match(cn, /永不拒绝交付/);
+  assert.match(cn, /没有问题台账/);
+  assert.match(cn, /`review\/issues\.md` 永远不会被打开/);
+  assert.match(cn, /重开旧 id/);
+  assert.match(cn, /重开是事件,不是新的一行/);
+  assert.match(cn, /只有一件事阻断:没有人接受的条目/);
+  for (const dead of [/rejected-verified/, /advisory-acked/, /只有人能置 `waived`/, /仍是 `open` 的行/])
+    assert.doesNotMatch(cn, dead, String(dead));
+  // neither runbook lists the ledger file as an artifact any more
+  for (const doc of [EN, CN]) assert.doesNotMatch(doc, /\| .*issues\.md.* \|/);
   // concepts §7.0 mirrors it in both languages
-  assert.match(CONCEPTS, /rejected-verified/);
-  assert.match(CONCEPTS, /waived/);
-  assert.match(CONCEPTS, /Why exactly one finding blocks:\*\* a row still reading `open`/);
-  assert.match(CONCEPTS_CN, /rejected-verified/);
-  assert.match(CONCEPTS_CN, /waived/);
-  assert.match(CONCEPTS_CN, /为什么只有一件事阻断:\*\*仍是 `open` 的行/);
+  assert.match(CONCEPTS, /the CLI reads no ledger/i);
+  assert.match(CONCEPTS, /Why exactly one thing blocks:\*\* an `## Open` item nobody has accepted/);
+  assert.match(CONCEPTS_CN, /CLI 不读任何台账/);
+  assert.match(CONCEPTS_CN, /为什么只有一件事阻断:\*\*没有人接受的 `## Open` 条目/);
 });
 
 test('PR-21 the artifact family is gone from every live document', () => {

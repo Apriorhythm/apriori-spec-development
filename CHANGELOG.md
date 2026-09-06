@@ -2,6 +2,41 @@
 
 All notable changes to `apriori-cli`. Versions follow semver; the stability promise: CLI surface & flags, `--json` shapes, the delta format and the flow-state schema only break in a major.
 
+## Unreleased — 6.2 code layer · one mechanism of risk acceptance
+
+**Branch `v6.2-code`, cut from `v6.2-sub-doc`.** The runtime consumers the 6.2 document layer had
+already stopped teaching are retired, and risk acceptance is unified on ONE mechanism.
+
+- **`## Open` items + `evidence-accept <ID>` replace the Evidence row table.** An item is
+  `- <ID>: <text>`; pending until the owner records the acceptance (grammar, parser and revoke
+  unchanged); accepted items do not block and are reported `accepted, still present`; a line
+  without an id blocks and cannot be accepted; duplicate ids fail closed; an empty section owes
+  nothing. Deleted: `EVIDENCE_STATUS` and its alias table, `producer-diff`, the
+  `contract-mutation` reserved row, the standard quota, the "no rows is a refusal" rule, the
+  scaffold-row filter. Kept: `unreadable-delta` fail-closed, CAS, C1, C8/R4, `--force` semantics.
+- **Legacy `## Evidence` migrates by rule** in flight (a `blocked` row → migration blocker; a row
+  with a valid acceptance → accepted item; the rest ignored with one note); archived bundles are
+  recorded, never re-judged.
+- **The issue ledger has no consumer.** Gate C4 is a placeholder (`n/a`), archive R3 is gone,
+  `status` never opens `review/issues.md` (`openLedger` stays, always `[]`); an `archive-force`
+  record is reported as `note: archive-force has nothing left to force in 6.2`. The round-5
+  escalation force path never depended on the ledger class and is untouched.
+- **`mode:` is optional and inert.** Absent is fine, `fast`/`standard` echoed, anything else
+  blocks C3; `risk.effectiveMode` and every `fast → standard` announcement are gone;
+  `contract-mutation` is reported as information (`risk[]`, a C9 note). `status --json` keeps
+  `mode` and `effectiveMode` (equal).
+- **`gate --review-ready` has two items**, `tests` and `open`; pending items never fail it.
+- **C2 is a placeholder** (`n/a`, nothing read); `tasks.md` is never opened.
+- **`apriori new`** writes no `mode:` line and no `## Evidence` section; `## Open` shows the id
+  form. The archive declaration derives from `## Open`.
+- **Fix:** `sectionItems` matched a heading's annotation across newlines, so an empty section
+  followed directly by another heading swallowed that heading and read the next section's items
+  as its own. Horizontal whitespace only now.
+- Docs: both RUNBOOK editions (§0/§1/§2/§3/§4/§5/§6, P1–P3), docs/cli, docs/ci, docs/concepts,
+  MIGRATING (a 6.2 section). Tests: `open-items.test.js` (OI-01..10) replaces
+  `evidence-status-synonyms.test.js`; the retired behaviors' tests are deleted or rewritten
+  (see the commit messages for the ids). 612/612.
+
 ## Unreleased — 6.2-sub-doc · the document layer loses weight (text only; tool behavior unchanged)
 
 **Branch `v6.2-sub-doc`, cut from `v6.0.0-rc1`.** Nothing under `lib/`, `bin/`, `templates/` or the

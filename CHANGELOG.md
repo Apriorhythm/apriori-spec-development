@@ -2,6 +2,23 @@
 
 All notable changes to `apriori-cli`. Versions follow semver; the stability promise: CLI surface & flags, `--json` shapes, the delta format and the flow-state schema only break in a major.
 
+## Unreleased — 6.1 · enumerated requirements carry their boundary semantics
+
+Milestone-1 replay (5.2 `dashboard-p2-manual-finance`, three arms + the historical run) found the same
+class of miss on every arm: the requirement's nine validation classes were all named as scenarios, and a
+future month still reached storage, because naming a class is not deciding its boundary. No gate, no
+new file, no code — three sentences in the protocol, in both editions:
+
+- **Specify** gains one bullet: an enumerated requirement ("N classes / N states / N record types") gets
+  one `decision` line per item in `## Reality Check` naming the boundary the requirement left open —
+  block or warn, open-ended interval, future value; undecided items stay `assumption`.
+- **P2** carries the same rule into the producer prompt, one bullet.
+- **P3** item 3 asks the reviewer to walk every enumerated list item by item and check each item's
+  boundary semantics is decided and tested.
+
+Evidence and the attribution behind it: the milestone-1 scorecard §八 (judge zone). Deliberately not a
+mechanical check — the failure was semantic, and the replay showed scenario coverage was already complete.
+
 ## Unreleased — 6.0 slice 5 · the fixed artifact family is gone
 
 **The 5.x seven-step artifact machine is removed from the runtime, the living specs, the tests

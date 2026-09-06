@@ -238,8 +238,8 @@ test('CK-10 committed secrets in review evidence fail the check', () => {
   }
 });
 
-// ---- runbook-version-sync (CK-11): runbook major tracks the CLI major ----
-test('CK-11 the runbook major tracks the CLI major', () => {
+// ---- runbook-version-sync (CK-11): runbook major.minor tracks the CLI major.minor ----
+test('CK-11 the runbook major.minor tracks the CLI major.minor', () => {
   const { checkRunbookVersion } = require('../lib/check');
   const os3 = require('node:os'); const fs3 = require('node:fs'); const p3 = require('node:path');
   const root = fs3.mkdtempSync(p3.join(os3.tmpdir(), 'apriori-ck11-'));
@@ -256,6 +256,13 @@ test('CK-11 the runbook major tracks the CLI major', () => {
   assert.match(bad[0], /3.*4|major/);
   // CN flipped -> fail names CN
   assert.match(checkRunbookVersion(root, files(EN, CN.replace('4.0', '5.0')))[0], /RUNBOOK_cn\.md/);
+  // a MINOR drift fails too — 6.2 code under a 6.0 runbook is exactly the drift this check exists for
+  const minor = checkRunbookVersion(root, files(EN.replace('4.0', '4.1'), CN));
+  assert.strictEqual(minor.length, 1);
+  assert.match(minor[0], /4\.1.*4\.0/);
+  // a pre-release package tag is ignored: 4.0.0-rc.0 still wants 4.0
+  fs3.writeFileSync(p3.join(root, 'package.json'), JSON.stringify({ version: '4.0.0-rc.0' }));
+  assert.deepStrictEqual(checkRunbookVersion(root, files(EN, CN)), []);
 });
 
 test('CK-12 malformed, missing, duplicate, and body occurrences', () => {
@@ -293,7 +300,7 @@ test('CK-11 runs under --self and not in consumer mode', () => {
   const self = spawnSync('node', [BIN3, 'check', '--self'], { cwd: root, encoding: 'utf8' });
   assert.match(self.stdout + self.stderr, /runbook-version|CK-11/i);
   const consumer = spawnSync('node', [BIN3, 'check'], { cwd: root, encoding: 'utf8' });
-  assert.doesNotMatch(consumer.stdout + consumer.stderr, /runbook-version major|CK-11/i);
+  assert.doesNotMatch(consumer.stdout + consumer.stderr, /runbook-version|CK-11/i);
 });
 
 test('CK-17 the retired lanes leave the phrase table, and the table stays closed', () => {

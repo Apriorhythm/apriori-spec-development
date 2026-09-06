@@ -38,6 +38,22 @@ already stopped teaching are retired, and risk acceptance is unified on ONE mech
   MIGRATING (a 6.2 section). Tests: `open-items.test.js` (OI-01..10) replaces
   `evidence-status-synonyms.test.js`; the retired behaviors' tests are deleted or rewritten
   (see the commit messages for the ids). 612/612.
+- **Zero-semantic deletions (batch B).** Dead code: `archive-merge.parseRequirements`,
+  `parseStamp` (+ its three regexes), `DEPRECATED_RE`, `check.fileLinks`,
+  `spec-runner.collectScenariosFromTexts`, `new.NAME_RE`, gate's unused `CHANGE_NAME_RE` import.
+  Test-only leftovers: `init.parseArgs` (IN-03), `spec-runner.scopedEvaluate` / `opts.scope` /
+  `run.scopedVerdict` (SR-69..72). The single-file `archive --store/--delta` form loses its
+  unreachable `--changes-dir` move and the usage line that advertised it. One `stripFences` and
+  one `HAS_REASON` in the new leaf `lib/text.js`; `CHANGE_NAME_RE` is sourced from `resolve`;
+  the two containment helpers are `resolve.containsExistingPath` (existing paths, root counts)
+  and `archive-merge.containsFuturePath` (ancestor walk, strict root) — different semantics, not
+  merged. 34 exports used only inside their own file are no longer exported. Version identity:
+  `package.json` `6.2.0-rc.0`, both runbooks `runbook-version: 6.2`, and `check --self` CK-11
+  compares major.minor (a 6.0 runbook under 6.2 code now fails). Docs: review-ready is two
+  items; the §6 recipe updates the KB before review-ready; one parametrized test may cover a
+  scenario's examples table; the §4.5 matrix pointer and concepts §7.2's P3-input paragraph are
+  gone; R1 names five stops in §1 and §6; the runbook's dangling `§6 risk` / `handbook §4.10` /
+  footer `§6/§7` / `./README.md` references are reworded. 607/607.
 
 ## Unreleased — 6.2-sub-doc · the document layer loses weight (text only; tool behavior unchanged)
 

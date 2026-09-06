@@ -1,6 +1,6 @@
 # Migrating
 
-The 3.0.0 stability promise: CLI surface & flags, `--json` shapes, the delta format, the flow-state schema and the `apriori/` layout only break in a major. Everything below is either additive or a declared fail-closed tightening.
+The 3.0.0 stability promise — CLI surface & flags, `--json` shapes, the delta format, the flow-state schema and the `apriori/` layout only break in a major — holds for the released 5.x line. **6.x is an unreleased development line** (npm has never shipped a 6.x; `package.json` says `6.2.0-rc.0`, both runbooks `runbook-version: 6.2`): within it the `gate --review-ready` item ids (`tests`, `open`) and the flow-state fields (`## Evidence` gone, `mode:` inert) changed in 6.2, and further changes before a 6.x release are declared here rather than promised away. Everything below is either additive or a declared fail-closed tightening.
 
 ## 6.2 code layer (Unreleased) — one mechanism of risk acceptance
 

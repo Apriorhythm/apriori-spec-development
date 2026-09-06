@@ -259,7 +259,7 @@ change 需要的其他任何东西——一张草稿、一幅图、给人看的�
 
 ### Review & Deliver —— 先 review-ready,一次独立评审,然后归档
 
-- **先过 review-ready。** 跑 `apriori gate --change <name> --review-ready --test-cmd "…"`。它什么也不写,只从这次运行已经产生的事实答**两项**:编译和测试**真的**执行过(绝不是零测试的 `BUILD SUCCESS`);以及 `## Open` 段可读——每条都带稳定 id,没有重复 id。pending 的条目不挡 review-ready:那正是评审要看的东西。**没准备好不算一轮评审。** 回到 Build & Test。
+- **先过 review-ready。** 跑 `apriori gate --change <name> --review-ready --test-cmd "…"`。它什么也不写,只从这次运行已经产生的事实答**两项**:编译和测试**真的**执行过(绝不是零测试的 `BUILD SUCCESS`);以及状态自己没有声明任何未了结的东西——每条 `## Open` 条目都带稳定 id、没有重复 id、没有仍悬着的 Reality Check `assumption`。pending 的条目不挡 review-ready:那正是评审要看的东西。**没准备好不算一轮评审。** 回到 Build & Test。
 - **然后一次独立评审**(**P3**,R2)。评审方的默认输入恰好是四样:**行为契约**、**diff**、**`## Open` 条目**、**仍未覆盖的边界**;它可以自行查全仓、调用者、配置和原型。原始评审输出、已关闭问题、其他 change 的文档不是默认输入。评审方的输出只保留三样:新发现的实质问题;已查与未查的风险面;以及 `ACCEPT | REVISE | ESCALATE` 之一。**评审方不做生产方的活**——它不是来编译、补测试或重写方案的;如果它必须那么做,说明这个 change 没到 review-ready。
 - **知识库更新是前置条件,不是收尾步骤——而且只在欠着的时候才做。** 只有当 `apriori/truth/<module>.md` 已经覆盖被触达的模块,或所有者/change 明确决定沉淀一份新的持久契约时才欠;绝不为了收官时有一份而凭空造一份。欠着时,review-ready 之前:提交实现,让 `source-commit` 指向它;更新 `apriori/truth/<module>.md`——Contract 段按最终实现写,Decisions 段追加本次的新决定。评审方看到的 diff 里已经带着这份 KB diff;`apriori archive` 从不碰 `apriori/truth/`。
 - **然后归档——直接执行,不 dry-run。** ACCEPT 落地、且产品代码与测试自 review-ready 起未再变化时,正常收尾恰好四个逻辑动作,不多不少:(1)把评审方的输出落成一个 self-contained 评审文件,外加一次简短的 flow-state 更新;(2)跑一次 `apriori check`,再跑一次完整的 `apriori gate --change <name>`(不带 `--review-ready`),在这些仍未变化的输入上绑定 C1;(3)直接跑 `apriori archive --change <name> --write --changes-dir apriori/changes`——`--write` 执行与 dry-run 完全相同的前置检查,先跑一次 dry-run 不会多核实出任何东西;归档把增量 spec 合并进 `apriori/specs` 并搬移 bundle,仅此而已;(4)本地提交收尾,然后停止。那一次原子移动携带整个 bundle 到 `apriori/changes/archive/<stamp>-<change>/`。

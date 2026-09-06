@@ -275,9 +275,20 @@ test('OI-04 legacy Evidence rows migrate by rule: blocked blocks, accepted is an
   assert.match(line(gate(a).stdout, 'C9'), /2 open item\(s\): 2 accepted, still present \(data-schema, other\), 0 pending/);
   assert.match(archive(a).stdout, /critical evidence: complete, 2 risk\(s\) accepted by the owner \(data-schema, other\), still present/);
 
+  // a self-signed `owner-accepted` row with no valid acceptance is a migration refusal too:
+  // ignoring it would let the claim make the risk disappear
+  const self = project({ evidence: '- contract-mutation: owner-accepted — I accept my own risk\n',
+    gates: '  - 2026-08-23T11:00 producer: evidence-accept contract-mutation — me\n' });
+  const fs2 = rd.evidenceFindings(flowOf(self));
+  assert.strictEqual(fs2.blockers.length, 1);
+  assert.match(fs2.blockers[0], /^legacy Evidence row 'contract-mutation' claims owner acceptance with no canonical gates: entry — move it to ## Open, or record: {3}- <YYYY-MM-DDTHH:MM> owner: evidence-accept contract-mutation — <the human's reason, verbatim>$/);
+  assert.deepStrictEqual(fs2.notes, [], 'nothing was ignored');
+  assert.strictEqual(gate(self).status, 1);
+  assert.strictEqual(archive(self, ['--force']).status, 1);
+
   // done / n-a / fixed / an unfilled scaffold row / an unreadable row → ignored, ONE note
   const ig = project({ evidence: '- producer-diff: done — read\n- ui: n/a — no UI\n- data-schema: fixed — ran it\n'
-    + '- contract-mutation: owner-accepted — I accept my own risk\n- <risk>: done | blocked | owner-accepted | n/a — <what was run>\n- not a row at all\n' });
+    + '- <risk>: done | blocked | owner-accepted | n/a — <what was run>\n- not a row at all\n' });
   const fi = rd.evidenceFindings(flowOf(ig));
   assert.deepStrictEqual(fi.blockers, []);
   assert.deepStrictEqual(fi.items, []);
@@ -309,12 +320,15 @@ test('OI-05 review-ready answers two items — tests, and a readable Open sectio
   assert.strictEqual(gate(ready).status, 1);
   assert.strictEqual(archive(ready).status, 1);
 
-  // an unreadable Open section fails the item, naming the defect
-  for (const [why, open, re] of [
+  // an unreadable Open section fails the item, naming the defect — and so does a standing
+  // assumption or a kind-less Reality Check line, with C9's own wording
+  for (const [why, open, re, sections] of [
     ['no id', '- the retry path is unproven\n', /✗ open {2}open item has no id/],
     ['duplicate', '- R-01: a\n- R-01: b\n', /✗ open {2}open item id 'R-01' is duplicated/],
+    ['assumption', '', /✗ open {2}unverified assumption: the schema matches — verify it, or move it to ## Open as an item/, '## Reality Check\n- assumption: the schema matches\n\n'],
+    ['kind-less line', '', /✗ open {2}Reality Check entry names no kind: 'I forgot'/, '## Reality Check\n- I forgot\n\n'],
   ]) {
-    const p = project({ open });
+    const p = project({ open, sections: sections || '' });
     const rr = gate(p, ['--review-ready']);
     assert.strictEqual(rr.status, 1, why);
     assert.match(rr.stdout, re, why);

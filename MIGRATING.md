@@ -30,8 +30,9 @@ named. An empty or absent section owes nothing: **the "no rows is a refusal" rul
 
 **The legacy `## Evidence` section, in an in-flight bundle.** A row reading `blocked` blocks with
 `legacy Evidence row '<name>' is blocked — move it to ## Open as an item (or accept it via
-evidence-accept <name>)`; a row whose name already carries a valid acceptance is treated as an
-accepted item; every other row (`done`, `n/a`, `fixed`, an unfilled scaffold row, …) is ignored
+evidence-accept <name>)`; a row claiming `owner-accepted` with no valid acceptance for its name
+blocks the same way (a self-signed claim may not make a risk disappear); a row whose name
+already carries a valid acceptance is treated as an accepted item; every other row (`done`, `n/a`, `fixed`, an unfilled scaffold row, …) is ignored
 with one note. Move what is still unresolved to `## Open` and delete the section. Archived bundles
 are recorded, never re-judged — nothing to migrate there.
 
@@ -41,7 +42,8 @@ C3. There is no upgrade any more — a mutating delta is reported as `risk: cont
 and demands nothing. `apriori new` writes no `mode:` line and no `## Evidence` section.
 
 **`--review-ready` has two items:** `tests` (C1 really ran) and `open` (every item carries a
-stable id, no id duplicated). A pending item does not fail it — that is what the review is for.
+stable id, no id duplicated, no Reality Check `assumption` still standing, no kind-less Reality
+Check line). A pending item does not fail it — that is what the review is for.
 The `evidence` and `producer-diff` items are gone; the JSON shape `{change, ready, items}` is
 unchanged, only the ids changed.
 

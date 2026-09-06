@@ -278,23 +278,25 @@ test('RY-26 the legacy ledger is never read, and no ledger state closes the revi
 
 test('RY-27 the state own claims block review-ready and archive; the Next cap only reports', () => {
   // [why, the Open items / sections, what C9 says, whether review-ready also refuses]. An open
-  // item WITH an id is what a review is for, so it never fails review-ready; a claim the Open
-  // section cannot carry (no id) or that lives outside it (an assumption) blocks the gate and
-  // the archive, and only the unreadable Open section fails review-ready too.
+  // item WITH an id is what a review is for, so it never fails review-ready; everything else the
+  // state claims about itself — an item the section cannot carry (no id), a standing assumption,
+  // a Reality Check line naming no kind — fails review-ready with C9's own wording: Ground's
+  // exit is "nothing the work depends on is still an assumption", and a review of that wastes
+  // the round.
   const claims = [
     ['an open item without an id', { open: ['the retry path is unproven'] }, /open item has no id: 'the retry path is unproven'/, true],
     ['an open item with an id', { open: ['R-01: the retry path is unproven'] }, /open item R-01 is pending: the retry path is unproven/, false],
     ['an unverified assumption', { sections: '## Reality Check\n- assumption: the staging schema matches production\n\n' },
-      /unverified assumption: the staging schema matches production/, false],
+      /unverified assumption: the staging schema matches production — verify it, or move it to ## Open as an item/, true],
     ['a Reality Check line naming no kind', { sections: '## Reality Check\n- I forgot to name a kind\n\n' },
-      /Reality Check entry names no kind/, false],
+      /Reality Check entry names no kind/, true],
   ];
   for (const [why, opts, re, failsReviewReady] of claims) {
     const p = project(opts);
     assert.match(line(gate(p).stdout, 'C9'), re, why);
     const rr = gate(p, ['--review-ready']);
     assert.strictEqual(rr.status, failsReviewReady ? 1 : 0, `${why}: ${rr.stdout}`);
-    if (failsReviewReady) assert.match(rr.stdout, /✗ open/, why);
+    if (failsReviewReady) { assert.match(rr.stdout, /✗ open/, why); assert.match(rr.stdout, re, `${why}: review-ready must say the same thing C9 says`); }
     const a = archive(p, ['--force']);
     assert.strictEqual(a.status, 1, why);
     assert.match(a.stderr, re, why);

@@ -236,7 +236,7 @@ npm -v    # e.g. 10.x.x
 
 ## 4. The Complete Workflow
 
-### 4.0 Four Phases, Two Modes
+### 4.0 Four Phases
 
 Every change runs the same four phases. There is no second track, no size tier and — since 6.2 — no mode: what varies is the evidence a change owes, which follows the risks it actually hits, never the number of documents or rounds. (A `mode:` line may still sit in the state file; it is optional and inert.)
 
@@ -271,7 +271,7 @@ The signals that call for real evidence are facts, not estimates: UI / prototype
 | Open item | The state's unresolved items | `- <ID>: <text>` under `## Open`; pending until the owner records `evidence-accept <ID>` in `gates:`, and reported as still present after — the one mechanism of risk acceptance since 6.2 |
 | Issue ledger | A reviewer's cross-round notebook — **optional, never read by the CLI** | A human practice for cross-round memory; since 6.2 `gate`/`archive`/`status` never open it and nothing in it blocks — see [§7.0](#70-the-issue-ledger-optional-shared-by-review-loops) |
 | P6 | Discuss first | Only when the human explicitly asks to discuss an idea first: nothing durable until they approve, then `apriori new` → Ground (RUNBOOK "Discuss first") |
-| mode | An optional, inert field | `fast` or `standard` may still be written in the state file; since 6.2 nothing decides anything by it ([§4.0](#40-four-phases-two-modes)) |
+| mode | An optional, inert field | `fast` or `standard` may still be written in the state file; since 6.2 nothing decides anything by it ([§4.0](#40-four-phases)) |
 | phase | Where the change is | `ground` / `specify` / `build` / `review`, plus `done` / `abandoned` |
 
 **Where each artifact lives** (these paths are the conventions used throughout the RUNBOOK's prompts — adjust to your repo; process artifacts can also be relocated wholesale via the state file's `artifact-root` field, whose semantics live in RUNBOOK §3):

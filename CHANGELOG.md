@@ -14,8 +14,9 @@ already stopped teaching are retired, and risk acceptance is unified on ONE mech
   nothing. Deleted: `EVIDENCE_STATUS` and its alias table, `producer-diff`, the
   `contract-mutation` reserved row, the standard quota, the "no rows is a refusal" rule, the
   scaffold-row filter. Kept: `unreadable-delta` fail-closed, CAS, C1, C8/R4, `--force` semantics.
-- **Legacy `## Evidence` migrates by rule** in flight (a `blocked` row → migration blocker; a row
-  with a valid acceptance → accepted item; the rest ignored with one note); archived bundles are
+- **Legacy `## Evidence` migrates by rule** in flight (a `blocked` row, or an `owner-accepted` row
+  with no valid acceptance → migration blocker; a row with a valid acceptance → accepted item;
+  the rest ignored with one note); archived bundles are
   recorded, never re-judged.
 - **The issue ledger has no consumer.** Gate C4 is a placeholder (`n/a`), archive R3 is gone,
   `status` never opens `review/issues.md` (`openLedger` stays, always `[]`); an `archive-force`
@@ -25,7 +26,8 @@ already stopped teaching are retired, and risk acceptance is unified on ONE mech
   blocks C3; `risk.effectiveMode` and every `fast → standard` announcement are gone;
   `contract-mutation` is reported as information (`risk[]`, a C9 note). `status --json` keeps
   `mode` and `effectiveMode` (equal).
-- **`gate --review-ready` has two items**, `tests` and `open`; pending items never fail it.
+- **`gate --review-ready` has two items**, `tests` and `open` (readable Open section, no standing
+  assumption, no kind-less Reality Check line); pending items never fail it.
 - **C2 is a placeholder** (`n/a`, nothing read); `tasks.md` is never opened.
 - **`apriori new`** writes no `mode:` line and no `## Evidence` section; `## Open` shows the id
   form. The archive declaration derives from `## Open`.

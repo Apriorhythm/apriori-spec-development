@@ -49,6 +49,12 @@ already stopped teaching are retired, and risk acceptance is unified on ONE mech
   absent/`none`/`n/a` fine; archived → history. `apriori new` stops writing it. `status --json`
   adds `acknowledged` / `historical`; `--escalation --json` is `{change, escalations,
   acknowledged, historical}`. Tests: `escalation-states.test.js` (ES-01..09); ST-14, NW-04 updated.
+- **Acceptance round 3 (Astra residual).** `status.requestOf` / `gate.requestOf` are the ONE
+  normalization of parsed flags → `{change, json, …}` on the normal path and in the error views
+  alike: an empty-string `--change` is no change (status: the list view; gate: `change: null`),
+  a repeated `--change` is last-wins, an explicit `--escalation` keeps the escalation view.
+  Pinned on the normal path, the strict-parser rejection and a real ENOTDIR (`apriori/changes`
+  as a file): `accept-r3.test.js` (AR3-00..03).
 - **Acceptance round 2 (Astra F5 partial).** The error views no longer re-guess argv: `args.consume`
   is the ONE token walker (a value flag consumes the next token verbatim, a repeated value flag is
   last-wins); `parseStrict` is its strict face and `args.recover` its lenient face, and every

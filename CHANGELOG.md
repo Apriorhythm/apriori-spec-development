@@ -196,6 +196,10 @@ already stopped teaching are retired, and risk acceptance is unified on ONE mech
   init/update — proven by a real pack→unpack→install→init→read replay. Tests: OPM-01…OPM-07
   (`operator-move.test.js`; OPM-01's success condition is REVERSED from "docs/ not packaged"
   to "the operator doc ships", OPM-07 is the delivery proof).
+  *Claims discipline (pre-registered mediating metric):* the token direction of this move is
+  **untested** — green tests and a shorter runbook are NOT benefit evidence; the runbook
+  read-event count will be delivered from the validation arm's session jsonl after that arm
+  closes, and until then this entry claims relocation + preserved delivery only.
 
 ## Unreleased — 6.2-sub-doc · the document layer loses weight (text only; tool behavior unchanged)
 

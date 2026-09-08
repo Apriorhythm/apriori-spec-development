@@ -9,7 +9,7 @@
 > `runbook-version: 6.2` · upstream: `https://github.com/Apriorhythm/apriori-spec-development`
 > Local state lives ONLY in `apriori/process-config.md` and the flow-state file — this file is stateless, so **upgrading = overwriting it with the upstream version**.
 
-> **Audience: AI agents** (plus §6 for the human operating them). This file is self-contained: everything an agent needs at runtime is here — hard rules, state machine, artifact paths, prompts.
+> **Audience: AI agents** (plus `docs/operator.md` in the apriori-cli repository for the human operating them). This file is self-contained: everything an agent needs at runtime is here — hard rules, state machine, artifact paths, prompts.
 > The **why** — concepts, tool setup, worked example — lives in the human handbook: `README.md` and `docs/concepts.md` in the apriori-cli repository (not necessarily beside this copy); the tool's finer behavior (verdict parsing, the CAS algorithm, verify's diagnostic classes) is in that repository's `docs/cli.md` (the CLI reference) and `docs/troubleshooting.md`, read when a command's output needs decoding. Where the two disagree on operational detail, **this runbook is canonical**.
 
 **Operating principles (twelve sentences; the sections below are their operational detail):**
@@ -99,7 +99,7 @@ ANY operation that mutates state outside the local repository/workspace requires
 
 **R2 — Reviews must be genuinely external.** The producing session never issues a review verdict. Spawn a heterogeneous reviewer — `codex exec -s read-only "<prompt>" < /dev/null` (rounds 2+: `codex exec resume -c sandbox_mode="read-only" <session-id> "..."`; a non-interactive invocation must close stdin or codex hangs), or — without Codex — a **fresh** `claude` session on a different tier — fed P3's default context, and paste the verdict line back verbatim. Reviewers usually run in read-only sandboxes and cannot write to the bundle: the reviewer prints the review doc body to stdout, and the producer lands it verbatim, marked "recorded on behalf of the reviewer". The same transcription mechanism covers the **review doc itself**: the reviewer prints the doc body and the producer lands it at its fixed path. Two landing shapes: the doc's very first non-blank line is a provenance header with all four fields, `<!-- provenance: provider=<name> model=<id> session=<id> date=<YYYY-MM-DD> -->` (`unknown` is legal for any field), and the doc carries its own verdict line — then the doc IS the raw evidence; otherwise the reviewer's full raw output is archived beside it as `review/<stem>-raw.*` (the stem = its review doc). Then record the reviewer's session id in flow-state's `reviewer-session` field the moment round 1 prints it. If the reviewer dies before its verdict line lands → resume the same session and have it finish, **one retry only**; if that also fails, switch to a fresh independent `claude` session and have IT finish. Never fill in the verdict yourself; a failure that produced no verdict line is never a round. A read-only reviewer's **dynamic observations are untrustworthy** — test runs and builds inside its sandbox can produce phantom findings; only its static reads count. If you cannot actually spawn a reviewer, stop and say so — **do not simulate one**.
 
-**R3 — Everything lands on disk; `/goal` belongs to the human; the config belongs to the human too.** Artifacts go to the exact paths in §4's table; the state file is updated after every phase change and every review round. `process-config.md` is **human-held; the agent never writes it**; no configured number decides how long any loop runs — review rounds are governed per family by R4, and the implement-and-test loop's safety bound is written into the §6 recipe itself. `/goal` is a command the human runs (§6) — never claim to run it or imitate its evaluator.
+**R3 — Everything lands on disk; `/goal` belongs to the human; the config belongs to the human too.** Artifacts go to the exact paths in §4's table; the state file is updated after every phase change and every review round. `process-config.md` is **human-held; the agent never writes it**; no configured number decides how long any loop runs — review rounds are governed per family by R4, and the implement-and-test loop's safety bound is written into the operator recipe itself (`docs/operator.md` in the apriori-cli repository). `/goal` is a command the human runs (`docs/operator.md`) — never claim to run it or imitate its evaluator.
 
 **R4 — The review round is derived from the review evidence, never written by hand, and it is counted PER FAMILY.** A *family* is one review track — whatever the filename stem declares (`spec-review`, `code-review`). Each family owns its own round number; rounds are never added together. A `round:` field is refused.
 
@@ -386,45 +386,7 @@ On my approval, run `apriori new <change>` and write the crystallized understand
 
 ---
 
-## 6. Human Operator Appendix
-
-> Everything in this section is **run by the human**. The agent must never execute or simulate `/goal` (R3). Architecture and caveats: `docs/concepts.md` §4.7 (automating the loop with `/goal`) in the apriori-cli repository.
-> **Two loops, two bounds.** *Review rounds* are governed per family by the derived loop (§1 R4 / `gate` C8); *the implement-and-test loop* is bounded by a fixed worst-case **25 turns**, written into its recipe text below. `process-config.md` configures neither.
-
-**Specify loop (run only when the owner asks for an early judgment on a specific approach, or the requirement is still substantially uncertain — the default is to skip straight to Build & Test):**
-```text
-/goal "Goal: apriori/changes/<change>/specs/ holds the behavior contract and the latest review verdict line is 'VERDICT: no major issues, ready to proceed to execution'. No round cap — §1 R4's derived loop governs: still revising after round 2, stop and report instead of opening round 3.
-Each round:
-1. Revise the delta specs per the latest review — never touch source code — and update the state's ## Open section.
-2. Re-run the heterogeneous reviewer with the P3 prompt (round 1: codex exec, note the printed session id; later rounds: codex exec resume -c sandbox_mode=\"read-only\" <session-id>), producing apriori/changes/<change>/review/spec-review-v{N}.md.
-3. Surface the reviewer's verdict line here.
-Stop on 'VERDICT: no major issues, ready to proceed to execution', on 'VERDICT: escalate', or when §1 R4 stops the loop."
-```
-
-**Build & Test loop:**
-```text
-/goal "Goal — ALL must hold: `npm test` exits 0 (naming a test with its scenario ID is a suggestion, never mandatory); lint/static analysis green (where configured); (UI projects only) the Playwright E2E suite passes and screenshot diffs are within threshold; every ## Open item in the flow-state carries a stable id (`- <ID>: <text>`) and says what is still unverified; AND `apriori gate --change <change> --review-ready --test-cmd \"npm test\"` exits 0. Safety bound: 25 turns.
-Turn 1: derive a failing test that proves every scenario's behavior with real evidence (one parametrized test may cover a scenario's whole examples table; naming it with the scenario ID is a suggestion, never mandatory), and SHOW the failing run. Each later turn: implement the next scenario, then run `npm test` (and the Playwright run for UI projects) and SHOW the output so the result is in the transcript. When the code is complete, update ## Open and run the review-ready check.
-Stop when every condition holds. If turn 25 ends with any condition still unmet, STOP anyway and report the failing evidence — which conditions failed, plus the last test output. Reaching the bound is a stopped loop for the human to judge, NEVER a pass."
-```
-> There is no docs-only substitute: a change with no executable test evidence has no C1 evidence; a documentation project that wants the workflow must provide a real TAP-emitting check (`apriori check` emits no TAP and cannot stand in). A project with no UI drops the Playwright clause.
-
-**Review & Deliver:**
-```text
-/goal "Goal: IF this change owes a KB update (§4 Review & Deliver: an existing truth doc for the touched module, or an explicit decision to persist one), apriori/truth/<module>.md already reflects this change's new/changed facts with a refreshed source-commit stamp — a precondition of review-ready, never a step after archive; THEN an independent review by a DIFFERENT model (the P3 prompt) reports 'VERDICT: no spec-vs-code gaps'; THEN the change is archived (`apriori archive` merges the delta specs into the living store apriori/specs/ and never touches apriori/truth/).
-If a KB update is owed, land it first and list exactly which files/sections changed. Then run the review-ready check; if it does not exit 0, go back to Build & Test — that is not a review round. Then run the consistency reviewer (codex exec / fresh claude) and paste its verdict. Then run the archive action.
-Stop when all of it holds, or immediately if the verdict is 'VERDICT: escalate'."
-```
-
-**What you personally decide (there are five, and no others):**
-
-1. **An escalation** — a `VERDICT: escalate`, or a family at round 5. `apriori status --change <name> --escalation` prints it and exits 3. Answer with `reframe <family> round <n> <split|tests|redo|accept-risk> — <reason>` in `gates:`. Escalate the bar, never quietly lower it.
-2. **An `## Open` item that cannot be resolved** (critical evidence blocked) — make the evidence cheaper, split the change, or accept the risk in `gates:` (`evidence-accept <ID>`). Accepting it settles that one item, and nothing else.
-3. **A review family stalled after its round 2** — answer with `reframe <family> round <n> <split|tests|redo> — <reason>` in `gates:`; that family's loop reopens, nothing else does.
-4. **Every external side effect** (§1) — one-shot, named, recorded verbatim. No blanket ever covers one.
-5. **Abandonment** — your word alone.
-
-Everything else the CLI decides mechanically, or nobody needs to: `apriori gate --change <name>` is the machine face, and `apriori status --change <name> --escalation` (exit 3) is the only hard stop this repository ships.
+> The Human Operator Appendix — the `/goal` recipes the human runs, and the five owner decisions — lives in `docs/operator.md` in the apriori-cli repository.
 
 ---
 

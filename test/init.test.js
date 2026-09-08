@@ -149,10 +149,25 @@ test('IN-20 no interactive menu: every TTY/non-TTY × zero/single/multi cell has
   const rE = run(['--tools', ''], tmp());
   assert.strictEqual(rE.status, 2);
   assert.match(rE.stderr, /--tools/);
-  // zero selection via a list that collapses to nothing → refusal, exit non-zero
-  const rC = run(['--tools', ','], tmp());
-  assert.strictEqual(rC.status, 1);
-  assert.match(rC.stderr, /no tools selected/);
+  // zero selection via a list that PARSES to nothing (`,`, pure whitespace, ` , `) → the SAME
+  // unified refusal as a missing flag: exit 2, known tools + detected tools + a legal retry
+  // example, zero writes (batch C P3 acceptance: the `--tools ','` edge bypassed the diagnostic)
+  for (const empt of [',', '  ', ' , ']) {
+    const rCroot = tmp();
+    fs.mkdirSync(path.join(rCroot, '.cursor'));
+    const rC = run(['--tools', empt], rCroot);
+    assert.strictEqual(rC.status, 2, `'--tools ${empt}': ${rC.stdout}${rC.stderr}`);
+    assert.match(rC.stderr, /pass --tools/, `'--tools ${empt}' lost the flag guidance`);
+    assert.match(rC.stderr, /claude, codex, cursor, copilot, opencode, windsurf/,
+      `'--tools ${empt}' does not name the six known tools`);
+    assert.match(rC.stderr, /detected[^\n]*cursor/, `'--tools ${empt}' does not name the detected tool`);
+    assert.match(rC.stderr, /e\.g\. apriori init --tools /, `'--tools ${empt}' offers no legal retry example`);
+    assert.ok(!fs.existsSync(path.join(rCroot, 'apriori')), `'--tools ${empt}' wrote files on refusal`);
+  }
+  // with nothing detected, the refusal still carries a legal retry example
+  const rN = run(['--tools', ','], tmp());
+  assert.strictEqual(rN.status, 2);
+  assert.match(rN.stderr, /e\.g\. apriori init --tools /);
   // single tool → complete install
   const r1root = tmp();
   const r1 = run(['--tools', 'claude', '--yes'], r1root);
@@ -198,6 +213,29 @@ test('IN-20 no interactive menu: every TTY/non-TTY × zero/single/multi cell has
     console.log = origLog;
     process.stdin.isTTY = prevTTY;
     process.chdir(prevCwd);
+  }
+});
+
+test('IN-20 real PTY: an empty-parsed selection refuses with the full diagnostic on a genuine terminal', (t) => {
+  // The in-process TTY cells above force isTTY; this cell runs the CLI under a REAL pty
+  // (util-linux script(1) allocates one and -e propagates the child's exit code), so the
+  // TTY branch is exercised as a terminal user would hit it — no isTTY monkey-patching.
+  if (process.platform !== 'linux') { t.skip('real-PTY harness uses util-linux script(1)'); return; }
+  const { spawnSync } = require('node:child_process');
+  const BIN = path.join(__dirname, '..', 'bin', 'apriori.js');
+  const root = tmp();
+  fs.mkdirSync(path.join(root, '.cursor'));
+  for (const argv of ['--tools ,', '']) {   // empty-parsed list AND missing flag: one refusal
+    const r = spawnSync('script', ['-qe', '-c', `node ${BIN} init ${argv}`.trim(), '/dev/null'],
+      { cwd: root, encoding: 'utf8' });
+    // under script(1) the pty merges stderr into stdout
+    const out = r.stdout + r.stderr;
+    assert.strictEqual(r.status, 2, `init ${argv} on a real pty: ${out}`);
+    assert.match(out, /pass --tools/);
+    assert.match(out, /claude, codex, cursor, copilot, opencode, windsurf/);
+    assert.match(out, /detected[^\n]*cursor/, `init ${argv}: detected tool unnamed on a real pty`);
+    assert.match(out, /e\.g\. apriori init --tools /);
+    assert.ok(!fs.existsSync(path.join(root, 'apriori')), `init ${argv} wrote files on refusal`);
   }
 });
 

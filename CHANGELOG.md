@@ -202,7 +202,10 @@ already stopped teaching are retired, and risk acceptance is unified on ONE mech
   `multiselect`/`askTools`) is deleted; the preview + `Proceed? (Y/n)` confirmation and `--yes`
   are unchanged. Every TTY/non-TTY × zero/single/multi cell has an explicit outlet — explicit
   `--tools` installs completely, everything else errors non-zero; no silent partial install
-  (P8). Tests: IN-20 (full matrix); IN-10 retired with the menu.
+  (P8). A selection that PARSES to nothing (`--tools ','`, pure whitespace) takes the same
+  unified refusal as a missing flag — exit 2, known + detected tools, a legal retry example,
+  zero writes — instead of a bare `no tools selected` exit 1 (P3 acceptance fix). Tests: IN-20
+  (full matrix, plus a real-pty cell via script(1)); IN-10 retired with the menu.
 - **Batch C row 4 — the default template keeps only what a user decides.** The scaffolded
   `process-config.md` carries the `language` row alone: the `id-pattern` and `cas` rows
   restated built-in defaults (a missing row IS the default — proven byte-for-byte: omitted vs

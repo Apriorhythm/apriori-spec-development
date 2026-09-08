@@ -20,7 +20,7 @@ usage: apriori init [--tools <a,b,...>] [--test-cmd "<cmd>"] [--language <lang>]
 
 ## apriori doctor
 
-体检项目与 apriori 的接缝:Node 地板、脚手架、runbook 新鲜度、工具指针、TAP 管道探针(`--no-run` 跳过)、规格库健康、变更总览——每个发现指名修复命令。D7 读每个活动变更的状态并列出归档:冻结在 `phase: review` 的归档是正常状态,不提;评审**之前**就归档的会作为信息浮现(`archived <stamp>-<name> @ build — archived before review; frozen as is`),绝不是 finding。
+体检项目与 apriori 的接缝:Node 地板、脚手架、runbook 新鲜度、工具指针、TAP 管道探针(`--no-run` 跳过)、规格库健康、变更总览——每个发现指名修复命令。D7 读每个活动变更的状态并列出归档:冻结在 `phase: review` 的归档是正常状态,不提;评审**之前**就归档的会作为信息浮现(`archived <stamp>-<name> @ build — archived before review; frozen as is`),绝不是 finding。已自记收束的 5.x bundle(`current-step:` 为 DONE/SUPERSEDED/ABANDONED,或 `next-action:` 写明 SUPERSEDED)且原地保留作先例的,是同一种冻结历史:作为信息报告(`frozen precedent (recorded, not re-judged)`),绝不是 finding——仍在进行中的 5.x bundle 保持迁移 finding。
 
 ```text
 usage: apriori doctor [--test-cmd "<cmd>"] [--no-run] [--cwd <dir>] [--json]

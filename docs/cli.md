@@ -20,7 +20,7 @@ Exit: 0 done/aborted-by-you · 1 empty selection · 2 non-interactive without --
 
 ## apriori doctor
 
-diagnose the project↔apriori seam: Node floor, scaffold, runbook freshness, tool pointers, TAP plumbing probe (`--no-run` skips), store health, changes overview — findings name their fixer. D7 reads every active change's state and lists the archives: an archive frozen at `phase: review` is the normal state and is not mentioned; one archived BEFORE review is surfaced as information (`archived <stamp>-<name> @ build — archived before review; frozen as is`), never as a finding.
+diagnose the project↔apriori seam: Node floor, scaffold, runbook freshness, tool pointers, TAP plumbing probe (`--no-run` skips), store health, changes overview — findings name their fixer. D7 reads every active change's state and lists the archives: an archive frozen at `phase: review` is the normal state and is not mentioned; one archived BEFORE review is surfaced as information (`archived <stamp>-<name> @ build — archived before review; frozen as is`), never as a finding. A 5.x bundle that recorded its own closure (`current-step:` at DONE/SUPERSEDED/ABANDONED, or a `next-action:` naming SUPERSEDED) and was kept in place as precedent is the same frozen history: reported as information (`frozen precedent (recorded, not re-judged)`), never as a finding — a 5.x bundle still in flight keeps the migration finding.
 
 ```text
 usage: apriori doctor [--test-cmd "<cmd>"] [--no-run] [--cwd <dir>] [--json]

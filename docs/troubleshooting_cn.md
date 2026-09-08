@@ -28,7 +28,7 @@ apriori-cli 需要 Node ≥ 22。先升级 Node,否则一切免谈。
 每个 `#### Scenario:` 标题必须以形如 `KV-03` 的 ID 开头,且全库唯一。改规格文件;CI 里 `check` 强制同一规则。
 
 ### D7 —— flow-state 问题 / "closeout pending"
-活动变更目录缺可解析的 `flow-state.md`(或其 `change:` 与目录名不符)需手工修复。5.x 身份键(`tier`、`track`、`track-rationale`、`round`、`current-step`)也在这里报告——按 MIGRATING.md 替换掉它。"closeout pending" 一行是信息不是问题:归档后 `phase` 尚未置 `done`,只是收官还没记录。
+活动变更目录缺可解析的 `flow-state.md`(或其 `change:` 与目录名不符)需手工修复。5.x 身份键(`tier`、`track`、`track-rationale`、`round`、`current-step`)也在这里报告——按 MIGRATING.md 替换掉它;已自记收束(DONE/SUPERSEDED/ABANDONED)且原地保留作先例的 5.x bundle 是冻结历史,报为 note 而非 finding。"closeout pending" 一行是信息不是问题:归档后 `phase` 尚未置 `done`,只是收官还没记录。
 
 ## 经典陷阱
 

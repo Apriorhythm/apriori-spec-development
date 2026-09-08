@@ -168,6 +168,13 @@ already stopped teaching are retired, and risk acceptance is unified on ONE mech
   code) and the erroneous statements (a comment or DDL header contradicting the implementation),
   the half two replay arms evidenced. Both review-ready prompts carry the full clause
   (`reclaim-discipline.test.js`, RC-01/02).
+- **doctor D7 stops billing frozen 5.x precedent as migration debt.** A 5.x bundle that recorded
+  its own closure (`current-step:` at DONE/SUPERSEDED/ABANDONED, or a `next-action:` naming
+  SUPERSEDED) and is kept in place as precedent material is frozen history — the same reading
+  archived escalations get (`historical`): reported as a D7 note (`frozen precedent (recorded,
+  not re-judged)`), never a finding. A 5.x bundle still in flight keeps the finding (MD-12
+  unchanged). Test: DR-16. This makes `doctor` pass its own repository, whose superseded
+  `archive-preflight` / `hotfix-channel` bundles are owner-ruled to stay in place unmigrated.
 
 ## Unreleased — 6.2-sub-doc · the document layer loses weight (text only; tool behavior unchanged)
 

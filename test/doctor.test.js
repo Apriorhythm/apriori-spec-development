@@ -361,3 +361,29 @@ test('DR-15 doctor refuses to probe on conflicted config', () => {
   assert.strictEqual(d5.status, 'finding', d5.detail);
   assert.match(d5.detail, /conflict/i);
 });
+
+test('DR-16 a 5.x bundle that recorded its own closure is frozen precedent — a note, never a D7 finding; one still in flight keeps the finding', () => {
+  const root = healthy();
+  // closed in place via current-step (the archive-preflight shape)
+  fs.mkdirSync(path.join(root, 'apriori/changes/frozen-step'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'apriori/changes/frozen-step/flow-state.md'),
+    'change: frozen-step\ntier: large\ntrack: harden\nround: 4\ncurrent-step: SUPERSEDED\nnext-action: kept in place as precedent material\n');
+  // closed in place via next-action while current-step still says a step (the hotfix-channel shape)
+  fs.mkdirSync(path.join(root, 'apriori/changes/frozen-next'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'apriori/changes/frozen-next/flow-state.md'),
+    'change: frozen-next\ntier: large\nround: 13\ncurrent-step: STEP1\nnext-action: **SUPERSEDED by another-change** — bundle kept as is\n');
+  // a 5.x bundle nobody closed: still migration debt (MD-12 unchanged)
+  fs.mkdirSync(path.join(root, 'apriori/changes/in-flight'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'apriori/changes/in-flight/flow-state.md'),
+    'change: in-flight\ntier: medium\nround: 2\ncurrent-step: STEP3\nnext-action: continue STEP3\n');
+  const r = doctor.runDoctor({ cwd: root, testCmd: TAP_OK });
+  const d7 = byId(r, 'D7');
+  const findings = d7.filter((c) => c.status === 'finding');
+  const details = findings.map((c) => c.detail).join(' ');
+  assert.doesNotMatch(details, /frozen-step|frozen-next/, `frozen 5.x bundles must not be findings: ${details}`);
+  assert.match(details, /in-flight: 5\.x identity/, 'an in-flight 5.x bundle keeps the migration finding');
+  const info = d7.filter((c) => c.status === 'ok').map((c) => c.detail).join(' ');
+  assert.match(info, /frozen-step/, 'the frozen bundle is still reported, as history');
+  assert.match(info, /frozen-next/);
+  assert.match(info, /frozen precedent|not re-judged/i, 'and named for what it is');
+});

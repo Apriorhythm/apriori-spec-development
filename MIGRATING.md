@@ -463,7 +463,10 @@ contract / data shape / permission / deploy / cross-system surface touched. Anyt
 keys refuses on its own — even standing next to a correct `mode` line — because a stale row
 that rides along is exactly how a bundle comes to *look* migrated without being it. `gate`
 (C3), `archive` (RESULT: NOT READY) and `status` all name the keys they found; `doctor`
-reports it as a D7 finding without blocking its other diagnostics. Edit the file: one line in,
+reports it as a D7 finding without blocking its other diagnostics — except a 5.x bundle that
+recorded its own closure (`current-step:` at DONE/SUPERSEDED/ABANDONED, or a `next-action:`
+naming SUPERSEDED) and is kept in place as precedent: that is frozen history, reported as a
+D7 note, never migration debt. Edit the file: one line in,
 four lines out.
 
 ---

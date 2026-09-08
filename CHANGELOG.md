@@ -162,6 +162,12 @@ already stopped teaching are retired, and risk acceptance is unified on ONE mech
   scenario's examples table; the §4.5 matrix pointer and concepts §7.2's P3-input paragraph are
   gone; R1 names five stops in §1 and §6; the runbook's dangling `§6 risk` / `handbook §4.10` /
   footer `§6/§7` / `./README.md` references are reworded. 607/607.
+- **The v6.1 fold-in, settled (plan/17 §四.1).** The "user-visible failure surface" rule is
+  formally withdrawn and NOT folded in (zero field evidence; the rc1 sentence stands unchanged);
+  the reclaim discipline is completed to both halves — the residue (probes, temporary files, dead
+  code) and the erroneous statements (a comment or DDL header contradicting the implementation),
+  the half two replay arms evidenced. Both review-ready prompts carry the full clause
+  (`reclaim-discipline.test.js`, RC-01/02).
 
 ## Unreleased — 6.2-sub-doc · the document layer loses weight (text only; tool behavior unchanged)
 

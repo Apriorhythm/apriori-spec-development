@@ -75,21 +75,49 @@ test('ARR-02 a legacy artifact-root: line is tolerated — read, ignored, never 
 });
 
 test('ARR-03 the self-repo bundles and the legacy-lab archives replay with zero new refusals', () => {
-  // the three bundles at apriori/changes/ top level (state-switch carries artifact-root:)
+  // (a) the three bundles at apriori/changes/ top level (state-switch carries artifact-root:):
+  // the COMPLETE defect set is locked — [] exactly, not merely "nothing mentioning artifact-root"
   const selfBundles = ['state-switch-completeness-principle', 'archive-preflight', 'hotfix-channel'];
   for (const b of selfBundles) {
     const p = path.join(ROOT, 'apriori', 'changes', b, 'flow-state.md');
     const text = fs.readFileSync(p, 'utf8');
     assert.deepStrictEqual(flow.structuralDefects(text), [], `${b}: new structural defect`);
   }
-  // frozen legacy-lab archives that wrote the v5-era artifact-root line
+  // and an end-to-end status replay per self bundle: the CLI reader accepts the bundle (exit 0)
+  // and its whole JSON surface leaks no artifact-root — a refusal oracle, not a parser-only one
+  const { spawnSync } = require('node:child_process');
+  const BIN = path.join(ROOT, 'bin', 'apriori.js');
+  for (const b of selfBundles) {
+    const r = spawnSync('node', [BIN, 'status', '--change', b, '--json'], { cwd: ROOT, encoding: 'utf8' });
+    assert.strictEqual(r.status, 0, `${b}: status newly refuses the bundle: ${r.stdout}${r.stderr}`);
+    const st = JSON.parse(r.stdout);
+    assert.ok(!JSON.stringify(st).includes('artifact-root'), `${b}: status --json leaks artifact-root`);
+  }
+  // (b) frozen legacy-lab archives that wrote the v5-era artifact-root line: complete defect
+  // set locked to [] — the P3 injection (an appended `## Open` + bare line yields a REAL
+  // located defect) must fail here, which the old artifact-root-only exclusion let pass
   const lab = path.join(ROOT, 'validation', 'legacy-lab', 'inherited-poll', 'apriori', 'changes', 'archive');
   for (const dir of ['2026-07-09T1226-json-body-400', '2026-07-09T1213-vote-dedup']) {
     const text = fs.readFileSync(path.join(lab, dir, 'flow-state.md'), 'utf8');
     assert.ok(text.includes('artifact-root'), `${dir}: fixture lost its artifact-root line`);
-    const defects = flow.structuralDefects(text);
-    assert.ok(!defects.some((d) => /artifact-root/.test(d)), `${dir}: artifact-root became a defect: ${defects}`);
+    assert.deepStrictEqual(flow.structuralDefects(text), [],
+      `${dir}: the legacy archive stopped parsing clean — its complete defect set must stay empty`);
   }
+  // (c) the WHOLE shipped corpus: every flow-state under apriori/changes (top level + archive)
+  // parses with a complete defect set of [] — "zero new refusals" is an exhaustive oracle over
+  // the tracked corpus, not a three-sample claim
+  const flowStates = [];
+  (function walk(d) {
+    for (const n of fs.readdirSync(d)) {
+      const p = path.join(d, n);
+      if (fs.statSync(p).isDirectory()) walk(p);
+      else if (n === 'flow-state.md') flowStates.push(p);
+    }
+  })(path.join(ROOT, 'apriori', 'changes'));
+  assert.ok(flowStates.length >= 36, `the shipped corpus went missing: ${flowStates.length} flow-states`);
+  for (const p of flowStates)
+    assert.deepStrictEqual(flow.structuralDefects(fs.readFileSync(p, 'utf8')), [],
+      `${path.relative(ROOT, p)}: new structural defect in the shipped corpus`);
 });
 
 test('ARR-04 no runtime consumer: the reader exposes no artifact-root anywhere in its surface', () => {

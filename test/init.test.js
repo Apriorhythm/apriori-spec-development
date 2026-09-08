@@ -99,6 +99,30 @@ test('IN-18 low-confidence markers detect nothing: .github alone and AGENTS.md a
   assert.ok(d4.includes('codex'), 'a real Codex project (.codex/) went undetected');
 });
 
+// The pointer paragraph as SHIPPED — a frozen byte oracle, deliberately duplicated from
+// lib/init.js POINTER: IN-19 judges the REAL product bytes against an independent copy, so a
+// corrupted generator (the P3 injection prefixed the written pointer with garbage) goes red
+// here instead of comparing two equally-broken runs against each other. A deliberate POINTER
+// change updates this constant consciously, in the same commit.
+const FROZEN_POINTER =
+  'Development follows `apriori/runbook.md`. At session start, run `apriori status ' +
+  '--change <name>`, read `apriori/changes/<change>/flow-state.md`, and continue from its ' +
+  'first `## Next` entry. Read a runbook section only when status, Next, a blocked command, ' +
+  'or an uncertain fact points there — never preload the full runbook.';
+
+// relative path → bytes for every file under root (sorted, recursive)
+function fileBytes(root) {
+  const map = {};
+  (function walk(d) {
+    for (const n of fs.readdirSync(d).sort()) {
+      const p = path.join(d, n);
+      if (fs.statSync(p).isDirectory()) walk(p);
+      else map[path.relative(root, p).split(path.sep).join('/')] = fs.readFileSync(p, 'latin1');
+    }
+  })(root);
+  return map;
+}
+
 test('IN-19 explicit --tools and the default path are unchanged by detection removal', () => {
   // the same explicit selection produces the same actions whether misleading markers exist or not
   const withMarkers = tmp();
@@ -110,6 +134,23 @@ test('IN-19 explicit --tools and the default path are unchanged by detection rem
   const b = init.scaffold(clean, ['claude']);
   assert.deepStrictEqual(a.actions, b.actions);
   assert.deepStrictEqual(a.levels, b.levels);
+  // the REAL products, byte for byte: the two roots hold the identical relative-path → bytes
+  // map — not just the same action labels (P3: a corrupted pointer passed the label-only diff)
+  assert.deepStrictEqual(fileBytes(withMarkers), fileBytes(clean),
+    'explicit --tools products differ between a marked and a clean project');
+  // and each product matches its source of truth byte-for-byte — an oracle independent of the
+  // generator under test
+  assert.strictEqual(read(withMarkers, 'CLAUDE.md'), FROZEN_POINTER + '\n',
+    'the written CLAUDE.md pointer is not the shipped pointer paragraph');
+  assert.strictEqual(read(withMarkers, '.claude/commands/apriori.md'),
+    fs.readFileSync(path.join(__dirname, '..', 'templates', 'command.md'), 'utf8'),
+    'the /apriori command file is not the template byte-for-byte');
+  assert.strictEqual(read(withMarkers, 'apriori/runbook.md'),
+    fs.readFileSync(path.join(__dirname, '..', 'RUNBOOK.md'), 'utf8'),
+    'the copied runbook is not the package RUNBOOK.md byte-for-byte');
+  assert.strictEqual(read(withMarkers, 'apriori/process-config.md'),
+    fs.readFileSync(path.join(__dirname, '..', 'templates', 'process-config.md'), 'utf8'),
+    'the scaffolded process-config is not the template byte-for-byte');
   // zero mis-add: no Copilot or Codex artifact was written for the unselected tools
   assert.ok(!fs.existsSync(path.join(withMarkers, '.github', 'copilot-instructions.md')));
   assert.ok(!fs.existsSync(path.join(withMarkers, '.codex')));

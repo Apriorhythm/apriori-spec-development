@@ -1,0 +1,118 @@
+change: hotfix-lane
+tier: medium
+track: harden
+track-rationale: 目标可陈述且方向已由 owner 拍板（爆炸半径分级、profile×tier 缩放）；触及 RUNBOOK 语义 + 未来多处 CLI，但本 change 只到设计（gate③ 止），不产实现——medium（owner 预判一致：「预计 medium：改 RUNBOOK 语义 + 未来要动 new/gate 等多处 CLI，但本轮只到设计」）
+lineage: on-the-fly 分支（v4 产品线；main 暂不动；v3 已在谱系（merge-base=59289ce），v1 非祖先；不再合并任何独立分支 tip）
+current-step: DONE
+round: 43 (STEP0) / 28 (STEP2)
+reviewer-session: 019ff946-122a-7532-ac83-e50910aa0efc   # codex(WSL) gpt-5.6-sol, STEP0
+next-action: 已归档（DONE）。两项待裁 owner 已裁：§七 走 (i)（正式侧延期，入场条件写死在决策摘要）、§八 改数字不动机制（AC1 修订入 gate3-ruling §五）。剩余对外动作 = owner 决定是否合并到 main
+artifact-root: .
+gates:
+  - 2026-08-13T14:10 note: change scaffolded by `apriori new`（on-the-fly 分支）
+  - 2026-08-13T14:10 kickoff (owner, verbatim): 「开一个新 change `hotfix-lane`，按 RUNBOOK 走 STEP0 → STEP2 → 停在 gate③：产出经异构评审收敛的需求与设计包呈报给我，**不写任何实现代码**。」——完整 goal 文本另见本 change 的 requirement/goal-verbatim.md
+  - 2026-08-13T14:10 note: 授权口径（goal verbatim 要点）——STEP0 对抗评审照常（codex read-only；失败降级记录"评审缺席"继续）；gate② 预授权自决通过并留痕；**硬停点：STEP2 收敛后组装 gate③ packet（proposal + design + spec delta + ledger）停下等 owner，不进 STEP4/5**；不 commit、不 push、样本只读、与 owner 中文、机器 token 英文；到 gate③ 为止只产出 apriori/changes/hotfix-lane/ 下文档，不 touch lib/ bin/ test/
+  - 2026-08-13T14:10 note: 状态差异记录（reality wins）——goal 文本描述「工作区 15 文件 +976/-99 未 commit、三 change 停 gate④ 待批未归档」为旧快照；实际：P0 三 change 已经 owner「批准」后 commit（4127653）并归档（c45ecc4/6b9ec7c/7b8d5c6）于 on-the-fly，工作区干净。差异不影响本 change 的操作约束（文档只读隔离照守）。
+  - 2026-08-13T14:10 note: 与前作 hotfix-channel 的关系——hotfix-channel（P0-4 单义 hotfix 通道）停在 gate②，其 STEP0 经 13 轮收敛的 req-v13（VERDICT 0）作为 prior art 声明输入——引用的是候选空间与契约框架（选择均未经 owner 裁定，逐项裁定归本 change gate③ 决策清单）；三处被新 goal 拍板取代（防逃逸 advisory→硬准入、BR-007 REMOVED 示例、no-test 全域可用）。hotfix-channel bundle 原样保留，去留归 owner。
+  - 2026-08-13T14:10 note: KB 预检——核心五模块 truth source-commit=4127653，lib/bin 其后 0 commit，全新鲜（沿用 hotfix-channel STEP1 核对结论：update.js 轻微滞后不在触及面；new/resolve 无 truth doc，本 change 设计需裁）
+  - 2026-08-13T14:40 note: STEP0·r1 verdict verbatim: 「VERDICT: 13 issues open」（req-review-v1.md + raw；含 REQ-2 lineage 实读勘误与 REQ-1 goal 落盘缺失——均系我方过失，已修）
+  - 2026-08-13T15:00 note: STEP0·r2 verdict verbatim: 「VERDICT: 8 issues open」（REQ-1/2/3/6/8/9/10/11/12 verified；REQ-4/5/7/13 reopened，REQ-14..17 new；req-review-v2.md + raw）
+  - 2026-08-13T15:25 note: STEP0·r3 verdict verbatim: 「VERDICT: 9 issues open」（REQ-4/7/13/15/16/17 verified；REQ-1/5/14 reopened，REQ-18..23 new；req-review-v3.md + raw）
+  - 2026-08-13T15:50 note: STEP0·r4 verdict verbatim: 「VERDICT: 7 issues open」（REQ-1/5/14/18/19/20/21/22 verified；REQ-23 reopened，REQ-24..29 new；req-review-v4.md + raw）
+  - 2026-08-13T16:15 note: STEP0·r5 verdict verbatim: 「VERDICT: 7 issues open」（REQ-24/25/27 verified；REQ-19/23/26/28/29 reopened，REQ-30/31 new；req-review-v5.md + raw；REQ-30 系评审实读 lib/archive-merge.js 抓到我方能力声明不实）
+  - 2026-08-13T16:40 note: STEP0·r6 verdict verbatim: 「VERDICT: 5 issues open」（REQ-19/29/30 verified；REQ-23/26/28/31 reopened，REQ-32 new；req-review-v6.md + raw）
+  - 2026-08-13T17:05 note: STEP0·r7 verdict verbatim: 「VERDICT: 8 issues open」（REQ-31 verified；REQ-23/26/28/32 残口，REQ-33..36 new；req-review-v7.md + raw）
+  - 2026-08-13T17:30 note: STEP0·r8 verdict verbatim: 「VERDICT: 6 issues open」（REQ-23/26/28/32/33/36 闭合；REQ-35 残口+REQ-37..41 new；req-review-v8.md + raw）
+  - 2026-08-13T17:50 note: STEP0·r9 verdict verbatim: 「VERDICT: 7 issues open」——**流程事故**：我方脚本锚点断言失败使 req-v9 初版为 v8 字节副本，账本却先行翻 fixed(v9)（评审以 cmp/SHA-256 实证抓获）。更正：req-v9 已真实重写（r8 六条修复全部落地+事故注记）；账本状态以真实 v9 为准；本条为事故的 verbatim 留痕（req-review-v9.md + raw）
+  - 2026-08-13T18:15 note: STEP0·r10 verdict verbatim: 「VERDICT: 4 issues open」（REQ-35/38/39/42 verified；REQ-37/40/41 残口，REQ-43 new；req-review-v10.md + raw）
+  - 2026-08-13T18:35 note: STEP0·r11 verdict verbatim: 「VERDICT: 5 issues open」——**REQ-42 同型事故复发**（v10 初版为 v9 字节副本、账本先翻 fixed(v10)，评审 cmp/SHA 实证）。更正：req-v10 已真实重写（r10 四条修复落地）；**顺序纪律自此生效：先写入→grep 验证成功→再翻账本→再送评审**（req-review-v11.md + raw）
+  - 2026-08-13T18:55 note: STEP0·r12 verdict verbatim: 「VERDICT: 3 issues open」（REQ-37/40/41/42/43 verified；REQ-44/45/46 new；req-review-v12.md + raw；顺序纪律执行：v11 先写入并 grep 验证后才翻账本）
+  - 2026-08-13T19:15 note: STEP0·r13 verdict verbatim: 「VERDICT: 3 issues open」（REQ-44/45 verified；REQ-46 残口+REQ-47/48 new；req-review-v13.md + raw）
+  - 2026-08-13T19:40 note: STEP0·r14 verdict verbatim: 「VERDICT: 4 issues open」（REQ-46/47 verified、REQ-48 原口闭合；REQ-49..52 new——2a 降级被判系统性 fail-down；req-review-v14.md + raw）
+  - 2026-08-13T20:00 note: STEP0·r15 verdict verbatim: 「VERDICT: 4 issues open」（REQ-49/50/52 verified；REQ-51 残口+REQ-53/54/55 new；req-review-v15.md + raw）
+  - 2026-08-13T20:20 note: STEP0·r16 verdict verbatim: 「VERDICT: 4 issues open」（REQ-51 verified；REQ-53/54/55 残口+REQ-56 new；req-review-v16.md + raw）
+  - 2026-08-13T20:40 note: STEP0·r17 verdict verbatim: 「VERDICT: 4 issues open」（REQ-54/56 verified；REQ-53/53a/55 残口+REQ-57 new；req-review-v17.md + raw）
+  - 2026-08-13T21:00 note: STEP0·r18 verdict verbatim: 「VERDICT: 2 issues open」（REQ-53a/55/57 verified；REQ-53 残口+REQ-58 new；req-review-v18.md + raw）
+  - 2026-08-13T21:20 note: STEP0·r19 verdict verbatim: 「VERDICT: 1 issues open」（REQ-53 verified；REQ-58 部分闭合再收窄；本轮曾遇 codex 网络中断，重试成功——降级未触发；req-review-v19.md + raw）
+  - 2026-08-13T21:40 note: STEP0·r20 verdict verbatim: 「VERDICT: 2 issues open」（REQ-58 再收窄+REQ-59 new——摘要域自失效循环；req-review-v20.md + raw）
+  - 2026-08-13T22:00 note: STEP0·r21 verdict verbatim: 「VERDICT: 2 issues open」（REQ-59 verified；REQ-58 摘要残口+REQ-60 new；req-review-v21.md + raw）
+  - 2026-08-13T22:20 note: STEP0·r22 verdict verbatim: 「VERDICT: 1 issues open」（REQ-58/60 verified；REQ-61 new——摘要域实体/文件重叠；req-review-v22.md + raw）
+  - 2026-08-13T22:40 note: STEP0·r23 verdict verbatim: 「VERDICT: 1 issues open」（REQ-61 verified；REQ-62 new——节切分 malformed 谱；req-review-v23.md + raw）
+  - 2026-08-13T23:00 note: STEP0·r24 verdict verbatim: 「VERDICT: 1 issues open」（REQ-62 基数两可残口再收窄；req-review-v24.md + raw）
+  - 2026-08-13T23:20 note: STEP0·r25 verdict verbatim: 「VERDICT: 1 issues open」（REQ-62 verified；REQ-63 new——bindings 需求函数；req-review-v25.md + raw）
+  - 2026-08-13T23:40 note: STEP0·r26 verdict verbatim: 「VERDICT: 1 issues open」（REQ-63 verified；REQ-64 new——载体维度投影；req-review-v26.md + raw）
+  - 2026-08-14T00:00 note: STEP0·r27 verdict verbatim: 「VERDICT: 2 issues open」（REQ-64 载体枚举落文；REQ-65/66 new——基数分层与联动摘要契约；req-review-v27.md + raw）
+  - 2026-08-14T00:20 note: STEP0·r28 verdict verbatim: 「VERDICT: 2 issues open」（REQ-65/66 落文；REQ-67/68 new；req-review-v28.md + raw）
+  - 2026-08-14T00:40 note: STEP0·r29 verdict verbatim: 「VERDICT: 2 issues open」（REQ-67/68 verified、REQ-58 转正；REQ-69/70 new；req-review-v29.md + raw）
+  - 2026-08-14T01:00 note: STEP0·r30 verdict verbatim: 「VERDICT: 1 issues open」（REQ-69 verified；REQ-70 reopened——保留案留白；req-review-v30.md + raw）
+  - 2026-08-14T01:20 note: STEP0·r31 verdict verbatim: 「VERDICT: 2 issues open」（REQ-70 措辞残口+REQ-71 new——正式表泄漏；req-review-v31.md + raw）
+  - 2026-08-14T01:40 note: STEP0·r32 verdict verbatim: 「VERDICT: 2 issues open」（REQ-71 verified；REQ-70 残口+REQ-72 new——R2 禁令预裁纠正；req-review-v32.md + raw）
+  - 2026-08-14T02:00 note: STEP0·r33 verdict verbatim: 「VERDICT: 2 issues open」（REQ-70 verified；REQ-72 Q-4c 贯穿残口+REQ-73 new；req-review-v33.md + raw）
+  - 2026-08-14T02:20 note: STEP0·r34 verdict verbatim: 「VERDICT: 3 issues open」（REQ-73 verified；REQ-72 零 delta 残口+REQ-74/75 new；req-review-v34.md + raw）
+  - 2026-08-14T02:40 note: STEP0·r35 verdict verbatim: 「VERDICT: 3 issues open」（REQ-72/74/75 残口再收窄；req-review-v35.md + raw）
+  - 2026-08-14T03:00 note: STEP0·r36 verdict verbatim: 「VERDICT: 1 issues open」（REQ-72/74 verified；REQ-75 聚合优先级残口；req-review-v36.md + raw）
+  - 2026-08-14T03:20 note: STEP0·r37 verdict verbatim: 「VERDICT: 3 issues open」（REQ-75 verified；REQ-76/77/78 new；req-review-v37.md + raw）
+  - 2026-08-14T03:40 note: STEP0·r38 verdict verbatim: 「VERDICT: 2 issues open」（REQ-76/78 verified；REQ-77 证据契约残口+REQ-79 new；req-review-v38.md + raw）
+  - 2026-08-14T04:00 note: STEP0·r39 verdict verbatim: 「VERDICT: 3 issues open」（REQ-79 verified；REQ-77 残口+REQ-80/81 new；req-review-v39.md + raw）
+  - 2026-08-14T04:20 note: STEP0·r40 verdict verbatim: 「VERDICT: 2 issues open」（REQ-77 verified；REQ-80/81 残口再收窄；req-review-v40.md + raw）
+  - 2026-08-14T04:40 note: STEP0·r41 verdict verbatim: 「VERDICT: 2 issues open」（REQ-80 verified；REQ-81 收窄+REQ-82 new；req-review-v41.md + raw）
+  - 2026-08-14T05:00 note: STEP0·r42 verdict verbatim: 「VERDICT: 1 issues open」（REQ-81 verified；REQ-82 d1 联动残口；req-review-v42.md + raw）
+  - 2026-08-14T05:20 note: STEP0·r43 verdict verbatim: 「VERDICT: 0 issues open」——收敛。req-v41 为需求基线；43 轮 verdict 序列：13→8→9→7→5→8→6→7(假v9)→4→5(假v10)→3→3→4→4→2→2→1→1→2→2→1→1→1→1→1→2→2→1→2→2→1→2→2→3→3→1→3→2→3→2→2→1→0（r1..r43，含两次版本事故轮）；账本 REQ-1..82 全部 verified/移除类收口（req-review-v43-final.md + raw）
+  - 2026-08-14T05:35 note: STEP1 完成——gap-report.md 成稿（G1-G9；KB 全新鲜；new/resolve 无 truth 待 STEP2 声明）
+  - 2026-08-14T05:35 gate② PASSED (self, per goal pre-authorization verbatim「gate②（若 tier 走到）预授权自决通过并留痕」)——gap report 与 req-v41 核对无缺口
+  - 2026-08-14T06:00 note: STEP2 文档成稿——proposal.md/design.md/specs/{runbook-hotfix-lane-section,process-config-rows,cli-checkpoints}.md
+  - 2026-08-14T06:30 note: STEP2·r1 verdict verbatim: 「VERDICT: 13 issues open」（DES-1..13；design-review-v1.md + raw）
+  - 2026-08-14T07:00 note: 设计包 v2 修订完成（design.md 重写含 D6 定式节；decision-summary.md 新增；specs 三文件修订；proposal 白名单②）
+  - 2026-08-14T07:30 note: STEP2·r2 verdict verbatim: 「VERDICT: 10 issues open」（r1 的 DES-3/4/5/10 实质收口；新轮次重编号记为 DES2-1..10；design-review-v2.md + raw）
+  - 2026-08-14T08:00 note: 设计包 v3 修订完成（D6 五节定式/双摘要域/表 C 修正/D3 补全/检查点一例一 ID/双语草案/决策摘要候选全枚举）
+  - 2026-08-14T08:30 note: STEP2·r3 verdict verbatim: 「VERDICT: 10 issues open」（DES2-3/6 收口；新轮次记 DES3-1..10；design-review-v3.md + raw）
+  - 2026-08-14T09:00 note: 设计包 v4 修订完成（DES3-1..10 全收口）
+  - 2026-08-14T09:30 note: STEP2·r4 verdict verbatim: 「VERDICT: 10 issues open」（DES4-1..10；design-review-v4.md + raw）
+  - 2026-08-14T10:00 note: 设计包 v5 修订完成（DES4-1..10 全收口）
+  - 2026-08-14T10:30 note: STEP2·r5 verdict verbatim: 「VERDICT: 9 issues open」（DES5-1..9，v6 全收口）
+  - 2026-08-14T11:00 note: STEP2·r6 verdict verbatim: 「VERDICT: 8 issues open」（DES6-1..8，v7 全收口）
+  - 2026-08-14T11:30 note: STEP2·r7 verdict verbatim: 「VERDICT: 7 issues open」（DES7-1..7，v8 全收口）
+  - 2026-08-14T12:00 note: STEP2·r8 verdict verbatim: 「VERDICT: 8 issues open」——**事故三（REQ-42 同型）：DES7-1/7 的检查点修订因脚本语法错未落盘而账本先翻，评审抓获**。更正：v9 真实落盘并逐项 grep 验证；顺序纪律重申（每文件写后单独验证再翻账本）。其余六条（DES8-3..8）v9 一并收口（design-review-v8.md + raw）
+  - 2026-08-14T12:30 note: STEP2·r9 verdict verbatim: 「VERDICT: 7 issues open」（DES9-1..7，v10 全收口并逐项验证）
+  - 2026-08-14T13:00 note: STEP2·r10 verdict verbatim: 「VERDICT: 7 issues open」（DES10-1..7，v11 全收口并逐项验证）
+  - 2026-08-14T13:30 note: STEP2·r11 verdict verbatim: 「VERDICT: 7 issues open」（DES11-1..7，v12 全收口并逐项验证）
+  - 2026-08-14T14:00 note: STEP2·r12 verdict verbatim: 「VERDICT: 6 issues open」（DES12-1..6，v13 全收口并逐项验证）
+  - 2026-08-14T14:30 note: STEP2·r13 verdict verbatim: 「VERDICT: 5 issues open」（DES13-1..5，v14 全收口并逐项验证）
+  - 2026-08-14T15:00 note: STEP2·r14 verdict verbatim: 「VERDICT: 4 issues open」（DES14-1..4，v15 全收口并逐项验证）
+  - 2026-08-14T15:30 note: STEP2·r15 verdict verbatim: 「VERDICT: 4 issues open」（DES15-1..4，v16 全收口并逐项验证）
+  - 2026-08-14T16:00 note: STEP2·r16 verdict verbatim: 「VERDICT: 6 issues open」（DES16-1..6——URI 分支级联复杂度，v17 以移除 URI 定案+ext-artifact 全链闭合）
+  - 2026-08-14T16:30 note: STEP2·r17 verdict verbatim: 「VERDICT: 4 issues open」（DES17-1..4，v18 全收口并逐项验证）
+  - 2026-08-14T17:00 note: STEP2·r18 verdict verbatim: 「VERDICT: 4 issues open」（DES18-1..4——含评审抓到的正则次序死分支，v19 全收口并逐项验证）
+  - 2026-08-14T17:30 note: STEP2·r19 verdict verbatim: 「VERDICT: 6 issues open」（DES19-1..6；v20 以"π3 收窄为仓根相对"从根消解跨平台词法连锁，探针移出归档写集合）
+  - 2026-08-14T18:00 note: STEP2·r20 verdict verbatim: 「VERDICT: 6 issues open」（DES20-1..6；v21 以"删除独立探针、逐文件真实路径安全打开"从根消解探测连锁；π3 补 containment；π2 两态记录行）
+  - 2026-08-14T18:30 note: STEP2·r21 verdict verbatim: 「VERDICT: 7 issues open」（DES21-1..7，v22 全收口并逐项验证）
+  - 2026-08-14T19:00 note: STEP2·r22 verdict verbatim: 「VERDICT: 7 issues open」（DES22-1..7，v23 全收口并逐项验证）
+  - 2026-08-14T19:30 note: STEP2·r23 verdict verbatim: 「VERDICT: 5 issues open」（DES23-1..5，v24 全收口并逐项验证）
+  - 2026-08-14T20:00 note: STEP2·r24 verdict verbatim: 「VERDICT: 7 issues open」——七条中五条（DES24-3..7）落在 π2 复制事务链，另两条（DES24-1 平台指引、DES24-2 AC1 矛盾）属包级并已在 v26/v27 修复——r27 身份更正。**边界裁定**：该链粒度超出 gate③ 设计包职责（本包定的是准入分级与验证缩放决策表），v25 将 π2 机械契约显式声明为"未完成、裁之即触发实现前设计增量"（design D7），π1/π3 契约完整可裁；此裁定入决策摘要与 RUNBOOK 草案，向 owner 明示
+  - 2026-08-14T20:30 note: STEP2·r25 verdict verbatim: 「VERDICT: 4 issues open」（终审：D7 边界基本诚实，但四条属包级——账本非法状态 scoped、AC1 四格矛盾、平台口径、π2 增量缺 gate 阻塞协议；v26 全收口：账本改 7 行合法 open 并提请 owner waive/改裁、D7 增重新准入协议、平台口径按四条件收窄、HL-K-01 按四格参数化）
+  - 2026-08-14T21:00 note: STEP2·r26 verdict verbatim: 「VERDICT: 4 issues open」（DES26-1..4——含评审抓到我方账本覆写 r24 finding 身份的过失，已按原文恢复；v27 四条全收口）
+  - 2026-08-14T21:30 note: STEP2·r27 verdict verbatim: 「VERDICT: 3 issues open」（DES27-1..3，v28 全收口：身份口径更正、非法列补全、账本状态机改为原 ID 重开+两步 rejected 流转）
+  - 2026-08-14T21:50 note: 目录归位——三份 delta 草案自 specs/ 移至 design-drafts/（specs/ 是 gate/verify 认的机器可解析 delta 位；本 change 到 gate③ 不产 spec delta，草案不应占该位）。gate --change 现报「no delta spec files」= 本 change 的应然状态（无 delta 可判），非缺陷
+  - 2026-08-14T22:00 note: STEP2·r28 verdict verbatim: 「VERDICT: 0 issues open」——设计评审收敛（28 轮；design-review-v28-final.md + raw）
+  - 2026-08-14T22:00 gate③ PENDING: packet 组装完成（gate3-packet.md：决策摘要/提案/设计/需求基线/差距盘点/delta 草案/账本+raw）。账本 5 行 open 系 DES24-3..7（π2 复制事务链，design D7 边界裁定），已在 packet 与决策摘要显式提请 owner 二选一——非遗漏。硬停，等 owner。
+  - 2026-08-14T22:20 gate③ RULED (owner delegation, verbatim): owner 就 packet 回复「你决定」——裁定权明示委托生产方代裁。裁定记录 gate3-ruling.md（Q-1=γ'、Q-4=a、签收 d+d1、Q-3=i、Q-5=b、Q-11={R2}×{retain}、Q-2c 不引入类型表、Q-6=π1/{f1}/t1、Q-12=no、Q-7=4.1、Q-10=N3；prior art 位置 a/载体 c1'/p1/k1/v1/w2/λ1/t1/o1/r1+r2/s2/定位头必填/gate 映射 m1）
+  - 2026-08-14T22:20 note: π2 分支裁为改裁 π1 → 账本 DES24-3..7 两步流转完成（生产方 rejected+理由 → reviewer concurrence verbatim「Reviewer concurrence：DES24-3..7 → rejected-verified」，review/gate3-concurrence.md + raw）
+  - 2026-08-14T22:20 note: concurrence 同轮提出三条并全部收口——①裁定组合下禁用可选 hash=（否则仍触发安全打开，四条件不成立）②AC1 手工文件阈值按形态参数化（零 delta ≤1／含 delta ≤2／含 delta×ui ≤3）③**我方过失**：裁定书初稿误称 tasks.md 已生成（当时不存在），已更正为「待生成」并同步 flow-state 状态
+  - 2026-08-14T22:50 owner ruling (verbatim): 「D」——截图义务按档参数化：全量档（medium/large）保留强制（记录行+n/a 行）；**增量档（hotfix/trivial）降为 advisory**（frontend:yes 无记录行→打印提示不阻塞、n/a 行不强制；提供即全谱校验，malformed 仍 F1）。推翻我方原口径「增量档也强制记录行」。已同步 design v26（表 A ui 列/表 B/D2.2）、decision-summary 表二、gate3-ruling §七、RUNBOOK 草案 EN/CN、检查点 HL-E-03a..c/10/11a-b、HL-C-05/06、HL-K-02、tasks T6.1b/T6.3/T6.5
+  - 2026-08-14T23:10 note: 裁定 D 的同步经复审（review/ruling-D-review.md + raw）——「档位裁定本身不弱化 state A」获确认；同轮四条全收口：①**范围收窄定案**：本 change 的机械面只覆盖 hotfix 通道，正式流程侧（medium/large 全量 E2E+截图）只做 RUNBOOK 文字升格、机械化留后续 change（理由：正式 change 无 frontend-touched 载体，机械化须新增 gate 检查项，与「gate 七项分毫不动」不变量冲突）②证据存在性按档参数化（修正 req-v41 无条件量词）③backend-only 的 n/a 行按档限定④HL-V-07 反向预期改写 + HL-X-02b/X-09 新增
+  - 2026-08-14T23:30 note: 裁定 D 同步的二轮复审（review/ruling-D-review-2.md + raw）四条收口——**关键一条系评审纠正我方越权**：我把「正式流程侧机械化延期」记为定案，但那是对 goal B 最高优先目标的范围缩减，生产方无权单方裁；已全面改标 pending（design D2.2/表B、decision-summary 新增 §七 二选一、gate3-ruling §八、RUNBOOK 草案 EN/CN、tasks T6.1b/T6.3/T6.5/T10.1、检查点 HL-E-03a/10/11a 标 pending）。另修正「机械判结论者恒强制」的量词（与增量档 E2E n/a 冲突）
+  - 2026-08-14T23:50 note: owner 指令 verbatim「开工」——解除 gate③ 硬停，进 STEP4/5 实现（裁定组合按 gate3-ruling.md；未选方案不实现不测）
+  - 2026-08-15T02:30 note: 实现完成（T1..T10）——`lib/config.js` verification-profile（CF-13..17）、新模块 `lib/hotfix.js` 十层（状态文件/字段契约/bindings c1'/截图证据/分级/双摘要域/评审面/bundle IO/零写入 preflight/三段写集合+CLI，HF-01..42）、`lib/spec-runner.js` scopedEvaluate + verify 的 scope 入口（SR-69..72）、gate 映射 m1（GT-28/29）、status 标注（ST-10/11）、CLI dispatch（CL-18）。374/374 绿；`verify --change hotfix-lane` GREEN（340 bound-green，0 red/unbound/orphan/unidentified）
+  - 2026-08-15T02:30 note: 文档与 KB——RUNBOOK.md/RUNBOOK_cn.md 新增 §2b hotfix 通道 + §2c 验证强度缩放（runbook-version 4.0→4.1）；docs/cli.md + cli_cn.md 新增 `apriori hotfix` 命令面与 §8.0b verification-profile；CHANGELOG；新 truth doc `hotfix.md` + 补缺的 `new.md`/`resolve.md`/`config.md`（config 非裁定项——verification-profile 的公开函数落在 config，无 truth doc 则是本 change 制造的新缺口，故补；如实上报，见 decision-summary §八）；`check --self` PASS
+  - 2026-08-15T03:00 note: **模拟实验（E2E）**——`~/terra/p0-hotfix-lane-lab/`（真 git 仓、真 CLI、无 fixture）：三类承载对象各一遍全部 ARCHIVED（R0 无代码结论／R1 零 delta 琐碎修／R2-whitelist 含 delta+点检+截图记录），四种 R3 拒绝各一遍全部零写入拒绝并指路，gate m1 拒绝（exit 2、七项未跑）与 status 标注实证。实验记录 `~/terra/p0-hotfix-lane-lab/NOTES.md`
+  - 2026-08-15T03:00 note: **lab 抓到的两件事（如实上报，不修饰）**——①实现缺陷：dry-run 写集合打印 `archive/<date>-<name>` 而实际 move 用 `archiveStamp`（含时分）`archive/<date>T<hhmm>-<name>`，两半各自正确、合起来说谎；已修（写集合行改用 `archiveStamp(date)`）——单测抓不到、lab 抓到的典型 ②AC1 手工文件预算 R2 形态不达标：实测 4–5 > ≤3（γ' 点检要求 round 文档+raw 成对，含 frontend-touched 再加截图记录），属结构性超支而非偶然；命令数 ≤3 三形态全部达成。不改数字，提请 owner（decision-summary §八）
+  - 2026-08-15T03:10 note: AC8 fixture 落盘 `fixtures/ac8-1012769/`（README 首句标注非原件——原档案本就无任何 .md，只有两张截图与一份排查 SQL）；机械复核判定 = (R3, n/a) 不予准入，且这正是要点：拒绝在十秒内机械发生并指名正式流程，而非记录根本不被写下。可承载的那一半（no-code + 上线后学到的业务事实 → R0 + decisions 回流 truth）另列——那正是复盘 §墙二说"现状没有任何结构承接"的东西
+  - 2026-08-15T03:20 gate self-证: `gate --change hotfix-lane` → **PASS**（C1 verify GREEN change-scoped·C2 tasks 全勾·C3 flow-state legal·C4 256 行无阻塞·C5 74 份 review doc 均有 raw·C6 5 模块 stamp 新鲜·C7 mutation delta 全部 stamped）。未 commit、未 push——按授权
+  - 2026-08-15T03:40 note: **自查纠错**——T8.4（phrase table 收录新短语）一度被误勾为完成，实际未做：`VERDICT: no findings`/`VERDICT: gaps found` 既不在 `lib/check.js` 的 VERDICT_PHRASES，也不在 RUNBOOK §5 表。`check --self` 当时通过只是因为我没把该字面串写进被扫描的八对文档——即「谁把通道的判定行写进 RUNBOOK 谁就踩雷」。已补：两短语入表、双语 §5 各加两行 + 尾注文法说明（文法示例改写为 `<判定短语> role=…` 以免模板串被当作短语扫描）、CK-17 覆盖。375/375 绿，gate 仍 PASS
+  - 2026-08-14T00:10 owner ruling (verbatim): 「同意，这两条直接不做，然后直接收尾」——§七 裁 (i)（正式流程侧机械化延期，后续 change 承接；入场条件三条写入 decision-summary §七）；§八 裁「改数字不动机制」（AC1 修订：命令数 ≤3 恒、墙钟 ≤10:00 恒、手工文件数 零 delta ≤1／含 delta 无点检 ≤2／含 delta 走点检 ≤4／再叠 ui×frontend:yes ≤5；同步 gate3-ruling §五）
+  - 2026-08-14T00:15 note: **自查纠错二**——T8.4（phrase table 收录新短语）曾被误勾完成，实际未做。`VERDICT: no findings`/`VERDICT: gaps found` 既不在 `lib/check.js` VERDICT_PHRASES 也不在 RUNBOOK §5 表；`check --self` 当时通过只因该字面串未落入被扫描的八对文档——即「谁把通道判定行写进 RUNBOOK 谁踩雷」。已补：两短语入表、双语 §5 各加两行 + 尾注文法说明、CK-17 覆盖
+  - 2026-08-14T00:20 owner authorization (verbatim 选项): 授权在 on-the-fly 上提交（不 push、不碰 main；合并到 main 仍由 owner 单独决定）——解除本 goal 的「不 commit」条款至该范围
+  - 2026-08-14T00:20 note: STEP6 前置——实现 commit `6dc5f98`（feat: the hotfix lane…，375 tests）；`truth/{hotfix,new,resolve,config}.md` 的 source-commit 由 7b8d5c6 更正为 6dc5f98（此前指向不含本实现的 commit，属不实之戳）；`truth/{gate,status,spec-runner,check}.md` Contract 补本 change 触点并各追加一条 Decision（D-GT-6 / D-ST-4 / D-SR-7 / D-CK-3），source-commit 同步 6dc5f98
+  - 2026-08-14T00:20 STEP6: `archive --change hotfix-lane --write` → 7 个模块 store 重写（check/cli/config/gate/hotfix/spec-runner/status），bundle 整移 `changes/archive/2026-08-14T0020-hotfix-lane/`。MODIFIED INTEGRITY 报告 cli 两块「retained 10 added 1 / retained 7 added 0」+ 五条 missing——全部是本 change 有意改写的枚举行（加入 `hotfix` 子命令），符合预期
+  - 2026-08-14T00:25 note: **归档阶段抓到的第三件事（gate 自己抓的）**——STEP2 的 169 条 DES 行停在 `fixed(vN)` 未翻终态；in-flight 阶段 `fixed` 合法，archived 阶段要求终态，于是 GT-15 与 gate C4 同时报错。依 STEP2·r28 的 reviewer 逐字判定「VERDICT: 0 issues open」（终轮零开口 = reviewer 对全部在册 finding 的复核结论）统一转 `verified`，原 fixed 的修复内容原文保留在状态串内；转换依据与抓获路径写入 issues.md 头部注释。DES24-3..7 本就是 `rejected-verified` 终态，未动
+  - 2026-08-14T00:30 gate ④: `gate --change hotfix-lane`（archived 阶段）→ **PASS**（C1 verify GREEN archived · C2 · C3 · C4 256 行无阻塞 · C5 74 份 review doc 均有 raw · C6 6 模块 stamp 新鲜 · C7 n/a 已合入）。375/375 绿。current-step → DONE

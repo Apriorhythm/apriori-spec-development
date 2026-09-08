@@ -1,0 +1,633 @@
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f4b30-68f9-7222-9b64-17f52a333b4c
+--------
+user
+New change, P1 requirement review round 1: change "tap-plan" (P0-2 of the same owner-approved batch; delta-consumption is done and archived). Read requirement/req-v1.md from disk.
+
+Context you can verify: lib/spec-runner.js parseTap/zeroTapParsed/infraErrors — the TAP plan line is only used as reporter-proof in zeroTapParsed, never validated. Both defects in the Background were mechanically reproduced today (plan 1..2 with one result + exit 0 -> GREEN; duplicate `ok 1` numbers under one plan -> GREEN).
+
+Review the requirement as a contract: ambiguities that would cause implementer rework, holes in the acceptance set (E1-E8), wrong or risky decisions (DD-1 absent-plan-stays-legal, DD-2 dup-check-only-single-plan, the sum rule for multiple plans, the broader point-count regex vs the binding regex). Consider TAP realities: node --test nested output, trailing vs leading plans, `1..0`, pragma/directive lines, comment/diagnostic lines starting with `ok` inside YAML blocks (are any false point-counts possible?), Bail out! interaction. Rows TP-N with risk. Print the COMPLETE review document body (landed verbatim at apriori/review/tap-plan-req-review-v1.md), including a ledger section, ending with exactly one verdict line: "VERDICT: no major issues, ready to proceed" or "VERDICT: <N> issues open".
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-11T07:40:27.841785Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T07:40:27.998205Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T07:40:28.452550Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-11T07:40:29.055897Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-11T07:40:30.281283Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-11T07:40:32.104844Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-11T07:40:35.456068Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: k7gp5Nxb6zxq
+codex
+I’ll read the tap-plan requirement and the current TAP parser behavior, then review the contract against TAP edge cases and the reproduced defects.
+exec
+/usr/bin/zsh -lc 'rg -n "function parseTap|parseTap|zeroTapParsed|infraErrors|plan|Bail|ok " lib/spec-runner.js' in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,280p' requirement/req-v1.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,240p' lib/spec-runner.js" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 139ms:
+89:function parseTap(out, idRe) {
+93:  const bm = out.match(/^Bail out!(.*)$/m);
+113:function zeroTapParsed(out, results, untagged) {
+116:  // a TAP version line or plan (1..N) proves the reporter IS TAP — an empty suite is not a reporter problem
+149:function infraErrors(run) {
+233:  const { results, untagged, untaggedFails, bailout } = parseTap(exec.out, idRe);
+240:    noTap: zeroTapParsed(exec.out, results, untagged),
+244:  run.errors = infraErrors(run);
+305:module.exports = { leadId, stripFences, collectScenarios, collectScenariosFromTexts, parseTap,
+306:  zeroTapParsed, runTestCommand, evaluate, infraErrors, formatReport, verifyJson, verify,
+
+ succeeded in 129ms:
+# Requirement — tap-plan (v1)
+
+change: tap-plan
+target lineage: **v3 branch**. Next patch/minor. Fail-closed tightening: previously-trusted truncated/garbled TAP runs now refuse to verify; conforming runs unchanged.
+
+## Background — the problem (current state B, reproduced)
+
+`parseTap` never reads the TAP plan line. `1..N` is used in exactly one place — `zeroTapParsed`, as proof the reporter IS TAP — and is never compared against what was actually parsed. Two mechanical repros (2026-07-11, this repo):
+
+1. **Truncated stream → GREEN.** Spec with one scenario; test-cmd emits `TAP version 13`, `1..2`, `ok 1 - TP-01 a`, exit 0. The plan promises two test points, one arrived, the run verifies GREEN. Any truncation that cuts whole result lines (pipe kill, runner crash after partial flush, `head` in the pipeline) is invisible as long as the surviving lines cover the scenarios and the exit code is 0.
+2. **Duplicate test-point numbers → GREEN.** `1..2` followed by `ok 1 - TP-01 a` and `ok 1 - TP-02 b` (test point 2 never ran; something ran twice as 1) verifies GREEN.
+
+`infraErrors` catches a NONZERO exit with no parsed failure, but a truncated-yet-exit-0 stream sails through. (GPT-5.6 second review, defect #2.)
+
+## Goal (target state B)
+
+The TAP **plan** becomes a checked promise: when a plan is present, the number of parsed top-level test points must equal the plan total, and test-point numbers must not repeat within a single-plan stream. Violations are **infra errors** (run untrustworthy → verify RESULT: ERROR exit 2, gate C1 BLOCKED), not bindings.
+
+**Mechanics (parser layer, `lib/spec-runner.js`):**
+- `parseTap` additionally returns `plans` (each top-level `^1..N` with its N) and `points` (count of ALL top-level result lines `/^(ok|not ok)\b/` — including legal TAP points that today's binding regex skips: no number, no `- ` description, `# SKIP`/`# TODO` directives) and `dupNumbers` (top-level test-point numbers seen more than once, only meaningful for single-plan streams).
+- Indented (subtest) lines stay invisible, as today — node's nested TAP keeps working, the top-level plan counts top-level points.
+- New infra errors in `infraErrors`:
+  - plan(s) present and `sum(plans) !== points` → "TAP plan declares N test point(s) but M were parsed — output truncated or garbled; refusing to trust this run".
+  - exactly one plan and duplicate top-level test-point numbers → "duplicate TAP test-point number(s): …".
+- Multiple plans (concatenated TAP streams, e.g. two runners piped together): totals are summed; the duplicate-number check is skipped (numbering legally restarts per stream).
+- No plan at all: behavior unchanged (some minimal TAP emitters skip the plan; absence was never a promise). Declared as DD-1 for review.
+- `1..0` (skip-all) with zero points is consistent; existing zero-TAP/zero-scenario handling unchanged.
+
+**Consumers:** `verify`, `verify --change`, `gate` C1 inherit through `infraErrors` — no new wiring.
+
+## Acceptance criteria (testable)
+
+- E1. Repro 1 verbatim: plan `1..2`, one passing result, exit 0 → RESULT: ERROR (exit 2), message names 2 declared vs 1 parsed; nothing verifies GREEN.
+- E2. Repro 2 verbatim: duplicate `ok 1` under one plan → RESULT: ERROR naming the duplicated number(s).
+- E3. Two concatenated conforming streams (`1..1` + point, `1..1` + point, numbers both 1) → no error (sum rule, dup check skipped).
+- E4. Unnumbered/undescribed top-level points count toward the plan total (plan `1..2`, `ok 1 - X-01 t`, bare `ok` → no plan error).
+- E5. Plan-less TAP output behaves exactly as today.
+- E6. Subtest-indented lines and their nested plans are ignored by both the point count and the plan collection (node --test nested TAP verifies as today).
+- E7. `verify --change` and `gate --change` inherit the failure (one E2E each).
+- E8. All existing tests pass; suite + verify + gate + check --self green.
+
+## Out of scope
+
+- Binding semantics (which lines produce results) — unchanged.
+- TAP 14 subtest syntax beyond what node emits today.
+- update.js manifest (P0-3, next change).
+
+## Decisions proposed
+
+- DD-1: absent plan stays legal (no promise made, none checked) — enforcement would break minimal emitters that never lied.
+- DD-2: dup-number check limited to single-plan streams — restart-at-1 is the defining shape of concatenated TAP, and false positives there would train users to ignore the error.
+
+ succeeded in 135ms:
+'use strict';
+/*
+ * spec-runner — bind spec scenario IDs to test runs, report per-scenario red/green.
+ * VISION endgame, weak form: "spec IS the test suite". Zero deps — pure Node stdlib.
+ * Coupling surface is tiny and language-agnostic: markdown scenarios + a TAP-emitting test command.
+ *
+ * FAIL-CLOSED: a deterministic gate must refuse to say GREEN when its inputs are missing,
+ * its instrument misbehaved, or its evidence is ambiguous. Vacuous success is a bug.
+ * Exit codes: 0 = GREEN · 1 = spec/test gaps · 2 = invocation or infrastructure error.
+ */
+const fs = require('fs');
+const path = require('path');
+const { spawnSync } = require('child_process');
+// merge-family helpers shared with archive (3.1 projection); archive-merge never requires spec-runner
+const am = require('./archive-merge');
+const { withStrict } = require('./args');
+
+const DEFAULT_ID = '[A-Z]+-\\d+';
+const SCENARIO_RE = /^####\s+Scenario:\s+(.*)$/gm;
+// TAP result line, directive split off separately (# SKIP / # TODO)
+const TAP_RE = /^(ok|not ok)\s+\d+\s+-\s+(.*)$/gm;
+
+// Leading scenario/test ID. The match must end at a word boundary: `XX-01b` is NOT `XX-01` —
+// silently truncating would merge two different scenarios into one binding.
+function leadId(text, idRe) {
+  const m = text.trim().match(idRe);
+  if (!m || m.index !== 0) return null;
+  const next = text.trim()[m[0].length];
+  if (next !== undefined && /[A-Za-z0-9_]/.test(next)) return null;
+  return m[0];
+}
+
+function stripFences(text) { return text.replace(/```[\s\S]*?```/g, ''); }
+
+function mdFiles(target) {
+  if (!fs.existsSync(target)) return [];
+  const st = fs.statSync(target);
+  if (st.isFile()) return [target];
+  const out = [];
+  for (const e of fs.readdirSync(target, { withFileTypes: true })) {
+    const p = path.join(target, e.name);
+    if (e.isDirectory()) out.push(...mdFiles(p));
+    else if (e.name.endsWith('.md')) out.push(p);
+  }
+  return out.sort();
+}
+
+// Shared scenario scan over one text. Fenced content is documentation; scenarios inside
+// DEPRECATED requirement blocks (the marker REMOVED injects) are excluded in every form —
+// they are neither demanded nor listed, and their lingering tests become ORPHAN.
+function scanText(text, label, idRe, acc) {
+  const clean = am.stripDeprecatedBlocks(stripFences(text));
+  let m;
+  SCENARIO_RE.lastIndex = 0;
+  while ((m = SCENARIO_RE.exec(clean)) !== null) {
+    const id = leadId(m[1], idRe);
+    if (id) {
+      if (!acc.byId.has(id)) { acc.byId.set(id, []); acc.idFiles.set(id, []); }
+      acc.byId.get(id).push(m[1]);
+      acc.idFiles.get(id).push(label);
+    } else acc.unidentified.push([label, m[1]]);
+  }
+}
+
+function dupsOf(acc) {
+  return [...acc.byId.entries()].filter(([, titles]) => titles.length > 1)
+    .map(([id]) => ({ id, files: [...new Set(acc.idFiles.get(id))] }));
+}
+
+// Collect scenarios from spec files.
+// → { byId, unidentified:[[file,title]], files, missingTargets:[], duplicates:[{id,files}] }
+function collectScenarios(specTargets, idRe) {
+  const acc = { byId: new Map(), idFiles: new Map(), unidentified: [] };
+  const missingTargets = specTargets.filter((t) => !fs.existsSync(t));
+  const files = [...new Set(specTargets.flatMap(mdFiles))].sort();
+  for (const f of files) scanText(fs.readFileSync(f, 'utf8'), f, idRe, acc);
+  return { byId: acc.byId, unidentified: acc.unidentified, files, missingTargets, duplicates: dupsOf(acc) };
+}
+
+// Same collection over in-memory texts (the projection path) — label = store-relative suffix.
+function collectScenariosFromTexts(texts, idRe) {
+  const acc = { byId: new Map(), idFiles: new Map(), unidentified: [] };
+  for (const [label, text] of texts) scanText(text, label, idRe, acc);
+  return { byId: acc.byId, unidentified: acc.unidentified, files: [...texts.keys()], missingTargets: [], duplicates: dupsOf(acc) };
+}
+
+// Parse TAP text → { results: Map<id,{pass,fail,skip}>, untagged: [], bailout: string|null }
+// A # SKIP / # TODO directive is neither pass nor fail — a skipped test proves nothing.
+function parseTap(out, idRe) {
+  const results = new Map();
+  const untagged = [];
+  let untaggedFails = 0;
+  const bm = out.match(/^Bail out!(.*)$/m);
+  const bailout = bm ? bm[0].trim() : null;
+  let m;
+  TAP_RE.lastIndex = 0;
+  while ((m = TAP_RE.exec(out)) !== null) {
+    const hash = m[2].search(/#\s*(SKIP|TODO)\b/i);
+    const name = hash >= 0 ? m[2].slice(0, hash).trim() : m[2];
+    const directive = hash >= 0;
+    const id = leadId(name, idRe);
+    if (id === null) { untagged.push(name); if (m[1] === 'not ok' && !directive) untaggedFails++; continue; }
+    const cur = results.get(id) || { pass: 0, fail: 0, skip: 0 };
+    if (directive) cur.skip++;
+    else cur[m[1] === 'ok' ? 'pass' : 'fail']++;
+    results.set(id, cur);
+  }
+  return { results, untagged, untaggedFails, bailout };
+}
+
+// true when the test command produced output but not a single TAP result line was parsed —
+// almost always means the runner used a human reporter (node: add --test-reporter=tap)
+function zeroTapParsed(out, results, untagged) {
+  if (results.size > 0 || untagged.length > 0) return false;
+  if (!out.trim()) return false;
+  // a TAP version line or plan (1..N) proves the reporter IS TAP — an empty suite is not a reporter problem
+  if (/^TAP version \d+|^1\.\.\d+/m.test(out)) return false;
+  return true;
+}
+
+function runTestCommand(cmd, cwd) {
+  const r = spawnSync(cmd, { shell: true, cwd, encoding: 'utf8' });
+  return {
+    out: (r.stdout || '') + '\n' + (r.stderr || ''),
+    status: r.status,               // null when killed by signal
+    signal: r.signal || null,
+    error: r.error ? String(r.error.message || r.error) : null,
+  };
+}
+
+// Pure evaluation: cross-reference scenarios vs results → verdict object.
+// A scenario whose only results are skips is UNBOUND — skips prove nothing.
+function evaluate(byId, unidentified, results) {
+  const specIds = [...byId.keys()].sort();
+  const boundGreen = [], boundRed = [], unbound = [], orphan = [];
+  for (const id of specIds) {
+    const r = results.get(id);
+    if (!r || (r.pass === 0 && r.fail === 0)) unbound.push(id);
+    else if (r.fail === 0) boundGreen.push(id);
+    else boundRed.push(id);
+  }
+  for (const id of [...results.keys()].sort()) if (!byId.has(id)) orphan.push(id);
+  const clean = !boundRed.length && !unbound.length && !orphan.length && !unidentified.length;
+  return { boundGreen, boundRed, unbound, orphan, unidentified, clean };
+}
+
+// Fail-closed guard: reasons this run cannot be trusted regardless of the TAP picture.
+// Returns [] when the run is trustworthy.
+function infraErrors(run) {
+  const errs = [];
+  for (const t of run.missingTargets) errs.push(`spec target does not exist: ${t}`);
+  if (!run.missingTargets.length && run.fileCount === 0)
+    errs.push('no spec files found under the given targets — nothing to verify');
+  if (run.fileCount > 0 && run.scenarioCount === 0)
+    errs.push('spec files contain zero scenarios — nothing to verify');
+  if (run.exec.error) errs.push(`test command failed to spawn: ${run.exec.error}`);
+  if (run.exec.signal) errs.push(`test command was killed by signal ${run.exec.signal}`);
+  if (run.bailout) errs.push(`test run aborted: ${run.bailout}`);
+  if (run.noTap)
+    errs.push('test command produced output but ZERO TAP results were parsed — the command is probably not emitting TAP (node test runner: add --test-reporter=tap)');
+  if (run.exec.status !== null && run.exec.status !== 0 && run.failCount === 0)
+    errs.push(`test command exited with status ${run.exec.status} but no parsed TAP failure explains it — the TAP picture is incomplete or truncated; refusing to trust this run`);
+  return errs;
+}
+
+function formatReport(v, results, fileCount, extras = {}) {
+  const lines = [];
+  const specCount = v.boundGreen.length + v.boundRed.length + v.unbound.length;
+  const tagged = [...results.values()].reduce((s, r) => s + r.pass + r.fail, 0);
+  const skipped = [...results.values()].reduce((s, r) => s + (r.skip || 0), 0);
+  lines.push(`specs: ${fileCount} file(s), ${specCount} identified scenario(s)`);
+  lines.push(`tests: ${tagged} tagged result(s)${skipped ? `, ${skipped} skipped (not counted)` : ''}\n`);
+  const groups = [['BOUND-GREEN', v.boundGreen], ['BOUND-RED', v.boundRed],
+                 ['UNBOUND (scenario, no test)', v.unbound], ['ORPHAN (test, no scenario)', v.orphan]];
+  for (const [label, items] of groups) {
+    if (!items.length) continue;
+    lines.push(`${label === 'BOUND-GREEN' ? '✓' : '✗'} ${label}: ${items.length}`);
+    for (const id of items) {
+      const r = results.get(id);
+      lines.push(`    ${id}${r ? `  ${r.pass}p/${r.fail}f${r.skip ? `/${r.skip}s` : ''}` : ''}`);
+    }
+  }
+  if (v.unidentified.length) {
+    lines.push(`✗ UNIDENTIFIED (scenario, no ID — unbindable): ${v.unidentified.length}`);
+    for (const [f, t] of v.unidentified) lines.push(`    ${path.basename(f)}: ${t.slice(0, 60)}`);
+  }
+  if (extras.duplicates && extras.duplicates.length) {
+    lines.push(`✗ DUPLICATE scenario IDs (ambiguous binding): ${extras.duplicates.length}`);
+    for (const d of extras.duplicates) lines.push(`    ${d.id}: ${d.files.map((f) => path.basename(f)).join(', ')}`);
+  }
+  const errs = extras.errors || [];
+  lines.push('\nRESULT: ' + (errs.length ? 'ERROR — run not trustworthy (see stderr)'
+    : (v.clean && !(extras.duplicates || []).length ? 'GREEN — spec is the test suite' : 'GAPS')));
+  return lines.join('\n');
+}
+
+// Projection inputs for `verify --change` (all failure classes → run.errors, exit 2).
+// Roots resolve against cwd exactly as `apriori status` resolves change dirs.
+function buildChangeProjection(change, cwd) {
+  const changesDir = path.resolve(cwd, 'apriori', 'changes');
+  const storeRoot = path.resolve(cwd, 'apriori', 'specs');
+  const projection = { change, modules: [], conflicts: [] };
+  const d = am.discoverDeltas(changesDir, change);
+  if (d.errors.length) return { projection, errors: d.errors, texts: null };
+  const p = am.buildProjection(storeRoot, d.files, change);
+  projection.modules = p.modules;
+  projection.conflicts = p.conflicts;
+  const errors = [...p.validation, ...p.hygiene, ...p.casMismatches];
+  if (p.conflicts.length) errors.push(`projection has ${p.conflicts.length} merge conflict(s) — no trustworthy projection: ${p.conflicts.join('; ')}`);
+  return { projection, errors, texts: errors.length ? null : p.texts };
+}
+
+// Full verify run. opts: { specs:[], change, testCmd, idPattern, cwd }
+function verify(opts) {
+  const idRe = new RegExp(opts.idPattern || DEFAULT_ID);
+  let collected, projection = null;
+  if (opts.change) {
+    const b = buildChangeProjection(opts.change, opts.cwd || '.');
+    projection = b.projection;
+    if (!b.texts) {
+      // failed projection: fail closed WITHOUT running any tests
+      const verdict = evaluate(new Map(), [], new Map());
+      return { verdict, results: new Map(), fileCount: 0, failCount: 0, scenarioCount: 0,
+        missingTargets: [], duplicates: [], bailout: null, noTap: false,
+        exec: { status: null, signal: null, error: null }, errors: b.errors, projection };
+    }
+    collected = collectScenariosFromTexts(b.texts, idRe);
+  } else {
+    collected = collectScenarios(opts.specs, idRe);
+  }
+  const { byId, unidentified, files, missingTargets, duplicates } = collected;
+  const exec = runTestCommand(opts.testCmd, opts.cwd || '.');
+  const { results, untagged, untaggedFails, bailout } = parseTap(exec.out, idRe);
+  const verdict = evaluate(byId, unidentified, results);
+  const failCount = [...results.values()].reduce((s, r) => s + r.fail, 0) + untaggedFails;
+  const run = {
+    verdict, results, fileCount: files.length, failCount,
+    scenarioCount: byId.size + unidentified.length,
+    missingTargets, duplicates, bailout,
+    noTap: zeroTapParsed(exec.out, results, untagged),
+
+codex
+The requirement is clear about the intended plan checks, but I’m seeing one likely contract hole around YAML/diagnostic blocks: the proposed point-count regex counts any top-level line beginning `ok` or `not ok`, while TAP diagnostics can contain untrusted arbitrary text. I’m checking the current code shape to decide whether that is formal.
+exec
+/usr/bin/zsh -lc "sed -n '240,360p' lib/spec-runner.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc 'rg -n "YAML|Bail out|TAP version|not ok|# SKIP|TODO|subtest|parseTap|zeroTapParsed" test lib apriori/specs/spec-runner -S' in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,220p' apriori/truth/spec-runner.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 172ms:
+    noTap: zeroTapParsed(exec.out, results, untagged),
+    exec: { status: exec.status, signal: exec.signal, error: exec.error },
+  };
+  if (projection) run.projection = projection;
+  run.errors = infraErrors(run);
+  return run;
+}
+
+// machine-consumable shape for a verify run
+function verifyJson(run) {
+  const { verdict: v, results } = run;
+  const clean = v.clean && run.duplicates.length === 0 && run.errors.length === 0;
+  const json = projectionless(run, clean);
+  if (run.projection) json.projection = run.projection;   // ONLY --change runs carry this field
+  return json;
+}
+
+function projectionless(run, clean) {
+  const { verdict: v, results } = run;
+  return {
+    clean,
+    result: run.errors.length ? 'ERROR' : (clean ? 'GREEN' : 'GAPS'),
+    errors: run.errors,
+    specFiles: run.fileCount,
+    exec: run.exec,
+    duplicates: run.duplicates,
+    boundGreen: v.boundGreen.map((id) => ({ id, ...results.get(id) })),
+    boundRed: v.boundRed.map((id) => ({ id, ...results.get(id) })),
+    unbound: v.unbound,
+    orphan: v.orphan.map((id) => ({ id, ...results.get(id) })),
+    unidentified: v.unidentified.map(([file, title]) => ({ file, title })),
+  };
+}
+
+// Fallback test command from apriori/process-config.md's `test-cmd` row (written by init --test-cmd)
+function configTestCmd(cwd) {
+  const p = path.join(cwd || '.', 'apriori', 'process-config.md');
+  if (!fs.existsSync(p)) return null;
+  const m = fs.readFileSync(p, 'utf8').match(/^\|\s*test-cmd\s*\|\s*(.+?)\s*\|/m);
+  return m ? m[1] : null;
+}
+
+const USAGE = 'usage: apriori verify --specs <dir...> --test-cmd "<cmd>" [--id-pattern <re>] [--cwd <dir>] [--json]\n   or: apriori verify --change <name> --test-cmd "<cmd>" [--id-pattern <re>] [--cwd <dir>] [--json]\n(--test-cmd may be omitted when apriori/process-config.md has a test-cmd row)';
+
+function cli(argv) {
+  return withStrict(argv, { sub: 'verify', usage: USAGE, positionals: 0,
+    flags: { '--specs': 'multi', '--change': 'value', '--test-cmd': 'value', '--id-pattern': 'value', '--cwd': 'value', '--json': 'flag' } }, (f) => {
+    const a = { specs: f['--specs'] || [], change: f['--change'] || null, testCmd: f['--test-cmd'] || null,
+      idPattern: f['--id-pattern'] || DEFAULT_ID, cwd: f['--cwd'] || '.', json: !!f['--json'] };
+    if (a.change && a.specs.length) {
+      console.error('verify: --specs cannot be combined with --change — the projection defines the spec set');
+      return 2;
+    }
+    if (!a.testCmd) a.testCmd = configTestCmd(a.cwd);   // init --test-cmd persists it there
+    if ((!a.specs.length && !a.change) || !a.testCmd) { console.error(USAGE); return 2; }
+    const run = verify(a);
+    if (run.errors.length && !a.json)
+      for (const e of run.errors) console.error('error: ' + e);
+    console.log(a.json ? JSON.stringify(verifyJson(run), null, 2)
+                       : formatReport(run.verdict, run.results, run.fileCount, { duplicates: run.duplicates, errors: run.errors }));
+    if (run.errors.length) return 2;
+    return run.verdict.clean && run.duplicates.length === 0 ? 0 : 1;
+  });
+}
+
+module.exports = { leadId, stripFences, collectScenarios, collectScenariosFromTexts, parseTap,
+  zeroTapParsed, runTestCommand, evaluate, infraErrors, formatReport, verifyJson, verify,
+  configTestCmd, cli, DEFAULT_ID };
+
+ succeeded in 191ms:
+# TRUTH — spec-runner (`lib/spec-runner.js`, CLI subcommand `verify`)
+
+## Contract (code-is-truth)
+
+source-commit: 20bee2b
+
+**Responsibility.** Bind spec scenario IDs to a TAP-emitting test run; report per-scenario red/green; act as STEP5's deterministic gate. Fail-closed: a broken or vacuous run is never GREEN. 3.1: `--change <name>` verifies against the in-memory PROJECTED store (archive's merge() applied to the living store) — the mid-change form.
+
+**Public interface (module exports).**
+- `leadId(text, idRe)` → leading ID or null. Word-boundary strict: `XX-01b`, `XX-01_x` are NOT `XX-01`.
+- `stripFences(text)` → text with ``` fenced blocks removed (fenced scenarios are documentation, not spec).
+- `mdFiles` is internal; `collectScenarios(specTargets, idRe)` → `{ byId, unidentified:[[file,title]], files, missingTargets, duplicates:[{id,files}] }`. A target may be a dir (recursed for `*.md`, sorted) or a single file (accepted as-is, ANY extension); dedupes overlapping targets. Scenario discovery matches exact h4 lines `#### Scenario: …` only. Scenarios inside DEPRECATED requirement blocks (heading carries `_deprecated (superseded by …)_`) are excluded in EVERY form — not demanded, not listed; their lingering tests turn ORPHAN.
+- `collectScenariosFromTexts(Map<label,text>, idRe)` — same scan over in-memory texts (the projection path); labels are store-relative suffixes.
+- `parseTap(out, idRe)` → `{ results: Map<id,{pass,fail,skip}>, untagged:[], untaggedFails, bailout }`. Only lines shaped exactly `ok|not ok <n> - <name>` parse — a TAP result line without the ` - ` separator is ignored. `# SKIP`/`# TODO` counts as skip (proves nothing); untagged `not ok` without directive increments `untaggedFails`; `Bail out!` line captured.
+- `zeroTapParsed(out, results, untagged)` → true when output exists but no TAP line parsed AND no `TAP version`/`1..N` plan line (plan line = TAP reporter with an empty suite, not a reporter problem).
+- `runTestCommand(cmd, cwd)` → `{ out (stdout+\n+stderr), status (null if signal-killed), signal, error }` via `spawnSync(shell:true)`.
+- `evaluate(byId, unidentified, results)` → `{ boundGreen, boundRed, unbound, orphan, unidentified, clean }`. A scenario whose only results are skips is UNBOUND.
+- `verify(opts {specs:[], change, testCmd, idPattern, cwd})` — with `change`: builds the projection via archive-merge's discoverDeltas/buildProjection (roots `<cwd>/apriori/{changes,specs}`); ANY projection failure (validation/hygiene/CAS/merge-conflict) → run with `errors` set and NO test executed; success → normal pipeline over projected texts; run gains `projection: {change, modules, conflicts}`. Without `change`: unchanged. → run object `{ verdict, results, fileCount, failCount, scenarioCount, missingTargets, duplicates, bailout, noTap, exec{status,signal,error}, errors }`. `failCount` = tagged fails + `untaggedFails`.
+- `infraErrors(run)` → string[] (empty = trustworthy). Triggers: missing spec target · zero spec files · zero scenarios · spawn error · signal kill · bailout · zero-TAP-parsed · non-zero exit with `failCount === 0` (TAP picture doesn't explain the exit).
+- `formatReport(...)` → human report; RESULT line: `ERROR — run not trustworthy (see stderr)` / `GREEN — spec is the test suite` / `GAPS`. Duplicates block GREEN.
+- `verifyJson(run)` → `{ clean, result: GREEN|GAPS|ERROR, errors, specFiles, exec, duplicates, boundGreen[], boundRed[], unbound[], orphan[], unidentified[] }`; `--change` runs add exactly one field `projection: {change, modules, conflicts}` — never present otherwise.
+- `configTestCmd(cwd)` → test-cmd from `apriori/process-config.md`'s `| test-cmd | … |` row, or null.
+- `cli(argv)` → exit code via the shared strict parser (truth/args.md): --help exits 0; unknown flags/stray positionals exit 2. `--specs <dir...>` OR `--change <name>` (mutually exclusive) `--test-cmd "<cmd>" [--id-pattern] [--cwd] [--json]`; test-cmd falls back to config row. Exit: 0 GREEN · 1 gaps/duplicates · 2 infra/usage error, incl. all projection failure classes.
+- `DEFAULT_ID` = `[A-Z]+-\d+`.
+
+**Data flow.** spec targets → collectScenarios → run test cmd once → parseTap → evaluate → infraErrors → report/JSON. One test-command invocation per verify run; no state persists between runs (stateless, reads FS + spawns only).
+
+**Three moments.** No external shared state. FS reads only; the spawned test command is the only side effect.
+
+**Pitfalls.**
+- `--specs` consumes following args until the next `--` flag — a path starting with `--` is impossible.
+- A direct-file `--specs` target is read whatever its extension; only directory recursion filters to `.md`.
+- `exec.status` is null when signal-killed; the non-zero-exit rule explicitly guards `status !== null`.
+- Requires `./archive-merge` (one-way: archive-merge never requires spec-runner).
+
+## Decisions (doc-is-truth)
+
+- D-SR-1 (active): fail-closed is a hard product stance — exit taxonomy 0/1/2; a vacuous or untrustworthy run must never exit 0. Ratified with 3.0.1 (owner + external review 2026-07-10).
+- D-SR-2 (active): skipped tests prove nothing — a scenario with only skips is UNBOUND, not green.
+- D-SR-3 (active): duplicate scenario IDs are a binding ambiguity → GAPS (exit 1), not a warning.
+- D-SR-4 (active): the binding gate speaks TAP only; non-TAP layers (e.g. Playwright E2E) sit above the gate as additional exit conditions, never replace it.
+- D-SR-5 (active): deprecated requirement blocks are excluded from scenario collection in ALL verify forms — post-REMOVED stores must not demand tests for removed behavior forever; lingering tests surface as ORPHAN. Ratified in change-projection (2026-07-10, STEP0 REQ-2).
+- D-SR-6 (active): mid-change, the STEP5 gate is `verify --change` (projection); plain `--specs` verify is the post-archive/store-only form. Ratified in change-projection.
+
+ succeeded in 199ms:
+lib/spec-runner.js:20:// TAP result line, directive split off separately (# SKIP / # TODO)
+lib/spec-runner.js:21:const TAP_RE = /^(ok|not ok)\s+\d+\s+-\s+(.*)$/gm;
+lib/spec-runner.js:88:// A # SKIP / # TODO directive is neither pass nor fail — a skipped test proves nothing.
+lib/spec-runner.js:89:function parseTap(out, idRe) {
+lib/spec-runner.js:93:  const bm = out.match(/^Bail out!(.*)$/m);
+lib/spec-runner.js:98:    const hash = m[2].search(/#\s*(SKIP|TODO)\b/i);
+lib/spec-runner.js:102:    if (id === null) { untagged.push(name); if (m[1] === 'not ok' && !directive) untaggedFails++; continue; }
+lib/spec-runner.js:113:function zeroTapParsed(out, results, untagged) {
+lib/spec-runner.js:116:  // a TAP version line or plan (1..N) proves the reporter IS TAP — an empty suite is not a reporter problem
+lib/spec-runner.js:117:  if (/^TAP version \d+|^1\.\.\d+/m.test(out)) return false;
+lib/spec-runner.js:233:  const { results, untagged, untaggedFails, bailout } = parseTap(exec.out, idRe);
+lib/spec-runner.js:240:    noTap: zeroTapParsed(exec.out, results, untagged),
+lib/spec-runner.js:305:module.exports = { leadId, stripFences, collectScenarios, collectScenariosFromTexts, parseTap,
+lib/spec-runner.js:306:  zeroTapParsed, runTestCommand, evaluate, infraErrors, formatReport, verifyJson, verify,
+lib/doctor.js:12:const { collectScenarios, parseTap, zeroTapParsed, runTestCommand, configTestCmd, DEFAULT_ID } = require('./spec-runner');
+lib/doctor.js:32:  const { results, untagged, untaggedFails, bailout } = parseTap(out, idRe);
+lib/doctor.js:35:  if (zeroTapParsed(out, results, untagged))
+test/spec-runner.test.js:4:const { collectScenarios, parseTap, evaluate, verify, DEFAULT_ID } = require('../lib/spec-runner');
+test/spec-runner.test.js:27:  const { results } = parseTap(tap, idRe);
+test/spec-runner.test.js:46:  const { verdict } = run('#### Scenario: XX-01 a\n', 'not ok 1 - XX-01 a\n');
+test/spec-runner.test.js:54:  const red = run('#### Scenario: XX-01 a\n', 'ok 1 - XX-01 part a\nnot ok 2 - XX-01 part b\n');
+test/spec-runner.test.js:86:  const { results: defTap } = parseTap('ok 1 - ab-1 lower\n', idRe);   // default pattern misses it
+test/spec-runner.test.js:88:  const { results: cust } = parseTap('ok 1 - ab-1 lower\n', lowRe);    // custom pattern binds it
+test/spec-runner.test.js:98:  const r = verify({ specs: [file], testCmd: tapCmd('ok 1 - XX-01 a', 'not ok 2 - XX-02 b', 'ok 3 - XX-99 orphan') });
+test/spec-runner.test.js:122:  try { code2 = cli(['--specs', file, '--test-cmd', tapCmd('not ok 1 - XX-01 a'), '--json']); }
+test/spec-runner.test.js:140:  const { zeroTapParsed, parseTap } = require('../lib/spec-runner');
+test/spec-runner.test.js:144:  const p1 = parseTap(human, idRe);
+test/spec-runner.test.js:145:  assert.strictEqual(zeroTapParsed(human, p1.results, p1.untagged), true);
+test/spec-runner.test.js:148:  const p2 = parseTap(tap, idRe);
+test/spec-runner.test.js:149:  assert.strictEqual(zeroTapParsed(tap, p2.results, p2.untagged), false);
+test/spec-runner.test.js:151:  const p3 = parseTap('', idRe);
+test/spec-runner.test.js:152:  assert.strictEqual(zeroTapParsed('', p3.results, p3.untagged), false);
+test/spec-runner.test.js:154:  const emptySuite = 'TAP version 13\n1..0\n';
+test/spec-runner.test.js:155:  const p4 = parseTap(emptySuite, idRe);
+test/spec-runner.test.js:156:  assert.strictEqual(zeroTapParsed(emptySuite, p4.results, p4.untagged), false);
+test/spec-runner.test.js:181:  const r2 = runCli(['--specs', file, '--test-cmd', `node -e "console.log('not ok 1 - XX-01 a');process.exit(1)"`]);
+test/spec-runner.test.js:236:test('SR-14 TAP directives and aborts: SKIP/TODO never count green; Bail out! is an error', () => {
+test/spec-runner.test.js:238:  const { results } = parseTap('ok 1 - XX-01 a # SKIP flaky\n', idRe);
+test/spec-runner.test.js:241:  const skip = runCli(['--specs', file, '--test-cmd', `node -e "console.log('ok 1 - XX-01 a # SKIP flaky')"`]);
+test/spec-runner.test.js:244:  // TODO likewise never counts as pass
+test/spec-runner.test.js:245:  const { results: todo } = parseTap('not ok 1 - XX-01 a # TODO later\n', idRe);
+test/spec-runner.test.js:247:  // Bail out! → ERROR even if earlier lines were green
+test/spec-runner.test.js:248:  const bail = runCli(['--specs', file, '--test-cmd', `node -e "console.log('ok 1 - XX-01 a');console.log('Bail out! db down')"`]);
+test/doctor.test.js:41:const TAP_OK = tapCmd('TAP version 13', '1..1', 'ok 1 - fine');
+test/doctor.test.js:143:  assert.strictEqual(probe(tapCmd('TAP version 13', 'Bail out! oom')).status, 'finding');
+test/doctor.test.js:155:  const failing = probe(`node -e "console.log('not ok 1 - b bad');process.exit(1)"`);
+test/doctor.test.js:158:  assert.strictEqual(probe(tapCmd('TAP version 13', '1..0')).status, 'ok');
+test/doctor.test.js:160:  // TAP version with zero result lines → truncated/malformed
+test/doctor.test.js:161:  const trunc = probe(tapCmd('TAP version 13'));
+apriori/specs/spec-runner/spec.md:13:- WHEN a scenario's test emits `not ok`
+apriori/specs/spec-runner/spec.md:17:- WHEN a scenario ID leads multiple test names and at least one emits `not ok`
+apriori/specs/spec-runner/spec.md:57:- WHEN a TAP result carries a `# SKIP` or `# TODO` directive, or the output contains `Bail out!`
+
+codex
+**Requirement Review — tap-plan v1**
+
+**Dimension Verdicts**
+
+1. Target state B: Mostly clear, but multi-plan validation is too weak for the stated “plan as checked promise” goal.
+2. Edge/exception coverage: Missing key TAP edge coverage for multi-plan masking and overly broad point-line recognition.
+3. Side effects: No undeclared state changes; parser/infra-only change is declared.
+4. Acceptance criteria: E1/E2 cover the reproduced defects, but E3/E4 leave risky behavior under-specified.
+5. State-A conflicts: No direct conflict; the requirement correctly describes current `parseTap`, `zeroTapParsed`, and `infraErrors`.
+6. Lineage: Declared as v3 next patch/minor and matches repo reality.
+
+**Formal Issues**
+
+**TP-1 — The multi-plan sum rule can still let truncated/garbled TAP verify GREEN**
+
+Description: The requirement treats multiple top-level plans as concatenated streams, sums all plan totals, skips duplicate-number checks, and compares only aggregate `sum(plans) === points`. That does not actually validate each stream’s plan promise. A truncated first stream can be offset by an overlong second stream:
+
+```tap
+1..2
+ok 1 - TP-01 a
+1..1
+ok 1 - TP-02 b
+ok 2 - TP-03 c
+```
+
+Totals are `3 declared / 3 parsed`, duplicate checks are skipped because there are multiple plans, and all scenario IDs could bind green, even though neither stream’s own plan is trustworthy.
+
+Risk: The change can miss the same class it is intended to fix whenever output is concatenated or garbled across multiple planned streams.
+
+Suggested fix: Either fail closed on multiple top-level plans, or define segment-aware validation. If concatenated streams must remain legal, specify how segments are delimited for leading-plan and trailing-plan emitters, then compare each plan to its own segment and only skip duplicate-number checks across segment boundaries.
+
+**TP-2 — The point-count regex is too broad for “legal TAP points”**
+
+Description: The mechanics define `points` as top-level result lines matching `/^(ok|not ok)\b/`. That matches lines that start with `ok:` or `not ok:` because `:` is a word boundary, even though those are not TAP result lines. The requirement says this count is for legal TAP points that the binding regex skips, but the proposed regex also counts non-result diagnostic-like lines. TAP/YAML diagnostic content is especially sensitive here; indented YAML is safe only if implementation consistently enforces top-level matching and does not count diagnostic payload as results.
+
+Risk: Valid or near-valid TAP with diagnostic text can produce false plan mismatches, while implementers may disagree about whether to count broad prefix matches or syntactic TAP result lines.
+
+Suggested fix: Define the point line matcher as a TAP result token, not just a word boundary, e.g. top-level `/^(?:ok|not ok)(?:\s|$)/`. Add an acceptance case proving diagnostic/YAML-looking lines such as `ok: ...` do not count as points, while bare legal `ok` and `not ok` still do.
+
+**Advisories**
+
+- Add an explicit `1..0 # SKIP reason` case. TAP skip-all plans commonly carry a directive, and the requirement should make clear that N is still parsed as zero.
+- Clarify whether duplicate test-point numbers are compared numerically or textually. `ok 01` versus `ok 1` is low-probability but easy to specify.
+- `parseTap` is also used by `doctor`; the requirement intentionally scopes inherited failures to `verify`, `verify --change`, and `gate`. That is acceptable, but the exclusion should remain intentional during design.
+
+**Ledger Delta**
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| TP-1 | Multiple-plan validation uses only aggregate `sum(plans) === points` and skips duplicate-number checks, so one stream’s truncation can be masked by another stream’s extra points. | Truncated/garbled concatenated TAP can still verify GREEN. | P1·r1 | open |
+| TP-2 | Point counting via `/^(ok|not ok)\b/` is broader than legal TAP result syntax and can count diagnostic-like lines such as `ok:`. | False plan mismatches or inconsistent implementations around diagnostic/YAML content. | P1·r1 | open |
+| TP-ADV-1 | Add explicit skip-all directive, duplicate-number normalization, and doctor-scope notes. | Advisory precision and edge coverage. | P1·r1 | open |
+
+VERDICT: 2 issues open
+tokens used
+2,368,510
+**Requirement Review — tap-plan v1**
+
+**Dimension Verdicts**
+
+1. Target state B: Mostly clear, but multi-plan validation is too weak for the stated “plan as checked promise” goal.
+2. Edge/exception coverage: Missing key TAP edge coverage for multi-plan masking and overly broad point-line recognition.
+3. Side effects: No undeclared state changes; parser/infra-only change is declared.
+4. Acceptance criteria: E1/E2 cover the reproduced defects, but E3/E4 leave risky behavior under-specified.
+5. State-A conflicts: No direct conflict; the requirement correctly describes current `parseTap`, `zeroTapParsed`, and `infraErrors`.
+6. Lineage: Declared as v3 next patch/minor and matches repo reality.
+
+**Formal Issues**
+
+**TP-1 — The multi-plan sum rule can still let truncated/garbled TAP verify GREEN**
+
+Description: The requirement treats multiple top-level plans as concatenated streams, sums all plan totals, skips duplicate-number checks, and compares only aggregate `sum(plans) === points`. That does not actually validate each stream’s plan promise. A truncated first stream can be offset by an overlong second stream:
+
+```tap
+1..2
+ok 1 - TP-01 a
+1..1
+ok 1 - TP-02 b
+ok 2 - TP-03 c
+```
+
+Totals are `3 declared / 3 parsed`, duplicate checks are skipped because there are multiple plans, and all scenario IDs could bind green, even though neither stream’s own plan is trustworthy.
+
+Risk: The change can miss the same class it is intended to fix whenever output is concatenated or garbled across multiple planned streams.
+
+Suggested fix: Either fail closed on multiple top-level plans, or define segment-aware validation. If concatenated streams must remain legal, specify how segments are delimited for leading-plan and trailing-plan emitters, then compare each plan to its own segment and only skip duplicate-number checks across segment boundaries.
+
+**TP-2 — The point-count regex is too broad for “legal TAP points”**
+
+Description: The mechanics define `points` as top-level result lines matching `/^(ok|not ok)\b/`. That matches lines that start with `ok:` or `not ok:` because `:` is a word boundary, even though those are not TAP result lines. The requirement says this count is for legal TAP points that the binding regex skips, but the proposed regex also counts non-result diagnostic-like lines. TAP/YAML diagnostic content is especially sensitive here; indented YAML is safe only if implementation consistently enforces top-level matching and does not count diagnostic payload as results.
+
+Risk: Valid or near-valid TAP with diagnostic text can produce false plan mismatches, while implementers may disagree about whether to count broad prefix matches or syntactic TAP result lines.
+
+Suggested fix: Define the point line matcher as a TAP result token, not just a word boundary, e.g. top-level `/^(?:ok|not ok)(?:\s|$)/`. Add an acceptance case proving diagnostic/YAML-looking lines such as `ok: ...` do not count as points, while bare legal `ok` and `not ok` still do.
+
+**Advisories**
+
+- Add an explicit `1..0 # SKIP reason` case. TAP skip-all plans commonly carry a directive, and the requirement should make clear that N is still parsed as zero.
+- Clarify whether duplicate test-point numbers are compared numerically or textually. `ok 01` versus `ok 1` is low-probability but easy to specify.
+- `parseTap` is also used by `doctor`; the requirement intentionally scopes inherited failures to `verify`, `verify --change`, and `gate`. That is acceptable, but the exclusion should remain intentional during design.
+
+**Ledger Delta**
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| TP-1 | Multiple-plan validation uses only aggregate `sum(plans) === points` and skips duplicate-number checks, so one stream’s truncation can be masked by another stream’s extra points. | Truncated/garbled concatenated TAP can still verify GREEN. | P1·r1 | open |
+| TP-2 | Point counting via `/^(ok|not ok)\b/` is broader than legal TAP result syntax and can count diagnostic-like lines such as `ok:`. | False plan mismatches or inconsistent implementations around diagnostic/YAML content. | P1·r1 | open |
+| TP-ADV-1 | Add explicit skip-all directive, duplicate-number normalization, and doctor-scope notes. | Advisory precision and edge coverage. | P1·r1 | open |
+
+VERDICT: 2 issues open

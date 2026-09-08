@@ -1,0 +1,19 @@
+# P8 consistency review — req-prefix (round 3)
+
+Reviewer: codex (gpt-5.5), session 019f4b30-68f9-7222-9b64-17f52a333b4c. Raw: req-prefix-impl-review-v3-raw.txt
+
+# P8 Consistency Review — req-prefix v3
+
+## Resolution Check
+
+RPIMPL-1 is resolved. The previously surviving bare shorthand in the STEP0 input bullets now uses `<change>-req-v1` in both English and Chinese. The PR-19 guard was strengthened to operate per occurrence: it strips allowed prefixed forms first, then rejects any remaining `req-v`, so the prior line-level filtering bug is no longer possible.
+
+No new spec-vs-code gaps found. `lib/new.js` still emits `requirement/${name}-req-v1.md`, and NW-05 covers the generated `my-change-req-v1.md` flow-state output plus absence of the three forbidden global literals.
+
+## Ledger Delta
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| RPIMPL-1 | Bare `req-v` shorthands survived in both runbooks after the initial prefix migration. | The collision-prone naming could still be followed from live protocol text. | STEP5 r1 | verified |
+
+VERDICT: no major issues, ready to proceed

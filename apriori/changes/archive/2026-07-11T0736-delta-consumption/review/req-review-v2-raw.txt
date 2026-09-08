@@ -1,0 +1,479 @@
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f4b30-68f9-7222-9b64-17f52a333b4c
+--------
+user
+P1 round 2 for delta-consumption. Producer revised: requirement/req-v2.md — DC-1: tail category DELETED (body runs to next heading/EOF, existing grammar; D3 now enumerates the exhaustive problem set); DC-2: stamp problems gain line numbers (D7). Confirm both (flip to 'verified') or reopen; new issues? [Read-only sandbox: print the COMPLETE review doc body for verbatim landing at apriori/review/delta-consumption-req-review-v2.md] End with the ledger delta and exactly one verdict line: 'VERDICT: no major issues' or 'VERDICT: <N> issues open'.
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-11T07:02:18.623162Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T07:02:18.892671Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T07:02:19.392996Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-11T07:02:19.944408Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-11T07:02:20.888501Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-11T07:02:22.799617Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-11T07:02:25.969654Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: jTa3dZvk7lBJ
+codex
+I’ll read the revised requirement and the current parser surface, then check whether the two round-1 issues are actually closed and whether the new wording introduces any fresh ambiguity.
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' apriori/review/delta-consumption-issues.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc 'rg -n "function parseDeltaStrict|function parseRequirementsStrict|function parseStamp|SECTION_SPLIT_RE|REQ_RE" lib/archive-merge.js' in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' requirement/req-v2.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 125ms:
+# Issue ledger — delta-consumption
+
+Rows recorded on behalf of the reviewer (codex session 019f4b30-68f9-7222-9b64-17f52a333b4c; raws: delta-consumption-req-review-v1-raw.txt).
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| DC-1 | D3's tail grammar unresolvable (requirement bodies have no closing delimiter). | Implementations can't distinguish tail from body. | STEP0·r1 | fixed (v2: tail category deleted — body runs to next heading/EOF per the existing grammar) |
+| DC-2 | Line-number rule didn't cover existing stamp problems. | Inconsistent diagnostics. | STEP0·r1 | fixed (v2: stamp problems explicitly gain line numbers) |
+
+ succeeded in 138ms:
+15:const REQ_RE = /^###\s+Requirement:\s+(.+?)\s*$([\s\S]*?)(?=^###\s+Requirement:|$(?![\s\S]))/gm;
+16:const SECTION_SPLIT_RE = /^##\s+(ADDED|MODIFIED|REMOVED|RENAMED)\s+Requirements\s*$/m;
+25:function parseRequirementsStrict(text) {
+29:  REQ_RE.lastIndex = 0;
+30:  while ((m = REQ_RE.exec(text)) !== null) {
+56:function parseStamp(text) {
+58:  const sectionIdx = text.search(SECTION_SPLIT_RE);
+81:function parseDeltaStrict(text) {
+85:  const parts = text.split(SECTION_SPLIT_RE);
+
+ succeeded in 152ms:
+# Requirement — delta-consumption (v2)
+
+change: delta-consumption
+target lineage: **v3 branch**. Next patch/minor (expected **3.3.1**). Fail-closed tightening: previously-silently-mangled input now errors; well-formed deltas parse identically.
+
+> v2 handling notes (P2): DC-1 → the "tail" category is DELETED — a requirement body legally runs to the next heading or EOF (the existing grammar, kept); the consumption obligation covers structure misplacement only (see the rewritten D3). DC-2 → stamp problems (malformed/duplicate/misplaced) explicitly gain 1-based line numbers too.
+
+## Background — the problem (current state A, reproduced)
+
+`parseDeltaStrict` splits on the four KNOWN section headings only. Anything else is invisible structure: a misspelled `## ADDDED Requirements` heading is not a split point, so the requirements under it are absorbed into the PRECEDING section's bucket with `problems=[]` — reproduced verbatim (a `WronglyClassified` requirement landed in ADDED silently). The parser has no obligation to consume its whole input: unknown h2 headings, requirements before any section, prose between blocks, and trailing junk all pass unreported. Both `verify --change` and `archive` inherit the blindness. (GPT-5.6 second review, defect #1 — called the top code fix.)
+
+## Goal (target state B)
+
+`parseDeltaStrict` becomes a **sequential, fully-consuming parser**: every line of the delta must belong to exactly one legal construct, and anything else is a `problems[]` entry with its 1-based line number.
+
+**Legal constructs (exhaustive):**
+1. **Preamble** — lines BEFORE the first legal section heading: the optional CAS stamp line, blank lines, and free text/headings of level h1 or h3+ that contain no `### Requirement:` and no `#### Scenario:` (titles like `# Delta — x (change)` stay legal). An `### Requirement:` or `#### Scenario:` in the preamble → problem "requirement/scenario before any section" with line number.
+2. **Legal section heading** — exactly `## ADDED|MODIFIED|REMOVED|RENAMED Requirements` (the existing regex).
+3. **Illegal h2 heading** — ANY other line matching `/^##\s/` (outside fences) → problem naming the heading text and line number ("unrecognized section heading"), and the lines under it are attributed to NOTHING (skipped until the next legal section heading, each contentful skipped line already covered by the one problem — no flood).
+4. **Section body** — inside ADDED/MODIFIED/REMOVED: `### Requirement:` blocks (as today, duplicates still reported); inside RENAMED: `- Old -> New` lines, blanks, or free text WITHOUT `### Requirement:` (a requirement block inside RENAMED → problem with line number).
+5. **Code fences** — content inside ``` fences is opaque (never parsed as structure), consistent with every other consumer.
+
+**Consumption proof:** parsing ends with every line accounted for (construct or reported problem); there is no "leftover" category.
+
+**Behavioral consequences (both surfaces, existing plumbing):** any `problems[]` entry already fails closed — `verify --change` exit 2, `archive` exit 1, nothing projected/written. No new wiring needed beyond the parser.
+
+## Acceptance criteria (testable)
+
+- D1. The review's exact repro: `## ADDDED Requirements` → problem naming `ADDDED` with its line number; `WronglyClassified` does NOT appear in any bucket; archive exits 1 / verify --change exits 2.
+- D2. A requirement block before any section heading → problem with line number.
+- D3. There is NO tail category: content after the last `### Requirement:` heading is that requirement's body by the existing grammar (runs to the next heading or EOF) — the consumption obligation is exhaustively: preamble structure markers (D2), unrecognized h2 headings (D1), requirement-in-RENAMED (D4), and the existing duplicate/stamp problems — nothing else is an error.
+- D4. A `### Requirement:` inside a RENAMED section → problem with line number.
+- D5. Every existing well-formed delta in this repo's archived changes parses with zero problems (regression corpus: run the parser over `apriori/changes/archive/*/specs/**/*.md` — all must stay clean).
+- D6. Fenced content never produces structure problems.
+- D7. ALL problems carry 1-based line numbers — including the EXISTING stamp problems (malformed digest, duplicate stamp, stamp after the first section), which today report without positions; multiple distinct problems all reported (not first-only).
+- D8. All existing tests pass; suite + verify GREEN; the cheat-sheet wording rider lands (README/README_cn archive row gains "(up to the commit point)" — the one-line P0-5 item riding along, declared here).
+
+## Out of scope
+
+- TAP plan validation (P0-2, next change).
+- Any change to the STORE parser (`parseRequirementsStrict` on store text keeps its semantics; only DELTA parsing gains the consumption obligation — store files legally carry prose headers).
+- New delta syntax.
+
+## Decisions proposed
+
+- DD-1: one problem per unrecognized heading (lines under it covered by that problem) — a flood of per-line errors would bury the signal.
+- DD-2: free text without structure markers stays legal in preamble/tail — deltas legitimately carry titles and notes; the obligation is that STRUCTURE is never silently re-homed.
+
+codex
+The v2 text does close the two prior holes at the acceptance level: D3 now preserves the existing “body to next heading/EOF” grammar, and D7 explicitly includes stamp diagnostics. I’m doing one more pass for internal contradictions in the new wording before I produce the review body.
+exec
+/usr/bin/zsh -lc "rg -n --pcre2 '"'^##'"\\s+(?"'!ADDED|MODIFIED|REMOVED|RENAMED)'"' apriori/changes/archive/*/specs/**/*.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,130p' lib/archive-merge.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "rg -n '"'^### Requirement:|''^#### Scenario:|''^```|''^## '"' apriori/changes/archive/*/specs/**/*.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 139ms:
+'use strict';
+/*
+ * archive-merge — plain-files native implementation of the archive action (§4).
+ * Zero deps — pure Node stdlib. Consumes the same delta format the OpenSpec adapter used
+ * (## ADDED/MODIFIED/REMOVED/RENAMED Requirements), so it is the adapter-free path.
+ *
+ * 3.1: also home of the merge-family pure helpers shared with `verify --change` —
+ * delta discovery, projection building, CAS base stamps, realpath containment.
+ */
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+const { withStrict } = require('./args');
+
+const REQ_RE = /^###\s+Requirement:\s+(.+?)\s*$([\s\S]*?)(?=^###\s+Requirement:|$(?![\s\S]))/gm;
+const SECTION_SPLIT_RE = /^##\s+(ADDED|MODIFIED|REMOVED|RENAMED)\s+Requirements\s*$/m;
+// the exact marker merge() injects on REMOVED; heading LINE of a deprecated block
+const DEPRECATED_RE = /^###\s+Requirement:.*_deprecated \(superseded by [^)]*\)_/;
+// a whole deprecated block (heading line + body up to the next requirement)
+const DEPRECATED_BLOCK_RE = /^###[ \t]+Requirement:[^\n]*_deprecated \(superseded by [^)]*\)_[^\n]*$[\s\S]*?(?=^###[ \t]+Requirement:|$(?![\s\S]))/gm;
+
+function stripDeprecatedBlocks(text) { return text.replace(DEPRECATED_BLOCK_RE, ''); }
+
+// name -> full block (heading + body), in document order; duplicates reported (first block wins)
+function parseRequirementsStrict(text) {
+  const map = new Map();
+  const duplicates = [];
+  let m;
+  REQ_RE.lastIndex = 0;
+  while ((m = REQ_RE.exec(text)) !== null) {
+    const name = m[1].trim();
+    if (map.has(name)) duplicates.push(name);
+    else map.set(name, m[0].replace(/\s+$/, '') + '\n');
+  }
+  return { map, duplicates };
+}
+
+function parseRequirements(text) { return parseRequirementsStrict(text).map; }
+
+// ---- CAS base stamps -------------------------------------------------------
+
+// sha256 over content with line endings normalized — a delta authored on Windows
+// must fingerprint identically to the same store checked out with LF
+function fingerprint(text) {
+  const norm = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  return 'sha256:' + crypto.createHash('sha256').update(norm, 'utf8').digest('hex');
+}
+
+const STAMP_LINE_RE = /^<!--\s*apriori-base:\s*(\S+)\s*-->\s*$/gm;
+// any standalone comment line ATTEMPTING to be a stamp — a malformed attempt must be an error,
+// never silently treated as "unstamped" (that would quietly disable CAS)
+const STAMP_ATTEMPT_RE = /^\s*<!--(?=[^>]*apriori-base)[^>]*-->\s*$/gm;
+
+// → { stamp: 'sha256:<hex>' | 'new' | null, problems: [] }
+// Exactly one stamp line, before the first delta section, well-formed digest.
+function parseStamp(text) {
+  const problems = [];
+  const sectionIdx = text.search(SECTION_SPLIT_RE);
+  STAMP_ATTEMPT_RE.lastIndex = 0;
+  let m;
+  while ((m = STAMP_ATTEMPT_RE.exec(text)) !== null) {
+    STAMP_LINE_RE.lastIndex = 0;
+    if (!STAMP_LINE_RE.test(m[0].trim())) problems.push(`malformed apriori-base stamp line: ${m[0].trim()}`);
+  }
+  const found = [];
+  STAMP_LINE_RE.lastIndex = 0;
+  while ((m = STAMP_LINE_RE.exec(text)) !== null) found.push({ value: m[1], index: m.index });
+  if (!found.length) return { stamp: null, problems };
+  if (found.length > 1) problems.push('carries more than one apriori-base stamp line');
+  for (const f of found) {
+    if (sectionIdx >= 0 && f.index > sectionIdx) problems.push('apriori-base stamp appears after the first delta section heading');
+    if (f.value !== 'new' && !/^sha256:[0-9a-f]{64}$/.test(f.value)) problems.push(`malformed apriori-base stamp '${f.value}'`);
+  }
+  return { stamp: problems.length ? null : found[0].value, problems };
+}
+
+// ---- delta parsing ---------------------------------------------------------
+
+// strict form: duplicate requirement names (within a section or across sections)
+// and stamp problems are surfaced instead of silently collapsed
+function parseDeltaStrict(text) {
+  const problems = [];
+  const buckets = { ADDED: new Map(), MODIFIED: new Map(), REMOVED: new Map(), RENAMED: [] };
+  const seen = new Map();   // name -> first section carrying it
+  const parts = text.split(SECTION_SPLIT_RE);
+  for (let i = 1; i < parts.length; i += 2) {
+    const kind = parts[i];
+    if (kind === 'RENAMED') {
+      for (const m of parts[i + 1].matchAll(/^\s*-\s*(.+?)\s*->\s*(.+?)\s*$/gm))
+        buckets.RENAMED.push([m[1].trim(), m[2].trim()]);
+    } else {
+      const { map, duplicates } = parseRequirementsStrict(parts[i + 1]);
+      for (const d of duplicates) problems.push(`duplicate requirement '${d}' in the ${kind} section`);
+      for (const [name, block] of map) {
+        if (seen.has(name)) problems.push(`duplicate requirement '${name}' appears in both ${seen.get(name)} and ${kind}`);
+        else seen.set(name, kind);
+        buckets[kind].set(name, block);
+      }
+    }
+  }
+  const st = parseStamp(text);
+  problems.push(...st.problems);
+  return { delta: buckets, stamp: st.stamp, problems };
+}
+
+function parseDelta(text) { return parseDeltaStrict(text).delta; }
+
+// total number of operations a parsed delta carries (0 = nothing recognized/parseable)
+function deltaOpCount(delta) {
+  return delta.ADDED.size + delta.MODIFIED.size + delta.REMOVED.size + delta.RENAMED.length;
+}
+
+// ---- merge (pure) ----------------------------------------------------------
+
+// Pure merge. Returns { store: Map, merged, modified, deprecated, renamed, conflicts, unchanged }
+function merge(storeText, delta, change) {
+  const parsed = parseRequirementsStrict(storeText);
+  const store = parsed.map;
+  const merged = [], modified = [], deprecated = [], renamed = [], conflicts = [], unchanged = [];
+  // a corrupt store (same requirement name twice) must never be silently collapsed
+  for (const d of parsed.duplicates) conflicts.push(`duplicate requirement '${d}' in the store (corrupt store)`);
+  const renamedTargets = new Set();   // names created by THIS run's renames — an ADDED hitting one is a same-delta collision, never a rerun no-op
+  // RENAMED first: rename the store block's ID, preserving its content
+  for (const [oldName, newName] of (delta.RENAMED || [])) {
+    if (!store.has(oldName)) {
+      // rerun signature: source already gone AND target present → this rename already happened
+      if (store.has(newName)) { unchanged.push(`${oldName} -> ${newName} (already renamed)`); continue; }
+      conflicts.push(`RENAMED '${oldName}' has no target in store`); continue;
+    }
+    if (store.has(newName)) { conflicts.push(`RENAMED target '${newName}' already exists in store`); continue; }
+
+ exited 1 in 296ms:
+ succeeded in 304ms:
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/cli/spec.md:4:## MODIFIED Requirements
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/cli/spec.md:6:### Requirement: single self-contained apriori CLI
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/cli/spec.md:9:#### Scenario: CL-01 subcommand dispatch
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/cli/spec.md:13:#### Scenario: CL-02 verify subcommand is the spec-runner
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/cli/spec.md:17:#### Scenario: CL-03 archive subcommand is archive-merge
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/cli/spec.md:21:#### Scenario: CL-04 check subcommand is the doc checker
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/cli/spec.md:25:#### Scenario: CL-05 zero runtime dependencies
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/cli/spec.md:29:#### Scenario: CL-06 --version prints the package version
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/cli/spec.md:33:#### Scenario: CL-07 unexpected subcommand failures exit cleanly
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/cli/spec.md:37:#### Scenario: CL-08 stamp subcommand appears in usage
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/cli/spec.md:41:#### Scenario: CL-09 gate subcommand appears in usage
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/cli/spec.md:4:## MODIFIED Requirements
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/cli/spec.md:6:### Requirement: single self-contained apriori CLI
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/cli/spec.md:9:#### Scenario: CL-01 subcommand dispatch
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/cli/spec.md:13:#### Scenario: CL-02 verify subcommand is the spec-runner
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/cli/spec.md:17:#### Scenario: CL-03 archive subcommand is archive-merge
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/cli/spec.md:21:#### Scenario: CL-04 check subcommand is the doc checker
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/cli/spec.md:25:#### Scenario: CL-05 zero runtime dependencies
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/cli/spec.md:29:#### Scenario: CL-06 --version prints the package version
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/cli/spec.md:33:#### Scenario: CL-07 unexpected subcommand failures exit cleanly
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/cli/spec.md:37:#### Scenario: CL-08 stamp subcommand appears in usage
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/cli/spec.md:41:#### Scenario: CL-09 gate subcommand appears in usage
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/cli/spec.md:45:#### Scenario: CL-10 doctor subcommand appears in usage
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:4:## ADDED Requirements
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:6:### Requirement: high-level archive merges a whole change transactionally
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:9:#### Scenario: AM-13 dry-run reports the whole change and writes nothing
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:13:#### Scenario: AM-14 any preflight failure means nothing is written
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:17:#### Scenario: AM-15 a mid-commit failure is reported exactly
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:21:#### Scenario: AM-16 a pre-existing temp file blocks the run
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:25:#### Scenario: AM-17 zero discovered delta files fail closed
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:29:#### Scenario: AM-18 the change-dir move waits for every store commit
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:33:#### Scenario: AM-19 high-level and single-file forms are mutually exclusive
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:37:#### Scenario: AM-20 per-file delta hygiene guards the whole set
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:41:#### Scenario: AM-21 duplicate requirement names in the store are corruption
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:45:#### Scenario: AM-22 realpath containment governs every participating path
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:49:### Requirement: CAS base stamps detect store divergence
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:52:#### Scenario: AM-23 malformed or duplicated stamps are hygiene errors
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:56:#### Scenario: AM-24 a diverged stamp stops archive before any write, on both surfaces
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:60:#### Scenario: AM-25 stamp-free deltas behave exactly as before, on both surfaces
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:64:#### Scenario: AM-26 the new sentinel matches only an absent store
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:68:#### Scenario: AM-27 apriori stamp prints the current stamp line
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:72:## MODIFIED Requirements
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:74:### Requirement: archive-merge applies delta specs to the living store
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:77:#### Scenario: AM-01 ADDED appends a new requirement
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:81:#### Scenario: AM-02 MODIFIED replaces the existing block
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:85:#### Scenario: AM-03 REMOVED marks the block deprecated, not deleted
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:89:#### Scenario: AM-04 same-ID conflict stops without writing
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:93:#### Scenario: AM-05 the action lists every merged/modified/deprecated ID
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:97:#### Scenario: AM-06 archive moves the in-flight change under a dated archive dir
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:101:#### Scenario: AM-07 RENAMED renames a requirement in place, preserving content
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:105:#### Scenario: AM-08 a content-bearing delta that parses to zero operations is a hard error
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:109:#### Scenario: AM-09 the first archive in a repo creates the store file
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:113:#### Scenario: AM-10 re-running an already-merged delta is an idempotent no-op
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:117:#### Scenario: AM-11 change names are validated and the dir move cannot escape
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:121:#### Scenario: AM-12 the store commit and the dir move are one transaction (single-file form)
+apriori/changes/archive/2026-07-11T0159-cli-strictness/specs/cli/spec.md:4:## ADDED Requirements
+apriori/changes/archive/2026-07-11T0159-cli-strictness/specs/cli/spec.md:6:### Requirement: uniform argument strictness across subcommands
+apriori/changes/archive/2026-07-11T0159-cli-strictness/specs/cli/spec.md:9:#### Scenario: CL-11 every subcommand answers --help
+apriori/changes/archive/2026-07-11T0159-cli-strictness/specs/cli/spec.md:13:#### Scenario: CL-12 unknown flags fail loudly everywhere, before any action
+apriori/changes/archive/2026-07-11T0159-cli-strictness/specs/cli/spec.md:17:#### Scenario: CL-13 positional arity is enforced
+apriori/changes/archive/2026-07-11T0159-cli-strictness/specs/cli/spec.md:21:#### Scenario: CL-14 missing values fail closed
+apriori/changes/archive/2026-07-11T0159-cli-strictness/specs/cli/spec.md:25:#### Scenario: CL-15 repeats and aliases behave declaredly
+apriori/changes/archive/2026-07-11T0159-cli-strictness/specs/cli/spec.md:29:#### Scenario: CL-16 multi consumption stops at any dash token
+apriori/changes/archive/2026-07-11T0159-cli-strictness/specs/cli/spec.md:33:#### Scenario: CL-17 init's no-flag interactive door survives the migration
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/cli/spec.md:4:## MODIFIED Requirements
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/cli/spec.md:6:### Requirement: single self-contained apriori CLI
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/cli/spec.md:9:#### Scenario: CL-01 subcommand dispatch
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/cli/spec.md:13:#### Scenario: CL-02 verify subcommand is the spec-runner
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/cli/spec.md:17:#### Scenario: CL-03 archive subcommand is archive-merge
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/cli/spec.md:21:#### Scenario: CL-04 check subcommand is the doc checker
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/cli/spec.md:25:#### Scenario: CL-05 zero runtime dependencies
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/cli/spec.md:29:#### Scenario: CL-06 --version prints the package version
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/cli/spec.md:33:#### Scenario: CL-07 unexpected subcommand failures exit cleanly
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/cli/spec.md:37:#### Scenario: CL-08 stamp subcommand appears in usage
+apriori/changes/archive/2026-07-11T0230-readme-split/specs/check/spec.md:4:## ADDED Requirements
+apriori/changes/archive/2026-07-11T0230-readme-split/specs/check/spec.md:6:### Requirement: self-mode guards the split documentation set
+apriori/changes/archive/2026-07-11T0230-readme-split/specs/check/spec.md:9:#### Scenario: CK-08 docs pairs are guarded, one-sided pairs fail
+apriori/changes/archive/2026-07-11T0230-readme-split/specs/check/spec.md:13:#### Scenario: CK-09 links resolve from the linking file and fragments are validated
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:4:## ADDED Requirements
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:6:### Requirement: gate aggregates the mechanical exit conditions for one change
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:9:#### Scenario: GT-01 a clean in-flight change passes
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:13:#### Scenario: GT-02 an unchecked task blocks
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:17:#### Scenario: GT-03 the ledger blocks on open rows and reasonless rejections
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:21:#### Scenario: GT-04 flow-state legality is enforced
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:25:#### Scenario: GT-05 verdict evidence is mechanical
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:29:#### Scenario: GT-06 the binding gate is stage-aware
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:33:#### Scenario: GT-07 resolution is validated and deterministic
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:37:#### Scenario: GT-08 a missing or mismatched flow-state fails closed
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:41:#### Scenario: GT-09 trivial tier is not asked for artifacts it never produces
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:45:#### Scenario: GT-10 KB freshness degrades honestly
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:49:#### Scenario: GT-11 --json is pure JSON in every outcome class
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:53:#### Scenario: GT-12 gate is read-only
+apriori/changes/archive/2026-07-11T0415-evidence-governance/specs/check/spec.md:4:## ADDED Requirements
+apriori/changes/archive/2026-07-11T0415-evidence-governance/specs/check/spec.md:6:### Requirement: review evidence is guarded against committed secrets
+apriori/changes/archive/2026-07-11T0415-evidence-governance/specs/check/spec.md:9:#### Scenario: CK-10 committed secrets in review evidence fail the check
+apriori/changes/archive/2026-07-11T0415-evidence-governance/specs/check/spec.md:13:## MODIFIED Requirements
+apriori/changes/archive/2026-07-11T0415-evidence-governance/specs/check/spec.md:15:### Requirement: check warns on a stale scaffolded runbook without failing
+apriori/changes/archive/2026-07-11T0415-evidence-governance/specs/check/spec.md:18:#### Scenario: CK-06 stale scaffolded runbook warns, never fails
+apriori/changes/archive/2026-07-11T0415-evidence-governance/specs/check/spec.md:22:#### Scenario: CK-07 consumer mode is the default; self-checks require --self
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:4:## ADDED Requirements
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:6:### Requirement: doctor diagnoses the project-apriori seam
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:9:#### Scenario: DR-01 a healthy initialized project reports HEALTHY
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:13:#### Scenario: DR-02 an uninitialized project is unusable, with guidance
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:17:#### Scenario: DR-03 init-scaffold gaps are findings with their fixer
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:21:#### Scenario: DR-04 runbook freshness points at update, and never contradicts D2
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:25:#### Scenario: DR-05 detected tools must keep their pointers
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:29:#### Scenario: DR-06 the TAP probe classifies every plumbing edge
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:33:#### Scenario: DR-07 the probe is skippable and degrades honestly
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:37:#### Scenario: DR-08 store health flags unbindable and ambiguous scenarios
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:41:#### Scenario: DR-09 changes overview validates flow-states and surfaces pending gates
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:45:#### Scenario: DR-10 output is machine-consumable in every class
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:49:#### Scenario: DR-11 doctor is read-only and rejects stray arguments
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:53:#### Scenario: DR-12 the Node floor is enforced testably
+apriori/changes/archive/2026-07-11T0252-golden-path/specs/golden/spec.md:4:## ADDED Requirements
+apriori/changes/archive/2026-07-11T0252-golden-path/specs/golden/spec.md:6:### Requirement: the golden path proves the packaged CLI end-to-end
+apriori/changes/archive/2026-07-11T0252-golden-path/specs/golden/spec.md:9:#### Scenario: GP-01 the extractor is a pure text seam
+apriori/changes/archive/2026-07-11T0252-golden-path/specs/golden/spec.md:13:#### Scenario: GP-02 a --local run walks the whole Quickstart
+apriori/changes/archive/2026-07-11T0252-golden-path/specs/golden/spec.md:17:#### Scenario: GP-03 final state is asserted, not assumed
+apriori/changes/archive/2026-07-11T0252-golden-path/specs/golden/spec.md:21:#### Scenario: GP-04 drift between README and contract fails loudly
+apriori/changes/archive/2026-07-11T0252-golden-path/specs/golden/spec.md:25:#### Scenario: GP-05 packed mode proves the published file set
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:4:## ADDED Requirements
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:6:### Requirement: projected verify binds against the candidate merged store
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:9:#### Scenario: SR-16 ADDED delta scenarios join the projection
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:13:#### Scenario: SR-17 MODIFIED delta replaces the demanded scenario set
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:17:#### Scenario: SR-18 REMOVED delta scenarios are not demanded and their tests orphan
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:21:#### Scenario: SR-19 RENAMED delta demands the post-rename picture
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:25:#### Scenario: SR-20 merge conflicts make the projection untrustworthy
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:29:#### Scenario: SR-21 projection inputs fail closed
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:33:#### Scenario: SR-22 --specs and --change are mutually exclusive
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:37:#### Scenario: SR-23 --json carries the projection contract
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:41:#### Scenario: SR-24 a diverged base stamp blocks projection
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:45:### Requirement: deprecated blocks are excluded from verification
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:48:#### Scenario: SR-25 deprecated block scenarios stop being demanded
+
+codex
+**Round-1 Confirmations**
+
+DC-1: **reopened**. The main D3 text now deletes the tail category, but DD-2 still says “free text without structure markers stays legal in preamble/tail.” That keeps the same tail ambiguity alive for an implementer.
+
+DC-2: **verified**. D7 now explicitly says all problems carry 1-based line numbers, including malformed digest, duplicate stamp, and stamp-after-section cases.
+
+**Dimension Verdicts**
+
+1. Target state B: **still ambiguous** because the deleted tail category remains referenced in DD-2, and non-structural prose outside requirement blocks is not assigned a legal construct.
+2. Edge and exception paths: **partly covered**, but prose outside blocks needs a declared classification.
+3. Implied side effects: **no major issue**; parser-only change and inherited verify/archive failure behavior remain declared.
+4. Acceptance criteria testability: **partly blocked** by the unresolved legal status of non-structural prose outside requirement blocks.
+5. Conflicts with state A: **no direct conflict found**. The archived delta corpus under `apriori/changes/archive/*/specs/**/*.md` uses legal section headings; I found no illegal `##` headings in those files.
+6. Target lineage: **declared and plausible**.
+
+**Formal Issues**
+
+**DC-1 — Tail category is deleted in D3 but still legal in DD-2**
+
+Description: D3 says “There is NO tail category,” and requirement bodies run to the next heading or EOF. But DD-2 still says “free text without structure markers stays legal in preamble/tail.” That is contradictory: one part tells the implementer not to model tail; another preserves tail as a legal area.
+
+Risk: The implementation may reintroduce a tail bucket or tail-specific leniency, recreating the ambiguity round 1 asked to remove.
+
+Suggested fix: Delete “/tail” from DD-2. If the intended rule is “free text is legal only in preamble and inside requirement bodies,” say that directly.
+
+**DC-3 — Non-structural prose outside requirement blocks is not classified**
+
+Description: The goal says every line belongs to exactly one legal construct or a problem. The legal constructs define preamble text, legal section headings, illegal h2 headings, requirement blocks, RENAMED lines/free text, and fences. But for ADDED/MODIFIED/REMOVED sections, text before the first `### Requirement:` block is not assigned to any construct. D3 also says the exhaustive error set is only preamble structure markers, unrecognized h2 headings, requirement-in-RENAMED, duplicate problems, and stamp problems, so that prose is apparently not an error either.
+
+Risk: A sequential parser cannot prove full consumption consistently. Different implementations may silently ignore, attach, or reject prose before the first requirement in a legal section.
+
+Suggested fix: Add an explicit rule. Recommended: in ADDED/MODIFIED/REMOVED, nonblank non-fence content before the first `### Requirement:` is a problem with line number. Alternatively, declare it legal section-note text and add an acceptance test for it.
+
+**Advisories**
+
+- D5’s corpus scope is now precise and matches the actual archived delta location.
+- D8’s README/README_cn rider is unrelated to delta parsing but is declared, so it can remain as a tracked ride-along task.
+
+**Ledger Delta**
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| DC-1 | Tail category is deleted in D3 but still referenced as legal in DD-2. | Implementer may preserve ambiguous tail handling. | STEP0·r1 | open |
+| DC-2 | Stamp hygiene problems lacked explicit line-number coverage. | Inconsistent diagnostics. | STEP0·r1 | verified |
+| DC-3 | Non-structural prose before the first requirement in ADDED/MODIFIED/REMOVED is neither a legal construct nor an error. | Full-consumption parser behavior remains inconsistent and under-testable. | STEP0·r2 | open |
+| ADV-2 | D8’s README rider is unrelated but declared and trackable. | Advisory scope hygiene. | STEP0·r2 | open |
+
+VERDICT: 2 issues open
+tokens used
+2,243,735
+**Round-1 Confirmations**
+
+DC-1: **reopened**. The main D3 text now deletes the tail category, but DD-2 still says “free text without structure markers stays legal in preamble/tail.” That keeps the same tail ambiguity alive for an implementer.
+
+DC-2: **verified**. D7 now explicitly says all problems carry 1-based line numbers, including malformed digest, duplicate stamp, and stamp-after-section cases.
+
+**Dimension Verdicts**
+
+1. Target state B: **still ambiguous** because the deleted tail category remains referenced in DD-2, and non-structural prose outside requirement blocks is not assigned a legal construct.
+2. Edge and exception paths: **partly covered**, but prose outside blocks needs a declared classification.
+3. Implied side effects: **no major issue**; parser-only change and inherited verify/archive failure behavior remain declared.
+4. Acceptance criteria testability: **partly blocked** by the unresolved legal status of non-structural prose outside requirement blocks.
+5. Conflicts with state A: **no direct conflict found**. The archived delta corpus under `apriori/changes/archive/*/specs/**/*.md` uses legal section headings; I found no illegal `##` headings in those files.
+6. Target lineage: **declared and plausible**.
+
+**Formal Issues**
+
+**DC-1 — Tail category is deleted in D3 but still legal in DD-2**
+
+Description: D3 says “There is NO tail category,” and requirement bodies run to the next heading or EOF. But DD-2 still says “free text without structure markers stays legal in preamble/tail.” That is contradictory: one part tells the implementer not to model tail; another preserves tail as a legal area.
+
+Risk: The implementation may reintroduce a tail bucket or tail-specific leniency, recreating the ambiguity round 1 asked to remove.
+
+Suggested fix: Delete “/tail” from DD-2. If the intended rule is “free text is legal only in preamble and inside requirement bodies,” say that directly.
+
+**DC-3 — Non-structural prose outside requirement blocks is not classified**
+
+Description: The goal says every line belongs to exactly one legal construct or a problem. The legal constructs define preamble text, legal section headings, illegal h2 headings, requirement blocks, RENAMED lines/free text, and fences. But for ADDED/MODIFIED/REMOVED sections, text before the first `### Requirement:` block is not assigned to any construct. D3 also says the exhaustive error set is only preamble structure markers, unrecognized h2 headings, requirement-in-RENAMED, duplicate problems, and stamp problems, so that prose is apparently not an error either.
+
+Risk: A sequential parser cannot prove full consumption consistently. Different implementations may silently ignore, attach, or reject prose before the first requirement in a legal section.
+
+Suggested fix: Add an explicit rule. Recommended: in ADDED/MODIFIED/REMOVED, nonblank non-fence content before the first `### Requirement:` is a problem with line number. Alternatively, declare it legal section-note text and add an acceptance test for it.
+
+**Advisories**
+
+- D5’s corpus scope is now precise and matches the actual archived delta location.
+- D8’s README/README_cn rider is unrelated to delta parsing but is declared, so it can remain as a tracked ride-along task.
+
+**Ledger Delta**
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| DC-1 | Tail category is deleted in D3 but still referenced as legal in DD-2. | Implementer may preserve ambiguous tail handling. | STEP0·r1 | open |
+| DC-2 | Stamp hygiene problems lacked explicit line-number coverage. | Inconsistent diagnostics. | STEP0·r1 | verified |
+| DC-3 | Non-structural prose before the first requirement in ADDED/MODIFIED/REMOVED is neither a legal construct nor an error. | Full-consumption parser behavior remains inconsistent and under-testable. | STEP0·r2 | open |
+| ADV-2 | D8’s README rider is unrelated but declared and trackable. | Advisory scope hygiene. | STEP0·r2 | open |
+
+VERDICT: 2 issues open

@@ -1,0 +1,306 @@
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f5310-28e4-7103-9c14-1c1181180f9b
+--------
+user
+P8 round 2 for config-contract. All three rows fixed: CCIMPL-1 — configCasProblem now also reports an illegal cas value (not in {optional, required}) and configCas returns null for it (never a silent no-waiver); archive denies naming the value (new CF-03 subtest: | cas | banana | -> exit 1 naming banana, store untouched). CCIMPL-2 — the HTML-comment handling is span-based: inline comments are stripped while pre-opener content stays live (new CF-02 subtest: | cas | optional | <!-- note --> | still waives); comment-only and unterminated cases stay inert. CCIMPL-3 — checkCas computes um FIRST and passes silently when empty; --no-cas, config problem, and config waiver are consulted only when unstamped mutations exist. Suite 240/240. Re-read lib/config.js parseConfig, lib/resolve.js configCas/configCasProblem, lib/gate.js checkCas, and the two new subtests. End with LEDGER DELTA then exactly one verdict line.
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-12T04:50:41.918469Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-12T04:50:42.053251Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-12T04:50:42.452006Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-12T04:50:42.987775Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-12T04:50:43.932499Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-12T04:50:45.800076Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-12T04:50:49.245941Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: OOr9CSvYHXSm
+codex
+我会只复核这三处修复和对应新测试，不扩大到无关实现。
+exec
+/usr/bin/zsh -lc "nl -ba lib/config.js | sed -n '1,140p'" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "nl -ba lib/gate.js | sed -n '214,230p'" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "nl -ba lib/resolve.js | sed -n '45,70p'" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "nl -ba test/config.test.js | sed -n '27,65p'; nl -ba test/gate.test.js | sed -n '462,486p'" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 133ms:
+     1	'use strict';
+     2	/*
+     3	 * process-config parses as structure, never as full-text regex (config-contract).
+     4	 * One shared reader for every consumer: fenced code blocks and HTML comments are
+     5	 * non-content (unterminated blocks make the rest of the file inert — naturally
+     6	 * fail-closed for waiver keys); a config row is any |-leading table row, first
+     7	 * cell key, second cell value, extra columns ignored; same-key same-value
+     8	 * duplicates are tolerated, different values are a CONFLICT problem. Problems
+     9	 * surface only when the key is actually consumed.
+    10	 */
+    11	const fs = require('fs');
+    12	const path = require('path');
+    13	
+    14	// parse the raw text → { values: Map<key,value>, conflicts: Set<key> }
+    15	function parseConfig(text) {
+    16	  const values = new Map();
+    17	  const conflicts = new Set();
+    18	  let fence = false, comment = false;
+    19	  for (const raw of (text || '').split('\n')) {
+    20	    const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw;
+    21	    let t = line;
+    22	    if (comment) {
+    23	      const close = t.indexOf('-->');
+    24	      if (close < 0) continue;
+    25	      comment = false;
+    26	      t = t.slice(close + 3);
+    27	    }
+    28	    if (fence) { if (/^\s*```/.test(t)) fence = false; continue; }
+    29	    if (/^\s*```/.test(t)) { fence = true; continue; }
+    30	    // strip inline comment SPANS — content before the opener stays live
+    31	    while (t.includes('<!--')) {
+    32	      const open = t.indexOf('<!--');
+    33	      const close = t.indexOf('-->', open + 4);
+    34	      if (close < 0) { t = t.slice(0, open); comment = true; break; }
+    35	      t = t.slice(0, open) + t.slice(close + 3);
+    36	    }
+    37	    if (!t.trimStart().startsWith('|')) continue;
+    38	    const cells = t.split('|').map((c) => c.trim());
+    39	    // cells[0] is the empty prefix before the leading pipe
+    40	    const key = cells[1], value = cells[2];
+    41	    if (!key || value === undefined || value === '') continue;
+    42	    if (key.toLowerCase() === 'key' || /^-+$/.test(key)) continue;      // header / separator
+    43	    if (/^-+$/.test(value)) continue;
+    44	    if (values.has(key) && values.get(key) !== value) { conflicts.add(key); continue; }
+    45	    values.set(key, value);
+    46	  }
+    47	  return { values, conflicts };
+    48	}
+    49	
+    50	function readConfig(cwd) {
+    51	  const p = path.join(cwd || '.', 'apriori', 'process-config.md');
+    52	  if (!fs.existsSync(p)) return { values: new Map(), conflicts: new Set() };
+    53	  return parseConfig(fs.readFileSync(p, 'utf8'));
+    54	}
+    55	
+    56	// one key → { value: string|null, problem: string|null } (problem only when consumed)
+    57	function getConfig(cwd, key) {
+    58	  const { values, conflicts } = readConfig(cwd);
+    59	  if (conflicts.has(key)) return { value: null, problem: `process-config carries conflicting '${key}' rows — resolve the conflict (one live row per key)` };
+    60	  return { value: values.has(key) ? values.get(key) : null, problem: null };
+    61	}
+    62	
+    63	module.exports = { parseConfig, readConfig, getConfig };
+
+ succeeded in 128ms:
+   214	
+   215	// C7: unstamped mutation deltas are denied by default — a waiver is always visible (GT-16).
+   216	// Archived stage: the deltas are already merged; there is nothing left to stamp-check.
+   217	function checkCas(projection, stage, noCas, cwd) {
+   218	  if (stage === 'archived') return { id: 'C7', status: 'n/a', detail: 'deltas already merged' };
+   219	  const um = (projection && projection.unstampedMutations) || [];
+   220	  if (!um.length) return { id: 'C7', status: 'pass', detail: 'every mutation delta is stamped' };  // nothing to consult — silent pass (GT-16)
+   221	  if (noCas) return { id: 'C7', status: 'pass', detail: 'waived (--no-cas)' };
+   222	  const problem = configCasProblem(cwd);                       // consumption-time only
+   223	  if (problem) return { id: 'C7', status: 'blocked', detail: `${problem} — a broken config never equals a waiver` };
+   224	  if (configCas(cwd) === 'optional') return { id: 'C7', status: 'pass', detail: 'waived (process-config cas: optional)' };
+   225	  return { id: 'C7', status: 'blocked',
+   226	    detail: `unstamped mutation delta(s): ${um.join(', ')} — run: apriori stamp <store-file> (or waive with --no-cas / a process-config cas: optional row)` };
+   227	}
+   228	
+   229	// The whole evaluation. → { code, stage, checks, result, blocked, errors }
+   230	function runGate(opts) {
+
+ succeeded in 122ms:
+    45	}
+    46	
+    47	// process-config `| cas | optional |` row — the project-level twin of --no-cas (flag wins).
+    48	// Structured read (config-contract): fenced/commented rows grant nothing; a conflict is a
+    49	// consumption-time problem, never a waiver. Returns the leading value token or null;
+    50	// configCasProblem() surfaces the conflict for consumers that must fail closed on it.
+    51	function configCas(cwd) {
+    52	  const { value, problem } = require('./config').getConfig(cwd, 'cas');
+    53	  if (problem || value === null) return null;
+    54	  const tok = value.trim().split(/\s+/)[0].toLowerCase();
+    55	  return tok === 'optional' || tok === 'required' ? tok : null;   // illegal values never waive
+    56	}
+    57	function configCasProblem(cwd) {
+    58	  const { value, problem } = require('./config').getConfig(cwd, 'cas');
+    59	  if (problem) return problem;
+    60	  if (value !== null) {
+    61	    const tok = value.trim().split(/\s+/)[0].toLowerCase();
+    62	    if (tok !== 'optional' && tok !== 'required')
+    63	      return `process-config 'cas' value '${tok}' is not in {optional, required}`;
+    64	  }
+    65	  return null;
+    66	}
+    67	
+    68	// pre-4.0 scattered roots — existence-level probes only (lstat, never followed or read through)
+    69	const LEGACY_ROOTS = ['requirement', 'spike', 'apriori/review', 'apriori/design', 'apriori/explore'];
+    70	function legacyRoots(root) {
+
+ succeeded in 138ms:
+    27	test('CF-01 fenced and commented rows never take effect', () => {
+    28	  const denied = proj('```md\n| cas | optional |\n```\n\n| cas | required |\n');
+    29	  const r1 = run(['archive', '--change', 'c', '--write'], denied);
+    30	  assert.strictEqual(r1.status, 1, r1.stdout + r1.stderr);
+    31	  assert.doesNotMatch(store(denied), /CHANGED/);
+    32	  const waived = proj('```md\n| cas | required |\n```\n\n| cas | optional |\n');
+    33	  const r2 = run(['archive', '--change', 'c', '--write'], waived);
+    34	  assert.strictEqual(r2.status, 0, r2.stdout + r2.stderr);
+    35	  assert.match(r2.stdout + r2.stderr, /waived|process-config/i);
+    36	  assert.match(store(waived), /CHANGED/);
+    37	  const comment = proj('<!--\n| cas | optional |\n-->\n');
+    38	  const r3 = run(['archive', '--change', 'c', '--write'], comment);
+    39	  assert.strictEqual(r3.status, 1, r3.stdout + r3.stderr);
+    40	});
+    41	
+    42	test('CF-02 multi-column rows parse by their first two cells', () => {
+    43	  const root = proj('| cas | optional | 注释说明列 |\n');
+    44	  const r = run(['archive', '--change', 'c', '--write'], root);
+    45	  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+    46	  assert.match(store(root), /CHANGED/);
+    47	  // an inline HTML comment is a span, not a line-killer — the live row survives (CCIMPL-2)
+    48	  const inline = proj('| cas | optional | <!-- note --> |\n');
+    49	  assert.strictEqual(run(['archive', '--change', 'c', '--write'], inline).status, 0);
+    50	});
+    51	
+    52	test('CF-03 duplicates tolerate sameness and refuse conflict', () => {
+    53	  const same = proj('| cas | optional |\n| cas | optional |\n');
+    54	  assert.strictEqual(run(['archive', '--change', 'c', '--write'], same).status, 0);
+    55	  const conflict = proj('| cas | optional |\n| cas | required |\n');
+    56	  const r = run(['archive', '--change', 'c', '--write'], conflict);
+    57	  assert.strictEqual(r.status, 1, r.stdout + r.stderr);
+    58	  assert.match(r.stdout + r.stderr, /conflict/i);
+    59	  assert.doesNotMatch(store(conflict), /CHANGED/);
+    60	  const g = run(['gate', '--change', 'c', '--test-cmd', `node -e "console.log('ok 1 - XA-01 a')"`], conflict);
+    61	  assert.match(g.stdout, /C7/);
+    62	  assert.match(g.stdout, /conflict/i);
+    63	  // an illegal value is a config error too, never a silent no-waiver (CCIMPL-1)
+    64	  const banana = proj('| cas | banana |\n');
+    65	  const rb = run(['archive', '--change', 'c', '--write'], banana);
+   462	test('GT-16 C7 blocks, and waivers are loud', () => {
+   463	  // unstamped mutation delta → blocked naming the suffix + cure
+   464	  const b = c7Of(modProject());
+   465	  assert.ok(b, 'C7 missing from checks');
+   466	  assert.strictEqual(b.status, 'blocked');
+   467	  assert.match(b.detail, /kv[\/\\]spec\.md/);
+   468	  assert.match(b.detail, /apriori stamp/);
+   469	  // --no-cas → loud waiver, not blocked
+   470	  const w = c7Of(modProject(), { noCas: true });
+   471	  assert.notStrictEqual(w.status, 'blocked');
+   472	  assert.match(w.detail, /waived \(--no-cas\)/);
+   473	  // config row | cas | optional | → waived naming the config
+   474	  const rootC = modProject({ 'apriori/process-config.md': '| Field | Value |\n|---|---|\n| cas | optional |\n' });
+   475	  const wc = c7Of(rootC);
+   476	  assert.notStrictEqual(wc.status, 'blocked');
+   477	  assert.match(wc.detail, /process-config/);
+   478	  // the flag wins over a required config
+   479	  const rootR = modProject({ 'apriori/process-config.md': '| Field | Value |\n|---|---|\n| cas | required |\n' });
+   480	  assert.strictEqual(c7Of(rootR).status, 'blocked');
+   481	  assert.match(c7Of(rootR, { noCas: true }).detail, /waived \(--no-cas\)/);
+   482	  // stamped or ADDED-only → silent pass
+   483	  const okA = c7Of(healthy());                                   // ADDED-only fixture
+   484	  assert.strictEqual(okA.status, 'pass');
+   485	  // archived stage → n/a (deltas already merged)
+   486	  const arch = mkProject({
+
+codex
+修复方向对三条 ledger row 都命中。我还要看 CF-03 新断言完整性，以及是否有 hidden false positive，比如 `required` 仍不 waiver、comment-only 仍 inert。
+exec
+/usr/bin/zsh -lc "nl -ba test/config.test.js | sed -n '63,82p'" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 144ms:
+    63	  // an illegal value is a config error too, never a silent no-waiver (CCIMPL-1)
+    64	  const banana = proj('| cas | banana |\n');
+    65	  const rb = run(['archive', '--change', 'c', '--write'], banana);
+    66	  assert.strictEqual(rb.status, 1, rb.stdout + rb.stderr);
+    67	  assert.match(rb.stdout + rb.stderr, /banana/);
+    68	  assert.doesNotMatch(store(banana), /CHANGED/);
+    69	});
+    70	
+    71	test('CF-04 unterminated blocks are inert, not effective', () => {
+    72	  for (const cfg of ['```\n| cas | optional |\n', '<!--\n| cas | optional |\n']) {
+    73	    const root = proj(cfg);
+    74	    const r = run(['archive', '--change', 'c', '--write'], root);
+    75	    assert.strictEqual(r.status, 1, cfg + r.stdout + r.stderr);
+    76	    assert.doesNotMatch(store(root), /CHANGED/);
+    77	  }
+    78	});
+    79	
+    80	test('CF-05 config errors surface only at consumption', () => {
+    81	  // ADDED-only delta: the conflicted cas row is never consulted
+    82	  const root = proj('| cas | optional |\n| cas | required |\n');
+
+exec
+/usr/bin/zsh -lc "node -e \"const {parseConfig}=require('./lib/config'); const samples=['| cas | optional | <"'!-- note --> |'"\\\\n','<"'!-- | cas | optional | -->'"\\\\n','<"'!--'"\\\\n| cas | optional |\\\\n-->\\\\n','| cas | banana |\\\\n']; for (const s of samples){const r=parseConfig(s); console.log(JSON.stringify({input:s.trim().replace(/\\\\n/g,'\\\\\\n'), values:[...r.values], conflicts:[...r.conflicts]}));}\"" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "node -e \"const fs=require('fs'),os=require('os'),path=require('path'); const {configCas,configCasProblem}=require('./lib/resolve'); for (const v of ['optional','required','banana']){const root=fs.mkdtempSync(path.join(os.tmpdir(),'cc-r2-')); fs.mkdirSync(path.join(root,'apriori'),{recursive:true}); fs.writeFileSync(path.join(root,'apriori/process-config.md'), '| cas | '+v+' |\\\\n'); console.log(v, configCas(root), configCasProblem(root));}\"" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 179ms:
+{"input":"| cas | optional | <!-- note --> |","values":[["cas","optional"]],"conflicts":[]}
+{"input":"<!-- | cas | optional | -->","values":[],"conflicts":[]}
+{"input":"<!--\\n| cas | optional |\\n-->","values":[],"conflicts":[]}
+{"input":"| cas | banana |","values":[["cas","banana"]],"conflicts":[]}
+
+ exited 1 in 193ms:
+node:fs:3039
+  return binding.mkdtemp(prefix, options.encoding);
+                 ^
+
+Error: EROFS: read-only file system, mkdtemp '/tmp/cc-r2-XXXXXX'
+    at Object.mkdtempSync (node:fs:3039:18)
+    at [eval]:1:188
+    at runScriptInThisContext (node:internal/vm:219:10)
+    at node:internal/process/execution:451:12
+    at [eval]-wrapper:6:24
+    at runScriptInContext (node:internal/process/execution:449:60)
+    at evalFunction (node:internal/process/execution:283:30)
+    at evalTypeScript (node:internal/process/execution:295:3)
+    at node:internal/main/eval_string:71:3 {
+  errno: -30,
+  code: 'EROFS',
+  syscall: 'mkdtemp',
+  path: '/tmp/cc-r2-XXXXXX'
+}
+
+Node.js v24.11.0
+
+codex
+复核通过，三条 STEP5 row 都已按 spec-vs-code 要求收敛。
+
+`parseConfig` 现在按 span 剥离 HTML comment，`| cas | optional | <!-- note --> |` 保留 live row，comment-only 与未闭合 comment 仍 inert。`configCasProblem` 对非法 `cas` token 返回具名 problem，`configCas` 不再把非法值当 waiver。`checkCas` 现在先判断 `unstampedMutations`，无消费需求时直接 pass，不再读取/展示 waiver 状态。
+
+新测试也钉住了关键回归：CF-02 覆盖 inline comment，CF-03 覆盖 `banana` 非法值且 store untouched。未在只读沙箱重跑 240/240；本轮只做了源码和轻量只读探针复核。
+
+**LEDGER DELTA**
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| CCIMPL-1 | `cas` illegal values are treated as no waiver, not config errors. | Bad config is not named as required; archive/gate diagnostics diverge from fail-closed contract. | STEP5·r1 | verified |
+| CCIMPL-2 | A live config row with an inline HTML comment is skipped entirely. | Valid rows such as `| cas | optional | <!-- note -->` become inert despite first-two-cells semantics. | STEP5·r1 | verified |
+| CCIMPL-3 | Gate C7 consults and reports CAS waiver state even when no unstamped mutation exists. | Stamped/ADDED-only changes do not pass C7 silently as specified. | STEP5·r1 | verified |
+
+VERDICT: no spec-vs-code gaps
+tokens used
+984,881
+复核通过，三条 STEP5 row 都已按 spec-vs-code 要求收敛。
+
+`parseConfig` 现在按 span 剥离 HTML comment，`| cas | optional | <!-- note --> |` 保留 live row，comment-only 与未闭合 comment 仍 inert。`configCasProblem` 对非法 `cas` token 返回具名 problem，`configCas` 不再把非法值当 waiver。`checkCas` 现在先判断 `unstampedMutations`，无消费需求时直接 pass，不再读取/展示 waiver 状态。
+
+新测试也钉住了关键回归：CF-02 覆盖 inline comment，CF-03 覆盖 `banana` 非法值且 store untouched。未在只读沙箱重跑 240/240；本轮只做了源码和轻量只读探针复核。
+
+**LEDGER DELTA**
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| CCIMPL-1 | `cas` illegal values are treated as no waiver, not config errors. | Bad config is not named as required; archive/gate diagnostics diverge from fail-closed contract. | STEP5·r1 | verified |
+| CCIMPL-2 | A live config row with an inline HTML comment is skipped entirely. | Valid rows such as `| cas | optional | <!-- note -->` become inert despite first-two-cells semantics. | STEP5·r1 | verified |
+| CCIMPL-3 | Gate C7 consults and reports CAS waiver state even when no unstamped mutation exists. | Stamped/ADDED-only changes do not pass C7 silently as specified. | STEP5·r1 | verified |
+
+VERDICT: no spec-vs-code gaps

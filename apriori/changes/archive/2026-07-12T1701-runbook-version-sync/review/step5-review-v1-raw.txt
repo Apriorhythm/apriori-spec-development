@@ -1,0 +1,771 @@
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f5578-794b-7733-81ed-26fedd775250
+--------
+user
+STEP5 consistency review (P8) for runbook-version-sync, round 1. Implementation landed: lib/check.js gains checkRunbookVersion(root, files) — reads package.json version major, scans each of RUNBOOK.md / RUNBOOK_cn.md (from the self-mode files map) for fence-outside header blockquote entries matching /^>\s*`runbook-version:\s*([^`]*)`/gm, failing on missing / duplicate / malformed value / major-mismatch (mismatch names both majors), body-text and fenced occurrences never matched; wired into the --self branch after checkCodexKnownForms; exported; RUNBOOK.md and RUNBOOK_cn.md headers bumped 3.0 -> 4.0. Tests: CK-11 (aligned pass; EN/CN flips named), CK-11b (missing/duplicate/malformed/body/fence), and a spawn test (runs under --self, silent in consumer mode). Suite 250/250; verify --change GREEN.
+Your job — what binding cannot prove:
+1. Semantic faithfulness: does CK-11's test assert the mismatch names BOTH majors; does CK-11b truly bind "body-text occurrence never matched" (the prose `runbook-version: 4.0` case) and "fence occurrence never matched" as MISSING rather than accidentally passing; the spawn test's consumer-mode-silent assertion;
+2. The matcher: /^>\s*`runbook-version:\s*([^`]*)`/ — could a legitimate RUNBOOK line be a false negative (the real header is `> `runbook-version: 4.0` · upstream: …` — does the trailing ` · upstream` after the closing backtick break the match)? does stripFencesLocal correctly remove fenced blocks before matching; any ReDoS/edge on malformed input;
+3. Consumer/self scoping: checkRunbookVersion only runs in the --self branch AND only over files that exist — a consumer without RUNBOOK.md is never failed; interaction with CK-08 one-sided-pair (RUNBOOK.md present, _cn absent) — who owns that;
+4. The header bump: RUNBOOK.md and RUNBOOK_cn.md both now 4.0 — does CK-02 heading alignment or CK-03 verdict phrases still hold (no accidental break); does the repo's own `check --self` now pass CK-11.
+[Scope] spec-vs-code gaps only; style = advisory. READ-ONLY sandbox (R2).
+[Output] Chinese prose, English IDs; LEDGER DELTA (new rows RVIMPL-n); exactly one verdict line: "VERDICT: no spec-vs-code gaps" or "VERDICT: <N> issues open".
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-12T08:54:49.479385Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-12T08:54:49.621603Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-12T08:54:50.096917Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-12T08:54:50.683699Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-12T08:54:51.691897Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-12T08:54:53.494753Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-12T08:54:55.037414Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: xuwb01H0MH6y
+codex
+我会静态审实现和测试绑定点，重点看 `checkRunbookVersion` 的调用范围、正则与 fence 处理，以及测试是否真的覆盖 P8 关心的语义。
+exec
+/usr/bin/zsh -lc "sed -n '1,40p' RUNBOOK.md && sed -n '1,40p' RUNBOOK_cn.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc 'rg -n "checkRunbookVersion|runbook-version|CK-11|CK-11b|stripFencesLocal" lib/check.js test/check.test.js RUNBOOK.md RUNBOOK_cn.md' in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,360p' lib/check.js" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 127ms:
+<p align="center">
+  Languages:
+  <a href="./RUNBOOK.md">English</a> ·
+  <a href="./RUNBOOK_cn.md">中文</a>
+</p>
+
+# Apriori RUNBOOK — the Executable Protocol for AI Agents
+
+> `runbook-version: 4.0` · upstream: `https://github.com/Apriorhythm/apriori-spec-development`
+> Local state lives ONLY in `apriori/process-config.md` and the flow-state file — this file is stateless, so **upgrading = overwriting it with the upstream version**.
+
+> **Audience: AI agents** (plus §6 for the human operating them). This file is self-contained: everything an agent needs at runtime is here — hard rules, state machine, artifact paths, prompts.
+> The **why** — concepts, tool setup, worked example — lives in the human handbook ([README.md](./README.md)); agents do not need it. Where the two disagree on operational detail, **this runbook is canonical**.
+
+---
+
+## 0. Install & Session Start
+
+**Install (human, once per project):**
+
+```shell
+npm i -g apriori-cli     # or run any command below via `npx apriori-cli …`
+cd your-project && apriori init  # interactive: pick the AI tools to configure
+```
+
+`apriori init` scaffolds the single `apriori/` root (this runbook at `apriori/runbook.md`, `apriori/process-config.md`, and the `specs/ changes/ truth/` working dirs) and writes a thin pointer to the runbook in each selected tool's native location — `CLAUDE.md` + `.claude/commands/apriori.md`, `AGENTS.md` (Codex/OpenCode), `.cursor/rules/apriori.mdc`, `.github/copilot-instructions.md`, `.windsurf/…`. The protocol lives once; tools just point at it. It is additive and never overwrites; re-run it any time to add a tool. `apriori doctor` diagnoses the whole seam afterwards — Node floor, scaffold gaps, runbook freshness, tool pointers, whether the test command actually emits TAP — each finding naming the command that fixes it. After a CLI upgrade, `apriori update` refreshes the tool-owned files (this runbook copy and the command pointers) — it never touches user-owned files (`process-config.md`, `specs/`, `changes/`, rules files), and a stale runbook copy surfaces as an `apriori check` warning.
+
+`apriori/process-config.md` is **human-held; the agent treats it as read-only** (R3). Without it, the defaults printed in §4 apply. The three deterministic gates run as CLI commands: `apriori verify` (STEP5), `apriori archive` (STEP6), `apriori check` (CI) — all zero-dependency Node, detailed in §4/§6.
+
+**Language.** Human-facing prose — requirement docs, spec scenario descriptions, gap/design/review docs, ledger descriptions, `flow-state` notes, and every message to the human — uses the `language` field in `apriori/process-config.md`. If it is unset or `auto`, **match the language the human is using** (their kickoff and messages). Machine tokens are ALWAYS English, whatever the language: verdict lines (§5 phrase table), scenario IDs (`KV-03`), the delta keywords `ADDED`/`MODIFIED`/`REMOVED`, file paths, and this runbook. So a Chinese kickoff yields Chinese artifacts with English IDs and verdict lines — `apriori verify`/`check` keep working unchanged.
+
+**Session start (agent, every session):**
+
+1. Kickoff session: read this runbook in full. Resume session: read at least the minimal set listed in the **Context economy** block below.
+2. Read `apriori/changes/<change>/flow-state.md`. If it doesn't exist and you were asked to start a change: size the change (§2), create the state file (§3), then begin at the tier's first step.
+3. Continue from `next-action`. The state file is authoritative — never reconstruct progress from memory or guesswork.
+
+**Two doors in.** A change that is already stateable enters through the kickoff prompt below. An idea that is still fuzzy enters through **Brainstorm** (§4, via P13) — the `/apriori` command with no arguments opens that door directly; nothing durable is written until the human approves the funnel exit.
+
+**Kickoff prompt (human — copy and fill in):**
+<p align="center">
+  Languages:
+  <a href="./RUNBOOK.md">English</a> ·
+  <a href="./RUNBOOK_cn.md">中文</a>
+</p>
+
+# Apriori RUNBOOK —— 给 AI Agent 的可执行协议
+
+> `runbook-version: 4.0` · 上游:`https://github.com/Apriorhythm/apriori-spec-development`
+> 项目本地状态只存在于 `apriori/process-config.md` 与 flow-state 文件——本文件无状态,因此**升级=用上游新版整文件覆盖**。
+
+> **读者:AI Agent**(§6 除外,那节给操作它的人)。本文件自包含:Agent 运行时需要的一切都在这里——铁律、状态机、产物路径、提示词。
+> **Why**——理念、工具搭建、实例教学——在人类手册([README_cn.md](./README_cn.md))里,Agent 不需要读它。两者在操作细节上不一致时,**以本 RUNBOOK 为准**。
+
+---
+
+## 0. 安装与会话启动
+
+**安装(人做,每个项目一次):**
+
+```shell
+npm i -g apriori-cli     # 或用 `npx apriori-cli …` 跑下面任一命令
+cd your-project && apriori init  # 交互式:勾选要接入的 AI 工具
+```
+
+`apriori init` 搭建单一 `apriori/` 根(本 runbook 落在 `apriori/runbook.md`、`apriori/process-config.md`,以及 `specs/ changes/ truth/` 工作目录),并把一行指向 runbook 的指针写进你勾选的每个工具的原生位置——`CLAUDE.md` + `.claude/commands/apriori.md`、`AGENTS.md`(Codex/OpenCode)、`.cursor/rules/apriori.mdc`、`.github/copilot-instructions.md`、`.windsurf/…`。协议只存一份;工具都指向它。增量写入、绝不覆盖;随时可重跑以加一个工具。接入后用 `apriori doctor` 给整个接缝做体检——Node 地板、脚手架缺口、runbook 新鲜度、工具指针、测试命令是否真的输出 TAP——每个发现都指名修复它的命令。CLI 升级后,`apriori update` 把工具所有的文件(本 runbook 副本和命令指针)刷新到已安装版本——绝不碰属于用户的文件(`process-config.md`、`specs/`、`changes/`、规则文件);runbook 副本过期时 `apriori check` 会给出警告。
+
+`apriori/process-config.md` **人类持有;agent 视其为只读**(R3)。缺失时,§4 打印的默认值生效。三个确定性闸口以 CLI 命令运行:`apriori verify`(STEP5)、`apriori archive`(STEP6)、`apriori check`(CI)——均为零依赖 Node,详见 §4/§6。
+
+**语言。** 人可读的散文——需求文档、spec 的 scenario 描述、gap/设计/评审文档、台账描述、`flow-state` 备注,以及每一条对人的消息——使用 `apriori/process-config.md` 里的 `language` 字段。未设或为 `auto` 时,**跟随人正在使用的语言**(其 kickoff 与消息)。机器令牌无论何种语言**永远是英文**:结论行(§5 短语表)、scenario ID(`KV-03`)、delta 关键字 `ADDED`/`MODIFIED`/`REMOVED`、文件路径,以及本 runbook。所以中文 kickoff 产出中文产物,但 ID 与结论行是英文——`apriori verify`/`check` 照常工作。
+
+**会话启动(Agent,每个会话都做):**
+
+1. Kickoff 会话:完整读本 RUNBOOK。续跑会话:至少读下方**上下文经济**块列出的最小集。
+2. 读 `apriori/changes/<change>/flow-state.md`。若不存在且你被要求启动一个变更:先定级(§2),创建状态文件(§3),再从该级别的第一步开始。
+3. 从 `next-action` 继续。状态文件是唯一权威——绝不凭记忆或猜测重建进度。
+
+**两扇门。** 已经说得清的变更,走下面的启动提示词进来;还说不清的想法,走**脑暴**(§4,经 P13)——`/apriori` 命令不带参数就直接打开这扇门;人批准汇入之前不落任何持久物。
+
+**启动提示词(人用——复制并填空):**
+
+ succeeded in 140ms:
+RUNBOOK_cn.md:9:> `runbook-version: 4.0` · 上游:`https://github.com/Apriorhythm/apriori-spec-development`
+RUNBOOK.md:9:> `runbook-version: 4.0` · upstream: `https://github.com/Apriorhythm/apriori-spec-development`
+test/check.test.js:241:// ---- runbook-version-sync (CK-11): runbook major tracks the CLI major ----
+test/check.test.js:242:test('CK-11 the runbook major tracks the CLI major', () => {
+test/check.test.js:243:  const { checkRunbookVersion } = require('../lib/check');
+test/check.test.js:247:  const EN = '# R\n\n> `runbook-version: 4.0` · upstream: x\n';
+test/check.test.js:248:  const CN = '# R\n\n> `runbook-version: 4.0` · 上游:x\n';
+test/check.test.js:251:  assert.deepStrictEqual(checkRunbookVersion(root, files(EN, CN)), []);
+test/check.test.js:253:  const bad = checkRunbookVersion(root, files(EN.replace('4.0', '3.0'), CN));
+test/check.test.js:258:  assert.match(checkRunbookVersion(root, files(EN, CN.replace('4.0', '5.0')))[0], /RUNBOOK_cn\.md/);
+test/check.test.js:261:test('CK-11b malformed, missing, duplicate, and body occurrences', () => {
+test/check.test.js:262:  const { checkRunbookVersion } = require('../lib/check');
+test/check.test.js:268:  assert.match(checkRunbookVersion(root, one('just prose, no version'))[0], /no.*runbook-version|missing/i);
+test/check.test.js:270:  assert.match(checkRunbookVersion(root, one('> `runbook-version: 4.0`\n> `runbook-version: 4.0`'))[0], /one required|duplicate|2 /i);
+test/check.test.js:272:  assert.match(checkRunbookVersion(root, one('> `runbook-version: vier`'))[0], /malformed/i);
+test/check.test.js:274:  assert.match(checkRunbookVersion(root, one('the field runbook-version: 4.0 in prose'))[0], /no.*runbook-version|missing/i);
+test/check.test.js:276:  assert.match(checkRunbookVersion(root, one('```\n> `runbook-version: 4.0`\n```'))[0], /no.*runbook-version|missing/i);
+test/check.test.js:279:test('CK-11 runs under --self and not in consumer mode', () => {
+test/check.test.js:287:  fs3.writeFileSync(p3.join(root, 'RUNBOOK.md'), '# R\n\n> `runbook-version: 3.0`\n');
+test/check.test.js:288:  fs3.writeFileSync(p3.join(root, 'RUNBOOK_cn.md'), '# R\n\n> `runbook-version: 3.0`\n');
+test/check.test.js:290:  assert.match(self.stdout + self.stderr, /runbook-version|CK-11/i);
+test/check.test.js:292:  assert.doesNotMatch(consumer.stdout + consumer.stderr, /runbook-version major|CK-11/i);
+lib/check.js:230:// ---- CK-11: the runbook major tracks the CLI major (self-mode) --------------
+lib/check.js:231:// A canonical entry is a fence-outside header blockquote `> `runbook-version: X.Y``;
+lib/check.js:234:function stripFencesLocal(text) {
+lib/check.js:237:function checkRunbookVersion(root, files) {
+lib/check.js:246:    const hits = [...stripFencesLocal(text).matchAll(/^>\s*`runbook-version:\s*([^`]*)`/gm)];
+lib/check.js:247:    if (hits.length === 0) fails.push(`CK-11 ${label}: no \`runbook-version\` blockquote entry (expected \`> \`runbook-version: ${pkgMajor}.x\`\`)`);
+lib/check.js:248:    else if (hits.length > 1) fails.push(`CK-11 ${label}: ${hits.length} runbook-version entries — exactly one required`);
+lib/check.js:251:      if (!m) fails.push(`CK-11 ${label}: malformed runbook-version value '${hits[0][1].trim()}' (expected X.Y)`);
+lib/check.js:252:      else if (m[1] !== pkgMajor) fails.push(`CK-11 ${label}: runbook-version major ${m[1]} != package major ${pkgMajor}`);
+lib/check.js:329:      fails.push(...checkRunbookVersion(root, files));   // CK-11
+lib/check.js:342:  checkRunbookFreshness, checkRunbookVersion, cli,
+
+ succeeded in 148ms:
+'use strict';
+/*
+ * apriori check — structural consistency checks (JS port of v2's check_docs.py, adapted for V3).
+ * Zero deps — pure Node stdlib. Each check returns an array of failure strings.
+ *
+ * Ported from v2 (behaviour-equivalent): anchor resolution, file-link existence,
+ * EN/CN heading alignment, verdict-phrase table + drift variants, codex-command EN/CN parity.
+ * V3 changes: CK-04 every spec scenario carries a bindable ID; CK-05 no OpenSpec adapter
+ * references remain (the v2 "adapter wording" assertions invert to "no openspec/opsx at all").
+ */
+const fs = require('fs');
+const path = require('path');
+const { containsReal } = require('./archive-merge');
+const { withStrict } = require('./args');
+
+// ---- helpers (ported from gh_slug / parse / num_prefix) ---------------------
+function ghSlug(heading) {
+  const s = heading.trim().toLowerCase().replace(/`/g, '').replace(/\*/g, '');
+  let out = '';
+  for (const ch of s) {
+    if (ch === ' ') out += '-';
+    else if (ch === '-' || ch === '_') out += ch;
+    else if (/[\p{L}\p{N}\p{M}]/u.test(ch)) out += ch;
+  }
+  return out;
+}
+function stripFences(text) { return text.replace(/```[\s\S]*?```/g, ''); }
+function headings(text) {
+  const s = stripFences(text);
+  return [...s.matchAll(/^(#{1,6})\s+(.+)$/gm)].map((m) => [m[1].length, m[2]]);
+}
+function anchors(text) { return [...stripFences(text).matchAll(/\]\(#([^)]+)\)/g)].map((m) => m[1]); }
+function fileLinks(text) { return [...stripFences(text).matchAll(/\]\((\.\/[^)#]+)(?:#[^)]*)?\)/g)].map((m) => m[1]); }
+function numPrefix(t) { const m = t.trim().match(/^(\d+(?:\.\d+)*)\b/); return m ? m[1] : null; }
+function lineOf(text, idx) { return text.slice(0, idx).split('\n').length; }
+
+// ---- CK-01/CK-09: anchors resolve, file links exist — resolved from the LINKING file's dir;
+// cross-file fragments (./y.md#frag) validated against the target's headings (self-mode)
+function fileLinksWithFrags(text) {
+  return [...stripFences(text).matchAll(/\]\((\.\/[^)#]+)(?:#([^)]*))?\)/g)].map((m) => [m[1], m[2] || null]);
+}
+function checkLinks(baseDir, name, text) {
+  const fails = [];
+  const slugs = new Set(headings(text).map(([, t]) => ghSlug(t)));
+  for (const a of anchors(text)) if (!slugs.has(a)) fails.push(`${name}: broken anchor #${a}`);
+  for (const [f, frag] of fileLinksWithFrags(text)) {
+    const target = path.join(baseDir, f);
+    if (!fs.existsSync(target)) { fails.push(`${name}: broken file link ${f}`); continue; }
+    if (frag) {
+      const tslugs = new Set(headings(fs.readFileSync(target, 'utf8')).map(([, t]) => ghSlug(t)));
+      if (!tslugs.has(frag)) fails.push(`${name}: broken cross-file fragment ${f}#${frag}`);
+    }
+  }
+  return fails;
+}
+
+// ---- CK-02: EN/CN heading alignment (length, levels, numeric prefixes) -------
+function checkHeadingAlignment(enName, enText, cnName, cnText) {
+  const fails = [];
+  const eh = headings(enText), ch = headings(cnText);
+  if (eh.length !== ch.length) fails.push(`heading count mismatch: ${enName}=${eh.length} vs ${cnName}=${ch.length}`);
+  const n = Math.min(eh.length, ch.length);
+  for (let i = 0; i < n; i++) {
+    const [el, et] = eh[i], [cl, ct] = ch[i];
+    const ep = numPrefix(et), cp = numPrefix(ct);
+    const numOk = (ep && cp) ? ep === cp : true;
+    if (el !== cl || !numOk) fails.push(`heading misaligned @#${i + 1}: [h${el}] ${et.slice(0, 40)} <-> [h${cl}] ${ct.slice(0, 40)}`);
+  }
+  return fails;
+}
+
+// ---- CK-03: verdict phrase table + drift variants + codex-command parity -----
+const VERDICT_PHRASES = [
+  'VERDICT: no major issues, ready to proceed to execution',
+  'VERDICT: no major issues',
+  'VERDICT: no spec-vs-code gaps',
+  'VERDICT: extraction accepted',
+  'VERDICT: extraction rejected',
+  'VERDICT: <N> issues open',
+];
+const FORBIDDEN_VARIANTS = [
+  [/ready to execute/g, 'EN drift variant "ready to execute"'],
+  [/可进入执行(?!阶段)/g, 'CN drift variant 「可进入执行」 missing 「阶段」'],
+];
+function checkVerdictPhrases(files) {
+  // files: {name -> text}; runbooks must contain every canonical phrase; no drift variants; every VERDICT: string is a table entry
+  const fails = [];
+  for (const rb of ['RUNBOOK.md', 'RUNBOOK_cn.md'])
+    if (files[rb]) for (const p of VERDICT_PHRASES) if (!files[rb].includes(p)) fails.push(`${rb}: phrase-table entry missing: ${p}`);
+  for (const [name, text] of Object.entries(files)) {
+    for (const [re, label] of FORBIDDEN_VARIANTS)
+      for (const m of text.matchAll(re)) fails.push(`${name}:${lineOf(text, m.index)}: ${label}`);
+    for (const m of text.matchAll(/VERDICT:[^"'`」\n]+/g)) {
+      const q = m[0].replace(/[ .。);,，]+$/, '');
+      if (!VERDICT_PHRASES.some((p) => q === p || q.startsWith(p)))
+        fails.push(`${name}:${lineOf(text, m.index)}: VERDICT string not in table: ${q}`);
+    }
+  }
+  return fails;
+}
+
+// codex command extraction (ported from codex_candidates)
+const CODEX_BARE = new Set(['codex', 'exec', 'resume']);
+function codexCandidates(text) {
+  const cmds = [];
+  for (const line of text.split('\n')) {
+    let start = 0, idx;
+    while ((idx = line.indexOf('codex exec', start)) >= 0) {
+      let frag = line.slice(idx); start = idx + 10;
+      frag = frag.replace(/\\"/g, '"').replace(/——/g, ' — ');
+      const raw = frag;
+      frag = frag.replace(/(^|\s)"[^"]*"/g, '$1').replace(/(^|\s)'[^']*'/g, '$1').replace(/\s#.*$/, '');
+      const tokens = [];
+      for (let tok of frag.split(/\s+/).filter(Boolean)) {
+        tok = tok.replace(/[,;)。]+$/, '');
+        const prev = tokens[tokens.length - 1];
+        const isFlagVal = prev && prev.startsWith('-') && /^[A-Za-z0-9._/-]+$/.test(tok);
+        if (CODEX_BARE.has(tok) || isFlagVal ||
+            /^(-{1,2}[A-Za-z][\w-]*|[A-Za-z_]+=("[^"]*"|\S+)|<[^>]+>|\||2>&1|<|\/dev\/null)$/.test(tok)) tokens.push(tok);
+        else break;
+      }
+      const checkable = !raw.includes('...') && !raw.includes('…') && !tokens.includes('--last') &&
+        (tokens.some((t) => t.startsWith('-')) || raw.includes('"'));
+      if (checkable && tokens.length > 2) cmds.push(tokens);
+    }
+  }
+  return cmds;
+}
+function checkCodexCommands(enText, cnText) {
+  const fails = [];
+  const en = codexCandidates(enText), cn = codexCandidates(cnText);
+  if (en.length !== cn.length) { fails.push(`codex command count mismatch: ${en.length} vs ${cn.length}`); return fails; }
+  for (let i = 0; i < en.length; i++)
+    if (en[i].join(' ') !== cn[i].join(' ')) fails.push(`codex command #${i + 1} token mismatch: EN[${en[i]}] CN[${cn[i]}]`);
+  return fails;
+}
+
+// ---- CK-03 (checker 8): codex known-good forms (ported from v2) --------------
+const CODEX_EXEMPT = [['codex', 'exec', 'resume', '-s', 'read-only', '<session-id>']];
+function checkCodexKnownForms(files) {
+  const fails = [];
+  for (const [name, text] of Object.entries(files)) {
+    for (const tokens of codexCandidates(text)) {
+      if (!tokens.includes('resume')) continue;
+      if (CODEX_EXEMPT.some((e) => e.join(' ') === tokens.join(' '))) continue;
+      if (tokens.includes('-s')) fails.push(`${name}: resume command uses -s (rejected on codex >=0.14x): ${tokens.join(' ')}`);
+      if (!(tokens.includes('-c') && tokens.includes('sandbox_mode="read-only"')))
+        fails.push(`${name}: resume command missing -c sandbox_mode="read-only": ${tokens.join(' ')}`);
+    }
+  }
+  for (const rb of ['RUNBOOK.md', 'RUNBOOK_cn.md'])
+    if (files[rb] && !files[rb].includes('< /dev/null')) fails.push(`${rb}: missing the \`< /dev/null\` non-interactive guidance`);
+  return fails;
+}
+
+// ---- CK-04: every spec scenario carries a bindable ID -----------------------
+function checkScenarioIds(specText, name, idPattern = '[A-Z]+-\\d+') {
+  const idRe = new RegExp('^(' + idPattern + ')\\b');
+  const fails = [];
+  // fenced scenarios are documentation, not spec — same rule as the spec-runner (SR-13)
+  for (const m of stripFences(specText).matchAll(/^####\s+Scenario:\s+(.*)$/gm))
+    if (!idRe.test(m[1].trim())) fails.push(`${name}: scenario without a bindable ID: ${m[1].slice(0, 50)}`);
+  return fails;
+}
+
+// ---- CK-05: no OpenSpec adapter references remain (V3 is single plain-files) --
+const OPENSPEC_MARKERS = [/\/opsx:/, /openspec\//, /\(adapter:/i, /OpenSpec adapter/];
+function checkNoOpenspec(name, text) {
+  const fails = [];
+  for (const line of text.split('\n')) for (const re of OPENSPEC_MARKERS)
+    if (re.test(line)) { fails.push(`${name}: residual OpenSpec reference: ${line.trim().slice(0, 60)}`); break; }
+  return fails;
+}
+
+// ---- CK-10: review-evidence secret tripwire (consumer mode) -------------------
+// Three literal formats ONLY — each with an airtight no-legit-match argument. This is a
+// tripwire, not a DLP product: fuzzy patterns false-positive on code discussion, which
+// trains people to ignore the tripwire. Per-line SUBSTRING scan (secrets embed in output).
+const SECRET_PATTERNS = [
+  [/AKIA[0-9A-Z]{16}/, 'AWS access key'],
+  [/gh[pousr]_[A-Za-z0-9]{36,}/, 'GitHub token'],
+  [/-----BEGIN [A-Z ]*PRIVATE KEY-----/, 'private key (PEM)'],
+];
+function checkReviewSecrets(root) {
+  const fails = [], warns = [];
+  // bundle layout: evidence lives in every change's review/ dir, active and archived.
+  // Root discovery is guarded — escaping/symlinked dirs are warn-skipped like files.
+  const roots = [];
+  for (const base of [path.join(root, 'apriori', 'changes'), path.join(root, 'apriori', 'changes', 'archive')]) {
+    if (!fs.existsSync(base)) continue;
+    for (const e of fs.readdirSync(base, { withFileTypes: true })) {
+      if (e.name === 'archive') continue;
+      const cd = path.join(base, e.name);
+      let cst;
+      try { cst = fs.lstatSync(cd); } catch { continue; }   // lstat: never follow a symlinked change dir
+      if (cst.isSymbolicLink()) {
+        warns.push(`review evidence: ${path.relative(root, cd)} is a symlink or escapes the tree — skipped by the secret scan`);
+        continue;
+      }
+      if (!cst.isDirectory()) continue;
+      const rd = path.join(cd, 'review');
+      let rst;
+      try { rst = fs.lstatSync(rd); } catch { continue; }   // lstat: a dangling review symlink warns, plain absence skips
+      if (rst.isSymbolicLink() || !containsReal(base, rd)) {
+        warns.push(`review evidence: ${path.relative(root, rd)} is a symlink or escapes the tree — skipped by the secret scan`);
+        continue;
+      }
+      roots.push(rd);
+    }
+  }
+  if (!roots.length) return { fails, warns };                  // no bundles → skip
+  const walk = (d) => {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, e.name);
+      if (e.isSymbolicLink()) { warns.push(`review evidence: ${path.relative(root, p)} is a symlink — skipped by the secret scan`); continue; }
+      if (e.isDirectory()) { walk(p); continue; }
+      if (!e.isFile()) continue;
+      const lines = fs.readFileSync(p, 'utf8').split('\n');
+      lines.forEach((ln, i) => {
+        for (const [re, label] of SECRET_PATTERNS)
+          if (re.test(ln)) fails.push(`${path.relative(root, p)}:${i + 1}: ${label} detected in review evidence — sanitize the raw (see SECURITY.md; rewrite history if already pushed)`);
+      });
+    }
+  };
+  for (const rd of roots) walk(rd);
+  return { fails, warns };
+}
+
+// ---- CK-06: scaffolded-runbook freshness (warn-only, never a failure) ---------
+// ---- CK-11: the runbook major tracks the CLI major (self-mode) --------------
+// A canonical entry is a fence-outside header blockquote `> `runbook-version: X.Y``;
+// body-text or fenced occurrences are never matched. RUNBOOK.md is canonical;
+// RUNBOOK_cn.md, when present, must independently carry the same major.
+function stripFencesLocal(text) {
+  return text.replace(/```[\s\S]*?```/g, '');
+}
+function checkRunbookVersion(root, files) {
+  const fails = [];
+  let pkgMajor;
+  try { pkgMajor = String(JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version || '').split('.')[0]; }
+  catch { return fails; }               // no readable package.json → not this check's business
+  if (!pkgMajor) return fails;
+  for (const label of ['RUNBOOK.md', 'RUNBOOK_cn.md']) {
+    const text = files[label];
+    if (text === undefined) continue;   // RUNBOOK_cn optional; a one-sided pair is CK-08's business
+    const hits = [...stripFencesLocal(text).matchAll(/^>\s*`runbook-version:\s*([^`]*)`/gm)];
+    if (hits.length === 0) fails.push(`CK-11 ${label}: no \`runbook-version\` blockquote entry (expected \`> \`runbook-version: ${pkgMajor}.x\`\`)`);
+    else if (hits.length > 1) fails.push(`CK-11 ${label}: ${hits.length} runbook-version entries — exactly one required`);
+    else {
+      const m = /^(\d+)\.(\d+)$/.exec(hits[0][1].trim());
+      if (!m) fails.push(`CK-11 ${label}: malformed runbook-version value '${hits[0][1].trim()}' (expected X.Y)`);
+      else if (m[1] !== pkgMajor) fails.push(`CK-11 ${label}: runbook-version major ${m[1]} != package major ${pkgMajor}`);
+    }
+  }
+  return fails;
+}
+
+const PACKAGED_RUNBOOK = path.join(__dirname, '..', 'RUNBOOK.md');
+function checkRunbookFreshness(root, packagedPath = PACKAGED_RUNBOOK) {
+  const scaffolded = path.join(root, 'apriori', 'runbook.md');
+  if (!fs.existsSync(scaffolded) || !fs.existsSync(packagedPath)) return [];
+  if (fs.readFileSync(scaffolded, 'utf8') === fs.readFileSync(packagedPath, 'utf8')) return [];
+  return [`apriori/runbook.md differs from the installed apriori-cli runbook — run 'apriori update' to refresh`];
+}
+
+// ---- cli --------------------------------------------------------------------
+// Two modes. CONSUMER (default): checks the project's own spec store (CK-04) and
+// scaffolded-runbook freshness (CK-06) — nothing else, so a consumer legitimately using
+// OpenSpec or shipping its own README is never failed by apriori's self-checks.
+// SELF (--self): additionally runs the apriori repo's handbook checks (EN/CN pairs,
+// verdict phrases, codex commands, no-openspec residue) — used by this repo's own CI.
+const USAGE = 'usage: apriori check [--specs <dir>] [--self]';
+
+function cli(argv) {
+  return withStrict(argv, { sub: 'check', usage: USAGE, positionals: 0,
+    flags: { '--specs': 'value', '--self': 'flag' } }, (f) => {
+    const root = process.cwd();
+    const specsDir = f['--specs'] || 'apriori/specs';
+    const self = !!f['--self'];
+  const fails = [];
+
+    // CK-04 over the spec store — a missing path is an ERROR, never a silent PASS
+    const specsPath = path.join(root, specsDir);
+    if (!fs.existsSync(specsPath)) {
+      console.error(`error: spec store path does not exist: ${specsDir}` +
+        (fs.existsSync(path.join(root, 'apriori')) ? '' : ` — is this an apriori project? (run 'apriori init')`));
+      console.log('\nRESULT: ERROR');
+      return 2;
+    }
+    const specFiles = [];
+    (function walk(d) {
+      for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+        const p = path.join(d, e.name);
+        if (e.isDirectory()) walk(p); else if (e.name.endsWith('.md')) specFiles.push(p);
+      }
+    })(specsPath);
+    for (const f of specFiles) fails.push(...checkScenarioIds(fs.readFileSync(f, 'utf8'), path.relative(root, f)));
+
+    // CK-10: review-evidence secret tripwire (consumer mode; absent dir skips)
+    const secrets = checkReviewSecrets(root);
+    fails.push(...secrets.fails);
+    for (const w of secrets.warns) console.log('! ' + w);
+
+    if (self) {
+      // Handbook checks (apriori repo dogfooding) — run when the pairs exist.
+      // CK-08: a ONE-SIDED pair fails (a missing mirror must not skip silently);
+      // both sides absent → the pair is skipped (older checkouts unaffected).
+      const PAIRS = [['README.md', 'README_cn.md'], ['RUNBOOK.md', 'RUNBOOK_cn.md'], ['VISION.md', 'VISION_cn.md'],
+        ['docs/concepts.md', 'docs/concepts_cn.md'], ['docs/legacy.md', 'docs/legacy_cn.md'],
+        ['docs/ci.md', 'docs/ci_cn.md'], ['docs/cli.md', 'docs/cli_cn.md'],
+        ['docs/troubleshooting.md', 'docs/troubleshooting_cn.md']];
+      const files = {};
+      for (const [en, cn] of PAIRS) {
+        const pe = fs.existsSync(path.join(root, en)), pc = fs.existsSync(path.join(root, cn));
+        if (pe !== pc) fails.push(`one-sided EN/CN pair: ${pe ? cn : en} is missing`);
+        for (const nm of [en, cn]) {
+          const p = path.join(root, nm);
+          if (fs.existsSync(p)) files[nm] = fs.readFileSync(p, 'utf8');
+        }
+      }
+      for (const [name, text] of Object.entries(files)) {
+        fails.push(...checkLinks(path.dirname(path.join(root, name)), name, text));   // CK-09: per-file base
+        fails.push(...checkNoOpenspec(name, text));
+      }
+      for (const [en, cn] of PAIRS) if (files[en] && files[cn]) fails.push(...checkHeadingAlignment(en, files[en], cn, files[cn]));
+      if (Object.keys(files).length) fails.push(...checkVerdictPhrases(files));
+      if (files['RUNBOOK.md'] && files['RUNBOOK_cn.md']) fails.push(...checkCodexCommands(files['RUNBOOK.md'], files['RUNBOOK_cn.md']));
+      if (Object.keys(files).length) fails.push(...checkCodexKnownForms(files));
+      fails.push(...checkRunbookVersion(root, files));   // CK-11
+    }
+
+    for (const f of fails) console.log('✗ ' + f);
+    for (const w of checkRunbookFreshness(root)) console.log('! ' + w);   // CK-06: warn-only
+    console.log('\nRESULT:', fails.length ? `FAIL (${fails.length})` : 'PASS');
+    return fails.length ? 1 : 0;
+  });
+}
+
+module.exports = {
+  ghSlug, headings, anchors, fileLinks, checkLinks, checkReviewSecrets, checkHeadingAlignment,
+  checkVerdictPhrases, codexCandidates, checkCodexCommands, checkCodexKnownForms, checkScenarioIds, checkNoOpenspec,
+  checkRunbookFreshness, checkRunbookVersion, cli,
+};
+
+exec
+/usr/bin/zsh -lc "sed -n '220,360p' test/check.test.js" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 162ms:
+  if (can) {
+    const r = run(root);
+    assert.strictEqual(r.status, 0);
+    assert.match(r.stdout, /link-raw/);
+    // a SYMLINKED change dir is never followed — its secret stays unread, the skip is loud
+    const root2 = mk({ 'elsewhere/review/leak-raw.txt': 'ghp_' + 'c'.repeat(36) + '\n' });
+    fs.mkdirSync(path.join(root2, 'apriori/changes'), { recursive: true });
+    fs.symlinkSync(path.join(root2, 'elsewhere'), path.join(root2, 'apriori/changes/linked'));
+    const r2 = run(root2);
+    assert.strictEqual(r2.status, 0, r2.stdout);
+    assert.match(r2.stdout, /linked/);
+    assert.ok(!r2.stdout.includes('ghp_' + 'c'.repeat(36)), 'secret behind a symlinked change dir must not be read');
+    // a DANGLING review/ symlink warns; plain absence stays silent
+    const root3 = mk({ 'apriori/changes/d/flow-state.md': 'change: d\n' });
+    fs.symlinkSync(path.join(root3, 'no-such-target'), path.join(root3, 'apriori/changes/d/review'));
+    const r3 = run(root3);
+    assert.strictEqual(r3.status, 0, r3.stdout);
+    assert.match(r3.stdout, /d[\/\\]review.*symlink|symlink/);
+  }
+});
+
+// ---- runbook-version-sync (CK-11): runbook major tracks the CLI major ----
+test('CK-11 the runbook major tracks the CLI major', () => {
+  const { checkRunbookVersion } = require('../lib/check');
+  const os3 = require('node:os'); const fs3 = require('node:fs'); const p3 = require('node:path');
+  const root = fs3.mkdtempSync(p3.join(os3.tmpdir(), 'apriori-ck11-'));
+  fs3.writeFileSync(p3.join(root, 'package.json'), JSON.stringify({ version: '4.0.3' }));
+  const EN = '# R\n\n> `runbook-version: 4.0` · upstream: x\n';
+  const CN = '# R\n\n> `runbook-version: 4.0` · 上游:x\n';
+  const files = (en, cn) => ({ 'RUNBOOK.md': en, ...(cn !== undefined ? { 'RUNBOOK_cn.md': cn } : {}) });
+  // aligned -> pass
+  assert.deepStrictEqual(checkRunbookVersion(root, files(EN, CN)), []);
+  // EN flipped to 3.0 -> fail naming file + both majors
+  const bad = checkRunbookVersion(root, files(EN.replace('4.0', '3.0'), CN));
+  assert.strictEqual(bad.length, 1);
+  assert.match(bad[0], /RUNBOOK\.md/);
+  assert.match(bad[0], /3.*4|major/);
+  // CN flipped -> fail names CN
+  assert.match(checkRunbookVersion(root, files(EN, CN.replace('4.0', '5.0')))[0], /RUNBOOK_cn\.md/);
+});
+
+test('CK-11b malformed, missing, duplicate, and body occurrences', () => {
+  const { checkRunbookVersion } = require('../lib/check');
+  const os3 = require('node:os'); const fs3 = require('node:fs'); const p3 = require('node:path');
+  const root = fs3.mkdtempSync(p3.join(os3.tmpdir(), 'apriori-ck11b-'));
+  fs3.writeFileSync(p3.join(root, 'package.json'), JSON.stringify({ version: '4.0.3' }));
+  const one = (body) => ({ 'RUNBOOK.md': `# R\n\n${body}\n` });
+  // missing entry
+  assert.match(checkRunbookVersion(root, one('just prose, no version'))[0], /no.*runbook-version|missing/i);
+  // duplicate
+  assert.match(checkRunbookVersion(root, one('> `runbook-version: 4.0`\n> `runbook-version: 4.0`'))[0], /one required|duplicate|2 /i);
+  // malformed value
+  assert.match(checkRunbookVersion(root, one('> `runbook-version: vier`'))[0], /malformed/i);
+  // body-text occurrence (not a blockquote-backtick entry) is never matched -> treated as missing
+  assert.match(checkRunbookVersion(root, one('the field runbook-version: 4.0 in prose'))[0], /no.*runbook-version|missing/i);
+  // inside a code fence -> never matched -> missing
+  assert.match(checkRunbookVersion(root, one('```\n> `runbook-version: 4.0`\n```'))[0], /no.*runbook-version|missing/i);
+});
+
+test('CK-11 runs under --self and not in consumer mode', () => {
+  const os3 = require('node:os'); const fs3 = require('node:fs'); const p3 = require('node:path');
+  const { spawnSync } = require('node:child_process');
+  const BIN3 = p3.join(__dirname, '..', 'bin', 'apriori.js');
+  const root = fs3.mkdtempSync(p3.join(os3.tmpdir(), 'apriori-ck11s-'));
+  fs3.mkdirSync(p3.join(root, 'apriori', 'specs'), { recursive: true });
+  fs3.writeFileSync(p3.join(root, 'apriori/specs/x.md'), '#### Scenario: XX-01 a\n- t\n');
+  fs3.writeFileSync(p3.join(root, 'package.json'), JSON.stringify({ version: '4.0.3' }));
+  fs3.writeFileSync(p3.join(root, 'RUNBOOK.md'), '# R\n\n> `runbook-version: 3.0`\n');
+  fs3.writeFileSync(p3.join(root, 'RUNBOOK_cn.md'), '# R\n\n> `runbook-version: 3.0`\n');
+  const self = spawnSync('node', [BIN3, 'check', '--self'], { cwd: root, encoding: 'utf8' });
+  assert.match(self.stdout + self.stderr, /runbook-version|CK-11/i);
+  const consumer = spawnSync('node', [BIN3, 'check'], { cwd: root, encoding: 'utf8' });
+  assert.doesNotMatch(consumer.stdout + consumer.stderr, /runbook-version major|CK-11/i);
+});
+
+codex
+实现里正则不会被真实 header 的 trailing ` · upstream` 影响：它只要求闭合反引号前的值，后续文本不参与匹配。接下来我会验证仓库自身 `check --self` 的实际输出，确认 CK-11 接线没有引入额外失败。
+exec
+/usr/bin/zsh -lc 'node bin/apriori.js check --self' in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "node -p \"require('./package.json').version\"" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc 'git diff -- RUNBOOK.md RUNBOOK_cn.md lib/check.js test/check.test.js apriori/changes/runbook-version-sync/specs/check/spec.md' in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 165ms:
+4.0.2
+
+ succeeded in 284ms:
+diff --git a/RUNBOOK.md b/RUNBOOK.md
+index 704bb62..fee25cf 100644
+--- a/RUNBOOK.md
++++ b/RUNBOOK.md
+@@ -6,7 +6,7 @@
+ 
+ # Apriori RUNBOOK — the Executable Protocol for AI Agents
+ 
+-> `runbook-version: 3.0` · upstream: `https://github.com/Apriorhythm/apriori-spec-development`
++> `runbook-version: 4.0` · upstream: `https://github.com/Apriorhythm/apriori-spec-development`
+ > Local state lives ONLY in `apriori/process-config.md` and the flow-state file — this file is stateless, so **upgrading = overwriting it with the upstream version**.
+ 
+ > **Audience: AI agents** (plus §6 for the human operating them). This file is self-contained: everything an agent needs at runtime is here — hard rules, state machine, artifact paths, prompts.
+diff --git a/RUNBOOK_cn.md b/RUNBOOK_cn.md
+index b725299..6d80845 100644
+--- a/RUNBOOK_cn.md
++++ b/RUNBOOK_cn.md
+@@ -6,7 +6,7 @@
+ 
+ # Apriori RUNBOOK —— 给 AI Agent 的可执行协议
+ 
+-> `runbook-version: 3.0` · 上游:`https://github.com/Apriorhythm/apriori-spec-development`
++> `runbook-version: 4.0` · 上游:`https://github.com/Apriorhythm/apriori-spec-development`
+ > 项目本地状态只存在于 `apriori/process-config.md` 与 flow-state 文件——本文件无状态,因此**升级=用上游新版整文件覆盖**。
+ 
+ > **读者:AI Agent**(§6 除外,那节给操作它的人)。本文件自包含:Agent 运行时需要的一切都在这里——铁律、状态机、产物路径、提示词。
+diff --git a/lib/check.js b/lib/check.js
+index d880f0a..240d8f6 100644
+--- a/lib/check.js
++++ b/lib/check.js
+@@ -227,6 +227,34 @@ function checkReviewSecrets(root) {
+ }
+ 
+ // ---- CK-06: scaffolded-runbook freshness (warn-only, never a failure) ---------
++// ---- CK-11: the runbook major tracks the CLI major (self-mode) --------------
++// A canonical entry is a fence-outside header blockquote `> `runbook-version: X.Y``;
++// body-text or fenced occurrences are never matched. RUNBOOK.md is canonical;
++// RUNBOOK_cn.md, when present, must independently carry the same major.
++function stripFencesLocal(text) {
++  return text.replace(/```[\s\S]*?```/g, '');
++}
++function checkRunbookVersion(root, files) {
++  const fails = [];
++  let pkgMajor;
++  try { pkgMajor = String(JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version || '').split('.')[0]; }
++  catch { return fails; }               // no readable package.json → not this check's business
++  if (!pkgMajor) return fails;
++  for (const label of ['RUNBOOK.md', 'RUNBOOK_cn.md']) {
++    const text = files[label];
++    if (text === undefined) continue;   // RUNBOOK_cn optional; a one-sided pair is CK-08's business
++    const hits = [...stripFencesLocal(text).matchAll(/^>\s*`runbook-version:\s*([^`]*)`/gm)];
++    if (hits.length === 0) fails.push(`CK-11 ${label}: no \`runbook-version\` blockquote entry (expected \`> \`runbook-version: ${pkgMajor}.x\`\`)`);
++    else if (hits.length > 1) fails.push(`CK-11 ${label}: ${hits.length} runbook-version entries — exactly one required`);
++    else {
++      const m = /^(\d+)\.(\d+)$/.exec(hits[0][1].trim());
++      if (!m) fails.push(`CK-11 ${label}: malformed runbook-version value '${hits[0][1].trim()}' (expected X.Y)`);
++      else if (m[1] !== pkgMajor) fails.push(`CK-11 ${label}: runbook-version major ${m[1]} != package major ${pkgMajor}`);
++    }
++  }
++  return fails;
++}
++
+ const PACKAGED_RUNBOOK = path.join(__dirname, '..', 'RUNBOOK.md');
+ function checkRunbookFreshness(root, packagedPath = PACKAGED_RUNBOOK) {
+   const scaffolded = path.join(root, 'apriori', 'runbook.md');
+@@ -298,6 +326,7 @@ function cli(argv) {
+       if (Object.keys(files).length) fails.push(...checkVerdictPhrases(files));
+       if (files['RUNBOOK.md'] && files['RUNBOOK_cn.md']) fails.push(...checkCodexCommands(files['RUNBOOK.md'], files['RUNBOOK_cn.md']));
+       if (Object.keys(files).length) fails.push(...checkCodexKnownForms(files));
++      fails.push(...checkRunbookVersion(root, files));   // CK-11
+     }
+ 
+     for (const f of fails) console.log('✗ ' + f);
+@@ -310,5 +339,5 @@ function cli(argv) {
+ module.exports = {
+   ghSlug, headings, anchors, fileLinks, checkLinks, checkReviewSecrets, checkHeadingAlignment,
+   checkVerdictPhrases, codexCandidates, checkCodexCommands, checkCodexKnownForms, checkScenarioIds, checkNoOpenspec,
+-  checkRunbookFreshness, cli,
++  checkRunbookFreshness, checkRunbookVersion, cli,
+ };
+diff --git a/test/check.test.js b/test/check.test.js
+index 0b4c1c9..c510dcf 100644
+--- a/test/check.test.js
++++ b/test/check.test.js
+@@ -237,3 +237,57 @@ test('CK-10 committed secrets in review evidence fail the check', () => {
+     assert.match(r3.stdout, /d[\/\\]review.*symlink|symlink/);
+   }
+ });
++
++// ---- runbook-version-sync (CK-11): runbook major tracks the CLI major ----
++test('CK-11 the runbook major tracks the CLI major', () => {
++  const { checkRunbookVersion } = require('../lib/check');
++  const os3 = require('node:os'); const fs3 = require('node:fs'); const p3 = require('node:path');
++  const root = fs3.mkdtempSync(p3.join(os3.tmpdir(), 'apriori-ck11-'));
++  fs3.writeFileSync(p3.join(root, 'package.json'), JSON.stringify({ version: '4.0.3' }));
++  const EN = '# R\n\n> `runbook-version: 4.0` · upstream: x\n';
++  const CN = '# R\n\n> `runbook-version: 4.0` · 上游:x\n';
++  const files = (en, cn) => ({ 'RUNBOOK.md': en, ...(cn !== undefined ? { 'RUNBOOK_cn.md': cn } : {}) });
++  // aligned -> pass
++  assert.deepStrictEqual(checkRunbookVersion(root, files(EN, CN)), []);
++  // EN flipped to 3.0 -> fail naming file + both majors
++  const bad = checkRunbookVersion(root, files(EN.replace('4.0', '3.0'), CN));
++  assert.strictEqual(bad.length, 1);
++  assert.match(bad[0], /RUNBOOK\.md/);
++  assert.match(bad[0], /3.*4|major/);
++  // CN flipped -> fail names CN
++  assert.match(checkRunbookVersion(root, files(EN, CN.replace('4.0', '5.0')))[0], /RUNBOOK_cn\.md/);
++});
++
++test('CK-11b malformed, missing, duplicate, and body occurrences', () => {
++  const { checkRunbookVersion } = require('../lib/check');
++  const os3 = require('node:os'); const fs3 = require('node:fs'); const p3 = require('node:path');
++  const root = fs3.mkdtempSync(p3.join(os3.tmpdir(), 'apriori-ck11b-'));
++  fs3.writeFileSync(p3.join(root, 'package.json'), JSON.stringify({ version: '4.0.3' }));
++  const one = (body) => ({ 'RUNBOOK.md': `# R\n\n${body}\n` });
++  // missing entry
++  assert.match(checkRunbookVersion(root, one('just prose, no version'))[0], /no.*runbook-version|missing/i);
++  // duplicate
++  assert.match(checkRunbookVersion(root, one('> `runbook-version: 4.0`\n> `runbook-version: 4.0`'))[0], /one required|duplicate|2 /i);
++  // malformed value
++  assert.match(checkRunbookVersion(root, one('> `runbook-version: vier`'))[0], /malformed/i);
++  // body-text occurrence (not a blockquote-backtick entry) is never matched -> treated as missing
++  assert.match(checkRunbookVersion(root, one('the field runbook-version: 4.0 in prose'))[0], /no.*runbook-version|missing/i);
++  // inside a code fence -> never matched -> missing
++  assert.match(checkRunbookVersion(root, one('```\n> `runbook-version: 4.0`\n```'))[0], /no.*runbook-version|missing/i);
++});
++
++test('CK-11 runs under --self and not in consumer mode', () => {
++  const os3 = require('node:os'); const fs3 = require('node:fs'); const p3 = require('node:path');
++  const { spawnSync } = require('node:child_process');
++  const BIN3 = p3.join(__dirname, '..', 'bin', 'apriori.js');
++  const root = fs3.mkdtempSync(p3.join(os3.tmpdir(), 'apriori-ck11s-'));
++  fs3.mkdirSync(p3.join(root, 'apriori', 'specs'), { recursive: true });
++  fs3.writeFileSync(p3.join(root, 'apriori/specs/x.md'), '#### Scenario: XX-01 a\n- t\n');
++  fs3.writeFileSync(p3.join(root, 'package.json'), JSON.stringify({ version: '4.0.3' }));
++  fs3.writeFileSync(p3.join(root, 'RUNBOOK.md'), '# R\n\n> `runbook-version: 3.0`\n');
++  fs3.writeFileSync(p3.join(root, 'RUNBOOK_cn.md'), '# R\n\n> `runbook-version: 3.0`\n');
++  const self = spawnSync('node', [BIN3, 'check', '--self'], { cwd: root, encoding: 'utf8' });
++  assert.match(self.stdout + self.stderr, /runbook-version|CK-11/i);
++  const consumer = spawnSync('node', [BIN3, 'check'], { cwd: root, encoding: 'utf8' });
++  assert.doesNotMatch(consumer.stdout + consumer.stderr, /runbook-version major|CK-11/i);
++});
+
+ succeeded in 2728ms:
+
+RESULT: PASS
+
+codex
+静态审查后，核心实现方向是对的：真实 header 的 trailing ` · upstream` 不会破坏匹配，fenced/prose 测试用例会按 missing 处理，CK-11 只在 `--self` 分支调用，仓库自身 `node bin/apriori.js check --self` 当前 PASS，双语 header 也都已是 `4.0`。
+
+但还有两个 spec-vs-code 缺口：
+
+LEDGER DELTA
+
+ADDED
+
+| ID | Status | Finding |
+|---|---|---|
+| RVIMPL-1 | open | [lib/check.js:237](/mnt/d/Workbench/misc/apriori-spec-development/lib/check.js:237) `RUNBOOK.md` 是 canonical 必检源，但 `checkRunbookVersion` 只遍历 `files` 中存在的条目；若 `--self` 运行时 `RUNBOOK.md` 和 `RUNBOOK_cn.md` 都缺失，CK-08 会按“both absent skip”放过，CK-11 也会放过。这不满足 CK-11 对 canonical `RUNBOOK.md` 必须携带唯一 header 的要求。 |
+| RVIMPL-2 | open | [lib/check.js:246](/mnt/d/Workbench/misc/apriori-spec-development/lib/check.js:246) 正则会匹配文件任意位置的 blockquote 行，而不是“文件头部引用块”中的 entry。一个没有 header、但正文后部含 `> \`runbook-version: 4.0\`` 的 runbook 会被误判为 PASS，违反 parse target 只认 header-blockquote、body occurrences 不匹配的语义。 |
+
+VERDICT: 2 issues open
+tokens used
+143,645
+静态审查后，核心实现方向是对的：真实 header 的 trailing ` · upstream` 不会破坏匹配，fenced/prose 测试用例会按 missing 处理，CK-11 只在 `--self` 分支调用，仓库自身 `node bin/apriori.js check --self` 当前 PASS，双语 header 也都已是 `4.0`。
+
+但还有两个 spec-vs-code 缺口：
+
+LEDGER DELTA
+
+ADDED
+
+| ID | Status | Finding |
+|---|---|---|
+| RVIMPL-1 | open | [lib/check.js:237](/mnt/d/Workbench/misc/apriori-spec-development/lib/check.js:237) `RUNBOOK.md` 是 canonical 必检源，但 `checkRunbookVersion` 只遍历 `files` 中存在的条目；若 `--self` 运行时 `RUNBOOK.md` 和 `RUNBOOK_cn.md` 都缺失，CK-08 会按“both absent skip”放过，CK-11 也会放过。这不满足 CK-11 对 canonical `RUNBOOK.md` 必须携带唯一 header 的要求。 |
+| RVIMPL-2 | open | [lib/check.js:246](/mnt/d/Workbench/misc/apriori-spec-development/lib/check.js:246) 正则会匹配文件任意位置的 blockquote 行，而不是“文件头部引用块”中的 entry。一个没有 header、但正文后部含 `> \`runbook-version: 4.0\`` 的 runbook 会被误判为 PASS，违反 parse target 只认 header-blockquote、body occurrences 不匹配的语义。 |
+
+VERDICT: 2 issues open

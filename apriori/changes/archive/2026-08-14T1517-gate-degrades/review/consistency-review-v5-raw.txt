@@ -1,0 +1,654 @@
+<!-- provenance: provider=codex model=gpt-5.6-sol session=019ffeaa-f747-7d40-9cf5-467ccb34cdc6 date=2026-08-14 -->
+OpenAI Codex v0.147.0
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.6-sol
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019ffeaa-f747-7d40-9cf5-467ccb34cdc6
+--------
+user
+STEP5 consistency review, round 5 (P8). All five of your prose findings were fixed; nothing was rejected.
+
+[What changed]
+1. delta parent Requirement (`specs/spec-runner/spec.md`) — "leaving every configured path byte-identical" replaced by the observable three-state structural-equality claim, with an explicit "NOT byte-identity against any earlier implementation, which no test inside this repo can observe".
+2. `design.md` D1.4 — "逐字节不变" replaced by the three-state claim plus an inline amendment marker pointing at `step5-amendment.md`.
+3. `req-final.md` §3.1c and O5 — the two "一字不变" phrases now carry amendment markers pointing at `step5-amendment.md`.
+4. `req-final.md` AC-GD-04 — you were right that it sat OUTSIDE the recorded narrowing. It is now narrowed to its exercised contract (exit 2 with a diagnostic that still names flow-state) and carries its own amendment marker.
+5. SR-75 — the sentence now distinguishes the EXPORTED projection resolver (identity directly assertable) from the PRIVATE test-command resolver (not exported, so identity is unassertable from outside). Rather than only narrowing the words, a static source assertion was ADDED: the test now matches `function currentTestRunner() { return testRunnerOverride || runTestCommand; }` in lib/spec-runner.js, so "defaults to the real runner and to nothing else" is mechanically checked.
+
+State: 392 tests pass / 0 fail; `apriori check --self` PASS; `apriori verify --change gate-degrades` GREEN.
+
+[Your job]
+1. Verify IMPL-2 — flip to `verified` or reopen. Sweep once more for ANY remaining claim in this change's artifacts (req-final, delta specs, design, tasks, proposal, step5-amendment, docs, CHANGELOG) that promises something no test exercises. Note: `byte-identical` phrases elsewhere in CHANGELOG history, and GT-21's phrase inside the reproduced MODIFIED block, belong to earlier changes and are covered by their own tests — those are not in scope.
+2. Re-check the P8 dimensions. New gaps get new IDs.
+3. Do not manufacture findings. If there are no spec-vs-code gaps left, return the clean verdict.
+
+[Scope] Count toward the verdict only spec-vs-code gaps. Style and taste — advisory.
+
+[Output]
+READ-ONLY, no file writes. Print the COMPLETE review doc body for landing at apriori/changes/gate-degrades/review/consistency-review-v5.md, ending with a "Ledger delta" section and exactly one verdict line: "VERDICT: no spec-vs-code gaps" or "VERDICT: <N> issues open".
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+codex
+I’ll verify the five narrowed locations and the new private-runner source assertion, then run one final guarantee-language sweep limited to this change’s authoritative artifacts. I’ll exclude historical CHANGELOG guarantees and retained GT-21 exactly as directed.
+exec
+/usr/bin/zsh -lc "sed -n '1,28p' apriori/changes/gate-degrades/specs/spec-runner/spec.md
+nl -ba apriori/changes/gate-degrades/design.md | sed -n '48,62p'
+nl -ba apriori/changes/gate-degrades/requirement/req-final.md | sed -n '196,218p;276,292p;323,337p'
+nl -ba test/gate-degrade.test.js | sed -n '365,425p'
+cat apriori/changes/gate-degrades/step5-amendment.md
+sed -n '18,28p' apriori/changes/gate-degrades/review/issues.md
+tail -22 apriori/changes/gate-degrades/review/issues.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 160ms:
+<!-- apriori-base: sha256:25a0038c11edef9c6135685783551449d4f6dda182e23deb3be0e744f16a4555 -->
+
+## ADDED Requirements
+
+### Requirement: the change projection is one shared implementation, reachable without running tests
+The delta-to-store projection SHALL be built by exactly ONE implementation, reachable by every consumer through a single replaceable reference. `spec-runner` SHALL export that reference resolver alongside the builder, and `verify` SHALL itself go through it — so that a consumer which needs the projection WITHOUT executing a test command (gate's skipped-C1 path) provably shares `verify`'s code, its inputs, and its failure classes. Two test-only injection seams SHALL exist: one over the projection builder and one over the test-command runner. Each SHALL default to the real function, and installing an override and clearing it SHALL leave a configured run's complete public results structurally identical — the claim is that observable three-state equality, NOT byte-identity against any earlier implementation, which no test inside this repo can observe.
+
+#### Scenario: SR-73 both consumers pass through the same replaceable builder
+- WHEN a test wraps the projection builder through its seam and then runs BOTH `verify --change` (with a test command) AND the projection-only path (without one)
+- THEN both calls pass through the SAME wrapper — the reference is read at call time, never captured at module load — and the wrapper observes identical `{projection: {modules, conflicts, unstampedMutations, notes}, errors}` for the same change, across clean, unstamped-mutation, malformed-delta, diverged-CAS-base, merge-conflict, and no-delta-files inputs alike; and no consumer reassembles a projection from the underlying delta-discovery primitives instead of going through the shared reference — statically checkable in the consumer's own source
+
+#### Scenario: SR-74 the projection-only path spawns no test process
+- WHEN the projection is built through the projection-only path
+- THEN the test-command runner seam records ZERO calls — the projection is produced before, and independently of, any test execution; the id-matcher child seam is a different seam and proves nothing about this
+
+#### Scenario: SR-75 the seams are inert by default
+- WHEN no seam override is installed
+- THEN the exported projection resolver returns the real builder itself (directly assertable), the private test-command resolver defaults to the real runner (statically assertable in `spec-runner`'s own source, since it is not exported), and the COMPLETE public results of a configured `verify --change` and a configured `gate` are identical in three states observed in ONE process: before any override exists, after a projection override is installed and cleared, and after a test-runner override is installed and cleared — and while a runner override IS installed the configured result must differ, so the after-clear comparison can never be vacuous. Identity against the PRE-seam implementation is deliberately NOT claimed here: no test inside this repo can observe it, and the pre-existing suite passing unchanged is regression EVIDENCE, not a byte-identity proof.
+    48	gate 必须调 `currentProjectionBuilder()`，即**每次调用时**去读那个可替换引用。
+    49	
+    50	> 这是本设计里最容易实现错的一处：`const b = sr.currentProjectionBuilder()` 提到模块顶层
+    51	> 就等于把引用冻结了。必须在调用点内取。
+    52	
+    53	### D1.4 行为不变的保证
+    54	
+    55	两个 override 默认 `null`，`current*()` 回落到原函数。
+    56	配置齐备路径上 `verify()` 的调用序列与参数不变，返回值在**三态**下结构相等
+    57	（初始 / 装了 projection override 再清空 / 装了 runner override 再清空），由 SR-75 的
+    58	同进程 `deepStrictEqual` + 反向守卫证明。
+    59	
+    60	> **【STEP5 记名修正 · `step5-amendment.md`】** 此处原写「逐字节不变」。
+    61	> 「与改动前逐字节相同」在本仓内**观察不到**（无状态 A 冻结 golden，且 CI 浅 checkout
+    62	> 使运行期解析父提交不可行）。已缩为上述可验证形式；残余风险在修正文件里具名接受。
+   196	
+   197	CLI 层据此改为**存在性**传递：`testCmd: ('--test-cmd' in f) ? f['--test-cmd'] : null`
+   198	（现状是 `f['--test-cmd'] || null`，它把 `''` 塌缩成 `null`，正是 T2 无法被区分的原因）。
+   199	这与 `--id-pattern` 既有的存在性写法（`lib/spec-runner.js:786`，SR-52 / D-GT-5）完全同构。
+   200	最后一行（非字符串）是 r3 补上的：`runGate` 是导出的公共函数，JS 里这些取值可达，
+   201	留白等于把类型错误推迟到 `spawnSync` 抛异常——那是一个**没有 detail 的** exit 2。
+   202	
+   203	### 3.1c 本 change 需要的两个测试注入 seam（r3·REQ-1 新增）
+   204	
+   205	AC-GD-14 / 15b 的可机械断言性依赖两个**互不相同**的 seam，二者都必须是
+   206	`verify()` 与 gate 的 T7 路径**共用的同一个可替换引用**：
+   207	
+   208	| seam | 包裹对象 | 用途 |
+   209	|---|---|---|
+   210	| `_setProjectionBuilder(fn)` | `buildChangeProjection` 的调用点 | 证明两条路径经过**同一个** builder（身份 + 次数），并让测试捕获 T7 路径内部拿到的完整 projection 对象——`runGate()` 本身不返回它 |
+   211	| `_setTestRunner(fn)` | `runTestCommand` 的调用点 | 断言 T7 路径下测试进程被起 **0** 次（现状无任何注入点，`spawnSync` 直接起进程） |
+   212	
+   213	命名与既有 `_setChildRunner` 同族；默认值分别是现有的 `buildChangeProjection` / `runTestCommand`，
+   214	配置齐备路径上的行为按 B4 的**记名修正**范围守恒（见 `step5-amendment.md`：解析器默认即原函数、三态完整结果结构相等含反向守卫、既有测试原样全绿——回归证据，非逐字节同一性）。
+   215	
+   216	### 3.2 「缺席」情形下的逐检查行为矩阵
+   217	
+   218	前置说明——`runGate` 的判定顺序（本 change 只在标注处插入，其余次序不动）：
+   276	| ID | 若 | 则 |
+   277	|---|---|---|
+   278	| AC-GD-01 | T7（测试命令缺席），对一个 in-flight change 跑 `apriori gate --change X` | C1 状态为 `skipped`，其 detail 同时含「未执行」的事实与修复指引；C2..C7 各自产出真实状态 |
+   279	| AC-GD-02 | 矩阵 M1 | `result: INCOMPLETE`，退出码 **3**；人类可读输出显式声明「未达成 PASS，因为 C1 未执行」 |
+   280	| AC-GD-03 | 矩阵 M2 | `BLOCKED`，退出码 **1**——已确证的阻断优先于不完整 |
+   281	| AC-GD-04 | 矩阵 M5 | 退出码 **2**，且诊断消息仍点明 flow-state（**【STEP5 记名修正】** 原写「与本 change 前逐字节一致」——同 B4，本仓内无法观察，缩为「退出码 + 诊断类别不变」这一可断言形式；见 `step5-amendment.md`） |
+   282	| AC-GD-05 | 矩阵 M4 | 退出码 **2**；C7 不得基于坏 projection 给出任何结论 |
+   283	| AC-GD-06 | T7 且该 change 有**未打戳的 mutation delta** | C7 仍 `blocked` 并给出 `apriori stamp` 修复指引——证明 C7 消费的是**真实** projection |
+   284	| AC-GD-07 | T2 / T3（`--test-cmd ""` 或仅空白） | ERROR，退出码 **2**；不回落 config、不降级 skipped。CLI 层按**存在性**传参，`runGate({testCmd:''})` 与 `runGate({testCmd:null})` 结果不同（§3.1b） |
+   285	| AC-GD-08 | T4 / T5（config 不可读，或 `test-cmd` 行冲突） | ERROR，退出码 **2** |
+   286	| AC-GD-08b | T7 的子情形：config 有 `test-cmd` 行但值为空/仅空白 | 归入**缺席**（同 AC-GD-01/02），**不是** ERROR——共享 parser 按契约已把它等同于「无该行」（`lib/config.js:67`）；本 change 不触碰 `lib/config.js` |
+   287	| AC-GD-09 | T1 / T6（任一有效来源） | gate 的检查集合、每项 detail 文案、`--json` 键集与取值、退出码**与本 change 前完全一致**（回归护栏）。**【STEP5 记名修正】** 验收面按 `step5-amendment.md` 缩为：解析器恒等 + 三态完整结果结构相等（含反向守卫）+ 既有 375 条测试原样全绿——回归证据，非逐字节同一性证明 |
+   288	| AC-GD-10 | 任一情形加 `--json` | 输出是纯 JSON，键集恒为 `{change, stage, checks, result, blocked, errors}`（**不新增 `code` 字段**）；`result` 可取 `INCOMPLETE`，`checks[].status` 可取 `skipped`；进程退出码按 `PASS→0 / BLOCKED→1 / ERROR→2 / INCOMPLETE→3` 映射 |
+   289	| AC-GD-11 | 矩阵 M8（已归档 change + T7） | C1 `skipped`、C7 `n/a`、C4 按归档态要求全行终态；退出码按 B2 优先级 |
+   290	| AC-GD-12 | 矩阵 M7（hotfix bundle + T7） | 仍以 mapping m1 的拒绝退出（退出码 2 并指向 `apriori hotfix archive`） |
+   291	| AC-GD-13 | 矩阵 M3 的**每一个**子情形（空 flag / 不可编译 flag / 不可编译的 `id-pattern` config 值 / `id-pattern` 行冲突），各自叠加 T7 | 退出码 **2**，与本 change 前一致；对**已归档** change 亦然（M3 优先于 M8）。「config 文件不可读」**不在**本条，它归 AC-GD-08（T4） |
+   292	| AC-GD-13b | `runGate({testCmd: <非字符串>})`（数字 / 数组 / 对象 / 布尔） | ERROR，退出码 **2**，消息点明类型；**不得**把该值交给 `spawnSync` 去抛异常 |
+   323	## 五、明确不做（out of scope）
+   324	
+   325	| # | 不做的事 | 理由 |
+   326	|---|---|---|
+   327	| O1 | 自动探测项目的测试命令（按语言/框架内置猜测） | 脆弱且不可预测；复盘 P0-1 亦明确列为「不建议的过度方案」 |
+   328	| O2 | 让 agent 自动把 `test-cmd` 写进 `process-config.md` | 违反 R3（该文件人类持有，agent 只读） |
+   329	| O3 | 新增 `test-cmd: none` 一类的「本项目声明没有测试命令」取值 | 见 §六 K1；它是独立的一件事，需要自己的验收面 |
+   330	| O4 | 改动 C1..C7 **各自的判定逻辑** | 本 change 只改「哪些能跑」与「跑不成怎么说」，七项检查的内部判据一字不动 |
+   331	| O5 | 让 `apriori verify` 在无 test-cmd 时降级 | verify 的全部职责就是把测试绑到场景上；没有测试命令时它没有任何可降级的产出。**本 change 对 `lib/spec-runner.js` 的改动限于三件事（r3 更正——v3 曾说「仅导出一个入口」，那不足以支撑 AC-GD-14/15b）**：① 导出既有的 projection-only 入口；② 新增两个**仅供测试**的注入 seam `_setProjectionBuilder` / `_setTestRunner`（同族于既有 `_setChildRunner`）；③ 把 `verify()` 自身对这两个函数的调用改为经由同一可替换引用。**默认值不变，配置齐备路径上的行为按 B4 的记名修正范围守恒**（`step5-amendment.md`；B4 由 AC-GD-09 守卫） |
+   332	| O6 | 改动 hotfix bundle 的拒绝路径（mapping m1） | 该拒绝发生在测试命令解析**之前**，不受影响；保持原样 |
+   333	| O7 | 修复「新鲜度检查看不见内容陈旧」这一机制局限（由 §1.4 的 truth/doctor.md 暴露） | 本 change 只把这一份文档改对；机制本身是独立议题，需要自己的证据与设计 |
+   334	
+   335	**触及范围（源码）**：`lib/gate.js`、`lib/doctor.js`、`lib/spec-runner.js`——对 `spec-runner` 的改动**严格限于 O5 声明的三项**（导出 projection-only 入口、新增 `_setProjectionBuilder` / `_setTestRunner` 两个测试 seam、`verify()` 自身改走同一可替换引用），**O5 是范围的唯一定义**，此处不另设更窄的限制（r4·REQ-1 勘误：v4 此处写「仅导出 projection-only 入口」，与 O5 直接矛盾，实现者服从任一方都会违反另一方）。
+   336	
+   337	---
+   365	});
+   366	
+   367	test('SR-75 a configured run is identical before an override, and after clearing one', () => {
+   368	  // The guarantee is about the CONFIGURED path — the one every existing user is on. It must be
+   369	  // observed IN THIS PROCESS: a spawned CLI gets a fresh module registry and would never see
+   370	  // the override at all, so a subprocess comparison here would be vacuous.
+   371	  const root = noCmdProject('p', { 'apriori/process-config.md': cfg('| test-cmd | node -e "console.log(\'ok 1 - XA-01 a\');console.log(\'ok 2 - XB-01 b\')" |\n') });
+   372	  // Take the two public results WHOLE and compare them structurally: verify()'s `results` is a
+   373	  // Map, which JSON.stringify would silently flatten to {} — a JSON compare here would be blind
+   374	  // to exactly the field a projection seam could disturb.
+   375	  const TAP = 'node -e "console.log(\'ok 1 - XA-01 a\');console.log(\'ok 2 - XB-01 b\')"';
+   376	  const snap = () => [gate.runGate({ cwd: root, change: 'p' }), sr.verify({ change: 'p', cwd: root, testCmd: TAP })];
+   377	  const virgin = snap();
+   378	  assert.strictEqual(virgin[0].result, 'PASS', 'the configured path is genuinely healthy');
+   379	  assert.ok(virgin[1].results instanceof Map && virgin[1].results.size > 0, 'the Map-valued field really is populated');
+   380	
+   381	  try { sr._setProjectionBuilder((...a) => sr.buildChangeProjection(...a)); } finally { sr._setProjectionBuilder(null); }
+   382	  assert.deepStrictEqual(snap(), virgin, 'clearing a projection override restores the configured path exactly');
+   383	
+   384	  try {
+   385	    sr._setTestRunner(() => ({ out: '', stderr: '', status: 7, signal: null, error: null }));
+   386	    // while installed the runner really is diverted — otherwise the next assertion is vacuous
+   387	    assert.notDeepStrictEqual(snap(), virgin, 'the runner seam is real, not decorative');
+   388	  } finally { sr._setTestRunner(null); }
+   389	  assert.deepStrictEqual(snap(), virgin, 'clearing a runner override restores the configured path exactly');
+   390	});
+   391	
+   392	test('SR-75 the seams are inert by default', () => {
+   393	  const root = noCmdProject();
+   394	  assert.strictEqual(sr.currentProjectionBuilder(), sr.buildChangeProjection, 'default resolves to the real builder');
+   395	  const marker = () => ({ projection: {}, errors: ['x'], texts: null });
+   396	  try {
+   397	    sr._setProjectionBuilder(marker);
+   398	    assert.strictEqual(sr.currentProjectionBuilder(), marker);
+   399	  } finally { sr._setProjectionBuilder(null); }
+   400	  assert.strictEqual(sr.currentProjectionBuilder(), sr.buildChangeProjection, 'clearing restores the default exactly');
+   401	  assert.strictEqual(gate.runGate({ cwd: root, change: 'c' }).code, 3, 'behaviour is unchanged after a clear');
+   402	  assert.ok(!('currentTestRunner' in sr), 'the test-runner resolver stays module-private');
+   403	  // the private resolver's default cannot be compared by identity from outside, so assert it
+   404	  // statically instead of merely claiming it — `override || <the real function>`, nothing else
+   405	  const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'spec-runner.js'), 'utf8');
+   406	  assert.match(src, /function currentTestRunner\(\)\s*\{\s*return testRunnerOverride \|\| runTestCommand;\s*\}/,
+   407	    'the private runner resolver defaults to runTestCommand and to nothing else');
+   408	});
+   409	
+   410	// Static half of SR-73: the runtime half proves both paths went through one wrapper; this
+   411	// proves gate has no SECOND path built from the raw primitives. Prefixed with the exact
+   412	// `SR-73` ID so it is mechanically attributable — an earlier `GT-15a` name would have been
+   413	// read as the unrelated GT-15 scenario already in the store.
+   414	test('SR-73 gate never rebuilds the projection itself (static half)', () => {
+   415	  const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'gate.js'), 'utf8');
+   416	  for (const forbidden of ['discoverDeltas', 'buildProjection(']) {
+   417	    assert.ok(!src.includes(forbidden), `lib/gate.js must not assemble a projection itself (found ${forbidden})`);
+   418	  }
+   419	  assert.ok(/currentProjectionBuilder/.test(src), 'gate reaches the projection through the shared resolver');
+   420	  assert.ok(/require\('\.\/spec-runner'\)/.test(src), 'and it comes from spec-runner');
+   421	});
+# STEP5 amendment — 把 B4 / AC-GD-09 / SR-75 的「逐字节不变」缩到实际验证得了的范围
+
+> 触发：STEP5·r2 与 r3 的 P8 一致性评审（IMPL-2，两次 reopen）
+> 依据：RUNBOOK §4 STEP5 的 guarantee-claim discipline——
+> 「若不存在充分的测试，**要么把测试加上，要么把措辞缩到实际验证得了的范围**」
+> 状态：req-final 是 STEP0 的冻结产物，本文件是对它的**记名修正**，不是静默改写。
+
+---
+
+## 一、评审方指出的事实（已复核，属实）
+
+冻结需求的 **B4** 与 **AC-GD-09** 承诺：配置齐备路径上「检查集合、每项 detail 文案、
+`--json` 键集与取值、退出码**与本 change 前完全一致**」。
+新增的 **SR-75** 一度也写着「byte-identical to their pre-seam form」。
+
+**没有任何测试在证明这件事。** 本仓内不存在状态 A 的冻结 golden，
+而「与改动前逐字节相同」这个命题，**在本仓内的测试里根本观察不到**——
+测试跑的永远是当前代码，拿当前输出和当前输出比，恒真。
+
+这正是 P8 维度 5 要抓的形状：**散文里的硬保证，没有对抗性注入去验证它**。
+
+## 二、考虑过并否决的方案：冻结一份状态 A 的 byte golden
+
+做法是把 `235a121` 的 `lib/` + `bin/` 导出到临时树，对同一 fixture 项目跑两份实现比对输出。
+
+**否决理由（两条，任一条都足够）**：
+
+1. **CI 上不可靠**：`actions/checkout` 默认 `fetch-depth: 1`，工作副本里**没有父提交**，
+   测试运行时解析 `235a121` 会直接失败。本仓的 CI 矩阵是 ubuntu/windows × node 22/24 共八个 job。
+2. **改成签入静态 golden 则引入维护税**：输出里含临时目录绝对路径，需要路径归一化；
+   而 gate 的输出文案**本来就会随后续 change 演进**，等于给每一次 gate 相关改动
+   预埋一次重新捕获 golden 的义务——收益是一次性的，成本是持续的。
+
+（本仓已有的 `test/fixtures/specs-golden/` 是**同版本内**的形状 golden，不是跨版本的实现比对，
+两者不是一回事。SR-64 那次 Windows CI 红灯，正是跨平台 golden 假设失效的代价。）
+
+## 三、修正后的措辞（三处）
+
+「与本 change 前完全一致」改为下面这三条**实际成立且各有证据**的断言：
+
+| # | 断言 | 证据 |
+|---|---|---|
+| A | 两个 seam 的解析器在**无 override** 时返回的**就是原函数本身** | SR-75 的 `currentProjectionBuilder() === buildChangeProjection` 恒等断言 |
+| B | 配置齐备路径的**完整公共结果**（`runGate()` 与 `verify()` 两个对象，含 Map 值字段）在**三态**下结构相等：初始 / 装了 projection override 再清空 / 装了 runner override 再清空；且**装上 runner override 时结果确实不同**，保证「清空后相等」不是空转 | SR-75 的同进程三态 `deepStrictEqual` + 一条 `notDeepStrictEqual` 反向守卫 |
+| C | 状态 A 时期写就的**既有测试全部原样通过**（基线 375 条，本 change 一条未改其断言） | T0 记录的全绿基线，与改动后 392 pass / 0 fail |
+
+**这三条合起来是回归证据，不是逐字节同一性证明**——差别必须说清楚：
+若某个改动同时骗过 A、B、C 三条，它仍可能改变配置齐备路径上的某个字节。
+本 change 接受这个残余风险，理由是 §二的两条否决理由，并把它记在这里而不是假装它不存在。
+
+## 四、落到文件的改动
+
+- `requirement/req-final.md`：B4 与 AC-GD-09 就地加**修正标记**，指向本文件；
+- `specs/spec-runner/spec.md`：SR-75 的 THEN 已在 r2/r3 两轮里改写为 A + B 的可观察形式，
+  括号里关于 pre-seam 的表述改为「回归证据」而非「同一性证明」。
+
+## 五、若将来要补强
+
+出现下列任一情形时，重新考虑冻结 golden：
+① CI 改为全历史 checkout（`fetch-depth: 0`），§二-1 消失；
+② gate 的输出文案进入稳定期，§二-2 的维护税降到可忽略。
+届时它是一个独立的小 change，不是本 change 的补丁。
+| SPEC-4 | Task I1 exports currentTestRunner in addition to the exact public symbols declared by the spec and design, expanding the API beyond the frozen scope | med | STEP2·r1 | verified |
+| ADV-STEP2-r1 | advisory batch acknowledged (3 items) | low | STEP2·r1 | advisory-acked |
+| SPEC-5 | T14 simultaneously requires gate and verify to use the same wrapper and requires changing or clearing that wrapper between those two calls, making the task internally unsatisfiable | med | STEP2·r2 | verified |
+| IMPL-1 | DR-07 says an unreadable process-config produces a D5 config finding, but doctor classifies it first as an id-pattern problem and returns D5 n/a, as the existing CF-11 test confirms | med | STEP5·r1 | verified |
+| IMPL-2 | SR-75 and AC-GD-09 promise byte-identical configured behavior, output, and exits, but no test compares configured verify or gate against a state-A golden or exercises the test-runner default after clear | med | STEP5·r1 | fixed (r4) |
+| IMPL-3 | SR-73 compares only errors for the no-delta-files fixture, omitting the required full projection-object equivalence for the sixth fixture | low | STEP5·r1 | verified |
+| IMPL-4 | GT-33 has no no-flag unreadable-config fixture, leaving §3.1 T4's ERROR-versus-absent boundary untested | low | STEP5·r1 | verified |
+| IMPL-5 | GT-11's exact six-key JSON contract is asserted only for INCOMPLETE, not for every outcome class and the separate strict-parser error serializer | low | STEP5·r1 | verified |
+| IMPL-6 | The troubleshooting docs incorrectly claim missing test-cmd yields INCOMPLETE/3 for every change, contradicting BLOCKED and ERROR precedence | med | STEP5·r1 | verified |
+| ADV-STEP5-r1 | advisory batch acknowledged (4 items) | low | STEP5·r1 | advisory-acked |
+
+          恰好瞎在 projection seam 最可能扰动的那个字段上。已改为整体 deepStrictEqual /
+          notDeepStrictEqual（Map 按内容比），并加一条「Map 字段确实非空」的前置断言防空转。
+       ② 「pre-seam 逐字节相同」这条硬保证仍留在 B4/AC-GD-09/SR-75 里而无人验证。
+          考虑过冻结状态 A 的 byte golden，**否决**（CI 默认 fetch-depth:1 拿不到父提交；
+          签入静态 golden 需路径归一化且给每次 gate 文案改动预埋重捕获义务）。
+          按 RUNBOOK 的 guarantee-claim discipline **缩措辞**，并写成记名修正
+          `step5-amendment.md`（含否决理由、缩后的三条证据、具名接受的残余风险、将来补强的触发条件），
+          req-final 的 B4 与 AC-GD-09 就地加修正标记指向它。 -->
+
+<!-- STEP5·r4：IMPL-2 第三次 reopened，理由是「测试已够，但**散文里还有五处更强的承诺没缩**」——
+     全部核实属实并逐处修掉：
+       ① delta 的父 Requirement 仍写 seams「leaving every configured path byte-identical」→ 改为三态结构相等；
+       ② design D1.4 仍写「逐字节不变」→ 改为三态结构相等 + 记名修正说明；
+       ③ req-final §3.1c 与 O5 的「一字不变」→ 加记名修正指向 step5-amendment.md；
+       ④ AC-GD-04 的「与本 change 前逐字节一致」原本在 B4/AC-GD-09 的修正范围**之外** →
+          缩为「退出码 2 + 诊断仍点明 flow-state」这一可断言形式；
+       ⑤ SR-75 说「两个解析器都返回原函数本身」，但私有的 runner 解析器**无法从外部比身份** →
+          场景措辞拆开（导出的直接可断言 / 私有的静态可断言），并**加了一条静态源码断言**
+          `currentTestRunner() { return testRunnerOverride || runTestCommand; }`，把「默认即原函数」
+          从声称变成可机械检查。
+     评审方另确认：CHANGELOG 与用户文档**没有**这类未验证承诺（CHANGELOG 里其余 byte-identical
+     字样属既往 change 各自已测的历史保证）。 -->
+
+exec
+/usr/bin/zsh -lc "sed -n '1,140p' .github/workflows/ci.yml
+rg -n \"test\\('DR-07\" -A45 -B5 test/doctor.test.js
+git diff -- test/doctor.test.js | sed -n '1,140p'" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 211ms:
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: ['22', '24']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: node scripts/run-tests.mjs
+      - run: npm run verify
+      - run: node bin/apriori.js check --self
+
+  golden-path:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: pack and walk the README Quickstart with the packed tarball
+        shell: bash
+        run: |
+          TGZ=$(npm pack --silent)
+          node scripts/golden-path.mjs --packed "$TGZ"
+
+  python-example:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pytest pytest-tap
+      - name: verify the Python example (specs bound via the TAP adapter)
+        working-directory: examples/python-pytest
+        shell: bash
+        run: node ../../bin/apriori.js verify --specs apriori/specs --test-cmd "python run_tap.py"
+163-  assert.match(trunc.detail, /truncated|malformed/);
+164-  const planOnly = probe(tapCmd('1..3'));
+165-  assert.strictEqual(planOnly.status, 'finding');
+166-});
+167-
+168:test('DR-07 an explicit skip is not-applicable', () => {
+169-  const root = healthy();   // healthy() has no test-cmd row in its config
+170-  const skipped = byId(doctor.runDoctor({ cwd: root, testCmd: TAP_OK, noRun: true }), 'D5')[0];
+171-  assert.strictEqual(skipped.status, 'n/a');
+172-  assert.match(skipped.detail, /skipped/);
+173-  // the combination that used to be swallowed by the missing-command branch: NO command
+174-  // configured anywhere AND an explicit --no-run. An explicit human skip is never a finding.
+175-  const both = byId(doctor.runDoctor({ cwd: root, noRun: true }), 'D5')[0];
+176-  assert.strictEqual(both.status, 'n/a', `--no-run outranks the missing command: ${both.detail}`);
+177-  assert.match(both.detail, /--no-run/);
+178-});
+179-
+180:test('DR-07 a missing test command is a finding that names its consequence', () => {
+181-  const root = healthy();
+182-  const r = doctor.runDoctor({ cwd: root });
+183-  const none = byId(r, 'D5')[0];
+184-  assert.strictEqual(none.status, 'finding');
+185-  assert.match(none.detail, /gate/i, 'the detail names the consequence');
+186-  assert.match(none.detail, /C1|binding/i);
+187-  assert.match(none.fix, /process-config\.md|test-cmd/);
+188-  assert.strictEqual(r.result, 'FINDINGS');
+189-  assert.strictEqual(r.code, 1, 'a dead gate is not a healthy seam');
+190-
+191-  // a BROKEN config stays the pre-existing config finding, with a distinguishable detail
+192-  const conflict = healthy();
+193-  fs.writeFileSync(path.join(conflict, 'apriori/process-config.md'),
+194-    '| Field | Value |\n|---|---|\n| test-cmd | a |\n| test-cmd | b |\n');
+195-  const bad = byId(doctor.runDoctor({ cwd: conflict }), 'D5')[0];
+196-  assert.strictEqual(bad.status, 'finding');
+197-  assert.match(bad.detail, /config:/);
+198-  assert.notStrictEqual(bad.detail, none.detail, 'broken and absent read differently');
+199-
+200-  // an uncompilable id-pattern still outranks everything: the probe is n/a, not a finding
+201-  const idbad = healthy();
+202-  fs.writeFileSync(path.join(idbad, 'apriori/process-config.md'),
+203-    '| Field | Value |\n|---|---|\n| id-pattern | [ |\n');
+204-  const skipped = byId(doctor.runDoctor({ cwd: idbad }), 'D5')[0];
+205-  assert.strictEqual(skipped.status, 'n/a');
+206-  assert.match(skipped.detail, /id-pattern/);
+207-});
+208-
+209-test('DR-08 store health flags unbindable and ambiguous scenarios', () => {
+210-  const root = healthy();
+211-  fs.mkdirSync(path.join(root, 'apriori/specs/m'), { recursive: true });
+212-  fs.writeFileSync(path.join(root, 'apriori/specs/m/spec.md'),
+213-    '### Requirement: R\n\n#### Scenario: no id here\n- t\n\n#### Scenario: XD-01 a\n- t\n\n#### Scenario: XD-01 b\n- t\n');
+214-  const r = doctor.runDoctor({ cwd: root, testCmd: TAP_OK });
+215-  const d6 = byId(r, 'D6').filter((c) => c.status === 'finding');
+216-  assert.ok(d6.length >= 1);
+217-  const all = d6.map((c) => c.detail).join(' ');
+218-  assert.match(all, /no id here/);
+219-  assert.match(all, /XD-01/);
+220-  // empty store → n/a
+221-  assert.strictEqual(byId(doctor.runDoctor({ cwd: healthy(), testCmd: TAP_OK }), 'D6')[0].status, 'n/a');
+222-});
+223-
+224-test('DR-09 changes overview validates flow-states and surfaces pending gates', () => {
+225-  const root = healthy();
+diff --git a/test/doctor.test.js b/test/doctor.test.js
+index 5b7869c..57eede1 100644
+--- a/test/doctor.test.js
++++ b/test/doctor.test.js
+@@ -165,14 +165,45 @@ test('DR-06 the TAP probe classifies every plumbing edge', () => {
+   assert.strictEqual(planOnly.status, 'finding');
+ });
+ 
+-test('DR-07 the probe is skippable and degrades honestly', () => {
++test('DR-07 an explicit skip is not-applicable', () => {
+   const root = healthy();   // healthy() has no test-cmd row in its config
+-  const none = byId(doctor.runDoctor({ cwd: root }), 'D5')[0];
+-  assert.strictEqual(none.status, 'n/a');
+-  assert.match(none.detail, /--test-cmd|init/);
+   const skipped = byId(doctor.runDoctor({ cwd: root, testCmd: TAP_OK, noRun: true }), 'D5')[0];
+   assert.strictEqual(skipped.status, 'n/a');
+   assert.match(skipped.detail, /skipped/);
++  // the combination that used to be swallowed by the missing-command branch: NO command
++  // configured anywhere AND an explicit --no-run. An explicit human skip is never a finding.
++  const both = byId(doctor.runDoctor({ cwd: root, noRun: true }), 'D5')[0];
++  assert.strictEqual(both.status, 'n/a', `--no-run outranks the missing command: ${both.detail}`);
++  assert.match(both.detail, /--no-run/);
++});
++
++test('DR-07 a missing test command is a finding that names its consequence', () => {
++  const root = healthy();
++  const r = doctor.runDoctor({ cwd: root });
++  const none = byId(r, 'D5')[0];
++  assert.strictEqual(none.status, 'finding');
++  assert.match(none.detail, /gate/i, 'the detail names the consequence');
++  assert.match(none.detail, /C1|binding/i);
++  assert.match(none.fix, /process-config\.md|test-cmd/);
++  assert.strictEqual(r.result, 'FINDINGS');
++  assert.strictEqual(r.code, 1, 'a dead gate is not a healthy seam');
++
++  // a BROKEN config stays the pre-existing config finding, with a distinguishable detail
++  const conflict = healthy();
++  fs.writeFileSync(path.join(conflict, 'apriori/process-config.md'),
++    '| Field | Value |\n|---|---|\n| test-cmd | a |\n| test-cmd | b |\n');
++  const bad = byId(doctor.runDoctor({ cwd: conflict }), 'D5')[0];
++  assert.strictEqual(bad.status, 'finding');
++  assert.match(bad.detail, /config:/);
++  assert.notStrictEqual(bad.detail, none.detail, 'broken and absent read differently');
++
++  // an uncompilable id-pattern still outranks everything: the probe is n/a, not a finding
++  const idbad = healthy();
++  fs.writeFileSync(path.join(idbad, 'apriori/process-config.md'),
++    '| Field | Value |\n|---|---|\n| id-pattern | [ |\n');
++  const skipped = byId(doctor.runDoctor({ cwd: idbad }), 'D5')[0];
++  assert.strictEqual(skipped.status, 'n/a');
++  assert.match(skipped.detail, /id-pattern/);
+ });
+ 
+ test('DR-08 store health flags unbindable and ambiguous scenarios', () => {
+
+exec
+/usr/bin/zsh -lc "nl -ba apriori/changes/gate-degrades/tasks.md | sed -n '25,38p'
+rg -n \"保证|不变|一致|identical|unchanged|always|never|ZERO|exact|恰|恒|原样|默认\" apriori/changes/gate-degrades/proposal.md apriori/changes/gate-degrades/tasks.md | sed -n '1,180p'" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 136ms:
+    25	- [x] T14 SR-73，**分三阶段**（STEP2·r2 / SPEC-5 更正——r1 的写法要求「两次调用经同一 wrapper」又要求「两次调用之间换掉 wrapper」，字面不可同时成立）：
+    26	      ① 在安装 override **之前**先 `require` gate 模块；装上 wrapper **A**；
+    27	      ② 让 gate 的 T7 路径与 `verify --change` 都调用，断言二者经过的是**同一个 A**，且 6 个 fixture 的**完整** projection 与 errors 逐项相等；
+    28	      ③ ②**做完之后**再换成 wrapper **B**（或清空），做第三次调用，断言读到的是 B/默认值——这一步独立证明引用是**按调用时**解析的，打穿「模块加载时冻结」的错误实现；
+    29	      全程 override 在 `finally` 里清理
+    30	- [x] T15 SR-74（缺席路径下 test-runner seam 计数为 0）
+    31	- [x] T16 SR-75（seam 默认惰性；装了再清空后行为复原）
+    32	- [x] T16b **每一个** `_setProjectionBuilder` / `_setTestRunner` / `_setChildRunner` 使用点都包在 `try/finally` 里复位为 `null`（SPEC-3）——模块级 override 泄漏会让同进程后续测试产生顺序依赖与假阳性；T16 只测「能复原」，不能代替每个使用点的义务
+    33	- [x] T17 AC-GD-15a 结构断言：读 `lib/gate.js` 源文本——不含 `discoverDeltas` / `buildProjection`；含 `currentProjectionBuilder` 且经 `require('./spec-runner')`
+    34	- [x] T18 AC-GD-09 回归护栏：有测试命令时，gate 的检查集合 / 每项 detail / `--json` / 退出码与改动前一致（用现有 `test/gate.test.js` 全绿即为证据，另加一条显式断言）
+    35	- [x] T19 AC-GD-20 回归护栏：D8 行为不变
+    36	- [x] T20 跑一次全量测试，**记录失败清单**（实测：gate-degrade 15 条中 14 红 1 绿——GT-37 因既有拒绝路径本就正确而先绿；doctor 2 条全红。基线 375 绿）
+    37	
+    38	## I — 实现（按依赖顺序）
+apriori/changes/gate-degrades/proposal.md:8:七项机械检查里只有 C1 需要跑测试；C2（tasks 全勾）、C4（ledger 终态）恰好就是能抓住
+apriori/changes/gate-degrades/tasks.md:21:- [x] T10 GT-11 扩展（`--json` 在 INCOMPLETE 类别下键集仍恰为六键、无 `code` 字段、`result` 与 `checks[].status` 取新值）
+apriori/changes/gate-degrades/tasks.md:24:- [x] T13 DR-07 的分支优先级四例：id-pattern 坏 → `n/a`（AC-GD-19）；config 冲突 → `finding` 且文案与「未配置」可区分（AC-GD-18）；**无配置 + `--no-run` → `n/a`**（本 change 最易踩的回归）；有命令 → 行为不变
+apriori/changes/gate-degrades/tasks.md:28:      ③ ②**做完之后**再换成 wrapper **B**（或清空），做第三次调用，断言读到的是 B/默认值——这一步独立证明引用是**按调用时**解析的，打穿「模块加载时冻结」的错误实现；
+apriori/changes/gate-degrades/tasks.md:31:- [x] T16 SR-75（seam 默认惰性；装了再清空后行为复原）
+apriori/changes/gate-degrades/tasks.md:34:- [x] T18 AC-GD-09 回归护栏：有测试命令时，gate 的检查集合 / 每项 detail / `--json` / 退出码与改动前一致（用现有 `test/gate.test.js` 全绿即为证据，另加一条显式断言）
+apriori/changes/gate-degrades/tasks.md:35:- [x] T19 AC-GD-20 回归护栏：D8 行为不变
+apriori/changes/gate-degrades/tasks.md:40:- [x] I1 `lib/spec-runner.js`：新增 `_setProjectionBuilder` / `currentProjectionBuilder` / `_setTestRunner` / `currentTestRunner`；`verify()` 内 `:615` 与 `:642` 两处调用改走 `current*()`；**新增导出恰为四个**：`buildChangeProjection`、`currentProjectionBuilder`、`_setProjectionBuilder`、`_setTestRunner`——`currentTestRunner` **保持模块私有**，导出它会无端扩大公共面（SPEC-4）
+apriori/changes/gate-degrades/tasks.md:45:- [x] I6 `lib/gate.js`：结果计算改四值（`blocked` 语义不变，只数 blocked）
+apriori/changes/gate-degrades/tasks.md:62:- [ ] S2 P8 异构一致性评审（R2，codex），verdict 落盘 + raw 存证
+
+codex
+# consistency-review-v5 — gate-degrades
+
+## 1. IMPL-2 verification
+
+The five round-four locations were corrected successfully:
+
+- The delta parent Requirement now states observable three-state structural equality and explicitly disclaims pre-seam byte identity.
+- Design D1.4 no longer claims byte identity and points to the amendment.
+- `req-final.md` §3.1c and O5 point to the narrowed B4 contract.
+- AC-GD-04 now requires the exercised ERROR/2 plus flow-state diagnostic contract.
+- SR-75 distinguishes exported projection-resolver identity from private runner-resolver behavior, and the new static assertion mechanically checks the latter.
+- The same-process `deepStrictEqual` comparison includes the non-empty `verify().results` Map and proves the complete-result three-state equality claim.
+
+However, the final sweep found two remaining contradictions in the same compatibility-evidence issue.
+
+### IMPL-2 — reopened
+
+- Description:
+  1. `step5-amendment.md` evidence C says all 375 state-A tests pass with “not one assertion modified.” That is factually false: the pre-existing DR-07 test was deliberately rewritten, removing its old missing-command=`n/a` assertions and replacing them with the new finding behavior.
+  2. `tasks.md` T18 still says configured gate checks/details/JSON/exit are identical to before and claims an explicit assertion was added. That is the pre-amendment guarantee, not the narrowed three-state contract. No state-A comparison or full pre-change assertion exists.
+  3. Design D1.4 still says configured `verify()`’s “call sequence and parameters” are unchanged. The implementation necessarily inserts `currentProjectionBuilder()` and `currentTestRunner()` resolver calls, so the call sequence is not literally unchanged; the tests prove result equality and call-time routing, not an unchanged internal sequence.
+- Risk: med. The executable SR-75 contract is now sound, but the amendment’s stated evidence and the completed task/design record still overstate what happened and what was tested.
+- Suggested fix:
+  - Narrow evidence C to the truthful subset: pre-existing configured-path gate/spec-runner tests remained unchanged and pass; explicitly acknowledge that DR-07 was intentionally rewritten for the target behavior.
+  - Rewrite T18 to cite the recorded three-state structural comparison, resolver checks, and unaffected regression suite rather than pre-change identity.
+  - Remove “call sequence unchanged” from D1.4, or replace it with the narrower tested statement that the underlying builder and runner retain their configured-path behavior and the complete public results are structurally equal after clearing overrides.
+
+No state-A golden is required once these remaining claims are made consistent with the named amendment.
+
+## 2. Semantic faithfulness
+
+The executable scenario coverage is complete:
+
+- GT-30..GT-38 cover the seven-row input classification and eight-row missing-command matrix.
+- GT-11 exercises all JSON outcome classes and the independent strict-parser serializer.
+- DR-07 matches doctor’s actual branch order and intended changed behavior.
+- SR-73 proves shared call-time projection routing and six-fixture equivalence.
+- SR-74 proves zero test-runner calls.
+- SR-75 now correctly exercises complete Map-safe three-state result equality, runner divergence, exported resolver identity, and private resolver default selection.
+
+## 3. Required behavior versus implementation
+
+No implementation defect found. Gate, doctor, and spec-runner conform to the executable delta contract.
+
+## 4. Continue, skip, and user visibility
+
+No gap found. Skips, blocks, evaluation errors, projection failures, and doctor findings remain visible with the required precedence and diagnostics.
+
+## 5. External input and security
+
+No security gap found. Input validation, config read-failure handling, process isolation, path containment, and error sanitization remain correct.
+
+## 6. Guarantee-claim sweep
+
+Apart from IMPL-2’s remaining record inconsistencies:
+
+- All new zero-call, exact-key, single-implementation, call-time-resolution, and cleanup guarantees have matching tests.
+- The current CHANGELOG entry and user documentation make no untested pre-seam byte-identity claim.
+- Historical CHANGELOG guarantees and retained GT-21 wording were excluded as instructed.
+- KB reconciliation remains the expected STEP6 operation.
+
+## Advisories
+
+None.
+
+## Ledger delta
+
+Apply this exact status change:
+
+- IMPL-2: `fixed (r4) → open` — reopened because `step5-amendment.md` falsely says no old assertion changed, tasks T18 retains the rejected pre-change-identity claim, and design D1.4 still promises an unchanged call sequence that the implementation and tests do not preserve.
+
+IMPL-1, IMPL-3, IMPL-4, IMPL-5, and IMPL-6 remain `verified`. ADV-STEP5-r1 remains `advisory-acked`.
+
+No new ledger rows.
+
+VERDICT: 1 issues open
+tokens used
+767,197
+# consistency-review-v5 — gate-degrades
+
+## 1. IMPL-2 verification
+
+The five round-four locations were corrected successfully:
+
+- The delta parent Requirement now states observable three-state structural equality and explicitly disclaims pre-seam byte identity.
+- Design D1.4 no longer claims byte identity and points to the amendment.
+- `req-final.md` §3.1c and O5 point to the narrowed B4 contract.
+- AC-GD-04 now requires the exercised ERROR/2 plus flow-state diagnostic contract.
+- SR-75 distinguishes exported projection-resolver identity from private runner-resolver behavior, and the new static assertion mechanically checks the latter.
+- The same-process `deepStrictEqual` comparison includes the non-empty `verify().results` Map and proves the complete-result three-state equality claim.
+
+However, the final sweep found two remaining contradictions in the same compatibility-evidence issue.
+
+### IMPL-2 — reopened
+
+- Description:
+  1. `step5-amendment.md` evidence C says all 375 state-A tests pass with “not one assertion modified.” That is factually false: the pre-existing DR-07 test was deliberately rewritten, removing its old missing-command=`n/a` assertions and replacing them with the new finding behavior.
+  2. `tasks.md` T18 still says configured gate checks/details/JSON/exit are identical to before and claims an explicit assertion was added. That is the pre-amendment guarantee, not the narrowed three-state contract. No state-A comparison or full pre-change assertion exists.
+  3. Design D1.4 still says configured `verify()`’s “call sequence and parameters” are unchanged. The implementation necessarily inserts `currentProjectionBuilder()` and `currentTestRunner()` resolver calls, so the call sequence is not literally unchanged; the tests prove result equality and call-time routing, not an unchanged internal sequence.
+- Risk: med. The executable SR-75 contract is now sound, but the amendment’s stated evidence and the completed task/design record still overstate what happened and what was tested.
+- Suggested fix:
+  - Narrow evidence C to the truthful subset: pre-existing configured-path gate/spec-runner tests remained unchanged and pass; explicitly acknowledge that DR-07 was intentionally rewritten for the target behavior.
+  - Rewrite T18 to cite the recorded three-state structural comparison, resolver checks, and unaffected regression suite rather than pre-change identity.
+  - Remove “call sequence unchanged” from D1.4, or replace it with the narrower tested statement that the underlying builder and runner retain their configured-path behavior and the complete public results are structurally equal after clearing overrides.
+
+No state-A golden is required once these remaining claims are made consistent with the named amendment.
+
+## 2. Semantic faithfulness
+
+The executable scenario coverage is complete:
+
+- GT-30..GT-38 cover the seven-row input classification and eight-row missing-command matrix.
+- GT-11 exercises all JSON outcome classes and the independent strict-parser serializer.
+- DR-07 matches doctor’s actual branch order and intended changed behavior.
+- SR-73 proves shared call-time projection routing and six-fixture equivalence.
+- SR-74 proves zero test-runner calls.
+- SR-75 now correctly exercises complete Map-safe three-state result equality, runner divergence, exported resolver identity, and private resolver default selection.
+
+## 3. Required behavior versus implementation
+
+No implementation defect found. Gate, doctor, and spec-runner conform to the executable delta contract.
+
+## 4. Continue, skip, and user visibility
+
+No gap found. Skips, blocks, evaluation errors, projection failures, and doctor findings remain visible with the required precedence and diagnostics.
+
+## 5. External input and security
+
+No security gap found. Input validation, config read-failure handling, process isolation, path containment, and error sanitization remain correct.
+
+## 6. Guarantee-claim sweep
+
+Apart from IMPL-2’s remaining record inconsistencies:
+
+- All new zero-call, exact-key, single-implementation, call-time-resolution, and cleanup guarantees have matching tests.
+- The current CHANGELOG entry and user documentation make no untested pre-seam byte-identity claim.
+- Historical CHANGELOG guarantees and retained GT-21 wording were excluded as instructed.
+- KB reconciliation remains the expected STEP6 operation.
+
+## Advisories
+
+None.
+
+## Ledger delta
+
+Apply this exact status change:
+
+- IMPL-2: `fixed (r4) → open` — reopened because `step5-amendment.md` falsely says no old assertion changed, tasks T18 retains the rejected pre-change-identity claim, and design D1.4 still promises an unchanged call sequence that the implementation and tests do not preserve.
+
+IMPL-1, IMPL-3, IMPL-4, IMPL-5, and IMPL-6 remain `verified`. ADV-STEP5-r1 remains `advisory-acked`.
+
+No new ledger rows.
+
+VERDICT: 1 issues open

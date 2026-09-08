@@ -1,0 +1,1118 @@
+<!-- provenance: provider=codex model=gpt-5.6-sol session=019fff86-4745-7921-b240-adf357a18c51 date=2026-08-15 -->
+OpenAI Codex v0.147.0
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.6-sol
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019fff86-4745-7921-b240-adf357a18c51
+--------
+user
+STEP0 round 3. All three round-2 findings were accepted; none was rejected.
+
+[Input]
+* NEW requirement doc: apriori/changes/id-pattern-and-delta-notes/requirement/req-v3.md
+* Your round-2 review: apriori/changes/id-pattern-and-delta-notes/review/req-review-v2.md
+* Ledger: REQ-2/REQ-3 `verified`; REQ-1/4/5 `fixed (v3)`
+
+[What changed in v3]
+* REQ-1 → both leftover v1 sentences are gone. K3 now records the decided outcome (D5 no longer consumes DEFAULT_ID; AC-IP-09 is verified by "D5's conclusion is identical before and after DEFAULT_ID changes"), and the touched-source line now reads "lib/doctor.js (D5 classification-regex decoupling + D6 fix branch)".
+* REQ-4 → the contradiction is resolved in the direction you recommended: Notes stays truly OPAQUE, so a legal CAS stamp that precedes the first operation section MUST sit BEFORE `## Notes`. AC-IP-14d is rewritten to that, and a new AC-IP-14d2 states that a stamp-shaped line INSIDE Notes is ignored — neither adopted nor a problem — so if nothing else stamps the delta it counts as unstamped and takes the existing CAS default-deny path. The "three legal operation sections" slip is corrected to FOUR (RENAMED was missing) and AC-IP-14g covers Notes → RENAMED recovery. Inventing an explicit Notes terminator was rejected as widening the syntax surface.
+* REQ-5 → the matrix is rebuilt around the parser's REAL states: FILE_PREAMBLE / IN_SECTION / IN_REQUIREMENT / SKIP_UNRECOGNIZED / IN_NOTES / inside-fence, with a `## Notes` row added for each. RENAMED is no longer a column — it is an orthogonal `kind`, exactly as you said. Two priority rules are pinned: **P1** `blockDiscard === true` outranks the new-h3 check, so a discarded block silently absorbs subsequent lines and never emits a second problem — this covers BOTH the new discard source and the existing RENAMED one, leaving RENAMED's behaviour byte-identical; **P2** the error recovery (one problem, set blockDiscard, stay in IN_REQUIREMENT until the next `### Requirement:` or any h2; the discarded block never enters buckets). New AC-IP-17e/17f/17g.
+
+[Your job]
+1. Verify REQ-1 / REQ-4 / REQ-5: flip to `verified` or REOPEN with what is still missing. For REQ-5 especially, check the rebuilt matrix and the two priority rules against parseDeltaStrict's actual control flow — is every (state, kind, blockDiscard, line-shape) combination decided exactly once, and does RENAMED really stay byte-identical?
+2. Review v3 fresh on all six P1 dimensions. New issues get new IDs.
+3. Do not manufacture findings. If it is ready to hand to an implementer, say so plainly.
+
+[Scope] Count toward the verdict only: ambiguous target state, untestable acceptance criteria, missing edge/boundary coverage, conflicts with state A. Everything else — advisory.
+
+[Output]
+READ-ONLY, no file writes. Print the COMPLETE review doc body for landing at apriori/changes/id-pattern-and-delta-notes/review/req-review-v3.md, ending with a "Ledger delta" section and exactly one verdict line: "VERDICT: no major issues" or "VERDICT: <N> issues open".
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+codex
+I’ll replay the v3 matrix against the parser’s actual branch order—including `kind === RENAMED`, `blockDiscard`, fences, and skipped sections—then verify the corrected D5 and CAS contracts and run a fresh six-dimension pass. No writes.
+exec
+/usr/bin/zsh -lc "sed -n '1,380p' apriori/changes/id-pattern-and-delta-notes/requirement/req-v3.md; sed -n '1,300p' apriori/changes/id-pattern-and-delta-notes/review/req-review-v2.md; sed -n '1,180p' apriori/changes/id-pattern-and-delta-notes/review/issues.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 113ms:
+# req-v3 — id-pattern-and-delta-notes：默认值该认得真实项目的 ID，delta 该给说明留个位置
+
+> change: `id-pattern-and-delta-notes` · tier: large · track: harden
+> lineage: 分支 `brownfield-round2`（自 main@235a121 切出）；产品线 v4，最终目标 main；**禁止**合并到 v1 / v3
+> 证据来源：`apriori-in-practice/5.1/Apriori棕地项目使用复盘.md` §6 FP-1 / FP-2 / §8 P1-4，
+> 加本仓源码实证与两处**本次实测**
+> 本版处置 STEP0·r2 重开的 REQ-1 / REQ-4 / REQ-5（处置说明见 §七；REQ-2/REQ-3 已 verified）
+
+---
+
+## 一、问题（状态 A，全部可复现）
+
+本 change 打包三件互相独立、但共同指向「**默认值与语法把合法输入判成了缺陷**」的事。
+
+### 1.1 默认 id-pattern 认不出真实项目的 ID（复盘 FP-1）
+
+`lib/config.js:16`：
+
+```js
+const DEFAULT_ID = '[A-Z]+-\\d+';
+```
+
+它认不出**三段式**（`AC-BIS-01`、`LIFE-DWS-01`）与**带字母后缀**（`AC-30f`）的 ID。
+这类 ID 完全符合「可绑定 ID」的实质要求——唯一、稳定、可被测试名携带——只是不匹配这条正则。
+
+**为什么后缀也认不出**：`leadId`（`lib/spec-runner.js`）在正则匹配之后还查边界——
+
+```js
+const next = text.trim()[m[0].length];
+if (next !== undefined && /[A-Za-z0-9_]/.test(next)) return null;
+```
+
+所以 `AC-30f` 里即使 `AC-30` 匹配上，紧跟的 `f` 也会让它作废。
+
+**影响链**：verify 报 GAPS → gate C1 BLOCKED → 每个 change 都要在 flow-state 里手写一段
+「这是结构局限不是缺陷」的免责说明。
+
+**本次实测（棕地样本 `/mnt/d/agent-base/t_just-projects/apriori/specs`）**：
+共 **151** 个场景，按现行默认式有 **50** 个绑不上；换成 §二 提议的默认式后 **0** 个绑不上。
+
+**为什么 4.1.0 的修复没解决它**：`gate-id-pattern` 那个 change 把 id-pattern 变成了**项目可配置**，
+但**默认值一个字没动**，而配置行住在 `apriori/process-config.md`——一个 **R3 人类持有、agent 只读**的文件。
+实测那个棕地项目升到 4.1 之后，`process-config.md` **仍是模板原样**（只改了 language / cas / caps），
+`id-pattern` 行**从未被加过**。修复躺在二进制里，落地率为 **0**。
+
+### 1.2 doctor D6 的修复提示指向了错误的对象
+
+`lib/doctor.js:147`：
+
+```js
+d6Entries.push({ id: 'D6', status: 'finding',
+  detail: `scenario(s) without a bindable ... ID${src}: ...`, fix: 'add leading IDs' });
+```
+
+在上面那个项目里，那 50 个 ID **完全合法**，问题在正则。
+按提示做，人会去改 50 个 ID；正确动作是加一行 config（或者，本 change 之后，什么都不用做）。
+**错误的 fix 提示比没有提示更贵。**
+
+### 1.3 delta 的语法里没有「说明性内容」的位置（复盘 FP-2）
+
+`lib/archive-merge.js` 的 delta 解析器（`parseDeltaStrict`）只认三种 h2 段
+（`## ADDED|MODIFIED|REMOVED|RENAMED Requirements`）。作者写的说明被当成指令解析：
+
+| 现象 | 位置 | 性质 |
+|---|---|---|
+| `## 场景 ID 逐条映射` 这类说明性小节 → `unrecognized section heading`，归档被阻断 | `:127` | **响亮**的误判——作者被迫降级标题或改写成段内附注（绕过而非表达） |
+| **`### 非-Requirement 标题` 落在 requirement 块内 → 被 `blockLines.push(line)` 当作正文并入，最终写进 store** | `:166` | **静默**的错误——比响亮的那个更危险 |
+
+第二条是我在读源码时自查发现的，复盘没提。它的形状是：
+
+```js
+:166  if (state === 'IN_REQUIREMENT') { blockLines.push(line); continue; }   // scenarios and prose are body
+```
+
+`### 说明` 不匹配 `REQ_LINE_RE`（`/^###\s+Requirement:\s+(.+?)\s*$/`），也不是 h2，
+于是在 `IN_REQUIREMENT` 状态下被当成正文，**原样并进 store 的 Requirement 块**。
+MODIFIED 路径上 4.1.0 的 MODIFIED INTEGRITY 报告能照出来（它逐行比对被替换的块），
+**ADDED 路径上照不出来**——没有旧块可比。
+
+### 1.4 状态 A 的其余事实（决定范围与风险）
+
+**`DEFAULT_ID` 的全部消费者**（本次 grep 实证）：
+
+| 消费者 | 位置 | 用途 |
+|---|---|---|
+| `resolveIdPattern` 的兜底 | `lib/config.js:131` | flag > config 行 > **DEFAULT_ID** |
+| `check` 的 CK-04 | `lib/check.js:163` `checkScenarioIds(specText, name, idPattern = DEFAULT_ID)` | 结构一致性检查 |
+| `doctor` 的 D5 探针 | `lib/doctor.js:33` `const idRe = new RegExp(DEFAULT_ID)` | TAP 解析。`truth/doctor.md` 称其 count 分类「pattern-insensitive」——**该声称已被 r1 用反例推翻**，见 §1.5 |
+| `doctor` 的 D6 | 经 `resolveIdPattern`（config > 默认） | 库健康 |
+| `spec-runner` 的 verify / gate C1 | 经 `resolveIdPattern` | 绑定门 |
+
+**本仓自身的 store 对默认值变更免疫（本次实测）**：
+
+| pattern | identified | unidentified | duplicates |
+|---|---|---|---|
+| 现行 `[A-Z]+-\d+` | 353 | 0 | 0 |
+| 提议 `[A-Z]+(?:-[A-Z]+)*-\d+[a-z]*` | 353 | 0 | 0 |
+
+且两者产出的 **ID 集合逐个相同**。本仓的既有测试因此不会因这条改动而变色。
+
+**delta 语料对语法变更免疫（本次实测）**：
+`apriori/changes/archive/*/specs/**/*.md` 里
+——非 `### Requirement:` 的 h3 共 **0** 处；非三种法定 h2 的段共 **0** 处。
+`apriori/specs/` 的 store 里非 `### Requirement:` 的 h3 也是 **0** 处。
+**没有任何存量产物需要迁移。**
+
+### 1.5 D5 的「pattern-insensitive」是假的（r1·REQ-1，已复核）
+
+`lib/doctor.js:45` 的计数是：
+
+```js
+const parsed = [...results.values()].reduce((s, r) => s + r.pass + r.fail, 0)
+             + untagged.length + unattributedFailures.length;
+```
+
+**被打了 tag 的 SKIP / TODO 贡献 0**（`r.pass` 与 `r.fail` 都是 0，且它不在 `untagged` 里）。于是：
+
+| TAP 行 | 旧 pattern | 新 pattern |
+|---|---|---|
+| `ok 1 - AC-30f pending # SKIP flaky` | `AC-30f` 绑不上 → 进 `untagged` → `parsed = 1` → **D5 ok** | 绑上了 → 只剩 `skip: 1` → `parsed = 0` → **D5 finding「truncated or malformed」** |
+
+`AC-BIS-01` 与 `not ok … # TODO` 有同样的反例。
+**所以「只换一个常量」会让某些合法的 TAP plumbing 从 HEALTHY 变成 FINDINGS**——
+而 AC-IP-09 恰恰要求它不变。两者不可兼得，必须在需求阶段裁掉一个。
+
+> 注意：这个计数怪癖**今天就存在**——`ok 1 - AC-01 x # SKIP` 这类**旧 pattern 也认得**的
+> tagged skip，今天同样会让 `parsed = 0`。本 change 并没有造出它，只是会让更多行落进那一格。
+
+---
+
+## 二、目标状态 B
+
+### B1 — 默认 id-pattern 放宽到认得真实世界的 ID 形状
+
+新默认值：
+
+```
+[A-Z]+(?:-[A-Z]+)*-\d+[a-z]*
+```
+
+- 是现行默认式的**严格超集**（`AC-01` 仍匹配，且匹配到的**子串完全相同**）；
+- 认得三段及以上（`AC-BIS-01`、`LIFE-DWS-01`）；
+- 认得字母后缀（`AC-30f`）——与 `leadId` 的边界规则相容（整个 ID 被吃掉，其后是空格）。
+
+**不改 `leadId` 的边界规则**（见 §五 O3）。
+
+### B1b — D5 与项目的场景 ID 词汇表**解耦**（r1·REQ-1 的处置）
+
+`doctor` 的 D5 只是在判「这条命令说不说 TAP」这个**管道**问题，它不关心项目的 ID 长什么样。
+它今天恰好借用了 `DEFAULT_ID`，于是被本 change 牵连。
+
+**处置：D5 不再是 `DEFAULT_ID` 的消费者**——它改用一个**属于自己的、冻结的**分类正则，
+其值就是本 change 之前的 `[A-Z]+-\d+`，并在源码与 KB 里写明理由：
+「D5 判的是管道，不是身份；它的分类刻意独立于项目的场景 ID 词汇表」。
+
+这样 AC-IP-09 从「一个未经验证的声称」变成**结构上必然成立**的事实：
+D5 根本不读那个常量，放宽它当然影响不到 D5。
+
+**不做的另一支**：把 D5 的计数改成基于 lexer 的 point/skip/todo 结构量。
+那会**改变 D5 今天的行为**（上面那条注记里的既有怪癖会被一并修掉），
+是一件独立的、有自己验收面的事——记入 O8。
+
+### B2 — doctor D6 按「ID 长什么样」给不同的修复提示
+
+D6 报 unidentified 时，必须先分辨这两类，给出**不同**的 fix：
+
+**分类契约（r1·REQ-3 的处置——「形似」必须有可执行定义）**：
+
+1. 取场景标题，`trim()` 之后按**第一个空白**切出**首 token**；
+2. 首 token 是「**ID 形状**」当且仅当：它**含至少一个数字** **且** 含至少一个 `-` 或 `_`。
+   （`AC-BIS-01` ✅ · `ac-01` ✅ · `AC_01` ✅ · `AC-30f` ✅ · `AC-01:` ✅（冒号不影响这两个条件）
+   · `123` ❌ 无分隔符 · `AC-` ❌ 无数字 · 空标题 ❌）
+3. 生效 matcher 对该标题返回 null 时：
+   - 首 token 是 ID 形状 → **pattern-mismatch** 类；
+   - 否则 → **missing-ID** 类。
+
+| 类 | fix 指向 |
+|---|---|
+| **missing-ID** | 「给场景加上前导 ID」——现状文案，**一字不改** |
+| **pattern-mismatch** | 「这些 ID 看起来是合法的，只是不匹配当前生效的 pattern；改 `apriori/process-config.md` 的 `id-pattern` 行」 |
+
+**detail 的输出契约**：pattern-mismatch 类的 detail 必须同时给出
+① 生效 pattern 的 **bounded source**（沿用既有的 `boundedSource`）与 ② 其 **origin**（`flag`/`config`/`default`）；
+样例最多 **3** 个，按**库内出现顺序**取前三，每个截断到 40 字符（沿用既有 D6 的截断惯例）。
+
+**finding 条数契约**：两类各产出**恰好一条** D6 finding（各自点名自己的场景），
+互不合并；`findings` 计数按既有规则 = finding 状态条目数，因此两类同时存在时比今天多一条。
+
+### B3 — delta 给说明性内容一个合法位置，并堵掉静默并入
+
+1. **一个被解析器忽略的 h2 段**：`## Notes`。它的整段内容不参与任何合并，也不产生 problem。
+
+   **`IN_NOTES` 的完整转移契约（r1·REQ-4 的处置）**：
+
+   | 问题 | 裁定 |
+   |---|---|
+   | 可以出现在哪里 | 第一个操作段**之前**、两个操作段**之间**、文件**末尾** —— 三处皆可 |
+   | 可以出现几次 | **不限次** |
+   | 进入时 | `flush()` 当前 requirement 块（与其它 h2 一致），状态转 `IN_NOTES` |
+   | 何时结束 | **围栏之外**的下一个 h2。若它是**四种**法定操作段之一（`ADDED` / `MODIFIED` / `REMOVED` / **`RENAMED`**——r2 勘误：v2 写成「三种」）→ 正常恢复解析；若是其它 h2 → 按 AC-IP-16 照旧报 problem |
+   | 段内的 `### Requirement:` / `#### Scenario:` | **全部忽略**，不产生任何合并操作、不产生 problem |
+   | 段内的 `<!-- apriori-base: … -->` | **全部忽略**：既不被采纳为 CAS 戳，也不因「重复戳」「戳在段后」而报 problem |
+   | Notes 标题本身是否置 `sectionSeen` | **否**——但这不代表戳可以跟在 Notes 后面，见下一行 |
+| 首个操作段**之前**的合法 CAS 戳该放哪 | **必须放在 `## Notes` 之前**。r2 指出 v2 自相矛盾：Notes 只在下一个 h2 处结束，所以「Notes 之后、首个操作段之前」的那个戳**仍在 Notes 内**，按「段内戳一律忽略」就该被忽略，而 AC-IP-14d 又要求它有效——两者不可兼得。裁定取**「Notes 真正不透明」**这一支：戳前置。（另一支是给 Notes 发明一个显式终止语法，那会扩大本 change 的语法面，不做） |
+   | 段内的代码围栏 | 照旧不透明；**未闭合的围栏**使其后内容保持不透明直到文件末尾（与既有 fence 语义一致） |
+   | Notes-only 的 delta（除 Notes 外零操作） | **仍按零操作拒绝** —— `deltaOpCount === 0` 的既有契约（`lib/archive-merge.js:375` / `:815`，D-AM-3）**一字不动** |
+2. **requirement 块内的非-`Requirement` h3 变成一个 problem**（带行号），不再静默并入 store。
+
+   **标题层级 × 状态矩阵（r1·REQ-5 的处置——只定义一个状态是不够的）**：
+
+   **r2 勘误**：v2 的矩阵把 `RENAMED` 当成一个 state，而它其实是**正交的 `kind`**；
+   而且漏了真实存在的 `SKIP_UNRECOGNIZED` 状态。于是「RENAMED 段内非法 Requirement 之后」
+   这个真实复合态（`state=IN_REQUIREMENT` + `kind=RENAMED` + `blockDiscard=true`）
+   会同时命中「`IN_REQUIREMENT` → 新 problem」和「`RENAMED` → 自由文本不变」两格，给出相反结果。
+
+   改为按**真实的 `state`**（外加两条优先级规则）表述：
+
+   | 行 | `FILE_PREAMBLE` | `IN_SECTION`（任一 kind 的段首自由文本） | `IN_REQUIREMENT` | `SKIP_UNRECOGNIZED` | `IN_NOTES` | 围栏内 |
+   |---|---|---|---|---|---|---|
+   | `### Requirement: …` | 照旧 problem（块在段前） | 照旧开块；`kind === 'RENAMED'` 时照旧 problem + 作废块 | 照旧开新块 | 照旧被原 h2 的 problem 覆盖，静默跳过 | 忽略 | 不透明 |
+   | **其它 `### …`** | **照旧自由文本** | **照旧自由文本** | **新 problem**（受下方优先级 P1 约束） | 照旧静默跳过 | 忽略 | 不透明 |
+   | `#### Scenario: …` | 照旧 problem | 照旧 problem | 照旧正文 | 照旧静默跳过 | 忽略 | 不透明 |
+   | `##### …` 及更深 | 照旧自由文本 / 正文 | 同左 | 同左 | 照旧静默跳过 | 忽略 | 不透明 |
+   | `## Notes` | 进 `IN_NOTES` | 进 `IN_NOTES`（先 flush） | 进 `IN_NOTES`（先 flush） | **进 `IN_NOTES`**（h2 结束跳过态） | 重开一个 Notes 段 | 不透明 |
+
+   **两条优先级规则（必须钉死，否则 buckets 与 problems 会因实现选择而不同）**：
+
+   - **P1 —— `blockDiscard === true` 优先于「新 h3」检查**：当前 block 已被作废时，
+     后续所有非-h2、非合法-`Requirement` 的行**继续静默吸收**，**不再**产出第二条 problem。
+     这一条同时覆盖两个来源：① 本 change 新增的「非-Requirement h3 作废块」；
+     ② 既有的「RENAMED 段内非法 Requirement 作废块」——后者的行为因此**一字不变**。
+   - **P2 —— 出错后的恢复**：记录**一条** problem、置 `blockDiscard = true`、停留在 `IN_REQUIREMENT`，
+     直到下一个 `### Requirement:` 或任一 h2 才恢复。被作废的 block **不进** buckets。
+
+   **只收紧一格**：`IN_REQUIREMENT` 且 `blockDiscard === false` 时的非-`Requirement` h3。其余一律保持状态 A。
+3. RUNBOOK 的 delta 模板给出 `## Notes` 的示例。
+
+---
+
+## 三、验收标准
+
+### 默认 pattern（A 组）
+
+| ID | 若 | 则 |
+|---|---|---|
+| AC-IP-01 | 一个场景标题为 `AC-BIS-01 …` / `LIFE-DWS-01 …` / `AC-30f …`，在**未配置** `id-pattern` 的项目里跑 `verify` | 三者都被识别为已绑定 ID（今日全部 unidentified） |
+| AC-IP-02 | 现行默认式能识别的**任何**输入 | 新默认式识别出**逐字节相同**的 ID（严格超集，且不改变已有绑定） |
+| AC-IP-03 | 本仓自身的 store，分别用新旧默认式跑 `collectScenarios` | identified / unidentified / duplicates 三个计数与 **ID 集合**全部相同 |
+| AC-IP-04 | 一个标题没有任何前导 ID 的场景 | 仍为 unidentified（放宽不等于放弃） |
+| AC-IP-05 | 项目**配置了** `id-pattern` 行 | 配置仍然优先，默认值不参与——`resolveIdPattern` 的优先级（flag > config > 默认）一字不变 |
+| AC-IP-06 | 一个项目里同时存在 `AC-30` 与 `AC-30f` | 两者是**两个不同的 ID**，不构成重复 |
+| AC-IP-07 | 放宽后新出现的重复 ID（两个此前都 unidentified、现在都识别成同一 ID 的场景） | 照常报 duplicate——这是**期望的新失败**，须在 CHANGELOG 声明 |
+| AC-IP-08 | `check` 的 CK-04、`doctor` 的 D6、`verify`、`gate` C1 四个消费者 | 全部经由**同一个** `DEFAULT_ID`，无第二处硬编码 |
+| AC-IP-09 | `doctor` 的 D5 探针（`lib/doctor.js:33`） | 其 TAP 计数分类的结论**不因默认值放宽而改变**（`truth/doctor.md` 声称它 pattern-insensitive——本条把该声称变成断言） |
+
+### doctor D6 的 fix 提示（B 组）
+
+| ID | 若 | 则 |
+|---|---|---|
+| AC-IP-10 | store 里有场景标题带形似 ID 的前导 token，但不匹配当前生效 pattern | D6 的 fix **指向 `process-config.md` 的 `id-pattern` 行**，detail 回显样例 ID 与当前 pattern 的来源 |
+| AC-IP-11 | store 里有场景标题**完全没有**前导 ID token | D6 的 fix 仍是「加前导 ID」，文案与本 change 前一致 |
+| AC-IP-12 | 两类同时存在 | 两条 fix 都出现，各自点名自己的场景，不混为一谈 |
+| AC-IP-13 | D6 的其余行为（重复 ID、空库、缺目录、坏 pattern 配置） | **一字不变** |
+
+### delta 语法（C 组）
+
+| ID | 若 | 则 |
+|---|---|---|
+| AC-IP-14 | 一个**其余部分合法且至少含一个操作**的 delta 含一个 `## Notes` 段 | `archive` 与 `verify --change` 正常通过；该段内容**不参与合并**、**不写进 store**、**不产生 problem** |
+| AC-IP-14b | 一个**只有** `## Notes`、没有任何操作的 delta | **仍按零操作拒绝**（既有 `parsed 0 delta operations` 文案不变）——Notes 不是操作 |
+| AC-IP-14c | `## Notes` 分别出现在首个操作段**之前** / 两个操作段**之间** / 文件**末尾**；以及出现**两次** | 四种都正常通过，段内内容一律不参与合并 |
+| AC-IP-14d | 合法 CAS 戳出现在 `## Notes` **之前** | 戳正常生效（Notes 标题不置 `sectionSeen`，因此不触发「戳在段后」的 problem） |
+| AC-IP-14d2 | 合法形状的 CAS 戳出现在 `## Notes` **段内** | 被**忽略**：既不采纳为戳，也不报 problem。若该 delta 有 mutation 操作且别处没有戳，它就是**未打戳**，按既有 CAS 默认拒绝路径处理 |
+| AC-IP-14g | `## Notes` 之后紧跟 `## RENAMED Requirements` | 正常恢复解析（四种法定操作段都恢复，不只三种） |
+| AC-IP-14e | `## Notes` 段结束于**围栏之外**的下一个 h2 | 若是法定操作段 → 正常恢复解析；若是其它 h2 → 照旧报 problem（AC-IP-16） |
+| AC-IP-14f | `## Notes` 段内含**未闭合**的代码围栏 | 其后内容保持不透明直到文件末尾，与既有 fence 语义一致 |
+| AC-IP-15 | `## Notes` 段内出现 `### Requirement:` / `#### Scenario:` / `<!-- apriori-base: … -->` | 全部被忽略（Notes 段是不透明的），不产生额外的合并操作、不打乱 CAS 戳的判定 |
+| AC-IP-16 | delta 含**其它**未识别的 h2（如 `## 场景 ID 逐条映射`） | 仍是带行号的 problem，文案与本 change 前一致——只有 `## Notes` 是新开的口子 |
+| AC-IP-17 | requirement 块内出现非-`Requirement` 的 h3（如 `### 说明`） | **成为带行号的 problem**，该 delta 被拒绝；今天它会被静默并入 store |
+| AC-IP-17b | 同上，且该 h3 之后还有若干行正文，再跟一个合法的 `### Requirement:` | 该 h3 只产出**一条** problem（不刷屏）；被作废的块**不进** buckets；其后的合法 Requirement 正常开新块 |
+| AC-IP-17c | 非-`Requirement` h3 出现在 `FILE_PREAMBLE` / `IN_SECTION` 段首自由文本处 | **行为与本 change 前一字不变**（自由文本） |
+| AC-IP-17e | `RENAMED` 段内先出现非法 `### Requirement:`（触发既有的作废块），其后再出现非-`Requirement` h3 | 由**优先级 P1** 裁定：静默吸收，**不产出第二条 problem**——RENAMED 段的既有行为一字不变（r2 勘误：v2 的矩阵在此给出相反结果） |
+| AC-IP-17f | 非-`Requirement` h3 出现在 `SKIP_UNRECOGNIZED` 状态（前面有个未识别 h2） | 照旧被那个 h2 的 problem 覆盖，静默跳过，不新增 problem |
+| AC-IP-17g | `## Notes` 出现在 `SKIP_UNRECOGNIZED` 状态 | 结束跳过态并进入 `IN_NOTES`（h2 是跳过态的终止条件） |
+| AC-IP-17d | `#####` 及更深的标题，出现在任一状态 | 行为与本 change 前一字不变 |
+| AC-IP-18 | 同上，但在 `ADDED` 段（无旧块可比） | 同样被拒绝——这正是 MODIFIED INTEGRITY 报告**照不到**的那一路 |
+| AC-IP-19 | `apriori/changes/archive/**` 的全部存量 delta 语料 | 逐个仍**逐字节等价**地解析（既有语料测试不得变色；实测语料中两种构造各 0 处） |
+| AC-IP-20 | 代码围栏内的 `### …` 与 `## …` | 仍然不透明，不受本 change 影响 |
+
+### 文档（D 组）
+
+| ID | 若 | 则 |
+|---|---|---|
+| AC-IP-21 | 读 `templates/process-config.md` | `id-pattern` 行的 **Value 列**（第 2 列，会被 `init` 原样写进新项目并由 `resolveIdPattern` **优先消费**）**与 Default 列（第 4 列）都**与新默认式一致；表下注释里「built-in default `[A-Z]+-\d+`」的字样一并更新（r1·REQ-2：只改 Default 列的话，新项目会带着**旧** pattern 的 active config 行，把新 `DEFAULT_ID` 完全遮蔽，而静态文档验收却仍然通过） |
+| AC-IP-21b | 全新 `apriori init` 之后**不手改** config，跑 `resolveIdPattern` | 返回**新** source，`origin: 'config'`；且 config 来源的匹配子进程对 `AC-BIS-01` / `LIFE-DWS-01` / `AC-30f` 的**场景标题与 TAP description** 都返回完整 ID |
+| AC-IP-21c | 同一个全新项目上跑 `check` / `doctor` D6 / `verify` / `gate` C1 | 四者对上述三种 ID 的结论一致（同一条生效 pattern，无第二处硬编码） |
+| AC-IP-22 | 读 `RUNBOOK.md` / `RUNBOOK_cn.md` 的 delta 相关段落 | 出现 `## Notes` 的用法说明与一个示例 |
+| AC-IP-23 | 读 `docs/cli.md` / `docs/cli_cn.md` 中提及默认 id-pattern 的位置 | 与新默认式一致 |
+| AC-IP-24 | 读 `CHANGELOG.md` | 显著声明**默认值变更**（可能让既有项目新出现 duplicate 报告）与 **delta 语法的两处变更** |
+
+---
+
+## 四、明确不做（out of scope）
+
+| # | 不做 | 理由 |
+|---|---|---|
+| O1 | 改 `resolveIdPattern` 的优先级（flag > config > 默认） | 那是 `gate-id-pattern` 刚立的契约，本 change 只换兜底值 |
+| O2 | 把 `id-pattern` 行写进用户的 `process-config.md` | 违反 R3；而且本 change 的**要点**正是让大多数项目**不需要**那一行 |
+| O3 | 改 `leadId` 的边界规则 | 它是「ID 后面不能紧跟字母数字下划线」这条独立保证，与 pattern 宽窄正交；改它会影响每一个消费者的绑定语义 |
+| O4 | 让解析器「智能判断」哪些 h2/h3 是说明、哪些是指令 | 复盘明确列为过度方案。**一个**约定好的段名，就够了 |
+| O5 | 给 `## Notes` 之外再开别的忽略段 | YAGNI；需要时是另一个 change |
+| O6 | 回溯修补存量 store 里被静默并入的说明性内容 | 实测为 **0** 处，无事可修 |
+| O7 | change 2（`archive-preflight`）的任何内容 | 它已挂起；本 change 只碰 delta **解析器**，与它改的高层 archive 块不是同一个 Requirement |
+| O8 | 修 D5 计数把 tagged SKIP/TODO 算成 0 这个**既有**怪癖（§1.5 的注记） | 它今天就存在、与本 change 无因果关系；修它要改 D5 的分类语义，有自己的验收面。本 change 用 B1b 的**解耦**保证自己不把它变严重，仅此而已 |
+| O9 | 讨论「模板到底该不该给 `id-pattern` 设一个 active Value」 | r1·REQ-2 暴露出：模板设了 Value，就意味着每个新项目都走 config 来源的子进程路径。这是个**独立的**产品决定（要动 `init` 的模板哲学），本 change 只保证两列一致、不留旧值 |
+
+**触及范围（源码）**：`lib/config.js`（`DEFAULT_ID` 一个常量）、`lib/doctor.js`（**D5 的分类 regex 解耦** + D6 的 fix 分支——r2 勘误：v2 此处漏了已成为目标状态的 D5 解耦）、
+`lib/archive-merge.js`（`## Notes` 忽略段 + 非-Requirement h3 的 problem）。
+
+---
+
+## 五、已知后果与风险
+
+| # | 事项 | 处置 |
+|---|---|---|
+| K1 | **默认值变更是外部可见的行为变更**：既有项目里此前 unidentified 的场景会变成已识别；若其中两个恰好识别成同一 ID，会**新出现** duplicate 报错 | 期望行为（重复 ID 本来就是缺陷，只是此前被 unidentified 掩盖）。必须在 CHANGELOG 显著声明（AC-IP-24） |
+| K2 | 此前 unidentified 的场景变成 **UNBOUND**（识别了但没有对应测试） | 同样是期望行为：从「这条我看不懂」变成「这条你没测」——后者才是真话 |
+| K3 | `doctor` D5 **不再**消费 `DEFAULT_ID`（B1b 已裁定解耦），改用属于自己的冻结分类 regex | AC-IP-09 因此从「一个待验证的声称」变成**结构上必然**成立：D5 根本不读那个常量。验收方式是「改变 `DEFAULT_ID` 前后 D5 的结论一致」。**r2 勘误**：v2 此处仍留着 v1 的「D5 用 DEFAULT_ID / 若不成立则 STEP2 重新设计」，与 B1b 直接冲突 |
+| K4 | `## Notes` 是新的**语法面**，一旦发布就要长期兼容 | 段名与语义在本 change 里定死；O5 声明不再开第二个 |
+| K5 | 非-Requirement h3 由「静默并入」变「拒绝」是**收紧** | 实测存量语料 0 处受影响；但外部项目可能有——CHANGELOG 需声明，并给出「改成 `## Notes` 或降级为正文」的迁移建议 |
+| K6 | 与挂起的 change 2 的 CAS 戳冲突 | 本 change 归档后，`archive-preflight` 的 archive-merge delta 需换戳。已记在其 flow-state |
+
+---
+
+## 七、STEP0·r2 处置说明（本版）
+
+| ID | 处置 | 说明 |
+|---|---|---|
+| REQ-1（reopened） | **accept** | 评审方确认 B1b 的方向成立、且移除 D5 后没有第二个暴露点；重开的原因是我在 v2 里**留下了两处 v1 的旧话**——K3 仍写「D5 用 DEFAULT_ID / 若不成立则 STEP2 重新设计」，触及范围仍只写「D6 的 fix 分支」。同一份需求于是同时要求「现在解耦」和「以后再决定」。两处都已改正 |
+| REQ-4（reopened） | **accept**，取「Notes 真正不透明」一支 | 真矛盾：Notes 只在下一个 h2 结束，所以「Notes 之后、首个操作段之前」的戳**仍在 Notes 内**，与「段内戳一律忽略」直接冲突。裁定：**首个操作段前的合法戳必须放在 `## Notes` 之前**；AC-IP-14d 改写，另加 AC-IP-14d2 明确「段内戳被忽略 ⇒ 若别处无戳则该 delta 视为未打戳，走既有 CAS 默认拒绝」。另一支（给 Notes 发明显式终止语法）会扩大语法面，不做。同时把「三种法定操作段」改正为**四种**（漏了 `RENAMED`），新增 AC-IP-14g |
+| REQ-5（reopened） | **accept** | 两处硬伤：① `RENAMED` 不是 state 而是**正交的 `kind`**，所以「RENAMED 段内非法 Requirement 之后」这个真实复合态会同时命中矩阵两格并给出相反结果；② 漏了真实存在的 `SKIP_UNRECOGNIZED` 状态。矩阵改为按**真实 state** 表述并补上 `SKIP_UNRECOGNIZED` 与 `## Notes` 行，另加两条优先级规则：**P1** `blockDiscard === true` 优先于新 h3 检查（同时覆盖新旧两种作废块来源，RENAMED 的既有行为因此一字不变）、**P2** 出错恢复。新增 AC-IP-17e/17f/17g |
+| REQ-2 / REQ-3 | r2 已 **verified**，本版未改动其对应内容 | — |
+
+---
+
+## 七·1、STEP0·r1 处置说明
+
+| ID | 处置 | 说明 |
+|---|---|---|
+| REQ-1（high） | **accept**，取「解耦」一支 | 反例成立且已复核：`parsed` 的算式（`lib/doctor.js:45`）里**被打 tag 的 SKIP/TODO 贡献 0**，所以放宽默认式会让 `ok 1 - AC-30f x # SKIP` 这类行从 `untagged`（parsed=1，D5 ok）变成 tagged skip（parsed=0，D5 finding）。§1.5 把反例写进状态 A。处置**不是**「STEP2 再说」，而是在需求阶段裁定：**D5 不再消费 `DEFAULT_ID`**，改用属于自己的冻结分类正则（值即本 change 前的 `[A-Z]+-\d+`），理由写进源码与 KB——D5 判的是**管道**不是**身份**。这样 AC-IP-09 从「一个声称」变成**结构上必然**成立。另一支（把计数改成基于 lexer 的结构量）会顺带改掉 D5 今天的行为，记入 **O8** 不做 |
+| REQ-2（high） | **accept** | 真缺口：`templates/process-config.md` 的 `id-pattern` 行**第 2 列（Value）**会被 `init` 原样写进新项目并由 `resolveIdPattern` **优先消费**。只改第 4 列（Default）的话，新项目带着**旧** pattern 的 active config，把新 `DEFAULT_ID` 完全遮蔽，而静态文档验收还是过的。AC-IP-21 改为**两列 + 表下注释**全改，并新增 AC-IP-21b（fresh init 后 `origin: config` 且 config 子进程认得三种 ID 形状）与 AC-IP-21c（四个消费者结论一致）。「模板该不该设 active Value」这个更上位的问题记入 **O9** |
+| REQ-3（med） | **accept** | 「形似 ID」给出可执行定义：`trim()` 后取首个空白分隔 token，**含至少一个数字 且 含至少一个 `-` 或 `_`** 即为 ID 形状（`ac-01`/`AC_01`/`AC-01:` ✅，`123`/`AC-` ❌）。另钉死 detail 必须同时输出 bounded source 与 origin、样例最多 3 个按库内顺序取前三各截 40 字符、两类各产出**恰好一条** finding |
+| REQ-4（high） | **accept** | 给出完整 `IN_NOTES` 转移契约：可出现在三处且不限次；进入时 flush；结束于**围栏外**的下一个 h2（法定段恢复解析、其它 h2 照旧报 problem）；段内的 Requirement/Scenario/CAS 戳**全部忽略且不产生 problem**；Notes 标题**不置** `sectionSeen`（所以戳可以在 Notes 之后）；未闭合围栏保持不透明。**AC-IP-14 改写**为「其余部分合法且至少含一个操作」，并新增 AC-IP-14b 明确 **Notes-only 仍按零操作拒绝**——这正是 r1 指出的与 D-AM-3 的冲突 |
+| REQ-5（med） | **accept** | 给出**标题层级 × 状态**的完整矩阵：只有 `IN_REQUIREMENT` 里的非-`Requirement` h3 是新 problem，`FILE_PREAMBLE` / section preamble / `RENAMED` / h4+ **一律保持状态 A**。并钉死出错后的恢复策略：记一条 problem、**丢弃当前 block**（沿用 RENAMED 段的既有做法）、停留在 `IN_REQUIREMENT` 直到下一个 `### Requirement:` 或 h2 —— 既不写进 store，也不刷屏。新增 AC-IP-17b/17c/17d |
+
+---
+
+## 六、与另外两个 change 的边界
+
+本 change 是三连中的第 3 个。**不涉及** gate 的降级与退出码（change 1，已归档待签）、
+archive 的就绪度准入（change 2，**已按 owner 裁定挂起**）。
+本 change 触及 `lib/archive-merge.js` 的 **delta 解析器**（Requirement `the delta parser consumes its whole input`），
+与 change 2 要改的高层 archive 块不是同一个 Requirement。
+# req-review-v2 — id-pattern-and-delta-notes requirement review
+
+评审对象：`requirement/req-v2.md`  
+评审轮次：2  
+评审角色：P1 senior requirements reviewer  
+评审方式：只读核对 v2、r1 review、ledger、KB 与实际源码。
+
+## Round-1 findings verification
+
+### REQ-1 — REOPEN
+
+B1b 选择的技术方向成立：只要 D5 改用独立、冻结的 `[A-Z]+-\d+`，`DEFAULT_ID` 的放宽便不会改变 D5 分类。移除 D5 后，其余 `DEFAULT_ID` 消费者正是有意放宽的 CK-04、D6、verify 与 gate C1，没有另一个暴露点。
+
+但 v2 内部仍有两处与该决定直接冲突：
+
+- K3 仍写着“D5 用 `DEFAULT_ID`”，并保留“若实测不成立，STEP2 重新设计”的 v1 处置；
+- “触及范围（源码）”只把 `lib/doctor.js` 描述为 D6 fix 分支，遗漏了已经成为目标状态的 D5 解耦。
+
+同一 requirement 因而同时要求“现在解耦”和“仍消费 DEFAULT_ID、以后再决定”，不能直接交给 AI。
+
+- **风险**：high
+- **建议修复**：将 K3 改为已裁定的目标风险处置，例如“D5 改用冻结的独立分类 regex；AC-IP-09 验证 DEFAULT_ID 改变前后结果一致”；并把源码范围改为 `lib/doctor.js` 的“D5 分类 regex 解耦 + D6 fix 分支”。
+
+### REQ-2 — verified
+
+AC-IP-21 已覆盖模板 Value、Default 和注释中的三个旧值；AC-IP-21b 覆盖 fresh init 后实际被优先消费的 config-origin 路径，并同时检查标题与 TAP description；AC-IP-21c 覆盖四个产品消费者的一致性。原缺口已关闭。
+
+### REQ-3 — verified
+
+v2 已给出确定性的首 token 提取、digit/separator 谓词、正反例、bounded source、origin、样例上限与顺序，以及每类恰好一条 finding 的计数契约。分类可以生成唯一测试 oracle，原缺口已关闭。
+
+### REQ-4 — REOPEN
+
+`IN_NOTES` 的大部分边界已补齐，但 CAS 规则内部不可同时满足。
+
+按 v2 的状态机：
+
+1. `## Notes` 进入 `IN_NOTES`；
+2. `IN_NOTES` 只在下一个 fence 外 h2 结束；
+3. Notes 内的任何 CAS stamp 必须忽略。
+
+因此下面的 stamp 仍处于 `IN_NOTES`，必须被忽略：
+
+```markdown
+## Notes
+说明
+
+<!-- apriori-base: sha256:... -->
+
+## MODIFIED Requirements
+```
+
+但 AC-IP-14d 又要求同一位置的 stamp 有效。stamp 不是 h2，无法先结束 Notes；解析器也不能在不破坏“Notes 内 stamp 全部 opaque”的前提下判断作者想让它是说明样例还是真实 stamp。
+
+此外，转移表写“若它是三种法定操作段”，而实际 `SECTION_LINE_RE` 有四种：ADDED、MODIFIED、REMOVED、RENAMED。当前文字没有明确 Notes 后的 RENAMED 是否正常恢复。
+
+- **风险**：high
+- **建议修复**：二选一并统一 B3 与 AC：
+  - 推荐保持 Notes 真正 opaque：Notes 位于首个操作段前时，合法 stamp 必须放在 `## Notes` 之前；删除 AC-IP-14d 的“stamp 可跟在 Notes 后”要求；
+  - 或新增明确的 Notes 终止语法，但这会扩大本 change 的语法面。
+  
+  同时将“三种法定操作段”改为明确列出四种，并增加 Notes → RENAMED 的恢复用例。
+
+### REQ-5 — REOPEN
+
+普通 requirement block 的 discard/recovery 已基本钉死，但矩阵没有完整映射实际 parser 状态：
+
+- 实际状态还包括 `SKIP_UNRECOGNIZED`，矩阵没有定义该状态中的 h3/h4 行是否继续由原 h2 problem 覆盖，以及遇到 `## Notes` 后是否恢复为 `IN_NOTES`。
+- `RENAMED` 不是独立 state，而是正交的 `kind`。当前代码遇到 RENAMED 内非法 `### Requirement:` 后，会进入 `state === 'IN_REQUIREMENT'`、`kind === 'RENAMED'`、`blockDiscard === true`。此时后续非-Requirement h3 同时符合矩阵的：
+  - `IN_REQUIREMENT`：新 problem；
+  - `RENAMED`：自由文本不变。
+  
+  两格给出相反结果。
+- “已作废 block 后续行不刷屏”要求实现者在 `blockDiscard` 为 true 时先吸收行、再检查新 h3；该优先级应显式写入，否则第二个非-Requirement h3仍可能产生第二条 problem。
+
+- **风险**：med
+- **建议修复**：将矩阵改成“state × kind/blockDiscard”或补充优先级规则：
+  - `SKIP_UNRECOGNIZED` 保持现有无洪泛语义，直到下一个 h2；
+  - RENAMED 非法 requirement 的 discard block 中，后续所有非-h2、非合法 Requirement 行继续静默吸收；
+  - `blockDiscard === true` 优先于新 h3 检查；
+  - 明确 `## Notes` 从 `SKIP_UNRECOGNIZED` 和 RENAMED discard block 的转移结果。
+
+## Fresh six-dimension review
+
+### 1. 目标状态 B 是否清楚且无歧义
+
+**结论：未通过。** REQ-1 的文档内部仍自相矛盾；REQ-4 的 CAS 规则不可同时满足；REQ-5 对实际复合状态存在冲突。
+
+### 2. 边界、异常与失败路径是否覆盖
+
+**结论：未通过。** Notes 前置时的 CAS、Notes → RENAMED、`SKIP_UNRECOGNIZED`、RENAMED discard block 和重复坏 h3 的恢复优先级仍未形成唯一行为。Notes-only、重复 Notes、末尾 Notes、未闭合 fence和普通 requirement discard 已覆盖。
+
+null、out-of-range、matcher timeout、并发 CAS 与 archive rollback 沿用 state A，没有发现新的未声明改动。
+
+### 3. 是否存在隐含但未声明的状态变化或副作用
+
+**结论：未通过。** D5 解耦是新的源码行为，但“触及范围”仍只声明 D6 分支；这与 B1b 不一致。其余主要行为变化均已声明。
+
+### 4. 每条验收标准是否可写成确定的 if/then
+
+**结论：未通过。**
+
+- AC-IP-14d 与 AC-IP-15/`IN_NOTES` 终止条件不能同时成立；
+- AC-IP-14e 未明确覆盖第四种操作 RENAMED；
+- AC-IP-17b～17d 没有为 `SKIP_UNRECOGNIZED` 和 `kind === RENAMED && state === IN_REQUIREMENT` 给出唯一 oracle；
+- 其余新增 AC 已具备可测试的输入和结果。
+
+### 5. 是否与当前状态 A 冲突
+
+**结论：未通过。**
+
+有意变更均已清楚声明，但仍有三处未协调冲突：
+
+- K3 保留 state-A 的 D5/DEFAULT_ID 关系，与 B1b 的 target B 冲突；
+- Notes 后 stamp 的有效要求与 fully-consuming parser 的连续 Notes 段语义冲突；
+- REQ-5 把实际正交的 RENAMED kind 与 IN_REQUIREMENT state写成互斥列，无法映射 state A 的非法 RENAMED block recovery。
+
+### 6. target lineage 是否声明且符合仓库现实
+
+**结论：通过。**
+
+`brownfield-round2` 的 merge-base 仍为 `main@235a121`，HEAD 包含 change 1 的 `f415824`，change 2 仍 parked；v4 → main 且禁止 v1/v3 的 lineage 与仓库现实一致。
+
+## Advisories
+
+### ADV-1 — D6 的 origin 枚举可收窄
+
+D6 当前调用 `resolveIdPattern(cwd, null)`，实际可达 origin 只有 `config` 和 `default`，不会出现 `flag`。保留三值不会造成实现缺陷，但文档若标注“flag 为通用类型值、D6 不可达”会更精确。
+
+### ADV-2 — 严格超集仍应注明是 `leadId` 语义
+
+在所有实际消费者的 `leadId` 契约下，旧绑定的逐字节 ID 保持成立；裸 `RegExp.exec` 对 `AC-30f` 等输入并不保持相同子串。建议后续 spec 将 AC-IP-02 明写为旧 `leadId` 返回非-null 的输入。
+
+### ADV-3 — out-of-scope section 完整
+
+O1～O9 明确存在，并新增了 D5 lexer 重计数与模板 active Value 哲学两个边界。三项打包的风险差异仍存在，但 Large tier 和分组验收足以承载，不构成本轮 issue。
+
+## Ledger delta
+
+| ID | Previous status | New status | Round-2 result |
+|---|---|---|---|
+| REQ-1 | fixed (v2) | open | REOPEN：B1b 已裁定解耦，但 K3 与源码触及范围仍保留相反的 v1 描述 |
+| REQ-2 | fixed (v2) | verified | Value/Default/comment、fresh-init config child 及四消费者一致性均已覆盖 |
+| REQ-3 | fixed (v2) | verified | ID-shaped 分类及输出/计数契约已可执行、可测试 |
+| REQ-4 | fixed (v2) | open | REOPEN：Notes 后 stamp 同时被要求“忽略”和“有效”，且法定操作段数量写错 |
+| REQ-5 | fixed (v2) | open | REOPEN：遗漏 SKIP_UNRECOGNIZED，且 RENAMED kind 与 IN_REQUIREMENT state 的矩阵结论冲突 |
+
+VERDICT: 3 issues open
+# issue ledger — id-pattern-and-delta-notes
+
+轮次标签：`STEP0·rN`（P1）/ `STEP2·rN`（P5）/ `STEP5·rN`（P8）。
+状态词汇：`open` / `fixed` / `verified` / `rejected` / `rejected-verified` / `waived` / `advisory-acked`。
+生产方只能 `open → fixed | rejected`；`verified` / `rejected-verified` 属评审方，`waived` 属人类。
+重开（reopen）是**事件**不是状态：复现的问题回到原 ID 的 `open`，绝不新开一行。
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| REQ-1 | AC-IP-09 的 D5 pattern-insensitive 断言不成立：newly-recognized SKIP/TODO 可使 D5 从 ok 变成 truncated/malformed finding；须先确定并声明 D5 的目标语义 | high | 1 | fixed (v3) |
+| REQ-2 | AC-IP-21 只要求更新模板 Default 列；fresh init 的 active Value 仍可配置旧 pattern 并覆盖新 DEFAULT_ID，config-origin 路径因而得不到 B1 行为 | high | 1 | verified |
+| REQ-3 | D6 的「形似 ID 前导 token」没有语法、边界、样例选择及 pattern source/origin 输出契约，AC-IP-10～12 无唯一 oracle | med | 1 | verified |
+| REQ-4 | `## Notes` 未定义完整状态转移、位置、重复、fence 与 CAS 关系，且 AC-IP-14 未排除 Notes-only delta，和 state A 的 zero-op refusal 冲突 | high | 1 | fixed (v3) |
+| REQ-5 | 非-Requirement h3 仅定义 IN_REQUIREMENT；FILE_PREAMBLE、section preamble、RENAMED、h4/h5 及错误后 block 恢复/丢弃语义未声明 | med | 1 | fixed (v3) |
+
+<!-- STEP0·r1（codex gpt-5.6-sol, session 019fff86）的 ledger delta，逐字落盘。五条全部 accept。 -->
+
+<!-- STEP0·r2：REQ-2 / REQ-3 → verified；REQ-1 / REQ-4 / REQ-5 reopened，三条都成立：
+       REQ-1 → 方向对了，但我在 v2 里留下两处 v1 旧话（K3 与触及范围），同一份需求同时要求
+         「现在解耦」和「以后再决定」。
+       REQ-4 → **真矛盾**：Notes 只在下一个 h2 结束，所以「Notes 之后、首个操作段之前」的 CAS 戳
+         仍在 Notes 内，与「段内戳一律忽略」不可兼得。裁定取「Notes 真正不透明」——戳必须前置。
+         另把「三种法定操作段」改正为四种（漏了 RENAMED）。
+       REQ-5 → `RENAMED` 不是 state 而是正交的 kind，「RENAMED 内非法 Requirement 之后」这个真实
+         复合态会同时命中矩阵两格；且漏了 `SKIP_UNRECOGNIZED`。矩阵改按真实 state 表述 + 两条优先级规则。
+     三条全 accept，落 req-v3.md。verdict 序列：5→3。 -->
+
+exec
+/usr/bin/zsh -lc "nl -ba apriori/changes/id-pattern-and-delta-notes/requirement/req-v3.md | sed -n '185,345p'; nl -ba lib/archive-merge.js | sed -n '78,180p'; rg -n \"DEFAULT_ID\" lib --glob '*.js'; git merge-base brownfield-round2 main; git rev-parse --short HEAD main" in /mnt/d/Workbench/misc/apriori-spec-development
+ exited 128 in 299ms:
+   185	
+   186	**finding 条数契约**：两类各产出**恰好一条** D6 finding（各自点名自己的场景），
+   187	互不合并；`findings` 计数按既有规则 = finding 状态条目数，因此两类同时存在时比今天多一条。
+   188	
+   189	### B3 — delta 给说明性内容一个合法位置，并堵掉静默并入
+   190	
+   191	1. **一个被解析器忽略的 h2 段**：`## Notes`。它的整段内容不参与任何合并，也不产生 problem。
+   192	
+   193	   **`IN_NOTES` 的完整转移契约（r1·REQ-4 的处置）**：
+   194	
+   195	   | 问题 | 裁定 |
+   196	   |---|---|
+   197	   | 可以出现在哪里 | 第一个操作段**之前**、两个操作段**之间**、文件**末尾** —— 三处皆可 |
+   198	   | 可以出现几次 | **不限次** |
+   199	   | 进入时 | `flush()` 当前 requirement 块（与其它 h2 一致），状态转 `IN_NOTES` |
+   200	   | 何时结束 | **围栏之外**的下一个 h2。若它是**四种**法定操作段之一（`ADDED` / `MODIFIED` / `REMOVED` / **`RENAMED`**——r2 勘误：v2 写成「三种」）→ 正常恢复解析；若是其它 h2 → 按 AC-IP-16 照旧报 problem |
+   201	   | 段内的 `### Requirement:` / `#### Scenario:` | **全部忽略**，不产生任何合并操作、不产生 problem |
+   202	   | 段内的 `<!-- apriori-base: … -->` | **全部忽略**：既不被采纳为 CAS 戳，也不因「重复戳」「戳在段后」而报 problem |
+   203	   | Notes 标题本身是否置 `sectionSeen` | **否**——但这不代表戳可以跟在 Notes 后面，见下一行 |
+   204	| 首个操作段**之前**的合法 CAS 戳该放哪 | **必须放在 `## Notes` 之前**。r2 指出 v2 自相矛盾：Notes 只在下一个 h2 处结束，所以「Notes 之后、首个操作段之前」的那个戳**仍在 Notes 内**，按「段内戳一律忽略」就该被忽略，而 AC-IP-14d 又要求它有效——两者不可兼得。裁定取**「Notes 真正不透明」**这一支：戳前置。（另一支是给 Notes 发明一个显式终止语法，那会扩大本 change 的语法面，不做） |
+   205	   | 段内的代码围栏 | 照旧不透明；**未闭合的围栏**使其后内容保持不透明直到文件末尾（与既有 fence 语义一致） |
+   206	   | Notes-only 的 delta（除 Notes 外零操作） | **仍按零操作拒绝** —— `deltaOpCount === 0` 的既有契约（`lib/archive-merge.js:375` / `:815`，D-AM-3）**一字不动** |
+   207	2. **requirement 块内的非-`Requirement` h3 变成一个 problem**（带行号），不再静默并入 store。
+   208	
+   209	   **标题层级 × 状态矩阵（r1·REQ-5 的处置——只定义一个状态是不够的）**：
+   210	
+   211	   **r2 勘误**：v2 的矩阵把 `RENAMED` 当成一个 state，而它其实是**正交的 `kind`**；
+   212	   而且漏了真实存在的 `SKIP_UNRECOGNIZED` 状态。于是「RENAMED 段内非法 Requirement 之后」
+   213	   这个真实复合态（`state=IN_REQUIREMENT` + `kind=RENAMED` + `blockDiscard=true`）
+   214	   会同时命中「`IN_REQUIREMENT` → 新 problem」和「`RENAMED` → 自由文本不变」两格，给出相反结果。
+   215	
+   216	   改为按**真实的 `state`**（外加两条优先级规则）表述：
+   217	
+   218	   | 行 | `FILE_PREAMBLE` | `IN_SECTION`（任一 kind 的段首自由文本） | `IN_REQUIREMENT` | `SKIP_UNRECOGNIZED` | `IN_NOTES` | 围栏内 |
+   219	   |---|---|---|---|---|---|---|
+   220	   | `### Requirement: …` | 照旧 problem（块在段前） | 照旧开块；`kind === 'RENAMED'` 时照旧 problem + 作废块 | 照旧开新块 | 照旧被原 h2 的 problem 覆盖，静默跳过 | 忽略 | 不透明 |
+   221	   | **其它 `### …`** | **照旧自由文本** | **照旧自由文本** | **新 problem**（受下方优先级 P1 约束） | 照旧静默跳过 | 忽略 | 不透明 |
+   222	   | `#### Scenario: …` | 照旧 problem | 照旧 problem | 照旧正文 | 照旧静默跳过 | 忽略 | 不透明 |
+   223	   | `##### …` 及更深 | 照旧自由文本 / 正文 | 同左 | 同左 | 照旧静默跳过 | 忽略 | 不透明 |
+   224	   | `## Notes` | 进 `IN_NOTES` | 进 `IN_NOTES`（先 flush） | 进 `IN_NOTES`（先 flush） | **进 `IN_NOTES`**（h2 结束跳过态） | 重开一个 Notes 段 | 不透明 |
+   225	
+   226	   **两条优先级规则（必须钉死，否则 buckets 与 problems 会因实现选择而不同）**：
+   227	
+   228	   - **P1 —— `blockDiscard === true` 优先于「新 h3」检查**：当前 block 已被作废时，
+   229	     后续所有非-h2、非合法-`Requirement` 的行**继续静默吸收**，**不再**产出第二条 problem。
+   230	     这一条同时覆盖两个来源：① 本 change 新增的「非-Requirement h3 作废块」；
+   231	     ② 既有的「RENAMED 段内非法 Requirement 作废块」——后者的行为因此**一字不变**。
+   232	   - **P2 —— 出错后的恢复**：记录**一条** problem、置 `blockDiscard = true`、停留在 `IN_REQUIREMENT`，
+   233	     直到下一个 `### Requirement:` 或任一 h2 才恢复。被作废的 block **不进** buckets。
+   234	
+   235	   **只收紧一格**：`IN_REQUIREMENT` 且 `blockDiscard === false` 时的非-`Requirement` h3。其余一律保持状态 A。
+   236	3. RUNBOOK 的 delta 模板给出 `## Notes` 的示例。
+   237	
+   238	---
+   239	
+   240	## 三、验收标准
+   241	
+   242	### 默认 pattern（A 组）
+   243	
+   244	| ID | 若 | 则 |
+   245	|---|---|---|
+   246	| AC-IP-01 | 一个场景标题为 `AC-BIS-01 …` / `LIFE-DWS-01 …` / `AC-30f …`，在**未配置** `id-pattern` 的项目里跑 `verify` | 三者都被识别为已绑定 ID（今日全部 unidentified） |
+   247	| AC-IP-02 | 现行默认式能识别的**任何**输入 | 新默认式识别出**逐字节相同**的 ID（严格超集，且不改变已有绑定） |
+   248	| AC-IP-03 | 本仓自身的 store，分别用新旧默认式跑 `collectScenarios` | identified / unidentified / duplicates 三个计数与 **ID 集合**全部相同 |
+   249	| AC-IP-04 | 一个标题没有任何前导 ID 的场景 | 仍为 unidentified（放宽不等于放弃） |
+   250	| AC-IP-05 | 项目**配置了** `id-pattern` 行 | 配置仍然优先，默认值不参与——`resolveIdPattern` 的优先级（flag > config > 默认）一字不变 |
+   251	| AC-IP-06 | 一个项目里同时存在 `AC-30` 与 `AC-30f` | 两者是**两个不同的 ID**，不构成重复 |
+   252	| AC-IP-07 | 放宽后新出现的重复 ID（两个此前都 unidentified、现在都识别成同一 ID 的场景） | 照常报 duplicate——这是**期望的新失败**，须在 CHANGELOG 声明 |
+   253	| AC-IP-08 | `check` 的 CK-04、`doctor` 的 D6、`verify`、`gate` C1 四个消费者 | 全部经由**同一个** `DEFAULT_ID`，无第二处硬编码 |
+   254	| AC-IP-09 | `doctor` 的 D5 探针（`lib/doctor.js:33`） | 其 TAP 计数分类的结论**不因默认值放宽而改变**（`truth/doctor.md` 声称它 pattern-insensitive——本条把该声称变成断言） |
+   255	
+   256	### doctor D6 的 fix 提示（B 组）
+   257	
+   258	| ID | 若 | 则 |
+   259	|---|---|---|
+   260	| AC-IP-10 | store 里有场景标题带形似 ID 的前导 token，但不匹配当前生效 pattern | D6 的 fix **指向 `process-config.md` 的 `id-pattern` 行**，detail 回显样例 ID 与当前 pattern 的来源 |
+   261	| AC-IP-11 | store 里有场景标题**完全没有**前导 ID token | D6 的 fix 仍是「加前导 ID」，文案与本 change 前一致 |
+   262	| AC-IP-12 | 两类同时存在 | 两条 fix 都出现，各自点名自己的场景，不混为一谈 |
+   263	| AC-IP-13 | D6 的其余行为（重复 ID、空库、缺目录、坏 pattern 配置） | **一字不变** |
+   264	
+   265	### delta 语法（C 组）
+   266	
+   267	| ID | 若 | 则 |
+   268	|---|---|---|
+   269	| AC-IP-14 | 一个**其余部分合法且至少含一个操作**的 delta 含一个 `## Notes` 段 | `archive` 与 `verify --change` 正常通过；该段内容**不参与合并**、**不写进 store**、**不产生 problem** |
+   270	| AC-IP-14b | 一个**只有** `## Notes`、没有任何操作的 delta | **仍按零操作拒绝**（既有 `parsed 0 delta operations` 文案不变）——Notes 不是操作 |
+   271	| AC-IP-14c | `## Notes` 分别出现在首个操作段**之前** / 两个操作段**之间** / 文件**末尾**；以及出现**两次** | 四种都正常通过，段内内容一律不参与合并 |
+   272	| AC-IP-14d | 合法 CAS 戳出现在 `## Notes` **之前** | 戳正常生效（Notes 标题不置 `sectionSeen`，因此不触发「戳在段后」的 problem） |
+   273	| AC-IP-14d2 | 合法形状的 CAS 戳出现在 `## Notes` **段内** | 被**忽略**：既不采纳为戳，也不报 problem。若该 delta 有 mutation 操作且别处没有戳，它就是**未打戳**，按既有 CAS 默认拒绝路径处理 |
+   274	| AC-IP-14g | `## Notes` 之后紧跟 `## RENAMED Requirements` | 正常恢复解析（四种法定操作段都恢复，不只三种） |
+   275	| AC-IP-14e | `## Notes` 段结束于**围栏之外**的下一个 h2 | 若是法定操作段 → 正常恢复解析；若是其它 h2 → 照旧报 problem（AC-IP-16） |
+   276	| AC-IP-14f | `## Notes` 段内含**未闭合**的代码围栏 | 其后内容保持不透明直到文件末尾，与既有 fence 语义一致 |
+   277	| AC-IP-15 | `## Notes` 段内出现 `### Requirement:` / `#### Scenario:` / `<!-- apriori-base: … -->` | 全部被忽略（Notes 段是不透明的），不产生额外的合并操作、不打乱 CAS 戳的判定 |
+   278	| AC-IP-16 | delta 含**其它**未识别的 h2（如 `## 场景 ID 逐条映射`） | 仍是带行号的 problem，文案与本 change 前一致——只有 `## Notes` 是新开的口子 |
+   279	| AC-IP-17 | requirement 块内出现非-`Requirement` 的 h3（如 `### 说明`） | **成为带行号的 problem**，该 delta 被拒绝；今天它会被静默并入 store |
+   280	| AC-IP-17b | 同上，且该 h3 之后还有若干行正文，再跟一个合法的 `### Requirement:` | 该 h3 只产出**一条** problem（不刷屏）；被作废的块**不进** buckets；其后的合法 Requirement 正常开新块 |
+   281	| AC-IP-17c | 非-`Requirement` h3 出现在 `FILE_PREAMBLE` / `IN_SECTION` 段首自由文本处 | **行为与本 change 前一字不变**（自由文本） |
+   282	| AC-IP-17e | `RENAMED` 段内先出现非法 `### Requirement:`（触发既有的作废块），其后再出现非-`Requirement` h3 | 由**优先级 P1** 裁定：静默吸收，**不产出第二条 problem**——RENAMED 段的既有行为一字不变（r2 勘误：v2 的矩阵在此给出相反结果） |
+   283	| AC-IP-17f | 非-`Requirement` h3 出现在 `SKIP_UNRECOGNIZED` 状态（前面有个未识别 h2） | 照旧被那个 h2 的 problem 覆盖，静默跳过，不新增 problem |
+   284	| AC-IP-17g | `## Notes` 出现在 `SKIP_UNRECOGNIZED` 状态 | 结束跳过态并进入 `IN_NOTES`（h2 是跳过态的终止条件） |
+   285	| AC-IP-17d | `#####` 及更深的标题，出现在任一状态 | 行为与本 change 前一字不变 |
+   286	| AC-IP-18 | 同上，但在 `ADDED` 段（无旧块可比） | 同样被拒绝——这正是 MODIFIED INTEGRITY 报告**照不到**的那一路 |
+   287	| AC-IP-19 | `apriori/changes/archive/**` 的全部存量 delta 语料 | 逐个仍**逐字节等价**地解析（既有语料测试不得变色；实测语料中两种构造各 0 处） |
+   288	| AC-IP-20 | 代码围栏内的 `### …` 与 `## …` | 仍然不透明，不受本 change 影响 |
+   289	
+   290	### 文档（D 组）
+   291	
+   292	| ID | 若 | 则 |
+   293	|---|---|---|
+   294	| AC-IP-21 | 读 `templates/process-config.md` | `id-pattern` 行的 **Value 列**（第 2 列，会被 `init` 原样写进新项目并由 `resolveIdPattern` **优先消费**）**与 Default 列（第 4 列）都**与新默认式一致；表下注释里「built-in default `[A-Z]+-\d+`」的字样一并更新（r1·REQ-2：只改 Default 列的话，新项目会带着**旧** pattern 的 active config 行，把新 `DEFAULT_ID` 完全遮蔽，而静态文档验收却仍然通过） |
+   295	| AC-IP-21b | 全新 `apriori init` 之后**不手改** config，跑 `resolveIdPattern` | 返回**新** source，`origin: 'config'`；且 config 来源的匹配子进程对 `AC-BIS-01` / `LIFE-DWS-01` / `AC-30f` 的**场景标题与 TAP description** 都返回完整 ID |
+   296	| AC-IP-21c | 同一个全新项目上跑 `check` / `doctor` D6 / `verify` / `gate` C1 | 四者对上述三种 ID 的结论一致（同一条生效 pattern，无第二处硬编码） |
+   297	| AC-IP-22 | 读 `RUNBOOK.md` / `RUNBOOK_cn.md` 的 delta 相关段落 | 出现 `## Notes` 的用法说明与一个示例 |
+   298	| AC-IP-23 | 读 `docs/cli.md` / `docs/cli_cn.md` 中提及默认 id-pattern 的位置 | 与新默认式一致 |
+   299	| AC-IP-24 | 读 `CHANGELOG.md` | 显著声明**默认值变更**（可能让既有项目新出现 duplicate 报告）与 **delta 语法的两处变更** |
+   300	
+   301	---
+   302	
+   303	## 四、明确不做（out of scope）
+   304	
+   305	| # | 不做 | 理由 |
+   306	|---|---|---|
+   307	| O1 | 改 `resolveIdPattern` 的优先级（flag > config > 默认） | 那是 `gate-id-pattern` 刚立的契约，本 change 只换兜底值 |
+   308	| O2 | 把 `id-pattern` 行写进用户的 `process-config.md` | 违反 R3；而且本 change 的**要点**正是让大多数项目**不需要**那一行 |
+   309	| O3 | 改 `leadId` 的边界规则 | 它是「ID 后面不能紧跟字母数字下划线」这条独立保证，与 pattern 宽窄正交；改它会影响每一个消费者的绑定语义 |
+   310	| O4 | 让解析器「智能判断」哪些 h2/h3 是说明、哪些是指令 | 复盘明确列为过度方案。**一个**约定好的段名，就够了 |
+   311	| O5 | 给 `## Notes` 之外再开别的忽略段 | YAGNI；需要时是另一个 change |
+   312	| O6 | 回溯修补存量 store 里被静默并入的说明性内容 | 实测为 **0** 处，无事可修 |
+   313	| O7 | change 2（`archive-preflight`）的任何内容 | 它已挂起；本 change 只碰 delta **解析器**，与它改的高层 archive 块不是同一个 Requirement |
+   314	| O8 | 修 D5 计数把 tagged SKIP/TODO 算成 0 这个**既有**怪癖（§1.5 的注记） | 它今天就存在、与本 change 无因果关系；修它要改 D5 的分类语义，有自己的验收面。本 change 用 B1b 的**解耦**保证自己不把它变严重，仅此而已 |
+   315	| O9 | 讨论「模板到底该不该给 `id-pattern` 设一个 active Value」 | r1·REQ-2 暴露出：模板设了 Value，就意味着每个新项目都走 config 来源的子进程路径。这是个**独立的**产品决定（要动 `init` 的模板哲学），本 change 只保证两列一致、不留旧值 |
+   316	
+   317	**触及范围（源码）**：`lib/config.js`（`DEFAULT_ID` 一个常量）、`lib/doctor.js`（**D5 的分类 regex 解耦** + D6 的 fix 分支——r2 勘误：v2 此处漏了已成为目标状态的 D5 解耦）、
+   318	`lib/archive-merge.js`（`## Notes` 忽略段 + 非-Requirement h3 的 problem）。
+   319	
+   320	---
+   321	
+   322	## 五、已知后果与风险
+   323	
+   324	| # | 事项 | 处置 |
+   325	|---|---|---|
+   326	| K1 | **默认值变更是外部可见的行为变更**：既有项目里此前 unidentified 的场景会变成已识别；若其中两个恰好识别成同一 ID，会**新出现** duplicate 报错 | 期望行为（重复 ID 本来就是缺陷，只是此前被 unidentified 掩盖）。必须在 CHANGELOG 显著声明（AC-IP-24） |
+   327	| K2 | 此前 unidentified 的场景变成 **UNBOUND**（识别了但没有对应测试） | 同样是期望行为：从「这条我看不懂」变成「这条你没测」——后者才是真话 |
+   328	| K3 | `doctor` D5 **不再**消费 `DEFAULT_ID`（B1b 已裁定解耦），改用属于自己的冻结分类 regex | AC-IP-09 因此从「一个待验证的声称」变成**结构上必然**成立：D5 根本不读那个常量。验收方式是「改变 `DEFAULT_ID` 前后 D5 的结论一致」。**r2 勘误**：v2 此处仍留着 v1 的「D5 用 DEFAULT_ID / 若不成立则 STEP2 重新设计」，与 B1b 直接冲突 |
+   329	| K4 | `## Notes` 是新的**语法面**，一旦发布就要长期兼容 | 段名与语义在本 change 里定死；O5 声明不再开第二个 |
+   330	| K5 | 非-Requirement h3 由「静默并入」变「拒绝」是**收紧** | 实测存量语料 0 处受影响；但外部项目可能有——CHANGELOG 需声明，并给出「改成 `## Notes` 或降级为正文」的迁移建议 |
+   331	| K6 | 与挂起的 change 2 的 CAS 戳冲突 | 本 change 归档后，`archive-preflight` 的 archive-merge delta 需换戳。已记在其 flow-state |
+   332	
+   333	---
+   334	
+   335	## 七、STEP0·r2 处置说明（本版）
+   336	
+   337	| ID | 处置 | 说明 |
+   338	|---|---|---|
+   339	| REQ-1（reopened） | **accept** | 评审方确认 B1b 的方向成立、且移除 D5 后没有第二个暴露点；重开的原因是我在 v2 里**留下了两处 v1 的旧话**——K3 仍写「D5 用 DEFAULT_ID / 若不成立则 STEP2 重新设计」，触及范围仍只写「D6 的 fix 分支」。同一份需求于是同时要求「现在解耦」和「以后再决定」。两处都已改正 |
+   340	| REQ-4（reopened） | **accept**，取「Notes 真正不透明」一支 | 真矛盾：Notes 只在下一个 h2 结束，所以「Notes 之后、首个操作段之前」的戳**仍在 Notes 内**，与「段内戳一律忽略」直接冲突。裁定：**首个操作段前的合法戳必须放在 `## Notes` 之前**；AC-IP-14d 改写，另加 AC-IP-14d2 明确「段内戳被忽略 ⇒ 若别处无戳则该 delta 视为未打戳，走既有 CAS 默认拒绝」。另一支（给 Notes 发明显式终止语法）会扩大语法面，不做。同时把「三种法定操作段」改正为**四种**（漏了 `RENAMED`），新增 AC-IP-14g |
+   341	| REQ-5（reopened） | **accept** | 两处硬伤：① `RENAMED` 不是 state 而是**正交的 `kind`**，所以「RENAMED 段内非法 Requirement 之后」这个真实复合态会同时命中矩阵两格并给出相反结果；② 漏了真实存在的 `SKIP_UNRECOGNIZED` 状态。矩阵改为按**真实 state** 表述并补上 `SKIP_UNRECOGNIZED` 与 `## Notes` 行，另加两条优先级规则：**P1** `blockDiscard === true` 优先于新 h3 检查（同时覆盖新旧两种作废块来源，RENAMED 的既有行为因此一字不变）、**P2** 出错恢复。新增 AC-IP-17e/17f/17g |
+   342	| REQ-2 / REQ-3 | r2 已 **verified**，本版未改动其对应内容 | — |
+   343	
+   344	---
+   345	
+    78	// ---- delta parsing ---------------------------------------------------------
+    79	
+    80	// per-line forms of the shared regexes (no /m — the walker feeds one normalized line at a time)
+    81	const SECTION_LINE_RE = /^##\s+(ADDED|MODIFIED|REMOVED|RENAMED)\s+Requirements\s*$/;
+    82	const H2_LINE_RE = /^##\s/;
+    83	const REQ_LINE_RE = /^###\s+Requirement:\s+(.+?)\s*$/;
+    84	const SCENARIO_LINE_RE = /^####\s+Scenario:/;
+    85	const RENAME_LINE_RE = /^\s*-\s*(.+?)\s*->\s*(.+?)\s*$/;
+    86	const STAMP_ATTEMPT_LINE_RE = /^\s*<!--(?=[^>]*apriori-base)[^>]*-->\s*$/;
+    87	const STAMP_STRICT_LINE_RE = /^<!--\s*apriori-base:\s*(\S+)\s*-->\s*$/;
+    88	const FENCE_LINE_RE = /^\s*```/;
+    89	
+    90	// strict form: a sequential, fully-consuming line walker — every line (outside
+    91	// code fences, which are opaque) belongs to exactly one legal construct, and
+    92	// anything else is a problems[] entry carrying its 1-based line number.
+    93	// Well-formed deltas parse byte-identically to the old split()-based grammar.
+    94	function parseDeltaStrict(text) {
+    95	  const problems = [];
+    96	  const buckets = { ADDED: new Map(), MODIFIED: new Map(), REMOVED: new Map(), RENAMED: [] };
+    97	  const seen = new Map();               // name -> first section carrying it
+    98	  const lines = text.split('\n').map((l) => (l.endsWith('\r') ? l.slice(0, -1) : l));
+    99	
+   100	  let state = 'FILE_PREAMBLE';          // | 'IN_SECTION' | 'IN_REQUIREMENT' | 'SKIP_UNRECOGNIZED'
+   101	  let kind = null;                      // current section kind while IN_SECTION/IN_REQUIREMENT
+   102	  let blockName = null, blockLines = null, blockDiscard = false;
+   103	  let inFence = false;
+   104	  let stamp = null, stampSeen = false, stampProblems = false, sectionSeen = false;
+   105	
+   106	  const flush = () => {
+   107	    if (blockLines === null) return;
+   108	    if (!blockDiscard) buckets[kind].set(blockName, blockLines.join('\n').replace(/\s+$/, '') + '\n');
+   109	    blockName = null; blockLines = null; blockDiscard = false;
+   110	  };
+   111	  const stampProblem = (msg) => { problems.push(msg); stampProblems = true; };
+   112	
+   113	  for (let i = 0; i < lines.length; i++) {
+   114	    const line = lines[i], n = i + 1;
+   115	    if (inFence) {                      // opaque: never structure, never a problem
+   116	      if (blockLines !== null) blockLines.push(line);
+   117	      if (FENCE_LINE_RE.test(line)) inFence = false;
+   118	      continue;
+   119	    }
+   120	    if (FENCE_LINE_RE.test(line)) {
+   121	      inFence = true;
+   122	      if (blockLines !== null) blockLines.push(line);
+   123	      continue;
+   124	    }
+   125	    const sec = SECTION_LINE_RE.exec(line);
+   126	    if (sec) { flush(); state = 'IN_SECTION'; kind = sec[1]; sectionSeen = true; continue; }
+   127	    if (H2_LINE_RE.test(line)) {        // one problem per unrecognized heading; its lines are skipped, not re-homed
+   128	      flush();
+   129	      problems.push(`line ${n}: unrecognized section heading '${line.trim()}'`);
+   130	      state = 'SKIP_UNRECOGNIZED'; kind = null;
+   131	      continue;
+   132	    }
+   133	    if (state === 'SKIP_UNRECOGNIZED') continue;   // covered by the heading's problem — no flood, no attribution (stamps included)
+   134	    // stamps are matched in every remaining state so a stray one is never absorbed as body text
+   135	    if (STAMP_ATTEMPT_LINE_RE.test(line)) {
+   136	      const m = STAMP_STRICT_LINE_RE.exec(line.trim());
+   137	      if (!m) { stampProblem(`line ${n}: malformed apriori-base stamp line: ${line.trim()}`); continue; }
+   138	      if (stampSeen) { stampProblem(`line ${n}: carries more than one apriori-base stamp line`); continue; }
+   139	      stampSeen = true;
+   140	      if (sectionSeen) { stampProblem(`line ${n}: apriori-base stamp appears after the first delta section heading`); continue; }
+   141	      if (m[1] !== 'new' && !/^sha256:[0-9a-f]{64}$/.test(m[1])) { stampProblem(`line ${n}: malformed apriori-base stamp '${m[1]}'`); continue; }
+   142	      stamp = m[1];
+   143	      continue;
+   144	    }
+   145	    const req = REQ_LINE_RE.exec(line);
+   146	    if (req) {
+   147	      if (state === 'FILE_PREAMBLE') { problems.push(`line ${n}: requirement block before any section heading`); continue; }
+   148	      if (kind === 'RENAMED') {
+   149	        // the whole illegal block is discarded — its body must not be reinterpreted as rename lines
+   150	        problems.push(`line ${n}: requirement block inside the RENAMED section`);
+   151	        flush();
+   152	        state = 'IN_REQUIREMENT'; blockName = null; blockLines = []; blockDiscard = true;
+   153	        continue;
+   154	      }
+   155	      flush();
+   156	      state = 'IN_REQUIREMENT';
+   157	      blockName = req[1].trim(); blockLines = [line]; blockDiscard = false;
+   158	      if (buckets[kind].has(blockName)) {          // first block wins, as before
+   159	        problems.push(`line ${n}: duplicate requirement '${blockName}' in the ${kind} section`);
+   160	        blockDiscard = true;
+   161	      } else if (seen.has(blockName)) {
+   162	        problems.push(`line ${n}: duplicate requirement '${blockName}' appears in both ${seen.get(blockName)} and ${kind}`);
+   163	      } else seen.set(blockName, kind);
+   164	      continue;
+   165	    }
+   166	    if (state === 'IN_REQUIREMENT') { blockLines.push(line); continue; }   // scenarios and prose are body
+   167	    if (SCENARIO_LINE_RE.test(line)) { problems.push(`line ${n}: scenario outside any requirement block`); continue; }
+   168	    if (state === 'IN_SECTION' && kind === 'RENAMED') {
+   169	      const rn = RENAME_LINE_RE.exec(line);
+   170	      if (rn) buckets.RENAMED.push([rn[1].trim(), rn[2].trim()]);
+   171	      continue;                          // other lines are free text
+   172	    }
+   173	    // FILE_PREAMBLE / section preamble free text and blanks are legal
+   174	  }
+   175	  flush();
+   176	  return { delta: buckets, stamp: stampProblems ? null : stamp, problems };
+   177	}
+   178	
+   179	function parseDelta(text) { return parseDeltaStrict(text).delta; }
+   180	
+lib/config.js:16:const DEFAULT_ID = '[A-Z]+-\\d+';
+lib/config.js:117:// config fallback) > config `id-pattern` row > DEFAULT_ID.
+lib/config.js:131:  return { source: DEFAULT_ID, origin: 'default' };
+lib/config.js:156:module.exports = { parseConfig, readConfig, getConfig, splitCells, DEFAULT_ID, resolveIdPattern, sanitizeMsg, boundedSource, resolveVerificationProfile, VERIFICATION_PROFILES };
+lib/doctor.js:12:const { collectScenarios, parseTap, zeroTapParsed, runTestCommand, configTestCmd, DEFAULT_ID, looksLikeTap, makeIdMatcher, matcherFailureMsg } = require('./spec-runner');
+lib/doctor.js:33:  const idRe = new RegExp(DEFAULT_ID);
+lib/spec-runner.js:17:// DEFAULT_ID lives in config (the zero-dep resolution home) and is re-exported here unchanged
+lib/spec-runner.js:18:const { DEFAULT_ID, resolveIdPattern, sanitizeMsg } = require('./config');
+lib/spec-runner.js:829:  configTestCmd, cli, DEFAULT_ID, makeIdMatcher, _setChildRunner, matcherFailureMsg, CHILD_SPAWN_OPTS,
+lib/check.js:15:const { DEFAULT_ID, resolveIdPattern } = require('./config');
+lib/check.js:163:function checkScenarioIds(specText, name, idPattern = DEFAULT_ID) {
+235a121c49be832e290f419da180115d6d28c0b7
+fatal: Needed a single revision
+
+codex
+REQ-1 and REQ-4 now reconcile cleanly. The rebuilt parser matrix is nearly complete; I’m checking one last control-flow seam the matrix does not name explicitly: global CAS-stamp handling versus `blockDiscard` absorption, because stamps currently run before requirement-body handling even inside a discarded RENAMED block.
+exec
+/usr/bin/zsh -lc "node -e 'const {parseDeltaStrict}=require(\"./lib/archive-merge\"); for (const text of [\"## RENAMED Requirements\\n### Requirement: Bad\\n<"'!-- apriori-base: new -->'"\\n### Explanation\\n\", \"## ADDED Requirements\\n### Requirement: Good\\n### Explanation\\n<"'!-- apriori-base: new -->'"\\n### Requirement: Next\\n\"]){ const r=parseDeltaStrict(text); console.log(JSON.stringify({problems:r.problems,stamp:r.stamp,added:[...r.delta.ADDED.keys()],renamed:r.delta.RENAMED})); }'" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 164ms:
+{"problems":["line 2: requirement block inside the RENAMED section","line 3: apriori-base stamp appears after the first delta section heading"],"stamp":null,"added":[],"renamed":[]}
+{"problems":["line 4: apriori-base stamp appears after the first delta section heading"],"stamp":null,"added":["Good","Next"],"renamed":[]}
+
+codex
+# req-review-v3 — id-pattern-and-delta-notes requirement review
+
+评审对象：`requirement/req-v3.md`  
+评审轮次：3  
+评审角色：P1 senior requirements reviewer  
+评审方式：只读核对 v3、r2 review、ledger、KB 与实际源码。
+
+## Round-2 findings verification
+
+### REQ-1 — verified
+
+v3 已消除两处残留冲突：
+
+- K3 明确 D5 不再消费 `DEFAULT_ID`，改用冻结的 `[A-Z]+-\d+` 分类 regex；
+- 源码触及范围明确包含 D5 classification-regex decoupling 和 D6 fix 分支。
+
+该设计确实使 AC-IP-09 结构上成立。移除 D5 后，其余 `DEFAULT_ID` 消费者正是有意放宽的 CK-04、D6、verify 和 gate C1；未发现其它生产代码消费者暴露在变化之外。
+
+### REQ-4 — verified
+
+v3 选择“Notes 真正 opaque”的方向后，状态机与 CAS 契约一致：
+
+- 首个操作段之前的真实 stamp 必须位于 `## Notes` 之前；
+- Notes 内任何 stamp-shaped line 均被忽略，不改变 `stamp`、`stampSeen` 或 `stampProblems`；
+- mutation delta 若只有 Notes 内伪 stamp，仍视为 unstamped，进入既有 CAS 路径；
+- Notes 只在下一个 fence 外 h2 结束；
+- ADDED、MODIFIED、REMOVED、RENAMED 四种操作段均恢复正常解析；
+- Notes-only、重复 Notes、未闭合 fence、未知 h2 和 Notes → RENAMED 均有明确验收。
+
+该契约可以按唯一分支顺序实现，REQ-4 已关闭。
+
+### REQ-5 — REOPEN
+
+真实 state、RENAMED kind、`SKIP_UNRECOGNIZED` 和新 `IN_NOTES` 已正确建模；普通 h3 的 discard/recovery 也已确定。但 P1 对 discarded block 的描述仍与实际 CAS 控制流冲突。
+
+v3 P1 规定：
+
+> `blockDiscard === true` 时，后续所有非-h2、非合法-Requirement 行继续静默吸收。
+
+“所有”包括 CAS stamp-shaped line。然而 state A 在任何非-skipped state 中都会先处理 stamp，再进入 `IN_REQUIREMENT` body 分支。实际反例：
+
+```markdown
+## RENAMED Requirements
+### Requirement: Bad
+<!-- apriori-base: new -->
+```
+
+state A 产生两条 problem：
+
+1. requirement block inside RENAMED；
+2. apriori-base stamp appears after the first delta section heading。
+
+若按 P1 的“所有非-h2、非合法 Requirement 行静默吸收”实现，第二条 problem 会被吞掉，RENAMED 行为便不是 byte-identical。普通 requirement 因新 h3进入 discard 后也有同一优先级问题。`IN_NOTES` 有意覆盖 stamp 处理，但 discarded requirement block 没有声明这种语法豁免。
+
+- **风险**：med
+- **建议修复**：将控制流优先级明确为：
+  1. fence；
+  2. Notes / legal h2 / unknown h2；
+  3. `SKIP_UNRECOGNIZED` 与 `IN_NOTES` 的状态短路；
+  4. 既有 CAS stamp handling；
+  5. legal `### Requirement:`；
+  6. `blockDiscard === true`；
+  7. 新的 non-Requirement h3 check；
+  8. 其它 body 行。
+  
+  将 P1 的“所有非-h2、非合法 Requirement 行”收窄为“完成既有 stamp handling 后的普通 requirement-body 行”。增加验收：RENAMED 非法 requirement 后跟 late/malformed/duplicate stamp 时，stamp problem 与 state A 完全一致；普通 block 因坏 h3被 discard 后，stamp handling 也保持现有全局语义。
+
+除此之外，矩阵中的 state/kind/blockDiscard 组合已能确定性落到唯一分支。
+
+## Fresh six-dimension review
+
+### 1. 目标状态 B 是否清楚且无歧义
+
+**结论：未通过。** 唯一剩余歧义是 REQ-5 中 `blockDiscard` 与全局 stamp handling 的先后关系。其余目标状态已经清楚。
+
+### 2. 边界、异常与失败路径是否覆盖
+
+**结论：未通过。** Notes、fence、unknown section、RENAMED recovery 和普通 h3 recovery 均已覆盖；仅缺 discarded block 内 stamp 的边界。
+
+null、out-of-range、matcher timeout、CAS 并发和 archive rollback均继承 state A，未发现新的缺口。
+
+### 3. 是否存在隐含但未声明的状态变化或副作用
+
+**结论：未通过。** 若按 P1 的宽泛文字实现，会隐式取消 discarded block 内既有的 late/malformed/duplicate stamp problems。该变化与“RENAMED byte-identical”目标冲突。
+
+### 4. 每条验收标准是否可写成确定的 if/then
+
+**结论：未通过。** 现有 AC 没有裁定 discarded requirement block 内 CAS stamp 的结果。其余 AC 已具备确定输入和结果。
+
+### 5. 是否与当前状态 A 冲突
+
+**结论：未通过。** P1 的“全部静默吸收”与 `parseDeltaStrict` 当前先处理 stamp 的顺序冲突。除此之外，所有与 state A 的差异均为明确、有验收覆盖的目标变化。
+
+### 6. target lineage 是否声明且符合仓库现实
+
+**结论：通过。**
+
+`brownfield-round2` 的 merge-base 仍为 `main@235a121`；HEAD 包含 change 1 的归档提交，change 2 仍 parked。v4 → main 且禁止 v1/v3 的 lineage 与仓库现实一致。
+
+## Advisories
+
+### ADV-1 — 状态 A 中仍有一处“四种写成三种”
+
+§1.3 和 §1.4 的历史事实说明仍称解析器只认“三种”法定 h2，但同行实际列出 ADDED、MODIFIED、REMOVED、RENAMED 四种。目标状态和验收已改正，因此不影响实现 oracle；建议顺手修正文案。
+
+### ADV-2 — 严格超集应继续按 `leadId` 解释
+
+实际消费者都通过 `leadId`，因此旧绑定逐字节保持成立。裸 `RegExp.exec` 对 `AC-30f` 等输入不会保持相同匹配子串；后续 spec 最好将 AC-IP-02 明写为旧 `leadId` 返回非-null 的输入。
+
+### ADV-3 — out-of-scope section 完整
+
+O1～O9 明确覆盖优先级、配置所有权、边界规则、额外语法、存量修补、parked change、D5 lexer 重计数及模板 active Value 哲学，满足显式 out-of-scope 要求。
+
+## Ledger delta
+
+| ID | Previous status | New status | Round-3 result |
+|---|---|---|---|
+| REQ-1 | fixed (v3) | verified | K3、源码范围和 AC-IP-09 已与 D5 解耦决定一致 |
+| REQ-2 | verified | verified | 无变化 |
+| REQ-3 | verified | verified | 无变化 |
+| REQ-4 | fixed (v3) | verified | Notes 保持 opaque；真实 stamp 前置；四种操作段与 CAS 默认路径均已覆盖 |
+| REQ-5 | fixed (v3) | open | REOPEN：P1 的全吸收规则会吞掉 discarded block 内 state-A 的 stamp handling，无法保证 RENAMED byte-identical |
+
+VERDICT: 1 issues open
+tokens used
+180,945
+# req-review-v3 — id-pattern-and-delta-notes requirement review
+
+评审对象：`requirement/req-v3.md`  
+评审轮次：3  
+评审角色：P1 senior requirements reviewer  
+评审方式：只读核对 v3、r2 review、ledger、KB 与实际源码。
+
+## Round-2 findings verification
+
+### REQ-1 — verified
+
+v3 已消除两处残留冲突：
+
+- K3 明确 D5 不再消费 `DEFAULT_ID`，改用冻结的 `[A-Z]+-\d+` 分类 regex；
+- 源码触及范围明确包含 D5 classification-regex decoupling 和 D6 fix 分支。
+
+该设计确实使 AC-IP-09 结构上成立。移除 D5 后，其余 `DEFAULT_ID` 消费者正是有意放宽的 CK-04、D6、verify 和 gate C1；未发现其它生产代码消费者暴露在变化之外。
+
+### REQ-4 — verified
+
+v3 选择“Notes 真正 opaque”的方向后，状态机与 CAS 契约一致：
+
+- 首个操作段之前的真实 stamp 必须位于 `## Notes` 之前；
+- Notes 内任何 stamp-shaped line 均被忽略，不改变 `stamp`、`stampSeen` 或 `stampProblems`；
+- mutation delta 若只有 Notes 内伪 stamp，仍视为 unstamped，进入既有 CAS 路径；
+- Notes 只在下一个 fence 外 h2 结束；
+- ADDED、MODIFIED、REMOVED、RENAMED 四种操作段均恢复正常解析；
+- Notes-only、重复 Notes、未闭合 fence、未知 h2 和 Notes → RENAMED 均有明确验收。
+
+该契约可以按唯一分支顺序实现，REQ-4 已关闭。
+
+### REQ-5 — REOPEN
+
+真实 state、RENAMED kind、`SKIP_UNRECOGNIZED` 和新 `IN_NOTES` 已正确建模；普通 h3 的 discard/recovery 也已确定。但 P1 对 discarded block 的描述仍与实际 CAS 控制流冲突。
+
+v3 P1 规定：
+
+> `blockDiscard === true` 时，后续所有非-h2、非合法-Requirement 行继续静默吸收。
+
+“所有”包括 CAS stamp-shaped line。然而 state A 在任何非-skipped state 中都会先处理 stamp，再进入 `IN_REQUIREMENT` body 分支。实际反例：
+
+```markdown
+## RENAMED Requirements
+### Requirement: Bad
+<!-- apriori-base: new -->
+```
+
+state A 产生两条 problem：
+
+1. requirement block inside RENAMED；
+2. apriori-base stamp appears after the first delta section heading。
+
+若按 P1 的“所有非-h2、非合法 Requirement 行静默吸收”实现，第二条 problem 会被吞掉，RENAMED 行为便不是 byte-identical。普通 requirement 因新 h3进入 discard 后也有同一优先级问题。`IN_NOTES` 有意覆盖 stamp 处理，但 discarded requirement block 没有声明这种语法豁免。
+
+- **风险**：med
+- **建议修复**：将控制流优先级明确为：
+  1. fence；
+  2. Notes / legal h2 / unknown h2；
+  3. `SKIP_UNRECOGNIZED` 与 `IN_NOTES` 的状态短路；
+  4. 既有 CAS stamp handling；
+  5. legal `### Requirement:`；
+  6. `blockDiscard === true`；
+  7. 新的 non-Requirement h3 check；
+  8. 其它 body 行。
+  
+  将 P1 的“所有非-h2、非合法 Requirement 行”收窄为“完成既有 stamp handling 后的普通 requirement-body 行”。增加验收：RENAMED 非法 requirement 后跟 late/malformed/duplicate stamp 时，stamp problem 与 state A 完全一致；普通 block 因坏 h3被 discard 后，stamp handling 也保持现有全局语义。
+
+除此之外，矩阵中的 state/kind/blockDiscard 组合已能确定性落到唯一分支。
+
+## Fresh six-dimension review
+
+### 1. 目标状态 B 是否清楚且无歧义
+
+**结论：未通过。** 唯一剩余歧义是 REQ-5 中 `blockDiscard` 与全局 stamp handling 的先后关系。其余目标状态已经清楚。
+
+### 2. 边界、异常与失败路径是否覆盖
+
+**结论：未通过。** Notes、fence、unknown section、RENAMED recovery 和普通 h3 recovery 均已覆盖；仅缺 discarded block 内 stamp 的边界。
+
+null、out-of-range、matcher timeout、CAS 并发和 archive rollback均继承 state A，未发现新的缺口。
+
+### 3. 是否存在隐含但未声明的状态变化或副作用
+
+**结论：未通过。** 若按 P1 的宽泛文字实现，会隐式取消 discarded block 内既有的 late/malformed/duplicate stamp problems。该变化与“RENAMED byte-identical”目标冲突。
+
+### 4. 每条验收标准是否可写成确定的 if/then
+
+**结论：未通过。** 现有 AC 没有裁定 discarded requirement block 内 CAS stamp 的结果。其余 AC 已具备确定输入和结果。
+
+### 5. 是否与当前状态 A 冲突
+
+**结论：未通过。** P1 的“全部静默吸收”与 `parseDeltaStrict` 当前先处理 stamp 的顺序冲突。除此之外，所有与 state A 的差异均为明确、有验收覆盖的目标变化。
+
+### 6. target lineage 是否声明且符合仓库现实
+
+**结论：通过。**
+
+`brownfield-round2` 的 merge-base 仍为 `main@235a121`；HEAD 包含 change 1 的归档提交，change 2 仍 parked。v4 → main 且禁止 v1/v3 的 lineage 与仓库现实一致。
+
+## Advisories
+
+### ADV-1 — 状态 A 中仍有一处“四种写成三种”
+
+§1.3 和 §1.4 的历史事实说明仍称解析器只认“三种”法定 h2，但同行实际列出 ADDED、MODIFIED、REMOVED、RENAMED 四种。目标状态和验收已改正，因此不影响实现 oracle；建议顺手修正文案。
+
+### ADV-2 — 严格超集应继续按 `leadId` 解释
+
+实际消费者都通过 `leadId`，因此旧绑定逐字节保持成立。裸 `RegExp.exec` 对 `AC-30f` 等输入不会保持相同匹配子串；后续 spec 最好将 AC-IP-02 明写为旧 `leadId` 返回非-null 的输入。
+
+### ADV-3 — out-of-scope section 完整
+
+O1～O9 明确覆盖优先级、配置所有权、边界规则、额外语法、存量修补、parked change、D5 lexer 重计数及模板 active Value 哲学，满足显式 out-of-scope 要求。
+
+## Ledger delta
+
+| ID | Previous status | New status | Round-3 result |
+|---|---|---|---|
+| REQ-1 | fixed (v3) | verified | K3、源码范围和 AC-IP-09 已与 D5 解耦决定一致 |
+| REQ-2 | verified | verified | 无变化 |
+| REQ-3 | verified | verified | 无变化 |
+| REQ-4 | fixed (v3) | verified | Notes 保持 opaque；真实 stamp 前置；四种操作段与 CAS 默认路径均已覆盖 |
+| REQ-5 | fixed (v3) | open | REOPEN：P1 的全吸收规则会吞掉 discarded block 内 state-A 的 stamp handling，无法保证 RENAMED byte-identical |
+
+VERDICT: 1 issues open

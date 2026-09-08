@@ -1,0 +1,1 @@
+NOTE (2026-07-10T23:20): req-v1.md was OVERWRITTEN by the next change (gate-command) kicking off in the shared requirement/ path — sequential-change collision, live evidence for roadmap item 13 (Change Bundle). req-v2/v3/final preserved here; v1 content is reconstructible from req-v2 minus its "v2 handling notes".

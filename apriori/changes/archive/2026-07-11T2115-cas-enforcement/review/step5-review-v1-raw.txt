@@ -1,0 +1,1695 @@
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f4b30-68f9-7222-9b64-17f52a333b4c
+--------
+user
+P8 consistency review round 1 for cas-enforcement (STEP5 exit; the LAST change of the owner-approved batch). On disk; suite 197/197, verify --change GREEN, in-flight gate PASS with C7's first live appearance, check --self PASS, golden-path OK.
+
+Review the ACTUAL implementation against the converged design and the three spec deltas (AM-32..35, SR-32, GT-16):
+- lib/archive-merge.js: merge() MODIFIED trim-equality → unchanged; mutationOpCount + unstampedWarning helpers (exported); buildProjection unstampedMutations/notes/repaired + the rerun-repair branch (mismatch → probe merge → pending===0 && no conflicts → note + perModule + repaired, continue; else casMismatches as before); archiveChange prints warning:/note: lines and filters repaired suffixes out of the write jobs; the single-file cli form warns before the CAS check.
+- lib/spec-runner.js: buildChangeProjection carries unstampedMutations + notes into projection; cli prints stderr warnings on --change runs (json mode included); SR-23 expectations updated (ok case gains unstampedMutations/notes; the discovery-error case has unstampedMutations only — verify that asymmetry is honest: the early-return path never reaches buildProjection so notes is absent).
+- lib/gate.js: checkBinding returns {check, projection}; configCas reader (| cas | value | row, leading token, case-insensitive); checkCas ordering — archived n/a FIRST, then --no-cas, then config, then the unstamped check; runGate pushes C7 after C6; cli gains --no-cas.
+- Tests AM-32..35 / SR-32 / GT-16 as landed.
+- Docs: truth/archive-merge.md (graded pitfall + MODIFIED bullet + buildProjection shape), truth/gate.md (seven checks + C7), truth/spec-runner.md, RUNBOOK EN/CN CAS bullet tail.
+
+Hunt for: rerun-repair soundness against a HOSTILE store (a diverged store where the delta ops happen to all no-op — is accepting it correct? the content IS there, so yes — argue it), the repaired-files-skip interaction with the pre-existing-temp guard and the dry-run report, warning duplication (does verify --change print warnings twice in json mode — stderr + json field is by design, but stderr twice?), checkCas waiver ordering (should archived n/a beat --no-cas? a waived line at archived stage would be misleading — verify the order), configCas on a malformed table, C7 in gate --json, and doc/spec/code drift anywhere. Rows CEIMPL-N. Print the COMPLETE review document body (landed verbatim at apriori/review/cas-enforcement-impl-review-v1.md) with a ledger-delta section, ending with exactly one verdict line: "VERDICT: no major issues, ready to proceed" or "VERDICT: <N> issues open".
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-11T13:11:15.676224Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T13:11:15.807176Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T13:11:16.191495Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-11T13:11:16.880562Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-11T13:11:17.834881Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-11T13:11:19.614488Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-11T13:11:23.076984Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: lbgs7hQuC9y3
+codex
+I’ll read the implemented code, landed specs, tests, and doc updates together so the review is grounded in actual behavior rather than the prior design notes.
+exec
+/usr/bin/zsh -lc "sed -n '1,320p' lib/archive-merge.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,220p' apriori/changes/cas-enforcement/specs/spec-runner/spec.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,220p' apriori/changes/cas-enforcement/specs/gate/spec.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' apriori/changes/cas-enforcement/specs/archive-merge/spec.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 103ms:
+all.length) return { files: [], errors: [`no delta spec files (*.md) found under ${specsDir}`] };
+  const files = [];
+  for (const abs of all) {
+    if (!containsReal(specsDir, abs)) { errors.push(`delta path escapes the change root: ${abs}`); continue; }
+    files.push({ abs, suffix: path.relative(specsDir, abs).split(path.sep).join('/') });
+  }
+
+ succeeded in 115ms:
+<!-- apriori-base: sha256:f55efb5bce90edee6d2e3591334a1d0f7e0be25f7480e5c9877e84b87b5c6789 -->
+# Delta — spec-runner (cas-enforcement)
+
+## ADDED Requirements
+
+### Requirement: projected verify surfaces unstamped mutation deltas
+`verify --change` SHALL print one stderr warning per unstamped mutation delta (same message class as archive's) without affecting the verdict — an otherwise-GREEN run stays GREEN — and `--json` SHALL carry `projection.unstampedMutations` (the store-suffix-relative paths from buildProjection, `[]` when none; the field exists only where `projection` already does).
+
+#### Scenario: SR-32 the projection warns but does not judge
+- WHEN a change's delta carries mutation ops without a stamp
+- THEN verify --change warns on stderr naming the file and the stamp cure, the run can still be GREEN, --json carries projection.unstampedMutations with the suffix, and an ADDED-only unstamped delta yields an empty list and no warning
+
+ succeeded in 121ms:
+<!-- apriori-base: sha256:1c3819436de0c71cf291dcc9084b4f9fba71802a46c5e60daabbfeb0e0e83af4 -->
+# Delta — gate (cas-enforcement)
+
+## ADDED Requirements
+
+### Requirement: C7 denies unstamped mutation deltas unless visibly waived
+Gate SHALL run a seventh check: the change's projection carrying `unstampedMutations` → `C7 BLOCKED` naming each suffix and the stamp cure. Two escapes, flag over config: `gate --no-cas` → the check reports `waived (--no-cas)`; a process-config table row `| cas | optional |` (leading value token, case-insensitive; an absent row or any other value means required) → `waived (process-config)`. A waiver is always visible in the gate output — never a silent skip — and neither escape changes verify or archive behavior (stamped-mismatch failures and the WARN grade are untouched). In-flight only: at the archived stage the deltas are already merged and C7 reports n/a.
+
+#### Scenario: GT-16 C7 blocks, and waivers are loud
+- WHEN gate runs on a change whose delta carries unstamped mutation ops
+- THEN C7 reports BLOCKED naming the suffix and the cure; with --no-cas or the `| cas | optional |` config row it reports the waiver by name instead of blocking (the flag also wins when the config says required), and a stamped or ADDED-only change passes C7 silently
+
+ succeeded in 130ms:
+<!-- apriori-base: sha256:286da5e560eb41c29e85f61af84f87c7957074bb7276eeeecec49e80f83f60bc -->
+# Delta — archive-merge (cas-enforcement)
+
+## ADDED Requirements
+
+### Requirement: unstamped mutation deltas warn and reruns of applied stamps repair
+A delta carrying MODIFIED/REMOVED/RENAMED operations without a CAS stamp SHALL produce one warning naming the file and the cure (run `apriori stamp`, mandatory in 4.0) on every mutation surface — the high-level `archive --change` report AND the single-file `--store --delta` form — while still merging (WARN grade this minor); ADDED-only deltas are exempt (the exemption is clobber-focused: they conflict or no-op, never silently overwrite). `buildProjection` SHALL return `unstampedMutations: string[]` (store-suffix-relative paths, `[]` when none). `merge()`'s MODIFIED op SHALL report `unchanged` when the delta block trim-equals the current store block (the already-applied signature the other ops have). Archive preflight SHALL classify each stamped delta per file: stamp matches → merge as today; stamp mismatches with EVERY op `unchanged` → a note (`rerun accepted`) and the run proceeds, move included; stamp mismatches with ANY real pending op → error, the whole preflight fails with nothing written or moved — divergence with pending work is never repaired, and notes stay distinct from errors in the diagnostics.
+
+#### Scenario: AM-32 unstamped mutation deltas warn on both archive forms
+- WHEN an unstamped delta carrying a MODIFIED op is archived via --change or via --store/--delta
+- THEN one warning names the file and the stamp cure, the merge still happens, and an unstamped ADDED-only delta warns nowhere
+
+#### Scenario: AM-33 an already-applied stamped delta reruns to completion
+- WHEN a stamped change whose commit already rewrote the stores reruns `archive --write --changes-dir` (an already-applied MODIFIED-only delta included)
+- THEN every mismatched file reports the rerun-accepted note, stores stay byte-identical, the change dir moves, and the exit is 0
+
+#### Scenario: AM-34 divergence with pending work never repairs
+- WHEN a stamped delta's base mismatches and at least one operation is a real pending change — including the mixed case where another file is already applied
+- THEN preflight fails with the mismatch error, nothing is written or moved, and the diagnostics keep already-applied notes apart from divergence errors — while the pure resumed-partial-commit mix (applied-mismatched file + matching file with real ops) completes with the note
+
+#### Scenario: AM-35 MODIFIED speaks the idempotence vocabulary
+- WHEN a MODIFIED operation's delta block trim-equals the current store block
+- THEN merge reports it `unchanged` rather than `modified`, and first applications behave exactly as before
+
+exec
+/usr/bin/zsh -lc "sed -n '1,300p' lib/spec-runner.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '320,760p' lib/archive-merge.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,360p' lib/gate.js" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 140ms:
+'use strict';
+/*
+ * spec-runner — bind spec scenario IDs to test runs, report per-scenario red/green.
+ * VISION endgame, weak form: "spec IS the test suite". Zero deps — pure Node stdlib.
+ * Coupling surface is tiny and language-agnostic: markdown scenarios + a TAP-emitting test command.
+ *
+ * FAIL-CLOSED: a deterministic gate must refuse to say GREEN when its inputs are missing,
+ * its instrument misbehaved, or its evidence is ambiguous. Vacuous success is a bug.
+ * Exit codes: 0 = GREEN · 1 = spec/test gaps · 2 = invocation or infrastructure error.
+ */
+const fs = require('fs');
+const path = require('path');
+const { spawnSync } = require('child_process');
+// merge-family helpers shared with archive (3.1 projection); archive-merge never requires spec-runner
+const am = require('./archive-merge');
+const { withStrict } = require('./args');
+
+const DEFAULT_ID = '[A-Z]+-\\d+';
+const SCENARIO_RE = /^####\s+Scenario:\s+(.*)$/gm;
+// TAP result line, directive split off separately (# SKIP / # TODO)
+const TAP_RE = /^(ok|not ok)\s+\d+\s+-\s+(.*)$/gm;
+
+// Leading scenario/test ID. The match must end at a word boundary: `XX-01b` is NOT `XX-01` —
+// silently truncating would merge two different scenarios into one binding.
+function leadId(text, idRe) {
+  const m = text.trim().match(idRe);
+  if (!m || m.index !== 0) return null;
+  const next = text.trim()[m[0].length];
+  if (next !== undefined && /[A-Za-z0-9_]/.test(next)) return null;
+  return m[0];
+}
+
+function stripFences(text) { return text.replace(/```[\s\S]*?```/g, ''); }
+
+function mdFiles(target) {
+  if (!fs.existsSync(target)) return [];
+  const st = fs.statSync(target);
+  if (st.isFile()) return [target];
+  const out = [];
+  for (const e of fs.readdirSync(target, { withFileTypes: true })) {
+    const p = path.join(target, e.name);
+    if (e.isDirectory()) out.push(...mdFiles(p));
+    else if (e.name.endsWith('.md')) out.push(p);
+  }
+  return out.sort();
+}
+
+// Shared scenario scan over one text. Fenced content is documentation; scenarios inside
+// DEPRECATED requirement blocks (the marker REMOVED injects) are excluded in every form —
+// they are neither demanded nor listed, and their lingering tests become ORPHAN.
+function scanText(text, label, idRe, acc) {
+  const clean = am.stripDeprecatedBlocks(stripFences(text));
+  let m;
+  SCENARIO_RE.lastIndex = 0;
+  while ((m = SCENARIO_RE.exec(clean)) !== null) {
+    const id = leadId(m[1], idRe);
+    if (id) {
+      if (!acc.byId.has(id)) { acc.byId.set(id, []); acc.idFiles.set(id, []); }
+      acc.byId.get(id).push(m[1]);
+      acc.idFiles.get(id).push(label);
+    } else acc.unidentified.push([label, m[1]]);
+  }
+}
+
+function dupsOf(acc) {
+  return [...acc.byId.entries()].filter(([, titles]) => titles.length > 1)
+    .map(([id]) => ({ id, files: [...new Set(acc.idFiles.get(id))] }));
+}
+
+// Collect scenarios from spec files.
+// → { byId, unidentified:[[file,title]], files, missingTargets:[], duplicates:[{id,files}] }
+function collectScenarios(specTargets, idRe) {
+  const acc = { byId: new Map(), idFiles: new Map(), unidentified: [] };
+  const missingTargets = specTargets.filter((t) => !fs.existsSync(t));
+  const files = [...new Set(specTargets.flatMap(mdFiles))].sort();
+  for (const f of files) scanText(fs.readFileSync(f, 'utf8'), f, idRe, acc);
+  return { byId: acc.byId, unidentified: acc.unidentified, files, missingTargets, duplicates: dupsOf(acc) };
+}
+
+// Same collection over in-memory texts (the projection path) — label = store-relative suffix.
+function collectScenariosFromTexts(texts, idRe) {
+  const acc = { byId: new Map(), idFiles: new Map(), unidentified: [] };
+  for (const [label, text] of texts) scanText(text, label, idRe, acc);
+  return { byId: acc.byId, unidentified: acc.unidentified, files: [...texts.keys()], missingTargets: [], duplicates: dupsOf(acc) };
+}
+
+// the TAP plan (1..N, optionally with a # SKIP/# TODO directive) and result tokens,
+// matched per top-level line — indented subtest/YAML lines are invisible by the ^ anchor
+const PLAN_LINE_RE = /^1\.\.(\d+)\s*(?:#.*)?$/;
+const POINT_LINE_RE = /^(?:ok|not ok)(?:\s|$)/;
+const POINT_NUM_RE = /^(?:ok|not ok)\s+(\d+)(?:\s|$)/;   // complete numeric token only — `ok 1abc` stays unnumbered
+
+// Parse TAP text → { results: Map<id,{pass,fail,skip}>, untagged: [], bailout: string|null,
+//                    plans: number[], points: number, dupNumbers: number[] }
+// A # SKIP / # TODO directive is neither pass nor fail — a skipped test proves nothing.
+// plans/points/dupNumbers feed the plan-is-a-checked-promise infra guards (SR-26..31).
+function parseTap(out, idRe) {
+  const results = new Map();
+  const untagged = [];
+  let untaggedFails = 0;
+  const bm = out.match(/^Bail out!(.*)$/m);
+  const bailout = bm ? bm[0].trim() : null;
+  const plans = [];
+  let points = 0;
+  const numSeen = new Set(), dupSet = new Set();
+  for (const raw of out.split('\n')) {
+    const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw;
+    const p = PLAN_LINE_RE.exec(line);
+    if (p) { plans.push(Number(p[1])); continue; }
+    if (!POINT_LINE_RE.test(line)) continue;
+    points++;
+    const n = POINT_NUM_RE.exec(line);
+    if (n) {
+      const num = Number(n[1]);
+      if (numSeen.has(num)) dupSet.add(num); else numSeen.add(num);
+    }
+  }
+  const dupNumbers = [...dupSet].sort((a, b) => a - b);
+  let m;
+  TAP_RE.lastIndex = 0;
+  while ((m = TAP_RE.exec(out)) !== null) {
+    const hash = m[2].search(/#\s*(SKIP|TODO)\b/i);
+    const name = hash >= 0 ? m[2].slice(0, hash).trim() : m[2];
+    const directive = hash >= 0;
+    const id = leadId(name, idRe);
+    if (id === null) { untagged.push(name); if (m[1] === 'not ok' && !directive) untaggedFails++; continue; }
+    const cur = results.get(id) || { pass: 0, fail: 0, skip: 0 };
+    if (directive) cur.skip++;
+    else cur[m[1] === 'ok' ? 'pass' : 'fail']++;
+    results.set(id, cur);
+  }
+  return { results, untagged, untaggedFails, bailout, plans, points, dupNumbers };
+}
+
+// true when the test command produced output but not a single TAP result line was parsed —
+// almost always means the runner used a human reporter (node: add --test-reporter=tap)
+function zeroTapParsed(out, results, untagged) {
+  if (results.size > 0 || untagged.length > 0) return false;
+  if (!out.trim()) return false;
+  // a TAP version line or plan (1..N) proves the reporter IS TAP — an empty suite is not a reporter problem
+  if (/^TAP version \d+|^1\.\.\d+/m.test(out)) return false;
+  return true;
+}
+
+function runTestCommand(cmd, cwd) {
+  const r = spawnSync(cmd, { shell: true, cwd, encoding: 'utf8' });
+  return {
+    out: (r.stdout || '') + '\n' + (r.stderr || ''),
+    status: r.status,               // null when killed by signal
+    signal: r.signal || null,
+    error: r.error ? String(r.error.message || r.error) : null,
+  };
+}
+
+// Pure evaluation: cross-reference scenarios vs results → verdict object.
+// A scenario whose only results are skips is UNBOUND — skips prove nothing.
+function evaluate(byId, unidentified, results) {
+  const specIds = [...byId.keys()].sort();
+  const boundGreen = [], boundRed = [], unbound = [], orphan = [];
+  for (const id of specIds) {
+    const r = results.get(id);
+    if (!r || (r.pass === 0 && r.fail === 0)) unbound.push(id);
+    else if (r.fail === 0) boundGreen.push(id);
+    else boundRed.push(id);
+  }
+  for (const id of [...results.keys()].sort()) if (!byId.has(id)) orphan.push(id);
+  const clean = !boundRed.length && !unbound.length && !orphan.length && !unidentified.length;
+  return { boundGreen, boundRed, unbound, orphan, unidentified, clean };
+}
+
+// Fail-closed guard: reasons this run cannot be trusted regardless of the TAP picture.
+// Returns [] when the run is trustworthy.
+function infraErrors(run) {
+  const errs = [];
+  for (const t of run.missingTargets) errs.push(`spec target does not exist: ${t}`);
+  if (!run.missingTargets.length && run.fileCount === 0)
+    errs.push('no spec files found under the given targets — nothing to verify');
+  if (run.fileCount > 0 && run.scenarioCount === 0)
+    errs.push('spec files contain zero scenarios — nothing to verify');
+  if (run.exec.error) errs.push(`test command failed to spawn: ${run.exec.error}`);
+  if (run.exec.signal) errs.push(`test command was killed by signal ${run.exec.signal}`);
+  if (run.bailout) errs.push(`test run aborted: ${run.bailout}`);
+  if (run.noTap)
+    errs.push('test command produced output but ZERO TAP results were parsed — the command is probably not emitting TAP (node test runner: add --test-reporter=tap)');
+  // the TAP plan is a checked promise — defensive defaults keep legacy run shapes
+  // (direct callers of this exported helper) valid; only verify-created runs carry the fields
+  const plans = run.plans || [], points = run.points || 0, dupNumbers = run.dupNumbers || [];
+  if (plans.length > 1)
+    errs.push(`multiple TAP plans in one run (${plans.map((n) => `1..${n}`).join(', ')}) — cannot attribute test points to plans; run one TAP stream per verify (split the test command)`);
+  else if (plans.length === 1 && plans[0] !== points)
+    errs.push(`TAP plan declares ${plans[0]} test point(s) but ${points} were parsed — output truncated or garbled; refusing to trust this run`);
+  else if (plans.length === 1 && dupNumbers.length)
+    errs.push(`duplicate TAP test-point number(s): ${dupNumbers.join(', ')}`);
+  if (run.exec.status !== null && run.exec.status !== 0 && run.failCount === 0)
+    errs.push(`test command exited with status ${run.exec.status} but no parsed TAP failure explains it — the TAP picture is incomplete or truncated; refusing to trust this run`);
+  return errs;
+}
+
+function formatReport(v, results, fileCount, extras = {}) {
+  const lines = [];
+  const specCount = v.boundGreen.length + v.boundRed.length + v.unbound.length;
+  const tagged = [...results.values()].reduce((s, r) => s + r.pass + r.fail, 0);
+  const skipped = [...results.values()].reduce((s, r) => s + (r.skip || 0), 0);
+  lines.push(`specs: ${fileCount} file(s), ${specCount} identified scenario(s)`);
+  lines.push(`tests: ${tagged} tagged result(s)${skipped ? `, ${skipped} skipped (not counted)` : ''}\n`);
+  const groups = [['BOUND-GREEN', v.boundGreen], ['BOUND-RED', v.boundRed],
+                 ['UNBOUND (scenario, no test)', v.unbound], ['ORPHAN (test, no scenario)', v.orphan]];
+  for (const [label, items] of groups) {
+    if (!items.length) continue;
+    lines.push(`${label === 'BOUND-GREEN' ? '✓' : '✗'} ${label}: ${items.length}`);
+    for (const id of items) {
+      const r = results.get(id);
+      lines.push(`    ${id}${r ? `  ${r.pass}p/${r.fail}f${r.skip ? `/${r.skip}s` : ''}` : ''}`);
+    }
+  }
+  if (v.unidentified.length) {
+    lines.push(`✗ UNIDENTIFIED (scenario, no ID — unbindable): ${v.unidentified.length}`);
+    for (const [f, t] of v.unidentified) lines.push(`    ${path.basename(f)}: ${t.slice(0, 60)}`);
+  }
+  if (extras.duplicates && extras.duplicates.length) {
+    lines.push(`✗ DUPLICATE scenario IDs (ambiguous binding): ${extras.duplicates.length}`);
+    for (const d of extras.duplicates) lines.push(`    ${d.id}: ${d.files.map((f) => path.basename(f)).join(', ')}`);
+  }
+  const errs = extras.errors || [];
+  lines.push('\nRESULT: ' + (errs.length ? 'ERROR — run not trustworthy (see stderr)'
+    : (v.clean && !(extras.duplicates || []).length ? 'GREEN — spec is the test suite' : 'GAPS')));
+  return lines.join('\n');
+}
+
+// Projection inputs for `verify --change` (all failure classes → run.errors, exit 2).
+// Roots resolve against cwd exactly as `apriori status` resolves change dirs.
+function buildChangeProjection(change, cwd) {
+  const changesDir = path.resolve(cwd, 'apriori', 'changes');
+  const storeRoot = path.resolve(cwd, 'apriori', 'specs');
+  const projection = { change, modules: [], conflicts: [], unstampedMutations: [] };
+  const d = am.discoverDeltas(changesDir, change);
+  if (d.errors.length) return { projection, errors: d.errors, texts: null };
+  const p = am.buildProjection(storeRoot, d.files, change);
+  projection.modules = p.modules;
+  projection.conflicts = p.conflicts;
+  projection.unstampedMutations = p.unstampedMutations;      // WARN grade — cli prints, verdict untouched
+  projection.notes = p.notes;
+  const errors = [...p.validation, ...p.hygiene, ...p.casMismatches];
+  if (p.conflicts.length) errors.push(`projection has ${p.conflicts.length} merge conflict(s) — no trustworthy projection: ${p.conflicts.join('; ')}`);
+  return { projection, errors, texts: errors.length ? null : p.texts };
+}
+
+// Full verify run. opts: { specs:[], change, testCmd, idPattern, cwd }
+function verify(opts) {
+  const idRe = new RegExp(opts.idPattern || DEFAULT_ID);
+  let collected, projection = null;
+  if (opts.change) {
+    const b = buildChangeProjection(opts.change, opts.cwd || '.');
+    projection = b.projection;
+    if (!b.texts) {
+      // failed projection: fail closed WITHOUT running any tests
+      const verdict = evaluate(new Map(), [], new Map());
+      return { verdict, results: new Map(), fileCount: 0, failCount: 0, scenarioCount: 0,
+        missingTargets: [], duplicates: [], bailout: null, noTap: false,
+        exec: { status: null, signal: null, error: null }, errors: b.errors, projection };
+    }
+    collected = collectScenariosFromTexts(b.texts, idRe);
+  } else {
+    collected = collectScenarios(opts.specs, idRe);
+  }
+  const { byId, unidentified, files, missingTargets, duplicates } = collected;
+  const exec = runTestCommand(opts.testCmd, opts.cwd || '.');
+  const { results, untagged, untaggedFails, bailout, plans, points, dupNumbers } = parseTap(exec.out, idRe);
+  const verdict = evaluate(byId, unidentified, results);
+  const failCount = [...results.values()].reduce((s, r) => s + r.fail, 0) + untaggedFails;
+  const run = {
+    verdict, results, fileCount: files.length, failCount,
+    scenarioCount: byId.size + unidentified.length,
+    missingTargets, duplicates, bailout, plans, points, dupNumbers,
+    noTap: zeroTapParsed(exec.out, results, untagged),
+    exec: { status: exec.status, signal: exec.signal, error: exec.error },
+  };
+  if (projection) run.projection = projection;
+  run.errors = infraErrors(run);
+  return run;
+}
+
+// machine-consumable shape for a verify run
+function verifyJson(run) {
+  const { verdict: v, results } = run;
+  const clean = v.clean && run.duplicates.length === 0 && run.errors.length === 0;
+  const json = projectionless(run, clean);
+  if (run.projection) json.projection = run.projection;   // ONLY --change runs carry this field
+  return json;
+}
+
+function projectionless(run, clean) {
+  const { verdict: v, results } = run;
+  return {
+    clean,
+    result: run.errors.length ? 'ERROR' : (clean ? 'GREEN' : 'GAPS'),
+    errors: run.errors,
+    specFiles: run.fileCount,
+    exec: run.exec,
+    duplicates: run.duplicates,
+
+ succeeded in 151ms:
+  }
+  return { files, errors };
+}
+
+// Build the projection: apply every delta to its mapped store file IN MEMORY.
+// → { texts: Map<suffix, projectedText>, modules, perModule, conflicts, casMismatches,
+//     hygiene, validation } — texts covers ALL store files (pass-through + projected).
+function buildProjection(storeRoot, deltaFiles, change) {
+  const texts = new Map(), perModule = new Map(), modules = [];
+  const conflicts = [], casMismatches = [], hygiene = [], validation = [];
+  const unstampedMutations = [], notes = [], repaired = [];
+  for (const abs of mdFilesUnder(storeRoot))
+    texts.set(path.relative(storeRoot, abs).split(path.sep).join('/'), fs.readFileSync(abs, 'utf8'));
+  for (const { abs, suffix } of deltaFiles) {
+    modules.push(suffix);
+    const target = path.join(storeRoot, ...suffix.split('/'));
+    if (!containsReal(storeRoot, target)) { validation.push(`store target escapes ${storeRoot}: ${target}`); continue; }
+    const raw = fs.readFileSync(abs, 'utf8');
+    if (!raw.trim()) { hygiene.push(`empty delta file: ${abs}`); continue; }
+    const { delta, stamp, problems } = parseDeltaStrict(raw);
+    if (problems.length) { hygiene.push(...problems.map((p) => `${abs}: ${p}`)); continue; }
+    if (deltaOpCount(delta) === 0) { hygiene.push(`parsed 0 delta operations from ${abs} — it has content but no recognized operations`); continue; }
+    if (!stamp && mutationOpCount(delta) > 0) unstampedMutations.push(suffix);   // WARN grade (callers print)
+    const storeText = texts.get(suffix) || '';
+    if (stamp) {
+      const actual = texts.has(suffix) ? fingerprint(storeText) : 'new';
+      if (stamp !== actual) {
+        // rerun repair: a mismatch whose every op is already applied is the resumed-rerun
+        // signature — divergence with ANY real pending op still fails exactly as before
+        const probe = merge(storeText, delta, change);
+        const pending = probe.merged.length + probe.modified.length + probe.deprecated.length + probe.renamed.length;
+        if (pending === 0 && probe.conflicts.length === 0) {
+          notes.push(`${suffix}: stamp mismatch but the delta is already fully applied — rerun accepted`);
+          perModule.set(suffix, probe);
+          repaired.push(suffix);
+          continue;                                          // contributes no writes
+        }
+        casMismatches.push(`base mismatch for ${target}: delta expects ${stamp}, store is ${actual}`); continue;
+      }
+    }
+    const r = merge(storeText, delta, change);
+    perModule.set(suffix, r);
+    if (r.conflicts.length) { conflicts.push(...r.conflicts.map((c) => `${suffix}: ${c}`)); continue; }
+    texts.set(suffix, renderStore(storeText, r.store));
+  }
+  modules.sort();
+  return { texts, modules, perModule, conflicts, casMismatches, hygiene, validation, unstampedMutations, notes, repaired };
+}
+
+// ---- archive commit machinery ----------------------------------------------
+
+// colon-free date-time stamp YYYY-MM-DDThhmm (CLI's own clock; never an agent guess)
+function archiveStamp(d) {
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}${p(d.getMinutes())}`;
+}
+
+const CHANGE_NAME_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;   // bare kebab-case — same rule as `apriori new`
+
+// Move an in-flight change dir (bare name) → changes/archive/<stamp>-<name>/
+// Fail-closed: source AND destination must resolve (realpath) strictly inside changesDir.
+function archiveChangeDir(changesDir, name, now, ops) {
+  const rename = (ops && ops.renameSync) || fs.renameSync;
+  if (!CHANGE_NAME_RE.test(name)) throw new Error(`invalid change name '${name}' — bare kebab-case only`);
+  const src = path.join(changesDir, name);
+  if (!fs.existsSync(src)) return null;
+  if (!containsReal(changesDir, src)) throw new Error(`change path escapes ${changesDir}`);
+  const dest = path.join(changesDir, 'archive', `${archiveStamp(now)}-${name}`);
+  if (!containsReal(changesDir, dest)) throw new Error(`archive destination escapes ${changesDir} (symlinked archive/?)`);
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  rename(src, dest);
+  return dest;
+}
+
+const CATEGORY_LABELS = [['merged (ADDED)', 'merged'], ['modified (MODIFIED)', 'modified'],
+  ['deprecated (REMOVED)', 'deprecated'], ['renamed (RENAMED)', 'renamed'], ['already merged (no-op)', 'unchanged']];
+
+// High-level archive: the whole change, four phases (preflight → stage → commit → move).
+// → { code, out: [], err: [] } — pure return; cli() prints. ops is the fault-injection seam.
+function archiveChange(o) {
+  const out = [], err = [];
+  const ops = o.ops || { writeFileSync: fs.writeFileSync.bind(fs), renameSync: fs.renameSync.bind(fs), rmSync: fs.rmSync.bind(fs) };
+  const cwd = o.cwd || process.cwd();
+  const changesDir = path.resolve(cwd, o.changesDir || path.join('apriori', 'changes'));
+  const storeRoot = path.resolve(cwd, 'apriori', 'specs');
+
+  // --- phase 1: preflight (no writes) ---
+  const d = discoverDeltas(changesDir, o.change);
+  if (d.errors.length) { err.push(...d.errors.map((e) => `archive: ${e}`)); return { code: 2, out, err }; }
+  const p = buildProjection(storeRoot, d.files, o.change);
+  if (p.validation.length) { err.push(...p.validation.map((e) => `archive: ${e}`)); return { code: 2, out, err }; }
+  // per-module report for whatever merged cleanly (dry-run info comes first, then failures)
+  for (const suffix of p.modules) {
+    const r = p.perModule.get(suffix);
+    if (!r || r.conflicts.length) continue;
+    out.push(`--- ${suffix}`);
+    for (const [label, key] of CATEGORY_LABELS) if (r[key].length) out.push(`${label}: ${r[key].join(', ')}`);
+  }
+  for (const sfx of p.unstampedMutations) out.push(`warning: ${unstampedWarning(sfx)}`);
+  for (const n of p.notes) out.push(`note: ${n}`);
+  const preflightFailures = [...p.hygiene, ...p.casMismatches, ...p.conflicts];
+  if (preflightFailures.length) {
+    for (const f of preflightFailures) err.push(`archive: ${f}`);
+    out.push('\nRESULT: FAILED PREFLIGHT — nothing written');
+    return { code: 1, out, err };
+  }
+  const repaired = new Set(p.repaired);                     // already applied — no writes for these
+  const jobs = d.files.filter(({ suffix }) => !repaired.has(suffix)).map(({ suffix }) => {
+    const store = path.join(storeRoot, ...suffix.split('/'));
+    return { suffix, store, tmp: store + '.tmp-archive', text: p.texts.get(suffix) };
+  }).sort((a, b) => (a.store < b.store ? -1 : 1));
+  if (o.write) {
+    for (const j of jobs) if (fs.existsSync(j.tmp)) {
+      err.push(`archive: temp file already exists: ${j.tmp} — another run in flight or a manual-recovery artifact; not touching it`);
+      out.push('\nRESULT: FAILED PREFLIGHT — nothing written');
+      return { code: 1, out, err };
+    }
+    if (o.changesDirExplicit) {
+      // destination containment is checked before any write, not at move time
+      const probe = path.join(changesDir, 'archive', 'probe');
+      if (!containsReal(changesDir, probe)) {
+        err.push(`archive: archive destination escapes ${changesDir} (symlinked archive/?)`);
+        return { code: 2, out, err };
+      }
+    }
+  }
+  if (!o.write) {
+    out.push(`\nRESULT: MERGED (dry-run; ${jobs.length} module(s)) — pass --write to apply`);
+    return { code: 0, out, err };
+  }
+
+  // --- phase 2: stage (this run's temps only — preflight proved none pre-existed) ---
+  const staged = [];
+  try {
+    for (const j of jobs) {
+      fs.mkdirSync(path.dirname(j.store), { recursive: true });
+      ops.writeFileSync(j.tmp, j.text);
+      staged.push(j.tmp);
+    }
+  } catch (e) {
+    for (const t of staged) { try { ops.rmSync(t, { force: true }); } catch { /* best effort */ } }
+    err.push(`archive: staging failed (${e.message}) — stores untouched, this run's temp files removed`);
+    return { code: 1, out, err };
+  }
+
+  // --- phase 3: commit (per-file atomic renames, sorted order; no rollback on mid-commit failure) ---
+  const committed = [];
+  for (const j of jobs) {
+    try { ops.renameSync(j.tmp, j.store); committed.push(j); }
+    catch (e) {
+      err.push(`archive: COMMIT FAILED at ${j.suffix} (${e.message})`);
+      err.push(`  committed:     ${committed.map((c) => c.suffix).join(', ') || '(none)'}`);
+      const remaining = jobs.filter((x) => !committed.includes(x));
+      err.push(`  NOT committed: ${remaining.map((x) => x.suffix).join(', ')}`);
+      err.push(`  temp files remaining for manual completion: ${remaining.map((x) => x.tmp).join(', ')}`);
+      return { code: 1, out, err };
+    }
+  }
+
+  // --- phase 4: move (only with explicit --changes-dir) ---
+  let moved = null;
+  if (o.changesDirExplicit) {
+    try { moved = archiveChangeDir(changesDir, o.change, new Date(), ops); }
+    catch (e) { err.push(`archive: stores committed but the change-dir move failed: ${e.message} — rerun to complete`); return { code: 1, out, err }; }
+    if (moved === null) { err.push('archive: stores committed but the change dir vanished before the move'); return { code: 1, out, err }; }
+  }
+  out.push(`\nRESULT: MERGED — ${jobs.length} module store(s) rewritten${moved ? `; change archived → ${moved}` : ''}`);
+  return { code: 0, out, err };
+}
+
+// print the CAS stamp line for a store file's current content
+const STAMP_USAGE = 'usage: apriori stamp <store-file>';
+function stampCli(argv) {
+  return withStrict(argv, { sub: 'stamp', usage: STAMP_USAGE, positionals: 1, flags: {} }, (f, pos) => {
+    const p = pos[0];
+    if (!fs.existsSync(p)) { console.log('<!-- apriori-base: new -->'); return 0; }
+    if (fs.statSync(p).isDirectory()) { console.error(`stamp: ${p} is a directory, not a store file`); return 2; }
+    let text;
+    try { text = fs.readFileSync(p, 'utf8'); }
+    catch (e) { console.error(`stamp: cannot read ${p}: ${e.message}`); return 2; }
+    console.log(`<!-- apriori-base: ${fingerprint(text)} -->`);
+    return 0;
+  });
+}
+
+const USAGE = 'usage: apriori archive --store <f> --delta <f> --change <name> [--write] [--changes-dir <dir>]\n   or: apriori archive --change <name> [--write] [--changes-dir <dir>]';
+
+function cli(argv) {
+  return withStrict(argv, { sub: 'archive', usage: USAGE, positionals: 0,
+    flags: { '--store': 'value', '--delta': 'value', '--change': 'value', '--write': 'flag', '--changes-dir': 'value' } }, (f) => {
+    const a = { store: f['--store'] || null, delta: f['--delta'] || null, change: f['--change'] || null,
+      write: !!f['--write'], changesDir: f['--changes-dir'] || null };
+  // high-level form: --change alone (no --store/--delta) drives the whole change
+    if (a.change && !a.store && !a.delta) {
+      const r = archiveChange({ cwd: process.cwd(), change: a.change, write: a.write,
+        changesDir: a.changesDir || undefined, changesDirExplicit: !!a.changesDir });
+      for (const l of r.out) console.log(l);
+      for (const l of r.err) console.error(l);
+      return r.code;
+    }
+    if (a.change && (a.store || a.delta) && !(a.store && a.delta)) {
+      console.error('usage: apriori archive --change <name> [--write] [--changes-dir <dir>]  (high-level form)\n   or: apriori archive --store <f> --delta <f> --change <name> [--write] [--changes-dir <dir>]  (single-file form)\n(--change cannot be combined with only one of --store/--delta)');
+      return 2;
+    }
+    if (!a.store || !a.delta || !a.change) { console.error(USAGE); return 2; }
+    if (!CHANGE_NAME_RE.test(a.change)) { console.error(`archive: invalid change name '${a.change}' — bare kebab-case only (path segments are not allowed)`); return 2; }
+    if (a.changesDir && !fs.existsSync(path.join(a.changesDir, a.change))) {
+      console.error(`archive: change '${a.change}' not found under ${a.changesDir} — nothing to move`); return 2;
+    }
+    // first archive in a repo: the store file may not exist yet — start from an empty store
+    const storeExists = fs.existsSync(a.store);
+    const storeText = storeExists ? fs.readFileSync(a.store, 'utf8') : '';
+    if (!storeExists) console.log(`store ${a.store} does not exist yet — will be created${a.write ? '' : ' on --write'}`);
+    const deltaText = fs.readFileSync(a.delta, 'utf8');
+    const { delta, stamp, problems } = parseDeltaStrict(deltaText);
+    if (problems.length) {
+      for (const p of problems) console.error(`archive: ${a.delta}: ${p}`);
+      console.log('\nRESULT: MALFORMED DELTA — nothing written');
+      return 1;
+    }
+    // Guard against a silent no-op: a delta with real content that parsed to zero operations
+    // is almost always a format mismatch (wrong heading level/keyword), not an empty change.
+    if (deltaText.trim() && deltaOpCount(delta) === 0) {
+      console.error(`archive: parsed 0 delta operations from ${a.delta} — it has content but no recognized operations.`);
+      console.error('  expected `## ADDED|MODIFIED|REMOVED Requirements` (h2) with `### Requirement: <name>` (h3) blocks,');
+      console.error('  or `## RENAMED Requirements` with `- Old -> New` lines. Nothing written.');
+      return 1;
+    }
+    // WARN grade (AM-32): mutation ops without a stamp merge, but never silently
+    if (!stamp && mutationOpCount(delta) > 0) console.log(`warning: ${unstampedWarning(a.delta)}`);
+    // CAS: a present base stamp must match the store the delta is about to merge into (AM-24/AM-26)
+    if (stamp) {
+      const actual = storeExists ? fingerprint(storeText) : 'new';
+      if (stamp !== actual) {
+        console.error(`archive: base mismatch for ${a.store}: delta expects ${stamp}, store is ${actual} — nothing written (serialize per §4.11)`);
+        return 1;
+      }
+    }
+    const { store, merged, modified, deprecated, renamed, conflicts, unchanged } = merge(storeText, delta, a.change);
+
+    for (const [label, ids] of [['merged (ADDED)', merged], ['modified (MODIFIED)', modified], ['deprecated (REMOVED)', deprecated], ['renamed (RENAMED)', renamed], ['already merged (no-op)', unchanged]])
+      if (ids.length) console.log(`${label}: ${ids.join(', ')}`);
+
+    if (conflicts.length) {
+      console.log('\nCONFLICTS (stop — open a ledger issue, human resolves):');
+      for (const c of conflicts) console.log(`  ✗ ${c}`);
+      console.log('\nRESULT: CONFLICT — nothing written');
+      return 1;
+    }
+    if (a.write) {
+      // Transactional ordering: stage the store to a temp file, do the (atomic) dir move, then
+      // commit the store via rename. If the move fails, the temp is discarded and the store on
+      // disk stays byte-for-byte untouched — never a half-completed archive.
+      fs.mkdirSync(path.dirname(a.store), { recursive: true });
+      const tmp = a.store + '.tmp-archive';
+      fs.writeFileSync(tmp, renderStore(storeText, store));
+      let moved = null;
+      if (a.changesDir) {
+        try { moved = archiveChangeDir(a.changesDir, a.change, new Date()); }
+        catch (e) { fs.rmSync(tmp, { force: true }); console.error(`archive: ${e.message} — store left untouched`); return 1; }
+        if (moved === null) { fs.rmSync(tmp, { force: true }); console.error(`archive: change dir vanished mid-run — store left untouched`); return 1; }
+      }
+      fs.renameSync(tmp, a.store);
+      console.log(`\nRESULT: MERGED — ${a.store} rewritten${moved ? `; change archived → ${moved}` : ''}`);
+    } else {
+      console.log(`\nRESULT: MERGED (dry-run; ${store.size} requirements in result) — pass --write to apply`);
+    }
+    return 0;
+  });
+}
+module.exports = { parseRequirements, parseRequirementsStrict, parseDelta, parseDeltaStrict, deltaOpCount, mutationOpCount, unstampedWarning,
+  merge, renderStore, archiveStamp, archiveChangeDir, archiveChange, CHANGE_NAME_RE,
+  fingerprint, parseStamp, containsReal, discoverDeltas, buildProjection,
+  DEPRECATED_RE, stripDeprecatedBlocks, stampCli, cli };
+
+ succeeded in 196ms:
+'use strict';
+/*
+ * apriori gate — aggregate the MECHANICAL exit conditions for one change into one exit code.
+ * 0 = PASS · 1 = BLOCKED · 2 = the evaluation itself is untrustworthy.
+ * Strictly read-only. PASS covers machine checks only — human gates remain human.
+ */
+const fs = require('fs');
+const path = require('path');
+const { spawnSync } = require('child_process');
+const { parseFlowState, parseLedger } = require('./status');
+const { verify, configTestCmd } = require('./spec-runner');
+const { CHANGE_NAME_RE, containsReal } = require('./archive-merge');
+const { withStrict } = require('./args');
+
+const STEP_ENUM = ['STEP0', 'STEP1', 'STEP2', 'STEP3', 'STEP4', 'STEP5', 'STEP6',
+  'INTENT-CARD', 'SPIKE', 'EXTRACTION', 'DONE', 'ABANDONED'];
+const TIER_ENUM = ['trivial', 'medium', 'large'];
+const CAVEAT = 'mechanical checks only; human gates remain human';
+
+function err(res, msg) { res.errors.push(msg); res.result = 'ERROR'; res.code = 2; return res; }
+
+// stage resolution: in-flight first, else newest archived (exact stamp regex, lexicographic last)
+function resolveChange(cwd, name) {
+  const changesDir = path.join(cwd, 'apriori', 'changes');
+  const inflight = path.join(changesDir, name);
+  if (fs.existsSync(inflight)) {
+    if (!containsReal(changesDir, inflight)) return { error: `change path escapes ${changesDir}` };
+    return { stage: 'in-flight', dir: inflight };
+  }
+  const archRoot = path.join(changesDir, 'archive');
+  if (fs.existsSync(archRoot)) {
+    const re = new RegExp(`^\\d{4}-\\d{2}-\\d{2}T\\d{4}-${name}$`);
+    // candidates must be DIRECTORIES (following symlinks) — a stray file with a stamp name is ignored
+    const hits = fs.readdirSync(archRoot).filter((b) => {
+      if (!re.test(b)) return false;
+      try { return fs.statSync(path.join(archRoot, b)).isDirectory(); } catch { return false; }
+    }).sort();
+    if (hits.length) {
+      const dir = path.join(archRoot, hits[hits.length - 1]);
+      // containment against the ARCHIVE root — a symlink pointing elsewhere under changes/ is still an escape
+      if (!containsReal(archRoot, dir)) return { error: `archived change path escapes ${archRoot}` };
+      return { stage: 'archived', dir };
+    }
+  }
+  return { error: `change '${name}' found neither at ${inflight} nor under ${archRoot}` };
+}
+
+// --- individual checks; each returns {id, status: 'pass'|'blocked'|'n/a', detail} ---
+
+function checkFlowState(state, name) {
+  for (const key of ['change', 'tier', 'track', 'lineage', 'current-step']) {
+    const v = state[key];
+    if (v === undefined || v === '') return { id: 'C3', status: 'blocked', detail: `flow-state: required key '${key}' missing` };
+    if (v.includes('<') || v.includes('>')) return { id: 'C3', status: 'blocked', detail: `flow-state: '${key}' is an unfilled placeholder (${v})` };
+  }
+  if (state.change !== name) return { id: 'C3', status: 'blocked', detail: `flow-state: 'change' is '${state.change}', expected '${name}'` };
+  if (!STEP_ENUM.includes(state['current-step'])) return { id: 'C3', status: 'blocked', detail: `flow-state: 'current-step' '${state['current-step']}' not in the legal vocabulary` };
+  if (!TIER_ENUM.includes(state.tier)) return { id: 'C3', status: 'blocked', detail: `flow-state: 'tier' '${state.tier}' not in {trivial, medium, large}` };
+  return { id: 'C3', status: 'pass', detail: `legal (tier ${state.tier}, ${state['current-step']})` };
+}
+
+function checkTasks(dir, tier) {
+  const p = path.join(dir, 'tasks.md');
+  if (!fs.existsSync(p)) {
+    return tier === 'trivial'
+      ? { id: 'C2', status: 'n/a', detail: 'no tasks.md — trivial tier has no STEP2' }
+      : { id: 'C2', status: 'blocked', detail: `tasks.md missing at ${p}` };
+  }
+  const open = (fs.readFileSync(p, 'utf8').match(/^\s*-\s\[\s\]/gm) || []).length;
+  return open
+    ? { id: 'C2', status: 'blocked', detail: `tasks.md has ${open} unchecked box(es)` }
+    : { id: 'C2', status: 'pass', detail: 'all tasks checked' };
+}
+
+// the ledger vocabulary, one classifier shared by C4 and the corpus test (GT-15).
+// leading token, case-insensitive; rejected-verified BEFORE rejected (alternation order).
+const STATUS_RE = /^(open|fixed|verified|rejected-verified|rejected|advisory-acked|waived)\b/i;
+function classifyStatus(status) {
+  const m = STATUS_RE.exec(status);
+  if (!m) return { legal: false, terminal: false, needsReason: false, hasReason: false, isWaived: false };
+  const tok = m[1].toLowerCase();
+  const needsReason = tok === 'rejected' || tok === 'rejected-verified' || tok === 'waived';
+  return {
+    legal: true,
+    terminal: tok === 'verified' || tok === 'rejected-verified' || tok === 'waived' || tok === 'advisory-acked',
+    needsReason,
+    hasReason: !needsReason || /\w/.test(status.slice(m[0].length)),
+    isWaived: tok === 'waived',
+    token: tok,
+  };
+}
+
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// gates: entries from a flow-state text — the block runs from the unindented `gates:` line
+// to the next unindented top-level key; entries start `- `, continuation lines attach.
+function gatesEntries(flowText) {
+  const start = flowText.search(/^gates:/m);
+  if (start < 0) return [];
+  const rest = flowText.slice(start + 'gates:'.length);
+  const end = rest.search(/^[A-Za-z][\w-]*:/m);
+  const block = end < 0 ? rest : rest.slice(0, end);
+  const entries = [];
+  for (const line of block.split('\n')) {
+    if (/^\s*-\s/.test(line)) entries.push(line.trim());
+    else if (entries.length && line.trim()) entries[entries.length - 1] += ' ' + line.trim();
+  }
+  return entries;
+}
+
+// a waive is a HUMAN act: one single gates: entry must carry the row ID as an exact
+// token (LS-1 never matches inside LS-10) AND the word waive/waived.
+function waiveEvidence(flowText, id) {
+  const idRe = new RegExp(`(^|[^A-Za-z0-9-])${escapeRe(id)}([^A-Za-z0-9-]|$)`);
+  return gatesEntries(flowText).some((e) => idRe.test(e) && /waiv/i.test(e));
+}
+
+function checkLedger(cwd, name, tier, stage, dir) {
+  const p = path.join(cwd, 'apriori', 'review', `${name}-issues.md`);
+  if (!fs.existsSync(p)) {
+    return tier === 'trivial'
+      ? { id: 'C4', status: 'n/a', detail: 'no ledger — trivial tier may never open one' }
+      : { id: 'C4', status: 'blocked', detail: `ledger missing at ${p}` };
+  }
+  const rows = parseLedger(fs.readFileSync(p, 'utf8'));
+  const fsPath = dir ? path.join(dir, 'flow-state.md') : null;
+  const flowText = fsPath && fs.existsSync(fsPath) ? fs.readFileSync(fsPath, 'utf8') : '';
+  const bad = [];
+  for (const r of rows) {
+    const c = classifyStatus(r.status);
+    if (!c.legal) { bad.push(`${r.id}: '${r.status}' is not in the ledger vocabulary`); continue; }
+    if (c.needsReason && !c.hasReason) { bad.push(`${r.id} is ${c.token} without a reason`); continue; }
+    if (c.isWaived && !waiveEvidence(flowText, r.id)) {
+      bad.push(`${r.id} is waived without a gates: entry recording the human decision`); continue;
+    }
+    if (c.token === 'open') { bad.push(`${r.id} is open`); continue; }
+    if (stage === 'archived' && !c.terminal) {
+      bad.push(c.token === 'fixed'
+        ? `${r.id} is fixed but never verified — reviewer must verify, or the human waives it`
+        : `${r.id} is rejected without reviewer concurrence — flip to rejected-verified, or the human waives it`);
+    }
+  }
+  return bad.length
+    ? { id: 'C4', status: 'blocked', detail: bad.join('; ') }
+    : { id: 'C4', status: 'pass', detail: `${rows.length} row(s), none blocking` };
+}
+
+function checkEvidence(cwd, name) {
+  const reviewDir = path.join(cwd, 'apriori', 'review');
+  const designDir = path.join(cwd, 'apriori', 'design');
+  const docs = [];
+  const collect = (dir, re) => {
+    if (!fs.existsSync(dir)) return;
+    for (const b of fs.readdirSync(dir)) {
+      if (!re.test(b)) continue;
+      if (b === `${name}-issues.md`) continue;
+      if (/-raw\.[^.]+$/.test(b) || b.replace(/\.md$/, '').endsWith('-raw')) continue;
+      docs.push(path.join(dir, b));
+    }
+  };
+  collect(reviewDir, new RegExp(`^${name}-.*\\.md$`));
+  collect(designDir, new RegExp(`^${name}-review-v.*\\.md$`));
+  const bad = [];
+  for (const doc of docs.sort()) {
+    if (fs.lstatSync(doc).isSymbolicLink()) { bad.push(`${path.basename(doc)} is a symlink — evidence docs must be regular files`); continue; }
+    if (!fs.statSync(doc).isFile()) continue;
+    if (!/^VERDICT:/m.test(fs.readFileSync(doc, 'utf8'))) continue;
+    const stem = path.basename(doc, '.md');
+    const raws = fs.existsSync(reviewDir) ? fs.readdirSync(reviewDir).filter((b) =>
+      b.startsWith(stem + '-raw.') &&
+      fs.lstatSync(path.join(reviewDir, b)).isFile() &&                     // lstat FIRST: symlinked raws are not evidence
+      containsReal(reviewDir, path.join(reviewDir, b))) : [];
+    if (!raws.length) bad.push(`${path.basename(doc)} carries a VERDICT but no ${stem}-raw.* exists`);
+  }
+  return bad.length
+    ? { id: 'C5', status: 'blocked', detail: bad.join('; ') }
+    : { id: 'C5', status: 'pass', detail: `${docs.length} review doc(s), every verdict has raw evidence` };
+}
+
+function checkKb(cwd, dir) {
+  const specsDir = path.join(dir, 'specs');
+  const modules = new Set();
+  const walk = (d, base) => {
+    if (!fs.existsSync(d)) return;
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, e.name);
+      if (e.isDirectory()) walk(p, base);
+      else if (e.name.endsWith('.md')) modules.add(path.relative(base, p).split(path.sep)[0]);
+    }
+  };
+  walk(specsDir, specsDir);
+  if (!modules.size) return { id: 'C6', status: 'n/a', detail: 'no delta specs to map' };
+  const blocked = [], notes = [];
+  let checked = 0;
+  for (const m of [...modules].sort()) {
+    const truth = path.join(cwd, 'apriori', 'truth', `${m}.md`);
+    if (!fs.existsSync(truth)) { notes.push(`${m}: no truth doc`); continue; }
+    const sc = fs.readFileSync(truth, 'utf8').match(/^source-commit:\s*(\S+)/m);
+    if (!sc) { notes.push(`${m}: truth doc has no source-commit`); continue; }
+    if (!fs.existsSync(path.join(cwd, 'lib', `${m}.js`))) { notes.push(`${m}: no lib/${m}.js to compare`); continue; }
+    const g = spawnSync('git', ['-C', cwd, 'log', '--oneline', `${sc[1]}..HEAD`, '--', `lib/${m}.js`], { encoding: 'utf8' });
+    if (g.error) { notes.push(`${m}: git unavailable (${g.error.message})`); continue; }
+    if (g.status !== 0) { notes.push(`${m}: git failed (${(g.stderr || '').split('\n')[0]})`); continue; }
+    const n = g.stdout.trim() ? g.stdout.trim().split('\n').length : 0;
+    if (n > 0) blocked.push(`${m}: ${n} commit(s) since ${sc[1]}`);
+    else checked++;
+  }
+  if (blocked.length) return { id: 'C6', status: 'blocked', detail: blocked.join('; ') };
+  if (checked > 0) return { id: 'C6', status: 'pass', detail: `${checked} module stamp(s) up to date${notes.length ? `; ${notes.join('; ')}` : ''}` };
+  return { id: 'C6', status: 'n/a', detail: notes.join('; ') };
+}
+
+function checkBinding(cwd, name, stage, testCmd) {
+  const run = stage === 'in-flight'
+    ? verify({ change: name, cwd, testCmd })
+    : verify({ specs: [path.join(cwd, 'apriori', 'specs')], cwd, testCmd });
+  if (run.errors.length) return { infra: run.errors };
+  const v = run.verdict;
+  const clean = v.clean && run.duplicates.length === 0;
+  if (clean) return { check: { id: 'C1', status: 'pass', detail: `verify GREEN (${stage})` }, projection: run.projection };
+  const parts = [];
+  for (const [label, arr] of [['red', v.boundRed], ['unbound', v.unbound], ['orphan', v.orphan], ['unidentified', v.unidentified], ['duplicate-IDs', run.duplicates]])
+    if (arr.length) parts.push(`${arr.length} ${label}`);
+  return { check: { id: 'C1', status: 'blocked', detail: `verify GAPS: ${parts.join(', ')}` }, projection: run.projection };
+}
+
+// process-config `| cas | optional |` row — the project-level twin of --no-cas (flag wins)
+function configCas(cwd) {
+  const p = path.join(cwd, 'apriori', 'process-config.md');
+  if (!fs.existsSync(p)) return null;
+  const m = fs.readFileSync(p, 'utf8').match(/^\|\s*cas\s*\|\s*([^|]+?)\s*\|/mi);
+  return m ? m[1].trim().split(/\s+/)[0].toLowerCase() : null;
+}
+
+// C7: unstamped mutation deltas are denied by default — a waiver is always visible (GT-16).
+// Archived stage: the deltas are already merged; there is nothing left to stamp-check.
+function checkCas(projection, stage, noCas, cwd) {
+  if (stage === 'archived') return { id: 'C7', status: 'n/a', detail: 'deltas already merged' };
+  if (noCas) return { id: 'C7', status: 'pass', detail: 'waived (--no-cas)' };
+  if (configCas(cwd) === 'optional') return { id: 'C7', status: 'pass', detail: 'waived (process-config cas: optional)' };
+  const um = (projection && projection.unstampedMutations) || [];
+  if (!um.length) return { id: 'C7', status: 'pass', detail: 'every mutation delta is stamped' };
+  return { id: 'C7', status: 'blocked',
+    detail: `unstamped mutation delta(s): ${um.join(', ')} — run: apriori stamp <store-file> (or waive with --no-cas / a process-config cas: optional row)` };
+}
+
+// The whole evaluation. → { code, stage, checks, result, blocked, errors }
+function runGate(opts) {
+  const cwd = opts.cwd || process.cwd();
+  const res = { code: 0, stage: null, checks: [], result: 'PASS', blocked: 0, errors: [], change: opts.change || null };
+  if (!opts.change) return err(res, 'usage: apriori gate --change <name> [--test-cmd "<cmd>"] [--cwd <dir>] [--json]');
+  if (!CHANGE_NAME_RE.test(opts.change)) return err(res, `invalid change name '${opts.change}' — bare kebab-case only`);
+  const loc = resolveChange(cwd, opts.change);
+  if (loc.error) return err(res, loc.error);
+  res.stage = loc.stage;
+  const flowPath = path.join(loc.dir, 'flow-state.md');
+  if (!fs.existsSync(flowPath)) return err(res, `no readable flow-state.md at ${flowPath} — tier-aware checks are impossible`);
+  let state;
+  try { state = parseFlowState(fs.readFileSync(flowPath, 'utf8')); }
+  catch (e) { return err(res, `flow-state unreadable: ${e.message}`); }
+  const testCmd = opts.testCmd || configTestCmd(cwd);
+  if (!testCmd) return err(res, 'no test command: pass --test-cmd or add a test-cmd row to apriori/process-config.md');
+
+  const b = checkBinding(cwd, opts.change, loc.stage, testCmd);
+  if (b.infra) { for (const e of b.infra) res.errors.push(`verify: ${e}`); res.result = 'ERROR'; res.code = 2; return res; }
+  res.checks.push(b.check);
+  const tier = TIER_ENUM.includes(state.tier) ? state.tier : null;
+  res.checks.push(checkTasks(loc.dir, tier));
+  res.checks.push(checkFlowState(state, opts.change));
+  res.checks.push(checkLedger(cwd, opts.change, tier, loc.stage, loc.dir));
+  res.checks.push(checkEvidence(cwd, opts.change));
+  res.checks.push(checkKb(cwd, loc.dir));
+  res.checks.push(checkCas(b.projection, loc.stage, !!opts.noCas, cwd));
+
+  res.blocked = res.checks.filter((c) => c.status === 'blocked').length;
+  res.result = res.blocked ? 'BLOCKED' : 'PASS';
+  res.code = res.blocked ? 1 : 0;
+  return res;
+}
+
+function toJson(res) {
+  return { change: res.change, stage: res.stage, checks: res.checks, result: res.result, blocked: res.blocked, errors: res.errors };
+}
+
+const USAGE = 'usage: apriori gate --change <name> [--test-cmd "<cmd>"] [--cwd <dir>] [--json]';
+
+function cli(argv) {
+  return withStrict(argv, { sub: 'gate', usage: USAGE, positionals: 0,
+    flags: { '--change': 'value', '--test-cmd': 'value', '--cwd': 'value', '--json': 'flag', '--no-cas': 'flag' },
+    jsonError: (m) => JSON.stringify({ change: null, stage: null, checks: [], result: 'ERROR', blocked: 0, errors: [m] }, null, 2) }, (f) => {
+    const a = { change: f['--change'] || null, testCmd: f['--test-cmd'] || null, cwd: f['--cwd'] || process.cwd(), json: !!f['--json'], noCas: !!f['--no-cas'] };
+    const res = runGate(a);
+    if (a.json) { console.log(JSON.stringify(toJson(res), null, 2)); return res.code; }
+    for (const e of res.errors) console.error('gate: ' + e);
+    const mark = { pass: '✓', blocked: '✗', 'n/a': '–' };
+    for (const c of res.checks) console.log(`${mark[c.status]} ${c.id} ${c.status === 'blocked' ? 'BLOCKED — ' : ''}${c.detail}`);
+    if (res.code !== 2) console.log(res.code === 0 ? `\nGATE: PASS — ${CAVEAT}` : `\nGATE: BLOCKED (${res.blocked} item(s))`);
+    return res.code;
+  });
+}
+
+module.exports = { runGate, resolveChange, classifyStatus, cli };
+
+codex
+The main implementation matches the intended structure: projection carries `unstampedMutations`, archive filters repaired files out of write jobs, and gate evaluates C7 after the existing checks with archived-stage n/a first. I’m checking the tests and doc deltas now for semantic mismatches and edge coverage holes.
+exec
+/usr/bin/zsh -lc "sed -n '300,620p' lib/spec-runner.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc 'rg -n "AM-32|AM-33|AM-34|AM-35|SR-32|GT-16|unstamped|rerun accepted|no-cas|cas" test lib apriori/truth README.md README_cn.md RUNBOOK.md RUNBOOK_cn.md' in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' apriori/truth/archive-merge.md && sed -n '1,240p' apriori/truth/gate.md && sed -n '1,260p' apriori/truth/spec-runner.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 167ms:
+    duplicates: run.duplicates,
+    boundGreen: v.boundGreen.map((id) => ({ id, ...results.get(id) })),
+    boundRed: v.boundRed.map((id) => ({ id, ...results.get(id) })),
+    unbound: v.unbound,
+    orphan: v.orphan.map((id) => ({ id, ...results.get(id) })),
+    unidentified: v.unidentified.map(([file, title]) => ({ file, title })),
+  };
+}
+
+// Fallback test command from apriori/process-config.md's `test-cmd` row (written by init --test-cmd)
+function configTestCmd(cwd) {
+  const p = path.join(cwd || '.', 'apriori', 'process-config.md');
+  if (!fs.existsSync(p)) return null;
+  const m = fs.readFileSync(p, 'utf8').match(/^\|\s*test-cmd\s*\|\s*(.+?)\s*\|/m);
+  return m ? m[1] : null;
+}
+
+const USAGE = 'usage: apriori verify --specs <dir...> --test-cmd "<cmd>" [--id-pattern <re>] [--cwd <dir>] [--json]\n   or: apriori verify --change <name> --test-cmd "<cmd>" [--id-pattern <re>] [--cwd <dir>] [--json]\n(--test-cmd may be omitted when apriori/process-config.md has a test-cmd row)';
+
+function cli(argv) {
+  return withStrict(argv, { sub: 'verify', usage: USAGE, positionals: 0,
+    flags: { '--specs': 'multi', '--change': 'value', '--test-cmd': 'value', '--id-pattern': 'value', '--cwd': 'value', '--json': 'flag' } }, (f) => {
+    const a = { specs: f['--specs'] || [], change: f['--change'] || null, testCmd: f['--test-cmd'] || null,
+      idPattern: f['--id-pattern'] || DEFAULT_ID, cwd: f['--cwd'] || '.', json: !!f['--json'] };
+    if (a.change && a.specs.length) {
+      console.error('verify: --specs cannot be combined with --change — the projection defines the spec set');
+      return 2;
+    }
+    if (!a.testCmd) a.testCmd = configTestCmd(a.cwd);   // init --test-cmd persists it there
+    if ((!a.specs.length && !a.change) || !a.testCmd) { console.error(USAGE); return 2; }
+    const run = verify(a);
+    if (run.projection)
+      for (const sfx of run.projection.unstampedMutations || []) console.error('warning: ' + am.unstampedWarning(sfx));
+    if (run.errors.length && !a.json)
+      for (const e of run.errors) console.error('error: ' + e);
+    console.log(a.json ? JSON.stringify(verifyJson(run), null, 2)
+                       : formatReport(run.verdict, run.results, run.fileCount, { duplicates: run.duplicates, errors: run.errors }));
+    if (run.errors.length) return 2;
+    return run.verdict.clean && run.duplicates.length === 0 ? 0 : 1;
+  });
+}
+
+module.exports = { leadId, stripFences, collectScenarios, collectScenariosFromTexts, parseTap,
+  zeroTapParsed, runTestCommand, evaluate, infraErrors, formatReport, verifyJson, verify,
+  configTestCmd, cli, DEFAULT_ID };
+
+ succeeded in 164ms:
+# TRUTH — archive-merge (`lib/archive-merge.js`, CLI subcommand `archive`)
+
+## Contract (code-is-truth)
+
+source-commit: 2935bdc
+
+**Responsibility.** Merge a change's delta spec into the living store by stable Requirement ID (STEP6 archive action); move the change dir to `changes/archive/`. Zero deps. 3.1: also the home of the merge-family pure helpers shared with `verify --change` — delta discovery, projection building, CAS base stamps, realpath containment — plus the high-level `archive --change` transaction and the `stamp` subcommand.
+
+**Delta format.** `## ADDED|MODIFIED|REMOVED|RENAMED Requirements` (h2 sections) containing `### Requirement: <name>` blocks (h3); RENAMED carries `- Old -> New` lines; optionally ONE CAS stamp line `<!-- apriori-base: sha256:<64hex> | new -->` before the first section. Parsing: `parseDeltaStrict(text)` → `{ delta, stamp, problems[] }` — since delta-consumption (3.3.x) a sequential fully-consuming line walker: every line outside opaque ``` fences belongs to exactly one legal construct (file preamble, legal section heading, section-preamble free text, requirement block, RENAMED rename line), and anything else — unrecognized h2 headings (one problem per heading, its lines attributed to NOTHING, stamps included), requirement/scenario markers outside their legal home, duplicate requirement names (within/across sections), and stamp problems (malformed/duplicate/late, matched in every non-skipped state) — is a `problems[]` entry carrying its 1-based line number; CRLF parses identically to LF; well-formed deltas parse byte-identically to the pre-walker grammar; `parseDelta(text)` = its delta only; `parseRequirementsStrict(text)` → `{ map, duplicates[] }` (first block wins, duplicates reported); `parseRequirements` = its map; `deltaOpCount(delta)` → total parsed ops (0 = no recognized section OR recognized sections with no parseable requirement/rename lines). `parseStamp(text)` → `{ stamp, problems }` — any standalone comment line ATTEMPTING apriori-base that fails the strict form is a problem, never silently 'unstamped'. `fingerprint(text)` → `sha256:<64hex>` over CRLF/CR→LF-normalized content.
+
+**Public interface.**
+- `merge(storeText, delta, change)` — PURE. → `{ store:Map, merged, modified, deprecated, renamed, conflicts, unchanged }`. Duplicate requirement names in the STORE text → conflicts (corruption guard). Order of application: RENAMED first (in-place key swap preserving document order), then ADDED, MODIFIED, REMOVED.
+  - ADDED on existing name: identical trimmed content → `unchanged` (idempotent rerun no-op) UNLESS the name was created by this run's RENAMED (`renamedTargets`) → conflict.
+  - MODIFIED replaces the whole block; missing target → conflict; delta block trim-equal to the store block → `unchanged` (the rerun/idempotence signature, since cas-enforcement).
+  - REMOVED keeps the block, injects `_deprecated (superseded by <change>)_` into the heading line.
+  - RENAMED with source gone + target present → `unchanged` ("already renamed" rerun signature); source gone + target absent → conflict; target already exists → conflict.
+  - REMOVED with target gone but `<name>  _deprecated (superseded by <THIS change>)_` present → `unchanged` ("already deprecated" rerun signature); deprecated by a DIFFERENT change → conflict.
+  - ANY conflict → nothing written (CLI exit 1).
+- `renderStore(storeText, store)` — preserves the store's header (text before the first `### Requirement:`), then blocks joined with `\n`.
+- `archiveStamp(d)` → `YYYY-MM-DDThhmm` (colon-free, CLI clock).
+- `CHANGE_NAME_RE` = `/^[a-z0-9]+(-[a-z0-9]+)*$/` (same rule as `apriori new`).
+- `archiveChangeDir(changesDir, name, now, ops?)` — validates name; realpath containment on BOTH source and destination (a symlinked `archive/` pointing outside is rejected before any move); `renameSync` (via ops when given) to `changes/archive/<stamp>-<name>/`; returns dest or null when source missing; throws on invalid name/escape.
+- `containsReal(root, target)` — realpath containment; not-yet-existing targets judged by nearest existing ancestor; STRICT (root itself is not inside root); fail-closed on unreadable paths.
+- `discoverDeltas(changesDirAbs, name)` → `{ files:[{abs,suffix}], errors[] }` — validates name (CHANGE_NAME_RE), change-dir existence + containment, specs/ itself containment-checked before becoming a root (symlinked specs/ rejected); walk follows symlink dirents explicitly (escaping links = errors, never silent skips). Errors are VALIDATION class → exit 2 on both surfaces.
+- `buildProjection(storeRoot, deltaFiles, change)` → `{ texts:Map<suffix,text>, modules, perModule, conflicts, casMismatches, hygiene, validation, unstampedMutations, notes, repaired }` — all store files pass through; each delta strict-parsed, CAS-checked (mismatch+all-ops-unchanged → repaired/noted instead of failed), merged in memory; nothing touches disk.
+- `archiveChange({cwd, change, changesDir, changesDirExplicit, write, ops})` → `{ code, out[], err[] }` — four phases: preflight (discovery+hygiene+CAS+merges+pre-existing-temp guard+destination containment; any failure → nothing written), stage (`<store>.tmp-archive`, this-run cleanup on failure), commit (sorted per-file atomic renames; mid-commit failure → exact committed/not-committed/temps report, NO rollback), move (only changesDirExplicit, only after all commits). `ops` ({writeFileSync,renameSync,rmSync}) is the fault-injection seam.
+- `stampCli(argv)` — exactly one argv entry; absent file → `new` form; directory/unreadable → exit 2.
+- `cli(argv)`: high-level form `--change <name> [--write] [--changes-dir <dir>]` (no --store/--delta) → archiveChange; single-file form `--store <FILE> --delta <FILE> --change <name> [--write] [--changes-dir <dir>]` unchanged from 3.0.1 EXCEPT it now checks a present CAS stamp (mismatch → exit 1, nothing written) and rejects malformed deltas via parseDeltaStrict problems. Mixing --change with only one of --store/--delta → exit 2. Exit: 0 merged/no-op · 1 conflict/CAS/hygiene/zero-op/stage/commit/move-failure/pre-existing-temp · 2 usage/invalid name/missing change dir/containment.
+
+**Transactional write ordering (`--write`).** store staged to `<store>.tmp-archive` → dir move (atomic rename) → store committed via `renameSync(tmp, store)`. Move failure → tmp discarded, store byte-for-byte untouched. Limits: (a) tmp+rename gives single-file replace atomicity, NOT crash durability (no fsync on file or dir) — do not claim crash-durable; (b) the final `renameSync(tmp, store)` is NOT guarded — if it throws AFTER the change dir moved, the store is unchanged but the change dir is already archived and the tmp file is left behind (the "all or nothing" claim covers move failure, not store-commit failure after the move).
+
+**Three moments.** The store file is the shared state: init = created on first `--write`; update = full rewrite via temp+rename; cleanup = none (grows monotonically; REMOVED deprecates, never deletes).
+
+**Pitfalls.**
+- `merge` compares ADDED blocks with `.trim()` equality — whitespace-only differences count as conflicts, not no-ops.
+- `parseRequirementsStrict` keeps the FIRST duplicate block (previously last-wins) — visible only on invalid input, which now conflicts anyway.
+- `renderStore` drops anything BETWEEN requirement blocks that isn't part of a block (inter-block prose is not preserved — only the pre-first-block header is). Needs human confirmation whether any store relies on inter-block prose (repo's own stores do not).
+- CAS enforcement is GRADED since cas-enforcement (3.3.x): an unstamped delta STILL MERGES, but mutation-carrying ones (MODIFIED/REMOVED/RENAMED — ADDED-only exempt, the exemption is clobber-focused) warn on every surface (`unstampedWarning(suffix)`, both archive forms + verify --change stderr) and `buildProjection` returns `unstampedMutations: string[]` (suffixes) that gate C7 denies by default (--no-cas / `| cas | optional |` waive it, visibly). Stamps become mandatory in 4.0. Rerun repair: a stamped file whose base mismatches but whose EVERY op is `unchanged` (the already-applied signature; MODIFIED now reports `unchanged` on trim-equality) downgrades to a `rerun accepted` note in `notes[]`/`repaired[]` and contributes no writes — the move phase completes; a mismatch with ANY real pending op still fails the whole preflight.
+- Deprecation rewrites the heading LINE (`### Requirement: Name  _deprecated (superseded by x)_`), so on re-parse the requirement's map KEY includes the marker — MODIFIED/RENAMED can no longer address the block by its original name. (REMOVED reruns by the SAME change are now a no-op signature; see merge().) `DEPRECATED_RE`/`stripDeprecatedBlocks` exported — spec-runner uses them to exclude deprecated blocks from scenario collection.
+- CLI parsing via the shared strict parser (truth/args.md): --help exits 0; unknown flags/stray positionals exit 2; stampCli takes exactly one positional (a dash token is an unknown flag now, not the file).
+
+## Decisions (doc-is-truth)
+
+- D-AM-1 (active): same-ID conflict = stop, ledger issue, human resolves — the §4.11 serialize-per-module rule; the tool never auto-resolves.
+- D-AM-2 (superseded-by: D-AM-7): archive rerun idempotency as ratified in 3.0.1 covered two signatures — identical-content ADDED, and RENAMED source-gone+target-present.
+- D-AM-3 (active): a content-bearing delta parsing to zero operations errors instead of silently merging nothing.
+- D-AM-4 (active): REMOVED deprecates in place (audit trail), never physically deletes.
+- D-AM-5 (active): CAS base stamps are opt-in — §4.11's serialize rule tooling must not break unstamped pre-3.1 deltas. Ratified in change-projection (2026-07-10).
+- D-AM-6 (active): high-level archive guarantees failure-atomicity UP TO THE COMMIT POINT only; the commit phase is per-file atomic renames with an honest report on mid-commit failure and NO rollback (a rollback that half-fails is worse); crash durability (fsync) is explicitly NOT claimed (§4.8 wording discipline). Ratified in change-projection.
+- D-AM-7 (active): rerun idempotency covers THREE signatures — identical-content ADDED; RENAMED source-gone+target-present; REMOVED already-deprecated-by-THIS-change. MODIFIED reruns re-apply (same content → same store). Supersedes D-AM-2. Ratified in change-projection.
+# TRUTH — gate (`lib/gate.js`, CLI subcommand `gate`)
+
+## Contract (code-is-truth)
+
+source-commit: b64120f
+
+**Responsibility.** Aggregate the MECHANICAL exit conditions for one change into one exit code: 0 PASS · 1 BLOCKED · 2 evaluation untrustworthy. Strictly read-only. PASS covers machine checks only — human gates remain human (stated in output).
+
+**Public interface.**
+- `runGate({cwd, change, testCmd})` → `{ code, stage: 'in-flight'|'archived'|null, checks:[{id,status:'pass'|'blocked'|'n/a',detail}], result:'PASS'|'BLOCKED'|'ERROR', blocked, errors, change }`.
+- `resolveChange(cwd, name)` → `{stage, dir}` or `{error}` — in-flight `apriori/changes/<name>` first (realpath containment vs changes dir); else archived: basenames matching `/^\d{4}-\d{2}-\d{2}T\d{4}-<name>$/` under `changes/archive/` that stat as DIRECTORIES, sorted, last; containment vs the ARCHIVE root (a symlink pointing elsewhere under changes/ is an escape).
+- `cli(argv)`: `--change <name> [--test-cmd "<cmd>"] [--cwd <dir>] [--json]` via the shared strict parser (truth/args.md); testCmd falls back to `configTestCmd(cwd)`; neither → exit 2. `--json` = pure JSON in EVERY outcome class incl. parse errors (the jsonError seam).
+
+**The seven checks.** C1 binding (in-flight → `verify({change})` projected; archived → `verify({specs:[apriori/specs]})`; verify infra errors → gate exit 2) · C2 tasks.md zero `- [ ]` (`[x]`/`[X]` checked; absent → n/a on trivial, blocked otherwise) · C3 flow-state legality (required keys change/tier/track/lineage/current-step; placeholder = contains `<`/`>`; exact step/tier enums; change must equal --change; file missing → exit 2) · C4 ledger at `<cwd>/apriori/review/<name>-issues.md` BOTH stages, speaking the terminal-state vocabulary since ledger-states (3.3.x): statuses classified by `classifyStatus` (exported; leading token case-insensitive, `rejected-verified` alternated before `rejected`) — unknown statuses block at both stages; `open` blocks; `rejected`/`rejected-verified`/`waived` need a word character after the token; a `waived` row needs same-entry human evidence in the change's flow-state `gates:` block (one entry carrying the row ID as an exact token — LS-1 never matches inside LS-10 — plus /waiv/i); at the ARCHIVED stage every row must be terminal (`verified`/`rejected-verified`/`waived`/`advisory-acked`) — `fixed` and plain `rejected` block with reviewer-verify/concur-or-human-waive cures; in-flight `fixed` and reasoned `rejected` pass (absent ledger → n/a on trivial) · C5 verdict evidence (docs `apriori/review/<name>-*.md` + `apriori/design/<name>-review-v*.md`, minus ledger/raw stems, regular files only — symlinked doc blocks; `/^VERDICT:/m` doc needs a REGULAR (lstat-first) `apriori/review/<stem>-raw.*` inside the review dir) · C6 KB freshness (modules = first segments of delta-spec suffixes; precondition ladder → n/a with reason; `git -C <cwd> log --oneline <stamp>..HEAD -- lib/<m>.js`: clean pass / commits block / non-zero git exit n/a). · C7 CAS default-deny (in-flight: the projection's `unstampedMutations` block naming each suffix + the stamp cure; waivers are VISIBLE — `--no-cas` flag or a `| cas | optional |` process-config row (flag wins, `configCas` leading value token case-insensitive); archived → n/a, deltas already merged; neither waiver touches verify/archive behavior)
+
+**Pitfalls.**
+- C1 runs the project's full test command — gate's runtime is dominated by it.
+- C6's module→code mapping is the `lib/<m>.js` convention; anything off-convention degrades to n/a (never a false block).
+- GT-12's read-only test fingerprints path+size+mtime — same-size rewrites with restored mtime would evade it; static inspection is the actual guarantee (gate performs zero writes).
+- Requires `./status`, `./spec-runner`, `./archive-merge`; nothing requires gate (leaf module).
+
+## Decisions (doc-is-truth)
+
+- D-GT-1 (active): gate judges the MECHANICAL face only; its PASS never substitutes for protected human gates — the output must say so. Ratified in gate-command (2026-07-11).
+- D-GT-2 (active): infra failures (git absent, bad stamp commit, unmappable module) yield n/a with a reason, never a fabricated block — false blocks train humans to ignore the gate.
+- D-GT-3 (active): the raw-evidence naming rule is normative going forward: a review doc with stem S archives its raw as `apriori/review/S-raw.*` (runbook §1 updated); older changes predate the rule.
+# TRUTH — spec-runner (`lib/spec-runner.js`, CLI subcommand `verify`)
+
+## Contract (code-is-truth)
+
+source-commit: 26b66d9
+
+**Responsibility.** Bind spec scenario IDs to a TAP-emitting test run; report per-scenario red/green; act as STEP5's deterministic gate. Fail-closed: a broken or vacuous run is never GREEN. 3.1: `--change <name>` verifies against the in-memory PROJECTED store (archive's merge() applied to the living store) — the mid-change form.
+
+**Public interface (module exports).**
+- `leadId(text, idRe)` → leading ID or null. Word-boundary strict: `XX-01b`, `XX-01_x` are NOT `XX-01`.
+- `stripFences(text)` → text with ``` fenced blocks removed (fenced scenarios are documentation, not spec).
+- `mdFiles` is internal; `collectScenarios(specTargets, idRe)` → `{ byId, unidentified:[[file,title]], files, missingTargets, duplicates:[{id,files}] }`. A target may be a dir (recursed for `*.md`, sorted) or a single file (accepted as-is, ANY extension); dedupes overlapping targets. Scenario discovery matches exact h4 lines `#### Scenario: …` only. Scenarios inside DEPRECATED requirement blocks (heading carries `_deprecated (superseded by …)_`) are excluded in EVERY form — not demanded, not listed; their lingering tests turn ORPHAN.
+- `collectScenariosFromTexts(Map<label,text>, idRe)` — same scan over in-memory texts (the projection path); labels are store-relative suffixes.
+- `parseTap(out, idRe)` → `{ results: Map<id,{pass,fail,skip}>, untagged:[], untaggedFails, bailout, plans:number[], points, dupNumbers:number[] }`. Only lines shaped exactly `ok|not ok <n> - <name>` BIND — a TAP result line without the ` - ` separator produces no binding. Since tap-plan (3.3.x) a per-line pre-pass (one trailing `\r` stripped) additionally collects: `plans` = every top-level `1..N` (trailing `# SKIP`/`# TODO` directive legal, N still parses); `points` = count of top-level result tokens `/^(?:ok|not ok)(?:\s|$)/` (bare/unnumbered points count; `ok:`-prefixed and indented lines never do); `dupNumbers` = complete numeric point tokens (`ok 1abc` stays unnumbered) seen more than once, numerically. `# SKIP`/`# TODO` counts as skip (proves nothing); untagged `not ok` without directive increments `untaggedFails`; `Bail out!` line captured.
+- `zeroTapParsed(out, results, untagged)` → true when output exists but no TAP line parsed AND no `TAP version`/`1..N` plan line (plan line = TAP reporter with an empty suite, not a reporter problem).
+- `runTestCommand(cmd, cwd)` → `{ out (stdout+\n+stderr), status (null if signal-killed), signal, error }` via `spawnSync(shell:true)`.
+- `evaluate(byId, unidentified, results)` → `{ boundGreen, boundRed, unbound, orphan, unidentified, clean }`. A scenario whose only results are skips is UNBOUND.
+- `verify(opts {specs:[], change, testCmd, idPattern, cwd})` — with `change`: builds the projection via archive-merge's discoverDeltas/buildProjection (roots `<cwd>/apriori/{changes,specs}`); ANY projection failure (validation/hygiene/CAS/merge-conflict) → run with `errors` set and NO test executed; success → normal pipeline over projected texts; run gains `projection: {change, modules, conflicts}`. Without `change`: unchanged. → run object `{ verdict, results, fileCount, failCount, scenarioCount, missingTargets, duplicates, bailout, noTap, exec{status,signal,error}, errors }`. `failCount` = tagged fails + `untaggedFails`.
+- `infraErrors(run)` → string[] (empty = trustworthy). Triggers: missing spec target · zero spec files · zero scenarios · spawn error · signal kill · bailout · zero-TAP-parsed · plan trio (defensive defaults keep legacy run shapes valid: multiple top-level plans → error naming the cure; exactly one plan and plan ≠ points → truncated/garbled; exactly one plan and duplicate point numbers) · non-zero exit with `failCount === 0` (TAP picture doesn't explain the exit). Gate surfaces any of these as ERROR exit 2 (`verify: <msg>`), outranking a C1 binding block; doctor's probe classification intentionally does not consume infraErrors.
+- `formatReport(...)` → human report; RESULT line: `ERROR — run not trustworthy (see stderr)` / `GREEN — spec is the test suite` / `GAPS`. Duplicates block GREEN.
+- `verifyJson(run)` → `{ clean, result: GREEN|GAPS|ERROR, errors, specFiles, exec, duplicates, boundGreen[], boundRed[], unbound[], orphan[], unidentified[] }`; `--change` runs add exactly one field `projection: {change, modules, conflicts}` — never present otherwise. Since cas-enforcement (3.3.x): `--change` runs carry `projection.unstampedMutations` (suffixes, `[]` when none) + `projection.notes`; the cli prints one stderr warning per unstamped mutation delta — verdict untouched (WARN grade).
+- `configTestCmd(cwd)` → test-cmd from `apriori/process-config.md`'s `| test-cmd | … |` row, or null.
+- `cli(argv)` → exit code via the shared strict parser (truth/args.md): --help exits 0; unknown flags/stray positionals exit 2. `--specs <dir...>` OR `--change <name>` (mutually exclusive) `--test-cmd "<cmd>" [--id-pattern] [--cwd] [--json]`; test-cmd falls back to config row. Exit: 0 GREEN · 1 gaps/duplicates · 2 infra/usage error, incl. all projection failure classes.
+- `DEFAULT_ID` = `[A-Z]+-\d+`.
+
+**Data flow.** spec targets → collectScenarios → run test cmd once → parseTap → evaluate → infraErrors → report/JSON. One test-command invocation per verify run; no state persists between runs (stateless, reads FS + spawns only).
+
+**Three moments.** No external shared state. FS reads only; the spawned test command is the only side effect.
+
+**Pitfalls.**
+- `--specs` consumes following args until the next `--` flag — a path starting with `--` is impossible.
+- A direct-file `--specs` target is read whatever its extension; only directory recursion filters to `.md`.
+- `exec.status` is null when signal-killed; the non-zero-exit rule explicitly guards `status !== null`.
+- Requires `./archive-merge` (one-way: archive-merge never requires spec-runner).
+
+## Decisions (doc-is-truth)
+
+- D-SR-1 (active): fail-closed is a hard product stance — exit taxonomy 0/1/2; a vacuous or untrustworthy run must never exit 0. Ratified with 3.0.1 (owner + external review 2026-07-10).
+- D-SR-2 (active): skipped tests prove nothing — a scenario with only skips is UNBOUND, not green.
+- D-SR-3 (active): duplicate scenario IDs are a binding ambiguity → GAPS (exit 1), not a warning.
+- D-SR-4 (active): the binding gate speaks TAP only; non-TAP layers (e.g. Playwright E2E) sit above the gate as additional exit conditions, never replace it.
+- D-SR-5 (active): deprecated requirement blocks are excluded from scenario collection in ALL verify forms — post-REMOVED stores must not demand tests for removed behavior forever; lingering tests surface as ORPHAN. Ratified in change-projection (2026-07-10, STEP0 REQ-2).
+- D-SR-6 (active): mid-change, the STEP5 gate is `verify --change` (projection); plain `--specs` verify is the post-archive/store-only form. Ratified in change-projection.
+
+ succeeded in 174ms:
+RUNBOOK_cn.md:183:- **CAS 基线章(串行规则的工具化):**写增量规格时,先跑 `apriori stamp apriori/specs/<module>/spec.md`,把打印出的 `<!-- apriori-base: … -->` 行贴在增量文件顶部(第一个 `## … Requirements` 小节之前;规格库文件尚不存在时用 `new`)。此后 `verify --change` 和 `archive` 都会在规格库自增量作成以来已发生变化时拒绝执行——§4.11 的串行规则由此机械化。强制是分级的:不盖章的**变更类**增量(MODIFIED/REMOVED/RENAMED)仍会合并,但在所有表面都告警,且 gate C7 默认拒绝(`--no-cas` 或配置行 `| cas | optional |` 可见地豁免)——4.0 起基线章为强制;已完全落地的盖章增量可以干净重跑(不匹配降级为 rerun-accepted 提示)。
+RUNBOOK.md:187:- **CAS base stamps (serialize-rule tooling):** when authoring a delta, run `apriori stamp apriori/specs/<module>/spec.md` and paste the printed `<!-- apriori-base: … -->` line at the top of the delta file (before the first `## … Requirements` section; `new` for a not-yet-existing store). Both `verify --change` and `archive` then refuse if the store has diverged since the delta was authored — §4.11's serialize rule made mechanical. Enforcement is graded: unstamped MUTATION deltas (MODIFIED/REMOVED/RENAMED) still merge but WARN on every surface and gate C7 denies them by default (`--no-cas` or a `| cas | optional |` config row waives it, visibly) — stamps become mandatory in 4.0; a stamped delta already fully applied re-runs cleanly (the mismatch downgrades to a rerun-accepted note).
+RUNBOOK.md:306:2. Are edge cases and exception paths covered (null, out-of-range, concurrency, timeout, failure rollback)
+lib/new.js:11:const NAME_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;   // bare kebab-case: no empty segments, no trailing hyphen
+lib/new.js:33:  if (!name || !NAME_RE.test(name)) return { ok: false, error: `invalid change name '${name}' — use bare kebab-case (e.g. add-playback); dates are stamped at archive time, not here` };
+lib/new.js:44:const USAGE = 'usage: apriori new <change-name>   (bare kebab-case, e.g. add-playback)';
+lib/spec-runner.js:235:  const projection = { change, modules: [], conflicts: [], unstampedMutations: [] };
+lib/spec-runner.js:241:  projection.unstampedMutations = p.unstampedMutations;      // WARN grade — cli prints, verdict untouched
+lib/spec-runner.js:243:  const errors = [...p.validation, ...p.hygiene, ...p.casMismatches];
+lib/spec-runner.js:332:      for (const sfx of run.projection.unstampedMutations || []) console.error('warning: ' + am.unstampedWarning(sfx));
+lib/archive-merge.js:51:// never silently treated as "unstamped" (that would quietly disable CAS)
+lib/archive-merge.js:191:function unstampedWarning(suffix) {
+lib/archive-merge.js:192:  return `unstamped mutation delta ${suffix} — divergence undetectable; run: apriori stamp <store-file> (stamps become mandatory in 4.0)`;
+lib/archive-merge.js:305:  if (!name || !CHANGE_NAME_RE.test(name)) return { files: [], errors: [`invalid change name '${name}' — bare kebab-case only`] };
+lib/archive-merge.js:325:// → { texts: Map<suffix, projectedText>, modules, perModule, conflicts, casMismatches,
+lib/archive-merge.js:329:  const conflicts = [], casMismatches = [], hygiene = [], validation = [];
+lib/archive-merge.js:330:  const unstampedMutations = [], notes = [], repaired = [];
+lib/archive-merge.js:342:    if (!stamp && mutationOpCount(delta) > 0) unstampedMutations.push(suffix);   // WARN grade (callers print)
+lib/archive-merge.js:352:          notes.push(`${suffix}: stamp mismatch but the delta is already fully applied — rerun accepted`);
+lib/archive-merge.js:357:        casMismatches.push(`base mismatch for ${target}: delta expects ${stamp}, store is ${actual}`); continue;
+lib/archive-merge.js:366:  return { texts, modules, perModule, conflicts, casMismatches, hygiene, validation, unstampedMutations, notes, repaired };
+lib/archive-merge.js:377:const CHANGE_NAME_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;   // bare kebab-case — same rule as `apriori new`
+lib/archive-merge.js:383:  if (!CHANGE_NAME_RE.test(name)) throw new Error(`invalid change name '${name}' — bare kebab-case only`);
+lib/archive-merge.js:418:  for (const sfx of p.unstampedMutations) out.push(`warning: ${unstampedWarning(sfx)}`);
+lib/archive-merge.js:420:  const preflightFailures = [...p.hygiene, ...p.casMismatches, ...p.conflicts];
+lib/archive-merge.js:525:    if (!CHANGE_NAME_RE.test(a.change)) { console.error(`archive: invalid change name '${a.change}' — bare kebab-case only (path segments are not allowed)`); return 2; }
+lib/archive-merge.js:548:    // WARN grade (AM-32): mutation ops without a stamp merge, but never silently
+lib/archive-merge.js:549:    if (!stamp && mutationOpCount(delta) > 0) console.log(`warning: ${unstampedWarning(a.delta)}`);
+lib/archive-merge.js:590:module.exports = { parseRequirements, parseRequirementsStrict, parseDelta, parseDeltaStrict, deltaOpCount, mutationOpCount, unstampedWarning,
+apriori/truth/gate.md:14:**The seven checks.** C1 binding (in-flight → `verify({change})` projected; archived → `verify({specs:[apriori/specs]})`; verify infra errors → gate exit 2) · C2 tasks.md zero `- [ ]` (`[x]`/`[X]` checked; absent → n/a on trivial, blocked otherwise) · C3 flow-state legality (required keys change/tier/track/lineage/current-step; placeholder = contains `<`/`>`; exact step/tier enums; change must equal --change; file missing → exit 2) · C4 ledger at `<cwd>/apriori/review/<name>-issues.md` BOTH stages, speaking the terminal-state vocabulary since ledger-states (3.3.x): statuses classified by `classifyStatus` (exported; leading token case-insensitive, `rejected-verified` alternated before `rejected`) — unknown statuses block at both stages; `open` blocks; `rejected`/`rejected-verified`/`waived` need a word character after the token; a `waived` row needs same-entry human evidence in the change's flow-state `gates:` block (one entry carrying the row ID as an exact token — LS-1 never matches inside LS-10 — plus /waiv/i); at the ARCHIVED stage every row must be terminal (`verified`/`rejected-verified`/`waived`/`advisory-acked`) — `fixed` and plain `rejected` block with reviewer-verify/concur-or-human-waive cures; in-flight `fixed` and reasoned `rejected` pass (absent ledger → n/a on trivial) · C5 verdict evidence (docs `apriori/review/<name>-*.md` + `apriori/design/<name>-review-v*.md`, minus ledger/raw stems, regular files only — symlinked doc blocks; `/^VERDICT:/m` doc needs a REGULAR (lstat-first) `apriori/review/<stem>-raw.*` inside the review dir) · C6 KB freshness (modules = first segments of delta-spec suffixes; precondition ladder → n/a with reason; `git -C <cwd> log --oneline <stamp>..HEAD -- lib/<m>.js`: clean pass / commits block / non-zero git exit n/a). · C7 CAS default-deny (in-flight: the projection's `unstampedMutations` block naming each suffix + the stamp cure; waivers are VISIBLE — `--no-cas` flag or a `| cas | optional |` process-config row (flag wins, `configCas` leading value token case-insensitive); archived → n/a, deltas already merged; neither waiver touches verify/archive behavior)
+lib/gate.js:76:// leading token, case-insensitive; rejected-verified BEFORE rejected (alternation order).
+lib/gate.js:227:// process-config `| cas | optional |` row — the project-level twin of --no-cas (flag wins)
+lib/gate.js:231:  const m = fs.readFileSync(p, 'utf8').match(/^\|\s*cas\s*\|\s*([^|]+?)\s*\|/mi);
+lib/gate.js:235:// C7: unstamped mutation deltas are denied by default — a waiver is always visible (GT-16).
+lib/gate.js:239:  if (noCas) return { id: 'C7', status: 'pass', detail: 'waived (--no-cas)' };
+lib/gate.js:240:  if (configCas(cwd) === 'optional') return { id: 'C7', status: 'pass', detail: 'waived (process-config cas: optional)' };
+lib/gate.js:241:  const um = (projection && projection.unstampedMutations) || [];
+lib/gate.js:244:    detail: `unstamped mutation delta(s): ${um.join(', ')} — run: apriori stamp <store-file> (or waive with --no-cas / a process-config cas: optional row)` };
+lib/gate.js:252:  if (!CHANGE_NAME_RE.test(opts.change)) return err(res, `invalid change name '${opts.change}' — bare kebab-case only`);
+lib/gate.js:289:    flags: { '--change': 'value', '--test-cmd': 'value', '--cwd': 'value', '--json': 'flag', '--no-cas': 'flag' },
+lib/gate.js:291:    const a = { change: f['--change'] || null, testCmd: f['--test-cmd'] || null, cwd: f['--cwd'] || process.cwd(), json: !!f['--json'], noCas: !!f['--no-cas'] };
+apriori/truth/spec-runner.md:21:- `verifyJson(run)` → `{ clean, result: GREEN|GAPS|ERROR, errors, specFiles, exec, duplicates, boundGreen[], boundRed[], unbound[], orphan[], unidentified[] }`; `--change` runs add exactly one field `projection: {change, modules, conflicts}` — never present otherwise. Since cas-enforcement (3.3.x): `--change` runs carry `projection.unstampedMutations` (suffixes, `[]` when none) + `projection.notes`; the cli prints one stderr warning per unstamped mutation delta — verdict untouched (WARN grade).
+apriori/truth/status.md:13:- `changeStatus(root, change)` → `{ change, state (parsed flow-state or null), open (ledger rows with status starting "open", case-insensitive), hasFlowState }`. Flow-state read from `<root>/apriori/changes/<change>/flow-state.md`; ledger from `<root>/apriori/review/<change>-issues.md`.
+apriori/truth/archive-merge.md:9:**Delta format.** `## ADDED|MODIFIED|REMOVED|RENAMED Requirements` (h2 sections) containing `### Requirement: <name>` blocks (h3); RENAMED carries `- Old -> New` lines; optionally ONE CAS stamp line `<!-- apriori-base: sha256:<64hex> | new -->` before the first section. Parsing: `parseDeltaStrict(text)` → `{ delta, stamp, problems[] }` — since delta-consumption (3.3.x) a sequential fully-consuming line walker: every line outside opaque ``` fences belongs to exactly one legal construct (file preamble, legal section heading, section-preamble free text, requirement block, RENAMED rename line), and anything else — unrecognized h2 headings (one problem per heading, its lines attributed to NOTHING, stamps included), requirement/scenario markers outside their legal home, duplicate requirement names (within/across sections), and stamp problems (malformed/duplicate/late, matched in every non-skipped state) — is a `problems[]` entry carrying its 1-based line number; CRLF parses identically to LF; well-formed deltas parse byte-identically to the pre-walker grammar; `parseDelta(text)` = its delta only; `parseRequirementsStrict(text)` → `{ map, duplicates[] }` (first block wins, duplicates reported); `parseRequirements` = its map; `deltaOpCount(delta)` → total parsed ops (0 = no recognized section OR recognized sections with no parseable requirement/rename lines). `parseStamp(text)` → `{ stamp, problems }` — any standalone comment line ATTEMPTING apriori-base that fails the strict form is a problem, never silently 'unstamped'. `fingerprint(text)` → `sha256:<64hex>` over CRLF/CR→LF-normalized content.
+apriori/truth/archive-merge.md:14:  - MODIFIED replaces the whole block; missing target → conflict; delta block trim-equal to the store block → `unchanged` (the rerun/idempotence signature, since cas-enforcement).
+apriori/truth/archive-merge.md:25:- `buildProjection(storeRoot, deltaFiles, change)` → `{ texts:Map<suffix,text>, modules, perModule, conflicts, casMismatches, hygiene, validation, unstampedMutations, notes, repaired }` — all store files pass through; each delta strict-parsed, CAS-checked (mismatch+all-ops-unchanged → repaired/noted instead of failed), merged in memory; nothing touches disk.
+apriori/truth/archive-merge.md:38:- CAS enforcement is GRADED since cas-enforcement (3.3.x): an unstamped delta STILL MERGES, but mutation-carrying ones (MODIFIED/REMOVED/RENAMED — ADDED-only exempt, the exemption is clobber-focused) warn on every surface (`unstampedWarning(suffix)`, both archive forms + verify --change stderr) and `buildProjection` returns `unstampedMutations: string[]` (suffixes) that gate C7 denies by default (--no-cas / `| cas | optional |` waive it, visibly). Stamps become mandatory in 4.0. Rerun repair: a stamped file whose base mismatches but whose EVERY op is `unchanged` (the already-applied signature; MODIFIED now reports `unchanged` on trim-equality) downgrades to a `rerun accepted` note in `notes[]`/`repaired[]` and contributes no writes — the move phase completes; a mismatch with ANY real pending op still fails the whole preflight.
+apriori/truth/archive-merge.md:48:- D-AM-5 (active): CAS base stamps are opt-in — §4.11's serialize rule tooling must not break unstamped pre-3.1 deltas. Ratified in change-projection (2026-07-10).
+apriori/truth/doctor.md:26:- D-DR-4 (active): wrong-type scaffold entries (file-as-dir etc.) are findings, never false passes or crashes — malformed scaffolds are doctor's core case.
+test/golden-path-resolve.test.js:46:  const cases = [
+test/golden-path-resolve.test.js:52:  for (const [hit, want] of cases) {
+test/check.test.js:200:  const cases = [
+test/check.test.js:205:  for (const [rel, content, classRe, secret] of cases) {
+test/gate.test.js:211:  // mismatch case is GT-04's /change/ row (C3-blocked, not exit 2) — assert the distinction here too
+test/gate.test.js:275:  const cases = [
+test/gate.test.js:281:  for (const [args, code, result, stage] of cases) {
+test/gate.test.js:423:// ---- cas-enforcement (GT-16): C7 denies unstamped mutation deltas unless visibly waived ----
+test/gate.test.js:439:test('GT-16 C7 blocks, and waivers are loud', () => {
+test/gate.test.js:440:  // unstamped mutation delta → blocked naming the suffix + cure
+test/gate.test.js:446:  // --no-cas → loud waiver, not blocked
+test/gate.test.js:449:  assert.match(w.detail, /waived \(--no-cas\)/);
+test/gate.test.js:450:  // config row | cas | optional | → waived naming the config
+test/gate.test.js:451:  const rootC = modProject({ 'apriori/process-config.md': '| Field | Value |\n|---|---|\n| cas | optional |\n' });
+test/gate.test.js:456:  const rootR = modProject({ 'apriori/process-config.md': '| Field | Value |\n|---|---|\n| cas | required |\n' });
+test/gate.test.js:458:  assert.match(c7Of(rootR, { noCas: true }).detail, /waived \(--no-cas\)/);
+test/gate.test.js:472:  // CLI: --no-cas is a legal flag
+test/gate.test.js:473:  const cli = run(['gate', '--change', 'c', '--no-cas', '--test-cmd', MOD_TAP], modProject());
+test/spec-runner.test.js:78:  // default pattern ignores lowercase-led ids
+test/new.test.js:37:test('NW-03 enforces bare kebab-case names (dates stamped at archive time, not here)', () => {
+test/spec-runner-projection.test.js:98:  const cases = [
+test/spec-runner-projection.test.js:109:  for (const [extra, name, frag] of cases) {
+test/spec-runner-projection.test.js:139:  assert.deepStrictEqual(ok.json.projection, { change: 'c', modules: ['kv/spec.md'], conflicts: [], unstampedMutations: [], notes: [] });
+test/spec-runner-projection.test.js:155:  assert.deepStrictEqual(nf.json.projection, { change: 'zzz', modules: [], conflicts: [], unstampedMutations: [] });
+test/spec-runner-projection.test.js:186:// ---- cas-enforcement (SR-32): the projection warns but does not judge ----
+test/spec-runner-projection.test.js:193:test('SR-32 the projection warns but does not judge', () => {
+test/spec-runner-projection.test.js:201:  assert.match(r.stderr, /unstamped mutation delta/);
+test/spec-runner-projection.test.js:204:  assert.deepStrictEqual(j.projection.unstampedMutations, ['kv/spec.md']);
+test/spec-runner-projection.test.js:213:  assert.doesNotMatch(r2.stderr, /unstamped/);
+test/spec-runner-projection.test.js:214:  assert.deepStrictEqual(JSON.parse(r2.stdout).projection.unstampedMutations, []);
+test/archive-change.test.js:144:  const cases = [
+test/archive-change.test.js:149:  for (const [bad, frag] of cases) {
+test/archive-change.test.js:220:  const cases = [
+test/archive-change.test.js:226:  for (const bad of cases) {
+test/archive-change.test.js:411:  const cases = [
+test/archive-change.test.js:417:  for (const [text, lineRe] of cases) {
+test/archive-change.test.js:429:// ---- cas-enforcement (AM-32..35): graded stamps + rerun repair ----
+test/archive-change.test.js:435:test('AM-32 unstamped mutation deltas warn on both archive forms', () => {
+test/archive-change.test.js:440:  assert.match(r.stdout + r.stderr, /unstamped mutation delta/);
+test/archive-change.test.js:447:  assert.match(r2.stdout + r2.stderr, /unstamped mutation delta/);
+test/archive-change.test.js:452:  assert.doesNotMatch(r3.stdout + r3.stderr, /unstamped mutation delta/);
+test/archive-change.test.js:455:test('AM-33 an already-applied stamped delta reruns to completion', () => {
+test/archive-change.test.js:459:    'apriori/changes/c/specs/a/spec.md': STALE + MOD_SAME,     // MODIFIED-only, trim-equal (the CE-1 case)
+test/archive-change.test.js:464:  assert.match(r.stdout + r.stderr, /rerun accepted/);
+test/archive-change.test.js:470:test('AM-34 divergence with pending work never repairs; the resumed mix completes', () => {
+test/archive-change.test.js:492:  assert.match(rB.stdout + rB.stderr, /rerun accepted/);
+test/archive-change.test.js:506:test('AM-35 MODIFIED speaks the idempotence vocabulary', () => {
+
+codex
+One possible drift is emerging in docs: `truth/spec-runner.md` still first states the old projection shape before the cas-enforcement addendum, but the addendum corrects it in the same bullet. I’m checking whether any implementation behavior is materially out of contract rather than just wording debt.
+exec
+/usr/bin/zsh -lc "sed -n '423,485p' test/gate.test.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '429,525p' test/archive-change.test.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '130,225p' test/spec-runner-projection.test.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' apriori/changes/cas-enforcement/design.md && sed -n '1,220p' apriori/changes/cas-enforcement/tasks.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 103ms:
+// ---- cas-enforcement (GT-16): C7 denies unstamped mutation deltas unless visibly waived ----
+
+const MOD_DELTA = '## MODIFIED Requirements\n\n### Requirement: Alpha\n\n#### Scenario: XA-01 base\n- tightened\n';
+function modProject(extraFiles = {}) {
+  return mkProject({
+    'apriori/specs/kv/spec.md': STORE,
+    'apriori/changes/c/flow-state.md': FLOW('c'),
+    'apriori/changes/c/tasks.md': '- [x] T1 done\n',
+    'apriori/changes/c/specs/kv/spec.md': MOD_DELTA,
+    'apriori/review/c-issues.md': LEDGER_OK,
+    ...extraFiles,
+  });
+}
+const MOD_TAP = tapCmd('ok 1 - XA-01 a');
+const c7Of = (root, opts = {}) => gate.runGate({ cwd: root, change: 'c', testCmd: MOD_TAP, ...opts }).checks.find((x) => x.id === 'C7');
+
+test('GT-16 C7 blocks, and waivers are loud', () => {
+  // unstamped mutation delta → blocked naming the suffix + cure
+  const b = c7Of(modProject());
+  assert.ok(b, 'C7 missing from checks');
+  assert.strictEqual(b.status, 'blocked');
+  assert.match(b.detail, /kv[\/\\]spec\.md/);
+  assert.match(b.detail, /apriori stamp/);
+  // --no-cas → loud waiver, not blocked
+  const w = c7Of(modProject(), { noCas: true });
+  assert.notStrictEqual(w.status, 'blocked');
+  assert.match(w.detail, /waived \(--no-cas\)/);
+  // config row | cas | optional | → waived naming the config
+  const rootC = modProject({ 'apriori/process-config.md': '| Field | Value |\n|---|---|\n| cas | optional |\n' });
+  const wc = c7Of(rootC);
+  assert.notStrictEqual(wc.status, 'blocked');
+  assert.match(wc.detail, /process-config/);
+  // the flag wins over a required config
+  const rootR = modProject({ 'apriori/process-config.md': '| Field | Value |\n|---|---|\n| cas | required |\n' });
+  assert.strictEqual(c7Of(rootR).status, 'blocked');
+  assert.match(c7Of(rootR, { noCas: true }).detail, /waived \(--no-cas\)/);
+  // stamped or ADDED-only → silent pass
+  const okA = c7Of(healthy());                                   // ADDED-only fixture
+  assert.strictEqual(okA.status, 'pass');
+  // archived stage → n/a (deltas already merged)
+  const arch = mkProject({
+    'apriori/specs/kv/spec.md': STORE + '\n### Requirement: Beta\n\n#### Scenario: XB-01 new\n- t\n',
+    'apriori/changes/archive/2026-07-10T1200-c/flow-state.md': FLOW('c'),
+    'apriori/changes/archive/2026-07-10T1200-c/tasks.md': '- [x] T1\n',
+    'apriori/changes/archive/2026-07-10T1200-c/specs/kv/spec.md': DELTA,
+    'apriori/review/c-issues.md': LEDGER_OK,
+  });
+  const na = gate.runGate({ cwd: arch, change: 'c', testCmd: TAP_OK }).checks.find((x) => x.id === 'C7');
+  assert.strictEqual(na.status, 'n/a');
+  // CLI: --no-cas is a legal flag
+  const cli = run(['gate', '--change', 'c', '--no-cas', '--test-cmd', MOD_TAP], modProject());
+  assert.match(cli.stdout, /waived/);
+});
+
+ succeeded in 113ms:
+# Design — cas-enforcement
+
+**lib/archive-merge.js**
+- `merge()` MODIFIED branch (DD-5/AM-35): before replacing, `if (store.get(name).trim() === block.trim()) { unchanged.push(name); continue; }` — mirrors the ADDED no-op comparison rule (trim equality), first applications untouched.
+- `mutationOpCount(delta)` helper (or inline): `delta.MODIFIED.size + delta.REMOVED.size + delta.RENAMED.length` — the warn/deny predicate is `mutationOpCount > 0 && stamp === null`.
+- `buildProjection`: new `unstampedMutations` array (suffix strings, the same `suffix` each file already carries); push when the predicate holds; return it alongside conflicts/casMismatches. WARN text composed by CALLERS (one message class): `unstamped mutation delta <suffix> — divergence undetectable; run: apriori stamp <store-file> (stamps become mandatory in 4.0)`.
+- Preflight rerun repair (AM-33/34): where casMismatches currently pushes, first run the merge against the CURRENT store; if `merged.length + modified.length + deprecated.length + renamed.length === 0 && conflicts.length === 0` (all ops landed in `unchanged`) → push a NOTE (`out[]`: `<suffix>: stamp mismatch but the delta is already fully applied — rerun accepted`) and mark the file as contributing no writes; else push the casMismatches error as today. The mixed matrix falls out per file; any error still fails the whole preflight before writes/move (existing all-or-nothing plumbing).
+- Single-file `cli` form (AM-32): same predicate on its one delta → same warning line on stdout before RESULT.
+- `archiveChange` report: warnings appended to `out` before the RESULT line.
+
+**lib/spec-runner.js (SR-32)**
+- `verifyChange` already consumes buildProjection: attach `b.unstampedMutations` to the run/projection; `verify --change`'s cli prints each warning to stderr; `verifyJson`: `json.projection.unstampedMutations = run.projection.unstampedMutations || []`.
+
+**lib/gate.js (GT-16)**
+- C7 after C6: in-flight stage → read the projection's `unstampedMutations` (checkBinding already builds the projection for C1 — thread the field through rather than re-projecting; if C1's run object carries `projection`, reuse). Archived stage → `{ id: 'C7', status: 'n/a', detail: 'deltas already merged' }`.
+- Escapes: `--no-cas` flag (withStrict flags gains `'--no-cas': 'flag'`); config row via a `configCas(cwd)` reader modeled on `configTestCmd` (`| cas | <value> |`, leading token, case-insensitive). Precedence: flag first. Waived detail strings: `waived (--no-cas)` / `waived (process-config cas: optional)`, status 'pass' with the waiver in detail (blocked-count unaffected) — visible, machine-greppable.
+- gate `--json`/output rows include C7 like any check.
+
+**Docs (K5)**
+- truth/archive-merge.md: the opt-in pitfall paragraph → graded reality (warn now, C7 default-deny, rerun repair, 4.0 trajectory); merge() MODIFIED bullet gains the trim-equality unchanged note.
+- truth/gate.md: C7 added to "the checks" line (+ escapes).
+- truth/spec-runner.md: verifyChange/projection JSON field.
+- RUNBOOK EN/CN: one sentence in the §4.11/serial-rule vicinity (graded enforcement + 4.0). NOT a new PR scenario — K5 binds via the three module deltas; the runbook sentence is prose (P8 checks the pair).
+
+**Tests**: AM-32..35 (test/archive-change.test.js), SR-32 (test/spec-runner.test.js), GT-16 (test/gate.test.js). Fixture notes: AM-33 rerun fixture = archive once with --write, restore the change dir copy (the move relocated it) or pre-merge the store manually + stamped delta; simpler: write the store ALREADY containing the merged content + a stamped-with-OLD-fingerprint delta whose ops all trim-equal → mismatch+all-unchanged. GT-16 uses the gate-test mkProject with an unstamped MODIFIED delta (store must contain the target block so the op is real-but-unstamped).
+Tasks: T1 red AM-32..35 + SR-32 + GT-16; T2 archive-merge (merge/projection/preflight/cli); T3 spec-runner + gate (+ configCas); T4 docs/truth; T5 gates + post-archive gate.
+# Tasks — cas-enforcement
+
+- [x] T1. Red AM-32..35 + SR-32 + GT-16 (warn both archive forms, ADDED exemption, rerun repair incl. MODIFIED-only and the mixed matrix, JSON field, C7 block/waivers) — red run.
+- [x] T2. lib/archive-merge.js: MODIFIED unchanged signature; unstampedMutations in buildProjection; preflight rerun repair; single-file + report warnings.
+- [x] T3. lib/spec-runner.js stderr warnings + JSON field; lib/gate.js C7 + --no-cas + configCas.
+- [x] T4. truth/archive-merge+gate+spec-runner; RUNBOOK EN/CN graded-enforcement sentence.
+- [x] T5. Suite green; verify --change GREEN; gate PASS; check --self PASS; post-archive gate PASS.
+
+ succeeded in 125ms:
+// ---- cas-enforcement (AM-32..35): graded stamps + rerun repair ----
+
+const MOD_SAME = '## MODIFIED Requirements\n\n### Requirement: Alpha\n\n#### Scenario: XA-01 a\n- t\n';   // trim-equal to STORE_A's block
+const MOD_DIFF = '## MODIFIED Requirements\n\n### Requirement: Alpha\n\n#### Scenario: XA-01 a\n- CHANGED\n';
+const STALE = `<!-- apriori-base: sha256:${'0'.repeat(64)} -->\n`;
+
+test('AM-32 unstamped mutation deltas warn on both archive forms', () => {
+  // high-level form: warns AND merges
+  const root = twoModuleProject({ 'apriori/changes/c/specs/a/spec.md': MOD_DIFF });
+  const r = run(['archive', '--change', 'c', '--write'], root);
+  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout + r.stderr, /unstamped mutation delta/);
+  assert.match(r.stdout + r.stderr, /apriori stamp/);
+  assert.match(fs.readFileSync(path.join(root, 'apriori/specs/a/spec.md'), 'utf8'), /CHANGED/);
+  // single-file form warns too
+  const root2 = mkProject({ 'store.md': STORE_A, 'delta.md': MOD_DIFF });
+  const r2 = run(['archive', '--store', 'store.md', '--delta', 'delta.md', '--change', 'c', '--write'], root2);
+  assert.strictEqual(r2.status, 0);
+  assert.match(r2.stdout + r2.stderr, /unstamped mutation delta/);
+  // ADDED-only stays quiet
+  const root3 = twoModuleProject();
+  const r3 = run(['archive', '--change', 'c', '--write'], root3);
+  assert.strictEqual(r3.status, 0);
+  assert.doesNotMatch(r3.stdout + r3.stderr, /unstamped mutation delta/);
+});
+
+test('AM-33 an already-applied stamped delta reruns to completion', () => {
+  // store already carries the merged content; the stamp records a stale base → mismatch + all-unchanged
+  const root = mkProject({
+    'apriori/specs/a/spec.md': STORE_A,
+    'apriori/changes/c/specs/a/spec.md': STALE + MOD_SAME,     // MODIFIED-only, trim-equal (the CE-1 case)
+  });
+  const before = fs.readFileSync(path.join(root, 'apriori/specs/a/spec.md'), 'utf8');
+  const r = run(['archive', '--change', 'c', '--write', '--changes-dir', 'apriori/changes'], root);
+  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout + r.stderr, /rerun accepted/);
+  assert.strictEqual(fs.readFileSync(path.join(root, 'apriori/specs/a/spec.md'), 'utf8'), before);
+  assert.ok(!fs.existsSync(path.join(root, 'apriori/changes/c')), 'change dir must have moved');
+  assert.ok(fs.readdirSync(path.join(root, 'apriori/changes/archive')).some((b) => b.endsWith('-c')));
+});
+
+test('AM-34 divergence with pending work never repairs; the resumed mix completes', () => {
+  // (a) stale stamp + a REAL pending op → hard fail, nothing written or moved
+  const rootA = mkProject({
+    'apriori/specs/a/spec.md': STORE_A,
+    'apriori/changes/c/specs/a/spec.md': STALE + MOD_DIFF,
+  });
+  const beforeA = fs.readFileSync(path.join(rootA, 'apriori/specs/a/spec.md'), 'utf8');
+  const rA = run(['archive', '--change', 'c', '--write', '--changes-dir', 'apriori/changes'], rootA);
+  assert.strictEqual(rA.status, 1);
+  assert.match(rA.stdout + rA.stderr, /base mismatch/);
+  assert.strictEqual(fs.readFileSync(path.join(rootA, 'apriori/specs/a/spec.md'), 'utf8'), beforeA);
+  assert.ok(fs.existsSync(path.join(rootA, 'apriori/changes/c')), 'change dir must NOT move');
+  // (b) the resumed-partial-commit mix: A stale-but-applied + B matching-with-real-ops → completes
+  const goodB = am.fingerprint(STORE_B);
+  const rootB = mkProject({
+    'apriori/specs/a/spec.md': STORE_A,
+    'apriori/specs/b/spec.md': STORE_B,
+    'apriori/changes/c/specs/a/spec.md': STALE + MOD_SAME,
+    'apriori/changes/c/specs/b/spec.md': `<!-- apriori-base: ${goodB} -->\n` + ADD_B,
+  });
+  const rB = run(['archive', '--change', 'c', '--write', '--changes-dir', 'apriori/changes'], rootB);
+  assert.strictEqual(rB.status, 0, rB.stdout + rB.stderr);
+  assert.match(rB.stdout + rB.stderr, /rerun accepted/);
+  assert.match(fs.readFileSync(path.join(rootB, 'apriori/specs/b/spec.md'), 'utf8'), /Bravo2/);
+  // (c) mixed with a diverged pending file → whole preflight fails, B untouched too
+  const rootC = mkProject({
+    'apriori/specs/a/spec.md': STORE_A,
+    'apriori/specs/b/spec.md': STORE_B,
+    'apriori/changes/c/specs/a/spec.md': STALE + MOD_SAME,
+    'apriori/changes/c/specs/b/spec.md': STALE + '## MODIFIED Requirements\n\n### Requirement: Bravo\n\n#### Scenario: XV-01 b\n- CHANGED\n',
+  });
+  const rC = run(['archive', '--change', 'c', '--write', '--changes-dir', 'apriori/changes'], rootC);
+  assert.strictEqual(rC.status, 1);
+  assert.strictEqual(fs.readFileSync(path.join(rootC, 'apriori/specs/b/spec.md'), 'utf8'), STORE_B);
+});
+
+test('AM-35 MODIFIED speaks the idempotence vocabulary', () => {
+  const sameBlock = '### Requirement: Alpha\n\n#### Scenario: XA-01 a\n- t\n';
+  const same = am.merge(STORE_A, { ADDED: new Map(), MODIFIED: new Map([['Alpha', sameBlock]]), REMOVED: new Map(), RENAMED: [] }, 'c');
+  assert.deepStrictEqual(same.modified, []);
+  assert.ok(same.unchanged.includes('Alpha'), JSON.stringify(same.unchanged));
+  const diff = am.merge(STORE_A, { ADDED: new Map(), MODIFIED: new Map([['Alpha', sameBlock.replace('- t', '- x')]]), REMOVED: new Map(), RENAMED: [] }, 'c');
+  assert.deepStrictEqual(diff.modified, ['Alpha']);
+});
+
+ succeeded in 146ms:
+  // success class
+  const okRoot = mkProject({
+    'apriori/specs/kv/spec.md': STORE_KV,
+    'apriori/changes/c/specs/kv/spec.md':
+      '## ADDED Requirements\n\n### Requirement: Beta\n\n#### Scenario: XB-01 n\n- t\n',
+  });
+  const ok = jsonCli(['--change', 'c', '--cwd', okRoot, '--test-cmd', tapCmd('ok 1 - XA-01 a', 'ok 2 - XB-01 b'), '--json']);
+  assert.strictEqual(ok.code, 0);
+  assert.strictEqual(ok.json.result, 'GREEN');
+  assert.deepStrictEqual(ok.json.projection, { change: 'c', modules: ['kv/spec.md'], conflicts: [], unstampedMutations: [], notes: [] });
+  // merge-conflict class
+  const cfRoot = mkProject({
+    'apriori/specs/kv/spec.md': STORE_KV,
+    'apriori/changes/c/specs/kv/spec.md': '## MODIFIED Requirements\n\n### Requirement: NoSuch\n\n#### Scenario: XN-01 x\n- t\n',
+  });
+  const cf = jsonCli(['--change', 'c', '--cwd', cfRoot, '--test-cmd', tapCmd('ok 1 - XA-01 a'), '--json']);
+  assert.strictEqual(cf.code, 2);
+  assert.strictEqual(cf.json.result, 'ERROR');
+  assert.ok(cf.json.projection.conflicts.length > 0);
+  assert.ok(cf.json.errors.length > 0);
+  // other-failure class (nonexistent change) — still pure JSON, projection present
+  const nfRoot = mkProject({ 'apriori/specs/kv/spec.md': STORE_KV });
+  const nf = jsonCli(['--change', 'zzz', '--cwd', nfRoot, '--test-cmd', tapCmd('ok 1 - XA-01 a'), '--json']);
+  assert.strictEqual(nf.code, 2);
+  assert.strictEqual(nf.json.result, 'ERROR');
+  assert.deepStrictEqual(nf.json.projection, { change: 'zzz', modules: [], conflicts: [], unstampedMutations: [] });
+  assert.ok(nf.json.errors.length > 0);
+  // non-change runs never emit projection
+  const plain = jsonCli(['--specs', path.join(okRoot, 'apriori/specs'), '--test-cmd', tapCmd('ok 1 - XA-01 a'), '--json']);
+  assert.ok(!('projection' in plain.json));
+});
+
+test('SR-24 a diverged base stamp blocks projection (exit 2, fingerprints named)', () => {
+  const root = mkProject({
+    'apriori/specs/kv/spec.md': STORE_KV,
+    'apriori/changes/c/specs/kv/spec.md':
+      `<!-- apriori-base: sha256:${'0'.repeat(64)} -->\n## ADDED Requirements\n\n### Requirement: Beta\n\n#### Scenario: XB-01 n\n- t\n`,
+  });
+  const run = verify({ change: 'c', cwd: root, testCmd: tapCmd('ok 1 - XA-01 a') });
+  assert.ok(run.errors.some((e) => e.includes('kv') && e.includes('sha256:')));
+  const r = jsonCli(['--change', 'c', '--cwd', root, '--test-cmd', tapCmd('ok 1 - XA-01 a'), '--json']);
+  assert.strictEqual(r.code, 2);
+});
+
+test('SR-25 deprecated block scenarios stop being demanded; their tests are ORPHAN', () => {
+  const root = mkProject({
+    'apriori/specs/kv/spec.md':
+      '### Requirement: Old  _deprecated (superseded by some-change)_\n\n#### Scenario: XO-01 gone\n- t\n\n' + STORE_KV,
+  });
+  // plain verify (no --change) — the rule applies to ALL verify forms
+  const run = verify({ specs: [path.join(root, 'apriori/specs')], testCmd: tapCmd('ok 1 - XA-01 a', 'ok 2 - XO-01 lingering') });
+  assert.deepStrictEqual(run.verdict.boundGreen, ['XA-01']);   // non-deprecated block unaffected
+  assert.deepStrictEqual(run.verdict.unbound, []);             // XO-01 not demanded
+  assert.deepStrictEqual(run.verdict.orphan, ['XO-01']);       // lingering test flagged
+});
+
+// ---- cas-enforcement (SR-32): the projection warns but does not judge ----
+const ceFs = require('node:fs');
+const cePath = require('node:path');
+const ceOs = require('node:os');
+const { spawnSync: ceSpawn } = require('node:child_process');
+const CE_BIN = cePath.join(__dirname, '..', 'bin', 'apriori.js');
+
+test('SR-32 the projection warns but does not judge', () => {
+  const root = ceFs.mkdtempSync(cePath.join(ceOs.tmpdir(), 'apriori-sr32-'));
+  const w = (rel, body) => { const p = cePath.join(root, rel); ceFs.mkdirSync(cePath.dirname(p), { recursive: true }); ceFs.writeFileSync(p, body); };
+  w('apriori/specs/kv/spec.md', '### Requirement: Alpha\n\n#### Scenario: XA-01 a\n- t\n');
+  w('apriori/changes/c/specs/kv/spec.md', '## MODIFIED Requirements\n\n### Requirement: Alpha\n\n#### Scenario: XA-01 a\n- tightened\n');
+  const tap = `node -e "console.log('ok 1 - XA-01 a')"`;
+  const r = ceSpawn('node', [CE_BIN, 'verify', '--change', 'c', '--test-cmd', tap, '--json'], { cwd: root, encoding: 'utf8' });
+  assert.strictEqual(r.status, 0, r.stdout + r.stderr);           // GREEN despite the warning
+  assert.match(r.stderr, /unstamped mutation delta/);
+  assert.match(r.stderr, /apriori stamp/);
+  const j = JSON.parse(r.stdout);
+  assert.deepStrictEqual(j.projection.unstampedMutations, ['kv/spec.md']);
+  // ADDED-only: empty list, no warning
+  const root2 = ceFs.mkdtempSync(cePath.join(ceOs.tmpdir(), 'apriori-sr32b-'));
+  const w2 = (rel, body) => { const p = cePath.join(root2, rel); ceFs.mkdirSync(cePath.dirname(p), { recursive: true }); ceFs.writeFileSync(p, body); };
+  w2('apriori/specs/kv/spec.md', '### Requirement: Alpha\n\n#### Scenario: XA-01 a\n- t\n');
+  w2('apriori/changes/c/specs/kv/spec.md', '## ADDED Requirements\n\n### Requirement: Beta\n\n#### Scenario: XB-01 b\n- t\n');
+  const tap2 = `node -e "console.log('ok 1 - XA-01 a');console.log('ok 2 - XB-01 b')"`;
+  const r2 = ceSpawn('node', [CE_BIN, 'verify', '--change', 'c', '--test-cmd', tap2, '--json'], { cwd: root2, encoding: 'utf8' });
+  assert.strictEqual(r2.status, 0);
+  assert.doesNotMatch(r2.stderr, /unstamped/);
+  assert.deepStrictEqual(JSON.parse(r2.stdout).projection.unstampedMutations, []);
+});
+
+exec
+/usr/bin/zsh -lc 'rg -n "CESPEC|CE-|cas-enforcement|fixed|verified" apriori/review/cas-enforcement-issues.md' in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' requirement/req-final.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,220p' apriori/review/cas-enforcement-issues.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 136ms:
+1:# Issue ledger — cas-enforcement
+3:Rows recorded on behalf of the reviewer (codex session 019f4b30-68f9-7222-9b64-17f52a333b4c; raws: cas-enforcement-*-raw.txt).
+7:| CE-1 | Rerun signature conflicted with MODIFIED semantics (never reports unchanged). | Already-applied MODIFIED deltas keep the dead-end. | STEP0·r1 | verified |
+8:| CE-2 | cas: optional conflicted with the markdown-table config format. | Waiver documented one way, parsed another. | STEP0·r1 | verified |
+9:| CE-3 | Archive warning scope ambiguous across the two archive forms. | Single-file surgery keeps the silent opt-in. | STEP0·r1 | verified |
+10:| CE-4 | unstampedMutations JSON location/shape unspecified. | Machine-surface disagreement. | STEP0·r1 | verified |
+11:| CE-5 | Mixed multi-file rerun repair after partial commit underspecified. | Over-repair or confusing diagnostics. | STEP0·r1 | verified |
+12:| CE-ADV-1 | Advisory: ADDED exemption is clobber-focused (say so); C7 separate from C6; --no-cas never waives verify/archive mismatches (document). | Low. | STEP0·r1 | verified |
+13:| CESPEC-ADV-1 | advisory batch acknowledged (3 items: SR-23-style projection JSON expectations updated with the new field; C7-on-C1-error behavior made explicit — gate already exits ERROR before C7, tested; configCas parsing boundaries tested absent/optional/required/junk) | low | STEP2·r1 | advisory-acked |
+
+ succeeded in 146ms:
+# Requirement — cas-enforcement (v2)
+
+change: cas-enforcement
+target lineage: **v3 branch**. Next patch/minor. Graded tightening of CAS base-stamp enforcement: warnings this minor, gate default-deny, an explicit escape, and the rerun dead-end fixed; hard mandatory stamps wait for 4.0.
+
+Revisions vs v1 (P1 r1): CE-1 MODIFIED gains an already-applied `unchanged` signature; CE-2 the config escape is a real table row; CE-3 BOTH archive forms warn; CE-4 the JSON contract is exact; CE-5 the mixed partial-commit matrix is specified; CE-ADV-1 the exemption is described as clobber-focused, C7 stays its own check, --no-cas never touches verify/archive failures.
+
+## Background — the problem (current state A, code-verified + dogfooded)
+
+1. **Opt-in CAS.** Stamps are optional: an UNSTAMPED delta merges with zero divergence detection. A MODIFIED/REMOVED/RENAMED delta authored against a stale store silently rewrites blocks that changed underneath it. (GPT-5.6 second review.)
+2. **The rerun dead-end (dogfooded 2026-07-11).** A STAMPED delta that already COMMITTED cannot re-run to complete the move phase: store ≠ recorded base → preflight fails; manual `mv` was the only cure. Root cause deepened by review: `merge()`'s MODIFIED op NEVER reports `unchanged` — even a byte-identical re-application reports `modified` — so no rerun signature exists for the most common mutation.
+
+## Goal (target state B)
+
+**merge() semantic extension (CE-1):** a MODIFIED op whose delta block trim-equals the current store block reports `unchanged` (the already-applied signature ADDED/REMOVED/RENAMED reruns have) instead of `modified`. Visible only on re-application; first applications behave identically.
+
+**WARN grade (all mutation surfaces, always on):** a delta carrying MUTATION ops (MODIFIED/REMOVED/RENAMED) with NO stamp warns once, naming the file and the cure (`unstamped mutation delta <file> — divergence undetectable; run: apriori stamp <store-file> (stamps become mandatory in 4.0)`). Surfaces: `verify --change` (stderr; the run can still be GREEN), high-level `archive --change` (report), AND the single-file `archive --store --delta` form (CE-3) — one-module surgery is not a loophole. The exemption for ADDED-only deltas is CLOBBER-focused (they conflict or no-op, never silently overwrite) — documented as such, not as a general concurrency guarantee (CE-ADV-1).
+
+**Machine contract (CE-4):** `buildProjection` returns `unstampedMutations: string[]` — the delta files' store-suffix-relative paths (the same `suffix` vocabulary `texts`/`perModule` use), `[]` when none. verify `--json` carries it at `json.projection.unstampedMutations` on `--change` runs only (the `projection` object is already absent otherwise).
+
+**Gate default-deny (C7):** a NEW check (not folded into C6 — CAS is delta/store trust, not KB freshness): `unstampedMutations` non-empty → `C7 BLOCKED` naming each suffix and the stamp cure. Escapes, precedence flag > config:
+- `gate --no-cas` → `C7 waived (--no-cas)` in the output — a visible waiver, never a silent skip.
+- process-config table row `| cas | optional |` (leading token of the value cell, case-insensitive; absent row or any other value = required/default-deny) → `C7 waived (process-config cas: optional)`.
+- Neither escape ever affects verify/archive behavior: stamped-mismatch failures and the WARN grade are untouched by both (CE-ADV-1/DD-3).
+
+**Rerun repair (archive preflight, per-file — CE-5):** classification per stamped delta file:
+- stamp matches → merge as today (real ops apply; this is the not-yet-committed half of a resumed partial commit).
+- stamp MISMATCHES + every op reports `unchanged` → downgrade to a note (`<file>: stamp mismatch but the delta is already fully applied — rerun accepted`), file contributes no writes; the run proceeds (move included).
+- stamp MISMATCHES + ANY real pending op → `casMismatches` error as today; the WHOLE preflight fails (exit 1, nothing written or moved) — divergence with real work pending is never repaired.
+The mixed case (file A mismatched-but-applied + file B matching-with-real-ops) therefore completes: A noted, B merged, move happens — the resumed-partial-commit path. Diagnostics keep the two classes apart (notes vs errors).
+
+## Acceptance criteria (testable)
+
+- K1. Unstamped MODIFIED delta: `verify --change` warns on stderr and stays GREEN-able; `archive --change` warns in the report and still merges; `--json` carries `projection.unstampedMutations: ['<suffix>']`; the single-file archive form warns too.
+- K2. Unstamped ADDED-only delta: no warning on any surface; `unstampedMutations: []`.
+- K3. `gate --change` with an unstamped mutation delta: C7 BLOCKED naming the suffix; `--no-cas` → `C7 waived (--no-cas)`, not blocked; `| cas | optional |` row → waived naming the config; the flag also wins when config says required.
+- K4. Rerun repair: (a) a stamped, fully-committed change re-runs `archive --write --changes-dir` to completion — stores byte-identical, dir moved, exit 0, downgrade note printed; (b) the same but one real pending op → exit 1, nothing written/moved, mismatch error; (c) mixed: applied-mismatched file + matching-with-real-ops file → completes, A noted, B merged; (d) an already-applied MODIFIED-only stamped delta (the CE-1 case) reruns clean.
+- K5. Gate spec/truth record C7; the runbook's serial-rule/§4.11 vicinity mentions graded enforcement + the 4.0 trajectory (one sentence per edition); truth/archive-merge.md's opt-in pitfall paragraph updated to the graded reality.
+- K6. All existing tests pass (AM-24 divergence-with-real-ops unchanged; AM-25 unstamped behavior gains only warnings); suite + verify + gate + check --self green; post-archive gate PASS.
+
+## Out of scope
+
+- Hard-mandatory stamps (4.0).
+- Stamping tooling; the `new` sentinel; fingerprint algorithm; multi-delta transactional stamping order.
+
+## Decisions proposed
+
+- DD-1: ADDED-only exemption, clobber-focused and documented as such.
+- DD-2: per-file all-ops-unchanged is the rerun signature; divergence with pending work never repairs.
+- DD-3: `--no-cas` waives C7 only, visibly; never verify/archive semantics.
+- DD-4: config escape is the table row `| cas | optional |`, read like the existing test-cmd row; flag > config.
+- DD-5 (new, CE-1): MODIFIED trim-equality reports `unchanged` — the idempotence vocabulary all other ops already speak.
+
+ succeeded in 192ms:
+# Issue ledger — cas-enforcement
+
+Rows recorded on behalf of the reviewer (codex session 019f4b30-68f9-7222-9b64-17f52a333b4c; raws: cas-enforcement-*-raw.txt).
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| CE-1 | Rerun signature conflicted with MODIFIED semantics (never reports unchanged). | Already-applied MODIFIED deltas keep the dead-end. | STEP0·r1 | verified |
+| CE-2 | cas: optional conflicted with the markdown-table config format. | Waiver documented one way, parsed another. | STEP0·r1 | verified |
+| CE-3 | Archive warning scope ambiguous across the two archive forms. | Single-file surgery keeps the silent opt-in. | STEP0·r1 | verified |
+| CE-4 | unstampedMutations JSON location/shape unspecified. | Machine-surface disagreement. | STEP0·r1 | verified |
+| CE-5 | Mixed multi-file rerun repair after partial commit underspecified. | Over-repair or confusing diagnostics. | STEP0·r1 | verified |
+| CE-ADV-1 | Advisory: ADDED exemption is clobber-focused (say so); C7 separate from C6; --no-cas never waives verify/archive mismatches (document). | Low. | STEP0·r1 | verified |
+| CESPEC-ADV-1 | advisory batch acknowledged (3 items: SR-23-style projection JSON expectations updated with the new field; C7-on-C1-error behavior made explicit — gate already exits ERROR before C7, tested; configCas parsing boundaries tested absent/optional/required/junk) | low | STEP2·r1 | advisory-acked |
+
+exec
+/usr/bin/zsh -lc "rg -n \"configCas|required|junk|cas \\|\" test/gate.test.js lib/gate.js apriori/changes/cas-enforcement -n" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 194ms:
+lib/gate.js:53:    if (v === undefined || v === '') return { id: 'C3', status: 'blocked', detail: `flow-state: required key '${key}' missing` };
+lib/gate.js:227:// process-config `| cas | optional |` row — the project-level twin of --no-cas (flag wins)
+lib/gate.js:228:function configCas(cwd) {
+lib/gate.js:240:  if (configCas(cwd) === 'optional') return { id: 'C7', status: 'pass', detail: 'waived (process-config cas: optional)' };
+test/gate.test.js:450:  // config row | cas | optional | → waived naming the config
+test/gate.test.js:451:  const rootC = modProject({ 'apriori/process-config.md': '| Field | Value |\n|---|---|\n| cas | optional |\n' });
+test/gate.test.js:455:  // the flag wins over a required config
+test/gate.test.js:456:  const rootR = modProject({ 'apriori/process-config.md': '| Field | Value |\n|---|---|\n| cas | required |\n' });
+apriori/changes/cas-enforcement/tasks.md:5:- [x] T3. lib/spec-runner.js stderr warnings + JSON field; lib/gate.js C7 + --no-cas + configCas.
+apriori/changes/cas-enforcement/design.md:16:- Escapes: `--no-cas` flag (withStrict flags gains `'--no-cas': 'flag'`); config row via a `configCas(cwd)` reader modeled on `configTestCmd` (`| cas | <value> |`, leading token, case-insensitive). Precedence: flag first. Waived detail strings: `waived (--no-cas)` / `waived (process-config cas: optional)`, status 'pass' with the waiver in detail (blocked-count unaffected) — visible, machine-greppable.
+apriori/changes/cas-enforcement/design.md:26:Tasks: T1 red AM-32..35 + SR-32 + GT-16; T2 archive-merge (merge/projection/preflight/cli); T3 spec-runner + gate (+ configCas); T4 docs/truth; T5 gates + post-archive gate.
+apriori/changes/cas-enforcement/specs/gate/spec.md:7:Gate SHALL run a seventh check: the change's projection carrying `unstampedMutations` → `C7 BLOCKED` naming each suffix and the stamp cure. Two escapes, flag over config: `gate --no-cas` → the check reports `waived (--no-cas)`; a process-config table row `| cas | optional |` (leading value token, case-insensitive; an absent row or any other value means required) → `waived (process-config)`. A waiver is always visible in the gate output — never a silent skip — and neither escape changes verify or archive behavior (stamped-mismatch failures and the WARN grade are untouched). In-flight only: at the archived stage the deltas are already merged and C7 reports n/a.
+apriori/changes/cas-enforcement/specs/gate/spec.md:11:- THEN C7 reports BLOCKED naming the suffix and the cure; with --no-cas or the `| cas | optional |` config row it reports the waiver by name instead of blocking (the flag also wins when the config says required), and a stamped or ADDED-only change passes C7 silently
+
+codex
+**Issues**
+
+**CEIMPL-1 — `truth/archive-merge.md` still carries the old active MODIFIED rerun decision.**
+
+Description: The implemented code and delta spec make MODIFIED trim-equality part of the idempotence vocabulary: `merge()` now pushes `unchanged` when the MODIFIED delta block trim-equals the current store block. The truth doc’s Contract section and CAS pitfall reflect that, but the active Decisions section still says D-AM-7 covers only three signatures and that “MODIFIED reruns re-apply”.
+
+Risk: Future work using the truth doc as state A can revive the old CE-1 defect or treat the new MODIFIED `unchanged` behavior as accidental instead of ratified.
+
+Suggested fix: Update or supersede D-AM-7 so it records the cas-enforcement decision: rerun idempotency now includes MODIFIED trim-equality, making four signatures.
+
+**Advisories**
+
+- `truth/gate.md` describes C7 and its `--no-cas` waiver in the seven-checks paragraph, but the Public interface CLI line still lists only `--change`, `--test-cmd`, `--cwd`, and `--json`. Add `--no-cas` there for consistency.
+- The repaired-file skip is sound: a repaired suffix contributes no write job, so it does not need a temp ownership check for safety. If desired, mention this explicitly in truth/archive-merge to avoid future confusion when reading the filtered `jobs` logic.
+- The hostile-store rerun repair is acceptable under the declared signature: if every op is a no-op by merge semantics, the delta’s requested end state is already represented. Divergence with any real pending op still fails.
+
+**Ledger Delta**
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| CEIMPL-1 | `truth/archive-merge.md` Decisions section still says MODIFIED reruns re-apply and D-AM-7 covers only three idempotence signatures, contradicting the implemented and specified MODIFIED trim-equality `unchanged` behavior. | Future state-A reviews or implementations can revive the rerun dead-end fixed by cas-enforcement. | STEP5 r1 | open |
+| CEIMPL-ADV-1 | Advisory batch: add `--no-cas` to the gate truth doc’s Public interface line; optionally document why repaired suffixes are filtered out of write/temp jobs. | Low | STEP5 r1 | open |
+
+VERDICT: 1 issues open
+tokens used
+3,237,728
+**Issues**
+
+**CEIMPL-1 — `truth/archive-merge.md` still carries the old active MODIFIED rerun decision.**
+
+Description: The implemented code and delta spec make MODIFIED trim-equality part of the idempotence vocabulary: `merge()` now pushes `unchanged` when the MODIFIED delta block trim-equals the current store block. The truth doc’s Contract section and CAS pitfall reflect that, but the active Decisions section still says D-AM-7 covers only three signatures and that “MODIFIED reruns re-apply”.
+
+Risk: Future work using the truth doc as state A can revive the old CE-1 defect or treat the new MODIFIED `unchanged` behavior as accidental instead of ratified.
+
+Suggested fix: Update or supersede D-AM-7 so it records the cas-enforcement decision: rerun idempotency now includes MODIFIED trim-equality, making four signatures.
+
+**Advisories**
+
+- `truth/gate.md` describes C7 and its `--no-cas` waiver in the seven-checks paragraph, but the Public interface CLI line still lists only `--change`, `--test-cmd`, `--cwd`, and `--json`. Add `--no-cas` there for consistency.
+- The repaired-file skip is sound: a repaired suffix contributes no write job, so it does not need a temp ownership check for safety. If desired, mention this explicitly in truth/archive-merge to avoid future confusion when reading the filtered `jobs` logic.
+- The hostile-store rerun repair is acceptable under the declared signature: if every op is a no-op by merge semantics, the delta’s requested end state is already represented. Divergence with any real pending op still fails.
+
+**Ledger Delta**
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| CEIMPL-1 | `truth/archive-merge.md` Decisions section still says MODIFIED reruns re-apply and D-AM-7 covers only three idempotence signatures, contradicting the implemented and specified MODIFIED trim-equality `unchanged` behavior. | Future state-A reviews or implementations can revive the rerun dead-end fixed by cas-enforcement. | STEP5 r1 | open |
+| CEIMPL-ADV-1 | Advisory batch: add `--no-cas` to the gate truth doc’s Public interface line; optionally document why repaired suffixes are filtered out of write/temp jobs. | Low | STEP5 r1 | open |
+
+VERDICT: 1 issues open

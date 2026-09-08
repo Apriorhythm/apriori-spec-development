@@ -1,0 +1,889 @@
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f5310-28e4-7103-9c14-1c1181180f9b
+--------
+user
+STEP2 spec evaluation (P5) for config-contract, round 1. STEP0 converged (req-final = v2). Evaluate apriori/changes/config-contract/: five deltas — specs/config/spec.md (ADDED, new module CF-01..07, stamp 'new'), specs/gate/spec.md (MODIFIED C7 requirement: structured reader, GT-17 added, stale 'neither escape changes archive behavior' sentence replaced with the shared-vocabulary sentence), specs/archive-merge/spec.md (ADDED consultation requirement AM-42), specs/spec-runner/spec.md (ADDED SR-49 test-cmd conflict), specs/doctor/spec.md (ADDED DR-15) — plus design.md/proposal.md/tasks.md, against requirement/req-final.md and lib/{resolve,spec-runner,gate,archive-merge,doctor}.js + templates/process-config.md:
+1. Coverage: every req-final behavior pinned (fence/comment inert incl. unterminated, multi-column, same-value tolerance, conflict fail-closed at consumption, consumption-time-only surfacing, --no-cas supremacy, discoverability x2); anything over-asserted;
+2. Scenario testability and independence (CF-01 packs both orderings — fine? GT-17 two cases + flag; AM-42 four runs in one scenario — split needed?);
+3. MODIFIED hygiene on gate C7: GT-16 carried with only intended edits; the requirement retitle risk (title unchanged — confirm);
+4. Design feasibility: lib/config.js consumers enumeration (language consumer location?); the new 'config' store module maps to lib/config.js for C6 — note CF-06/07 bind CLI/template surfaces inside the config module (pragmatic; flag if you judge it a mis-homing worth a different module);
+5. Cross-change interaction: tap-contract (in flight, serialized ahead) also touches spec-runner store — CC's spec-runner delta is ADDED-only so a restamp after tap-contract archives suffices; confirm no requirement-name collision. Stamps match current stores.
+[Scope] spec/design defects only; style = advisory. READ-ONLY sandbox (R2).
+[Output] Chinese prose, English IDs; LEDGER DELTA (new rows CCSPEC-n); exactly one verdict line.
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-12T04:20:46.296816Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-12T04:20:46.555315Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-12T04:20:46.972135Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-12T04:20:47.563538Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-12T04:20:48.543253Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-12T04:20:50.154458Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-12T04:20:53.792157Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: iVD4xLzpUDE0
+codex
+我会按 P5 读取 req-final、五个 delta、design/proposal/tasks，并用当前 parser/projection 核验 stamps 与冲突；重点看是否所有 req-final 行为都有 scenario 绑定。
+exec
+/usr/bin/zsh -lc 'find apriori/changes/config-contract -maxdepth 4 -type f | sort' in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' apriori/changes/config-contract/design.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' apriori/changes/config-contract/requirement/req-final.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "for f in apriori/changes/config-contract/specs/*/spec.md; do echo '---' "'$f; sed -n '"'1,260p' "'$f; done' in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,220p' apriori/changes/config-contract/proposal.md && sed -n '1,220p' apriori/changes/config-contract/tasks.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 132ms:
+# Design — config-contract(事实对齐)
+
+## 现状事实
+- `configCas`(lib/resolve.js)与 `configTestCmd`(lib/spec-runner.js)各自对全文跑 `/^\|\s*key\s*\|…/m` 首匹配;`language` 消费在 init/new 文案层(grep 确认后枚举)。
+- 模板行多列(`| key | value | 注释 |`);gate C7/archive 的豁免消费点已在 4.0.1 建立。
+
+## 方案
+- **新模块 `lib/config.js`**:`readConfig(cwd)` → `{values: Map, problems: string[]}`;行扫描状态机:fence(``` 开闭;未闭合→其后全惰性)、HTML 注释(`<!--`…`-->`,未闭合同理,先开先占不嵌套);有效行 = `|` 开头表行,cell 切分后 [0]=key/[1]=value,多余列忽略,表头(`key` 字面)与分隔行(`---`)忽略;同 key 同值重复容忍,异值 push conflict problem。
+- `getConfig(cwd, key)` 便捷:`{value|null, problem|null}`(problem = 该 key 冲突或(消费方声明的)非法值)。
+- **消费方**:`configCas` → config.getConfig('cas'):conflict/非法值 → 返回 {error} —— archive 消费点 exit 1 不写(与 casDenials 同集合报告);gate C7 blocked 点名;stamped/ADDED-only 不咨询(现有结构天然如此,加测试钉住)。`configTestCmd` → conflict 时 verify infra ERROR;缺失照旧。`language` 等:STEP5 全库 grep 后统一切,坏值按各面现状降级。
+- **可发现性**:archive/gate USAGE 字符串加 `--no-cas`;templates/process-config.md 加 `| cas | required | 归档对无 stamp 变更类增量的强制;optional = 仅警告 |` 示例行。
+- 兼容:旧单行合法配置解析结果不变(全部现有测试证明)。
+
+## SPEC 触点
+ADDED specs/config/spec.md(CF-01..07);MODIFIED archive-merge deny 需求(+AM-42 配置错误消费);spec-runner ADDED 小需求(SR-49 test-cmd 冲突 ERROR);gate MODIFIED C7 需求(+GT-17);doctor ADDED DR-15。
+
+ succeeded in 141ms:
+# 需求:config-contract —— process-config 是配置,不是全文 regex (final = v2)
+
+> change: `config-contract` · tier: medium · track: harden
+> lineage: v4;不合并 main/v1/v3
+> 来源:GPT-5.6 四审 P0-2 + P2-4,豁免绕过已本机复现。
+> v2 修订:CC-1..4(坏配置消费面矩阵、多列表行、fence/注释边界、消费时点)。
+
+## 目标
+
+`process-config.md` 的读取目前是对整份 Markdown 做首匹配 regex(`configCas`、`configTestCmd` 同病)。fenced 代码块、HTML 注释里的示例行会被当成生效配置;重复/冲突行"第一行获胜"且无声。本变更引入**一个共享的结构化配置读取器**,所有配置消费方走同一入口。
+
+## 行为需求
+
+1. **共享解析器 `readConfig(cwd)`**(建议落在 lib/resolve.js 或独立小模块):
+   - 逐行扫描,**跳过 fenced 代码块**(``` 开闭,与 spec-runner 的 fence 语义一致)与 **HTML 注释**(`<!-- … -->`,含多行);
+   - 只识别**有效配置行**:以 `|` 开头的表行,**第一格为 key、第二格为 value,多余列(注释列等)忽略**(CC-2,兼容现有模板);表头/分隔行按现状忽略;
+   - 产出 `{values: Map<key,value>, problems: string[]}`:**同 key 异值 → problem(冲突)**;**同 key 同值重复 → 静默容忍**(CC-3 决策);
+   - **边界语义(CC-3)**:未闭合 fence → 其后至 EOF 全部视为 fence 内(行不生效——对豁免类 key 天然 fail-closed);未闭合 HTML 注释同理;fence 与注释不嵌套解析(先到先占);
+   - 解析器纯函数、可单测。
+2. **消费方切换 + fail-closed 矩阵(CC-1/CC-4)**:
+   - **配置错误只在"该 key 被实际消费"时生效**(CC-4):stamped/ADDED-only 的 archive 不咨询 `cas`,坏 `cas` 行不影响它;一旦消费——
+   - `configCas`:`cas` 冲突或值非 `optional`/`required` → 消费面报配置错误:archive **exit 1、不写任何东西**;gate C7 **blocked** 点名配置错误——坏配置绝不等价于豁免;
+   - `configTestCmd`:`test-cmd` 冲突 → verify **infra ERROR exit 2**(点名配置冲突,绝不静默选一行跑);缺失照旧走 usage 路径;gate 继承;doctor 的 D5 探针在同况下 **finding** 点名配置错误;
+   - `language` 等其他消费方(全库 grep 为准)统一走 readConfig;它们的坏值按各自消费面现有降级语义(见 STEP2 枚举),但绝不读到 fence/注释内容;
+   - `--no-cas` flag 保持显式最高优先级(flag 在,配置坏也可明确豁免——flag 是人的显式意志)。
+3. **可发现性(P2-4)**:
+   - `archive`/`gate` 的 usage 文本列出 `--no-cas`;
+   - `templates/process-config.md` 增加带注释的 `cas` 行示例(默认 required 语义,注明 optional 的含义);
+   - init 出的新项目因此天然可发现。
+4. **回归钉子**:复现输入(fenced optional + 生效 required)必须:archive 拒绝、gate C7 拒绝;反向排列(fenced required + 生效 optional)必须豁免生效;HTML 注释内的行无效;异值重复 → 消费面配置错误。
+
+## 非目标
+
+- YAML/TOML 等新配置格式;process-config.md 的表格形状不变。
+- 配置项白名单校验(未知 key 忽略如旧——只有已消费 key 的值域才校验)。
+
+## 约束
+
+- 零依赖;既有测试不回归;gate/archive/verify 的既有 C7/警告语义除"读取更准"外不变。
+
+## 开放问题
+
+- 无。
+
+ succeeded in 171ms:
+apriori/changes/config-contract/design.md
+apriori/changes/config-contract/flow-state.md
+apriori/changes/config-contract/proposal.md
+apriori/changes/config-contract/requirement/req-final.md
+apriori/changes/config-contract/requirement/req-v1.md
+apriori/changes/config-contract/requirement/req-v2.md
+apriori/changes/config-contract/review/issues.md
+apriori/changes/config-contract/review/req-review-v1.md
+apriori/changes/config-contract/review/req-review-v1-raw.txt
+apriori/changes/config-contract/review/req-review-v2.md
+apriori/changes/config-contract/review/req-review-v2-raw.txt
+apriori/changes/config-contract/specs/archive-merge/spec.md
+apriori/changes/config-contract/specs/config/spec.md
+apriori/changes/config-contract/specs/doctor/spec.md
+apriori/changes/config-contract/specs/gate/spec.md
+apriori/changes/config-contract/specs/spec-runner/spec.md
+apriori/changes/config-contract/tasks.md
+
+ succeeded in 158ms:
+# Proposal — config-contract
+
+**为什么**:process-config 读取是全文首匹配 regex——fenced 示例授予 CAS 豁免、生效行反被忽略(四审 P0-2 复现)。配置是闸口输入,必须结构化。
+
+**做什么**:共享 readConfig(fence/HTML 注释跳过、首二格取值、同值容忍/异值冲突、未闭合块惰性化),全部消费方(cas/test-cmd/language)切换,消费时点 fail-closed 矩阵,--no-cas 至上;usage 与模板可发现性。
+
+**不做什么**:新配置格式、未消费 key 的值域校验。
+
+**规模**:medium。一个新纯函数模块 + 消费方改线 + 全边界回归。
+# Tasks — config-contract
+
+- [ ] T1. 红测试:CF-01..07、AM-42、SR-49、GT-17、DR-15(fenced-optional/生效-required 复现入钉),记录红跑。
+- [ ] T2. lib/config.js + 消费方切换(configCas/configTestCmd/language 面)。
+- [ ] T3. usage/模板可发现性。
+- [ ] T4. 套件全绿 + verify --change GREEN + P8 收敛 + gate。
+
+ succeeded in 190ms:
+--- apriori/changes/config-contract/specs/archive-merge/spec.md
+<!-- apriori-base: sha256:c02354615d4c7811b96b2defff710e185e2b490e4ac0c59d212fd3e0aec06b2f -->
+## ADDED Requirements
+
+### Requirement: archive consults CAS config through the structured reader
+`archive`'s waiver lookup SHALL go through the shared structured config reader: fenced/commented rows grant nothing, a live row decides, and a cas CONFLICT or illegal value at consultation is a preflight error (exit 1, nothing written or moved) naming the config problem — bad config never equals a waiver; `--no-cas` keeps explicit supremacy; stamped or ADDED-only runs never consult the key, so a bad row cannot affect them.
+
+#### Scenario: AM-42 the reviewer's fenced-waiver bypass is dead
+- WHEN an unstamped MODIFIED delta archives under a config whose fenced block says `| cas | optional |` while the live row says `| cas | required |` (the reviewer's reproduced bypass), and again under a cas CONFLICT, and again fully stamped under the same broken configs
+- THEN the first two runs are DENIED at preflight (nothing written; the conflict named in the second) while the stamped run proceeds untouched — and `--no-cas` still waives the first two explicitly
+--- apriori/changes/config-contract/specs/config/spec.md
+<!-- apriori-base: new -->
+## ADDED Requirements
+
+### Requirement: process-config parses as structure, never as full-text regex
+A shared reader (`lib/config.js`) SHALL be the single entry for every process-config consumer: it scans line-by-line, treating fenced code blocks (``` open/close; an unterminated fence makes the rest of the file inert) and HTML comments (`<!-- … -->`, multi-line; unterminated likewise inert; first-open wins, no nesting) as non-content; a config row is any `|`-leading table row — first cell key, second cell value, extra columns ignored, header and separator rows skipped; duplicate rows with the same key and value are tolerated silently, while different values for one key are a CONFLICT problem. Config problems surface ONLY when the key is actually consumed. The `--no-cas` flag keeps explicit supremacy over any config state.
+
+#### Scenario: CF-01 fenced and commented rows never take effect
+- WHEN process-config carries `| cas | optional |` inside a fenced block (or an HTML comment) and `| cas | required |` as a live row, with an unstamped MODIFIED delta being archived
+- THEN the archive is DENIED (the live `required` wins; the fenced example grants nothing) — and the reversed layout (fenced `required`, live `optional`) waives with the waiver named
+
+#### Scenario: CF-02 multi-column rows parse by their first two cells
+- WHEN a live row reads `| cas | optional | 注释说明 |` (template-style extra column)
+- THEN the key/value parse as cas/optional and the extra cell is ignored
+
+#### Scenario: CF-03 duplicates tolerate sameness and refuse conflict
+- WHEN one config carries `| cas | optional |` twice, and another carries `| cas | optional |` plus `| cas | required |`
+- THEN the first reads cleanly as optional; the second is a CONFLICT — at consumption the archive errors (exit 1, nothing written) and gate C7 blocks naming the config conflict, never treating it as a waiver
+
+#### Scenario: CF-04 unterminated blocks are inert, not effective
+- WHEN a fence opens and never closes before rows that would otherwise waive CAS (same for an unterminated HTML comment)
+- THEN those rows grant nothing — the file's tail is inert and an unstamped mutation archive is denied
+
+#### Scenario: CF-05 config errors surface only at consumption
+- WHEN the config carries a cas CONFLICT but the archived change is fully stamped (or ADDED-only)
+- THEN the archive proceeds normally — the cas key was never consulted, so the bad row is invisible to this run
+
+#### Scenario: CF-06 the waiver is discoverable
+- WHEN `apriori archive` and `apriori gate` print their usage
+- THEN both list `--no-cas`
+
+#### Scenario: CF-07 the template names the cas row
+- WHEN `templates/process-config.md` is read
+- THEN it carries a `cas` row example documenting required-vs-optional semantics
+--- apriori/changes/config-contract/specs/doctor/spec.md
+<!-- apriori-base: sha256:7d33504fd853a368423b10948a67fcbc3c7292f4a69c92671bfbae4f8dfd8c9d -->
+## ADDED Requirements
+
+### Requirement: doctor reads config through the structured reader
+Doctor's config consumption (the D5 probe's test-cmd fallback) SHALL use the shared structured reader; a `test-cmd` CONFLICT is a D5 finding naming the config problem rather than a probe run over an arbitrary row.
+
+#### Scenario: DR-15 doctor refuses to probe on conflicted config
+- WHEN doctor runs (no explicit test command) in a project whose process-config carries two live conflicting `test-cmd` rows
+- THEN D5 is a finding naming the config conflict and no probe command executes
+--- apriori/changes/config-contract/specs/gate/spec.md
+<!-- apriori-base: sha256:c80793e6ddaa0be8610a0bb6b0c0a46328862ddf87dee76f7771ade135458bc0 -->
+## MODIFIED Requirements
+
+### Requirement: C7 denies unstamped mutation deltas unless visibly waived
+Gate SHALL run a seventh check: the change's projection carrying `unstampedMutations` → `C7 BLOCKED` naming each suffix and the stamp cure. Two escapes, flag over config: `gate --no-cas` → the check reports `waived (--no-cas)`; a process-config `cas` row read through the shared structured reader with value `optional` (leading token, case-insensitive; an absent row or `required` means required) → `waived (process-config)`. A cas CONFLICT or illegal value at consultation makes C7 BLOCKED naming the config error — bad config never equals a waiver, though the `--no-cas` flag still waives explicitly. A waiver is always visible in the gate output — never a silent skip. The waiver vocabulary is shared with `archive` (which denies by default since 4.0.1); verify's projection stays warn-only. In-flight only: at the archived stage the deltas are already merged and C7 reports n/a.
+
+#### Scenario: GT-16 C7 blocks, and waivers are loud
+- WHEN gate runs on a change whose delta carries unstamped mutation ops
+- THEN C7 reports BLOCKED naming the suffix and the cure; with --no-cas or the live `| cas | optional |` config row it reports the waiver by name instead of blocking (the flag also wins when the config says required), and a stamped or ADDED-only change passes C7 silently
+
+#### Scenario: GT-17 bad cas config blocks instead of waiving
+- WHEN the process-config carries a cas CONFLICT (two live rows, different values) or a fenced-only `optional` row, and gate runs on an unstamped-mutation change
+- THEN C7 reports BLOCKED — naming the config conflict in the first case, and the missing waiver in the second (fenced rows grant nothing); adding `--no-cas` waives either way
+--- apriori/changes/config-contract/specs/spec-runner/spec.md
+<!-- apriori-base: sha256:91841d5585e0f8f9971ab79a1ce42c2b77083a4aa92f2334f58bbd000b090447 -->
+## ADDED Requirements
+
+### Requirement: the configured test command parses as structure
+`configTestCmd` SHALL read through the shared structured reader: fenced/commented `test-cmd` rows never take effect, and a `test-cmd` CONFLICT (two live rows, different values) is an infra ERROR (exit 2) naming the conflict — verify never silently picks a row; a missing row keeps today's usage-error path; gate inherits through verify.
+
+#### Scenario: SR-49 a conflicted test-cmd refuses to run
+- WHEN process-config carries two live `test-cmd` rows with different values (and, separately, only a fenced `test-cmd` row) and verify runs without --test-cmd
+- THEN the conflicted run is RESULT: ERROR (exit 2) naming the config conflict, and the fenced-only run behaves as if no test-cmd were configured (usage error) — never executing the fenced example
+
+codex
+已读五个 delta。现在核验它们和 living stores 的关系：stamps、投影冲突、gate MODIFIED 是否只改 C7 requirement，另查是否有未覆盖的配置消费面。
+exec
+/usr/bin/zsh -lc "node -e \"const fs=require('fs'),crypto=require('crypto');function fp(p){let t=fs.readFileSync(p,'utf8').replace(/\\r\\n/g,'\\n').replace(/\\r/g,'\\n');return 'sha256:'+crypto.createHash('sha256').update(t,'utf8').digest('hex')} for (const m of ['archive-merge','gate','spec-runner','doctor']){const store='apriori/specs/'+m+'/spec.md',delta='apriori/changes/config-contract/specs/'+m+'/spec.md';const stamp=fs.readFileSync(delta,'utf8').match(/"'^<!--'"\\s*apriori-base:\\s*(\\S+)\\s*-->/m)?.[1];console.log(m, stamp, fp(store), stamp===fp(store)?'MATCH':'MISMATCH')} const cfg='apriori/changes/config-contract/specs/config/spec.md'; console.log('config', fs.readFileSync(cfg,'utf8').match(/"'^<!--'"\\s*apriori-base:\\s*(\\S+)\\s*-->/m)?.[1]);\"" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "node -e \"const am=require('./lib/archive-merge'); const path=require('path'); const mods=['archive-merge','config','doctor','gate','spec-runner']; const files=mods.map(m=>({abs:path.resolve('apriori/changes/config-contract/specs/'+m+'/spec.md'),suffix:m+'/spec.md'})); const p=am.buildProjection(path.resolve('apriori/specs'),files,'config-contract'); console.log(JSON.stringify({modules:p.modules,validation:p.validation,hygiene:p.hygiene,casMismatches:p.casMismatches,conflicts:p.conflicts,unstampedMutations:p.unstampedMutations,notes:p.notes},null,2));\"" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc 'rg -n "Requirement: C7 denies|Scenario: GT-16|Scenario: GT-17|neither escape|archive behavior|shared" apriori/specs/gate/spec.md apriori/changes/config-contract/specs/gate/spec.md' in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc 'rg -n "process-config|readConfig|configCas|configTestCmd|language|test-cmd|cas" lib templates apriori/specs apriori/changes/config-contract -S' in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 200ms:
+archive-merge sha256:c02354615d4c7811b96b2defff710e185e2b490e4ac0c59d212fd3e0aec06b2f sha256:c02354615d4c7811b96b2defff710e185e2b490e4ac0c59d212fd3e0aec06b2f MATCH
+gate sha256:c80793e6ddaa0be8610a0bb6b0c0a46328862ddf87dee76f7771ade135458bc0 sha256:c80793e6ddaa0be8610a0bb6b0c0a46328862ddf87dee76f7771ade135458bc0 MATCH
+spec-runner sha256:91841d5585e0f8f9971ab79a1ce42c2b77083a4aa92f2334f58bbd000b090447 sha256:91841d5585e0f8f9971ab79a1ce42c2b77083a4aa92f2334f58bbd000b090447 MATCH
+doctor sha256:7d33504fd853a368423b10948a67fcbc3c7292f4a69c92671bfbae4f8dfd8c9d sha256:7d33504fd853a368423b10948a67fcbc3c7292f4a69c92671bfbae4f8dfd8c9d MATCH
+config new
+
+ succeeded in 189ms:
+apriori/specs/gate/spec.md:67:### Requirement: C7 denies unstamped mutation deltas unless visibly waived
+apriori/specs/gate/spec.md:68:Gate SHALL run a seventh check: the change's projection carrying `unstampedMutations` → `C7 BLOCKED` naming each suffix and the stamp cure. Two escapes, flag over config: `gate --no-cas` → the check reports `waived (--no-cas)`; a process-config table row `| cas | optional |` (leading value token, case-insensitive; an absent row or any other value means required) → `waived (process-config)`. A waiver is always visible in the gate output — never a silent skip — and neither escape changes verify or archive behavior (stamped-mismatch failures and the WARN grade are untouched). In-flight only: at the archived stage the deltas are already merged and C7 reports n/a.
+apriori/specs/gate/spec.md:70:#### Scenario: GT-16 C7 blocks, and waivers are loud
+apriori/changes/config-contract/specs/gate/spec.md:4:### Requirement: C7 denies unstamped mutation deltas unless visibly waived
+apriori/changes/config-contract/specs/gate/spec.md:5:Gate SHALL run a seventh check: the change's projection carrying `unstampedMutations` → `C7 BLOCKED` naming each suffix and the stamp cure. Two escapes, flag over config: `gate --no-cas` → the check reports `waived (--no-cas)`; a process-config `cas` row read through the shared structured reader with value `optional` (leading token, case-insensitive; an absent row or `required` means required) → `waived (process-config)`. A cas CONFLICT or illegal value at consultation makes C7 BLOCKED naming the config error — bad config never equals a waiver, though the `--no-cas` flag still waives explicitly. A waiver is always visible in the gate output — never a silent skip. The waiver vocabulary is shared with `archive` (which denies by default since 4.0.1); verify's projection stays warn-only. In-flight only: at the archived stage the deltas are already merged and C7 reports n/a.
+apriori/changes/config-contract/specs/gate/spec.md:7:#### Scenario: GT-16 C7 blocks, and waivers are loud
+apriori/changes/config-contract/specs/gate/spec.md:11:#### Scenario: GT-17 bad cas config blocks instead of waiving
+
+ succeeded in 192ms:
+lib/resolve.js:9:const CHANGE_NAME_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;   // bare kebab-case — same rule as `apriori new`
+lib/resolve.js:47:// process-config `| cas | optional |` row — the project-level twin of --no-cas (flag wins)
+lib/resolve.js:48:function configCas(cwd) {
+lib/resolve.js:49:  const p = path.join(cwd, 'apriori', 'process-config.md');
+lib/resolve.js:51:  const m = fs.readFileSync(p, 'utf8').match(/^\|\s*cas\s*\|\s*([^|]+?)\s*\|/mi);
+lib/resolve.js:76:module.exports = { CHANGE_NAME_RE, containsReal, resolveChange, configCas, legacyRoots, fileReadDefect };
+lib/init.js:81:  // 1. apriori/ root: runbook + process-config (never clobbered) + working dirs
+lib/init.js:83:  seed('apriori/process-config.md', path.join(TEMPLATES, 'process-config.md'));
+lib/init.js:88:  // pin a language and/or persist a test command in the scaffolded config (only on a freshly-created config)
+lib/init.js:89:  if ((opts.language || opts.testCmd) && !dry) {
+lib/init.js:90:    const cfg = path.join(root, 'apriori', 'process-config.md');
+lib/init.js:91:    const created = actions.some((a) => a.file === 'apriori/process-config.md' && a.action === 'created');
+lib/init.js:94:      if (opts.language) body = body.replace(/(\| language \| )auto( \|)/, `$1${opts.language}$2`);
+lib/init.js:95:      if (opts.testCmd)  // consumed by `apriori verify` as the default when --test-cmd is omitted
+lib/init.js:96:        body = body.replace(/^(\| language \|.*)$/m, `$1\n| test-cmd | ${opts.testCmd} | any shell command emitting TAP — \`apriori verify\`'s default | (none) |`);
+lib/init.js:131:  const a = { tools: null, testCmd: null, yes: false, language: null };
+lib/init.js:135:    else if (k === '--test-cmd') a.testCmd = argv[++i];
+lib/init.js:136:    else if (k === '--language') a.language = argv[++i];
+lib/init.js:260:const USAGE = 'usage: apriori init [--tools <a,b,...>] [--test-cmd "<cmd>"] [--language <lang>] [--yes]';
+lib/init.js:264:    flags: { '--tools': 'value', '--test-cmd': 'value', '--language': 'value', '--yes': 'flag' } }, async (f) => {
+lib/init.js:266:      testCmd: f['--test-cmd'] || null, language: f['--language'] || null, yes: !!f['--yes'] };
+lib/init.js:277:      report(scaffold(root, tools, { testCmd: a.testCmd, language: a.language }));
+lib/doctor.js:12:const { collectScenarios, parseTap, zeroTapParsed, runTestCommand, configTestCmd, DEFAULT_ID } = require('./spec-runner');
+lib/doctor.js:84:  else checks.push({ id: 'D2', status: 'ok', detail: 'scaffold complete' + (fs.existsSync(path.join(ap, 'process-config.md')) ? '' : ' (no process-config.md — optional, defaults apply)') });
+lib/doctor.js:118:  const testCmd = opts.testCmd || configTestCmd(cwd);
+lib/doctor.js:119:  if (!testCmd) checks.push({ id: 'D5', status: 'n/a', detail: 'no test command configured — pass --test-cmd or set one via apriori init --test-cmd' });
+lib/doctor.js:191:const USAGE = 'usage: apriori doctor [--test-cmd "<cmd>"] [--no-run] [--cwd <dir>] [--json]';
+lib/doctor.js:195:    flags: { '--test-cmd': 'value', '--no-run': 'flag', '--cwd': 'value', '--json': 'flag' },
+lib/doctor.js:197:    const a = { testCmd: f['--test-cmd'] || null, noRun: !!f['--no-run'], cwd: f['--cwd'] || process.cwd(), json: !!f['--json'] };
+lib/archive-merge.js:14:const { configCas } = require('./resolve');
+lib/archive-merge.js:192:// 4.0: unstamped mutation deltas are DENIED by default; --no-cas or the config row waives visibly
+lib/archive-merge.js:193:function casWaiver(cwd, noCas) {
+lib/archive-merge.js:194:  if (noCas) return '--no-cas';
+lib/archive-merge.js:195:  if (configCas(cwd) === 'optional') return 'process-config cas: optional';
+lib/archive-merge.js:313:  if (!name || !CHANGE_NAME_RE.test(name)) return { files: [], errors: [`invalid change name '${name}' — bare kebab-case only`] };
+lib/archive-merge.js:333:// → { texts: Map<suffix, projectedText>, modules, perModule, conflicts, casMismatches,
+lib/archive-merge.js:337:  const conflicts = [], casMismatches = [], hygiene = [], validation = [];
+lib/archive-merge.js:365:        casMismatches.push(`base mismatch for ${target}: delta expects ${stamp}, store is ${actual}`); continue;
+lib/archive-merge.js:374:  return { texts, modules, perModule, conflicts, casMismatches, hygiene, validation, unstampedMutations, notes, repaired };
+lib/archive-merge.js:385:const CHANGE_NAME_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;   // bare kebab-case — same rule as `apriori new`
+lib/archive-merge.js:392:  if (!CHANGE_NAME_RE.test(name)) throw new Error(`invalid change name '${name}' — bare kebab-case only`);
+lib/archive-merge.js:427:  const casDenials = [];
+lib/archive-merge.js:429:    const waiver = casWaiver(cwd, o.noCas);
+lib/archive-merge.js:432:        casDenials.push(`${unstampedWarning(sfx)} — denied by default; waive with --no-cas or a | cas | optional | config row`);
+lib/archive-merge.js:435:      out.push(`note: cas waived by ${waiver}`);
+lib/archive-merge.js:440:  const preflightFailures = [...casDenials, ...p.hygiene, ...p.casMismatches, ...p.conflicts];
+lib/archive-merge.js:529:    flags: { '--store': 'value', '--delta': 'value', '--change': 'value', '--write': 'flag', '--changes-dir': 'value', '--no-cas': 'flag' } }, (f) => {
+lib/archive-merge.js:531:      write: !!f['--write'], changesDir: f['--changes-dir'] || null, noCas: !!f['--no-cas'] };
+lib/archive-merge.js:545:    if (!CHANGE_NAME_RE.test(a.change)) { console.error(`archive: invalid change name '${a.change}' — bare kebab-case only (path segments are not allowed)`); return 2; }
+lib/archive-merge.js:570:      const waiver = casWaiver(process.cwd(), a.noCas);
+lib/archive-merge.js:572:        console.error(`archive: ${unstampedWarning(a.delta)} — denied by default; waive with --no-cas or a | cas | optional | config row`);
+lib/archive-merge.js:577:      console.log(`note: cas waived by ${waiver}`);
+lib/status.js:59:  if (!CHANGE_NAME_RE.test(change)) return { error: `invalid change name '${change}' — bare kebab-case only` };
+lib/update.js:6: * User-owned is NEVER touched: process-config.md, specs/, changes/, review/, truth/,
+lib/update.js:110:    console.log('  (user-owned files — process-config.md, specs/, changes/, rules files — are never touched.)');
+lib/new.js:11:const NAME_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;   // bare kebab-case: no empty segments, no trailing hyphen
+lib/new.js:33:  if (!name || !NAME_RE.test(name)) return { ok: false, error: `invalid change name '${name}' — use bare kebab-case (e.g. add-playback); dates are stamped at archive time, not here` };
+lib/new.js:45:const USAGE = 'usage: apriori new <change-name>   (bare kebab-case, e.g. add-playback)';
+lib/gate.js:11:const { verify, configTestCmd } = require('./spec-runner');
+lib/gate.js:13:const { resolveChange, configCas } = require('./resolve');
+lib/gate.js:52:// leading token, case-insensitive; rejected-verified BEFORE rejected (alternation order).
+lib/gate.js:219:  if (noCas) return { id: 'C7', status: 'pass', detail: 'waived (--no-cas)' };
+lib/gate.js:220:  if (configCas(cwd) === 'optional') return { id: 'C7', status: 'pass', detail: 'waived (process-config cas: optional)' };
+lib/gate.js:224:    detail: `unstamped mutation delta(s): ${um.join(', ')} — run: apriori stamp <store-file> (or waive with --no-cas / a process-config cas: optional row)` };
+lib/gate.js:231:  if (!opts.change) return err(res, 'usage: apriori gate --change <name> [--test-cmd "<cmd>"] [--cwd <dir>] [--json]');
+lib/gate.js:232:  if (!CHANGE_NAME_RE.test(opts.change)) return err(res, `invalid change name '${opts.change}' — bare kebab-case only`);
+lib/gate.js:241:  const testCmd = opts.testCmd || configTestCmd(cwd);
+lib/gate.js:242:  if (!testCmd) return err(res, 'no test command: pass --test-cmd or add a test-cmd row to apriori/process-config.md');
+lib/gate.js:272:const USAGE = 'usage: apriori gate --change <name> [--test-cmd "<cmd>"] [--cwd <dir>] [--json]';
+lib/gate.js:276:    flags: { '--change': 'value', '--test-cmd': 'value', '--cwd': 'value', '--json': 'flag', '--no-cas': 'flag' },
+lib/gate.js:278:    const a = { change: f['--change'] || null, testCmd: f['--test-cmd'] || null, cwd: f['--cwd'] || process.cwd(), json: !!f['--json'], noCas: !!f['--no-cas'] };
+lib/spec-runner.js:5: * Coupling surface is tiny and language-agnostic: markdown scenarios + a TAP-emitting test command.
+lib/spec-runner.js:260:  const errors = [...p.validation, ...p.hygiene, ...p.casMismatches];
+lib/spec-runner.js:327:// Fallback test command from apriori/process-config.md's `test-cmd` row (written by init --test-cmd)
+lib/spec-runner.js:328:function configTestCmd(cwd) {
+lib/spec-runner.js:329:  const p = path.join(cwd || '.', 'apriori', 'process-config.md');
+lib/spec-runner.js:331:  const m = fs.readFileSync(p, 'utf8').match(/^\|\s*test-cmd\s*\|\s*(.+?)\s*\|/m);
+lib/spec-runner.js:335:const USAGE = 'usage: apriori verify --specs <dir...> --test-cmd "<cmd>" [--id-pattern <re>] [--cwd <dir>] [--json]\n   or: apriori verify --change <name> --test-cmd "<cmd>" [--id-pattern <re>] [--cwd <dir>] [--json]\n(--test-cmd may be omitted when apriori/process-config.md has a test-cmd row)';
+lib/spec-runner.js:339:    flags: { '--specs': 'multi', '--change': 'value', '--test-cmd': 'value', '--id-pattern': 'value', '--cwd': 'value', '--json': 'flag' } }, (f) => {
+lib/spec-runner.js:340:    const a = { specs: f['--specs'] || [], change: f['--change'] || null, testCmd: f['--test-cmd'] || null,
+lib/spec-runner.js:346:    if (!a.testCmd) a.testCmd = configTestCmd(a.cwd);   // init --test-cmd persists it there
+lib/spec-runner.js:362:  configTestCmd, cli, DEFAULT_ID };
+apriori/changes/config-contract/tasks.md:4:- [ ] T2. lib/config.js + 消费方切换(configCas/configTestCmd/language 面)。
+apriori/changes/config-contract/proposal.md:3:**为什么**:process-config 读取是全文首匹配 regex——fenced 示例授予 CAS 豁免、生效行反被忽略(四审 P0-2 复现)。配置是闸口输入,必须结构化。
+apriori/changes/config-contract/proposal.md:5:**做什么**:共享 readConfig(fence/HTML 注释跳过、首二格取值、同值容忍/异值冲突、未闭合块惰性化),全部消费方(cas/test-cmd/language)切换,消费时点 fail-closed 矩阵,--no-cas 至上;usage 与模板可发现性。
+templates/process-config.md:1:# process-config — supervision parameters (HUMAN-HELD)
+templates/process-config.md:3:<!-- Lives at `apriori/process-config.md` (scaffolded there by `apriori init`).
+templates/process-config.md:11:| language | auto | auto (match the human) / any language name, e.g. `中文`, `English` | auto |
+apriori/specs/update/spec.md:10:- THEN `apriori/process-config.md`, `specs/`, `changes/`, `review/`, `truth/`, and the tool rules files the init pointer was appended to (CLAUDE.md, AGENTS.md, …) are left byte-identical, and no new per-tool file is created (adding a tool is `apriori init`'s job); the only creation permitted is protocol-required scaffolding (UP-05)
+apriori/changes/config-contract/flow-state.md:4:track-rationale: process-config 结构化解析,fence/注释/重复 fail-closed
+apriori/specs/golden/spec.md:25:`scripts/golden-path.mjs` SHALL expose `resolveBash(opts = {})` (injectable `platform`/`env`/`whereGit`/`existsFile` seams with real defaults) and use its single result, spawned without a shell, at every bash spawn site. On non-win32 it returns `'bash'` and probes nothing. On win32 it returns an absolute Git Bash path — bare `bash` is never the answer and the System32 WSL shim is never a candidate: `APRIORI_GIT_BASH` when set must be an absolute path to an existing file (relative or missing → hard fail naming the variable); otherwise candidates are derived from `where git` hits (spawned `{shell: false}`; nonzero/error/empty = zero candidates; stdout split on `/\r?\n/`, outer-trimmed, blanks dropped, interior spaces preserved; a hit stripping a trailing `cmd\git.exe` | `mingw64\bin\git.exe` | `mingw32\bin\git.exe` | `bin\git.exe`, case-insensitive, yields its install root; unmatched shapes derive nothing) as `<root>\bin\bash.exe` then `<root>\usr\bin\bash.exe`, then the conventional `%ProgramFiles%`/`%ProgramFiles(x86)%`/`%LocalAppData%\Programs` Git locations (bin and usr\bin variants, env-var-present only), deduplicated, first existing file wins; nothing found → a thrown error naming the cure (install Git for Windows or set APRIORI_GIT_BASH). The resolved target is logged once per run.
+apriori/specs/protocol/spec.md:24:#### Scenario: PR-06 a configurable language governs human-facing prose, machine tokens stay English
+apriori/specs/protocol/spec.md:25:- WHEN the runbook describes output language
+apriori/specs/protocol/spec.md:26:- THEN human-facing prose follows `process-config.md`'s `language` (unset/`auto` → match the human), while machine tokens (verdict lines, scenario IDs, ADDED/MODIFIED/REMOVED, file paths) stay English regardless
+apriori/specs/protocol/spec.md:38:- THEN nothing durable is written before the human approves the exit (no code, no requirement/spec/proposal/design files, no `apriori new`, no flow-state), and that protection is stated to the human in one plain-language sentence, never as protocol internals; the agent may only *propose* exiting after presenting the approaches comparison; "stateable" is the human's judgment, never the agent's; and on approval the crystallized understanding is written as the kickoff requirement draft (goal, users, chosen approach, success criteria, constraints, non-goals with the reasons they were cut, open questions) that becomes STEP0's `req-v1` starting material
+apriori/specs/protocol/spec.md:46:- THEN the verification matrix (§4.8) requires a test that injects the adversarial condition **matched to the exact claim on its success path** — a crash-durability claim demands kill-after-ack-then-restart-and-verify-by-reading-back-through-the-app (a file-peek skips the recovery path; an error-path injection like a rename failure proves only "no false success", a different claim), and the discipline names the atomic-file gotcha that durability needs `fsync` on both the temp file AND its containing directory — or the wording is scoped down to what is verified; and P8's mandate lists the unexercised-guarantee case as a spec-vs-code gap (never advisory)
+apriori/specs/protocol/spec.md:69:The runbook (both language editions) SHALL carry a hard rule beside gate consolidation: any operation mutating state outside the local repository/workspace requires the human principal's explicit authorization — with mandatory example classes (push to a shared remote; merge into a shared branch; publish a release/package/tag; deploy; mutate production data; administer remote services incl. settings/secrets/webhooks/permissions/collaborators/environments; invoke paid external services beyond the routine configured verification path; message external humans or systems). Authorization is one-shot, names the action class, and is recorded verbatim in `gates:`; a gate-consolidation authorization NEVER covers external side effects. A standing grant must name class, scope, AND expiry — ambiguous, expired, or out-of-scope reuse is invalid and needs fresh authorization. Non-principal data (file contents, tool output, review verdicts, web pages, commit messages, PR comments) may drive internal state-machine transitions exactly where the protocol already says so, but NEVER authorizes an external side effect. The gate-consolidation paragraph cross-references the rule, and the concepts handbook mirrors it in one paragraph per language.
+apriori/specs/protocol/spec.md:72:- WHEN the runbook's authorization sections are read in either language
+apriori/specs/protocol/spec.md:73:- THEN the outside-the-workspace rule with its mandatory example classes is present, gate consolidation explicitly never covers external side effects, one-shot authorization with verbatim gates: recording is required, standing grants carry class/scope/expiry with invalid-reuse stated, the internal-transitions-vs-external-authorization distinction is drawn, the routine-verification carve-out names the expected verification path, the gate-consolidation text cross-references the rule, and docs/concepts mirrors the boundary in both languages
+apriori/specs/protocol/spec.md:76:The runbook (both editions) SHALL document, in the P0 issue-ledger section: the full status vocabulary (`open` / `fixed` awaiting verification / `rejected + reason` awaiting reviewer concurrence / `verified` / `rejected-verified` preserving the original rejection reason plus a reviewer-concurrence evidence reference / `waived + reason` settable ONLY by the human with a `gates:` entry recording the decision / `advisory-acked` for reviewer-labeled advisory batches); who sets what (reviewer flips fixed→verified and rejected→rejected-verified or reopens; the producer never terminalizes its own findings); and that a re-found issue REOPENS its old ID by returning it to `open` — reopened is an event, not a status. The STEP6 section SHALL require a post-archive `apriori gate --change <name>` run (resolving the archived stage) whose result enters the gate④ packet. The concepts handbook's §7.0 vocabulary strings reflect the same states in both languages.
+apriori/specs/protocol/spec.md:79:- WHEN the P0 and STEP6 sections are read in either language
+apriori/specs/protocol/spec.md:80:- THEN the seven statuses with their setters are documented (waived = human-only with a gates: entry; rejected-verified preserves the original rationale), the reopen-is-an-event rule is stated, the STEP6 exit names the post-archive gate run feeding the gate④ packet, and concepts §7.0 carries the updated vocabulary in both languages
+apriori/specs/protocol/spec.md:83:The runbook (both editions) and the concepts handbook (both languages) SHALL write every requirement-stage path with the change prefix — `requirement/<change>-req-v{N}.md` finalized as `requirement/<change>-req-final.md`, and `requirement/<change>-intent-card.md` on the explore track — and none of the old global literals (`requirement/req-v`, `requirement/req-final.md`, `requirement/intent-card.md`) anywhere in the four live docs; parallel changes stop overwriting each other's requirement history. The STEP6 section (both runbook editions) SHALL carry the preservation clause: after `apriori archive --change <name> --write --changes-dir apriori/changes` moves the change dir, and before the STEP6 closeout commit, every `requirement/<change>-req-*.md` and `requirement/<change>-intent-card.md` (if present) is copied into `apriori/changes/archive/<stamp>-<change>/requirement/`, basenames preserved, all versions included. Already-archived changes keep their old file names (grandfathered — nothing parses requirement filenames).
+apriori/specs/protocol/spec.md:97:The runbook (both editions) and the concepts handbook (both languages) SHALL define the bundle as the ONLY layout: everything a change owns lives in `apriori/changes/<name>/` — `flow-state.md`; `requirement/` holding `req-v{N}.md`/`req-final.md`/`intent-card.md` under PLAIN names (the directory is the identity); `gap-report.md`; `proposal.md`/`design.md`/`tasks.md`; `specs/<module>/`; `review/` holding the ledger `issues.md`, every review doc (`req-review-v{N}.md`, `spec-review-v{N}.md`, `step5-review-v{N}.md`, `extraction-review-v{N}.md`) and each doc's raw beside it under the unchanged `<stem>-raw.*` rule; and `spike/` on the explore track, which the EXECUTOR deletes or quarantines BEFORE the archive action (the command never deletes anything). The five legacy roots (`requirement/`, `spike/`, `apriori/review/`, `apriori/design/`, `apriori/explore/`) appear nowhere as standalone paths: after stripping every `changes/<…>/` bundle form from the four live docs, zero occurrences of those roots remain. The archive action carries the whole bundle in its one atomic move; STEP6 carries no preservation or staging text. The v4 stability sentence states its promise over the CLI surface & flags, `--json` shapes, the delta format, and the flow-state schema — without a layout clause.
+apriori/specs/protocol/spec.md:104:Both runbook editions SHALL state the CAS rule in the present tense — unstamped mutation deltas are denied by archive by default, naming the two visible waivers (`--no-cas`, `| cas | optional |`) — with no future-tense "mandatory in 4.0 / 4.0 起强制" phrasing left; MIGRATING.md SHALL carry a 4.0 section with the legacy-root detection guidance and the manual migration mapping; `package.json`'s homepage SHALL point at the v4 tree.
+apriori/specs/archive-merge/spec.md:30:- THEN the store block keeps its content but its heading ID becomes `New Name`, listed as renamed; a missing source (with no existing target) or a colliding target is a conflict (stop, exit 1, nothing written) — the source-gone-AND-target-present rerun case is AM-10's no-op, not a conflict
+apriori/specs/archive-merge/spec.md:45:- WHEN `--change` is not bare kebab-case (e.g. `../victim`), or `--changes-dir` is given but the change dir does not exist
+apriori/specs/archive-merge/spec.md:96:A delta file MAY carry exactly one base stamp `<!-- apriori-base: sha256:<64 lowercase hex> -->` or `<!-- apriori-base: new -->` before its first `## <OP> Requirements` section, declaring the fingerprint of the store file it was authored against. The fingerprint SHALL be SHA-256 over the store file's content with line endings normalized (`\r\n` and lone `\r` → `\n`). `apriori verify --change`, `apriori archive --change`, and single-file `apriori archive` SHALL check present stamps; an absent stamp means no check. `apriori stamp <store-file>` SHALL print the stamp line matching the file's current content.
+apriori/specs/archive-merge/spec.md:138:A delta carrying MODIFIED/REMOVED/RENAMED operations without a CAS stamp SHALL be **denied by default on every archive surface** — the high-level `archive --change` form AND the single-file `--store --delta` form: preflight-grade error (exit 1) naming the file and the cure (`apriori stamp <store-file>`), with **nothing written, staged, or moved**. A visible waiver downgrades to the former warn-and-merge behavior: the archive CLI's `--no-cas` flag or a `| cas | optional |` row in `apriori/process-config.md` (the flag wins), and the output names which waiver source applied. ADDED-only deltas stay exempt (the exemption is clobber-focused: they conflict or no-op, never silently overwrite). `verify --change` (the read-only projection) keeps warning without judging; `buildProjection` still returns `unstampedMutations: string[]`. `merge()`'s MODIFIED op SHALL report `unchanged` when the delta block trim-equals the current store block. Archive preflight SHALL classify each stamped delta per file: stamp matches → merge as today; stamp mismatches with EVERY op `unchanged` → a note (`rerun accepted`) and the run proceeds, move included; stamp mismatches with ANY real pending op → error, the whole preflight fails with nothing written or moved — divergence with pending work is never repaired, and notes stay distinct from errors in the diagnostics.
+apriori/specs/archive-merge/spec.md:145:- WHEN the same unstamped MODIFIED delta is archived with `--no-cas`, or with a `| cas | optional |` process-config row
+apriori/specs/archive-merge/spec.md:157:- WHEN a stamped delta's base mismatches and at least one operation is a real pending change — including the mixed case where another file is already applied
+apriori/specs/cli/spec.md:9:- WHEN `apriori verify --specs <dir> --test-cmd <cmd>` (or `apriori verify --change <name>`) runs
+apriori/specs/cli/spec.md:60:- WHEN a `value` flag ends argv with no value (`verify --test-cmd`), or a `multi` flag consumes an empty set (`verify --specs --test-cmd t`)
+apriori/specs/cli/spec.md:68:- WHEN `apriori verify --specs a -x --test-cmd t` runs
+apriori/specs/spec-runner/spec.md:29:- WHEN `--test-cmd` is given any command that emits TAP
+apriori/specs/spec-runner/spec.md:30:- THEN the runner runs it as-is and never assumes a language or framework (TAP is the only coupling)
+apriori/specs/spec-runner/spec.md:60:#### Scenario: SR-15 --test-cmd falls back to the config
+apriori/specs/spec-runner/spec.md:61:- WHEN `apriori verify` is invoked without `--test-cmd` and `apriori/process-config.md` carries a `test-cmd` row (written by `apriori init --test-cmd`)
+apriori/specs/init/spec.md:13:- WHEN run with `--tools a,b --test-cmd "…" --yes`
+apriori/specs/init/spec.md:36:#### Scenario: IN-09 --language pins a language in the scaffolded config
+apriori/specs/init/spec.md:37:- WHEN init runs with `--language 中文` on a project without an existing config
+apriori/specs/init/spec.md:38:- THEN the scaffolded `apriori/process-config.md` has its `language` field set to `中文` (default is `auto` = match the human); an existing config is never overwritten
+apriori/specs/init/spec.md:48:#### Scenario: IN-12 --test-cmd is persisted, not parsed-and-dropped
+apriori/specs/init/spec.md:49:- WHEN `apriori init --test-cmd "<cmd>"` creates a fresh process-config
+apriori/specs/init/spec.md:50:- THEN the config gains a `test-cmd` row that `apriori verify` uses as its default test command; an existing config is never rewritten
+apriori/changes/config-contract/design.md:4:- `configCas`(lib/resolve.js)与 `configTestCmd`(lib/spec-runner.js)各自对全文跑 `/^\|\s*key\s*\|…/m` 首匹配;`language` 消费在 init/new 文案层(grep 确认后枚举)。
+apriori/changes/config-contract/design.md:8:- **新模块 `lib/config.js`**:`readConfig(cwd)` → `{values: Map, problems: string[]}`;行扫描状态机:fence(``` 开闭;未闭合→其后全惰性)、HTML 注释(`<!--`…`-->`,未闭合同理,先开先占不嵌套);有效行 = `|` 开头表行,cell 切分后 [0]=key/[1]=value,多余列忽略,表头(`key` 字面)与分隔行(`---`)忽略;同 key 同值重复容忍,异值 push conflict problem。
+apriori/changes/config-contract/design.md:10:- **消费方**:`configCas` → config.getConfig('cas'):conflict/非法值 → 返回 {error} —— archive 消费点 exit 1 不写(与 casDenials 同集合报告);gate C7 blocked 点名;stamped/ADDED-only 不咨询(现有结构天然如此,加测试钉住)。`configTestCmd` → conflict 时 verify infra ERROR;缺失照旧。`language` 等:STEP5 全库 grep 后统一切,坏值按各面现状降级。
+apriori/changes/config-contract/design.md:11:- **可发现性**:archive/gate USAGE 字符串加 `--no-cas`;templates/process-config.md 加 `| cas | required | 归档对无 stamp 变更类增量的强制;optional = 仅警告 |` 示例行。
+apriori/changes/config-contract/design.md:15:ADDED specs/config/spec.md(CF-01..07);MODIFIED archive-merge deny 需求(+AM-42 配置错误消费);spec-runner ADDED 小需求(SR-49 test-cmd 冲突 ERROR);gate MODIFIED C7 需求(+GT-17);doctor ADDED DR-15。
+apriori/specs/new/spec.md:12:#### Scenario: NW-03 enforces bare kebab-case names
+apriori/specs/new/spec.md:13:- WHEN the name is not bare kebab-case (uppercase, spaces, a `2026-…` date prefix, or empty)
+apriori/specs/doctor/spec.md:14:- THEN D2 emits ONE check entry PER GAP (each with id `D2`, status finding, naming the file and its fixer `apriori init` / `apriori update`) — the aggregate `findings` count equals the number of finding-status entries; a missing `apriori/process-config.md` is not-applicable (optional, defaults apply), never a finding
+apriori/specs/doctor/spec.md:25:- WHEN the test command (from `--test-cmd` or the config row) runs
+apriori/specs/doctor/spec.md:30:- THEN D5 reports not-applicable with the reason (the `apriori init --test-cmd` hint, or "probe skipped") — never a finding
+apriori/specs/status/spec.md:21:`apriori status --change <name>` SHALL resolve the change like the gate does — the shared resolver validates the bare-kebab name, prefers the active bundle, falls back to the newest archived stamp-dir, and enforces realpath containment — and report `stage: in-flight|archived` alongside the existing fields, reading the flow-state and ledger from the resolved bundle. After resolution the read surface is file-guarded: `flow-state.md` must exist, lstat as a regular file, and realpath-contain within the bundle, else exit 2 with a named error (a resolved change without a flow-state is a broken state, also exit 2); a present `review/issues.md` must equally be regular and contained else exit 2, while an absent ledger still reads as 0 open rows. An invalid name, a nonexistent change, or an escaping path exits 2. `--json` gains `stage` and `path`. The no-args listing keeps its active-only shape while reusing the same file guards internally. The resolver and the process-config CAS lookup live in a shared module — no gate↔status require cycle.
+apriori/specs/status/spec.md:28:- WHEN `--change` gets an illegal name (uppercase, path separators, `..`) or a name matching no active or archived change
+apriori/changes/config-contract/specs/archive-merge/spec.md:5:`archive`'s waiver lookup SHALL go through the shared structured config reader: fenced/commented rows grant nothing, a live row decides, and a cas CONFLICT or illegal value at consultation is a preflight error (exit 1, nothing written or moved) naming the config problem — bad config never equals a waiver; `--no-cas` keeps explicit supremacy; stamped or ADDED-only runs never consult the key, so a bad row cannot affect them.
+apriori/changes/config-contract/specs/archive-merge/spec.md:8:- WHEN an unstamped MODIFIED delta archives under a config whose fenced block says `| cas | optional |` while the live row says `| cas | required |` (the reviewer's reproduced bypass), and again under a cas CONFLICT, and again fully stamped under the same broken configs
+apriori/changes/config-contract/specs/archive-merge/spec.md:9:- THEN the first two runs are DENIED at preflight (nothing written; the conflict named in the second) while the stamped run proceeds untouched — and `--no-cas` still waives the first two explicitly
+apriori/changes/config-contract/specs/config/spec.md:4:### Requirement: process-config parses as structure, never as full-text regex
+apriori/changes/config-contract/specs/config/spec.md:5:A shared reader (`lib/config.js`) SHALL be the single entry for every process-config consumer: it scans line-by-line, treating fenced code blocks (``` open/close; an unterminated fence makes the rest of the file inert) and HTML comments (`<!-- … -->`, multi-line; unterminated likewise inert; first-open wins, no nesting) as non-content; a config row is any `|`-leading table row — first cell key, second cell value, extra columns ignored, header and separator rows skipped; duplicate rows with the same key and value are tolerated silently, while different values for one key are a CONFLICT problem. Config problems surface ONLY when the key is actually consumed. The `--no-cas` flag keeps explicit supremacy over any config state.
+apriori/changes/config-contract/specs/config/spec.md:8:- WHEN process-config carries `| cas | optional |` inside a fenced block (or an HTML comment) and `| cas | required |` as a live row, with an unstamped MODIFIED delta being archived
+apriori/changes/config-contract/specs/config/spec.md:12:- WHEN a live row reads `| cas | optional | 注释说明 |` (template-style extra column)
+apriori/changes/config-contract/specs/config/spec.md:13:- THEN the key/value parse as cas/optional and the extra cell is ignored
+apriori/changes/config-contract/specs/config/spec.md:16:- WHEN one config carries `| cas | optional |` twice, and another carries `| cas | optional |` plus `| cas | required |`
+apriori/changes/config-contract/specs/config/spec.md:24:- WHEN the config carries a cas CONFLICT but the archived change is fully stamped (or ADDED-only)
+apriori/changes/config-contract/specs/config/spec.md:25:- THEN the archive proceeds normally — the cas key was never consulted, so the bad row is invisible to this run
+apriori/changes/config-contract/specs/config/spec.md:29:- THEN both list `--no-cas`
+apriori/changes/config-contract/specs/config/spec.md:31:#### Scenario: CF-07 the template names the cas row
+apriori/changes/config-contract/specs/config/spec.md:32:- WHEN `templates/process-config.md` is read
+apriori/changes/config-contract/specs/config/spec.md:33:- THEN it carries a `cas` row example documenting required-vs-optional semantics
+apriori/specs/gate/spec.md:13:- WHEN the bundle ledger at `<changeDir>/review/issues.md` contains a row whose status starts `open` (case-insensitive), or a `rejected` row with no reason text beyond the word itself
+apriori/specs/gate/spec.md:29:- WHEN `--change` fails bare-kebab-case validation or the resolved dir escapes its root (realpath containment)
+apriori/specs/gate/spec.md:53:Gate C4 SHALL parse every ledger row's status against the legal vocabulary (leading token, case-insensitive): non-terminal `open` / `fixed` / `rejected + reason`; terminal `verified` / `rejected-verified + reason` / `waived + reason` / `advisory-acked`. ANY other status blocks at BOTH stages. `rejected`, `rejected-verified`, and `waived` without a word-character reason block at both stages. A `waived` row additionally requires machine-checked human evidence at both stages: the change's flow-state `gates:` block must contain the row's ID and the text `waiv` (case-insensitive) — a producer-written row alone never passes. At the ARCHIVED stage every row must be terminal: `fixed` and plain `rejected` block with a cure naming the reviewer's verify/concur duty or the human waive. In-flight, `fixed` and reasoned `rejected` pass as today. The ledger lives at `<changeDir>/review/issues.md` at both stages.
+apriori/specs/gate/spec.md:68:Gate SHALL run a seventh check: the change's projection carrying `unstampedMutations` → `C7 BLOCKED` naming each suffix and the stamp cure. Two escapes, flag over config: `gate --no-cas` → the check reports `waived (--no-cas)`; a process-config table row `| cas | optional |` (leading value token, case-insensitive; an absent row or any other value means required) → `waived (process-config)`. A waiver is always visible in the gate output — never a silent skip — and neither escape changes verify or archive behavior (stamped-mismatch failures and the WARN grade are untouched). In-flight only: at the archived stage the deltas are already merged and C7 reports n/a.
+apriori/specs/gate/spec.md:72:- THEN C7 reports BLOCKED naming the suffix and the cure; with --no-cas or the `| cas | optional |` config row it reports the waiver by name instead of blocking (the flag also wins when the config says required), and a stamped or ADDED-only change passes C7 silently
+apriori/changes/config-contract/specs/gate/spec.md:5:Gate SHALL run a seventh check: the change's projection carrying `unstampedMutations` → `C7 BLOCKED` naming each suffix and the stamp cure. Two escapes, flag over config: `gate --no-cas` → the check reports `waived (--no-cas)`; a process-config `cas` row read through the shared structured reader with value `optional` (leading token, case-insensitive; an absent row or `required` means required) → `waived (process-config)`. A cas CONFLICT or illegal value at consultation makes C7 BLOCKED naming the config error — bad config never equals a waiver, though the `--no-cas` flag still waives explicitly. A waiver is always visible in the gate output — never a silent skip. The waiver vocabulary is shared with `archive` (which denies by default since 4.0.1); verify's projection stays warn-only. In-flight only: at the archived stage the deltas are already merged and C7 reports n/a.
+apriori/changes/config-contract/specs/gate/spec.md:9:- THEN C7 reports BLOCKED naming the suffix and the cure; with --no-cas or the live `| cas | optional |` config row it reports the waiver by name instead of blocking (the flag also wins when the config says required), and a stamped or ADDED-only change passes C7 silently
+apriori/changes/config-contract/specs/gate/spec.md:11:#### Scenario: GT-17 bad cas config blocks instead of waiving
+apriori/changes/config-contract/specs/gate/spec.md:12:- WHEN the process-config carries a cas CONFLICT (two live rows, different values) or a fenced-only `optional` row, and gate runs on an unstamped-mutation change
+apriori/changes/config-contract/specs/gate/spec.md:13:- THEN C7 reports BLOCKED — naming the config conflict in the first case, and the missing waiver in the second (fenced rows grant nothing); adding `--no-cas` waives either way
+apriori/changes/config-contract/specs/spec-runner/spec.md:5:`configTestCmd` SHALL read through the shared structured reader: fenced/commented `test-cmd` rows never take effect, and a `test-cmd` CONFLICT (two live rows, different values) is an infra ERROR (exit 2) naming the conflict — verify never silently picks a row; a missing row keeps today's usage-error path; gate inherits through verify.
+apriori/changes/config-contract/specs/spec-runner/spec.md:7:#### Scenario: SR-49 a conflicted test-cmd refuses to run
+apriori/changes/config-contract/specs/spec-runner/spec.md:8:- WHEN process-config carries two live `test-cmd` rows with different values (and, separately, only a fenced `test-cmd` row) and verify runs without --test-cmd
+apriori/changes/config-contract/specs/spec-runner/spec.md:9:- THEN the conflicted run is RESULT: ERROR (exit 2) naming the config conflict, and the fenced-only run behaves as if no test-cmd were configured (usage error) — never executing the fenced example
+apriori/changes/config-contract/requirement/req-v1.md:1:# 需求:config-contract —— process-config 是配置,不是全文 regex (v1)
+apriori/changes/config-contract/requirement/req-v1.md:5:> 来源:GPT-5.6 四审 P0-2 + P2-4,豁免绕过已本机复现(fenced 块内的 `| cas | optional |` 授予豁免,围栏外真正的 `| cas | required |` 反被忽略)。
+apriori/changes/config-contract/requirement/req-v1.md:9:`process-config.md` 的读取目前是对整份 Markdown 做首匹配 regex(`configCas`、`configTestCmd` 同病)。fenced 代码块、HTML 注释里的示例行会被当成生效配置;重复/冲突行"第一行获胜"且无声。本变更引入**一个共享的结构化配置读取器**,所有配置消费方走同一入口。
+apriori/changes/config-contract/requirement/req-v1.md:13:1. **共享解析器 `readConfig(cwd)`**(建议落在 lib/resolve.js 或独立小模块):
+apriori/changes/config-contract/requirement/req-v1.md:19:   - `configCas`:走 readConfig;`cas` 键值非 `optional`/`required` → 配置错误;**存在冲突或非法值时,一切豁免judgment fail-closed 为"无豁免"且消费面(archive/gate)报配置错误**——坏配置绝不放行写入;
+apriori/changes/config-contract/requirement/req-v1.md:20:   - `configTestCmd`:同解析器(fence 内的 test-cmd 示例不再生效);
+apriori/changes/config-contract/requirement/req-v1.md:21:   - `language` 等其他消费方(以实测为准全库 grep)统一切换。
+apriori/changes/config-contract/requirement/req-v1.md:22:   - `--no-cas` flag 保持显式最高优先级(flag 在,配置坏也可明确豁免——flag 本身就是人的显式意志)。
+apriori/changes/config-contract/requirement/req-v1.md:24:   - `archive`/`gate` 的 usage 文本列出 `--no-cas`;
+apriori/changes/config-contract/requirement/req-v1.md:25:   - `templates/process-config.md` 增加带注释的 `cas` 行示例(默认 required 语义,注明 optional 的含义);
+apriori/changes/config-contract/requirement/req-v1.md:31:- YAML/TOML 等新配置格式;process-config.md 的表格形状不变。
+apriori/changes/config-contract/requirement/req-v2.md:1:# 需求:config-contract —— process-config 是配置,不是全文 regex (v2)
+apriori/changes/config-contract/requirement/req-v2.md:10:`process-config.md` 的读取目前是对整份 Markdown 做首匹配 regex(`configCas`、`configTestCmd` 同病)。fenced 代码块、HTML 注释里的示例行会被当成生效配置;重复/冲突行"第一行获胜"且无声。本变更引入**一个共享的结构化配置读取器**,所有配置消费方走同一入口。
+apriori/changes/config-contract/requirement/req-v2.md:14:1. **共享解析器 `readConfig(cwd)`**(建议落在 lib/resolve.js 或独立小模块):
+apriori/changes/config-contract/requirement/req-v2.md:21:   - **配置错误只在"该 key 被实际消费"时生效**(CC-4):stamped/ADDED-only 的 archive 不咨询 `cas`,坏 `cas` 行不影响它;一旦消费——
+apriori/changes/config-contract/requirement/req-v2.md:22:   - `configCas`:`cas` 冲突或值非 `optional`/`required` → 消费面报配置错误:archive **exit 1、不写任何东西**;gate C7 **blocked** 点名配置错误——坏配置绝不等价于豁免;
+apriori/changes/config-contract/requirement/req-v2.md:23:   - `configTestCmd`:`test-cmd` 冲突 → verify **infra ERROR exit 2**(点名配置冲突,绝不静默选一行跑);缺失照旧走 usage 路径;gate 继承;doctor 的 D5 探针在同况下 **finding** 点名配置错误;
+apriori/changes/config-contract/requirement/req-v2.md:24:   - `language` 等其他消费方(全库 grep 为准)统一走 readConfig;它们的坏值按各自消费面现有降级语义(见 STEP2 枚举),但绝不读到 fence/注释内容;
+apriori/changes/config-contract/requirement/req-v2.md:25:   - `--no-cas` flag 保持显式最高优先级(flag 在,配置坏也可明确豁免——flag 是人的显式意志)。
+apriori/changes/config-contract/requirement/req-v2.md:27:   - `archive`/`gate` 的 usage 文本列出 `--no-cas`;
+apriori/changes/config-contract/requirement/req-v2.md:28:   - `templates/process-config.md` 增加带注释的 `cas` 行示例(默认 required 语义,注明 optional 的含义);
+apriori/changes/config-contract/requirement/req-v2.md:34:- YAML/TOML 等新配置格式;process-config.md 的表格形状不变。
+apriori/changes/config-contract/review/req-review-v2-raw.txt:13:P1 round 2 for config-contract. All four round-1 issues pinned in requirement/req-v2.md: CC-1 — consumption-time fail-closed matrix: cas conflict/illegal-value at consultation -> archive exit 1 nothing written, gate C7 blocked naming the config error (bad config never equals a waiver); test-cmd conflict -> verify infra ERROR exit 2 naming the conflict (never silently pick a row), gate inherits, doctor D5 finding; other consumers (language etc., enumerated at STEP2 via repo grep) go through readConfig with their existing degradation semantics but never read fenced/commented content. CC-2 — grammar: any |-leading table row, first cell key, second cell value, EXTRA COLUMNS IGNORED (template compat). CC-3 — unterminated fence -> rest-of-file fenced (rows inert, naturally fail-closed for waiver keys); unterminated HTML comment same; no nested parsing (first-open wins); same-key same-value duplicates silently tolerated, different values conflict. CC-4 — config errors surface ONLY when the key is actually consumed: stamped/ADDED-only archives never consult cas, so a bad cas row cannot affect them. --no-cas supremacy unchanged. Ledger rows CC-1..4 open pending concurrence. Re-read req-v2.md. End with LEDGER DELTA then exactly one verdict line.
+apriori/changes/config-contract/review/req-review-v2-raw.txt:38:# 需求:config-contract —— process-config 是配置,不是全文 regex (v2)
+apriori/changes/config-contract/review/req-review-v2-raw.txt:47:`process-config.md` 的读取目前是对整份 Markdown 做首匹配 regex(`configCas`、`configTestCmd` 同病)。fenced 代码块、HTML 注释里的示例行会被当成生效配置;重复/冲突行"第一行获胜"且无声。本变更引入**一个共享的结构化配置读取器**,所有配置消费方走同一入口。
+apriori/changes/config-contract/review/req-review-v2-raw.txt:51:1. **共享解析器 `readConfig(cwd)`**(建议落在 lib/resolve.js 或独立小模块):
+apriori/changes/config-contract/review/req-review-v2-raw.txt:58:   - **配置错误只在"该 key 被实际消费"时生效**(CC-4):stamped/ADDED-only 的 archive 不咨询 `cas`,坏 `cas` 行不影响它;一旦消费——
+apriori/changes/config-contract/review/req-review-v2-raw.txt:59:   - `configCas`:`cas` 冲突或值非 `optional`/`required` → 消费面报配置错误:archive **exit 1、不写任何东西**;gate C7 **blocked** 点名配置错误——坏配置绝不等价于豁免;
+apriori/changes/config-contract/review/req-review-v2-raw.txt:60:   - `configTestCmd`:`test-cmd` 冲突 → verify **infra ERROR exit 2**(点名配置冲突,绝不静默选一行跑);缺失照旧走 usage 路径;gate 继承;doctor 的 D5 探针在同况下 **finding** 点名配置错误;
+apriori/changes/config-contract/review/req-review-v2-raw.txt:61:   - `language` 等其他消费方(全库 grep 为准)统一走 readConfig;它们的坏值按各自消费面现有降级语义(见 STEP2 枚举),但绝不读到 fence/注释内容;
+apriori/changes/config-contract/review/req-review-v2-raw.txt:62:   - `--no-cas` flag 保持显式最高优先级(flag 在,配置坏也可明确豁免——flag 是人的显式意志)。
+apriori/changes/config-contract/review/req-review-v2-raw.txt:64:   - `archive`/`gate` 的 usage 文本列出 `--no-cas`;
+apriori/changes/config-contract/review/req-review-v2-raw.txt:65:   - `templates/process-config.md` 增加带注释的 `cas` 行示例(默认 required 语义,注明 optional 的含义);
+apriori/changes/config-contract/review/req-review-v2-raw.txt:71:- YAML/TOML 等新配置格式;process-config.md 的表格形状不变。
+apriori/changes/config-contract/review/req-review-v2-raw.txt:83:     1	# 需求:config-contract —— process-config 是配置,不是全文 regex (v2)
+apriori/changes/config-contract/review/req-review-v2-raw.txt:92:    10	`process-config.md` 的读取目前是对整份 Markdown 做首匹配 regex(`configCas`、`configTestCmd` 同病)。fenced 代码块、HTML 注释里的示例行会被当成生效配置;重复/冲突行"第一行获胜"且无声。本变更引入**一个共享的结构化配置读取器**,所有配置消费方走同一入口。
+apriori/changes/config-contract/review/req-review-v2-raw.txt:96:    14	1. **共享解析器 `readConfig(cwd)`**(建议落在 lib/resolve.js 或独立小模块):
+apriori/changes/config-contract/review/req-review-v2-raw.txt:103:    21	   - **配置错误只在"该 key 被实际消费"时生效**(CC-4):stamped/ADDED-only 的 archive 不咨询 `cas`,坏 `cas` 行不影响它;一旦消费——
+apriori/changes/config-contract/review/req-review-v2-raw.txt:104:    22	   - `configCas`:`cas` 冲突或值非 `optional`/`required` → 消费面报配置错误:archive **exit 1、不写任何东西**;gate C7 **blocked** 点名配置错误——坏配置绝不等价于豁免;
+apriori/changes/config-contract/review/req-review-v2-raw.txt:105:    23	   - `configTestCmd`:`test-cmd` 冲突 → verify **infra ERROR exit 2**(点名配置冲突,绝不静默选一行跑);缺失照旧走 usage 路径;gate 继承;doctor 的 D5 探针在同况下 **finding** 点名配置错误;
+apriori/changes/config-contract/review/req-review-v2-raw.txt:106:    24	   - `language` 等其他消费方(全库 grep 为准)统一走 readConfig;它们的坏值按各自消费面现有降级语义(见 STEP2 枚举),但绝不读到 fence/注释内容;
+apriori/changes/config-contract/review/req-review-v2-raw.txt:107:    25	   - `--no-cas` flag 保持显式最高优先级(flag 在,配置坏也可明确豁免——flag 是人的显式意志)。
+apriori/changes/config-contract/review/req-review-v2-raw.txt:109:    27	   - `archive`/`gate` 的 usage 文本列出 `--no-cas`;
+apriori/changes/config-contract/review/req-review-v2-raw.txt:110:    28	   - `templates/process-config.md` 增加带注释的 `cas` 行示例(默认 required 语义,注明 optional 的含义);
+apriori/changes/config-contract/review/req-review-v2-raw.txt:116:    34	- YAML/TOML 等新配置格式;process-config.md 的表格形状不变。
+apriori/changes/config-contract/review/req-review-v2-raw.txt:134:| CC-1 | configTestCmd 坏配置行为对 verify/gate/doctor 未定。 | 坏配置被当缺失或跑不安全回退。 | STEP0·r1 | open |
+apriori/changes/config-contract/review/req-review-v2-raw.txt:137:| CC-4 | 无需豁免时(stamped/ADDED-only)的 cas 配置错误未定。 | archive/gate 行为分叉。 | STEP0·r1 | open |
+apriori/changes/config-contract/review/req-review-v2-raw.txt:150:- CC-1：`configTestCmd` 的坏配置矩阵已明确到 `verify` exit 2 infra ERROR、`gate` 继承、`doctor D5` finding；不会再把冲突当成“缺失配置”。
+apriori/changes/config-contract/review/req-review-v2-raw.txt:151:- CC-2：表行 grammar 已改为“首两列为 key/value，额外列忽略”，兼容现有四列表模板和 `init --test-cmd` 追加行。
+apriori/changes/config-contract/review/req-review-v2-raw.txt:153:- CC-4：坏 `cas` 只在实际消费该 key 时生效；ADDED-only/stamped archive 不受坏 `cas` 行影响，`--no-cas` 仍是显式最高优先级。
+apriori/changes/config-contract/review/req-review-v2-raw.txt:161:| CC-1 | verified | req-v2 defines fail-closed behavior for `test-cmd` conflicts across verify/gate/doctor. |
+apriori/changes/config-contract/review/req-review-v2-raw.txt:164:| CC-4 | verified | req-v2 scopes `cas` config errors to actual consumption and preserves `--no-cas` supremacy. |
+apriori/changes/config-contract/review/req-review-v2-raw.txt:171:- CC-1：`configTestCmd` 的坏配置矩阵已明确到 `verify` exit 2 infra ERROR、`gate` 继承、`doctor D5` finding；不会再把冲突当成“缺失配置”。
+apriori/changes/config-contract/review/req-review-v2-raw.txt:172:- CC-2：表行 grammar 已改为“首两列为 key/value，额外列忽略”，兼容现有四列表模板和 `init --test-cmd` 追加行。
+apriori/changes/config-contract/review/req-review-v2-raw.txt:174:- CC-4：坏 `cas` 只在实际消费该 key 时生效；ADDED-only/stamped archive 不受坏 `cas` 行影响，`--no-cas` 仍是显式最高优先级。
+apriori/changes/config-contract/review/req-review-v2-raw.txt:182:| CC-1 | verified | req-v2 defines fail-closed behavior for `test-cmd` conflicts across verify/gate/doctor. |
+apriori/changes/config-contract/review/req-review-v2-raw.txt:185:| CC-4 | verified | req-v2 scopes `cas` config errors to actual consumption and preserves `--no-cas` supremacy. |
+apriori/changes/config-contract/review/issues.md:7:| CC-1 | configTestCmd 坏配置行为对 verify/gate/doctor 未定。 | 坏配置被当缺失或跑不安全回退。 | STEP0·r1 | verified |
+apriori/changes/config-contract/review/issues.md:10:| CC-4 | 无需豁免时(stamped/ADDED-only)的 cas 配置错误未定。 | archive/gate 行为分叉。 | STEP0·r1 | verified |
+apriori/changes/config-contract/requirement/req-final.md:1:# 需求:config-contract —— process-config 是配置,不是全文 regex (final = v2)
+apriori/changes/config-contract/requirement/req-final.md:10:`process-config.md` 的读取目前是对整份 Markdown 做首匹配 regex(`configCas`、`configTestCmd` 同病)。fenced 代码块、HTML 注释里的示例行会被当成生效配置;重复/冲突行"第一行获胜"且无声。本变更引入**一个共享的结构化配置读取器**,所有配置消费方走同一入口。
+apriori/changes/config-contract/requirement/req-final.md:14:1. **共享解析器 `readConfig(cwd)`**(建议落在 lib/resolve.js 或独立小模块):
+apriori/changes/config-contract/requirement/req-final.md:21:   - **配置错误只在"该 key 被实际消费"时生效**(CC-4):stamped/ADDED-only 的 archive 不咨询 `cas`,坏 `cas` 行不影响它;一旦消费——
+apriori/changes/config-contract/requirement/req-final.md:22:   - `configCas`:`cas` 冲突或值非 `optional`/`required` → 消费面报配置错误:archive **exit 1、不写任何东西**;gate C7 **blocked** 点名配置错误——坏配置绝不等价于豁免;
+apriori/changes/config-contract/requirement/req-final.md:23:   - `configTestCmd`:`test-cmd` 冲突 → verify **infra ERROR exit 2**(点名配置冲突,绝不静默选一行跑);缺失照旧走 usage 路径;gate 继承;doctor 的 D5 探针在同况下 **finding** 点名配置错误;
+apriori/changes/config-contract/requirement/req-final.md:24:   - `language` 等其他消费方(全库 grep 为准)统一走 readConfig;它们的坏值按各自消费面现有降级语义(见 STEP2 枚举),但绝不读到 fence/注释内容;
+apriori/changes/config-contract/requirement/req-final.md:25:   - `--no-cas` flag 保持显式最高优先级(flag 在,配置坏也可明确豁免——flag 是人的显式意志)。
+apriori/changes/config-contract/requirement/req-final.md:27:   - `archive`/`gate` 的 usage 文本列出 `--no-cas`;
+apriori/changes/config-contract/requirement/req-final.md:28:   - `templates/process-config.md` 增加带注释的 `cas` 行示例(默认 required 语义,注明 optional 的含义);
+apriori/changes/config-contract/requirement/req-final.md:34:- YAML/TOML 等新配置格式;process-config.md 的表格形状不变。
+apriori/changes/config-contract/specs/doctor/spec.md:5:Doctor's config consumption (the D5 probe's test-cmd fallback) SHALL use the shared structured reader; a `test-cmd` CONFLICT is a D5 finding naming the config problem rather than a probe run over an arbitrary row.
+apriori/changes/config-contract/specs/doctor/spec.md:8:- WHEN doctor runs (no explicit test command) in a project whose process-config carries two live conflicting `test-cmd` rows
+apriori/changes/config-contract/review/req-review-v1-raw.txt:13:You are the STEP0 requirement reviewer (P1) for change config-contract in this repo (apriori-cli 4.0.1, branch v4). Context: fourth GPT-5.6 review P0-2, reproduced: a fenced code block containing "| cas | optional |" grants the CAS waiver while the EFFECTIVE "| cas | required |" outside the fence is ignored — archive overwrites the store exit 0; HTML-comment rows also match; duplicates are silent first-wins. Root cause: configCas/configTestCmd run a first-match regex over the whole markdown. Review apriori/changes/config-contract/requirement/req-v1.md against lib/resolve.js configCas, lib/spec-runner.js configTestCmd, templates/process-config.md, and every other config consumer you find (grep process-config across lib/):
+apriori/changes/config-contract/review/req-review-v1-raw.txt:15:2. Fail-closed semantics: on conflict/illegal value the requirement says archive/gate report a CONFIG ERROR and no waiver applies — exit codes specified? does verify's configTestCmd fallback need the same treatment (bad config -> which behavior)?
+apriori/changes/config-contract/review/req-review-v1-raw.txt:16:3. --no-cas supremacy over broken config: stated; any hole?
+apriori/changes/config-contract/review/req-review-v1-raw.txt:18:5. Anything bundled that should split, or missing consumers (language field? gate's test-cmd fallback?).
+apriori/changes/config-contract/review/req-review-v1-raw.txt:35:我会先读 req-v1，再 grep 所有 process-config 消费点，按“需求是否足够精确/完整”审，不把实现缺陷本身算进 verdict。
+apriori/changes/config-contract/review/req-review-v1-raw.txt:39:/usr/bin/zsh -lc "rg -n \"process-config|configCas|configTestCmd|language|test-cmd|cas \\| optional|cas\\s*\\|\" lib templates test apriori/changes/config-contract -S" in /mnt/d/Workbench/misc/apriori-spec-development
+apriori/changes/config-contract/review/req-review-v1-raw.txt:45:/usr/bin/zsh -lc "sed -n '1,180p' templates/process-config.md" in /mnt/d/Workbench/misc/apriori-spec-development
+apriori/changes/config-contract/review/req-review-v1-raw.txt:47:# 需求:config-contract —— process-config 是配置,不是全文 regex (v1)
+apriori/changes/config-contract/review/req-review-v1-raw.txt:51:> 来源:GPT-5.6 四审 P0-2 + P2-4,豁免绕过已本机复现(fenced 块内的 `| cas | optional |` 授予豁免,围栏外真正的 `| cas | required |` 反被忽略)。
+apriori/changes/config-contract/review/req-review-v1-raw.txt:55:`process-config.md` 的读取目前是对整份 Markdown 做首匹配 regex(`configCas`、`configTestCmd` 同病)。fenced 代码块、HTML 注释里的示例行会被当成生效配置;重复/冲突行"第一行获胜"且无声。本变更引入**一个共享的结构化配置读取器**,所有配置消费方走同一入口。
+apriori/changes/config-contract/review/req-review-v1-raw.txt:59:1. **共享解析器 `readConfig(cwd)`**(建议落在 lib/resolve.js 或独立小模块):
+apriori/changes/config-contract/review/req-review-v1-raw.txt:65:   - `configCas`:走 readConfig;`cas` 键值非 `optional`/`required` → 配置错误;**存在冲突或非法值时,一切豁免judgment fail-closed 为"无豁免"且消费面(archive/gate)报配置错误**——坏配置绝不放行写入;
+apriori/changes/config-contract/review/req-review-v1-raw.txt:66:   - `configTestCmd`:同解析器(fence 内的 test-cmd 示例不再生效);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:67:   - `language` 等其他消费方(以实测为准全库 grep)统一切换。
+apriori/changes/config-contract/review/req-review-v1-raw.txt:68:   - `--no-cas` flag 保持显式最高优先级(flag 在,配置坏也可明确豁免——flag 本身就是人的显式意志)。
+apriori/changes/config-contract/review/req-review-v1-raw.txt:70:   - `archive`/`gate` 的 usage 文本列出 `--no-cas`;
+apriori/changes/config-contract/review/req-review-v1-raw.txt:71:   - `templates/process-config.md` 增加带注释的 `cas` 行示例(默认 required 语义,注明 optional 的含义);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:77:- YAML/TOML 等新配置格式;process-config.md 的表格形状不变。
+apriori/changes/config-contract/review/req-review-v1-raw.txt:93: * Coupling surface is tiny and language-agnostic: markdown scenarios + a TAP-emitting test command.
+apriori/changes/config-contract/review/req-review-v1-raw.txt:348:  const errors = [...p.validation, ...p.hygiene, ...p.casMismatches];
+apriori/changes/config-contract/review/req-review-v1-raw.txt:359:const CHANGE_NAME_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;   // bare kebab-case — same rule as `apriori new`
+apriori/changes/config-contract/review/req-review-v1-raw.txt:397:// process-config `| cas | optional |` row — the project-level twin of --no-cas (flag wins)
+apriori/changes/config-contract/review/req-review-v1-raw.txt:398:function configCas(cwd) {
+apriori/changes/config-contract/review/req-review-v1-raw.txt:399:  const p = path.join(cwd, 'apriori', 'process-config.md');
+apriori/changes/config-contract/review/req-review-v1-raw.txt:401:  const m = fs.readFileSync(p, 'utf8').match(/^\|\s*cas\s*\|\s*([^|]+?)\s*\|/mi);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:426:module.exports = { CHANGE_NAME_RE, containsReal, resolveChange, configCas, legacyRoots, fileReadDefect };
+apriori/changes/config-contract/review/req-review-v1-raw.txt:429:# process-config — supervision parameters (HUMAN-HELD)
+apriori/changes/config-contract/review/req-review-v1-raw.txt:431:<!-- Lives at `apriori/process-config.md` (scaffolded there by `apriori init`).
+apriori/changes/config-contract/review/req-review-v1-raw.txt:439:| language | auto | auto (match the human) / any language name, e.g. `中文`, `English` | auto |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:456:lib/resolve.js:47:// process-config `| cas | optional |` row — the project-level twin of --no-cas (flag wins)
+apriori/changes/config-contract/review/req-review-v1-raw.txt:457:lib/resolve.js:48:function configCas(cwd) {
+apriori/changes/config-contract/review/req-review-v1-raw.txt:458:lib/resolve.js:49:  const p = path.join(cwd, 'apriori', 'process-config.md');
+apriori/changes/config-contract/review/req-review-v1-raw.txt:459:lib/resolve.js:76:module.exports = { CHANGE_NAME_RE, containsReal, resolveChange, configCas, legacyRoots, fileReadDefect };
+apriori/changes/config-contract/review/req-review-v1-raw.txt:460:lib/init.js:81:  // 1. apriori/ root: runbook + process-config (never clobbered) + working dirs
+apriori/changes/config-contract/review/req-review-v1-raw.txt:461:lib/init.js:83:  seed('apriori/process-config.md', path.join(TEMPLATES, 'process-config.md'));
+apriori/changes/config-contract/review/req-review-v1-raw.txt:462:lib/init.js:88:  // pin a language and/or persist a test command in the scaffolded config (only on a freshly-created config)
+apriori/changes/config-contract/review/req-review-v1-raw.txt:463:lib/init.js:89:  if ((opts.language || opts.testCmd) && !dry) {
+apriori/changes/config-contract/review/req-review-v1-raw.txt:464:lib/init.js:90:    const cfg = path.join(root, 'apriori', 'process-config.md');
+apriori/changes/config-contract/review/req-review-v1-raw.txt:465:lib/init.js:91:    const created = actions.some((a) => a.file === 'apriori/process-config.md' && a.action === 'created');
+apriori/changes/config-contract/review/req-review-v1-raw.txt:466:lib/init.js:94:      if (opts.language) body = body.replace(/(\| language \| )auto( \|)/, `$1${opts.language}$2`);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:467:lib/init.js:95:      if (opts.testCmd)  // consumed by `apriori verify` as the default when --test-cmd is omitted
+apriori/changes/config-contract/review/req-review-v1-raw.txt:468:lib/init.js:96:        body = body.replace(/^(\| language \|.*)$/m, `$1\n| test-cmd | ${opts.testCmd} | any shell command emitting TAP — \`apriori verify\`'s default | (none) |`);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:469:lib/init.js:131:  const a = { tools: null, testCmd: null, yes: false, language: null };
+apriori/changes/config-contract/review/req-review-v1-raw.txt:470:lib/init.js:135:    else if (k === '--test-cmd') a.testCmd = argv[++i];
+apriori/changes/config-contract/review/req-review-v1-raw.txt:471:lib/init.js:136:    else if (k === '--language') a.language = argv[++i];
+apriori/changes/config-contract/review/req-review-v1-raw.txt:472:lib/init.js:260:const USAGE = 'usage: apriori init [--tools <a,b,...>] [--test-cmd "<cmd>"] [--language <lang>] [--yes]';
+apriori/changes/config-contract/review/req-review-v1-raw.txt:473:lib/init.js:264:    flags: { '--tools': 'value', '--test-cmd': 'value', '--language': 'value', '--yes': 'flag' } }, async (f) => {
+apriori/changes/config-contract/review/req-review-v1-raw.txt:474:lib/init.js:266:      testCmd: f['--test-cmd'] || null, language: f['--language'] || null, yes: !!f['--yes'] };
+apriori/changes/config-contract/review/req-review-v1-raw.txt:475:lib/init.js:277:      report(scaffold(root, tools, { testCmd: a.testCmd, language: a.language }));
+apriori/changes/config-contract/review/req-review-v1-raw.txt:476:lib/update.js:6: * User-owned is NEVER touched: process-config.md, specs/, changes/, review/, truth/,
+apriori/changes/config-contract/review/req-review-v1-raw.txt:477:lib/update.js:110:    console.log('  (user-owned files — process-config.md, specs/, changes/, rules files — are never touched.)');
+apriori/changes/config-contract/review/req-review-v1-raw.txt:478:lib/archive-merge.js:14:const { configCas } = require('./resolve');
+apriori/changes/config-contract/review/req-review-v1-raw.txt:479:lib/archive-merge.js:195:  if (configCas(cwd) === 'optional') return 'process-config cas: optional';
+apriori/changes/config-contract/review/req-review-v1-raw.txt:480:lib/archive-merge.js:432:        casDenials.push(`${unstampedWarning(sfx)} — denied by default; waive with --no-cas or a | cas | optional | config row`);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:481:lib/archive-merge.js:572:        console.error(`archive: ${unstampedWarning(a.delta)} — denied by default; waive with --no-cas or a | cas | optional | config row`);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:482:lib/doctor.js:12:const { collectScenarios, parseTap, zeroTapParsed, runTestCommand, configTestCmd, DEFAULT_ID } = require('./spec-runner');
+apriori/changes/config-contract/review/req-review-v1-raw.txt:483:lib/doctor.js:84:  else checks.push({ id: 'D2', status: 'ok', detail: 'scaffold complete' + (fs.existsSync(path.join(ap, 'process-config.md')) ? '' : ' (no process-config.md — optional, defaults apply)') });
+apriori/changes/config-contract/review/req-review-v1-raw.txt:484:lib/doctor.js:118:  const testCmd = opts.testCmd || configTestCmd(cwd);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:485:lib/doctor.js:119:  if (!testCmd) checks.push({ id: 'D5', status: 'n/a', detail: 'no test command configured — pass --test-cmd or set one via apriori init --test-cmd' });
+apriori/changes/config-contract/review/req-review-v1-raw.txt:486:lib/doctor.js:191:const USAGE = 'usage: apriori doctor [--test-cmd "<cmd>"] [--no-run] [--cwd <dir>] [--json]';
+apriori/changes/config-contract/review/req-review-v1-raw.txt:487:lib/doctor.js:195:    flags: { '--test-cmd': 'value', '--no-run': 'flag', '--cwd': 'value', '--json': 'flag' },
+apriori/changes/config-contract/review/req-review-v1-raw.txt:488:lib/doctor.js:197:    const a = { testCmd: f['--test-cmd'] || null, noRun: !!f['--no-run'], cwd: f['--cwd'] || process.cwd(), json: !!f['--json'] };
+apriori/changes/config-contract/review/req-review-v1-raw.txt:489:lib/gate.js:11:const { verify, configTestCmd } = require('./spec-runner');
+apriori/changes/config-contract/review/req-review-v1-raw.txt:490:lib/gate.js:13:const { resolveChange, configCas } = require('./resolve');
+apriori/changes/config-contract/review/req-review-v1-raw.txt:491:lib/gate.js:220:  if (configCas(cwd) === 'optional') return { id: 'C7', status: 'pass', detail: 'waived (process-config cas: optional)' };
+apriori/changes/config-contract/review/req-review-v1-raw.txt:492:lib/gate.js:224:    detail: `unstamped mutation delta(s): ${um.join(', ')} — run: apriori stamp <store-file> (or waive with --no-cas / a process-config cas: optional row)` };
+apriori/changes/config-contract/review/req-review-v1-raw.txt:493:lib/gate.js:231:  if (!opts.change) return err(res, 'usage: apriori gate --change <name> [--test-cmd "<cmd>"] [--cwd <dir>] [--json]');
+apriori/changes/config-contract/review/req-review-v1-raw.txt:494:lib/gate.js:241:  const testCmd = opts.testCmd || configTestCmd(cwd);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:495:lib/gate.js:242:  if (!testCmd) return err(res, 'no test command: pass --test-cmd or add a test-cmd row to apriori/process-config.md');
+apriori/changes/config-contract/review/req-review-v1-raw.txt:496:lib/gate.js:272:const USAGE = 'usage: apriori gate --change <name> [--test-cmd "<cmd>"] [--cwd <dir>] [--json]';
+apriori/changes/config-contract/review/req-review-v1-raw.txt:497:lib/gate.js:276:    flags: { '--change': 'value', '--test-cmd': 'value', '--cwd': 'value', '--json': 'flag', '--no-cas': 'flag' },
+apriori/changes/config-contract/review/req-review-v1-raw.txt:498:lib/gate.js:278:    const a = { change: f['--change'] || null, testCmd: f['--test-cmd'] || null, cwd: f['--cwd'] || process.cwd(), json: !!f['--json'], noCas: !!f['--no-cas'] };
+apriori/changes/config-contract/review/req-review-v1-raw.txt:499:lib/spec-runner.js:5: * Coupling surface is tiny and language-agnostic: markdown scenarios + a TAP-emitting test command.
+apriori/changes/config-contract/review/req-review-v1-raw.txt:500:lib/spec-runner.js:327:// Fallback test command from apriori/process-config.md's `test-cmd` row (written by init --test-cmd)
+apriori/changes/config-contract/review/req-review-v1-raw.txt:501:lib/spec-runner.js:328:function configTestCmd(cwd) {
+apriori/changes/config-contract/review/req-review-v1-raw.txt:502:lib/spec-runner.js:329:  const p = path.join(cwd || '.', 'apriori', 'process-config.md');
+apriori/changes/config-contract/review/req-review-v1-raw.txt:503:lib/spec-runner.js:331:  const m = fs.readFileSync(p, 'utf8').match(/^\|\s*test-cmd\s*\|\s*(.+?)\s*\|/m);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:504:lib/spec-runner.js:335:const USAGE = 'usage: apriori verify --specs <dir...> --test-cmd "<cmd>" [--id-pattern <re>] [--cwd <dir>] [--json]\n   or: apriori verify --change <name> --test-cmd "<cmd>" [--id-pattern <re>] [--cwd <dir>] [--json]\n(--test-cmd may be omitted when apriori/process-config.md has a test-cmd row)';
+apriori/changes/config-contract/review/req-review-v1-raw.txt:505:lib/spec-runner.js:339:    flags: { '--specs': 'multi', '--change': 'value', '--test-cmd': 'value', '--id-pattern': 'value', '--cwd': 'value', '--json': 'flag' } }, (f) => {
+apriori/changes/config-contract/review/req-review-v1-raw.txt:506:lib/spec-runner.js:340:    const a = { specs: f['--specs'] || [], change: f['--change'] || null, testCmd: f['--test-cmd'] || null,
+apriori/changes/config-contract/review/req-review-v1-raw.txt:507:lib/spec-runner.js:346:    if (!a.testCmd) a.testCmd = configTestCmd(a.cwd);   // init --test-cmd persists it there
+apriori/changes/config-contract/review/req-review-v1-raw.txt:508:lib/spec-runner.js:362:  configTestCmd, cli, DEFAULT_ID };
+apriori/changes/config-contract/review/req-review-v1-raw.txt:509:test/update.test.js:52:  const cfgPath = path.join(root, 'apriori', 'process-config.md');
+apriori/changes/config-contract/review/req-review-v1-raw.txt:510:test/update.test.js:53:  fs.writeFileSync(cfgPath, '| language | 中文 |  # human-held, hands off\n');
+apriori/changes/config-contract/review/req-review-v1-raw.txt:511:test/update.test.js:69:  assert.strictEqual(fs.readFileSync(cfgPath, 'utf8'), '| language | 中文 |  # human-held, hands off\n');
+apriori/changes/config-contract/review/req-review-v1-raw.txt:512:test/update.test.js:202:    JSON.stringify({ version: 1, files: { 'apriori/process-config.md': 'sha256:' + 'a'.repeat(64) } }),  // not a refresh target
+apriori/changes/config-contract/review/req-review-v1-raw.txt:513:test/init.test.js:26:test('IN-03 non-interactive via flags parses tools/test-cmd/yes/language', () => {
+apriori/changes/config-contract/review/req-review-v1-raw.txt:514:test/init.test.js:27:  const a = init.parseArgs(['--tools', 'claude,cursor', '--test-cmd', 'npm test', '--yes', '--language', '中文']);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:515:test/init.test.js:31:  assert.strictEqual(a.language, '中文');
+apriori/changes/config-contract/review/req-review-v1-raw.txt:516:test/init.test.js:32:  assert.strictEqual(init.parseArgs([]).language, null);   // default: no pin (auto)
+apriori/changes/config-contract/review/req-review-v1-raw.txt:517:test/init.test.js:129:test('IN-09 --language pins a language in the scaffolded config; default is auto', () => {
+apriori/changes/config-contract/review/req-review-v1-raw.txt:518:test/init.test.js:131:  init.scaffold(withLang, ['claude'], { language: '中文' });
+apriori/changes/config-contract/review/req-review-v1-raw.txt:519:test/init.test.js:132:  assert.match(read(withLang, 'apriori/process-config.md'), /\| language \| 中文 \|/);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:520:test/init.test.js:135:  assert.match(read(noLang, 'apriori/process-config.md'), /\| language \| auto \|/);   // default
+apriori/changes/config-contract/review/req-review-v1-raw.txt:521:test/init.test.js:139:  fs.writeFileSync(path.join(existing, 'apriori', 'process-config.md'), 'MINE\n');
+apriori/changes/config-contract/review/req-review-v1-raw.txt:522:test/init.test.js:140:  init.scaffold(existing, ['claude'], { language: '中文' });
+apriori/changes/config-contract/review/req-review-v1-raw.txt:523:test/init.test.js:141:  assert.strictEqual(read(existing, 'apriori/process-config.md'), 'MINE\n');
+apriori/changes/config-contract/review/req-review-v1-raw.txt:524:test/init.test.js:156:test('IN-12 --test-cmd persists into the fresh config and verify uses it as default', () => {
+apriori/changes/config-contract/review/req-review-v1-raw.txt:525:test/init.test.js:159:  const cfg = read(root, 'apriori/process-config.md');
+apriori/changes/config-contract/review/req-review-v1-raw.txt:526:test/init.test.js:160:  assert.match(cfg, /\| test-cmd \| node -e "console\.log\(1\)" \|/);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:527:test/init.test.js:162:  const { configTestCmd } = require('../lib/spec-runner');
+apriori/changes/config-contract/review/req-review-v1-raw.txt:528:test/init.test.js:163:  assert.strictEqual(configTestCmd(root), 'node -e "console.log(1)"');
+apriori/changes/config-contract/review/req-review-v1-raw.txt:529:test/init.test.js:167:  fs.writeFileSync(path.join(existing, 'apriori', 'process-config.md'), 'MINE\n');
+apriori/changes/config-contract/review/req-review-v1-raw.txt:530:test/init.test.js:169:  assert.strictEqual(read(existing, 'apriori/process-config.md'), 'MINE\n');
+apriori/changes/config-contract/review/req-review-v1-raw.txt:531:test/protocol.test.js:48:test('PR-06 a configurable language governs prose; machine tokens stay English', () => {
+apriori/changes/config-contract/review/req-review-v1-raw.txt:532:test/protocol.test.js:49:  // the runbook documents the language field + the "match the human" default
+apriori/changes/config-contract/review/req-review-v1-raw.txt:533:test/protocol.test.js:51:  assert.match(EN, /match the language the human is using/);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:534:test/protocol.test.js:59:  // and the scaffolded config carries the language field (default auto)
+apriori/changes/config-contract/review/req-review-v1-raw.txt:535:test/protocol.test.js:60:  const cfg = fs.readFileSync(path.join(ROOT, 'templates', 'process-config.md'), 'utf8');
+apriori/changes/config-contract/review/req-review-v1-raw.txt:536:test/protocol.test.js:61:  assert.match(cfg, /\| language \| auto \|/);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:537:test/protocol.test.js:159:  // hard gate: no durable artifacts before approval, stated in plain language
+apriori/changes/config-contract/review/req-review-v1-raw.txt:538:test/protocol.test.js:162:  assert.match(en, /plain-language sentence/);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:539:test/protocol.test.js:183:test('PR-08 proposal.md is a STEP2 artifact (table + P4 + STEP3 packet, both languages)', () => {
+apriori/changes/config-contract/review/req-review-v1-raw.txt:540:test/protocol.test.js:267:test('PR: P4 produces tasks.md as a STEP2 output (both languages)', () => {
+apriori/changes/config-contract/review/req-review-v1-raw.txt:541:test/protocol.test.js:275:test('PR-13 UI render-and-look drives spec boundaries, not the happy path (P7, both languages)', () => {
+apriori/changes/config-contract/review/req-review-v1-raw.txt:542:test/protocol.test.js:303:  // runbook §0 names the two doors (both languages)
+apriori/changes/config-contract/review/req-review-v1-raw.txt:543:test/protocol.test.js:333:test('PR-16 legacy-project clarity clauses (both languages)', () => {
+apriori/changes/config-contract/review/req-review-v1-raw.txt:544:test/protocol.test.js:458:  // concepts §7.0 vocabulary strings updated in both languages
+apriori/changes/config-contract/review/req-review-v1-raw.txt:545:test/archive-change.test.js:602:  assert.match(r.stdout + r.stderr, /waived.*--no-cas|--no-cas.*waiv/i);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:546:test/archive-change.test.js:607:    'apriori/process-config.md': '| cas | optional |\n',
+apriori/changes/config-contract/review/req-review-v1-raw.txt:547:test/archive-change.test.js:611:  assert.match(r2.stdout + r2.stderr, /waived.*process-config|process-config.*waiv/i);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:548:test/archive-change.test.js:615:    'apriori/process-config.md': '| cas | optional |\n',
+apriori/changes/config-contract/review/req-review-v1-raw.txt:549:test/archive-change.test.js:624:  const v = run(['verify', '--change', 'c', '--test-cmd',
+apriori/changes/config-contract/review/req-review-v1-raw.txt:550:test/doctor.test.js:36:    'apriori/process-config.md': '| language | auto |\n',
+apriori/changes/config-contract/review/req-review-v1-raw.txt:551:test/doctor.test.js:84:  // missing process-config is NOT a finding
+apriori/changes/config-contract/review/req-review-v1-raw.txt:552:test/doctor.test.js:86:  fs.rmSync(path.join(root2, 'apriori/process-config.md'));
+apriori/changes/config-contract/review/req-review-v1-raw.txt:553:test/doctor.test.js:169:  const root = healthy();   // healthy() has no test-cmd row in its config
+apriori/changes/config-contract/review/req-review-v1-raw.txt:554:test/doctor.test.js:172:  assert.match(none.detail, /--test-cmd|init/);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:555:test/doctor.test.js:241:    [['doctor', '--test-cmd', TAP_OK, '--json'], healthyRoot, 0, 'HEALTHY'],
+apriori/changes/config-contract/review/req-review-v1-raw.txt:556:test/args.test.js:31:    'apriori/process-config.md': `| language | auto |\n| test-cmd | node -e "require('fs').writeFileSync('SENTINEL','x');console.log('ok 1 - XA-01')" | x | (none) |\n`,
+apriori/changes/config-contract/review/req-review-v1-raw.txt:557:test/args.test.js:78:  const r1 = run(['verify', '--test-cmd']);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:558:test/args.test.js:80:  assert.match(r1.stderr, /--test-cmd/);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:559:test/args.test.js:81:  const r2 = run(['verify', '--specs', '--test-cmd', 't']);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:560:test/args.test.js:93:  const r = run(['verify', '--specs', 'a', '--specs', 'b', '--test-cmd', tap], root);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:561:test/args.test.js:108:  const r = run(['verify', '--specs', 'a', '-x', '--test-cmd', 't']);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:562:templates/process-config.md:1:# process-config — supervision parameters (HUMAN-HELD)
+apriori/changes/config-contract/review/req-review-v1-raw.txt:563:templates/process-config.md:3:<!-- Lives at `apriori/process-config.md` (scaffolded there by `apriori init`).
+apriori/changes/config-contract/review/req-review-v1-raw.txt:564:templates/process-config.md:11:| language | auto | auto (match the human) / any language name, e.g. `中文`, `English` | auto |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:565:test/gate.test.js:190:  const bad = run(['gate', '--change', '../evil', '--test-cmd', TAP_OK], root);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:566:test/gate.test.js:299:    [['gate', '--change', 'c', '--test-cmd', TAP_OK, '--json'], 0, 'PASS', 'in-flight'],
+apriori/changes/config-contract/review/req-review-v1-raw.txt:567:test/gate.test.js:300:    [['gate', '--change', 'nope', '--test-cmd', TAP_OK, '--json'], 2, 'ERROR', null],
+apriori/changes/config-contract/review/req-review-v1-raw.txt:568:test/gate.test.js:301:    [['gate', '--change', '../evil', '--test-cmd', TAP_OK, '--json'], 2, 'ERROR', null],
+apriori/changes/config-contract/review/req-review-v1-raw.txt:569:test/gate.test.js:315:  const b = run(['gate', '--change', 'c', '--test-cmd', TAP_OK, '--json'], root);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:570:test/gate.test.js:320:  const nofs = run(['gate', '--change', 'c', '--test-cmd', TAP_OK, '--json'], root);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:571:test/gate.test.js:328:  const vu = run(['gate', '--change', 'd', '--test-cmd', TAP_OK, '--json'], bad);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:572:test/gate.test.js:473:  // config row | cas | optional | → waived naming the config
+apriori/changes/config-contract/review/req-review-v1-raw.txt:573:test/gate.test.js:474:  const rootC = modProject({ 'apriori/process-config.md': '| Field | Value |\n|---|---|\n| cas | optional |\n' });
+apriori/changes/config-contract/review/req-review-v1-raw.txt:574:test/gate.test.js:477:  assert.match(wc.detail, /process-config/);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:575:test/gate.test.js:479:  const rootR = modProject({ 'apriori/process-config.md': '| Field | Value |\n|---|---|\n| cas | required |\n' });
+apriori/changes/config-contract/review/req-review-v1-raw.txt:576:test/gate.test.js:496:  const cli = run(['gate', '--change', 'c', '--no-cas', '--test-cmd', MOD_TAP], modProject());
+apriori/changes/config-contract/review/req-review-v1-raw.txt:577:test/spec-runner.test.js:113:  try { code = cli(['--specs', file, '--test-cmd', tapCmd('ok 1 - XX-01 a', 'ok 2 - XX-02 b'), '--json']); }
+apriori/changes/config-contract/review/req-review-v1-raw.txt:578:test/spec-runner.test.js:122:  try { code2 = cli(['--specs', file, '--test-cmd', tapCmd('not ok 1 - XX-01 a'), '--json']); }
+apriori/changes/config-contract/review/req-review-v1-raw.txt:579:test/spec-runner.test.js:130:  try { code3 = cli(['--specs', file, '--test-cmd', 'node -e "process.exit(7)"', '--json']); }
+apriori/changes/config-contract/review/req-review-v1-raw.txt:580:test/spec-runner.test.js:163:    '--specs', dir, '--test-cmd', tapCmd('not tap at all')], { encoding: 'utf8' });
+apriori/changes/config-contract/review/req-review-v1-raw.txt:581:test/spec-runner.test.js:176:  const r1 = runCli(['--specs', file, '--test-cmd', `node -e "console.log('ok 1 - XX-01 a');process.exit(7)"`]);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:582:test/spec-runner.test.js:181:  const r2 = runCli(['--specs', file, '--test-cmd', `node -e "console.log('not ok 1 - XX-01 a');process.exit(1)"`]);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:583:test/spec-runner.test.js:184:  const r3 = runCli(['--specs', file, '--test-cmd', 'definitely-not-a-real-command-xyz']);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:584:test/spec-runner.test.js:193:  const r4 = runCli(['--specs', file, '--test-cmd', 'node -e "process.exit(7)"']);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:585:test/spec-runner.test.js:200:  const miss = runCli(['--specs', path.join(os.tmpdir(), 'no-such-dir-xyz'), '--test-cmd', 'node -e ""']);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:586:test/spec-runner.test.js:205:  const zf = runCli(['--specs', empty, '--test-cmd', 'node -e ""']);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:587:test/spec-runner.test.js:210:  const zs = runCli(['--specs', file, '--test-cmd', 'node -e ""']);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:588:test/spec-runner.test.js:220:  const dup = runCli(['--specs', d, '--test-cmd', `node -e "console.log('ok 1 - XX-01 x')"`]);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:589:test/spec-runner.test.js:241:  const skip = runCli(['--specs', file, '--test-cmd', `node -e "console.log('ok 1 - XX-01 a # SKIP flaky')"`]);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:590:test/spec-runner.test.js:248:  const bail = runCli(['--specs', file, '--test-cmd', `node -e "console.log('ok 1 - XX-01 a');console.log('Bail out! db down')"`]);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:591:test/spec-runner.test.js:253:test('SR-15 --test-cmd falls back to the test-cmd row in apriori/process-config.md', () => {
+apriori/changes/config-contract/review/req-review-v1-raw.txt:592:test/spec-runner.test.js:254:  const { configTestCmd } = require('../lib/spec-runner');
+apriori/changes/config-contract/review/req-review-v1-raw.txt:593:test/spec-runner.test.js:257:  fs.writeFileSync(path.join(root, 'apriori', 'process-config.md'),
+apriori/changes/config-contract/review/req-review-v1-raw.txt:594:test/spec-runner.test.js:258:    '| Field | Value |\n|---|---|\n| test-cmd | node -e "console.log(\'ok 1 - XX-01 a\')" |\n');
+apriori/changes/config-contract/review/req-review-v1-raw.txt:595:test/spec-runner.test.js:259:  assert.match(configTestCmd(root), /^node -e/);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:596:test/spec-runner.test.js:260:  assert.strictEqual(configTestCmd(os.tmpdir()), null);      // no config → null
+apriori/changes/config-contract/review/req-review-v1-raw.txt:597:test/spec-runner.test.js:261:  // CLI end-to-end: omit --test-cmd, cwd carries the config
+apriori/changes/config-contract/review/req-review-v1-raw.txt:598:test/spec-runner.test.js:289:  const r = runCli(['--specs', file, '--test-cmd', tapCmd('TAP version 13', '1..2', 'ok 1 - XX-01 a')]);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:599:test/spec-runner.test.js:301:  const r = runCli(['--specs', file, '--test-cmd', tapCmd('1..2', 'ok 1 - XX-01 a', 'ok 1 - XX-02 b')]);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:600:test/spec-runner.test.js:309:  const r = runCli(['--specs', file, '--test-cmd',
+apriori/changes/config-contract/review/req-review-v1-raw.txt:601:test/spec-runner.test.js:323:  const r = runCli(['--specs', file, '--test-cmd', tapCmd('1..2', 'ok 1 - XX-01 a', 'ok', 'ok: note')]);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:602:test/spec-runner.test.js:331:  const r1 = runCli(['--specs', file, '--test-cmd', tapCmd('ok 1 - XX-01 a')]);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:603:test/spec-runner.test.js:334:  const r2 = runCli(['--specs', file, '--test-cmd', tapCmd('TAP version 13', '1..0 # SKIP no backend')]);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:604:test/spec-runner.test.js:348:  const v = spawnSync('node', [BIN, 'verify', '--change', 'c', '--test-cmd', badTap], { encoding: 'utf8', cwd: root });
+apriori/changes/config-contract/review/req-review-v1-raw.txt:605:test/spec-runner.test.js:351:  const g = spawnSync('node', [BIN, 'gate', '--change', 'c', '--test-cmd', badTap], { encoding: 'utf8', cwd: root });
+apriori/changes/config-contract/review/req-review-v1-raw.txt:606:test/spec-runner.test.js:360:  const r = runCli(['--specs', file, '--test-cmd',
+apriori/changes/config-contract/review/req-review-v1-raw.txt:607:test/spec-runner.test.js:371:    const r = runCli(['--specs', file, '--test-cmd',
+apriori/changes/config-contract/review/req-review-v1-raw.txt:608:test/spec-runner.test.js:377:  const ok = runCli(['--specs', file, '--test-cmd',
+apriori/changes/config-contract/review/req-review-v1-raw.txt:609:test/spec-runner.test.js:382:  const only = runCli(['--specs', file, '--test-cmd', `node -e "console.log('not ok')"`]);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:610:test/spec-runner.test.js:397:  const r = runCli(['--specs', file, '--test-cmd', `node -e "${lines}"`]);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:611:test/spec-runner.test.js:406:  const r = runCli(['--specs', file, '--test-cmd',
+apriori/changes/config-contract/review/req-review-v1-raw.txt:612:test/spec-runner.test.js:412:  const b = runCli(['--specs', file, '--test-cmd',
+apriori/changes/config-contract/review/req-review-v1-raw.txt:613:test/spec-runner.test.js:423:  const r = runCli(['--specs', file, '--test-cmd', `node -e "${mk}"`, '--json']);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:614:test/spec-runner.test.js:430:  const h = runCli(['--specs', file, '--test-cmd', `node -e "${mk}"`]);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:615:test/spec-runner.test.js:438:  const g = runCli(['--specs', file, '--test-cmd', `node -e "console.log('ok 1 - XX-01 a')"`, '--json']);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:616:apriori/changes/config-contract/flow-state.md:4:track-rationale: process-config 结构化解析,fence/注释/重复 fail-closed
+apriori/changes/config-contract/review/req-review-v1-raw.txt:617:test/spec-runner-projection.test.js:92:  const r = jsonCli(['--change', 'c', '--cwd', root, '--test-cmd', tapCmd('ok 1 - XA-01 a'), '--json']);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:618:test/spec-runner-projection.test.js:123:  try { code = cli(['--change', 'c', '--specs', 'apriori/specs', '--cwd', root, '--test-cmd', 'x']); }
+apriori/changes/config-contract/review/req-review-v1-raw.txt:619:test/spec-runner-projection.test.js:136:  const ok = jsonCli(['--change', 'c', '--cwd', okRoot, '--test-cmd', tapCmd('ok 1 - XA-01 a', 'ok 2 - XB-01 b'), '--json']);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:620:test/spec-runner-projection.test.js:145:  const cf = jsonCli(['--change', 'c', '--cwd', cfRoot, '--test-cmd', tapCmd('ok 1 - XA-01 a'), '--json']);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:621:test/spec-runner-projection.test.js:152:  const nf = jsonCli(['--change', 'zzz', '--cwd', nfRoot, '--test-cmd', tapCmd('ok 1 - XA-01 a'), '--json']);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:622:test/spec-runner-projection.test.js:158:  const plain = jsonCli(['--specs', path.join(okRoot, 'apriori/specs'), '--test-cmd', tapCmd('ok 1 - XA-01 a'), '--json']);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:623:test/spec-runner-projection.test.js:170:  const r = jsonCli(['--change', 'c', '--cwd', root, '--test-cmd', tapCmd('ok 1 - XA-01 a'), '--json']);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:624:test/spec-runner-projection.test.js:199:  const r = ceSpawn('node', [CE_BIN, 'verify', '--change', 'c', '--test-cmd', tap, '--json'], { cwd: root, encoding: 'utf8' });
+apriori/changes/config-contract/review/req-review-v1-raw.txt:625:test/spec-runner-projection.test.js:211:  const r2 = ceSpawn('node', [CE_BIN, 'verify', '--change', 'c', '--test-cmd', tap2, '--json'], { cwd: root2, encoding: 'utf8' });
+apriori/changes/config-contract/review/req-review-v1-raw.txt:626:apriori/changes/config-contract/requirement/req-v1.md:1:# 需求:config-contract —— process-config 是配置,不是全文 regex (v1)
+apriori/changes/config-contract/review/req-review-v1-raw.txt:627:apriori/changes/config-contract/requirement/req-v1.md:5:> 来源:GPT-5.6 四审 P0-2 + P2-4,豁免绕过已本机复现(fenced 块内的 `| cas | optional |` 授予豁免,围栏外真正的 `| cas | required |` 反被忽略)。
+apriori/changes/config-contract/review/req-review-v1-raw.txt:628:apriori/changes/config-contract/requirement/req-v1.md:9:`process-config.md` 的读取目前是对整份 Markdown 做首匹配 regex(`configCas`、`configTestCmd` 同病)。fenced 代码块、HTML 注释里的示例行会被当成生效配置;重复/冲突行"第一行获胜"且无声。本变更引入**一个共享的结构化配置读取器**,所有配置消费方走同一入口。
+apriori/changes/config-contract/review/req-review-v1-raw.txt:629:apriori/changes/config-contract/requirement/req-v1.md:19:   - `configCas`:走 readConfig;`cas` 键值非 `optional`/`required` → 配置错误;**存在冲突或非法值时,一切豁免judgment fail-closed 为"无豁免"且消费面(archive/gate)报配置错误**——坏配置绝不放行写入;
+apriori/changes/config-contract/review/req-review-v1-raw.txt:630:apriori/changes/config-contract/requirement/req-v1.md:20:   - `configTestCmd`:同解析器(fence 内的 test-cmd 示例不再生效);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:631:apriori/changes/config-contract/requirement/req-v1.md:21:   - `language` 等其他消费方(以实测为准全库 grep)统一切换。
+apriori/changes/config-contract/review/req-review-v1-raw.txt:632:apriori/changes/config-contract/requirement/req-v1.md:25:   - `templates/process-config.md` 增加带注释的 `cas` 行示例(默认 required 语义,注明 optional 的含义);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:633:apriori/changes/config-contract/requirement/req-v1.md:31:- YAML/TOML 等新配置格式;process-config.md 的表格形状不变。
+apriori/changes/config-contract/review/req-review-v1-raw.txt:636:初步看到 req-v1 覆盖了 cas/test-cmd/language，但“其他配置消费方”里还有 init 写入模板、doctor/gate/verify fallback 的 exit 语义。现在继续精读 configTestCmd 调用结果如何表达错误，确认 fail-closed 要求是否足够可实现/可测。
+apriori/changes/config-contract/review/req-review-v1-raw.txt:640:/usr/bin/zsh -lc "rg -n \"step0-cap|step2-cap|step5-cap|step6-cap|spike-cap|extraction-review-cap|shrink-state|rejected-ratio|post-merge|language \\|\" -S ." in /mnt/d/Workbench/misc/apriori-spec-development
+apriori/changes/config-contract/review/req-review-v1-raw.txt:646:  const errors = [...p.validation, ...p.hygiene, ...p.casMismatches];
+apriori/changes/config-contract/review/req-review-v1-raw.txt:713:// Fallback test command from apriori/process-config.md's `test-cmd` row (written by init --test-cmd)
+apriori/changes/config-contract/review/req-review-v1-raw.txt:714:function configTestCmd(cwd) {
+apriori/changes/config-contract/review/req-review-v1-raw.txt:715:  const p = path.join(cwd || '.', 'apriori', 'process-config.md');
+apriori/changes/config-contract/review/req-review-v1-raw.txt:717:  const m = fs.readFileSync(p, 'utf8').match(/^\|\s*test-cmd\s*\|\s*(.+?)\s*\|/m);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:721:const USAGE = 'usage: apriori verify --specs <dir...> --test-cmd "<cmd>" [--id-pattern <re>] [--cwd <dir>] [--json]\n   or: apriori verify --change <name> --test-cmd "<cmd>" [--id-pattern <re>] [--cwd <dir>] [--json]\n(--test-cmd may be omitted when apriori/process-config.md has a test-cmd row)';
+apriori/changes/config-contract/review/req-review-v1-raw.txt:725:    flags: { '--specs': 'multi', '--change': 'value', '--test-cmd': 'value', '--id-pattern': 'value', '--cwd': 'value', '--json': 'flag' } }, (f) => {
+apriori/changes/config-contract/review/req-review-v1-raw.txt:726:    const a = { specs: f['--specs'] || [], change: f['--change'] || null, testCmd: f['--test-cmd'] || null,
+apriori/changes/config-contract/review/req-review-v1-raw.txt:732:    if (!a.testCmd) a.testCmd = configTestCmd(a.cwd);   // init --test-cmd persists it there
+apriori/changes/config-contract/review/req-review-v1-raw.txt:748:  configTestCmd, cli, DEFAULT_ID };
+apriori/changes/config-contract/review/req-review-v1-raw.txt:770:  if (noCas) return { id: 'C7', status: 'pass', detail: 'waived (--no-cas)' };
+apriori/changes/config-contract/review/req-review-v1-raw.txt:771:  if (configCas(cwd) === 'optional') return { id: 'C7', status: 'pass', detail: 'waived (process-config cas: optional)' };
+apriori/changes/config-contract/review/req-review-v1-raw.txt:775:    detail: `unstamped mutation delta(s): ${um.join(', ')} — run: apriori stamp <store-file> (or waive with --no-cas / a process-config cas: optional row)` };
+apriori/changes/config-contract/review/req-review-v1-raw.txt:782:  if (!opts.change) return err(res, 'usage: apriori gate --change <name> [--test-cmd "<cmd>"] [--cwd <dir>] [--json]');
+apriori/changes/config-contract/review/req-review-v1-raw.txt:783:  if (!CHANGE_NAME_RE.test(opts.change)) return err(res, `invalid change name '${opts.change}' — bare kebab-case only`);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:792:  const testCmd = opts.testCmd || configTestCmd(cwd);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:793:  if (!testCmd) return err(res, 'no test command: pass --test-cmd or add a test-cmd row to apriori/process-config.md');
+apriori/changes/config-contract/review/req-review-v1-raw.txt:823:const USAGE = 'usage: apriori gate --change <name> [--test-cmd "<cmd>"] [--cwd <dir>] [--json]';
+apriori/changes/config-contract/review/req-review-v1-raw.txt:827:    flags: { '--change': 'value', '--test-cmd': 'value', '--cwd': 'value', '--json': 'flag', '--no-cas': 'flag' },
+apriori/changes/config-contract/review/req-review-v1-raw.txt:829:    const a = { change: f['--change'] || null, testCmd: f['--test-cmd'] || null, cwd: f['--cwd'] || process.cwd(), json: !!f['--json'], noCas: !!f['--no-cas'] };
+apriori/changes/config-contract/review/req-review-v1-raw.txt:861:  const testCmd = opts.testCmd || configTestCmd(cwd);
+apriori/changes/config-contract/review/req-review-v1-raw.txt:862:  if (!testCmd) checks.push({ id: 'D5', status: 'n/a', detail: 'no test command configured — pass --test-cmd or set one via apriori init --test-cmd' });
+apriori/changes/config-contract/review/req-review-v1-raw.txt:909:./templates/process-config.md:11:| language | auto | auto (match the human) / any language name, e.g. `中文`, `English` | auto |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:910:./templates/process-config.md:12:| step0-cap | 5 | ≥ 1 | 5 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:911:./templates/process-config.md:13:| step2-cap | 4 | ≥ 1 | 4 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:912:./templates/process-config.md:14:| step5-cap | 25 | ≥ 1 | 25 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:913:./templates/process-config.md:15:| step6-cap | 4 | ≥ 1 | 4 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:914:./templates/process-config.md:16:| spike-cap | 10 | ≥ 1 | 10 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:915:./templates/process-config.md:17:| extraction-review-cap | 2 | ≥ 1 | 2 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:916:./templates/process-config.md:18:| shrink-state | none | none / <stage>: <new-cap> entries, human-approved only | none |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:917:./templates/process-config.md:19:| rejected-ratio-guard | 50% | 0–100%; above it, shrinking is blocked | 50% |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:918:./templates/process-config.md:21:| post-merge-review-freq | 1 in 5 | ≥ 1 in N merged changes (sampling rate) | 1 in 5 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:919:./templates/process-config.md:23:<!-- shrink-state is written only after a human gate approves a shrink proposal (RUNBOOK §6),
+apriori/changes/config-contract/review/req-review-v1-raw.txt:920:./templates/process-config.md:24:     e.g. `shrink-state: step2-cap: 2 (approved 2026-07-04, gates log)`.
+apriori/changes/config-contract/review/req-review-v1-raw.txt:921:./templates/process-config.md:25:     A post-merge re-review that finds a high-risk miss restores the previous cap. -->
+apriori/changes/config-contract/review/req-review-v1-raw.txt:922:./test/update.test.js:53:  fs.writeFileSync(cfgPath, '| language | 中文 |  # human-held, hands off\n');
+apriori/changes/config-contract/review/req-review-v1-raw.txt:923:./test/update.test.js:69:  assert.strictEqual(fs.readFileSync(cfgPath, 'utf8'), '| language | 中文 |  # human-held, hands off\n');
+apriori/changes/config-contract/review/req-review-v1-raw.txt:925:./test/doctor.test.js:36:    'apriori/process-config.md': '| language | auto |\n',
+apriori/changes/config-contract/review/req-review-v1-raw.txt:926:./test/args.test.js:31:    'apriori/process-config.md': `| language | auto |\n| test-cmd | node -e "require('fs').writeFileSync('SENTINEL','x');console.log('ok 1 - XA-01')" | x | (none) |\n`,
+apriori/changes/config-contract/review/req-review-v1-raw.txt:931:./lib/init.js:89:  if ((opts.language || opts.testCmd) && !dry) {
+apriori/changes/config-contract/review/req-review-v1-raw.txt:935:./validation/brainstorm-lab/v3-music/apriori/process-config.md:11:| language | auto | auto (match the human) / any language name, e.g. `中文`, `English` | auto |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:936:./validation/brainstorm-lab/v3-music/apriori/process-config.md:12:| step0-cap | 5 | ≥ 1 | 5 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:937:./validation/brainstorm-lab/v3-music/apriori/process-config.md:13:| step2-cap | 4 | ≥ 1 | 4 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:938:./validation/brainstorm-lab/v3-music/apriori/process-config.md:14:| step5-cap | 25 | ≥ 1 | 25 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:939:./validation/brainstorm-lab/v3-music/apriori/process-config.md:15:| step6-cap | 4 | ≥ 1 | 4 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:940:./validation/brainstorm-lab/v3-music/apriori/process-config.md:16:| spike-cap | 10 | ≥ 1 | 10 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:941:./validation/brainstorm-lab/v3-music/apriori/process-config.md:17:| extraction-review-cap | 2 | ≥ 1 | 2 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:942:./validation/brainstorm-lab/v3-music/apriori/process-config.md:18:| shrink-state | none | none / <stage>: <new-cap> entries, human-approved only | none |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:943:./validation/brainstorm-lab/v3-music/apriori/process-config.md:19:| rejected-ratio-guard | 50% | 0–100%; above it, shrinking is blocked | 50% |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:944:./validation/brainstorm-lab/v3-music/apriori/process-config.md:21:| post-merge-review-freq | 1 in 5 | ≥ 1 in N merged changes (sampling rate) | 1 in 5 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:945:./validation/brainstorm-lab/v3-music/apriori/process-config.md:23:<!-- shrink-state is written only after a human gate approves a shrink proposal (RUNBOOK §6),
+apriori/changes/config-contract/review/req-review-v1-raw.txt:946:./validation/brainstorm-lab/v3-music/apriori/process-config.md:24:     e.g. `shrink-state: step2-cap: 2 (approved 2026-07-04, gates log)`.
+apriori/changes/config-contract/review/req-review-v1-raw.txt:947:./validation/brainstorm-lab/v3-music/apriori/process-config.md:25:     A post-merge re-review that finds a high-risk miss restores the previous cap. -->
+apriori/changes/config-contract/review/req-review-v1-raw.txt:990:./validation/brainstorm-lab2/v3-organizer/apriori/process-config.md:11:| language | auto | auto (match the human) / any language name, e.g. `中文`, `English` | auto |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:991:./validation/brainstorm-lab2/v3-organizer/apriori/process-config.md:12:| step0-cap | 5 | ≥ 1 | 5 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:992:./validation/brainstorm-lab2/v3-organizer/apriori/process-config.md:13:| step2-cap | 4 | ≥ 1 | 4 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:993:./validation/brainstorm-lab2/v3-organizer/apriori/process-config.md:14:| step5-cap | 25 | ≥ 1 | 25 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:994:./validation/brainstorm-lab2/v3-organizer/apriori/process-config.md:15:| step6-cap | 4 | ≥ 1 | 4 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:995:./validation/brainstorm-lab2/v3-organizer/apriori/process-config.md:16:| spike-cap | 10 | ≥ 1 | 10 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:996:./validation/brainstorm-lab2/v3-organizer/apriori/process-config.md:17:| extraction-review-cap | 2 | ≥ 1 | 2 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:997:./validation/brainstorm-lab2/v3-organizer/apriori/process-config.md:18:| shrink-state | none | none / <stage>: <new-cap> entries, human-approved only | none |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:998:./validation/brainstorm-lab2/v3-organizer/apriori/process-config.md:19:| rejected-ratio-guard | 50% | 0–100%; above it, shrinking is blocked | 50% |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:999:./validation/brainstorm-lab2/v3-organizer/apriori/process-config.md:21:| post-merge-review-freq | 1 in 5 | ≥ 1 in N merged changes (sampling rate) | 1 in 5 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1000:./validation/brainstorm-lab2/v3-organizer/apriori/process-config.md:23:<!-- shrink-state is written only after a human gate approves a shrink proposal (RUNBOOK §6),
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1001:./validation/brainstorm-lab2/v3-organizer/apriori/process-config.md:24:     e.g. `shrink-state: step2-cap: 2 (approved 2026-07-04, gates log)`.
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1002:./validation/brainstorm-lab2/v3-organizer/apriori/process-config.md:25:     A post-merge re-review that finds a high-risk miss restores the previous cap. -->
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1006:./validation/fullrun-lab/audit-v3-r3.txt:836:    11	| language | auto | auto (match the human) / any language name, e.g. `中文`, `English` | auto |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1033:./validation/legacy-lab/inherited-poll/apriori/process-config.md:11:| language | auto | auto (match the human) / any language name, e.g. `中文`, `English` | auto |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1034:./validation/legacy-lab/inherited-poll/apriori/process-config.md:12:| step0-cap | 5 | ≥ 1 | 5 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1035:./validation/legacy-lab/inherited-poll/apriori/process-config.md:13:| step2-cap | 4 | ≥ 1 | 4 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1036:./validation/legacy-lab/inherited-poll/apriori/process-config.md:14:| step5-cap | 25 | ≥ 1 | 25 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1037:./validation/legacy-lab/inherited-poll/apriori/process-config.md:15:| step6-cap | 4 | ≥ 1 | 4 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1038:./validation/legacy-lab/inherited-poll/apriori/process-config.md:16:| spike-cap | 10 | ≥ 1 | 10 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1039:./validation/legacy-lab/inherited-poll/apriori/process-config.md:17:| extraction-review-cap | 2 | ≥ 1 | 2 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1040:./validation/legacy-lab/inherited-poll/apriori/process-config.md:18:| shrink-state | none | none / <stage>: <new-cap> entries, human-approved only | none |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1041:./validation/legacy-lab/inherited-poll/apriori/process-config.md:19:| rejected-ratio-guard | 50% | 0–100%; above it, shrinking is blocked | 50% |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1042:./validation/legacy-lab/inherited-poll/apriori/process-config.md:21:| post-merge-review-freq | 1 in 5 | ≥ 1 in N merged changes (sampling rate) | 1 in 5 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1043:./validation/legacy-lab/inherited-poll/apriori/process-config.md:23:<!-- shrink-state is written only after a human gate approves a shrink proposal (RUNBOOK §6),
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1044:./validation/legacy-lab/inherited-poll/apriori/process-config.md:24:     e.g. `shrink-state: step2-cap: 2 (approved 2026-07-04, gates log)`.
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1045:./validation/legacy-lab/inherited-poll/apriori/process-config.md:25:     A post-merge re-review that finds a high-risk miss restores the previous cap. -->
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1046:./validation/legacy-lab/inherited-poll/apriori/review/vote-dedup-step2-review-v1-raw.txt:2284:| language | auto | auto (match the human) / any language name, e.g. `中文`, `English` | auto |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1065:./validation/fullrun-lab/v3-poll-r3/apriori/process-config.md:11:| language | auto | auto (match the human) / any language name, e.g. `中文`, `English` | auto |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1066:./validation/fullrun-lab/v3-poll-r3/apriori/process-config.md:12:| step0-cap | 5 | ≥ 1 | 5 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1067:./validation/fullrun-lab/v3-poll-r3/apriori/process-config.md:13:| step2-cap | 4 | ≥ 1 | 4 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1068:./validation/fullrun-lab/v3-poll-r3/apriori/process-config.md:14:| step5-cap | 25 | ≥ 1 | 25 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1069:./validation/fullrun-lab/v3-poll-r3/apriori/process-config.md:15:| step6-cap | 4 | ≥ 1 | 4 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1070:./validation/fullrun-lab/v3-poll-r3/apriori/process-config.md:16:| spike-cap | 10 | ≥ 1 | 10 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1071:./validation/fullrun-lab/v3-poll-r3/apriori/process-config.md:17:| extraction-review-cap | 2 | ≥ 1 | 2 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1072:./validation/fullrun-lab/v3-poll-r3/apriori/process-config.md:18:| shrink-state | none | none / <stage>: <new-cap> entries, human-approved only | none |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1073:./validation/fullrun-lab/v3-poll-r3/apriori/process-config.md:19:| rejected-ratio-guard | 50% | 0–100%; above it, shrinking is blocked | 50% |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1074:./validation/fullrun-lab/v3-poll-r3/apriori/process-config.md:21:| post-merge-review-freq | 1 in 5 | ≥ 1 in N merged changes (sampling rate) | 1 in 5 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1075:./validation/fullrun-lab/v3-poll-r3/apriori/process-config.md:23:<!-- shrink-state is written only after a human gate approves a shrink proposal (RUNBOOK §6),
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1076:./validation/fullrun-lab/v3-poll-r3/apriori/process-config.md:24:     e.g. `shrink-state: step2-cap: 2 (approved 2026-07-04, gates log)`.
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1077:./validation/fullrun-lab/v3-poll-r3/apriori/process-config.md:25:     A post-merge re-review that finds a high-risk miss restores the previous cap. -->
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1093:./validation/fullrun-lab/v3-poll-r2/apriori/process-config.md:11:| language | auto | auto (match the human) / any language name, e.g. `中文`, `English` | auto |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1094:./validation/fullrun-lab/v3-poll-r2/apriori/process-config.md:12:| step0-cap | 5 | ≥ 1 | 5 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1095:./validation/fullrun-lab/v3-poll-r2/apriori/process-config.md:13:| step2-cap | 4 | ≥ 1 | 4 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1096:./validation/fullrun-lab/v3-poll-r2/apriori/process-config.md:14:| step5-cap | 25 | ≥ 1 | 25 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1097:./validation/fullrun-lab/v3-poll-r2/apriori/process-config.md:15:| step6-cap | 4 | ≥ 1 | 4 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1098:./validation/fullrun-lab/v3-poll-r2/apriori/process-config.md:16:| spike-cap | 10 | ≥ 1 | 10 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1099:./validation/fullrun-lab/v3-poll-r2/apriori/process-config.md:17:| extraction-review-cap | 2 | ≥ 1 | 2 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1100:./validation/fullrun-lab/v3-poll-r2/apriori/process-config.md:18:| shrink-state | none | none / <stage>: <new-cap> entries, human-approved only | none |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1101:./validation/fullrun-lab/v3-poll-r2/apriori/process-config.md:19:| rejected-ratio-guard | 50% | 0–100%; above it, shrinking is blocked | 50% |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1102:./validation/fullrun-lab/v3-poll-r2/apriori/process-config.md:21:| post-merge-review-freq | 1 in 5 | ≥ 1 in N merged changes (sampling rate) | 1 in 5 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1103:./validation/fullrun-lab/v3-poll-r2/apriori/process-config.md:23:<!-- shrink-state is written only after a human gate approves a shrink proposal (RUNBOOK §6),
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1104:./validation/fullrun-lab/v3-poll-r2/apriori/process-config.md:24:     e.g. `shrink-state: step2-cap: 2 (approved 2026-07-04, gates log)`.
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1105:./validation/fullrun-lab/v3-poll-r2/apriori/process-config.md:25:     A post-merge re-review that finds a high-risk miss restores the previous cap. -->
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1120:./validation/fullrun-lab/v3-poll/apriori/process-config.md:11:| language | auto | auto (match the human) / any language name, e.g. `中文`, `English` | auto |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1121:./validation/fullrun-lab/v3-poll/apriori/process-config.md:12:| step0-cap | 5 | ≥ 1 | 5 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1122:./validation/fullrun-lab/v3-poll/apriori/process-config.md:13:| step2-cap | 4 | ≥ 1 | 4 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1123:./validation/fullrun-lab/v3-poll/apriori/process-config.md:14:| step5-cap | 25 | ≥ 1 | 25 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1124:./validation/fullrun-lab/v3-poll/apriori/process-config.md:15:| step6-cap | 4 | ≥ 1 | 4 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1125:./validation/fullrun-lab/v3-poll/apriori/process-config.md:16:| spike-cap | 10 | ≥ 1 | 10 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1126:./validation/fullrun-lab/v3-poll/apriori/process-config.md:17:| extraction-review-cap | 2 | ≥ 1 | 2 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1127:./validation/fullrun-lab/v3-poll/apriori/process-config.md:18:| shrink-state | none | none / <stage>: <new-cap> entries, human-approved only | none |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1128:./validation/fullrun-lab/v3-poll/apriori/process-config.md:19:| rejected-ratio-guard | 50% | 0–100%; above it, shrinking is blocked | 50% |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1129:./validation/fullrun-lab/v3-poll/apriori/process-config.md:21:| post-merge-review-freq | 1 in 5 | ≥ 1 in N merged changes (sampling rate) | 1 in 5 |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1130:./validation/fullrun-lab/v3-poll/apriori/process-config.md:23:<!-- shrink-state is written only after a human gate approves a shrink proposal (RUNBOOK §6),
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1131:./validation/fullrun-lab/v3-poll/apriori/process-config.md:24:     e.g. `shrink-state: step2-cap: 2 (approved 2026-07-04, gates log)`.
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1132:./validation/fullrun-lab/v3-poll/apriori/process-config.md:25:     A post-merge re-review that finds a high-risk miss restores the previous cap. -->
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1151:CC-1 — `configTestCmd` 的坏配置语义未定义完整。  
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1152:req-v1 只说 `configTestCmd` 使用同一解析器、fence 内示例不再生效，但没有说明 `test-cmd` 重复异值、空值、或解析器 `problems` 出现时 `verify` / `gate` / `doctor` 各自如何 fail-closed。现在 `verify` 可省略 `--test-cmd` 走 config fallback；`gate` 和 `doctor D5` 也调用 `configTestCmd`。若坏配置只是返回 null，会和“无 test-cmd 配置”混在一起；若返回错误对象，三个消费面需要明确 exit/status。  
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1153:Fix：定义 `configTestCmd` 的结果契约，例如 `{value, problems}`；`verify` 配置错误 → exit 2 / JSON `ERROR`，不运行测试；`gate` 配置错误 → exit 2 `ERROR`，不运行 C1；`doctor` 配置错误 → D5 finding 还是 UNUSABLE 需明确。至少要具名错误并证明不会执行 fenced/commented/冲突 test-cmd。
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1156:req-v1 写“只识别 `| key | value |` 形状的表行”，但 `templates/process-config.md` 当前是四列表：`| Field | Value | Legal range | Default |`，`init --test-cmd` 也追加多列行。若严格按两列表解释，现有 `language`、未来 `cas`、`test-cmd` 都可能不被识别。  
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1163:CC-4 — `cas` 配置错误在无 unstamped mutation 时是否阻断未定义。  
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1164:req-v1 说“存在冲突或非法值时，一切豁免 judgment fail-closed 为无豁免且 archive/gate 报配置错误”，但如果本次 delta 全部已 stamped 或 ADDED-only，不需要豁免，坏 `cas` 行是否仍让 archive/gate 失败没有说明。  
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1165:Fix：明确 `cas` 错误只在需要判断 waiver 时阻断，还是任何 archive/gate 运行只要看到坏 `cas` 就 CONFIG ERROR。两者都可行，但必须可测。
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1171:`--no-cas` 高于坏 `cas` config 的设计合理，但建议限定为只压过 `cas` 键错误，不应压过 `test-cmd` 错误。
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1177:| CC-1 | `configTestCmd` bad-config behavior is underspecified for verify/gate/doctor. | Bad config may be treated as “missing config” or still run an unsafe fallback. | STEP0·r1 | open |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1180:| CC-4 | `cas` config errors when no waiver is needed are not specified. | Archive/gate behavior may differ on stamped/ADDED-only changes with bad config. | STEP0·r1 | open |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1187:CC-1 — `configTestCmd` 的坏配置语义未定义完整。  
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1188:req-v1 只说 `configTestCmd` 使用同一解析器、fence 内示例不再生效，但没有说明 `test-cmd` 重复异值、空值、或解析器 `problems` 出现时 `verify` / `gate` / `doctor` 各自如何 fail-closed。现在 `verify` 可省略 `--test-cmd` 走 config fallback；`gate` 和 `doctor D5` 也调用 `configTestCmd`。若坏配置只是返回 null，会和“无 test-cmd 配置”混在一起；若返回错误对象，三个消费面需要明确 exit/status。  
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1189:Fix：定义 `configTestCmd` 的结果契约，例如 `{value, problems}`；`verify` 配置错误 → exit 2 / JSON `ERROR`，不运行测试；`gate` 配置错误 → exit 2 `ERROR`，不运行 C1；`doctor` 配置错误 → D5 finding 还是 UNUSABLE 需明确。至少要具名错误并证明不会执行 fenced/commented/冲突 test-cmd。
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1192:req-v1 写“只识别 `| key | value |` 形状的表行”，但 `templates/process-config.md` 当前是四列表：`| Field | Value | Legal range | Default |`，`init --test-cmd` 也追加多列行。若严格按两列表解释，现有 `language`、未来 `cas`、`test-cmd` 都可能不被识别。  
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1199:CC-4 — `cas` 配置错误在无 unstamped mutation 时是否阻断未定义。  
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1200:req-v1 说“存在冲突或非法值时，一切豁免 judgment fail-closed 为无豁免且 archive/gate 报配置错误”，但如果本次 delta 全部已 stamped 或 ADDED-only，不需要豁免，坏 `cas` 行是否仍让 archive/gate 失败没有说明。  
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1201:Fix：明确 `cas` 错误只在需要判断 waiver 时阻断，还是任何 archive/gate 运行只要看到坏 `cas` 就 CONFIG ERROR。两者都可行，但必须可测。
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1207:`--no-cas` 高于坏 `cas` config 的设计合理，但建议限定为只压过 `cas` 键错误，不应压过 `test-cmd` 错误。
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1213:| CC-1 | `configTestCmd` bad-config behavior is underspecified for verify/gate/doctor. | Bad config may be treated as “missing config” or still run an unsafe fallback. | STEP0·r1 | open |
+apriori/changes/config-contract/review/req-review-v1-raw.txt:1216:| CC-4 | `cas` config errors when no waiver is needed are not specified. | Archive/gate behavior may differ on stamped/ADDED-only changes with bad config. | STEP0·r1 | open |
+
+ succeeded in 375ms:
+{
+  "modules": [
+    "archive-merge/spec.md",
+    "config/spec.md",
+    "doctor/spec.md",
+    "gate/spec.md",
+    "spec-runner/spec.md"
+  ],
+  "validation": [],
+  "hygiene": [],
+  "casMismatches": [],
+  "conflicts": [],
+  "unstampedMutations": [],
+  "notes": []
+}
+
+context compacted
+codex
+未发现 `config-contract` 的 STEP2 spec/design 缺陷。
+
+覆盖面与 `req-final` 对齐：结构化解析、fence/comment 惰性化含未闭合情况、多列表格只读前两列、同值重复容忍、异值冲突 fail-closed、消费时才暴露错误、`--no-cas` 最高优先级、usage/template discoverability 都有绑定。`CF-01` 和 `AM-42` 场景较密，但仍可按子用例实现，不构成拆分要求。
+
+`gate` 的 MODIFIED hygiene 看起来正确：C7 标题未变，`GT-16` 只做预期语义更新，`GT-17` 补足坏配置与 fenced-only waiver 的 gate 行为。`lib/config.js` 作为新共享模块可行，`configCas`/`configTestCmd`/doctor/gate/archive 的迁移路径清楚；未看到额外 requirement-name collision。`spec-runner` delta 为 ADDED-only，和 `tap-contract` 的串行归档关系只需要归档后 restamp。
+
+**Advisories**
+
+`AM-42` 四次运行写在一个 scenario 内，红测实现时建议拆成 test cases 保持失败定位清楚，但 spec 本身可测。`language` consumer 枚举在设计中依赖 STEP5 grep 复核；如果实现阶段发现实际读者，应统一走 `readConfig`，但当前不需要新增 STEP2 issue。
+
+**LEDGER DELTA**
+
+无新增 `CCSPEC-*` 行。
+
+VERDICT: no major issues
+tokens used
+822,776
+未发现 `config-contract` 的 STEP2 spec/design 缺陷。
+
+覆盖面与 `req-final` 对齐：结构化解析、fence/comment 惰性化含未闭合情况、多列表格只读前两列、同值重复容忍、异值冲突 fail-closed、消费时才暴露错误、`--no-cas` 最高优先级、usage/template discoverability 都有绑定。`CF-01` 和 `AM-42` 场景较密，但仍可按子用例实现，不构成拆分要求。
+
+`gate` 的 MODIFIED hygiene 看起来正确：C7 标题未变，`GT-16` 只做预期语义更新，`GT-17` 补足坏配置与 fenced-only waiver 的 gate 行为。`lib/config.js` 作为新共享模块可行，`configCas`/`configTestCmd`/doctor/gate/archive 的迁移路径清楚；未看到额外 requirement-name collision。`spec-runner` delta 为 ADDED-only，和 `tap-contract` 的串行归档关系只需要归档后 restamp。
+
+**Advisories**
+
+`AM-42` 四次运行写在一个 scenario 内，红测实现时建议拆成 test cases 保持失败定位清楚，但 spec 本身可测。`language` consumer 枚举在设计中依赖 STEP5 grep 复核；如果实现阶段发现实际读者，应统一走 `readConfig`，但当前不需要新增 STEP2 issue。
+
+**LEDGER DELTA**
+
+无新增 `CCSPEC-*` 行。
+
+VERDICT: no major issues

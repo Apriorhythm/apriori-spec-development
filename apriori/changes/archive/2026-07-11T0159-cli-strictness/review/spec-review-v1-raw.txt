@@ -1,0 +1,344 @@
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f4b30-68f9-7222-9b64-17f52a333b4c
+--------
+user
+New stage: STEP2 technical review (P5) for cli-strictness. Hunt rework/incident risks.
+[Input] SPEC-DOC: apriori/changes/cli-strictness/specs/cli/spec.md (ADDED requirement CL-11..16) · DESIGN/proposal/tasks in apriori/changes/cli-strictness/ · Requirement: requirement/req-final.md · Ledger: apriori/review/cli-strictness-issues.md · Code: all lib/*.js cli() functions, bin/apriori.js, store apriori/specs/cli/spec.md.
+[Checklist] 1. do CL-11..16 cover req-final's S1-S13 (anything spec'd but unbound?) 2. side effects (CL-12's no-action claim — is it testable as designed?) 3. state-A conflicts (ADDED requirement vs existing cli block — no ID collisions; CAS stamp current) 4. spec'd-not-designed / vice versa 5. regressions the migration could cause (init interactivity, verify --specs multi, config fallbacks).
+[Output — read-only sandbox: print the COMPLETE review doc body for verbatim landing at apriori/design/cli-strictness-review-v1.md] New rows SSPEC-1...; advisory batch. End with the ledger delta and exactly one verdict line: 'VERDICT: no major issues, ready to proceed to execution' or 'VERDICT: <N> issues open'.
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-10T17:44:01.262098Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-10T17:44:01.408351Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-10T17:44:01.899259Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-10T17:44:02.694240Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-10T17:44:03.619155Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-10T17:44:05.233127Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-10T17:44:08.460498Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: diA1nNPnDQXL
+codex
+I’ll read the cli-strictness spec/design/tasks against req-final, then compare the scenario coverage to S1-S13 and the actual current CLI surfaces.
+exec
+/usr/bin/zsh -lc "sed -n '1,340p' apriori/changes/cli-strictness/design.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,340p' requirement/req-final.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' apriori/changes/cli-strictness/specs/cli/spec.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,220p' apriori/changes/cli-strictness/tasks.md && sed -n '1,200p' apriori/changes/cli-strictness/proposal.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 112ms:
+<!-- apriori-base: sha256:0f70116eb937ff2465cf4f5ab18166697b56186264c6c45fcfb4461ef8e16817 -->
+# Delta — cli (cli-strictness)
+
+## ADDED Requirements
+
+### Requirement: uniform argument strictness across subcommands
+Every subcommand SHALL parse argv through one shared helper with three uniform behaviors: `--help`/`-h` prints that subcommand's usage on stdout and exits 0 (checked before any other validation); an unknown `-`-prefixed token prints `unknown flag` naming it plus the usage on stderr and exits 2 — nothing is silently ignored; positional arity is enforced (`new` and `stamp` exactly one, all others zero). Known-flag semantics: `value` flags consume exactly the next token (missing → exit 2 naming the flag; repeats last-write-wins), `multi` flags consume until the next `-`-prefixed token (empty set → exit 2 naming the flag; repeats accumulate), boolean flags are idempotent. Success paths of all documented invocations are unchanged; the three declared behavior changes are: `new` extras now error (previously ignored), `stamp --foo` is now an unknown flag (previously its positional), and multi consumption stops at single-dash tokens (previously `--`-only).
+
+#### Scenario: CL-11 every subcommand answers --help
+- WHEN `apriori <sub> --help` (or `-h`) runs for each sub in {new, status, verify, archive, check, init, update, stamp, gate, doctor}
+- THEN usage containing `apriori <sub>` prints on stdout and the exit code is 0, even where required args are missing
+
+#### Scenario: CL-12 unknown flags fail loudly everywhere, before any action
+- WHEN `apriori <sub> --no-such-flag` runs for each subcommand
+- THEN stderr names `--no-such-flag` alongside the usage, the exit code is 2, and no action is performed (nothing written, no test command executed)
+
+#### Scenario: CL-13 positional arity is enforced
+- WHEN a zero-positional subcommand receives a stray positional, or `new`/`stamp` receive zero or two positionals
+- THEN it exits 2 naming the offender — including the declared changes: `apriori new a b` errors naming `b`; `apriori stamp --foo` errors as an unknown flag
+
+#### Scenario: CL-14 missing values fail closed
+- WHEN a `value` flag ends argv with no value (`verify --test-cmd`), or a `multi` flag consumes an empty set (`verify --specs --test-cmd t`)
+- THEN it exits 2 naming that flag, never consuming undefined or acting on an empty set
+
+#### Scenario: CL-15 repeats and aliases behave declaredly
+- WHEN flags repeat or aliases are used
+- THEN `verify --specs a --specs b` accumulates both targets, `status --change a --change b` uses `b`, doubled boolean flags act once, and `init -y` equals `--yes`
+
+#### Scenario: CL-16 multi consumption stops at any dash token
+- WHEN `apriori verify --specs a -x --test-cmd t` runs
+- THEN `-x` is never consumed as a spec target and the command exits 2 naming `-x`
+
+ succeeded in 128ms:
+# Design — cli-strictness
+
+lib/args.js: `parseStrict(argv, {sub, usage, flags, positionals, aliases})` per the req contract — pure, returns `{ok:true, flags, positionals}` or `{ok:false, code:0|2, message}`. Kinds: 'value' | 'multi' | 'flag'. Alias map resolves before lookup ('-h'→'--help' built in, '-y' passed by init).
+
+Migration per cli(): build its spec table (from req §Flag table), call parseStrict FIRST; code 0 → print usage stdout, return 0; code 2 → print message+usage stderr, return 2; ok → map parsed flags onto the existing local `a` object and proceed unchanged. Usage strings: each cli's existing usage text becomes a module-level const used by BOTH --help and error paths (DS-2). init: interactive branch decision unchanged (flags.tools absent && TTY). bin/apriori.js: no dispatch change (subcommands own their parsing); top-level behaviors untouched.
+
+Tests (test/args.test.js): unit tests on parseStrict edges + spawn-BIN loops over all ten subs for CL-11/CL-12 (cwd = bare tmp dir so no action can occur; CL-12 asserts side-effect absence via tree snapshot for the writers). Existing suite must stay green (S5) — the migration is behavior-preserving on success paths.
+
+ succeeded in 133ms:
+# Requirement — cli-strictness (v3)
+
+change: cli-strictness
+target lineage: **v3 branch** (never merge to main or v2). Ships in the next minor (expected **3.3.0**) — it changes ERROR-path behavior only (what was silently ignored now fails loudly), which is the fail-closed direction; success-path behavior of every documented invocation is unchanged.
+
+> v3 handling notes (P2): SREQ-1 reopened → init row corrected (`--dry-run` is update's, not init's). SREQ-2 reopened → the stale "until the next `--` token" sentence now defers to the helper's single-dash rule.
+>
+> v2 handling notes (P2): SREQ-1 → §Flag table declares every subcommand's surface. SREQ-2+SREQ-3 → `multi` now stops at ANY `-`-prefixed token (declared micro-change: a value literally starting with `-` was never expressible in docs), and an empty multi set is exit 2 naming the flag. SREQ-4 → repeat semantics declared (value=last-wins, multi=accumulates, flag=idempotent) with tests. SREQ-5 → S9-S12 added. SREQ-6 → current-state corrections: `new` today IGNORES extra positionals (arity enforcement is a declared change); `stamp` is already strict on count and today treats `--foo` as its positional (henceforth: unknown flag, exit 2 — declared change).
+
+## Background — the problem (current state A)
+
+Every subcommand parses argv with an ad-hoc loop that silently ignores anything it doesn't recognize. Consequences, all real today: `apriori verify --sepcs x` (typo) silently falls back to the config test-cmd and can verify the WRONG spec set while exiting green — fail-open in the one place the toolchain promises fail-closed; `apriori gate --hcange x` runs an unusable evaluation; no subcommand answers `--help` (users get usage only by triggering an error, exit 2). The top-level dispatcher handles `apriori --help`/`-h`/bare (usage, exit 0) and unknown SUBCOMMANDS (exit 2) correctly — the gap is inside the subcommands. Current strictness islands: `doctor` rejects stray positionals; `stamp` enforces exactly one argv entry (but counts `--foo` as that entry). `new` takes the FIRST non-flag token and ignores extras — `apriori new a b` silently uses `a` today.
+
+## Goal (target state B)
+
+One shared argv-parsing helper; every subcommand gets three uniform behaviors:
+
+1. **`--help` (and `-h`) → that subcommand's usage on stdout, exit 0** — checked before any other validation, works even where required args are missing.
+2. **Unknown `--flag` (or `-x`) → stderr `unknown flag '<flag>' for 'apriori <sub>'` + that usage, exit 2.** Nothing silently ignored anymore.
+3. **Positional arity enforced**: `new` and `stamp` take exactly one positional; extras → exit 2 naming the first extra (a DECLARED change for `new`, which today silently ignores them); every other subcommand takes zero — a stray positional → exit 2 (doctor's rule generalized). For `stamp`, `--foo` stops being a legal positional and becomes an unknown-flag error (declared change).
+
+## Flag table (the complete per-subcommand surface — SREQ-1)
+
+| sub | flags (kind) | positionals |
+|---|---|---|
+| new | — | 1 (change name) |
+| status | `--change`(value) `--json`(flag) | 0 |
+| verify | `--specs`(multi) `--change`(value) `--test-cmd`(value) `--id-pattern`(value) `--cwd`(value) `--json`(flag) | 0 |
+| archive | `--store`(value) `--delta`(value) `--change`(value) `--write`(flag) `--changes-dir`(value) | 0 |
+| check | `--specs`(value) `--self`(flag) | 0 |
+| init | `--tools`(value) `--test-cmd`(value) `--language`(value) `--yes`(flag, alias `-y`) | 0 |
+| update | `--dry-run`(flag) | 0 |
+| stamp | — | 1 (store file) |
+| gate | `--change`(value) `--test-cmd`(value) `--cwd`(value) `--json`(flag) | 0 |
+| doctor | `--test-cmd`(value) `--no-run`(flag) `--cwd`(value) `--json`(flag) | 0 |
+
+Known-flag behavior is byte-identical to 3.2.0 (same flags, same value consumption — including `verify --specs` consuming multiple values per the helper's `multi` rule below, and `init`'s interactive path when `--tools` is absent).
+
+## The helper (concrete contract)
+
+`parseStrict(argv, spec)` where `spec = { sub: '<name>', usage: '<text>', flags: { '--name': 'value' | 'multi' | 'flag' }, positionals: 0 | 1, aliases?: {'-y': '--yes'} }` →
+`{ ok: true, flags: {...}, positionals: [...] }` or `{ ok: false, code: 0|2, message }` (code 0 = help requested; the caller prints usage to stdout and returns 0; code 2 = the caller prints message + usage to stderr and returns 2).
+- `'value'` consumes exactly the next token (missing value → exit 2 naming the flag; repeats: last-write-wins); `'multi'` consumes tokens until the next `-`-prefixed token — note SINGLE dash: `-x` now terminates consumption and then fails as an unknown flag (micro-change from 3.2.0's `--`-only rule; a value literally starting with `-` was never documented or expressible) — an EMPTY consumed set → exit 2 naming the flag; repeats accumulate (`--specs a --specs b` = both); `'flag'` consumes nothing and is idempotent on repeat.
+- `--help`/`-h` anywhere → `{ok:false, code:0}` immediately.
+- The helper lives in one new file (`lib/args.js`), zero-dep, required by every cli().
+
+## Acceptance criteria (testable)
+
+- S1. For EVERY subcommand in {new, status, verify, archive, check, init, update, stamp, gate, doctor}: `apriori <sub> --help` prints usage containing `apriori <sub>` on stdout and exits 0 — a single loop-test over the full list.
+- S2. For EVERY subcommand: `apriori <sub> --no-such-flag` exits 2 and stderr names `--no-such-flag` — same loop, and no subcommand performs its action (nothing written; verify/doctor run no test command).
+- S3. Stray positional on a zero-positional subcommand (e.g. `apriori status extra`, `apriori verify extra`) → exit 2 naming `extra`; `new`/`stamp` keep their exactly-one rule (zero or two → exit 2).
+- S4. A `'value'` flag at end of argv with no value (`apriori verify --test-cmd`) → exit 2 naming the flag, never consuming `undefined`.
+- S5. Success paths unchanged: the existing full test suite (142 tests) passes unmodified EXCEPT tests that themselves relied on silent-ignore or count-mismatch semantics — each such modification listed in the delta. `verify --specs a b c --test-cmd x` still consumes three spec targets.
+- S6. `--help` wins over other errors: `apriori verify --help` exits 0 even though `--specs`/`--test-cmd` are absent.
+- S7. `init` with no flags on a TTY still enters the interactive multiselect (parseStrict passes empty flags through); `init --tools` at end of argv without a value → exit 2.
+- S8. Zero new dependencies; the dispatcher's existing top-level behaviors (`apriori`, `apriori --help`, `apriori -v`, unknown sub) are unchanged.
+- S9. Repeats: `verify --specs a --specs b --test-cmd t` demands scenarios from BOTH targets; `status --change a --change b` uses `b`; `check --self --self` behaves as one `--self`.
+- S10. Multi stop rule: `verify --specs a -x --test-cmd t` → exit 2 naming `-x` (never consumed as a spec target).
+- S11. Empty multi: `verify --specs --test-cmd t` and trailing `verify --specs` → exit 2 naming `--specs`.
+- S12. Alias: `init -y` behaves as `--yes`; `-h` as `--help` on every subcommand.
+- S13. `apriori new a b` → exit 2 naming `b` (the declared change from today's silent ignore); `apriori stamp --foo` → exit 2 naming `--foo` (declared change from today's positional interpretation).
+
+## Out of scope (won't do)
+
+- `--json` for subcommands that lack it; any new flags.
+- Long-form docs (item 7's job); this change only guarantees every usage string is reachable via `--help`.
+- Shell completion.
+- Changing any KNOWN flag's semantics.
+
+## Decisions proposed
+
+- DS-1: strictness is fail-closed alignment — the typo'd-flag-verifies-the-wrong-thing case is the same defect class 3.0.1 exit-code work fixed; silent ignore on a gate command is a correctness hazard, not a convenience.
+- DS-2: usage strings live with each subcommand (single source: the same string `--help` prints is the one error paths print).
+
+ succeeded in 154ms:
+# Tasks — cli-strictness
+
+- [ ] T1. Failing tests: CL-11..16 (test/args.test.js; BIN loops + parseStrict units) — show the red run.
+- [ ] T2. lib/args.js parseStrict.
+- [ ] T3. Migrate ten cli() functions (usage consts single-sourced).
+- [ ] T4. Suite green (S5); verify --change cli-strictness GREEN; gate --change cli-strictness PASS.
+- [ ] T5. check --self PASS.
+# Proposal — cli-strictness
+
+**WHY.** Every subcommand silently ignores unknown argv tokens — `verify --sepcs x` (typo) falls back to the config and can verify the WRONG spec set while exiting green: fail-open in the toolchain that promises fail-closed. And no subcommand answers `--help`. Roadmap item 6, first of the owner-ordered 3.2 batch.
+
+**WHAT.** One shared `parseStrict` helper (lib/args.js) wired into all ten subcommands: `--help`/`-h` → usage exit 0; unknown dash-tokens → exit 2 naming them; positional arity enforced; value/multi/boolean semantics declared (incl. repeats and aliases). Three declared behavior changes, all fail-closed: `new` extras error, `stamp --foo` is an unknown flag, multi stops at single-dash tokens.
+
+**OUT OF SCOPE.** New flags, --json additions, shell completion, long-form docs (item 7).
+
+Requirement: requirement/req-final.md (3 P1 rounds → no major issues; ledger 6 verified / 0 open).
+
+codex
+The spec scenarios cover the broad S1-S13 set, but I’m checking whether the design’s “migrate ten cli() functions” includes `stampCli` and whether side-effect prevention is strong enough for the commands that normally write or spawn.
+exec
+/usr/bin/zsh -lc "node -e \"const fs=require('fs'),crypto=require('crypto'); const text=fs.readFileSync('apriori/specs/cli/spec.md','utf8').replace(/\\r\\n/g,'\\n').replace(/\\r/g,'\\n'); console.log('sha256:'+crypto.createHash('sha256').update(text,'utf8').digest('hex'))\"" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc 'rg -n "CL-1[1-6]|uniform argument strictness|--help|unknown flag|parseStrict|cli-strictness" apriori/specs apriori/changes/cli-strictness' in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,120p' apriori/specs/cli/spec.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,220p' apriori/review/cli-strictness-issues.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 119ms:
+# Issue ledger — cli-strictness
+
+Rows recorded on behalf of the reviewer (codex session 019f4b30-68f9-7222-9b64-17f52a333b4c; raws: cli-strictness-req-review-v1-raw.txt).
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| SREQ-1 | Known flag surface is not declared per subcommand (r2 reopened: init row listed a non-existent --dry-run). | Implementations can disagree on what "known" means per command. | STEP0·r1 | verified |
+| SREQ-2 | `multi` consumption conflicts with the "unknown -x" rule (r2 reopened: one stale sentence kept the old `--`-only wording). | `-x` silently consumed as a spec target instead of rejected. | STEP0·r1 | verified |
+| SREQ-3 | Empty `multi` values are not classified. | `--specs` with no values is ambiguous. | STEP0·r1 | verified |
+| SREQ-4 | Repeated known flags are not specified. | Accumulate vs last-wins can diverge from today's behavior. | STEP0·r1 | verified |
+| SREQ-5 | Acceptance criteria miss the parser edge cases the helper introduces. | Helper edges ship untested. | STEP0·r1 | verified |
+| SREQ-6 | Current-state claims about `new` and `stamp` are inaccurate. | "Unchanged" claims would hide two real behavior changes. | STEP0·r1 | verified |
+
+ succeeded in 152ms:
+### Requirement: single self-contained apriori CLI
+The toolchain SHALL ship as one npm package `apriori-cli` exposing a `bin` named `apriori` with subcommands `init | new | status | verify | archive | check | update | stamp | gate | doctor` plus a `--version` flag, requiring zero npm runtime dependencies (pure Node stdlib), runnable via global install or `npx`, and failing cleanly (one-line error, no stack trace) on unexpected errors.
+
+#### Scenario: CL-01 subcommand dispatch
+- WHEN `apriori <sub> ...` is invoked with sub in {init, new, status, verify, archive, check, update, stamp, gate, doctor}
+- THEN it dispatches to that subcommand; an unknown sub prints usage and exits non-zero
+
+#### Scenario: CL-02 verify subcommand is the spec-runner
+- WHEN `apriori verify --specs <dir> --test-cmd <cmd>` (or `apriori verify --change <name>`) runs
+- THEN it behaves per the spec-runner requirements (SR-01..25)
+
+#### Scenario: CL-03 archive subcommand is archive-merge
+- WHEN `apriori archive --store <f> --delta <f> --change <name> [--write]` or `apriori archive --change <name> [--write] [--changes-dir <dir>]` runs
+- THEN it behaves per the archive-merge requirements (AM-01..27)
+
+#### Scenario: CL-04 check subcommand is the doc checker
+- WHEN `apriori check` runs
+- THEN it behaves per the check requirement (CK-01..06)
+
+#### Scenario: CL-05 zero runtime dependencies
+- WHEN the package is installed
+- THEN it pulls no npm dependencies; only Node's standard library is used
+
+#### Scenario: CL-06 --version prints the package version
+- WHEN `apriori --version` (or `-v`) is invoked
+- THEN it prints the installed package version verbatim on stdout and exits 0
+
+#### Scenario: CL-07 unexpected subcommand failures exit cleanly
+- WHEN a subcommand throws an unexpected error (e.g. an unreadable input file)
+- THEN the CLI prints a single `apriori: <message>` line on stderr and exits 1 — never a raw stack trace
+
+#### Scenario: CL-08 stamp subcommand appears in usage
+- WHEN `apriori` runs with no arguments or `--help`
+- THEN the printed usage lists `stamp` alongside the other subcommands (behavior per AM-27)
+
+#### Scenario: CL-09 gate subcommand appears in usage
+- WHEN `apriori` runs with no arguments or `--help`
+- THEN the printed usage lists `gate` alongside the other subcommands (behavior per GT-01..12); `apriori gate` without `--change` prints its own usage and exits 2
+
+#### Scenario: CL-10 doctor subcommand appears in usage
+- WHEN `apriori` runs with no arguments or `--help`
+- THEN the printed usage lists `doctor` alongside the other subcommands (behavior per DR-01..12); `apriori doctor <positional>` prints its own usage and exits 2
+
+ succeeded in 163ms:
+apriori/specs/cli/spec.md:33:- WHEN `apriori` runs with no arguments or `--help`
+apriori/specs/cli/spec.md:37:- WHEN `apriori` runs with no arguments or `--help`
+apriori/specs/cli/spec.md:41:- WHEN `apriori` runs with no arguments or `--help`
+apriori/changes/cli-strictness/proposal.md:1:# Proposal — cli-strictness
+apriori/changes/cli-strictness/proposal.md:3:**WHY.** Every subcommand silently ignores unknown argv tokens — `verify --sepcs x` (typo) falls back to the config and can verify the WRONG spec set while exiting green: fail-open in the toolchain that promises fail-closed. And no subcommand answers `--help`. Roadmap item 6, first of the owner-ordered 3.2 batch.
+apriori/changes/cli-strictness/proposal.md:5:**WHAT.** One shared `parseStrict` helper (lib/args.js) wired into all ten subcommands: `--help`/`-h` → usage exit 0; unknown dash-tokens → exit 2 naming them; positional arity enforced; value/multi/boolean semantics declared (incl. repeats and aliases). Three declared behavior changes, all fail-closed: `new` extras error, `stamp --foo` is an unknown flag, multi stops at single-dash tokens.
+apriori/changes/cli-strictness/flow-state.md:1:change: cli-strictness
+apriori/changes/cli-strictness/flow-state.md:9:next-action: transcribe P5 r1 (raw named cli-strictness-review-v1-raw.*); P6 revise or advance   # 2026-07-11T02:20
+apriori/changes/cli-strictness/design.md:1:# Design — cli-strictness
+apriori/changes/cli-strictness/design.md:3:lib/args.js: `parseStrict(argv, {sub, usage, flags, positionals, aliases})` per the req contract — pure, returns `{ok:true, flags, positionals}` or `{ok:false, code:0|2, message}`. Kinds: 'value' | 'multi' | 'flag'. Alias map resolves before lookup ('-h'→'--help' built in, '-y' passed by init).
+apriori/changes/cli-strictness/design.md:5:Migration per cli(): build its spec table (from req §Flag table), call parseStrict FIRST; code 0 → print usage stdout, return 0; code 2 → print message+usage stderr, return 2; ok → map parsed flags onto the existing local `a` object and proceed unchanged. Usage strings: each cli's existing usage text becomes a module-level const used by BOTH --help and error paths (DS-2). init: interactive branch decision unchanged (flags.tools absent && TTY). bin/apriori.js: no dispatch change (subcommands own their parsing); top-level behaviors untouched.
+apriori/changes/cli-strictness/design.md:7:Tests (test/args.test.js): unit tests on parseStrict edges + spawn-BIN loops over all ten subs for CL-11/CL-12 (cwd = bare tmp dir so no action can occur; CL-12 asserts side-effect absence via tree snapshot for the writers). Existing suite must stay green (S5) — the migration is behavior-preserving on success paths.
+apriori/changes/cli-strictness/tasks.md:1:# Tasks — cli-strictness
+apriori/changes/cli-strictness/tasks.md:3:- [ ] T1. Failing tests: CL-11..16 (test/args.test.js; BIN loops + parseStrict units) — show the red run.
+apriori/changes/cli-strictness/tasks.md:4:- [ ] T2. lib/args.js parseStrict.
+apriori/changes/cli-strictness/tasks.md:6:- [ ] T4. Suite green (S5); verify --change cli-strictness GREEN; gate --change cli-strictness PASS.
+apriori/changes/cli-strictness/specs/cli/spec.md:2:# Delta — cli (cli-strictness)
+apriori/changes/cli-strictness/specs/cli/spec.md:6:### Requirement: uniform argument strictness across subcommands
+apriori/changes/cli-strictness/specs/cli/spec.md:7:Every subcommand SHALL parse argv through one shared helper with three uniform behaviors: `--help`/`-h` prints that subcommand's usage on stdout and exits 0 (checked before any other validation); an unknown `-`-prefixed token prints `unknown flag` naming it plus the usage on stderr and exits 2 — nothing is silently ignored; positional arity is enforced (`new` and `stamp` exactly one, all others zero). Known-flag semantics: `value` flags consume exactly the next token (missing → exit 2 naming the flag; repeats last-write-wins), `multi` flags consume until the next `-`-prefixed token (empty set → exit 2 naming the flag; repeats accumulate), boolean flags are idempotent. Success paths of all documented invocations are unchanged; the three declared behavior changes are: `new` extras now error (previously ignored), `stamp --foo` is now an unknown flag (previously its positional), and multi consumption stops at single-dash tokens (previously `--`-only).
+apriori/changes/cli-strictness/specs/cli/spec.md:9:#### Scenario: CL-11 every subcommand answers --help
+apriori/changes/cli-strictness/specs/cli/spec.md:10:- WHEN `apriori <sub> --help` (or `-h`) runs for each sub in {new, status, verify, archive, check, init, update, stamp, gate, doctor}
+apriori/changes/cli-strictness/specs/cli/spec.md:13:#### Scenario: CL-12 unknown flags fail loudly everywhere, before any action
+apriori/changes/cli-strictness/specs/cli/spec.md:17:#### Scenario: CL-13 positional arity is enforced
+apriori/changes/cli-strictness/specs/cli/spec.md:19:- THEN it exits 2 naming the offender — including the declared changes: `apriori new a b` errors naming `b`; `apriori stamp --foo` errors as an unknown flag
+apriori/changes/cli-strictness/specs/cli/spec.md:21:#### Scenario: CL-14 missing values fail closed
+apriori/changes/cli-strictness/specs/cli/spec.md:25:#### Scenario: CL-15 repeats and aliases behave declaredly
+apriori/changes/cli-strictness/specs/cli/spec.md:29:#### Scenario: CL-16 multi consumption stops at any dash token
+
+ succeeded in 173ms:
+sha256:0f70116eb937ff2465cf4f5ab18166697b56186264c6c45fcfb4461ef8e16817
+
+context compacted
+codex
+**Issues**
+
+SSPEC-1 — CL-12 no-action guarantee is not testable as designed for test-spawning commands.
+
+Description: CL-12 requires unknown flags to fail before any action, including no test command execution. The design says CL-12 runs in a bare temp directory, which can make `verify`, `gate`, and `doctor` stop before they would execute a test command anyway. That would not catch an implementation that ignores the unknown flag and only fails later because the fixture is incomplete.
+
+Risk: A typoed flag could still allow configured test commands or gate/doctor probes to run in a real project, violating the strictness guarantee and creating side effects.
+
+Suggested fix: For `verify`, `gate`, and `doctor`, add CL-12 fixtures that are otherwise valid and include a test command that writes a sentinel. Invoke each with an unknown flag plus valid required inputs, then assert exit 2, stderr names the unknown flag, and the sentinel was not created.
+
+SSPEC-2 — `init` interactive no-flag behavior is required but not scenario-bound.
+
+Description: Requirement S7 says `init` with no flags in a TTY still enters the existing interactive tool picker. CL-11..16 cover help, unknown flags, arity, missing values, repeats, aliases, and multi-value stopping, but none binds the no-flag interactive path. The design says init interactivity is unchanged, but does not attach it to a scenario or test plan.
+
+Risk: The strict parser migration could accidentally turn `init` with no flags into usage/error behavior or otherwise skip the existing prompt without a failing scenario.
+
+Suggested fix: Add or extend a CLI scenario to assert that `apriori init` with no args in a TTY-like fixture still reaches the existing interactive picker, while non-TTY behavior remains unchanged.
+
+**Advisories**
+
+The design says to migrate “ten `cli()` functions,” but `stamp` is exposed as `stampCli`, not a `cli()` export. The spec and tests do include `stamp`, so this is wording-level, but the implementation task should explicitly name `stampCli`.
+
+CL-11 should make clear that both `--help` and `-h` are exercised for every subcommand, since the requirement covers both spellings.
+
+State-A checks passed: the CLI delta uses fresh CL-11..16 IDs, the ADDED block does not collide with existing CL-01..10, and the CAS stamp matches the current store CLI spec.
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| SSPEC-1 | CL-12 no-action guarantee is not testable as designed for commands that can execute test commands. | Unknown flags may still allow side-effecting test commands to run. | P5 round 1 | open |
+| SSPEC-2 | `init` no-flag TTY interactive behavior is required but not covered by a scenario/test plan. | Parser migration can regress onboarding interactivity without detection. | P5 round 1 | open |
+| ADV-SSPEC-1 | Advisory batch: clarify `stampCli` migration wording and ensure CL-11 exercises both help aliases. | Low; reduces implementation ambiguity. | P5 round 1 | advisory |
+
+VERDICT: 2 issues open
+tokens used
+1,109,535
+**Issues**
+
+SSPEC-1 — CL-12 no-action guarantee is not testable as designed for test-spawning commands.
+
+Description: CL-12 requires unknown flags to fail before any action, including no test command execution. The design says CL-12 runs in a bare temp directory, which can make `verify`, `gate`, and `doctor` stop before they would execute a test command anyway. That would not catch an implementation that ignores the unknown flag and only fails later because the fixture is incomplete.
+
+Risk: A typoed flag could still allow configured test commands or gate/doctor probes to run in a real project, violating the strictness guarantee and creating side effects.
+
+Suggested fix: For `verify`, `gate`, and `doctor`, add CL-12 fixtures that are otherwise valid and include a test command that writes a sentinel. Invoke each with an unknown flag plus valid required inputs, then assert exit 2, stderr names the unknown flag, and the sentinel was not created.
+
+SSPEC-2 — `init` interactive no-flag behavior is required but not scenario-bound.
+
+Description: Requirement S7 says `init` with no flags in a TTY still enters the existing interactive tool picker. CL-11..16 cover help, unknown flags, arity, missing values, repeats, aliases, and multi-value stopping, but none binds the no-flag interactive path. The design says init interactivity is unchanged, but does not attach it to a scenario or test plan.
+
+Risk: The strict parser migration could accidentally turn `init` with no flags into usage/error behavior or otherwise skip the existing prompt without a failing scenario.
+
+Suggested fix: Add or extend a CLI scenario to assert that `apriori init` with no args in a TTY-like fixture still reaches the existing interactive picker, while non-TTY behavior remains unchanged.
+
+**Advisories**
+
+The design says to migrate “ten `cli()` functions,” but `stamp` is exposed as `stampCli`, not a `cli()` export. The spec and tests do include `stamp`, so this is wording-level, but the implementation task should explicitly name `stampCli`.
+
+CL-11 should make clear that both `--help` and `-h` are exercised for every subcommand, since the requirement covers both spellings.
+
+State-A checks passed: the CLI delta uses fresh CL-11..16 IDs, the ADDED block does not collide with existing CL-01..10, and the CAS stamp matches the current store CLI spec.
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| SSPEC-1 | CL-12 no-action guarantee is not testable as designed for commands that can execute test commands. | Unknown flags may still allow side-effecting test commands to run. | P5 round 1 | open |
+| SSPEC-2 | `init` no-flag TTY interactive behavior is required but not covered by a scenario/test plan. | Parser migration can regress onboarding interactivity without detection. | P5 round 1 | open |
+| ADV-SSPEC-1 | Advisory batch: clarify `stampCli` migration wording and ensure CL-11 exercises both help aliases. | Low; reduces implementation ambiguity. | P5 round 1 | advisory |
+
+VERDICT: 2 issues open

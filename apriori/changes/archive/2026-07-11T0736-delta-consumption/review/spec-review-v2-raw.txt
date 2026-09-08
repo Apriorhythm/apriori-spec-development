@@ -1,0 +1,228 @@
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f4b30-68f9-7222-9b64-17f52a333b4c
+--------
+user
+P5 design review, round 2 for change delta-consumption. All three round-1 findings have been addressed in apriori/changes/delta-consumption/design.md; ledger rows appended to apriori/review/delta-consumption-issues.md as fixed. What changed:
+
+- DCSPEC-1: stamps are now matched in EVERY walker state via a stamp-attempt regex checked before body accumulation (outside fences). Well-formed in FILE_PREAMBLE with no prior stamp = the stamp; well-formed after the first section = line-numbered problem "stamp after the first section"; duplicate = line-numbered problem; malformed attempt = line-numbered problem. Never silently absorbed as body text.
+- DCSPEC-2: requirement-body accumulation now states the exact old grammar: every line including #### Scenario: headings and prose appends verbatim until the next ### Requirement: heading, ANY ^## line (legal or illegal boundary; flush the block first, then process the heading), or EOF. Reassembled block = heading + body with trailing whitespace trimmed + '\n' (matching old m[0].trim() + '\n'), byte-identical to REQ_RE output on well-formed deltas; D5 corpus test asserts old-vs-new parse-result equality over all archived deltas.
+- DCSPEC-3: lines are split on \n with one trailing \r stripped before matching (CRLF parses identically to LF); only a line whose first non-whitespace characters are three-plus backticks toggles fence opacity — inline backticks never toggle; problem line numbers are 1-based over the split lines.
+
+Please re-read apriori/changes/delta-consumption/design.md and the spec delta at apriori/changes/delta-consumption/specs/archive-merge/spec.md, plus tasks.md. For each of DCSPEC-1/2/3: confirm resolved (flip to verified) or reopen with reasoning. Then look for any NEW issues in the revised design. Print the COMPLETE review document body (I will land it verbatim at apriori/design/delta-consumption-review-v2.md), including a ledger-delta section, and end with exactly one verdict line: "VERDICT: no major issues, ready to proceed to execution" or "VERDICT: <N> issues open".
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-11T07:14:29.455194Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T07:14:29.607716Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T07:14:29.992048Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-11T07:14:31.896886Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-11T07:14:30.624601Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-11T07:14:32.458474Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-11T07:14:35.681401Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: VYTDG21kM09Y
+codex
+I’ll re-read the revised design/spec/tasks and compare the new details directly against the three prior findings, then do a fresh pass for new execution risks.
+exec
+/usr/bin/zsh -lc "sed -n '1,180p' apriori/changes/delta-consumption/tasks.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,220p' apriori/changes/delta-consumption/specs/archive-merge/spec.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' apriori/changes/delta-consumption/design.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 122ms:
+<!-- apriori-base: sha256:cbdd977fa3a3c25e8792e93b6dd23a6f1014daa8079662ee4b499da7f5bd2326 -->
+# Delta — archive-merge (delta-consumption)
+
+## ADDED Requirements
+
+### Requirement: the delta parser consumes its whole input
+`parseDeltaStrict` SHALL be a sequential, fully-consuming parser: every line (outside code fences, which are opaque) belongs to exactly one legal construct — file preamble (stamp/blank/free text without structure markers), a legal `## ADDED|MODIFIED|REMOVED|RENAMED Requirements` heading, section-preamble free text, a `### Requirement:` block (body runs to the next heading or EOF), or a RENAMED `- Old -> New` line — and anything else is a `problems[]` entry carrying its 1-based line number. The exhaustive problem set: unrecognized h2 headings (one problem per heading; its lines are never absorbed into any bucket), requirement/scenario markers before any section, a requirement block inside RENAMED, a scenario marker outside any requirement, duplicate requirement names, and the stamp problems (which also gain line numbers). Both `verify --change` (exit 2) and `archive` (exit 1) inherit the failure.
+
+#### Scenario: AM-28 a misspelled section heading is reported, never absorbed
+- WHEN a delta contains `## ADDDED Requirements` (or any other unrecognized h2) followed by requirement blocks
+- THEN parsing reports the heading text with its line number, those requirements appear in NO bucket, and archive/verify fail closed
+
+#### Scenario: AM-29 structure outside its legal home is reported with line numbers
+- WHEN a `### Requirement:` appears before any section or inside a RENAMED section, or a `#### Scenario:` appears in a section preamble outside any requirement
+- THEN each is a problem carrying its 1-based line number; multiple distinct problems are all reported
+
+#### Scenario: AM-30 free text and fences stay legal; the corpus stays clean
+- WHEN a delta carries titles/notes in the file preamble, section preambles, or requirement bodies, or fenced content containing heading-like lines
+- THEN no problem is reported — and every archived delta in this repo's `apriori/changes/archive/*/specs/` parses with zero problems (the regression corpus)
+
+#### Scenario: AM-31 stamp problems carry line numbers
+- WHEN a delta carries a malformed, duplicated, or misplaced apriori-base stamp
+- THEN each stamp problem names its 1-based line number
+
+ succeeded in 142ms:
+# Tasks — delta-consumption
+
+- [ ] T1. Failing tests AM-28..31 + corpus test — red run.
+- [ ] T2. Rewrite parseDeltaStrict as the line walker (stamp problems line-numbered).
+- [ ] T3. README/README_cn cheat-sheet rider.
+- [ ] T4. Suite green; verify --change GREEN; gate PASS; check --self PASS.
+
+ succeeded in 185ms:
+# Design — delta-consumption
+
+Rewrite parseDeltaStrict as a line walker (replacing the split()-based body; parseStamp folds in for position-aware stamp problems):
+Line normalization FIRST: split on `/\r?\n/` is NOT used — instead split on `\n` and strip one trailing `\r` from each line before matching (CRLF inputs parse identically to LF; accumulated body text keeps the normalized form, consistent with the old regexes which tolerated the trailing `\r` via `\s*$`). Fence rule: only a line whose first non-whitespace characters are ``` (three-plus backticks at line start after optional indent) toggles opacity — inline backticks never toggle. Line numbers in problems are 1-based over the split lines. (DCSPEC-3)
+state = FILE_PREAMBLE | IN_SECTION(kind) | IN_REQUIREMENT(kind, title) | SKIP_UNRECOGNIZED. Per normalized line:
+- fence content → skip
+- `^## ADDED|MODIFIED|REMOVED|RENAMED Requirements$` → enter section
+- `^##\s` otherwise → problems.push(`line N: unrecognized section heading '…'`), state = SKIP_UNRECOGNIZED (lines under it skipped until next legal heading; no per-line flood)
+- `^### Requirement:` → FILE_PREAMBLE → problem (before any section); SKIP → covered by the section's one problem (no flood); RENAMED → problem; ADDED/MODIFIED/REMOVED → enter IN_REQUIREMENT (title dup-checked against the section's blocks). IN_REQUIREMENT accumulation reproduces the OLD grammar exactly: every subsequent line — including `#### Scenario:` headings and arbitrary prose — appends verbatim UNTIL the next `### Requirement:` heading or ANY `^##\s` line (legal or illegal section boundary: flush the current block FIRST, then process the heading) or EOF. The reassembled block (heading line + body, trailing whitespace trimmed + `'\n'` appended, matching the old `m[0].trim() + '\n'`) must be byte-identical to what REQ_RE produced for every well-formed delta; the D5 corpus test asserts parse-result equality old-vs-new over all archived deltas. (DCSPEC-2)
+- `^#### Scenario:` while not inside a requirement body → problem (misplaced scenario) [file preamble or section preamble]
+- RENAMED: `- Old -> New` parsed; other lines free text
+- stamp lines matched in EVERY state, not just FILE_PREAMBLE (a stamp-attempt regex `/^<!--\s*apriori-base:/` checked before body accumulation, outside fences): well-formed in FILE_PREAMBLE with no stamp yet → becomes the stamp; well-formed but AFTER the first section heading → problem `line N: apriori-base stamp after the first section`; second stamp anywhere → problem `line N: duplicate apriori-base stamp`; attempt that fails the strict format → problem `line N: malformed apriori-base stamp`. A late/dup/malformed stamp is consumed by its problem — never silently absorbed as preamble or requirement-body text. (DCSPEC-1)
+Return shape unchanged: {delta, stamp, problems}. parseDelta/parseRequirementsStrict signatures untouched (store parsing unchanged).
+Tests: AM-28..31 in test/archive-change.test.js + a corpus test iterating apriori/changes/archive/*/specs/**/*.md asserting zero problems. Existing delta tests must stay green (well-formed inputs identical).
+Rider: README/README_cn cheat-sheet wording.
+
+codex
+The three prior fixes are present in the design. One fresh issue is emerging from the revised design notation: the legal-section regex is still written without grouping/spacing, which conflicts with the exact-heading requirement if copied literally.
+exec
+/usr/bin/zsh -lc 'rg -n "''^## |''^### Requirement:|''^#### Scenario:|''^'"\\s*"'```" apriori/changes/archive/*/specs/**/*.md' in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc 'rg -n "SECTION_SPLIT_RE|STAMP_ATTEMPT_RE|STAMP_LINE_RE|parseStamp|parseDeltaStrict|REQ_RE" lib/archive-merge.js' in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,220p' apriori/review/delta-consumption-issues.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ exited 1 in 108ms:
+zsh:1: unmatched "
+
+ succeeded in 111ms:
+15:const REQ_RE = /^###\s+Requirement:\s+(.+?)\s*$([\s\S]*?)(?=^###\s+Requirement:|$(?![\s\S]))/gm;
+16:const SECTION_SPLIT_RE = /^##\s+(ADDED|MODIFIED|REMOVED|RENAMED)\s+Requirements\s*$/m;
+29:  REQ_RE.lastIndex = 0;
+30:  while ((m = REQ_RE.exec(text)) !== null) {
+49:const STAMP_LINE_RE = /^<!--\s*apriori-base:\s*(\S+)\s*-->\s*$/gm;
+52:const STAMP_ATTEMPT_RE = /^\s*<!--(?=[^>]*apriori-base)[^>]*-->\s*$/gm;
+56:function parseStamp(text) {
+58:  const sectionIdx = text.search(SECTION_SPLIT_RE);
+59:  STAMP_ATTEMPT_RE.lastIndex = 0;
+61:  while ((m = STAMP_ATTEMPT_RE.exec(text)) !== null) {
+62:    STAMP_LINE_RE.lastIndex = 0;
+63:    if (!STAMP_LINE_RE.test(m[0].trim())) problems.push(`malformed apriori-base stamp line: ${m[0].trim()}`);
+66:  STAMP_LINE_RE.lastIndex = 0;
+67:  while ((m = STAMP_LINE_RE.exec(text)) !== null) found.push({ value: m[1], index: m.index });
+81:function parseDeltaStrict(text) {
+85:  const parts = text.split(SECTION_SPLIT_RE);
+101:  const st = parseStamp(text);
+106:function parseDelta(text) { return parseDeltaStrict(text).delta; }
+254:    const { delta, stamp, problems } = parseDeltaStrict(raw);
+433:    const { delta, stamp, problems } = parseDeltaStrict(deltaText);
+487:module.exports = { parseRequirements, parseRequirementsStrict, parseDelta, parseDeltaStrict, deltaOpCount,
+489:  fingerprint, parseStamp, containsReal, discoverDeltas, buildProjection,
+
+ succeeded in 132ms:
+# Issue ledger — delta-consumption
+
+Rows recorded on behalf of the reviewer (codex session 019f4b30-68f9-7222-9b64-17f52a333b4c; raws: delta-consumption-req-review-v1-raw.txt).
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| DC-1 | D3's tail grammar unresolvable (r2 reopened: DD-2 still said 'tail'). | Ambiguity for implementers. | STEP0·r1 | verified |
+| DC-2 | Line-number rule didn't cover existing stamp problems. | Inconsistent diagnostics. | STEP0·r1 | verified |
+| DC-3 | Section-preamble prose (heading → first requirement) unclassified. | Every-line-accounted-for claim had a hole. | STEP0·r1 | verified |
+| DCSPEC-1 | Misplaced (late but well-formed) stamps could be absorbed as body text — design only recognized stamps in FILE_PREAMBLE. | Hygiene problem silently lost. | STEP2·r1 | fixed |
+| DCSPEC-2 | "Body lines accumulate until next heading" too loose vs REQ_RE semantics (scenario headings, ## boundary flush, trim+'\n'). | Well-formed inputs could reassemble differently old-vs-new. | STEP2·r1 | fixed |
+| DCSPEC-3 | CRLF normalization and fence-delimiter precision undefined. | Platform-dependent parses; inline backticks could toggle opacity. | STEP2·r1 | fixed |
+
+codex
+**Round-1 Findings**
+
+DCSPEC-1: **verified**. The design now matches stamp attempts in every walker state outside fences before body accumulation, and late/duplicate/malformed stamps become line-numbered problems instead of body text.
+
+DCSPEC-2: **verified**. Requirement block accumulation now states the old grammar precisely: `#### Scenario:` and prose stay in the body, blocks flush on the next `### Requirement:`, any `^##` boundary, or EOF, and reassembly uses trim plus final newline.
+
+DCSPEC-3: **verified**. CRLF normalization, line numbering, and fence toggling are now concrete. Inline backticks no longer toggle opacity.
+
+**New Issues**
+
+**DCSPEC-4 — Legal section matcher is written as a precedence-broken regex**
+
+Description: The design’s legal-heading rule is written as ``^## ADDED|MODIFIED|REMOVED|RENAMED Requirements$``. If implemented literally, regex alternation makes this match `MODIFIED` or `REMOVED` without the required `## ` prefix, and it does not mirror the current/state-A section matcher. The spec requires exact legal headings of the form `## ADDED|MODIFIED|REMOVED|RENAMED Requirements`.
+
+Risk: A malformed delta line such as `MODIFIED Requirements` could be treated as a legal section, violating the fail-closed consumption goal.
+
+Suggestion: Replace the design notation with the exact intended matcher, e.g. `/^##\s+(ADDED|MODIFIED|REMOVED|RENAMED)\s+Requirements\s*$/` after the one-trailing-`\r` normalization.
+
+**DCSPEC-5 — Stamp-attempt regex is narrower than current malformed-stamp hygiene**
+
+Description: The revised design says stamp lines are detected with an attempt regex ``/^<!--\s*apriori-base:/``. Current state A uses a broader standalone-comment attempt detector: `STAMP_ATTEMPT_RE = /^\s*<!--(?=[^>]*apriori-base)[^>]*-->\s*$/gm`, then validates against the strict stamp form. The design regex can miss malformed attempts such as a missing colon, or attempts with leading whitespace, allowing them to be consumed as legal free text or requirement body.
+
+Risk: Malformed `apriori-base` attempts can silently disable or evade CAS hygiene, which is exactly the class AM-31 is meant to keep fail-closed.
+
+Suggestion: Specify that the line walker preserves the existing broad stamp-attempt semantics, but adds line numbers and all-state detection. Use the current `STAMP_ATTEMPT_RE` shape on normalized logical lines, then validate with the strict stamp-line regex.
+
+**Advisories**
+
+- Tasks say “corpus test” but not the stronger design promise: old-vs-new parse-result equality over archived deltas. Consider naming that equality check in T1 so it does not degrade to only “zero problems.”
+- The CRLF choice is now explicit: parsing normalizes CRLF to LF for accumulated body text. That is acceptable as a declared behavior, but tests should include CRLF input so the choice remains intentional.
+
+**Ledger Delta**
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| DCSPEC-1 | Misplaced stamps could be absorbed as body text because the design only recognized stamps in `FILE_PREAMBLE`. | Hygiene problem silently lost. | STEP2·r1 | verified |
+| DCSPEC-2 | Requirement body accumulation and output normalization were underspecified against old `REQ_RE` semantics. | Well-formed inputs could reassemble differently old-vs-new. | STEP2·r1 | verified |
+| DCSPEC-3 | CRLF normalization and fence-delimiter precision were undefined. | Platform-dependent parses; inline backticks could toggle opacity. | STEP2·r1 | verified |
+| DCSPEC-4 | Legal section matcher is written as a precedence-broken regex. | Malformed section lines could be accepted as legal sections. | STEP2·r2 | open |
+| DCSPEC-5 | Stamp-attempt regex is narrower than current malformed-stamp hygiene. | Malformed stamp attempts can be consumed as legal text and evade CAS hygiene. | STEP2·r2 | open |
+| DCSPEC-ADV-2 | T1 should name the old-vs-new corpus equality assertion, and CRLF behavior should get a direct test. | Advisory test-plan precision. | STEP2·r2 | open |
+
+VERDICT: 2 issues open
+tokens used
+2,294,452
+**Round-1 Findings**
+
+DCSPEC-1: **verified**. The design now matches stamp attempts in every walker state outside fences before body accumulation, and late/duplicate/malformed stamps become line-numbered problems instead of body text.
+
+DCSPEC-2: **verified**. Requirement block accumulation now states the old grammar precisely: `#### Scenario:` and prose stay in the body, blocks flush on the next `### Requirement:`, any `^##` boundary, or EOF, and reassembly uses trim plus final newline.
+
+DCSPEC-3: **verified**. CRLF normalization, line numbering, and fence toggling are now concrete. Inline backticks no longer toggle opacity.
+
+**New Issues**
+
+**DCSPEC-4 — Legal section matcher is written as a precedence-broken regex**
+
+Description: The design’s legal-heading rule is written as ``^## ADDED|MODIFIED|REMOVED|RENAMED Requirements$``. If implemented literally, regex alternation makes this match `MODIFIED` or `REMOVED` without the required `## ` prefix, and it does not mirror the current/state-A section matcher. The spec requires exact legal headings of the form `## ADDED|MODIFIED|REMOVED|RENAMED Requirements`.
+
+Risk: A malformed delta line such as `MODIFIED Requirements` could be treated as a legal section, violating the fail-closed consumption goal.
+
+Suggestion: Replace the design notation with the exact intended matcher, e.g. `/^##\s+(ADDED|MODIFIED|REMOVED|RENAMED)\s+Requirements\s*$/` after the one-trailing-`\r` normalization.
+
+**DCSPEC-5 — Stamp-attempt regex is narrower than current malformed-stamp hygiene**
+
+Description: The revised design says stamp lines are detected with an attempt regex ``/^<!--\s*apriori-base:/``. Current state A uses a broader standalone-comment attempt detector: `STAMP_ATTEMPT_RE = /^\s*<!--(?=[^>]*apriori-base)[^>]*-->\s*$/gm`, then validates against the strict stamp form. The design regex can miss malformed attempts such as a missing colon, or attempts with leading whitespace, allowing them to be consumed as legal free text or requirement body.
+
+Risk: Malformed `apriori-base` attempts can silently disable or evade CAS hygiene, which is exactly the class AM-31 is meant to keep fail-closed.
+
+Suggestion: Specify that the line walker preserves the existing broad stamp-attempt semantics, but adds line numbers and all-state detection. Use the current `STAMP_ATTEMPT_RE` shape on normalized logical lines, then validate with the strict stamp-line regex.
+
+**Advisories**
+
+- Tasks say “corpus test” but not the stronger design promise: old-vs-new parse-result equality over archived deltas. Consider naming that equality check in T1 so it does not degrade to only “zero problems.”
+- The CRLF choice is now explicit: parsing normalizes CRLF to LF for accumulated body text. That is acceptable as a declared behavior, but tests should include CRLF input so the choice remains intentional.
+
+**Ledger Delta**
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| DCSPEC-1 | Misplaced stamps could be absorbed as body text because the design only recognized stamps in `FILE_PREAMBLE`. | Hygiene problem silently lost. | STEP2·r1 | verified |
+| DCSPEC-2 | Requirement body accumulation and output normalization were underspecified against old `REQ_RE` semantics. | Well-formed inputs could reassemble differently old-vs-new. | STEP2·r1 | verified |
+| DCSPEC-3 | CRLF normalization and fence-delimiter precision were undefined. | Platform-dependent parses; inline backticks could toggle opacity. | STEP2·r1 | verified |
+| DCSPEC-4 | Legal section matcher is written as a precedence-broken regex. | Malformed section lines could be accepted as legal sections. | STEP2·r2 | open |
+| DCSPEC-5 | Stamp-attempt regex is narrower than current malformed-stamp hygiene. | Malformed stamp attempts can be consumed as legal text and evade CAS hygiene. | STEP2·r2 | open |
+| DCSPEC-ADV-2 | T1 should name the old-vs-new corpus equality assertion, and CRLF behavior should get a direct test. | Advisory test-plan precision. | STEP2·r2 | open |
+
+VERDICT: 2 issues open

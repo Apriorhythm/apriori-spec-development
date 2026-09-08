@@ -1,0 +1,513 @@
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f4b30-68f9-7222-9b64-17f52a333b4c
+--------
+user
+New change, P1 requirement review round 1: change "win-bash" (P0-4, last P0 of the owner-approved batch; P0-1/2/3 done, archived, pushed). Read requirement/req-v1.md from disk.
+
+Context you can verify: scripts/golden-path.mjs spawns bare 'bash' at three sites (walk.sh, and two bash -c assert paths — check the actual count); on native Windows with WSL installed, System32's WSL bash shim wins PATH resolution over Git Bash. The module's spec is apriori/specs/golden/spec.md (GP-01..05).
+
+Review as a contract: ambiguities, holes in G1-G6, risky decisions (DD-1 resolution stays in the script; DD-2 where-git derivation before conventional paths). Consider: `where git` output shapes (multiple hits, quoting, CRLF), the mingw64 vs cmd vs bin layouts and whether root derivation from each is right, whether usr\bin\bash.exe should also be probed, environment-variable name choice, how G3's injection seam should work for a .mjs script (export the function? node --eval import?), whether the CI windows job would still exercise the new code path meaningfully, and whether spawning the resolved absolute path with spawnSync survives spaces in "Program Files" without shell:true. Rows WB-N with risk. Print the COMPLETE review document body (landed verbatim at apriori/review/win-bash-req-review-v1.md) with a ledger section, ending with exactly one verdict line: "VERDICT: no major issues, ready to proceed" or "VERDICT: <N> issues open".
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-11T08:35:58.750224Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T08:35:58.906206Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T08:35:59.265201Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-11T08:35:59.765600Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-11T08:36:00.791754Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-11T08:36:02.360313Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-11T08:36:05.869122Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: 3Pl9mK6qsE6l
+codex
+I’ll read the win-bash requirement and the current golden-path runner/spec, then verify the actual bash spawn sites and assess the Windows resolution contract.
+exec
+/usr/bin/zsh -lc "sed -n '1,320p' requirement/req-v1.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,300p' scripts/golden-path.mjs" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "rg -n \"bash|spawnSync|execFileSync|walk\\.sh|bash -c|shell\" scripts/golden-path.mjs" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 0ms:
+4:// README "## Quickstart", its ```shell blocks in order — install/doctor 0, red verify 1,
+9:import { spawnSync } from 'node:child_process';
+16:  // fence-aware: heading-looking lines INSIDE ```shell blocks (heredoc'd delta specs) must not
+32:  return [...section.matchAll(/```shell\n([\s\S]*?)```/g)].map((m) => m[1]);
+36:// env drives the block walk AND every final assertion (never a bash function, never a global).
+39:    throw new Error(`README drift: ${blocks.length} shell block(s) in Quickstart, contract expects ${EXPECTS.length}`);
+40:  const lines = ['#!/bin/bash', '# assembled by golden-path.mjs — runs WITHOUT set -e: documented reds must not abort the walk'];
+41:  // bash-native binDir normalization + preflight (GPSPEC-4): cd&&pwd yields the same form command -v returns
+92:    const inst = spawnSync('npm', ['i', '-g', tgz, '--prefix', prefix], { encoding: 'utf8', shell: process.platform === 'win32' });
+103:  // (C:\Users\...) gets its backslashes eaten crossing into bash; a relative name never does
+104:  fs.writeFileSync(path.join(work, 'walk.sh'), script);
+105:  const run = spawnSync('bash', ['walk.sh'], { cwd: work, env, encoding: 'utf8' });
+113:    const r = spawnSync('bash', ['-c', cmd], { cwd: demo, env, encoding: 'utf8' });
+
+ succeeded in 106ms:
+# Requirement — win-bash (v1)
+
+change: win-bash
+target lineage: **v3 branch**. Next patch/minor. CI-infrastructure hardening: the golden-path walker resolves the RIGHT bash on native Windows or fails with a named cure; POSIX platforms unchanged.
+
+## Background — the problem (current state A, code-verified)
+
+`scripts/golden-path.mjs` spawns `spawnSync('bash', …)` three ways (the walk itself, and per-assert `bash -c`). On native Windows, PATH resolution finds `C:\Windows\System32\bash.exe` — the WSL shim — before Git Bash whenever WSL is installed (System32 precedes Git's bin in the default PATH). The WSL bash executes in a Linux world: the Windows-side npm prefix, the `binDir` PATH prepend, and every `C:`-rooted cwd are meaningless there, so the walk fails in confusing ways (or, worse, "works" against a Linux-side node). Today's CI happens to pass because the GitHub windows-2022 runner exposes Git Bash first — the defect bites real user machines with WSL enabled, exactly where the golden path is meant to be reproduced. (GPT-5.6 second review, Windows-bash claim; batch item P0-4.)
+
+## Goal (target state B)
+
+On `win32`, the walker resolves an EXPLICIT Git Bash executable and never spawns bare `bash`; when none can be found it fails immediately with a message naming the cure. Non-Windows platforms keep spawning `bash` exactly as today.
+
+**Resolution order (first hit wins; each candidate must exist as a file):**
+1. `APRIORI_GIT_BASH` env var (explicit override; if set but nonexistent → hard fail naming the var — an explicit override is never silently ignored).
+2. Derivation from the installed git: every hit of `where git` mapped to its Git-for-Windows root (`<root>\cmd\git.exe` or `<root>\mingw64\bin\git.exe` or `<root>\bin\git.exe` → `<root>\bin\bash.exe`).
+3. Conventional installs: `%ProgramFiles%\Git\bin\bash.exe`, `%ProgramFiles(x86)%\Git\bin\bash.exe`, `%LocalAppData%\Programs\Git\bin\bash.exe`.
+4. Nothing found → exit nonzero: "golden-path: no Git Bash found on this Windows machine — install Git for Windows or set APRIORI_GIT_BASH to its bin\\bash.exe" (never falls back to bare `bash`, never touches the WSL shim).
+
+**Mechanics:** one function `resolveBash()` in golden-path.mjs returning the spawn target: `'bash'` on non-win32; the resolved absolute path on win32. All three spawn sites use it. The resolution result is logged once (`golden-path: bash = <path>`) so CI logs show which bash ran.
+
+## Acceptance criteria (testable)
+
+- G1. Non-win32: `resolveBash()` returns `'bash'`; behavior byte-identical to today (the existing golden-path CI jobs stay green).
+- G2. win32 with `APRIORI_GIT_BASH` set to an existing file → that exact path; set to a missing path → hard fail naming the variable.
+- G3. win32 resolution derives Git Bash from `where git` hits across the three layout shapes (cmd/, mingw64\bin\, bin\) — unit-testable with an injected `whereGit()` seam and a fake directory layout.
+- G4. win32 with no override, no git, no conventional install → nonzero exit with the install/set-var cure; bare `bash` is never spawned.
+- G5. The resolved bash is logged once per run.
+- G6. All existing tests pass; suite + golden-path --local green on this (WSL) machine and in CI (ubuntu + windows).
+
+## Out of scope
+
+- The CLI itself (lib/) — `apriori` spawns test commands via the user's shell settings, not bash; unchanged.
+- WSL as a SUPPORTED walk environment (running the walker INSIDE WSL is the linux path and already works).
+- P1 items (authz-boundary next).
+
+## Decisions proposed
+
+- DD-1: resolution lives in golden-path.mjs (single consumer today) rather than lib/ — promoting it to lib/ waits until a second consumer exists.
+- DD-2: `where git` derivation before conventional paths — respecting the machine's actual git first beats guessing install dirs.
+
+ succeeded in 123ms:
+#!/usr/bin/env node
+// golden-path — prove the README Quickstart end-to-end, exactly as documented (GP-01..05).
+// The expected per-block exit sequence lives HERE, beside the contract it enforces:
+// README "## Quickstart", its ```shell blocks in order — install/doctor 0, red verify 1,
+// green verify 0, gate→check 0. Drift between README and this sequence FAILS the run (GP-04).
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+
+export const EXPECTS = [0, 1, 0, 0];
+
+// GP-01: pure text seam — never touches the filesystem
+export function extractBlocks(readmeText) {
+  // fence-aware: heading-looking lines INSIDE ```shell blocks (heredoc'd delta specs) must not
+  // terminate the Quickstart section
+  const lines = readmeText.split('\n');
+  const sectionLines = [];
+  let inSection = false, inFence = false;
+  for (const ln of lines) {
+    if (ln.startsWith('```')) inFence = !inFence;
+    if (!inFence && ln.startsWith('## ') && !ln.startsWith('### ')) {
+      if (inSection) break;
+      inSection = ln.trim() === '## Quickstart';
+      continue;
+    }
+    if (inSection) sectionLines.push(ln);
+  }
+  if (!inSection && sectionLines.length === 0) throw new Error('no "## Quickstart" section in the given README text');
+  const section = sectionLines.join('\n');
+  return [...section.matchAll(/```shell\n([\s\S]*?)```/g)].map((m) => m[1]);
+}
+
+// GP-02/05: assemble the walk. One resolver rule: binDir is prepended to PATH and that same
+// env drives the block walk AND every final assertion (never a bash function, never a global).
+export function buildPlan(blocks, mode, opts = {}) {
+  if (blocks.length !== EXPECTS.length)
+    throw new Error(`README drift: ${blocks.length} shell block(s) in Quickstart, contract expects ${EXPECTS.length}`);
+  const lines = ['#!/bin/bash', '# assembled by golden-path.mjs — runs WITHOUT set -e: documented reds must not abort the walk'];
+  // bash-native binDir normalization + preflight (GPSPEC-4): cd&&pwd yields the same form command -v returns
+  lines.push(`BD="$(cd "${opts.binDir.replace(/\\/g, '/')}" && pwd)"`);
+  lines.push('case "$(command -v apriori)" in "$BD"/*) ;; *) echo "PREFLIGHT: apriori resolves outside $BD: $(command -v apriori)"; exit 90;; esac');
+  blocks.forEach((block, i) => {
+    let body = block.trimEnd();
+    if (i === 0) {
+      body = body.split('\n').map((ln) => {
+        if (!ln.startsWith('npm i -g apriori-cli')) return ln;
+        return mode === 'packed'
+          ? `npm i -g "${opts.tgz.replace(/\\/g, '/')}" --prefix "${opts.prefix.replace(/\\/g, '/')}"`
+          : 'true # local mode: checkout bin shimmed onto PATH';
+      }).join('\n');
+    }
+    lines.push(`# ---- block ${i + 1} ----`);
+    lines.push(body);
+    lines.push(`echo "__BLOCK_${i + 1}_EXIT=$?"`);
+  });
+  return { script: lines.join('\n') + '\n', expects: EXPECTS };
+}
+
+function fail(msg) { console.error('golden-path: ' + msg); process.exit(1); }
+
+// the sentinel comparison as a pure seam (GP-04 asserts its message directly)
+export function assertSentinels(stdout, expects) {
+  for (let i = 0; i < expects.length; i++) {
+    const m = (stdout || '').match(new RegExp(`__BLOCK_${i + 1}_EXIT=(\\d+)`));
+    if (!m) throw new Error(`block ${i + 1}: no exit sentinel — the walk died inside or before this block`);
+    if (Number(m[1]) !== expects[i]) throw new Error(`block ${i + 1}: exit ${m[1]}, contract expects ${expects[i]}`);
+  }
+}
+
+export function main(argv) {
+  const mode = argv.includes('--packed') ? 'packed' : (argv.includes('--local') ? 'local' : null);
+  if (!mode) fail('usage: golden-path.mjs --local | --packed <tgz>');
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const checkout = path.join(here, '..');
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-golden-'));
+  let binDir, tgz = null, prefix = null;
+  if (mode === 'local') {
+    binDir = path.join(work, 'shim-bin');
+    fs.mkdirSync(binDir, { recursive: true });
+    const shim = path.join(binDir, 'apriori');
+    fs.writeFileSync(shim, `#!/bin/sh\nexec node "${path.join(checkout, 'bin', 'apriori.js').replace(/\\/g, '/')}" "$@"\n`);
+    fs.chmodSync(shim, 0o755);
+  } else {
+    tgz = path.resolve(argv[argv.indexOf('--packed') + 1] || '');
+    if (!fs.existsSync(tgz)) fail(`tarball not found: ${tgz}`);
+    prefix = path.join(work, 'prefix');
+    fs.mkdirSync(prefix, { recursive: true });
+    binDir = process.platform === 'win32' ? prefix : path.join(prefix, 'bin');
+    // install BEFORE the walk so the preflight can resolve inside the prefix
+    const inst = spawnSync('npm', ['i', '-g', tgz, '--prefix', prefix], { encoding: 'utf8', shell: process.platform === 'win32' });
+    if (inst.status !== 0) fail(`npm i -g failed: ${inst.stderr}`);
+  }
+  const env = { ...process.env, PATH: binDir + path.delimiter + process.env.PATH };
+  // sanitize test-runner inheritance: a nested `node --test` inside the walk must behave like a
+  // fresh invocation, not like a child of THIS process's test run
+  delete env.NODE_TEST_CONTEXT;
+  delete env.NODE_OPTIONS;
+  const readme = fs.readFileSync(path.join(checkout, 'README.md'), 'utf8');
+  const { script, expects } = buildPlan(extractBlocks(readme), mode, { binDir, tgz, prefix });
+  // the script is invoked by RELATIVE name with cwd=work — an absolute Windows path
+  // (C:\Users\...) gets its backslashes eaten crossing into bash; a relative name never does
+  fs.writeFileSync(path.join(work, 'walk.sh'), script);
+  const run = spawnSync('bash', ['walk.sh'], { cwd: work, env, encoding: 'utf8' });
+  process.stdout.write(run.stdout || '');
+  process.stderr.write(run.stderr || '');
+  // parse sentinels — a missing one means the script itself died (named)
+  try { assertSentinels(run.stdout, expects); } catch (e) { fail(e.message); }
+  // GP-03: final state, asserted through the SAME medium and env as the walk
+  const demo = path.join(work, 'hello-apriori');
+  const assertCmd = (label, cmd, expect = 0) => {
+    const r = spawnSync('bash', ['-c', cmd], { cwd: demo, env, encoding: 'utf8' });
+    if (r.status !== expect) fail(`final-state ${label}: exit ${r.status}, expected ${expect}\n${r.stdout}${r.stderr}`);
+  };
+  assertCmd('store verify', 'apriori verify --specs apriori/specs');
+  assertCmd('check', 'apriori check');
+  assertCmd('doctor', 'apriori doctor --no-run');
+  const archiveDir = path.join(demo, 'apriori', 'changes', 'archive');
+  const archived = fs.existsSync(archiveDir) && fs.readdirSync(archiveDir).some((b) => b.endsWith('-hello'));
+  if (!archived) fail('final-state: archived demo change not found under apriori/changes/archive/');
+  console.log(`golden-path: OK (${mode}) — ${expects.length} blocks, exits [${expects.join(', ')}], final state green`);
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main(process.argv.slice(2));
+
+codex
+The script has three `bash` spawns exactly as described. I’m checking the golden spec and current tests so I can judge whether the requested seam and Windows CI coverage are specific enough.
+exec
+/usr/bin/zsh -lc "sed -n '1,280p' test/golden-path.test.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc 'rg -n "golden-path|windows|bash|packed|TGZ|npm pack" .github/workflows/ci.yml package.json scripts test apriori/specs/golden -S' in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,220p' apriori/specs/golden/spec.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 0ms:
+### Requirement: the golden path proves the packaged CLI end-to-end
+`scripts/golden-path.mjs` SHALL extract the README Quickstart's shell blocks in document order and run them as one bash script in a fresh temp directory, with `apriori` resolving to the local checkout bin (`--local`) or to a tarball installed into an isolated prefix (`--packed <tgz>`, PATH prepended with the platform bin dir and a preflight asserting `apriori` resolves inside the prefix); it SHALL assert each block's last command against the documented exit sequence `[0, 1, 0, 0]` and the final state (store verify 0, check 0, doctor --no-run 0, archived demo change present), failing loudly with the block index and expected/actual on any mismatch. The CI workflow SHALL run the packed mode on ubuntu and windows.
+
+#### Scenario: GP-01 the extractor is a pure text seam
+- WHEN `extractBlocks(readmeText)` runs on the real README (and on doctored variants in tests)
+- THEN it returns the Quickstart's ```shell blocks in document order (four today), never reading or writing the filesystem itself
+
+#### Scenario: GP-02 a --local run walks the whole Quickstart
+- WHEN `node scripts/golden-path.mjs --local` runs in a fresh temp dir
+- THEN every block executes in sequence with the checkout bin aliased over `npm i -g`, per-block last exits match `[0, 1, 0, 0]`, and the run finishes exit 0
+
+#### Scenario: GP-03 final state is asserted, not assumed
+- WHEN the blocks complete
+- THEN the runner re-asserts: `verify --specs apriori/specs` exits 0, `check` exits 0, `doctor --no-run` exits 0, and `apriori/changes/archive/` contains the archived demo change — any miss fails the run naming the assertion
+
+#### Scenario: GP-04 drift between README and contract fails loudly
+- WHEN a doctored README text changes the block count or makes a block's exit diverge from the expected sequence
+- THEN the runner (fed through the text seam) fails naming the block index and expected/actual — the README cannot silently drift from the contract
+
+#### Scenario: GP-05 packed mode proves the published file set
+- WHEN `--packed <tgz>` installs the tarball into an isolated prefix (platform bin dir on PATH, resolve-inside-prefix preflight)
+- THEN the same walk succeeds using ONLY the packaged files — a package.json `files:` gap surfaces here; the runner aborts if `apriori` resolves outside the prefix
+
+ succeeded in 112ms:
+'use strict';
+const { test } = require('node:test');
+const assert = require('node:assert');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { spawnSync } = require('node:child_process');
+
+const ROOT = path.join(__dirname, '..');
+const README = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
+const { pathToFileURL } = require('node:url');
+async function gp() { return import(pathToFileURL(path.join(ROOT, 'scripts', 'golden-path.mjs')).href); }
+
+test('GP-01 the extractor is a pure text seam', async () => {
+  const { extractBlocks } = await gp();
+  const blocks = extractBlocks(README);
+  assert.strictEqual(blocks.length, 4);
+  assert.match(blocks[0], /npm i -g apriori-cli/);
+  assert.match(blocks[1], /apriori verify --change hello/);
+  assert.match(blocks[3], /apriori check/);
+  // pure: works on arbitrary text, throws without a Quickstart section
+  assert.throws(() => extractBlocks('# nothing here'), /Quickstart/);
+});
+
+test('GP-04 drift between README and contract fails loudly', async () => {
+  const { extractBlocks, buildPlan } = await gp();
+  // block-count drift: a doctored text with a block removed
+  const doctored = README.replace(/```shell\n[\s\S]*?```/, '');
+  assert.throws(() => buildPlan(extractBlocks(doctored), 'local', { binDir: '/x' }), /README drift: 3 shell block/);
+  // exit-code drift: a stub apriori that always exits 0 makes block 2's documented red vanish —
+  // the runner must fail naming block 2 (GPIMPL-1)
+  const stubBin = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-stub-'));
+  fs.writeFileSync(path.join(stubBin, 'apriori'), '#!/bin/sh\nexit 0\n');
+  fs.chmodSync(path.join(stubBin, 'apriori'), 0o755);
+  const { script } = buildPlan(extractBlocks(README), 'local', { binDir: stubBin });
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-gp4-'));
+  fs.writeFileSync(path.join(work, 'walk.sh'), script);
+  const env = { ...process.env, PATH: stubBin + path.delimiter + process.env.PATH };
+  delete env.NODE_TEST_CONTEXT; delete env.NODE_OPTIONS;
+  const r = spawnSync('bash', ['walk.sh'], { cwd: work, env, encoding: 'utf8' });   // relative: Windows-safe
+  // the RUNNER's own comparison must fail naming block 2 with expected/actual (GPIMPL-1)
+  const { assertSentinels, EXPECTS } = await gp();
+  assert.throws(() => assertSentinels(r.stdout, EXPECTS), /block 2: exit 0, contract expects 1/);
+});
+
+test('GP-05 packed-mode plan carries prefix install, PATH preflight (plan construction)', async () => {
+  const { extractBlocks, buildPlan } = await gp();
+  const { script } = buildPlan(extractBlocks(README), 'packed', { binDir: '/p/bin', tgz: '/t/x.tgz', prefix: '/p' });
+  assert.match(script, /npm i -g "\/t\/x\.tgz" --prefix "\/p"/);
+  assert.match(script, /command -v apriori/);
+  assert.match(script, /exit 90/);
+  assert.doesNotMatch(script, /npm i -g apriori-cli/);   // registry line substituted
+});
+
+// one shared --local walk feeds GP-02 and GP-03 (running it twice would double suite time)
+let walk = null;
+function runWalkOnce() {
+  if (walk) return walk;
+  // hijack guard (GPSPEC-3): a bogus global `apriori` earlier on the ORIGINAL PATH must never win
+  const bogus = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-bogus-'));
+  fs.writeFileSync(path.join(bogus, 'apriori'), '#!/bin/sh\necho BOGUS; exit 99\n');
+  fs.chmodSync(path.join(bogus, 'apriori'), 0o755);
+  walk = spawnSync('node', [path.join(ROOT, 'scripts', 'golden-path.mjs'), '--local'], {
+    encoding: 'utf8', env: { ...process.env, PATH: bogus + path.delimiter + process.env.PATH },
+  });
+  return walk;
+}
+
+test('GP-02 a --local run walks the whole Quickstart with the documented exits', () => {
+  const r = runWalkOnce();
+  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+  for (const [i, code] of [[1, 0], [2, 1], [3, 0], [4, 0]])
+    assert.match(r.stdout, new RegExp(`__BLOCK_${i}_EXIT=${code}`));
+  assert.doesNotMatch(r.stdout, /BOGUS/);   // the walk's resolver beat the hijacker
+});
+
+test('GP-03 final state is asserted, not assumed', () => {
+  const r = runWalkOnce();
+  // the runner only prints the OK line AFTER re-asserting verify/check/doctor and the archive dir
+  assert.match(r.stdout, /golden-path: OK \(local\) — 4 blocks, exits \[0, 1, 0, 0\], final state green/);
+  // and the assertion code path is real: the script names the assertion when one fails
+  const src = fs.readFileSync(path.join(ROOT, 'scripts', 'golden-path.mjs'), 'utf8');
+  for (const label of ['store verify', 'check', 'doctor', 'archived demo change'])
+    assert.ok(src.includes(label), `final-state assertion '${label}' present in the runner`);
+});
+
+ succeeded in 163ms:
+.github/workflows/ci.yml:14:        os: [ubuntu-latest, windows-latest]
+.github/workflows/ci.yml:26:  golden-path:
+.github/workflows/ci.yml:30:        os: [ubuntu-latest, windows-latest]
+.github/workflows/ci.yml:37:      - name: pack and walk the README Quickstart with the packed tarball
+.github/workflows/ci.yml:38:        shell: bash
+.github/workflows/ci.yml:40:          TGZ=$(npm pack --silent)
+.github/workflows/ci.yml:41:          node scripts/golden-path.mjs --packed "$TGZ"
+.github/workflows/ci.yml:47:        os: [ubuntu-latest, windows-latest]
+.github/workflows/ci.yml:60:        shell: bash
+test/golden-path.test.js:12:async function gp() { return import(pathToFileURL(path.join(ROOT, 'scripts', 'golden-path.mjs')).href); }
+test/golden-path.test.js:40:  const r = spawnSync('bash', ['walk.sh'], { cwd: work, env, encoding: 'utf8' });   // relative: Windows-safe
+test/golden-path.test.js:46:test('GP-05 packed-mode plan carries prefix install, PATH preflight (plan construction)', async () => {
+test/golden-path.test.js:48:  const { script } = buildPlan(extractBlocks(README), 'packed', { binDir: '/p/bin', tgz: '/t/x.tgz', prefix: '/p' });
+test/golden-path.test.js:63:  walk = spawnSync('node', [path.join(ROOT, 'scripts', 'golden-path.mjs'), '--local'], {
+test/golden-path.test.js:80:  assert.match(r.stdout, /golden-path: OK \(local\) — 4 blocks, exits \[0, 1, 0, 0\], final state green/);
+test/golden-path.test.js:82:  const src = fs.readFileSync(path.join(ROOT, 'scripts', 'golden-path.mjs'), 'utf8');
+scripts/golden-path.mjs:2:// golden-path — prove the README Quickstart end-to-end, exactly as documented (GP-01..05).
+scripts/golden-path.mjs:36:// env drives the block walk AND every final assertion (never a bash function, never a global).
+scripts/golden-path.mjs:40:  const lines = ['#!/bin/bash', '# assembled by golden-path.mjs — runs WITHOUT set -e: documented reds must not abort the walk'];
+scripts/golden-path.mjs:41:  // bash-native binDir normalization + preflight (GPSPEC-4): cd&&pwd yields the same form command -v returns
+scripts/golden-path.mjs:49:        return mode === 'packed'
+scripts/golden-path.mjs:61:function fail(msg) { console.error('golden-path: ' + msg); process.exit(1); }
+scripts/golden-path.mjs:73:  const mode = argv.includes('--packed') ? 'packed' : (argv.includes('--local') ? 'local' : null);
+scripts/golden-path.mjs:74:  if (!mode) fail('usage: golden-path.mjs --local | --packed <tgz>');
+scripts/golden-path.mjs:86:    tgz = path.resolve(argv[argv.indexOf('--packed') + 1] || '');
+scripts/golden-path.mjs:103:  // (C:\Users\...) gets its backslashes eaten crossing into bash; a relative name never does
+scripts/golden-path.mjs:105:  const run = spawnSync('bash', ['walk.sh'], { cwd: work, env, encoding: 'utf8' });
+scripts/golden-path.mjs:113:    const r = spawnSync('bash', ['-c', cmd], { cwd: demo, env, encoding: 'utf8' });
+scripts/golden-path.mjs:122:  console.log(`golden-path: OK (${mode}) — ${expects.length} blocks, exits [${expects.join(', ')}], final state green`);
+apriori/specs/golden/spec.md:2:`scripts/golden-path.mjs` SHALL extract the README Quickstart's shell blocks in document order and run them as one bash script in a fresh temp directory, with `apriori` resolving to the local checkout bin (`--local`) or to a tarball installed into an isolated prefix (`--packed <tgz>`, PATH prepended with the platform bin dir and a preflight asserting `apriori` resolves inside the prefix); it SHALL assert each block's last command against the documented exit sequence `[0, 1, 0, 0]` and the final state (store verify 0, check 0, doctor --no-run 0, archived demo change present), failing loudly with the block index and expected/actual on any mismatch. The CI workflow SHALL run the packed mode on ubuntu and windows.
+apriori/specs/golden/spec.md:9:- WHEN `node scripts/golden-path.mjs --local` runs in a fresh temp dir
+apriori/specs/golden/spec.md:20:#### Scenario: GP-05 packed mode proves the published file set
+apriori/specs/golden/spec.md:21:- WHEN `--packed <tgz>` installs the tarball into an isolated prefix (platform bin dir on PATH, resolve-inside-prefix preflight)
+
+codex
+The requirement has the right high-level goal, but there are contract gaps around the actual Git Bash layouts and test seam. I’ll now produce the review with formal issues where an implementer would likely need rework.
+codex
+**Requirement Review — win-bash v1**
+
+**Dimension Verdicts**
+
+1. Target state B: Clear at the goal level, but the Windows resolver contract needs tighter path/layout details.
+2. Edge/exception coverage: Incomplete for Git-for-Windows layouts, `where git` parsing, and test seam injection.
+3. Side effects: No undeclared state changes; this is CI/script behavior only.
+4. Acceptance criteria: G1-G6 are mostly testable, but G3 lacks enough seam detail to implement consistently.
+5. State-A conflicts: The current script does spawn bare `bash` at three sites: one `walk.sh` run and two final-state `bash -c` calls through `assertCmd`.
+6. Lineage: Declared and consistent with the repo; target module is the golden-path runner/spec.
+
+**Formal Issues**
+
+**WB-1 — Git-for-Windows root derivation is wrong/incomplete for common layouts**
+
+Description: The requirement maps `<root>\cmd\git.exe`, `<root>\mingw64\bin\git.exe`, and `<root>\bin\git.exe` to `<root>\bin\bash.exe`. For a hit like `C:\Program Files\Git\mingw64\bin\git.exe`, `<root>` must be `C:\Program Files\Git`, not `C:\Program Files\Git\mingw64`, otherwise the derived bash path becomes `C:\Program Files\Git\mingw64\bin\bash.exe`. The prompt also calls out `usr\bin\bash.exe`; the requirement does not say whether it is a fallback candidate. Some Git-for-Windows installs commonly expose `usr\bin\bash.exe` and/or `bin\bash.exe`, so a single derived target is fragile.
+
+Risk: Resolution can fail on valid Git-for-Windows installs or derive the wrong path, causing Windows CI/user repros to fail despite Git Bash being installed.
+
+Suggested fix: Define layout mapping explicitly:
+- `...\Git\cmd\git.exe` → probe `...\Git\bin\bash.exe`, then `...\Git\usr\bin\bash.exe` if intended.
+- `...\Git\mingw64\bin\git.exe` → root is two levels up from `mingw64\bin`; probe root-level bash candidates.
+- `...\Git\bin\git.exe` → root is one level up; probe root-level bash candidates.
+Then add G3 cases for each derived root and any chosen `usr\bin\bash.exe` fallback.
+
+**WB-2 — `where git` parsing rules are underspecified**
+
+Description: The requirement says “every hit of `where git`” but does not define parsing of stdout. On Windows, output may have CRLF, multiple hits, paths with spaces, blank lines, and possible shell noise/errors depending on how it is invoked. It also does not say whether nonzero `where git` is just “no hits” or a hard failure.
+
+Risk: Implementations may parse `where git` differently, mishandle `Program Files` paths, or fail hard on a normal no-git condition instead of continuing to conventional paths.
+
+Suggested fix: Specify `where git` invocation and parsing: run without shell if practical, split stdout on `\r?\n`, trim only line terminators/outer whitespace, ignore blank lines, preserve spaces inside paths, consider only existing files, and treat nonzero/no-output as no derived candidates, not a hard error. First valid derived bash wins.
+
+**WB-3 — G3’s injection seam is not precise enough for an ESM script**
+
+Description: G3 says unit-testable with an injected `whereGit()` seam and fake directory layout, but the requirement only names `resolveBash()` and does not specify its signature or exports. Since `golden-path.mjs` is ESM and tests currently import named exports, implementers need to know whether `resolveBash` is exported and how platform/env/fs/spawn seams are injected.
+
+Risk: The implementation may hard-code `process.platform`, `process.env`, `fs.existsSync`, and `spawnSync`, making Windows branches hard to test on non-Windows hosts or causing brittle test hacks.
+
+Suggested fix: Declare `export function resolveBash(opts = {})`, with injectable `platform`, `env`, `whereGit`, and `existsFile`/`fs` seam. Default behavior uses real `process.platform`, `process.env`, `spawnSync('where', ['git'])`, and `fs.existsSync/statSync`. Tests import it via ESM and pass fake seams.
+
+**WB-4 — CI requirement may not exercise the new Windows resolution path**
+
+Description: G6 says existing golden-path CI jobs stay green. The current Windows workflow runs under `shell: bash`, and the current requirement notes that GitHub’s windows runner already exposes Git Bash first. That can pass even if `resolveBash` incorrectly falls back to bare `bash` or never exercises the no-WSL-shim hardening.
+
+Risk: The main defect can remain untested in CI while the existing job stays green.
+
+Suggested fix: Add an explicit test/CI assertion that on a simulated `win32` platform, all spawn sites receive the absolute resolved bash path, and that a fake PATH where WSL/System32 `bash` would win is never consulted. G5’s “logged once” should assert the resolved absolute path in the Windows unit path.
+
+**Advisories**
+
+- `APRIORI_GIT_BASH` is a reasonable variable name. Specify whether relative values are allowed; recommended: resolve to absolute and require an existing file, or require absolute to reduce ambiguity.
+- Spawning an absolute path with `spawnSync(resolvedBash, args, { shell: false })` should survive spaces in `Program Files`; mention `shell:false` or “do not shell-quote the executable path” in design.
+- Conventional paths should be built from env vars only when those vars are present, and each candidate should be de-duplicated before probing/logging.
+
+**Ledger Delta**
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| WB-1 | Git-for-Windows root derivation is wrong/incomplete for `mingw64\bin` and does not decide `usr\bin\bash.exe`. | Valid Git Bash installs may not resolve, or the wrong path may be derived. | P1·r1 | open |
+| WB-2 | `where git` parsing and nonzero behavior are underspecified. | Paths with spaces, CRLF, multiple hits, or no-git cases can be implemented inconsistently. | P1·r1 | open |
+| WB-3 | G3’s injection seam is not precise enough for an ESM script. | Windows resolution can become hard to test or require brittle test hacks. | P1·r1 | open |
+| WB-4 | Existing Windows CI may not exercise the new resolver hardening. | The WSL-shim bug can survive while CI remains green. | P1·r1 | open |
+| WB-ADV-1 | Clarify env-var absolute/relative handling, shell-free spawning with spaces, and candidate de-duplication. | Advisory precision. | P1·r1 | open |
+
+VERDICT: 4 issues open
+tokens used
+2,511,766
+**Requirement Review — win-bash v1**
+
+**Dimension Verdicts**
+
+1. Target state B: Clear at the goal level, but the Windows resolver contract needs tighter path/layout details.
+2. Edge/exception coverage: Incomplete for Git-for-Windows layouts, `where git` parsing, and test seam injection.
+3. Side effects: No undeclared state changes; this is CI/script behavior only.
+4. Acceptance criteria: G1-G6 are mostly testable, but G3 lacks enough seam detail to implement consistently.
+5. State-A conflicts: The current script does spawn bare `bash` at three sites: one `walk.sh` run and two final-state `bash -c` calls through `assertCmd`.
+6. Lineage: Declared and consistent with the repo; target module is the golden-path runner/spec.
+
+**Formal Issues**
+
+**WB-1 — Git-for-Windows root derivation is wrong/incomplete for common layouts**
+
+Description: The requirement maps `<root>\cmd\git.exe`, `<root>\mingw64\bin\git.exe`, and `<root>\bin\git.exe` to `<root>\bin\bash.exe`. For a hit like `C:\Program Files\Git\mingw64\bin\git.exe`, `<root>` must be `C:\Program Files\Git`, not `C:\Program Files\Git\mingw64`, otherwise the derived bash path becomes `C:\Program Files\Git\mingw64\bin\bash.exe`. The prompt also calls out `usr\bin\bash.exe`; the requirement does not say whether it is a fallback candidate. Some Git-for-Windows installs commonly expose `usr\bin\bash.exe` and/or `bin\bash.exe`, so a single derived target is fragile.
+
+Risk: Resolution can fail on valid Git-for-Windows installs or derive the wrong path, causing Windows CI/user repros to fail despite Git Bash being installed.
+
+Suggested fix: Define layout mapping explicitly:
+- `...\Git\cmd\git.exe` → probe `...\Git\bin\bash.exe`, then `...\Git\usr\bin\bash.exe` if intended.
+- `...\Git\mingw64\bin\git.exe` → root is two levels up from `mingw64\bin`; probe root-level bash candidates.
+- `...\Git\bin\git.exe` → root is one level up; probe root-level bash candidates.
+Then add G3 cases for each derived root and any chosen `usr\bin\bash.exe` fallback.
+
+**WB-2 — `where git` parsing rules are underspecified**
+
+Description: The requirement says “every hit of `where git`” but does not define parsing of stdout. On Windows, output may have CRLF, multiple hits, paths with spaces, blank lines, and possible shell noise/errors depending on how it is invoked. It also does not say whether nonzero `where git` is just “no hits” or a hard failure.
+
+Risk: Implementations may parse `where git` differently, mishandle `Program Files` paths, or fail hard on a normal no-git condition instead of continuing to conventional paths.
+
+Suggested fix: Specify `where git` invocation and parsing: run without shell if practical, split stdout on `\r?\n`, trim only line terminators/outer whitespace, ignore blank lines, preserve spaces inside paths, consider only existing files, and treat nonzero/no-output as no derived candidates, not a hard error. First valid derived bash wins.
+
+**WB-3 — G3’s injection seam is not precise enough for an ESM script**
+
+Description: G3 says unit-testable with an injected `whereGit()` seam and fake directory layout, but the requirement only names `resolveBash()` and does not specify its signature or exports. Since `golden-path.mjs` is ESM and tests currently import named exports, implementers need to know whether `resolveBash` is exported and how platform/env/fs/spawn seams are injected.
+
+Risk: The implementation may hard-code `process.platform`, `process.env`, `fs.existsSync`, and `spawnSync`, making Windows branches hard to test on non-Windows hosts or causing brittle test hacks.
+
+Suggested fix: Declare `export function resolveBash(opts = {})`, with injectable `platform`, `env`, `whereGit`, and `existsFile`/`fs` seam. Default behavior uses real `process.platform`, `process.env`, `spawnSync('where', ['git'])`, and `fs.existsSync/statSync`. Tests import it via ESM and pass fake seams.
+
+**WB-4 — CI requirement may not exercise the new Windows resolution path**
+
+Description: G6 says existing golden-path CI jobs stay green. The current Windows workflow runs under `shell: bash`, and the current requirement notes that GitHub’s windows runner already exposes Git Bash first. That can pass even if `resolveBash` incorrectly falls back to bare `bash` or never exercises the no-WSL-shim hardening.
+
+Risk: The main defect can remain untested in CI while the existing job stays green.
+
+Suggested fix: Add an explicit test/CI assertion that on a simulated `win32` platform, all spawn sites receive the absolute resolved bash path, and that a fake PATH where WSL/System32 `bash` would win is never consulted. G5’s “logged once” should assert the resolved absolute path in the Windows unit path.
+
+**Advisories**
+
+- `APRIORI_GIT_BASH` is a reasonable variable name. Specify whether relative values are allowed; recommended: resolve to absolute and require an existing file, or require absolute to reduce ambiguity.
+- Spawning an absolute path with `spawnSync(resolvedBash, args, { shell: false })` should survive spaces in `Program Files`; mention `shell:false` or “do not shell-quote the executable path” in design.
+- Conventional paths should be built from env vars only when those vars are present, and each candidate should be de-duplicated before probing/logging.
+
+**Ledger Delta**
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| WB-1 | Git-for-Windows root derivation is wrong/incomplete for `mingw64\bin` and does not decide `usr\bin\bash.exe`. | Valid Git Bash installs may not resolve, or the wrong path may be derived. | P1·r1 | open |
+| WB-2 | `where git` parsing and nonzero behavior are underspecified. | Paths with spaces, CRLF, multiple hits, or no-git cases can be implemented inconsistently. | P1·r1 | open |
+| WB-3 | G3’s injection seam is not precise enough for an ESM script. | Windows resolution can become hard to test or require brittle test hacks. | P1·r1 | open |
+| WB-4 | Existing Windows CI may not exercise the new resolver hardening. | The WSL-shim bug can survive while CI remains green. | P1·r1 | open |
+| WB-ADV-1 | Clarify env-var absolute/relative handling, shell-free spawning with spaces, and candidate de-duplication. | Advisory precision. | P1·r1 | open |
+
+VERDICT: 4 issues open

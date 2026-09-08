@@ -1,0 +1,597 @@
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f4b30-68f9-7222-9b64-17f52a333b4c
+--------
+user
+P8 round 2 for release-docs. Producer fixed all three: RD-1 → containment claim scoped to change-DERIVED paths, operator-given args (--store/--delta/stamp) called out as used-as-given; RD-2 → strictly-read-only = check/status/doctor--no-run; verify/gate/doctor write nothing themselves but execute your test command (cross-referenced to Scope notes); RD-3 → CI packs, the script installs. Confirm (flip to 'verified') or reopen; new inaccuracies? [Read-only sandbox: print the COMPLETE review doc body for verbatim landing at apriori/review/release-docs-p8-review-v2.md] End with the ledger delta and exactly one verdict line: 'VERDICT: no spec-vs-code gaps' or 'VERDICT: <N> issues open'.
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-10T18:57:48.280627Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-10T18:57:48.601320Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-10T18:57:49.185083Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-10T18:57:49.823025Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-10T18:57:50.809022Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-10T18:57:52.565829Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-10T18:57:55.849546Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: xqWXJ2hIx3TI
+codex
+I’ll re-read the corrected release docs and ledger, then spot-check the exact code surfaces the fixes now describe.
+exec
+/usr/bin/zsh -lc "sed -n '1,220p' SECURITY.md && sed -n '1,80p' CHANGELOG.md && sed -n '1,80p' MIGRATING.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "nl -ba lib/archive-merge.js | sed -n '179,260p;391,482p'" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "nl -ba scripts/golden-path.mjs | sed -n '72,104p' && nl -ba .github/workflows/ci.yml | sed -n '26,44p'" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,160p' apriori/review/release-docs-issues.md 2>/dev/null || true" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 138ms:
+# Security
+
+## Reporting
+
+Please report suspected vulnerabilities privately via GitHub Security Advisories on this repository ("Report a vulnerability"). You should receive an acknowledgment within a week. Please do not open public issues for security reports.
+
+## Posture (what the CLI actually guarantees)
+
+- **Zero runtime dependencies.** The entire CLI is Node stdlib; there is no supply chain below it to audit but Node itself.
+- **Path containment.** Every path DERIVED from a change name — what `verify --change`, `archive --change`, `gate` and `doctor` read or move under `apriori/` — is validated by realpath containment (symlinks followed and judged by where they point; not-yet-existing targets judged by their nearest existing ancestor). Escaping paths exit 2 and nothing is read, written, or moved. Explicit operator-given file arguments (single-file `archive --store <f> --delta <f>`, `stamp <file>`) are used as given, like any file tool.
+- **Fail-closed parsing.** Unknown flags, malformed deltas, malformed CAS stamps, duplicate requirement names and vacuous verify runs are errors, never silent passes — the failure modes an attacker (or a typo) would exploit to make a gate lie are the ones that refuse loudest.
+- **Write discipline.** `check`, `status`, and `doctor --no-run` are strictly read-only. `verify`, `gate`, and `doctor` (without `--no-run`) write nothing THEMSELVES but do execute your configured test command, which runs with your privileges (see Scope notes). `archive --write` commits via temp-file + rename, failure-atomic up to its commit point; crash durability (fsync) is explicitly NOT claimed — see the documented transaction semantics.
+- **Review evidence.** The workflow's review artifacts archive raw reviewer transcripts; treat them as potentially containing whatever the reviewer saw. Do not commit secrets into a repository the workflow reviews — the transcripts are files like any other.
+
+## Scope notes
+
+- `verify`/`gate`/`doctor` execute the project's OWN configured test command — that command runs with your privileges, exactly as if you typed it. The CLI adds no sandboxing around it.
+- The `process-config.md` `test-cmd` row is human-owned input; treat write access to it as equivalent to shell access.
+# Changelog
+
+All notable changes to `apriori-cli`. Versions follow semver; the stability promise from 3.0.0 holds: CLI surface & flags, `--json` shapes, the delta format, the flow-state schema and the `apriori/` layout only break in a major.
+
+## Unreleased (3.3.0)
+
+- **Strict argument parsing everywhere** — every subcommand answers `--help`/`-h` (exit 0, wins over any other validation); unknown flags and stray positionals exit 2 naming themselves. A typo can no longer make a gate command act on the wrong target while exiting green. Three declared behavior changes: `apriori new a b` errors on `b` (was silently ignored), `apriori stamp --foo` is an unknown flag (was treated as the file), multi-value flags (`verify --specs`) stop consuming at any `-`-prefixed token (was `--`-only).
+- **README split** — the README is now a ~117-line first screen with a machine-verified executable Quickstart; deep content moved to `docs/{concepts,legacy,ci,cli,troubleshooting}` (EN/CN pairs). `check --self` guards the new pairs (a one-sided pair fails) and resolves links per-file with cross-file fragment validation.
+- **Golden path in CI** — the CI job packs the tarball (`npm pack`) and `scripts/golden-path.mjs` installs it into an isolated prefix and walks the README Quickstart verbatim on ubuntu and windows, asserting the documented exit sequence and final state. The published package is now proven as installed, not just as checked out.
+- CHANGELOG.md, MIGRATING.md, SECURITY.md (this change).
+
+## 3.2.0 — 2026-07-11 · the gate & doctor release
+
+- **`apriori gate --change <name>`** — six mechanical checks, one exit code (0 PASS / 1 BLOCKED / 2 untrustworthy): stage-aware binding verify (projected in-flight, plain archived), tasks all checked, flow-state legality, ledger (open rows and reasonless rejections block), the verdict-evidence backstop (every VERDICT-bearing review doc needs its `S-raw.*` archive — the anti-simulated-review rule, now mechanical), git-based KB freshness that degrades to n/a rather than fabricating blocks. PASS covers the mechanical face only — human gates remain human, and the output says so.
+- **`apriori doctor`** — seven onboarding checks with fix hints: Node floor, init scaffold (type-honest: files impersonating dirs are findings, never crashes), runbook freshness, tool pointers, a TAP plumbing probe with a complete failure taxonomy (test failures are explicitly NOT findings), store health, and a changes overview that surfaces pending gate-④ archived changes as information.
+- 26 new scenarios (GT-01..12, DR-01..12, CL-09..10); 142 tests.
+
+## 3.1.0 — 2026-07-10 · the projection release
+
+- **`apriori verify --change <name>`** — verify against the in-memory projected (post-merge) store; the mid-change STEP5 gate. Fixes the verification-target misalignment: store-only scans miss new scenarios, dual-dir scans miscount MODIFIED/REMOVED/RENAMED.
+- **`apriori archive --change <name>`** — whole-change discovery, per-module dry-run by default, four-phase failure-atomic `--write` (preflight/stage/commit/move).
+- **CAS base stamps + `apriori stamp <store-file>`** — opt-in divergence detection; a diverged store refuses to project or merge (the §4.11 serialize rule, mechanical).
+- **Deprecated blocks excluded from ALL verify forms** — post-REMOVED stores no longer demand tests for removed behavior forever; lingering tests turn ORPHAN. (See MIGRATING.md.)
+- Realpath containment on every participating path (incl. symlinked specs/, subdirs, the archive destination); strict delta hygiene (duplicate requirement names, malformed stamps, zero-op files — all fail closed).
+- 26 new scenarios (SR-16..25, AM-13..27, CL-08); 116 tests.
+
+## 3.0.1 — 2026-07-10 · fail-closed
+
+- `verify` never GREEN on broken/vacuous runs: exit taxonomy 0/1/2; missing targets, zero scenarios, spawn/signal/bailout, zero-TAP output, and non-zero exits unexplained by TAP all refuse to pass. SKIP/TODO count as nothing; duplicate scenario IDs force GAPS; fenced scenarios are documentation; `XX-01b` never binds to `XX-01`.
+- `check` split into consumer mode (default) vs `--self` (the apriori repo's own handbook checks) — consumers are never failed by our self-checks.
+- `archive`: change-name validation + path-containment guard; transactional temp→move→rename commit; content-bearing zero-op deltas error instead of silently merging nothing.
+- Cross-platform test fixtures (`node -e`, no printf/echo). Credit: external review by GPT-5.6.
+
+## 3.0.0 — 2026-07-10 · first stable release
+
+- Seven commands: `init` (6-tool scaffolding) / `new` / `status` / `verify` / `archive` / `check` / `update`, with `--json` and `--version`.
+- Executable specs: scenario IDs bind to TAP test runs; `apriori verify` GREEN is a deterministic STEP5 gate.
+- Native delta-spec archive merge (ADDED/MODIFIED/REMOVED/RENAMED, idempotent reruns, conflict stop).
+- The full protocol: Brainstorm stance (two entry doors) → STEP0–6 state machine → heterogeneous adversarial review (issue ledger, verdict discipline) → living spec store + knowledge base with source-commit stamps; guarantee-claim discipline.
+- Validation: three brainstorm-phase comparisons and three full builds vs OpenSpec & Superpowers, one legacy-project run; 15 alpha iterations. Single-operator validation — see the tag message for honest limits.
+# Migrating
+
+The 3.0.0 stability promise: CLI surface & flags, `--json` shapes, the delta format, the flow-state schema and the `apriori/` layout only break in a major. Everything below is either additive or a declared fail-closed tightening.
+
+## 3.2.x → 3.3.0
+
+**Strict argument parsing.** Nothing on a documented success path changes. Three error-path behaviors are new, all fail-closed:
+
+| you typed | before | now |
+|---|---|---|
+| `apriori <sub> --typo-flag` | silently ignored (verify could fall back to the config and verify the WRONG spec set, green) | exit 2 naming the flag |
+| `apriori new a b` | `b` silently ignored | exit 2 naming `b` |
+| `apriori stamp --foo` | `--foo` treated as the store-file positional | exit 2, unknown flag |
+| `apriori verify --specs a -x ...` | `-x` consumed as a spec path | exit 2 naming `-x` |
+
+If a script of yours relied on silent-ignore, the exit-2 message names exactly what to remove. Every subcommand now answers `--help`.
+
+**README/docs layout.** The handbook moved: concepts/workflow/example → `docs/concepts.md`, legacy guidance → `docs/legacy.md`, CI snippets → `docs/ci.md`, CLI reference + configuration → `docs/cli.md`, troubleshooting → `docs/troubleshooting.md` (all with `_cn` mirrors). Old deep links into README sections should point at the docs files.
+
+## 3.0.x → 3.1.0
+
+**Deprecated blocks stop being demanded (the one behavior change).** Before 3.1, a requirement archived via `## REMOVED Requirements` kept demanding its scenarios' tests forever (the deprecated block still carried `#### Scenario:` headings). From 3.1, every `verify` form excludes deprecated blocks; a test still tagged with a removed scenario's ID reports as ORPHAN. **Action:** delete tests for removed scenarios — ORPHAN is the reminder, not a bug.
+
+**New, all opt-in / additive:** `verify --change` (use it as the mid-change STEP5 gate — the runbook was updated accordingly), `archive --change`, CAS base stamps (`apriori stamp`; unstamped deltas behave exactly as before), stricter delta hygiene (deltas that were silently collapsing — duplicate requirement names, malformed stamps — now error; they were corrupt input all along).
+
+## 2.x / 1.x → 3.x
+
+The 1.x/2.x lines used the OpenSpec adapter and live on their own branches (`main`, `v2`) — there is no in-place migration; 3.x is a reimplementation of the same artifact interface as a zero-dependency CLI. Start fresh with `apriori init` and copy your spec content into `apriori/specs/` (the Requirement/Scenario format is unchanged).
+
+ succeeded in 124ms:
+    72	export function main(argv) {
+    73	  const mode = argv.includes('--packed') ? 'packed' : (argv.includes('--local') ? 'local' : null);
+    74	  if (!mode) fail('usage: golden-path.mjs --local | --packed <tgz>');
+    75	  const here = path.dirname(fileURLToPath(import.meta.url));
+    76	  const checkout = path.join(here, '..');
+    77	  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-golden-'));
+    78	  let binDir, tgz = null, prefix = null;
+    79	  if (mode === 'local') {
+    80	    binDir = path.join(work, 'shim-bin');
+    81	    fs.mkdirSync(binDir, { recursive: true });
+    82	    const shim = path.join(binDir, 'apriori');
+    83	    fs.writeFileSync(shim, `#!/bin/sh\nexec node "${path.join(checkout, 'bin', 'apriori.js').replace(/\\/g, '/')}" "$@"\n`);
+    84	    fs.chmodSync(shim, 0o755);
+    85	  } else {
+    86	    tgz = path.resolve(argv[argv.indexOf('--packed') + 1] || '');
+    87	    if (!fs.existsSync(tgz)) fail(`tarball not found: ${tgz}`);
+    88	    prefix = path.join(work, 'prefix');
+    89	    fs.mkdirSync(prefix, { recursive: true });
+    90	    binDir = process.platform === 'win32' ? prefix : path.join(prefix, 'bin');
+    91	    // install BEFORE the walk so the preflight can resolve inside the prefix
+    92	    const inst = spawnSync('npm', ['i', '-g', tgz, '--prefix', prefix], { encoding: 'utf8', shell: process.platform === 'win32' });
+    93	    if (inst.status !== 0) fail(`npm i -g failed: ${inst.stderr}`);
+    94	  }
+    95	  const env = { ...process.env, PATH: binDir + path.delimiter + process.env.PATH };
+    96	  // sanitize test-runner inheritance: a nested `node --test` inside the walk must behave like a
+    97	  // fresh invocation, not like a child of THIS process's test run
+    98	  delete env.NODE_TEST_CONTEXT;
+    99	  delete env.NODE_OPTIONS;
+   100	  const readme = fs.readFileSync(path.join(checkout, 'README.md'), 'utf8');
+   101	  const { script, expects } = buildPlan(extractBlocks(readme), mode, { binDir, tgz, prefix });
+   102	  const scriptPath = path.join(work, 'walk.sh');
+   103	  fs.writeFileSync(scriptPath, script);
+   104	  const run = spawnSync('bash', [scriptPath], { cwd: work, env, encoding: 'utf8' });
+    26	  golden-path:
+    27	    strategy:
+    28	      fail-fast: false
+    29	      matrix:
+    30	        os: [ubuntu-latest, windows-latest]
+    31	    runs-on: ${{ matrix.os }}
+    32	    steps:
+    33	      - uses: actions/checkout@v4
+    34	      - uses: actions/setup-node@v4
+    35	        with:
+    36	          node-version: '20'
+    37	      - name: pack and walk the README Quickstart with the packed tarball
+    38	        shell: bash
+    39	        run: |
+    40	          TGZ=$(npm pack --silent)
+    41	          node scripts/golden-path.mjs --packed "$TGZ"
+
+ succeeded in 142ms:
+   179	// Realpath containment: target (followed through symlinks; not-yet-existing targets judged
+   180	// by their nearest existing ancestor) must resolve STRICTLY inside root. Fail-closed.
+   181	function containsReal(root, target) {
+   182	  let realRoot;
+   183	  try { realRoot = fs.realpathSync(root); } catch { return false; }
+   184	  let cur = path.resolve(target);
+   185	  const rest = [];
+   186	  while (!fs.existsSync(cur)) {
+   187	    const parent = path.dirname(cur);
+   188	    if (parent === cur) return false;
+   189	    rest.unshift(path.basename(cur));
+   190	    cur = parent;
+   191	  }
+   192	  let realCur;
+   193	  try { realCur = fs.realpathSync(cur); } catch { return false; }
+   194	  const full = rest.length ? path.join(realCur, ...rest) : realCur;
+   195	  return full !== realRoot && (full + path.sep).startsWith(realRoot + path.sep);
+   196	}
+   197	
+   198	function mdFilesUnder(dir) {
+   199	  const out = [];
+   200	  const walk = (d) => {
+   201	    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+   202	      const p = path.join(d, e.name);
+   203	      // Dirents reflect lstat: a symlink is neither file nor directory. Follow it explicitly —
+   204	      // silently skipping a symlinked dir would hide deltas (fail-open); containment judges the target.
+   205	      let isDir = e.isDirectory();
+   206	      if (e.isSymbolicLink()) {
+   207	        try { isDir = fs.statSync(p).isDirectory(); } catch { isDir = false; /* broken link: fall through, read fails loudly */ }
+   208	      }
+   209	      if (isDir) walk(p);
+   210	      else if (e.name.endsWith('.md')) out.push(p);
+   211	    }
+   212	  };
+   213	  if (fs.existsSync(dir)) walk(dir);
+   214	  return out.sort();
+   215	}
+   216	
+   217	// Discover a change's delta files. → { files: [{abs, suffix}], errors: [] } — errors are
+   218	// VALIDATION class (exit 2 on both surfaces): bad name, missing dir, escape, zero files.
+   219	function discoverDeltas(changesDirAbs, name) {
+   220	  const errors = [];
+   221	  if (!name || !CHANGE_NAME_RE.test(name)) return { files: [], errors: [`invalid change name '${name}' — bare kebab-case only`] };
+   222	  const changeDir = path.join(changesDirAbs, name);
+   223	  if (!fs.existsSync(changeDir)) return { files: [], errors: [`change '${name}' not found under ${changesDirAbs}`] };
+   224	  if (!containsReal(changesDirAbs, changeDir)) return { files: [], errors: [`change path escapes ${changesDirAbs}: ${changeDir}`] };
+   225	  const specsDir = path.join(changeDir, 'specs');
+   226	  // a symlinked specs/ pointing outside would smuggle its target in as the containment ROOT —
+   227	  // require specs/ itself to really live inside the change dir before trusting it as a root
+   228	  if (fs.existsSync(specsDir) && !containsReal(changeDir, specsDir))
+   229	    return { files: [], errors: [`specs dir escapes the change dir (symlink?): ${specsDir}`] };
+   230	  const all = mdFilesUnder(specsDir);
+   231	  if (!all.length) return { files: [], errors: [`no delta spec files (*.md) found under ${specsDir}`] };
+   232	  const files = [];
+   233	  for (const abs of all) {
+   234	    if (!containsReal(specsDir, abs)) { errors.push(`delta path escapes the change root: ${abs}`); continue; }
+   235	    files.push({ abs, suffix: path.relative(specsDir, abs).split(path.sep).join('/') });
+   236	  }
+   237	  return { files, errors };
+   238	}
+   239	
+   240	// Build the projection: apply every delta to its mapped store file IN MEMORY.
+   241	// → { texts: Map<suffix, projectedText>, modules, perModule, conflicts, casMismatches,
+   242	//     hygiene, validation } — texts covers ALL store files (pass-through + projected).
+   243	function buildProjection(storeRoot, deltaFiles, change) {
+   244	  const texts = new Map(), perModule = new Map(), modules = [];
+   245	  const conflicts = [], casMismatches = [], hygiene = [], validation = [];
+   246	  for (const abs of mdFilesUnder(storeRoot))
+   247	    texts.set(path.relative(storeRoot, abs).split(path.sep).join('/'), fs.readFileSync(abs, 'utf8'));
+   248	  for (const { abs, suffix } of deltaFiles) {
+   249	    modules.push(suffix);
+   250	    const target = path.join(storeRoot, ...suffix.split('/'));
+   251	    if (!containsReal(storeRoot, target)) { validation.push(`store target escapes ${storeRoot}: ${target}`); continue; }
+   252	    const raw = fs.readFileSync(abs, 'utf8');
+   253	    if (!raw.trim()) { hygiene.push(`empty delta file: ${abs}`); continue; }
+   254	    const { delta, stamp, problems } = parseDeltaStrict(raw);
+   255	    if (problems.length) { hygiene.push(...problems.map((p) => `${abs}: ${p}`)); continue; }
+   256	    if (deltaOpCount(delta) === 0) { hygiene.push(`parsed 0 delta operations from ${abs} — it has content but no recognized operations`); continue; }
+   257	    const storeText = texts.get(suffix) || '';
+   258	    if (stamp) {
+   259	      const actual = texts.has(suffix) ? fingerprint(storeText) : 'new';
+   260	      if (stamp !== actual) { casMismatches.push(`base mismatch for ${target}: delta expects ${stamp}, store is ${actual}`); continue; }
+   391	function stampCli(argv) {
+   392	  return withStrict(argv, { sub: 'stamp', usage: STAMP_USAGE, positionals: 1, flags: {} }, (f, pos) => {
+   393	    const p = pos[0];
+   394	    if (!fs.existsSync(p)) { console.log('<!-- apriori-base: new -->'); return 0; }
+   395	    if (fs.statSync(p).isDirectory()) { console.error(`stamp: ${p} is a directory, not a store file`); return 2; }
+   396	    let text;
+   397	    try { text = fs.readFileSync(p, 'utf8'); }
+   398	    catch (e) { console.error(`stamp: cannot read ${p}: ${e.message}`); return 2; }
+   399	    console.log(`<!-- apriori-base: ${fingerprint(text)} -->`);
+   400	    return 0;
+   401	  });
+   402	}
+   403	
+   404	const USAGE = 'usage: apriori archive --store <f> --delta <f> --change <name> [--write] [--changes-dir <dir>]\n   or: apriori archive --change <name> [--write] [--changes-dir <dir>]';
+   405	
+   406	function cli(argv) {
+   407	  return withStrict(argv, { sub: 'archive', usage: USAGE, positionals: 0,
+   408	    flags: { '--store': 'value', '--delta': 'value', '--change': 'value', '--write': 'flag', '--changes-dir': 'value' } }, (f) => {
+   409	    const a = { store: f['--store'] || null, delta: f['--delta'] || null, change: f['--change'] || null,
+   410	      write: !!f['--write'], changesDir: f['--changes-dir'] || null };
+   411	  // high-level form: --change alone (no --store/--delta) drives the whole change
+   412	    if (a.change && !a.store && !a.delta) {
+   413	      const r = archiveChange({ cwd: process.cwd(), change: a.change, write: a.write,
+   414	        changesDir: a.changesDir || undefined, changesDirExplicit: !!a.changesDir });
+   415	      for (const l of r.out) console.log(l);
+   416	      for (const l of r.err) console.error(l);
+   417	      return r.code;
+   418	    }
+   419	    if (a.change && (a.store || a.delta) && !(a.store && a.delta)) {
+   420	      console.error('usage: apriori archive --change <name> [--write] [--changes-dir <dir>]  (high-level form)\n   or: apriori archive --store <f> --delta <f> --change <name> [--write] [--changes-dir <dir>]  (single-file form)\n(--change cannot be combined with only one of --store/--delta)');
+   421	      return 2;
+   422	    }
+   423	    if (!a.store || !a.delta || !a.change) { console.error(USAGE); return 2; }
+   424	    if (!CHANGE_NAME_RE.test(a.change)) { console.error(`archive: invalid change name '${a.change}' — bare kebab-case only (path segments are not allowed)`); return 2; }
+   425	    if (a.changesDir && !fs.existsSync(path.join(a.changesDir, a.change))) {
+   426	      console.error(`archive: change '${a.change}' not found under ${a.changesDir} — nothing to move`); return 2;
+   427	    }
+   428	    // first archive in a repo: the store file may not exist yet — start from an empty store
+   429	    const storeExists = fs.existsSync(a.store);
+   430	    const storeText = storeExists ? fs.readFileSync(a.store, 'utf8') : '';
+   431	    if (!storeExists) console.log(`store ${a.store} does not exist yet — will be created${a.write ? '' : ' on --write'}`);
+   432	    const deltaText = fs.readFileSync(a.delta, 'utf8');
+   433	    const { delta, stamp, problems } = parseDeltaStrict(deltaText);
+   434	    if (problems.length) {
+   435	      for (const p of problems) console.error(`archive: ${a.delta}: ${p}`);
+   436	      console.log('\nRESULT: MALFORMED DELTA — nothing written');
+   437	      return 1;
+   438	    }
+   439	    // Guard against a silent no-op: a delta with real content that parsed to zero operations
+   440	    // is almost always a format mismatch (wrong heading level/keyword), not an empty change.
+   441	    if (deltaText.trim() && deltaOpCount(delta) === 0) {
+   442	      console.error(`archive: parsed 0 delta operations from ${a.delta} — it has content but no recognized operations.`);
+   443	      console.error('  expected `## ADDED|MODIFIED|REMOVED Requirements` (h2) with `### Requirement: <name>` (h3) blocks,');
+   444	      console.error('  or `## RENAMED Requirements` with `- Old -> New` lines. Nothing written.');
+   445	      return 1;
+   446	    }
+   447	    // CAS: a present base stamp must match the store the delta is about to merge into (AM-24/AM-26)
+   448	    if (stamp) {
+   449	      const actual = storeExists ? fingerprint(storeText) : 'new';
+   450	      if (stamp !== actual) {
+   451	        console.error(`archive: base mismatch for ${a.store}: delta expects ${stamp}, store is ${actual} — nothing written (serialize per §4.11)`);
+   452	        return 1;
+   453	      }
+   454	    }
+   455	    const { store, merged, modified, deprecated, renamed, conflicts, unchanged } = merge(storeText, delta, a.change);
+   456	
+   457	    for (const [label, ids] of [['merged (ADDED)', merged], ['modified (MODIFIED)', modified], ['deprecated (REMOVED)', deprecated], ['renamed (RENAMED)', renamed], ['already merged (no-op)', unchanged]])
+   458	      if (ids.length) console.log(`${label}: ${ids.join(', ')}`);
+   459	
+   460	    if (conflicts.length) {
+   461	      console.log('\nCONFLICTS (stop — open a ledger issue, human resolves):');
+   462	      for (const c of conflicts) console.log(`  ✗ ${c}`);
+   463	      console.log('\nRESULT: CONFLICT — nothing written');
+   464	      return 1;
+   465	    }
+   466	    if (a.write) {
+   467	      // Transactional ordering: stage the store to a temp file, do the (atomic) dir move, then
+   468	      // commit the store via rename. If the move fails, the temp is discarded and the store on
+   469	      // disk stays byte-for-byte untouched — never a half-completed archive.
+   470	      fs.mkdirSync(path.dirname(a.store), { recursive: true });
+   471	      const tmp = a.store + '.tmp-archive';
+   472	      fs.writeFileSync(tmp, renderStore(storeText, store));
+   473	      let moved = null;
+   474	      if (a.changesDir) {
+   475	        try { moved = archiveChangeDir(a.changesDir, a.change, new Date()); }
+   476	        catch (e) { fs.rmSync(tmp, { force: true }); console.error(`archive: ${e.message} — store left untouched`); return 1; }
+   477	        if (moved === null) { fs.rmSync(tmp, { force: true }); console.error(`archive: change dir vanished mid-run — store left untouched`); return 1; }
+   478	      }
+   479	      fs.renameSync(tmp, a.store);
+   480	      console.log(`\nRESULT: MERGED — ${a.store} rewritten${moved ? `; change archived → ${moved}` : ''}`);
+   481	    } else {
+   482	      console.log(`\nRESULT: MERGED (dry-run; ${store.size} requirements in result) — pass --write to apply`);
+
+ succeeded in 153ms:
+# Issue ledger — release-docs
+
+Rows recorded on behalf of the reviewer (codex session 019f4b30-68f9-7222-9b64-17f52a333b4c; raws: release-docs-p8-review-v1-raw.txt).
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| RD-1 | SECURITY.md overstated containment (single-file --store/--delta are used as given). | Over-claiming in a security document. | STEP5·r1 | fixed (r2: containment scoped to change-derived paths; operator-given args called out) |
+| RD-2 | SECURITY.md read-only claim contradicted the test-command scope note. | Internal inconsistency in a security document. | STEP5·r1 | fixed (r2: strictly-read-only trio separated; verify/gate/doctor write nothing themselves but run your test command) |
+| RD-3 | CHANGELOG assigned npm pack to the script instead of the CI job. | Minor factual drift. | STEP5·r1 | fixed (r2: wording corrected) |
+
+codex
+The fixes match the three prior findings at the specific lines I checked. I’m doing one narrower pass on `doctor`/`status` because the revised containment wording still mentions doctor’s change-derived paths.
+exec
+/usr/bin/zsh -lc "nl -ba lib/status.js | sed -n '1,120p' && nl -ba lib/doctor.js | sed -n '136,168p'" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc 'rg -n "Path containment|doctor|change-derived|DERIVED|activeChanges|containsReal" SECURITY.md lib/status.js lib/doctor.js apriori/specs/doctor/spec.md apriori/truth/status.md' in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 144ms:
+     1	'use strict';
+     2	/*
+     3	 * apriori status — answer "where am I / what's left" for a change.
+     4	 * Reads the flow-state file + the issue ledger; zero deps, pure Node stdlib.
+     5	 */
+     6	const fs = require('fs');
+     7	const path = require('path');
+     8	const { withStrict } = require('./args');
+     9	
+    10	// parse `key: value` lines from a flow-state file → object; plus the last gate line
+    11	function parseFlowState(text) {
+    12	  const out = {};
+    13	  for (const key of ['change', 'tier', 'track', 'current-step', 'round', 'next-action', 'lineage']) {
+    14	    const m = text.match(new RegExp('^' + key + ':\\s*(.+)$', 'm'));
+    15	    if (m) out[key] = m[1].replace(/\s*#.*$/, '').trim();
+    16	  }
+    17	  const gates = [...text.matchAll(/^\s*-\s*(\d{4}-\d{2}-\d{2}\S*\s+.+)$/gm)].map((m) => m[1].trim());
+    18	  out.lastGate = gates.length ? gates[gates.length - 1] : null;
+    19	  return out;
+    20	}
+    21	
+    22	// parse a P0 ledger markdown table → rows with {id, status}
+    23	function parseLedger(text) {
+    24	  const rows = [];
+    25	  for (const line of text.split('\n')) {
+    26	    const m = line.match(/^\|\s*([^|]+?)\s*\|.*\|\s*([^|]+?)\s*\|\s*$/);
+    27	    if (!m) continue;
+    28	    const id = m[1].trim(), status = m[2].trim();
+    29	    if (id === 'ID' || /^-+$/.test(id)) continue;         // header / separator
+    30	    rows.push({ id, status });
+    31	  }
+    32	  return rows;
+    33	}
+    34	
+    35	function activeChanges(root) {
+    36	  const dir = path.join(root, 'apriori', 'changes');
+    37	  if (!fs.existsSync(dir)) return [];
+    38	  return fs.readdirSync(dir, { withFileTypes: true })
+    39	    .filter((e) => e.isDirectory() && e.name !== 'archive')
+    40	    .map((e) => e.name).sort();
+    41	}
+    42	
+    43	function changeStatus(root, change) {
+    44	  const fsPath = path.join(root, 'apriori', 'changes', change, 'flow-state.md');
+    45	  const state = fs.existsSync(fsPath) ? parseFlowState(fs.readFileSync(fsPath, 'utf8')) : null;
+    46	  const ledgerPath = path.join(root, 'apriori', 'review', `${change}-issues.md`);
+    47	  const rows = fs.existsSync(ledgerPath) ? parseLedger(fs.readFileSync(ledgerPath, 'utf8')) : [];
+    48	  const open = rows.filter((r) => /^open\b/i.test(r.status));
+    49	  return { change, state, open, hasFlowState: !!state };
+    50	}
+    51	
+    52	function formatOne(s) {
+    53	  const lines = [];
+    54	  if (!s.state) { lines.push(`change: ${s.change} (no flow-state file found)`); }
+    55	  else {
+    56	    lines.push(`change:       ${s.state.change || s.change}`);
+    57	    lines.push(`step:         ${s.state['current-step'] || '?'}   (tier ${s.state.tier || '?'}, track ${s.state.track || '?'})`);
+    58	    if (s.state['next-action']) lines.push(`next-action:  ${s.state['next-action']}`);
+    59	    if (s.state.lastGate) lines.push(`last gate:    ${s.state.lastGate}`);
+    60	  }
+    61	  lines.push(`open ledger:  ${s.open.length}` + (s.open.length ? ` — ${s.open.map((r) => r.id).join(', ')}` : ''));
+    62	  return lines.join('\n');
+    63	}
+    64	
+    65	// machine-consumable shape for one change
+    66	function toJson(s) {
+    67	  return {
+    68	    change: s.change,
+    69	    step: s.state ? s.state['current-step'] || null : null,
+    70	    tier: s.state ? s.state.tier || null : null,
+    71	    track: s.state ? s.state.track || null : null,
+    72	    lineage: s.state ? s.state.lineage || null : null,
+    73	    nextAction: s.state ? s.state['next-action'] || null : null,
+    74	    lastGate: s.state ? s.state.lastGate : null,
+    75	    hasFlowState: s.hasFlowState,
+    76	    openLedger: s.open.map((r) => r.id),
+    77	  };
+    78	}
+    79	
+    80	const USAGE = 'usage: apriori status [--change <name>] [--json]';
+    81	
+    82	function cli(argv) {
+    83	  return withStrict(argv, { sub: 'status', usage: USAGE, positionals: 0,
+    84	    flags: { '--change': 'value', '--json': 'flag' } }, (f) => {
+    85	    const root = process.cwd();
+    86	    const change = f['--change'] || null, json = !!f['--json'];
+    87	    if (change) {
+    88	      const s = changeStatus(root, change);
+    89	      console.log(json ? JSON.stringify(toJson(s), null, 2) : formatOne(s));
+    90	      return 0;
+    91	    }
+    92	    const changes = activeChanges(root);
+    93	    if (json) {
+    94	      console.log(JSON.stringify({ changes: changes.map((c) => toJson(changeStatus(root, c))) }, null, 2));
+    95	      return 0;
+    96	    }
+    97	    if (!changes.length) { console.log('No active changes under apriori/changes/.'); return 0; }
+    98	    console.log(`Active changes (${changes.length}):\n`);
+    99	    for (const c of changes) {
+   100	      const s = changeStatus(root, c);
+   101	      const step = s.state ? s.state['current-step'] || '?' : 'no flow-state';
+   102	      console.log(`  ${c}  —  ${step}, ${s.open.length} open`);
+   103	    }
+   104	    console.log('\nRun `apriori status --change <name>` for detail.');
+   105	    return 0;
+   106	  });
+   107	}
+   108	
+   109	module.exports = { parseFlowState, parseLedger, activeChanges, changeStatus, formatOne, toJson, cli };
+   136	
+   137	  // D7 — changes overview
+   138	  const actives = activeChanges(cwd);
+   139	  const notes = [];
+   140	  let d7bad = 0;
+   141	  for (const c of actives) {
+   142	    const fp = path.join(cwd, 'apriori', 'changes', c, 'flow-state.md');
+   143	    if (!fs.existsSync(fp)) { checks.push({ id: 'D7', status: 'finding', detail: `${c}: no flow-state.md`, fix: 'apriori new / restore the file' }); d7bad++; continue; }
+   144	    let st;
+   145	    try { st = parseFlowState(fs.readFileSync(fp, 'utf8')); }
+   146	    catch (e) { checks.push({ id: 'D7', status: 'finding', detail: `${c}: flow-state unreadable (${e.message})`, fix: 'fix the file' }); d7bad++; continue; }
+   147	    if (!st.change) { checks.push({ id: 'D7', status: 'finding', detail: `${c}: flow-state has no 'change:' key`, fix: 'fix the file' }); d7bad++; }
+   148	    else if (st.change !== c) { checks.push({ id: 'D7', status: 'finding', detail: `${c}: flow-state says 'change: ${st.change}' — mismatches the dir`, fix: 'fix the file' }); d7bad++; }
+   149	    else notes.push(`${c} @ ${st['current-step'] || '?'}`);
+   150	  }
+   151	  const archRoot = path.join(cwd, 'apriori', 'changes', 'archive');
+   152	  if (fs.existsSync(archRoot)) {
+   153	    for (const b of fs.readdirSync(archRoot).sort()) {
+   154	      if (!/^\d{4}-\d{2}-\d{2}T\d{4}-/.test(b)) continue;
+   155	      const dir = path.join(archRoot, b);
+   156	      let isDir = false;
+   157	      try { isDir = fs.statSync(dir).isDirectory(); } catch { continue; }
+   158	      if (!isDir) continue;
+   159	      if (!containsReal(archRoot, dir)) { notes.push(`${b}: skipped (escapes archive/ — symlink?)`); continue; }
+   160	      const fp = path.join(dir, 'flow-state.md');
+   161	      if (!fs.existsSync(fp)) continue;
+   162	      const st = parseFlowState(fs.readFileSync(fp, 'utf8'));
+   163	      const step = st['current-step'];
+   164	      if (step && step !== 'DONE' && step !== 'ABANDONED') notes.push(`archived ${b} @ ${step} — gate ④ possibly pending`);
+   165	    }
+   166	  }
+   167	  if (!d7bad) checks.push(actives.length || notes.length
+   168	    ? { id: 'D7', status: 'ok', detail: notes.join('; ') || `${actives.length} active change(s), flow-states valid` }
+
+ succeeded in 140ms:
+lib/doctor.js:3: * apriori doctor — diagnose the project↔apriori seam. Seven checks, one exit code:
+lib/doctor.js:13:const { activeChanges, parseFlowState } = require('./status');
+lib/doctor.js:14:const { containsReal } = require('./archive-merge');
+lib/doctor.js:19:// type-honest probes: doctor's whole job is malformed scaffolds — a file impersonating a
+lib/doctor.js:47:  return { id: 'D5', status: 'ok', detail: `TAP plumbing OK (${pass}p/${failCount}f — test failures are verify's business, not doctor's)` };
+lib/doctor.js:138:  const actives = activeChanges(cwd);
+lib/doctor.js:159:      if (!containsReal(archRoot, dir)) { notes.push(`${b}: skipped (escapes archive/ — symlink?)`); continue; }
+lib/doctor.js:179:const USAGE = 'usage: apriori doctor [--test-cmd "<cmd>"] [--no-run] [--cwd <dir>] [--json]';
+lib/doctor.js:182:  return withStrict(argv, { sub: 'doctor', usage: USAGE, positionals: 0,
+lib/doctor.js:188:    for (const e of res.errors) console.error('doctor: ' + e);
+lib/status.js:35:function activeChanges(root) {
+lib/status.js:92:    const changes = activeChanges(root);
+lib/status.js:109:module.exports = { parseFlowState, parseLedger, activeChanges, changeStatus, formatOne, toJson, cli };
+SECURITY.md:10:- **Path containment.** Every path DERIVED from a change name — what `verify --change`, `archive --change`, `gate` and `doctor` read or move under `apriori/` — is validated by realpath containment (symlinks followed and judged by where they point; not-yet-existing targets judged by their nearest existing ancestor). Escaping paths exit 2 and nothing is read, written, or moved. Explicit operator-given file arguments (single-file `archive --store <f> --delta <f>`, `stamp <file>`) are used as given, like any file tool.
+SECURITY.md:12:- **Write discipline.** `check`, `status`, and `doctor --no-run` are strictly read-only. `verify`, `gate`, and `doctor` (without `--no-run`) write nothing THEMSELVES but do execute your configured test command, which runs with your privileges (see Scope notes). `archive --write` commits via temp-file + rename, failure-atomic up to its commit point; crash durability (fsync) is explicitly NOT claimed — see the documented transaction semantics.
+SECURITY.md:17:- `verify`/`gate`/`doctor` execute the project's OWN configured test command — that command runs with your privileges, exactly as if you typed it. The CLI adds no sandboxing around it.
+apriori/truth/status.md:12:- `activeChanges(root)` → sorted dir names under `<root>/apriori/changes/`, excluding `archive`; [] when the dir is missing.
+apriori/specs/doctor/spec.md:1:### Requirement: doctor diagnoses the project-apriori seam
+apriori/specs/doctor/spec.md:2:`apriori doctor` SHALL run seven read-only checks (D1 Node floor · D2 init scaffold · D3 runbook freshness · D4 tool pointers · D5 TAP probe · D6 store health · D7 changes overview), each reporting ok/finding/not-applicable with a fix hint on findings, and SHALL encode the aggregate in its exit code: 0 = zero findings (`DOCTOR: HEALTHY`), 1 = ≥1 finding (`DOCTOR: <n> finding(s)`), 2 = unusable (Node below floor, `apriori/` missing entirely, positional-arg usage error) — printing whatever checks already ran. Doctor never repairs and never writes; its ONLY side effect is D5 executing the project's test command once, removed by `--no-run`.
+apriori/specs/doctor/spec.md:10:- THEN doctor exits 2, the message names `apriori init`, and `--json` reports `result: "UNUSABLE"` with the already-run checks (D1) listed
+apriori/specs/doctor/spec.md:26:- THEN D5 classifies: spawn error, signal kill, `Bail out!`, empty output, zero parsed TAP without a version/plan line (naming `--test-reporter=tap`), a TAP version or non-`1..0` plan with zero result lines ("truncated or malformed"), and a non-zero exit unexplained by parsed TAP failures — each a finding; parsed TAP whose failures explain any non-zero exit is ok (counts as info — test failures are NOT doctor findings), and an exactly-`1..0` plan with exit status 0 is ok ("empty suite") — a `1..0` plan with a NON-ZERO exit is the unexplained-exit finding, classified first
+apriori/specs/doctor/spec.md:41:- WHEN `apriori doctor --json` runs — HEALTHY, FINDINGS, or UNUSABLE (incl. the positional-arg usage error)
+apriori/specs/doctor/spec.md:44:#### Scenario: DR-11 doctor is read-only and rejects stray arguments
+apriori/specs/doctor/spec.md:45:- WHEN doctor runs with `--no-run` against any project tree
+apriori/specs/doctor/spec.md:46:- THEN no file is created, modified, or deleted; WHEN any positional argument is given THEN doctor exits 2 with usage (pure JSON under `--json`)
+apriori/specs/doctor/spec.md:50:- THEN D1 is a finding entry and doctor exits 2 (`result: "UNUSABLE"`), with D1 listed in the checks; at or above 18 → ok
+
+codex
+**Resolution Check**
+
+RD-2 is verified. `SECURITY.md` now separates strictly read-only commands (`check`, `status`, `doctor --no-run`) from commands that write nothing themselves but execute the configured test command (`verify`, `gate`, `doctor` without `--no-run`). That matches `lib/spec-runner.js`, `lib/gate.js`, and `lib/doctor.js`.
+
+RD-3 is verified. `CHANGELOG.md` now says the CI job runs `npm pack` and `scripts/golden-path.mjs --packed <tgz>` installs the provided tarball, matching `.github/workflows/ci.yml` and `scripts/golden-path.mjs`.
+
+RD-1 is reopened. The containment claim is correctly scoped away from single-file `archive --store/--delta` and `stamp`, but it still overstates doctor’s escape behavior: `SECURITY.md` says escaping change-derived paths “exit 2.” In `lib/doctor.js`, an archived symlink escaping `archive/` is reported as a skipped D7 note via `notes.push(...)`, not an exit-2 error. Active in-flight symlink dirs are also skipped by `activeChanges()` rather than surfaced as exit 2.
+
+Risk: The security doc still promises fail-closed exit behavior that doctor does not implement.
+
+Suggested fix: Split the sentence by command: `verify --change`, `archive --change`, and `gate` treat containment escapes as errors; `doctor` does not read escaping archived change dirs and reports a skip/note instead.
+
+**New Gaps**
+
+No additional inaccuracies found. MIGRATING.md remains consistent with `lib/args.js` and CL-11..17.
+
+**Advisories**
+
+No new advisory items.
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| RD-1 | SECURITY.md still overstates containment escape behavior for doctor: escaping archived change dirs are skipped/noted, not exit 2. | Over-claiming in a security document. | STEP5·r1 | open |
+| RD-2 | SECURITY.md read-only claim contradicted the test-command scope note. | Internal inconsistency in a security document. | STEP5·r1 | verified |
+| RD-3 | CHANGELOG assigned npm pack to the script instead of the CI job. | Minor factual drift. | STEP5·r1 | verified |
+
+VERDICT: 1 issues open
+tokens used
+1,636,161
+**Resolution Check**
+
+RD-2 is verified. `SECURITY.md` now separates strictly read-only commands (`check`, `status`, `doctor --no-run`) from commands that write nothing themselves but execute the configured test command (`verify`, `gate`, `doctor` without `--no-run`). That matches `lib/spec-runner.js`, `lib/gate.js`, and `lib/doctor.js`.
+
+RD-3 is verified. `CHANGELOG.md` now says the CI job runs `npm pack` and `scripts/golden-path.mjs --packed <tgz>` installs the provided tarball, matching `.github/workflows/ci.yml` and `scripts/golden-path.mjs`.
+
+RD-1 is reopened. The containment claim is correctly scoped away from single-file `archive --store/--delta` and `stamp`, but it still overstates doctor’s escape behavior: `SECURITY.md` says escaping change-derived paths “exit 2.” In `lib/doctor.js`, an archived symlink escaping `archive/` is reported as a skipped D7 note via `notes.push(...)`, not an exit-2 error. Active in-flight symlink dirs are also skipped by `activeChanges()` rather than surfaced as exit 2.
+
+Risk: The security doc still promises fail-closed exit behavior that doctor does not implement.
+
+Suggested fix: Split the sentence by command: `verify --change`, `archive --change`, and `gate` treat containment escapes as errors; `doctor` does not read escaping archived change dirs and reports a skip/note instead.
+
+**New Gaps**
+
+No additional inaccuracies found. MIGRATING.md remains consistent with `lib/args.js` and CL-11..17.
+
+**Advisories**
+
+No new advisory items.
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| RD-1 | SECURITY.md still overstates containment escape behavior for doctor: escaping archived change dirs are skipped/noted, not exit 2. | Over-claiming in a security document. | STEP5·r1 | open |
+| RD-2 | SECURITY.md read-only claim contradicted the test-command scope note. | Internal inconsistency in a security document. | STEP5·r1 | verified |
+| RD-3 | CHANGELOG assigned npm pack to the script instead of the CI job. | Minor factual drift. | STEP5·r1 | verified |
+
+VERDICT: 1 issues open

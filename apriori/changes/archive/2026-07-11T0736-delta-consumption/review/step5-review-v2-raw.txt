@@ -1,0 +1,301 @@
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f4b30-68f9-7222-9b64-17f52a333b4c
+--------
+user
+P8 implementation review, round 2 for delta-consumption. Both round-1 issues fixed on disk (suite 163/163 green):
+
+- DCIMPL-1: the SKIP_UNRECOGNIZED guard now runs BEFORE the stamp check (order: fence -> section headings -> SKIP-continue -> stamp -> requirement -> body). A stamp under a skipped heading is consumed by the heading's problem, attributed to nothing, and can never become the returned stamp. New AM-31 assertion: stamp under `## ADDDED` -> stamp === null, no stamp problem flood.
+- DCIMPL-2: a `### Requirement:` inside RENAMED now enters a discard block (state IN_REQUIREMENT, blockDiscard=true), so its body lines accumulate into a discarded block instead of being reinterpreted as rename lines; exits on any ## boundary as usual. New AM-29 assertion: `- Old -> New` under the illegal block -> delta.RENAMED stays [].
+- DCIMPL-ADV-1: AM-30's CRLF case now asserts full block-text equality ([...entries()]) against the LF parse.
+
+Re-read lib/archive-merge.js (parseDeltaStrict) and the three tests in test/archive-change.test.js. Confirm DCIMPL-1/2 (and the advisory) resolved or reopen; any new issues? Print the COMPLETE review document body (landed verbatim at apriori/review/delta-consumption-impl-review-v2.md) with a ledger-delta section, ending with exactly one verdict line: "VERDICT: no major issues, ready to proceed" or "VERDICT: <N> issues open".
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-11T07:32:18.154745Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T07:32:18.778090Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T07:32:19.216873Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-11T07:32:19.782839Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-11T07:32:20.677233Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-11T07:32:22.591585Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-11T07:32:26.141554Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: 1pK0fBkhOF1q
+codex
+I’ll re-check the fixed walker order and the updated AM-29/30/31 tests, then do a short fresh pass for regressions introduced by the discard-block and skip-order changes.
+exec
+/usr/bin/zsh -lc "sed -n '360,430p' test/archive-change.test.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '80,175p' lib/archive-merge.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,320p' apriori/review/delta-consumption-issues.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 134ms:
+  assert.strictEqual(r.status, 2);
+});
+
+test('AM-29 structure outside its legal home is reported with line numbers', () => {
+  const delta = '### Requirement: Early\n\n## RENAMED Requirements\n\n### Requirement: InsideRenamed\n- Old -> New\n\n## ADDED Requirements\n\n#### Scenario: DC-03 stray\n\n### Requirement: Ok\n\n#### Scenario: DC-04 fine\n- t\n';
+  const { delta: buckets, problems } = am.parseDeltaStrict(delta);
+  assert.ok(problems.some((p) => /line 1\b/.test(p) && /before any section/i.test(p)), JSON.stringify(problems));
+  assert.ok(problems.some((p) => /line 5\b/.test(p) && /RENAMED/.test(p)), JSON.stringify(problems));
+  assert.ok(problems.some((p) => /line 10\b/.test(p) && /[Ss]cenario/.test(p)), JSON.stringify(problems));
+  assert.ok(buckets.ADDED.has('Ok'), 'legal block still parsed');
+  assert.ok(!buckets.ADDED.has('Early') && !buckets.ADDED.has('InsideRenamed'));
+  assert.deepStrictEqual(buckets.RENAMED, [], 'the illegal block body is never reinterpreted as rename lines');
+});
+
+test('AM-30 free text and fences stay legal; CRLF parses identically', () => {
+  const delta = '# Delta — archive-merge (c)\n\nA note before any section.\n\n## ADDED Requirements\n\nSection preamble prose is fine.\n\n### Requirement: Fenced\n\nBody prose.\n\n```md\n## Bogus Heading\n### Requirement: InsideFence\n<!-- apriori-base: sha256:zzz -->\n```\n\n#### Scenario: DC-05 f\n- t\n\nTrailing notes without structure markers.\n';
+  const lf = am.parseDeltaStrict(delta);
+  assert.deepStrictEqual(lf.problems, []);
+  assert.ok(lf.delta.ADDED.has('Fenced'));
+  assert.ok(!lf.delta.ADDED.has('InsideFence'));
+  assert.match(lf.delta.ADDED.get('Fenced'), /Bogus Heading/, 'fenced lines stay in the body');
+  const crlf = am.parseDeltaStrict(delta.replace(/\n/g, '\r\n'));
+  assert.deepStrictEqual(crlf.problems, []);
+  assert.deepStrictEqual([...crlf.delta.ADDED.entries()], [...lf.delta.ADDED.entries()], 'CRLF block text identical to LF');
+});
+
+test('AM-30b regression corpus: every archived delta parses clean and identical to the old grammar', () => {
+  const archRoot = path.join(__dirname, '..', 'apriori', 'changes', 'archive');
+  if (!fs.existsSync(archRoot)) return;   // corpus is local-only (apriori/* untracked)
+  const files = [];
+  (function walk(d) {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (e.isFile() && p.includes(`${path.sep}specs${path.sep}`) && p.endsWith('.md')) files.push(p);
+    }
+  })(archRoot);
+  for (const f of files) {
+    const text = fs.readFileSync(f, 'utf8');
+    const r = am.parseDeltaStrict(text);
+    assert.deepStrictEqual(r.problems, [], `${f}: ${JSON.stringify(r.problems)}`);
+    const ref = referenceParseDelta(text);
+    for (const kind of ['ADDED', 'MODIFIED', 'REMOVED']) {
+      assert.deepStrictEqual([...r.delta[kind].entries()], [...ref[kind].entries()], `${f} ${kind} differs from old grammar`);
+    }
+    assert.deepStrictEqual(r.delta.RENAMED, ref.RENAMED, `${f} RENAMED differs from old grammar`);
+  }
+});
+
+test('AM-31 stamp problems carry line numbers', () => {
+  const good = am.fingerprint(STORE_A);
+  const cases = [
+    [`<!-- apriori-base sha256:${'0'.repeat(64)} -->\n${ADD_A}`, /line 1\b/],   // malformed attempt (no colon)
+    [`<!-- apriori-base: ${good} -->\n<!-- apriori-base: new -->\n${ADD_A}`, /line 2\b/],  // duplicate
+    [`<!-- apriori-base: sha256:zzz -->\n${ADD_A}`, /line 1\b/],                // malformed digest
+    [`${ADD_A}\n<!-- apriori-base: ${good} -->\n`, /line 8\b/],                 // late stamp (ADD_A is 7 lines)
+  ];
+  for (const [text, lineRe] of cases) {
+    const { problems } = am.parseDeltaStrict(text);
+    assert.ok(problems.length > 0, text.slice(0, 40));
+    assert.ok(problems.some((p) => lineRe.test(p)), `${text.slice(0, 40)} → ${JSON.stringify(problems)}`);
+  }
+  // a stamp under a skipped unrecognized heading is attributed to NOTHING — never the delta stamp
+  const skipped = am.parseDeltaStrict(`## ADDDED Requirements\n\n<!-- apriori-base: new -->\n\n${ADD_A}`);
+  assert.strictEqual(skipped.stamp, null);
+  assert.ok(skipped.problems.some((p) => p.includes('ADDDED')));
+  assert.ok(!skipped.problems.some((p) => /apriori-base/.test(p)), 'covered by the heading problem, no flood');
+});
+
+ succeeded in 133ms:
+const SECTION_LINE_RE = /^##\s+(ADDED|MODIFIED|REMOVED|RENAMED)\s+Requirements\s*$/;
+const H2_LINE_RE = /^##\s/;
+const REQ_LINE_RE = /^###\s+Requirement:\s+(.+?)\s*$/;
+const SCENARIO_LINE_RE = /^####\s+Scenario:/;
+const RENAME_LINE_RE = /^\s*-\s*(.+?)\s*->\s*(.+?)\s*$/;
+const STAMP_ATTEMPT_LINE_RE = /^\s*<!--(?=[^>]*apriori-base)[^>]*-->\s*$/;
+const STAMP_STRICT_LINE_RE = /^<!--\s*apriori-base:\s*(\S+)\s*-->\s*$/;
+const FENCE_LINE_RE = /^\s*```/;
+
+// strict form: a sequential, fully-consuming line walker — every line (outside
+// code fences, which are opaque) belongs to exactly one legal construct, and
+// anything else is a problems[] entry carrying its 1-based line number.
+// Well-formed deltas parse byte-identically to the old split()-based grammar.
+function parseDeltaStrict(text) {
+  const problems = [];
+  const buckets = { ADDED: new Map(), MODIFIED: new Map(), REMOVED: new Map(), RENAMED: [] };
+  const seen = new Map();               // name -> first section carrying it
+  const lines = text.split('\n').map((l) => (l.endsWith('\r') ? l.slice(0, -1) : l));
+
+  let state = 'FILE_PREAMBLE';          // | 'IN_SECTION' | 'IN_REQUIREMENT' | 'SKIP_UNRECOGNIZED'
+  let kind = null;                      // current section kind while IN_SECTION/IN_REQUIREMENT
+  let blockName = null, blockLines = null, blockDiscard = false;
+  let inFence = false;
+  let stamp = null, stampSeen = false, stampProblems = false, sectionSeen = false;
+
+  const flush = () => {
+    if (blockLines === null) return;
+    if (!blockDiscard) buckets[kind].set(blockName, blockLines.join('\n').replace(/\s+$/, '') + '\n');
+    blockName = null; blockLines = null; blockDiscard = false;
+  };
+  const stampProblem = (msg) => { problems.push(msg); stampProblems = true; };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i], n = i + 1;
+    if (inFence) {                      // opaque: never structure, never a problem
+      if (blockLines !== null) blockLines.push(line);
+      if (FENCE_LINE_RE.test(line)) inFence = false;
+      continue;
+    }
+    if (FENCE_LINE_RE.test(line)) {
+      inFence = true;
+      if (blockLines !== null) blockLines.push(line);
+      continue;
+    }
+    const sec = SECTION_LINE_RE.exec(line);
+    if (sec) { flush(); state = 'IN_SECTION'; kind = sec[1]; sectionSeen = true; continue; }
+    if (H2_LINE_RE.test(line)) {        // one problem per unrecognized heading; its lines are skipped, not re-homed
+      flush();
+      problems.push(`line ${n}: unrecognized section heading '${line.trim()}'`);
+      state = 'SKIP_UNRECOGNIZED'; kind = null;
+      continue;
+    }
+    if (state === 'SKIP_UNRECOGNIZED') continue;   // covered by the heading's problem — no flood, no attribution (stamps included)
+    // stamps are matched in every remaining state so a stray one is never absorbed as body text
+    if (STAMP_ATTEMPT_LINE_RE.test(line)) {
+      const m = STAMP_STRICT_LINE_RE.exec(line.trim());
+      if (!m) { stampProblem(`line ${n}: malformed apriori-base stamp line: ${line.trim()}`); continue; }
+      if (stampSeen) { stampProblem(`line ${n}: carries more than one apriori-base stamp line`); continue; }
+      stampSeen = true;
+      if (sectionSeen) { stampProblem(`line ${n}: apriori-base stamp appears after the first delta section heading`); continue; }
+      if (m[1] !== 'new' && !/^sha256:[0-9a-f]{64}$/.test(m[1])) { stampProblem(`line ${n}: malformed apriori-base stamp '${m[1]}'`); continue; }
+      stamp = m[1];
+      continue;
+    }
+    const req = REQ_LINE_RE.exec(line);
+    if (req) {
+      if (state === 'FILE_PREAMBLE') { problems.push(`line ${n}: requirement block before any section heading`); continue; }
+      if (kind === 'RENAMED') {
+        // the whole illegal block is discarded — its body must not be reinterpreted as rename lines
+        problems.push(`line ${n}: requirement block inside the RENAMED section`);
+        flush();
+        state = 'IN_REQUIREMENT'; blockName = null; blockLines = []; blockDiscard = true;
+        continue;
+      }
+      flush();
+      state = 'IN_REQUIREMENT';
+      blockName = req[1].trim(); blockLines = [line]; blockDiscard = false;
+      if (buckets[kind].has(blockName)) {          // first block wins, as before
+        problems.push(`line ${n}: duplicate requirement '${blockName}' in the ${kind} section`);
+        blockDiscard = true;
+      } else if (seen.has(blockName)) {
+        problems.push(`line ${n}: duplicate requirement '${blockName}' appears in both ${seen.get(blockName)} and ${kind}`);
+      } else seen.set(blockName, kind);
+      continue;
+    }
+    if (state === 'IN_REQUIREMENT') { blockLines.push(line); continue; }   // scenarios and prose are body
+    if (SCENARIO_LINE_RE.test(line)) { problems.push(`line ${n}: scenario outside any requirement block`); continue; }
+    if (state === 'IN_SECTION' && kind === 'RENAMED') {
+      const rn = RENAME_LINE_RE.exec(line);
+      if (rn) buckets.RENAMED.push([rn[1].trim(), rn[2].trim()]);
+      continue;                          // other lines are free text
+    }
+    // FILE_PREAMBLE / section preamble free text and blanks are legal
+  }
+  flush();
+  return { delta: buckets, stamp: stampProblems ? null : stamp, problems };
+
+ succeeded in 132ms:
+# Issue ledger — delta-consumption
+
+Rows recorded on behalf of the reviewer (codex session 019f4b30-68f9-7222-9b64-17f52a333b4c; raws: delta-consumption-req-review-v1-raw.txt).
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| DC-1 | D3's tail grammar unresolvable (r2 reopened: DD-2 still said 'tail'). | Ambiguity for implementers. | STEP0·r1 | verified |
+| DC-2 | Line-number rule didn't cover existing stamp problems. | Inconsistent diagnostics. | STEP0·r1 | verified |
+| DC-3 | Section-preamble prose (heading → first requirement) unclassified. | Every-line-accounted-for claim had a hole. | STEP0·r1 | verified |
+| DCSPEC-1 | Misplaced (late but well-formed) stamps could be absorbed as body text — design only recognized stamps in FILE_PREAMBLE. | Hygiene problem silently lost. | STEP2·r1 | verified |
+| DCSPEC-2 | "Body lines accumulate until next heading" too loose vs REQ_RE semantics (scenario headings, ## boundary flush, trim+'\n'). | Well-formed inputs could reassemble differently old-vs-new. | STEP2·r1 | verified |
+| DCSPEC-3 | CRLF normalization and fence-delimiter precision undefined. | Platform-dependent parses; inline backticks could toggle opacity. | STEP2·r1 | verified |
+| DCSPEC-4 | Legal section matcher written as a precedence-broken regex (`^## ADDED\|MODIFIED\|...` alternation ungrouped). | `MODIFIED Requirements` without `## ` could be accepted as a legal section. | STEP2·r2 | verified |
+| DCSPEC-5 | Design's stamp-attempt regex narrower than existing STAMP_ATTEMPT_RE hygiene (missed leading whitespace / missing colon). | Malformed stamp attempts consumed as legal text, evading CAS hygiene / AM-31. | STEP2·r2 | verified |
+| DCSPEC-ADV-2 | Advisory: T1 should name the old-vs-new corpus equality assertion + a direct CRLF test. | Test-plan precision. | STEP2·r2 | verified |
+| DCIMPL-1 | A valid stamp under SKIP_UNRECOGNIZED before the first legal section still became the returned delta stamp (stamp check ran before the SKIP guard). | Skipped content attributed into parser state, violating the no-rehome rule. | STEP5·r1 | fixed |
+| DCIMPL-2 | Body lines under an illegal `### Requirement:` inside RENAMED were still parsed as rename operations. | Invalid structure populated operation buckets despite the problem. | STEP5·r1 | fixed |
+| DCIMPL-ADV-1 | Advisory: CRLF block-text equality + rename-blind-spot + skipped-stamp assertions strengthened in AM-29/30/31. | Test blind spots. | STEP5·r1 | fixed |
+
+codex
+The two fixes are present and the tests now assert the exact holes from round 1. I’m doing one final sanity probe for nested/transition behavior before closing the review.
+exec
+/usr/bin/zsh -lc "node -e \"const am=require('./lib/archive-merge'); const t='## RENAMED Requirements\\n\\n### Requirement: Bad\\n- Old -> New\\n\\n## ADDED Requirements\\n\\n### Requirement: Good\\nbody\\n'; const r=am.parseDeltaStrict(t); console.log(JSON.stringify(r.problems)); console.log(JSON.stringify(r.delta.RENAMED)); console.log([...r.delta.ADDED.keys()].join(','));\"" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "node -e \"const am=require('./lib/archive-merge'); const t='## ADDDED Requirements\\n\\n<"'!-- apriori-base: new -->'"\\n\\n## ADDED Requirements\\n\\n### Requirement: Good\\nbody\\n'; const r=am.parseDeltaStrict(t); console.log(JSON.stringify(r.problems)); console.log('stamp='+r.stamp); console.log([...r.delta.ADDED.keys()].join(','));\"" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "node -e \"const am=require('./lib/archive-merge'); const t='## ADDED Requirements\\n\\n### Requirement: F\\n"'```'"\\n## Bad\\n<"'!-- apriori-base: new -->'"\\n"'```'"\\n'; const r=am.parseDeltaStrict(t); console.log(JSON.stringify(r.problems)); console.log(JSON.stringify(r.stamp)); console.log(JSON.stringify(r.delta.ADDED.get('F')));\"" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 240ms:
+["line 3: requirement block inside the RENAMED section"]
+[]
+Good
+
+ succeeded in 230ms:
+["line 1: unrecognized section heading '## ADDDED Requirements'"]
+stamp=null
+Good
+
+ succeeded in 308ms:
+zsh:1: no such file or directory: !--
+[]
+null
+"### Requirement: F\n"
+
+codex
+**Round-1 Confirmations**
+
+DCIMPL-1: **verified**. The `SKIP_UNRECOGNIZED` guard now runs before stamp matching, so a stamp under an unrecognized h2 is consumed by the heading problem and never becomes the returned `stamp`. AM-31 now asserts `stamp === null` and no stamp-problem flood for this case.
+
+DCIMPL-2: **verified**. A `### Requirement:` inside RENAMED now enters a discarded requirement block, so rename-looking body lines are accumulated and dropped rather than parsed as `RENAMED` operations. AM-29 now asserts `delta.RENAMED` stays empty for that fixture.
+
+DCIMPL-ADV-1: **verified**. AM-30 now asserts full block-text equality for CRLF vs LF parses, and AM-29/AM-31 cover the prior blind spots.
+
+**Implementation Review**
+
+The revised `parseDeltaStrict` now matches the converged design: legal/illegal section boundaries are processed before skipped-content handling, skipped unrecognized content is unattributed, stamp attempts are line-numbered in every non-skipped state, fences remain opaque, and illegal RENAMED requirement bodies are discarded. Return shape remains `{ delta, stamp, problems }`.
+
+I found no new spec-vs-code gaps in the fixed walker or the updated AM-29/30/31 tests.
+
+**Ledger Delta**
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| DCIMPL-1 | A valid stamp under `SKIP_UNRECOGNIZED` before the first legal section could still become the returned delta stamp. | Skipped content was attributed into parser state, violating the no-rehome rule. | STEP5·r1 | verified |
+| DCIMPL-2 | Body lines under an illegal `### Requirement:` inside RENAMED could still be parsed as rename operations. | Invalid structure populated operation buckets despite being reported as a problem. | STEP5·r1 | verified |
+| DCIMPL-ADV-1 | CRLF block-text equality and prior skipped-stamp/RENAMED blind spots needed stronger assertions. | Advisory test blind spots. | STEP5·r1 | verified |
+
+VERDICT: no major issues, ready to proceed
+tokens used
+2,351,841
+**Round-1 Confirmations**
+
+DCIMPL-1: **verified**. The `SKIP_UNRECOGNIZED` guard now runs before stamp matching, so a stamp under an unrecognized h2 is consumed by the heading problem and never becomes the returned `stamp`. AM-31 now asserts `stamp === null` and no stamp-problem flood for this case.
+
+DCIMPL-2: **verified**. A `### Requirement:` inside RENAMED now enters a discarded requirement block, so rename-looking body lines are accumulated and dropped rather than parsed as `RENAMED` operations. AM-29 now asserts `delta.RENAMED` stays empty for that fixture.
+
+DCIMPL-ADV-1: **verified**. AM-30 now asserts full block-text equality for CRLF vs LF parses, and AM-29/AM-31 cover the prior blind spots.
+
+**Implementation Review**
+
+The revised `parseDeltaStrict` now matches the converged design: legal/illegal section boundaries are processed before skipped-content handling, skipped unrecognized content is unattributed, stamp attempts are line-numbered in every non-skipped state, fences remain opaque, and illegal RENAMED requirement bodies are discarded. Return shape remains `{ delta, stamp, problems }`.
+
+I found no new spec-vs-code gaps in the fixed walker or the updated AM-29/30/31 tests.
+
+**Ledger Delta**
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| DCIMPL-1 | A valid stamp under `SKIP_UNRECOGNIZED` before the first legal section could still become the returned delta stamp. | Skipped content was attributed into parser state, violating the no-rehome rule. | STEP5·r1 | verified |
+| DCIMPL-2 | Body lines under an illegal `### Requirement:` inside RENAMED could still be parsed as rename operations. | Invalid structure populated operation buckets despite being reported as a problem. | STEP5·r1 | verified |
+| DCIMPL-ADV-1 | CRLF block-text equality and prior skipped-stamp/RENAMED blind spots needed stronger assertions. | Advisory test blind spots. | STEP5·r1 | verified |
+
+VERDICT: no major issues, ready to proceed

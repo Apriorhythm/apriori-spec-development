@@ -1,0 +1,482 @@
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f4b30-68f9-7222-9b64-17f52a333b4c
+--------
+user
+New stage: STEP5 consistency review (P8) for golden-path. Implemented: scripts/golden-path.mjs (fence-aware extractBlocks text seam, buildPlan with the one-resolver rule + bash-native preflight, sentinel-based per-block exits, env sanitization — nested node:test inheritance of NODE_TEST_CONTEXT/NODE_OPTIONS broke the demo's TAP and is now stripped, discovered during T4), test/golden-path.test.js (GP-01..05; GP-02/03 share one --local walk incl. a PATH-hijack guard), ci.yml gains the golden-path job (ubuntu+windows, node 20, TGZ=$(npm pack --silent)). Local packed smoke: OK. 156/156, verify --change GREEN, gate PASS, check --self PASS.
+[Input] SPEC-DOC: apriori/changes/golden-path/specs/golden/spec.md · req-final · design/tasks · Impl: scripts/golden-path.mjs, test/golden-path.test.js, .github/workflows/ci.yml diff.
+[Checklist] 1. GP-01..05 semantic faithfulness (esp. GP-03's binding: shared-walk + source-presence assertions — strong enough, or an empty-test smell? GP-05's layered binding: plan-construction test + CI job) 2. missed spec'd behavior 3. the env sanitization's correctness 4. ci.yml: existing jobs byte-identical? 5. read-only/isolation guarantees.
+[Scope] formal = spec-vs-code gaps; sandbox artifacts excluded (R2).
+[Output — read-only sandbox: print the COMPLETE review doc body for verbatim landing at apriori/review/golden-path-p8-review-v1.md] Rows GPIMPL-1...; advisory batch. End with the ledger delta and exactly one verdict line: 'VERDICT: no spec-vs-code gaps' or 'VERDICT: <N> issues open'.
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-10T18:46:01.473607Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-10T18:46:01.755266Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-10T18:46:02.316458Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-10T18:46:03.091720Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-10T18:46:04.083391Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-10T18:46:06.044840Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-10T18:46:09.187103Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: a7AgyQMwoqfY
+codex
+I’ll inspect the implemented runner, tests, and CI diff against GP-01..05 and the finalized requirement, with special attention to PATH isolation, per-block exit capture, final-state assertions, and the environment sanitization.
+exec
+/usr/bin/zsh -lc "sed -n '1,360p' test/golden-path.test.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,360p' scripts/golden-path.mjs" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,240p' .github/workflows/ci.yml" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' apriori/changes/golden-path/specs/golden/spec.md && sed -n '1,220p' requirement/req-final.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 129ms:
+'use strict';
+const { test } = require('node:test');
+const assert = require('node:assert');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { spawnSync } = require('node:child_process');
+
+const ROOT = path.join(__dirname, '..');
+const README = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
+async function gp() { return import(path.join(ROOT, 'scripts', 'golden-path.mjs').replace(/\\/g, '/')); }
+
+test('GP-01 the extractor is a pure text seam', async () => {
+  const { extractBlocks } = await gp();
+  const blocks = extractBlocks(README);
+  assert.strictEqual(blocks.length, 4);
+  assert.match(blocks[0], /npm i -g apriori-cli/);
+  assert.match(blocks[1], /apriori verify --change hello/);
+  assert.match(blocks[3], /apriori check/);
+  // pure: works on arbitrary text, throws without a Quickstart section
+  assert.throws(() => extractBlocks('# nothing here'), /Quickstart/);
+});
+
+test('GP-04 drift between README and contract fails loudly', async () => {
+  const { extractBlocks, buildPlan } = await gp();
+  // block-count drift: a doctored text with a block removed
+  const doctored = README.replace(/```shell\n[\s\S]*?```/, '');
+  assert.throws(() => buildPlan(extractBlocks(doctored), 'local', { binDir: '/x' }), /README drift: 3 shell block/);
+});
+
+test('GP-05 packed-mode plan carries prefix install, PATH preflight (plan construction)', async () => {
+  const { extractBlocks, buildPlan } = await gp();
+  const { script } = buildPlan(extractBlocks(README), 'packed', { binDir: '/p/bin', tgz: '/t/x.tgz', prefix: '/p' });
+  assert.match(script, /npm i -g "\/t\/x\.tgz" --prefix "\/p"/);
+  assert.match(script, /command -v apriori/);
+  assert.match(script, /exit 90/);
+  assert.doesNotMatch(script, /npm i -g apriori-cli/);   // registry line substituted
+});
+
+// one shared --local walk feeds GP-02 and GP-03 (running it twice would double suite time)
+let walk = null;
+function runWalkOnce() {
+  if (walk) return walk;
+  // hijack guard (GPSPEC-3): a bogus global `apriori` earlier on the ORIGINAL PATH must never win
+  const bogus = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-bogus-'));
+  fs.writeFileSync(path.join(bogus, 'apriori'), '#!/bin/sh\necho BOGUS; exit 99\n');
+  fs.chmodSync(path.join(bogus, 'apriori'), 0o755);
+  walk = spawnSync('node', [path.join(ROOT, 'scripts', 'golden-path.mjs'), '--local'], {
+    encoding: 'utf8', env: { ...process.env, PATH: bogus + path.delimiter + process.env.PATH },
+  });
+  return walk;
+}
+
+test('GP-02 a --local run walks the whole Quickstart with the documented exits', () => {
+  const r = runWalkOnce();
+  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+  for (const [i, code] of [[1, 0], [2, 1], [3, 0], [4, 0]])
+    assert.match(r.stdout, new RegExp(`__BLOCK_${i}_EXIT=${code}`));
+  assert.doesNotMatch(r.stdout, /BOGUS/);   // the walk's resolver beat the hijacker
+});
+
+test('GP-03 final state is asserted, not assumed', () => {
+  const r = runWalkOnce();
+  // the runner only prints the OK line AFTER re-asserting verify/check/doctor and the archive dir
+  assert.match(r.stdout, /golden-path: OK \(local\) — 4 blocks, exits \[0, 1, 0, 0\], final state green/);
+  // and the assertion code path is real: the script names the assertion when one fails
+  const src = fs.readFileSync(path.join(ROOT, 'scripts', 'golden-path.mjs'), 'utf8');
+  for (const label of ['store verify', 'check', 'doctor', 'archived demo change'])
+    assert.ok(src.includes(label), `final-state assertion '${label}' present in the runner`);
+});
+
+ succeeded in 127ms:
+#!/usr/bin/env node
+// golden-path — prove the README Quickstart end-to-end, exactly as documented (GP-01..05).
+// The expected per-block exit sequence lives HERE, beside the contract it enforces:
+// README "## Quickstart", its ```shell blocks in order — install/doctor 0, red verify 1,
+// green verify 0, gate→check 0. Drift between README and this sequence FAILS the run (GP-04).
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+
+export const EXPECTS = [0, 1, 0, 0];
+
+// GP-01: pure text seam — never touches the filesystem
+export function extractBlocks(readmeText) {
+  // fence-aware: heading-looking lines INSIDE ```shell blocks (heredoc'd delta specs) must not
+  // terminate the Quickstart section
+  const lines = readmeText.split('\n');
+  const sectionLines = [];
+  let inSection = false, inFence = false;
+  for (const ln of lines) {
+    if (ln.startsWith('```')) inFence = !inFence;
+    if (!inFence && ln.startsWith('## ') && !ln.startsWith('### ')) {
+      if (inSection) break;
+      inSection = ln.trim() === '## Quickstart';
+      continue;
+    }
+    if (inSection) sectionLines.push(ln);
+  }
+  if (!inSection && sectionLines.length === 0) throw new Error('no "## Quickstart" section in the given README text');
+  const section = sectionLines.join('\n');
+  return [...section.matchAll(/```shell\n([\s\S]*?)```/g)].map((m) => m[1]);
+}
+
+// GP-02/05: assemble the walk. One resolver rule: binDir is prepended to PATH and that same
+// env drives the block walk AND every final assertion (never a bash function, never a global).
+export function buildPlan(blocks, mode, opts = {}) {
+  if (blocks.length !== EXPECTS.length)
+    throw new Error(`README drift: ${blocks.length} shell block(s) in Quickstart, contract expects ${EXPECTS.length}`);
+  const lines = ['#!/bin/bash', '# assembled by golden-path.mjs — runs WITHOUT set -e: documented reds must not abort the walk'];
+  // bash-native binDir normalization + preflight (GPSPEC-4): cd&&pwd yields the same form command -v returns
+  lines.push(`BD="$(cd "${opts.binDir.replace(/\\/g, '/')}" && pwd)"`);
+  lines.push('case "$(command -v apriori)" in "$BD"/*) ;; *) echo "PREFLIGHT: apriori resolves outside $BD: $(command -v apriori)"; exit 90;; esac');
+  blocks.forEach((block, i) => {
+    let body = block.trimEnd();
+    if (i === 0) {
+      body = body.split('\n').map((ln) => {
+        if (!ln.startsWith('npm i -g apriori-cli')) return ln;
+        return mode === 'packed'
+          ? `npm i -g "${opts.tgz.replace(/\\/g, '/')}" --prefix "${opts.prefix.replace(/\\/g, '/')}"`
+          : 'true # local mode: checkout bin shimmed onto PATH';
+      }).join('\n');
+    }
+    lines.push(`# ---- block ${i + 1} ----`);
+    lines.push(body);
+    lines.push(`echo "__BLOCK_${i + 1}_EXIT=$?"`);
+  });
+  return { script: lines.join('\n') + '\n', expects: EXPECTS };
+}
+
+function fail(msg) { console.error('golden-path: ' + msg); process.exit(1); }
+
+export function main(argv) {
+  const mode = argv.includes('--packed') ? 'packed' : (argv.includes('--local') ? 'local' : null);
+  if (!mode) fail('usage: golden-path.mjs --local | --packed <tgz>');
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const checkout = path.join(here, '..');
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-golden-'));
+  let binDir, tgz = null, prefix = null;
+  if (mode === 'local') {
+    binDir = path.join(work, 'shim-bin');
+    fs.mkdirSync(binDir, { recursive: true });
+    const shim = path.join(binDir, 'apriori');
+    fs.writeFileSync(shim, `#!/bin/sh\nexec node "${path.join(checkout, 'bin', 'apriori.js').replace(/\\/g, '/')}" "$@"\n`);
+    fs.chmodSync(shim, 0o755);
+  } else {
+    tgz = path.resolve(argv[argv.indexOf('--packed') + 1] || '');
+    if (!fs.existsSync(tgz)) fail(`tarball not found: ${tgz}`);
+    prefix = path.join(work, 'prefix');
+    fs.mkdirSync(prefix, { recursive: true });
+    binDir = process.platform === 'win32' ? prefix : path.join(prefix, 'bin');
+    // install BEFORE the walk so the preflight can resolve inside the prefix
+    const inst = spawnSync('npm', ['i', '-g', tgz, '--prefix', prefix], { encoding: 'utf8', shell: process.platform === 'win32' });
+    if (inst.status !== 0) fail(`npm i -g failed: ${inst.stderr}`);
+  }
+  const env = { ...process.env, PATH: binDir + path.delimiter + process.env.PATH };
+  // sanitize test-runner inheritance: a nested `node --test` inside the walk must behave like a
+  // fresh invocation, not like a child of THIS process's test run
+  delete env.NODE_TEST_CONTEXT;
+  delete env.NODE_OPTIONS;
+  const readme = fs.readFileSync(path.join(checkout, 'README.md'), 'utf8');
+  const { script, expects } = buildPlan(extractBlocks(readme), mode, { binDir, tgz, prefix });
+  const scriptPath = path.join(work, 'walk.sh');
+  fs.writeFileSync(scriptPath, script);
+  const run = spawnSync('bash', [scriptPath], { cwd: work, env, encoding: 'utf8' });
+  process.stdout.write(run.stdout || '');
+  process.stderr.write(run.stderr || '');
+  // parse sentinels — a missing one means the script itself died (named)
+  for (let i = 0; i < expects.length; i++) {
+    const m = (run.stdout || '').match(new RegExp(`__BLOCK_${i + 1}_EXIT=(\\d+)`));
+    if (!m) fail(`block ${i + 1}: no exit sentinel — the walk died inside or before this block`);
+    if (Number(m[1]) !== expects[i]) fail(`block ${i + 1}: exit ${m[1]}, contract expects ${expects[i]}`);
+  }
+  // GP-03: final state, asserted through the SAME medium and env as the walk
+  const demo = path.join(work, 'hello-apriori');
+  const assertCmd = (label, cmd, expect = 0) => {
+    const r = spawnSync('bash', ['-c', cmd], { cwd: demo, env, encoding: 'utf8' });
+    if (r.status !== expect) fail(`final-state ${label}: exit ${r.status}, expected ${expect}\n${r.stdout}${r.stderr}`);
+  };
+  assertCmd('store verify', 'apriori verify --specs apriori/specs');
+  assertCmd('check', 'apriori check');
+  assertCmd('doctor', 'apriori doctor --no-run');
+  const archiveDir = path.join(demo, 'apriori', 'changes', 'archive');
+  const archived = fs.existsSync(archiveDir) && fs.readdirSync(archiveDir).some((b) => b.endsWith('-hello'));
+  if (!archived) fail('final-state: archived demo change not found under apriori/changes/archive/');
+  console.log(`golden-path: OK (${mode}) — ${expects.length} blocks, exits [${expects.join(', ')}], final state green`);
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main(process.argv.slice(2));
+
+ succeeded in 121ms:
+name: ci
+
+on:
+  push:
+    branches: [v3]
+  pull_request:
+    branches: [v3]
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: ['18', '20', '22']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: node --test
+      - run: npm run verify
+      - run: node bin/apriori.js check --self
+
+  golden-path:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: pack and walk the README Quickstart with the packed tarball
+        shell: bash
+        run: |
+          TGZ=$(npm pack --silent)
+          node scripts/golden-path.mjs --packed "$TGZ"
+
+ succeeded in 139ms:
+<!-- apriori-base: new -->
+# Delta — golden (golden-path)
+
+## ADDED Requirements
+
+### Requirement: the golden path proves the packaged CLI end-to-end
+`scripts/golden-path.mjs` SHALL extract the README Quickstart's shell blocks in document order and run them as one bash script in a fresh temp directory, with `apriori` resolving to the local checkout bin (`--local`) or to a tarball installed into an isolated prefix (`--packed <tgz>`, PATH prepended with the platform bin dir and a preflight asserting `apriori` resolves inside the prefix); it SHALL assert each block's last command against the documented exit sequence `[0, 1, 0, 0]` and the final state (store verify 0, check 0, doctor --no-run 0, archived demo change present), failing loudly with the block index and expected/actual on any mismatch. The CI workflow SHALL run the packed mode on ubuntu and windows.
+
+#### Scenario: GP-01 the extractor is a pure text seam
+- WHEN `extractBlocks(readmeText)` runs on the real README (and on doctored variants in tests)
+- THEN it returns the Quickstart's ```shell blocks in document order (four today), never reading or writing the filesystem itself
+
+#### Scenario: GP-02 a --local run walks the whole Quickstart
+- WHEN `node scripts/golden-path.mjs --local` runs in a fresh temp dir
+- THEN every block executes in sequence with the checkout bin aliased over `npm i -g`, per-block last exits match `[0, 1, 0, 0]`, and the run finishes exit 0
+
+#### Scenario: GP-03 final state is asserted, not assumed
+- WHEN the blocks complete
+- THEN the runner re-asserts: `verify --specs apriori/specs` exits 0, `check` exits 0, `doctor --no-run` exits 0, and `apriori/changes/archive/` contains the archived demo change — any miss fails the run naming the assertion
+
+#### Scenario: GP-04 drift between README and contract fails loudly
+- WHEN a doctored README text changes the block count or makes a block's exit diverge from the expected sequence
+- THEN the runner (fed through the text seam) fails naming the block index and expected/actual — the README cannot silently drift from the contract
+
+#### Scenario: GP-05 packed mode proves the published file set
+- WHEN `--packed <tgz>` installs the tarball into an isolated prefix (platform bin dir on PATH, resolve-inside-prefix preflight)
+- THEN the same walk succeeds using ONLY the packaged files — a package.json `files:` gap surfaces here; the runner aborts if `apriori` resolves outside the prefix
+# Requirement — golden-path (v2)
+
+change: golden-path
+target lineage: **v3 branch**. Ships in the next minor (expected **3.3.0**, with cli-strictness + readme-split). Repo infrastructure + one small script; no CLI behavior change.
+
+> v2 handling notes (P2): GPREQ-1 → packed mode now defines the exact isolation: `npm i -g <tgz> --prefix <tmpdir>` then PATH is PREPENDED with the platform bin dir (`<prefix>/bin` on POSIX, `<prefix>` on Windows — npm's global layout difference), and the runner asserts `command -v apriori` resolves INSIDE the prefix before running any block. GPREQ-2 → the extractor is exported as a function taking the README text (the seam); the doctored-fixture test feeds a modified text, never touches the real README.
+
+## Background — the problem (current state A)
+
+Nothing verifies that the PUBLISHED package works as installed: CI runs unit tests and `check --self` from a checkout — the 3.0.1-era Windows fixture incident (green CI, broken on a real machine) is the class of blind spot. Separately, readme-split just made the README Quickstart an executable contract (its ```shell blocks, in order, in a fresh dir, documented exit codes) and hand-verified it ONCE; without automation it will rot on the next CLI change.
+
+## Goal (target state B)
+
+1. **`scripts/golden-path.mjs`** (zero-dep Node): extracts the Quickstart's ```shell blocks from README.md in document order; runs them as one bash script in a fresh temp dir with `apriori` resolving to either (a) the LOCAL checkout bin (`--local`, fast, used by the test suite) or (b) a **globally installed tarball** (`--packed <tgz>`): `npm i -g <tgz> --prefix <isolated tmpdir>`, PATH prepended with the platform-correct bin dir (`<prefix>/bin` POSIX, `<prefix>` Windows), and a preflight assertion that `apriori` resolves inside the prefix — the runner aborts if the alias would leak to any other installation; asserts (i) each block's LAST command exits with the documented code — the expected sequence `[0, 1, 0, 0]` lives in the script beside a comment naming the Quickstart contract — and (ii) final state: `verify --specs apriori/specs` = 0, `check` = 0, `doctor --no-run` = 0, and `apriori/changes/archive/` contains the archived demo change. Any assertion failure → non-zero exit naming the block/assertion.
+2. **CI job `golden-path`** in `.github/workflows/ci.yml`: matrix ubuntu + windows (bash shell), node 20; steps: checkout → setup-node → `npm pack` → `node scripts/golden-path.mjs --packed <tgz>`. The unit-test job is unchanged.
+3. **Test binding**: `test/golden-path.test.js` — extractor unit behavior (block count/order, npm-install substitution) + one full `--local` run (seconds, no network).
+
+## Acceptance criteria (testable)
+
+- G1. The extractor returns the Quickstart's shell blocks in order; the first block's `npm i -g apriori-cli` line is substituted in `--local` mode (aliased to the checkout bin) and preserved-but-redirected in `--packed` mode (installs the given tarball instead of the registry).
+- G2. A `--local` run in a fresh temp dir completes with per-block exits `[0, 1, 0, 0]` and all final-state assertions green.
+- G3. Tampering with the expected sequence fails the runner naming the block — asserted by feeding a DOCTORED README TEXT through the exported extraction/assertion seam (`extractBlocks(text)` / runnable-plan builder); the real README is never modified by tests.
+- G4. `--packed` mode installs ONLY the tarball (isolated `--prefix`, never touching the runner's global node_modules) and the run proves the PACKAGED file set suffices (a `files:`-listing gap in package.json would surface here).
+- G5. The CI workflow gains the golden-path job (ubuntu+windows, node 20, bash) and keeps the existing test job byte-identical.
+- G6. Zero new dependencies; the script is ESM Node stdlib only.
+- G7. Runner failures are loud and named (block index + command + expected/actual exit; missing final-state artifact named).
+
+## Out of scope (won't do)
+
+- README content changes (any Quickstart edit that this change would need is a defect to report, not to make — the contract freeze is the point).
+- Python/Go examples (item 9), CHANGELOG (item 8).
+- Publishing/npm-auth in CI; the job stops at the packed tarball.
+- Matrix beyond ubuntu+windows/node 20 for this job (the unit matrix already spans 18/20/22).
+
+## Decisions proposed
+
+- DG-1: expected exit codes live in the RUNNER (beside a contract comment), not as README annotations — the README stays human-first; drift between the two is exactly what the runner exists to catch.
+- DG-2: `--local` in tests, `--packed` in CI — same script, so the extraction/assertion logic itself is test-bound while the slow network-touching mode runs where it belongs.
+
+codex
+The implementation matches the broad shape, but one subtle gap is visible: GP-04 asks for exit-divergence drift to fail through the text seam; the tests only cover block-count drift. I’m checking whether that’s merely a test gap or a code-path gap before finalizing.
+exec
+/usr/bin/zsh -lc "node -e \"import('./scripts/golden-path.mjs').then(m=>{const fs=require('fs'); const txt=fs.readFileSync('README.md','utf8'); const b=m.extractBlocks(txt); const p=m.buildPlan(b,'local',{binDir:'/tmp/bin'}); console.log(p.script.split('\\n').slice(0,25).join('\\n'));})\"" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "git diff -- .github/workflows/ci.yml scripts/golden-path.mjs test/golden-path.test.js | sed -n '1,260p'" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,220p' apriori/review/golden-path-issues.md && sed -n '1,220p' apriori/changes/golden-path/tasks.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "node -e \"const fs=require('fs'); const y=fs.readFileSync('.github/workflows/ci.yml','utf8'); const before='jobs:\\n  test:\\n    strategy:\\n      fail-fast: false\\n      matrix:\\n        os: [ubuntu-latest, windows-latest]\\n        node: [\\'18\\', \\'20\\', \\'22\\']\\n    runs-on: "'${{ matrix.os }}'"\\n    steps:\\n      - uses: actions/checkout@v4\\n      - uses: actions/setup-node@v4\\n        with:\\n          node-version: "'${{ matrix.node }}'"\\n      - run: node --test\\n      - run: npm run verify\\n      - run: node bin/apriori.js check --self'; console.log(y.includes(before)?'test job byte-identical text found':'test job text mismatch');\"" in /mnt/d/Workbench/misc/apriori-spec-development
+ exited 1 in 0ms:
+zsh:1: bad substitution
+
+ succeeded in 151ms:
+#!/bin/bash
+# assembled by golden-path.mjs — runs WITHOUT set -e: documented reds must not abort the walk
+BD="$(cd "/tmp/bin" && pwd)"
+case "$(command -v apriori)" in "$BD"/*) ;; *) echo "PREFLIGHT: apriori resolves outside $BD: $(command -v apriori)"; exit 90;; esac
+# ---- block 1 ----
+true # local mode: checkout bin shimmed onto PATH
+mkdir hello-apriori && cd hello-apriori
+apriori init --tools claude --test-cmd "node --test --test-reporter=tap" --yes
+apriori doctor --no-run
+echo "__BLOCK_1_EXIT=$?"
+# ---- block 2 ----
+apriori new hello
+cat > apriori/changes/hello/flow-state.md <<'EOF'
+change: hello
+tier: trivial
+track: harden
+track-rationale: quickstart demo
+lineage: main
+current-step: STEP5
+round: 0
+next-action: verify, then archive
+gates:
+  - 2026-01-01T00:00 note: quickstart demo
+EOF
+mkdir -p apriori/changes/hello/specs/hello
+
+ succeeded in 154ms:
+# Issue ledger — golden-path
+
+Rows recorded on behalf of the reviewer (codex session 019f4b30-68f9-7222-9b64-17f52a333b4c; raws: golden-path-req-review-v1-raw.txt).
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| GPREQ-1 | Packed-mode PATH isolation underspecified for Windows bash (npm global layout differs). | CI could silently test the wrong installation. | STEP0·r1 | verified |
+| GPREQ-2 | The doctored-README fixture test lacks an explicit seam. | Tests could mutate the real README or go unwritten. | STEP0·r1 | verified |
+| GPSPEC-1 | Per-block exit capture could abort before later blocks run. | The walk dies at the documented red step. | STEP2·r1 | verified |
+| GPSPEC-2 | Packed-mode CI tarball selection ambiguous (glob). | Stale tarballs could be installed. | STEP2·r1 | verified |
+| GPSPEC-3 | Final assertions didn't reuse the walk's apriori resolution. | Could assert with the wrong CLI / depend on a global install. | STEP2·r2 | verified |
+| GPSPEC-4 | Windows bash PATH form underspecified. | Packed job could fail or prove the wrong path form. | STEP2·r2 | verified |
+# Tasks — golden-path
+
+- [x] T1. Failing tests GP-01..05 (test/golden-path.test.js) — red run.
+- [x] T2. scripts/golden-path.mjs (extractBlocks/buildPlan/runner).
+- [x] T3. ci.yml golden-path job (existing jobs byte-identical).
+- [x] T4. Local full run green (--local); suite green; verify --change golden-path GREEN; gate PASS; check --self PASS.
+- [x] T5. Packed-mode smoke DONE 2026-07-11: npm pack (3.2.0 tgz) + --packed → 'golden-path: OK (packed) — 4 blocks, exits [0, 1, 0, 0], final state green'. Also caught during T4: nested node:test env inheritance (NODE_TEST_CONTEXT/NODE_OPTIONS) broke the demo's TAP — the runner now sanitizes the walk env.
+
+ succeeded in 188ms:
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 6e2876f..5c0b00d 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -22,3 +22,20 @@ jobs:
+       - run: node --test
+       - run: npm run verify
+       - run: node bin/apriori.js check --self
++
++  golden-path:
++    strategy:
++      fail-fast: false
++      matrix:
++        os: [ubuntu-latest, windows-latest]
++    runs-on: ${{ matrix.os }}
++    steps:
++      - uses: actions/checkout@v4
++      - uses: actions/setup-node@v4
++        with:
++          node-version: '20'
++      - name: pack and walk the README Quickstart with the packed tarball
++        shell: bash
++        run: |
++          TGZ=$(npm pack --silent)
++          node scripts/golden-path.mjs --packed "$TGZ"
+
+codex
+**Issues**
+
+GPIMPL-1 — GP-04’s bound test covers block-count drift but not exit-code drift.
+
+Description: GP-04 requires doctored README text that changes either the block count or a block’s exit behavior to fail loudly with block index and expected/actual. The test only removes a block and checks `README drift: 3 shell block...`. It does not exercise the required “block exit diverges from `[0,1,0,0]`” path.
+
+Risk: A regression in sentinel parsing or expected/actual comparison could ship while GP-04 remains green.
+
+Suggested fix: Add a doctored-text test that changes block 2’s final command to exit 0, runs through the same exported plan/assertion seam, and asserts the failure names block 2 plus expected 1/actual 0.
+
+**Advisories**
+
+The runner intentionally avoids `set -e` and checks only each block’s last command, per the requirement. That can mask a failing intermediate command if later commands still reach the expected final exit. This is not a spec gap, but a future hardening option would be to wrap intermediate commands or add optional trace output for non-zero intermediates.
+
+GP-03’s shared-walk binding is acceptable: the local walk must complete before the OK line is printed, and the implementation does perform `verify`, `check`, `doctor --no-run`, and archive-dir assertions with the same PATH resolver. GP-05’s layered binding is also acceptable: deterministic plan checks are unit-bound and the real packed proof runs in CI/local smoke.
+
+Verified: `ci.yml` preserves the existing `test` job byte-for-byte and only adds `golden-path`; packed mode uses `TGZ=$(npm pack --silent)`; the runner strips `NODE_TEST_CONTEXT`/`NODE_OPTIONS`, which is correct for making nested `node --test` behave like a fresh user invocation.
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| GPIMPL-1 | GP-04 test misses the exit-divergence branch. | Sentinel/expected-exit regressions could remain undetected. | STEP5·r1 | open |
+| ADV-GPIMPL-1 | Advisory batch: consider future hardening for non-zero intermediate commands in Quickstart blocks. | Low; current behavior matches the stated last-command contract. | STEP5·r1 | advisory |
+
+VERDICT: 1 issues open
+tokens used
+1,481,592
+**Issues**
+
+GPIMPL-1 — GP-04’s bound test covers block-count drift but not exit-code drift.
+
+Description: GP-04 requires doctored README text that changes either the block count or a block’s exit behavior to fail loudly with block index and expected/actual. The test only removes a block and checks `README drift: 3 shell block...`. It does not exercise the required “block exit diverges from `[0,1,0,0]`” path.
+
+Risk: A regression in sentinel parsing or expected/actual comparison could ship while GP-04 remains green.
+
+Suggested fix: Add a doctored-text test that changes block 2’s final command to exit 0, runs through the same exported plan/assertion seam, and asserts the failure names block 2 plus expected 1/actual 0.
+
+**Advisories**
+
+The runner intentionally avoids `set -e` and checks only each block’s last command, per the requirement. That can mask a failing intermediate command if later commands still reach the expected final exit. This is not a spec gap, but a future hardening option would be to wrap intermediate commands or add optional trace output for non-zero intermediates.
+
+GP-03’s shared-walk binding is acceptable: the local walk must complete before the OK line is printed, and the implementation does perform `verify`, `check`, `doctor --no-run`, and archive-dir assertions with the same PATH resolver. GP-05’s layered binding is also acceptable: deterministic plan checks are unit-bound and the real packed proof runs in CI/local smoke.
+
+Verified: `ci.yml` preserves the existing `test` job byte-for-byte and only adds `golden-path`; packed mode uses `TGZ=$(npm pack --silent)`; the runner strips `NODE_TEST_CONTEXT`/`NODE_OPTIONS`, which is correct for making nested `node --test` behave like a fresh user invocation.
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| GPIMPL-1 | GP-04 test misses the exit-divergence branch. | Sentinel/expected-exit regressions could remain undetected. | STEP5·r1 | open |
+| ADV-GPIMPL-1 | Advisory batch: consider future hardening for non-zero intermediate commands in Quickstart blocks. | Low; current behavior matches the stated last-command contract. | STEP5·r1 | advisory |
+
+VERDICT: 1 issues open

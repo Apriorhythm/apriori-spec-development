@@ -1,0 +1,1289 @@
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f4b30-68f9-7222-9b64-17f52a333b4c
+--------
+user
+P8 implementation review round 1 for update-manifest (STEP5 exit). On disk; suite 180/180 green, verify --change GREEN, gate PASS, check --self PASS, golden-path OK (packed init flow included).
+
+Review the ACTUAL implementation against the converged design:
+- lib/managed.js (new): MANIFEST_REL, TEMPLATE_GENERATIONS (2 full hashes), hashBytes/hashFile (exact bytes), allowedTargets(tools), readManifest (all hygiene on read: unreadable/JSON/not-object/version!==1/files-shape/absolute incl. drive-letter/.. segments after backslash normalization/non-target keys/malformed hash), writeManifest (sorted keys, ensures dir), assertContained (containsReal from archive-merge, before ANY read/hash).
+- lib/update.js: run() rewritten around consider(rel, srcAbs, adoptable) — managed semantics when listed (missing/modified/refresh+rehash), pre-manifest adoption on proof (runbook () => true; commands generations.includes), unmanaged otherwise; manifestDirty starts true when manifest===null (adoption always materializes, even all-up-to-date); dry guards every write incl. writeManifest; opts.generations test seam; CURE hint text; .gitignore row unchanged.
+- lib/init.js: scaffold() reads the manifest FIRST (hygiene throws before any write); created[] collects ONLY this run's created rels (runbook via seed's new boolean return, command files via writeCommand==='created'); manifest merged over valid existing entries post-scaffold with hashes of just-written bytes; dry-run adds the would-be action row but writes nothing; cli wraps preview/scaffold in try/catch → exit 1.
+- Tests: UP-06..11 + IN-13..17; agedProject fixture now writes a manifest recording the AGED bytes (what an old manifest-aware CLI would have recorded) — UP-01/02/04/05 intents preserved.
+
+Hunt for: adoption-path holes (a pre-manifest command file matching a generation but the RUNBOOK modified — is runbook still adopted+refreshed correctly?), the runbook-listed-but-hash-stale path, missing-manifest + missing-runbook ordering, assertContained coverage (is the runbook itself contained-checked? command files on first existence check?), init created[] completeness (does seed's boolean actually gate the push correctly for the runbook when it pre-exists?), manifest merged when manifest===null in init (fresh project), UP-02's exact-action-list assertion still meaningful, CLI output legibility with the long skip strings, any require cycle (init→managed→archive-merge→args; update→init), Windows path handling (path.join vs the manifest's forward-slash keys — hashFile(path.join(root, rel)) with rel containing '/' on win32 works?). Rows UMIMPL-N. Print the COMPLETE review document body (landed verbatim at apriori/review/update-manifest-impl-review-v1.md) with a ledger-delta section, ending with exactly one verdict line: "VERDICT: no major issues, ready to proceed" or "VERDICT: <N> issues open".
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-11T08:27:14.610326Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T08:27:14.811311Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T08:27:15.140581Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-11T08:27:15.680600Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-11T08:27:16.691502Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-11T08:27:18.459735Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-11T08:27:21.968418Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: a3Glr6ceHISh
+codex
+I’ll inspect the implemented `managed`, `update`, `init`, and the new tests against the converged design, then probe the adoption and containment edge cases directly where useful.
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' lib/managed.js" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 171ms:
+'use strict';
+/*
+ * managed.json — the record of which scaffolded files the tool owns, and the exact
+ * bytes it last wrote there (sha256). init records what it CREATES; update refreshes
+ * only what the manifest proves is tool-owned AND unmodified. Zero deps.
+ */
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+const { containsReal } = require('./archive-merge');
+
+const MANIFEST_REL = 'apriori/managed.json';
+
+// sha256 of every generation of templates/command.md ever shipped, newest first.
+// APPEND when the template changes — UP-11 hashes the live file and asserts membership.
+const TEMPLATE_GENERATIONS = [
+  'sha256:4ada03a2b8a9d6b86fd610e0f4363c31dcea2ba2460d6e96e1231004e4a9c8a0',   // 3.0 front-door
+  'sha256:1dfa5eece0f3c109aae765aa52ffb89f59c0f0f3b494f9430148ac6baeeab046',   // pre-front-door
+];
+
+// exact bytes, never line-ending-normalized — we hash what we wrote
+function hashBytes(buf) { return 'sha256:' + crypto.createHash('sha256').update(buf).digest('hex'); }
+function hashFile(p) { return hashBytes(fs.readFileSync(p)); }
+
+// the only paths update may ever refresh: the runbook + each tool's command file
+function allowedTargets(tools) {
+  const set = new Set(['apriori/runbook.md']);
+  for (const k of Object.keys(tools)) if (tools[k].command) set.add(tools[k].command);
+  return set;
+}
+
+const HASH_RE = /^sha256:[0-9a-f]{64}$/;
+
+// → { files } | null (absent). Throws 'managed.json: <defect>' on anything untrustworthy —
+// hygiene runs on READ, so init and update both fail closed before touching any target.
+function readManifest(root, tools) {
+  const p = path.join(root, MANIFEST_REL);
+  if (!fs.existsSync(p)) return null;
+  let raw;
+  try { raw = fs.readFileSync(p, 'utf8'); }
+  catch (e) { throw new Error(`managed.json: unreadable (${e.message})`); }
+  let doc;
+  try { doc = JSON.parse(raw); }
+  catch (e) { throw new Error(`managed.json: invalid JSON (${e.message})`); }
+  if (!doc || typeof doc !== 'object' || Array.isArray(doc)) throw new Error('managed.json: not an object');
+  if (doc.version !== 1) throw new Error(`managed.json: unsupported version ${JSON.stringify(doc.version)} (expected 1)`);
+  if (!doc.files || typeof doc.files !== 'object' || Array.isArray(doc.files)) throw new Error('managed.json: missing files object');
+  const allowed = allowedTargets(tools);
+  for (const [rel, hash] of Object.entries(doc.files)) {
+    const norm = rel.replace(/\\/g, '/');
+    if (path.isAbsolute(norm) || /^[a-zA-Z]:/.test(norm)) throw new Error(`managed.json: absolute path entry '${rel}'`);
+    if (norm.split('/').includes('..')) throw new Error(`managed.json: path escape in entry '${rel}'`);
+    if (!allowed.has(norm)) throw new Error(`managed.json: '${rel}' is not a refresh target`);
+    if (typeof hash !== 'string' || !HASH_RE.test(hash)) throw new Error(`managed.json: malformed hash for '${rel}'`);
+  }
+  return { files: { ...doc.files } };
+}
+
+function writeManifest(root, files) {
+  const sorted = {};
+  for (const k of Object.keys(files).sort()) sorted[k] = files[k];
+  const p = path.join(root, MANIFEST_REL);
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  fs.writeFileSync(p, JSON.stringify({ version: 1, files: sorted }, null, 2) + '\n');
+}
+
+// containment before ANY read or hash: an existing target must realpath-resolve inside
+// the project; a missing one is judged by its nearest existing ancestor (containsReal).
+// An escaping path is a hygiene error, never classified modified/up-to-date.
+function assertContained(root, rel) {
+  const abs = path.join(root, rel);
+  if (!containsReal(root, abs)) throw new Error(`managed.json: '${rel}' escapes the project root`);
+}
+
+module.exports = { MANIFEST_REL, TEMPLATE_GENERATIONS, hashBytes, hashFile,
+  allowedTargets, readManifest, writeManifest, assertContained };
+
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' lib/update.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,190p' lib/init.js" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 123ms:
+'use strict';
+/*
+ * apriori update — refresh tool-owned scaffolded files after a CLI upgrade.
+ * Tool-owned: apriori/runbook.md (copied from the package's own RUNBOOK.md — single source)
+ * and per-tool command files that already exist (from templates/command.md).
+ * User-owned is NEVER touched: process-config.md, specs/, changes/, review/, truth/,
+ * and the rules files the init pointer was appended to (CLAUDE.md, AGENTS.md, …).
+ * Zero deps — pure Node stdlib.
+ */
+const fs = require('fs');
+const path = require('path');
+const { TOOLS } = require('./init');
+const { withStrict } = require('./args');
+const managed = require('./managed');
+
+const PKG_ROOT = path.join(__dirname, '..');
+const RUNBOOK_SRC = path.join(PKG_ROOT, 'RUNBOOK.md');
+const COMMAND_SRC = path.join(PKG_ROOT, 'templates', 'command.md');
+
+// Refresh one existing target from src; returns 'updated' | 'up-to-date'.
+function refresh(target, src, dryRun) {
+  const want = fs.readFileSync(src, 'utf8');
+  if (fs.readFileSync(target, 'utf8') === want) return 'up-to-date';
+  if (!dryRun) fs.writeFileSync(target, want);
+  return 'updated';
+}
+
+const CURE = "delete it and rerun 'apriori init --tools <t>' to hand it back to the tool";
+
+// Refresh tool-owned files under root — but only those apriori/managed.json proves the
+// tool owns AND the user hasn't modified. Everything else is reported and left alone.
+// Pre-manifest projects are adopted on proof (runbook unconditionally; command files
+// only when their bytes match a shipped template generation).
+// Returns { actions: [{file, action}] }; throws on no runbook or manifest hygiene errors.
+function run(root, opts = {}) {
+  const rb = path.join(root, 'apriori', 'runbook.md');
+  if (!fs.existsSync(rb)) throw new Error(`no apriori/runbook.md here — run 'apriori init' first`);
+  const manifest = managed.readManifest(root, TOOLS);       // hygiene throws before any touch
+  const generations = opts.generations || managed.TEMPLATE_GENERATIONS;
+  const dry = !!opts.dryRun;
+  const actions = [];
+  const files = manifest ? { ...manifest.files } : {};
+  let manifestDirty = manifest === null;                    // adoption always materializes it
+
+  // one candidate: managed semantics when listed; adoption when pre-manifest; unmanaged otherwise
+  const consider = (rel, srcAbs, adoptable) => {
+    const p = path.join(root, rel);
+    const listed = manifest && Object.prototype.hasOwnProperty.call(manifest.files, rel);
+    if (!fs.existsSync(p)) {
+      if (listed) actions.push({ file: rel, action: "missing (skipped — recreating is init's job)" });
+      return;
+    }
+    managed.assertContained(root, rel);                     // before ANY read or hash
+    const cur = managed.hashFile(p);
+    if (listed) {
+      if (cur !== manifest.files[rel]) { actions.push({ file: rel, action: `modified (skipped — locally modified; ${CURE})` }); return; }
+      const act = refresh(p, srcAbs, dry);
+      actions.push({ file: rel, action: act });
+      if (act === 'updated') { files[rel] = managed.hashBytes(fs.readFileSync(srcAbs)); manifestDirty = true; }
+      return;
+    }
+    if (manifest === null && adoptable(cur)) {              // pre-manifest adoption on proof
+      const act = refresh(p, srcAbs, dry);
+      actions.push({ file: rel, action: act });
+      files[rel] = act === 'updated' ? managed.hashBytes(fs.readFileSync(srcAbs)) : cur;
+      return;
+    }
+    actions.push({ file: rel, action: `unmanaged (skipped — not created by this tool; ${CURE})` });
+  };
+
+  // runbook: adopted unconditionally pre-manifest (its refresh is update's reason to exist)
+  consider('apriori/runbook.md', opts.runbookSrc || RUNBOOK_SRC, () => true);
+  // protocol-required scaffolding the refreshed runbook relies on (IN-11): create if missing, NEVER modify
+  const gi = path.join(root, 'apriori', '.gitignore');
+  if (!fs.existsSync(gi)) {
+    if (!dry) { fs.writeFileSync(gi, 'tmp/\n'); fs.mkdirSync(path.join(root, 'apriori', 'tmp'), { recursive: true }); }
+    actions.push({ file: 'apriori/.gitignore', action: 'created' });
+  }
+  for (const key of Object.keys(TOOLS)) {
+    const rel = TOOLS[key].command;
+    if (!rel) continue;
+    consider(rel, opts.commandSrc || COMMAND_SRC, (cur) => generations.includes(cur));
+  }
+  if (manifestDirty && !dry) managed.writeManifest(root, files);
+  return { actions };
+}
+
+const USAGE = 'usage: apriori update [--dry-run]';
+
+function cli(argv) {
+  return withStrict(argv, { sub: 'update', usage: USAGE, positionals: 0, flags: { '--dry-run': 'flag' } }, (f) => {
+    const dryRun = !!f['--dry-run'];
+    let res;
+    try { res = run(process.cwd(), { dryRun }); }
+    catch (e) { console.error('  ' + e.message); return 1; }
+    for (const { file, action } of res.actions)
+      console.log(`  ${action === 'updated' ? '✓' : '·'} ${file}  (${action})`);
+    const n = res.actions.filter((a) => a.action === 'updated').length;
+    const v = require('../package.json').version;
+    console.log(n
+      ? `\n  ${n} file(s) ${dryRun ? 'would be ' : ''}refreshed to apriori-cli ${v}.`
+      : `\n  everything already matches apriori-cli ${v}.`);
+    console.log('  (user-owned files — process-config.md, specs/, changes/, rules files — are never touched.)');
+    return 0;
+  });
+}
+
+module.exports = { run, refresh, cli };
+
+ succeeded in 122ms:
+'use strict';
+/*
+ * apriori init — scaffold the single apriori/ root and write a thin pointer to the
+ * self-contained runbook in each selected AI tool's native location/format.
+ * Zero deps — pure Node stdlib. The protocol lives once (apriori/runbook.md); tools get pointers.
+ */
+const fs = require('fs');
+const path = require('path');
+const readline = require('readline');
+const { withStrict } = require('./args');
+
+const TEMPLATES = path.join(__dirname, '..', 'templates');
+// The runbook ships once, as the package's own RUNBOOK.md — no template duplicate (IN-04).
+const RUNBOOK_SRC = path.join(__dirname, '..', 'RUNBOOK.md');
+
+// The one adapter table — the only maintenance surface as tool conventions drift.
+// level: 'command' = gets a /apriori-style entry; 'rule' = rule-level only (no slash command).
+const TOOLS = {
+  claude:   { name: 'Claude Code',   detect: ['CLAUDE.md', '.claude'],
+              rules: 'CLAUDE.md', command: '.claude/commands/apriori.md', level: 'command' },
+  codex:    { name: 'Codex',         detect: ['AGENTS.md', '.codex'],
+              rules: 'AGENTS.md',  command: '.codex/prompts/apriori.md', level: 'command' },
+  cursor:   { name: 'Cursor',        detect: ['.cursor'],
+              rules: '.cursor/rules/apriori.mdc', mdc: true, level: 'rule' },
+  copilot:  { name: 'GitHub Copilot', detect: ['.github'],
+              rules: '.github/copilot-instructions.md', level: 'rule' },
+  opencode: { name: 'OpenCode',      detect: ['AGENTS.md', '.opencode'],
+              rules: 'AGENTS.md',  command: '.opencode/command/apriori.md', level: 'command' },
+  windsurf: { name: 'Windsurf',      detect: ['.windsurf', '.windsurfrules'],
+              rules: '.windsurf/rules/apriori.md', command: '.windsurf/workflows/apriori.md', level: 'command' },
+};
+
+const POINTER =
+  'Development follows `apriori/runbook.md`. At session start, read it per its ' +
+  'session-start rule and `apriori/changes/<change>/flow-state.md`, then continue ' +
+  'from the recorded position.';
+
+function detectTools(root) {
+  return Object.keys(TOOLS).filter((k) => TOOLS[k].detect.some((m) => fs.existsSync(path.join(root, m))));
+}
+
+function ensureDir(p) { fs.mkdirSync(path.dirname(p), { recursive: true }); }
+
+// Append a pointer to a rules file without duplicating; returns 'created'|'appended'|'skipped'.
+// dryRun computes the action without writing (IN-07 preview).
+function writePointer(root, rel, mdc, dryRun) {
+  const p = path.join(root, rel);
+  const body = mdc
+    ? `---\ndescription: apriori spec-driven development\nalwaysApply: true\n---\n\n${POINTER}\n`
+    : `${POINTER}\n`;
+  if (!fs.existsSync(p)) { if (!dryRun) { ensureDir(p); fs.writeFileSync(p, body); } return 'created'; }
+  const cur = fs.readFileSync(p, 'utf8');
+  if (cur.includes('apriori/runbook.md')) return 'skipped';
+  if (!dryRun) fs.writeFileSync(p, cur.replace(/\s*$/, '') + '\n\n' + body);
+  return 'appended';
+}
+
+function writeCommand(root, rel, dryRun) {
+  const p = path.join(root, rel);
+  if (fs.existsSync(p)) return 'skipped';
+  if (!dryRun) { ensureDir(p); fs.copyFileSync(path.join(TEMPLATES, 'command.md'), p); }
+  return 'created';
+}
+
+// Scaffold the apriori/ root + per-tool pointers. Pure enough to unit-test.
+// opts.dryRun computes actions without writing. Returns { actions:[{file,action}], levels:{tool:level} }
+function scaffold(root, toolKeys, opts = {}) {
+  const dry = !!opts.dryRun;
+  // manifest hygiene FIRST: an untrustworthy managed.json blocks init before any write (IN-17)
+  const managed = require('./managed');
+  const manifest = managed.readManifest(root, TOOLS);
+  const created = [];                                     // rels created THIS run — the only manifest writes
+  const actions = [];
+  const act = (file, action) => actions.push({ file, action });
+  const seed = (rel, srcAbs) => {
+    const p = path.join(root, rel);
+    if (!fs.existsSync(p)) { if (!dry) { ensureDir(p); fs.copyFileSync(srcAbs, p); } act(rel, 'created'); return true; }
+    act(rel, 'skipped'); return false;
+  };
+
+  // 1. apriori/ root: runbook + process-config (never clobbered) + working dirs
+  if (seed('apriori/runbook.md', RUNBOOK_SRC)) created.push('apriori/runbook.md');
+  seed('apriori/process-config.md', path.join(TEMPLATES, 'process-config.md'));
+  // ephemeral scratch (P7 screenshot self-checks etc.) — gitignored, never committed (IN-11)
+  const gi = path.join(root, 'apriori', '.gitignore');
+  if (!fs.existsSync(gi)) { if (!dry) { ensureDir(gi); fs.writeFileSync(gi, 'tmp/\n'); } act('apriori/.gitignore', 'created'); }
+  else act('apriori/.gitignore', 'skipped');
+  // pin a language and/or persist a test command in the scaffolded config (only on a freshly-created config)
+  if ((opts.language || opts.testCmd) && !dry) {
+    const cfg = path.join(root, 'apriori', 'process-config.md');
+    const created = actions.some((a) => a.file === 'apriori/process-config.md' && a.action === 'created');
+    if (created) {
+      let body = fs.readFileSync(cfg, 'utf8');
+      if (opts.language) body = body.replace(/(\| language \| )auto( \|)/, `$1${opts.language}$2`);
+      if (opts.testCmd)  // consumed by `apriori verify` as the default when --test-cmd is omitted
+        body = body.replace(/^(\| language \|.*)$/m, `$1\n| test-cmd | ${opts.testCmd} | any shell command emitting TAP — \`apriori verify\`'s default | (none) |`);
+      fs.writeFileSync(cfg, body);
+    }
+  }
+  if (!dry) for (const sub of ['specs', 'changes', 'changes/archive', 'review', 'truth', 'tmp'])
+    fs.mkdirSync(path.join(root, 'apriori', sub), { recursive: true });
+
+  // 2. per-tool pointers / commands
+  const levels = {};
+  for (const key of toolKeys) {
+    const t = TOOLS[key];
+    if (!t) continue;
+    act(t.rules, writePointer(root, t.rules, t.mdc, dry));
+    if (t.command) {
+      const cmdAct = writeCommand(root, t.command, dry);
+      act(t.command, cmdAct);
+      if (cmdAct === 'created') created.push(t.command);   // pre-existing files are never adopted
+    }
+    levels[key] = t.level;
+  }
+  // 3. the managed manifest: record ONLY what THIS run created, merged over valid existing
+  // entries (a recreated missing file gets a fresh hash — the delete-and-reinit cure closes).
+  // dry-run reports the would-be entries and touches nothing.
+  if (created.length) {
+    act('apriori/managed.json', manifest ? 'merged' : 'created');
+    if (!dry) {
+      const files = manifest ? { ...manifest.files } : {};
+      for (const rel of created) files[rel] = managed.hashFile(path.join(root, rel));
+      managed.writeManifest(root, files);
+    }
+  }
+  return { actions, levels };
+}
+
+function parseArgs(argv) {
+  const a = { tools: null, testCmd: null, yes: false, language: null };
+  for (let i = 0; i < argv.length; i++) {
+    const k = argv[i];
+    if (k === '--tools') a.tools = argv[++i].split(',').map((s) => s.trim()).filter(Boolean);
+    else if (k === '--test-cmd') a.testCmd = argv[++i];
+    else if (k === '--language') a.language = argv[++i];
+    else if (k === '--yes' || k === '-y') a.yes = true;
+  }
+  return a;
+}
+
+function report(scaffoldResult) {
+  console.log('\n  Wrote:');
+  for (const { file, action } of scaffoldResult.actions)
+    console.log(`    ${action === 'skipped' ? '·' : '✓'} ${file}${action !== 'created' ? `  (${action})` : ''}`);
+  const cmd = [], rule = [];
+  for (const [k, lvl] of Object.entries(scaffoldResult.levels))
+    (lvl.startsWith('command') ? cmd : rule).push(TOOLS[k].name + (lvl === 'command-experimental' ? ' (experimental)' : ''));
+  if (cmd.length) console.log(`\n  /apriori command-level: ${cmd.join(', ')}`);
+  if (rule.length) console.log(`  rule-level (no slash command, just point the agent at the runbook): ${rule.join(', ')}`);
+  console.log('\n  Next — two doors:');
+  console.log('    idea still fuzzy?  /apriori           (no arguments — brainstorm first, nothing written until you approve)');
+  console.log('    change is clear?   /apriori <change>  (or the kickoff prompt), then answer at each human gate.');
+}
+
+// --- arrow-key multi-select (pure Node, zero deps) ---------------------------
+// key names from a raw stdin chunk
+function parseKey(buf) {
+  const s = buf.toString('utf8');
+  if (s === '\x1b[A' || s === 'k') return 'up';
+  if (s === '\x1b[B' || s === 'j') return 'down';
+  if (s === ' ') return 'space';
+  if (s === '\r' || s === '\n') return 'enter';
+  if (s === 'a') return 'all';
+  if (s === '\x03' || s === '\x1b') return 'cancel';   // Ctrl-C / Esc
+  return null;
+}
+
+// pure reducer: (state, key) → state. state = { items, cursor, selected:Set }
+function reduceKey(state, key) {
+  const n = state.items.length;
+  if (!n) return state;
+  if (key === 'up') return { ...state, cursor: (state.cursor - 1 + n) % n };
+  if (key === 'down') return { ...state, cursor: (state.cursor + 1) % n };
+  if (key === 'space') {
+    const selected = new Set(state.selected);
+    const id = state.items[state.cursor].key;
+    if (selected.has(id)) selected.delete(id); else selected.add(id);
+    return { ...state, selected };
+  }
+  if (key === 'all') {
+    const selected = state.selected.size === n ? new Set() : new Set(state.items.map((i) => i.key));
+    return { ...state, selected };
+  }
+  return state;
+}
+
+const paint = (s, code, on) => (on ? `\x1b[${code}m${s}\x1b[0m` : s);
+
+function renderMenu(state, opts = {}) {
+
+codex
+The implementation mostly follows the design. I’m checking the tests and probing the symlink/containment and missing-entry paths, because that is where ownership bugs tend to hide.
+exec
+/usr/bin/zsh -lc 'rg -n "UP-06|UP-07|UP-08|UP-09|UP-10|UP-11|IN-13|IN-14|IN-15|IN-16|IN-17|managed|unmanaged|modified|missing|TEMPLATE_GENERATIONS|agedProject" test/update.test.js test/init.test.js' in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' test/init.test.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' test/update.test.js" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 105ms:
+'use strict';
+const { test } = require('node:test');
+const assert = require('node:assert');
+const path = require('node:path');
+const fs = require('node:fs');
+const os = require('node:os');
+
+const init = require('../lib/init');
+const update = require('../lib/update');
+
+function tmp() { return fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-up-')); }
+const PKG_RUNBOOK = fs.readFileSync(path.join(__dirname, '..', 'RUNBOOK.md'), 'utf8');
+const PKG_COMMAND = fs.readFileSync(path.join(__dirname, '..', 'templates', 'command.md'), 'utf8');
+
+const crypto = require('node:crypto');
+const sha = (buf) => 'sha256:' + crypto.createHash('sha256').update(buf).digest('hex');
+const shaFile = (p) => sha(fs.readFileSync(p));
+function writeManifest(root, files) {
+  fs.writeFileSync(path.join(root, 'apriori', 'managed.json'),
+    JSON.stringify({ version: 1, files }, null, 2) + '\n');
+}
+
+// scaffold a claude-configured project, then age some tool-owned files.
+// The manifest records the AGED bytes — exactly what an older CLI would have
+// written and recorded — so update sees tool-owned-and-unmodified files.
+function agedProject() {
+  const root = tmp();
+  init.scaffold(root, ['claude']);
+  fs.writeFileSync(path.join(root, 'apriori', 'runbook.md'), '# old runbook from a previous CLI version\n');
+  fs.writeFileSync(path.join(root, '.claude', 'commands', 'apriori.md'), 'old command body\n');
+  writeManifest(root, {
+    'apriori/runbook.md': shaFile(path.join(root, 'apriori', 'runbook.md')),
+    '.claude/commands/apriori.md': shaFile(path.join(root, '.claude', 'commands', 'apriori.md')),
+  });
+  return root;
+}
+
+test('UP-01 refreshes the runbook copy and existing command files', () => {
+  const root = agedProject();
+  const { actions } = update.run(root);
+  const byFile = Object.fromEntries(actions.map((a) => [a.file, a.action]));
+  assert.strictEqual(byFile['apriori/runbook.md'], 'updated');
+  assert.strictEqual(byFile['.claude/commands/apriori.md'], 'updated');
+  assert.strictEqual(fs.readFileSync(path.join(root, 'apriori', 'runbook.md'), 'utf8'), PKG_RUNBOOK);
+  assert.strictEqual(fs.readFileSync(path.join(root, '.claude', 'commands', 'apriori.md'), 'utf8'), PKG_COMMAND);
+  // second run: everything up-to-date
+  for (const a of update.run(root).actions) assert.strictEqual(a.action, 'up-to-date');
+});
+
+test('UP-02 user-owned files are never touched, nothing new is created', () => {
+  const root = agedProject();
+  const cfgPath = path.join(root, 'apriori', 'process-config.md');
+  fs.writeFileSync(cfgPath, '| language | 中文 |  # human-held, hands off\n');
+  const rulesPath = path.join(root, 'CLAUDE.md');
+  const rulesBefore = fs.readFileSync(rulesPath, 'utf8');
+  // one user-owned file in every protected surface the scenario names
+  const owned = {
+    'apriori/specs/kv.md': '#### Scenario: KV-01 x\n',
+    'apriori/changes/add-x/flow-state.md': '| step | STEP2 |\n',
+    'apriori/review/add-x-issues.md': '| I1 | open |\n',
+    'apriori/truth/kv.md': 'KB fact\n',
+  };
+  for (const [rel, body] of Object.entries(owned)) {
+    const p = path.join(root, ...rel.split('/'));
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, body);
+  }
+  const { actions } = update.run(root);
+  assert.strictEqual(fs.readFileSync(cfgPath, 'utf8'), '| language | 中文 |  # human-held, hands off\n');
+  assert.strictEqual(fs.readFileSync(rulesPath, 'utf8'), rulesBefore);
+  for (const [rel, body] of Object.entries(owned))
+    assert.strictEqual(fs.readFileSync(path.join(root, ...rel.split('/')), 'utf8'), body);
+  // only the runbook copy + the one existing command file appear; no other tool's command was created
+  assert.deepStrictEqual(actions.map((a) => a.file).sort(), ['.claude/commands/apriori.md', 'apriori/runbook.md']);
+  assert.ok(!fs.existsSync(path.join(root, '.codex')));
+});
+
+test('UP-03 uninitialized project errors naming apriori init', () => {
+  const root = tmp();
+  assert.throws(() => update.run(root), /apriori init/);
+});
+
+test('UP-04 --dry-run previews without writing', () => {
+  const root = agedProject();
+  // through the CLI, as the scenario states: reports what would be refreshed, writes nothing
+  const { spawnSync } = require('node:child_process');
+  const r = spawnSync('node', [path.join(__dirname, '..', 'bin', 'apriori.js'), 'update', '--dry-run'],
+    { cwd: root, encoding: 'utf8' });
+  assert.strictEqual(r.status, 0);
+  assert.match(r.stdout, /apriori\/runbook\.md\s+\(updated\)/);
+  assert.match(r.stdout, /would be refreshed/);
+  // both stale tool-owned files are untouched
+  assert.strictEqual(fs.readFileSync(path.join(root, 'apriori', 'runbook.md'), 'utf8'),
+    '# old runbook from a previous CLI version\n');
+  assert.strictEqual(fs.readFileSync(path.join(root, '.claude', 'commands', 'apriori.md'), 'utf8'),
+    'old command body\n');
+});
+
+test('UP-05 protocol-required scaffolding is re-established', () => {
+  // a project initialized before the gitignored scratch dir existed
+  const root = agedProject();
+  fs.rmSync(path.join(root, 'apriori', '.gitignore'), { force: true });
+  fs.rmSync(path.join(root, 'apriori', 'tmp'), { recursive: true, force: true });
+  const { actions } = update.run(root);
+  assert.ok(actions.some((a) => a.file === 'apriori/.gitignore' && a.action === 'created'));
+  assert.strictEqual(fs.readFileSync(path.join(root, 'apriori', '.gitignore'), 'utf8'), 'tmp/\n');
+  assert.ok(fs.statSync(path.join(root, 'apriori', 'tmp')).isDirectory());
+  // an existing (customized) .gitignore is never modified
+  fs.writeFileSync(path.join(root, 'apriori', '.gitignore'), 'tmp/\ncustom/\n');
+  const again = update.run(root);
+  assert.strictEqual(fs.readFileSync(path.join(root, 'apriori', '.gitignore'), 'utf8'), 'tmp/\ncustom/\n');
+  assert.ok(!again.actions.some((a) => a.file === 'apriori/.gitignore'));
+});
+
+// ---- update-manifest (UP-06..11): update refreshes only manifest-proven files ----
+
+test('UP-06 a foreign file at a tool path survives update', () => {
+  const root = agedProject();
+  const foreign = path.join(root, '.codex', 'prompts', 'apriori.md');
+  fs.mkdirSync(path.dirname(foreign), { recursive: true });
+  fs.writeFileSync(foreign, 'my own prompt, hands off\n');
+  const { actions } = update.run(root);
+  const row = actions.find((a) => a.file === '.codex/prompts/apriori.md');
+  assert.ok(row && /unmanaged/.test(row.action), JSON.stringify(actions));
+  assert.strictEqual(fs.readFileSync(foreign, 'utf8'), 'my own prompt, hands off\n');
+});
+
+test('UP-07 an unmodified managed file refreshes and re-hashes', () => {
+  const root = agedProject();
+  const { actions } = update.run(root);
+  const byFile = Object.fromEntries(actions.map((a) => [a.file, a.action]));
+  assert.strictEqual(byFile['.claude/commands/apriori.md'], 'updated');
+  assert.strictEqual(fs.readFileSync(path.join(root, '.claude', 'commands', 'apriori.md'), 'utf8'), PKG_COMMAND);
+  const m = JSON.parse(fs.readFileSync(path.join(root, 'apriori', 'managed.json'), 'utf8'));
+  assert.strictEqual(m.files['.claude/commands/apriori.md'],
+    shaFile(path.join(__dirname, '..', 'templates', 'command.md')));
+  assert.strictEqual(m.files['apriori/runbook.md'], shaFile(path.join(__dirname, '..', 'RUNBOOK.md')));
+});
+
+test('UP-08 a locally modified managed file is protected', () => {
+  const root = agedProject();
+  // the user edited both managed files AFTER the manifest recorded them
+  fs.appendFileSync(path.join(root, '.claude', 'commands', 'apriori.md'), '\nteam-specific extras\n');
+  fs.appendFileSync(path.join(root, 'apriori', 'runbook.md'), '\nlocal notes\n');
+  const cmdBefore = fs.readFileSync(path.join(root, '.claude', 'commands', 'apriori.md'), 'utf8');
+  const rbBefore = fs.readFileSync(path.join(root, 'apriori', 'runbook.md'), 'utf8');
+  const manifestBefore = fs.readFileSync(path.join(root, 'apriori', 'managed.json'), 'utf8');
+  const { actions } = update.run(root);
+  for (const rel of ['.claude/commands/apriori.md', 'apriori/runbook.md']) {
+    const row = actions.find((a) => a.file === rel);
+    assert.ok(row && /modified/.test(row.action), JSON.stringify(actions));
+  }
+  assert.strictEqual(fs.readFileSync(path.join(root, '.claude', 'commands', 'apriori.md'), 'utf8'), cmdBefore);
+  assert.strictEqual(fs.readFileSync(path.join(root, 'apriori', 'runbook.md'), 'utf8'), rbBefore);
+  // --dry-run through the CLI: identical classification, nothing written at all
+  const { spawnSync } = require('node:child_process');
+  const r = spawnSync('node', [path.join(__dirname, '..', 'bin', 'apriori.js'), 'update', '--dry-run'],
+    { cwd: root, encoding: 'utf8' });
+  assert.strictEqual(r.status, 0);
+  assert.match(r.stdout, /modified/);
+  assert.strictEqual(fs.readFileSync(path.join(root, 'apriori', 'managed.json'), 'utf8'), manifestBefore);
+});
+
+test('UP-09 pre-manifest projects are adopted only on proof', () => {
+  const root = tmp();
+  init.scaffold(root, ['claude', 'codex']);
+  fs.rmSync(path.join(root, 'apriori', 'managed.json'), { force: true });   // pre-manifest CLI wrote none
+  // claude command = pristine current template (identity proof);
+  // codex command = a previous shipped generation (proved via the injectable generation list);
+  // opencode command = arbitrary user content (no proof)
+  fs.writeFileSync(path.join(root, '.codex', 'prompts', 'apriori.md'), 'generation zero body\n');
+  const oc = path.join(root, '.opencode', 'command', 'apriori.md');
+  fs.mkdirSync(path.dirname(oc), { recursive: true });
+  fs.writeFileSync(oc, 'user-owned free text\n');
+  const gens = [shaFile(path.join(__dirname, '..', 'templates', 'command.md')), sha('generation zero body\n')];
+  const { actions } = update.run(root, { generations: gens });
+  const byFile = Object.fromEntries(actions.map((a) => [a.file, a.action]));
+  assert.strictEqual(byFile['.claude/commands/apriori.md'], 'up-to-date');
+  assert.strictEqual(byFile['.codex/prompts/apriori.md'], 'updated');
+  assert.ok(/unmanaged/.test(byFile['.opencode/command/apriori.md']), JSON.stringify(byFile));
+  assert.strictEqual(fs.readFileSync(oc, 'utf8'), 'user-owned free text\n');
+  assert.strictEqual(fs.readFileSync(path.join(root, '.codex', 'prompts', 'apriori.md'), 'utf8'), PKG_COMMAND);
+  // the adoption pass materialized the manifest, covering exactly the proven files + runbook
+  const m = JSON.parse(fs.readFileSync(path.join(root, 'apriori', 'managed.json'), 'utf8'));
+  assert.deepStrictEqual(Object.keys(m.files).sort(),
+    ['.claude/commands/apriori.md', '.codex/prompts/apriori.md', 'apriori/runbook.md']);
+  // dry-run pre-manifest: no manifest materializes
+  const root2 = tmp();
+  init.scaffold(root2, ['claude']);
+  fs.rmSync(path.join(root2, 'apriori', 'managed.json'), { force: true });
+  update.run(root2, { dryRun: true });
+  assert.ok(!fs.existsSync(path.join(root2, 'apriori', 'managed.json')));
+});
+
+test('UP-10 manifest hygiene fails closed', () => {
+  const bads = [
+    'not json at all',
+    JSON.stringify({ version: 2, files: {} }),
+    JSON.stringify({ version: 1 }),
+    JSON.stringify({ version: 1, files: { 'apriori/runbook.md': 'md5:abc' } }),
+    JSON.stringify({ version: 1, files: { '../outside.md': 'sha256:' + 'a'.repeat(64) } }),
+    JSON.stringify({ version: 1, files: { 'apriori/process-config.md': 'sha256:' + 'a'.repeat(64) } }),  // not a refresh target
+  ];
+  for (const bad of bads) {
+    const root = agedProject();
+    fs.writeFileSync(path.join(root, 'apriori', 'managed.json'), bad);
+    const rbBefore = fs.readFileSync(path.join(root, 'apriori', 'runbook.md'), 'utf8');
+    assert.throws(() => update.run(root), /managed\.json/, bad.slice(0, 40));
+    assert.throws(() => update.run(root, { dryRun: true }), /managed\.json/, bad.slice(0, 40));
+    assert.strictEqual(fs.readFileSync(path.join(root, 'apriori', 'runbook.md'), 'utf8'), rbBefore);
+    // CLI surfaces it as a nonzero exit, not a stack trace
+    const { spawnSync } = require('node:child_process');
+    const r = spawnSync('node', [path.join(__dirname, '..', 'bin', 'apriori.js'), 'update'],
+      { cwd: root, encoding: 'utf8' });
+    assert.notStrictEqual(r.status, 0);
+    assert.match(r.stdout + r.stderr, /managed\.json/);
+  }
+});
+
+test('UP-11 the shipped-generation list stays honest', () => {
+  const managed = require('../lib/managed');
+  assert.ok(Array.isArray(managed.TEMPLATE_GENERATIONS) && managed.TEMPLATE_GENERATIONS.length >= 2);
+  for (const g of managed.TEMPLATE_GENERATIONS) assert.match(g, /^sha256:[0-9a-f]{64}$/);
+  assert.ok(managed.TEMPLATE_GENERATIONS.includes(shaFile(path.join(__dirname, '..', 'templates', 'command.md'))),
+    'templates/command.md changed without appending its hash to TEMPLATE_GENERATIONS');
+});
+
+ succeeded in 127ms:
+'use strict';
+const { test } = require('node:test');
+const assert = require('node:assert');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const init = require('../lib/init');
+
+function tmp() { return fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-in-')); }
+function read(root, rel) { return fs.readFileSync(path.join(root, rel), 'utf8'); }
+
+test('IN-01 detects present tools and would pre-select them', () => {
+  const root = tmp();
+  fs.writeFileSync(path.join(root, 'CLAUDE.md'), 'x');
+  fs.mkdirSync(path.join(root, '.cursor'));
+  const d = init.detectTools(root);
+  assert.ok(d.includes('claude') && d.includes('cursor'));
+  assert.ok(!d.includes('windsurf'));
+});
+
+test('IN-02 the multi-select universe is the six supported tools', () => {
+  assert.deepStrictEqual(Object.keys(init.TOOLS).sort(),
+    ['claude', 'codex', 'copilot', 'cursor', 'opencode', 'windsurf'].sort());
+});
+
+test('IN-03 non-interactive via flags parses tools/test-cmd/yes/language', () => {
+  const a = init.parseArgs(['--tools', 'claude,cursor', '--test-cmd', 'npm test', '--yes', '--language', '中文']);
+  assert.deepStrictEqual(a.tools, ['claude', 'cursor']);
+  assert.strictEqual(a.testCmd, 'npm test');
+  assert.strictEqual(a.yes, true);
+  assert.strictEqual(a.language, '中文');
+  assert.strictEqual(init.parseArgs([]).language, null);   // default: no pin (auto)
+});
+
+test('IN-04 the protocol runbook is written once, self-contained, regardless of tool count', () => {
+  const root = tmp();
+  init.scaffold(root, ['claude', 'cursor', 'codex']);
+  const rb = read(root, 'apriori/runbook.md');
+  assert.ok(rb.includes('# Apriori RUNBOOK'));           // the real runbook, not a placeholder
+  assert.ok(rb.includes('## 1. Hard Rules'));            // self-contained: carries the protocol
+  // single source: byte-identical to the package's own RUNBOOK.md (no template copy to drift)
+  assert.strictEqual(rb, fs.readFileSync(path.join(__dirname, '..', 'RUNBOOK.md'), 'utf8'));
+  // no per-tool runbook duplication — only pointers reference it
+  assert.ok(read(root, 'CLAUDE.md').includes('apriori/runbook.md'));
+  assert.ok(!read(root, '.cursor/rules/apriori.mdc').includes('# Apriori RUNBOOK'));
+});
+
+test('IN-05 per-tool native location and format (Cursor MDC frontmatter, Claude command)', () => {
+  const root = tmp();
+  init.scaffold(root, ['claude', 'cursor']);
+  const mdc = read(root, '.cursor/rules/apriori.mdc');
+  assert.match(mdc, /^---\ndescription:/);
+  assert.match(mdc, /alwaysApply: true/);
+  assert.ok(fs.existsSync(path.join(root, '.claude/commands/apriori.md')));
+  assert.ok(read(root, 'CLAUDE.md').includes('apriori/runbook.md'));
+});
+
+test('IN-06 additive and non-clobbering; re-running is safe', () => {
+  const root = tmp();
+  fs.writeFileSync(path.join(root, 'CLAUDE.md'), '# my existing rules\n');
+  const first = init.scaffold(root, ['claude']);
+  assert.ok(first.actions.some((a) => a.file === 'CLAUDE.md' && a.action === 'appended'));
+  const body = read(root, 'CLAUDE.md');
+  assert.ok(body.startsWith('# my existing rules'));       // original preserved
+  assert.ok(body.includes('apriori/runbook.md'));          // pointer appended
+  const second = init.scaffold(root, ['claude']);          // re-run
+  assert.ok(second.actions.some((a) => a.file === 'CLAUDE.md' && a.action === 'skipped'));
+  assert.strictEqual((read(root, 'CLAUDE.md').match(/apriori\/runbook\.md/g) || []).length, 1); // no dup
+});
+
+test('IN-07 dry-run previews actions without writing any file', () => {
+  const root = tmp();
+  const plan = init.scaffold(root, ['claude'], { dryRun: true });
+  assert.ok(plan.actions.length > 0);
+  assert.ok(!fs.existsSync(path.join(root, 'apriori', 'runbook.md'))); // nothing written
+  assert.ok(!fs.existsSync(path.join(root, 'CLAUDE.md')));
+});
+
+test('IN-10 arrow-key multiselect: parseKey, reducer, render (no numbers), end-to-end', async () => {
+  // parseKey maps raw terminal bytes → key names
+  assert.strictEqual(init.parseKey(Buffer.from('\x1b[A')), 'up');
+  assert.strictEqual(init.parseKey(Buffer.from('\x1b[B')), 'down');
+  assert.strictEqual(init.parseKey(Buffer.from(' ')), 'space');
+  assert.strictEqual(init.parseKey(Buffer.from('\r')), 'enter');
+  assert.strictEqual(init.parseKey(Buffer.from('a')), 'all');
+  assert.strictEqual(init.parseKey(Buffer.from('\x03')), 'cancel');
+
+  const items = [{ key: 'a', name: 'A' }, { key: 'b', name: 'B' }, { key: 'c', name: 'C' }];
+  let st = { items, cursor: 0, selected: new Set() };
+  st = init.reduceKey(st, 'up');    assert.strictEqual(st.cursor, 2);   // wraps to bottom
+  st = init.reduceKey(st, 'down');  assert.strictEqual(st.cursor, 0);   // wraps to top
+  st = init.reduceKey(st, 'space'); assert.ok(st.selected.has('a'));    // toggle current on
+  st = init.reduceKey(st, 'space'); assert.ok(!st.selected.has('a'));   // toggle off
+  st = init.reduceKey(st, 'all');   assert.strictEqual(st.selected.size, 3);  // all on
+  st = init.reduceKey(st, 'all');   assert.strictEqual(st.selected.size, 0);  // all off
+
+  // render shows a cursor + checkbox, a selected-footer, and NO numeric "1." "2." selection
+  const menu = init.renderMenu({ items, cursor: 1, selected: new Set(['a', 'c']) });
+  assert.match(menu, /❯ ◯ B/);      // cursor on row 1
+  assert.match(menu, /◉ A/);        // 'a' selected
+  assert.doesNotMatch(menu, /\d\.\s/);   // no "1. 2. 3."
+  assert.match(menu, /space toggle · a all · enter confirm/);
+  assert.match(menu, /selected: A, C/);                     // footer lists selected names in order
+  assert.match(init.renderMenu({ items, cursor: 0, selected: new Set() }), /selected: \(none\)/);
+  assert.doesNotMatch(menu, /\x1b\[/);                      // no ANSI when color off (default)
+  // green when on — assert the FOOTER names specifically are green (not just the ◉ boxes)
+  assert.match(init.renderMenu({ items, cursor: 0, selected: new Set(['a']) }, { color: true }), /selected: \x1b\[32mA\x1b\[0m/);
+
+  // end-to-end driver with injected streams: down, space, down, space, enter → picks b, c
+  const { PassThrough } = require('node:stream');
+  const input = new PassThrough();
+  const output = { write() {} };
+  const p = init.multiselect({ items, preselected: [], input, output });
+  for (const seq of ['\x1b[B', ' ', '\x1b[B', ' ', '\r']) {
+    input.write(Buffer.from(seq));
+    await new Promise((r) => setImmediate(r));
+  }
+  assert.deepStrictEqual(await p, ['b', 'c']);
+});
+
+test('IN-08 reports command-level vs rule-level entry per tool', () => {
+  const root = tmp();
+  const { levels } = init.scaffold(root, ['claude', 'cursor', 'copilot']);
+  assert.strictEqual(levels.claude, 'command');
+  assert.strictEqual(levels.cursor, 'rule');          // no slash command
+  assert.strictEqual(levels.copilot, 'rule');         // Copilot: rule-level, no slash command
+});
+
+test('IN-09 --language pins a language in the scaffolded config; default is auto', () => {
+  const withLang = tmp();
+  init.scaffold(withLang, ['claude'], { language: '中文' });
+  assert.match(read(withLang, 'apriori/process-config.md'), /\| language \| 中文 \|/);
+  const noLang = tmp();
+  init.scaffold(noLang, ['claude']);
+  assert.match(read(noLang, 'apriori/process-config.md'), /\| language \| auto \|/);   // default
+  // an existing config is never overwritten
+  const existing = tmp();
+  fs.mkdirSync(path.join(existing, 'apriori'), { recursive: true });
+  fs.writeFileSync(path.join(existing, 'apriori', 'process-config.md'), 'MINE\n');
+  init.scaffold(existing, ['claude'], { language: '中文' });
+  assert.strictEqual(read(existing, 'apriori/process-config.md'), 'MINE\n');
+});
+
+test('IN-11 a gitignored scratch dir for ephemeral instruments', () => {
+  const root = tmp();
+  init.scaffold(root, ['claude']);
+  assert.ok(fs.statSync(path.join(root, 'apriori', 'tmp')).isDirectory());
+  assert.strictEqual(read(root, 'apriori/.gitignore'), 'tmp/\n');
+  // an existing .gitignore is never overwritten; re-run reports skipped
+  fs.writeFileSync(path.join(root, 'apriori', '.gitignore'), 'tmp/\ncustom/\n');
+  const { actions } = init.scaffold(root, ['claude']);
+  assert.strictEqual(read(root, 'apriori/.gitignore'), 'tmp/\ncustom/\n');
+  assert.ok(actions.some((a) => a.file === 'apriori/.gitignore' && a.action === 'skipped'));
+});
+
+test('IN-12 --test-cmd persists into the fresh config and verify uses it as default', () => {
+  const root = tmp();
+  init.scaffold(root, ['claude'], { testCmd: 'node -e "console.log(1)"' });
+  const cfg = read(root, 'apriori/process-config.md');
+  assert.match(cfg, /\| test-cmd \| node -e "console\.log\(1\)" \|/);
+  // verify's fallback reader picks it up
+  const { configTestCmd } = require('../lib/spec-runner');
+  assert.strictEqual(configTestCmd(root), 'node -e "console.log(1)"');
+  // an existing config is never rewritten
+  const existing = tmp();
+  fs.mkdirSync(path.join(existing, 'apriori'), { recursive: true });
+  fs.writeFileSync(path.join(existing, 'apriori', 'process-config.md'), 'MINE\n');
+  init.scaffold(existing, ['claude'], { testCmd: 'x' });
+  assert.strictEqual(read(existing, 'apriori/process-config.md'), 'MINE\n');
+});
+
+// ---- update-manifest (IN-13..17): init records what it creates ----
+
+const umPath = require('node:path');
+const umFs = require('node:fs');
+const umOs = require('node:os');
+const umCrypto = require('node:crypto');
+const umInit = require('../lib/init');
+const umUpdate = require('../lib/update');
+const umTmp = () => umFs.mkdtempSync(umPath.join(umOs.tmpdir(), 'apriori-inm-'));
+const umSha = (p) => 'sha256:' + umCrypto.createHash('sha256').update(umFs.readFileSync(p)).digest('hex');
+const umManifest = (root) => JSON.parse(umFs.readFileSync(umPath.join(root, 'apriori', 'managed.json'), 'utf8'));
+
+test('IN-13 fresh init writes the manifest for exactly what it created', () => {
+  const root = umTmp();
+  umInit.scaffold(root, ['claude']);
+  const m = umManifest(root);
+  assert.strictEqual(m.version, 1);
+  assert.deepStrictEqual(Object.keys(m.files).sort(), ['.claude/commands/apriori.md', 'apriori/runbook.md']);
+  assert.strictEqual(m.files['apriori/runbook.md'], umSha(umPath.join(root, 'apriori', 'runbook.md')));
+  assert.strictEqual(m.files['.claude/commands/apriori.md'], umSha(umPath.join(root, '.claude', 'commands', 'apriori.md')));
+});
+
+test('IN-14 add-tool init merges without adopting bystanders', () => {
+  const root = umTmp();
+  umInit.scaffold(root, ['claude']);
+  const claudeHash = umManifest(root).files['.claude/commands/apriori.md'];
+  // a user file already sits at codex's command path — init skips it, and it must gain NO entry
+  const codexCmd = umPath.join(root, '.codex', 'prompts', 'apriori.md');
+  umFs.mkdirSync(umPath.dirname(codexCmd), { recursive: true });
+  umFs.writeFileSync(codexCmd, 'user file, was here first\n');
+  umInit.scaffold(root, ['codex']);
+  const m = umManifest(root);
+  assert.strictEqual(m.files['.claude/commands/apriori.md'], claudeHash);   // preserved
+  assert.ok(!('.codex/prompts/apriori.md' in m.files), 'bystander adopted!');
+  const { actions } = umUpdate.run(root);
+  const row = actions.find((a) => a.file === '.codex/prompts/apriori.md');
+  assert.ok(row && /unmanaged/.test(row.action));
+  assert.strictEqual(umFs.readFileSync(codexCmd, 'utf8'), 'user file, was here first\n');
+});
+
+test('IN-15 the delete-and-reinit cure closes cleanly', () => {
+  const root = umTmp();
+  umInit.scaffold(root, ['claude']);
+  const cmd = umPath.join(root, '.claude', 'commands', 'apriori.md');
+  umFs.appendFileSync(cmd, '\nlocal edits\n');            // modified…
+  umFs.rmSync(cmd);                                        // …then deleted, per the cure
+  umInit.scaffold(root, ['claude']);                       // re-init recreates it
+  assert.strictEqual(umManifest(root).files['.claude/commands/apriori.md'], umSha(cmd));
+  const { actions } = umUpdate.run(root);
+  const row = actions.find((a) => a.file === '.claude/commands/apriori.md');
+  assert.strictEqual(row.action, 'up-to-date');
+});
+
+test('IN-16 init dry-run leaves the manifest alone', () => {
+  const root = umTmp();
+  umInit.scaffold(root, ['claude'], { dryRun: true });
+  assert.ok(!umFs.existsSync(umPath.join(root, 'apriori', 'managed.json')));
+  umInit.scaffold(root, ['claude']);
+  const before = umFs.readFileSync(umPath.join(root, 'apriori', 'managed.json'), 'utf8');
+  umInit.scaffold(root, ['codex'], { dryRun: true });
+  assert.strictEqual(umFs.readFileSync(umPath.join(root, 'apriori', 'managed.json'), 'utf8'), before);
+});
+
+test('IN-17 a hygiene-invalid manifest blocks init', () => {
+  const root = umTmp();
+  umInit.scaffold(root, ['claude']);
+  umFs.writeFileSync(umPath.join(root, 'apriori', 'managed.json'), '{ broken');
+  assert.throws(() => umInit.scaffold(root, ['codex']), /managed\.json/);
+  assert.ok(!umFs.existsSync(umPath.join(root, '.codex')), 'scaffolding ran despite invalid manifest');
+});
+
+ succeeded in 162ms:
+test/init.test.js:172:// ---- update-manifest (IN-13..17): init records what it creates ----
+test/init.test.js:182:const umManifest = (root) => JSON.parse(umFs.readFileSync(umPath.join(root, 'apriori', 'managed.json'), 'utf8'));
+test/init.test.js:184:test('IN-13 fresh init writes the manifest for exactly what it created', () => {
+test/init.test.js:194:test('IN-14 add-tool init merges without adopting bystanders', () => {
+test/init.test.js:208:  assert.ok(row && /unmanaged/.test(row.action));
+test/init.test.js:212:test('IN-15 the delete-and-reinit cure closes cleanly', () => {
+test/init.test.js:216:  umFs.appendFileSync(cmd, '\nlocal edits\n');            // modified…
+test/init.test.js:225:test('IN-16 init dry-run leaves the manifest alone', () => {
+test/init.test.js:228:  assert.ok(!umFs.existsSync(umPath.join(root, 'apriori', 'managed.json')));
+test/init.test.js:230:  const before = umFs.readFileSync(umPath.join(root, 'apriori', 'managed.json'), 'utf8');
+test/init.test.js:232:  assert.strictEqual(umFs.readFileSync(umPath.join(root, 'apriori', 'managed.json'), 'utf8'), before);
+test/init.test.js:235:test('IN-17 a hygiene-invalid manifest blocks init', () => {
+test/init.test.js:238:  umFs.writeFileSync(umPath.join(root, 'apriori', 'managed.json'), '{ broken');
+test/init.test.js:239:  assert.throws(() => umInit.scaffold(root, ['codex']), /managed\.json/);
+test/update.test.js:19:  fs.writeFileSync(path.join(root, 'apriori', 'managed.json'),
+test/update.test.js:25:// written and recorded — so update sees tool-owned-and-unmodified files.
+test/update.test.js:26:function agedProject() {
+test/update.test.js:39:  const root = agedProject();
+test/update.test.js:51:  const root = agedProject();
+test/update.test.js:84:  const root = agedProject();
+test/update.test.js:101:  const root = agedProject();
+test/update.test.js:108:  // an existing (customized) .gitignore is never modified
+test/update.test.js:115:// ---- update-manifest (UP-06..11): update refreshes only manifest-proven files ----
+test/update.test.js:117:test('UP-06 a foreign file at a tool path survives update', () => {
+test/update.test.js:118:  const root = agedProject();
+test/update.test.js:124:  assert.ok(row && /unmanaged/.test(row.action), JSON.stringify(actions));
+test/update.test.js:128:test('UP-07 an unmodified managed file refreshes and re-hashes', () => {
+test/update.test.js:129:  const root = agedProject();
+test/update.test.js:134:  const m = JSON.parse(fs.readFileSync(path.join(root, 'apriori', 'managed.json'), 'utf8'));
+test/update.test.js:140:test('UP-08 a locally modified managed file is protected', () => {
+test/update.test.js:141:  const root = agedProject();
+test/update.test.js:142:  // the user edited both managed files AFTER the manifest recorded them
+test/update.test.js:147:  const manifestBefore = fs.readFileSync(path.join(root, 'apriori', 'managed.json'), 'utf8');
+test/update.test.js:151:    assert.ok(row && /modified/.test(row.action), JSON.stringify(actions));
+test/update.test.js:160:  assert.match(r.stdout, /modified/);
+test/update.test.js:161:  assert.strictEqual(fs.readFileSync(path.join(root, 'apriori', 'managed.json'), 'utf8'), manifestBefore);
+test/update.test.js:164:test('UP-09 pre-manifest projects are adopted only on proof', () => {
+test/update.test.js:167:  fs.rmSync(path.join(root, 'apriori', 'managed.json'), { force: true });   // pre-manifest CLI wrote none
+test/update.test.js:180:  assert.ok(/unmanaged/.test(byFile['.opencode/command/apriori.md']), JSON.stringify(byFile));
+test/update.test.js:184:  const m = JSON.parse(fs.readFileSync(path.join(root, 'apriori', 'managed.json'), 'utf8'));
+test/update.test.js:190:  fs.rmSync(path.join(root2, 'apriori', 'managed.json'), { force: true });
+test/update.test.js:192:  assert.ok(!fs.existsSync(path.join(root2, 'apriori', 'managed.json')));
+test/update.test.js:195:test('UP-10 manifest hygiene fails closed', () => {
+test/update.test.js:205:    const root = agedProject();
+test/update.test.js:206:    fs.writeFileSync(path.join(root, 'apriori', 'managed.json'), bad);
+test/update.test.js:208:    assert.throws(() => update.run(root), /managed\.json/, bad.slice(0, 40));
+test/update.test.js:209:    assert.throws(() => update.run(root, { dryRun: true }), /managed\.json/, bad.slice(0, 40));
+test/update.test.js:216:    assert.match(r.stdout + r.stderr, /managed\.json/);
+test/update.test.js:220:test('UP-11 the shipped-generation list stays honest', () => {
+test/update.test.js:221:  const managed = require('../lib/managed');
+test/update.test.js:222:  assert.ok(Array.isArray(managed.TEMPLATE_GENERATIONS) && managed.TEMPLATE_GENERATIONS.length >= 2);
+test/update.test.js:223:  for (const g of managed.TEMPLATE_GENERATIONS) assert.match(g, /^sha256:[0-9a-f]{64}$/);
+test/update.test.js:224:  assert.ok(managed.TEMPLATE_GENERATIONS.includes(shaFile(path.join(__dirname, '..', 'templates', 'command.md'))),
+test/update.test.js:225:    'templates/command.md changed without appending its hash to TEMPLATE_GENERATIONS');
+
+codex
+I found a high-impact implementation bug: update no longer reports manifest-listed missing command files, because it only loops over command paths that exist on disk. That breaks the explicit `missing` contract. I’m checking if the same applies to listed missing runbook, but update’s init precondition intentionally errors when runbook is absent.
+exec
+/usr/bin/zsh -lc "node -e \"const fs=require('fs'),os=require('os'),path=require('path'),init=require('./lib/init'),update=require('./lib/update'); const root=fs.mkdtempSync(path.join(os.tmpdir(),'um-probe-')); init.scaffold(root,['claude']); fs.rmSync(path.join(root,'apriori','managed.json')); const before=fs.existsSync(path.join(root,'apriori','managed.json')); const r=update.run(root); const after=fs.existsSync(path.join(root,'apriori','managed.json')); console.log({before,after,actions:r.actions});\"" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "node -e \"const fs=require('fs'),os=require('os'),path=require('path'),init=require('./lib/init'),update=require('./lib/update'); const root=fs.mkdtempSync(path.join(os.tmpdir(),'um-probe-')); init.scaffold(root,['claude']); fs.rmSync(path.join(root,'.claude','commands','apriori.md')); const r=update.run(root); console.log(JSON.stringify(r.actions,null,2));\"" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "node -e \"const fs=require('fs'),os=require('os'),path=require('path'),init=require('./lib/init'),update=require('./lib/update'); const root=fs.mkdtempSync(path.join(os.tmpdir(),'um-probe-')); init.scaffold(root,['claude']); const outside=fs.mkdtempSync(path.join(os.tmpdir(),'um-out-')); fs.rmSync(path.join(root,'.claude','commands','apriori.md')); fs.symlinkSync(path.join(outside,'x.md'), path.join(root,'.claude','commands','apriori.md')); fs.writeFileSync(path.join(outside,'x.md'),'outside'); try { update.run(root); console.log('no throw'); } catch(e) { console.log(e.message); }\"" in /mnt/d/Workbench/misc/apriori-spec-development
+ exited 1 in 197ms:
+node:fs:3039
+  return binding.mkdtemp(prefix, options.encoding);
+                 ^
+
+Error: EROFS: read-only file system, mkdtemp '/tmp/um-probe-XXXXXX'
+    at Object.mkdtempSync (node:fs:3039:18)
+    at [eval]:1:135
+    at runScriptInThisContext (node:internal/vm:219:10)
+    at node:internal/process/execution:451:12
+    at [eval]-wrapper:6:24
+    at runScriptInContext (node:internal/process/execution:449:60)
+    at evalFunction (node:internal/process/execution:283:30)
+    at evalTypeScript (node:internal/process/execution:295:3)
+    at node:internal/main/eval_string:71:3 {
+  errno: -30,
+  code: 'EROFS',
+  syscall: 'mkdtemp',
+  path: '/tmp/um-probe-XXXXXX'
+}
+
+Node.js v24.11.0
+
+ exited 1 in 179ms:
+node:fs:3039
+  return binding.mkdtemp(prefix, options.encoding);
+                 ^
+
+Error: EROFS: read-only file system, mkdtemp '/tmp/um-probe-XXXXXX'
+    at Object.mkdtempSync (node:fs:3039:18)
+    at [eval]:1:135
+    at runScriptInThisContext (node:internal/vm:219:10)
+    at node:internal/process/execution:451:12
+    at [eval]-wrapper:6:24
+    at runScriptInContext (node:internal/process/execution:449:60)
+    at evalFunction (node:internal/process/execution:283:30)
+    at evalTypeScript (node:internal/process/execution:295:3)
+    at node:internal/main/eval_string:71:3 {
+  errno: -30,
+  code: 'EROFS',
+  syscall: 'mkdtemp',
+  path: '/tmp/um-probe-XXXXXX'
+}
+
+Node.js v24.11.0
+
+ exited 1 in 204ms:
+node:fs:3039
+  return binding.mkdtemp(prefix, options.encoding);
+                 ^
+
+Error: EROFS: read-only file system, mkdtemp '/tmp/um-probe-XXXXXX'
+    at Object.mkdtempSync (node:fs:3039:18)
+    at [eval]:1:135
+    at runScriptInThisContext (node:internal/vm:219:10)
+    at node:internal/process/execution:451:12
+    at [eval]-wrapper:6:24
+    at runScriptInContext (node:internal/process/execution:449:60)
+    at evalFunction (node:internal/process/execution:283:30)
+    at evalTypeScript (node:internal/process/execution:295:3)
+    at node:internal/main/eval_string:71:3 {
+  errno: -30,
+  code: 'EROFS',
+  syscall: 'mkdtemp',
+  path: '/tmp/um-probe-XXXXXX'
+}
+
+Node.js v24.11.0
+
+codex
+The sandbox blocks tmpdir probes, so I’m relying on code inspection for those cases. The missing-listed-command issue is clear from the loop shape: `consider()` emits `missing`, but update never calls it for absent command files unless it separately iterates manifest entries.
+exec
+/usr/bin/zsh -lc "rg -n \"missing \\(skipped|symlink|escapes|assertContained|containsReal|managed\\.json|dry-run|would-be|would create|would\" test/update.test.js test/init.test.js lib/update.js lib/init.js lib/managed.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '190,330p' lib/init.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' apriori/review/update-manifest-issues.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 0ms:
+# Issue ledger — update-manifest
+
+Rows recorded on behalf of the reviewer (codex session 019f4b30-68f9-7222-9b64-17f52a333b4c; raws: update-manifest-*-raw.txt).
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| UM-1 | Corrupt/schema-invalid/unsupported-version managed.json behavior undefined. | Fail-open overwrite despite untrusted manifest, or unhelpful crash. | STEP0·r1 | verified |
+| UM-2 | Manifest path containment/allowed-path validation unspecified. | Corrupt manifest entries could write outside the project. | STEP0·r1 | verified |
+| UM-3 | init --dry-run manifest behavior undeclared. | Dry-run could mutate the manifest or diverge from tests. | STEP0·r1 | verified |
+| UM-4 | init merge could blindly adopt skipped existing files into the manifest. | Laundering user-owned files into managed ownership → future clobber. | STEP0·r1 | verified |
+| UM-5 | Missing-file hand-back via init not specified (stale hash after recreate). | The prescribed cure leaves a false 'modified' state. | STEP0·r1 | verified |
+| UM-ADV-1 | CRLF consequence, F6 wording, full ancestor hashes. | Advisory precision. | STEP0·r1 | verified |
+| UMSPEC-1 | Design required containment only before writes; manifest-listed symlinks could be read/hashed outside the project and classified modified/up-to-date instead of hygiene-invalid. | Security boundary weakened; fail-closed rule violated on reads. | STEP2·r1 | verified |
+| UMSPEC-ADV-1 | Advisory: adoption counts as manifest-write trigger even when byte-identical; writeManifest ensures apriori/ exists; UP-01 fixture note kept explicit. | Implementation precision. | STEP2·r1 | verified |
+
+ succeeded in 122ms:
+function renderMenu(state, opts = {}) {
+  const c = !!opts.color;
+  const lines = ['  Select AI tools  (↑/↓ move · space toggle · a all · enter confirm):'];
+  state.items.forEach((it, i) => {
+    const cur = i === state.cursor ? '❯' : ' ';
+    const box = state.selected.has(it.key) ? paint('◉', 32, c) : '◯';   // green when selected
+    lines.push(`  ${cur} ${box} ${it.name}${it.detected ? '  (detected)' : ''}`);
+  });
+  const names = state.items.filter((i) => state.selected.has(i.key)).map((i) => i.name);
+  // footer is ALWAYS present (stable line count for in-place redraw)
+  lines.push(`  selected: ${names.length ? paint(names.join(', '), 32, c) : '(none)'}`);
+  return lines.join('\n') + '\n';
+}
+
+// selected keys, in item order
+function selectedKeys(state) { return state.items.filter((i) => state.selected.has(i.key)).map((i) => i.key); }
+
+// interactive driver; input/output default to the real TTY but are injectable for tests
+function multiselect({ items, preselected = [], input = process.stdin, output = process.stdout } = {}) {
+  return new Promise((resolve) => {
+    let state = { items, cursor: 0, selected: new Set(preselected) };
+    let first = true;
+    const color = output.isTTY === true;                 // color only on a real terminal
+    const render = () => {
+      const menu = renderMenu(state, { color });
+      const lineCount = menu.split('\n').length - 1;
+      if (!first) output.write(`\x1b[${lineCount}A\x1b[0J`);   // redraw in place
+      first = false;
+      output.write(menu);
+    };
+    const cleanup = () => {
+      if (input.setRawMode) input.setRawMode(false);
+      input.pause();
+      input.removeListener('data', onData);
+    };
+    const onData = (buf) => {
+      const key = parseKey(buf);
+      if (key === 'cancel') { cleanup(); output.write('\n'); process.exit(130); }
+      if (key === 'enter') { cleanup(); output.write('\n'); resolve(selectedKeys(state)); return; }
+      const next = reduceKey(state, key);
+      if (next !== state) { state = next; render(); }
+    };
+    if (input.setRawMode) input.setRawMode(true);
+    input.resume();
+    render();
+    input.on('data', onData);
+  });
+}
+
+async function askTools(root) {
+  const detected = new Set(detectTools(root));
+  const items = Object.keys(TOOLS).map((k) => ({ key: k, name: TOOLS[k].name, detected: detected.has(k) }));
+  return multiselect({ items, preselected: [...detected] });
+}
+
+function preview(root, tools) {
+  const plan = scaffold(root, tools, { dryRun: true });
+  console.log('\n  About to write:');
+  for (const { file, action } of plan.actions)
+    console.log(`    ${action === 'skipped' ? '·' : '✓'} ${file}${action !== 'created' ? `  (${action})` : ''}`);
+  console.log('\n  Existing files are appended-to or skipped, never overwritten.');
+}
+
+async function confirm(question) {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  const ans = await new Promise((res) => rl.question(question, res));
+  rl.close();
+  return /^(y|yes|)$/i.test(ans.trim());
+}
+
+const USAGE = 'usage: apriori init [--tools <a,b,...>] [--test-cmd "<cmd>"] [--language <lang>] [--yes]';
+
+async function cli(argv) {
+  return withStrict(argv, { sub: 'init', usage: USAGE, positionals: 0, aliases: { '-y': '--yes' },
+    flags: { '--tools': 'value', '--test-cmd': 'value', '--language': 'value', '--yes': 'flag' } }, async (f) => {
+    const a = { tools: f['--tools'] ? f['--tools'].split(',').map((x) => x.trim()).filter(Boolean) : null,
+      testCmd: f['--test-cmd'] || null, language: f['--language'] || null, yes: !!f['--yes'] };
+    const root = process.cwd();
+    let tools = a.tools;
+    if (!tools) {
+      if (!process.stdin.isTTY) { console.error('  non-interactive: pass --tools <a,b,...>'); return 2; }
+      tools = await askTools(root);
+    }
+    if (!tools.length) { console.error('  no tools selected — nothing to do'); return 1; }
+    try {
+      preview(root, tools);                        // IN-07: preview before writing
+      if (!a.yes && process.stdin.isTTY && !(await confirm('\n  Proceed? (Y/n) '))) { console.log('  aborted.'); return 0; }
+      report(scaffold(root, tools, { testCmd: a.testCmd, language: a.language }));
+    } catch (e) { console.error('  ' + e.message); return 1; }   // e.g. hygiene-invalid managed.json
+    return 0;
+  });
+}
+
+module.exports = { TOOLS, POINTER, detectTools, writePointer, writeCommand, scaffold, parseArgs, cli,
+  parseKey, reduceKey, renderMenu, selectedKeys, multiselect };
+
+ succeeded in 131ms:
+lib/init.js:69:  // manifest hygiene FIRST: an untrustworthy managed.json blocks init before any write (IN-17)
+lib/init.js:118:  // dry-run reports the would-be entries and touches nothing.
+lib/init.js:120:    act('apriori/managed.json', manifest ? 'merged' : 'created');
+lib/init.js:278:    } catch (e) { console.error('  ' + e.message); return 1; }   // e.g. hygiene-invalid managed.json
+lib/update.js:30:// Refresh tool-owned files under root — but only those apriori/managed.json proves the
+lib/update.js:50:      if (listed) actions.push({ file: rel, action: "missing (skipped — recreating is init's job)" });
+lib/update.js:53:    managed.assertContained(root, rel);                     // before ANY read or hash
+lib/update.js:88:const USAGE = 'usage: apriori update [--dry-run]';
+lib/update.js:91:  return withStrict(argv, { sub: 'update', usage: USAGE, positionals: 0, flags: { '--dry-run': 'flag' } }, (f) => {
+lib/update.js:92:    const dryRun = !!f['--dry-run'];
+lib/update.js:101:      ? `\n  ${n} file(s) ${dryRun ? 'would be ' : ''}refreshed to apriori-cli ${v}.`
+lib/managed.js:3: * managed.json — the record of which scaffolded files the tool owns, and the exact
+lib/managed.js:10:const { containsReal } = require('./archive-merge');
+lib/managed.js:12:const MANIFEST_REL = 'apriori/managed.json';
+lib/managed.js:34:// → { files } | null (absent). Throws 'managed.json: <defect>' on anything untrustworthy —
+lib/managed.js:41:  catch (e) { throw new Error(`managed.json: unreadable (${e.message})`); }
+lib/managed.js:44:  catch (e) { throw new Error(`managed.json: invalid JSON (${e.message})`); }
+lib/managed.js:45:  if (!doc || typeof doc !== 'object' || Array.isArray(doc)) throw new Error('managed.json: not an object');
+lib/managed.js:46:  if (doc.version !== 1) throw new Error(`managed.json: unsupported version ${JSON.stringify(doc.version)} (expected 1)`);
+lib/managed.js:47:  if (!doc.files || typeof doc.files !== 'object' || Array.isArray(doc.files)) throw new Error('managed.json: missing files object');
+lib/managed.js:51:    if (path.isAbsolute(norm) || /^[a-zA-Z]:/.test(norm)) throw new Error(`managed.json: absolute path entry '${rel}'`);
+lib/managed.js:52:    if (norm.split('/').includes('..')) throw new Error(`managed.json: path escape in entry '${rel}'`);
+lib/managed.js:53:    if (!allowed.has(norm)) throw new Error(`managed.json: '${rel}' is not a refresh target`);
+lib/managed.js:54:    if (typeof hash !== 'string' || !HASH_RE.test(hash)) throw new Error(`managed.json: malformed hash for '${rel}'`);
+lib/managed.js:68:// the project; a missing one is judged by its nearest existing ancestor (containsReal).
+lib/managed.js:70:function assertContained(root, rel) {
+lib/managed.js:72:  if (!containsReal(root, abs)) throw new Error(`managed.json: '${rel}' escapes the project root`);
+lib/managed.js:76:  allowedTargets, readManifest, writeManifest, assertContained };
+test/update.test.js:19:  fs.writeFileSync(path.join(root, 'apriori', 'managed.json'),
+test/update.test.js:24:// The manifest records the AGED bytes — exactly what an older CLI would have
+test/update.test.js:83:test('UP-04 --dry-run previews without writing', () => {
+test/update.test.js:85:  // through the CLI, as the scenario states: reports what would be refreshed, writes nothing
+test/update.test.js:87:  const r = spawnSync('node', [path.join(__dirname, '..', 'bin', 'apriori.js'), 'update', '--dry-run'],
+test/update.test.js:91:  assert.match(r.stdout, /would be refreshed/);
+test/update.test.js:134:  const m = JSON.parse(fs.readFileSync(path.join(root, 'apriori', 'managed.json'), 'utf8'));
+test/update.test.js:147:  const manifestBefore = fs.readFileSync(path.join(root, 'apriori', 'managed.json'), 'utf8');
+test/update.test.js:155:  // --dry-run through the CLI: identical classification, nothing written at all
+test/update.test.js:157:  const r = spawnSync('node', [path.join(__dirname, '..', 'bin', 'apriori.js'), 'update', '--dry-run'],
+test/update.test.js:161:  assert.strictEqual(fs.readFileSync(path.join(root, 'apriori', 'managed.json'), 'utf8'), manifestBefore);
+test/update.test.js:167:  fs.rmSync(path.join(root, 'apriori', 'managed.json'), { force: true });   // pre-manifest CLI wrote none
+test/update.test.js:184:  const m = JSON.parse(fs.readFileSync(path.join(root, 'apriori', 'managed.json'), 'utf8'));
+test/update.test.js:187:  // dry-run pre-manifest: no manifest materializes
+test/update.test.js:190:  fs.rmSync(path.join(root2, 'apriori', 'managed.json'), { force: true });
+test/update.test.js:192:  assert.ok(!fs.existsSync(path.join(root2, 'apriori', 'managed.json')));
+test/update.test.js:206:    fs.writeFileSync(path.join(root, 'apriori', 'managed.json'), bad);
+test/init.test.js:12:test('IN-01 detects present tools and would pre-select them', () => {
+test/init.test.js:71:test('IN-07 dry-run previews actions without writing any file', () => {
+test/init.test.js:182:const umManifest = (root) => JSON.parse(umFs.readFileSync(umPath.join(root, 'apriori', 'managed.json'), 'utf8'));
+test/init.test.js:225:test('IN-16 init dry-run leaves the manifest alone', () => {
+test/init.test.js:228:  assert.ok(!umFs.existsSync(umPath.join(root, 'apriori', 'managed.json')));
+test/init.test.js:230:  const before = umFs.readFileSync(umPath.join(root, 'apriori', 'managed.json'), 'utf8');
+test/init.test.js:232:  assert.strictEqual(umFs.readFileSync(umPath.join(root, 'apriori', 'managed.json'), 'utf8'), before);
+test/init.test.js:238:  umFs.writeFileSync(umPath.join(root, 'apriori', 'managed.json'), '{ broken');
+
+codex
+**Implementation Review — update-manifest v1**
+
+The implementation broadly matches the converged design: `managed.json` hygiene is centralized, init reads the manifest before scaffold writes, init records only files created in the current run, dry-run guards manifest writes, update protects modified/unmanaged files, and the known-template generation guard is present.
+
+I found two spec-vs-code gaps.
+
+**Issues**
+
+**UMIMPL-1 — Manifest-listed missing command files are silently omitted**
+
+Description: `consider()` has the correct `missing` branch, but `update.run()` only calls `consider()` for command paths that currently exist on disk. A manifest-listed command file that was deleted is never considered, so no `missing` action row is emitted.
+
+Risk: Violates the contract that listed-but-missing files are reported as `missing` and that output names every skip. Users following the delete-and-reinit cure lose the diagnostic that init is now required.
+
+Suggested fix: Track considered rels, then after the TOOLS loop iterate manifest-listed command entries not seen and emit `missing` for absent files. Add a test: init a command tool, delete its command file, run update, assert the action row is `missing`.
+
+**UMIMPL-2 — Backslash manifest keys pass hygiene but are not canonicalized**
+
+Description: `readManifest()` validates keys after `rel.replace(/\\/g, '/')`, but returns the original `doc.files` keys. A manifest entry like `.claude\\commands\\apriori.md` can pass the allowed-target check, but update later looks for `.claude/commands/apriori.md`, so the file is treated as unlisted/unmanaged. Init can also preserve the backslash key while adding a normalized key later.
+
+Risk: Manifest hygiene is inconsistent with the normalized-key contract, and behavior diverges by hand-edited or Windows-shaped manifests.
+
+Suggested fix: Either reject any key where `rel !== norm`, or canonicalize returned manifest keys to `norm` before consumers use them. Add an F8-style test for backslash keys.
+
+**Advisories**
+
+- UP-10 covers syntactic path hygiene but not symlink containment. Add a test where a manifest-listed command path is a symlink escaping the project and assert update fails before hashing.
+- `refresh()` still compares/writes UTF-8 strings while manifest hashes are byte-based. Markdown inputs make this low risk, but byte-based read/write would align more directly with the manifest contract.
+
+**Ledger Delta**
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| UMIMPL-1 | Manifest-listed missing command files are never considered, so update omits the required `missing` action row. | Missing managed files are not reported; the prescribed init cure is not surfaced. | STEP5·r1 | open |
+| UMIMPL-2 | Backslash manifest keys pass hygiene but are returned uncanonicalized, so consumers treat them as different paths. | Normalized-key contract is violated and manifest behavior becomes inconsistent. | STEP5·r1 | open |
+| UMIMPL-ADV-1 | Add direct symlink-containment and byte-based refresh alignment tests. | Advisory test/implementation hardening. | STEP5·r1 | open |
+
+VERDICT: 2 issues open
+tokens used
+2,490,311
+**Implementation Review — update-manifest v1**
+
+The implementation broadly matches the converged design: `managed.json` hygiene is centralized, init reads the manifest before scaffold writes, init records only files created in the current run, dry-run guards manifest writes, update protects modified/unmanaged files, and the known-template generation guard is present.
+
+I found two spec-vs-code gaps.
+
+**Issues**
+
+**UMIMPL-1 — Manifest-listed missing command files are silently omitted**
+
+Description: `consider()` has the correct `missing` branch, but `update.run()` only calls `consider()` for command paths that currently exist on disk. A manifest-listed command file that was deleted is never considered, so no `missing` action row is emitted.
+
+Risk: Violates the contract that listed-but-missing files are reported as `missing` and that output names every skip. Users following the delete-and-reinit cure lose the diagnostic that init is now required.
+
+Suggested fix: Track considered rels, then after the TOOLS loop iterate manifest-listed command entries not seen and emit `missing` for absent files. Add a test: init a command tool, delete its command file, run update, assert the action row is `missing`.
+
+**UMIMPL-2 — Backslash manifest keys pass hygiene but are not canonicalized**
+
+Description: `readManifest()` validates keys after `rel.replace(/\\/g, '/')`, but returns the original `doc.files` keys. A manifest entry like `.claude\\commands\\apriori.md` can pass the allowed-target check, but update later looks for `.claude/commands/apriori.md`, so the file is treated as unlisted/unmanaged. Init can also preserve the backslash key while adding a normalized key later.
+
+Risk: Manifest hygiene is inconsistent with the normalized-key contract, and behavior diverges by hand-edited or Windows-shaped manifests.
+
+Suggested fix: Either reject any key where `rel !== norm`, or canonicalize returned manifest keys to `norm` before consumers use them. Add an F8-style test for backslash keys.
+
+**Advisories**
+
+- UP-10 covers syntactic path hygiene but not symlink containment. Add a test where a manifest-listed command path is a symlink escaping the project and assert update fails before hashing.
+- `refresh()` still compares/writes UTF-8 strings while manifest hashes are byte-based. Markdown inputs make this low risk, but byte-based read/write would align more directly with the manifest contract.
+
+**Ledger Delta**
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| UMIMPL-1 | Manifest-listed missing command files are never considered, so update omits the required `missing` action row. | Missing managed files are not reported; the prescribed init cure is not surfaced. | STEP5·r1 | open |
+| UMIMPL-2 | Backslash manifest keys pass hygiene but are returned uncanonicalized, so consumers treat them as different paths. | Normalized-key contract is violated and manifest behavior becomes inconsistent. | STEP5·r1 | open |
+| UMIMPL-ADV-1 | Add direct symlink-containment and byte-based refresh alignment tests. | Advisory test/implementation hardening. | STEP5·r1 | open |
+
+VERDICT: 2 issues open

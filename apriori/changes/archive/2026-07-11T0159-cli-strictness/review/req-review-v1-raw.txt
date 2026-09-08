@@ -1,0 +1,813 @@
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f4b30-68f9-7222-9b64-17f52a333b4c
+--------
+user
+New change, STEP0 P1 round 1 for 'cli-strictness' (requirement/req-v1.md rotated to this change). Senior requirements reviewer; goal: hand-to-AI precision.
+[Input] requirement/req-v1.md · KB: apriori/truth/*.md (all eight) · Ledger: none yet (IDs SREQ-1, ...) · Code: lib/*.js cli() functions + bin/apriori.js (inventory the REAL flag surfaces and check the req's claims about current behavior — esp. verify --specs multi-consumption, init interactivity, new/stamp positional rules, doctor's existing strictness).
+[Dimensions] 1 clarity · 2 edges · 3 undeclared side effects · 4 testability · 5 state-A conflicts · 6 lineage. [Scope] formal vs advisory per P0; correctness/security never advisory; out-of-scope section must exist.
+[Output — read-only sandbox: print the COMPLETE review doc body for verbatim landing at apriori/review/cli-strictness-req-review-v1.md] End with the ledger delta table and exactly one verdict line: 'VERDICT: no major issues' or 'VERDICT: <N> issues open'.
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-10T17:36:18.297231Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-10T17:36:18.474935Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-10T17:36:18.800106Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-10T17:36:18.344295Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-10T17:36:19.318080Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-10T17:36:21.047439Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-10T17:36:24.206819Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: tZEw71EvWESc
+codex
+I’ll inventory the actual CLI parsers first, then compare the new requirement against the truth docs and code so the review catches state-A mismatches rather than assuming the doc’s background is right.
+exec
+/usr/bin/zsh -lc "rg -n \"function cli|async function cli|function stampCli|function parseArgs|module.exports|usage:|--[a-zA-Z-]+|case '\" lib/*.js bin/apriori.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "for f in apriori/truth/*.md; do printf '\\n### %s\\n' \""'$f"; sed -n '"'1,120p' \""'$f"; done' in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,340p' requirement/req-v1.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 126ms:
+# Requirement — cli-strictness (v1)
+
+change: cli-strictness
+target lineage: **v3 branch** (never merge to main or v2). Ships in the next minor (expected **3.3.0**) — it changes ERROR-path behavior only (what was silently ignored now fails loudly), which is the fail-closed direction; success-path behavior of every documented invocation is unchanged.
+
+## Background — the problem (current state A)
+
+Every subcommand parses argv with an ad-hoc loop that silently ignores anything it doesn't recognize. Consequences, all real today: `apriori verify --sepcs x` (typo) silently falls back to the config test-cmd and can verify the WRONG spec set while exiting green — fail-open in the one place the toolchain promises fail-closed; `apriori gate --hcange x` runs an unusable evaluation; no subcommand answers `--help` (users get usage only by triggering an error, exit 2). The top-level dispatcher handles `apriori --help`/`-h`/bare (usage, exit 0) and unknown SUBCOMMANDS (exit 2) correctly — the gap is inside the subcommands. `doctor` (3.2.0) already rejects stray positionals; nothing else does.
+
+## Goal (target state B)
+
+One shared argv-parsing helper; every subcommand gets three uniform behaviors:
+
+1. **`--help` (and `-h`) → that subcommand's usage on stdout, exit 0** — checked before any other validation, works even where required args are missing.
+2. **Unknown `--flag` (or `-x`) → stderr `unknown flag '<flag>' for 'apriori <sub>'` + that usage, exit 2.** Nothing silently ignored anymore.
+3. **Positional arity enforced**: `new` and `stamp` take exactly one positional (existing behavior for count violations preserved/unified at exit 2); every other subcommand takes zero — a stray positional → stderr naming it + usage, exit 2 (doctor's existing rule generalized).
+
+Known-flag behavior is byte-identical to 3.2.0 (same flags, same value consumption — including `verify --specs` consuming multiple values until the next `--` token, and `init`'s interactive path when `--tools` is absent).
+
+## The helper (concrete contract)
+
+`parseStrict(argv, spec)` where `spec = { sub: '<name>', usage: '<text>', flags: { '--name': 'value' | 'multi' | 'flag' }, positionals: 0 | 1, aliases?: {'-y': '--yes'} }` →
+`{ ok: true, flags: {...}, positionals: [...] }` or `{ ok: false, code: 0|2, message }` (code 0 = help requested; the caller prints usage to stdout and returns 0; code 2 = the caller prints message + usage to stderr and returns 2).
+- `'value'` consumes exactly the next token (missing value → exit 2 naming the flag); `'multi'` consumes tokens until the next `--`-prefixed token (verify `--specs` semantics); `'flag'` consumes nothing.
+- `--help`/`-h` anywhere → `{ok:false, code:0}` immediately.
+- The helper lives in one new file (`lib/args.js`), zero-dep, required by every cli().
+
+## Acceptance criteria (testable)
+
+- S1. For EVERY subcommand in {new, status, verify, archive, check, init, update, stamp, gate, doctor}: `apriori <sub> --help` prints usage containing `apriori <sub>` on stdout and exits 0 — a single loop-test over the full list.
+- S2. For EVERY subcommand: `apriori <sub> --no-such-flag` exits 2 and stderr names `--no-such-flag` — same loop, and no subcommand performs its action (nothing written; verify/doctor run no test command).
+- S3. Stray positional on a zero-positional subcommand (e.g. `apriori status extra`, `apriori verify extra`) → exit 2 naming `extra`; `new`/`stamp` keep their exactly-one rule (zero or two → exit 2).
+- S4. A `'value'` flag at end of argv with no value (`apriori verify --test-cmd`) → exit 2 naming the flag, never consuming `undefined`.
+- S5. Success paths unchanged: the existing full test suite (142 tests) passes unmodified EXCEPT tests that themselves relied on silent-ignore or count-mismatch semantics — each such modification listed in the delta. `verify --specs a b c --test-cmd x` still consumes three spec targets.
+- S6. `--help` wins over other errors: `apriori verify --help` exits 0 even though `--specs`/`--test-cmd` are absent.
+- S7. `init` with no flags on a TTY still enters the interactive multiselect (parseStrict passes empty flags through); `init --tools` at end of argv without a value → exit 2.
+- S8. Zero new dependencies; the dispatcher's existing top-level behaviors (`apriori`, `apriori --help`, `apriori -v`, unknown sub) are unchanged.
+
+## Out of scope (won't do)
+
+- `--json` for subcommands that lack it; any new flags.
+- Long-form docs (item 7's job); this change only guarantees every usage string is reachable via `--help`.
+- Shell completion.
+- Changing any KNOWN flag's semantics.
+
+## Decisions proposed
+
+- DS-1: strictness is fail-closed alignment — the typo'd-flag-verifies-the-wrong-thing case is the same defect class 3.0.1 exit-code work fixed; silent ignore on a gate command is a correctness hazard, not a convenience.
+- DS-2: usage strings live with each subcommand (single source: the same string `--help` prints is the one error paths print).
+
+ succeeded in 151ms:
+lib/doctor.js:6: * project's test command once (--no-run removes even that). Findings name their fixer.
+lib/doctor.js:35:    return { id: 'D5', status: 'finding', detail: 'output is not TAP — node test runner needs --test-reporter=tap', fix: 'emit TAP from the test command' };
+lib/doctor.js:115:  // D5 — TAP probe (the one declared side effect; --no-run skips)
+lib/doctor.js:117:  if (!testCmd) checks.push({ id: 'D5', status: 'n/a', detail: 'no test command configured — pass --test-cmd or set one via apriori init --test-cmd' });
+lib/doctor.js:118:  else if (opts.noRun) checks.push({ id: 'D5', status: 'n/a', detail: 'probe skipped (--no-run)' });
+lib/doctor.js:178:function cli(argv) {
+lib/doctor.js:183:    if (k === '--test-cmd') a.testCmd = argv[++i];
+lib/doctor.js:184:    else if (k === '--no-run') a.noRun = true;
+lib/doctor.js:185:    else if (k === '--cwd') a.cwd = argv[++i];
+lib/doctor.js:186:    else if (k === '--json') a.json = true;
+lib/doctor.js:191:    console.error(`doctor: unexpected argument '${stray}'\nusage: apriori doctor [--test-cmd "<cmd>"] [--no-run] [--cwd <dir>] [--json]`);
+lib/doctor.js:204:module.exports = { runDoctor, classifyProbe, cli };
+lib/status.js:79:function cli(argv) {
+lib/status.js:83:    if (argv[i] === '--change') change = argv[++i];
+lib/status.js:84:    else if (argv[i] === '--json') json = true;
+lib/status.js:103:  console.log('\nRun `apriori status --change <name>` for detail.');
+lib/status.js:107:module.exports = { parseFlowState, parseLedger, activeChanges, changeStatus, formatOne, toJson, cli };
+lib/gate.js:47:// --- individual checks; each returns {id, status: 'pass'|'blocked'|'n/a', detail} ---
+lib/gate.js:149:    const g = spawnSync('git', ['-C', cwd, 'log', '--oneline', `${sc[1]}..HEAD`, '--', `lib/${m}.js`], { encoding: 'utf8' });
+lib/gate.js:179:  if (!opts.change) return err(res, 'usage: apriori gate --change <name> [--test-cmd "<cmd>"] [--cwd <dir>] [--json]');
+lib/gate.js:190:  if (!testCmd) return err(res, 'no test command: pass --test-cmd or add a test-cmd row to apriori/process-config.md');
+lib/gate.js:212:function cli(argv) {
+lib/gate.js:216:    if (k === '--change') a.change = argv[++i];
+lib/gate.js:217:    else if (k === '--test-cmd') a.testCmd = argv[++i];
+lib/gate.js:218:    else if (k === '--cwd') a.cwd = argv[++i];
+lib/gate.js:219:    else if (k === '--json') a.json = true;
+lib/gate.js:230:module.exports = { runGate, resolveChange, cli };
+lib/spec-runner.js:111:// almost always means the runner used a human reporter (node: add --test-reporter=tap)
+lib/spec-runner.js:159:    errs.push('test command produced output but ZERO TAP results were parsed — the command is probably not emitting TAP (node test runner: add --test-reporter=tap)');
+lib/spec-runner.js:196:// Projection inputs for `verify --change` (all failure classes → run.errors, exit 2).
+lib/spec-runner.js:252:  if (run.projection) json.projection = run.projection;   // ONLY --change runs carry this field
+lib/spec-runner.js:273:// Fallback test command from apriori/process-config.md's `test-cmd` row (written by init --test-cmd)
+lib/spec-runner.js:281:function cli(argv) {
+lib/spec-runner.js:285:    if (k === '--specs') while (argv[i + 1] && !argv[i + 1].startsWith('--')) a.specs.push(argv[++i]);
+lib/spec-runner.js:286:    else if (k === '--change') a.change = argv[++i];
+lib/spec-runner.js:287:    else if (k === '--test-cmd') a.testCmd = argv[++i];
+lib/spec-runner.js:288:    else if (k === '--id-pattern') a.idPattern = argv[++i];
+lib/spec-runner.js:289:    else if (k === '--cwd') a.cwd = argv[++i];
+lib/spec-runner.js:290:    else if (k === '--json') a.json = true;
+lib/spec-runner.js:293:    console.error('verify: --specs cannot be combined with --change — the projection defines the spec set');
+lib/spec-runner.js:296:  if (!a.testCmd) a.testCmd = configTestCmd(a.cwd);   // init --test-cmd persists it there
+lib/spec-runner.js:297:  if ((!a.specs.length && !a.change) || !a.testCmd) { console.error('usage: apriori verify --specs <dir...> --test-cmd "<cmd>" [--id-pattern <re>] [--cwd <dir>] [--json]\n   or: apriori verify --change <name> --test-cmd "<cmd>" [--id-pattern <re>] [--cwd <dir>] [--json]\n(--test-cmd may be omitted when apriori/process-config.md has a test-cmd row)'); return 2; }
+lib/spec-runner.js:307:module.exports = { leadId, stripFences, collectScenarios, collectScenariosFromTexts, parseTap,
+lib/check.js:14:// ---- helpers (ported from gh_slug / parse / num_prefix) ---------------------
+lib/check.js:35:// ---- CK-01: anchors resolve, file links exist -------------------------------
+lib/check.js:44:// ---- CK-02: EN/CN heading alignment (length, levels, numeric prefixes) -------
+lib/check.js:59:// ---- CK-03: verdict phrase table + drift variants + codex-command parity -----
+lib/check.js:109:      const checkable = !raw.includes('...') && !raw.includes('…') && !tokens.includes('--last') &&
+lib/check.js:125:// ---- CK-03 (checker 8): codex known-good forms (ported from v2) --------------
+lib/check.js:143:// ---- CK-04: every spec scenario carries a bindable ID -----------------------
+lib/check.js:153:// ---- CK-05: no OpenSpec adapter references remain (V3 is single plain-files) --
+lib/check.js:162:// ---- CK-06: scaffolded-runbook freshness (warn-only, never a failure) ---------
+lib/check.js:171:// ---- cli --------------------------------------------------------------------
+lib/check.js:175:// SELF (--self): additionally runs the apriori repo's handbook checks (EN/CN pairs,
+lib/check.js:177:function cli(argv) {
+lib/check.js:182:    if (argv[i] === '--specs') specsDir = argv[++i];
+lib/check.js:183:    else if (argv[i] === '--self') self = true;
+lib/check.js:228:module.exports = {
+lib/archive-merge.js:7: * 3.1: also home of the merge-family pure helpers shared with `verify --change` —
+lib/archive-merge.js:39:// ---- CAS base stamps -------------------------------------------------------
+lib/archive-merge.js:76:// ---- delta parsing ---------------------------------------------------------
+lib/archive-merge.js:112:// ---- merge (pure) ----------------------------------------------------------
+lib/archive-merge.js:176:// ---- paths and discovery ---------------------------------------------------
+lib/archive-merge.js:270:// ---- archive commit machinery ----------------------------------------------
+lib/archive-merge.js:307:  // --- phase 1: preflight (no writes) ---
+lib/archive-merge.js:316:    out.push(`--- ${suffix}`);
+lib/archive-merge.js:345:    out.push(`\nRESULT: MERGED (dry-run; ${jobs.length} module(s)) — pass --write to apply`);
+lib/archive-merge.js:349:  // --- phase 2: stage (this run's temps only — preflight proved none pre-existed) ---
+lib/archive-merge.js:363:  // --- phase 3: commit (per-file atomic renames, sorted order; no rollback on mid-commit failure) ---
+lib/archive-merge.js:377:  // --- phase 4: move (only with explicit --changes-dir) ---
+lib/archive-merge.js:389:function stampCli(argv) {
+lib/archive-merge.js:390:  if (argv.length !== 1) { console.error('usage: apriori stamp <store-file>'); return 2; }   // exactly one argument, no flags
+lib/archive-merge.js:401:function cli(argv) {
+lib/archive-merge.js:405:    if (k === '--store') a.store = argv[++i];
+lib/archive-merge.js:406:    else if (k === '--delta') a.delta = argv[++i];
+lib/archive-merge.js:407:    else if (k === '--change') a.change = argv[++i];
+lib/archive-merge.js:408:    else if (k === '--write') a.write = true;
+lib/archive-merge.js:409:    else if (k === '--changes-dir') a.changesDir = argv[++i];
+lib/archive-merge.js:411:  // high-level form: --change alone (no --store/--delta) drives the whole change
+lib/archive-merge.js:420:    console.error('usage: apriori archive --change <name> [--write] [--changes-dir <dir>]  (high-level form)\n   or: apriori archive --store <f> --delta <f> --change <name> [--write] [--changes-dir <dir>]  (single-file form)\n(--change cannot be combined with only one of --store/--delta)');
+lib/archive-merge.js:423:  if (!a.store || !a.delta || !a.change) { console.error('usage: apriori archive --store <f> --delta <f> --change <name> [--write] [--changes-dir <dir>]\n   or: apriori archive --change <name> [--write] [--changes-dir <dir>]'); return 2; }
+lib/archive-merge.js:431:  if (!storeExists) console.log(`store ${a.store} does not exist yet — will be created${a.write ? '' : ' on --write'}`);
+lib/archive-merge.js:482:    console.log(`\nRESULT: MERGED (dry-run; ${store.size} requirements in result) — pass --write to apply`);
+lib/archive-merge.js:487:module.exports = { parseRequirements, parseRequirementsStrict, parseDelta, parseDeltaStrict, deltaOpCount,
+lib/new.js:43:function cli(argv) {
+lib/new.js:45:  if (!name) { console.error('usage: apriori new <change-name>   (bare kebab-case, e.g. add-playback)'); return 2; }
+lib/new.js:53:module.exports = { NAME_RE, flowStateSkeleton, scaffoldChange, cli };
+lib/update.js:48:function cli(argv) {
+lib/update.js:49:  const dryRun = argv.includes('--dry-run');
+lib/update.js:64:module.exports = { run, refresh, cli };
+bin/apriori.js:11:  status    show where a change is: step, next-action, open ledger items (--json)
+bin/apriori.js:12:  verify    bind spec scenarios to test runs (STEP5 gate) (--json)
+bin/apriori.js:25:    case 'new':     return require('../lib/new').cli(rest);
+bin/apriori.js:26:    case 'status':  return require('../lib/status').cli(rest);
+bin/apriori.js:27:    case 'verify':  return require('../lib/spec-runner').cli(rest);
+bin/apriori.js:28:    case 'archive': return require('../lib/archive-merge').cli(rest);
+bin/apriori.js:29:    case 'stamp':   return require('../lib/archive-merge').stampCli(rest);
+bin/apriori.js:30:    case 'gate':    return require('../lib/gate').cli(rest);
+bin/apriori.js:31:    case 'doctor':  return require('../lib/doctor').cli(rest);
+bin/apriori.js:32:    case 'check':   return require('../lib/check').cli(rest);
+bin/apriori.js:33:    case 'init':    return require('../lib/init').cli(rest);
+bin/apriori.js:34:    case 'update':  return require('../lib/update').cli(rest);
+bin/apriori.js:35:    case '-v':
+bin/apriori.js:36:    case '--version': console.log(require('../package.json').version); return 0;
+bin/apriori.js:38:    case '-h':
+bin/apriori.js:39:    case '--help':  console.log(USAGE); return 0;
+lib/init.js:48:    ? `---\ndescription: apriori spec-driven development\nalwaysApply: true\n---\n\n${POINTER}\n`
+lib/init.js:90:      if (opts.testCmd)  // consumed by `apriori verify` as the default when --test-cmd is omitted
+lib/init.js:110:function parseArgs(argv) {
+lib/init.js:114:    if (k === '--tools') a.tools = argv[++i].split(',').map((s) => s.trim()).filter(Boolean);
+lib/init.js:115:    else if (k === '--test-cmd') a.testCmd = argv[++i];
+lib/init.js:116:    else if (k === '--language') a.language = argv[++i];
+lib/init.js:117:    else if (k === '--yes' || k === '-y') a.yes = true;
+lib/init.js:136:// --- arrow-key multi-select (pure Node, zero deps) ---------------------------
+lib/init.js:240:async function cli(argv) {
+lib/init.js:245:    if (!process.stdin.isTTY) { console.error('  non-interactive: pass --tools <a,b,...>'); return 2; }
+lib/init.js:255:module.exports = { TOOLS, POINTER, detectTools, writePointer, writeCommand, scaffold, parseArgs, cli,
+
+ succeeded in 154ms:
+
+### apriori/truth/archive-merge.md
+# TRUTH — archive-merge (`lib/archive-merge.js`, CLI subcommand `archive`)
+
+## Contract (code-is-truth)
+
+source-commit: 024ee2c
+
+**Responsibility.** Merge a change's delta spec into the living store by stable Requirement ID (STEP6 archive action); move the change dir to `changes/archive/`. Zero deps. 3.1: also the home of the merge-family pure helpers shared with `verify --change` — delta discovery, projection building, CAS base stamps, realpath containment — plus the high-level `archive --change` transaction and the `stamp` subcommand.
+
+**Delta format.** `## ADDED|MODIFIED|REMOVED|RENAMED Requirements` (h2 sections) containing `### Requirement: <name>` blocks (h3); RENAMED carries `- Old -> New` lines; optionally ONE CAS stamp line `<!-- apriori-base: sha256:<64hex> | new -->` before the first section. Parsing: `parseDeltaStrict(text)` → `{ delta, stamp, problems[] }` — duplicate requirement names (within/across sections) and stamp problems surface as problems; `parseDelta(text)` = its delta only; `parseRequirementsStrict(text)` → `{ map, duplicates[] }` (first block wins, duplicates reported); `parseRequirements` = its map; `deltaOpCount(delta)` → total parsed ops (0 = no recognized section OR recognized sections with no parseable requirement/rename lines). `parseStamp(text)` → `{ stamp, problems }` — any standalone comment line ATTEMPTING apriori-base that fails the strict form is a problem, never silently 'unstamped'. `fingerprint(text)` → `sha256:<64hex>` over CRLF/CR→LF-normalized content.
+
+**Public interface.**
+- `merge(storeText, delta, change)` — PURE. → `{ store:Map, merged, modified, deprecated, renamed, conflicts, unchanged }`. Duplicate requirement names in the STORE text → conflicts (corruption guard). Order of application: RENAMED first (in-place key swap preserving document order), then ADDED, MODIFIED, REMOVED.
+  - ADDED on existing name: identical trimmed content → `unchanged` (idempotent rerun no-op) UNLESS the name was created by this run's RENAMED (`renamedTargets`) → conflict.
+  - MODIFIED replaces the whole block; missing target → conflict.
+  - REMOVED keeps the block, injects `_deprecated (superseded by <change>)_` into the heading line.
+  - RENAMED with source gone + target present → `unchanged` ("already renamed" rerun signature); source gone + target absent → conflict; target already exists → conflict.
+  - REMOVED with target gone but `<name>  _deprecated (superseded by <THIS change>)_` present → `unchanged` ("already deprecated" rerun signature); deprecated by a DIFFERENT change → conflict.
+  - ANY conflict → nothing written (CLI exit 1).
+- `renderStore(storeText, store)` — preserves the store's header (text before the first `### Requirement:`), then blocks joined with `\n`.
+- `archiveStamp(d)` → `YYYY-MM-DDThhmm` (colon-free, CLI clock).
+- `CHANGE_NAME_RE` = `/^[a-z0-9]+(-[a-z0-9]+)*$/` (same rule as `apriori new`).
+- `archiveChangeDir(changesDir, name, now, ops?)` — validates name; realpath containment on BOTH source and destination (a symlinked `archive/` pointing outside is rejected before any move); `renameSync` (via ops when given) to `changes/archive/<stamp>-<name>/`; returns dest or null when source missing; throws on invalid name/escape.
+- `containsReal(root, target)` — realpath containment; not-yet-existing targets judged by nearest existing ancestor; STRICT (root itself is not inside root); fail-closed on unreadable paths.
+- `discoverDeltas(changesDirAbs, name)` → `{ files:[{abs,suffix}], errors[] }` — validates name (CHANGE_NAME_RE), change-dir existence + containment, specs/ itself containment-checked before becoming a root (symlinked specs/ rejected); walk follows symlink dirents explicitly (escaping links = errors, never silent skips). Errors are VALIDATION class → exit 2 on both surfaces.
+- `buildProjection(storeRoot, deltaFiles, change)` → `{ texts:Map<suffix,text>, modules, perModule, conflicts, casMismatches, hygiene, validation }` — all store files pass through; each delta strict-parsed, CAS-checked, merged in memory; nothing touches disk.
+- `archiveChange({cwd, change, changesDir, changesDirExplicit, write, ops})` → `{ code, out[], err[] }` — four phases: preflight (discovery+hygiene+CAS+merges+pre-existing-temp guard+destination containment; any failure → nothing written), stage (`<store>.tmp-archive`, this-run cleanup on failure), commit (sorted per-file atomic renames; mid-commit failure → exact committed/not-committed/temps report, NO rollback), move (only changesDirExplicit, only after all commits). `ops` ({writeFileSync,renameSync,rmSync}) is the fault-injection seam.
+- `stampCli(argv)` — exactly one argv entry; absent file → `new` form; directory/unreadable → exit 2.
+- `cli(argv)`: high-level form `--change <name> [--write] [--changes-dir <dir>]` (no --store/--delta) → archiveChange; single-file form `--store <FILE> --delta <FILE> --change <name> [--write] [--changes-dir <dir>]` unchanged from 3.0.1 EXCEPT it now checks a present CAS stamp (mismatch → exit 1, nothing written) and rejects malformed deltas via parseDeltaStrict problems. Mixing --change with only one of --store/--delta → exit 2. Exit: 0 merged/no-op · 1 conflict/CAS/hygiene/zero-op/stage/commit/move-failure/pre-existing-temp · 2 usage/invalid name/missing change dir/containment.
+
+**Transactional write ordering (`--write`).** store staged to `<store>.tmp-archive` → dir move (atomic rename) → store committed via `renameSync(tmp, store)`. Move failure → tmp discarded, store byte-for-byte untouched. Limits: (a) tmp+rename gives single-file replace atomicity, NOT crash durability (no fsync on file or dir) — do not claim crash-durable; (b) the final `renameSync(tmp, store)` is NOT guarded — if it throws AFTER the change dir moved, the store is unchanged but the change dir is already archived and the tmp file is left behind (the "all or nothing" claim covers move failure, not store-commit failure after the move).
+
+**Three moments.** The store file is the shared state: init = created on first `--write`; update = full rewrite via temp+rename; cleanup = none (grows monotonically; REMOVED deprecates, never deletes).
+
+**Pitfalls.**
+- `merge` compares ADDED blocks with `.trim()` equality — whitespace-only differences count as conflicts, not no-ops.
+- `parseRequirementsStrict` keeps the FIRST duplicate block (previously last-wins) — visible only on invalid input, which now conflicts anyway.
+- `renderStore` drops anything BETWEEN requirement blocks that isn't part of a block (inter-block prose is not preserved — only the pre-first-block header is). Needs human confirmation whether any store relies on inter-block prose (repo's own stores do not).
+- CAS stamps are OPT-IN: an unstamped delta merges without any divergence check (pre-3.1 behavior preserved).
+- Deprecation rewrites the heading LINE (`### Requirement: Name  _deprecated (superseded by x)_`), so on re-parse the requirement's map KEY includes the marker — MODIFIED/RENAMED can no longer address the block by its original name. (REMOVED reruns by the SAME change are now a no-op signature; see merge().) `DEPRECATED_RE`/`stripDeprecatedBlocks` exported — spec-runner uses them to exclude deprecated blocks from scenario collection.
+- Unknown CLI flags silently ignored (roadmap item 6).
+
+## Decisions (doc-is-truth)
+
+- D-AM-1 (active): same-ID conflict = stop, ledger issue, human resolves — the §4.11 serialize-per-module rule; the tool never auto-resolves.
+- D-AM-2 (superseded-by: D-AM-7): archive rerun idempotency as ratified in 3.0.1 covered two signatures — identical-content ADDED, and RENAMED source-gone+target-present.
+- D-AM-3 (active): a content-bearing delta parsing to zero operations errors instead of silently merging nothing.
+- D-AM-4 (active): REMOVED deprecates in place (audit trail), never physically deletes.
+- D-AM-5 (active): CAS base stamps are opt-in — §4.11's serialize rule tooling must not break unstamped pre-3.1 deltas. Ratified in change-projection (2026-07-10).
+- D-AM-6 (active): high-level archive guarantees failure-atomicity UP TO THE COMMIT POINT only; the commit phase is per-file atomic renames with an honest report on mid-commit failure and NO rollback (a rollback that half-fails is worse); crash durability (fsync) is explicitly NOT claimed (§4.8 wording discipline). Ratified in change-projection.
+- D-AM-7 (active): rerun idempotency covers THREE signatures — identical-content ADDED; RENAMED source-gone+target-present; REMOVED already-deprecated-by-THIS-change. MODIFIED reruns re-apply (same content → same store). Supersedes D-AM-2. Ratified in change-projection.
+
+### apriori/truth/check.md
+# TRUTH — check (`lib/check.js`, CLI subcommand `check`)
+
+## Contract (code-is-truth)
+
+source-commit: fb3ed60
+
+**Responsibility.** Structural consistency checks. Two modes: CONSUMER (default) — CK-04 (every spec-store scenario carries a bindable ID; missing store path → exit 2, naming `apriori init` when apriori/ itself is absent) + CK-06 (scaffolded-runbook freshness, WARN-only `!` line, never a failure). SELF (`--self`) — additionally the apriori repo's handbook checks (anchors/file links, EN/CN heading alignment, verdict-phrase table + drift variants, codex command EN/CN parity + known-good resume forms, no-OpenSpec residue).
+
+**Public interface (surfaces others may consume).**
+- `checkScenarioIds(specText, name, idPattern)` → failure strings (fenced scenarios exempt).
+- `checkRunbookFreshness(root, packagedPath = <pkg>/RUNBOOK.md)` → [] or one warn string (byte comparison of apriori/runbook.md vs the packaged runbook); returns [] when EITHER file is missing — absence is not warned.
+- `cli(argv)`: `[--specs <dir>] [--self]`; exit 0 PASS · 1 FAIL(n) · 2 missing store path — the store-path requirement applies in `--self` mode too (missing store exits 2 BEFORE any handbook check runs).
+- Various handbook checkers (checkLinks, checkHeadingAlignment, checkVerdictPhrases, codexCandidates, checkCodexCommands, checkCodexKnownForms, checkNoOpenspec) — self-mode only.
+
+**Pitfalls.**
+- CK-06 is warn-only by design — a stale runbook never fails CI.
+- CK-04 counts scenarios inside DEPRECATED requirement blocks too (check has no deprecated-block rule; verify does — a known check-vs-verify divergence on post-REMOVED stores, flagged in change-projection's gap report R2, accepted out of scope there).
+
+## Decisions (doc-is-truth)
+
+- D-CK-1 (active): consumer/self split — a consumer legitimately using OpenSpec or shipping its own README must never be failed by apriori's self-checks. Ratified 3.0.1.
+
+### apriori/truth/doctor.md
+# TRUTH — doctor (`lib/doctor.js`, CLI subcommand `doctor`)
+
+## Contract (code-is-truth)
+
+source-commit: 4c73156
+
+**Responsibility.** Diagnose the project↔apriori seam with seven checks; one exit code: 0 HEALTHY · 1 FINDINGS · 2 UNUSABLE (Node < 18, `apriori/` missing/not-a-dir, positional-arg usage error — each still listing the checks that ran). Never repairs, never writes; the ONLY side effect is D5 running the test command once (`--no-run` removes it). Findings carry a `fix` naming the repair command.
+
+**Public interface.**
+- `runDoctor({cwd, testCmd, noRun, nodeVersion})` → `{ code, result: 'HEALTHY'|'FINDINGS'|'UNUSABLE', findings, checks: [{id, status: 'ok'|'finding'|'n/a', detail, fix?}], errors }`. `checks` may carry MULTIPLE entries per D-id (D2 one per gap, D4 one per broken tool); `findings` = count of finding-status entries. `nodeVersion` is the DR-12 test seam.
+- `classifyProbe(run)` — D5's classifier over `runTestCommand`'s shape `{out, status, signal, error}`; ladder: spawn error → signal → bailout → empty output → zeroTapParsed (non-TAP) → unexplained non-zero exit (BEFORE any ok branch — a non-zero `1..0` lands here) → zero parsed results (`1..0` ok, else truncated/malformed) → ok with p/f counts (test failures are NOT findings).
+- `cli(argv)`: `[--test-cmd "<cmd>"] [--no-run] [--cwd <dir>] [--json]`; any positional → usage exit 2 (pure JSON under `--json`); `--json` shape `{result, findings, checks, errors}` in every class.
+
+**The seven checks.** D1 Node ≥ 18 (injectable) · D2 scaffold with TYPE-HONEST probes (isDir/isFile/readIfFile — a file impersonating specs/ or tmp/, a dir at runbook.md/.gitignore, unreadable entries → findings, never crashes; missing process-config = n/a note) · D3 freshness via `checkRunbookFreshness`, gated on `isFile(runbook)` (absence/wrong type → n/a "see D2") · D4 pointers for `detectTools` hits only (rules file regular+contains `apriori/runbook.md`; command-level file exists) · D5 probe (above) · D6 store via `collectScenarios` default pattern (missing dir → n/a "see D2"; empty → n/a; unidentified/dupes → findings) · D7 active flow-states (exists + non-empty `change` + matches dir) + archived stamp-dirs (directories only, `containsReal(archRoot,…)` before ANY read; escaping symlink → skip note) with not-DONE/ABANDONED surfaced as "gate ④ possibly pending" info.
+
+**Pitfalls.**
+- Requires ./init, ./check, ./spec-runner, ./status, ./archive-merge (leaf module; nothing requires doctor).
+- D5's runtime = the project's test command runtime.
+- On the apriori source repo itself, doctor honestly reports FINDINGS (no runbook copy — the repo is not an initialized consumer); that is correct, not a bug.
+
+## Decisions (doc-is-truth)
+
+- D-DR-1 (active): test failures are NOT doctor findings — D5 probes plumbing (does the command speak TAP), not correctness; red tests are `verify`'s business. Ratified in doctor-command (2026-07-11).
+- D-DR-2 (active): gate-④-pending archived changes are information, never findings — that state is the §4 archive sequencing working as designed.
+- D-DR-3 (active): doctor diagnoses and points at the fixer; it never repairs — repair actions belong to `init`/`update`/the human.
+- D-DR-4 (active): wrong-type scaffold entries (file-as-dir etc.) are findings, never false passes or crashes — malformed scaffolds are doctor's core case.
+
+### apriori/truth/gate.md
+# TRUTH — gate (`lib/gate.js`, CLI subcommand `gate`)
+
+## Contract (code-is-truth)
+
+source-commit: 363bc79
+
+**Responsibility.** Aggregate the MECHANICAL exit conditions for one change into one exit code: 0 PASS · 1 BLOCKED · 2 evaluation untrustworthy. Strictly read-only. PASS covers machine checks only — human gates remain human (stated in output).
+
+**Public interface.**
+- `runGate({cwd, change, testCmd})` → `{ code, stage: 'in-flight'|'archived'|null, checks:[{id,status:'pass'|'blocked'|'n/a',detail}], result:'PASS'|'BLOCKED'|'ERROR', blocked, errors, change }`.
+- `resolveChange(cwd, name)` → `{stage, dir}` or `{error}` — in-flight `apriori/changes/<name>` first (realpath containment vs changes dir); else archived: basenames matching `/^\d{4}-\d{2}-\d{2}T\d{4}-<name>$/` under `changes/archive/` that stat as DIRECTORIES, sorted, last; containment vs the ARCHIVE root (a symlink pointing elsewhere under changes/ is an escape).
+- `cli(argv)`: `--change <name> [--test-cmd "<cmd>"] [--cwd <dir>] [--json]`; testCmd falls back to `configTestCmd(cwd)`; neither → exit 2. `--json` = pure JSON in EVERY outcome class (`result:"ERROR"`, `stage:null` before resolution, `change:null` when --change missing).
+
+**The six checks.** C1 binding (in-flight → `verify({change})` projected; archived → `verify({specs:[apriori/specs]})`; verify infra errors → gate exit 2) · C2 tasks.md zero `- [ ]` (`[x]`/`[X]` checked; absent → n/a on trivial, blocked otherwise) · C3 flow-state legality (required keys change/tier/track/lineage/current-step; placeholder = contains `<`/`>`; exact step/tier enums; change must equal --change; file missing → exit 2) · C4 ledger at `<cwd>/apriori/review/<name>-issues.md` BOTH stages (`/^open\b/i` blocks; `rejected` needs a word character after the word — punctuation alone is not a reason; absent → n/a on trivial) · C5 verdict evidence (docs `apriori/review/<name>-*.md` + `apriori/design/<name>-review-v*.md`, minus ledger/raw stems, regular files only — symlinked doc blocks; `/^VERDICT:/m` doc needs a REGULAR (lstat-first) `apriori/review/<stem>-raw.*` inside the review dir) · C6 KB freshness (modules = first segments of delta-spec suffixes; precondition ladder → n/a with reason; `git -C <cwd> log --oneline <stamp>..HEAD -- lib/<m>.js`: clean pass / commits block / non-zero git exit n/a).
+
+**Pitfalls.**
+- C1 runs the project's full test command — gate's runtime is dominated by it.
+- C6's module→code mapping is the `lib/<m>.js` convention; anything off-convention degrades to n/a (never a false block).
+- GT-12's read-only test fingerprints path+size+mtime — same-size rewrites with restored mtime would evade it; static inspection is the actual guarantee (gate performs zero writes).
+- Requires `./status`, `./spec-runner`, `./archive-merge`; nothing requires gate (leaf module).
+
+## Decisions (doc-is-truth)
+
+- D-GT-1 (active): gate judges the MECHANICAL face only; its PASS never substitutes for protected human gates — the output must say so. Ratified in gate-command (2026-07-11).
+- D-GT-2 (active): infra failures (git absent, bad stamp commit, unmappable module) yield n/a with a reason, never a fabricated block — false blocks train humans to ignore the gate.
+- D-GT-3 (active): the raw-evidence naming rule is normative going forward: a review doc with stem S archives its raw as `apriori/review/S-raw.*` (runbook §1 updated); older changes predate the rule.
+
+### apriori/truth/init.md
+# TRUTH — init (`lib/init.js`, CLI subcommand `init`)
+
+## Contract (code-is-truth)
+
+source-commit: fb3ed60
+
+**Responsibility.** Scaffold the single `apriori/` root (runbook copy, process-config, working dirs, gitignored tmp/) and write a thin runbook pointer in each selected AI tool's native location. Additive, never clobbers.
+
+**Public interface (the surface other modules consume).**
+- `TOOLS` — the one adapter table: keys `claude codex cursor copilot opencode windsurf`; each `{ name, detect: [paths], rules: <rules-file rel>, command?: <command-file rel>, mdc?: bool, level: 'command'|'rule' }`. THE single source of tool definitions (update.js already imports it).
+- `detectTools(root)` → keys whose any `detect` path exists under root.
+- `scaffold(root, toolKeys, opts {dryRun, language, testCmd})` → `{ actions: [{file, action: 'created'|'appended'|'skipped'}], levels }`. Seeds `apriori/runbook.md` (byte-copy of the package's RUNBOOK.md), `apriori/process-config.md` (template; language/test-cmd only into a FRESHLY created config), `apriori/.gitignore` (`tmp/\n`), dirs `specs changes changes/archive review truth tmp`; per-tool pointer append (dedupe key: the literal `apriori/runbook.md` in the rules file) + command file copy (skip if exists).
+- `parseArgs(argv)` — `--tools a,b · --test-cmd · --language · --yes`.
+- Interactive multiselect (arrow keys) when `--tools` absent; `cli` exits 2 on non-interactive without `--tools`, exits 1 when the selected tool list ends up empty; it ALWAYS prints a dry-run preview first and, on a TTY, asks for confirmation unless `--yes/-y`.
+
+**Pitfalls.**
+- `detect` matches broad markers (`.github` ⇒ copilot) — detection over-approximates; selection is the human's.
+- Pointer dedupe is substring-based: any mention of `apriori/runbook.md` in a rules file suppresses the append.
+
+## Decisions (doc-is-truth)
+
+- D-IN-1 (active): the protocol lives ONCE (apriori/runbook.md); tools receive pointers, never copies.
+- D-IN-2 (active): init is additive and never overwrites user content; re-running is always safe.
+
+### apriori/truth/spec-runner.md
+# TRUTH — spec-runner (`lib/spec-runner.js`, CLI subcommand `verify`)
+
+## Contract (code-is-truth)
+
+source-commit: 024ee2c
+
+**Responsibility.** Bind spec scenario IDs to a TAP-emitting test run; report per-scenario red/green; act as STEP5's deterministic gate. Fail-closed: a broken or vacuous run is never GREEN. 3.1: `--change <name>` verifies against the in-memory PROJECTED store (archive's merge() applied to the living store) — the mid-change form.
+
+**Public interface (module exports).**
+- `leadId(text, idRe)` → leading ID or null. Word-boundary strict: `XX-01b`, `XX-01_x` are NOT `XX-01`.
+- `stripFences(text)` → text with ``` fenced blocks removed (fenced scenarios are documentation, not spec).
+- `mdFiles` is internal; `collectScenarios(specTargets, idRe)` → `{ byId, unidentified:[[file,title]], files, missingTargets, duplicates:[{id,files}] }`. A target may be a dir (recursed for `*.md`, sorted) or a single file (accepted as-is, ANY extension); dedupes overlapping targets. Scenario discovery matches exact h4 lines `#### Scenario: …` only. Scenarios inside DEPRECATED requirement blocks (heading carries `_deprecated (superseded by …)_`) are excluded in EVERY form — not demanded, not listed; their lingering tests turn ORPHAN.
+- `collectScenariosFromTexts(Map<label,text>, idRe)` — same scan over in-memory texts (the projection path); labels are store-relative suffixes.
+- `parseTap(out, idRe)` → `{ results: Map<id,{pass,fail,skip}>, untagged:[], untaggedFails, bailout }`. Only lines shaped exactly `ok|not ok <n> - <name>` parse — a TAP result line without the ` - ` separator is ignored. `# SKIP`/`# TODO` counts as skip (proves nothing); untagged `not ok` without directive increments `untaggedFails`; `Bail out!` line captured.
+- `zeroTapParsed(out, results, untagged)` → true when output exists but no TAP line parsed AND no `TAP version`/`1..N` plan line (plan line = TAP reporter with an empty suite, not a reporter problem).
+- `runTestCommand(cmd, cwd)` → `{ out (stdout+\n+stderr), status (null if signal-killed), signal, error }` via `spawnSync(shell:true)`.
+- `evaluate(byId, unidentified, results)` → `{ boundGreen, boundRed, unbound, orphan, unidentified, clean }`. A scenario whose only results are skips is UNBOUND.
+- `verify(opts {specs:[], change, testCmd, idPattern, cwd})` — with `change`: builds the projection via archive-merge's discoverDeltas/buildProjection (roots `<cwd>/apriori/{changes,specs}`); ANY projection failure (validation/hygiene/CAS/merge-conflict) → run with `errors` set and NO test executed; success → normal pipeline over projected texts; run gains `projection: {change, modules, conflicts}`. Without `change`: unchanged. → run object `{ verdict, results, fileCount, failCount, scenarioCount, missingTargets, duplicates, bailout, noTap, exec{status,signal,error}, errors }`. `failCount` = tagged fails + `untaggedFails`.
+- `infraErrors(run)` → string[] (empty = trustworthy). Triggers: missing spec target · zero spec files · zero scenarios · spawn error · signal kill · bailout · zero-TAP-parsed · non-zero exit with `failCount === 0` (TAP picture doesn't explain the exit).
+- `formatReport(...)` → human report; RESULT line: `ERROR — run not trustworthy (see stderr)` / `GREEN — spec is the test suite` / `GAPS`. Duplicates block GREEN.
+- `verifyJson(run)` → `{ clean, result: GREEN|GAPS|ERROR, errors, specFiles, exec, duplicates, boundGreen[], boundRed[], unbound[], orphan[], unidentified[] }`; `--change` runs add exactly one field `projection: {change, modules, conflicts}` — never present otherwise.
+- `configTestCmd(cwd)` → test-cmd from `apriori/process-config.md`'s `| test-cmd | … |` row, or null.
+- `cli(argv)` → exit code. `--specs <dir...>` OR `--change <name>` (mutually exclusive, combining → exit 2) `--test-cmd "<cmd>" [--id-pattern] [--cwd] [--json]`; test-cmd falls back to config row. Exit: 0 GREEN · 1 gaps/duplicates · 2 infra/usage error, incl. all projection failure classes. Unknown flags are silently ignored (known gap, roadmap item 6).
+- `DEFAULT_ID` = `[A-Z]+-\d+`.
+
+**Data flow.** spec targets → collectScenarios → run test cmd once → parseTap → evaluate → infraErrors → report/JSON. One test-command invocation per verify run; no state persists between runs (stateless, reads FS + spawns only).
+
+**Three moments.** No external shared state. FS reads only; the spawned test command is the only side effect.
+
+**Pitfalls.**
+- `--specs` consumes following args until the next `--` flag — a path starting with `--` is impossible.
+- A direct-file `--specs` target is read whatever its extension; only directory recursion filters to `.md`.
+- `exec.status` is null when signal-killed; the non-zero-exit rule explicitly guards `status !== null`.
+- Requires `./archive-merge` (one-way: archive-merge never requires spec-runner).
+
+## Decisions (doc-is-truth)
+
+- D-SR-1 (active): fail-closed is a hard product stance — exit taxonomy 0/1/2; a vacuous or untrustworthy run must never exit 0. Ratified with 3.0.1 (owner + external review 2026-07-10).
+- D-SR-2 (active): skipped tests prove nothing — a scenario with only skips is UNBOUND, not green.
+- D-SR-3 (active): duplicate scenario IDs are a binding ambiguity → GAPS (exit 1), not a warning.
+- D-SR-4 (active): the binding gate speaks TAP only; non-TAP layers (e.g. Playwright E2E) sit above the gate as additional exit conditions, never replace it.
+- D-SR-5 (active): deprecated requirement blocks are excluded from scenario collection in ALL verify forms — post-REMOVED stores must not demand tests for removed behavior forever; lingering tests surface as ORPHAN. Ratified in change-projection (2026-07-10, STEP0 REQ-2).
+- D-SR-6 (active): mid-change, the STEP5 gate is `verify --change` (projection); plain `--specs` verify is the post-archive/store-only form. Ratified in change-projection.
+
+### apriori/truth/status.md
+# TRUTH — status (`lib/status.js`, CLI subcommand `status`)
+
+## Contract (code-is-truth)
+
+source-commit: bd8aaec
+
+**Responsibility.** Answer "where am I / what's left" for a change: read the flow-state file + the issue ledger, report step/next-action/open items. Read-only; zero deps.
+
+**Public interface (module exports).**
+- `parseFlowState(text)` → object with keys `change, tier, track, current-step, round, next-action, lineage` (each from a `key: value` line, inline `#` comment stripped, missing keys absent) plus `lastGate` = the last `- <YYYY-MM-DD…> …` bullet's text, or null.
+- `parseLedger(text)` → `[{id, status}]` from P0 markdown table rows (header/separator rows skipped; id = col 1, status = LAST col).
+- `activeChanges(root)` → sorted dir names under `<root>/apriori/changes/`, excluding `archive`; [] when the dir is missing.
+- `changeStatus(root, change)` → `{ change, state (parsed flow-state or null), open (ledger rows with status starting "open", case-insensitive), hasFlowState }`. Flow-state read from `<root>/apriori/changes/<change>/flow-state.md`; ledger from `<root>/apriori/review/<change>-issues.md`.
+- `formatOne(s)`, `toJson(s)` — human/machine shapes.
+- `cli(argv)`: `[--change <name>] [--json]`; root = process.cwd(). Without `--change`: list actives. Always exit 0 (status never fails the build).
+
+**Pitfalls.**
+- `changeStatus` looks ONLY under `apriori/changes/<name>` — it does NOT find archived changes under `changes/archive/<stamp>-<name>/` (relevant while gate ④ is pending post-move).
+- `parseFlowState` strips ` # comment` from values — a next-action containing a literal `#` would be truncated.
+- `parseLedger` matches any `| a | … | b |` row shape — prose tables in the same file would be picked up too (ledger files carry only the one table by convention).
+- Placeholder values (`<trivial | medium | large>`) parse as ordinary strings — callers must detect unfilled skeletons themselves.
+
+## Decisions (doc-is-truth)
+
+- D-ST-1 (active): status is read-only and always exits 0 — it reports, never gates (gating is `apriori gate`'s job, shipped in gate-command 2026-07-11).
+
+### apriori/truth/update.md
+# TRUTH — update (`lib/update.js`, CLI subcommand `update`)
+
+## Contract (code-is-truth)
+
+source-commit: fb3ed60
+
+**Responsibility.** After a CLI upgrade, refresh TOOL-OWNED files to the installed version: `apriori/runbook.md` (from the package's RUNBOOK.md) and each EXISTING per-tool command file (from templates/command.md). Never creates tool entries (init's job), never touches user-owned files.
+
+**Public interface.**
+- `run(root, opts {dryRun, runbookSrc, commandSrc})` → `{ actions: [{file, action: 'updated'|'up-to-date'|'created'}] }`; throws when `apriori/runbook.md` is missing (`run 'apriori init' first`). Re-establishes `apriori/.gitignore` (writing `tmp/\n`) + the `tmp/` dir ONLY when `.gitignore` itself is missing — a present `.gitignore` with a missing `tmp/` dir is NOT repaired (UP-05's actual scope); the only 'created' it ever emits.
+- `refresh(target, src, dryRun)` → 'updated' | 'up-to-date' (byte comparison).
+- `cli(argv)`: `[--dry-run]`; exit 1 on uninitialized, else 0.
+
+**Pitfalls.**
+- Freshness = byte equality with the PACKAGED runbook — any local edit to apriori/runbook.md reads as "stale" (by design: tool-owned).
+- Imports `TOOLS` from ./init — the adapter table has one home.
+
+## Decisions (doc-is-truth)
+
+- D-UP-1 (active): tool-owned vs user-owned is the load-bearing boundary — update refreshes the former, never the latter (process-config.md, specs/, changes/, rules files).
+
+codex
+I’ve got the core mismatch: the proposed “zero positional for every other subcommand” conflicts with `verify --specs` multi-value parsing, because those spec targets are positional values after a flag under the existing surface. I’m checking whether the helper contract can express that without treating them as stray positionals.
+exec
+/usr/bin/zsh -lc "sed -n '385,430p' lib/archive-merge.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '235,260p' lib/init.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,90p' lib/new.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '45,60p' lib/update.js && sed -n '177,188p' lib/check.js && sed -n '79,88p' lib/status.js" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 113ms:
+  return { code: 0, out, err };
+}
+
+// print the CAS stamp line for a store file's current content
+function stampCli(argv) {
+  if (argv.length !== 1) { console.error('usage: apriori stamp <store-file>'); return 2; }   // exactly one argument, no flags
+  const p = argv[0];
+  if (!fs.existsSync(p)) { console.log('<!-- apriori-base: new -->'); return 0; }
+  if (fs.statSync(p).isDirectory()) { console.error(`stamp: ${p} is a directory, not a store file`); return 2; }
+  let text;
+  try { text = fs.readFileSync(p, 'utf8'); }
+  catch (e) { console.error(`stamp: cannot read ${p}: ${e.message}`); return 2; }
+  console.log(`<!-- apriori-base: ${fingerprint(text)} -->`);
+  return 0;
+}
+
+function cli(argv) {
+  const a = { store: null, delta: null, change: null, write: false, changesDir: null };
+  for (let i = 0; i < argv.length; i++) {
+    const k = argv[i];
+    if (k === '--store') a.store = argv[++i];
+    else if (k === '--delta') a.delta = argv[++i];
+    else if (k === '--change') a.change = argv[++i];
+    else if (k === '--write') a.write = true;
+    else if (k === '--changes-dir') a.changesDir = argv[++i];
+  }
+  // high-level form: --change alone (no --store/--delta) drives the whole change
+  if (a.change && !a.store && !a.delta) {
+    const r = archiveChange({ cwd: process.cwd(), change: a.change, write: a.write,
+      changesDir: a.changesDir || undefined, changesDirExplicit: !!a.changesDir });
+    for (const l of r.out) console.log(l);
+    for (const l of r.err) console.error(l);
+    return r.code;
+  }
+  if (a.change && (a.store || a.delta) && !(a.store && a.delta)) {
+    console.error('usage: apriori archive --change <name> [--write] [--changes-dir <dir>]  (high-level form)\n   or: apriori archive --store <f> --delta <f> --change <name> [--write] [--changes-dir <dir>]  (single-file form)\n(--change cannot be combined with only one of --store/--delta)');
+    return 2;
+  }
+  if (!a.store || !a.delta || !a.change) { console.error('usage: apriori archive --store <f> --delta <f> --change <name> [--write] [--changes-dir <dir>]\n   or: apriori archive --change <name> [--write] [--changes-dir <dir>]'); return 2; }
+  if (!CHANGE_NAME_RE.test(a.change)) { console.error(`archive: invalid change name '${a.change}' — bare kebab-case only (path segments are not allowed)`); return 2; }
+  if (a.changesDir && !fs.existsSync(path.join(a.changesDir, a.change))) {
+    console.error(`archive: change '${a.change}' not found under ${a.changesDir} — nothing to move`); return 2;
+  }
+  // first archive in a repo: the store file may not exist yet — start from an empty store
+  const storeExists = fs.existsSync(a.store);
+  const storeText = storeExists ? fs.readFileSync(a.store, 'utf8') : '';
+
+ succeeded in 121ms:
+'use strict';
+/*
+ * apriori new — scaffold an in-flight change directory with a flow-state skeleton.
+ * Zero deps — pure Node stdlib. In-flight names are BARE (no date prefix, §4);
+ * archive stamps dates at archive time.
+ */
+const fs = require('fs');
+const path = require('path');
+
+const NAME_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;   // bare kebab-case: no empty segments, no trailing hyphen
+
+function flowStateSkeleton(name, now) {
+  const p = (n) => String(n).padStart(2, '0');
+  const stamp = `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}T${p(now.getHours())}:${p(now.getMinutes())}`;
+  return `change: ${name}
+tier: <trivial | medium | large>          # size it per runbook §2
+track: <harden | explore>                 # certainty axis, §2 (unsure: harden)
+track-rationale: <one line — reported at the next human gate>
+lineage: <target branch/line + merge taboo — copy from the requirement>
+current-step: STEP0
+round: 0
+reviewer-session: n/a                     # record the reviewer's resumable session id the moment round 1 prints it (R2)
+next-action: draft requirement/req-v1.md (or the intent card on the explore track)
+artifact-root: .                          # optional; root for process artifacts (runbook §3) — default project root
+gates:
+  - ${stamp} note: change scaffolded by \`apriori new\`
+`;
+}
+
+// Scaffold apriori/changes/<name>/flow-state.md. Returns {ok, path?|error?}.
+function scaffoldChange(root, name, now) {
+  if (!name || !NAME_RE.test(name)) return { ok: false, error: `invalid change name '${name}' — use bare kebab-case (e.g. add-playback); dates are stamped at archive time, not here` };
+  if (/^\d{4}-\d{2}/.test(name)) return { ok: false, error: `'${name}' looks date-prefixed — in-flight names are bare; dates are stamped at archive time, not here` };
+  if (name === 'archive') return { ok: false, error: `'archive' is reserved for apriori/changes/archive/` };
+  const dir = path.join(root, 'apriori', 'changes', name);
+  if (fs.existsSync(dir)) return { ok: false, error: `change '${name}' already exists at ${path.relative(root, dir)}` };
+  fs.mkdirSync(path.join(dir, 'specs'), { recursive: true });
+  const flow = path.join(dir, 'flow-state.md');
+  fs.writeFileSync(flow, flowStateSkeleton(name, now));
+  return { ok: true, path: path.relative(root, flow) };
+}
+
+function cli(argv) {
+  const name = argv.find((a) => !a.startsWith('--')) || null;
+  if (!name) { console.error('usage: apriori new <change-name>   (bare kebab-case, e.g. add-playback)'); return 2; }
+  const r = scaffoldChange(process.cwd(), name, new Date());
+  if (!r.ok) { console.error(`  ✗ ${r.error}`); return 1; }
+  console.log(`  ✓ ${r.path}`);
+  console.log(`\n  Next: fill in tier/track/lineage, then kick off:\n    /apriori ${name}   (or the runbook §0 kickoff prompt)`);
+  return 0;
+}
+
+module.exports = { NAME_RE, flowStateSkeleton, scaffoldChange, cli };
+
+ succeeded in 130ms:
+  const ans = await new Promise((res) => rl.question(question, res));
+  rl.close();
+  return /^(y|yes|)$/i.test(ans.trim());
+}
+
+async function cli(argv) {
+  const a = parseArgs(argv);
+  const root = process.cwd();
+  let tools = a.tools;
+  if (!tools) {
+    if (!process.stdin.isTTY) { console.error('  non-interactive: pass --tools <a,b,...>'); return 2; }
+    tools = await askTools(root);
+  }
+  if (!tools.length) { console.error('  no tools selected — nothing to do'); return 1; }
+  preview(root, tools);                          // IN-07: preview before writing
+  if (!a.yes && process.stdin.isTTY && !(await confirm('\n  Proceed? (Y/n) '))) { console.log('  aborted.'); return 0; }
+  report(scaffold(root, tools, { testCmd: a.testCmd, language: a.language }));
+  return 0;
+}
+
+module.exports = { TOOLS, POINTER, detectTools, writePointer, writeCommand, scaffold, parseArgs, cli,
+  parseKey, reduceKey, renderMenu, selectedKeys, multiselect };
+
+ succeeded in 162ms:
+  return { actions };
+}
+
+function cli(argv) {
+  const dryRun = argv.includes('--dry-run');
+  let res;
+  try { res = run(process.cwd(), { dryRun }); }
+  catch (e) { console.error('  ' + e.message); return 1; }
+  for (const { file, action } of res.actions)
+    console.log(`  ${action === 'updated' ? '✓' : '·'} ${file}  (${action})`);
+  const n = res.actions.filter((a) => a.action === 'updated').length;
+  const v = require('../package.json').version;
+  console.log(n
+    ? `\n  ${n} file(s) ${dryRun ? 'would be ' : ''}refreshed to apriori-cli ${v}.`
+    : `\n  everything already matches apriori-cli ${v}.`);
+  console.log('  (user-owned files — process-config.md, specs/, changes/, rules files — are never touched.)');
+function cli(argv) {
+  const root = process.cwd();
+  let specsDir = 'apriori/specs';
+  let self = false;
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--specs') specsDir = argv[++i];
+    else if (argv[i] === '--self') self = true;
+  }
+  const fails = [];
+
+  // CK-04 over the spec store — a missing path is an ERROR, never a silent PASS
+  const specsPath = path.join(root, specsDir);
+function cli(argv) {
+  const root = process.cwd();
+  let change = null, json = false;
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--change') change = argv[++i];
+    else if (argv[i] === '--json') json = true;
+  }
+  if (change) {
+    const s = changeStatus(root, change);
+    console.log(json ? JSON.stringify(toJson(s), null, 2) : formatOne(s));
+
+codex
+**Issues By Dimension**
+
+**1. Target State B Clarity**
+
+SREQ-1 — Known flag surface is not declared per subcommand.
+
+Description: The requirement says known-flag behavior is “byte-identical to 3.2.0,” but does not list the real flag spec each subcommand must pass to `parseStrict`. This change is specifically a parser rewrite; relying on implementers to rediscover the matrix risks drift.
+
+Risk: A subcommand can accidentally lose or alter a flag while still satisfying the generic helper contract.
+
+Suggested fix: Add a table for each subcommand: `new` positional, `status --change --json`, `verify --specs multi --change --test-cmd --id-pattern --cwd --json`, `archive --store --delta --change --write --changes-dir`, `check --specs --self`, `init --tools --test-cmd --language --yes/-y`, `update --dry-run`, `stamp` positional, `gate --change --test-cmd --cwd --json`, `doctor --test-cmd --no-run --cwd --json`.
+
+SREQ-2 — `multi` consumption conflicts with the “unknown -x” rule.
+
+Description: The helper says a `multi` flag consumes tokens until the next `--`-prefixed token, preserving `verify --specs`. But the goal says unknown `--flag` “or `-x`” must exit 2. With the current `multi` rule, `apriori verify --specs a -x --test-cmd t` consumes `-x` as a spec target instead of rejecting it as an unknown short flag.
+
+Risk: Unknown short flags can still be silently swallowed in the most safety-critical command.
+
+Suggested fix: Define precedence. Either `multi` stops at any dash-prefixed token, or explicitly exempt dash-prefixed spec paths from the unknown-short-flag rule and test that choice.
+
+SREQ-3 — Empty `multi` values are not classified.
+
+Description: The contract defines missing values for `'value'` flags, but not for `'multi'`. `apriori verify --specs --test-cmd x` and `apriori verify --specs` need a deterministic error, ideally naming `--specs`.
+
+Risk: Implementations can fall through to generic usage, consume wrong tokens, or produce inconsistent errors.
+
+Suggested fix: State that a `multi` flag must consume at least one value; if the next token is absent or a terminator flag, exit 2 naming the multi flag.
+
+SREQ-4 — Repeated known flags are not specified.
+
+Description: Current ad-hoc parsers have real repeated-flag behavior: `verify --specs a --specs b` accumulates, many value flags last-write-wins, booleans are idempotent, and `init --tools` currently overwrites if repeated. The requirement says success-path behavior is unchanged but does not encode this.
+
+Risk: Parser helper implementation can change behavior for repeated known flags while the change claims byte-identical known-flag semantics.
+
+Suggested fix: Add duplicate/repeated rules by flag kind: `multi` accumulates across occurrences; `value` last occurrence wins unless otherwise declared; `flag` is true if present; aliases normalize to canonical names.
+
+**2. Edge Cases And Exception Paths**
+
+Covered by SREQ-2 through SREQ-4. `--help` precedence, unknown flags, missing value-at-end, and no-action-on-parse-error are otherwise clear.
+
+**3. Undeclared State Changes Or Side Effects**
+
+No formal issue. The requirement explicitly states strict parse errors must prevent actions, writes, and test-command execution.
+
+**4. Acceptance Criteria Testability**
+
+SREQ-5 — Acceptance criteria do not test the parser edge cases introduced by the helper.
+
+Description: S1-S8 cover help, unknown flags, stray positionals, missing value-at-end, `verify --specs a b c`, and init interactivity. They do not cover empty `multi`, repeated flags, or unknown short flags inside/near `--specs`.
+
+Risk: The helper can pass the listed acceptance criteria while still leaving parser ambiguity in important branches.
+
+Suggested fix: Add acceptance cases for `verify --specs --test-cmd x`, `verify --specs a --specs b --test-cmd x`, and `verify --specs a -x --test-cmd x` with the intended outcome.
+
+**5. Conflicts With Current State A**
+
+SREQ-6 — Current-state claims about `new` and `stamp` are inaccurate.
+
+Description: The requirement says every subcommand silently ignores unrecognized args and that `new`/`stamp` “existing behavior for count violations” is preserved. In State A, `new` takes the first non-flag positional and ignores extra positionals, so `apriori new a b` is not currently a count violation. `stamp` already enforces exactly one argv entry, and a single flag-like token such as `--foo` is treated as the store-file positional, not silently ignored.
+
+Risk: Tests and migration notes can be written against the wrong baseline, making intentional behavior changes look accidental or vice versa.
+
+Suggested fix: Add a State A inventory note that explicitly calls out these exceptions, and mark target behavior for `new` extra args and `stamp --foo` as intentional strictness changes.
+
+**6. Lineage**
+
+No issue. Target lineage is declared as v3 branch and the expected version is stated. The out-of-scope section exists.
+
+**Advisories**
+
+The helper section says it is “required by every cli()”; `stamp` is implemented as `stampCli`, not `cli`. The subcommand behavior is covered elsewhere, so this is wording only.
+
+Consider requiring exact usage strings to include the subcommand name and accepted flags, since S1 only requires they contain `apriori <sub>`.
+
+**Ledger Delta**
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| SREQ-1 | Known flag surface is not declared per subcommand. | Parser rewrite can accidentally alter a command’s accepted flags. | STEP0·r1 | open |
+| SREQ-2 | `multi` consumption conflicts with the unknown `-x` rule. | Unknown short flags can still be swallowed by `verify --specs`. | STEP0·r1 | open |
+| SREQ-3 | Empty `multi` values are not classified. | `verify --specs --test-cmd x` can be handled inconsistently. | STEP0·r1 | open |
+| SREQ-4 | Repeated known flags are not specified. | Claimed unchanged success behavior can drift. | STEP0·r1 | open |
+| SREQ-5 | Acceptance criteria omit helper edge cases for empty multi, repeated flags, and short flags near multi. | Green tests can miss parser ambiguity. | STEP0·r1 | open |
+| SREQ-6 | Current-state claims about `new` and `stamp` are inaccurate. | Baseline-sensitive tests/migration notes can be wrong. | STEP0·r1 | open |
+| ADV-S1 | Advisory batch: wording cleanup for `stampCli` vs `cli()` and stronger usage-string expectations. | Low; clarity only. | STEP0·r1 | advisory |
+
+VERDICT: 6 issues open
+tokens used
+1,071,632
+**Issues By Dimension**
+
+**1. Target State B Clarity**
+
+SREQ-1 — Known flag surface is not declared per subcommand.
+
+Description: The requirement says known-flag behavior is “byte-identical to 3.2.0,” but does not list the real flag spec each subcommand must pass to `parseStrict`. This change is specifically a parser rewrite; relying on implementers to rediscover the matrix risks drift.
+
+Risk: A subcommand can accidentally lose or alter a flag while still satisfying the generic helper contract.
+
+Suggested fix: Add a table for each subcommand: `new` positional, `status --change --json`, `verify --specs multi --change --test-cmd --id-pattern --cwd --json`, `archive --store --delta --change --write --changes-dir`, `check --specs --self`, `init --tools --test-cmd --language --yes/-y`, `update --dry-run`, `stamp` positional, `gate --change --test-cmd --cwd --json`, `doctor --test-cmd --no-run --cwd --json`.
+
+SREQ-2 — `multi` consumption conflicts with the “unknown -x” rule.
+
+Description: The helper says a `multi` flag consumes tokens until the next `--`-prefixed token, preserving `verify --specs`. But the goal says unknown `--flag` “or `-x`” must exit 2. With the current `multi` rule, `apriori verify --specs a -x --test-cmd t` consumes `-x` as a spec target instead of rejecting it as an unknown short flag.
+
+Risk: Unknown short flags can still be silently swallowed in the most safety-critical command.
+
+Suggested fix: Define precedence. Either `multi` stops at any dash-prefixed token, or explicitly exempt dash-prefixed spec paths from the unknown-short-flag rule and test that choice.
+
+SREQ-3 — Empty `multi` values are not classified.
+
+Description: The contract defines missing values for `'value'` flags, but not for `'multi'`. `apriori verify --specs --test-cmd x` and `apriori verify --specs` need a deterministic error, ideally naming `--specs`.
+
+Risk: Implementations can fall through to generic usage, consume wrong tokens, or produce inconsistent errors.
+
+Suggested fix: State that a `multi` flag must consume at least one value; if the next token is absent or a terminator flag, exit 2 naming the multi flag.
+
+SREQ-4 — Repeated known flags are not specified.
+
+Description: Current ad-hoc parsers have real repeated-flag behavior: `verify --specs a --specs b` accumulates, many value flags last-write-wins, booleans are idempotent, and `init --tools` currently overwrites if repeated. The requirement says success-path behavior is unchanged but does not encode this.
+
+Risk: Parser helper implementation can change behavior for repeated known flags while the change claims byte-identical known-flag semantics.
+
+Suggested fix: Add duplicate/repeated rules by flag kind: `multi` accumulates across occurrences; `value` last occurrence wins unless otherwise declared; `flag` is true if present; aliases normalize to canonical names.
+
+**2. Edge Cases And Exception Paths**
+
+Covered by SREQ-2 through SREQ-4. `--help` precedence, unknown flags, missing value-at-end, and no-action-on-parse-error are otherwise clear.
+
+**3. Undeclared State Changes Or Side Effects**
+
+No formal issue. The requirement explicitly states strict parse errors must prevent actions, writes, and test-command execution.
+
+**4. Acceptance Criteria Testability**
+
+SREQ-5 — Acceptance criteria do not test the parser edge cases introduced by the helper.
+
+Description: S1-S8 cover help, unknown flags, stray positionals, missing value-at-end, `verify --specs a b c`, and init interactivity. They do not cover empty `multi`, repeated flags, or unknown short flags inside/near `--specs`.
+
+Risk: The helper can pass the listed acceptance criteria while still leaving parser ambiguity in important branches.
+
+Suggested fix: Add acceptance cases for `verify --specs --test-cmd x`, `verify --specs a --specs b --test-cmd x`, and `verify --specs a -x --test-cmd x` with the intended outcome.
+
+**5. Conflicts With Current State A**
+
+SREQ-6 — Current-state claims about `new` and `stamp` are inaccurate.
+
+Description: The requirement says every subcommand silently ignores unrecognized args and that `new`/`stamp` “existing behavior for count violations” is preserved. In State A, `new` takes the first non-flag positional and ignores extra positionals, so `apriori new a b` is not currently a count violation. `stamp` already enforces exactly one argv entry, and a single flag-like token such as `--foo` is treated as the store-file positional, not silently ignored.
+
+Risk: Tests and migration notes can be written against the wrong baseline, making intentional behavior changes look accidental or vice versa.
+
+Suggested fix: Add a State A inventory note that explicitly calls out these exceptions, and mark target behavior for `new` extra args and `stamp --foo` as intentional strictness changes.
+
+**6. Lineage**
+
+No issue. Target lineage is declared as v3 branch and the expected version is stated. The out-of-scope section exists.
+
+**Advisories**
+
+The helper section says it is “required by every cli()”; `stamp` is implemented as `stampCli`, not `cli`. The subcommand behavior is covered elsewhere, so this is wording only.
+
+Consider requiring exact usage strings to include the subcommand name and accepted flags, since S1 only requires they contain `apriori <sub>`.
+
+**Ledger Delta**
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| SREQ-1 | Known flag surface is not declared per subcommand. | Parser rewrite can accidentally alter a command’s accepted flags. | STEP0·r1 | open |
+| SREQ-2 | `multi` consumption conflicts with the unknown `-x` rule. | Unknown short flags can still be swallowed by `verify --specs`. | STEP0·r1 | open |
+| SREQ-3 | Empty `multi` values are not classified. | `verify --specs --test-cmd x` can be handled inconsistently. | STEP0·r1 | open |
+| SREQ-4 | Repeated known flags are not specified. | Claimed unchanged success behavior can drift. | STEP0·r1 | open |
+| SREQ-5 | Acceptance criteria omit helper edge cases for empty multi, repeated flags, and short flags near multi. | Green tests can miss parser ambiguity. | STEP0·r1 | open |
+| SREQ-6 | Current-state claims about `new` and `stamp` are inaccurate. | Baseline-sensitive tests/migration notes can be wrong. | STEP0·r1 | open |
+| ADV-S1 | Advisory batch: wording cleanup for `stampCli` vs `cli()` and stronger usage-string expectations. | Low; clarity only. | STEP0·r1 | advisory |
+
+VERDICT: 6 issues open

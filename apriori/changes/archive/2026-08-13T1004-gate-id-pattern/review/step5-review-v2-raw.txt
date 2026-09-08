@@ -1,0 +1,2420 @@
+<!-- provenance: provider=openai model=gpt-5.6-sol session=019ff75f-81a2-7193-99bc-98ff06d34e09 date=2026-08-13 -->
+OpenAI Codex v0.147.0
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.6-sol
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019ff75f-81a2-7193-99bc-98ff06d34e09
+--------
+user
+Round 2. All eight round-1 findings are implemented and tested (ledger rows flipped to 'fixed (r2)' with per-item notes; suite now 280/280 green, `verify --change gate-id-pattern` GREEN, `check --self` PASS):
+* IMPL-1: readConfig reads first and classifies after — only a definite ENOENT is absence; CF-11 gained a four-consumer matrix test (verify/gate/check exit 2, doctor D6 finding + D5 skipped + sentinel).
+* IMPL-2: timeout classified FIRST (ETIMEDOUT and/or SIGKILL); SR-54 asserts the >=1900ms budget oracle and termination wording; SR-55 gained the dual-signal case; GT-25 now runs the real CLI with --json purity.
+* IMPL-3: matcherFailureMsg exported as the single sanitized exit; check and doctor route through it; doctor's unidentified detail uses boundedSource.
+* IMPL-4: strict success shape — exactly one key `ids`; extra-field and missing-ids cases added.
+* IMPL-5: SR-52 gained adversarial proofs (nonexistent specs target proves validation precedes spec I/O; control chars + 300-char sources in BOTH origins with no re-leak; text-mode error:/RESULT: ERROR contract); DR-17 asserts zero child calls and the repair fix text.
+* IMPL-6: CK-14 rewritten with explicit expected booleans, three independent paths (checkScenarioIds, collectScenarios, real child round-trip) each checked against the oracle.
+* IMPL-7: check/doctor doc sections updated in BOTH cli docs; gate uses one USAGE constant everywhere; CF-12 extended to the full template key map, comment-carried guidance assertions, bilingual wording, CHANGELOG, and a live `check --self`.
+* IMPL-8: GT-24 CLI table-driven (invalid flag / empty flag over valid config / empty flag over invalid config / invalid config), GT-25 real-CLI single-JSON-document assertions.
+Re-review the implementation against the SPEC-DOC per the same P8 checklist. In your ledger delta flip fixed -> verified where genuinely closed, reopen with reason where not, new IMPL-n rows only for new formal spec-vs-code gaps; advisories separately.
+Read-only sandbox: PRINT the review doc body (landed at apriori/changes/gate-id-pattern/review/step5-review-v2.md), Simplified Chinese, machine tokens English. End with the ledger delta and exactly one verdict line: 'VERDICT: no spec-vs-code gaps' or 'VERDICT: <N> issues open'.
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+codex
+我会先核对 ledger 的 r2 说明和实际 diff，再逐项复验八条修复是否覆盖原来的对抗条件，并对全量 delta 场景做一次新鲜扫描，避免只验证修复清单。
+  → 读取 r2 ledger、实现与测试差异，逐项核验 IMPL-1..8
+  • 重新审查所有 delta 场景、design 与硬保证，寻找新 gap
+  • 执行只读诊断并形成 ledger 状态翻转/新增项
+  • 打印 step5-review-v2 完整正文与唯一 verdict 行
+exec
+/usr/bin/zsh -lc "git status --short && git diff --stat && sed -n '1,240p' apriori/changes/gate-id-pattern/review/issues.md && git diff -- lib/config.js lib/spec-runner.js lib/check.js lib/doctor.js lib/gate.js test/config.test.js test/id-pattern.test.js docs/cli.md docs/cli_cn.md CHANGELOG.md templates/process-config.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 4485ms:
+ M CHANGELOG.md
+ M docs/cli.md
+ M docs/cli_cn.md
+ M lib/check.js
+ M lib/config.js
+ M lib/doctor.js
+ M lib/gate.js
+ M lib/spec-runner.js
+ M templates/process-config.md
+ M test/config.test.js
+?? lib/id-match-child.js
+?? test/id-pattern.test.js
+ CHANGELOG.md                |  13 ++++
+ docs/cli.md                 |  19 ++++-
+ docs/cli_cn.md              |  19 ++++-
+ lib/check.js                |  39 +++++++++-
+ lib/config.js               |  75 +++++++++++++++++--
+ lib/doctor.js               |  54 ++++++++-----
+ lib/gate.js                 |  18 +++--
+ lib/spec-runner.js          | 179 +++++++++++++++++++++++++++++++++++---------
+ templates/process-config.md |   9 +++
+ test/config.test.js         |  55 ++++++++++++++
+ 10 files changed, 403 insertions(+), 77 deletions(-)
+# Issue ledger — gate-id-pattern
+
+<!-- recorded on behalf of the reviewer (codex read-only sandbox), R2 transcription rule; raw: review/req-review-v1-raw.txt -->
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| REQ-1 | Q1–Q3 未收口，导致 `check` CLI、模板默认内容及 `parseConfig` 的全键语义不唯一。 | AI 可产出多个互不兼容但均看似满足需求的实现。 | STEP0·r1 | verified |
+| REQ-2 | 非法 `id-pattern` 在 `doctor` 上应 exit 2 还是形成 D6 finding/exit 1 未定义，库入口异常形状也未声明。 | 可能破坏 doctor 的 FINDINGS/UNUSABLE 契约或让异常逃逸。 | STEP0·r1 | verified |
+| REQ-3 | 冲突行、同值重复、空值、不可读/错误类型配置及 flag 覆盖坏配置的边界语义缺失。 | 坏配置可能静默回退、跨命令结果不一致或直接崩溃。 | STEP0·r1 | verified |
+| REQ-4 | 四消费点只统一了来源优先级，未统一 pattern 的开头匹配和尾边界语义。 | 同一 `id-pattern` 可能被 verify/doctor 接受而被 check 拒绝。 | STEP0·r1 | verified |
+| REQ-5 | AC1、AC4、AC6 和 AC7 含不稳定、可选或无确定 oracle 的表述。 | 无法据此生成唯一、可重复的验收测试。 | STEP0·r1 | verified |
+| REQ-6 | 新 pattern 错误在既有文本和 `--json` 契约中的输出形状未声明。 | 可能破坏 gate/verify 的机器可解析接口。 | STEP0·r1 | verified |
+| REQ-ADV-1 | Advisory batch acknowledged (3 items: won't-do 已存在确认；并发/超时/回滚不适用注明保持现状；文档清单应含配置格式说明——已吸收进 req-v2)。 | — | STEP0·r1 | advisory-acked |
+| REQ-7 | `\|` 全键解析规则未定义 pipe 前连续反斜杠的奇偶语义，也未说明如何表达最终 regex source 中的 literal pipe。 | 不同实现可能产生不同的 cell 边界和配置值，并影响 regex 与 `test-cmd` 等所有键。 | STEP0·r2 | verified |
+| REQ-ADV-2 | Advisory batch acknowledged (3 items: 样本证据记录不可变身份 hash/CLI 版本/确切计数；doctor 来源 detail 断言进 AC1；非 regex 键回归样本进 AC5——均已吸收进 req-v3)。 | — | STEP0·r2 | advisory-acked |
+| REQ-8 | B6 模板文案「字面 pipe 写 \|」与 B5 语义冲突：`\|` 经解析产出裸 `|`（alternation），非 regex 字面 pipe。 | 用户/AI 照模板得到与文字承诺相反的正则，扩大匹配范围。 | STEP0·r3 | verified |
+| REQ-ADV-3 | Advisory batch acknowledged (2 items: AC7 禁止性断言建议语义化——吸收进 STEP5 测试实现措辞；台账 REQ-1 行多余单元格——已就地修复)。 | — | STEP0·r4 | advisory-acked |
+| SPEC-1 | `[\|]`（正则字符类中的 pipe）含未转义表格分隔符，无法按文档原样写入 process-config；模板与 literal-pipe AC 不可实现。 | high | STEP2·r1 | fixed (v3) — 模板单元格无 pipe 散文，指南移入 HTML 注释；CF-12 端到端断言整表（r2 复燃：design 模板行含未转义 [| verified |
+| SPEC-2 | 合法但灾难性回溯的外部 regex 可阻塞四个命令；设计只有语法校验，没有 ReDoS 边界。 | high | STEP2·r1 | verified |
+| SPEC-3 | doctor 在 D6 校验非法 id-pattern 前执行 D5 test command，违反前置校验和无副作用错误路径。 | high | STEP2·r1 | verified |
+| SPEC-4 | verify 的 pattern 早退路径未定义如何保持 `--change --json` 的 projection/modules 既有契约。 | med | STEP2·r1 | verified |
+| SPEC-5 | verify/gate 用 `|| null` 丢失空字符串 flag 的存在性，错误消费被覆盖配置。 | med | STEP2·r1 | verified |
+| SPEC-6 | 错误消息拼接原始 e.message 会二次泄漏未净化 source；boundedSource 实际上限 81 字符。 | med | STEP2·r2 | verified |
+| SPEC-7 | child probe 的输入传递与失败分类未定义（-e 插值=注入面；spawn/signal/非零/malformed 无契约；三消费点缺 probe-failure 场景）。 | high | STEP2·r3 | fixed (v5) — 成功形状唯一化（单 JSON 文档/长度相等/string| verified |
+| SPEC-8 | 64-char cap 是未兼容的公共识别语义变更，且违反 req 范围外"不动 leadId"声明。 | high | STEP2·r3 | verified |
+| IMPL-1 | `readConfig` 的 `existsSync` 早退可能把权限导致的不可见配置当作 absent；CF-11 也未覆盖四命令消费矩阵。 | high | STEP5·r1 | fixed (r2) — readConfig 先读后判：仅 ENOENT 为 absent，其余全为 unreadable problem；CF-11 四命令矩阵测试 |
+| IMPL-2 | timeout 因错误判定顺序被归为 `spawn-error`，termination 文案与固定 budget 未被实现和测试完整证明。 | med | STEP5·r1 | fixed (r2) — ETIMEDOUT/SIGKILL 先判为 timeout；SR-54 加 ≥1900ms 预算 oracle + termination 文案断言；SR-55 加双信号 case；GT-25 走真实 CLI --json |
+| IMPL-3 | check 与 doctor 直接回显 child failure，doctor 还回显未 bounded 的 config source，绕过统一净化出口。 | high | STEP5·r1 | fixed (r2) — matcherFailureMsg 导出为唯一出口，check/doctor 接入；doctor unidentified detail 用 boundedSource |
+| IMPL-4 | child response validator 接受 `{ids}` 之外的额外字段，不符合 exact success shape。 | med | STEP5·r1 | fixed (r2) — 严格 {ids} 单键 shape；SR-55 加 extra-field/missing-ids case |
+| IMPL-5 | SR-52 与 DR-17 未通过 adversarial seams 证明 validation-before-read、no-scan 及双来源完整净化保证。 | high | STEP5·r1 | fixed (r2) — SR-52 新增对抗测试：不存在 specs 目标证明校验先于 IO、双来源控制字符/超长/不回漏断言、文本模式契约；DR-17 加 child 调用计数=0 与 fix 文案断言 |
+| IMPL-6 | CK-14 比较两个共享同一 `leadId` 的路径且无 expected oracle，无法证明 edge semantics 或真实消费者一致。 | med | STEP5·r1 | fixed (r2) — CK-14 重写：显式 expected 布尔 oracle，三通道（checkScenarioIds/collectScenarios/真实 child 往返）逐一对照 |
+| IMPL-7 | 四命令文档落点、gate usage 一致性及 CF-12 和 AC7 的文档验收未完整实现。 | med | STEP5·r1 | fixed (r2) — check/doctor 文档节补齐（EN/CN）；gate usage 统一为 USAGE 常量；CF-12 扩展为模板全键表+注释承载断言+双语措辞+CHANGELOG+check --self |
+| IMPL-8 | GT-24 与 GT-25 未经过完整 CLI error matrix，empty flag、invalid config 与 terminated JSON guarantees 未被证明。 | med | STEP5·r1 | fixed (r2) — GT-24 CLI 表驱动四例（含空 flag 双配置态）+ GT-25 真实 CLI 单 JSON 文档断言 |
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 5a82e08..7bee05c 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -2,6 +2,19 @@
+ 
+ All notable changes to `apriori-cli`. Versions follow semver; the stability promise: CLI surface & flags, `--json` shapes, the delta format and the flow-state schema only break in a major.
+ 
++## Unreleased · id-pattern becomes project configuration (change gate-id-pattern)
++
++Brownfield feedback P0-1: on a real store with letter-suffixed (`AC-08a`) and multi-segment (`AC-BIS-01`) IDs, `gate` C1 was permanently BLOCKED (no id-pattern channel) and `check` CK-04 false-failed — a forever-red gate carries no signal.
++
++- **New process-config key `id-pattern`** (bare JS regex source) — one declaration, four consumers. Resolution: `--id-pattern` flag (verify + **gate, new flag**; judged by presence — an empty flag errors, never falls back) > config row > built-in `[A-Z]+-\d+`. `check` CK-04 and `doctor` D6 consume the row (no new flags); D6 names its pattern source (`config`/`default`).
++- **One recognition contract** — `check` drops its private `^(…)\b` anchoring and recognizes through the same `leadId` semantics as verify/gate/doctor; the four consumers can no longer disagree on the same title.
++- **Markdown cell escaping, all keys** — `parseConfig` cells now honor `\|` by backslash parity (odd escapes the pipe into the value, even separates); a regex matching a literal pipe is written `[\|]` in the cell (parses to `[|]`). Behavior change is additive: configs without backslash-pipe sequences parse identically. The template documents both layers.
++- **Fail-closed errors naming their origin** — invalid patterns error at consumption before any spec read or test spawn: verify/gate exit 2 through their existing text/JSON shapes (`--change --json` keeps its `projection` field), check `RESULT: ERROR` exit 2, doctor D6 finding + skipped D5 probe (FINDINGS, exit 1). Messages are sanitized whole (control chars stripped, ≤200 chars; the engine message never re-leaks the source).
++- **Config-origin matching is terminable** — a config row is repository input CI consumes automatically, so its actual matching runs in a SIGKILL-able child (`lib/id-match-child.js`, stdin data channel, 2s budget); every child failure class fails closed. A catastrophic-backtracking row cannot hang CI. The flag stays in-process (operator-trusted, documented).
++- An unreadable `process-config.md` (e.g. a directory) is now a consumption-time problem for every key, never a thrown exception.
++
++276 tests (254 + 22: CF-08..12, SR-50..55, GT-22..25, CK-13..16, DR-16..18).
++
+ ## 4.0.7 — 2026-07-18 · drop the broken npm badge
+ 
+ Docs only — no CLI, flag, or behavior change; the published files are byte-identical to 4.0.6 apart from `README.md`.
+diff --git a/docs/cli.md b/docs/cli.md
+index a5095b6..89658f5 100644
+--- a/docs/cli.md
++++ b/docs/cli.md
+@@ -26,6 +26,8 @@ Example: `apriori doctor`
+ 
+ Exit: 0 HEALTHY · 1 findings · 2 unusable (uninitialized / old Node).
+ 
++D6 scans the store with the `id-pattern` row (no flag; detail names the source, `config` or `default`). An invalid or terminated row is a D6 finding and the D5 probe is skipped — the test command never runs under a broken id-pattern (§8.0).
++
+ ## apriori new
+ 
+ scaffold a change dir + flow-state skeleton
+@@ -57,7 +59,8 @@ bind every spec scenario ID to a passing TAP test — the STEP5 gate; `--change`
+ ```text
+ usage: apriori verify --specs <dir...> --test-cmd "<cmd>" [--id-pattern <re>] [--cwd <dir>] [--json]
+    or: apriori verify --change <name> --test-cmd "<cmd>" [--id-pattern <re>] [--cwd <dir>] [--json]
+-(--test-cmd may be omitted when apriori/process-config.md has a test-cmd row)
++(--test-cmd may be omitted when apriori/process-config.md has a test-cmd row;
++ --id-pattern may be omitted when apriori/process-config.md has an id-pattern row)
+ ```
+ 
+ Example: `apriori verify --change add-playback --test-cmd "npm test"`
+@@ -94,7 +97,7 @@ Exit: 0 printed (absent file → the `new` form) · 2 usage/directory/unreadable
+ aggregate the mechanical gate checks for one change into one exit code (binding verify, tasks, flow-state, ledger, verdict↔raw evidence, KB freshness); PASS ≠ human gates
+ 
+ ```text
+-usage: apriori gate --change <name> [--test-cmd "<cmd>"] [--cwd <dir>] [--json]
++usage: apriori gate --change <name> [--test-cmd "<cmd>"] [--id-pattern <re>] [--cwd <dir>] [--json] [--no-cas]
+ ```
+ 
+ Example: `apriori gate --change add-playback --json`
+@@ -111,7 +114,9 @@ usage: apriori check [--specs <dir>] [--self]
+ 
+ Example: `apriori check`
+ 
+-Exit: 0 PASS · 1 FAIL(n) · 2 missing store path.
++Exit: 0 PASS · 1 FAIL(n) · 2 missing store path or invalid/terminated `id-pattern` config (`RESULT: ERROR`).
++
++CK-04 recognizes scenario IDs with the project's `id-pattern` row (no flag — a CI gate consumes the project constant; see §8.0), through the same recognition contract as verify.
+ 
+ ## apriori update
+ 
+@@ -127,6 +132,14 @@ Exit: 0 done · 1 uninitialized.
+ 
+ ## 8. Configuration Reference
+ 
++### 8.0 process-config keys: id-pattern
++
++`| id-pattern | <bare JS regex source> |` in `apriori/process-config.md` declares the project's scenario-ID shape once, for every consumer. Resolution order: the `--id-pattern` flag (verify and gate only; judged by presence — an empty flag is an error, never a fallback) > the config row > the built-in default `[A-Z]+-\d+`. `check` (CK-04) and `doctor` (D6) consume the row with no flag. All four consumers recognize IDs through the same contract: the match starts at the title's first character, a following letter/digit/underscore rejects it, no `\b` is appended, the source compiles as written.
++
++Pipe escaping has two layers — never conflate them: inside a table cell every pipe belonging to the value is written `\|` (so an alternation cell `(AC\|BR)-\d+` parses to the regex source `(AC|BR)-\d+`, where the bare `|` is alternation); a regex that must MATCH a literal pipe character uses a character class, written `[\|]` in the cell and parsing to `[|]`. This escape rule applies to every config key uniformly.
++
++Errors are consumption-time and fail closed, naming their origin (`--id-pattern` or `process-config`): verify and gate exit 2 through their existing text/JSON error shapes, check prints `RESULT: ERROR` (exit 2), doctor reports a D6 finding and skips the D5 probe (result FINDINGS, exit 1) — never a silent fallback to the default. A config-sourced pattern is repository input that CI consumes automatically, so its matching runs inside a terminable child process (killed on budget — a catastrophic-backtracking row cannot hang CI); the flag is operator-interactive input and runs in-process.
++
+ ### 8.1 Spec-authoring rules
+ 
+ These are the spec-quality rules the propose action (STEP2) and apply action (STEP5) enforce. In V3 they live in your **project rules file** (§8.2) — there is no separate tool config. Below is a general baseline — add or remove per project:
+diff --git a/docs/cli_cn.md b/docs/cli_cn.md
+index 5208829..e84a69e 100644
+--- a/docs/cli_cn.md
++++ b/docs/cli_cn.md
+@@ -26,6 +26,8 @@ usage: apriori doctor [--test-cmd "<cmd>"] [--no-run] [--cwd <dir>] [--json]
+ 
+ 退出码:0 HEALTHY · 1 有发现 · 2 不可用(未初始化 / Node 过老)。
+ 
++D6 用 `id-pattern` 配置行扫描 store(无 flag;detail 标注来源 `config` 或 `default`)。配置行非法或匹配被终止时 D6 报 finding 且 D5 探针跳过——坏 id-pattern 下 test command 绝不运行(§8.0)。
++
+ ## apriori new
+ 
+ 搭建变更目录 + flow-state 骨架
+@@ -57,7 +59,8 @@ usage: apriori status [--change <name>] [--json]
+ ```text
+ usage: apriori verify --specs <dir...> --test-cmd "<cmd>" [--id-pattern <re>] [--cwd <dir>] [--json]
+    or: apriori verify --change <name> --test-cmd "<cmd>" [--id-pattern <re>] [--cwd <dir>] [--json]
+-(--test-cmd may be omitted when apriori/process-config.md has a test-cmd row)
++(--test-cmd may be omitted when apriori/process-config.md has a test-cmd row;
++ --id-pattern may be omitted when apriori/process-config.md has an id-pattern row)
+ ```
+ 
+ 示例:`apriori verify --change add-playback --test-cmd "npm test"`
+@@ -94,7 +97,7 @@ usage: apriori stamp <store-file>
+ 把一个变更的机械闸口检查合成一个退出码(绑定 verify、tasks、flow-state、台账、verdict↔raw 证据、KB 新鲜度);PASS ≠ 人工闸口
+ 
+ ```text
+-usage: apriori gate --change <name> [--test-cmd "<cmd>"] [--cwd <dir>] [--json]
++usage: apriori gate --change <name> [--test-cmd "<cmd>"] [--id-pattern <re>] [--cwd <dir>] [--json] [--no-cas]
+ ```
+ 
+ 示例:`apriori gate --change add-playback --json`
+@@ -111,7 +114,9 @@ usage: apriori check [--specs <dir>] [--self]
+ 
+ 示例:`apriori check`
+ 
+-退出码:0 PASS · 1 FAIL(n) · 2 规格库路径缺失。
++退出码:0 PASS · 1 FAIL(n) · 2 规格库路径缺失或 `id-pattern` 配置非法/被终止(`RESULT: ERROR`)。
++
++CK-04 用项目的 `id-pattern` 配置行识别场景 ID(无 flag——CI 门吃项目恒量,见 §8.0),识别契约与 verify 完全一致。
+ 
+ ## apriori update
+ 
+@@ -127,6 +132,14 @@ usage: apriori update [--dry-run]
+ 
+ ## 八、配置参考
+ 
++### 8.0 process-config 配置键：id-pattern
++
++在 `apriori/process-config.md` 写一行 `| id-pattern | <裸 JS 正则源串> |`，一处声明项目的场景 ID 形状，处处生效。解析优先级：`--id-pattern` flag（仅 verify 与 gate；按存在性判定——空 flag 是错误，绝不回退）> 配置行 > 内置默认 `[A-Z]+-\d+`。`check`（CK-04）与 `doctor`（D6）只吃配置行、无 flag。四个消费点用同一识别契约：从标题第一个字符开始匹配，后继为字母/数字/下划线则拒绝，不额外拼接 `\b`，源串按原样编译。
++
++pipe 转义分两层，切勿混为一谈：表格单元格内属于值的每个 pipe 都写 `\|`（如 alternation 单元格 `(AC\|BR)-\d+` 解析为正则源串 `(AC|BR)-\d+`，裸 `|` 即 alternation）；正则要**匹配**字面 pipe 字符时用字符类——单元格里写 `[\|]`，解析为 `[|]`。该转义规则对全部配置键统一生效。
++
++错误在消费时上浮且 fail-closed，消息指明来源（`--id-pattern` 或 `process-config`）：verify 与 gate 按既有文本/JSON 错误形状 exit 2；check 打印 `RESULT: ERROR`（exit 2）；doctor 报 D6 finding 并跳过 D5 探针（结果 FINDINGS，exit 1）——绝不静默回退默认。配置来源的 pattern 是 CI 自动消费的仓库输入，其匹配在可终止子进程内执行（超预算即杀——灾难性回溯的配置行无法挂死 CI）；flag 是操作者交互输入，进程内执行。
++
+ ### 8.1 规格撰写规则
+ 
+ 这些是 propose 动作(STEP2)与 apply 动作(STEP5)所强制的规格质量规则。V3 里它们放在你的**项目规则文件**(§8.2)——没有独立的工具配置。以下为一份通用基线，可按项目增删：
+diff --git a/lib/check.js b/lib/check.js
+index 8b155b1..73f8255 100644
+--- a/lib/check.js
++++ b/lib/check.js
+@@ -12,6 +12,8 @@ const fs = require('fs');
+ const path = require('path');
+ const { containsReal } = require('./archive-merge');
+ const { withStrict } = require('./args');
++const { DEFAULT_ID, resolveIdPattern } = require('./config');
++const { leadId, makeIdMatcher, matcherFailureMsg } = require('./spec-runner');   // one recognition contract for all consumers
+ 
+ // ---- helpers (ported from gh_slug / parse / num_prefix) ---------------------
+ function ghSlug(heading) {
+@@ -154,15 +156,23 @@ function checkCodexKnownForms(files) {
+ }
+ 
+ // ---- CK-04: every spec scenario carries a bindable ID -----------------------
+-function checkScenarioIds(specText, name, idPattern = '[A-Z]+-\\d+') {
+-  const idRe = new RegExp('^(' + idPattern + ')\\b');
++// Recognition goes through leadId — the same contract verify/gate/doctor use — never a
++// private `^(…)\b` anchoring that could disagree with them at the edges (CK-14).
++function checkScenarioIds(specText, name, idPattern = DEFAULT_ID) {
++  const idRe = new RegExp(idPattern);
+   const fails = [];
+   // fenced scenarios are documentation, not spec — same rule as the spec-runner (SR-13)
+   for (const m of stripFences(specText).matchAll(/^####\s+Scenario:\s+(.*)$/gm))
+-    if (!idRe.test(m[1].trim())) fails.push(`${name}: scenario without a bindable ID: ${m[1].slice(0, 50)}`);
++    if (leadId(m[1].trim(), idRe) === null) fails.push(`${name}: scenario without a bindable ID: ${m[1].slice(0, 50)}`);
+   return fails;
+ }
+ 
++// scenario titles of one spec text, in order (fence rule as above) — the CLI batches
++// these through the shared matcher so config-origin patterns stay terminable (CK-16)
++function scenarioTitles(specText) {
++  return [...stripFences(specText).matchAll(/^####\s+Scenario:\s+(.*)$/gm)].map((m) => m[1]);
++}
++
+ // ---- CK-05: no OpenSpec adapter references remain (V3 is single plain-files) --
+ const OPENSPEC_MARKERS = [/\/opsx:/, /openspec\//, /\(adapter:/i, /OpenSpec adapter/];
+ function checkNoOpenspec(name, text) {
+@@ -300,7 +310,28 @@ function cli(argv) {
+         if (e.isDirectory()) walk(p); else if (e.name.endsWith('.md')) specFiles.push(p);
+       }
+     })(specsPath);
+-    for (const f of specFiles) fails.push(...checkScenarioIds(fs.readFileSync(f, 'utf8'), path.relative(root, f)));
++    // CK-04 consumes the project's id-pattern (config row > default; check has no flag) and
++    // batches through the shared matcher — a broken or pathological row is RESULT: ERROR (CK-15/16)
++    const resolved = resolveIdPattern(root, null);
++    if (resolved.error) {
++      console.error('error: ' + resolved.error);
++      console.log('\nRESULT: ERROR');
++      return 2;
++    }
++    const pairs = [];
++    for (const f of specFiles) {
++      const rel = path.relative(root, f);
++      for (const t of scenarioTitles(fs.readFileSync(f, 'utf8'))) pairs.push([rel, t]);
++    }
++    const batch = makeIdMatcher(resolved).batch(pairs.map(([, t]) => t));
++    if (batch.failure) {
++      console.error('error: ' + matcherFailureMsg(batch.failure));   // the ONE sanitized exit (IMPL-3)
++      console.log('\nRESULT: ERROR');
++      return 2;
++    }
++    pairs.forEach(([rel, t], i) => {
++      if (batch.ids[i] === null) fails.push(`${rel}: scenario without a bindable ID: ${t.slice(0, 50)}`);
++    });
+ 
+     // CK-10: review-evidence secret tripwire (consumer mode; absent dir skips)
+     const secrets = checkReviewSecrets(root);
+diff --git a/lib/config.js b/lib/config.js
+index cdef640..e3f9669 100644
+--- a/lib/config.js
++++ b/lib/config.js
+@@ -11,6 +11,32 @@
+ const fs = require('fs');
+ const path = require('path');
+ 
++// The built-in scenario-ID pattern. Lives here (zero-dep module) so every consumer —
++// spec-runner, gate, check, doctor — resolves through one place; spec-runner re-exports it.
++const DEFAULT_ID = '[A-Z]+-\\d+';
++
++// Cell splitting honors the markdown pipe escape by backslash parity (CF-08/CF-09):
++// an odd run of backslashes before a pipe escapes it (the escaping backslash is removed,
++// the pipe joins the value); an even run keeps the pipe a separator, backslashes literal.
++// No other backslash sequence is ever unescaped — this is not a markdown renderer.
++function splitCells(line) {
++  const cells = [];
++  let cur = '', run = 0;
++  for (const ch of line) {
++    if (ch === '\\') { run++; cur += ch; continue; }
++    if (ch === '|') {
++      if (run % 2 === 1) { cur = cur.slice(0, -1) + '|'; }   // drop the escaping backslash, keep the pipe
++      else { cells.push(cur); cur = ''; }
++      run = 0;
++      continue;
++    }
++    run = 0;
++    cur += ch;
++  }
++  cells.push(cur);
++  return cells;
++}
++
+ // parse the raw text → { values: Map<key,value>, conflicts: Set<key> }
+ function parseConfig(text) {
+   const values = new Map();
+@@ -35,7 +61,7 @@ function parseConfig(text) {
+       t = t.slice(0, open) + t.slice(close + 3);
+     }
+     if (!t.trimStart().startsWith('|')) continue;
+-    const cells = t.split('|').map((c) => c.trim());
++    const cells = splitCells(t).map((c) => c.trim());
+     // cells[0] is the empty prefix before the leading pipe
+     const key = cells[1], value = cells[2];
+     if (!key || value === undefined || value === '') continue;
+@@ -49,15 +75,54 @@ function parseConfig(text) {
+ 
+ function readConfig(cwd) {
+   const p = path.join(cwd || '.', 'apriori', 'process-config.md');
+-  if (!fs.existsSync(p)) return { values: new Map(), conflicts: new Set() };
+-  return parseConfig(fs.readFileSync(p, 'utf8'));
++  // read first, classify after: ONLY a definite ENOENT is absence — every other failure
++  // (directory, permissions, unreachable ancestor, …) is an unreadable-config problem,
++  // never a silent fall-through to defaults (an existsSync pre-check would misreport a
++  // permission-blocked file as absent)
++  let text;
++  try { text = fs.readFileSync(p, 'utf8'); }
++  catch (e) {
++    if (e.code === 'ENOENT') return { values: new Map(), conflicts: new Set() };
++    return { values: new Map(), conflicts: new Set(), unreadable: String(e.code || e.message) };
++  }
++  return parseConfig(text);
+ }
+ 
+ // one key → { value: string|null, problem: string|null } (problem only when consumed)
+ function getConfig(cwd, key) {
+-  const { values, conflicts } = readConfig(cwd);
++  const { values, conflicts, unreadable } = readConfig(cwd);
++  if (unreadable) return { value: null, problem: `apriori/process-config.md exists but cannot be read (${unreadable}) — fix the file` };
+   if (conflicts.has(key)) return { value: null, problem: `process-config carries conflicting '${key}' rows — resolve the conflict (one live row per key)` };
+   return { value: values.has(key) ? values.get(key) : null, problem: null };
+ }
+ 
+-module.exports = { parseConfig, readConfig, getConfig };
++// Message sanitization is the single exit for pattern errors: control chars stripped,
++// total length capped INCLUDING the ellipsis; the engine's e.message is never concatenated.
++function sanitizeMsg(msg) {
++  const clean = msg.replace(/[\x00-\x1f\x7f]/g, '·');
++  return clean.length > 200 ? clean.slice(0, 199) + '…' : clean;
++}
++function boundedSource(s) {
++  const clean = String(s).replace(/[\x00-\x1f\x7f]/g, '·');
++  return clean.length > 80 ? clean.slice(0, 79) + '…' : clean;
++}
++
++// Effective id-pattern: flag (by PRESENCE — an empty flag is a flag-origin error, never a
++// config fallback) > config `id-pattern` row > DEFAULT_ID.
++// → { source, origin: 'flag'|'config'|'default' } | { error }
++function resolveIdPattern(cwd, flagValue) {
++  if (flagValue !== null && flagValue !== undefined) {
++    if (flagValue === '') return { error: 'empty --id-pattern' };
++    try { new RegExp(flagValue); } catch { return { error: sanitizeMsg(`invalid --id-pattern '${boundedSource(flagValue)}' (regex does not compile)`) }; }
++    return { source: flagValue, origin: 'flag' };
++  }
++  const { value, problem } = getConfig(cwd, 'id-pattern');
++  if (problem) return { error: problem };
++  if (value !== null) {
++    try { new RegExp(value); } catch { return { error: sanitizeMsg(`process-config id-pattern row is invalid: '${boundedSource(value)}' (regex does not compile)`) }; }
++    return { source: value, origin: 'config' };
++  }
++  return { source: DEFAULT_ID, origin: 'default' };
++}
++
++module.exports = { parseConfig, readConfig, getConfig, splitCells, DEFAULT_ID, resolveIdPattern, sanitizeMsg, boundedSource };
+diff --git a/lib/doctor.js b/lib/doctor.js
+index 5bd35ef..413ad2a 100644
+--- a/lib/doctor.js
++++ b/lib/doctor.js
+@@ -9,7 +9,8 @@ const fs = require('fs');
+ const path = require('path');
+ const { TOOLS, detectTools } = require('./init');
+ const { checkRunbookFreshness } = require('./check');
+-const { collectScenarios, parseTap, zeroTapParsed, runTestCommand, configTestCmd, DEFAULT_ID, looksLikeTap } = require('./spec-runner');
++const { collectScenarios, parseTap, zeroTapParsed, runTestCommand, configTestCmd, DEFAULT_ID, looksLikeTap, makeIdMatcher, matcherFailureMsg } = require('./spec-runner');
++const { resolveIdPattern, boundedSource } = require('./config');
+ const { activeChanges, parseFlowState } = require('./status');
+ const { containsReal } = require('./archive-merge');
+ const { withStrict } = require('./args');
+@@ -120,28 +121,47 @@ function runDoctor(opts = {}) {
+     if (!broken) checks.push({ id: 'D4', status: 'ok', detail: `pointers intact for: ${detected.join(', ')}` });
+   }
+ 
+-  // D5 — TAP probe (the one declared side effect; --no-run skips)
++  // D6 is COMPUTED before the D5 probe (the id-pattern must be validated — and its store
++  // scan survived — before any test command runs; display order stays D5 then D6): an
++  // uncompilable or terminated config pattern skips the probe entirely.
++  const specsDir = path.join(ap, 'specs');
++  const d6Entries = [];
++  let idPatternBroken = false;
++  const idp = resolveIdPattern(cwd, null);
++  if (idp.error) {
++    idPatternBroken = true;
++    d6Entries.push({ id: 'D6', status: 'finding', detail: idp.error, fix: 'fix the id-pattern row in apriori/process-config.md' });
++  } else if (!fs.existsSync(specsDir)) d6Entries.push({ id: 'D6', status: 'n/a', detail: 'no store dir — see D2' });
++  else {
++    const collected = collectScenarios([specsDir], new RegExp(idp.source), makeIdMatcher(idp));
++    if (collected.failure) {
++      idPatternBroken = true;
++      d6Entries.push({ id: 'D6', status: 'finding', detail: matcherFailureMsg(collected.failure), fix: 'fix the id-pattern row in apriori/process-config.md' });
++    } else {
++      const { byId, unidentified, files, duplicates } = collected;
++      const src = ` (id-pattern: ${idp.origin})`;
++      if (!files.length || (byId.size === 0 && unidentified.length === 0))
++        d6Entries.push({ id: 'D6', status: 'n/a', detail: 'empty store — normal for a new project' });
++      else {
++        let bad = 0;
++        if (unidentified.length) { d6Entries.push({ id: 'D6', status: 'finding', detail: `scenario(s) without a bindable ${boundedSource(idp.source)} ID${src}: ${unidentified.map(([, t]) => t.slice(0, 40)).join(' · ')}`, fix: 'add leading IDs' }); bad++; }
++        if (duplicates.length) { d6Entries.push({ id: 'D6', status: 'finding', detail: `duplicate scenario IDs: ${duplicates.map((d) => d.id).join(', ')}`, fix: 'deduplicate IDs' }); bad++; }
++        if (!bad) d6Entries.push({ id: 'D6', status: 'ok', detail: `${byId.size} scenario(s), all bindable, no duplicates${src}` });
++      }
++    }
++  }
++
++  // D5 — TAP probe (the one declared side effect; --no-run and a broken id-pattern skip)
+   const cfgCmd = opts.testCmd ? null : configTestCmd(cwd);
+   const testCmd = opts.testCmd || (cfgCmd && cfgCmd.error ? null : cfgCmd);
+-  if (cfgCmd && cfgCmd.error) checks.push({ id: 'D5', status: 'finding', detail: `config: ${cfgCmd.error}`, fix: 'keep one live test-cmd row' });
++  if (idPatternBroken) checks.push({ id: 'D5', status: 'n/a', detail: 'probe skipped (invalid id-pattern config)' });
++  else if (cfgCmd && cfgCmd.error) checks.push({ id: 'D5', status: 'finding', detail: `config: ${cfgCmd.error}`, fix: 'keep one live test-cmd row' });
+   else if (!testCmd) checks.push({ id: 'D5', status: 'n/a', detail: 'no test command configured — pass --test-cmd or set one via apriori init --test-cmd' });
+   else if (opts.noRun) checks.push({ id: 'D5', status: 'n/a', detail: 'probe skipped (--no-run)' });
+   else checks.push(classifyProbe(runTestCommand(testCmd, cwd)));
+ 
+-  // D6 — store health (no test run; default ID pattern only)
+-  const specsDir = path.join(ap, 'specs');
+-  if (!fs.existsSync(specsDir)) checks.push({ id: 'D6', status: 'n/a', detail: 'no store dir — see D2' });
+-  else {
+-    const { byId, unidentified, files, duplicates } = collectScenarios([specsDir], new RegExp(DEFAULT_ID));
+-    if (!files.length || (byId.size === 0 && unidentified.length === 0))
+-      checks.push({ id: 'D6', status: 'n/a', detail: 'empty store — normal for a new project' });
+-    else {
+-      let bad = 0;
+-      if (unidentified.length) { checks.push({ id: 'D6', status: 'finding', detail: `scenario(s) without a bindable ${DEFAULT_ID} ID: ${unidentified.map(([, t]) => t.slice(0, 40)).join(' · ')}`, fix: 'add leading IDs' }); bad++; }
+-      if (duplicates.length) { checks.push({ id: 'D6', status: 'finding', detail: `duplicate scenario IDs: ${duplicates.map((d) => d.id).join(', ')}`, fix: 'deduplicate IDs' }); bad++; }
+-      if (!bad) checks.push({ id: 'D6', status: 'ok', detail: `${byId.size} scenario(s), all bindable, no duplicates` });
+-    }
+-  }
++  // D6 — store health (computed above, displayed here)
++  checks.push(...d6Entries);
+ 
+   // D7 — changes overview
+   const actives = activeChanges(cwd);
+diff --git a/lib/gate.js b/lib/gate.js
+index 4450ca5..ebc21e8 100644
+--- a/lib/gate.js
++++ b/lib/gate.js
+@@ -249,10 +249,10 @@ function checkKb(cwd, dir) {
+   return { id: 'C6', status: 'n/a', detail: notes.join('; ') };
+ }
+ 
+-function checkBinding(cwd, name, stage, testCmd) {
++function checkBinding(cwd, name, stage, testCmd, idPattern) {
+   const run = stage === 'in-flight'
+-    ? verify({ change: name, cwd, testCmd })
+-    : verify({ specs: [path.join(cwd, 'apriori', 'specs')], cwd, testCmd });
++    ? verify({ change: name, cwd, testCmd, idPattern })
++    : verify({ specs: [path.join(cwd, 'apriori', 'specs')], cwd, testCmd, idPattern });
+   if (run.errors.length) return { infra: run.errors };
+   const v = run.verdict;
+   const clean = v.clean && run.duplicates.length === 0;
+@@ -282,7 +282,7 @@ function checkCas(projection, stage, noCas, cwd) {
+ function runGate(opts) {
+   const cwd = opts.cwd || process.cwd();
+   const res = { code: 0, stage: null, checks: [], result: 'PASS', blocked: 0, errors: [], change: opts.change || null };
+-  if (!opts.change) return err(res, 'usage: apriori gate --change <name> [--test-cmd "<cmd>"] [--cwd <dir>] [--json] [--no-cas]');
++  if (!opts.change) return err(res, USAGE);   // the ONE usage constant — every path lists the same flags
+   const nameCheck = require('./resolve').validateChangeName(opts.change);
+   if (!nameCheck.ok) return err(res, `invalid change name '${opts.change}' (${nameCheck.kind}) — bare kebab-case, not date-prefixed, not a reserved name`);
+   const loc = resolveChange(cwd, opts.change);
+@@ -301,7 +301,7 @@ function runGate(opts) {
+   }
+   if (!testCmd) return err(res, 'no test command: pass --test-cmd or add a test-cmd row to apriori/process-config.md');
+ 
+-  const b = checkBinding(cwd, opts.change, loc.stage, testCmd);
++  const b = checkBinding(cwd, opts.change, loc.stage, testCmd, opts.idPattern === undefined ? null : opts.idPattern);
+   if (b.infra) { for (const e of b.infra) res.errors.push(`verify: ${e}`); res.result = 'ERROR'; res.code = 2; return res; }
+   res.checks.push(b.check);
+   const tier = TIER_ENUM.includes(state.tier) ? state.tier : null;
+@@ -329,13 +329,15 @@ function toJson(res) {
+   return { change: res.change, stage: res.stage, checks: res.checks, result: res.result, blocked: res.blocked, errors: res.errors };
+ }
+ 
+-const USAGE = 'usage: apriori gate --change <name> [--test-cmd "<cmd>"] [--cwd <dir>] [--json] [--no-cas]';
++const USAGE = 'usage: apriori gate --change <name> [--test-cmd "<cmd>"] [--id-pattern <re>] [--cwd <dir>] [--json] [--no-cas]';
+ 
+ function cli(argv) {
+   return withStrict(argv, { sub: 'gate', usage: USAGE, positionals: 0,
+-    flags: { '--change': 'value', '--test-cmd': 'value', '--cwd': 'value', '--json': 'flag', '--no-cas': 'flag' },
++    flags: { '--change': 'value', '--test-cmd': 'value', '--id-pattern': 'value', '--cwd': 'value', '--json': 'flag', '--no-cas': 'flag' },
+     jsonError: (m) => JSON.stringify({ change: null, stage: null, checks: [], result: 'ERROR', blocked: 0, errors: [m] }, null, 2) }, (f) => {
+-    const a = { change: f['--change'] || null, testCmd: f['--test-cmd'] || null, cwd: f['--cwd'] || process.cwd(), json: !!f['--json'], noCas: !!f['--no-cas'] };
++    const a = { change: f['--change'] || null, testCmd: f['--test-cmd'] || null,
++      idPattern: ('--id-pattern' in f) ? f['--id-pattern'] : null,   // PRESENCE, not truthiness (GT-24 empty flag)
++      cwd: f['--cwd'] || process.cwd(), json: !!f['--json'], noCas: !!f['--no-cas'] };
+     const res = runGate(a);
+     if (a.json) { console.log(JSON.stringify(toJson(res), null, 2)); return res.code; }
+     for (const e of res.errors) console.error('gate: ' + e);
+diff --git a/lib/spec-runner.js b/lib/spec-runner.js
+index 8c65971..961ab55 100644
+--- a/lib/spec-runner.js
++++ b/lib/spec-runner.js
+@@ -14,8 +14,8 @@ const { spawnSync } = require('child_process');
+ // merge-family helpers shared with archive (3.1 projection); archive-merge never requires spec-runner
+ const am = require('./archive-merge');
+ const { withStrict } = require('./args');
+-
+-const DEFAULT_ID = '[A-Z]+-\\d+';
++// DEFAULT_ID lives in config (the zero-dep resolution home) and is re-exported here unchanged
++const { DEFAULT_ID, resolveIdPattern, sanitizeMsg } = require('./config');
+ const SCENARIO_RE = /^####\s+Scenario:\s+(.*)$/gm;
+ // TAP result line, directive split off separately (# SKIP / # TODO)
+ const TAP_RE = /^(ok|not ok)\s+\d+\s+-\s+(.*)$/gm;
+@@ -32,6 +32,55 @@ function leadId(text, idRe) {
+ 
+ function stripFences(text) { return text.replace(/```[\s\S]*?```/g, ''); }
+ 
++// ---- the id matcher: one recognition contract, two execution channels -------------------
++// A config-sourced pattern is repository input that CI consumes automatically; its every
++// actual application runs inside a terminable child (SIGKILL on budget) so a catastrophic
++// pattern can never hang the CLI. Flag/default origins are operator/built-in trust: inline.
++const CHILD_PATH = path.join(__dirname, 'id-match-child.js');
++let childRunnerOverride = null;                 // test seam — SR-55 injects failures here
++function _setChildRunner(fn) { childRunnerOverride = fn; }
++function defaultChildRunner(payload) {
++  const r = spawnSync(process.execPath, [CHILD_PATH], {
++    input: payload, timeout: 2000, killSignal: 'SIGKILL', shell: false,
++    encoding: 'utf8', maxBuffer: 8 * 1024 * 1024,
++  });
++  return { status: r.status, signal: r.signal || null, stdout: r.stdout || '', error: r.error || null };
++}
++// resolved = resolveIdPattern's success shape → { batch(texts) → {ids:(string|null)[]} | {failure} }
++function makeIdMatcher(resolved) {
++  if (resolved.origin !== 'config') {
++    const re = new RegExp(resolved.source);
++    return { batch: (texts) => ({ ids: texts.map((t) => leadId(t, re)) }) };
++  }
++  return { batch: (texts) => {
++    const runner = childRunnerOverride || defaultChildRunner;
++    let r;
++    try { r = runner(JSON.stringify({ pattern: resolved.source, texts })); }
++    catch (e) { return { failure: `spawn-error: ${String(e.message || e)}` }; }
++    // timeout FIRST: a real spawnSync timeout carries ETIMEDOUT and/or the kill signal —
++    // classifying by r.error first would misreport the termination as a spawn error
++    if ((r.error && r.error.code === 'ETIMEDOUT') || r.signal === 'SIGKILL')
++      return { failure: 'timeout (budget exceeded, child terminated)' };
++    if (r.error) return { failure: `spawn-error: ${String(r.error.message || r.error)}` };
++    if (r.signal) return { failure: `signal ${r.signal}` };
++    if (r.status !== 0) return { failure: `non-zero-exit (${r.status})` };
++    let parsed;
++    try { parsed = JSON.parse(r.stdout); } catch { return { failure: 'malformed-output (not JSON)' }; }
++    // strict success shape: exactly one JSON document whose ONLY key is a well-formed ids array
++    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) ||
++        Object.keys(parsed).length !== 1 || !Array.isArray(parsed.ids) ||
++        parsed.ids.length !== texts.length ||
++        parsed.ids.some((x) => x !== null && typeof x !== 'string'))
++      return { failure: 'malformed-output (bad shape)' };
++    return { ids: parsed.ids };
++  } };
++}
++// the one sanitized failure text every consumer surfaces for a config-origin matcher failure
++function matcherFailureMsg(failure) {
++  return sanitizeMsg(`process-config id-pattern matching failed (${failure})`);
++}
++const inlineMatcher = (idRe) => makeIdMatcher({ source: idRe.source, origin: 'default' });
++
+ function mdFiles(target) {
+   if (!fs.existsSync(target)) return [];
+   const st = fs.statSync(target);
+@@ -45,21 +94,32 @@ function mdFiles(target) {
+   return out.sort();
+ }
+ 
+-// Shared scenario scan over one text. Fenced content is documentation; scenarios inside
+-// DEPRECATED requirement blocks (the marker REMOVED injects) are excluded in every form —
+-// they are neither demanded nor listed, and their lingering tests become ORPHAN.
+-function scanText(text, label, idRe, acc) {
++// Shared scenario scan over one text — STRUCTURE ONLY (no ID extraction; that is the
++// matcher's job so config-origin patterns stay inside the terminable channel).
++// Fenced content is documentation; scenarios inside DEPRECATED requirement blocks
++// (the marker REMOVED injects) are excluded in every form — they are neither demanded
++// nor listed, and their lingering tests become ORPHAN.
++function scanTitles(text, label, pairs) {
+   const clean = am.stripDeprecatedBlocks(stripFences(text));
+   let m;
+   SCENARIO_RE.lastIndex = 0;
+-  while ((m = SCENARIO_RE.exec(clean)) !== null) {
+-    const id = leadId(m[1], idRe);
++  while ((m = SCENARIO_RE.exec(clean)) !== null) pairs.push([label, m[1]]);
++}
++
++// Batch-bind (label,title) pairs through a matcher → acc, or {failure} when the matcher fails.
++function bindPairs(pairs, matcher) {
++  const res = matcher.batch(pairs.map(([, title]) => title));
++  if (res.failure) return { failure: res.failure };
++  const acc = { byId: new Map(), idFiles: new Map(), unidentified: [] };
++  pairs.forEach(([label, title], i) => {
++    const id = res.ids[i];
+     if (id) {
+       if (!acc.byId.has(id)) { acc.byId.set(id, []); acc.idFiles.set(id, []); }
+-      acc.byId.get(id).push(m[1]);
++      acc.byId.get(id).push(title);
+       acc.idFiles.get(id).push(label);
+-    } else acc.unidentified.push([label, m[1]]);
+-  }
++    } else acc.unidentified.push([label, title]);
++  });
++  return acc;
+ }
+ 
+ function dupsOf(acc) {
+@@ -69,18 +129,25 @@ function dupsOf(acc) {
+ 
+ // Collect scenarios from spec files.
+ // → { byId, unidentified:[[file,title]], files, missingTargets:[], duplicates:[{id,files}] }
+-function collectScenarios(specTargets, idRe) {
+-  const acc = { byId: new Map(), idFiles: new Map(), unidentified: [] };
++// (+ failure when the matcher's channel fails — callers fail closed on it)
++function collectScenarios(specTargets, idRe, matcher) {
++  const m = matcher || inlineMatcher(idRe);
+   const missingTargets = specTargets.filter((t) => !fs.existsSync(t));
+   const files = [...new Set(specTargets.flatMap(mdFiles))].sort();
+-  for (const f of files) scanText(fs.readFileSync(f, 'utf8'), f, idRe, acc);
++  const pairs = [];
++  for (const f of files) scanTitles(fs.readFileSync(f, 'utf8'), f, pairs);
++  const acc = bindPairs(pairs, m);
++  if (acc.failure) return { failure: acc.failure, byId: new Map(), unidentified: [], files, missingTargets, duplicates: [] };
+   return { byId: acc.byId, unidentified: acc.unidentified, files, missingTargets, duplicates: dupsOf(acc) };
+ }
+ 
+ // Same collection over in-memory texts (the projection path) — label = store-relative suffix.
+-function collectScenariosFromTexts(texts, idRe) {
+-  const acc = { byId: new Map(), idFiles: new Map(), unidentified: [] };
+-  for (const [label, text] of texts) scanText(text, label, idRe, acc);
++function collectScenariosFromTexts(texts, idRe, matcher) {
++  const m = matcher || inlineMatcher(idRe);
++  const pairs = [];
++  for (const [label, text] of texts) scanTitles(text, label, pairs);
++  const acc = bindPairs(pairs, m);
++  if (acc.failure) return { failure: acc.failure, byId: new Map(), unidentified: [], files: [...texts.keys()], missingTargets: [], duplicates: [] };
+   return { byId: acc.byId, unidentified: acc.unidentified, files: [...texts.keys()], missingTargets: [], duplicates: dupsOf(acc) };
+ }
+ 
+@@ -153,8 +220,9 @@ function lexTap(stdout) {
+ 
+ // Parse TAP stdout → { results, untagged, untaggedFails, unattributedFailures, bailout,
+ //                      plans, points, dupNumbers, tapProblems }
++// (+ matchFailure when the matcher's channel fails — callers fail closed on it)
+ // A # SKIP / # TODO directive is neither pass nor fail — a skipped test proves nothing.
+-function parseTap(out, idRe) {
++function parseTap(out, idRe, matcher) {
+   const results = new Map();
+   const untagged = [];
+   const unattributedFailures = [];
+@@ -187,8 +255,15 @@ function parseTap(out, idRe) {
+   for (const p of pts) if (p.num !== null) { if (numSeen.has(p.num)) dupSet.add(p.num); else numSeen.add(p.num); }
+   const dupNumbers = [...dupSet].sort((a, b) => a - b);
+ 
+-  for (const p of pts) {
+-    const id = leadId(p.description, idRe);
++  const m = matcher || inlineMatcher(idRe);
++  const batch = m.batch(pts.map((p) => p.description));
++  if (batch.failure) {
++    return { results, untagged, untaggedFails: 0, unattributedFailures, bailout,
++      plans: plans.map((p) => p.total), points: pts.length, dupNumbers, tapProblems,
++      matchFailure: batch.failure };
++  }
++  pts.forEach((p, i) => {
++    const id = batch.ids[i];
+     if (id !== null) {
+       const cur = results.get(id) || { pass: 0, fail: 0, skip: 0 };
+       if (p.isSkipTodo) cur.skip++;
+@@ -199,7 +274,7 @@ function parseTap(out, idRe) {
+     } else {
+       untagged.push(p.description);
+     }
+-  }
++  });
+   const untaggedFails = unattributedFailures.length;        // kept exported and compatible — doctor consumes it
+   return { results, untagged, untaggedFails, unattributedFailures, bailout,
+     plans: plans.map((p) => p.total), points: pts.length, dupNumbers, tapProblems };
+@@ -333,27 +408,56 @@ function buildChangeProjection(change, cwd) {
+   return { projection, errors, texts: errors.length ? null : p.texts };
+ }
+ 
++// an errors-only run shape shared by every pre-test early exit (failed projection,
++// invalid pattern, matcher-channel failure) — fail closed WITHOUT running any tests
++function errorsRun(errors, projection) {
++  const verdict = evaluate(new Map(), [], new Map(), []);
++  const run = { verdict, results: new Map(), fileCount: 0, failCount: 0, scenarioCount: 0,
++    missingTargets: [], duplicates: [], bailout: null, noTap: false, tapProblems: [], stderr: '',
++    exec: { status: null, signal: null, error: null }, errors };
++  if (projection) run.projection = projection;
++  return run;
++}
++
++// enumeration-only projection metadata for the invalid-pattern early exit on --change runs:
++// SR-23's projection contract survives, yet no delta CONTENT is read (directory listing only)
++function enumerateProjection(change, cwd) {
++  const changesDir = path.resolve(cwd, 'apriori', 'changes');
++  const projection = { change, modules: [], conflicts: [], unstampedMutations: [] };
++  const d = am.discoverDeltas(changesDir, change);
++  if (!d.errors.length) projection.modules = d.files.map((f) => f.suffix);
++  return projection;
++}
++
+ // Full verify run. opts: { specs:[], change, testCmd, idPattern, cwd }
+ function verify(opts) {
+-  const idRe = new RegExp(opts.idPattern || DEFAULT_ID);
++  const cwd = opts.cwd || '.';
++  // pattern resolution FIRST — before any spec content is read or any test command spawned
++  const resolved = resolveIdPattern(cwd, opts.idPattern === undefined ? null : opts.idPattern);
++  if (resolved.error)
++    return errorsRun([resolved.error], opts.change ? enumerateProjection(opts.change, cwd) : null);
++  const idRe = new RegExp(resolved.source);
++  const matcher = makeIdMatcher(resolved);
+   let collected, projection = null;
+   if (opts.change) {
+-    const b = buildChangeProjection(opts.change, opts.cwd || '.');
++    const b = buildChangeProjection(opts.change, cwd);
+     projection = b.projection;
+-    if (!b.texts) {
+-      // failed projection: fail closed WITHOUT running any tests
+-      const verdict = evaluate(new Map(), [], new Map(), []);
+-      return { verdict, results: new Map(), fileCount: 0, failCount: 0, scenarioCount: 0,
+-        missingTargets: [], duplicates: [], bailout: null, noTap: false, tapProblems: [], stderr: '',
+-        exec: { status: null, signal: null, error: null }, errors: b.errors, projection };
+-    }
+-    collected = collectScenariosFromTexts(b.texts, idRe);
++    if (!b.texts) return errorsRun(b.errors, projection);
++    collected = collectScenariosFromTexts(b.texts, idRe, matcher);
+   } else {
+-    collected = collectScenarios(opts.specs, idRe);
++    collected = collectScenarios(opts.specs, idRe, matcher);
+   }
++  if (collected.failure) return errorsRun([matcherFailureMsg(collected.failure)], projection);
+   const { byId, unidentified, files, missingTargets, duplicates } = collected;
+-  const exec = runTestCommand(opts.testCmd, opts.cwd || '.');
+-  const { results, untagged, untaggedFails, unattributedFailures, bailout, plans, points, dupNumbers, tapProblems } = parseTap(exec.out, idRe);
++  const exec = runTestCommand(opts.testCmd, cwd);
++  const parsed = parseTap(exec.out, idRe, matcher);
++  if (parsed.matchFailure) {
++    const run = errorsRun([matcherFailureMsg(parsed.matchFailure)], projection);
++    run.exec = { status: exec.status, signal: exec.signal, error: exec.error };
++    run.stderr = exec.stderr || '';
++    return run;
++  }
++  const { results, untagged, untaggedFails, unattributedFailures, bailout, plans, points, dupNumbers, tapProblems } = parsed;
+   const verdict = evaluate(byId, unidentified, results, unattributedFailures);
+   const failCount = [...results.values()].reduce((s, r) => s + r.fail, 0) + untaggedFails;
+   const run = {
+@@ -406,13 +510,14 @@ function configTestCmd(cwd) {
+   return value;
+ }
+ 
+-const USAGE = 'usage: apriori verify --specs <dir...> --test-cmd "<cmd>" [--id-pattern <re>] [--cwd <dir>] [--json]\n   or: apriori verify --change <name> --test-cmd "<cmd>" [--id-pattern <re>] [--cwd <dir>] [--json]\n(--test-cmd may be omitted when apriori/process-config.md has a test-cmd row)';
++const USAGE = 'usage: apriori verify --specs <dir...> --test-cmd "<cmd>" [--id-pattern <re>] [--cwd <dir>] [--json]\n   or: apriori verify --change <name> --test-cmd "<cmd>" [--id-pattern <re>] [--cwd <dir>] [--json]\n(--test-cmd may be omitted when apriori/process-config.md has a test-cmd row;\n --id-pattern may be omitted when apriori/process-config.md has an id-pattern row)';
+ 
+ function cli(argv) {
+   return withStrict(argv, { sub: 'verify', usage: USAGE, positionals: 0,
+     flags: { '--specs': 'multi', '--change': 'value', '--test-cmd': 'value', '--id-pattern': 'value', '--cwd': 'value', '--json': 'flag' } }, (f) => {
+     const a = { specs: f['--specs'] || [], change: f['--change'] || null, testCmd: f['--test-cmd'] || null,
+-      idPattern: f['--id-pattern'] || DEFAULT_ID, cwd: f['--cwd'] || '.', json: !!f['--json'] };
++      idPattern: ('--id-pattern' in f) ? f['--id-pattern'] : null,   // PRESENCE, not truthiness (SR-52 empty flag)
++      cwd: f['--cwd'] || '.', json: !!f['--json'] };
+     if (a.change && a.specs.length) {
+       console.error('verify: --specs cannot be combined with --change — the projection defines the spec set');
+       return 2;
+@@ -437,4 +542,4 @@ function cli(argv) {
+ 
+ module.exports = { leadId, stripFences, collectScenarios, collectScenariosFromTexts, parseTap, looksLikeTap,
+   zeroTapParsed, runTestCommand, evaluate, infraErrors, formatReport, verifyJson, verify,
+-  configTestCmd, cli, DEFAULT_ID };
++  configTestCmd, cli, DEFAULT_ID, makeIdMatcher, _setChildRunner, matcherFailureMsg };
+diff --git a/templates/process-config.md b/templates/process-config.md
+index 12bba54..431f90b 100644
+--- a/templates/process-config.md
++++ b/templates/process-config.md
+@@ -9,6 +9,7 @@
+ | Field | Value | Legal range | Default |
+ |---|---|---|---|
+ | language | auto | auto (match the human) / any language name, e.g. `中文`, `English` | auto |
++| id-pattern | [A-Z]+-\d+ | bare JS regex source for scenario IDs; pipe escaping: see the comment below this table | [A-Z]+-\d+ |
+ | cas | required | required = archive denies unstamped mutation deltas / optional = warn only (waiver visible) | required |
+ | step0-cap | 5 | ≥ 1 | 5 |
+ | step2-cap | 4 | ≥ 1 | 4 |
+@@ -21,6 +22,14 @@
+ | shrink-proposal-freq | 5 | ≥ 1 — a proposal every N changes | 5 |
+ | post-merge-review-freq | 1 in 5 | ≥ 1 in N merged changes (sampling rate) | 1 in 5 |
+ 
++<!-- id-pattern pipe escaping (two separate layers — do not conflate them):
++     inside a table cell, EVERY pipe belonging to the value is written \| — so an
++     alternation like (AC\|BR)-\d+ parses to the regex source (AC|BR)-\d+ (a bare | = alternation);
++     to MATCH a literal pipe character, use a character class: write [\|] in the cell,
++     which parses to the regex source [|]. Precedence: --id-pattern flag (verify/gate) >
++     this row > built-in default [A-Z]+-\d+. An uncompilable row is a consumption-time
++     error (verify/gate/check exit 2; doctor reports a D6 finding) — never a silent fallback. -->
++
+ <!-- shrink-state is written only after a human gate approves a shrink proposal (RUNBOOK §6),
+      e.g. `shrink-state: step2-cap: 2 (approved 2026-07-04, gates log)`.
+      A post-merge re-review that finds a high-risk miss restores the previous cap. -->
+diff --git a/test/config.test.js b/test/config.test.js
+index 89f2359..1cffbcf 100644
+--- a/test/config.test.js
++++ b/test/config.test.js
+@@ -97,3 +97,58 @@ test('CF-07 the template names the cas row', () => {
+   const tpl = fs.readFileSync(path.join(__dirname, '..', 'templates', 'process-config.md'), 'utf8');
+   assert.match(tpl, /\|\s*cas\s*\|/);
+ });
++
++// ---- gate-id-pattern: CF-08..CF-12 — cell escaping, unreadable config, template row ----
++const { parseConfig, getConfig } = require('../lib/config');
++
++test('CF-08 odd backslash runs keep the pipe in the value', () => {
++  const { values } = parseConfig('| id-pattern | (AC\\|BR)-\\d+ |\n');
++  assert.strictEqual(values.get('id-pattern'), '(AC|BR)-\\d+');
++  const three = parseConfig('| k | a\\\\\\|b |\n');           // raw cell: a\\\|b (3 backslashes + pipe)
++  assert.strictEqual(three.values.get('k'), 'a\\\\|b');       // one escape removed, two kept, pipe joins
++});
++
++test('CF-09 even backslash runs keep the pipe a separator', () => {
++  const two = parseConfig('| k | a\\\\|b |\n');                // raw: a\\|b — even, separator
++  assert.strictEqual(two.values.get('k'), 'a\\\\');            // value ends with two literal backslashes
++  const four = parseConfig('| k | a\\\\\\\\|b |\n');           // raw: a\\\\|b — even (4), separator
++  assert.strictEqual(four.values.get('k'), 'a\\\\\\\\');
++});
++
++test('CF-10 unescaped configs parse exactly as before', () => {
++  const text = [
++    '| test-cmd | node scripts/run-tests.mjs --test-reporter=tap |',
++    '| cas | optional | 备注列 |',
++    '```md', '| cas | required |', '```',
++    '<!-- | test-cmd | echo nope | -->',
++  ].join('\n') + '\n';
++  const { values, conflicts } = parseConfig(text);
++  assert.strictEqual(values.get('test-cmd'), 'node scripts/run-tests.mjs --test-reporter=tap');
++  assert.strictEqual(values.get('cas'), 'optional');
++  assert.strictEqual(conflicts.size, 0);
++});
++
++test('CF-11 an unreadable config is a consumption-time problem', () => {
++  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-cfg-'));
++  fs.mkdirSync(path.join(root, 'apriori', 'process-config.md'), { recursive: true });   // a DIRECTORY
++  const { value, problem } = getConfig(root, 'id-pattern');
++  assert.strictEqual(value, null);
++  assert.match(String(problem), /process-config/);
++});
++
++test('CF-12 the template names the id-pattern row with two-layer pipe wording', () => {
++  const tplPath = path.join(__dirname, '..', 'templates', 'process-config.md');
++  const tpl = fs.readFileSync(tplPath, 'utf8');
++  const { values } = parseConfig(tpl);
++  assert.strictEqual(values.get('id-pattern'), '[A-Z]+-\\d+');           // parsed value = built-in default
++  assert.strictEqual(values.get('cas'), 'required');                     // table structure survives end-to-end
++  assert.match(tpl, /\\\|/);                                             // guidance shows the \| spelling
++  assert.match(tpl, /\[\\\|\]/);                                         // and the [\|] literal-pipe spelling
++  assert.doesNotMatch(tpl, /literal pipe[^.\n]*written\s*`?\\\|`?(?!\])/i); // no "literal pipe is \|" phrasing
++  const rowLine = tpl.split('\n').find((l) => /^\|\s*id-pattern\s*\|/.test(l));
++  assert.ok(rowLine, 'id-pattern row exists');
++  const { splitCells } = require('../lib/config');
++  const cells = splitCells(rowLine);
++  assert.strictEqual(cells.length, 6, 'row splits into exactly 4 cells + 2 edges (no in-cell pipes)');
++  for (const c of cells) assert.doesNotMatch(c, /\|/, 'cells stay pipe-free');
++});
+
+exec
+/usr/bin/zsh -lc "nl -ba lib/config.js | sed -n '65,140p'; nl -ba lib/spec-runner.js | sed -n '35,105p'; nl -ba lib/check.js | sed -n '305,345p'; nl -ba lib/doctor.js | sed -n '120,170p'; nl -ba lib/gate.js | sed -n '270,355p'; nl -ba test/config.test.js | sed -n '95,230p'; nl -ba test/id-pattern.test.js | sed -n '1,430p'" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 98ms:
+    65	    // cells[0] is the empty prefix before the leading pipe
+    66	    const key = cells[1], value = cells[2];
+    67	    if (!key || value === undefined || value === '') continue;
+    68	    if (key.toLowerCase() === 'key' || /^-+$/.test(key)) continue;      // header / separator
+    69	    if (/^-+$/.test(value)) continue;
+    70	    if (values.has(key) && values.get(key) !== value) { conflicts.add(key); continue; }
+    71	    values.set(key, value);
+    72	  }
+    73	  return { values, conflicts };
+    74	}
+    75	
+    76	function readConfig(cwd) {
+    77	  const p = path.join(cwd || '.', 'apriori', 'process-config.md');
+    78	  // read first, classify after: ONLY a definite ENOENT is absence — every other failure
+    79	  // (directory, permissions, unreachable ancestor, …) is an unreadable-config problem,
+    80	  // never a silent fall-through to defaults (an existsSync pre-check would misreport a
+    81	  // permission-blocked file as absent)
+    82	  let text;
+    83	  try { text = fs.readFileSync(p, 'utf8'); }
+    84	  catch (e) {
+    85	    if (e.code === 'ENOENT') return { values: new Map(), conflicts: new Set() };
+    86	    return { values: new Map(), conflicts: new Set(), unreadable: String(e.code || e.message) };
+    87	  }
+    88	  return parseConfig(text);
+    89	}
+    90	
+    91	// one key → { value: string|null, problem: string|null } (problem only when consumed)
+    92	function getConfig(cwd, key) {
+    93	  const { values, conflicts, unreadable } = readConfig(cwd);
+    94	  if (unreadable) return { value: null, problem: `apriori/process-config.md exists but cannot be read (${unreadable}) — fix the file` };
+    95	  if (conflicts.has(key)) return { value: null, problem: `process-config carries conflicting '${key}' rows — resolve the conflict (one live row per key)` };
+    96	  return { value: values.has(key) ? values.get(key) : null, problem: null };
+    97	}
+    98	
+    99	// Message sanitization is the single exit for pattern errors: control chars stripped,
+   100	// total length capped INCLUDING the ellipsis; the engine's e.message is never concatenated.
+   101	function sanitizeMsg(msg) {
+   102	  const clean = msg.replace(/[\x00-\x1f\x7f]/g, '·');
+   103	  return clean.length > 200 ? clean.slice(0, 199) + '…' : clean;
+   104	}
+   105	function boundedSource(s) {
+   106	  const clean = String(s).replace(/[\x00-\x1f\x7f]/g, '·');
+   107	  return clean.length > 80 ? clean.slice(0, 79) + '…' : clean;
+   108	}
+   109	
+   110	// Effective id-pattern: flag (by PRESENCE — an empty flag is a flag-origin error, never a
+   111	// config fallback) > config `id-pattern` row > DEFAULT_ID.
+   112	// → { source, origin: 'flag'|'config'|'default' } | { error }
+   113	function resolveIdPattern(cwd, flagValue) {
+   114	  if (flagValue !== null && flagValue !== undefined) {
+   115	    if (flagValue === '') return { error: 'empty --id-pattern' };
+   116	    try { new RegExp(flagValue); } catch { return { error: sanitizeMsg(`invalid --id-pattern '${boundedSource(flagValue)}' (regex does not compile)`) }; }
+   117	    return { source: flagValue, origin: 'flag' };
+   118	  }
+   119	  const { value, problem } = getConfig(cwd, 'id-pattern');
+   120	  if (problem) return { error: problem };
+   121	  if (value !== null) {
+   122	    try { new RegExp(value); } catch { return { error: sanitizeMsg(`process-config id-pattern row is invalid: '${boundedSource(value)}' (regex does not compile)`) }; }
+   123	    return { source: value, origin: 'config' };
+   124	  }
+   125	  return { source: DEFAULT_ID, origin: 'default' };
+   126	}
+   127	
+   128	module.exports = { parseConfig, readConfig, getConfig, splitCells, DEFAULT_ID, resolveIdPattern, sanitizeMsg, boundedSource };
+    35	// ---- the id matcher: one recognition contract, two execution channels -------------------
+    36	// A config-sourced pattern is repository input that CI consumes automatically; its every
+    37	// actual application runs inside a terminable child (SIGKILL on budget) so a catastrophic
+    38	// pattern can never hang the CLI. Flag/default origins are operator/built-in trust: inline.
+    39	const CHILD_PATH = path.join(__dirname, 'id-match-child.js');
+    40	let childRunnerOverride = null;                 // test seam — SR-55 injects failures here
+    41	function _setChildRunner(fn) { childRunnerOverride = fn; }
+    42	function defaultChildRunner(payload) {
+    43	  const r = spawnSync(process.execPath, [CHILD_PATH], {
+    44	    input: payload, timeout: 2000, killSignal: 'SIGKILL', shell: false,
+    45	    encoding: 'utf8', maxBuffer: 8 * 1024 * 1024,
+    46	  });
+    47	  return { status: r.status, signal: r.signal || null, stdout: r.stdout || '', error: r.error || null };
+    48	}
+    49	// resolved = resolveIdPattern's success shape → { batch(texts) → {ids:(string|null)[]} | {failure} }
+    50	function makeIdMatcher(resolved) {
+    51	  if (resolved.origin !== 'config') {
+    52	    const re = new RegExp(resolved.source);
+    53	    return { batch: (texts) => ({ ids: texts.map((t) => leadId(t, re)) }) };
+    54	  }
+    55	  return { batch: (texts) => {
+    56	    const runner = childRunnerOverride || defaultChildRunner;
+    57	    let r;
+    58	    try { r = runner(JSON.stringify({ pattern: resolved.source, texts })); }
+    59	    catch (e) { return { failure: `spawn-error: ${String(e.message || e)}` }; }
+    60	    // timeout FIRST: a real spawnSync timeout carries ETIMEDOUT and/or the kill signal —
+    61	    // classifying by r.error first would misreport the termination as a spawn error
+    62	    if ((r.error && r.error.code === 'ETIMEDOUT') || r.signal === 'SIGKILL')
+    63	      return { failure: 'timeout (budget exceeded, child terminated)' };
+    64	    if (r.error) return { failure: `spawn-error: ${String(r.error.message || r.error)}` };
+    65	    if (r.signal) return { failure: `signal ${r.signal}` };
+    66	    if (r.status !== 0) return { failure: `non-zero-exit (${r.status})` };
+    67	    let parsed;
+    68	    try { parsed = JSON.parse(r.stdout); } catch { return { failure: 'malformed-output (not JSON)' }; }
+    69	    // strict success shape: exactly one JSON document whose ONLY key is a well-formed ids array
+    70	    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) ||
+    71	        Object.keys(parsed).length !== 1 || !Array.isArray(parsed.ids) ||
+    72	        parsed.ids.length !== texts.length ||
+    73	        parsed.ids.some((x) => x !== null && typeof x !== 'string'))
+    74	      return { failure: 'malformed-output (bad shape)' };
+    75	    return { ids: parsed.ids };
+    76	  } };
+    77	}
+    78	// the one sanitized failure text every consumer surfaces for a config-origin matcher failure
+    79	function matcherFailureMsg(failure) {
+    80	  return sanitizeMsg(`process-config id-pattern matching failed (${failure})`);
+    81	}
+    82	const inlineMatcher = (idRe) => makeIdMatcher({ source: idRe.source, origin: 'default' });
+    83	
+    84	function mdFiles(target) {
+    85	  if (!fs.existsSync(target)) return [];
+    86	  const st = fs.statSync(target);
+    87	  if (st.isFile()) return [target];
+    88	  const out = [];
+    89	  for (const e of fs.readdirSync(target, { withFileTypes: true })) {
+    90	    const p = path.join(target, e.name);
+    91	    if (e.isDirectory()) out.push(...mdFiles(p));
+    92	    else if (e.name.endsWith('.md')) out.push(p);
+    93	  }
+    94	  return out.sort();
+    95	}
+    96	
+    97	// Shared scenario scan over one text — STRUCTURE ONLY (no ID extraction; that is the
+    98	// matcher's job so config-origin patterns stay inside the terminable channel).
+    99	// Fenced content is documentation; scenarios inside DEPRECATED requirement blocks
+   100	// (the marker REMOVED injects) are excluded in every form — they are neither demanded
+   101	// nor listed, and their lingering tests become ORPHAN.
+   102	function scanTitles(text, label, pairs) {
+   103	  const clean = am.stripDeprecatedBlocks(stripFences(text));
+   104	  let m;
+   105	  SCENARIO_RE.lastIndex = 0;
+   305	    }
+   306	    const specFiles = [];
+   307	    (function walk(d) {
+   308	      for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+   309	        const p = path.join(d, e.name);
+   310	        if (e.isDirectory()) walk(p); else if (e.name.endsWith('.md')) specFiles.push(p);
+   311	      }
+   312	    })(specsPath);
+   313	    // CK-04 consumes the project's id-pattern (config row > default; check has no flag) and
+   314	    // batches through the shared matcher — a broken or pathological row is RESULT: ERROR (CK-15/16)
+   315	    const resolved = resolveIdPattern(root, null);
+   316	    if (resolved.error) {
+   317	      console.error('error: ' + resolved.error);
+   318	      console.log('\nRESULT: ERROR');
+   319	      return 2;
+   320	    }
+   321	    const pairs = [];
+   322	    for (const f of specFiles) {
+   323	      const rel = path.relative(root, f);
+   324	      for (const t of scenarioTitles(fs.readFileSync(f, 'utf8'))) pairs.push([rel, t]);
+   325	    }
+   326	    const batch = makeIdMatcher(resolved).batch(pairs.map(([, t]) => t));
+   327	    if (batch.failure) {
+   328	      console.error('error: ' + matcherFailureMsg(batch.failure));   // the ONE sanitized exit (IMPL-3)
+   329	      console.log('\nRESULT: ERROR');
+   330	      return 2;
+   331	    }
+   332	    pairs.forEach(([rel, t], i) => {
+   333	      if (batch.ids[i] === null) fails.push(`${rel}: scenario without a bindable ID: ${t.slice(0, 50)}`);
+   334	    });
+   335	
+   336	    // CK-10: review-evidence secret tripwire (consumer mode; absent dir skips)
+   337	    const secrets = checkReviewSecrets(root);
+   338	    fails.push(...secrets.fails);
+   339	    for (const w of secrets.warns) console.log('! ' + w);
+   340	
+   341	    if (self) {
+   342	      // Handbook checks (apriori repo dogfooding) — run when the pairs exist.
+   343	      // CK-08: a ONE-SIDED pair fails (a missing mirror must not skip silently);
+   344	      // both sides absent → the pair is skipped (older checkouts unaffected).
+   345	      const PAIRS = [['README.md', 'README_cn.md'], ['RUNBOOK.md', 'RUNBOOK_cn.md'], ['VISION.md', 'VISION_cn.md'],
+   120	    }
+   121	    if (!broken) checks.push({ id: 'D4', status: 'ok', detail: `pointers intact for: ${detected.join(', ')}` });
+   122	  }
+   123	
+   124	  // D6 is COMPUTED before the D5 probe (the id-pattern must be validated — and its store
+   125	  // scan survived — before any test command runs; display order stays D5 then D6): an
+   126	  // uncompilable or terminated config pattern skips the probe entirely.
+   127	  const specsDir = path.join(ap, 'specs');
+   128	  const d6Entries = [];
+   129	  let idPatternBroken = false;
+   130	  const idp = resolveIdPattern(cwd, null);
+   131	  if (idp.error) {
+   132	    idPatternBroken = true;
+   133	    d6Entries.push({ id: 'D6', status: 'finding', detail: idp.error, fix: 'fix the id-pattern row in apriori/process-config.md' });
+   134	  } else if (!fs.existsSync(specsDir)) d6Entries.push({ id: 'D6', status: 'n/a', detail: 'no store dir — see D2' });
+   135	  else {
+   136	    const collected = collectScenarios([specsDir], new RegExp(idp.source), makeIdMatcher(idp));
+   137	    if (collected.failure) {
+   138	      idPatternBroken = true;
+   139	      d6Entries.push({ id: 'D6', status: 'finding', detail: matcherFailureMsg(collected.failure), fix: 'fix the id-pattern row in apriori/process-config.md' });
+   140	    } else {
+   141	      const { byId, unidentified, files, duplicates } = collected;
+   142	      const src = ` (id-pattern: ${idp.origin})`;
+   143	      if (!files.length || (byId.size === 0 && unidentified.length === 0))
+   144	        d6Entries.push({ id: 'D6', status: 'n/a', detail: 'empty store — normal for a new project' });
+   145	      else {
+   146	        let bad = 0;
+   147	        if (unidentified.length) { d6Entries.push({ id: 'D6', status: 'finding', detail: `scenario(s) without a bindable ${boundedSource(idp.source)} ID${src}: ${unidentified.map(([, t]) => t.slice(0, 40)).join(' · ')}`, fix: 'add leading IDs' }); bad++; }
+   148	        if (duplicates.length) { d6Entries.push({ id: 'D6', status: 'finding', detail: `duplicate scenario IDs: ${duplicates.map((d) => d.id).join(', ')}`, fix: 'deduplicate IDs' }); bad++; }
+   149	        if (!bad) d6Entries.push({ id: 'D6', status: 'ok', detail: `${byId.size} scenario(s), all bindable, no duplicates${src}` });
+   150	      }
+   151	    }
+   152	  }
+   153	
+   154	  // D5 — TAP probe (the one declared side effect; --no-run and a broken id-pattern skip)
+   155	  const cfgCmd = opts.testCmd ? null : configTestCmd(cwd);
+   156	  const testCmd = opts.testCmd || (cfgCmd && cfgCmd.error ? null : cfgCmd);
+   157	  if (idPatternBroken) checks.push({ id: 'D5', status: 'n/a', detail: 'probe skipped (invalid id-pattern config)' });
+   158	  else if (cfgCmd && cfgCmd.error) checks.push({ id: 'D5', status: 'finding', detail: `config: ${cfgCmd.error}`, fix: 'keep one live test-cmd row' });
+   159	  else if (!testCmd) checks.push({ id: 'D5', status: 'n/a', detail: 'no test command configured — pass --test-cmd or set one via apriori init --test-cmd' });
+   160	  else if (opts.noRun) checks.push({ id: 'D5', status: 'n/a', detail: 'probe skipped (--no-run)' });
+   161	  else checks.push(classifyProbe(runTestCommand(testCmd, cwd)));
+   162	
+   163	  // D6 — store health (computed above, displayed here)
+   164	  checks.push(...d6Entries);
+   165	
+   166	  // D7 — changes overview
+   167	  const actives = activeChanges(cwd);
+   168	  const notes = [];
+   169	  let d7bad = 0;
+   170	  const changesRoot = path.join(cwd, 'apriori', 'changes');
+   270	  if (stage === 'archived') return { id: 'C7', status: 'n/a', detail: 'deltas already merged' };
+   271	  const um = (projection && projection.unstampedMutations) || [];
+   272	  if (!um.length) return { id: 'C7', status: 'pass', detail: 'every mutation delta is stamped' };  // nothing to consult — silent pass (GT-16)
+   273	  if (noCas) return { id: 'C7', status: 'pass', detail: 'waived (--no-cas)' };
+   274	  const problem = configCasProblem(cwd);                       // consumption-time only
+   275	  if (problem) return { id: 'C7', status: 'blocked', detail: `${problem} — a broken config never equals a waiver` };
+   276	  if (configCas(cwd) === 'optional') return { id: 'C7', status: 'pass', detail: 'waived (process-config cas: optional)' };
+   277	  return { id: 'C7', status: 'blocked',
+   278	    detail: `unstamped mutation delta(s): ${um.join(', ')} — run: apriori stamp <store-file> (or waive with --no-cas / a process-config cas: optional row)` };
+   279	}
+   280	
+   281	// The whole evaluation. → { code, stage, checks, result, blocked, errors }
+   282	function runGate(opts) {
+   283	  const cwd = opts.cwd || process.cwd();
+   284	  const res = { code: 0, stage: null, checks: [], result: 'PASS', blocked: 0, errors: [], change: opts.change || null };
+   285	  if (!opts.change) return err(res, USAGE);   // the ONE usage constant — every path lists the same flags
+   286	  const nameCheck = require('./resolve').validateChangeName(opts.change);
+   287	  if (!nameCheck.ok) return err(res, `invalid change name '${opts.change}' (${nameCheck.kind}) — bare kebab-case, not date-prefixed, not a reserved name`);
+   288	  const loc = resolveChange(cwd, opts.change);
+   289	  if (loc.error) return err(res, loc.error);
+   290	  res.stage = loc.stage;
+   291	  const flowPath = path.join(loc.dir, 'flow-state.md');
+   292	  if (!fs.existsSync(flowPath)) return err(res, `no readable flow-state.md at ${flowPath} — tier-aware checks are impossible`);
+   293	  let state;
+   294	  try { state = parseFlowState(fs.readFileSync(flowPath, 'utf8')); }
+   295	  catch (e) { return err(res, `flow-state unreadable: ${e.message}`); }
+   296	  let testCmd = opts.testCmd;
+   297	  if (!testCmd) {
+   298	    const c = configTestCmd(cwd);
+   299	    if (c && c.error) return err(res, `verify: ${c.error}`);
+   300	    testCmd = c;
+   301	  }
+   302	  if (!testCmd) return err(res, 'no test command: pass --test-cmd or add a test-cmd row to apriori/process-config.md');
+   303	
+   304	  const b = checkBinding(cwd, opts.change, loc.stage, testCmd, opts.idPattern === undefined ? null : opts.idPattern);
+   305	  if (b.infra) { for (const e of b.infra) res.errors.push(`verify: ${e}`); res.result = 'ERROR'; res.code = 2; return res; }
+   306	  res.checks.push(b.check);
+   307	  const tier = TIER_ENUM.includes(state.tier) ? state.tier : null;
+   308	  res.checks.push(checkTasks(loc.dir, tier));
+   309	  res.checks.push(checkFlowState(state, opts.change));
+   310	  const rdDefect = reviewDirDefect(loc.dir);
+   311	  if (rdDefect) {
+   312	    res.checks.push({ id: 'C4', status: 'blocked', detail: rdDefect });
+   313	    res.checks.push({ id: 'C5', status: 'blocked', detail: rdDefect });
+   314	  } else {
+   315	    res.checks.push(checkLedger(tier, loc.stage, loc.dir));
+   316	    res.checks.push(checkEvidence(loc.dir));
+   317	  }
+   318	
+   319	  res.checks.push(checkKb(cwd, loc.dir));
+   320	  res.checks.push(checkCas(b.projection, loc.stage, !!opts.noCas, cwd));
+   321	
+   322	  res.blocked = res.checks.filter((c) => c.status === 'blocked').length;
+   323	  res.result = res.blocked ? 'BLOCKED' : 'PASS';
+   324	  res.code = res.blocked ? 1 : 0;
+   325	  return res;
+   326	}
+   327	
+   328	function toJson(res) {
+   329	  return { change: res.change, stage: res.stage, checks: res.checks, result: res.result, blocked: res.blocked, errors: res.errors };
+   330	}
+   331	
+   332	const USAGE = 'usage: apriori gate --change <name> [--test-cmd "<cmd>"] [--id-pattern <re>] [--cwd <dir>] [--json] [--no-cas]';
+   333	
+   334	function cli(argv) {
+   335	  return withStrict(argv, { sub: 'gate', usage: USAGE, positionals: 0,
+   336	    flags: { '--change': 'value', '--test-cmd': 'value', '--id-pattern': 'value', '--cwd': 'value', '--json': 'flag', '--no-cas': 'flag' },
+   337	    jsonError: (m) => JSON.stringify({ change: null, stage: null, checks: [], result: 'ERROR', blocked: 0, errors: [m] }, null, 2) }, (f) => {
+   338	    const a = { change: f['--change'] || null, testCmd: f['--test-cmd'] || null,
+   339	      idPattern: ('--id-pattern' in f) ? f['--id-pattern'] : null,   // PRESENCE, not truthiness (GT-24 empty flag)
+   340	      cwd: f['--cwd'] || process.cwd(), json: !!f['--json'], noCas: !!f['--no-cas'] };
+   341	    const res = runGate(a);
+   342	    if (a.json) { console.log(JSON.stringify(toJson(res), null, 2)); return res.code; }
+   343	    for (const e of res.errors) console.error('gate: ' + e);
+   344	    const mark = { pass: '✓', blocked: '✗', 'n/a': '–' };
+   345	    for (const c of res.checks) console.log(`${mark[c.status]} ${c.id} ${c.status === 'blocked' ? 'BLOCKED — ' : ''}${c.detail}`);
+   346	    if (res.code !== 2) console.log(res.code === 0 ? `\nGATE: PASS — ${CAVEAT}` : `\nGATE: BLOCKED (${res.blocked} item(s))`);
+   347	    return res.code;
+   348	  });
+   349	}
+   350	
+   351	module.exports = { runGate, resolveChange, classifyStatus, cli };
+    95	
+    96	test('CF-07 the template names the cas row', () => {
+    97	  const tpl = fs.readFileSync(path.join(__dirname, '..', 'templates', 'process-config.md'), 'utf8');
+    98	  assert.match(tpl, /\|\s*cas\s*\|/);
+    99	});
+   100	
+   101	// ---- gate-id-pattern: CF-08..CF-12 — cell escaping, unreadable config, template row ----
+   102	const { parseConfig, getConfig } = require('../lib/config');
+   103	
+   104	test('CF-08 odd backslash runs keep the pipe in the value', () => {
+   105	  const { values } = parseConfig('| id-pattern | (AC\\|BR)-\\d+ |\n');
+   106	  assert.strictEqual(values.get('id-pattern'), '(AC|BR)-\\d+');
+   107	  const three = parseConfig('| k | a\\\\\\|b |\n');           // raw cell: a\\\|b (3 backslashes + pipe)
+   108	  assert.strictEqual(three.values.get('k'), 'a\\\\|b');       // one escape removed, two kept, pipe joins
+   109	});
+   110	
+   111	test('CF-09 even backslash runs keep the pipe a separator', () => {
+   112	  const two = parseConfig('| k | a\\\\|b |\n');                // raw: a\\|b — even, separator
+   113	  assert.strictEqual(two.values.get('k'), 'a\\\\');            // value ends with two literal backslashes
+   114	  const four = parseConfig('| k | a\\\\\\\\|b |\n');           // raw: a\\\\|b — even (4), separator
+   115	  assert.strictEqual(four.values.get('k'), 'a\\\\\\\\');
+   116	});
+   117	
+   118	test('CF-10 unescaped configs parse exactly as before', () => {
+   119	  const text = [
+   120	    '| test-cmd | node scripts/run-tests.mjs --test-reporter=tap |',
+   121	    '| cas | optional | 备注列 |',
+   122	    '```md', '| cas | required |', '```',
+   123	    '<!-- | test-cmd | echo nope | -->',
+   124	  ].join('\n') + '\n';
+   125	  const { values, conflicts } = parseConfig(text);
+   126	  assert.strictEqual(values.get('test-cmd'), 'node scripts/run-tests.mjs --test-reporter=tap');
+   127	  assert.strictEqual(values.get('cas'), 'optional');
+   128	  assert.strictEqual(conflicts.size, 0);
+   129	});
+   130	
+   131	test('CF-11 an unreadable config is a consumption-time problem', () => {
+   132	  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-cfg-'));
+   133	  fs.mkdirSync(path.join(root, 'apriori', 'process-config.md'), { recursive: true });   // a DIRECTORY
+   134	  const { value, problem } = getConfig(root, 'id-pattern');
+   135	  assert.strictEqual(value, null);
+   136	  assert.match(String(problem), /process-config/);
+   137	});
+   138	
+   139	test('CF-12 the template names the id-pattern row with two-layer pipe wording', () => {
+   140	  const tplPath = path.join(__dirname, '..', 'templates', 'process-config.md');
+   141	  const tpl = fs.readFileSync(tplPath, 'utf8');
+   142	  const { values } = parseConfig(tpl);
+   143	  assert.strictEqual(values.get('id-pattern'), '[A-Z]+-\\d+');           // parsed value = built-in default
+   144	  assert.strictEqual(values.get('cas'), 'required');                     // table structure survives end-to-end
+   145	  assert.match(tpl, /\\\|/);                                             // guidance shows the \| spelling
+   146	  assert.match(tpl, /\[\\\|\]/);                                         // and the [\|] literal-pipe spelling
+   147	  assert.doesNotMatch(tpl, /literal pipe[^.\n]*written\s*`?\\\|`?(?!\])/i); // no "literal pipe is \|" phrasing
+   148	  const rowLine = tpl.split('\n').find((l) => /^\|\s*id-pattern\s*\|/.test(l));
+   149	  assert.ok(rowLine, 'id-pattern row exists');
+   150	  const { splitCells } = require('../lib/config');
+   151	  const cells = splitCells(rowLine);
+   152	  assert.strictEqual(cells.length, 6, 'row splits into exactly 4 cells + 2 edges (no in-cell pipes)');
+   153	  for (const c of cells) assert.doesNotMatch(c, /\|/, 'cells stay pipe-free');
+   154	});
+     1	'use strict';
+     2	// gate-id-pattern — SR-50..SR-55, GT-22..GT-25, CK-13..CK-16, DR-16..DR-18:
+     3	// the effective id-pattern resolves flag > config > default, one contract for four consumers.
+     4	const { test } = require('node:test');
+     5	const assert = require('node:assert');
+     6	const fs = require('fs');
+     7	const os = require('os');
+     8	const path = require('path');
+     9	const { spawnSync } = require('node:child_process');
+    10	
+    11	const BIN = path.join(__dirname, '..', 'bin', 'apriori.js');
+    12	const PATTERN = '[A-Z]+(-[A-Z]+)*-\\d+[a-z]*';
+    13	const SPEC3 = '#### Scenario: AC-01 plain\n#### Scenario: AC-08a suffixed\n#### Scenario: AC-BIS-01 multi\n';
+    14	const TAP3 = `node -e "['AC-01 plain','AC-08a suffixed','AC-BIS-01 multi'].forEach((t,i)=>console.log('ok '+(i+1)+' - '+t))"`;
+    15	const CTRL = new RegExp('[\\x00-\\x1f\\x7f]');
+    16	
+    17	function proj(files) {
+    18	  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-idp-'));
+    19	  for (const [rel, c] of Object.entries(files)) {
+    20	    fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
+    21	    fs.writeFileSync(path.join(root, rel), c);
+    22	  }
+    23	  return root;
+    24	}
+    25	const run = (root, args) => spawnSync('node', [BIN, ...args], { encoding: 'utf8', cwd: root });
+    26	const vrun = (root, args) => run(root, ['verify', ...args]);
+    27	const marker = (root) => path.join(root, 'ran.marker');
+    28	const markerCmd = (root) => `node -e "require('fs').writeFileSync(${JSON.stringify(marker(root)).replace(/"/g, '\\"')},'x');console.log('1..0')"`;
+    29	
+    30	// ---- SR: verify ----
+    31	
+    32	test('SR-50 the config row takes effect without a flag', () => {
+    33	  const files = { 'apriori/specs/m/spec.md': SPEC3 };
+    34	  const bare = proj(files);
+    35	  const r1 = JSON.parse(vrun(bare, ['--specs', 'apriori/specs', '--test-cmd', TAP3, '--json']).stdout);
+    36	  assert.strictEqual(r1.unidentified.length, 2, 'without the row only AC-01 is identified');
+    37	  const cfg = proj({ ...files, 'apriori/process-config.md': `| id-pattern | ${PATTERN} |\n` });
+    38	  const out = vrun(cfg, ['--specs', 'apriori/specs', '--test-cmd', TAP3, '--json']);
+    39	  const r2 = JSON.parse(out.stdout);
+    40	  assert.strictEqual(r2.unidentified.length, 0, 'config row identifies all three: ' + out.stdout + out.stderr);
+    41	  assert.strictEqual(r2.result, 'GREEN');
+    42	});
+    43	
+    44	test('SR-51 the flag overrides and shields the config', () => {
+    45	  const root = proj({
+    46	    'apriori/specs/m/spec.md': SPEC3,
+    47	    'apriori/process-config.md': '| id-pattern | ( |\n',        // syntactically INVALID row
+    48	  });
+    49	  const r = vrun(root, ['--specs', 'apriori/specs', '--id-pattern', PATTERN, '--test-cmd', TAP3, '--json']);
+    50	  const j = JSON.parse(r.stdout);
+    51	  assert.strictEqual(j.result, 'GREEN', r.stdout + r.stderr);   // flag binds; broken config never consulted
+    52	  assert.strictEqual(r.status, 0);
+    53	});
+    54	
+    55	test('SR-52 an invalid effective pattern refuses to run', () => {
+    56	  // flag origin
+    57	  const a = proj({ 'apriori/specs/m/spec.md': SPEC3 });
+    58	  const ra = vrun(a, ['--specs', 'apriori/specs', '--id-pattern', '(', '--test-cmd', markerCmd(a), '--json']);
+    59	  assert.strictEqual(ra.status, 2, ra.stdout + ra.stderr);
+    60	  const ja = JSON.parse(ra.stdout);
+    61	  assert.strictEqual(ja.result, 'ERROR');
+    62	  assert.match(ja.errors.join(' '), /--id-pattern/);
+    63	  assert.ok(!fs.existsSync(marker(a)), 'test command never spawned (flag origin)');
+    64	  // empty flag never falls back to config
+    65	  const e = proj({ 'apriori/specs/m/spec.md': SPEC3, 'apriori/process-config.md': `| id-pattern | ${PATTERN} |\n` });
+    66	  const re = vrun(e, ['--specs', 'apriori/specs', '--id-pattern', '', '--test-cmd', markerCmd(e), '--json']);
+    67	  assert.strictEqual(re.status, 2);
+    68	  assert.match(JSON.parse(re.stdout).errors.join(' '), /empty --id-pattern/);
+    69	  assert.ok(!fs.existsSync(marker(e)));
+    70	  // config origin
+    71	  const c = proj({ 'apriori/specs/m/spec.md': SPEC3, 'apriori/process-config.md': '| id-pattern | ( |\n' });
+    72	  const rc = vrun(c, ['--specs', 'apriori/specs', '--test-cmd', markerCmd(c), '--json']);
+    73	  assert.strictEqual(rc.status, 2);
+    74	  assert.match(JSON.parse(rc.stdout).errors.join(' '), /process-config/);
+    75	  assert.ok(!fs.existsSync(marker(c)), 'test command never spawned (config origin)');
+    76	  // whole-message sanitization: control chars stripped, bounded incl. ellipsis, no engine re-leak
+    77	  const evil = '(' + 'x'.repeat(300);
+    78	  const rs = vrun(a, ['--specs', 'apriori/specs', '--id-pattern', evil, '--test-cmd', markerCmd(a), '--json']);
+    79	  const errs = JSON.parse(rs.stdout).errors;
+    80	  for (const piece of errs) {
+    81	    assert.doesNotMatch(piece, CTRL, 'no control characters');
+    82	    assert.ok(piece.length <= 200, `bounded incl ellipsis: ${piece.length}`);
+    83	  }
+    84	  // --change --json keeps the projection field on the error path
+    85	  const ch = proj({
+    86	    'apriori/specs/m/spec.md': '### Requirement: R1\n\n#### Scenario: AC-01 plain\n- t\n',
+    87	    'apriori/changes/z/flow-state.md': 'change: z\ntier: medium\n',
+    88	    'apriori/changes/z/specs/m/spec.md': '## ADDED Requirements\n\n### Requirement: R2\n\n#### Scenario: AC-02 b\n- t\n',
+    89	    'apriori/process-config.md': '| id-pattern | ( |\n',
+    90	  });
+    91	  const rch = vrun(ch, ['--change', 'z', '--test-cmd', markerCmd(ch), '--json']);
+    92	  assert.strictEqual(rch.status, 2, rch.stdout + rch.stderr);
+    93	  const jch = JSON.parse(rch.stdout);
+    94	  assert.ok(jch.projection, 'projection survives the early exit');
+    95	  assert.deepStrictEqual(jch.projection.modules, ['m/spec.md']);
+    96	  assert.ok(!fs.existsSync(marker(ch)));
+    97	});
+    98	
+    99	test('SR-52 validation precedes every spec read, and sanitization survives adversarial sources', () => {
+   100	  // invalid flag + NONEXISTENT specs target: the error must be about the pattern, not the
+   101	  // missing target — proof that validation fires before any spec I/O
+   102	  const a = proj({});
+   103	  const r = vrun(a, ['--specs', 'no/such/dir', '--id-pattern', '(', '--test-cmd', 'node -e ""', '--json']);
+   104	  assert.strictEqual(r.status, 2);
+   105	  const j = JSON.parse(r.stdout);
+   106	  assert.match(j.errors.join(' '), /--id-pattern/);
+   107	  assert.doesNotMatch(j.errors.join(' '), /does not exist/);
+   108	  // control characters in BOTH origins are stripped; the raw source never re-leaks whole
+   109	  const evilFlag = '(\x01' + 'x'.repeat(300) + '\x7f';
+   110	  const rf = vrun(a, ['--specs', 'no/such/dir', '--id-pattern', evilFlag, '--test-cmd', 'node -e ""', '--json']);
+   111	  for (const piece of JSON.parse(rf.stdout).errors) {
+   112	    assert.doesNotMatch(piece, CTRL);
+   113	    assert.ok(piece.length <= 200);
+   114	    assert.ok(!piece.includes('x'.repeat(150)), 'raw source does not re-leak');
+   115	  }
+   116	  const c = proj({ 'apriori/specs/m/spec.md': SPEC3,
+   117	    'apriori/process-config.md': '| id-pattern | (\x01' + 'y'.repeat(300) + ' |\n' });
+   118	  const rc = vrun(c, ['--specs', 'apriori/specs', '--test-cmd', 'node -e ""', '--json']);
+   119	  assert.strictEqual(rc.status, 2);
+   120	  for (const piece of JSON.parse(rc.stdout).errors) {
+   121	    assert.match(piece, /process-config/);
+   122	    assert.doesNotMatch(piece, CTRL);
+   123	    assert.ok(piece.length <= 200);
+   124	    assert.ok(!piece.includes('y'.repeat(150)));
+   125	  }
+   126	  // text mode keeps the existing error contract
+   127	  const rt = vrun(c, ['--specs', 'apriori/specs', '--test-cmd', 'node -e ""']);
+   128	  assert.strictEqual(rt.status, 2);
+   129	  assert.match(rt.stderr, /error: .*process-config/);
+   130	  assert.match(rt.stdout, /RESULT: ERROR/);
+   131	});
+   132	
+   133	test('SR-53 absent flag and config the default binds unchanged', () => {
+   134	  const root = proj({ 'apriori/specs/m/spec.md': '#### Scenario: XX-01 a\n' });
+   135	  const r = JSON.parse(vrun(root, ['--specs', 'apriori/specs', '--test-cmd', `node -e "console.log('ok 1 - XX-01 a')"`, '--json']).stdout);
+   136	  assert.strictEqual(r.result, 'GREEN');
+   137	});
+   138	
+   139	test('SR-54 catastrophic config matching is terminated, adversarial titles included', () => {
+   140	  const evilTitle = 'a'.repeat(40) + '!';
+   141	  const root = proj({
+   142	    'apriori/specs/m/spec.md': `#### Scenario: ${evilTitle}\n`,
+   143	    'apriori/process-config.md': '| id-pattern | (a+)+$ |\n',
+   144	  });
+   145	  const t0 = Date.now();
+   146	  const r = vrun(root, ['--specs', 'apriori/specs', '--test-cmd', markerCmd(root), '--json']);
+   147	  const elapsed = Date.now() - t0;
+   148	  assert.ok(elapsed >= 1900, `the child ran to its 2s budget before the kill (${elapsed}ms)`);
+   149	  assert.ok(elapsed < 15000, 'terminated within budget');
+   150	  assert.strictEqual(r.status, 2, r.stdout + r.stderr);
+   151	  const errText = JSON.parse(r.stdout).errors.join(' ');
+   152	  assert.match(errText, /process-config/);
+   153	  assert.match(errText, /timeout|terminated/, 'the message names the termination, not a spawn error');
+   154	  assert.ok(!fs.existsSync(marker(root)), 'test command never spawned');
+   155	  // the real multi-segment pattern completes normally through the child
+   156	  const ok = proj({ 'apriori/specs/m/spec.md': SPEC3, 'apriori/process-config.md': `| id-pattern | ${PATTERN} |\n` });
+   157	  const rok = vrun(ok, ['--specs', 'apriori/specs', '--test-cmd', TAP3, '--json']);
+   158	  assert.strictEqual(JSON.parse(rok.stdout).result, 'GREEN');
+   159	});
+   160	
+   161	test('SR-55 every child failure class fails closed', () => {
+   162	  const sr = require('../lib/spec-runner');
+   163	  const resolvedCfg = { source: '[A-Z]+-\\d+', origin: 'config' };
+   164	  const etimedout = new Error('spawnSync ETIMEDOUT'); etimedout.code = 'ETIMEDOUT';
+   165	  const classes = [
+   166	    ['timeout', { status: null, signal: 'SIGKILL', stdout: '', error: null }, /^timeout/],
+   167	    ['timeout-etimedout', { status: null, signal: 'SIGKILL', stdout: '', error: etimedout }, /^timeout/],   // real spawnSync timeout carries BOTH
+   168	    ['spawn-error', { status: null, signal: null, stdout: '', error: new Error('ENOENT') }, /^spawn-error/],
+   169	    ['signal', { status: null, signal: 'SIGSEGV', stdout: '{"ids":[]}', error: null }, /^signal/],
+   170	    ['non-zero-exit', { status: 1, signal: null, stdout: '', error: null }, /^non-zero-exit/],
+   171	    ['malformed-not-json', { status: 0, signal: null, stdout: 'nope', error: null }, /^malformed/],
+   172	    ['malformed-length', { status: 0, signal: null, stdout: '{"ids":[]}', error: null }, /^malformed/],       // batch of 1 vs length 0
+   173	    ['malformed-element', { status: 0, signal: null, stdout: '{"ids":[42]}', error: null }, /^malformed/],
+   174	    ['malformed-extra-field', { status: 0, signal: null, stdout: '{"ids":["AC-01"],"extra":true}', error: null }, /^malformed/],   // strict {ids}-only shape
+   175	    ['malformed-missing-ids', { status: 0, signal: null, stdout: '{"nope":[]}', error: null }, /^malformed/],
+   176	  ];
+   177	  for (const [label, fake, expect] of classes) {
+   178	    sr._setChildRunner(() => fake);
+   179	    const m = sr.makeIdMatcher(resolvedCfg);
+   180	    const out = m.batch(['AC-01 x']);
+   181	    assert.ok(out.failure, `${label} fails closed`);
+   182	    assert.match(out.failure, expect, `${label} classified correctly: ${out.failure}`);
+   183	  }
+   184	  // well-formed response binds
+   185	  sr._setChildRunner(() => ({ status: 0, signal: null, stdout: '{"ids":["AC-01"]}', error: null }));
+   186	  assert.deepStrictEqual(sr.makeIdMatcher(resolvedCfg).batch(['AC-01 x']), { ids: ['AC-01'] });
+   187	  // flag/default origins never touch the child
+   188	  sr._setChildRunner(() => { throw new Error('child must not be called'); });
+   189	  for (const origin of ['flag', 'default']) {
+   190	    const m = sr.makeIdMatcher({ source: '[A-Z]+-\\d+', origin });
+   191	    assert.deepStrictEqual(m.batch(['AC-01 x']), { ids: ['AC-01'] });
+   192	  }
+   193	  sr._setChildRunner(null);   // restore default
+   194	});
+   195	
+   196	// ---- GT: gate ----
+   197	const gate = require('../lib/gate');
+   198	const FLOW = (name) => `change: ${name}\ntier: medium\ntrack: harden\ntrack-rationale: r\nlineage: main\ncurrent-step: STEP5\nround: 1\nnext-action: x\ngates:\n  - 2026-08-13T00:00 note: n\n`;
+   199	const LEDGER_OK = '| ID | Issue | Risk | Round found | Status |\n|---|---|---|---|---|\n| Q-1 | a | low | 1 | verified |\n';
+   200	const SUFFIX_STORE = '### Requirement: Alpha\n\n#### Scenario: XA-01b base\n- t\n';
+   201	const PLAIN_DELTA = '## ADDED Requirements\n\n### Requirement: Beta\n\n#### Scenario: XB-01 new\n- t\n';
+   202	const SUFFIX_PATTERN = '[A-Z]+-\\d+[a-z]*';
+   203	const SUFFIX_TAP = `node -e "console.log('ok 1 - XA-01b a');console.log('ok 2 - XB-01 b')"`;
+   204	
+   205	function gateProj(extra) {
+   206	  return proj({
+   207	    'apriori/specs/kv/spec.md': SUFFIX_STORE,
+   208	    'apriori/changes/c/flow-state.md': FLOW('c'),
+   209	    'apriori/changes/c/tasks.md': '- [x] T1 done\n',
+   210	    'apriori/changes/c/specs/kv/spec.md': PLAIN_DELTA,
+   211	    'apriori/changes/c/review/issues.md': LEDGER_OK,
+   212	    ...extra,
+   213	  });
+   214	}
+   215	
+   216	test('GT-22 gate accepts --id-pattern for C1', () => {
+   217	  // in-flight stage
+   218	  const root = gateProj({});
+   219	  const r = gate.runGate({ cwd: root, change: 'c', testCmd: SUFFIX_TAP, idPattern: SUFFIX_PATTERN });
+   220	  const c1 = r.checks.find((x) => x.id === 'C1');
+   221	  assert.strictEqual(c1.status, 'pass', c1 && c1.detail);
+   222	  const bare = gate.runGate({ cwd: root, change: 'c', testCmd: SUFFIX_TAP });
+   223	  const c1b = bare.checks.find((x) => x.id === 'C1');
+   224	  assert.match(c1b.detail, /unidentified/, 'without the pattern the suffixed ID is unidentified');
+   225	  // archived stage
+   226	  const aroot = proj({
+   227	    'apriori/specs/kv/spec.md': SUFFIX_STORE,
+   228	    'apriori/changes/archive/2026-01-01T0000-z/flow-state.md': FLOW('z'),
+   229	    'apriori/changes/archive/2026-01-01T0000-z/tasks.md': '- [x] T1\n',
+   230	    'apriori/changes/archive/2026-01-01T0000-z/review/issues.md': LEDGER_OK,
+   231	  });
+   232	  const ra = gate.runGate({ cwd: aroot, change: 'z', testCmd: `node -e "console.log('ok 1 - XA-01b a')"`, idPattern: SUFFIX_PATTERN });
+   233	  const c1a = ra.checks.find((x) => x.id === 'C1');
+   234	  assert.strictEqual(c1a.status, 'pass', c1a && c1a.detail);
+   235	});
+   236	
+   237	test('GT-23 gate falls back to the config row', () => {
+   238	  const root = gateProj({ 'apriori/process-config.md': `| id-pattern | ${SUFFIX_PATTERN} |\n` });
+   239	  const r = gate.runGate({ cwd: root, change: 'c', testCmd: SUFFIX_TAP });
+   240	  const c1 = r.checks.find((x) => x.id === 'C1');
+   241	  assert.strictEqual(c1.status, 'pass', c1 && c1.detail);
+   242	});
+   243	
+   244	test('GT-24 an invalid effective pattern is a gate ERROR', () => {
+   245	  const root = gateProj({});
+   246	  // uncompilable flag
+   247	  const r1 = gate.runGate({ cwd: root, change: 'c', testCmd: SUFFIX_TAP, idPattern: '(' });
+   248	  assert.strictEqual(r1.code, 2);
+   249	  assert.strictEqual(r1.result, 'ERROR');
+   250	  assert.match(r1.errors.join(' '), /--id-pattern/);
+   251	  // empty flag over a VALID config row: flag origin, never falls back
+   252	  const root2 = gateProj({ 'apriori/process-config.md': `| id-pattern | ${SUFFIX_PATTERN} |\n` });
+   253	  const r2 = gate.runGate({ cwd: root2, change: 'c', testCmd: SUFFIX_TAP, idPattern: '' });
+   254	  assert.strictEqual(r2.code, 2);
+   255	  assert.match(r2.errors.join(' '), /--id-pattern/);
+   256	  assert.doesNotMatch(r2.errors.join(' '), /process-config/);
+   257	  // uncompilable config row, no flag
+   258	  const root3 = gateProj({ 'apriori/process-config.md': '| id-pattern | ( |\n' });
+   259	  const r3 = gate.runGate({ cwd: root3, change: 'c', testCmd: SUFFIX_TAP });
+   260	  assert.strictEqual(r3.code, 2);
+   261	  assert.match(r3.errors.join(' '), /process-config/);
+   262	  // --json stays pure JSON through the CLI
+   263	  const rj = run(root, ['gate', '--change', 'c', '--id-pattern', '(', '--test-cmd', SUFFIX_TAP, '--json']);
+   264	  assert.strictEqual(rj.status, 2);
+   265	  const j = JSON.parse(rj.stdout);
+   266	  assert.strictEqual(j.result, 'ERROR');
+   267	  assert.match(j.errors.join(' '), /--id-pattern/);
+   268	});
+   269	
+   270	test('GT-25 a terminated config-pattern match is a gate ERROR', () => {
+   271	  const evilTitle = 'a'.repeat(40) + '!';
+   272	  const root = proj({
+   273	    'apriori/specs/kv/spec.md': `### Requirement: Alpha\n\n#### Scenario: ${evilTitle}\n- t\n`,
+   274	    'apriori/changes/c/flow-state.md': FLOW('c'),
+   275	    'apriori/changes/c/tasks.md': '- [x] T1 done\n',
+   276	    'apriori/changes/c/specs/kv/spec.md': PLAIN_DELTA,
+   277	    'apriori/changes/c/review/issues.md': LEDGER_OK,
+   278	    'apriori/process-config.md': '| id-pattern | (a+)+$ |\n',
+   279	  });
+   280	  // through the REAL CLI: exit 2, stdout is EXACTLY one JSON document, termination named
+   281	  const rj = run(root, ['gate', '--change', 'c', '--test-cmd', SUFFIX_TAP, '--json']);
+   282	  assert.strictEqual(rj.status, 2, rj.stdout + rj.stderr);
+   283	  const j = JSON.parse(rj.stdout);                        // throws if anything pollutes stdout
+   284	  assert.strictEqual(j.result, 'ERROR');
+   285	  assert.match(j.errors.join(' '), /process-config/);
+   286	  assert.match(j.errors.join(' '), /timeout|terminated/);
+   287	});
+   288	
+   289	test('GT-24 the gate CLI error matrix holds end to end', () => {
+   290	  const mk = (config) => proj({
+   291	    'apriori/specs/kv/spec.md': SUFFIX_STORE,
+   292	    'apriori/changes/c/flow-state.md': FLOW('c'),
+   293	    'apriori/changes/c/tasks.md': '- [x] T1 done\n',
+   294	    'apriori/changes/c/specs/kv/spec.md': PLAIN_DELTA,
+   295	    'apriori/changes/c/review/issues.md': LEDGER_OK,
+   296	    ...(config === null ? {} : { 'apriori/process-config.md': config }),
+   297	  });
+   298	  const cases = [
+   299	    [mk(null), ['--id-pattern', '('], /--id-pattern/],                                    // invalid flag
+   300	    [mk(`| id-pattern | ${SUFFIX_PATTERN} |\n`), ['--id-pattern', ''], /--id-pattern/],   // empty flag over VALID config
+   301	    [mk('| id-pattern | ( |\n'), ['--id-pattern', ''], /--id-pattern/],                   // empty flag over INVALID config (still flag origin)
+   302	    [mk('| id-pattern | ( |\n'), [], /process-config/],                                   // invalid config, no flag
+   303	  ];
+   304	  for (const [root, extra, origin] of cases) {
+   305	    const r = run(root, ['gate', '--change', 'c', '--test-cmd', SUFFIX_TAP, ...extra, '--json']);
+   306	    assert.strictEqual(r.status, 2, r.stdout + r.stderr);
+   307	    const j = JSON.parse(r.stdout);                       // exactly one JSON document on stdout
+   308	    assert.strictEqual(j.result, 'ERROR');
+   309	    assert.match(j.errors.join(' '), origin);
+   310	    if (extra.includes('')) assert.doesNotMatch(j.errors.join(' '), /process-config/, 'empty flag never falls back');
+   311	  }
+   312	});
+   313	
+   314	// ---- CK: check ----
+   315	
+   316	test('CK-13 CK-04 honors the config id-pattern row', () => {
+   317	  const files = { 'apriori/specs/m/spec.md': '#### Scenario: AC-08a suffixed\n#### Scenario: AC-BIS-01 multi\n' };
+   318	  const bare = proj(files);
+   319	  const r1 = run(bare, ['check']);
+   320	  assert.strictEqual(r1.status, 1, r1.stdout);
+   321	  assert.match(r1.stdout, /without a bindable ID/);
+   322	  const cfg = proj({ ...files, 'apriori/process-config.md': `| id-pattern | ${PATTERN} |\n` });
+   323	  const r2 = run(cfg, ['check']);
+   324	  assert.strictEqual(r2.status, 0, r2.stdout + r2.stderr);
+   325	});
+   326	
+   327	test('CK-14 check and verify judge identically at the edges', () => {
+   328	  const { checkScenarioIds } = require('../lib/check');
+   329	  const sr = require('../lib/spec-runner');
+   330	  // EXPECTED is the independent oracle (never derived from the implementation): each case
+   331	  // states whether the title's leading token is a legal ID under the pattern.
+   332	  const cases = [
+   333	    ['[A-Z]+-\\d+[a-z]*', 'AC-08a suffixed', true],
+   334	    ['[A-Z]+(-[A-Z]+)*-\\d+', 'AC-BIS-01 multi', true],
+   335	    ['[A-Z]+-\\d+', 'AC-01_tail underscore-adjacent', false],
+   336	    ['[A-Z]+-\\d+', 'AC-01x alnum-adjacent', false],
+   337	    ['X\\d+\\.', 'X1. dot-ending pattern', true],
+   338	    ['^AC-\\d+', 'AC-1 self-anchored', true],
+   339	    ['(AC|BR)-\\d+', 'BR-2 alternation', true],
+   340	  ];
+   341	  for (const [pattern, title, expected] of cases) {
+   342	    // path 1: checkScenarioIds (CK-04's helper)
+   343	    const checkSide = checkScenarioIds(`#### Scenario: ${title}\n`, 'f.md', pattern).length === 0;
+   344	    assert.strictEqual(checkSide, expected, `check: ${pattern} vs '${title}'`);
+   345	    // path 2: verify's collection (inline matcher)
+   346	    const d = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-ck14-'));
+   347	    fs.writeFileSync(path.join(d, 'spec.md'), `#### Scenario: ${title}\n`);
+   348	    const col = sr.collectScenarios([d], new RegExp(pattern));
+   349	    assert.strictEqual(col.unidentified.length === 0, expected, `collect: ${pattern} vs '${title}'`);
+   350	    // path 3: the config-origin CHILD matcher (real child round-trip)
+   351	    const child = sr.makeIdMatcher({ source: pattern, origin: 'config' }).batch([title]);
+   352	    assert.ok(!child.failure, `child ok: ${child.failure}`);
+   353	    assert.strictEqual(child.ids[0] !== null, expected, `child: ${pattern} vs '${title}'`);
+   354	  }
+   355	});
+   356	
+   357	test('CK-15 an invalid config id-pattern is a check ERROR', () => {
+   358	  const root = proj({
+   359	    'apriori/specs/m/spec.md': '#### Scenario: AC-01 a\n',
+   360	    'apriori/process-config.md': '| id-pattern | ( |\n',
+   361	  });
+   362	  const r = run(root, ['check']);
+   363	  assert.strictEqual(r.status, 2, r.stdout + r.stderr);
+   364	  assert.match(r.stdout, /RESULT: ERROR/);
+   365	  assert.match(r.stderr + r.stdout, /process-config/);
+   366	});
+   367	
+   368	test('CK-16 a terminated config-pattern match is a check ERROR', () => {
+   369	  const evilTitle = 'a'.repeat(40) + '!';
+   370	  const root = proj({
+   371	    'apriori/specs/m/spec.md': `#### Scenario: ${evilTitle}\n`,
+   372	    'apriori/process-config.md': '| id-pattern | (a+)+$ |\n',
+   373	  });
+   374	  const t0 = Date.now();
+   375	  const r = run(root, ['check']);
+   376	  assert.ok(Date.now() - t0 < 15000, 'terminated within budget');
+   377	  assert.strictEqual(r.status, 2, r.stdout + r.stderr);
+   378	  assert.match(r.stdout, /RESULT: ERROR/);
+   379	  assert.match(r.stderr + r.stdout, /process-config/);
+   380	});
+   381	
+   382	// ---- DR: doctor ----
+   383	const doctor = require('../lib/doctor');
+   384	const PKG_RUNBOOK = fs.readFileSync(path.join(__dirname, '..', 'RUNBOOK.md'), 'utf8');
+   385	
+   386	function drProject(extraConfigRows, specContent) {
+   387	  const root = proj({
+   388	    'apriori/runbook.md': PKG_RUNBOOK,
+   389	    'apriori/.gitignore': 'tmp/\n',
+   390	    'apriori/specs/m/spec.md': specContent,
+   391	    'apriori/process-config.md': '| language | auto |\n' + extraConfigRows,
+   392	    'CLAUDE.md': 'Development follows `apriori/runbook.md`.\n',
+   393	    '.claude/commands/apriori.md': 'cmd\n',
+   394	  });
+   395	  fs.mkdirSync(path.join(root, 'apriori', 'tmp'), { recursive: true });
+   396	  fs.mkdirSync(path.join(root, 'apriori', 'changes'), { recursive: true });
+   397	  return root;
+   398	}
+   399	const DR_TAP = `node -e "console.log('TAP version 13');console.log('1..1');console.log('ok 1 - fine')"`;
+   400	
+   401	test('DR-16 D6 names its pattern source', () => {
+   402	  const cfg = drProject(`| id-pattern | ${PATTERN} |\n`, '#### Scenario: AC-08a s\n');
+   403	  const r1 = doctor.runDoctor({ cwd: cfg, testCmd: DR_TAP });
+   404	  const d6a = r1.checks.find((c) => c.id === 'D6');
+   405	  assert.strictEqual(d6a.status, 'ok', d6a.detail);
+   406	  assert.match(d6a.detail, /config/, 'names the config source');
+   407	  const bare = drProject('', '#### Scenario: AC-08a s\n');
+   408	  const r2 = doctor.runDoctor({ cwd: bare, testCmd: DR_TAP });
+   409	  const d6b = r2.checks.find((c) => c.id === 'D6');
+   410	  assert.strictEqual(d6b.status, 'finding', d6b.detail);   // suffixed ID unbindable under default
+   411	  assert.match(d6b.detail, /default/, 'names the default source');
+   412	});
+   413	
+   414	test('DR-17 an invalid config id-pattern is a D6 finding and skips the probe', () => {
+   415	  const root = drProject('| id-pattern | ( |\n', '#### Scenario: AC-01 a\n');
+   416	  const cmd = markerCmd(root);
+   417	  // scan-not-happened proof: any matcher child call under an invalid config is a bug
+   418	  const sr = require('../lib/spec-runner');
+   419	  let childCalls = 0;
+   420	  sr._setChildRunner(() => { childCalls++; throw new Error('must not scan'); });
+   421	  const r = doctor.runDoctor({ cwd: root, testCmd: cmd });
+   422	  sr._setChildRunner(null);
+   423	  assert.strictEqual(childCalls, 0, 'no scenario scan under an invalid config');
+   424	  const d6 = r.checks.find((c) => c.id === 'D6');
+   425	  assert.strictEqual(d6.status, 'finding', JSON.stringify(r.checks));
+   426	  assert.match(d6.detail, /process-config/);
+   427	  assert.match(String(d6.fix), /id-pattern/, 'the finding carries its repair fix');
+   428	  const d5 = r.checks.find((c) => c.id === 'D5');
+   429	  assert.strictEqual(d5.status, 'n/a');
+   430	  assert.match(d5.detail, /probe skipped \(invalid id-pattern config\)/);
+
+exec
+/usr/bin/zsh -lc "nl -ba test/config.test.js | sed -n '118,250p'; nl -ba test/id-pattern.test.js | sed -n '1,140p'; nl -ba test/id-pattern.test.js | sed -n '400,490p'; sed -n '1,25p' lib/doctor.js" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 116ms:
+   118	test('CF-10 unescaped configs parse exactly as before', () => {
+   119	  const text = [
+   120	    '| test-cmd | node scripts/run-tests.mjs --test-reporter=tap |',
+   121	    '| cas | optional | 备注列 |',
+   122	    '```md', '| cas | required |', '```',
+   123	    '<!-- | test-cmd | echo nope | -->',
+   124	  ].join('\n') + '\n';
+   125	  const { values, conflicts } = parseConfig(text);
+   126	  assert.strictEqual(values.get('test-cmd'), 'node scripts/run-tests.mjs --test-reporter=tap');
+   127	  assert.strictEqual(values.get('cas'), 'optional');
+   128	  assert.strictEqual(conflicts.size, 0);
+   129	});
+   130	
+   131	test('CF-11 an unreadable config is a consumption-time problem', () => {
+   132	  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-cfg-'));
+   133	  fs.mkdirSync(path.join(root, 'apriori', 'process-config.md'), { recursive: true });   // a DIRECTORY
+   134	  const { value, problem } = getConfig(root, 'id-pattern');
+   135	  assert.strictEqual(value, null);
+   136	  assert.match(String(problem), /process-config/);
+   137	});
+   138	
+   139	test('CF-12 the template names the id-pattern row with two-layer pipe wording', () => {
+   140	  const tplPath = path.join(__dirname, '..', 'templates', 'process-config.md');
+   141	  const tpl = fs.readFileSync(tplPath, 'utf8');
+   142	  const { values } = parseConfig(tpl);
+   143	  assert.strictEqual(values.get('id-pattern'), '[A-Z]+-\\d+');           // parsed value = built-in default
+   144	  assert.strictEqual(values.get('cas'), 'required');                     // table structure survives end-to-end
+   145	  assert.match(tpl, /\\\|/);                                             // guidance shows the \| spelling
+   146	  assert.match(tpl, /\[\\\|\]/);                                         // and the [\|] literal-pipe spelling
+   147	  assert.doesNotMatch(tpl, /literal pipe[^.\n]*written\s*`?\\\|`?(?!\])/i); // no "literal pipe is \|" phrasing
+   148	  const rowLine = tpl.split('\n').find((l) => /^\|\s*id-pattern\s*\|/.test(l));
+   149	  assert.ok(rowLine, 'id-pattern row exists');
+   150	  const { splitCells } = require('../lib/config');
+   151	  const cells = splitCells(rowLine);
+   152	  assert.strictEqual(cells.length, 6, 'row splits into exactly 4 cells + 2 edges (no in-cell pipes)');
+   153	  for (const c of cells) assert.doesNotMatch(c, /\|/, 'cells stay pipe-free');
+   154	});
+     1	'use strict';
+     2	// gate-id-pattern — SR-50..SR-55, GT-22..GT-25, CK-13..CK-16, DR-16..DR-18:
+     3	// the effective id-pattern resolves flag > config > default, one contract for four consumers.
+     4	const { test } = require('node:test');
+     5	const assert = require('node:assert');
+     6	const fs = require('fs');
+     7	const os = require('os');
+     8	const path = require('path');
+     9	const { spawnSync } = require('node:child_process');
+    10	
+    11	const BIN = path.join(__dirname, '..', 'bin', 'apriori.js');
+    12	const PATTERN = '[A-Z]+(-[A-Z]+)*-\\d+[a-z]*';
+    13	const SPEC3 = '#### Scenario: AC-01 plain\n#### Scenario: AC-08a suffixed\n#### Scenario: AC-BIS-01 multi\n';
+    14	const TAP3 = `node -e "['AC-01 plain','AC-08a suffixed','AC-BIS-01 multi'].forEach((t,i)=>console.log('ok '+(i+1)+' - '+t))"`;
+    15	const CTRL = new RegExp('[\\x00-\\x1f\\x7f]');
+    16	
+    17	function proj(files) {
+    18	  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-idp-'));
+    19	  for (const [rel, c] of Object.entries(files)) {
+    20	    fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
+    21	    fs.writeFileSync(path.join(root, rel), c);
+    22	  }
+    23	  return root;
+    24	}
+    25	const run = (root, args) => spawnSync('node', [BIN, ...args], { encoding: 'utf8', cwd: root });
+    26	const vrun = (root, args) => run(root, ['verify', ...args]);
+    27	const marker = (root) => path.join(root, 'ran.marker');
+    28	const markerCmd = (root) => `node -e "require('fs').writeFileSync(${JSON.stringify(marker(root)).replace(/"/g, '\\"')},'x');console.log('1..0')"`;
+    29	
+    30	// ---- SR: verify ----
+    31	
+    32	test('SR-50 the config row takes effect without a flag', () => {
+    33	  const files = { 'apriori/specs/m/spec.md': SPEC3 };
+    34	  const bare = proj(files);
+    35	  const r1 = JSON.parse(vrun(bare, ['--specs', 'apriori/specs', '--test-cmd', TAP3, '--json']).stdout);
+    36	  assert.strictEqual(r1.unidentified.length, 2, 'without the row only AC-01 is identified');
+    37	  const cfg = proj({ ...files, 'apriori/process-config.md': `| id-pattern | ${PATTERN} |\n` });
+    38	  const out = vrun(cfg, ['--specs', 'apriori/specs', '--test-cmd', TAP3, '--json']);
+    39	  const r2 = JSON.parse(out.stdout);
+    40	  assert.strictEqual(r2.unidentified.length, 0, 'config row identifies all three: ' + out.stdout + out.stderr);
+    41	  assert.strictEqual(r2.result, 'GREEN');
+    42	});
+    43	
+    44	test('SR-51 the flag overrides and shields the config', () => {
+    45	  const root = proj({
+    46	    'apriori/specs/m/spec.md': SPEC3,
+    47	    'apriori/process-config.md': '| id-pattern | ( |\n',        // syntactically INVALID row
+    48	  });
+    49	  const r = vrun(root, ['--specs', 'apriori/specs', '--id-pattern', PATTERN, '--test-cmd', TAP3, '--json']);
+    50	  const j = JSON.parse(r.stdout);
+    51	  assert.strictEqual(j.result, 'GREEN', r.stdout + r.stderr);   // flag binds; broken config never consulted
+    52	  assert.strictEqual(r.status, 0);
+    53	});
+    54	
+    55	test('SR-52 an invalid effective pattern refuses to run', () => {
+    56	  // flag origin
+    57	  const a = proj({ 'apriori/specs/m/spec.md': SPEC3 });
+    58	  const ra = vrun(a, ['--specs', 'apriori/specs', '--id-pattern', '(', '--test-cmd', markerCmd(a), '--json']);
+    59	  assert.strictEqual(ra.status, 2, ra.stdout + ra.stderr);
+    60	  const ja = JSON.parse(ra.stdout);
+    61	  assert.strictEqual(ja.result, 'ERROR');
+    62	  assert.match(ja.errors.join(' '), /--id-pattern/);
+    63	  assert.ok(!fs.existsSync(marker(a)), 'test command never spawned (flag origin)');
+    64	  // empty flag never falls back to config
+    65	  const e = proj({ 'apriori/specs/m/spec.md': SPEC3, 'apriori/process-config.md': `| id-pattern | ${PATTERN} |\n` });
+    66	  const re = vrun(e, ['--specs', 'apriori/specs', '--id-pattern', '', '--test-cmd', markerCmd(e), '--json']);
+    67	  assert.strictEqual(re.status, 2);
+    68	  assert.match(JSON.parse(re.stdout).errors.join(' '), /empty --id-pattern/);
+    69	  assert.ok(!fs.existsSync(marker(e)));
+    70	  // config origin
+    71	  const c = proj({ 'apriori/specs/m/spec.md': SPEC3, 'apriori/process-config.md': '| id-pattern | ( |\n' });
+    72	  const rc = vrun(c, ['--specs', 'apriori/specs', '--test-cmd', markerCmd(c), '--json']);
+    73	  assert.strictEqual(rc.status, 2);
+    74	  assert.match(JSON.parse(rc.stdout).errors.join(' '), /process-config/);
+    75	  assert.ok(!fs.existsSync(marker(c)), 'test command never spawned (config origin)');
+    76	  // whole-message sanitization: control chars stripped, bounded incl. ellipsis, no engine re-leak
+    77	  const evil = '(' + 'x'.repeat(300);
+    78	  const rs = vrun(a, ['--specs', 'apriori/specs', '--id-pattern', evil, '--test-cmd', markerCmd(a), '--json']);
+    79	  const errs = JSON.parse(rs.stdout).errors;
+    80	  for (const piece of errs) {
+    81	    assert.doesNotMatch(piece, CTRL, 'no control characters');
+    82	    assert.ok(piece.length <= 200, `bounded incl ellipsis: ${piece.length}`);
+    83	  }
+    84	  // --change --json keeps the projection field on the error path
+    85	  const ch = proj({
+    86	    'apriori/specs/m/spec.md': '### Requirement: R1\n\n#### Scenario: AC-01 plain\n- t\n',
+    87	    'apriori/changes/z/flow-state.md': 'change: z\ntier: medium\n',
+    88	    'apriori/changes/z/specs/m/spec.md': '## ADDED Requirements\n\n### Requirement: R2\n\n#### Scenario: AC-02 b\n- t\n',
+    89	    'apriori/process-config.md': '| id-pattern | ( |\n',
+    90	  });
+    91	  const rch = vrun(ch, ['--change', 'z', '--test-cmd', markerCmd(ch), '--json']);
+    92	  assert.strictEqual(rch.status, 2, rch.stdout + rch.stderr);
+    93	  const jch = JSON.parse(rch.stdout);
+    94	  assert.ok(jch.projection, 'projection survives the early exit');
+    95	  assert.deepStrictEqual(jch.projection.modules, ['m/spec.md']);
+    96	  assert.ok(!fs.existsSync(marker(ch)));
+    97	});
+    98	
+    99	test('SR-52 validation precedes every spec read, and sanitization survives adversarial sources', () => {
+   100	  // invalid flag + NONEXISTENT specs target: the error must be about the pattern, not the
+   101	  // missing target — proof that validation fires before any spec I/O
+   102	  const a = proj({});
+   103	  const r = vrun(a, ['--specs', 'no/such/dir', '--id-pattern', '(', '--test-cmd', 'node -e ""', '--json']);
+   104	  assert.strictEqual(r.status, 2);
+   105	  const j = JSON.parse(r.stdout);
+   106	  assert.match(j.errors.join(' '), /--id-pattern/);
+   107	  assert.doesNotMatch(j.errors.join(' '), /does not exist/);
+   108	  // control characters in BOTH origins are stripped; the raw source never re-leaks whole
+   109	  const evilFlag = '(\x01' + 'x'.repeat(300) + '\x7f';
+   110	  const rf = vrun(a, ['--specs', 'no/such/dir', '--id-pattern', evilFlag, '--test-cmd', 'node -e ""', '--json']);
+   111	  for (const piece of JSON.parse(rf.stdout).errors) {
+   112	    assert.doesNotMatch(piece, CTRL);
+   113	    assert.ok(piece.length <= 200);
+   114	    assert.ok(!piece.includes('x'.repeat(150)), 'raw source does not re-leak');
+   115	  }
+   116	  const c = proj({ 'apriori/specs/m/spec.md': SPEC3,
+   117	    'apriori/process-config.md': '| id-pattern | (\x01' + 'y'.repeat(300) + ' |\n' });
+   118	  const rc = vrun(c, ['--specs', 'apriori/specs', '--test-cmd', 'node -e ""', '--json']);
+   119	  assert.strictEqual(rc.status, 2);
+   120	  for (const piece of JSON.parse(rc.stdout).errors) {
+   121	    assert.match(piece, /process-config/);
+   122	    assert.doesNotMatch(piece, CTRL);
+   123	    assert.ok(piece.length <= 200);
+   124	    assert.ok(!piece.includes('y'.repeat(150)));
+   125	  }
+   126	  // text mode keeps the existing error contract
+   127	  const rt = vrun(c, ['--specs', 'apriori/specs', '--test-cmd', 'node -e ""']);
+   128	  assert.strictEqual(rt.status, 2);
+   129	  assert.match(rt.stderr, /error: .*process-config/);
+   130	  assert.match(rt.stdout, /RESULT: ERROR/);
+   131	});
+   132	
+   133	test('SR-53 absent flag and config the default binds unchanged', () => {
+   134	  const root = proj({ 'apriori/specs/m/spec.md': '#### Scenario: XX-01 a\n' });
+   135	  const r = JSON.parse(vrun(root, ['--specs', 'apriori/specs', '--test-cmd', `node -e "console.log('ok 1 - XX-01 a')"`, '--json']).stdout);
+   136	  assert.strictEqual(r.result, 'GREEN');
+   137	});
+   138	
+   139	test('SR-54 catastrophic config matching is terminated, adversarial titles included', () => {
+   140	  const evilTitle = 'a'.repeat(40) + '!';
+   400	
+   401	test('DR-16 D6 names its pattern source', () => {
+   402	  const cfg = drProject(`| id-pattern | ${PATTERN} |\n`, '#### Scenario: AC-08a s\n');
+   403	  const r1 = doctor.runDoctor({ cwd: cfg, testCmd: DR_TAP });
+   404	  const d6a = r1.checks.find((c) => c.id === 'D6');
+   405	  assert.strictEqual(d6a.status, 'ok', d6a.detail);
+   406	  assert.match(d6a.detail, /config/, 'names the config source');
+   407	  const bare = drProject('', '#### Scenario: AC-08a s\n');
+   408	  const r2 = doctor.runDoctor({ cwd: bare, testCmd: DR_TAP });
+   409	  const d6b = r2.checks.find((c) => c.id === 'D6');
+   410	  assert.strictEqual(d6b.status, 'finding', d6b.detail);   // suffixed ID unbindable under default
+   411	  assert.match(d6b.detail, /default/, 'names the default source');
+   412	});
+   413	
+   414	test('DR-17 an invalid config id-pattern is a D6 finding and skips the probe', () => {
+   415	  const root = drProject('| id-pattern | ( |\n', '#### Scenario: AC-01 a\n');
+   416	  const cmd = markerCmd(root);
+   417	  // scan-not-happened proof: any matcher child call under an invalid config is a bug
+   418	  const sr = require('../lib/spec-runner');
+   419	  let childCalls = 0;
+   420	  sr._setChildRunner(() => { childCalls++; throw new Error('must not scan'); });
+   421	  const r = doctor.runDoctor({ cwd: root, testCmd: cmd });
+   422	  sr._setChildRunner(null);
+   423	  assert.strictEqual(childCalls, 0, 'no scenario scan under an invalid config');
+   424	  const d6 = r.checks.find((c) => c.id === 'D6');
+   425	  assert.strictEqual(d6.status, 'finding', JSON.stringify(r.checks));
+   426	  assert.match(d6.detail, /process-config/);
+   427	  assert.match(String(d6.fix), /id-pattern/, 'the finding carries its repair fix');
+   428	  const d5 = r.checks.find((c) => c.id === 'D5');
+   429	  assert.strictEqual(d5.status, 'n/a');
+   430	  assert.match(d5.detail, /probe skipped \(invalid id-pattern config\)/);
+   431	  assert.ok(!fs.existsSync(marker(root)), 'sentinel: the command never ran');
+   432	  assert.strictEqual(r.result, 'FINDINGS');
+   433	  assert.strictEqual(r.code, 1);
+   434	});
+   435	
+   436	test('DR-18 a terminated config-pattern scan is a D6 finding and skips the probe', () => {
+   437	  const evilTitle = 'a'.repeat(40) + '!';
+   438	  const root = drProject('| id-pattern | (a+)+$ |\n', `#### Scenario: ${evilTitle}\n`);
+   439	  const cmd = markerCmd(root);
+   440	  const r = doctor.runDoctor({ cwd: root, testCmd: cmd });
+   441	  const d6 = r.checks.find((c) => c.id === 'D6');
+   442	  assert.strictEqual(d6.status, 'finding', JSON.stringify(r.checks));
+   443	  assert.match(d6.detail, /process-config/);
+   444	  const d5 = r.checks.find((c) => c.id === 'D5');
+   445	  assert.strictEqual(d5.status, 'n/a');
+   446	  assert.match(d5.detail, /probe skipped \(invalid id-pattern config\)/);
+   447	  assert.ok(!fs.existsSync(marker(root)), 'sentinel: the command never ran');
+   448	  assert.strictEqual(r.result, 'FINDINGS');
+   449	  assert.strictEqual(r.code, 1);
+   450	});
+   451	
+   452	// ---- IMPL-1/IMPL-7 hardening: unreadable-config consumer matrix, template/doc completeness ----
+   453	
+   454	test('CF-11 an unreadable config fails closed across all four consumers', () => {
+   455	  const mk = () => {
+   456	    const root = proj({ 'apriori/specs/m/spec.md': '#### Scenario: AC-01 a\n' });
+   457	    fs.mkdirSync(path.join(root, 'apriori', 'process-config.md'), { recursive: true });   // a DIRECTORY
+   458	    return root;
+   459	  };
+   460	  const v = vrun(mk(), ['--specs', 'apriori/specs', '--test-cmd', 'node -e ""', '--json']);
+   461	  assert.strictEqual(v.status, 2);
+   462	  assert.match(JSON.parse(v.stdout).errors.join(' '), /process-config/);
+   463	  const groot = mk();
+   464	  fs.mkdirSync(path.join(groot, 'apriori/changes/c/specs/m'), { recursive: true });
+   465	  fs.writeFileSync(path.join(groot, 'apriori/changes/c/flow-state.md'), 'change: c\ntier: medium\ntrack: harden\ntrack-rationale: r\nlineage: main\ncurrent-step: STEP5\nround: 1\nnext-action: x\n');
+   466	  fs.writeFileSync(path.join(groot, 'apriori/changes/c/specs/m/spec.md'), '## ADDED Requirements\n\n### Requirement: R\n\n#### Scenario: AC-02 b\n- t\n');
+   467	  const g = run(groot, ['gate', '--change', 'c', '--test-cmd', 'node -e ""', '--json']);
+   468	  assert.strictEqual(g.status, 2);
+   469	  assert.match(JSON.parse(g.stdout).errors.join(' '), /process-config/);
+   470	  const c = run(mk(), ['check']);
+   471	  assert.strictEqual(c.status, 2);
+   472	  assert.match(c.stdout, /RESULT: ERROR/);
+   473	  const droot = mk();
+   474	  const dr = require('../lib/doctor').runDoctor({ cwd: droot, testCmd: markerCmd(droot) });
+   475	  const d6 = dr.checks.find((x) => x.id === 'D6');
+   476	  assert.strictEqual(d6.status, 'finding');
+   477	  assert.match(d6.detail, /process-config/);
+   478	  const d5 = dr.checks.find((x) => x.id === 'D5');
+   479	  assert.strictEqual(d5.status, 'n/a');
+   480	  assert.ok(!fs.existsSync(marker(droot)));
+   481	});
+   482	
+   483	test('CF-12 template, docs and changelog carry the full id-pattern story', () => {
+   484	  const { parseConfig } = require('../lib/config');
+   485	  const repo = path.join(__dirname, '..');
+   486	  const tpl = fs.readFileSync(path.join(repo, 'templates', 'process-config.md'), 'utf8');
+   487	  // the whole template table survives parsing: full expected key/value map
+   488	  const { values, conflicts } = parseConfig(tpl);
+   489	  assert.strictEqual(conflicts.size, 0);
+   490	  for (const [k, v] of [['language', 'auto'], ['id-pattern', '[A-Z]+-\\d+'], ['cas', 'required'],
+'use strict';
+/*
+ * apriori doctor — diagnose the project↔apriori seam. Seven checks, one exit code:
+ * 0 = HEALTHY · 1 = FINDINGS · 2 = UNUSABLE (Node floor, uninitialized, usage error).
+ * Doctor never repairs and never writes; its ONLY side effect is D5 running the
+ * project's test command once (--no-run removes even that). Findings name their fixer.
+ */
+const fs = require('fs');
+const path = require('path');
+const { TOOLS, detectTools } = require('./init');
+const { checkRunbookFreshness } = require('./check');
+const { collectScenarios, parseTap, zeroTapParsed, runTestCommand, configTestCmd, DEFAULT_ID, looksLikeTap, makeIdMatcher, matcherFailureMsg } = require('./spec-runner');
+const { resolveIdPattern, boundedSource } = require('./config');
+const { activeChanges, parseFlowState } = require('./status');
+const { containsReal } = require('./archive-merge');
+const { withStrict } = require('./args');
+const { legacyRoots } = require('./resolve');
+
+const NODE_FLOOR = 22;
+
+// type-honest probes: doctor's whole job is malformed scaffolds — a file impersonating a
+// directory (or vice versa) must become a FINDING, never a false pass or a crash
+function isDir(p) { try { return fs.statSync(p).isDirectory(); } catch { return false; } }
+function isFile(p) { try { return fs.statSync(p).isFile(); } catch { return false; } }
+function readIfFile(p) { try { return fs.statSync(p).isFile() ? fs.readFileSync(p, 'utf8') : null; } catch { return null; } }
+
+exec
+/usr/bin/zsh -lc "nl -ba test/id-pattern.test.js | sed -n '483,560p'; rg -n \"matcherFailureMsg|boundedSource|_setChildRunner|CF-11|CF-12|SR-55\" test lib | sort" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 145ms:
+   483	test('CF-12 template, docs and changelog carry the full id-pattern story', () => {
+   484	  const { parseConfig } = require('../lib/config');
+   485	  const repo = path.join(__dirname, '..');
+   486	  const tpl = fs.readFileSync(path.join(repo, 'templates', 'process-config.md'), 'utf8');
+   487	  // the whole template table survives parsing: full expected key/value map
+   488	  const { values, conflicts } = parseConfig(tpl);
+   489	  assert.strictEqual(conflicts.size, 0);
+   490	  for (const [k, v] of [['language', 'auto'], ['id-pattern', '[A-Z]+-\\d+'], ['cas', 'required'],
+   491	    ['step0-cap', '5'], ['step2-cap', '4'], ['step5-cap', '25'], ['step6-cap', '4'],
+   492	    ['spike-cap', '10'], ['extraction-review-cap', '2'], ['shrink-state', 'none'],
+   493	    ['rejected-ratio-guard', '50%'], ['shrink-proposal-freq', '5'], ['post-merge-review-freq', '1 in 5']])
+   494	    assert.strictEqual(values.get(k), v, `template key ${k}`);
+   495	  // the escaping guidance lives in an HTML comment (non-content), stating both layers
+   496	  const comments = [...tpl.matchAll(/<!--[\s\S]*?-->/g)].map((m) => m[0]);
+   497	  const guide = comments.find((c) => c.includes('id-pattern'));
+   498	  assert.ok(guide, 'an id-pattern comment exists');
+   499	  assert.ok(guide.includes('\\|'), 'comment shows the in-cell escape');
+   500	  assert.ok(guide.includes('[\\|]'), 'comment shows the literal-pipe class form');
+   501	  // EN/CN docs both carry the two-layer wording
+   502	  for (const doc of ['docs/cli.md', 'docs/cli_cn.md']) {
+   503	    const text = fs.readFileSync(path.join(repo, doc), 'utf8');
+   504	    assert.ok(text.includes('\\|'), `${doc} shows the in-cell escape`);
+   505	    assert.ok(text.includes('[\\|]'), `${doc} shows the literal-pipe class form`);
+   506	    assert.match(text, /id-pattern/, `${doc} documents the key`);
+   507	  }
+   508	  // CHANGELOG names the change
+   509	  assert.match(fs.readFileSync(path.join(repo, 'CHANGELOG.md'), 'utf8'), /id-pattern/);
+   510	  // check --self stays green with the doc edits
+   511	  const self = spawnSync('node', [BIN, 'check', '--self'], { encoding: 'utf8', cwd: repo });
+   512	  assert.strictEqual(self.status, 0, self.stdout);
+   513	});
+lib/check.js:16:const { leadId, makeIdMatcher, matcherFailureMsg } = require('./spec-runner');   // one recognition contract for all consumers
+lib/check.js:328:      console.error('error: ' + matcherFailureMsg(batch.failure));   // the ONE sanitized exit (IMPL-3)
+lib/config.js:105:function boundedSource(s) {
+lib/config.js:116:    try { new RegExp(flagValue); } catch { return { error: sanitizeMsg(`invalid --id-pattern '${boundedSource(flagValue)}' (regex does not compile)`) }; }
+lib/config.js:122:    try { new RegExp(value); } catch { return { error: sanitizeMsg(`process-config id-pattern row is invalid: '${boundedSource(value)}' (regex does not compile)`) }; }
+lib/config.js:128:module.exports = { parseConfig, readConfig, getConfig, splitCells, DEFAULT_ID, resolveIdPattern, sanitizeMsg, boundedSource };
+lib/doctor.js:12:const { collectScenarios, parseTap, zeroTapParsed, runTestCommand, configTestCmd, DEFAULT_ID, looksLikeTap, makeIdMatcher, matcherFailureMsg } = require('./spec-runner');
+lib/doctor.js:139:      d6Entries.push({ id: 'D6', status: 'finding', detail: matcherFailureMsg(collected.failure), fix: 'fix the id-pattern row in apriori/process-config.md' });
+lib/doctor.js:13:const { resolveIdPattern, boundedSource } = require('./config');
+lib/doctor.js:147:        if (unidentified.length) { d6Entries.push({ id: 'D6', status: 'finding', detail: `scenario(s) without a bindable ${boundedSource(idp.source)} ID${src}: ${unidentified.map(([, t]) => t.slice(0, 40)).join(' · ')}`, fix: 'add leading IDs' }); bad++; }
+lib/spec-runner.js:40:let childRunnerOverride = null;                 // test seam — SR-55 injects failures here
+lib/spec-runner.js:41:function _setChildRunner(fn) { childRunnerOverride = fn; }
+lib/spec-runner.js:450:  if (collected.failure) return errorsRun([matcherFailureMsg(collected.failure)], projection);
+lib/spec-runner.js:455:    const run = errorsRun([matcherFailureMsg(parsed.matchFailure)], projection);
+lib/spec-runner.js:545:  configTestCmd, cli, DEFAULT_ID, makeIdMatcher, _setChildRunner, matcherFailureMsg };
+lib/spec-runner.js:79:function matcherFailureMsg(failure) {
+test/config.test.js:101:// ---- gate-id-pattern: CF-08..CF-12 — cell escaping, unreadable config, template row ----
+test/config.test.js:131:test('CF-11 an unreadable config is a consumption-time problem', () => {
+test/config.test.js:139:test('CF-12 the template names the id-pattern row with two-layer pipe wording', () => {
+test/id-pattern.test.js:161:test('SR-55 every child failure class fails closed', () => {
+test/id-pattern.test.js:178:    sr._setChildRunner(() => fake);
+test/id-pattern.test.js:185:  sr._setChildRunner(() => ({ status: 0, signal: null, stdout: '{"ids":["AC-01"]}', error: null }));
+test/id-pattern.test.js:188:  sr._setChildRunner(() => { throw new Error('child must not be called'); });
+test/id-pattern.test.js:193:  sr._setChildRunner(null);   // restore default
+test/id-pattern.test.js:2:// gate-id-pattern — SR-50..SR-55, GT-22..GT-25, CK-13..CK-16, DR-16..DR-18:
+test/id-pattern.test.js:420:  sr._setChildRunner(() => { childCalls++; throw new Error('must not scan'); });
+test/id-pattern.test.js:422:  sr._setChildRunner(null);
+test/id-pattern.test.js:454:test('CF-11 an unreadable config fails closed across all four consumers', () => {
+test/id-pattern.test.js:483:test('CF-12 template, docs and changelog carry the full id-pattern story', () => {
+
+codex
+第一轮的大部分实现修复确实已落地；目前我在核对“fixed”是否能终态化。已发现一个需要特别验证的边界：`readFileSync` 的 `ENOENT` 不一定表示配置路径不存在，也可能来自已存在的 dangling symlink，因此“definite absence”的实现判据仍需按 spec 的 any-read-error 语义审视。
+exec
+/usr/bin/zsh -lc "ls -l apriori/process-config.md 2>/dev/null || true; sed -n '1,120p' apriori/process-config.md 2>/dev/null || true; rg -n \"276 tests|280 tests|CF-12|SR-54|SR-55|GT-25|CK-16|DR-18\" CHANGELOG.md test/id-pattern.test.js test/config.test.js apriori/changes/gate-id-pattern/tasks.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 82ms:
+CHANGELOG.md:16:276 tests (254 + 22: CF-08..12, SR-50..55, GT-22..25, CK-13..16, DR-16..18).
+test/config.test.js:101:// ---- gate-id-pattern: CF-08..CF-12 — cell escaping, unreadable config, template row ----
+test/config.test.js:139:test('CF-12 the template names the id-pattern row with two-layer pipe wording', () => {
+test/id-pattern.test.js:2:// gate-id-pattern — SR-50..SR-55, GT-22..GT-25, CK-13..CK-16, DR-16..DR-18:
+test/id-pattern.test.js:139:test('SR-54 catastrophic config matching is terminated, adversarial titles included', () => {
+test/id-pattern.test.js:161:test('SR-55 every child failure class fails closed', () => {
+test/id-pattern.test.js:270:test('GT-25 a terminated config-pattern match is a gate ERROR', () => {
+test/id-pattern.test.js:368:test('CK-16 a terminated config-pattern match is a check ERROR', () => {
+test/id-pattern.test.js:436:test('DR-18 a terminated config-pattern scan is a D6 finding and skips the probe', () => {
+test/id-pattern.test.js:483:test('CF-12 template, docs and changelog carry the full id-pattern story', () => {
+apriori/changes/gate-id-pattern/tasks.md:3:- [x] T1 红测试：CF-08..CF-12（config 真值表/回归/不可读兜底/模板断言）——先跑出失败
+apriori/changes/gate-id-pattern/tasks.md:5:- [x] T3 红测试：SR-50..SR-55（含空串 flag、--change --json projection、全消息净化两来源、SR-54 pattern+titles 双投毒终止/真实 pattern 放行；SR-55 经可注入 child-runner seam 表驱动覆盖五类失败+success shape+inline origins 不触 child）
+apriori/changes/gate-id-pattern/tasks.md:7:- [x] T5 红测试：GT-22..GT-25（GT-24 含空 flag 不回退；GT-25 终止匹配 ERROR）
+apriori/changes/gate-id-pattern/tasks.md:9:- [x] T7 红测试：CK-13..CK-16（CK-16 终止匹配 ERROR）
+apriori/changes/gate-id-pattern/tasks.md:11:- [x] T9 红测试：DR-16..DR-18（DR-17/18 含 sentinel 命令未执行断言）
+
+exec
+/usr/bin/zsh -lc "rg -n -F \"[\\\\|]\" test lib templates docs CHANGELOG.md; rg -n \"AC\\\\\\|BR|literal.pipe|literal pipe|MATCH a literal\" test lib templates docs CHANGELOG.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 192ms:
+CHANGELOG.md:11:- **Markdown cell escaping, all keys** — `parseConfig` cells now honor `\|` by backslash parity (odd escapes the pipe into the value, even separates); a regex matching a literal pipe is written `[\|]` in the cell (parses to `[|]`). Behavior change is additive: configs without backslash-pipe sequences parse identically. The template documents both layers.
+docs/cli.md:139:Pipe escaping has two layers — never conflate them: inside a table cell every pipe belonging to the value is written `\|` (so an alternation cell `(AC\|BR)-\d+` parses to the regex source `(AC|BR)-\d+`, where the bare `|` is alternation); a regex that must MATCH a literal pipe character uses a character class, written `[\|]` in the cell and parsing to `[|]`. This escape rule applies to every config key uniformly.
+docs/cli_cn.md:139:pipe 转义分两层，切勿混为一谈：表格单元格内属于值的每个 pipe 都写 `\|`（如 alternation 单元格 `(AC\|BR)-\d+` 解析为正则源串 `(AC|BR)-\d+`，裸 `|` 即 alternation）；正则要**匹配**字面 pipe 字符时用字符类——单元格里写 `[\|]`，解析为 `[|]`。该转义规则对全部配置键统一生效。
+templates/process-config.md:28:     to MATCH a literal pipe character, use a character class: write [\|] in the cell,
+test/config.test.js:146:  assert.match(tpl, /\[\\\|\]/);                                         // and the [\|] literal-pipe spelling
+CHANGELOG.md:11:- **Markdown cell escaping, all keys** — `parseConfig` cells now honor `\|` by backslash parity (odd escapes the pipe into the value, even separates); a regex matching a literal pipe is written `[\|]` in the cell (parses to `[|]`). Behavior change is additive: configs without backslash-pipe sequences parse identically. The template documents both layers.
+docs/cli.md:139:Pipe escaping has two layers — never conflate them: inside a table cell every pipe belonging to the value is written `\|` (so an alternation cell `(AC\|BR)-\d+` parses to the regex source `(AC|BR)-\d+`, where the bare `|` is alternation); a regex that must MATCH a literal pipe character uses a character class, written `[\|]` in the cell and parsing to `[|]`. This escape rule applies to every config key uniformly.
+templates/process-config.md:27:     alternation like (AC\|BR)-\d+ parses to the regex source (AC|BR)-\d+ (a bare | = alternation);
+templates/process-config.md:28:     to MATCH a literal pipe character, use a character class: write [\|] in the cell,
+docs/cli_cn.md:139:pipe 转义分两层，切勿混为一谈：表格单元格内属于值的每个 pipe 都写 `\|`（如 alternation 单元格 `(AC\|BR)-\d+` 解析为正则源串 `(AC|BR)-\d+`，裸 `|` 即 alternation）；正则要**匹配**字面 pipe 字符时用字符类——单元格里写 `[\|]`，解析为 `[|]`。该转义规则对全部配置键统一生效。
+test/id-pattern.test.js:339:    ['(AC|BR)-\\d+', 'BR-2 alternation', true],
+test/id-pattern.test.js:500:  assert.ok(guide.includes('[\\|]'), 'comment shows the literal-pipe class form');
+test/id-pattern.test.js:505:    assert.ok(text.includes('[\\|]'), `${doc} shows the literal-pipe class form`);
+test/config.test.js:105:  const { values } = parseConfig('| id-pattern | (AC\\|BR)-\\d+ |\n');
+test/config.test.js:106:  assert.strictEqual(values.get('id-pattern'), '(AC|BR)-\\d+');
+test/config.test.js:146:  assert.match(tpl, /\[\\\|\]/);                                         // and the [\|] literal-pipe spelling
+test/config.test.js:147:  assert.doesNotMatch(tpl, /literal pipe[^.\n]*written\s*`?\\\|`?(?!\])/i); // no "literal pipe is \|" phrasing
+
+exec
+/usr/bin/zsh -lc 'node --check lib/config.js && node --check lib/spec-runner.js && node --check lib/id-match-child.js && node --check lib/gate.js && node --check lib/check.js && node --check lib/doctor.js && node --check test/config.test.js && node --check test/id-pattern.test.js && git diff --check' in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 2067ms:
+codex
+复验结论已收敛：IMPL-4..8 可终态化；IMPL-1..3 仍各留有原保证未闭合的边界，并新发现 config matcher 的第二次实际应用（TAP description batch）没有任何对抗测试。下面将按 P0 给出状态翻转、reopen 理由和一个新正式行。
+已完成 r2 修复逐项复验与全量 delta/design 新鲜扫描；只运行了只读语法检查和 diff whitespace 检查，均通过。
+  ✓ 读取 r2 ledger、实现与测试差异，逐项核验 IMPL-1..8
+  ✓ 重新审查所有 delta 场景、design 与硬保证，寻找新 gap
+  ✓ 执行只读诊断并形成 ledger 状态翻转/新增项
+  ✓ 打印 step5-review-v2 完整正文与唯一 verdict 行
+codex
+# gate-id-pattern STEP5 一致性评审 v2
+
+## 评审结论
+
+本轮逐项复验 IMPL-1..8，并重新扫描全部 delta scenario、`design.md`、STEP2 修正案、实现和测试。
+
+接受生产环境提供的 `280/280`、`verify --change gate-id-pattern` GREEN 与 `check --self` PASS 证据。本轮仅运行只读语法检查与 `git diff --check`，结果均通过。
+
+IMPL-4..8 已真正闭环，可由 `fixed` 转为 `verified`。IMPL-1..3 仍有未覆盖的原保证，需要 reopen；另发现一项新的 matcher 分支测试缺口。
+
+## Round 1 问题复验
+
+### IMPL-1 — reopen：`ENOENT` 尚不能证明配置路径 absent
+
+`lib/config.js` 已移除 `existsSync` 早退，这是正确方向；但 `readFileSync` 返回 `ENOENT` 时仍直接按 absent 处理。
+
+`ENOENT` 也可能来自一个实际存在的 dangling symlink：配置目录项存在，但 symlink target 不存在。此时它属于 CF-11 所称的 present-but-unreadable / any read error，四个消费者应 fail closed，当前实现却会回退至默认配置。
+
+新增 CF-11 矩阵仍只使用目录触发 `EISDIR`，没有覆盖这个边界。
+
+建议修复：
+
+- 捕获 `ENOENT` 后再用 `lstatSync` 区分“路径项确实不存在”和“路径项存在但读取失败”。
+- 增加 dangling-symlink 用例，并至少断言 `getConfig` 不按 absent 返回；四消费者矩阵可复用该 fixture。
+
+### IMPL-2 — reopen：测试仍未证明固定 2000ms budget
+
+timeout 分类顺序已经修正，真实 `ETIMEDOUT + SIGKILL` 会稳定归类为 `timeout`；termination 文案也已落地。
+
+但 SR-54 当前时间 oracle 是：
+
+- `elapsed >= 1900`
+- `elapsed < 15000`
+
+这只能证明执行至少接近两秒且最终在十五秒内返回。若实现的 timeout 被错误改成十二秒，该测试仍会通过，无法证明 design 固定的 `timeout: 2000` 或“within its budget”保证。
+
+建议避免依赖紧绷的墙钟断言：
+
+- 将 spawn primitive 或 child-runner options 设为可注入，确定性断言 `timeout === 2000`、`killSignal === 'SIGKILL'`、`shell === false`。
+- 保留真实灾难性输入测试作为端到端终止证据，并为整体墙钟设置合理的小幅调度余量，而非十五秒窗口。
+
+### IMPL-3 — reopen：统一净化代码已接通，但 SR-55 仍只测试 matcher 内部返回值
+
+`matcherFailureMsg` 已成为 verify、check、doctor 的共享净化出口，doctor 的正常 finding 也改用了 `boundedSource`；实现修复本身正确。
+
+然而 SR-55 的 failure table 仍只执行：
+
+```js
+makeIdMatcher(resolvedCfg).batch(...)
+```
+
+没有让任一 injected failure 穿过 `verify()`，因此没有观察 scenario 要求的最终行为：
+
+- infra ERROR；
+- exit-equivalent ERROR shape；
+- `process-config` 来源；
+- 整条消息无控制字符且不超过 200 字符；
+- 各 failure class 使用同一 fail-closed channel。
+
+测试即使在 `verify()` 忽略 `batch.failure` 或未经净化直接回显时也可能继续通过。check 与 doctor 新接入的 formatter 同样没有用含控制字符、超长内容的 failure 做最终输出验证。
+
+建议让 SR-55 的表驱动替身调用 `verify()`，逐类断言最终 `errors[]`；另对 check/doctor 至少注入一个超长、含控制字符的 spawn failure，观察各自最终 error/finding。
+
+### IMPL-4 — verified
+
+child success response 现在要求对象仅含一个 `ids` key，并继续验证长度和 `string|null` 元素。extra-field、missing-ids、非 JSON、长度错误和非法元素均有反例，唯一 success shape 已闭合。
+
+### IMPL-5 — verified
+
+SR-52 现在通过不存在的 spec target 证明 pattern error 在 target/spec collection 之前取得优先权，双来源均覆盖控制字符、长度上限和 raw-source 不回漏；text mode 的 `error:` 与 `RESULT: ERROR` 也已断言。
+
+DR-17 额外断言 invalid config 下 child 调用次数为零、D5 sentinel 不运行且 D6 带 repair fix。原问题闭合。
+
+### IMPL-6 — verified
+
+CK-14 已引入独立 expected boolean oracle，并分别经过：
+
+- `checkScenarioIds`;
+- verify collection；
+- 真实 config-origin child round-trip。
+
+trailing `_`、adjacent alphanumeric 的拒绝以及其他规定正例均被明确断言，不再是同实现自证。
+
+### IMPL-7 — verified
+
+EN/CN 的 doctor、check sections 已补充 config consumption 和错误语义；verify/gate usage 与 configuration section 共同覆盖 flag、fallback 与优先级。gate 所有 usage path 已复用同一 `USAGE`。
+
+CF-12 现在核对完整模板 key/value map、零 conflict、HTML comment 承载两层 pipe 指南、双语文档、CHANGELOG 和真实 `check --self`。实现与 design G6 一致。
+
+### IMPL-8 — verified
+
+GT-24 已通过真实 CLI 表驱动覆盖：
+
+- invalid flag；
+- empty flag over valid config；
+- empty flag over invalid config；
+- invalid config without flag。
+
+GT-25 也经过真实 CLI；`JSON.parse` 证明 stdout 为单一 JSON document，并断言 exit 2、`result: ERROR`、`process-config` 来源和 termination 文案。原问题闭合。
+
+## 新正式问题
+
+### IMPL-9 — config matcher 的第二个实际应用分支没有对抗测试，SR-54 的 same-store 对照也未实现
+
+design 和 spec 要求 config-origin pattern 的每次实际应用都在 child 中执行：
+
+1. test command 前的 scenario-title batch；
+2. test command 后的 TAP-description batch。
+
+当前灾难性测试只让 scenario-title batch 超时，随后 test command 被阻止。没有测试让 title batch 成功、test command 运行、再让 TAP-description batch timeout/crash/malformed，并观察 verify 最终 fail closed。
+
+因此 `parseTap(..., matcher)` 的 `matchFailure` 上浮分支没有任何 adversarial scenario test；即使未来该分支静默忽略 failure，现有绑定仍可能全绿。
+
+此外 SR-54 要求“项目真实 multi-segment pattern over the same store”正常完成。当前正常对照另建了 `SPEC3` store，并非承载 adversarial title 的同一个 store，未忠实执行该句 intent。
+
+建议：
+
+- 使用顺序型 child seam：第一次 title batch 返回合法结果，第二次 TAP batch 注入 timeout，再断言 test command 已运行但 verify 为 sanitized infra ERROR。
+- 至少再覆盖一个 malformed TAP-batch response。
+- 用同一 adversarial-title store 换入项目 multi-segment pattern，断言 child 正常返回而非 termination；允许最终结果因标题不含 bindable ID 成为普通 GAPS/ERROR，但不得出现 matcher failure。
+
+## Advisories
+
+1. `CHANGELOG.md` 仍写 `276 tests`，而本轮生产环境证据为 `280/280`。这不影响运行时行为或 stated requirement，列为 advisory。
+
+## Ledger delta
+
+状态翻转：
+
+| ID | Status |
+|---|---|
+| IMPL-1 | open — reopened in STEP5·r2：`readFileSync` 的 `ENOENT` 也可能来自已存在的 dangling symlink，仍会 fail open 为 absent；现有 CF-11 只覆盖 `EISDIR`。 |
+| IMPL-2 | open — reopened in STEP5·r2：timeout 分类已修复，但 `<15000ms` 无法证明 design 固定的 2000ms budget。 |
+| IMPL-3 | open — reopened in STEP5·r2：共享净化出口已接通，但 SR-55 仍只观察 matcher failure，未逐类观察 verify 的最终 sanitized ERROR channel。 |
+| IMPL-4 | verified — strict single-key `{ids}` shape 与反例测试均已落地（step5-review-v2）。 |
+| IMPL-5 | verified — validation-before-collection、双来源净化、text contract、doctor no-scan/no-spawn 与 repair fix 均已验证（step5-review-v2）。 |
+| IMPL-6 | verified — 独立 oracle 与 check/collection/real-child 三通道一致性已验证（step5-review-v2）。 |
+| IMPL-7 | verified — 四命令文档落点、统一 gate usage、完整模板解析及 EN/CN/CHANGELOG/self-check 验收已落地（step5-review-v2）。 |
+| IMPL-8 | verified — gate CLI 的 flag/config error matrix 与 terminated pure-JSON path 已完整覆盖（step5-review-v2）。 |
+
+新增行：
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| IMPL-9 | config matcher 的 TAP-description 第二批应用没有 adversarial failure test；SR-54 的真实 pattern 正常对照也没有使用同一 adversarial store。 | high | STEP5·r2 | open |
+| IMPL-ADV-1 | Advisory batch acknowledged（1 item：CHANGELOG 测试计数仍为 276，当前 suite 为 280）。 | — | STEP5·r2 | advisory-acked |
+
+VERDICT: 4 issues open
+tokens used
+315,341
+# gate-id-pattern STEP5 一致性评审 v2
+
+## 评审结论
+
+本轮逐项复验 IMPL-1..8，并重新扫描全部 delta scenario、`design.md`、STEP2 修正案、实现和测试。
+
+接受生产环境提供的 `280/280`、`verify --change gate-id-pattern` GREEN 与 `check --self` PASS 证据。本轮仅运行只读语法检查与 `git diff --check`，结果均通过。
+
+IMPL-4..8 已真正闭环，可由 `fixed` 转为 `verified`。IMPL-1..3 仍有未覆盖的原保证，需要 reopen；另发现一项新的 matcher 分支测试缺口。
+
+## Round 1 问题复验
+
+### IMPL-1 — reopen：`ENOENT` 尚不能证明配置路径 absent
+
+`lib/config.js` 已移除 `existsSync` 早退，这是正确方向；但 `readFileSync` 返回 `ENOENT` 时仍直接按 absent 处理。
+
+`ENOENT` 也可能来自一个实际存在的 dangling symlink：配置目录项存在，但 symlink target 不存在。此时它属于 CF-11 所称的 present-but-unreadable / any read error，四个消费者应 fail closed，当前实现却会回退至默认配置。
+
+新增 CF-11 矩阵仍只使用目录触发 `EISDIR`，没有覆盖这个边界。
+
+建议修复：
+
+- 捕获 `ENOENT` 后再用 `lstatSync` 区分“路径项确实不存在”和“路径项存在但读取失败”。
+- 增加 dangling-symlink 用例，并至少断言 `getConfig` 不按 absent 返回；四消费者矩阵可复用该 fixture。
+
+### IMPL-2 — reopen：测试仍未证明固定 2000ms budget
+
+timeout 分类顺序已经修正，真实 `ETIMEDOUT + SIGKILL` 会稳定归类为 `timeout`；termination 文案也已落地。
+
+但 SR-54 当前时间 oracle 是：
+
+- `elapsed >= 1900`
+- `elapsed < 15000`
+
+这只能证明执行至少接近两秒且最终在十五秒内返回。若实现的 timeout 被错误改成十二秒，该测试仍会通过，无法证明 design 固定的 `timeout: 2000` 或“within its budget”保证。
+
+建议避免依赖紧绷的墙钟断言：
+
+- 将 spawn primitive 或 child-runner options 设为可注入，确定性断言 `timeout === 2000`、`killSignal === 'SIGKILL'`、`shell === false`。
+- 保留真实灾难性输入测试作为端到端终止证据，并为整体墙钟设置合理的小幅调度余量，而非十五秒窗口。
+
+### IMPL-3 — reopen：统一净化代码已接通，但 SR-55 仍只测试 matcher 内部返回值
+
+`matcherFailureMsg` 已成为 verify、check、doctor 的共享净化出口，doctor 的正常 finding 也改用了 `boundedSource`；实现修复本身正确。
+
+然而 SR-55 的 failure table 仍只执行：
+
+```js
+makeIdMatcher(resolvedCfg).batch(...)
+```
+
+没有让任一 injected failure 穿过 `verify()`，因此没有观察 scenario 要求的最终行为：
+
+- infra ERROR；
+- exit-equivalent ERROR shape；
+- `process-config` 来源；
+- 整条消息无控制字符且不超过 200 字符；
+- 各 failure class 使用同一 fail-closed channel。
+
+测试即使在 `verify()` 忽略 `batch.failure` 或未经净化直接回显时也可能继续通过。check 与 doctor 新接入的 formatter 同样没有用含控制字符、超长内容的 failure 做最终输出验证。
+
+建议让 SR-55 的表驱动替身调用 `verify()`，逐类断言最终 `errors[]`；另对 check/doctor 至少注入一个超长、含控制字符的 spawn failure，观察各自最终 error/finding。
+
+### IMPL-4 — verified
+
+child success response 现在要求对象仅含一个 `ids` key，并继续验证长度和 `string|null` 元素。extra-field、missing-ids、非 JSON、长度错误和非法元素均有反例，唯一 success shape 已闭合。
+
+### IMPL-5 — verified
+
+SR-52 现在通过不存在的 spec target 证明 pattern error 在 target/spec collection 之前取得优先权，双来源均覆盖控制字符、长度上限和 raw-source 不回漏；text mode 的 `error:` 与 `RESULT: ERROR` 也已断言。
+
+DR-17 额外断言 invalid config 下 child 调用次数为零、D5 sentinel 不运行且 D6 带 repair fix。原问题闭合。
+
+### IMPL-6 — verified
+
+CK-14 已引入独立 expected boolean oracle，并分别经过：
+
+- `checkScenarioIds`;
+- verify collection；
+- 真实 config-origin child round-trip。
+
+trailing `_`、adjacent alphanumeric 的拒绝以及其他规定正例均被明确断言，不再是同实现自证。
+
+### IMPL-7 — verified
+
+EN/CN 的 doctor、check sections 已补充 config consumption 和错误语义；verify/gate usage 与 configuration section 共同覆盖 flag、fallback 与优先级。gate 所有 usage path 已复用同一 `USAGE`。
+
+CF-12 现在核对完整模板 key/value map、零 conflict、HTML comment 承载两层 pipe 指南、双语文档、CHANGELOG 和真实 `check --self`。实现与 design G6 一致。
+
+### IMPL-8 — verified
+
+GT-24 已通过真实 CLI 表驱动覆盖：
+
+- invalid flag；
+- empty flag over valid config；
+- empty flag over invalid config；
+- invalid config without flag。
+
+GT-25 也经过真实 CLI；`JSON.parse` 证明 stdout 为单一 JSON document，并断言 exit 2、`result: ERROR`、`process-config` 来源和 termination 文案。原问题闭合。
+
+## 新正式问题
+
+### IMPL-9 — config matcher 的第二个实际应用分支没有对抗测试，SR-54 的 same-store 对照也未实现
+
+design 和 spec 要求 config-origin pattern 的每次实际应用都在 child 中执行：
+
+1. test command 前的 scenario-title batch；
+2. test command 后的 TAP-description batch。
+
+当前灾难性测试只让 scenario-title batch 超时，随后 test command 被阻止。没有测试让 title batch 成功、test command 运行、再让 TAP-description batch timeout/crash/malformed，并观察 verify 最终 fail closed。
+
+因此 `parseTap(..., matcher)` 的 `matchFailure` 上浮分支没有任何 adversarial scenario test；即使未来该分支静默忽略 failure，现有绑定仍可能全绿。
+
+此外 SR-54 要求“项目真实 multi-segment pattern over the same store”正常完成。当前正常对照另建了 `SPEC3` store，并非承载 adversarial title 的同一个 store，未忠实执行该句 intent。
+
+建议：
+
+- 使用顺序型 child seam：第一次 title batch 返回合法结果，第二次 TAP batch 注入 timeout，再断言 test command 已运行但 verify 为 sanitized infra ERROR。
+- 至少再覆盖一个 malformed TAP-batch response。
+- 用同一 adversarial-title store 换入项目 multi-segment pattern，断言 child 正常返回而非 termination；允许最终结果因标题不含 bindable ID 成为普通 GAPS/ERROR，但不得出现 matcher failure。
+
+## Advisories
+
+1. `CHANGELOG.md` 仍写 `276 tests`，而本轮生产环境证据为 `280/280`。这不影响运行时行为或 stated requirement，列为 advisory。
+
+## Ledger delta
+
+状态翻转：
+
+| ID | Status |
+|---|---|
+| IMPL-1 | open — reopened in STEP5·r2：`readFileSync` 的 `ENOENT` 也可能来自已存在的 dangling symlink，仍会 fail open 为 absent；现有 CF-11 只覆盖 `EISDIR`。 |
+| IMPL-2 | open — reopened in STEP5·r2：timeout 分类已修复，但 `<15000ms` 无法证明 design 固定的 2000ms budget。 |
+| IMPL-3 | open — reopened in STEP5·r2：共享净化出口已接通，但 SR-55 仍只观察 matcher failure，未逐类观察 verify 的最终 sanitized ERROR channel。 |
+| IMPL-4 | verified — strict single-key `{ids}` shape 与反例测试均已落地（step5-review-v2）。 |
+| IMPL-5 | verified — validation-before-collection、双来源净化、text contract、doctor no-scan/no-spawn 与 repair fix 均已验证（step5-review-v2）。 |
+| IMPL-6 | verified — 独立 oracle 与 check/collection/real-child 三通道一致性已验证（step5-review-v2）。 |
+| IMPL-7 | verified — 四命令文档落点、统一 gate usage、完整模板解析及 EN/CN/CHANGELOG/self-check 验收已落地（step5-review-v2）。 |
+| IMPL-8 | verified — gate CLI 的 flag/config error matrix 与 terminated pure-JSON path 已完整覆盖（step5-review-v2）。 |
+
+新增行：
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| IMPL-9 | config matcher 的 TAP-description 第二批应用没有 adversarial failure test；SR-54 的真实 pattern 正常对照也没有使用同一 adversarial store。 | high | STEP5·r2 | open |
+| IMPL-ADV-1 | Advisory batch acknowledged（1 item：CHANGELOG 测试计数仍为 276，当前 suite 为 280）。 | — | STEP5·r2 | advisory-acked |
+
+VERDICT: 4 issues open

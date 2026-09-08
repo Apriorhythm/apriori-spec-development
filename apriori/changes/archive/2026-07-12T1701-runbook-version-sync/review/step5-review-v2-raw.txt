@@ -1,0 +1,494 @@
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f5578-794b-7733-81ed-26fedd775250
+--------
+user
+P8 round 2 for runbook-version-sync. Both rows fixed: RVIMPL-1 — RUNBOOK.md is now canonical and REQUIRED: checkRunbookVersion iterates [['RUNBOOK.md', true],['RUNBOOK_cn.md', false]] and fails with "the canonical runbook is missing" when RUNBOOK.md is absent under --self, while RUNBOOK_cn.md stays optional; a new test asserts an absent RUNBOOK.md fails. RVIMPL-2 — the matcher now scans only the header region (text before the first h2 via /^##\s/m); a real runbook-version blockquote sitting AFTER the first ## heading is never matched and is treated as missing; a new test asserts the body-region blockquote fails. Note: the second scenario's ID was CK-11b, which verify rejected as UNIDENTIFIED (a letter suffix breaks the [A-Z]+-N grammar) — renamed to CK-12 in both the delta and the test (a pure semantic rename). Suite 250/250; verify --change GREEN; check --self PASS. Re-read checkRunbookVersion and the two new test cases. End with LEDGER DELTA then exactly one verdict line ("VERDICT: no spec-vs-code gaps" or "VERDICT: <N> issues open").
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-12T08:59:35.057829Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-12T08:59:35.184558Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-12T08:59:35.541863Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-12T08:59:36.156012Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-12T08:59:37.124553Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-12T08:59:38.887155Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-12T08:59:42.173326Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: QDEqCxN3SeSF
+codex
+我会复查 `checkRunbookVersion` 的最新实现、CK-11/CK-12 测试，以及变更 spec 的 scenario ID rename 是否与 verify 语法一致。
+exec
+/usr/bin/zsh -lc 'rg -n "CK-11b|CK-12|canonical runbook|header region|first h2|runbook-version" lib/check.js test/check.test.js apriori/changes/runbook-version-sync/specs/check/spec.md' in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '220,280p' lib/check.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,80p' apriori/changes/runbook-version-sync/specs/check/spec.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '240,330p' test/check.test.js" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 146ms:
+        for (const [re, label] of SECRET_PATTERNS)
+          if (re.test(ln)) fails.push(`${path.relative(root, p)}:${i + 1}: ${label} detected in review evidence — sanitize the raw (see SECURITY.md; rewrite history if already pushed)`);
+      });
+    }
+  };
+  for (const rd of roots) walk(rd);
+  return { fails, warns };
+}
+
+// ---- CK-06: scaffolded-runbook freshness (warn-only, never a failure) ---------
+// ---- CK-11: the runbook major tracks the CLI major (self-mode) --------------
+// A canonical entry is a fence-outside header blockquote `> `runbook-version: X.Y``;
+// body-text or fenced occurrences are never matched. RUNBOOK.md is canonical;
+// RUNBOOK_cn.md, when present, must independently carry the same major.
+function stripFencesLocal(text) {
+  return text.replace(/```[\s\S]*?```/g, '');
+}
+function checkRunbookVersion(root, files) {
+  const fails = [];
+  let pkgMajor;
+  try { pkgMajor = String(JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version || '').split('.')[0]; }
+  catch { return fails; }               // no readable package.json → not this check's business
+  if (!pkgMajor) return fails;
+  for (const [label, required] of [['RUNBOOK.md', true], ['RUNBOOK_cn.md', false]]) {
+    const text = files[label];
+    if (text === undefined) {           // RUNBOOK.md is canonical and REQUIRED under --self; _cn is optional
+      if (required) fails.push(`CK-11 ${label}: the canonical runbook is missing — a version header is required`);
+      continue;
+    }
+    // header region only: before the first h2 — a body-text blockquote never counts
+    const h2 = text.search(/^##\s/m);
+    const header = h2 >= 0 ? text.slice(0, h2) : text;
+    const hits = [...stripFencesLocal(header).matchAll(/^>\s*`runbook-version:\s*([^`]*)`/gm)];
+    if (hits.length === 0) fails.push(`CK-11 ${label}: no \`runbook-version\` blockquote entry (expected \`> \`runbook-version: ${pkgMajor}.x\`\`)`);
+    else if (hits.length > 1) fails.push(`CK-11 ${label}: ${hits.length} runbook-version entries — exactly one required`);
+    else {
+      const m = /^(\d+)\.(\d+)$/.exec(hits[0][1].trim());
+      if (!m) fails.push(`CK-11 ${label}: malformed runbook-version value '${hits[0][1].trim()}' (expected X.Y)`);
+      else if (m[1] !== pkgMajor) fails.push(`CK-11 ${label}: runbook-version major ${m[1]} != package major ${pkgMajor}`);
+    }
+  }
+  return fails;
+}
+
+const PACKAGED_RUNBOOK = path.join(__dirname, '..', 'RUNBOOK.md');
+function checkRunbookFreshness(root, packagedPath = PACKAGED_RUNBOOK) {
+  const scaffolded = path.join(root, 'apriori', 'runbook.md');
+  if (!fs.existsSync(scaffolded) || !fs.existsSync(packagedPath)) return [];
+  if (fs.readFileSync(scaffolded, 'utf8') === fs.readFileSync(packagedPath, 'utf8')) return [];
+  return [`apriori/runbook.md differs from the installed apriori-cli runbook — run 'apriori update' to refresh`];
+}
+
+// ---- cli --------------------------------------------------------------------
+// Two modes. CONSUMER (default): checks the project's own spec store (CK-04) and
+// scaffolded-runbook freshness (CK-06) — nothing else, so a consumer legitimately using
+// OpenSpec or shipping its own README is never failed by apriori's self-checks.
+// SELF (--self): additionally runs the apriori repo's handbook checks (EN/CN pairs,
+// verdict phrases, codex commands, no-openspec residue) — used by this repo's own CI.
+const USAGE = 'usage: apriori check [--specs <dir>] [--self]';
+
+function cli(argv) {
+
+ succeeded in 172ms:
+test/check.test.js:241:// ---- runbook-version-sync (CK-11): runbook major tracks the CLI major ----
+test/check.test.js:247:  const EN = '# R\n\n> `runbook-version: 4.0` · upstream: x\n';
+test/check.test.js:248:  const CN = '# R\n\n> `runbook-version: 4.0` · 上游:x\n';
+test/check.test.js:261:test('CK-12 malformed, missing, duplicate, and body occurrences', () => {
+test/check.test.js:268:  assert.match(checkRunbookVersion(root, one('just prose, no version'))[0], /no.*runbook-version|missing/i);
+test/check.test.js:270:  assert.match(checkRunbookVersion(root, one('> `runbook-version: 4.0`\n> `runbook-version: 4.0`'))[0], /one required|duplicate|2 /i);
+test/check.test.js:272:  assert.match(checkRunbookVersion(root, one('> `runbook-version: vier`'))[0], /malformed/i);
+test/check.test.js:274:  assert.match(checkRunbookVersion(root, one('the field runbook-version: 4.0 in prose'))[0], /no.*runbook-version|missing/i);
+test/check.test.js:276:  assert.match(checkRunbookVersion(root, one('```\n> `runbook-version: 4.0`\n```'))[0], /no.*runbook-version|missing/i);
+test/check.test.js:277:  // a real blockquote AFTER the first h2 (body region) is never matched -> missing (RVIMPL-2)
+test/check.test.js:278:  assert.match(checkRunbookVersion(root, { 'RUNBOOK.md': '# R\n\n## Body\n\n> `runbook-version: 4.0`\n' })[0], /no.*runbook-version|missing/i);
+test/check.test.js:279:  // RUNBOOK.md absent under --self -> the canonical runbook is required (RVIMPL-1)
+test/check.test.js:280:  assert.match(checkRunbookVersion(root, { 'RUNBOOK_cn.md': '# R\n\n> `runbook-version: 4.0`\n' })[0], /canonical|missing/i);
+test/check.test.js:291:  fs3.writeFileSync(p3.join(root, 'RUNBOOK.md'), '# R\n\n> `runbook-version: 3.0`\n');
+test/check.test.js:292:  fs3.writeFileSync(p3.join(root, 'RUNBOOK_cn.md'), '# R\n\n> `runbook-version: 3.0`\n');
+test/check.test.js:294:  assert.match(self.stdout + self.stderr, /runbook-version|CK-11/i);
+test/check.test.js:296:  assert.doesNotMatch(consumer.stdout + consumer.stderr, /runbook-version major|CK-11/i);
+lib/check.js:231:// A canonical entry is a fence-outside header blockquote `> `runbook-version: X.Y``;
+lib/check.js:246:      if (required) fails.push(`CK-11 ${label}: the canonical runbook is missing — a version header is required`);
+lib/check.js:249:    // header region only: before the first h2 — a body-text blockquote never counts
+lib/check.js:252:    const hits = [...stripFencesLocal(header).matchAll(/^>\s*`runbook-version:\s*([^`]*)`/gm)];
+lib/check.js:253:    if (hits.length === 0) fails.push(`CK-11 ${label}: no \`runbook-version\` blockquote entry (expected \`> \`runbook-version: ${pkgMajor}.x\`\`)`);
+lib/check.js:254:    else if (hits.length > 1) fails.push(`CK-11 ${label}: ${hits.length} runbook-version entries — exactly one required`);
+lib/check.js:257:      if (!m) fails.push(`CK-11 ${label}: malformed runbook-version value '${hits[0][1].trim()}' (expected X.Y)`);
+lib/check.js:258:      else if (m[1] !== pkgMajor) fails.push(`CK-11 ${label}: runbook-version major ${m[1]} != package major ${pkgMajor}`);
+apriori/changes/runbook-version-sync/specs/check/spec.md:5:`apriori check --self` SHALL assert that RUNBOOK.md — the canonical packaged runbook — carries exactly one header-blockquote entry of the form `` > `runbook-version: X.Y` `` whose major (`X`) equals `package.json`'s version major; RUNBOOK_cn.md, when present, SHALL likewise carry exactly one such entry whose major also equals the package major (each edition equals the package major, not merely each other). A missing entry, more than one, or a malformed value FAILs (self-mode only) naming the file and the failure reason; a major mismatch FAILs naming the file, the runbook major, and the package major. Occurrences of `runbook-version:` in body text or code fences are never matched. Consumer `apriori check` (no `--self`) never runs CK-11.
+apriori/changes/runbook-version-sync/specs/check/spec.md:8:- WHEN `apriori check --self` runs where RUNBOOK.md and RUNBOOK_cn.md declare `runbook-version: 4.0` and package.json is on a 4.x version
+apriori/changes/runbook-version-sync/specs/check/spec.md:11:#### Scenario: CK-12 malformed, missing, duplicate, and body occurrences
+apriori/changes/runbook-version-sync/specs/check/spec.md:12:- WHEN a runbook edition has no `runbook-version` blockquote entry, has two of them, carries a malformed value (`runbook-version: vier`), or mentions `runbook-version:` only in body text or inside a code fence
+
+ succeeded in 143ms:
+<!-- apriori-base: sha256:20c7849a4769bce4abed809eeb88b009032d170d95c330fb13c055134d566a45 -->
+## ADDED Requirements
+
+### Requirement: CK-11 keeps the runbook version aligned with the CLI major
+`apriori check --self` SHALL assert that RUNBOOK.md — the canonical packaged runbook — carries exactly one header-blockquote entry of the form `` > `runbook-version: X.Y` `` whose major (`X`) equals `package.json`'s version major; RUNBOOK_cn.md, when present, SHALL likewise carry exactly one such entry whose major also equals the package major (each edition equals the package major, not merely each other). A missing entry, more than one, or a malformed value FAILs (self-mode only) naming the file and the failure reason; a major mismatch FAILs naming the file, the runbook major, and the package major. Occurrences of `runbook-version:` in body text or code fences are never matched. Consumer `apriori check` (no `--self`) never runs CK-11.
+
+#### Scenario: CK-11 the runbook major tracks the CLI major
+- WHEN `apriori check --self` runs where RUNBOOK.md and RUNBOOK_cn.md declare `runbook-version: 4.0` and package.json is on a 4.x version
+- THEN CK-11 passes; flipping either edition's header to a `3.0` major FAILs (self-mode) naming the file, the runbook major, and the package major; and a consumer `apriori check` without `--self` never raises CK-11
+
+#### Scenario: CK-12 malformed, missing, duplicate, and body occurrences
+- WHEN a runbook edition has no `runbook-version` blockquote entry, has two of them, carries a malformed value (`runbook-version: vier`), or mentions `runbook-version:` only in body text or inside a code fence
+- THEN the missing/duplicate/malformed cases FAIL (self-mode) naming the file and the reason, while the body-text and code-fence occurrences are never matched (they alone do not satisfy or fail the check — a real header entry is still required)
+
+ succeeded in 167ms:
+
+// ---- runbook-version-sync (CK-11): runbook major tracks the CLI major ----
+test('CK-11 the runbook major tracks the CLI major', () => {
+  const { checkRunbookVersion } = require('../lib/check');
+  const os3 = require('node:os'); const fs3 = require('node:fs'); const p3 = require('node:path');
+  const root = fs3.mkdtempSync(p3.join(os3.tmpdir(), 'apriori-ck11-'));
+  fs3.writeFileSync(p3.join(root, 'package.json'), JSON.stringify({ version: '4.0.3' }));
+  const EN = '# R\n\n> `runbook-version: 4.0` · upstream: x\n';
+  const CN = '# R\n\n> `runbook-version: 4.0` · 上游:x\n';
+  const files = (en, cn) => ({ 'RUNBOOK.md': en, ...(cn !== undefined ? { 'RUNBOOK_cn.md': cn } : {}) });
+  // aligned -> pass
+  assert.deepStrictEqual(checkRunbookVersion(root, files(EN, CN)), []);
+  // EN flipped to 3.0 -> fail naming file + both majors
+  const bad = checkRunbookVersion(root, files(EN.replace('4.0', '3.0'), CN));
+  assert.strictEqual(bad.length, 1);
+  assert.match(bad[0], /RUNBOOK\.md/);
+  assert.match(bad[0], /3.*4|major/);
+  // CN flipped -> fail names CN
+  assert.match(checkRunbookVersion(root, files(EN, CN.replace('4.0', '5.0')))[0], /RUNBOOK_cn\.md/);
+});
+
+test('CK-12 malformed, missing, duplicate, and body occurrences', () => {
+  const { checkRunbookVersion } = require('../lib/check');
+  const os3 = require('node:os'); const fs3 = require('node:fs'); const p3 = require('node:path');
+  const root = fs3.mkdtempSync(p3.join(os3.tmpdir(), 'apriori-ck11b-'));
+  fs3.writeFileSync(p3.join(root, 'package.json'), JSON.stringify({ version: '4.0.3' }));
+  const one = (body) => ({ 'RUNBOOK.md': `# R\n\n${body}\n` });
+  // missing entry
+  assert.match(checkRunbookVersion(root, one('just prose, no version'))[0], /no.*runbook-version|missing/i);
+  // duplicate
+  assert.match(checkRunbookVersion(root, one('> `runbook-version: 4.0`\n> `runbook-version: 4.0`'))[0], /one required|duplicate|2 /i);
+  // malformed value
+  assert.match(checkRunbookVersion(root, one('> `runbook-version: vier`'))[0], /malformed/i);
+  // body-text occurrence (not a blockquote-backtick entry) is never matched -> treated as missing
+  assert.match(checkRunbookVersion(root, one('the field runbook-version: 4.0 in prose'))[0], /no.*runbook-version|missing/i);
+  // inside a code fence -> never matched -> missing
+  assert.match(checkRunbookVersion(root, one('```\n> `runbook-version: 4.0`\n```'))[0], /no.*runbook-version|missing/i);
+  // a real blockquote AFTER the first h2 (body region) is never matched -> missing (RVIMPL-2)
+  assert.match(checkRunbookVersion(root, { 'RUNBOOK.md': '# R\n\n## Body\n\n> `runbook-version: 4.0`\n' })[0], /no.*runbook-version|missing/i);
+  // RUNBOOK.md absent under --self -> the canonical runbook is required (RVIMPL-1)
+  assert.match(checkRunbookVersion(root, { 'RUNBOOK_cn.md': '# R\n\n> `runbook-version: 4.0`\n' })[0], /canonical|missing/i);
+});
+
+test('CK-11 runs under --self and not in consumer mode', () => {
+  const os3 = require('node:os'); const fs3 = require('node:fs'); const p3 = require('node:path');
+  const { spawnSync } = require('node:child_process');
+  const BIN3 = p3.join(__dirname, '..', 'bin', 'apriori.js');
+  const root = fs3.mkdtempSync(p3.join(os3.tmpdir(), 'apriori-ck11s-'));
+  fs3.mkdirSync(p3.join(root, 'apriori', 'specs'), { recursive: true });
+  fs3.writeFileSync(p3.join(root, 'apriori/specs/x.md'), '#### Scenario: XX-01 a\n- t\n');
+  fs3.writeFileSync(p3.join(root, 'package.json'), JSON.stringify({ version: '4.0.3' }));
+  fs3.writeFileSync(p3.join(root, 'RUNBOOK.md'), '# R\n\n> `runbook-version: 3.0`\n');
+  fs3.writeFileSync(p3.join(root, 'RUNBOOK_cn.md'), '# R\n\n> `runbook-version: 3.0`\n');
+  const self = spawnSync('node', [BIN3, 'check', '--self'], { cwd: root, encoding: 'utf8' });
+  assert.match(self.stdout + self.stderr, /runbook-version|CK-11/i);
+  const consumer = spawnSync('node', [BIN3, 'check'], { cwd: root, encoding: 'utf8' });
+  assert.doesNotMatch(consumer.stdout + consumer.stderr, /runbook-version major|CK-11/i);
+});
+
+codex
+两个修复点都已在纯函数测试里绑定：缺 canonical `RUNBOOK.md` 现在失败，且首个 `##` 后的 blockquote 版本串被当作 missing。接下来我再跑一次仓库 self-check 做最终确认。
+exec
+/usr/bin/zsh -lc 'node bin/apriori.js check --self' in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc 'node bin/apriori.js verify --change runbook-version-sync --test-cmd "node scripts/run-tests.mjs --test-reporter=tap"' in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 2249ms:
+
+RESULT: PASS
+
+ exited 2 in 2931ms:
+error: test command failed to spawn: spawnSync /bin/sh EPERM
+error: test command exited with status 1 but no parsed TAP failure explains it — the TAP picture is incomplete or truncated; refusing to trust this run
+specs: 14 file(s), 238 identified scenario(s)
+tests: 0 tagged result(s)
+
+✗ UNBOUND (scenario, no test): 238
+    AM-01
+    AM-02
+    AM-03
+    AM-04
+    AM-05
+    AM-06
+    AM-07
+    AM-08
+    AM-09
+    AM-10
+    AM-11
+    AM-12
+    AM-13
+    AM-14
+    AM-15
+    AM-16
+    AM-17
+    AM-18
+    AM-19
+    AM-20
+    AM-21
+    AM-22
+    AM-23
+    AM-24
+    AM-25
+    AM-26
+    AM-27
+    AM-28
+    AM-29
+    AM-30
+    AM-31
+    AM-32
+    AM-33
+    AM-34
+    AM-35
+    AM-36
+    AM-37
+    AM-38
+    AM-39
+    AM-40
+    AM-41
+    AM-42
+    CF-01
+    CF-02
+    CF-03
+    CF-04
+    CF-05
+    CF-06
+    CF-07
+    CK-01
+    CK-02
+    CK-03
+    CK-04
+    CK-05
+    CK-06
+    CK-07
+    CK-08
+    CK-09
+    CK-10
+    CK-11
+    CK-12
+    CL-01
+    CL-02
+    CL-03
+    CL-04
+    CL-05
+    CL-06
+    CL-07
+    CL-08
+    CL-09
+    CL-10
+    CL-11
+    CL-12
+    CL-13
+    CL-14
+    CL-15
+    CL-16
+    CL-17
+    DR-01
+    DR-02
+    DR-03
+    DR-04
+    DR-05
+    DR-06
+    DR-07
+    DR-08
+    DR-09
+    DR-10
+    DR-11
+    DR-12
+    DR-13
+    DR-14
+    DR-15
+    GP-01
+    GP-02
+    GP-03
+    GP-04
+    GP-05
+    GP-06
+    GP-07
+    GP-08
+    GP-09
+    GP-10
+    GT-01
+    GT-02
+    GT-03
+    GT-04
+    GT-05
+    GT-06
+    GT-07
+    GT-08
+    GT-09
+    GT-10
+    GT-11
+    GT-12
+    GT-13
+    GT-14
+    GT-15
+    GT-16
+    GT-17
+    IN-01
+    IN-02
+    IN-03
+    IN-04
+    IN-05
+    IN-06
+    IN-07
+    IN-08
+    IN-09
+    IN-10
+    IN-11
+    IN-12
+    IN-13
+    IN-14
+    IN-15
+    IN-16
+    IN-17
+    NW-01
+    NW-02
+    NW-03
+    NW-04
+    NW-05
+    PR-01
+    PR-02
+    PR-03
+    PR-04
+    PR-05
+    PR-06
+    PR-07
+    PR-08
+    PR-09
+    PR-10
+    PR-11
+    PR-12
+    PR-13
+    PR-14
+    PR-15
+    PR-16
+    PR-17
+    PR-18
+    PR-21
+    PR-22
+    PR-23
+    RS-01
+    RS-02
+    RS-03
+    RS-04
+    RS-05
+    SR-01
+    SR-02
+    SR-03
+    SR-04
+    SR-05
+    SR-06
+    SR-07
+    SR-08
+    SR-09
+    SR-10
+    SR-11
+    SR-12
+    SR-13
+    SR-14
+    SR-15
+    SR-16
+    SR-17
+    SR-18
+    SR-19
+    SR-20
+    SR-21
+    SR-22
+    SR-23
+    SR-24
+    SR-25
+    SR-26
+    SR-27
+    SR-28
+    SR-29
+    SR-30
+    SR-31
+    SR-32
+    SR-33
+    SR-34
+    SR-35
+    SR-36
+    SR-37
+    SR-38
+    SR-39
+    SR-40
+    SR-41
+    SR-42
+    SR-43
+    SR-44
+    SR-45
+    SR-46
+    SR-47
+    SR-48
+    SR-49
+    ST-01
+    ST-02
+    ST-03
+    ST-04
+    ST-05
+    ST-06
+    ST-07
+    ST-08
+    ST-09
+    UP-01
+    UP-02
+    UP-03
+    UP-04
+    UP-05
+    UP-06
+    UP-07
+    UP-08
+    UP-09
+    UP-10
+    UP-11
+    UP-12
+
+RESULT: ERROR — run not trustworthy (see stderr)
+
+codex
+复审通过。`checkRunbookVersion` 现在把 `RUNBOOK.md` 作为 canonical required source 处理，缺失会在 `--self` 下失败；`RUNBOOK_cn.md` 仍按需求保持 optional。matcher 也限制到首个 `##` 之前的 header region，首个 h2 后的 blockquote 版本串会按 missing 处理，覆盖了上一轮的 body-region false pass。
+
+我本地复跑 `node bin/apriori.js check --self` 为 PASS。`verify --change` 在当前 read-only sandbox 下因 `/bin/sh EPERM` 无法 spawn，属于本环境动态执行限制；不改变这轮静态一致性结论。
+
+LEDGER DELTA
+
+MODIFIED
+
+| ID | Status | Finding |
+|---|---|---|
+| RVIMPL-1 | closed | `RUNBOOK.md` 缺失现在由 CK-11 明确失败，canonical packaged source 不再能被 CK-08 both-absent skip 间接放过。 |
+| RVIMPL-2 | closed | matcher 现在只扫描首个 h2 前的 header region，正文区域中的 blockquote `runbook-version` 不再能满足 CK-11。 |
+
+VERDICT: no spec-vs-code gaps
+tokens used
+165,588
+复审通过。`checkRunbookVersion` 现在把 `RUNBOOK.md` 作为 canonical required source 处理，缺失会在 `--self` 下失败；`RUNBOOK_cn.md` 仍按需求保持 optional。matcher 也限制到首个 `##` 之前的 header region，首个 h2 后的 blockquote 版本串会按 missing 处理，覆盖了上一轮的 body-region false pass。
+
+我本地复跑 `node bin/apriori.js check --self` 为 PASS。`verify --change` 在当前 read-only sandbox 下因 `/bin/sh EPERM` 无法 spawn，属于本环境动态执行限制；不改变这轮静态一致性结论。
+
+LEDGER DELTA
+
+MODIFIED
+
+| ID | Status | Finding |
+|---|---|---|
+| RVIMPL-1 | closed | `RUNBOOK.md` 缺失现在由 CK-11 明确失败，canonical packaged source 不再能被 CK-08 both-absent skip 间接放过。 |
+| RVIMPL-2 | closed | matcher 现在只扫描首个 h2 前的 header region，正文区域中的 blockquote `runbook-version` 不再能满足 CK-11。 |
+
+VERDICT: no spec-vs-code gaps

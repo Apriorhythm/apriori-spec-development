@@ -1,0 +1,230 @@
+Description: The requirement says `--packed` installs the tarball with an isolated npm prefix and the CI job runs on `windows-latest` with bash, but it does not specify how the runner resolves the installed `apriori` binary on Windows versus Ubuntu, or how it proves the checkout/global binary is not being used. npm global bin layout differs by platform.
+Description: G3 requires a doctored README fixture where block 2 exits 0 to fail the runner, but the target script is otherwise specified as extracting from `README.md`. The requirement does not declare a test-only `--readme <path>` option or exported extractor/runner functions that accept fixture text.
+req-v2 written
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f4b30-68f9-7222-9b64-17f52a333b4c
+--------
+user
+P1 round 2 for golden-path. Producer revised: requirement/req-v2.md ('v2 handling notes' — packed-mode isolation exact (prefix + platform bin dir + resolve-inside-prefix preflight); extractor exported as a text-taking seam for the doctored test). Ledger updated. Confirm GPREQ-1/2 (flip to 'verified') or reopen; new issues? [Read-only sandbox: print the COMPLETE review doc body for verbatim landing at apriori/review/golden-path-req-review-v2.md] End with the ledger delta and exactly one verdict line: 'VERDICT: no major issues' or 'VERDICT: <N> issues open'.
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-10T18:34:26.408541Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-10T18:34:26.730304Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-10T18:34:27.091103Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-10T18:34:27.680610Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-10T18:34:28.743177Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-10T18:34:30.504639Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-10T18:34:34.096913Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: IQpTuQCZl2LC
+codex
+I’ll read the v2 requirement and ledger, then verify the packed-mode isolation and extractor seam are now precise enough against the same README/CI/package state.
+exec
+/usr/bin/zsh -lc "sed -n '1,220p' .github/workflows/ci.yml && node -e \"const p=require('./package.json'); console.log(JSON.stringify({bin:p.bin,files:p.files},null,2))\"" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,340p' requirement/req-v2.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '/"'^## Quickstart$/,/''^## Where everything else lives$/p'"' README.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,220p' apriori/review/golden-path-issues.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 126ms:
+# Requirement — golden-path (v2)
+
+change: golden-path
+target lineage: **v3 branch**. Ships in the next minor (expected **3.3.0**, with cli-strictness + readme-split). Repo infrastructure + one small script; no CLI behavior change.
+
+> v2 handling notes (P2): GPREQ-1 → packed mode now defines the exact isolation: `npm i -g <tgz> --prefix <tmpdir>` then PATH is PREPENDED with the platform bin dir (`<prefix>/bin` on POSIX, `<prefix>` on Windows — npm's global layout difference), and the runner asserts `command -v apriori` resolves INSIDE the prefix before running any block. GPREQ-2 → the extractor is exported as a function taking the README text (the seam); the doctored-fixture test feeds a modified text, never touches the real README.
+
+## Background — the problem (current state A)
+
+Nothing verifies that the PUBLISHED package works as installed: CI runs unit tests and `check --self` from a checkout — the 3.0.1-era Windows fixture incident (green CI, broken on a real machine) is the class of blind spot. Separately, readme-split just made the README Quickstart an executable contract (its ```shell blocks, in order, in a fresh dir, documented exit codes) and hand-verified it ONCE; without automation it will rot on the next CLI change.
+
+## Goal (target state B)
+
+1. **`scripts/golden-path.mjs`** (zero-dep Node): extracts the Quickstart's ```shell blocks from README.md in document order; runs them as one bash script in a fresh temp dir with `apriori` resolving to either (a) the LOCAL checkout bin (`--local`, fast, used by the test suite) or (b) a **globally installed tarball** (`--packed <tgz>`): `npm i -g <tgz> --prefix <isolated tmpdir>`, PATH prepended with the platform-correct bin dir (`<prefix>/bin` POSIX, `<prefix>` Windows), and a preflight assertion that `apriori` resolves inside the prefix — the runner aborts if the alias would leak to any other installation; asserts (i) each block's LAST command exits with the documented code — the expected sequence `[0, 1, 0, 0]` lives in the script beside a comment naming the Quickstart contract — and (ii) final state: `verify --specs apriori/specs` = 0, `check` = 0, `doctor --no-run` = 0, and `apriori/changes/archive/` contains the archived demo change. Any assertion failure → non-zero exit naming the block/assertion.
+2. **CI job `golden-path`** in `.github/workflows/ci.yml`: matrix ubuntu + windows (bash shell), node 20; steps: checkout → setup-node → `npm pack` → `node scripts/golden-path.mjs --packed <tgz>`. The unit-test job is unchanged.
+3. **Test binding**: `test/golden-path.test.js` — extractor unit behavior (block count/order, npm-install substitution) + one full `--local` run (seconds, no network).
+
+## Acceptance criteria (testable)
+
+- G1. The extractor returns the Quickstart's shell blocks in order; the first block's `npm i -g apriori-cli` line is substituted in `--local` mode (aliased to the checkout bin) and preserved-but-redirected in `--packed` mode (installs the given tarball instead of the registry).
+- G2. A `--local` run in a fresh temp dir completes with per-block exits `[0, 1, 0, 0]` and all final-state assertions green.
+- G3. Tampering with the expected sequence fails the runner naming the block — asserted by feeding a DOCTORED README TEXT through the exported extraction/assertion seam (`extractBlocks(text)` / runnable-plan builder); the real README is never modified by tests.
+- G4. `--packed` mode installs ONLY the tarball (isolated `--prefix`, never touching the runner's global node_modules) and the run proves the PACKAGED file set suffices (a `files:`-listing gap in package.json would surface here).
+- G5. The CI workflow gains the golden-path job (ubuntu+windows, node 20, bash) and keeps the existing test job byte-identical.
+- G6. Zero new dependencies; the script is ESM Node stdlib only.
+- G7. Runner failures are loud and named (block index + command + expected/actual exit; missing final-state artifact named).
+
+## Out of scope (won't do)
+
+- README content changes (any Quickstart edit that this change would need is a defect to report, not to make — the contract freeze is the point).
+- Python/Go examples (item 9), CHANGELOG (item 8).
+- Publishing/npm-auth in CI; the job stops at the packed tarball.
+- Matrix beyond ubuntu+windows/node 20 for this job (the unit matrix already spans 18/20/22).
+
+## Decisions proposed
+
+- DG-1: expected exit codes live in the RUNNER (beside a contract comment), not as README annotations — the README stays human-first; drift between the two is exactly what the runner exists to catch.
+- DG-2: `--local` in tests, `--packed` in CI — same script, so the extraction/assertion logic itself is test-bound while the slow network-touching mode runs where it belongs.
+
+ succeeded in 133ms:
+## Quickstart
+
+Ten minutes, from an empty directory to a spec-bound green. Requires Node ≥ 18 and a POSIX shell.
+
+```shell
+npm i -g apriori-cli
+mkdir hello-apriori && cd hello-apriori
+apriori init --tools claude --test-cmd "node --test --test-reporter=tap" --yes
+apriori doctor --no-run
+```
+
+`init` scaffolds `apriori/` and a runbook pointer for your AI tool; `doctor` confirms the seam is healthy (expect `DOCTOR: HEALTHY`; exit 0).
+
+```shell
+apriori new hello
+cat > apriori/changes/hello/flow-state.md <<'EOF'
+change: hello
+tier: trivial
+track: harden
+track-rationale: quickstart demo
+lineage: main
+current-step: STEP5
+round: 0
+next-action: verify, then archive
+gates:
+  - 2026-01-01T00:00 note: quickstart demo
+EOF
+mkdir -p apriori/changes/hello/specs/hello
+cat > apriori/changes/hello/specs/hello/spec.md <<'EOF'
+## ADDED Requirements
+
+### Requirement: greeting
+The module SHALL greet by name.
+
+#### Scenario: HL-01 greets by name
+- WHEN greet('World') is called
+- THEN it returns 'Hello, World'
+EOF
+apriori verify --change hello
+```
+
+Every change carries a tiny state file (`flow-state.md` — the tier sizes the workflow; an agent normally maintains it for you) and its delta specs. `verify --change` binds scenarios against the **projected** store (the store as it will look after this change merges). One scenario, zero tests → `RESULT: GAPS`, exit 1. Fail-closed is the point. Now make it green:
+
+```shell
+mkdir -p test
+cat > hello.js <<'EOF'
+module.exports = { greet: (name) => `Hello, ${name}` };
+EOF
+cat > test/hello.test.js <<'EOF'
+const { test } = require('node:test');
+const assert = require('node:assert');
+const { greet } = require('../hello');
+test('HL-01 greets by name', () => assert.strictEqual(greet('World'), 'Hello, World'));
+EOF
+apriori verify --change hello
+```
+
+The test name carries the scenario ID — that is the whole binding contract. Expect `RESULT: GREEN — spec is the test suite`, exit 0.
+
+```shell
+apriori gate --change hello --json
+apriori archive --change hello --write --changes-dir apriori/changes
+apriori verify --specs apriori/specs
+apriori check
+```
+
+`gate` aggregates the mechanical checks into one exit code (its PASS never replaces a human gate). `archive --change` merges the delta into the living store `apriori/specs/` and files the change away; plain `verify` now proves the merged store, and `check` is your CI guard. That's the loop: **spec → red → green → gate → archive**.
+
+From here, work WITH an agent instead of by hand: idea still fuzzy → run */apriori* with no arguments (brainstorm first, nothing written until you approve); change already clear → *"Follow the apriori runbook for change `<name>`"* and answer at each human gate.
+
+## Where everything else lives
+
+ succeeded in 164ms:
+name: ci
+
+on:
+  push:
+    branches: [v3]
+  pull_request:
+    branches: [v3]
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: ['18', '20', '22']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: node --test
+      - run: npm run verify
+      - run: node bin/apriori.js check --self
+{
+  "bin": {
+    "apriori": "bin/apriori.js"
+  },
+  "files": [
+    "bin/",
+    "lib/",
+    "templates/",
+    "RUNBOOK.md"
+  ]
+}
+
+ succeeded in 150ms:
+# Issue ledger — golden-path
+
+Rows recorded on behalf of the reviewer (codex session 019f4b30-68f9-7222-9b64-17f52a333b4c; raws: golden-path-req-review-v1-raw.txt).
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| GPREQ-1 | Packed-mode PATH isolation underspecified for Windows bash (npm global layout differs). | CI could silently test the wrong installation. | STEP0·r1 | fixed (v2) |
+| GPREQ-2 | The doctored-README fixture test lacks an explicit seam. | Tests could mutate the real README or go unwritten. | STEP0·r1 | fixed (v2) |
+
+codex
+**Resolution Check**
+
+GPREQ-1 is verified. Packed mode now specifies `npm i -g <tgz> --prefix <isolated tmpdir>`, platform-specific bin-dir handling, PATH prepending, and a preflight that `apriori` resolves inside the prefix before any Quickstart block runs.
+
+GPREQ-2 is verified. G3 now declares an exported text-taking seam, `extractBlocks(text)` / runnable-plan builder, so doctored README tests do not mutate the real README.
+
+No new requirement issues found. The README Quickstart still has four shell blocks with final-command exits `[0, 1, 0, 0]`; CI and package state remain consistent with the target.
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| GPREQ-1 | Packed-mode PATH isolation underspecified for Windows bash. | CI could silently test the wrong installation. | STEP0·r1 | verified |
+| GPREQ-2 | Doctored README fixture test lacked an explicit seam. | Tests could mutate the real README or go unwritten. | STEP0·r1 | verified |
+
+VERDICT: no major issues
+tokens used
+1,447,303
+**Resolution Check**
+
+GPREQ-1 is verified. Packed mode now specifies `npm i -g <tgz> --prefix <isolated tmpdir>`, platform-specific bin-dir handling, PATH prepending, and a preflight that `apriori` resolves inside the prefix before any Quickstart block runs.
+
+GPREQ-2 is verified. G3 now declares an exported text-taking seam, `extractBlocks(text)` / runnable-plan builder, so doctored README tests do not mutate the real README.
+
+No new requirement issues found. The README Quickstart still has four shell blocks with final-command exits `[0, 1, 0, 0]`; CI and package state remain consistent with the target.
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| GPREQ-1 | Packed-mode PATH isolation underspecified for Windows bash. | CI could silently test the wrong installation. | STEP0·r1 | verified |
+| GPREQ-2 | Doctored README fixture test lacked an explicit seam. | Tests could mutate the real README or go unwritten. | STEP0·r1 | verified |
+
+VERDICT: no major issues

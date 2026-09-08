@@ -1,0 +1,1088 @@
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f5578-794b-7733-81ed-26fedd775250
+--------
+user
+STEP2 spec evaluation (P5) for runbook-version-sync, round 1. STEP0 converged (req-final = v2). Evaluate apriori/changes/runbook-version-sync/: specs/check/spec.md (ADDED CK-11), design.md, proposal.md, tasks.md — against requirement/req-final.md, lib/check.js (self-mode aggregation, PACKAGED_RUNBOOK, the check* function shapes), RUNBOOK.md/RUNBOOK_cn.md line 9, package.json, and apriori/specs/check/spec.md:
+1. Coverage: does CK-11 pin every req-final behavior (single blockquote entry parse target, RUNBOOK.md canonical + RUNBOOK_cn.md each == pkg major, missing/duplicate/malformed/mismatch FAIL, --self only, body/fence occurrences never matched)? Anything over- or under-asserted;
+2. The single scenario packs several sub-behaviors — bindable as one, or split needed? Is "flipping either edition to 3.0, removing, or duplicating FAILs" testable via fixtures given the check reads the REAL packaged RUNBOOK.md (does the test need to point checkRunbookVersion at a fixture dir, or does it run against the repo's own files)?
+3. Design feasibility: checkRunbookVersion(root, pkgVersion) as a pure function testable with fixture roots; the parse regex anchoring the blockquote form without matching body text; interaction with CK-06 (freshness) — orthogonal confirmed?
+4. Delta hygiene: ADDED-only correct; stamp matches; the new requirement's --self scoping consistent with the existing CK-07 consumer/self split.
+[Scope] spec/design defects only; style = advisory. READ-ONLY sandbox (R2).
+[Output] Chinese prose, English IDs; LEDGER DELTA (new rows RVSPEC-n); exactly one verdict line.
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-12T08:43:55.938047Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-12T08:43:56.079712Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-12T08:43:56.379369Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-12T08:43:56.901153Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-12T08:43:57.904245Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-12T08:43:59.620091Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-12T08:44:02.927575Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: fFSGB83JTUyt
+codex
+我会按 P5 的口径只审 spec/design 是否覆盖 req-final，并重点看 CK-11 的可绑定性、fixture 可测性和 `--self` 集成边界。
+exec
+/usr/bin/zsh -lc "sed -n '1,220p' apriori/changes/runbook-version-sync/requirement/req-final.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,220p' apriori/changes/runbook-version-sync/specs/check/spec.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,220p' apriori/changes/runbook-version-sync/tasks.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' apriori/changes/runbook-version-sync/design.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,220p' apriori/changes/runbook-version-sync/proposal.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 159ms:
+# 需求:runbook-version-sync —— runbook 版本串不再与 CLI 漂移 (final = v2)
+
+> change: `runbook-version-sync` · tier: medium · track: harden
+> 来源:4.0.2 实验摩擦点——runbook 头部 3.0 与 CLI 4.x 漂移。
+> v2 修订:RV-1(CN 各自==pkg major)、RV-2(parse target 写死)、RV-3(钉子不比 full version)。
+
+## 目标
+
+RUNBOOK 头部自标 `runbook-version: 3.0`(引用块内),但 runbook 由 4.x CLI 分发;`update` 刷新副本内容却不刷该字符串。修正当前值并**加一道机械守卫**,使 runbook 的 major 版本永远与 CLI(package.json)major 一致,以后不再漂。
+
+## 行为需求
+
+1. **修正当前值**:RUNBOOK.md 与 RUNBOOK_cn.md 头部 `runbook-version: 3.0` → `runbook-version: 4.0`(引用块与反引号格式保持;两版同步)。
+2. **机械守卫 CK-11**(`apriori check --self`):
+   - **parse target(RV-2)**:文件头部引用块中形如 `` > `runbook-version: X.Y` `` 的**唯一**条目;缺失、多于一个、或格式不匹配 → FAIL 点名(不误抓正文示例)。
+   - **断言(RV-1)**:RUNBOOK.md 是 canonical 打包源,其 major 必须 == package.json `version` 的 major;`RUNBOOK_cn.md` 若存在,**各自**恰一个 header 且 major 也 == package major(不是 EN/CN 彼此一致,而是各自等于 pkg major)。
+   - 不一致 → check 失败,消息点名文件、两个值与修复方向(改 RUNBOOK 头部)。
+3. **不改 update 逻辑**:`update` 已整体拷贝 RUNBOOK.md → `apriori/runbook.md`,源正确则副本正确;无需 update 特殊处理(消费者项目 `update` 后即得 4.0 串)。
+4. **回归钉子(RV-3)**:CK-11 在当前(RUNBOOK 头 4.0 vs pkg 4.x)PASS;把任一版 RUNBOOK 头改回 3.0(或制造缺失/多头)→ CK-11 FAIL 点名该文件——测试比对 **major**,不诱导实现去比 full version。
+
+## 非目标
+
+- runbook-version 的 minor 语义化/自动生成(只守 major 一致)。
+- update 命令行为变更。
+- 其它文档版本串(README 徽章等)。
+
+## 约束
+
+- 零依赖;既有 check/CK 场景不回归;CK-11 只在 `--self` 模式(消费者项目不被此自检牵连)。
+
+## 开放问题
+
+- 无。
+
+ succeeded in 157ms:
+<!-- apriori-base: sha256:20c7849a4769bce4abed809eeb88b009032d170d95c330fb13c055134d566a45 -->
+## ADDED Requirements
+
+### Requirement: CK-11 keeps the runbook version aligned with the CLI major
+`apriori check --self` SHALL assert that RUNBOOK.md — the canonical packaged runbook — carries exactly one header-blockquote entry of the form `` > `runbook-version: X.Y` `` whose major (`X`) equals `package.json`'s version major; RUNBOOK_cn.md, when present, SHALL likewise carry exactly one such entry whose major also equals the package major (each edition equals the package major, not merely each other). A missing entry, more than one, a malformed value, or a major mismatch FAILs (self-mode only) naming the offending file and the two values; occurrences of `runbook-version:` in body text or code fences are never matched. Consumer `apriori check` (no `--self`) never runs CK-11.
+
+#### Scenario: CK-11 the runbook major tracks the CLI major
+- WHEN `apriori check --self` runs where RUNBOOK.md and RUNBOOK_cn.md declare `runbook-version: 4.0` and package.json is on a 4.x version
+- THEN CK-11 passes; flipping either edition's header to `3.0`, removing it, or duplicating it FAILs (self-mode) naming that file; and a consumer `apriori check` without `--self` never raises CK-11
+
+ succeeded in 162ms:
+# Tasks — runbook-version-sync
+
+- [ ] T1. 红测试:CK-11(4.0 vs pkg 4.x PASS;头改 3.0/缺失/多头 FAIL;consumer 模式不跑),记录红跑。
+- [ ] T2. checkRunbookVersion + cli self 分支接线;RUNBOOK 双语头 3.0→4.0。
+- [ ] T3. 套件全绿 + verify --change GREEN + P8 收敛 + gate。
+
+ succeeded in 165ms:
+# Design — runbook-version-sync(事实对齐)
+
+## 现状事实
+- RUNBOOK.md/RUNBOOK_cn.md 第 9 行:`` > `runbook-version: 3.0` · … ``(引用块+反引号)。
+- lib/check.js:self-mode 在 cli(:248 附近)聚合一堆 check* 纯函数;PACKAGED_RUNBOOK 常量已指向包内 RUNBOOK.md。package.json version = 4.0.x。
+- CK-06 是 warn-only 的 scaffolded-runbook freshness(比对副本 vs 包内),与本变更正交。
+
+## 方案
+- 改 RUNBOOK.md/RUNBOOK_cn.md 第 9 行 `3.0`→`4.0`。
+- 新 `checkRunbookVersion(root, pkgVersion)`(纯函数):对 RUNBOOK.md(必)与 RUNBOOK_cn.md(存在则)各:提取头部引用块中唯一 `` > `runbook-version: X.Y` `` 条目(正则锚定引用块行,排除正文示例);缺失/多个/格式不符 → fail 点名;major(X)≠ pkgVersion 的 major → fail 点名两值。
+- cli self 分支追加调用,fails 汇入既有 self-mode fails 列表(exit 1);consumer 模式不调用(--self only)。
+- 打包源即真相,update 无需改。
+
+## SPEC 触点
+check spec ADDED「CK-11 keeps the runbook version aligned with the CLI major」+ CK-11 场景。
+
+ succeeded in 158ms:
+# Proposal — runbook-version-sync
+
+**为什么**:RUNBOOK 头部自标 runbook-version 3.0,由 4.x CLI 分发/刷新却不改该串,读者困惑(4.0.2 实验摩擦点)。
+
+**做什么**:RUNBOOK 双语头部 3.0→4.0 + 新增 CK-11(`check --self`)守 RUNBOOK 的 major 恒等于 package.json major,以后不再漂。
+
+**不做什么**:minor 语义化、update 逻辑、其它版本串。
+
+**规模**:medium。两行文档改 + 一个纯函数 check + check spec delta。
+
+codex
+初步看，delta 的主 requirement 覆盖面已经比较完整；我会再对照现有 `lib/check.js` 和基线 spec，确认是否存在“scenario 写得过宽但测试不可落地”的问题。
+exec
+/usr/bin/zsh -lc "sed -n '1,360p' lib/check.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "nl -ba RUNBOOK.md | sed -n '1,14p' && nl -ba RUNBOOK_cn.md | sed -n '1,14p' && nl -ba package.json | sed -n '1,24p'" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,120p' apriori/specs/check/spec.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "rg -n \"checkRunbookFreshness|check[A-Z].*\\(|cli\\(|checkRunbook|CK-\" test tests scripts lib -g '*.js' -g '*.mjs'" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 127ms:
+     1	<p align="center">
+     2	  Languages:
+     3	  <a href="./RUNBOOK.md">English</a> ·
+     4	  <a href="./RUNBOOK_cn.md">中文</a>
+     5	</p>
+     6	
+     7	# Apriori RUNBOOK — the Executable Protocol for AI Agents
+     8	
+     9	> `runbook-version: 3.0` · upstream: `https://github.com/Apriorhythm/apriori-spec-development`
+    10	> Local state lives ONLY in `apriori/process-config.md` and the flow-state file — this file is stateless, so **upgrading = overwriting it with the upstream version**.
+    11	
+    12	> **Audience: AI agents** (plus §6 for the human operating them). This file is self-contained: everything an agent needs at runtime is here — hard rules, state machine, artifact paths, prompts.
+    13	> The **why** — concepts, tool setup, worked example — lives in the human handbook ([README.md](./README.md)); agents do not need it. Where the two disagree on operational detail, **this runbook is canonical**.
+    14	
+     1	<p align="center">
+     2	  Languages:
+     3	  <a href="./RUNBOOK.md">English</a> ·
+     4	  <a href="./RUNBOOK_cn.md">中文</a>
+     5	</p>
+     6	
+     7	# Apriori RUNBOOK —— 给 AI Agent 的可执行协议
+     8	
+     9	> `runbook-version: 3.0` · 上游:`https://github.com/Apriorhythm/apriori-spec-development`
+    10	> 项目本地状态只存在于 `apriori/process-config.md` 与 flow-state 文件——本文件无状态,因此**升级=用上游新版整文件覆盖**。
+    11	
+    12	> **读者:AI Agent**(§6 除外,那节给操作它的人)。本文件自包含:Agent 运行时需要的一切都在这里——铁律、状态机、产物路径、提示词。
+    13	> **Why**——理念、工具搭建、实例教学——在人类手册([README_cn.md](./README_cn.md))里,Agent 不需要读它。两者在操作细节上不一致时,**以本 RUNBOOK 为准**。
+    14	
+     1	{
+     2	  "name": "apriori-cli",
+     3	  "version": "4.0.2",
+     4	  "description": "Spec-driven development with executable specs \u2014 self-contained, zero-dependency CLI",
+     5	  "type": "commonjs",
+     6	  "bin": {
+     7	    "apriori": "bin/apriori.js"
+     8	  },
+     9	  "scripts": {
+    10	    "test": "node scripts/run-tests.mjs",
+    11	    "verify": "node bin/apriori.js verify --specs apriori/specs --test-cmd \"node scripts/run-tests.mjs --test-reporter=tap\""
+    12	  },
+    13	  "files": [
+    14	    "bin/",
+    15	    "lib/",
+    16	    "templates/",
+    17	    "RUNBOOK.md",
+    18	    "MIGRATING.md"
+    19	  ],
+    20	  "engines": {
+    21	    "node": ">=22"
+    22	  },
+    23	  "keywords": [
+    24	    "spec-driven-development",
+
+ succeeded in 146ms:
+'use strict';
+/*
+ * apriori check — structural consistency checks (JS port of v2's check_docs.py, adapted for V3).
+ * Zero deps — pure Node stdlib. Each check returns an array of failure strings.
+ *
+ * Ported from v2 (behaviour-equivalent): anchor resolution, file-link existence,
+ * EN/CN heading alignment, verdict-phrase table + drift variants, codex-command EN/CN parity.
+ * V3 changes: CK-04 every spec scenario carries a bindable ID; CK-05 no OpenSpec adapter
+ * references remain (the v2 "adapter wording" assertions invert to "no openspec/opsx at all").
+ */
+const fs = require('fs');
+const path = require('path');
+const { containsReal } = require('./archive-merge');
+const { withStrict } = require('./args');
+
+// ---- helpers (ported from gh_slug / parse / num_prefix) ---------------------
+function ghSlug(heading) {
+  const s = heading.trim().toLowerCase().replace(/`/g, '').replace(/\*/g, '');
+  let out = '';
+  for (const ch of s) {
+    if (ch === ' ') out += '-';
+    else if (ch === '-' || ch === '_') out += ch;
+    else if (/[\p{L}\p{N}\p{M}]/u.test(ch)) out += ch;
+  }
+  return out;
+}
+function stripFences(text) { return text.replace(/```[\s\S]*?```/g, ''); }
+function headings(text) {
+  const s = stripFences(text);
+  return [...s.matchAll(/^(#{1,6})\s+(.+)$/gm)].map((m) => [m[1].length, m[2]]);
+}
+function anchors(text) { return [...stripFences(text).matchAll(/\]\(#([^)]+)\)/g)].map((m) => m[1]); }
+function fileLinks(text) { return [...stripFences(text).matchAll(/\]\((\.\/[^)#]+)(?:#[^)]*)?\)/g)].map((m) => m[1]); }
+function numPrefix(t) { const m = t.trim().match(/^(\d+(?:\.\d+)*)\b/); return m ? m[1] : null; }
+function lineOf(text, idx) { return text.slice(0, idx).split('\n').length; }
+
+// ---- CK-01/CK-09: anchors resolve, file links exist — resolved from the LINKING file's dir;
+// cross-file fragments (./y.md#frag) validated against the target's headings (self-mode)
+function fileLinksWithFrags(text) {
+  return [...stripFences(text).matchAll(/\]\((\.\/[^)#]+)(?:#([^)]*))?\)/g)].map((m) => [m[1], m[2] || null]);
+}
+function checkLinks(baseDir, name, text) {
+  const fails = [];
+  const slugs = new Set(headings(text).map(([, t]) => ghSlug(t)));
+  for (const a of anchors(text)) if (!slugs.has(a)) fails.push(`${name}: broken anchor #${a}`);
+  for (const [f, frag] of fileLinksWithFrags(text)) {
+    const target = path.join(baseDir, f);
+    if (!fs.existsSync(target)) { fails.push(`${name}: broken file link ${f}`); continue; }
+    if (frag) {
+      const tslugs = new Set(headings(fs.readFileSync(target, 'utf8')).map(([, t]) => ghSlug(t)));
+      if (!tslugs.has(frag)) fails.push(`${name}: broken cross-file fragment ${f}#${frag}`);
+    }
+  }
+  return fails;
+}
+
+// ---- CK-02: EN/CN heading alignment (length, levels, numeric prefixes) -------
+function checkHeadingAlignment(enName, enText, cnName, cnText) {
+  const fails = [];
+  const eh = headings(enText), ch = headings(cnText);
+  if (eh.length !== ch.length) fails.push(`heading count mismatch: ${enName}=${eh.length} vs ${cnName}=${ch.length}`);
+  const n = Math.min(eh.length, ch.length);
+  for (let i = 0; i < n; i++) {
+    const [el, et] = eh[i], [cl, ct] = ch[i];
+    const ep = numPrefix(et), cp = numPrefix(ct);
+    const numOk = (ep && cp) ? ep === cp : true;
+    if (el !== cl || !numOk) fails.push(`heading misaligned @#${i + 1}: [h${el}] ${et.slice(0, 40)} <-> [h${cl}] ${ct.slice(0, 40)}`);
+  }
+  return fails;
+}
+
+// ---- CK-03: verdict phrase table + drift variants + codex-command parity -----
+const VERDICT_PHRASES = [
+  'VERDICT: no major issues, ready to proceed to execution',
+  'VERDICT: no major issues',
+  'VERDICT: no spec-vs-code gaps',
+  'VERDICT: extraction accepted',
+  'VERDICT: extraction rejected',
+  'VERDICT: <N> issues open',
+];
+const FORBIDDEN_VARIANTS = [
+  [/ready to execute/g, 'EN drift variant "ready to execute"'],
+  [/可进入执行(?!阶段)/g, 'CN drift variant 「可进入执行」 missing 「阶段」'],
+];
+function checkVerdictPhrases(files) {
+  // files: {name -> text}; runbooks must contain every canonical phrase; no drift variants; every VERDICT: string is a table entry
+  const fails = [];
+  for (const rb of ['RUNBOOK.md', 'RUNBOOK_cn.md'])
+    if (files[rb]) for (const p of VERDICT_PHRASES) if (!files[rb].includes(p)) fails.push(`${rb}: phrase-table entry missing: ${p}`);
+  for (const [name, text] of Object.entries(files)) {
+    for (const [re, label] of FORBIDDEN_VARIANTS)
+      for (const m of text.matchAll(re)) fails.push(`${name}:${lineOf(text, m.index)}: ${label}`);
+    for (const m of text.matchAll(/VERDICT:[^"'`」\n]+/g)) {
+      const q = m[0].replace(/[ .。);,，]+$/, '');
+      if (!VERDICT_PHRASES.some((p) => q === p || q.startsWith(p)))
+        fails.push(`${name}:${lineOf(text, m.index)}: VERDICT string not in table: ${q}`);
+    }
+  }
+  return fails;
+}
+
+// codex command extraction (ported from codex_candidates)
+const CODEX_BARE = new Set(['codex', 'exec', 'resume']);
+function codexCandidates(text) {
+  const cmds = [];
+  for (const line of text.split('\n')) {
+    let start = 0, idx;
+    while ((idx = line.indexOf('codex exec', start)) >= 0) {
+      let frag = line.slice(idx); start = idx + 10;
+      frag = frag.replace(/\\"/g, '"').replace(/——/g, ' — ');
+      const raw = frag;
+      frag = frag.replace(/(^|\s)"[^"]*"/g, '$1').replace(/(^|\s)'[^']*'/g, '$1').replace(/\s#.*$/, '');
+      const tokens = [];
+      for (let tok of frag.split(/\s+/).filter(Boolean)) {
+        tok = tok.replace(/[,;)。]+$/, '');
+        const prev = tokens[tokens.length - 1];
+        const isFlagVal = prev && prev.startsWith('-') && /^[A-Za-z0-9._/-]+$/.test(tok);
+        if (CODEX_BARE.has(tok) || isFlagVal ||
+            /^(-{1,2}[A-Za-z][\w-]*|[A-Za-z_]+=("[^"]*"|\S+)|<[^>]+>|\||2>&1|<|\/dev\/null)$/.test(tok)) tokens.push(tok);
+        else break;
+      }
+      const checkable = !raw.includes('...') && !raw.includes('…') && !tokens.includes('--last') &&
+        (tokens.some((t) => t.startsWith('-')) || raw.includes('"'));
+      if (checkable && tokens.length > 2) cmds.push(tokens);
+    }
+  }
+  return cmds;
+}
+function checkCodexCommands(enText, cnText) {
+  const fails = [];
+  const en = codexCandidates(enText), cn = codexCandidates(cnText);
+  if (en.length !== cn.length) { fails.push(`codex command count mismatch: ${en.length} vs ${cn.length}`); return fails; }
+  for (let i = 0; i < en.length; i++)
+    if (en[i].join(' ') !== cn[i].join(' ')) fails.push(`codex command #${i + 1} token mismatch: EN[${en[i]}] CN[${cn[i]}]`);
+  return fails;
+}
+
+// ---- CK-03 (checker 8): codex known-good forms (ported from v2) --------------
+const CODEX_EXEMPT = [['codex', 'exec', 'resume', '-s', 'read-only', '<session-id>']];
+function checkCodexKnownForms(files) {
+  const fails = [];
+  for (const [name, text] of Object.entries(files)) {
+    for (const tokens of codexCandidates(text)) {
+      if (!tokens.includes('resume')) continue;
+      if (CODEX_EXEMPT.some((e) => e.join(' ') === tokens.join(' '))) continue;
+      if (tokens.includes('-s')) fails.push(`${name}: resume command uses -s (rejected on codex >=0.14x): ${tokens.join(' ')}`);
+      if (!(tokens.includes('-c') && tokens.includes('sandbox_mode="read-only"')))
+        fails.push(`${name}: resume command missing -c sandbox_mode="read-only": ${tokens.join(' ')}`);
+    }
+  }
+  for (const rb of ['RUNBOOK.md', 'RUNBOOK_cn.md'])
+    if (files[rb] && !files[rb].includes('< /dev/null')) fails.push(`${rb}: missing the \`< /dev/null\` non-interactive guidance`);
+  return fails;
+}
+
+// ---- CK-04: every spec scenario carries a bindable ID -----------------------
+function checkScenarioIds(specText, name, idPattern = '[A-Z]+-\\d+') {
+  const idRe = new RegExp('^(' + idPattern + ')\\b');
+  const fails = [];
+  // fenced scenarios are documentation, not spec — same rule as the spec-runner (SR-13)
+  for (const m of stripFences(specText).matchAll(/^####\s+Scenario:\s+(.*)$/gm))
+    if (!idRe.test(m[1].trim())) fails.push(`${name}: scenario without a bindable ID: ${m[1].slice(0, 50)}`);
+  return fails;
+}
+
+// ---- CK-05: no OpenSpec adapter references remain (V3 is single plain-files) --
+const OPENSPEC_MARKERS = [/\/opsx:/, /openspec\//, /\(adapter:/i, /OpenSpec adapter/];
+function checkNoOpenspec(name, text) {
+  const fails = [];
+  for (const line of text.split('\n')) for (const re of OPENSPEC_MARKERS)
+    if (re.test(line)) { fails.push(`${name}: residual OpenSpec reference: ${line.trim().slice(0, 60)}`); break; }
+  return fails;
+}
+
+// ---- CK-10: review-evidence secret tripwire (consumer mode) -------------------
+// Three literal formats ONLY — each with an airtight no-legit-match argument. This is a
+// tripwire, not a DLP product: fuzzy patterns false-positive on code discussion, which
+// trains people to ignore the tripwire. Per-line SUBSTRING scan (secrets embed in output).
+const SECRET_PATTERNS = [
+  [/AKIA[0-9A-Z]{16}/, 'AWS access key'],
+  [/gh[pousr]_[A-Za-z0-9]{36,}/, 'GitHub token'],
+  [/-----BEGIN [A-Z ]*PRIVATE KEY-----/, 'private key (PEM)'],
+];
+function checkReviewSecrets(root) {
+  const fails = [], warns = [];
+  // bundle layout: evidence lives in every change's review/ dir, active and archived.
+  // Root discovery is guarded — escaping/symlinked dirs are warn-skipped like files.
+  const roots = [];
+  for (const base of [path.join(root, 'apriori', 'changes'), path.join(root, 'apriori', 'changes', 'archive')]) {
+    if (!fs.existsSync(base)) continue;
+    for (const e of fs.readdirSync(base, { withFileTypes: true })) {
+      if (e.name === 'archive') continue;
+      const cd = path.join(base, e.name);
+      let cst;
+      try { cst = fs.lstatSync(cd); } catch { continue; }   // lstat: never follow a symlinked change dir
+      if (cst.isSymbolicLink()) {
+        warns.push(`review evidence: ${path.relative(root, cd)} is a symlink or escapes the tree — skipped by the secret scan`);
+        continue;
+      }
+      if (!cst.isDirectory()) continue;
+      const rd = path.join(cd, 'review');
+      let rst;
+      try { rst = fs.lstatSync(rd); } catch { continue; }   // lstat: a dangling review symlink warns, plain absence skips
+      if (rst.isSymbolicLink() || !containsReal(base, rd)) {
+        warns.push(`review evidence: ${path.relative(root, rd)} is a symlink or escapes the tree — skipped by the secret scan`);
+        continue;
+      }
+      roots.push(rd);
+    }
+  }
+  if (!roots.length) return { fails, warns };                  // no bundles → skip
+  const walk = (d) => {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, e.name);
+      if (e.isSymbolicLink()) { warns.push(`review evidence: ${path.relative(root, p)} is a symlink — skipped by the secret scan`); continue; }
+      if (e.isDirectory()) { walk(p); continue; }
+      if (!e.isFile()) continue;
+      const lines = fs.readFileSync(p, 'utf8').split('\n');
+      lines.forEach((ln, i) => {
+        for (const [re, label] of SECRET_PATTERNS)
+          if (re.test(ln)) fails.push(`${path.relative(root, p)}:${i + 1}: ${label} detected in review evidence — sanitize the raw (see SECURITY.md; rewrite history if already pushed)`);
+      });
+    }
+  };
+  for (const rd of roots) walk(rd);
+  return { fails, warns };
+}
+
+// ---- CK-06: scaffolded-runbook freshness (warn-only, never a failure) ---------
+const PACKAGED_RUNBOOK = path.join(__dirname, '..', 'RUNBOOK.md');
+function checkRunbookFreshness(root, packagedPath = PACKAGED_RUNBOOK) {
+  const scaffolded = path.join(root, 'apriori', 'runbook.md');
+  if (!fs.existsSync(scaffolded) || !fs.existsSync(packagedPath)) return [];
+  if (fs.readFileSync(scaffolded, 'utf8') === fs.readFileSync(packagedPath, 'utf8')) return [];
+  return [`apriori/runbook.md differs from the installed apriori-cli runbook — run 'apriori update' to refresh`];
+}
+
+// ---- cli --------------------------------------------------------------------
+// Two modes. CONSUMER (default): checks the project's own spec store (CK-04) and
+// scaffolded-runbook freshness (CK-06) — nothing else, so a consumer legitimately using
+// OpenSpec or shipping its own README is never failed by apriori's self-checks.
+// SELF (--self): additionally runs the apriori repo's handbook checks (EN/CN pairs,
+// verdict phrases, codex commands, no-openspec residue) — used by this repo's own CI.
+const USAGE = 'usage: apriori check [--specs <dir>] [--self]';
+
+function cli(argv) {
+  return withStrict(argv, { sub: 'check', usage: USAGE, positionals: 0,
+    flags: { '--specs': 'value', '--self': 'flag' } }, (f) => {
+    const root = process.cwd();
+    const specsDir = f['--specs'] || 'apriori/specs';
+    const self = !!f['--self'];
+  const fails = [];
+
+    // CK-04 over the spec store — a missing path is an ERROR, never a silent PASS
+    const specsPath = path.join(root, specsDir);
+    if (!fs.existsSync(specsPath)) {
+      console.error(`error: spec store path does not exist: ${specsDir}` +
+        (fs.existsSync(path.join(root, 'apriori')) ? '' : ` — is this an apriori project? (run 'apriori init')`));
+      console.log('\nRESULT: ERROR');
+      return 2;
+    }
+    const specFiles = [];
+    (function walk(d) {
+      for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+        const p = path.join(d, e.name);
+        if (e.isDirectory()) walk(p); else if (e.name.endsWith('.md')) specFiles.push(p);
+      }
+    })(specsPath);
+    for (const f of specFiles) fails.push(...checkScenarioIds(fs.readFileSync(f, 'utf8'), path.relative(root, f)));
+
+    // CK-10: review-evidence secret tripwire (consumer mode; absent dir skips)
+    const secrets = checkReviewSecrets(root);
+    fails.push(...secrets.fails);
+    for (const w of secrets.warns) console.log('! ' + w);
+
+    if (self) {
+      // Handbook checks (apriori repo dogfooding) — run when the pairs exist.
+      // CK-08: a ONE-SIDED pair fails (a missing mirror must not skip silently);
+      // both sides absent → the pair is skipped (older checkouts unaffected).
+      const PAIRS = [['README.md', 'README_cn.md'], ['RUNBOOK.md', 'RUNBOOK_cn.md'], ['VISION.md', 'VISION_cn.md'],
+        ['docs/concepts.md', 'docs/concepts_cn.md'], ['docs/legacy.md', 'docs/legacy_cn.md'],
+        ['docs/ci.md', 'docs/ci_cn.md'], ['docs/cli.md', 'docs/cli_cn.md'],
+        ['docs/troubleshooting.md', 'docs/troubleshooting_cn.md']];
+      const files = {};
+      for (const [en, cn] of PAIRS) {
+        const pe = fs.existsSync(path.join(root, en)), pc = fs.existsSync(path.join(root, cn));
+        if (pe !== pc) fails.push(`one-sided EN/CN pair: ${pe ? cn : en} is missing`);
+        for (const nm of [en, cn]) {
+          const p = path.join(root, nm);
+          if (fs.existsSync(p)) files[nm] = fs.readFileSync(p, 'utf8');
+        }
+      }
+      for (const [name, text] of Object.entries(files)) {
+        fails.push(...checkLinks(path.dirname(path.join(root, name)), name, text));   // CK-09: per-file base
+        fails.push(...checkNoOpenspec(name, text));
+      }
+      for (const [en, cn] of PAIRS) if (files[en] && files[cn]) fails.push(...checkHeadingAlignment(en, files[en], cn, files[cn]));
+      if (Object.keys(files).length) fails.push(...checkVerdictPhrases(files));
+      if (files['RUNBOOK.md'] && files['RUNBOOK_cn.md']) fails.push(...checkCodexCommands(files['RUNBOOK.md'], files['RUNBOOK_cn.md']));
+      if (Object.keys(files).length) fails.push(...checkCodexKnownForms(files));
+    }
+
+    for (const f of fails) console.log('✗ ' + f);
+    for (const w of checkRunbookFreshness(root)) console.log('! ' + w);   // CK-06: warn-only
+    console.log('\nRESULT:', fails.length ? `FAIL (${fails.length})` : 'PASS');
+    return fails.length ? 1 : 0;
+  });
+}
+
+module.exports = {
+  ghSlug, headings, anchors, fileLinks, checkLinks, checkReviewSecrets, checkHeadingAlignment,
+  checkVerdictPhrases, codexCandidates, checkCodexCommands, checkCodexKnownForms, checkScenarioIds, checkNoOpenspec,
+  checkRunbookFreshness, cli,
+};
+
+ succeeded in 131ms:
+### Requirement: check ports the v2 doc checker to JS and adds ID coverage
+`apriori check` SHALL reproduce every structural check of v2's `check_docs.py` in JS with equivalent behavior, and additionally enforce that every spec scenario carries a bindable ID.
+
+#### Scenario: CK-01 anchor and file-link checks behave as v2
+- WHEN a doc has a broken `](#anchor)` or `](./file)` link
+- THEN check reports it and exits non-zero, matching the Python checker's verdict
+
+#### Scenario: CK-02 EN/CN alignment checks behave as v2
+- WHEN bilingual docs are present and their heading sequences or verdict phrases diverge
+- THEN check reports the misalignment (same rules as the ported checker)
+
+#### Scenario: CK-03 verdict-phrase-table and codex-command checks behave as v2
+- WHEN a verdict-line drift variant or an EN/CN codex-command mismatch is introduced
+- THEN check reports it (the v2.3 checkers 6-8, ported)
+
+#### Scenario: CK-04 every spec scenario must carry an ID (new)
+- WHEN a `#### Scenario:` heading in the spec store lacks a leading id-pattern match
+- THEN check reports it as unbindable and exits non-zero (a scenario with no ID can never pass verify)
+
+#### Scenario: CK-05 no OpenSpec adapter assertions remain
+- WHEN check runs against v3 docs
+- THEN it enforces the single plain-files interface (no `openspec/`-adapter dual-path assertions from v2)
+
+### Requirement: check warns on a stale scaffolded runbook without failing
+`apriori check` SHALL compare the project's scaffolded `apriori/runbook.md` (when present) against the installed package's `RUNBOOK.md` and warn on divergence, without turning the warning into a failure.
+
+#### Scenario: CK-06 stale scaffolded runbook warns, never fails
+- WHEN `apriori check` runs in a project whose `apriori/runbook.md` differs byte-wise from the installed package's runbook
+- THEN it prints a warning naming `apriori update`, and RESULT stays PASS if nothing else failed; a missing `apriori/runbook.md` produces no warning
+
+#### Scenario: CK-07 consumer mode is the default; self-checks require --self
+- WHEN `apriori check` runs in a consumer project
+- THEN only the spec-store checks (CK-04), runbook freshness (CK-06), and the review-evidence secret tripwire (CK-10) run — a consumer legitimately using OpenSpec or shipping its own README is never failed by apriori's handbook self-checks (EN/CN pairs, verdict phrases, codex forms, no-openspec), which run only under `--self`; and a missing spec-store path is an error (exit 2, naming `apriori init` when uninitialized), never a silent PASS
+
+### Requirement: self-mode guards the split documentation set
+`apriori check --self` SHALL extend its EN/CN pair coverage to the docs/ pairs (concepts, legacy, ci, cli, troubleshooting — `_cn` suffix convention) and SHALL resolve links relative to the linking file, validating cross-file fragments.
+
+#### Scenario: CK-08 docs pairs are guarded, one-sided pairs fail
+- WHEN `check --self` runs where a docs/ pair misaligns (heading count, level, or numeric prefix), or exactly ONE side of a pair exists
+- THEN it FAILs naming the pair (or the missing mirror); WHEN both sides of a pair are absent THEN that pair is skipped and older checkouts pass as before
+
+#### Scenario: CK-09 links resolve from the linking file and fragments are validated
+- WHEN a checked file links `./y.md` or `./y.md#frag`
+- THEN the target resolves relative to THAT file's directory (root files unchanged); a missing target file FAILs naming the linking file; and a fragment with no heading in the target slugifying (ghSlug) to it FAILs naming both — self-mode only
+
+### Requirement: review evidence is guarded against committed secrets
+`apriori check` (consumer mode) SHALL scan every `review/` directory under `apriori/changes/*/` and `apriori/changes/archive/*/` — recursive, regular files only, symlinked entries skipped with a warn line naming them, an absent dir skipped — for exactly three literal secret formats: AWS access keys (`AKIA[0-9A-Z]{16}`), GitHub tokens (`gh[pousr]_[A-Za-z0-9]{36,}`), and PEM private-key headers (`-----BEGIN [A-Z ]*PRIVATE KEY-----`). Root discovery is itself guarded: each discovered change dir and its `review/` must realpath-resolve inside the changes root; escaping or symlinked dirs are warn-skipped like symlinked files. A hit SHALL fail the check naming the file, line number, and pattern class — never echoing the matched value — with a remedy pointer (sanitize the raw; if already pushed, rewrite history per SECURITY.md).
+
+#### Scenario: CK-10 committed secrets in review evidence fail the check
+- WHEN a file under any bundle's `review/` (active or archived, any depth) contains an AWS key, a GitHub token, or a PEM private-key header
+- THEN `check` FAILs naming the file, line and pattern class without echoing the secret, and the message points at the remedy; clean bundles pass; a symlinked entry or an escaping review/ dir is skipped with a warn naming it; a project with no bundles skips the check entirely
+
+ exited 2 in 188ms:
+rg: tests: No such file or directory (os error 2)
+lib/init.js:262:async function cli(argv) {
+lib/new.js:50:function cli(argv) {
+lib/check.js:8: * V3 changes: CK-04 every spec scenario carries a bindable ID; CK-05 no OpenSpec adapter
+lib/check.js:37:// ---- CK-01/CK-09: anchors resolve, file links exist — resolved from the LINKING file's dir;
+lib/check.js:42:function checkLinks(baseDir, name, text) {
+lib/check.js:57:// ---- CK-02: EN/CN heading alignment (length, levels, numeric prefixes) -------
+lib/check.js:58:function checkHeadingAlignment(enName, enText, cnName, cnText) {
+lib/check.js:72:// ---- CK-03: verdict phrase table + drift variants + codex-command parity -----
+lib/check.js:85:function checkVerdictPhrases(files) {
+lib/check.js:129:function checkCodexCommands(enText, cnText) {
+lib/check.js:138:// ---- CK-03 (checker 8): codex known-good forms (ported from v2) --------------
+lib/check.js:140:function checkCodexKnownForms(files) {
+lib/check.js:156:// ---- CK-04: every spec scenario carries a bindable ID -----------------------
+lib/check.js:157:function checkScenarioIds(specText, name, idPattern = '[A-Z]+-\\d+') {
+lib/check.js:166:// ---- CK-05: no OpenSpec adapter references remain (V3 is single plain-files) --
+lib/check.js:168:function checkNoOpenspec(name, text) {
+lib/check.js:175:// ---- CK-10: review-evidence secret tripwire (consumer mode) -------------------
+lib/check.js:184:function checkReviewSecrets(root) {
+lib/check.js:229:// ---- CK-06: scaffolded-runbook freshness (warn-only, never a failure) ---------
+lib/check.js:231:function checkRunbookFreshness(root, packagedPath = PACKAGED_RUNBOOK) {
+lib/check.js:239:// Two modes. CONSUMER (default): checks the project's own spec store (CK-04) and
+lib/check.js:240:// scaffolded-runbook freshness (CK-06) — nothing else, so a consumer legitimately using
+lib/check.js:246:function cli(argv) {
+lib/check.js:254:    // CK-04 over the spec store — a missing path is an ERROR, never a silent PASS
+lib/check.js:269:    for (const f of specFiles) fails.push(...checkScenarioIds(fs.readFileSync(f, 'utf8'), path.relative(root, f)));
+lib/check.js:271:    // CK-10: review-evidence secret tripwire (consumer mode; absent dir skips)
+lib/check.js:272:    const secrets = checkReviewSecrets(root);
+lib/check.js:278:      // CK-08: a ONE-SIDED pair fails (a missing mirror must not skip silently);
+lib/check.js:294:        fails.push(...checkLinks(path.dirname(path.join(root, name)), name, text));   // CK-09: per-file base
+lib/check.js:295:        fails.push(...checkNoOpenspec(name, text));
+lib/check.js:297:      for (const [en, cn] of PAIRS) if (files[en] && files[cn]) fails.push(...checkHeadingAlignment(en, files[en], cn, files[cn]));
+lib/check.js:298:      if (Object.keys(files).length) fails.push(...checkVerdictPhrases(files));
+lib/check.js:299:      if (files['RUNBOOK.md'] && files['RUNBOOK_cn.md']) fails.push(...checkCodexCommands(files['RUNBOOK.md'], files['RUNBOOK_cn.md']));
+lib/check.js:300:      if (Object.keys(files).length) fails.push(...checkCodexKnownForms(files));
+lib/check.js:304:    for (const w of checkRunbookFreshness(root)) console.log('! ' + w);   // CK-06: warn-only
+lib/check.js:313:  checkRunbookFreshness, cli,
+lib/update.js:96:function cli(argv) {
+lib/status.js:109:function cli(argv) {
+lib/spec-runner.js:411:function cli(argv) {
+lib/gate.js:26:function checkFlowState(state, name) {
+lib/gate.js:38:function checkTasks(dir, tier) {
+lib/gate.js:94:function checkLedger(tier, stage, dir) {
+lib/gate.js:136:function checkEvidence(dir) {
+lib/gate.js:167:function checkKb(cwd, dir) {
+lib/gate.js:200:function checkBinding(cwd, name, stage, testCmd) {
+lib/gate.js:217:function checkCas(projection, stage, noCas, cwd) {
+lib/gate.js:252:  const b = checkBinding(cwd, opts.change, loc.stage, testCmd);
+lib/gate.js:256:  res.checks.push(checkTasks(loc.dir, tier));
+lib/gate.js:257:  res.checks.push(checkFlowState(state, opts.change));
+lib/gate.js:263:    res.checks.push(checkLedger(tier, loc.stage, loc.dir));
+lib/gate.js:264:    res.checks.push(checkEvidence(loc.dir));
+lib/gate.js:267:  res.checks.push(checkKb(cwd, loc.dir));
+lib/gate.js:268:  res.checks.push(checkCas(b.projection, loc.stage, !!opts.noCas, cwd));
+lib/gate.js:282:function cli(argv) {
+test/check.test.js:6:test('CK-01 anchor and file-link checks catch broken links', () => {
+test/check.test.js:8:  const fails = c.checkLinks('/tmp/does-not-exist', 'doc.md', text);
+test/check.test.js:12:  const ok = c.checkLinks('/tmp', 'doc.md', '# Real Heading\n\n[a](#real-heading)\n');
+test/check.test.js:16:test('CK-02 EN/CN heading alignment catches count and level drift', () => {
+test/check.test.js:19:  assert.ok(c.checkHeadingAlignment('EN', en, 'CN', cnBad).some((f) => /count mismatch/.test(f)));
+test/check.test.js:21:  assert.ok(c.checkHeadingAlignment('EN', en, 'CN', cnLvl).some((f) => /misaligned @#2/.test(f)));
+test/check.test.js:22:  assert.strictEqual(c.checkHeadingAlignment('EN', en, 'CN', en).length, 0);
+test/check.test.js:25:test('CK-03 verdict-phrase and codex-command checks catch drift', () => {
+test/check.test.js:26:  const drift = c.checkVerdictPhrases({ 'README.md': 'output "ready to execute" here' });
+test/check.test.js:28:  const notInTable = c.checkVerdictPhrases({ 'README.md': 'VERDICT: made up phrase' });
+test/check.test.js:33:  assert.strictEqual(c.checkCodexCommands(en, cnOk).length, 0);
+test/check.test.js:35:  assert.ok(c.checkCodexCommands(en, cnBad).some((f) => /token mismatch/.test(f)));
+test/check.test.js:38:  assert.strictEqual(c.checkCodexKnownForms(good).length, 0);
+test/check.test.js:39:  assert.ok(c.checkCodexKnownForms({ 'RUNBOOK.md': 'codex exec resume -s read-only <id> "x"\n< /dev/null' }).some((f) => /uses -s/.test(f)));
+test/check.test.js:40:  assert.ok(c.checkCodexKnownForms({ 'RUNBOOK.md': 'codex exec resume -c sandbox_mode="read-only" <id> "x"' }).some((f) => /dev\/null/.test(f)));
+test/check.test.js:43:test('CK-04 every spec scenario must carry a bindable ID', () => {
+test/check.test.js:45:  assert.strictEqual(c.checkScenarioIds(good, 'spec.md').length, 0);
+test/check.test.js:47:  const fails = c.checkScenarioIds(bad, 'spec.md');
+test/check.test.js:51:  const fenced = c.checkScenarioIds('```\n#### Scenario: no id fenced example\n```\n#### Scenario: PB-02 real\n', 'spec.md');
+test/check.test.js:55:test('CK-05 no residual OpenSpec adapter references remain', () => {
+test/check.test.js:56:  assert.ok(c.checkNoOpenspec('RUNBOOK.md', 'run /opsx:archive now').some((f) => /residual OpenSpec/.test(f)));
+test/check.test.js:57:  assert.ok(c.checkNoOpenspec('RUNBOOK.md', 'paths in openspec/specs/ …').length > 0);
+test/check.test.js:58:  assert.ok(c.checkNoOpenspec('RUNBOOK.md', 'doc/specs/ (adapter: openspec/specs/)').length > 0);
+test/check.test.js:59:  assert.strictEqual(c.checkNoOpenspec('RUNBOOK.md', 'plain-files at apriori/specs/ only').length, 0);
+test/check.test.js:62:test('CK-06 stale scaffolded runbook warns via check, never fails', () => {
+test/check.test.js:69:  assert.strictEqual(c.checkRunbookFreshness(root).length, 0);
+test/check.test.js:72:  fs.writeFileSync(path.join(root, 'apriori', 'specs', 's.md'), '#### Scenario: CK-99 x\n- THEN y\n');
+test/check.test.js:74:  assert.strictEqual(c.checkRunbookFreshness(root).length, 0);
+test/check.test.js:77:  const warns = c.checkRunbookFreshness(root);
+test/check.test.js:88:test('CK-07 consumer mode never runs self-checks; missing spec store is an error', () => {
+test/check.test.js:112:test('CK-08 self-mode guards docs pairs; one-sided pairs fail; absent pairs skip', () => {
+test/check.test.js:142:test('CK-09 links resolve from the linking file; cross-file fragments validated (self-mode)', () => {
+test/check.test.js:180:test('CK-10 committed secrets in review evidence fail the check', () => {
+test/archive-merge.test.js:57:  const code = cli(['--store', store, '--delta', delta, '--change', 'c', '--write']);
+test/archive-merge.test.js:78:  try { assert.strictEqual(cli(['--store', store, '--delta', dfile, '--change', 'c']), 0); }
+test/archive-merge.test.js:102:  try { assert.strictEqual(cli(['--store', store, '--delta', tmpFile(`<!-- apriori-base: ${fingerprint(STORE)} -->\n## RENAMED Requirements\n- Beta -> Bravo\n`), '--change', 'c']), 0); }
+test/archive-merge.test.js:106:  assert.strictEqual(cli(['--store', store2, '--delta', tmpFile('## RENAMED Requirements\n- Ghost -> X\n'), '--change', 'c', '--write']), 1);
+test/archive-merge.test.js:137:  try { code = cli(['--store', store, '--delta', badDelta, '--change', 'c', '--write']); }
+test/archive-merge.test.js:153:  try { code2 = cli(['--store', store, '--delta', emptyDelta, '--change', 'c']); }
+test/archive-merge.test.js:168:  try { code = cli(['--store', store, '--delta', delta, '--change', 'c', '--write']); }
+test/archive-merge.test.js:183:  try { code = cli(['--store', store, '--delta', delta, '--change', 'c', '--write']); }
+test/archive-merge.test.js:191:  const code2 = cli(['--store', store, '--delta', delta2, '--change', 'c', '--write']);
+test/archive-merge.test.js:218:  try { code = cli(['--store', store, '--delta', delta, '--change', '../victim', '--write']); }
+test/archive-merge.test.js:229:  try { code2 = cli(['--store', store, '--delta', delta, '--change', 'ghost-change', '--write', '--changes-dir', fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-am11-'))]); }
+test/archive-merge.test.js:250:  try { code = cli(['--store', store, '--delta', delta, '--change', 'my-change', '--write', '--changes-dir', changes]); }
+test/spec-runner-projection.test.js:32:  try { code = cli(args); } finally { console.log = orig; }
+test/spec-runner-projection.test.js:123:  try { code = cli(['--change', 'c', '--specs', 'apriori/specs', '--cwd', root, '--test-cmd', 'x']); }
+test/status.test.js:56:  try { process.chdir(root); assert.strictEqual(status.cli([]), 0); }
+test/status.test.js:77:    assert.strictEqual(status.cli(['--change', 'demo', '--json']), 0);
+test/status.test.js:88:    assert.strictEqual(status.cli(['--json']), 0);         // list mode
+lib/doctor.js:11:const { checkRunbookFreshness } = require('./check');
+lib/doctor.js:96:    const warn = checkRunbookFreshness(cwd);
+lib/doctor.js:201:function cli(argv) {
+lib/archive-merge.js:412:// → { code, out: [], err: [] } — pure return; cli() prints. ops is the fault-injection seam.
+lib/archive-merge.js:534:function cli(argv) {
+test/spec-runner.test.js:113:  try { code = cli(['--specs', file, '--test-cmd', tapCmd('ok 1 - XX-01 a', 'ok 2 - XX-02 b'), '--json']); }
+test/spec-runner.test.js:122:  try { code2 = cli(['--specs', file, '--test-cmd', tapCmd('not ok 1 - XX-01 a'), '--json']); }
+test/spec-runner.test.js:130:  try { code3 = cli(['--specs', file, '--test-cmd', 'node -e "process.exit(7)"', '--json']); }
+
+codex
+现有测试已经直接测 `lib/check.js` 的纯函数，并且也有通过临时 root + `process.chdir` 跑 CLI 的模式。设计里的 `checkRunbookVersion(root, pkgVersion)` seam 与这个测试风格匹配，fixture 可测性本身成立。
+exec
+/usr/bin/zsh -lc "sed -n '1,220p' test/check.test.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc 'rg -n "apriori-base: sha256:20c7849a4769bce4abed809eeb88b009032d170d95c330fb13c055134d566a45|sha256:20c7849a" apriori/specs/check/spec.md apriori/changes/runbook-version-sync/specs/check/spec.md' in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "nl -ba apriori/changes/runbook-version-sync/specs/check/spec.md | sed -n '1,80p' && nl -ba apriori/changes/runbook-version-sync/design.md | sed -n '1,80p' && nl -ba apriori/changes/runbook-version-sync/tasks.md | sed -n '1,60p'" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 171ms:
+'use strict';
+const { test } = require('node:test');
+const assert = require('node:assert');
+const c = require('../lib/check');
+
+test('CK-01 anchor and file-link checks catch broken links', () => {
+  const text = '# Title\n\nSee [x](#missing-anchor) and [y](./nope.md).\n';
+  const fails = c.checkLinks('/tmp/does-not-exist', 'doc.md', text);
+  assert.ok(fails.some((f) => /broken anchor #missing-anchor/.test(f)));
+  assert.ok(fails.some((f) => /broken file link \.\/nope\.md/.test(f)));
+  // a resolving anchor passes
+  const ok = c.checkLinks('/tmp', 'doc.md', '# Real Heading\n\n[a](#real-heading)\n');
+  assert.strictEqual(ok.length, 0);
+});
+
+test('CK-02 EN/CN heading alignment catches count and level drift', () => {
+  const en = '# A\n## B\n## C\n';
+  const cnBad = '# A\n## B\n'; // one fewer
+  assert.ok(c.checkHeadingAlignment('EN', en, 'CN', cnBad).some((f) => /count mismatch/.test(f)));
+  const cnLvl = '# A\n### B\n## C\n'; // level drift at #2
+  assert.ok(c.checkHeadingAlignment('EN', en, 'CN', cnLvl).some((f) => /misaligned @#2/.test(f)));
+  assert.strictEqual(c.checkHeadingAlignment('EN', en, 'CN', en).length, 0);
+});
+
+test('CK-03 verdict-phrase and codex-command checks catch drift', () => {
+  const drift = c.checkVerdictPhrases({ 'README.md': 'output "ready to execute" here' });
+  assert.ok(drift.some((f) => /ready to execute/.test(f)));
+  const notInTable = c.checkVerdictPhrases({ 'README.md': 'VERDICT: made up phrase' });
+  assert.ok(notInTable.some((f) => /not in table/.test(f)));
+  // codex command EN/CN parity: differing flag value is caught, prompt payload ignored
+  const en = 'codex exec resume -c sandbox_mode="read-only" <id> "review this"';
+  const cnOk = 'codex exec resume -c sandbox_mode="read-only" <id> "评审这个"';
+  assert.strictEqual(c.checkCodexCommands(en, cnOk).length, 0);
+  const cnBad = 'codex exec resume -c sandbox_mode="danger" <id> "评审这个"';
+  assert.ok(c.checkCodexCommands(en, cnBad).some((f) => /token mismatch/.test(f)));
+  // checker 8 (ported): resume must carry -c sandbox_mode="read-only"; RUNBOOKs need `< /dev/null`
+  const good = { 'RUNBOOK.md': 'codex exec resume -c sandbox_mode="read-only" <id> "x"\nrun `< /dev/null`', 'RUNBOOK_cn.md': 'codex exec resume -c sandbox_mode="read-only" <id> "x"\n用 `< /dev/null`' };
+  assert.strictEqual(c.checkCodexKnownForms(good).length, 0);
+  assert.ok(c.checkCodexKnownForms({ 'RUNBOOK.md': 'codex exec resume -s read-only <id> "x"\n< /dev/null' }).some((f) => /uses -s/.test(f)));
+  assert.ok(c.checkCodexKnownForms({ 'RUNBOOK.md': 'codex exec resume -c sandbox_mode="read-only" <id> "x"' }).some((f) => /dev\/null/.test(f)));
+});
+
+test('CK-04 every spec scenario must carry a bindable ID', () => {
+  const good = '#### Scenario: PB-01 plays\n#### Scenario: PB-02 pauses\n';
+  assert.strictEqual(c.checkScenarioIds(good, 'spec.md').length, 0);
+  const bad = '#### Scenario: PB-01 plays\n#### Scenario: no id here\n';
+  const fails = c.checkScenarioIds(bad, 'spec.md');
+  assert.strictEqual(fails.length, 1);
+  assert.match(fails[0], /scenario without a bindable ID: no id here/);
+  // fenced scenarios are documentation — same rule as the spec-runner (SR-13)
+  const fenced = c.checkScenarioIds('```\n#### Scenario: no id fenced example\n```\n#### Scenario: PB-02 real\n', 'spec.md');
+  assert.strictEqual(fenced.length, 0);
+});
+
+test('CK-05 no residual OpenSpec adapter references remain', () => {
+  assert.ok(c.checkNoOpenspec('RUNBOOK.md', 'run /opsx:archive now').some((f) => /residual OpenSpec/.test(f)));
+  assert.ok(c.checkNoOpenspec('RUNBOOK.md', 'paths in openspec/specs/ …').length > 0);
+  assert.ok(c.checkNoOpenspec('RUNBOOK.md', 'doc/specs/ (adapter: openspec/specs/)').length > 0);
+  assert.strictEqual(c.checkNoOpenspec('RUNBOOK.md', 'plain-files at apriori/specs/ only').length, 0);
+});
+
+test('CK-06 stale scaffolded runbook warns via check, never fails', () => {
+  const fs = require('node:fs');
+  const os = require('node:os');
+  const path = require('node:path');
+  const { spawnSync } = require('node:child_process');
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-ck6-'));
+  // no apriori/runbook.md → no warning
+  assert.strictEqual(c.checkRunbookFreshness(root).length, 0);
+  // identical runbook → no warning (specs store present so consumer checks can run)
+  fs.mkdirSync(path.join(root, 'apriori', 'specs'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'apriori', 'specs', 's.md'), '#### Scenario: CK-99 x\n- THEN y\n');
+  fs.copyFileSync(path.join(__dirname, '..', 'RUNBOOK.md'), path.join(root, 'apriori', 'runbook.md'));
+  assert.strictEqual(c.checkRunbookFreshness(root).length, 0);
+  // diverged runbook → warning names apriori update
+  fs.writeFileSync(path.join(root, 'apriori', 'runbook.md'), '# old runbook\n');
+  const warns = c.checkRunbookFreshness(root);
+  assert.strictEqual(warns.length, 1);
+  assert.match(warns[0], /apriori update/);
+  // through the CLI: warning is printed but RESULT stays PASS (nothing else fails in a bare dir)
+  const r = spawnSync('node', [path.join(__dirname, '..', 'bin', 'apriori.js'), 'check'],
+    { cwd: root, encoding: 'utf8' });
+  assert.strictEqual(r.status, 0);
+  assert.match(r.stdout, /! .*apriori update/);
+  assert.match(r.stdout, /RESULT: PASS/);
+});
+
+test('CK-07 consumer mode never runs self-checks; missing spec store is an error', () => {
+  const fs2 = require('node:fs'), os2 = require('node:os'), path2 = require('node:path');
+  const { spawnSync } = require('node:child_process');
+  const BIN = path2.join(__dirname, '..', 'bin', 'apriori.js');
+  // consumer legitimately using OpenSpec + its own README → PASS (no self-checks by default)
+  const root = fs2.mkdtempSync(path2.join(os2.tmpdir(), 'apriori-ck7-'));
+  fs2.mkdirSync(path2.join(root, 'apriori', 'specs'), { recursive: true });
+  fs2.writeFileSync(path2.join(root, 'apriori', 'specs', 's.md'), '#### Scenario: ZZ-01 x\n- THEN y\n');
+  fs2.writeFileSync(path2.join(root, 'README.md'), '# mine\nWe use openspec/ and /opsx: every day.\n');
+  const ok = spawnSync('node', [BIN, 'check'], { cwd: root, encoding: 'utf8' });
+  assert.strictEqual(ok.status, 0);
+  assert.match(ok.stdout, /RESULT: PASS/);
+  // --self in that same dir would apply the no-openspec rule → FAIL (self mode is for the apriori repo)
+  const self = spawnSync('node', [BIN, 'check', '--self'], { cwd: root, encoding: 'utf8' });
+  assert.strictEqual(self.status, 1);
+  assert.match(self.stdout, /residual OpenSpec/);
+  // missing spec store path → ERROR exit 2, never a silent PASS
+  const bare = fs2.mkdtempSync(path2.join(os2.tmpdir(), 'apriori-ck7b-'));
+  const miss = spawnSync('node', [BIN, 'check'], { cwd: bare, encoding: 'utf8' });
+  assert.strictEqual(miss.status, 2);
+  assert.match(miss.stderr, /does not exist/);
+  assert.match(miss.stderr, /apriori init/);
+});
+
+test('CK-08 self-mode guards docs pairs; one-sided pairs fail; absent pairs skip', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const os = require('os');
+  // aligned pair → PASS contribution (no docs failures)
+  const mk = (files) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-ck8-'));
+    fs.mkdirSync(path.join(root, 'apriori/specs'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'apriori/specs/s.md'), '#### Scenario: XX-01 a\n- t\n');
+    for (const [rel, c] of Object.entries(files)) {
+      fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
+      fs.writeFileSync(path.join(root, rel), c);
+    }
+    return root;
+  };
+  const run = (root) => require('node:child_process').spawnSync('node', [path.join(__dirname, '..', 'bin', 'apriori.js'), 'check', '--self'], { encoding: 'utf8', cwd: root });
+  // both sides absent → skipped (pass)
+  assert.strictEqual(run(mk({})).status, 0);
+  // aligned pair → pass
+  assert.strictEqual(run(mk({ 'docs/concepts.md': '## A\n', 'docs/concepts_cn.md': '## 甲\n' })).status, 0);
+  // misaligned pair → fail naming it
+  const mis = run(mk({ 'docs/concepts.md': '## A\n## B\n', 'docs/concepts_cn.md': '## 甲\n' }));
+  assert.strictEqual(mis.status, 1);
+  assert.match(mis.stdout, /concepts/);
+  // one-sided pair → fail naming the missing mirror
+  const one = run(mk({ 'docs/concepts.md': '## A\n' }));
+  assert.strictEqual(one.status, 1);
+  assert.match(one.stdout, /concepts_cn\.md/);
+});
+
+test('CK-09 links resolve from the linking file; cross-file fragments validated (self-mode)', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const os = require('os');
+  const mk = (files) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-ck9-'));
+    fs.mkdirSync(path.join(root, 'apriori/specs'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'apriori/specs/s.md'), '#### Scenario: XX-01 a\n- t\n');
+    for (const [rel, c] of Object.entries(files)) {
+      fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
+      fs.writeFileSync(path.join(root, rel), c);
+    }
+    return root;
+  };
+  const run = (root) => require('node:child_process').spawnSync('node', [path.join(__dirname, '..', 'bin', 'apriori.js'), 'check', '--self'], { encoding: 'utf8', cwd: root });
+  // docs-relative link to an existing sibling → pass
+  assert.strictEqual(run(mk({
+    'docs/concepts.md': 'see [x](./legacy.md)\n', 'docs/concepts_cn.md': '见 [x](./legacy.md)\n',
+    'docs/legacy.md': '## L\n', 'docs/legacy_cn.md': '## 甲\n',
+  })).status, 0);
+  // missing sibling → fail naming the linking file
+  const miss = run(mk({ 'docs/concepts.md': 'see [x](./nope.md)\n', 'docs/concepts_cn.md': '见 [x](./nope.md)\n' }));
+  assert.strictEqual(miss.status, 1);
+  assert.match(miss.stdout, /concepts\.md/);
+  // valid cross-file fragment → pass; bad fragment → fail naming both
+  assert.strictEqual(run(mk({
+    'docs/concepts.md': 'see [x](./legacy.md#the-loop)\n', 'docs/concepts_cn.md': '见 [x](./legacy.md#the-loop)\n',
+    'docs/legacy.md': '## The Loop\n', 'docs/legacy_cn.md': '## 环\n',
+  })).status, 0);
+  const badfrag = run(mk({
+    'docs/concepts.md': 'see [x](./legacy.md#nope)\n', 'docs/concepts_cn.md': '见 [x](./legacy.md#nope)\n',
+    'docs/legacy.md': '## The Loop\n', 'docs/legacy_cn.md': '## 环\n',
+  }));
+  assert.strictEqual(badfrag.status, 1);
+  assert.match(badfrag.stdout, /concepts\.md/);
+  assert.match(badfrag.stdout, /nope/);
+});
+
+test('CK-10 committed secrets in review evidence fail the check', () => {
+  const fs = require('fs');
+  const path = require('path');
+  const os = require('os');
+  const mk = (files) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-ck10-'));
+    fs.mkdirSync(path.join(root, 'apriori/specs'), { recursive: true });
+    fs.writeFileSync(path.join(root, 'apriori/specs/s.md'), '#### Scenario: XX-01 a\n- t\n');
+    for (const [rel, c] of Object.entries(files)) {
+      fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
+      fs.writeFileSync(path.join(root, rel), c);
+    }
+    return root;
+  };
+  const run = (root) => require('node:child_process').spawnSync('node', [path.join(__dirname, '..', 'bin', 'apriori.js'), 'check'], { encoding: 'utf8', cwd: root });
+  // absent review dir → skip (pass)
+  assert.strictEqual(run(mk({})).status, 0);
+  // clean review dir → pass
+  assert.strictEqual(run(mk({ 'apriori/changes/x/review/x-raw.txt': 'clean transcript\nsha256:abcdef' })).status, 0);
+  // each class fails naming file/line/class WITHOUT echoing the value (one nested)
+  const cases = [
+    ['apriori/changes/a/review/a-raw.txt', 'line one\nkey=AKIA' + 'ABCDEFGHIJKLMNOP\n', /AWS/i, 'AKIA' + 'ABCDEFGHIJKLMNOP'],
+    ['apriori/changes/archive/2026-01-01T0000-b/review/deep/b-raw.md', 'ghp_' + 'a'.repeat(36) + ' embedded in output\n', /GitHub/i, 'ghp_' + 'a'.repeat(36)],
+    ['apriori/changes/c/review/c.txt', '-----BEGIN RSA ' + 'PRIVATE KEY-----\nMII...\n', /private.key/i, 'MII'],   // assembled at runtime — the source (and raws quoting it) never carries the full literal
+  ];
+  for (const [rel, content, classRe, secret] of cases) {
+    const root = mk({ [rel]: content });
+    const r = run(root);
+    assert.strictEqual(r.status, 1, rel + r.stdout);
+    assert.match(r.stdout, classRe);
+    assert.match(r.stdout, new RegExp(rel.split('/').pop().replace('.', '\\.')));
+    assert.match(r.stdout, /:\d+:/);                       // line number
+    assert.ok(!r.stdout.includes(secret), 'secret value must never be echoed');
+    assert.match(r.stdout, /sanitize|SECURITY/i);           // remedy pointer
+  }
+  // symlinked entry skipped with a warn (capability-guarded)
+  const root = mk({ 'outside.txt': 'ghp_' + 'b'.repeat(36) });
+  fs.mkdirSync(path.join(root, 'apriori/changes/s/review'), { recursive: true });
+  let can = true;
+  try { fs.symlinkSync(path.join(root, 'outside.txt'), path.join(root, 'apriori/changes/s/review/link-raw.txt')); } catch { can = false; }
+  if (can) {
+
+ succeeded in 191ms:
+apriori/changes/runbook-version-sync/specs/check/spec.md:1:<!-- apriori-base: sha256:20c7849a4769bce4abed809eeb88b009032d170d95c330fb13c055134d566a45 -->
+
+ succeeded in 189ms:
+     1	<!-- apriori-base: sha256:20c7849a4769bce4abed809eeb88b009032d170d95c330fb13c055134d566a45 -->
+     2	## ADDED Requirements
+     3	
+     4	### Requirement: CK-11 keeps the runbook version aligned with the CLI major
+     5	`apriori check --self` SHALL assert that RUNBOOK.md — the canonical packaged runbook — carries exactly one header-blockquote entry of the form `` > `runbook-version: X.Y` `` whose major (`X`) equals `package.json`'s version major; RUNBOOK_cn.md, when present, SHALL likewise carry exactly one such entry whose major also equals the package major (each edition equals the package major, not merely each other). A missing entry, more than one, a malformed value, or a major mismatch FAILs (self-mode only) naming the offending file and the two values; occurrences of `runbook-version:` in body text or code fences are never matched. Consumer `apriori check` (no `--self`) never runs CK-11.
+     6	
+     7	#### Scenario: CK-11 the runbook major tracks the CLI major
+     8	- WHEN `apriori check --self` runs where RUNBOOK.md and RUNBOOK_cn.md declare `runbook-version: 4.0` and package.json is on a 4.x version
+     9	- THEN CK-11 passes; flipping either edition's header to `3.0`, removing it, or duplicating it FAILs (self-mode) naming that file; and a consumer `apriori check` without `--self` never raises CK-11
+     1	# Design — runbook-version-sync(事实对齐)
+     2	
+     3	## 现状事实
+     4	- RUNBOOK.md/RUNBOOK_cn.md 第 9 行:`` > `runbook-version: 3.0` · … ``(引用块+反引号)。
+     5	- lib/check.js:self-mode 在 cli(:248 附近)聚合一堆 check* 纯函数;PACKAGED_RUNBOOK 常量已指向包内 RUNBOOK.md。package.json version = 4.0.x。
+     6	- CK-06 是 warn-only 的 scaffolded-runbook freshness(比对副本 vs 包内),与本变更正交。
+     7	
+     8	## 方案
+     9	- 改 RUNBOOK.md/RUNBOOK_cn.md 第 9 行 `3.0`→`4.0`。
+    10	- 新 `checkRunbookVersion(root, pkgVersion)`(纯函数):对 RUNBOOK.md(必)与 RUNBOOK_cn.md(存在则)各:提取头部引用块中唯一 `` > `runbook-version: X.Y` `` 条目(正则锚定引用块行,排除正文示例);缺失/多个/格式不符 → fail 点名;major(X)≠ pkgVersion 的 major → fail 点名两值。
+    11	- cli self 分支追加调用,fails 汇入既有 self-mode fails 列表(exit 1);consumer 模式不调用(--self only)。
+    12	- 打包源即真相,update 无需改。
+    13	
+    14	## SPEC 触点
+    15	check spec ADDED「CK-11 keeps the runbook version aligned with the CLI major」+ CK-11 场景。
+     1	# Tasks — runbook-version-sync
+     2	
+     3	- [ ] T1. 红测试:CK-11(4.0 vs pkg 4.x PASS;头改 3.0/缺失/多头 FAIL;consumer 模式不跑),记录红跑。
+     4	- [ ] T2. checkRunbookVersion + cli self 分支接线;RUNBOOK 双语头 3.0→4.0。
+     5	- [ ] T3. 套件全绿 + verify --change GREEN + P8 收敛 + gate。
+
+codex
+我看到两个实质风险：一是 spec prose 把“缺失/重复/格式错误”也要求“点名两个值”，这比 req-final 更强且对缺失/格式错不可自然满足；二是场景层没有把 malformed 与 body/fence 非匹配单独钉住，容易只写 3.0/缺失/重复测试就绿。
+exec
+/usr/bin/zsh -lc "rg -n \"function fingerprint|fingerprint\\(\" lib/archive-merge.js test -g '*.js'" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "node - <<'NODE'
+const fs=require('fs'); const crypto=require('crypto');
+const txt=fs.readFileSync('apriori/specs/check/spec.md','utf8');
+console.log(crypto.createHash('sha256').update(txt,'utf8').digest('hex'));
+NODE" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,80p' lib/archive-merge.js" in /mnt/d/Workbench/misc/apriori-spec-development
+ exited 1 in 154ms:
+zsh:1: can't create temp file for here document: read-only file system
+
+ succeeded in 191ms:
+lib/archive-merge.js:45:function fingerprint(text) {
+lib/archive-merge.js:358:      const actual = texts.has(suffix) ? fingerprint(storeText) : 'new';
+lib/archive-merge.js:527:    console.log(`<!-- apriori-base: ${fingerprint(text)} -->`);
+lib/archive-merge.js:589:      const actual = storeExists ? fingerprint(storeText) : 'new';
+test/archive-merge.test.js:71:  const dfile = tmpFile(`<!-- apriori-base: ${fingerprint(STORE)} -->\n` +
+test/archive-merge.test.js:102:  try { assert.strictEqual(cli(['--store', store, '--delta', tmpFile(`<!-- apriori-base: ${fingerprint(STORE)} -->\n## RENAMED Requirements\n- Beta -> Bravo\n`), '--change', 'c']), 0); }
+test/archive-change.test.js:219:  const good = am.fingerprint(STORE_A);
+test/archive-change.test.js:288:    assert.strictEqual(r.stdout.trim(), `<!-- apriori-base: ${am.fingerprint('alpha\r\nbeta\n')} -->`);
+test/archive-change.test.js:291:    assert.strictEqual(am.fingerprint('alpha\r\nbeta\n'), am.fingerprint('alpha\nbeta\n'));
+test/archive-change.test.js:292:    assert.strictEqual(am.fingerprint('alpha\rbeta\n'), am.fingerprint('alpha\nbeta\n'));
+test/archive-change.test.js:413:  const good = am.fingerprint(STORE_A);
+test/archive-change.test.js:488:  const goodB = am.fingerprint(STORE_B);
+test/archive-change.test.js:650:    `<!-- apriori-base: ${fingerprint(STORE_A)} -->\n` + MOD_DIFF);
+
+ succeeded in 172ms:
+'use strict';
+/*
+ * archive-merge — plain-files native implementation of the archive action (§4).
+ * Zero deps — pure Node stdlib. Consumes the same delta format the OpenSpec adapter used
+ * (## ADDED/MODIFIED/REMOVED/RENAMED Requirements), so it is the adapter-free path.
+ *
+ * 3.1: also home of the merge-family pure helpers shared with `verify --change` —
+ * delta discovery, projection building, CAS base stamps, realpath containment.
+ */
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+const { withStrict } = require('./args');
+const { configCas, configCasProblem } = require('./resolve');
+
+const REQ_RE = /^###\s+Requirement:\s+(.+?)\s*$([\s\S]*?)(?=^###\s+Requirement:|$(?![\s\S]))/gm;
+const SECTION_SPLIT_RE = /^##\s+(ADDED|MODIFIED|REMOVED|RENAMED)\s+Requirements\s*$/m;
+// the exact marker merge() injects on REMOVED; heading LINE of a deprecated block
+const DEPRECATED_RE = /^###\s+Requirement:.*_deprecated \(superseded by [^)]*\)_/;
+// a whole deprecated block (heading line + body up to the next requirement)
+const DEPRECATED_BLOCK_RE = /^###[ \t]+Requirement:[^\n]*_deprecated \(superseded by [^)]*\)_[^\n]*$[\s\S]*?(?=^###[ \t]+Requirement:|$(?![\s\S]))/gm;
+
+function stripDeprecatedBlocks(text) { return text.replace(DEPRECATED_BLOCK_RE, ''); }
+
+// name -> full block (heading + body), in document order; duplicates reported (first block wins)
+function parseRequirementsStrict(text) {
+  const map = new Map();
+  const duplicates = [];
+  let m;
+  REQ_RE.lastIndex = 0;
+  while ((m = REQ_RE.exec(text)) !== null) {
+    const name = m[1].trim();
+    if (map.has(name)) duplicates.push(name);
+    else map.set(name, m[0].replace(/\s+$/, '') + '\n');
+  }
+  return { map, duplicates };
+}
+
+function parseRequirements(text) { return parseRequirementsStrict(text).map; }
+
+// ---- CAS base stamps -------------------------------------------------------
+
+// sha256 over content with line endings normalized — a delta authored on Windows
+// must fingerprint identically to the same store checked out with LF
+function fingerprint(text) {
+  const norm = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  return 'sha256:' + crypto.createHash('sha256').update(norm, 'utf8').digest('hex');
+}
+
+const STAMP_LINE_RE = /^<!--\s*apriori-base:\s*(\S+)\s*-->\s*$/gm;
+// any standalone comment line ATTEMPTING to be a stamp — a malformed attempt must be an error,
+// never silently treated as "unstamped" (that would quietly disable CAS)
+const STAMP_ATTEMPT_RE = /^\s*<!--(?=[^>]*apriori-base)[^>]*-->\s*$/gm;
+
+// → { stamp: 'sha256:<hex>' | 'new' | null, problems: [] }
+// Exactly one stamp line, before the first delta section, well-formed digest.
+function parseStamp(text) {
+  const problems = [];
+  const sectionIdx = text.search(SECTION_SPLIT_RE);
+  STAMP_ATTEMPT_RE.lastIndex = 0;
+  let m;
+  while ((m = STAMP_ATTEMPT_RE.exec(text)) !== null) {
+    STAMP_LINE_RE.lastIndex = 0;
+    if (!STAMP_LINE_RE.test(m[0].trim())) problems.push(`malformed apriori-base stamp line: ${m[0].trim()}`);
+  }
+  const found = [];
+  STAMP_LINE_RE.lastIndex = 0;
+  while ((m = STAMP_LINE_RE.exec(text)) !== null) found.push({ value: m[1], index: m.index });
+  if (!found.length) return { stamp: null, problems };
+  if (found.length > 1) problems.push('carries more than one apriori-base stamp line');
+  for (const f of found) {
+    if (sectionIdx >= 0 && f.index > sectionIdx) problems.push('apriori-base stamp appears after the first delta section heading');
+    if (f.value !== 'new' && !/^sha256:[0-9a-f]{64}$/.test(f.value)) problems.push(`malformed apriori-base stamp '${f.value}'`);
+  }
+  return { stamp: problems.length ? null : found[0].value, problems };
+}
+
+// ---- delta parsing ---------------------------------------------------------
+
+// per-line forms of the shared regexes (no /m — the walker feeds one normalized line at a time)
+
+exec
+/usr/bin/zsh -lc "node -e \"const fs=require('fs'),crypto=require('crypto'); const txt=fs.readFileSync('apriori/specs/check/spec.md','utf8').replace(/\\r\\n/g,'\\n').replace(/\\r/g,'\\n'); console.log('sha256:'+crypto.createHash('sha256').update(txt,'utf8').digest('hex'))\"" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc 'git status --short -- apriori/specs/check/spec.md apriori/changes/runbook-version-sync/specs/check/spec.md apriori/changes/runbook-version-sync/design.md apriori/changes/runbook-version-sync/tasks.md apriori/changes/runbook-version-sync/proposal.md' in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 153ms:
+sha256:20c7849a4769bce4abed809eeb88b009032d170d95c330fb13c055134d566a45
+
+ succeeded in 266ms:
+codex
+审查结论：CK-11 的总体方向、`--self` scoping、`RUNBOOK.md` canonical、CN edition 各自等于 pkg major、以及 CK-06/update 正交性都成立。`checkRunbookVersion(root, pkgVersion)` 作为纯函数 seam 也符合现有 `test/check.test.js` 的测试风格，fixture root 可测，不必改真实包内文件。
+
+主要缺口在 spec 可绑定性：requirement prose 覆盖得比 scenario 多，且有一处诊断要求过强。
+
+LEDGER DELTA
+
+ADDED
+
+| ID | Status | Finding |
+|---|---|---|
+| RVSPEC-1 | open | [spec.md:5](/mnt/d/Workbench/misc/apriori-spec-development/apriori/changes/runbook-version-sync/specs/check/spec.md:5) 把 missing、duplicate、malformed、major mismatch 统一要求 “naming the offending file and the two values”，比 req-final 过度断言；缺失/多头/格式错误时没有自然的“两个值”可报。建议改为：parse-target 失败命名文件和失败原因；只有 major mismatch 必须点名 runbook major 与 package major。 |
+| RVSPEC-2 | open | [spec.md:7](/mnt/d/Workbench/misc/apriori-spec-development/apriori/changes/runbook-version-sync/specs/check/spec.md:7) 唯一 CK-11 场景只绑定 PASS、3.0 mismatch、remove、duplicate、consumer mode；没有绑定 malformed value，也没有绑定 body/code-fence occurrences never matched。实现者可漏掉这两类仍满足场景测试。建议拆成两个或三个 CK-11 场景，至少新增 malformed FAIL 和 body/fence/body-blockquote ignored 的 fixture 行为。 |
+
+VERDICT: 2 issues open
+tokens used
+102,838
+审查结论：CK-11 的总体方向、`--self` scoping、`RUNBOOK.md` canonical、CN edition 各自等于 pkg major、以及 CK-06/update 正交性都成立。`checkRunbookVersion(root, pkgVersion)` 作为纯函数 seam 也符合现有 `test/check.test.js` 的测试风格，fixture root 可测，不必改真实包内文件。
+
+主要缺口在 spec 可绑定性：requirement prose 覆盖得比 scenario 多，且有一处诊断要求过强。
+
+LEDGER DELTA
+
+ADDED
+
+| ID | Status | Finding |
+|---|---|---|
+| RVSPEC-1 | open | [spec.md:5](/mnt/d/Workbench/misc/apriori-spec-development/apriori/changes/runbook-version-sync/specs/check/spec.md:5) 把 missing、duplicate、malformed、major mismatch 统一要求 “naming the offending file and the two values”，比 req-final 过度断言；缺失/多头/格式错误时没有自然的“两个值”可报。建议改为：parse-target 失败命名文件和失败原因；只有 major mismatch 必须点名 runbook major 与 package major。 |
+| RVSPEC-2 | open | [spec.md:7](/mnt/d/Workbench/misc/apriori-spec-development/apriori/changes/runbook-version-sync/specs/check/spec.md:7) 唯一 CK-11 场景只绑定 PASS、3.0 mismatch、remove、duplicate、consumer mode；没有绑定 malformed value，也没有绑定 body/code-fence occurrences never matched。实现者可漏掉这两类仍满足场景测试。建议拆成两个或三个 CK-11 场景，至少新增 malformed FAIL 和 body/fence/body-blockquote ignored 的 fixture 行为。 |
+
+VERDICT: 2 issues open

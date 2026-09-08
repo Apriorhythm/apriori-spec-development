@@ -1,0 +1,880 @@
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f4b30-68f9-7222-9b64-17f52a333b4c
+--------
+user
+P8 implementation review round 1 for tap-plan (STEP5 exit). Implemented on disk; suite 169/169 green, verify --change GREEN, gate PASS, check --self PASS, golden-path OK.
+
+Review the ACTUAL implementation against the converged design:
+- lib/spec-runner.js: parseTap gained a per-line pre-pass (one trailing \r stripped) collecting plans (PLAN_LINE_RE /^1\.\.(\d+)\s*(?:#.*)?$/), points (POINT_LINE_RE /^(?:ok|not ok)(?:\s|$)/), dupNumbers (POINT_NUM_RE /^(?:ok|not ok)\s+(\d+)(?:\s|$)/, numeric Set, sorted); return additive. infraErrors gained three guards after noTap with defensive defaults (run.plans || [] etc.), if/else-if chained (multiple-plans wins, then count mismatch, then dups). verify's run object carries plans/points/dupNumbers; verifyChange shares the code path.
+- test/spec-runner.test.js: SR-26..31 appended (planProject fixture for the --change/gate E2E).
+- One transcription fix during TDD: the spec delta's SR-31 THEN originally said "gate C1 reports BLOCKED", but gate's existing semantics classify an untrustworthy verify as ERROR exit 2 (res.code=2, "verify: <msg>") like every other infra failure; the delta and test now say gate exits 2 reporting the plan error. Confirm this matches lib/gate.js reality and is the RIGHT contract (fail-closed: ERROR stronger than BLOCKED).
+
+Check for: guard-ordering interactions (can a plan mismatch double-fire with the exit-status guard or mask a better diagnosis? if/else-if within the trio but the trio coexists with noTap/status guards), false positives on real-world TAP (nested node output through run-tests.mjs, pytest-tap, the golden path), Bail out! + plan interaction, CRLF, the E4/E7 edge fidelity, verifyJson/--json carrying the new errors, doctor unaffected, any existing caller of parseTap/infraErrors whose destructuring breaks. Rows TPIMPL-N. Print the COMPLETE review document body (landed verbatim at apriori/review/tap-plan-impl-review-v1.md) with a ledger-delta section, ending with exactly one verdict line: "VERDICT: no major issues, ready to proceed" or "VERDICT: <N> issues open".
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-11T07:56:16.923732Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T07:56:17.134521Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T07:56:17.484541Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-11T07:56:18.051294Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-11T07:56:19.071145Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-11T07:56:20.803592Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-11T07:56:24.250679Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: n2SWHyBj6x51
+codex
+I’ll inspect the implemented parser, infra guards, gate behavior, and SR-26..31 tests, then probe the interaction cases around bailout/status/noTap/json and existing callers.
+exec
+/usr/bin/zsh -lc "sed -n '1,190p' lib/spec-runner.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '190,285p' lib/spec-runner.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc 'rg -n "SR-26|SR-27|SR-28|SR-29|SR-30|SR-31|planProject|tap-plan|plans|dupNumbers|POINT_NUM" test/spec-runner.test.js lib/spec-runner.js' in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 123ms:
+'use strict';
+/*
+ * spec-runner — bind spec scenario IDs to test runs, report per-scenario red/green.
+ * VISION endgame, weak form: "spec IS the test suite". Zero deps — pure Node stdlib.
+ * Coupling surface is tiny and language-agnostic: markdown scenarios + a TAP-emitting test command.
+ *
+ * FAIL-CLOSED: a deterministic gate must refuse to say GREEN when its inputs are missing,
+ * its instrument misbehaved, or its evidence is ambiguous. Vacuous success is a bug.
+ * Exit codes: 0 = GREEN · 1 = spec/test gaps · 2 = invocation or infrastructure error.
+ */
+const fs = require('fs');
+const path = require('path');
+const { spawnSync } = require('child_process');
+// merge-family helpers shared with archive (3.1 projection); archive-merge never requires spec-runner
+const am = require('./archive-merge');
+const { withStrict } = require('./args');
+
+const DEFAULT_ID = '[A-Z]+-\\d+';
+const SCENARIO_RE = /^####\s+Scenario:\s+(.*)$/gm;
+// TAP result line, directive split off separately (# SKIP / # TODO)
+const TAP_RE = /^(ok|not ok)\s+\d+\s+-\s+(.*)$/gm;
+
+// Leading scenario/test ID. The match must end at a word boundary: `XX-01b` is NOT `XX-01` —
+// silently truncating would merge two different scenarios into one binding.
+function leadId(text, idRe) {
+  const m = text.trim().match(idRe);
+  if (!m || m.index !== 0) return null;
+  const next = text.trim()[m[0].length];
+  if (next !== undefined && /[A-Za-z0-9_]/.test(next)) return null;
+  return m[0];
+}
+
+function stripFences(text) { return text.replace(/```[\s\S]*?```/g, ''); }
+
+function mdFiles(target) {
+  if (!fs.existsSync(target)) return [];
+  const st = fs.statSync(target);
+  if (st.isFile()) return [target];
+  const out = [];
+  for (const e of fs.readdirSync(target, { withFileTypes: true })) {
+    const p = path.join(target, e.name);
+    if (e.isDirectory()) out.push(...mdFiles(p));
+    else if (e.name.endsWith('.md')) out.push(p);
+  }
+  return out.sort();
+}
+
+// Shared scenario scan over one text. Fenced content is documentation; scenarios inside
+// DEPRECATED requirement blocks (the marker REMOVED injects) are excluded in every form —
+// they are neither demanded nor listed, and their lingering tests become ORPHAN.
+function scanText(text, label, idRe, acc) {
+  const clean = am.stripDeprecatedBlocks(stripFences(text));
+  let m;
+  SCENARIO_RE.lastIndex = 0;
+  while ((m = SCENARIO_RE.exec(clean)) !== null) {
+    const id = leadId(m[1], idRe);
+    if (id) {
+      if (!acc.byId.has(id)) { acc.byId.set(id, []); acc.idFiles.set(id, []); }
+      acc.byId.get(id).push(m[1]);
+      acc.idFiles.get(id).push(label);
+    } else acc.unidentified.push([label, m[1]]);
+  }
+}
+
+function dupsOf(acc) {
+  return [...acc.byId.entries()].filter(([, titles]) => titles.length > 1)
+    .map(([id]) => ({ id, files: [...new Set(acc.idFiles.get(id))] }));
+}
+
+// Collect scenarios from spec files.
+// → { byId, unidentified:[[file,title]], files, missingTargets:[], duplicates:[{id,files}] }
+function collectScenarios(specTargets, idRe) {
+  const acc = { byId: new Map(), idFiles: new Map(), unidentified: [] };
+  const missingTargets = specTargets.filter((t) => !fs.existsSync(t));
+  const files = [...new Set(specTargets.flatMap(mdFiles))].sort();
+  for (const f of files) scanText(fs.readFileSync(f, 'utf8'), f, idRe, acc);
+  return { byId: acc.byId, unidentified: acc.unidentified, files, missingTargets, duplicates: dupsOf(acc) };
+}
+
+// Same collection over in-memory texts (the projection path) — label = store-relative suffix.
+function collectScenariosFromTexts(texts, idRe) {
+  const acc = { byId: new Map(), idFiles: new Map(), unidentified: [] };
+  for (const [label, text] of texts) scanText(text, label, idRe, acc);
+  return { byId: acc.byId, unidentified: acc.unidentified, files: [...texts.keys()], missingTargets: [], duplicates: dupsOf(acc) };
+}
+
+// the TAP plan (1..N, optionally with a # SKIP/# TODO directive) and result tokens,
+// matched per top-level line — indented subtest/YAML lines are invisible by the ^ anchor
+const PLAN_LINE_RE = /^1\.\.(\d+)\s*(?:#.*)?$/;
+const POINT_LINE_RE = /^(?:ok|not ok)(?:\s|$)/;
+const POINT_NUM_RE = /^(?:ok|not ok)\s+(\d+)(?:\s|$)/;   // complete numeric token only — `ok 1abc` stays unnumbered
+
+// Parse TAP text → { results: Map<id,{pass,fail,skip}>, untagged: [], bailout: string|null,
+//                    plans: number[], points: number, dupNumbers: number[] }
+// A # SKIP / # TODO directive is neither pass nor fail — a skipped test proves nothing.
+// plans/points/dupNumbers feed the plan-is-a-checked-promise infra guards (SR-26..31).
+function parseTap(out, idRe) {
+  const results = new Map();
+  const untagged = [];
+  let untaggedFails = 0;
+  const bm = out.match(/^Bail out!(.*)$/m);
+  const bailout = bm ? bm[0].trim() : null;
+  const plans = [];
+  let points = 0;
+  const numSeen = new Set(), dupSet = new Set();
+  for (const raw of out.split('\n')) {
+    const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw;
+    const p = PLAN_LINE_RE.exec(line);
+    if (p) { plans.push(Number(p[1])); continue; }
+    if (!POINT_LINE_RE.test(line)) continue;
+    points++;
+    const n = POINT_NUM_RE.exec(line);
+    if (n) {
+      const num = Number(n[1]);
+      if (numSeen.has(num)) dupSet.add(num); else numSeen.add(num);
+    }
+  }
+  const dupNumbers = [...dupSet].sort((a, b) => a - b);
+  let m;
+  TAP_RE.lastIndex = 0;
+  while ((m = TAP_RE.exec(out)) !== null) {
+    const hash = m[2].search(/#\s*(SKIP|TODO)\b/i);
+    const name = hash >= 0 ? m[2].slice(0, hash).trim() : m[2];
+    const directive = hash >= 0;
+    const id = leadId(name, idRe);
+    if (id === null) { untagged.push(name); if (m[1] === 'not ok' && !directive) untaggedFails++; continue; }
+    const cur = results.get(id) || { pass: 0, fail: 0, skip: 0 };
+    if (directive) cur.skip++;
+    else cur[m[1] === 'ok' ? 'pass' : 'fail']++;
+    results.set(id, cur);
+  }
+  return { results, untagged, untaggedFails, bailout, plans, points, dupNumbers };
+}
+
+// true when the test command produced output but not a single TAP result line was parsed —
+// almost always means the runner used a human reporter (node: add --test-reporter=tap)
+function zeroTapParsed(out, results, untagged) {
+  if (results.size > 0 || untagged.length > 0) return false;
+  if (!out.trim()) return false;
+  // a TAP version line or plan (1..N) proves the reporter IS TAP — an empty suite is not a reporter problem
+  if (/^TAP version \d+|^1\.\.\d+/m.test(out)) return false;
+  return true;
+}
+
+function runTestCommand(cmd, cwd) {
+  const r = spawnSync(cmd, { shell: true, cwd, encoding: 'utf8' });
+  return {
+    out: (r.stdout || '') + '\n' + (r.stderr || ''),
+    status: r.status,               // null when killed by signal
+    signal: r.signal || null,
+    error: r.error ? String(r.error.message || r.error) : null,
+  };
+}
+
+// Pure evaluation: cross-reference scenarios vs results → verdict object.
+// A scenario whose only results are skips is UNBOUND — skips prove nothing.
+function evaluate(byId, unidentified, results) {
+  const specIds = [...byId.keys()].sort();
+  const boundGreen = [], boundRed = [], unbound = [], orphan = [];
+  for (const id of specIds) {
+    const r = results.get(id);
+    if (!r || (r.pass === 0 && r.fail === 0)) unbound.push(id);
+    else if (r.fail === 0) boundGreen.push(id);
+    else boundRed.push(id);
+  }
+  for (const id of [...results.keys()].sort()) if (!byId.has(id)) orphan.push(id);
+  const clean = !boundRed.length && !unbound.length && !orphan.length && !unidentified.length;
+  return { boundGreen, boundRed, unbound, orphan, unidentified, clean };
+}
+
+// Fail-closed guard: reasons this run cannot be trusted regardless of the TAP picture.
+// Returns [] when the run is trustworthy.
+function infraErrors(run) {
+  const errs = [];
+  for (const t of run.missingTargets) errs.push(`spec target does not exist: ${t}`);
+  if (!run.missingTargets.length && run.fileCount === 0)
+    errs.push('no spec files found under the given targets — nothing to verify');
+  if (run.fileCount > 0 && run.scenarioCount === 0)
+    errs.push('spec files contain zero scenarios — nothing to verify');
+  if (run.exec.error) errs.push(`test command failed to spawn: ${run.exec.error}`);
+  if (run.exec.signal) errs.push(`test command was killed by signal ${run.exec.signal}`);
+  if (run.bailout) errs.push(`test run aborted: ${run.bailout}`);
+  if (run.noTap)
+    errs.push('test command produced output but ZERO TAP results were parsed — the command is probably not emitting TAP (node test runner: add --test-reporter=tap)');
+  // the TAP plan is a checked promise — defensive defaults keep legacy run shapes
+  // (direct callers of this exported helper) valid; only verify-created runs carry the fields
+  const plans = run.plans || [], points = run.points || 0, dupNumbers = run.dupNumbers || [];
+  if (plans.length > 1)
+    errs.push(`multiple TAP plans in one run (${plans.map((n) => `1..${n}`).join(', ')}) — cannot attribute test points to plans; run one TAP stream per verify (split the test command)`);
+  else if (plans.length === 1 && plans[0] !== points)
+
+ succeeded in 142ms:
+  else if (plans.length === 1 && plans[0] !== points)
+    errs.push(`TAP plan declares ${plans[0]} test point(s) but ${points} were parsed — output truncated or garbled; refusing to trust this run`);
+  else if (plans.length === 1 && dupNumbers.length)
+    errs.push(`duplicate TAP test-point number(s): ${dupNumbers.join(', ')}`);
+  if (run.exec.status !== null && run.exec.status !== 0 && run.failCount === 0)
+    errs.push(`test command exited with status ${run.exec.status} but no parsed TAP failure explains it — the TAP picture is incomplete or truncated; refusing to trust this run`);
+  return errs;
+}
+
+function formatReport(v, results, fileCount, extras = {}) {
+  const lines = [];
+  const specCount = v.boundGreen.length + v.boundRed.length + v.unbound.length;
+  const tagged = [...results.values()].reduce((s, r) => s + r.pass + r.fail, 0);
+  const skipped = [...results.values()].reduce((s, r) => s + (r.skip || 0), 0);
+  lines.push(`specs: ${fileCount} file(s), ${specCount} identified scenario(s)`);
+  lines.push(`tests: ${tagged} tagged result(s)${skipped ? `, ${skipped} skipped (not counted)` : ''}\n`);
+  const groups = [['BOUND-GREEN', v.boundGreen], ['BOUND-RED', v.boundRed],
+                 ['UNBOUND (scenario, no test)', v.unbound], ['ORPHAN (test, no scenario)', v.orphan]];
+  for (const [label, items] of groups) {
+    if (!items.length) continue;
+    lines.push(`${label === 'BOUND-GREEN' ? '✓' : '✗'} ${label}: ${items.length}`);
+    for (const id of items) {
+      const r = results.get(id);
+      lines.push(`    ${id}${r ? `  ${r.pass}p/${r.fail}f${r.skip ? `/${r.skip}s` : ''}` : ''}`);
+    }
+  }
+  if (v.unidentified.length) {
+    lines.push(`✗ UNIDENTIFIED (scenario, no ID — unbindable): ${v.unidentified.length}`);
+    for (const [f, t] of v.unidentified) lines.push(`    ${path.basename(f)}: ${t.slice(0, 60)}`);
+  }
+  if (extras.duplicates && extras.duplicates.length) {
+    lines.push(`✗ DUPLICATE scenario IDs (ambiguous binding): ${extras.duplicates.length}`);
+    for (const d of extras.duplicates) lines.push(`    ${d.id}: ${d.files.map((f) => path.basename(f)).join(', ')}`);
+  }
+  const errs = extras.errors || [];
+  lines.push('\nRESULT: ' + (errs.length ? 'ERROR — run not trustworthy (see stderr)'
+    : (v.clean && !(extras.duplicates || []).length ? 'GREEN — spec is the test suite' : 'GAPS')));
+  return lines.join('\n');
+}
+
+// Projection inputs for `verify --change` (all failure classes → run.errors, exit 2).
+// Roots resolve against cwd exactly as `apriori status` resolves change dirs.
+function buildChangeProjection(change, cwd) {
+  const changesDir = path.resolve(cwd, 'apriori', 'changes');
+  const storeRoot = path.resolve(cwd, 'apriori', 'specs');
+  const projection = { change, modules: [], conflicts: [] };
+  const d = am.discoverDeltas(changesDir, change);
+  if (d.errors.length) return { projection, errors: d.errors, texts: null };
+  const p = am.buildProjection(storeRoot, d.files, change);
+  projection.modules = p.modules;
+  projection.conflicts = p.conflicts;
+  const errors = [...p.validation, ...p.hygiene, ...p.casMismatches];
+  if (p.conflicts.length) errors.push(`projection has ${p.conflicts.length} merge conflict(s) — no trustworthy projection: ${p.conflicts.join('; ')}`);
+  return { projection, errors, texts: errors.length ? null : p.texts };
+}
+
+// Full verify run. opts: { specs:[], change, testCmd, idPattern, cwd }
+function verify(opts) {
+  const idRe = new RegExp(opts.idPattern || DEFAULT_ID);
+  let collected, projection = null;
+  if (opts.change) {
+    const b = buildChangeProjection(opts.change, opts.cwd || '.');
+    projection = b.projection;
+    if (!b.texts) {
+      // failed projection: fail closed WITHOUT running any tests
+      const verdict = evaluate(new Map(), [], new Map());
+      return { verdict, results: new Map(), fileCount: 0, failCount: 0, scenarioCount: 0,
+        missingTargets: [], duplicates: [], bailout: null, noTap: false,
+        exec: { status: null, signal: null, error: null }, errors: b.errors, projection };
+    }
+    collected = collectScenariosFromTexts(b.texts, idRe);
+  } else {
+    collected = collectScenarios(opts.specs, idRe);
+  }
+  const { byId, unidentified, files, missingTargets, duplicates } = collected;
+  const exec = runTestCommand(opts.testCmd, opts.cwd || '.');
+  const { results, untagged, untaggedFails, bailout, plans, points, dupNumbers } = parseTap(exec.out, idRe);
+  const verdict = evaluate(byId, unidentified, results);
+  const failCount = [...results.values()].reduce((s, r) => s + r.fail, 0) + untaggedFails;
+  const run = {
+    verdict, results, fileCount: files.length, failCount,
+    scenarioCount: byId.size + unidentified.length,
+    missingTargets, duplicates, bailout, plans, points, dupNumbers,
+    noTap: zeroTapParsed(exec.out, results, untagged),
+    exec: { status: exec.status, signal: exec.signal, error: exec.error },
+  };
+  if (projection) run.projection = projection;
+  run.errors = infraErrors(run);
+  return run;
+}
+
+// machine-consumable shape for a verify run
+function verifyJson(run) {
+  const { verdict: v, results } = run;
+  const clean = v.clean && run.duplicates.length === 0 && run.errors.length === 0;
+  const json = projectionless(run, clean);
+
+ succeeded in 178ms:
+test/spec-runner.test.js:268:// ---- tap-plan (SR-26..31): the TAP plan is a checked promise ----
+test/spec-runner.test.js:270:function planProject() {
+test/spec-runner.test.js:287:test('SR-26 a truncated plan refuses to verify', () => {
+test/spec-runner.test.js:295:test('SR-27 duplicate test-point numbers are untrustworthy', () => {
+test/spec-runner.test.js:297:  assert.deepStrictEqual(u.plans, [2]);
+test/spec-runner.test.js:299:  assert.deepStrictEqual(u.dupNumbers, [1]);      // numeric comparison: 01 duplicates 1
+test/spec-runner.test.js:306:test('SR-28 multiple plans fail closed even when totals mask', () => {
+test/spec-runner.test.js:312:  assert.match(r.stderr, /multiple TAP plans/);
+test/spec-runner.test.js:316:test('SR-29 the point count speaks TAP, not prefixes', () => {
+test/spec-runner.test.js:318:  assert.deepStrictEqual(u.plans, [2]);
+test/spec-runner.test.js:320:  assert.deepStrictEqual(u.dupNumbers, []);        // `ok 1abc` style stays unnumbered too
+test/spec-runner.test.js:321:  assert.strictEqual(parseTap('1..1\nok 1abc trailing\n', idRe).dupNumbers.length, 0);
+test/spec-runner.test.js:328:test('SR-30 plan-less, skip-all, and nested TAP stay legal', () => {
+test/spec-runner.test.js:337:  // nested node-style TAP: indented subtest plans/results are invisible to plan/point/dup collection
+test/spec-runner.test.js:340:  assert.deepStrictEqual(u.plans, [1]);
+test/spec-runner.test.js:342:  assert.deepStrictEqual(u.dupNumbers, []);
+test/spec-runner.test.js:345:test('SR-31 projected verify and gate inherit the plan check', () => {
+test/spec-runner.test.js:346:  const root = planProject();
+lib/spec-runner.js:91:const POINT_NUM_RE = /^(?:ok|not ok)\s+(\d+)(?:\s|$)/;   // complete numeric token only — `ok 1abc` stays unnumbered
+lib/spec-runner.js:94://                    plans: number[], points: number, dupNumbers: number[] }
+lib/spec-runner.js:96:// plans/points/dupNumbers feed the plan-is-a-checked-promise infra guards (SR-26..31).
+lib/spec-runner.js:103:  const plans = [];
+lib/spec-runner.js:109:    if (p) { plans.push(Number(p[1])); continue; }
+lib/spec-runner.js:112:    const n = POINT_NUM_RE.exec(line);
+lib/spec-runner.js:118:  const dupNumbers = [...dupSet].sort((a, b) => a - b);
+lib/spec-runner.js:132:  return { results, untagged, untaggedFails, bailout, plans, points, dupNumbers };
+lib/spec-runner.js:187:  const plans = run.plans || [], points = run.points || 0, dupNumbers = run.dupNumbers || [];
+lib/spec-runner.js:188:  if (plans.length > 1)
+lib/spec-runner.js:189:    errs.push(`multiple TAP plans in one run (${plans.map((n) => `1..${n}`).join(', ')}) — cannot attribute test points to plans; run one TAP stream per verify (split the test command)`);
+lib/spec-runner.js:190:  else if (plans.length === 1 && plans[0] !== points)
+lib/spec-runner.js:191:    errs.push(`TAP plan declares ${plans[0]} test point(s) but ${points} were parsed — output truncated or garbled; refusing to trust this run`);
+lib/spec-runner.js:192:  else if (plans.length === 1 && dupNumbers.length)
+lib/spec-runner.js:193:    errs.push(`duplicate TAP test-point number(s): ${dupNumbers.join(', ')}`);
+lib/spec-runner.js:266:  const { results, untagged, untaggedFails, bailout, plans, points, dupNumbers } = parseTap(exec.out, idRe);
+lib/spec-runner.js:272:    missingTargets, duplicates, bailout, plans, points, dupNumbers,
+
+codex
+The implementation matches the declared regexes and additive return shape. I’m reading the appended tests and gate code to verify the SR-31 transcription fix aligns with actual gate exit taxonomy.
+exec
+/usr/bin/zsh -lc 'rg -n "SR-31|gate|BLOCKED|ERROR|plan" apriori/changes/tap-plan/specs/spec-runner/spec.md apriori/changes/tap-plan/design.md test/gate.test.js test/spec-runner.test.js' in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' lib/gate.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '260,370p' test/spec-runner.test.js" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 0ms:
+  assert.strictEqual(configTestCmd(os.tmpdir()), null);      // no config → null
+  // CLI end-to-end: omit --test-cmd, cwd carries the config
+  fs.writeFileSync(path.join(root, 'spec.md'), '#### Scenario: XX-01 a\n');
+  const r = runCli(['--specs', path.join(root, 'spec.md'), '--cwd', root]);
+  assert.strictEqual(r.status, 0);
+  assert.match(r.stdout, /RESULT: GREEN/);
+});
+
+// ---- tap-plan (SR-26..31): the TAP plan is a checked promise ----
+
+function planProject() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-srplan-'));
+  const files = {
+    'apriori/specs/kv/spec.md': '### Requirement: Alpha\n\n#### Scenario: XA-01 base\n- t\n',
+    'apriori/changes/c/flow-state.md': 'change: c\ntier: medium\ntrack: harden\ntrack-rationale: r\nlineage: v3\ncurrent-step: STEP5\nround: 1\nnext-action: x\ngates:\n  - 2026-07-11T00:00 note: n\n',
+    'apriori/changes/c/tasks.md': '- [x] T1 done\n',
+    'apriori/changes/c/specs/kv/spec.md': '## ADDED Requirements\n\n### Requirement: Beta\n\n#### Scenario: XB-01 new\n- t\n',
+    'apriori/review/c-issues.md': '| ID | Issue | Risk | Round found | Status |\n|---|---|---|---|---|\n| Q-1 | a | low | 1 | verified |\n',
+  };
+  for (const [rel, content] of Object.entries(files)) {
+    const p = path.join(root, rel);
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, content);
+  }
+  return root;
+}
+
+test('SR-26 a truncated plan refuses to verify', () => {
+  const { file } = tmpSpec('#### Scenario: XX-01 a\n');
+  const r = runCli(['--specs', file, '--test-cmd', tapCmd('TAP version 13', '1..2', 'ok 1 - XX-01 a')]);
+  assert.strictEqual(r.status, 2);
+  assert.match(r.stderr, /declares 2 test point\(s\) but 1/);
+  assert.doesNotMatch(r.stdout, /RESULT: GREEN/);
+});
+
+test('SR-27 duplicate test-point numbers are untrustworthy', () => {
+  const u = parseTap('1..2\nok 1 - XX-01 a\nok 01 - XX-02 b\n', idRe);
+  assert.deepStrictEqual(u.plans, [2]);
+  assert.strictEqual(u.points, 2);
+  assert.deepStrictEqual(u.dupNumbers, [1]);      // numeric comparison: 01 duplicates 1
+  const { file } = tmpSpec('#### Scenario: XX-01 a\n#### Scenario: XX-02 b\n');
+  const r = runCli(['--specs', file, '--test-cmd', tapCmd('1..2', 'ok 1 - XX-01 a', 'ok 1 - XX-02 b')]);
+  assert.strictEqual(r.status, 2);
+  assert.match(r.stderr, /duplicate TAP test-point number\(s\): 1/);
+});
+
+test('SR-28 multiple plans fail closed even when totals mask', () => {
+  const { file } = tmpSpec('#### Scenario: XX-01 a\n');
+  // the P1 masking fixture verbatim: totals add up (3 declared / 3 parsed), still untrustworthy
+  const r = runCli(['--specs', file, '--test-cmd',
+    tapCmd('1..2', 'ok 1 - XX-01 a', '1..1', 'ok 1 - XX-02 b', 'ok 2 - XX-03 c')]);
+  assert.strictEqual(r.status, 2);
+  assert.match(r.stderr, /multiple TAP plans/);
+  assert.match(r.stderr, /one TAP stream per verify/);
+});
+
+test('SR-29 the point count speaks TAP, not prefixes', () => {
+  const u = parseTap('1..2\nok 1 - XX-01 a\nok\nok: note\nnot ok: also a note\n', idRe);
+  assert.deepStrictEqual(u.plans, [2]);
+  assert.strictEqual(u.points, 2);                 // bare `ok` counts; `ok:`/`not ok:` never do
+  assert.deepStrictEqual(u.dupNumbers, []);        // `ok 1abc` style stays unnumbered too
+  assert.strictEqual(parseTap('1..1\nok 1abc trailing\n', idRe).dupNumbers.length, 0);
+  const { file } = tmpSpec('#### Scenario: XX-01 a\n');
+  const r = runCli(['--specs', file, '--test-cmd', tapCmd('1..2', 'ok 1 - XX-01 a', 'ok', 'ok: note')]);
+  assert.strictEqual(r.status, 0);
+  assert.match(r.stdout, /RESULT: GREEN/);
+});
+
+test('SR-30 plan-less, skip-all, and nested TAP stay legal', () => {
+  const { file } = tmpSpec('#### Scenario: XX-01 a\n');
+  // no plan at all → no promise, no new error
+  const r1 = runCli(['--specs', file, '--test-cmd', tapCmd('ok 1 - XX-01 a')]);
+  assert.strictEqual(r1.status, 0);
+  // skip-all plan with a directive → zero plan, zero points, consistent; UNBOUND → GAPS as today
+  const r2 = runCli(['--specs', file, '--test-cmd', tapCmd('TAP version 13', '1..0 # SKIP no backend')]);
+  assert.strictEqual(r2.status, 1);
+  assert.doesNotMatch(r2.stderr, /TAP plan declares/);
+  // nested node-style TAP: indented subtest plans/results are invisible to plan/point/dup collection
+  const nested = 'TAP version 13\n# Subtest: outer\n    ok 1 - inner a\n    ok 2 - inner b\n    1..2\nok 1 - XX-01 a\n1..1\n';
+  const u = parseTap(nested, idRe);
+  assert.deepStrictEqual(u.plans, [1]);
+  assert.strictEqual(u.points, 1);
+  assert.deepStrictEqual(u.dupNumbers, []);
+});
+
+test('SR-31 projected verify and gate inherit the plan check', () => {
+  const root = planProject();
+  const badTap = tapCmd('1..3', 'ok 1 - XA-01 a', 'ok 2 - XB-01 b');   // plan lies: 3 declared, 2 parsed
+  const v = spawnSync('node', [BIN, 'verify', '--change', 'c', '--test-cmd', badTap], { encoding: 'utf8', cwd: root });
+  assert.strictEqual(v.status, 2);
+  assert.match(v.stderr, /declares 3 test point\(s\) but 2/);
+  const g = spawnSync('node', [BIN, 'gate', '--change', 'c', '--test-cmd', badTap], { encoding: 'utf8', cwd: root });
+  assert.strictEqual(g.status, 2);   // untrustworthy run = gate ERROR, like every other infra failure
+  assert.match(g.stdout + g.stderr, /declares 3 test point\(s\) but 2/);
+});
+
+ succeeded in 126ms:
+test/spec-runner.test.js:70:test('SR-07 delegates execution to the given test command (TAP is the only coupling)', () => {
+test/spec-runner.test.js:126:  // ERROR via CLI --json: silent crash → result ERROR, exit 2, errors[] populated
+test/spec-runner.test.js:134:  assert.strictEqual(errJson.result, 'ERROR');
+test/spec-runner.test.js:153:  // valid TAP with an EMPTY suite (version/plan lines only) is not a reporter problem
+test/spec-runner.test.js:175:  // all-green TAP but nonzero exit → ERROR (exit 2), never GREEN
+test/spec-runner.test.js:183:  // command not found (shell exits 127 with no TAP failure) → ERROR
+test/spec-runner.test.js:192:  // nonzero exit with NO parsed TAP failure at all (silent crash) → ERROR, not plain GAPS
+test/spec-runner.test.js:199:  // nonexistent spec path → ERROR, not vacuous GREEN
+test/spec-runner.test.js:203:  // empty dir (zero spec files) → ERROR
+test/spec-runner.test.js:208:  // spec file with zero scenarios → ERROR
+test/spec-runner.test.js:247:  // Bail out! → ERROR even if earlier lines were green
+test/spec-runner.test.js:268:// ---- tap-plan (SR-26..31): the TAP plan is a checked promise ----
+test/spec-runner.test.js:270:function planProject() {
+test/spec-runner.test.js:271:  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-srplan-'));
+test/spec-runner.test.js:274:    'apriori/changes/c/flow-state.md': 'change: c\ntier: medium\ntrack: harden\ntrack-rationale: r\nlineage: v3\ncurrent-step: STEP5\nround: 1\nnext-action: x\ngates:\n  - 2026-07-11T00:00 note: n\n',
+test/spec-runner.test.js:287:test('SR-26 a truncated plan refuses to verify', () => {
+test/spec-runner.test.js:297:  assert.deepStrictEqual(u.plans, [2]);
+test/spec-runner.test.js:306:test('SR-28 multiple plans fail closed even when totals mask', () => {
+test/spec-runner.test.js:312:  assert.match(r.stderr, /multiple TAP plans/);
+test/spec-runner.test.js:318:  assert.deepStrictEqual(u.plans, [2]);
+test/spec-runner.test.js:328:test('SR-30 plan-less, skip-all, and nested TAP stay legal', () => {
+test/spec-runner.test.js:330:  // no plan at all → no promise, no new error
+test/spec-runner.test.js:333:  // skip-all plan with a directive → zero plan, zero points, consistent; UNBOUND → GAPS as today
+test/spec-runner.test.js:336:  assert.doesNotMatch(r2.stderr, /TAP plan declares/);
+test/spec-runner.test.js:337:  // nested node-style TAP: indented subtest plans/results are invisible to plan/point/dup collection
+test/spec-runner.test.js:340:  assert.deepStrictEqual(u.plans, [1]);
+test/spec-runner.test.js:345:test('SR-31 projected verify and gate inherit the plan check', () => {
+test/spec-runner.test.js:346:  const root = planProject();
+test/spec-runner.test.js:347:  const badTap = tapCmd('1..3', 'ok 1 - XA-01 a', 'ok 2 - XB-01 b');   // plan lies: 3 declared, 2 parsed
+test/spec-runner.test.js:351:  const g = spawnSync('node', [BIN, 'gate', '--change', 'c', '--test-cmd', badTap], { encoding: 'utf8', cwd: root });
+test/spec-runner.test.js:352:  assert.strictEqual(g.status, 2);   // untrustworthy run = gate ERROR, like every other infra failure
+test/gate.test.js:8:const gate = require('../lib/gate');
+test/gate.test.js:17:  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-gate-'));
+test/gate.test.js:28:const FLOW = (name, tier = 'medium') => `change: ${name}\ntier: ${tier}\ntrack: harden\ntrack-rationale: r\nlineage: v3\ncurrent-step: STEP5\nround: 1\nnext-action: x\ngates:\n  - 2026-07-11T00:00 note: n\n`;
+test/gate.test.js:45:  const r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
+test/gate.test.js:58:  const r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
+test/gate.test.js:60:  assert.strictEqual(r.result, 'BLOCKED');
+test/gate.test.js:77:    const r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
+test/gate.test.js:94:    const r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
+test/gate.test.js:104:  let r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
+test/gate.test.js:109:  r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
+test/gate.test.js:115:  r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
+test/gate.test.js:118:  r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
+test/gate.test.js:122:  assert.strictEqual(gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK }).checks.find((x) => x.id === 'C5').status, 'pass');
+test/gate.test.js:128:    r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
+test/gate.test.js:136:    r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
+test/gate.test.js:141:test('GT-06 the binding gate is stage-aware (in-flight projected; archived plain)', () => {
+test/gate.test.js:144:  const r1 = gate.runGate({ cwd: inflight, change: 'c', testCmd: TAP_OK });
+test/gate.test.js:147:  const r1b = gate.runGate({ cwd: inflight, change: 'c', testCmd: tapCmd('ok 1 - XA-01 a') });
+test/gate.test.js:159:  const r2 = gate.runGate({ cwd: arch, change: 'c', testCmd: TAP_OK });
+test/gate.test.js:167:  const bad = run(['gate', '--change', '../evil', '--test-cmd', TAP_OK], root);
+test/gate.test.js:170:  const nf = gate.runGate({ cwd: root, change: 'nope', testCmd: TAP_OK });
+test/gate.test.js:184:  const r = gate.runGate({ cwd: arch, change: 'c', testCmd: TAP_OK });
+test/gate.test.js:188:  const r2 = gate.runGate({ cwd: arch, change: 'c', testCmd: TAP_OK });
+test/gate.test.js:199:    const r3 = gate.runGate({ cwd: arch, change: 'c', testCmd: TAP_OK });
+test/gate.test.js:208:  const r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
+test/gate.test.js:210:  assert.strictEqual(r.result, 'ERROR');
+test/gate.test.js:214:  assert.strictEqual(gate.runGate({ cwd: root2, change: 'c', testCmd: TAP_OK }).code, 1);
+test/gate.test.js:223:  const r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
+test/gate.test.js:233:  const r2 = gate.runGate({ cwd: root2, change: 'c', testCmd: TAP_OK });
+test/gate.test.js:241:  const na = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK }).checks.find((x) => x.id === 'C6');
+test/gate.test.js:246:  const na2 = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK }).checks.find((x) => x.id === 'C6');
+test/gate.test.js:261:    let c6 = gate.runGate({ cwd: root3, change: 'c', testCmd: TAP_OK }).checks.find((x) => x.id === 'C6');
+test/gate.test.js:265:    c6 = gate.runGate({ cwd: root3, change: 'c', testCmd: TAP_OK }).checks.find((x) => x.id === 'C6');
+test/gate.test.js:268:    c6 = gate.runGate({ cwd: root3, change: 'c', testCmd: TAP_OK }).checks.find((x) => x.id === 'C6');
+test/gate.test.js:276:    [['gate', '--change', 'c', '--test-cmd', TAP_OK, '--json'], 0, 'PASS', 'in-flight'],
+test/gate.test.js:277:    [['gate', '--change', 'nope', '--test-cmd', TAP_OK, '--json'], 2, 'ERROR', null],
+test/gate.test.js:278:    [['gate', '--change', '../evil', '--test-cmd', TAP_OK, '--json'], 2, 'ERROR', null],
+test/gate.test.js:279:    [['gate', '--json'], 2, 'ERROR', null],                                   // usage: --change missing
+test/gate.test.js:289:  assert.strictEqual(JSON.parse(run(['gate', '--json'], root).stdout).change, null);
+test/gate.test.js:290:  // BLOCKED class
+test/gate.test.js:292:  const b = run(['gate', '--change', 'c', '--test-cmd', TAP_OK, '--json'], root);
+test/gate.test.js:294:  assert.strictEqual(JSON.parse(b.stdout).result, 'BLOCKED');
+test/gate.test.js:295:  // missing flow-state class: still pure JSON, stage resolved, result ERROR
+test/gate.test.js:297:  const nofs = run(['gate', '--change', 'c', '--test-cmd', TAP_OK, '--json'], root);
+test/gate.test.js:300:  assert.strictEqual(jn.result, 'ERROR');
+test/gate.test.js:302:  // verify-untrustworthy class (broken delta → projection fails): pure JSON, ERROR
+test/gate.test.js:305:  const vu = run(['gate', '--change', 'd', '--test-cmd', TAP_OK, '--json'], bad);
+test/gate.test.js:307:  assert.strictEqual(JSON.parse(vu.stdout).result, 'ERROR');
+test/gate.test.js:310:test('GT-12 gate is read-only', () => {
+test/gate.test.js:319:  gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
+test/gate.test.js:320:  gate.runGate({ cwd: root, change: 'nope', testCmd: TAP_OK });
+apriori/changes/tap-plan/design.md:1:# Design — tap-plan
+apriori/changes/tap-plan/design.md:7:- `plans: number[]` — every line matching `PLAN_LINE_RE = /^1\.\.(\d+)\s*(?:#.*)?$/` (top-level only: the `^` is per split line, no indent tolerated; the optional trailing comment covers `# SKIP`/`# TODO` directives; N parsed via Number()).
+apriori/changes/tap-plan/design.md:10:- Return `{ results, untagged, untaggedFails, bailout, plans, points, dupNumbers }`.
+apriori/changes/tap-plan/design.md:12:**infraErrors** (three new guards, after the existing noTap guard so the "not TAP at all" cure keeps precedence). `infraErrors` is an EXPORTED helper with existing direct callers passing run objects that predate the new fields — it reads them defensively (`const plans = run.plans || [], points = run.points || 0, dupNumbers = run.dupNumbers || []`), so legacy run shapes stay valid and only verify-created runs (which carry the real fields) can trip the new guards (TPSPEC-1):
+apriori/changes/tap-plan/design.md:13:- `plans.length > 1` → `multiple TAP plans in one run (${plans.join(', ')} …)` — cannot attribute test points to plans; run one TAP stream per verify (split the test command).
+apriori/changes/tap-plan/design.md:14:- `plans.length === 1 && plans[0] !== points` → `TAP plan declares ${plan} test point(s) but ${points} were parsed — output truncated or garbled; refusing to trust this run`.
+apriori/changes/tap-plan/design.md:15:- `plans.length === 1 && dupNumbers.length` → `duplicate TAP test-point number(s): ${dupNumbers.join(', ')}`.
+apriori/changes/tap-plan/design.md:16:- No plan (`plans.length === 0`): nothing new (DD-1).
+apriori/changes/tap-plan/design.md:18:**verify plumbing**: the `run` object passed to `infraErrors` gains `plans/points/dupNumbers` from parseTap's return at the existing call site (verify and verifyChange share it). gate C1 and `--json` inherit via the existing infra array — no new wiring; `doctor` does not call `infraErrors` and stays out of scope by construction.
+apriori/changes/tap-plan/design.md:20:**Tests** (`test/spec-runner.test.js` or the existing verify test home): SR-26..31 — unit-level parseTap assertions (plans/points/dupNumbers on crafted strings incl. CRLF) + E2E fixtures with a fake TAP-emitting test-cmd (repro scripts from req-final verbatim: E1 truncation, E2 dup incl. `01`, E3 masking fixture, E4 bare-`ok` + `ok:` line, E5 plan-less, E7 `1..0 # SKIP`, E6 nested via the repo's own suite, E8 verify --change + gate). Existing tests must stay green (E9).
+apriori/changes/tap-plan/design.md:22:**Self-test note**: the repo's own gates run through run-tests.mjs → single node --test stream → one trailing plan whose count matches — SR-30/E6 is proven by the gate chain itself staying green.
+apriori/changes/tap-plan/specs/spec-runner/spec.md:2:# Delta — spec-runner (tap-plan)
+apriori/changes/tap-plan/specs/spec-runner/spec.md:6:### Requirement: the TAP plan is a checked promise
+apriori/changes/tap-plan/specs/spec-runner/spec.md:7:When the test command's output carries exactly one top-level TAP plan line (`/^1\.\.(\d+)\s*(#.*)?$/` — a trailing `# SKIP`/`# TODO` directive is legal and `N` still parses), the run SHALL be trusted only if the plan total equals the count of top-level TAP result tokens (`/^(?:ok|not ok)(?:\s|$)/` — unnumbered and undescribed points count; `ok:`-prefixed diagnostic-like lines and indented subtest/YAML lines never count) and no top-level test-point number repeats (compared numerically, so `01` duplicates `1`; unnumbered points are exempt). More than one top-level plan SHALL itself be an infra error naming the cure (one TAP stream per verify). Absent plans keep today's behavior — no promise made, none checked. Violations are infra errors (verify RESULT: ERROR exit 2, gate C1 BLOCKED), never bindings; `verify`, `verify --change`, and `gate` inherit through `infraErrors` with no new wiring, and `doctor`'s probe classification is intentionally out of scope.
+apriori/changes/tap-plan/specs/spec-runner/spec.md:9:#### Scenario: SR-26 a truncated plan refuses to verify
+apriori/changes/tap-plan/specs/spec-runner/spec.md:10:- WHEN the test command emits a plan `1..2`, a single passing result, and exit 0
+apriori/changes/tap-plan/specs/spec-runner/spec.md:11:- THEN verify reports RESULT: ERROR (exit 2) naming 2 declared vs 1 parsed, and nothing verifies GREEN
+apriori/changes/tap-plan/specs/spec-runner/spec.md:14:- WHEN one plan is present and two top-level results carry the same number (including `ok 01` vs `ok 1`)
+apriori/changes/tap-plan/specs/spec-runner/spec.md:15:- THEN verify reports RESULT: ERROR naming the duplicated number(s)
+apriori/changes/tap-plan/specs/spec-runner/spec.md:17:#### Scenario: SR-28 multiple plans fail closed even when totals mask
+apriori/changes/tap-plan/specs/spec-runner/spec.md:18:- WHEN the output carries two top-level plans whose declared totals happen to equal the parsed points (`1..2`, one point, `1..1`, two points)
+apriori/changes/tap-plan/specs/spec-runner/spec.md:19:- THEN verify reports RESULT: ERROR naming multiple plans and advising one TAP stream per verify
+apriori/changes/tap-plan/specs/spec-runner/spec.md:22:- WHEN a plan `1..2` is followed by a numbered described result and a bare `ok`, with an `ok: note` diagnostic line nearby
+apriori/changes/tap-plan/specs/spec-runner/spec.md:23:- THEN the bare point counts toward the plan, the `ok:` line does not, and no plan error is raised
+apriori/changes/tap-plan/specs/spec-runner/spec.md:25:#### Scenario: SR-30 plan-less, skip-all, and nested TAP stay legal
+apriori/changes/tap-plan/specs/spec-runner/spec.md:26:- WHEN output has no plan at all, or a `1..0 # SKIP reason` plan with zero points, or node-style nested TAP whose indented subtest lines carry their own plans and results
+apriori/changes/tap-plan/specs/spec-runner/spec.md:27:- THEN no plan infra error is raised and verification behaves exactly as before
+apriori/changes/tap-plan/specs/spec-runner/spec.md:29:#### Scenario: SR-31 projected verify and gate inherit the plan check
+apriori/changes/tap-plan/specs/spec-runner/spec.md:30:- WHEN a change's projected verify (or `gate --change`) runs against a test command whose TAP plan does not match its results
+apriori/changes/tap-plan/specs/spec-runner/spec.md:31:- THEN `verify --change` exits 2 (RESULT: ERROR) and gate exits 2 reporting the verify plan error (an untrustworthy run is gate ERROR, like every other infra failure — not a mere BLOCKED)
+
+ succeeded in 132ms:
+'use strict';
+/*
+ * apriori gate — aggregate the MECHANICAL exit conditions for one change into one exit code.
+ * 0 = PASS · 1 = BLOCKED · 2 = the evaluation itself is untrustworthy.
+ * Strictly read-only. PASS covers machine checks only — human gates remain human.
+ */
+const fs = require('fs');
+const path = require('path');
+const { spawnSync } = require('child_process');
+const { parseFlowState, parseLedger } = require('./status');
+const { verify, configTestCmd } = require('./spec-runner');
+const { CHANGE_NAME_RE, containsReal } = require('./archive-merge');
+const { withStrict } = require('./args');
+
+const STEP_ENUM = ['STEP0', 'STEP1', 'STEP2', 'STEP3', 'STEP4', 'STEP5', 'STEP6',
+  'INTENT-CARD', 'SPIKE', 'EXTRACTION', 'DONE', 'ABANDONED'];
+const TIER_ENUM = ['trivial', 'medium', 'large'];
+const CAVEAT = 'mechanical checks only; human gates remain human';
+
+function err(res, msg) { res.errors.push(msg); res.result = 'ERROR'; res.code = 2; return res; }
+
+// stage resolution: in-flight first, else newest archived (exact stamp regex, lexicographic last)
+function resolveChange(cwd, name) {
+  const changesDir = path.join(cwd, 'apriori', 'changes');
+  const inflight = path.join(changesDir, name);
+  if (fs.existsSync(inflight)) {
+    if (!containsReal(changesDir, inflight)) return { error: `change path escapes ${changesDir}` };
+    return { stage: 'in-flight', dir: inflight };
+  }
+  const archRoot = path.join(changesDir, 'archive');
+  if (fs.existsSync(archRoot)) {
+    const re = new RegExp(`^\\d{4}-\\d{2}-\\d{2}T\\d{4}-${name}$`);
+    // candidates must be DIRECTORIES (following symlinks) — a stray file with a stamp name is ignored
+    const hits = fs.readdirSync(archRoot).filter((b) => {
+      if (!re.test(b)) return false;
+      try { return fs.statSync(path.join(archRoot, b)).isDirectory(); } catch { return false; }
+    }).sort();
+    if (hits.length) {
+      const dir = path.join(archRoot, hits[hits.length - 1]);
+      // containment against the ARCHIVE root — a symlink pointing elsewhere under changes/ is still an escape
+      if (!containsReal(archRoot, dir)) return { error: `archived change path escapes ${archRoot}` };
+      return { stage: 'archived', dir };
+    }
+  }
+  return { error: `change '${name}' found neither at ${inflight} nor under ${archRoot}` };
+}
+
+// --- individual checks; each returns {id, status: 'pass'|'blocked'|'n/a', detail} ---
+
+function checkFlowState(state, name) {
+  for (const key of ['change', 'tier', 'track', 'lineage', 'current-step']) {
+    const v = state[key];
+    if (v === undefined || v === '') return { id: 'C3', status: 'blocked', detail: `flow-state: required key '${key}' missing` };
+    if (v.includes('<') || v.includes('>')) return { id: 'C3', status: 'blocked', detail: `flow-state: '${key}' is an unfilled placeholder (${v})` };
+  }
+  if (state.change !== name) return { id: 'C3', status: 'blocked', detail: `flow-state: 'change' is '${state.change}', expected '${name}'` };
+  if (!STEP_ENUM.includes(state['current-step'])) return { id: 'C3', status: 'blocked', detail: `flow-state: 'current-step' '${state['current-step']}' not in the legal vocabulary` };
+  if (!TIER_ENUM.includes(state.tier)) return { id: 'C3', status: 'blocked', detail: `flow-state: 'tier' '${state.tier}' not in {trivial, medium, large}` };
+  return { id: 'C3', status: 'pass', detail: `legal (tier ${state.tier}, ${state['current-step']})` };
+}
+
+function checkTasks(dir, tier) {
+  const p = path.join(dir, 'tasks.md');
+  if (!fs.existsSync(p)) {
+    return tier === 'trivial'
+      ? { id: 'C2', status: 'n/a', detail: 'no tasks.md — trivial tier has no STEP2' }
+      : { id: 'C2', status: 'blocked', detail: `tasks.md missing at ${p}` };
+  }
+  const open = (fs.readFileSync(p, 'utf8').match(/^\s*-\s\[\s\]/gm) || []).length;
+  return open
+    ? { id: 'C2', status: 'blocked', detail: `tasks.md has ${open} unchecked box(es)` }
+    : { id: 'C2', status: 'pass', detail: 'all tasks checked' };
+}
+
+function checkLedger(cwd, name, tier) {
+  const p = path.join(cwd, 'apriori', 'review', `${name}-issues.md`);
+  if (!fs.existsSync(p)) {
+    return tier === 'trivial'
+      ? { id: 'C4', status: 'n/a', detail: 'no ledger — trivial tier may never open one' }
+      : { id: 'C4', status: 'blocked', detail: `ledger missing at ${p}` };
+  }
+  const rows = parseLedger(fs.readFileSync(p, 'utf8'));
+  const bad = [];
+  for (const r of rows) {
+    if (/^open\b/i.test(r.status)) bad.push(`${r.id} is open`);
+    else if (/^rejected\b/i.test(r.status)) {
+      // reason rule: strip the leading word, trim, require a WORD character (punctuation alone is not a reason)
+      const rest = r.status.replace(/^rejected\b/i, '').trim();
+      if (!/\w/.test(rest)) bad.push(`${r.id} is rejected without a reason`);
+    }
+  }
+  return bad.length
+    ? { id: 'C4', status: 'blocked', detail: bad.join('; ') }
+    : { id: 'C4', status: 'pass', detail: `${rows.length} row(s), none blocking` };
+}
+
+function checkEvidence(cwd, name) {
+  const reviewDir = path.join(cwd, 'apriori', 'review');
+  const designDir = path.join(cwd, 'apriori', 'design');
+  const docs = [];
+  const collect = (dir, re) => {
+    if (!fs.existsSync(dir)) return;
+    for (const b of fs.readdirSync(dir)) {
+      if (!re.test(b)) continue;
+      if (b === `${name}-issues.md`) continue;
+      if (/-raw\.[^.]+$/.test(b) || b.replace(/\.md$/, '').endsWith('-raw')) continue;
+      docs.push(path.join(dir, b));
+    }
+  };
+  collect(reviewDir, new RegExp(`^${name}-.*\\.md$`));
+  collect(designDir, new RegExp(`^${name}-review-v.*\\.md$`));
+  const bad = [];
+  for (const doc of docs.sort()) {
+    if (fs.lstatSync(doc).isSymbolicLink()) { bad.push(`${path.basename(doc)} is a symlink — evidence docs must be regular files`); continue; }
+    if (!fs.statSync(doc).isFile()) continue;
+    if (!/^VERDICT:/m.test(fs.readFileSync(doc, 'utf8'))) continue;
+    const stem = path.basename(doc, '.md');
+    const raws = fs.existsSync(reviewDir) ? fs.readdirSync(reviewDir).filter((b) =>
+      b.startsWith(stem + '-raw.') &&
+      fs.lstatSync(path.join(reviewDir, b)).isFile() &&                     // lstat FIRST: symlinked raws are not evidence
+      containsReal(reviewDir, path.join(reviewDir, b))) : [];
+    if (!raws.length) bad.push(`${path.basename(doc)} carries a VERDICT but no ${stem}-raw.* exists`);
+  }
+  return bad.length
+    ? { id: 'C5', status: 'blocked', detail: bad.join('; ') }
+    : { id: 'C5', status: 'pass', detail: `${docs.length} review doc(s), every verdict has raw evidence` };
+}
+
+function checkKb(cwd, dir) {
+  const specsDir = path.join(dir, 'specs');
+  const modules = new Set();
+  const walk = (d, base) => {
+    if (!fs.existsSync(d)) return;
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, e.name);
+      if (e.isDirectory()) walk(p, base);
+      else if (e.name.endsWith('.md')) modules.add(path.relative(base, p).split(path.sep)[0]);
+    }
+  };
+  walk(specsDir, specsDir);
+  if (!modules.size) return { id: 'C6', status: 'n/a', detail: 'no delta specs to map' };
+  const blocked = [], notes = [];
+  let checked = 0;
+  for (const m of [...modules].sort()) {
+    const truth = path.join(cwd, 'apriori', 'truth', `${m}.md`);
+    if (!fs.existsSync(truth)) { notes.push(`${m}: no truth doc`); continue; }
+    const sc = fs.readFileSync(truth, 'utf8').match(/^source-commit:\s*(\S+)/m);
+    if (!sc) { notes.push(`${m}: truth doc has no source-commit`); continue; }
+    if (!fs.existsSync(path.join(cwd, 'lib', `${m}.js`))) { notes.push(`${m}: no lib/${m}.js to compare`); continue; }
+    const g = spawnSync('git', ['-C', cwd, 'log', '--oneline', `${sc[1]}..HEAD`, '--', `lib/${m}.js`], { encoding: 'utf8' });
+    if (g.error) { notes.push(`${m}: git unavailable (${g.error.message})`); continue; }
+    if (g.status !== 0) { notes.push(`${m}: git failed (${(g.stderr || '').split('\n')[0]})`); continue; }
+    const n = g.stdout.trim() ? g.stdout.trim().split('\n').length : 0;
+    if (n > 0) blocked.push(`${m}: ${n} commit(s) since ${sc[1]}`);
+    else checked++;
+  }
+  if (blocked.length) return { id: 'C6', status: 'blocked', detail: blocked.join('; ') };
+  if (checked > 0) return { id: 'C6', status: 'pass', detail: `${checked} module stamp(s) up to date${notes.length ? `; ${notes.join('; ')}` : ''}` };
+  return { id: 'C6', status: 'n/a', detail: notes.join('; ') };
+}
+
+function checkBinding(cwd, name, stage, testCmd) {
+  const run = stage === 'in-flight'
+    ? verify({ change: name, cwd, testCmd })
+    : verify({ specs: [path.join(cwd, 'apriori', 'specs')], cwd, testCmd });
+  if (run.errors.length) return { infra: run.errors };
+  const v = run.verdict;
+  const clean = v.clean && run.duplicates.length === 0;
+  if (clean) return { check: { id: 'C1', status: 'pass', detail: `verify GREEN (${stage})` } };
+  const parts = [];
+  for (const [label, arr] of [['red', v.boundRed], ['unbound', v.unbound], ['orphan', v.orphan], ['unidentified', v.unidentified], ['duplicate-IDs', run.duplicates]])
+    if (arr.length) parts.push(`${arr.length} ${label}`);
+  return { check: { id: 'C1', status: 'blocked', detail: `verify GAPS: ${parts.join(', ')}` } };
+}
+
+// The whole evaluation. → { code, stage, checks, result, blocked, errors }
+function runGate(opts) {
+  const cwd = opts.cwd || process.cwd();
+  const res = { code: 0, stage: null, checks: [], result: 'PASS', blocked: 0, errors: [], change: opts.change || null };
+  if (!opts.change) return err(res, 'usage: apriori gate --change <name> [--test-cmd "<cmd>"] [--cwd <dir>] [--json]');
+  if (!CHANGE_NAME_RE.test(opts.change)) return err(res, `invalid change name '${opts.change}' — bare kebab-case only`);
+  const loc = resolveChange(cwd, opts.change);
+  if (loc.error) return err(res, loc.error);
+  res.stage = loc.stage;
+  const flowPath = path.join(loc.dir, 'flow-state.md');
+  if (!fs.existsSync(flowPath)) return err(res, `no readable flow-state.md at ${flowPath} — tier-aware checks are impossible`);
+  let state;
+  try { state = parseFlowState(fs.readFileSync(flowPath, 'utf8')); }
+  catch (e) { return err(res, `flow-state unreadable: ${e.message}`); }
+  const testCmd = opts.testCmd || configTestCmd(cwd);
+  if (!testCmd) return err(res, 'no test command: pass --test-cmd or add a test-cmd row to apriori/process-config.md');
+
+  const b = checkBinding(cwd, opts.change, loc.stage, testCmd);
+  if (b.infra) { for (const e of b.infra) res.errors.push(`verify: ${e}`); res.result = 'ERROR'; res.code = 2; return res; }
+  res.checks.push(b.check);
+  const tier = TIER_ENUM.includes(state.tier) ? state.tier : null;
+  res.checks.push(checkTasks(loc.dir, tier));
+  res.checks.push(checkFlowState(state, opts.change));
+  res.checks.push(checkLedger(cwd, opts.change, tier));
+  res.checks.push(checkEvidence(cwd, opts.change));
+  res.checks.push(checkKb(cwd, loc.dir));
+
+  res.blocked = res.checks.filter((c) => c.status === 'blocked').length;
+  res.result = res.blocked ? 'BLOCKED' : 'PASS';
+  res.code = res.blocked ? 1 : 0;
+  return res;
+}
+
+function toJson(res) {
+  return { change: res.change, stage: res.stage, checks: res.checks, result: res.result, blocked: res.blocked, errors: res.errors };
+}
+
+const USAGE = 'usage: apriori gate --change <name> [--test-cmd "<cmd>"] [--cwd <dir>] [--json]';
+
+function cli(argv) {
+  return withStrict(argv, { sub: 'gate', usage: USAGE, positionals: 0,
+    flags: { '--change': 'value', '--test-cmd': 'value', '--cwd': 'value', '--json': 'flag' },
+    jsonError: (m) => JSON.stringify({ change: null, stage: null, checks: [], result: 'ERROR', blocked: 0, errors: [m] }, null, 2) }, (f) => {
+    const a = { change: f['--change'] || null, testCmd: f['--test-cmd'] || null, cwd: f['--cwd'] || process.cwd(), json: !!f['--json'] };
+    const res = runGate(a);
+    if (a.json) { console.log(JSON.stringify(toJson(res), null, 2)); return res.code; }
+    for (const e of res.errors) console.error('gate: ' + e);
+    const mark = { pass: '✓', blocked: '✗', 'n/a': '–' };
+    for (const c of res.checks) console.log(`${mark[c.status]} ${c.id} ${c.status === 'blocked' ? 'BLOCKED — ' : ''}${c.detail}`);
+    if (res.code !== 2) console.log(res.code === 0 ? `\nGATE: PASS — ${CAVEAT}` : `\nGATE: BLOCKED (${res.blocked} item(s))`);
+    return res.code;
+  });
+}
+
+module.exports = { runGate, resolveChange, cli };
+
+codex
+**Implementation Review — tap-plan v1**
+
+The implementation in `lib/spec-runner.js` matches the converged design for parser mechanics: `plans`, `points`, and `dupNumbers` are additive return fields; CRLF handling strips one trailing `\r`; point and numeric-token regexes match the design; `infraErrors` uses defensive defaults; verify-created run objects carry the new fields; existing `parseTap` callers that destructure only old fields remain compatible; `doctor` remains unaffected because it does not call `infraErrors`.
+
+The guard ordering is acceptable: `noTap` still gets first diagnostic priority, the new plan guards are `if/else-if` within their trio, and the existing exit-status guard may coexist with a plan error rather than masking it. `Bail out!` likewise remains an infra error; adding a plan error beside it is fail-closed, not a weakening. `verifyJson` carries the new failures through the existing `errors[]` surface.
+
+Gate reality check: `lib/gate.js` treats verify infra failures as `ERROR`, code 2, with `verify: <msg>`. The SR-31 test matches that. This is the right contract: an untrustworthy verify run is stronger than a normal C1 binding block.
+
+**Issues**
+
+**TPIMPL-1 — Spec requirement prose still says gate C1 BLOCKED**
+
+Description: The SR-31 scenario was corrected to say `gate exits 2 reporting the verify plan error`, and the implementation/test match `lib/gate.js`. But the requirement paragraph in `apriori/changes/tap-plan/specs/spec-runner/spec.md` still says plan violations produce “gate C1 BLOCKED.” That contradicts both the scenario and the implemented gate taxonomy.
+
+Risk: Future readers or implementers can preserve the stale “BLOCKED” wording and reintroduce the wrong gate contract despite the scenario being correct.
+
+Suggested fix: Update the requirement prose to say violations are infra errors: verify exits 2 / RESULT: ERROR, and gate exits 2 / ERROR reporting the verify plan error.
+
+**Advisories**
+
+None.
+
+**Ledger Delta**
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| TPIMPL-1 | Spec requirement prose still says plan violations make gate C1 BLOCKED, while code and SR-31 correctly make gate ERROR exit 2. | Spec-vs-code drift can reintroduce the wrong gate contract. | STEP5·r1 | open |
+
+VERDICT: 1 issues open
+tokens used
+2,413,912
+**Implementation Review — tap-plan v1**
+
+The implementation in `lib/spec-runner.js` matches the converged design for parser mechanics: `plans`, `points`, and `dupNumbers` are additive return fields; CRLF handling strips one trailing `\r`; point and numeric-token regexes match the design; `infraErrors` uses defensive defaults; verify-created run objects carry the new fields; existing `parseTap` callers that destructure only old fields remain compatible; `doctor` remains unaffected because it does not call `infraErrors`.
+
+The guard ordering is acceptable: `noTap` still gets first diagnostic priority, the new plan guards are `if/else-if` within their trio, and the existing exit-status guard may coexist with a plan error rather than masking it. `Bail out!` likewise remains an infra error; adding a plan error beside it is fail-closed, not a weakening. `verifyJson` carries the new failures through the existing `errors[]` surface.
+
+Gate reality check: `lib/gate.js` treats verify infra failures as `ERROR`, code 2, with `verify: <msg>`. The SR-31 test matches that. This is the right contract: an untrustworthy verify run is stronger than a normal C1 binding block.
+
+**Issues**
+
+**TPIMPL-1 — Spec requirement prose still says gate C1 BLOCKED**
+
+Description: The SR-31 scenario was corrected to say `gate exits 2 reporting the verify plan error`, and the implementation/test match `lib/gate.js`. But the requirement paragraph in `apriori/changes/tap-plan/specs/spec-runner/spec.md` still says plan violations produce “gate C1 BLOCKED.” That contradicts both the scenario and the implemented gate taxonomy.
+
+Risk: Future readers or implementers can preserve the stale “BLOCKED” wording and reintroduce the wrong gate contract despite the scenario being correct.
+
+Suggested fix: Update the requirement prose to say violations are infra errors: verify exits 2 / RESULT: ERROR, and gate exits 2 / ERROR reporting the verify plan error.
+
+**Advisories**
+
+None.
+
+**Ledger Delta**
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| TPIMPL-1 | Spec requirement prose still says plan violations make gate C1 BLOCKED, while code and SR-31 correctly make gate ERROR exit 2. | Spec-vs-code drift can reintroduce the wrong gate contract. | STEP5·r1 | open |
+
+VERDICT: 1 issues open

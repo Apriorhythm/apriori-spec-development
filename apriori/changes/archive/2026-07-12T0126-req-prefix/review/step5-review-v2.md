@@ -1,0 +1,45 @@
+# P8 consistency review — req-prefix (round 2)
+
+Reviewer: codex (gpt-5.5), session 019f4b30-68f9-7222-9b64-17f52a333b4c. Raw: req-prefix-impl-review-v2-raw.txt
+
+# P8 Consistency Review — req-prefix v2
+
+## Resolution Check
+
+### RPIMPL-1 — reopened
+
+The main RPIMPL-1 fixes landed for the previously identified sites:
+- brainstorm funnel text now uses `<change>-req-v1` in both editions;
+- STEP0 each-round shorthand now uses `<change>-req-v{N+1}.md` in both editions;
+- KB pre-check legacy note now uses `<change>-req-v1` in both editions;
+- PR-07 / PR-09 / PR-16 anchors were updated.
+
+However, the runbooks still contain bare `req-v1` prose in the STEP0 input bullet:
+
+- `RUNBOOK.md`: “interview the human first with structured questions, then draft req-v1.”
+- `RUNBOOK_cn.md`: “先结构化提问采访人,再出 req-v1。”
+
+This contradicts the stated fix expectation: grep `req-v` outside `<change>-req-v` should be zero in both runbooks. It also remains semantically the same collision-prone shorthand class as the prior finding.
+
+The new PR-19 guard misses this wording because it checks `drafts req-v1` and `起草 req-v1`, but the landed text says `draft req-v1` and `出 req-v1`.
+
+**Suggested fix:** Change those two STEP0 bullet phrases to `<change>-req-v1`, and strengthen PR-19’s guard to catch bare `req-v1` more generally, e.g. no `(?<!<change>-)req-v1` in either runbook.
+
+## New Issues
+
+No new issue IDs. This is the same RPIMPL-1 class, not a new defect.
+
+## Checks Passed
+
+- The exact old path literals remain absent from live docs and `lib/new.js`.
+- `lib/new.js` still correctly interpolates `${name}` in the scaffolded next-action line.
+- STEP6 preservation sentences remain aligned EN/CN on timing, destination, basenames, and all versions.
+- PR-19 and NW-05 are otherwise aimed at the right surfaces.
+
+## Ledger Delta
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| RPIMPL-1 | RUNBOOK EN/CN still use bare `req-v1` prose in the STEP0 input bullet, and PR-19’s new guard misses the exact wording. | The old collision-prone naming shorthand can still be followed despite the prefix convention. | STEP5 r1 | open |
+
+VERDICT: 1 issues open

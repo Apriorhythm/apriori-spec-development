@@ -1,0 +1,1642 @@
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f4b30-68f9-7222-9b64-17f52a333b4c
+--------
+user
+New stage: STEP2 technical review (apriori runbook P5). You are a technical reviewer. Hunt for issues that would cause rework or a production incident.
+
+[Input — read these files]
+* SPEC-DOC (delta specs): apriori/changes/change-projection/specs/spec-runner/spec.md, apriori/changes/change-projection/specs/archive-merge/spec.md, apriori/changes/change-projection/specs/cli/spec.md
+* DESIGN-DOC: apriori/changes/change-projection/design.md
+* Proposal: apriori/changes/change-projection/proposal.md
+* Tasks: apriori/changes/change-projection/tasks.md
+* KB: apriori/truth/spec-runner.md, apriori/truth/archive-merge.md
+* Requirement: requirement/req-final.md
+* Ledger: apriori/review/change-projection-issues.md
+* Current code (state A): lib/spec-runner.js, lib/archive-merge.js, bin/apriori.js; living store specs at apriori/specs/spec-runner/spec.md, apriori/specs/archive-merge/spec.md, apriori/specs/cli/spec.md
+
+[Checklist]
+1. Do scenarios cover every visible behavior of req-final; any missing failure/edge scenarios
+2. Are the three moments of external shared state complete (store files, temp files, change-dir move)
+3. Conflicts with current state A, or broken existing conventions (esp.: the MODIFIED blocks in the deltas must reproduce the store blocks faithfully apart from their declared amendments; scenario ID ranges must not collide with existing SR-01..15/AM-01..12/CL-01..07)
+4. Spec'd but not designed, or designed behavior the spec never declared
+5. Security where external input is touched: path traversal, symlinks, injection surfaces
+
+[Scope] Count toward the verdict only gaps that would cause rework or a production incident. Everything else — advisory. Correctness/security can never be advisory.
+
+[Output — read-only sandbox: print the COMPLETE review document body to stdout for the producer to land verbatim at apriori/design/change-projection-review-v1.md]
+Structure: issues (description/risk/suggestion), advisories separately, then your ledger delta table (new formal rows: SPEC-1, SPEC-2, ...; advisory batch row), then exactly one verdict line: "VERDICT: no major issues, ready to proceed to execution" or "VERDICT: <N> issues open" (N = open formal rows in the whole ledger after your delta).
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-10T09:07:23.508268Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-10T09:07:23.688877Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-10T09:07:24.073356Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-10T09:07:24.673978Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-10T09:07:25.692384Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-10T09:07:27.750147Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-10T09:07:31.221314Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: HwSLSyPQfJyF
+codex
+I’ll review the delta specs, design, proposal/tasks, KB, requirement, ledger, and the current state A code/specs. I’ll compare the MODIFIED blocks against the living store and check for missing edge scenarios or design/spec mismatches.
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' apriori/changes/change-projection/specs/spec-runner/spec.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,300p' apriori/changes/change-projection/specs/archive-merge/spec.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,220p' apriori/changes/change-projection/specs/cli/spec.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,360p' apriori/changes/change-projection/design.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 134ms:
+# Delta — cli (change-projection)
+
+## MODIFIED Requirements
+
+### Requirement: single self-contained apriori CLI
+The toolchain SHALL ship as one npm package `apriori-cli` exposing a `bin` named `apriori` with subcommands `init | new | status | verify | archive | check | update | stamp` plus a `--version` flag, requiring zero npm runtime dependencies (pure Node stdlib), runnable via global install or `npx`, and failing cleanly (one-line error, no stack trace) on unexpected errors.
+
+#### Scenario: CL-01 subcommand dispatch
+- WHEN `apriori <sub> ...` is invoked with sub in {init, new, status, verify, archive, check, update, stamp}
+- THEN it dispatches to that subcommand; an unknown sub prints usage and exits non-zero
+
+#### Scenario: CL-02 verify subcommand is the spec-runner
+- WHEN `apriori verify --specs <dir> --test-cmd <cmd>` (or `apriori verify --change <name>`) runs
+- THEN it behaves per the spec-runner requirements (SR-01..25)
+
+#### Scenario: CL-03 archive subcommand is archive-merge
+- WHEN `apriori archive --store <f> --delta <f> --change <name> [--write]` or `apriori archive --change <name> [--write] [--changes-dir <dir>]` runs
+- THEN it behaves per the archive-merge requirements (AM-01..27)
+
+#### Scenario: CL-04 check subcommand is the doc checker
+- WHEN `apriori check` runs
+- THEN it behaves per the check requirement (CK-01..06)
+
+#### Scenario: CL-05 zero runtime dependencies
+- WHEN the package is installed
+- THEN it pulls no npm dependencies; only Node's standard library is used
+
+#### Scenario: CL-06 --version prints the package version
+- WHEN `apriori --version` (or `-v`) is invoked
+- THEN it prints the installed package version verbatim on stdout and exits 0
+
+#### Scenario: CL-07 unexpected subcommand failures exit cleanly
+- WHEN a subcommand throws an unexpected error (e.g. an unreadable input file)
+- THEN the CLI prints a single `apriori: <message>` line on stderr and exits 1 — never a raw stack trace
+
+#### Scenario: CL-08 stamp subcommand appears in usage
+- WHEN `apriori` runs with no arguments or `--help`
+- THEN the printed usage lists `stamp` alongside the other subcommands (behavior per AM-27)
+
+ succeeded in 152ms:
+# Delta — archive-merge (change-projection)
+
+## ADDED Requirements
+
+### Requirement: high-level archive merges a whole change transactionally
+`apriori archive --change <name>` SHALL discover every `.md` delta file under `<changes-dir>/<name>/specs/` (`--changes-dir` defaults to `apriori/changes` and sets both the discovery root and the move root), map each to its store target `apriori/specs/<suffix>` by path suffix, dry-run the whole set by default, and on `--write` commit in four phases — preflight (validate, parse, CAS-check, merge in memory; any failure anywhere → nothing written), stage (write every `<store>.tmp-archive`), commit (rename each temp in sorted path order), move (only when `--changes-dir` was explicitly passed, only after all stores committed). The guarantee is failure-atomicity up to the commit point; crash durability is not claimed.
+
+#### Scenario: AM-13 dry-run reports the whole change and writes nothing
+- WHEN `apriori archive --change <name>` runs without `--write` on a change spanning several modules
+- THEN it prints per-module merged/modified/deprecated/renamed/no-op requirement names and a result line, and no file on disk changes
+
+#### Scenario: AM-14 any preflight failure means nothing is written
+- WHEN any module's merge reports a conflict, any delta file fails a hygiene guard, or any CAS stamp mismatches during `--write`
+- THEN every failure across all modules is reported, no store file changes, and the exit code is 1
+
+#### Scenario: AM-15 a mid-commit failure is reported exactly
+- WHEN a rename in the commit phase fails after earlier renames succeeded
+- THEN archive reports exactly which modules committed, which did not, and which temp files remain for manual completion, and exits 1 — already-committed renames are not rolled back
+
+#### Scenario: AM-16 a pre-existing temp file blocks the run
+- WHEN any target `<store>.tmp-archive` already exists at preflight
+- THEN archive exits 1 naming that file, writes nothing, and leaves the pre-existing file untouched (it may be another run in flight or a manual-recovery artifact)
+
+#### Scenario: AM-17 zero discovered delta files fail closed
+- WHEN `<changes-dir>/<name>/specs/` exists but contains no `.md` delta files, or the change dir itself is missing
+- THEN archive exits 2 naming the searched path
+
+#### Scenario: AM-18 the change-dir move waits for every store commit
+- WHEN `--write --changes-dir <dir>` succeeds
+- THEN the change dir moves to `<dir>/archive/<stamp>-<name>/` only after ALL stores committed; without an explicit `--changes-dir` no move happens; a move failure leaves the committed stores in place and exits 1
+
+#### Scenario: AM-19 high-level and single-file forms are mutually exclusive
+- WHEN `--change` is combined with `--store` or `--delta`
+- THEN archive exits 2 with usage; the single-file form by itself keeps its 3.0.1 behavior unchanged
+
+#### Scenario: AM-20 per-file delta hygiene guards the whole set
+- WHEN any discovered delta file is empty/whitespace-only, parses to zero operations despite content, or carries duplicate requirement names (within a section or across sections)
+- THEN the run refuses naming the file (and requirement, for duplicates), nothing is written, and no partial projection or merge survives
+
+#### Scenario: AM-21 duplicate requirement names in the store are corruption
+- WHEN the store text handed to any merge contains the same requirement name twice
+- THEN the merge reports it as a conflict instead of silently keeping the last block
+
+#### Scenario: AM-22 realpath containment governs every participating path
+- WHEN the change dir, a delta file, or a mapped store target — followed through symlinks — resolves outside its root (changes dir / `apriori/specs/`), or a not-yet-existing store target's nearest existing ancestor resolves outside the store root
+- THEN the command exits 2 naming the offending path, and nothing is read as spec input, written, or moved
+
+### Requirement: CAS base stamps detect store divergence
+A delta file MAY carry exactly one base stamp `<!-- apriori-base: sha256:<64 lowercase hex> -->` or `<!-- apriori-base: new -->` before its first `## <OP> Requirements` section, declaring the fingerprint of the store file it was authored against. The fingerprint SHALL be SHA-256 over the store file's content with line endings normalized (`\r\n` and lone `\r` → `\n`). `apriori verify --change`, `apriori archive --change`, and single-file `apriori archive` SHALL check present stamps; an absent stamp means no check. `apriori stamp <store-file>` SHALL print the stamp line matching the file's current content.
+
+#### Scenario: AM-23 malformed or duplicated stamps are hygiene errors
+- WHEN a delta file carries more than one stamp line, a stamp after the first section heading, or a malformed digest
+- THEN the file is rejected by the hygiene guard (nothing projected or written) naming the file
+
+#### Scenario: AM-24 a diverged stamp stops archive before any write
+- WHEN a stamped delta's store file fingerprint no longer matches (including a `new` stamp whose store now exists)
+- THEN archive reports the store path with expected vs actual fingerprint, writes nothing, and exits 1 — the §4.11 serialize rule made mechanical
+
+#### Scenario: AM-25 stamp-free deltas behave exactly as before
+- WHEN a delta carries no base stamp
+- THEN no CAS check runs and behavior is identical to pre-3.1 for that file
+
+#### Scenario: AM-26 the new sentinel matches only an absent store
+- WHEN a delta is stamped `<!-- apriori-base: new -->`
+- THEN the check passes while the mapped store file does not exist and fails as a mismatch once it does
+
+#### Scenario: AM-27 apriori stamp prints the current stamp line
+- WHEN `apriori stamp <store-file>` runs on an existing readable file, an absent path, a directory, or with a wrong argument count
+- THEN it prints the exact matching stamp line (absent path → the `new` form) and exits 0; a directory or unreadable file → error naming the path, exit 2; zero or multiple arguments → usage, exit 2
+
+## MODIFIED Requirements
+
+### Requirement: archive-merge applies delta specs to the living store
+`apriori archive` SHALL merge a change's delta requirements into the living spec store by stable Requirement ID, consuming the same `## ADDED/MODIFIED/REMOVED/RENAMED Requirements` delta format the OpenSpec adapter used, so it is the adapter-free native implementation of §4's archive action.
+
+#### Scenario: AM-01 ADDED appends a new requirement
+- WHEN the delta has an ADDED requirement whose ID is absent from the store
+- THEN it is appended and the ID is listed as merged
+
+#### Scenario: AM-02 MODIFIED replaces the existing block
+- WHEN the delta has a MODIFIED requirement whose ID exists in the store
+- THEN the whole store block is replaced and the ID is listed as modified
+
+#### Scenario: AM-03 REMOVED marks the block deprecated, not deleted
+- WHEN the delta has a REMOVED requirement present in the store
+- THEN the store block is kept and marked `deprecated (superseded by <change>)`, listed as deprecated
+
+#### Scenario: AM-04 same-ID conflict stops without writing
+- WHEN an ADDED ID already exists, or a MODIFIED/REMOVED target is missing
+- THEN the merge reports the conflict, writes nothing, and exits 1 (a human opens a ledger issue)
+
+#### Scenario: AM-05 the action lists every merged/modified/deprecated ID
+- WHEN a merge succeeds
+- THEN every affected Requirement ID is printed by category (§4 requires the action list them)
+
+#### Scenario: AM-06 archive moves the in-flight change under a dated archive dir
+- WHEN archive completes on change `<name>`
+- THEN the in-flight `apriori/changes/<name>/` (bare name, no prefix) is moved to `apriori/changes/archive/<YYYY-MM-DDThhmm>-<name>/` — a colon-free date-time stamped by the CLI's own clock (never an agent guess); e.g. `archive/2026-07-06T0657-add-playback/`
+
+#### Scenario: AM-07 RENAMED renames a requirement in place, preserving content
+- WHEN the delta has a `## RENAMED Requirements` entry `- Old Name -> New Name` and `Old Name` exists while `New Name` does not
+- THEN the store block keeps its content but its heading ID becomes `New Name`, listed as renamed; a missing source (with no existing target) or a colliding target is a conflict (stop, exit 1, nothing written) — the source-gone-AND-target-present rerun case is AM-10's no-op, not a conflict
+
+#### Scenario: AM-08 a content-bearing delta that parses to zero operations is a hard error
+- WHEN `apriori archive` reads a delta file that has non-whitespace content but matches no recognized section (e.g. wrong heading level or keyword, so 0 delta operations parse)
+- THEN it writes nothing, prints an error naming the expected `## ADDED|MODIFIED|REMOVED|RENAMED Requirements` + `### Requirement:` format, and exits non-zero — never reporting MERGED for a delta the parser did not understand
+
+#### Scenario: AM-09 the first archive in a repo creates the store file
+- WHEN `apriori archive --write` targets a store file that does not exist yet
+- THEN it notes the store will be created, starts from an empty store, and writes the merged result — no ENOENT
+
+#### Scenario: AM-10 re-running an already-merged delta is an idempotent no-op
+- WHEN an ADDED requirement in the delta already exists in the store with byte-identical (trimmed) content, or a RENAMED entry's source is gone while its target is present, or a REMOVED entry's target is gone while its deprecated form marked `superseded by <THIS change>` is present — each the signature of a rerun after a partial archive
+- THEN each is reported as already merged / already renamed / already deprecated (no-op), not a conflict, and the run can proceed to move the change dir; but an ADDED whose name was created by THIS run's own RENAMED is a same-delta collision and still conflicts even with identical content, and a REMOVED target deprecated by a DIFFERENT change remains a conflict
+
+#### Scenario: AM-11 change names are validated and the dir move cannot escape
+- WHEN `--change` is not bare kebab-case (e.g. `../victim`), or `--changes-dir` is given but the change dir does not exist
+- THEN archive exits 2 before writing anything; the move helper independently rejects any source that resolves outside the changes dir
+
+#### Scenario: AM-12 the store commit and the dir move are one transaction
+- WHEN `--write --changes-dir` runs and the change-dir move fails
+- THEN the store on disk stays byte-for-byte untouched (staged to a temp file, committed by rename only after the move succeeds) and no temp residue remains
+
+ succeeded in 167ms:
+# Delta — spec-runner (change-projection)
+
+## ADDED Requirements
+
+### Requirement: projected verify binds against the candidate merged store
+`apriori verify --change <name>` SHALL construct the projection — the store as `apriori archive` would leave it after merging every delta spec under `apriori/changes/<name>/specs/` — in memory, never writing to the living store's location, and SHALL bind scenarios against that projection using the same `merge()` semantics archive uses. Discovery maps `changes/<name>/specs/<suffix>` to `apriori/specs/<suffix>` (`.md` files only); roots resolve against `--cwd` exactly as `apriori status` resolves change dirs.
+
+#### Scenario: SR-16 ADDED delta scenarios join the projection
+- WHEN a change carries an ADDED-only delta for a module and `verify --change <name>` runs
+- THEN the delta's scenarios are demanded alongside every existing store scenario, with no duplicate-ID error from the overlay (genuinely duplicate IDs in the projection remain GAPS)
+
+#### Scenario: SR-17 MODIFIED delta replaces the demanded scenario set
+- WHEN a delta MODIFIES a requirement, changing its scenario set
+- THEN verification demands exactly the delta's version of that requirement's scenarios; scenarios the modification drops are not demanded
+
+#### Scenario: SR-18 REMOVED delta scenarios are not demanded and their tests orphan
+- WHEN a delta REMOVES a requirement whose scenarios have tests still tagged with their IDs
+- THEN the projection deprecates the block, its scenarios are not demanded, and each lingering test is reported ORPHAN (exit 1 until the tests are deleted)
+
+#### Scenario: SR-19 RENAMED delta demands the post-rename picture
+- WHEN a delta RENAMES a requirement Old → New
+- THEN verification demands exactly the projected picture — the block's scenarios under their unchanged IDs, with no demand arising from the pre-rename block
+
+#### Scenario: SR-20 merge conflicts make the projection untrustworthy
+- WHEN any module's merge reports one or more conflicts
+- THEN `verify --change` prints every conflict and exits 2 — it never verifies a partial or wrong projection
+
+#### Scenario: SR-21 projection inputs fail closed
+- WHEN the change name is invalid or fails realpath containment, the change dir does not exist, zero delta files are discovered, or any delta file violates a hygiene guard (empty/whitespace-only, content with zero operations, malformed or duplicated base stamp, duplicate requirement names)
+- THEN `verify --change` exits 2 with a message naming the offending path or file, and runs no tests
+
+#### Scenario: SR-22 --specs and --change are mutually exclusive
+- WHEN `apriori verify --change <name> --specs <dir>` is invoked
+- THEN it exits 2 explaining the projection defines the spec set
+
+#### Scenario: SR-23 --json carries the projection contract
+- WHEN `verify --change --json` runs — success, gaps, merge conflict, or any projection failure
+- THEN stdout is pure JSON in every class: the 3.0.1 fields plus `projection: {change, modules, conflicts}` where modules lists discovered store-relative suffixes (sorted) and conflicts carries merge-conflict strings verbatim; non-`--change` runs never emit a `projection` field
+
+#### Scenario: SR-24 a diverged base stamp blocks projection
+- WHEN a discovered delta file carries a base stamp that does not match the current fingerprint of its mapped store file
+- THEN `verify --change` exits 2 naming the store path and the expected vs actual fingerprint, and runs no tests
+
+### Requirement: deprecated blocks are excluded from verification
+In every verify form (plain `--specs` and `--change`), a requirement block whose heading line matches `/^###\s+Requirement:.*_deprecated \(superseded by [^)]*\)_/` SHALL be excluded from scenario collection: its scenarios are neither demanded nor listed, and a test still tagged with such a scenario's ID counts as ORPHAN. On stores containing no deprecated blocks, behavior is identical to 3.0.1.
+
+#### Scenario: SR-25 deprecated block scenarios stop being demanded
+- WHEN a store (or projection) contains a deprecated requirement block with scenarios, and a test still carries one of those scenario IDs
+- THEN those scenarios appear in no report group, the lingering test is ORPHAN, and all non-deprecated blocks are unaffected
+
+ succeeded in 186ms:
+# Design — change-projection
+
+## Module layout (R1 from the gap report)
+
+All new pure helpers live in `lib/archive-merge.js` (they are merge-family logic); `lib/spec-runner.js` requires them (`archive-merge` does not require `spec-runner` — no cycle; zero-dep holds). `bin/apriori.js` adds one dispatch case (`stamp`) and one USAGE line.
+
+## New pure functions (archive-merge.js)
+
+- `fingerprint(text)` → `sha256:<64hex>` over text with `\r\n|\r` → `\n` normalization (Node `crypto.createHash`).
+- `parseStamp(text)` → `{ stamp: 'sha256:…'|'new'|null, problems: [] }` — scans only the region before the first `## <OP> Requirements` heading for stamp lines, and the whole file for extra/misplaced ones (extra or misplaced or malformed → problems).
+- `parseRequirementsStrict(text)` → `{ map, duplicates: [names] }` — same regex walk as `parseRequirements`, counting name collisions.
+- `parseDeltaStrict(text)` → `{ delta, problems: [] }` — per-section strict parsing (within-section duplicates), cross-section duplicate names, stamp problems folded in by the caller.
+- `merge(storeText, delta, change)` — EXTENDED, same signature/return plus:
+  - store-side duplicate names (via strict parse) → conflicts (AM-21);
+  - REMOVED rerun signature: target absent but `<name>  _deprecated (superseded by <change>)_` present (THIS change only) → `unchanged` ("already deprecated") (AM-10 amended); deprecated by another change → conflict.
+- `DEPRECATED_RE = /^###\s+Requirement:.*_deprecated \(superseded by [^)]*\)_/` — exported; single source for spec-runner's exclusion rule and merge's rerun signature.
+- `discoverDeltas(changesDir, name)` → `{ files: [{abs, suffix}], errors: [] }` — recursive `.md` scan under `<changesDir>/<name>/specs/`, sorted by suffix; name-regex + realpath containment checks; missing dir / zero files → errors.
+- `containsReal(root, target)` → realpath containment (existing paths: `fs.realpathSync` both sides; missing target: walk to nearest existing ancestor). Used by discoverDeltas, store-target mapping, and (unchanged behavior, shared code) `archiveChangeDir`'s guard may stay string-based — the NEW surfaces use `containsReal`.
+- `buildProjection(storeRoot, deltaFiles, change)` → `{ texts: Map<suffix, projectedText>, modules: [suffix], perModule: Map<suffix, mergeResult>, conflicts: [], errors: [] }` — for each store file under `storeRoot` (recursive `.md`): pass-through unless a delta targets its suffix; for each delta: strict-parse, hygiene problems → errors; CAS check (stamped only) → errors (verify taxonomy) / conflicts (archive taxonomy decided by caller — the builder returns them tagged `casMismatches` separately); merge against the store text (or `''` + `new`-module flag). Nothing touches disk.
+
+## spec-runner changes
+
+- `collectScenarios` extracted core: `collectFromText(text, file, idRe, acc)`; the exclusion rule drops scenario headings inside deprecated blocks (block boundaries = the same `REQ_RE` walk; simplest correct form: strip deprecated blocks from the text before the scenario scan, after `stripFences`). New sibling `collectScenariosFromTexts(map<label,text>, idRe)` reuses the same core; `collectScenarios` (FS form) keeps its signature and return shape.
+- `cli`: `--change <name>` branch — mutual exclusion with `--specs` (exit 2); `discoverDeltas` + `buildProjection` from `require('./archive-merge')`; any errors/casMismatches/conflicts → exit 2 (messages to stderr in text mode; §JSON contract in `--json`); otherwise `collectScenariosFromTexts(projection.texts)` and the existing run/evaluate/report pipeline unchanged.
+- `verifyJson(run)`: `projection` field added only when the run carries one (`run.projection`), per the req's JSON contract.
+
+## archive cli changes
+
+- `--change` mode (mutually exclusive with `--store`/`--delta`, exit 2): discovery root `<changes-dir default apriori/changes>/<name>/specs/`; store root `apriori/specs/`.
+- Four phases per req §Transaction. Phase boundaries in code: `preflight()` (everything in memory, incl. pre-existing-temp check), `stage(ops)`, `commit(ops)`, `move()`. **DI for fault injection:** stage/commit take an `ops` object defaulting to `{writeFileSync, renameSync, rmSync}` — tests inject failing ops to prove AM-15/AM-16 semantics (root-run CI defeats chmod-based injection; DI is the lab lesson).
+- Single-file form: unchanged except the CAS check when `parseStamp` finds a stamp (AM-25/AM-27 path).
+- Reporting: per-module blocks (suffix header + existing category lines), then one RESULT line.
+
+## stamp subcommand
+
+`stampCli(argv)` in archive-merge.js; `bin/apriori.js` case `'stamp'`. Exactly one positional arg; directory/unreadable → error exit 2; absent → `<!-- apriori-base: new -->`; else `<!-- apriori-base: ${fingerprint(text)} -->`.
+
+## Exit-code mapping (from req CLI tables)
+
+verify --change: validation/discovery/hygiene/CAS/merge-conflict → 2; TAP gaps → 1; GREEN → 0.
+archive --change: usage/invalid name/containment/missing change dir → 2; conflicts/CAS/hygiene/zero-op/pre-existing-temp/stage/commit/move failure → 1; merged or all-no-op → 0.
+
+## Docs
+
+RUNBOOK.md + RUNBOOK_cn.md: §4 artifact-interface archive bullet gains `--change` form + stamp mention; STEP5 gate paragraph gains `verify --change` as the intended in-flight form; delta-authoring guidance references `apriori stamp`. README/README_cn cheat-sheet rows. package.json version → 3.1.0 at release (CL-06 keeps passing).
+
+## Test plan sketch (STEP5)
+
+One failing test per new scenario (SR-16..25, AM-13..27, CL-08), named with IDs. Fixtures: tmp dirs with mini store + change trees (cross-platform `node -e` TAP emitters as in 3.0.1). DI-injected rename/write failures for AM-15/16. Symlink fixtures for AM-22 guarded by `fs.symlinkSync` capability try/catch (Windows non-admin can't symlink — skip with TAP skip and keep AM-22 bound via the ancestor-containment case which needs no symlink).
+
+Wait — a skipped test proves nothing and an only-skips scenario is UNBOUND (SR-14). AM-22 therefore binds via the no-symlink-needed containment cases (escaping relative suffix `../…` in a crafted change tree, and missing-ancestor checks); the symlink case runs additionally where the platform allows.
+
+codex
+I’ve got the high-level design. Next I’m reading the final requirement, proposal/tasks, and the current living specs/code so I can verify whether the delta MODIFIED blocks preserve current store content and whether design adds behavior not declared by the specs.
+exec
+/usr/bin/zsh -lc "sed -n '1,320p' requirement/req-final.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,320p' apriori/changes/change-projection/tasks.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' apriori/changes/change-projection/proposal.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' apriori/review/change-projection-issues.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 195ms:
+# Tasks — change-projection (STEP5 consumes this order)
+
+- [ ] T1. Failing tests first: one per new scenario — SR-16..25 (test/spec-runner-projection.test.js), AM-13..27 (test/archive-change.test.js), CL-08 (extend test/cli.test.js if present, else new) — show the failing run.
+- [ ] T2. archive-merge.js pure layer: `fingerprint`, `parseStamp`, `parseRequirementsStrict`, `parseDeltaStrict`, `DEPRECATED_RE`, `containsReal`, `discoverDeltas`, `buildProjection`; extend `merge()` (store-dup conflicts, REMOVED already-deprecated rerun signature).
+- [ ] T3. archive-merge.js cli: `--change` mode (mutual exclusion, four phases with DI `ops`, per-module report); CAS check in single-file form; `stampCli`.
+- [ ] T4. bin/apriori.js: `stamp` dispatch + USAGE line.
+- [ ] T5. spec-runner.js: deprecated-block exclusion in collection; `collectScenariosFromTexts`; cli `--change` branch (projection via archive-merge helpers, exit mapping, `--json` projection field in `verifyJson`).
+- [ ] T6. Run full suite green; `npm run verify` GREEN (store untouched → must stay GREEN); `apriori verify --change change-projection` GREEN (dogfood X1: new scenarios bound by T1's tests).
+- [ ] T7. Stamp this change's own delta files with `apriori stamp` output (dogfood CAS).
+- [ ] T8. Docs: RUNBOOK.md + RUNBOOK_cn.md (§4 archive bullet, STEP5 gate paragraph, delta-authoring stamp reference); README.md + README_cn.md cheat-sheet rows.
+- [ ] T9. `apriori check --self` PASS; CI matrix considerations verified locally (no printf/echo fixtures; symlink test skip-guarded per design).
+
+ succeeded in 200ms:
+# Proposal — change-projection
+
+**WHY.** STEP5's deterministic gate can't see what a change will do to the spec store until after archive: scanning the store misses new scenarios, scanning store+change double-counts MODIFIED and miscounts REMOVED/RENAMED. Archive itself is a per-file primitive with no cross-module dry-run, no atomicity, and no defense against a store that changed since the delta was authored (§4.11 has no tooling). External review (GPT-5.6, 2026-07-10) ranked fixing this verification-target misalignment as the top post-3.0.1 item; the owner ratified it as the 3.1 opener.
+
+**WHAT.** Three consumer surfaces of the same `merge()` pure function, shipping as apriori-cli 3.1.0:
+
+1. `apriori verify --change <name>` — verify against the in-memory projected (post-merge) store; what verify proves is exactly what archive will produce.
+2. `apriori archive --change <name>` — whole-change discovery, dry-run by default, four-phase failure-atomic `--write` (preflight → stage → commit → move).
+3. CAS base stamps (`<!-- apriori-base: sha256:… | new -->`) + `apriori stamp <store-file>` — opt-in divergence detection at both verify and archive time.
+
+Plus one declared behavior change: **deprecated blocks** (the marker REMOVED injects) are excluded from scenario collection in ALL verify forms — without this, every post-REMOVED store would demand tests for removed behavior forever.
+
+**OUT OF SCOPE.** `doctor`, `gate`, global `--help`/unknown-flag strictness, Change Bundle layout, non-reusable change IDs, executable state machine, any behavior change to `check`/`init`/`new`/`status`/`update`, auto-stamping deltas, crash-durability (fsync) claims.
+
+Full requirement: `requirement/req-final.md` (3 P1 rounds, VERDICT: no major issues). Gap analysis: `apriori/explore/change-projection-gap-report.md`.
+
+ succeeded in 219ms:
+# Requirement — change-projection (v3)
+
+change: change-projection
+target lineage: **v3 branch** (independent lineage; never merge to main or v2). Ships as apriori-cli **3.1.0** (minor, backward compatible; `package.json` version bumps to 3.1.0 at release).
+
+> v2 handling notes (P2): REQ-1 accepted → §CAS now fixes syntax, algorithm, sentinel, and a new `apriori stamp` subcommand. REQ-2 accepted → §Deprecated-block rule decides Q2 for ALL verify forms. REQ-3 accepted → §Transaction defines the four-phase algorithm and scopes the guarantee wording per §4.8 discipline. REQ-4 accepted → §Rerun surface. REQ-5 accepted → §Validation. REQ-6 accepted → §CLI contract tables. REQ-7 accepted → §Delta hygiene guards, incl. a new duplicate-requirement-name conflict in BOTH delta and store texts. ADV-1 batch acknowledged; wording fixed throughout (requirement names not "IDs"; exact `apriori/changes/archive/` path; V1 scoped to unique projected IDs).
+>
+> v3 handling notes (P2): REQ-5 (reopened) accepted → §Validation now defines realpath containment incl. symlinks and not-yet-existing store targets. REQ-8 accepted → §Transaction phase 2 gains a pre-existing-temp preflight guard and this-run-only cleanup ownership. REQ-9 accepted → §JSON contract for `verify --change` defines the exact shape for success, gaps, and every projection error class. ADV-2 batch acknowledged: §CAS defines `apriori stamp` argument/edge behavior; V7 reworded; the deprecated-marker regex is spelled out in §Deprecated-block rule.
+
+## Background — the problem (current state A)
+
+STEP5's deterministic gate (`apriori verify`) can only scan **on-disk spec targets**. During STEP5 the change's delta specs are not yet merged into the living store, so today an agent must choose between two wrong targets:
+
+1. Scan only `apriori/specs/` (the living store) → the change's new scenarios are invisible; new tests show as ORPHAN.
+2. Scan both `apriori/specs/` and `apriori/changes/<name>/specs/` → correct only for pure-ADDED deltas. A **MODIFIED** block appears in both dirs → duplicate scenario IDs → GAPS; a **REMOVED** requirement still demands its store scenarios; a **RENAMED** requirement demands both old and new IDs.
+
+Separately, `apriori archive` is a single-file primitive (`--store <file> --delta <file>`): a multi-module change needs one invocation per module, with no cross-module dry-run and no atomicity across modules. And a delta records nothing about the store state it was authored against, so a store that changed since branching merges silently (§4.11's serialize rule has no tooling).
+
+## Goal (target state B)
+
+Three consumer surfaces of the **same `merge()` pure function** (exported by `lib/archive-merge.js`):
+
+1. **Projected verify** — `apriori verify --change <name>`: construct the candidate post-merge store ("projection") by applying the change's delta specs to the living store **in memory** (never writing to the living store's location), and bind scenarios against that projection. Verify and archive share one merge semantics: what verify proved is exactly what archive will produce.
+2. **High-level archive** — `apriori archive --change <name>`: auto-discover every delta spec under the change dir, map each to its store target, dry-run the whole set by default, and on `--write` commit with the transaction semantics of §Transaction.
+3. **CAS base stamp** — a delta may declare the store state it was authored against; both projected verify and archive detect a store that has since diverged and refuse instead of merging/projecting silently.
+
+## Mapping convention (shared by 1 and 2)
+
+`apriori/changes/<name>/specs/<suffix>` ↔ `apriori/specs/<suffix>` — the path suffix after `specs/` is the key; only `.md` files participate. The mapping is injective by construction (one delta file per suffix). A suffix with no store counterpart targets a **new** store file (legal: first spec of a new module).
+
+## CAS base stamp — concrete definition (REQ-1)
+
+- **Syntax:** exactly one line `<!-- apriori-base: sha256:<64 lowercase hex> -->` or `<!-- apriori-base: new -->`, appearing **before the first `## <OP> Requirements` section** of a delta file. More than one stamp line in a file, or a stamp after the first section heading, or a malformed digest → the file is malformed (§Delta hygiene).
+- **Fingerprint:** SHA-256 (Node stdlib `crypto` — zero-dep constraint holds) over the target store file's contents with line endings normalized before hashing (`\r\n` → `\n`, lone `\r` → `\n`); digest rendered as 64 lowercase hex chars. `new` = the store file does not exist.
+- **Check points:** `verify --change`, `archive --change`, and single-file `archive --store/--delta` all check the stamp when present. Absent stamp = no check (opt-in; pre-3.1 deltas unaffected).
+- **Mismatch behavior:** the command names the module (store path), expected vs actual fingerprint, and refuses — `verify --change` exits 2 (no trustworthy projection), `archive` exits 1 (a conflict per its existing taxonomy: nothing written, human serializes per §4.11). A `new` stamp matches only while the store file still does not exist.
+- **Stamp production:** new subcommand `apriori stamp <store-file>` prints the complete stamp line for the file's CURRENT content (absent file → `<!-- apriori-base: new -->`); exit 0. Argument contract: exactly one argument — zero or more than one → usage, exit 2; the argument resolving to a directory, or an existing file that cannot be read → error naming the path, exit 2. The runbook's delta-authoring instructions reference it (delta authors never hand-compute digests).
+
+## Deprecated-block rule (REQ-2 — decides former Q2, one rule for ALL verify forms)
+
+A requirement block whose heading line matches the marker regex `/^###\s+Requirement:.*_deprecated \(superseded by [^)]*\)_/` is a **deprecated block** (exactly the marker `merge()` injects on REMOVED; implementations match this regex, not a paraphrase).
+
+- **Verify (all forms, including plain `--specs` runs):** scenarios inside deprecated blocks are **excluded from collection** — not demanded, not listed as scenarios. A test still tagged with such a scenario's ID counts as **ORPHAN** (fail-closed: forces deletion of tests for removed behavior). This is a declared behavior change to plain verify: today deprecated scenarios are demanded forever, which would poison every post-REMOVED store — v2 fixes that inconsistency at the root.
+- **Projection:** applying a REMOVED delta produces the deprecated marker in the projected text, so projected verify excludes those scenarios by the same rule — V3 becomes a corollary, not a special case.
+
+## Transaction semantics for `archive --change --write` (REQ-3)
+
+Four phases; the guarantee is **failure-atomicity up to the commit point** — crash-durability (fsync) is explicitly NOT claimed (§4.8: wording scoped to what tests exercise).
+
+1. **Preflight (no writes):** discover delta files, validate change name + containment (§Validation), parse every delta (§Delta hygiene per-file guards), CAS-check every stamped file, run every module's `merge()` in memory. ANY failure → report ALL failures across all modules, write nothing; exit 2 for usage/validation/CAS-on-verify-style infra, exit 1 for merge conflicts/CAS mismatch/malformed deltas (archive taxonomy).
+2. **Stage:** write every result to `<store>.tmp-archive`. **Temp ownership (REQ-8):** preflight (phase 1) fails with exit 1, naming the file, if ANY target temp path already exists — a pre-existing temp is either another run in flight or the manual-recovery artifact of a previous mid-commit failure, and this run must not overwrite or delete it. Cleanup on failure covers only temp files created by THIS run (which, given the preflight guard, is exactly the set's `<store>.tmp-archive` paths). Any staging failure → delete this run's tmp files, stores untouched, exit 1.
+3. **Commit:** rename each tmp → store in sorted path order (each rename atomic per file). A mid-commit failure stops the sequence and reports exactly which modules committed, which did not, and which tmp files remain (for manual completion); exit 1. No rollback of already-committed renames is attempted (a rollback that half-fails is worse than an honest report).
+4. **Move (only when `--changes-dir` was explicitly passed):** after ALL stores committed, move the change dir to `<changes-dir>/archive/<stamp>-<name>/`. Move failure → stores stay committed, exit 1 with message; a rerun completes via §Rerun surface.
+
+The single-file form (`--store` + `--delta`) keeps its 3.0.1 ordering and behavior unchanged.
+
+## Rerun surface (REQ-4)
+
+- After a fully successful archive (stores committed + dir moved): the in-flight dir is gone → `archive --change <name>` rerun exits 2 "not found under <path>" — it never searches `apriori/changes/archive/` and never silently no-ops.
+- Rerun with the in-flight dir still present (dry-run repeats; post-commit move failure; archive without move): per-operation idempotency —
+  - ADDED with identical content → no-op (existing).
+  - RENAMED source-gone + target-present → no-op (existing).
+  - MODIFIED → re-applies (same delta ⇒ same store bytes; reported as modified) (existing).
+  - **NEW:** REMOVED whose target is gone but whose deprecated form `<name>  _deprecated (superseded by <THIS change>)_` exists in the store → no-op "already deprecated". Deprecated by a DIFFERENT change → conflict (real §4.11 collision). This extends `merge()`'s rerun signatures; without it, phase-4 move-failure reruns of REMOVED-bearing deltas would always conflict.
+
+## Validation (REQ-5)
+
+Both new surfaces validate BEFORE any read, write, or move: the change name must match bare kebab-case (`CHANGE_NAME_RE`), and every participating path must satisfy **realpath containment**:
+
+- Every EXISTING participating path (change dir, each delta file, each existing store target): its `realpath` must resolve strictly inside the `realpath` of its root (change dir inside the changes dir; store targets inside `apriori/specs/`). Symlinks are followed and judged by where they actually point — a delta file textually inside the change root but symlinking outside it fails containment.
+- A NOT-YET-EXISTING store target (the new-module case): the nearest existing ancestor directory's `realpath` must resolve inside the store root's `realpath`.
+
+Any violation → exit 2, message naming the offending path, nothing written or projected. (A project directory itself reached via a symlink is fine — containment compares realpaths on both sides.)
+
+## CLI contract (REQ-6)
+
+**`apriori verify` with `--change <name>`**
+
+| Aspect | Contract |
+|---|---|
+| Allowed flags | `--test-cmd`, `--id-pattern`, `--cwd`, `--json` |
+| Rejected | `--specs` together with `--change` → exit 2 ("the projection defines the spec set") |
+| Roots | store `<cwd>/apriori/specs`, change `<cwd>/apriori/changes/<name>` (resolution as `apriori status`; `--cwd` moves both) |
+| `--json` | see §JSON contract below; non-`--change` runs keep the 3.0.1 shape byte-identical |
+| Exit | 0 projection GREEN · 1 gaps · 2 untrustworthy (incl. merge conflicts, CAS mismatch, malformed delta, zero delta files, nonexistent change, validation failure) |
+
+**`apriori archive` with `--change <name>`**
+
+| Aspect | Contract |
+|---|---|
+| Allowed flags | `--write`, `--changes-dir <dir>` |
+| Rejected | `--store` or `--delta` together with `--change` → exit 2 |
+| Discovery root | `<changes-dir>/<name>/specs/` where `--changes-dir` defaults to `apriori/changes` (the flag sets BOTH discovery root and move root — one knob) |
+| Store root | `apriori/specs/`, relative to process cwd |
+| Move | on `--write` and only when `--changes-dir` was EXPLICITLY passed (unchanged gate-④ sequencing; default invocation writes stores only) |
+| Exit | 0 merged (incl. all-no-op rerun) · 1 conflicts / CAS mismatch / malformed or zero-op delta / stage- or commit- or move-failure · 2 usage / invalid or escaping name / change dir not found |
+| Single-file form | `--store`+`--delta` unchanged (3.0.1 behavior, plus the CAS check when a stamp is present) |
+
+**`apriori stamp <store-file>`** — new subcommand; see §CAS. Appears in `apriori --help` usage text.
+
+### JSON contract for `verify --change --json` (REQ-9)
+
+In `--json` mode stdout is ALWAYS pure JSON, for every outcome class. The 3.0.1 fields are preserved; a `--change` run adds exactly one field:
+
+```
+projection: {
+  change:    <the requested change name, always present>,
+  modules:   [store-relative suffixes of the delta files DISCOVERED, sorted; [] when discovery never ran or found nothing],
+  conflicts: [merge-conflict strings, verbatim the text the non-json form prints; [] when none]
+}
+```
+
+Outcome classes:
+- **Success / gaps:** `result` = `"GREEN"`/`"GAPS"` as in 3.0.1; `projection.modules` lists the projected modules; `projection.conflicts` = [].
+- **Merge conflicts:** `result` = `"ERROR"`, exit 2; conflict strings in `projection.conflicts` AND a summary line in `errors[]`.
+- **Every other projection failure** (invalid/escaping name, nonexistent change, zero delta files, hygiene violations, CAS mismatch): `result` = `"ERROR"`, exit 2; messages in `errors[]` (same text as the non-json stderr lines); `projection` still present, `modules` reflecting whatever discovery completed, `conflicts` = [].
+
+Non-`--change` runs never emit a `projection` field (shape byte-identical to 3.0.1). `archive` has no `--json` today; adding one stays out of scope.
+
+## Delta hygiene guards (REQ-7)
+
+Per delta file, checked in preflight for BOTH projected verify and high-level archive:
+
+- Empty or whitespace-only `.md` file under `<change>/specs/` → error naming the file (junk is never silently skipped).
+- Content-bearing file parsing to zero operations → error naming the file (inherits the 3.0.1 zero-op guard, now per file across the set).
+- Malformed or duplicated base-stamp line (§CAS) → error naming the file.
+- Duplicate `### Requirement:` names within one delta file — same section or across sections (e.g. ADDED and MODIFIED both carrying `Foo`) → conflict naming the requirement.
+- **NEW (corruption guard):** duplicate requirement names detected in the STORE text during any `merge()` → conflict (today `parseRequirements`' Map silently keeps the last block).
+- Non-`.md` files under `specs/` are ignored (consistent with existing directory scanning).
+- Zero delta files discovered → `verify --change` exit 2; `archive --change` exit 2 — both naming the searched path.
+
+Any guard firing anywhere → the whole run refuses (no partial projection, nothing written).
+
+## Acceptance criteria (testable)
+
+**Projected verify**
+- V1. If a change contains an ADDED-only delta for module M with unique projected scenario IDs, then `verify --change <name>` reports the new scenarios alongside all existing store scenarios with no duplicate-ID error (real duplicate IDs in the projection remain GAPS).
+- V2. If a delta MODIFIES requirement R (changing its scenario set), verification demands exactly the delta's version of R's scenarios; dropped scenarios are not demanded.
+- V3. If a delta REMOVES requirement R, R's scenarios are excluded per §Deprecated-block rule; a lingering test tagged with a removed scenario's ID is reported ORPHAN.
+- V4. If a delta RENAMES requirement Old→New, verification demands exactly the projected (post-rename) picture.
+- V5. If any module's merge reports a conflict, `verify --change` exits 2 naming every conflict — never verifies a partial or wrong projection.
+- V6. A nonexistent change name, invalid/escaping name (incl. realpath-containment failures per §Validation), zero delta files, or any §Delta hygiene failure → exit 2 with a message naming the offending path/file.
+- V7. Without `--change`, `verify` output and exit behavior are identical to 3.0.1, with exactly one declared exception: stores containing deprecated blocks now follow the §Deprecated-block rule. On any store without deprecated blocks, behavior is byte-identical.
+- V9. `--json` output matches §JSON contract for every outcome class (success, gaps, merge conflicts, each projection failure class) — stdout parses as JSON in all of them.
+- V8. Exit taxonomy preserved: 0 GREEN · 1 gaps · 2 untrustworthy.
+
+**Deprecated-block rule**
+- D1. A store (or projection) containing a deprecated block: its scenarios are neither demanded nor listed; tests tagged with them are ORPHAN; all other blocks unaffected.
+
+**High-level archive**
+- A1. `archive --change <name>` (dry-run default) discovers all delta files, prints per-module merged/modified/deprecated/renamed/no-op requirement names and a result line, and writes nothing.
+- A2. `archive --change <name> --write` follows §Transaction: any preflight/stage failure → no store file changed; commit phase is per-file atomic renames with an exact per-module report on mid-commit failure.
+- A2b. A pre-existing `<store>.tmp-archive` for any module in the set → preflight failure naming it, exit 1, nothing written, the pre-existing file untouched.
+- A3. Zero delta files → exit 2 naming the searched path.
+- A4. Move semantics per §Transaction phase 4: only with explicit `--changes-dir`, only after all stores committed, to `<changes-dir>/archive/<stamp>-<name>/`.
+- A5. The single-file form keeps 3.0.1 behavior unchanged (plus CAS when stamped).
+- A6. Rerun behavior exactly per §Rerun surface, including the new REMOVED rerun signature.
+
+**CAS**
+- C1. Stamp syntax/position/uniqueness per §CAS; violations are per-file hygiene errors.
+- C2. Stamped file + diverged store → refusal naming module, expected and actual fingerprints; `verify --change` exit 2, `archive` exit 1, nothing written/projected.
+- C3. Absent stamp → behavior identical to pre-3.1 (opt-in).
+- C4. `new` stamp matches only a still-absent store file; once the store exists, it is a mismatch.
+- C5. `apriori stamp <store-file>` prints the exact line that will match the file's current content; absent file → the `new` form; output usable verbatim at the top of a delta.
+
+**Cross-cutting**
+- X1. All new behavior covered by spec scenarios with stable IDs + bound TAP tests; the change's own delta specs verified via `verify --change change-projection` (dogfood) before archiving.
+- X2. No new dependencies (Node stdlib only; `crypto` is stdlib).
+- X3. Existing tests keep passing unmodified except where a spec is deliberately extended — any such modification is listed in the delta.
+
+## Out of scope (won't do in this change)
+
+- `apriori doctor`, `apriori gate --change` (roadmap items 4-5).
+- `--help`/unknown-flag strictness across subcommands (roadmap item 6) — the new forms reject only the combinations listed in §CLI contract.
+- Change Bundle layout, non-reusable change IDs, approval digests, executable state machine (roadmap 13-15).
+- Any behavior change to `check`, `init`, `new`, `status`, `update`.
+- Auto-writing base stamps into deltas at authoring time (`apriori stamp` prints; the author pastes).
+- Crash-durability (fsync) guarantees for archive writes — explicitly not claimed, per §4.8 guarantee-claim discipline.
+
+## Open questions
+
+None — Q1 (projection mechanics: in-memory vs temp files) remains an implementation choice for STEP2's design doc; the observable behavior is fully constrained above.
+
+ succeeded in 194ms:
+# Issue ledger — change-projection
+
+Rows recorded on behalf of the reviewer (codex session 019f4b30-68f9-7222-9b64-17f52a333b4c, read-only sandbox; raws: change-projection-req-review-v{1,2}-raw.txt).
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| REQ-1 | CAS base-stamp syntax, fingerprint algorithm, absent-store sentinel, and stamp CLI are unspecified. | CAS behavior is unimplementable/test-incompatible across implementations. | STEP0·r1 | verified |
+| REQ-2 | REMOVED projection conflicts with current merge output and scenario scanning. | Projected verify can prove a different scenario set than archive/plain verify will enforce. | STEP0·r1 | verified |
+| REQ-3 | Multi-module "all or none" archive lacks transaction and rollback semantics. | Partial store writes or moved change dirs can occur on I/O failure. | STEP0·r1 | verified |
+| REQ-4 | Already-archived rerun behavior conflicts with discovery path and existing idempotency rules. | Implementations may silently no-op, search archives, or widen current idempotency. | STEP0·r1 | verified |
+| REQ-5 | Path validation still lacks symlink/realpath containment semantics (reopened r2). | New `--change` surfaces can read or fingerprint outside intended roots through symlinks. | STEP0·r1 | verified |
+| REQ-6 | CLI grammar and option interactions for new surfaces are incomplete. | Backward compatibility and tests depend on unspecified parser behavior. | STEP0·r1 | verified |
+| REQ-7 | Multi-module malformed/empty/duplicate delta handling is unspecified. | Bad deltas can be silently ignored or collapsed. | STEP0·r1 | verified |
+| REQ-8 | Transaction staging uses fixed temp paths without defining ownership or pre-existing-temp behavior. | Archive can overwrite/delete stale or user-owned temp files and undermine manual recovery. | STEP0·r2 | verified |
+| REQ-9 | `verify --change --json` failure output shape is underspecified. | Machine consumers and tests cannot rely on a stable projection-error contract. | STEP0·r2 | verified |
+| ADV-1 | advisory batch acknowledged (4 items: archive item terminology; V1 duplicate-ID scope wording; exact archive path; 3.1.0 version-bump reminder) | low | STEP0·r1 | advisory-acked |
+| ADV-2 | advisory batch acknowledged (3 items: stamp path edge behavior; V7 wording; deprecated marker regex) — all three also addressed in v3 | low | STEP0·r2 | advisory-acked |
+
+ERROR: Reconnecting... 1/5
+codex
+The requirement and design are aligned at the broad level. I’m now doing the mechanical checks: compare modified delta blocks with the living store, scan scenario IDs, and inspect current code details where the design may under-specify implementation hazards.
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' apriori/specs/spec-runner/spec.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc 'rg -n "#### Scenario: (SR|AM|CL)-[0-9]+" apriori/specs apriori/changes/change-projection/specs' in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' apriori/specs/archive-merge/spec.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,180p' apriori/specs/cli/spec.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 131ms:
+### Requirement: archive-merge applies delta specs to the living store
+`apriori archive` SHALL merge a change's delta requirements into the living spec store by stable Requirement ID, consuming the same `## ADDED/MODIFIED/REMOVED/RENAMED Requirements` delta format the OpenSpec adapter used, so it is the adapter-free native implementation of §4's archive action.
+
+#### Scenario: AM-01 ADDED appends a new requirement
+- WHEN the delta has an ADDED requirement whose ID is absent from the store
+- THEN it is appended and the ID is listed as merged
+
+#### Scenario: AM-02 MODIFIED replaces the existing block
+- WHEN the delta has a MODIFIED requirement whose ID exists in the store
+- THEN the whole store block is replaced and the ID is listed as modified
+
+#### Scenario: AM-03 REMOVED marks the block deprecated, not deleted
+- WHEN the delta has a REMOVED requirement present in the store
+- THEN the store block is kept and marked `deprecated (superseded by <change>)`, listed as deprecated
+
+#### Scenario: AM-04 same-ID conflict stops without writing
+- WHEN an ADDED ID already exists, or a MODIFIED/REMOVED target is missing
+- THEN the merge reports the conflict, writes nothing, and exits 1 (a human opens a ledger issue)
+
+#### Scenario: AM-05 the action lists every merged/modified/deprecated ID
+- WHEN a merge succeeds
+- THEN every affected Requirement ID is printed by category (§4 requires the action list them)
+
+#### Scenario: AM-06 archive moves the in-flight change under a dated archive dir
+- WHEN archive completes on change `<name>`
+- THEN the in-flight `apriori/changes/<name>/` (bare name, no prefix) is moved to `apriori/changes/archive/<YYYY-MM-DDThhmm>-<name>/` — a colon-free date-time stamped by the CLI's own clock (never an agent guess); e.g. `archive/2026-07-06T0657-add-playback/`
+
+#### Scenario: AM-07 RENAMED renames a requirement in place, preserving content
+- WHEN the delta has a `## RENAMED Requirements` entry `- Old Name -> New Name` and `Old Name` exists while `New Name` does not
+- THEN the store block keeps its content but its heading ID becomes `New Name`, listed as renamed; a missing source (with no existing target) or a colliding target is a conflict (stop, exit 1, nothing written) — the source-gone-AND-target-present rerun case is AM-10's no-op, not a conflict
+
+#### Scenario: AM-08 a content-bearing delta that parses to zero operations is a hard error
+- WHEN `apriori archive` reads a delta file that has non-whitespace content but matches no recognized section (e.g. wrong heading level or keyword, so 0 delta operations parse)
+- THEN it writes nothing, prints an error naming the expected `## ADDED|MODIFIED|REMOVED|RENAMED Requirements` + `### Requirement:` format, and exits non-zero — never reporting MERGED for a delta the parser did not understand
+
+#### Scenario: AM-09 the first archive in a repo creates the store file
+- WHEN `apriori archive --write` targets a store file that does not exist yet
+- THEN it notes the store will be created, starts from an empty store, and writes the merged result — no ENOENT
+
+#### Scenario: AM-10 re-running an already-merged delta is an idempotent no-op
+- WHEN an ADDED requirement in the delta already exists in the store with byte-identical (trimmed) content, or a RENAMED entry's source is gone while its target is present — both the signature of a rerun after a partial archive
+- THEN each is reported as already merged / already renamed (no-op), not a conflict, and the run can proceed to move the change dir; but an ADDED whose name was created by THIS run's own RENAMED is a same-delta collision and still conflicts even with identical content
+
+#### Scenario: AM-11 change names are validated and the dir move cannot escape
+- WHEN `--change` is not bare kebab-case (e.g. `../victim`), or `--changes-dir` is given but the change dir does not exist
+- THEN archive exits 2 before writing anything; the move helper independently rejects any source that resolves outside the changes dir
+
+#### Scenario: AM-12 the store commit and the dir move are one transaction
+- WHEN `--write --changes-dir` runs and the change-dir move fails
+- THEN the store on disk stays byte-for-byte untouched (staged to a temp file, committed by rename only after the move succeeds) and no temp residue remains
+
+ succeeded in 151ms:
+### Requirement: single self-contained apriori CLI
+The toolchain SHALL ship as one npm package `apriori-cli` exposing a `bin` named `apriori` with subcommands `init | new | status | verify | archive | check | update` plus a `--version` flag, requiring zero npm runtime dependencies (pure Node stdlib), runnable via global install or `npx`, and failing cleanly (one-line error, no stack trace) on unexpected errors.
+
+#### Scenario: CL-01 subcommand dispatch
+- WHEN `apriori <sub> ...` is invoked with sub in {init, new, status, verify, archive, check, update}
+- THEN it dispatches to that subcommand; an unknown sub prints usage and exits non-zero
+
+#### Scenario: CL-02 verify subcommand is the spec-runner
+- WHEN `apriori verify --specs <dir> --test-cmd <cmd>` runs
+- THEN it behaves per the spec-runner requirement (SR-01..10)
+
+#### Scenario: CL-03 archive subcommand is archive-merge
+- WHEN `apriori archive --store <f> --delta <f> --change <name> [--write]` runs
+- THEN it behaves per the archive-merge requirement (AM-01..10)
+
+#### Scenario: CL-04 check subcommand is the doc checker
+- WHEN `apriori check` runs
+- THEN it behaves per the check requirement (CK-01..06)
+
+#### Scenario: CL-05 zero runtime dependencies
+- WHEN the package is installed
+- THEN it pulls no npm dependencies; only Node's standard library is used
+
+#### Scenario: CL-06 --version prints the package version
+- WHEN `apriori --version` (or `-v`) is invoked
+- THEN it prints the installed package version verbatim on stdout and exits 0
+
+#### Scenario: CL-07 unexpected subcommand failures exit cleanly
+- WHEN a subcommand throws an unexpected error (e.g. an unreadable input file)
+- THEN the CLI prints a single `apriori: <message>` line on stderr and exits 1 — never a raw stack trace
+
+ succeeded in 207ms:
+### Requirement: spec-runner binds scenarios to test runs
+`apriori verify` SHALL enumerate scenario IDs from the spec store, run the project's own test command, parse its TAP output, and report each scenario's bound/green state. It SHALL exit 0 iff every identified scenario is bound to at least one test and all its tests pass, with no orphans or unidentified scenarios.
+
+#### Scenario: SR-01 every scenario bound and green
+- WHEN every spec scenario ID appears in a passing test name
+- THEN each is reported BOUND-GREEN and the process exits 0 with "spec is the test suite"
+
+#### Scenario: SR-02 a scenario with no test is UNBOUND
+- WHEN a spec scenario ID appears in no test name
+- THEN it is reported UNBOUND and the process exits 1
+
+#### Scenario: SR-03 a failing test makes its scenario BOUND-RED
+- WHEN a scenario's test emits `not ok`
+- THEN the scenario is reported BOUND-RED (with pass/fail counts) and the process exits 1
+
+#### Scenario: SR-04 one scenario, many tests — green iff all pass
+- WHEN a scenario ID leads multiple test names and at least one emits `not ok`
+- THEN the scenario is BOUND-RED; it is BOUND-GREEN only when all its tests pass
+
+#### Scenario: SR-05 a test with no matching scenario is ORPHAN
+- WHEN a test name leads with an ID that no spec scenario carries
+- THEN it is reported ORPHAN and the process exits 1
+
+#### Scenario: SR-06 a scenario with no ID is UNIDENTIFIED
+- WHEN a `#### Scenario:` heading has no leading ID matching the id-pattern
+- THEN it is reported UNIDENTIFIED (unbindable) and the process exits 1
+
+#### Scenario: SR-07 delegates execution to the project's own test command
+- WHEN `--test-cmd` is given any command that emits TAP
+- THEN the runner runs it as-is and never assumes a language or framework (TAP is the only coupling)
+
+#### Scenario: SR-08 the id-pattern is configurable, default [A-Z]+-\d+
+- WHEN `--id-pattern` is omitted
+- THEN IDs are matched as `[A-Z]+-\d+`; when given, that pattern governs both spec and test extraction
+
+#### Scenario: SR-09 --json emits a machine-consumable verify report
+- WHEN `apriori verify … --json` runs
+- THEN it prints valid JSON — clean, result (GREEN/GAPS/ERROR), errors, exec (status/signal/error), duplicates, specFiles, boundGreen/boundRed (with pass/fail/skip counts), unbound, orphan, unidentified — and the exit code still encodes GREEN(0)/GAPS(1)/ERROR(2)
+
+#### Scenario: SR-10 zero parsed TAP results triggers a reporter hint
+- WHEN `apriori verify` runs a test command that produces output but not a single parseable TAP result line
+- THEN the report is preceded by a warning that the test command is probably not emitting TAP (naming node's `--test-reporter=tap`), so the all-UNBOUND list is not misread as missing tests
+
+#### Scenario: SR-11 execution status is part of the verdict
+- WHEN the test command fails to spawn, is killed by a signal, or exits non-zero while every parsed TAP result is green
+- THEN verify reports the run untrustworthy and exits 2 (never GREEN); a non-zero exit with matching red TAP remains ordinary GAPS (exit 1)
+
+#### Scenario: SR-12 vacuous inputs fail closed
+- WHEN a spec target does not exist, or the targets contain zero spec files, or the spec files contain zero scenarios
+- THEN verify reports the missing input and exits 2 — an empty universe is never a GREEN
+
+#### Scenario: SR-13 spec hygiene is enforced
+- WHEN the same scenario ID appears in more than one scenario heading, a scenario sits inside a markdown code fence, or a test/scenario name carries an ID followed by a word character — letter, digit or underscore (`XX-01b`, `XX-01_x`)
+- THEN duplicates are reported with their files and force GAPS; fenced scenarios are excluded as documentation; and the suffixed ID never binds to `XX-01` — it is unidentified/untagged instead of silently truncated
+
+#### Scenario: SR-14 TAP directives and aborts never count green
+- WHEN a TAP result carries a `# SKIP` or `# TODO` directive, or the output contains `Bail out!`
+- THEN skipped results count neither pass nor fail (a scenario with only skips stays UNBOUND), and a bailout makes the run an error (exit 2) regardless of earlier green lines
+
+#### Scenario: SR-15 --test-cmd falls back to the config
+- WHEN `apriori verify` is invoked without `--test-cmd` and `apriori/process-config.md` carries a `test-cmd` row (written by `apriori init --test-cmd`)
+- THEN that command is used; with neither present, usage exits 2
+
+ succeeded in 237ms:
+apriori/specs/archive-merge/spec.md:4:#### Scenario: AM-01 ADDED appends a new requirement
+apriori/specs/archive-merge/spec.md:8:#### Scenario: AM-02 MODIFIED replaces the existing block
+apriori/specs/archive-merge/spec.md:12:#### Scenario: AM-03 REMOVED marks the block deprecated, not deleted
+apriori/specs/archive-merge/spec.md:16:#### Scenario: AM-04 same-ID conflict stops without writing
+apriori/specs/archive-merge/spec.md:20:#### Scenario: AM-05 the action lists every merged/modified/deprecated ID
+apriori/specs/archive-merge/spec.md:24:#### Scenario: AM-06 archive moves the in-flight change under a dated archive dir
+apriori/specs/archive-merge/spec.md:28:#### Scenario: AM-07 RENAMED renames a requirement in place, preserving content
+apriori/specs/archive-merge/spec.md:32:#### Scenario: AM-08 a content-bearing delta that parses to zero operations is a hard error
+apriori/specs/archive-merge/spec.md:36:#### Scenario: AM-09 the first archive in a repo creates the store file
+apriori/specs/archive-merge/spec.md:40:#### Scenario: AM-10 re-running an already-merged delta is an idempotent no-op
+apriori/specs/archive-merge/spec.md:44:#### Scenario: AM-11 change names are validated and the dir move cannot escape
+apriori/specs/archive-merge/spec.md:48:#### Scenario: AM-12 the store commit and the dir move are one transaction
+apriori/specs/cli/spec.md:4:#### Scenario: CL-01 subcommand dispatch
+apriori/specs/cli/spec.md:8:#### Scenario: CL-02 verify subcommand is the spec-runner
+apriori/specs/cli/spec.md:12:#### Scenario: CL-03 archive subcommand is archive-merge
+apriori/specs/cli/spec.md:16:#### Scenario: CL-04 check subcommand is the doc checker
+apriori/specs/cli/spec.md:20:#### Scenario: CL-05 zero runtime dependencies
+apriori/specs/cli/spec.md:24:#### Scenario: CL-06 --version prints the package version
+apriori/specs/cli/spec.md:28:#### Scenario: CL-07 unexpected subcommand failures exit cleanly
+apriori/specs/spec-runner/spec.md:4:#### Scenario: SR-01 every scenario bound and green
+apriori/specs/spec-runner/spec.md:8:#### Scenario: SR-02 a scenario with no test is UNBOUND
+apriori/specs/spec-runner/spec.md:12:#### Scenario: SR-03 a failing test makes its scenario BOUND-RED
+apriori/specs/spec-runner/spec.md:16:#### Scenario: SR-04 one scenario, many tests — green iff all pass
+apriori/specs/spec-runner/spec.md:20:#### Scenario: SR-05 a test with no matching scenario is ORPHAN
+apriori/specs/spec-runner/spec.md:24:#### Scenario: SR-06 a scenario with no ID is UNIDENTIFIED
+apriori/specs/spec-runner/spec.md:28:#### Scenario: SR-07 delegates execution to the project's own test command
+apriori/specs/spec-runner/spec.md:32:#### Scenario: SR-08 the id-pattern is configurable, default [A-Z]+-\d+
+apriori/specs/spec-runner/spec.md:36:#### Scenario: SR-09 --json emits a machine-consumable verify report
+apriori/specs/spec-runner/spec.md:40:#### Scenario: SR-10 zero parsed TAP results triggers a reporter hint
+apriori/specs/spec-runner/spec.md:44:#### Scenario: SR-11 execution status is part of the verdict
+apriori/specs/spec-runner/spec.md:48:#### Scenario: SR-12 vacuous inputs fail closed
+apriori/specs/spec-runner/spec.md:52:#### Scenario: SR-13 spec hygiene is enforced
+apriori/specs/spec-runner/spec.md:56:#### Scenario: SR-14 TAP directives and aborts never count green
+apriori/specs/spec-runner/spec.md:60:#### Scenario: SR-15 --test-cmd falls back to the config
+apriori/changes/change-projection/specs/spec-runner/spec.md:8:#### Scenario: SR-16 ADDED delta scenarios join the projection
+apriori/changes/change-projection/specs/spec-runner/spec.md:12:#### Scenario: SR-17 MODIFIED delta replaces the demanded scenario set
+apriori/changes/change-projection/specs/spec-runner/spec.md:16:#### Scenario: SR-18 REMOVED delta scenarios are not demanded and their tests orphan
+apriori/changes/change-projection/specs/spec-runner/spec.md:20:#### Scenario: SR-19 RENAMED delta demands the post-rename picture
+apriori/changes/change-projection/specs/spec-runner/spec.md:24:#### Scenario: SR-20 merge conflicts make the projection untrustworthy
+apriori/changes/change-projection/specs/spec-runner/spec.md:28:#### Scenario: SR-21 projection inputs fail closed
+apriori/changes/change-projection/specs/spec-runner/spec.md:32:#### Scenario: SR-22 --specs and --change are mutually exclusive
+apriori/changes/change-projection/specs/spec-runner/spec.md:36:#### Scenario: SR-23 --json carries the projection contract
+apriori/changes/change-projection/specs/spec-runner/spec.md:40:#### Scenario: SR-24 a diverged base stamp blocks projection
+apriori/changes/change-projection/specs/spec-runner/spec.md:47:#### Scenario: SR-25 deprecated block scenarios stop being demanded
+apriori/changes/change-projection/specs/archive-merge/spec.md:8:#### Scenario: AM-13 dry-run reports the whole change and writes nothing
+apriori/changes/change-projection/specs/archive-merge/spec.md:12:#### Scenario: AM-14 any preflight failure means nothing is written
+apriori/changes/change-projection/specs/archive-merge/spec.md:16:#### Scenario: AM-15 a mid-commit failure is reported exactly
+apriori/changes/change-projection/specs/archive-merge/spec.md:20:#### Scenario: AM-16 a pre-existing temp file blocks the run
+apriori/changes/change-projection/specs/archive-merge/spec.md:24:#### Scenario: AM-17 zero discovered delta files fail closed
+apriori/changes/change-projection/specs/archive-merge/spec.md:28:#### Scenario: AM-18 the change-dir move waits for every store commit
+apriori/changes/change-projection/specs/archive-merge/spec.md:32:#### Scenario: AM-19 high-level and single-file forms are mutually exclusive
+apriori/changes/change-projection/specs/archive-merge/spec.md:36:#### Scenario: AM-20 per-file delta hygiene guards the whole set
+apriori/changes/change-projection/specs/archive-merge/spec.md:40:#### Scenario: AM-21 duplicate requirement names in the store are corruption
+apriori/changes/change-projection/specs/archive-merge/spec.md:44:#### Scenario: AM-22 realpath containment governs every participating path
+apriori/changes/change-projection/specs/archive-merge/spec.md:51:#### Scenario: AM-23 malformed or duplicated stamps are hygiene errors
+apriori/changes/change-projection/specs/archive-merge/spec.md:55:#### Scenario: AM-24 a diverged stamp stops archive before any write
+apriori/changes/change-projection/specs/archive-merge/spec.md:59:#### Scenario: AM-25 stamp-free deltas behave exactly as before
+apriori/changes/change-projection/specs/archive-merge/spec.md:63:#### Scenario: AM-26 the new sentinel matches only an absent store
+apriori/changes/change-projection/specs/archive-merge/spec.md:67:#### Scenario: AM-27 apriori stamp prints the current stamp line
+apriori/changes/change-projection/specs/archive-merge/spec.md:76:#### Scenario: AM-01 ADDED appends a new requirement
+apriori/changes/change-projection/specs/archive-merge/spec.md:80:#### Scenario: AM-02 MODIFIED replaces the existing block
+apriori/changes/change-projection/specs/archive-merge/spec.md:84:#### Scenario: AM-03 REMOVED marks the block deprecated, not deleted
+apriori/changes/change-projection/specs/archive-merge/spec.md:88:#### Scenario: AM-04 same-ID conflict stops without writing
+apriori/changes/change-projection/specs/archive-merge/spec.md:92:#### Scenario: AM-05 the action lists every merged/modified/deprecated ID
+apriori/changes/change-projection/specs/archive-merge/spec.md:96:#### Scenario: AM-06 archive moves the in-flight change under a dated archive dir
+apriori/changes/change-projection/specs/archive-merge/spec.md:100:#### Scenario: AM-07 RENAMED renames a requirement in place, preserving content
+apriori/changes/change-projection/specs/archive-merge/spec.md:104:#### Scenario: AM-08 a content-bearing delta that parses to zero operations is a hard error
+apriori/changes/change-projection/specs/archive-merge/spec.md:108:#### Scenario: AM-09 the first archive in a repo creates the store file
+apriori/changes/change-projection/specs/archive-merge/spec.md:112:#### Scenario: AM-10 re-running an already-merged delta is an idempotent no-op
+apriori/changes/change-projection/specs/archive-merge/spec.md:116:#### Scenario: AM-11 change names are validated and the dir move cannot escape
+apriori/changes/change-projection/specs/archive-merge/spec.md:120:#### Scenario: AM-12 the store commit and the dir move are one transaction
+apriori/changes/change-projection/specs/cli/spec.md:8:#### Scenario: CL-01 subcommand dispatch
+apriori/changes/change-projection/specs/cli/spec.md:12:#### Scenario: CL-02 verify subcommand is the spec-runner
+apriori/changes/change-projection/specs/cli/spec.md:16:#### Scenario: CL-03 archive subcommand is archive-merge
+apriori/changes/change-projection/specs/cli/spec.md:20:#### Scenario: CL-04 check subcommand is the doc checker
+apriori/changes/change-projection/specs/cli/spec.md:24:#### Scenario: CL-05 zero runtime dependencies
+apriori/changes/change-projection/specs/cli/spec.md:28:#### Scenario: CL-06 --version prints the package version
+apriori/changes/change-projection/specs/cli/spec.md:32:#### Scenario: CL-07 unexpected subcommand failures exit cleanly
+apriori/changes/change-projection/specs/cli/spec.md:36:#### Scenario: CL-08 stamp subcommand appears in usage
+
+ERROR: Reconnecting... 1/5
+ERROR: Reconnecting... 2/5
+ERROR: Reconnecting... 3/5
+codex
+Scenario IDs do not collide: the delta adds SR-16..25, AM-13..27, and CL-08, with existing ranges ending at SR-15, AM-12, and CL-07. I did find one likely spec contradiction around high-level move-failure behavior versus the retained AM-12 wording, and I’m checking if it is a real blocker rather than just wording.
+exec
+/usr/bin/zsh -lc "sed -n '1,320p' lib/archive-merge.js" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 183ms:
+'use strict';
+/*
+ * archive-merge — plain-files native implementation of the archive action (§4).
+ * Zero deps — pure Node stdlib. Consumes the same delta format the OpenSpec adapter used
+ * (## ADDED/MODIFIED/REMOVED Requirements), so it is the adapter-free path.
+ */
+const fs = require('fs');
+const path = require('path');
+
+const REQ_RE = /^###\s+Requirement:\s+(.+?)\s*$([\s\S]*?)(?=^###\s+Requirement:|$(?![\s\S]))/gm;
+const SECTION_SPLIT_RE = /^##\s+(ADDED|MODIFIED|REMOVED|RENAMED)\s+Requirements\s*$/m;
+
+// name -> full block (heading + body), in document order
+function parseRequirements(text) {
+  const out = new Map();
+  let m;
+  REQ_RE.lastIndex = 0;
+  while ((m = REQ_RE.exec(text)) !== null) out.set(m[1].trim(), m[0].replace(/\s+$/, '') + '\n');
+  return out;
+}
+
+function parseDelta(text) {
+  const buckets = { ADDED: new Map(), MODIFIED: new Map(), REMOVED: new Map(), RENAMED: [] };
+  const parts = text.split(SECTION_SPLIT_RE);
+  for (let i = 1; i < parts.length; i += 2) {
+    const kind = parts[i];
+    if (kind === 'RENAMED') {
+      // one rename per line: `- Old Name -> New Name`
+      for (const m of parts[i + 1].matchAll(/^\s*-\s*(.+?)\s*->\s*(.+?)\s*$/gm))
+        buckets.RENAMED.push([m[1].trim(), m[2].trim()]);
+    } else {
+      for (const [name, block] of parseRequirements(parts[i + 1])) buckets[kind].set(name, block);
+    }
+  }
+  return buckets;
+}
+
+// total number of operations a parsed delta carries (0 = the delta matched no known section)
+function deltaOpCount(delta) {
+  return delta.ADDED.size + delta.MODIFIED.size + delta.REMOVED.size + delta.RENAMED.length;
+}
+
+// Pure merge. Returns { store: Map, merged, modified, deprecated, renamed, conflicts }
+function merge(storeText, delta, change) {
+  const store = parseRequirements(storeText);
+  const merged = [], modified = [], deprecated = [], renamed = [], conflicts = [], unchanged = [];
+  const renamedTargets = new Set();   // names created by THIS run's renames — an ADDED hitting one is a same-delta collision, never a rerun no-op
+  // RENAMED first: rename the store block's ID, preserving its content
+  for (const [oldName, newName] of (delta.RENAMED || [])) {
+    if (!store.has(oldName)) {
+      // rerun signature: source already gone AND target present → this rename already happened
+      if (store.has(newName)) { unchanged.push(`${oldName} -> ${newName} (already renamed)`); continue; }
+      conflicts.push(`RENAMED '${oldName}' has no target in store`); continue;
+    }
+    if (store.has(newName)) { conflicts.push(`RENAMED target '${newName}' already exists in store`); continue; }
+    const block = store.get(oldName);
+    const renamedBlock = block.replace(/^###\s+Requirement:\s+.+$/m, `### Requirement: ${newName}`);
+    // rebuild the map preserving order, swapping the key at the old position
+    const rebuilt = new Map();
+    for (const [k, v] of store) rebuilt.set(k === oldName ? newName : k, k === oldName ? renamedBlock : v);
+    store.clear();
+    for (const [k, v] of rebuilt) store.set(k, v);
+    renamed.push(`${oldName} -> ${newName}`);
+    renamedTargets.add(newName);
+  }
+  for (const [name, block] of delta.ADDED) {
+    if (store.has(name)) {
+      // idempotent rerun: identical content means this delta already merged — a no-op, not a collision.
+      // But a name just created by THIS run's RENAMED is a same-delta collision, never a rerun.
+      if (!renamedTargets.has(name) && store.get(name).trim() === block.trim()) unchanged.push(name);
+      else conflicts.push(`ADDED '${name}' already exists in store`);
+    } else { store.set(name, block); merged.push(name); }
+  }
+  for (const [name, block] of delta.MODIFIED) {
+    if (!store.has(name)) conflicts.push(`MODIFIED '${name}' has no target in store`);
+    else { store.set(name, block); modified.push(name); }
+  }
+  for (const name of delta.REMOVED.keys()) {
+    if (!store.has(name)) conflicts.push(`REMOVED '${name}' has no target in store`);
+    else {
+      const block = store.get(name);
+      const nl = block.indexOf('\n');
+      store.set(name, block.slice(0, nl) + `  _deprecated (superseded by ${change})_` + block.slice(nl));
+      deprecated.push(name);
+    }
+  }
+  return { store, merged, modified, deprecated, renamed, conflicts, unchanged };
+}
+
+function renderStore(storeText, store) {
+  const idx = storeText.indexOf('### Requirement:');
+  const header = idx >= 0 ? storeText.slice(0, idx) : '';
+  return header + [...store.values()].join('\n');
+}
+
+// colon-free date-time stamp YYYY-MM-DDThhmm (CLI's own clock; never an agent guess)
+function archiveStamp(d) {
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}${p(d.getMinutes())}`;
+}
+
+const CHANGE_NAME_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;   // bare kebab-case — same rule as `apriori new`
+
+// Move an in-flight change dir (bare name) → changes/archive/<stamp>-<name>/
+// Fail-closed on path escape: the source must be strictly inside changesDir.
+function archiveChangeDir(changesDir, name, now) {
+  if (!CHANGE_NAME_RE.test(name)) throw new Error(`invalid change name '${name}' — bare kebab-case only`);
+  const src = path.join(changesDir, name);
+  const base = path.resolve(changesDir) + path.sep;
+  if (!(path.resolve(src) + path.sep).startsWith(base)) throw new Error(`change path escapes ${changesDir}`);
+  if (!fs.existsSync(src)) return null;
+  const dest = path.join(changesDir, 'archive', `${archiveStamp(now)}-${name}`);
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  fs.renameSync(src, dest);
+  return dest;
+}
+
+function cli(argv) {
+  const a = { store: null, delta: null, change: null, write: false, changesDir: null };
+  for (let i = 0; i < argv.length; i++) {
+    const k = argv[i];
+    if (k === '--store') a.store = argv[++i];
+    else if (k === '--delta') a.delta = argv[++i];
+    else if (k === '--change') a.change = argv[++i];
+    else if (k === '--write') a.write = true;
+    else if (k === '--changes-dir') a.changesDir = argv[++i];
+  }
+  if (!a.store || !a.delta || !a.change) { console.error('usage: apriori archive --store <f> --delta <f> --change <name> [--write] [--changes-dir <dir>]'); return 2; }
+  if (!CHANGE_NAME_RE.test(a.change)) { console.error(`archive: invalid change name '${a.change}' — bare kebab-case only (path segments are not allowed)`); return 2; }
+  if (a.changesDir && !fs.existsSync(path.join(a.changesDir, a.change))) {
+    console.error(`archive: change '${a.change}' not found under ${a.changesDir} — nothing to move`); return 2;
+  }
+  // first archive in a repo: the store file may not exist yet — start from an empty store
+  const storeExists = fs.existsSync(a.store);
+  const storeText = storeExists ? fs.readFileSync(a.store, 'utf8') : '';
+  if (!storeExists) console.log(`store ${a.store} does not exist yet — will be created${a.write ? '' : ' on --write'}`);
+  const deltaText = fs.readFileSync(a.delta, 'utf8');
+  const delta = parseDelta(deltaText);
+  // Guard against a silent no-op: a delta with real content that parsed to zero operations
+  // is almost always a format mismatch (wrong heading level/keyword), not an empty change.
+  // Report it and write nothing — never print MERGED for a delta the parser didn't understand.
+  if (deltaText.trim() && deltaOpCount(delta) === 0) {
+    console.error(`archive: parsed 0 delta operations from ${a.delta} — it has content but no recognized operations.`);
+    console.error('  expected `## ADDED|MODIFIED|REMOVED Requirements` (h2) with `### Requirement: <name>` (h3) blocks,');
+    console.error('  or `## RENAMED Requirements` with `- Old -> New` lines. Nothing written.');
+    return 1;
+  }
+  const { store, merged, modified, deprecated, renamed, conflicts, unchanged } = merge(storeText, delta, a.change);
+
+  for (const [label, ids] of [['merged (ADDED)', merged], ['modified (MODIFIED)', modified], ['deprecated (REMOVED)', deprecated], ['renamed (RENAMED)', renamed], ['already merged (no-op)', unchanged]])
+    if (ids.length) console.log(`${label}: ${ids.join(', ')}`);
+
+  if (conflicts.length) {
+    console.log('\nCONFLICTS (stop — open a ledger issue, human resolves):');
+    for (const c of conflicts) console.log(`  ✗ ${c}`);
+    console.log('\nRESULT: CONFLICT — nothing written');
+    return 1;
+  }
+  if (a.write) {
+    // Transactional ordering: stage the store to a temp file, do the (atomic) dir move, then
+    // commit the store via rename. If the move fails, the temp is discarded and the store on
+    // disk stays byte-for-byte untouched — never a half-completed archive.
+    fs.mkdirSync(path.dirname(a.store), { recursive: true });
+    const tmp = a.store + '.tmp-archive';
+    fs.writeFileSync(tmp, renderStore(storeText, store));
+    let moved = null;
+    if (a.changesDir) {
+      try { moved = archiveChangeDir(a.changesDir, a.change, new Date()); }
+      catch (e) { fs.rmSync(tmp, { force: true }); console.error(`archive: ${e.message} — store left untouched`); return 1; }
+      if (moved === null) { fs.rmSync(tmp, { force: true }); console.error(`archive: change dir vanished mid-run — store left untouched`); return 1; }
+    }
+    fs.renameSync(tmp, a.store);
+    console.log(`\nRESULT: MERGED — ${a.store} rewritten${moved ? `; change archived → ${moved}` : ''}`);
+  } else {
+    console.log(`\nRESULT: MERGED (dry-run; ${store.size} requirements in result) — pass --write to apply`);
+  }
+  return 0;
+}
+
+module.exports = { parseRequirements, parseDelta, deltaOpCount, merge, renderStore, archiveStamp, archiveChangeDir, CHANGE_NAME_RE, cli };
+
+exec
+/usr/bin/zsh -lc "sed -n '1,320p' lib/spec-runner.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,120p' bin/apriori.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,280p' test/archive-merge.test.js" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 107ms:
+#!/usr/bin/env node
+'use strict';
+/* apriori CLI — single self-contained entry, zero dependencies. Dispatches subcommands. */
+
+const sub = process.argv[2];
+const rest = process.argv.slice(3);
+
+const USAGE = `apriori <command>
+
+  new       scaffold a change dir + flow-state skeleton (bare kebab-case name)
+  status    show where a change is: step, next-action, open ledger items (--json)
+  verify    bind spec scenarios to test runs (STEP5 gate) (--json)
+  archive   merge a change's delta specs into the living store (STEP6)
+  check     structural consistency checks (CI / pre-commit)
+  init      scaffold the workflow + per-tool pointers
+  update    refresh tool-owned files (runbook copy, command pointers) after a CLI upgrade
+
+Run 'apriori <command>' with no args for that command's usage.`;
+
+async function main() {
+  switch (sub) {
+    case 'new':     return require('../lib/new').cli(rest);
+    case 'status':  return require('../lib/status').cli(rest);
+    case 'verify':  return require('../lib/spec-runner').cli(rest);
+    case 'archive': return require('../lib/archive-merge').cli(rest);
+    case 'check':   return require('../lib/check').cli(rest);
+    case 'init':    return require('../lib/init').cli(rest);
+    case 'update':  return require('../lib/update').cli(rest);
+    case '-v':
+    case '--version': console.log(require('../package.json').version); return 0;
+    case undefined:
+    case '-h':
+    case '--help':  console.log(USAGE); return 0;
+    default:        console.error(`unknown command: ${sub}\n\n${USAGE}`); return 2;
+  }
+}
+
+main().then(
+  (code) => process.exit(code),
+  (err) => { console.error(`apriori: ${err && err.message ? err.message : err}`); process.exit(1); }
+);
+
+ succeeded in 131ms:
+'use strict';
+/*
+ * spec-runner — bind spec scenario IDs to test runs, report per-scenario red/green.
+ * VISION endgame, weak form: "spec IS the test suite". Zero deps — pure Node stdlib.
+ * Coupling surface is tiny and language-agnostic: markdown scenarios + a TAP-emitting test command.
+ *
+ * FAIL-CLOSED: a deterministic gate must refuse to say GREEN when its inputs are missing,
+ * its instrument misbehaved, or its evidence is ambiguous. Vacuous success is a bug.
+ * Exit codes: 0 = GREEN · 1 = spec/test gaps · 2 = invocation or infrastructure error.
+ */
+const fs = require('fs');
+const path = require('path');
+const { spawnSync } = require('child_process');
+
+const DEFAULT_ID = '[A-Z]+-\\d+';
+const SCENARIO_RE = /^####\s+Scenario:\s+(.*)$/gm;
+// TAP result line, directive split off separately (# SKIP / # TODO)
+const TAP_RE = /^(ok|not ok)\s+\d+\s+-\s+(.*)$/gm;
+
+// Leading scenario/test ID. The match must end at a word boundary: `XX-01b` is NOT `XX-01` —
+// silently truncating would merge two different scenarios into one binding.
+function leadId(text, idRe) {
+  const m = text.trim().match(idRe);
+  if (!m || m.index !== 0) return null;
+  const next = text.trim()[m[0].length];
+  if (next !== undefined && /[A-Za-z0-9_]/.test(next)) return null;
+  return m[0];
+}
+
+function stripFences(text) { return text.replace(/```[\s\S]*?```/g, ''); }
+
+function mdFiles(target) {
+  if (!fs.existsSync(target)) return [];
+  const st = fs.statSync(target);
+  if (st.isFile()) return [target];
+  const out = [];
+  for (const e of fs.readdirSync(target, { withFileTypes: true })) {
+    const p = path.join(target, e.name);
+    if (e.isDirectory()) out.push(...mdFiles(p));
+    else if (e.name.endsWith('.md')) out.push(p);
+  }
+  return out.sort();
+}
+
+// Collect scenarios from spec files.
+// → { byId, unidentified:[[file,title]], files, missingTargets:[], duplicates:[{id,files}] }
+// Code-fence content is excluded: an example scenario inside ``` is documentation, not a spec.
+function collectScenarios(specTargets, idRe) {
+  const byId = new Map();          // id -> [titles]
+  const idFiles = new Map();       // id -> [files] (for duplicate reporting)
+  const unidentified = [];
+  const missingTargets = specTargets.filter((t) => !fs.existsSync(t));
+  const files = [...new Set(specTargets.flatMap(mdFiles))].sort();
+  for (const f of files) {
+    const text = stripFences(fs.readFileSync(f, 'utf8'));
+    let m;
+    SCENARIO_RE.lastIndex = 0;
+    while ((m = SCENARIO_RE.exec(text)) !== null) {
+      const id = leadId(m[1], idRe);
+      if (id) {
+        if (!byId.has(id)) { byId.set(id, []); idFiles.set(id, []); }
+        byId.get(id).push(m[1]);
+        idFiles.get(id).push(f);
+      } else unidentified.push([f, m[1]]);
+    }
+  }
+  const duplicates = [...byId.entries()].filter(([, titles]) => titles.length > 1)
+    .map(([id]) => ({ id, files: [...new Set(idFiles.get(id))] }));
+  return { byId, unidentified, files, missingTargets, duplicates };
+}
+
+// Parse TAP text → { results: Map<id,{pass,fail,skip}>, untagged: [], bailout: string|null }
+// A # SKIP / # TODO directive is neither pass nor fail — a skipped test proves nothing.
+function parseTap(out, idRe) {
+  const results = new Map();
+  const untagged = [];
+  let untaggedFails = 0;
+  const bm = out.match(/^Bail out!(.*)$/m);
+  const bailout = bm ? bm[0].trim() : null;
+  let m;
+  TAP_RE.lastIndex = 0;
+  while ((m = TAP_RE.exec(out)) !== null) {
+    const hash = m[2].search(/#\s*(SKIP|TODO)\b/i);
+    const name = hash >= 0 ? m[2].slice(0, hash).trim() : m[2];
+    const directive = hash >= 0;
+    const id = leadId(name, idRe);
+    if (id === null) { untagged.push(name); if (m[1] === 'not ok' && !directive) untaggedFails++; continue; }
+    const cur = results.get(id) || { pass: 0, fail: 0, skip: 0 };
+    if (directive) cur.skip++;
+    else cur[m[1] === 'ok' ? 'pass' : 'fail']++;
+    results.set(id, cur);
+  }
+  return { results, untagged, untaggedFails, bailout };
+}
+
+// true when the test command produced output but not a single TAP result line was parsed —
+// almost always means the runner used a human reporter (node: add --test-reporter=tap)
+function zeroTapParsed(out, results, untagged) {
+  if (results.size > 0 || untagged.length > 0) return false;
+  if (!out.trim()) return false;
+  // a TAP version line or plan (1..N) proves the reporter IS TAP — an empty suite is not a reporter problem
+  if (/^TAP version \d+|^1\.\.\d+/m.test(out)) return false;
+  return true;
+}
+
+function runTestCommand(cmd, cwd) {
+  const r = spawnSync(cmd, { shell: true, cwd, encoding: 'utf8' });
+  return {
+    out: (r.stdout || '') + '\n' + (r.stderr || ''),
+    status: r.status,               // null when killed by signal
+    signal: r.signal || null,
+    error: r.error ? String(r.error.message || r.error) : null,
+  };
+}
+
+// Pure evaluation: cross-reference scenarios vs results → verdict object.
+// A scenario whose only results are skips is UNBOUND — skips prove nothing.
+function evaluate(byId, unidentified, results) {
+  const specIds = [...byId.keys()].sort();
+  const boundGreen = [], boundRed = [], unbound = [], orphan = [];
+  for (const id of specIds) {
+    const r = results.get(id);
+    if (!r || (r.pass === 0 && r.fail === 0)) unbound.push(id);
+    else if (r.fail === 0) boundGreen.push(id);
+    else boundRed.push(id);
+  }
+  for (const id of [...results.keys()].sort()) if (!byId.has(id)) orphan.push(id);
+  const clean = !boundRed.length && !unbound.length && !orphan.length && !unidentified.length;
+  return { boundGreen, boundRed, unbound, orphan, unidentified, clean };
+}
+
+// Fail-closed guard: reasons this run cannot be trusted regardless of the TAP picture.
+// Returns [] when the run is trustworthy.
+function infraErrors(run) {
+  const errs = [];
+  for (const t of run.missingTargets) errs.push(`spec target does not exist: ${t}`);
+  if (!run.missingTargets.length && run.fileCount === 0)
+    errs.push('no spec files found under the given targets — nothing to verify');
+  if (run.fileCount > 0 && run.scenarioCount === 0)
+    errs.push('spec files contain zero scenarios — nothing to verify');
+  if (run.exec.error) errs.push(`test command failed to spawn: ${run.exec.error}`);
+  if (run.exec.signal) errs.push(`test command was killed by signal ${run.exec.signal}`);
+  if (run.bailout) errs.push(`test run aborted: ${run.bailout}`);
+  if (run.noTap)
+    errs.push('test command produced output but ZERO TAP results were parsed — the command is probably not emitting TAP (node test runner: add --test-reporter=tap)');
+  if (run.exec.status !== null && run.exec.status !== 0 && run.failCount === 0)
+    errs.push(`test command exited with status ${run.exec.status} but no parsed TAP failure explains it — the TAP picture is incomplete or truncated; refusing to trust this run`);
+  return errs;
+}
+
+function formatReport(v, results, fileCount, extras = {}) {
+  const lines = [];
+  const specCount = v.boundGreen.length + v.boundRed.length + v.unbound.length;
+  const tagged = [...results.values()].reduce((s, r) => s + r.pass + r.fail, 0);
+  const skipped = [...results.values()].reduce((s, r) => s + (r.skip || 0), 0);
+  lines.push(`specs: ${fileCount} file(s), ${specCount} identified scenario(s)`);
+  lines.push(`tests: ${tagged} tagged result(s)${skipped ? `, ${skipped} skipped (not counted)` : ''}\n`);
+  const groups = [['BOUND-GREEN', v.boundGreen], ['BOUND-RED', v.boundRed],
+                 ['UNBOUND (scenario, no test)', v.unbound], ['ORPHAN (test, no scenario)', v.orphan]];
+  for (const [label, items] of groups) {
+    if (!items.length) continue;
+    lines.push(`${label === 'BOUND-GREEN' ? '✓' : '✗'} ${label}: ${items.length}`);
+    for (const id of items) {
+      const r = results.get(id);
+      lines.push(`    ${id}${r ? `  ${r.pass}p/${r.fail}f${r.skip ? `/${r.skip}s` : ''}` : ''}`);
+    }
+  }
+  if (v.unidentified.length) {
+    lines.push(`✗ UNIDENTIFIED (scenario, no ID — unbindable): ${v.unidentified.length}`);
+    for (const [f, t] of v.unidentified) lines.push(`    ${path.basename(f)}: ${t.slice(0, 60)}`);
+  }
+  if (extras.duplicates && extras.duplicates.length) {
+    lines.push(`✗ DUPLICATE scenario IDs (ambiguous binding): ${extras.duplicates.length}`);
+    for (const d of extras.duplicates) lines.push(`    ${d.id}: ${d.files.map((f) => path.basename(f)).join(', ')}`);
+  }
+  const errs = extras.errors || [];
+  lines.push('\nRESULT: ' + (errs.length ? 'ERROR — run not trustworthy (see stderr)'
+    : (v.clean && !(extras.duplicates || []).length ? 'GREEN — spec is the test suite' : 'GAPS')));
+  return lines.join('\n');
+}
+
+// Full verify run. opts: { specs:[], testCmd, idPattern, cwd }
+function verify(opts) {
+  const idRe = new RegExp(opts.idPattern || DEFAULT_ID);
+  const { byId, unidentified, files, missingTargets, duplicates } = collectScenarios(opts.specs, idRe);
+  const exec = runTestCommand(opts.testCmd, opts.cwd || '.');
+  const { results, untagged, untaggedFails, bailout } = parseTap(exec.out, idRe);
+  const verdict = evaluate(byId, unidentified, results);
+  const failCount = [...results.values()].reduce((s, r) => s + r.fail, 0) + untaggedFails;
+  const run = {
+    verdict, results, fileCount: files.length, failCount,
+    scenarioCount: byId.size + unidentified.length,
+    missingTargets, duplicates, bailout,
+    noTap: zeroTapParsed(exec.out, results, untagged),
+    exec: { status: exec.status, signal: exec.signal, error: exec.error },
+  };
+  run.errors = infraErrors(run);
+  return run;
+}
+
+// machine-consumable shape for a verify run
+function verifyJson(run) {
+  const { verdict: v, results } = run;
+  const clean = v.clean && run.duplicates.length === 0 && run.errors.length === 0;
+  return {
+    clean,
+    result: run.errors.length ? 'ERROR' : (clean ? 'GREEN' : 'GAPS'),
+    errors: run.errors,
+    specFiles: run.fileCount,
+    exec: run.exec,
+    duplicates: run.duplicates,
+    boundGreen: v.boundGreen.map((id) => ({ id, ...results.get(id) })),
+    boundRed: v.boundRed.map((id) => ({ id, ...results.get(id) })),
+    unbound: v.unbound,
+    orphan: v.orphan.map((id) => ({ id, ...results.get(id) })),
+    unidentified: v.unidentified.map(([file, title]) => ({ file, title })),
+  };
+}
+
+// Fallback test command from apriori/process-config.md's `test-cmd` row (written by init --test-cmd)
+function configTestCmd(cwd) {
+  const p = path.join(cwd || '.', 'apriori', 'process-config.md');
+  if (!fs.existsSync(p)) return null;
+  const m = fs.readFileSync(p, 'utf8').match(/^\|\s*test-cmd\s*\|\s*(.+?)\s*\|/m);
+  return m ? m[1] : null;
+}
+
+function cli(argv) {
+  const a = { specs: [], testCmd: null, idPattern: DEFAULT_ID, cwd: '.', json: false };
+  for (let i = 0; i < argv.length; i++) {
+    const k = argv[i];
+    if (k === '--specs') while (argv[i + 1] && !argv[i + 1].startsWith('--')) a.specs.push(argv[++i]);
+    else if (k === '--test-cmd') a.testCmd = argv[++i];
+    else if (k === '--id-pattern') a.idPattern = argv[++i];
+    else if (k === '--cwd') a.cwd = argv[++i];
+    else if (k === '--json') a.json = true;
+  }
+  if (!a.testCmd) a.testCmd = configTestCmd(a.cwd);   // init --test-cmd persists it there
+  if (!a.specs.length || !a.testCmd) { console.error('usage: apriori verify --specs <dir...> --test-cmd "<cmd>" [--id-pattern <re>] [--cwd <dir>] [--json]\n(--test-cmd may be omitted when apriori/process-config.md has a test-cmd row)'); return 2; }
+  const run = verify(a);
+  if (run.errors.length && !a.json)
+    for (const e of run.errors) console.error('error: ' + e);
+  console.log(a.json ? JSON.stringify(verifyJson(run), null, 2)
+                     : formatReport(run.verdict, run.results, run.fileCount, { duplicates: run.duplicates, errors: run.errors }));
+  if (run.errors.length) return 2;
+  return run.verdict.clean && run.duplicates.length === 0 ? 0 : 1;
+}
+
+module.exports = { leadId, stripFences, collectScenarios, parseTap, zeroTapParsed, runTestCommand,
+  evaluate, infraErrors, formatReport, verifyJson, verify, configTestCmd, cli, DEFAULT_ID };
+
+ succeeded in 126ms:
+'use strict';
+const { test } = require('node:test');
+const assert = require('node:assert');
+const { parseDelta, deltaOpCount, merge, archiveStamp, archiveChangeDir, cli } = require('../lib/archive-merge');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+
+function tmpFile(content) {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-amc-'));
+  const f = path.join(d, 'f.md');
+  fs.writeFileSync(f, content);
+  return f;
+}
+
+const STORE = [
+  '# Store', '',
+  '### Requirement: Alpha', 'Alpha behaves.', '',
+  '#### Scenario: AL-01 alpha', '- THEN ok', '',
+  '### Requirement: Beta', 'Beta old.', '',
+  '#### Scenario: BE-01 beta', '- THEN ok', '',
+].join('\n');
+
+test('AM-01 ADDED appends a new requirement', () => {
+  const delta = parseDelta('## ADDED Requirements\n### Requirement: Gamma\nNew.\n');
+  const r = merge(STORE, delta, 'c');
+  assert.deepStrictEqual(r.merged, ['Gamma']);
+  assert.ok(r.store.has('Gamma'));
+  assert.strictEqual(r.conflicts.length, 0);
+});
+
+test('AM-02 MODIFIED replaces the existing block', () => {
+  const delta = parseDelta('## MODIFIED Requirements\n### Requirement: Beta\nBeta NEW.\n');
+  const r = merge(STORE, delta, 'c');
+  assert.deepStrictEqual(r.modified, ['Beta']);
+  assert.match(r.store.get('Beta'), /Beta NEW\./);
+});
+
+test('AM-03 REMOVED marks the block deprecated, not deleted', () => {
+  const delta = parseDelta('## REMOVED Requirements\n### Requirement: Alpha\nGone.\n');
+  const r = merge(STORE, delta, 'drop-alpha');
+  assert.deepStrictEqual(r.deprecated, ['Alpha']);
+  assert.ok(r.store.has('Alpha'));
+  assert.match(r.store.get('Alpha'), /deprecated \(superseded by drop-alpha\)/);
+});
+
+test('AM-04 same-ID conflict stops without writing', () => {
+  const dupAdd = merge(STORE, parseDelta('## ADDED Requirements\n### Requirement: Beta\nDup.\n'), 'c');
+  assert.strictEqual(dupAdd.conflicts.length, 1);
+  const missMod = merge(STORE, parseDelta('## MODIFIED Requirements\n### Requirement: Ghost\nX.\n'), 'c');
+  assert.strictEqual(missMod.conflicts.length, 1);
+  // CLI layer: conflict → exit 1 and the store file is left byte-for-byte untouched
+  const store = tmpFile(STORE);
+  const delta = tmpFile('## ADDED Requirements\n### Requirement: Beta\nDup.\n');
+  const before = fs.readFileSync(store, 'utf8');
+  const code = cli(['--store', store, '--delta', delta, '--change', 'c', '--write']);
+  assert.strictEqual(code, 1);
+  assert.strictEqual(fs.readFileSync(store, 'utf8'), before);   // nothing written
+});
+
+test('AM-05 the action lists every merged/modified/deprecated ID', () => {
+  const delta = parseDelta(
+    '## ADDED Requirements\n### Requirement: Gamma\nG.\n' +
+    '## MODIFIED Requirements\n### Requirement: Beta\nB2.\n' +
+    '## REMOVED Requirements\n### Requirement: Alpha\nA.\n');
+  const r = merge(STORE, delta, 'c');
+  assert.deepStrictEqual([r.merged, r.modified, r.deprecated], [['Gamma'], ['Beta'], ['Alpha']]);
+  // CLI layer: clean dry-run → exit 0, store untouched (no --write), and stdout lists IDs by category
+  const store = tmpFile(STORE);
+  const dfile = tmpFile('## ADDED Requirements\n### Requirement: Gamma\nG.\n' +
+    '## MODIFIED Requirements\n### Requirement: Beta\nB2.\n' +
+    '## REMOVED Requirements\n### Requirement: Alpha\nA.\n');
+  const before = fs.readFileSync(store, 'utf8');
+  const orig = console.log; const out = [];
+  console.log = (...a) => out.push(a.join(' '));
+  try { assert.strictEqual(cli(['--store', store, '--delta', dfile, '--change', 'c']), 0); }
+  finally { console.log = orig; }
+  const printed = out.join('\n');
+  assert.match(printed, /merged \(ADDED\): Gamma/);
+  assert.match(printed, /modified \(MODIFIED\): Beta/);
+  assert.match(printed, /deprecated \(REMOVED\): Alpha/);
+  assert.strictEqual(fs.readFileSync(store, 'utf8'), before);   // dry-run doesn't write
+});
+
+test('AM-07 RENAMED renames a requirement in place, preserving content', () => {
+  const delta = parseDelta('## RENAMED Requirements\n- Beta -> Bravo\n');
+  const r = merge(STORE, delta, 'c');
+  assert.deepStrictEqual(r.renamed, ['Beta -> Bravo']);
+  assert.ok(r.store.has('Bravo') && !r.store.has('Beta'));
+  assert.match(r.store.get('Bravo'), /### Requirement: Bravo/);
+  assert.match(r.store.get('Bravo'), /Beta old\./);            // content preserved
+  assert.match(r.store.get('Bravo'), /BE-01 beta/);            // its scenario preserved
+  // conflicts: missing source, or target already exists
+  assert.strictEqual(merge(STORE, parseDelta('## RENAMED Requirements\n- Ghost -> X\n'), 'c').conflicts.length, 1);
+  assert.strictEqual(merge(STORE, parseDelta('## RENAMED Requirements\n- Beta -> Alpha\n'), 'c').conflicts.length, 1);
+  // CLI layer: success prints "renamed (RENAMED)"; a conflict exits 1 and writes nothing
+  const store = tmpFile(STORE);
+  const orig = console.log, out = [];
+  console.log = (...a) => out.push(a.join(' '));
+  try { assert.strictEqual(cli(['--store', store, '--delta', tmpFile('## RENAMED Requirements\n- Beta -> Bravo\n'), '--change', 'c']), 0); }
+  finally { console.log = orig; }
+  assert.match(out.join('\n'), /renamed \(RENAMED\): Beta -> Bravo/);
+  const store2 = tmpFile(STORE), before = fs.readFileSync(store2, 'utf8');
+  assert.strictEqual(cli(['--store', store2, '--delta', tmpFile('## RENAMED Requirements\n- Ghost -> X\n'), '--change', 'c', '--write']), 1);
+  assert.strictEqual(fs.readFileSync(store2, 'utf8'), before);   // conflict → nothing written
+});
+
+test('AM-06 archive moves the in-flight change under a dated (date-time) archive dir', () => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-am-'));
+  const changes = path.join(base, 'changes');
+  fs.mkdirSync(path.join(changes, 'add-playback'), { recursive: true });
+  fs.writeFileSync(path.join(changes, 'add-playback', 'flow-state.md'), 'x');
+  const now = new Date(2026, 6, 6, 6, 57); // 2026-07-06T0657
+  const dest = archiveChangeDir(changes, 'add-playback', now);
+  assert.strictEqual(path.basename(dest), '2026-07-06T0657-add-playback');
+  assert.ok(fs.existsSync(path.join(dest, 'flow-state.md')));
+  assert.ok(!fs.existsSync(path.join(changes, 'add-playback')));
+  // stamp is colon-free date-time
+  assert.strictEqual(archiveStamp(now), '2026-07-06T0657');
+});
+
+test('AM-08 a content-bearing delta that parses to zero operations is a hard error', () => {
+  // pure helper: opcount of an empty vs real delta
+  assert.strictEqual(deltaOpCount(parseDelta('nothing here\n')), 0);
+  assert.ok(deltaOpCount(parseDelta('## ADDED Requirements\n\n### Requirement: X\ntext\n')) > 0);
+  // cli: wrong heading level (h3 section instead of h2) → parses to 0 ops → error, nothing written, exit 1
+  const store = tmpFile('# spec\n\n### Requirement: Old\nbody\n');
+  const before = fs.readFileSync(store, 'utf8');
+  const badDelta = tmpFile('### ADDED Requirements\n\n#### Requirement: New\nstuff\n');   // wrong levels
+  const errs = [], outs = [];
+  const origErr = console.error, origLog = console.log;
+  console.error = (...a) => errs.push(a.join(' '));
+  console.log = (...a) => outs.push(a.join(' '));
+  let code;
+  try { code = cli(['--store', store, '--delta', badDelta, '--change', 'c', '--write']); }
+  finally { console.error = origErr; console.log = origLog; }
+  assert.strictEqual(code, 1);
+  const err = errs.join('\n');
+  assert.match(err, /parsed 0 delta operations/);
+  assert.match(err, /## ADDED\|MODIFIED\|REMOVED Requirements/);
+  assert.match(err, /### Requirement:/);
+  assert.match(err, /RENAMED/);
+  assert.doesNotMatch(outs.join('\n'), /RESULT: MERGED/);        // never claims a merge happened
+  assert.strictEqual(fs.readFileSync(store, 'utf8'), before);    // nothing written
+  // a genuinely empty (whitespace-only) delta is NOT flagged by this guard — it reaches the
+  // normal path: clean dry-run, exit 0, and no "0 delta operations" error
+  const emptyDelta = tmpFile('   \n\n');
+  const e2 = [], o2 = [];
+  console.error = (...a) => e2.push(a.join(' ')); console.log = (...a) => o2.push(a.join(' '));
+  let code2;
+  try { code2 = cli(['--store', store, '--delta', emptyDelta, '--change', 'c']); }
+  finally { console.error = origErr; console.log = origLog; }
+  assert.strictEqual(code2, 0);
+  assert.doesNotMatch(e2.join('\n'), /0 delta operations/);
+  assert.match(o2.join('\n'), /RESULT: MERGED \(dry-run/);
+});
+
+test('AM-09 the first archive in a repo creates the store file', () => {
+  const os = require('node:os');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-am9-'));
+  const store = path.join(dir, 'specs', 'kv', 'spec.md');   // nested, nonexistent
+  const delta = tmpFile('## ADDED Requirements\n### Requirement: Fresh\nNew stuff.\n');
+  const out = [];
+  const orig = console.log; console.log = (...a) => out.push(a.join(' '));
+  let code;
+  try { code = cli(['--store', store, '--delta', delta, '--change', 'c', '--write']); }
+  finally { console.log = orig; }
+  assert.strictEqual(code, 0);
+  assert.match(out.join('\n'), /does not exist yet — will be created/);
+  assert.match(fs.readFileSync(store, 'utf8'), /### Requirement: Fresh/);
+});
+
+test('AM-10 re-running an already-merged delta is an idempotent no-op', () => {
+  const block = '## ADDED Requirements\n### Requirement: Gamma\nG content.\n';
+  const store = tmpFile('### Requirement: Gamma\nG content.\n');   // already merged
+  const delta = tmpFile(block);
+  const before = fs.readFileSync(store, 'utf8');
+  const out = [];
+  const orig = console.log; console.log = (...a) => out.push(a.join(' '));
+  let code;
+  try { code = cli(['--store', store, '--delta', delta, '--change', 'c', '--write']); }
+  finally { console.log = orig; }
+  assert.strictEqual(code, 0);                                    // no conflict
+  assert.match(out.join('\n'), /already merged \(no-op\): Gamma/);
+  assert.doesNotMatch(out.join('\n'), /CONFLICT/);
+  assert.strictEqual(fs.readFileSync(store, 'utf8').trim(), before.trim());
+  // genuinely different content with the same ID is still a conflict
+  const delta2 = tmpFile('## ADDED Requirements\n### Requirement: Gamma\nDIFFERENT.\n');
+  const code2 = cli(['--store', store, '--delta', delta2, '--change', 'c', '--write']);
+  assert.strictEqual(code2, 1);
+});
+
+test('AM-10b rename-aware idempotency: same-delta RENAMED+ADDED collides; rename rerun is a no-op', () => {
+  // same delta renames Alpha->Gamma AND adds an identical Gamma → collision, not no-op
+  const d1 = parseDelta('## RENAMED Requirements\n- Alpha -> Gamma\n## ADDED Requirements\n### Requirement: Gamma\nAlpha behaves.\n\n#### Scenario: AL-01 alpha\n- THEN ok\n');
+  const r1 = merge(STORE, d1, 'c');
+  assert.ok(r1.conflicts.some((c) => /ADDED 'Gamma' already exists/.test(c)));
+  // rerun of a rename-only delta: source gone, target present → already-renamed no-op
+  const renamedStore = STORE.replace('### Requirement: Beta', '### Requirement: Bravo');
+  const r2 = merge(renamedStore, parseDelta('## RENAMED Requirements\n- Beta -> Bravo\n'), 'c');
+  assert.strictEqual(r2.conflicts.length, 0);
+  assert.ok(r2.unchanged.some((u) => /Beta -> Bravo \(already renamed\)/.test(u)));
+});
+
+test('AM-11 change name is validated and the move can never escape changes-dir', () => {
+  const { CHANGE_NAME_RE } = require('../lib/archive-merge');
+  assert.ok(CHANGE_NAME_RE.test('add-playback'));
+  assert.ok(!CHANGE_NAME_RE.test('../victim'));
+  assert.ok(!CHANGE_NAME_RE.test('a/b'));
+  // cli rejects a path-segment change name up front, exit 2
+  const store = tmpFile(STORE);
+  const delta = tmpFile('## ADDED Requirements\n### Requirement: Fresh\nF.\n');
+  const errs = [];
+  const origErr = console.error; console.error = (...a) => errs.push(a.join(' '));
+  let code;
+  try { code = cli(['--store', store, '--delta', delta, '--change', '../victim', '--write']); }
+  finally { console.error = origErr; }
+  assert.strictEqual(code, 2);
+  assert.match(errs.join('\n'), /invalid change name/);
+  // archiveChangeDir itself throws on an escaping name (defense in depth)
+  assert.throws(() => archiveChangeDir('/tmp/x-changes', '../victim', new Date(2026, 0, 1)), /invalid change name|escapes/);
+  // --changes-dir with a nonexistent source change → preflight error, nothing written
+  const before = fs.readFileSync(store, 'utf8');
+  const errs2 = [];
+  console.error = (...a) => errs2.push(a.join(' '));
+  let code2;
+  try { code2 = cli(['--store', store, '--delta', delta, '--change', 'ghost-change', '--write', '--changes-dir', fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-am11-'))]); }
+  finally { console.error = origErr; }
+  assert.strictEqual(code2, 2);
+  assert.match(errs2.join('\n'), /not found under/);
+  assert.strictEqual(fs.readFileSync(store, 'utf8'), before);
+});
+
+test('AM-12 store commit is transactional with the dir move — move fails ⇒ store untouched', () => {
+  const base = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-am12-'));
+  const changes = path.join(base, 'changes');
+  fs.mkdirSync(path.join(changes, 'my-change'), { recursive: true });
+  fs.writeFileSync(path.join(changes, 'my-change', 'flow-state.md'), 'x');
+  // sabotage: archive/ exists as a FILE so the dest mkdir/rename must fail
+  fs.writeFileSync(path.join(changes, 'archive'), 'not a dir');
+  const store = path.join(base, 'store.md');
+  fs.writeFileSync(store, '### Requirement: Old\nO.\n');
+  const before = fs.readFileSync(store, 'utf8');
+  const delta = tmpFile('## ADDED Requirements\n### Requirement: Fresh\nF.\n');
+  const errs = [];
+  const origErr = console.error; console.error = (...a) => errs.push(a.join(' '));
+  let code;
+  try { code = cli(['--store', store, '--delta', delta, '--change', 'my-change', '--write', '--changes-dir', changes]); }
+  finally { console.error = origErr; }
+  assert.strictEqual(code, 1);
+  assert.strictEqual(fs.readFileSync(store, 'utf8'), before);          // store byte-for-byte untouched
+  assert.ok(!fs.existsSync(store + '.tmp-archive'));                    // no temp residue
+  assert.ok(fs.existsSync(path.join(changes, 'my-change')));            // change dir still in place
+});
+
+codex
+# Technical Review — change-projection STEP2
+
+## Issues
+
+### SPEC-1 — AM-12 now conflicts with high-level archive move semantics
+
+Description: The delta keeps AM-12 wording: when `--write --changes-dir` runs and the change-dir move fails, “the store on disk stays byte-for-byte untouched.” New AM-18 says high-level `archive --change --write --changes-dir` moves only after all stores commit, so a move failure leaves committed stores in place. Both scenarios will exist in the same archive-merge spec after archive.
+
+Risk: Tests or implementers can satisfy one scenario and fail the other. This is especially likely because both use the same visible flag phrase, `--write --changes-dir`, but require opposite store state after move failure.
+
+Suggestion: Scope AM-12 explicitly to the single-file form, for example: `apriori archive --store <f> --delta <f> --change <name> --write --changes-dir <dir>`. Keep AM-18 as the high-level form’s rule.
+
+### SPEC-2 — Archive CAS scenarios do not force both archive surfaces to be tested
+
+Description: The requirement says present base stamps are checked by both single-file `archive --store/--delta` and high-level `archive --change`. The delta spec’s AM-24/AM-25/AM-26 say “archive” generically, so one implementation test could cover only one archive surface while leaving the other unchecked.
+
+Risk: A regression can ship where CAS works for `archive --change` but not for the existing single-file form, or vice versa. That is a correctness issue on a compatibility-sensitive path.
+
+Suggestion: Amend AM-24 or add a scenario requiring the same stamped mismatch to fail in both forms. Also make AM-25 explicit that stamp-free behavior remains pre-3.1 for both forms.
+
+### SPEC-3 — Move destination containment is not designed for symlinked `archive/`
+
+Description: v3 requires realpath containment for participating paths, but the design says `archiveChangeDir` may stay string-based. The move destination `<changes-dir>/archive/<stamp>-<name>` is external shared state. If `<changes-dir>/archive` is a symlink outside the changes root, a move can place the change outside the intended tree.
+
+Risk: This is a symlink/path traversal security gap around an external-input path. It also undermines the declared change-dir move invariant.
+
+Suggestion: Treat the archive destination as a participating path. Before moving, validate the realpath of an existing `archive/` directory, or the nearest existing destination ancestor, is strictly inside the realpath of `changesDir`; reject symlink escape with exit 2 before any move.
+
+## Advisories
+
+ADV-3 batch: scenario ID ranges are clean: existing SR-01..15/AM-01..12/CL-01..07 do not collide with new SR-16..25/AM-13..27/CL-08. The CLI MODIFIED block preserves current behavior apart from declared amendments. Consider moving task T7 before the final dogfood verify, or rerun `verify --change change-projection` after stamping, so the final stamped deltas are what STEP5 proves. AM-27 combines several stamp CLI cases under one scenario; use subtests so every branch is exercised.
+
+## Ledger Delta
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| SPEC-1 | AM-12 retained single-file move-failure semantics but now conflicts with high-level AM-18 move-failure semantics. | Tests and implementation can require opposite store states for `--write --changes-dir` move failure. | STEP2·r1 | open |
+| SPEC-2 | Archive CAS scenarios do not explicitly require coverage for both single-file and high-level archive forms. | CAS can be implemented or tested on only one archive surface, leaving the other unsafe. | STEP2·r1 | open |
+| SPEC-3 | Change-dir move destination containment does not cover a symlinked `<changes-dir>/archive/` path. | Archive can move a change outside the intended changes root via symlink traversal. | STEP2·r1 | open |
+| ADV-3 | Advisory batch: clean ID ranges; T7 should not mutate deltas after the final dogfood verify; AM-27 should use subtests for each stamp CLI branch. | Low. | STEP2·r1 | advisory |
+
+VERDICT: 3 issues open
+tokens used
+355,397
+# Technical Review — change-projection STEP2
+
+## Issues
+
+### SPEC-1 — AM-12 now conflicts with high-level archive move semantics
+
+Description: The delta keeps AM-12 wording: when `--write --changes-dir` runs and the change-dir move fails, “the store on disk stays byte-for-byte untouched.” New AM-18 says high-level `archive --change --write --changes-dir` moves only after all stores commit, so a move failure leaves committed stores in place. Both scenarios will exist in the same archive-merge spec after archive.
+
+Risk: Tests or implementers can satisfy one scenario and fail the other. This is especially likely because both use the same visible flag phrase, `--write --changes-dir`, but require opposite store state after move failure.
+
+Suggestion: Scope AM-12 explicitly to the single-file form, for example: `apriori archive --store <f> --delta <f> --change <name> --write --changes-dir <dir>`. Keep AM-18 as the high-level form’s rule.
+
+### SPEC-2 — Archive CAS scenarios do not force both archive surfaces to be tested
+
+Description: The requirement says present base stamps are checked by both single-file `archive --store/--delta` and high-level `archive --change`. The delta spec’s AM-24/AM-25/AM-26 say “archive” generically, so one implementation test could cover only one archive surface while leaving the other unchecked.
+
+Risk: A regression can ship where CAS works for `archive --change` but not for the existing single-file form, or vice versa. That is a correctness issue on a compatibility-sensitive path.
+
+Suggestion: Amend AM-24 or add a scenario requiring the same stamped mismatch to fail in both forms. Also make AM-25 explicit that stamp-free behavior remains pre-3.1 for both forms.
+
+### SPEC-3 — Move destination containment is not designed for symlinked `archive/`
+
+Description: v3 requires realpath containment for participating paths, but the design says `archiveChangeDir` may stay string-based. The move destination `<changes-dir>/archive/<stamp>-<name>` is external shared state. If `<changes-dir>/archive` is a symlink outside the changes root, a move can place the change outside the intended tree.
+
+Risk: This is a symlink/path traversal security gap around an external-input path. It also undermines the declared change-dir move invariant.
+
+Suggestion: Treat the archive destination as a participating path. Before moving, validate the realpath of an existing `archive/` directory, or the nearest existing destination ancestor, is strictly inside the realpath of `changesDir`; reject symlink escape with exit 2 before any move.
+
+## Advisories
+
+ADV-3 batch: scenario ID ranges are clean: existing SR-01..15/AM-01..12/CL-01..07 do not collide with new SR-16..25/AM-13..27/CL-08. The CLI MODIFIED block preserves current behavior apart from declared amendments. Consider moving task T7 before the final dogfood verify, or rerun `verify --change change-projection` after stamping, so the final stamped deltas are what STEP5 proves. AM-27 combines several stamp CLI cases under one scenario; use subtests so every branch is exercised.
+
+## Ledger Delta
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| SPEC-1 | AM-12 retained single-file move-failure semantics but now conflicts with high-level AM-18 move-failure semantics. | Tests and implementation can require opposite store states for `--write --changes-dir` move failure. | STEP2·r1 | open |
+| SPEC-2 | Archive CAS scenarios do not explicitly require coverage for both single-file and high-level archive forms. | CAS can be implemented or tested on only one archive surface, leaving the other unsafe. | STEP2·r1 | open |
+| SPEC-3 | Change-dir move destination containment does not cover a symlinked `<changes-dir>/archive/` path. | Archive can move a change outside the intended changes root via symlink traversal. | STEP2·r1 | open |
+| ADV-3 | Advisory batch: clean ID ranges; T7 should not mutate deltas after the final dogfood verify; AM-27 should use subtests for each stamp CLI branch. | Low. | STEP2·r1 | advisory |
+
+VERDICT: 3 issues open

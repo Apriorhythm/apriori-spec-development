@@ -1,0 +1,936 @@
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f4b30-68f9-7222-9b64-17f52a333b4c
+--------
+user
+You are the STEP0 requirement reviewer (P1) for change unattributed-fail in this repo (apriori-cli, now 4.0.0 on branch v4). Context: an external GPT-5.6 review of 4.0.0 found a reproduced false-green — a TAP run with "ok 1 - XX-01 pass" / "not ok 2 - global teardown failed" / "1..2" and process exit 1 still yields RESULT: GREEN exit 0. Review apriori/changes/unattributed-fail/requirement/req-v1.md against lib/spec-runner.js (TAP_RE at ~:21, parseTap ~:100-132, infraErrors ~:173-197, evaluate/verify ~:268-281, cli exit at ~:334) and apriori/specs/spec-runner/spec.md:
+1. Is the defect mechanism stated accurately (TAP_RE strict shape, untaggedFails feeding failCount but not the verdict, bare not-ok points counted only by POINT_LINE_RE)?
+2. Completeness: exit-code hard rule interactions (status!==0 with mixed attributed/unattributed failures; status 0 with unattributed failures; SKIP/TODO on bare points; Bail out! precedence; plan mismatch precedence); anything the requirement should decide but leaves silent (e.g. subtest-indented not-ok lines must stay NOT counted — node nested TAP);
+3. Over-reach: does any behavior change break legal existing runs (untagged ok points, plan-less streams, skip-all)?
+4. Testability: every behavior statable as a failing test today.
+[Scope] Count only requirement defects toward the verdict; style = advisory. READ-ONLY sandbox (R2).
+[Output] Chinese prose, English IDs; issues + fixes; advisories separate; LEDGER DELTA (new rows UF-n) for apriori/changes/unattributed-fail/review/issues.md; then exactly one verdict line: "VERDICT: no major issues" or "VERDICT: <N> issues found".
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-11T21:23:16.357820Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T21:23:16.555993Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T21:23:16.887583Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-11T21:23:17.496904Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-11T21:23:18.447468Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-11T21:23:20.151677Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-11T21:23:23.386851Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: kbGCoKbsv6qy
+codex
+我会先核对需求文档、当前 `spec-runner` 的 TAP 解析逻辑和现有 spec，确认这个 false-green 的机制是否被需求准确收敛，而不是只描述了现象。
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' apriori/specs/spec-runner/spec.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,220p' apriori/changes/unattributed-fail/requirement/req-v1.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,230p' lib/spec-runner.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '230,380p' lib/spec-runner.js" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 134ms:
+### Requirement: spec-runner binds scenarios to test runs
+`apriori verify` SHALL enumerate scenario IDs from the spec store, run the project's own test command, parse its TAP output, and report each scenario's bound/green state. It SHALL exit 0 iff every identified scenario is bound to at least one test and all its tests pass, with no orphans or unidentified scenarios.
+
+#### Scenario: SR-01 every scenario bound and green
+- WHEN every spec scenario ID appears in a passing test name
+- THEN each is reported BOUND-GREEN and the process exits 0 with "spec is the test suite"
+
+#### Scenario: SR-02 a scenario with no test is UNBOUND
+- WHEN a spec scenario ID appears in no test name
+- THEN it is reported UNBOUND and the process exits 1
+
+#### Scenario: SR-03 a failing test makes its scenario BOUND-RED
+- WHEN a scenario's test emits `not ok`
+- THEN the scenario is reported BOUND-RED (with pass/fail counts) and the process exits 1
+
+#### Scenario: SR-04 one scenario, many tests — green iff all pass
+- WHEN a scenario ID leads multiple test names and at least one emits `not ok`
+- THEN the scenario is BOUND-RED; it is BOUND-GREEN only when all its tests pass
+
+#### Scenario: SR-05 a test with no matching scenario is ORPHAN
+- WHEN a test name leads with an ID that no spec scenario carries
+- THEN it is reported ORPHAN and the process exits 1
+
+#### Scenario: SR-06 a scenario with no ID is UNIDENTIFIED
+- WHEN a `#### Scenario:` heading has no leading ID matching the id-pattern
+- THEN it is reported UNIDENTIFIED (unbindable) and the process exits 1
+
+#### Scenario: SR-07 delegates execution to the project's own test command
+- WHEN `--test-cmd` is given any command that emits TAP
+- THEN the runner runs it as-is and never assumes a language or framework (TAP is the only coupling)
+
+#### Scenario: SR-08 the id-pattern is configurable, default [A-Z]+-\d+
+- WHEN `--id-pattern` is omitted
+- THEN IDs are matched as `[A-Z]+-\d+`; when given, that pattern governs both spec and test extraction
+
+#### Scenario: SR-09 --json emits a machine-consumable verify report
+- WHEN `apriori verify … --json` runs
+- THEN it prints valid JSON — clean, result (GREEN/GAPS/ERROR), errors, exec (status/signal/error), duplicates, specFiles, boundGreen/boundRed (with pass/fail/skip counts), unbound, orphan, unidentified — and the exit code still encodes GREEN(0)/GAPS(1)/ERROR(2)
+
+#### Scenario: SR-10 zero parsed TAP results triggers a reporter hint
+- WHEN `apriori verify` runs a test command that produces output but not a single parseable TAP result line
+- THEN the report is preceded by a warning that the test command is probably not emitting TAP (naming node's `--test-reporter=tap`), so the all-UNBOUND list is not misread as missing tests
+
+#### Scenario: SR-11 execution status is part of the verdict
+- WHEN the test command fails to spawn, is killed by a signal, or exits non-zero while every parsed TAP result is green
+- THEN verify reports the run untrustworthy and exits 2 (never GREEN); a non-zero exit with matching red TAP remains ordinary GAPS (exit 1)
+
+#### Scenario: SR-12 vacuous inputs fail closed
+- WHEN a spec target does not exist, or the targets contain zero spec files, or the spec files contain zero scenarios
+- THEN verify reports the missing input and exits 2 — an empty universe is never a GREEN
+
+#### Scenario: SR-13 spec hygiene is enforced
+- WHEN the same scenario ID appears in more than one scenario heading, a scenario sits inside a markdown code fence, or a test/scenario name carries an ID followed by a word character — letter, digit or underscore (`XX-01b`, `XX-01_x`)
+- THEN duplicates are reported with their files and force GAPS; fenced scenarios are excluded as documentation; and the suffixed ID never binds to `XX-01` — it is unidentified/untagged instead of silently truncated
+
+#### Scenario: SR-14 TAP directives and aborts never count green
+- WHEN a TAP result carries a `# SKIP` or `# TODO` directive, or the output contains `Bail out!`
+- THEN skipped results count neither pass nor fail (a scenario with only skips stays UNBOUND), and a bailout makes the run an error (exit 2) regardless of earlier green lines
+
+#### Scenario: SR-15 --test-cmd falls back to the config
+- WHEN `apriori verify` is invoked without `--test-cmd` and `apriori/process-config.md` carries a `test-cmd` row (written by `apriori init --test-cmd`)
+- THEN that command is used; with neither present, usage exits 2
+
+### Requirement: projected verify binds against the candidate merged store
+`apriori verify --change <name>` SHALL construct the projection — the store as `apriori archive` would leave it after merging every delta spec under `apriori/changes/<name>/specs/` — in memory, never writing to the living store's location, and SHALL bind scenarios against that projection using the same `merge()` semantics archive uses. Discovery maps `changes/<name>/specs/<suffix>` to `apriori/specs/<suffix>` (`.md` files only); roots resolve against `--cwd` exactly as `apriori status` resolves change dirs.
+
+#### Scenario: SR-16 ADDED delta scenarios join the projection
+- WHEN a change carries an ADDED-only delta for a module and `verify --change <name>` runs
+- THEN the delta's scenarios are demanded alongside every existing store scenario, with no duplicate-ID error from the overlay (genuinely duplicate IDs in the projection remain GAPS)
+
+#### Scenario: SR-17 MODIFIED delta replaces the demanded scenario set
+- WHEN a delta MODIFIES a requirement, changing its scenario set
+- THEN verification demands exactly the delta's version of that requirement's scenarios; scenarios the modification drops are not demanded
+
+#### Scenario: SR-18 REMOVED delta scenarios are not demanded and their tests orphan
+- WHEN a delta REMOVES a requirement whose scenarios have tests still tagged with their IDs
+- THEN the projection deprecates the block, its scenarios are not demanded, and each lingering test is reported ORPHAN (exit 1 until the tests are deleted)
+
+#### Scenario: SR-19 RENAMED delta demands the post-rename picture
+- WHEN a delta RENAMES a requirement Old → New
+- THEN verification demands exactly the projected picture — the block's scenarios under their unchanged IDs, with no demand arising from the pre-rename block
+
+#### Scenario: SR-20 merge conflicts make the projection untrustworthy
+- WHEN any module's merge reports one or more conflicts
+- THEN `verify --change` prints every conflict and exits 2 — it never verifies a partial or wrong projection
+
+#### Scenario: SR-21 projection inputs fail closed
+- WHEN the change name is invalid or fails realpath containment, the change dir does not exist, zero delta files are discovered, or any delta file violates a hygiene guard (empty/whitespace-only, content with zero operations, malformed or duplicated base stamp, duplicate requirement names)
+- THEN `verify --change` exits 2 with a message naming the offending path or file, and runs no tests
+
+#### Scenario: SR-22 --specs and --change are mutually exclusive
+- WHEN `apriori verify --change <name> --specs <dir>` is invoked
+- THEN it exits 2 explaining the projection defines the spec set
+
+#### Scenario: SR-23 --json carries the projection contract
+- WHEN `verify --change --json` runs — success, gaps, merge conflict, or any projection failure
+- THEN stdout is pure JSON in every class: the 3.0.1 fields plus `projection: {change, modules, conflicts}` where modules lists discovered store-relative suffixes (sorted) and conflicts carries merge-conflict strings verbatim; non-`--change` runs never emit a `projection` field
+
+#### Scenario: SR-24 a diverged base stamp blocks projection
+- WHEN a discovered delta file carries a base stamp that does not match the current fingerprint of its mapped store file
+- THEN `verify --change` exits 2 naming the store path and the expected vs actual fingerprint, and runs no tests
+
+### Requirement: deprecated blocks are excluded from verification
+In every verify form (plain `--specs` and `--change`), a requirement block whose heading line matches `/^###\s+Requirement:.*_deprecated \(superseded by [^)]*\)_/` SHALL be excluded from scenario collection: its scenarios are neither demanded nor listed, and a test still tagged with such a scenario's ID counts as ORPHAN. On stores containing no deprecated blocks, behavior is identical to 3.0.1.
+
+#### Scenario: SR-25 deprecated block scenarios stop being demanded
+- WHEN a store (or projection) contains a deprecated requirement block with scenarios, and a test still carries one of those scenario IDs
+- THEN those scenarios appear in no report group, the lingering test is ORPHAN, and all non-deprecated blocks are unaffected
+
+### Requirement: the TAP plan is a checked promise
+When the test command's output carries exactly one top-level TAP plan line (`/^1\.\.(\d+)\s*(#.*)?$/` — a trailing `# SKIP`/`# TODO` directive is legal and `N` still parses), the run SHALL be trusted only if the plan total equals the count of top-level TAP result tokens (`/^(?:ok|not ok)(?:\s|$)/` — unnumbered and undescribed points count; `ok:`-prefixed diagnostic-like lines and indented subtest/YAML lines never count) and no top-level test-point number repeats (compared numerically, so `01` duplicates `1`; unnumbered points are exempt). More than one top-level plan SHALL itself be an infra error naming the cure (one TAP stream per verify). Absent plans keep today's behavior — no promise made, none checked. Violations are infra errors (verify exits 2 / RESULT: ERROR; gate exits 2 / ERROR reporting the verify plan error — an untrustworthy run outranks a C1 binding block), never bindings; `verify`, `verify --change`, and `gate` inherit through `infraErrors` with no new wiring, and `doctor`'s probe classification is intentionally out of scope.
+
+#### Scenario: SR-26 a truncated plan refuses to verify
+- WHEN the test command emits a plan `1..2`, a single passing result, and exit 0
+- THEN verify reports RESULT: ERROR (exit 2) naming 2 declared vs 1 parsed, and nothing verifies GREEN
+
+#### Scenario: SR-27 duplicate test-point numbers are untrustworthy
+- WHEN one plan is present and two top-level results carry the same number (including `ok 01` vs `ok 1`)
+- THEN verify reports RESULT: ERROR naming the duplicated number(s)
+
+#### Scenario: SR-28 multiple plans fail closed even when totals mask
+- WHEN the output carries two top-level plans whose declared totals happen to equal the parsed points (`1..2`, one point, `1..1`, two points)
+- THEN verify reports RESULT: ERROR naming multiple plans and advising one TAP stream per verify
+
+#### Scenario: SR-29 the point count speaks TAP, not prefixes
+- WHEN a plan `1..2` is followed by a numbered described result and a bare `ok`, with an `ok: note` diagnostic line nearby
+- THEN the bare point counts toward the plan, the `ok:` line does not, and no plan error is raised
+
+#### Scenario: SR-30 plan-less, skip-all, and nested TAP stay legal
+- WHEN output has no plan at all, or a `1..0 # SKIP reason` plan with zero points, or node-style nested TAP whose indented subtest lines carry their own plans and results
+- THEN no plan infra error is raised and verification behaves exactly as before
+
+#### Scenario: SR-31 projected verify and gate inherit the plan check
+- WHEN a change's projected verify (or `gate --change`) runs against a test command whose TAP plan does not match its results
+- THEN `verify --change` exits 2 (RESULT: ERROR) and gate exits 2 reporting the verify plan error (an untrustworthy run is gate ERROR, like every other infra failure — not a mere BLOCKED)
+
+### Requirement: projected verify surfaces unstamped mutation deltas
+`verify --change` SHALL print one stderr warning per unstamped mutation delta (same message class as archive's) without affecting the verdict — an otherwise-GREEN run stays GREEN — and `--json` SHALL carry `projection.unstampedMutations` (the store-suffix-relative paths from buildProjection, `[]` when none; the field exists only where `projection` already does).
+
+#### Scenario: SR-32 the projection warns but does not judge
+- WHEN a change's delta carries mutation ops without a stamp
+- THEN verify --change warns on stderr naming the file and the stamp cure, the run can still be GREEN, --json carries projection.unstampedMutations with the suffix, and an ADDED-only unstamped delta yields an empty list and no warning
+
+ succeeded in 156ms:
+# 需求:unattributed-fail —— 未归因的测试失败必须阻断 GREEN (v1)
+
+> change: `unattributed-fail` · tier: medium · track: harden
+> lineage: v4 分支;不合并到 main/v1/v3
+> 来源:GPT-5.6 对 4.0.0 的外部评审 P0-1,已本机复现。
+
+## 目标
+
+`verify` 是整个体系的发布闸口,它对 GREEN 的承诺是"测试套件就是规格"。当前存在假绿:测试进程明确失败(`not ok` + 退出码 1),verify 仍 GREEN/exit 0。已复现输入:
+
+```text
+ok 1 - XX-01 pass
+not ok 2 - global teardown failed
+1..2
+```
+
+(进程退出 1)→ 当前输出 `RESULT: GREEN`,exit 0。
+
+## 缺陷机制(现状事实)
+
+- `TAP_RE` 只匹配 `(ok|not ok) N - desc` 全形;带描述但无场景 ID 的 `not ok` 进 `untaggedFails` 并计入 `failCount`,于是 infra 规则(非零退出且 failCount===0 才 ERROR)被"解释掉",而 verdict 的 clean 只看有 ID 的结果——两层各自有理,合起来放行。
+- 裸形 `not ok`/`not ok 3`/`not ok - desc` 是合法 TAP,却只被 `POINT_LINE_RE` 计入 plan 点数,既不进 results 也不进 untaggedFails:配合退出码 0(某些 runner 会这样)是完全不可见的假绿。
+
+## 行为需求
+
+1. **任何非 SKIP/TODO 的顶层 `not ok` 都阻断 GREEN**,无论其形状:
+   - 带编号带描述但无场景 ID(评审复现形);
+   - 无编号、无描述、无 `-` 分隔的裸形/半形(合法 TAP 点)。
+   这些统称**未归因失败(unattributed failures)**。
+2. **报告**:新报告组(如 `✗ UNATTRIBUTED FAILURES (not ok without a scenario ID): N`),逐行列出原始行文本(截断到合理长度);RESULT 为 GAPS,exit 1——它们是真实测试失败,不是基础设施错误。
+3. **退出码硬规则**:`exec.status !== 0` 时 verify 绝不返回 0——有失败归因 → exit 1;全绿 TAP 无归因 → 既有 infra ERROR(exit 2)不变。反向不成立:未归因失败即使配合退出码 0 也阻断(见 1)。
+4. **合法 TAP 的宽容面不变**:无 ID 的 `ok` 点照旧可过(untagged 列出、不阻断);SKIP/TODO 指令(含裸形上的指令)照旧不算失败;plan 校验、Bail out!、重号等既有 infra 规则不变。
+5. **--json** 增加 `unattributedFailures`(计数 + 原始行数组);既有形状字段不破坏。
+6. **gate C1 自动继承**(verify GAPS → blocked),不需要 gate 侧改动——但需一条场景钉住继承。
+7. **回归钉子**:评审复现输入(teardown 失败形)与"裸 `not ok` + 退出码 0"两个病例都必须有绑定场景。
+
+## 非目标
+
+- TAP 子测试/嵌套缩进层的重新设计(node 嵌套 TAP 既有处理不变)。
+- YAML diagnostics 块解析。
+- verify 之外的表面(archive/gate 自身逻辑,除 C1 继承验证)。
+
+## 约束
+
+- 零依赖、纯 Node;既有 SR-01..19 场景与全部现有测试不回归。
+- CRLF 行尾与 fence 语义照旧。
+
+## 开放问题
+
+- 无。
+
+ succeeded in 165ms:
+'use strict';
+/*
+ * spec-runner — bind spec scenario IDs to test runs, report per-scenario red/green.
+ * VISION endgame, weak form: "spec IS the test suite". Zero deps — pure Node stdlib.
+ * Coupling surface is tiny and language-agnostic: markdown scenarios + a TAP-emitting test command.
+ *
+ * FAIL-CLOSED: a deterministic gate must refuse to say GREEN when its inputs are missing,
+ * its instrument misbehaved, or its evidence is ambiguous. Vacuous success is a bug.
+ * Exit codes: 0 = GREEN · 1 = spec/test gaps · 2 = invocation or infrastructure error.
+ */
+const fs = require('fs');
+const path = require('path');
+const { spawnSync } = require('child_process');
+// merge-family helpers shared with archive (3.1 projection); archive-merge never requires spec-runner
+const am = require('./archive-merge');
+const { withStrict } = require('./args');
+
+const DEFAULT_ID = '[A-Z]+-\\d+';
+const SCENARIO_RE = /^####\s+Scenario:\s+(.*)$/gm;
+// TAP result line, directive split off separately (# SKIP / # TODO)
+const TAP_RE = /^(ok|not ok)\s+\d+\s+-\s+(.*)$/gm;
+
+// Leading scenario/test ID. The match must end at a word boundary: `XX-01b` is NOT `XX-01` —
+// silently truncating would merge two different scenarios into one binding.
+function leadId(text, idRe) {
+  const m = text.trim().match(idRe);
+  if (!m || m.index !== 0) return null;
+  const next = text.trim()[m[0].length];
+  if (next !== undefined && /[A-Za-z0-9_]/.test(next)) return null;
+  return m[0];
+}
+
+function stripFences(text) { return text.replace(/```[\s\S]*?```/g, ''); }
+
+function mdFiles(target) {
+  if (!fs.existsSync(target)) return [];
+  const st = fs.statSync(target);
+  if (st.isFile()) return [target];
+  const out = [];
+  for (const e of fs.readdirSync(target, { withFileTypes: true })) {
+    const p = path.join(target, e.name);
+    if (e.isDirectory()) out.push(...mdFiles(p));
+    else if (e.name.endsWith('.md')) out.push(p);
+  }
+  return out.sort();
+}
+
+// Shared scenario scan over one text. Fenced content is documentation; scenarios inside
+// DEPRECATED requirement blocks (the marker REMOVED injects) are excluded in every form —
+// they are neither demanded nor listed, and their lingering tests become ORPHAN.
+function scanText(text, label, idRe, acc) {
+  const clean = am.stripDeprecatedBlocks(stripFences(text));
+  let m;
+  SCENARIO_RE.lastIndex = 0;
+  while ((m = SCENARIO_RE.exec(clean)) !== null) {
+    const id = leadId(m[1], idRe);
+    if (id) {
+      if (!acc.byId.has(id)) { acc.byId.set(id, []); acc.idFiles.set(id, []); }
+      acc.byId.get(id).push(m[1]);
+      acc.idFiles.get(id).push(label);
+    } else acc.unidentified.push([label, m[1]]);
+  }
+}
+
+function dupsOf(acc) {
+  return [...acc.byId.entries()].filter(([, titles]) => titles.length > 1)
+    .map(([id]) => ({ id, files: [...new Set(acc.idFiles.get(id))] }));
+}
+
+// Collect scenarios from spec files.
+// → { byId, unidentified:[[file,title]], files, missingTargets:[], duplicates:[{id,files}] }
+function collectScenarios(specTargets, idRe) {
+  const acc = { byId: new Map(), idFiles: new Map(), unidentified: [] };
+  const missingTargets = specTargets.filter((t) => !fs.existsSync(t));
+  const files = [...new Set(specTargets.flatMap(mdFiles))].sort();
+  for (const f of files) scanText(fs.readFileSync(f, 'utf8'), f, idRe, acc);
+  return { byId: acc.byId, unidentified: acc.unidentified, files, missingTargets, duplicates: dupsOf(acc) };
+}
+
+// Same collection over in-memory texts (the projection path) — label = store-relative suffix.
+function collectScenariosFromTexts(texts, idRe) {
+  const acc = { byId: new Map(), idFiles: new Map(), unidentified: [] };
+  for (const [label, text] of texts) scanText(text, label, idRe, acc);
+  return { byId: acc.byId, unidentified: acc.unidentified, files: [...texts.keys()], missingTargets: [], duplicates: dupsOf(acc) };
+}
+
+// the TAP plan (1..N, optionally with a # SKIP/# TODO directive) and result tokens,
+// matched per top-level line — indented subtest/YAML lines are invisible by the ^ anchor
+const PLAN_LINE_RE = /^1\.\.(\d+)\s*(?:#.*)?$/;
+const POINT_LINE_RE = /^(?:ok|not ok)(?:\s|$)/;
+const POINT_NUM_RE = /^(?:ok|not ok)\s+(\d+)(?:\s|$)/;   // complete numeric token only — `ok 1abc` stays unnumbered
+
+// Parse TAP text → { results: Map<id,{pass,fail,skip}>, untagged: [], bailout: string|null,
+//                    plans: number[], points: number, dupNumbers: number[] }
+// A # SKIP / # TODO directive is neither pass nor fail — a skipped test proves nothing.
+// plans/points/dupNumbers feed the plan-is-a-checked-promise infra guards (SR-26..31).
+function parseTap(out, idRe) {
+  const results = new Map();
+  const untagged = [];
+  let untaggedFails = 0;
+  const bm = out.match(/^Bail out!(.*)$/m);
+  const bailout = bm ? bm[0].trim() : null;
+  const plans = [];
+  let points = 0;
+  const numSeen = new Set(), dupSet = new Set();
+  for (const raw of out.split('\n')) {
+    const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw;
+    const p = PLAN_LINE_RE.exec(line);
+    if (p) { plans.push(Number(p[1])); continue; }
+    if (!POINT_LINE_RE.test(line)) continue;
+    points++;
+    const n = POINT_NUM_RE.exec(line);
+    if (n) {
+      const num = Number(n[1]);
+      if (numSeen.has(num)) dupSet.add(num); else numSeen.add(num);
+    }
+  }
+  const dupNumbers = [...dupSet].sort((a, b) => a - b);
+  let m;
+  TAP_RE.lastIndex = 0;
+  while ((m = TAP_RE.exec(out)) !== null) {
+    const hash = m[2].search(/#\s*(SKIP|TODO)\b/i);
+    const name = hash >= 0 ? m[2].slice(0, hash).trim() : m[2];
+    const directive = hash >= 0;
+    const id = leadId(name, idRe);
+    if (id === null) { untagged.push(name); if (m[1] === 'not ok' && !directive) untaggedFails++; continue; }
+    const cur = results.get(id) || { pass: 0, fail: 0, skip: 0 };
+    if (directive) cur.skip++;
+    else cur[m[1] === 'ok' ? 'pass' : 'fail']++;
+    results.set(id, cur);
+  }
+  return { results, untagged, untaggedFails, bailout, plans, points, dupNumbers };
+}
+
+// true when the test command produced output but not a single TAP result line was parsed —
+// almost always means the runner used a human reporter (node: add --test-reporter=tap)
+function zeroTapParsed(out, results, untagged) {
+  if (results.size > 0 || untagged.length > 0) return false;
+  if (!out.trim()) return false;
+  // a TAP version line or plan (1..N) proves the reporter IS TAP — an empty suite is not a reporter problem
+  if (/^TAP version \d+|^1\.\.\d+/m.test(out)) return false;
+  return true;
+}
+
+function runTestCommand(cmd, cwd) {
+  const r = spawnSync(cmd, { shell: true, cwd, encoding: 'utf8' });
+  return {
+    out: (r.stdout || '') + '\n' + (r.stderr || ''),
+    status: r.status,               // null when killed by signal
+    signal: r.signal || null,
+    error: r.error ? String(r.error.message || r.error) : null,
+  };
+}
+
+// Pure evaluation: cross-reference scenarios vs results → verdict object.
+// A scenario whose only results are skips is UNBOUND — skips prove nothing.
+function evaluate(byId, unidentified, results) {
+  const specIds = [...byId.keys()].sort();
+  const boundGreen = [], boundRed = [], unbound = [], orphan = [];
+  for (const id of specIds) {
+    const r = results.get(id);
+    if (!r || (r.pass === 0 && r.fail === 0)) unbound.push(id);
+    else if (r.fail === 0) boundGreen.push(id);
+    else boundRed.push(id);
+  }
+  for (const id of [...results.keys()].sort()) if (!byId.has(id)) orphan.push(id);
+  const clean = !boundRed.length && !unbound.length && !orphan.length && !unidentified.length;
+  return { boundGreen, boundRed, unbound, orphan, unidentified, clean };
+}
+
+// Fail-closed guard: reasons this run cannot be trusted regardless of the TAP picture.
+// Returns [] when the run is trustworthy.
+function infraErrors(run) {
+  const errs = [];
+  for (const t of run.missingTargets) errs.push(`spec target does not exist: ${t}`);
+  if (!run.missingTargets.length && run.fileCount === 0)
+    errs.push('no spec files found under the given targets — nothing to verify');
+  if (run.fileCount > 0 && run.scenarioCount === 0)
+    errs.push('spec files contain zero scenarios — nothing to verify');
+  if (run.exec.error) errs.push(`test command failed to spawn: ${run.exec.error}`);
+  if (run.exec.signal) errs.push(`test command was killed by signal ${run.exec.signal}`);
+  if (run.bailout) errs.push(`test run aborted: ${run.bailout}`);
+  if (run.noTap)
+    errs.push('test command produced output but ZERO TAP results were parsed — the command is probably not emitting TAP (node test runner: add --test-reporter=tap)');
+  // the TAP plan is a checked promise — defensive defaults keep legacy run shapes
+  // (direct callers of this exported helper) valid; only verify-created runs carry the fields
+  const plans = run.plans || [], points = run.points || 0, dupNumbers = run.dupNumbers || [];
+  if (plans.length > 1)
+    errs.push(`multiple TAP plans in one run (${plans.map((n) => `1..${n}`).join(', ')}) — cannot attribute test points to plans; run one TAP stream per verify (split the test command)`);
+  else if (plans.length === 1 && plans[0] !== points)
+    errs.push(`TAP plan declares ${plans[0]} test point(s) but ${points} were parsed — output truncated or garbled; refusing to trust this run`);
+  else if (plans.length === 1 && dupNumbers.length)
+    errs.push(`duplicate TAP test-point number(s): ${dupNumbers.join(', ')}`);
+  if (run.exec.status !== null && run.exec.status !== 0 && run.failCount === 0)
+    errs.push(`test command exited with status ${run.exec.status} but no parsed TAP failure explains it — the TAP picture is incomplete or truncated; refusing to trust this run`);
+  return errs;
+}
+
+function formatReport(v, results, fileCount, extras = {}) {
+  const lines = [];
+  const specCount = v.boundGreen.length + v.boundRed.length + v.unbound.length;
+  const tagged = [...results.values()].reduce((s, r) => s + r.pass + r.fail, 0);
+  const skipped = [...results.values()].reduce((s, r) => s + (r.skip || 0), 0);
+  lines.push(`specs: ${fileCount} file(s), ${specCount} identified scenario(s)`);
+  lines.push(`tests: ${tagged} tagged result(s)${skipped ? `, ${skipped} skipped (not counted)` : ''}\n`);
+  const groups = [['BOUND-GREEN', v.boundGreen], ['BOUND-RED', v.boundRed],
+                 ['UNBOUND (scenario, no test)', v.unbound], ['ORPHAN (test, no scenario)', v.orphan]];
+  for (const [label, items] of groups) {
+    if (!items.length) continue;
+    lines.push(`${label === 'BOUND-GREEN' ? '✓' : '✗'} ${label}: ${items.length}`);
+    for (const id of items) {
+      const r = results.get(id);
+      lines.push(`    ${id}${r ? `  ${r.pass}p/${r.fail}f${r.skip ? `/${r.skip}s` : ''}` : ''}`);
+    }
+  }
+  if (v.unidentified.length) {
+    lines.push(`✗ UNIDENTIFIED (scenario, no ID — unbindable): ${v.unidentified.length}`);
+    for (const [f, t] of v.unidentified) lines.push(`    ${path.basename(f)}: ${t.slice(0, 60)}`);
+  }
+  if (extras.duplicates && extras.duplicates.length) {
+    lines.push(`✗ DUPLICATE scenario IDs (ambiguous binding): ${extras.duplicates.length}`);
+    for (const d of extras.duplicates) lines.push(`    ${d.id}: ${d.files.map((f) => path.basename(f)).join(', ')}`);
+  }
+  const errs = extras.errors || [];
+  lines.push('\nRESULT: ' + (errs.length ? 'ERROR — run not trustworthy (see stderr)'
+    : (v.clean && !(extras.duplicates || []).length ? 'GREEN — spec is the test suite' : 'GAPS')));
+  return lines.join('\n');
+}
+
+// Projection inputs for `verify --change` (all failure classes → run.errors, exit 2).
+
+ succeeded in 169ms:
+// Projection inputs for `verify --change` (all failure classes → run.errors, exit 2).
+// Roots resolve against cwd exactly as `apriori status` resolves change dirs.
+function buildChangeProjection(change, cwd) {
+  const changesDir = path.resolve(cwd, 'apriori', 'changes');
+  const storeRoot = path.resolve(cwd, 'apriori', 'specs');
+  const projection = { change, modules: [], conflicts: [], unstampedMutations: [] };
+  const d = am.discoverDeltas(changesDir, change);
+  if (d.errors.length) return { projection, errors: d.errors, texts: null };
+  const p = am.buildProjection(storeRoot, d.files, change);
+  projection.modules = p.modules;
+  projection.conflicts = p.conflicts;
+  projection.unstampedMutations = p.unstampedMutations;      // WARN grade — cli prints, verdict untouched
+  projection.notes = p.notes;
+  const errors = [...p.validation, ...p.hygiene, ...p.casMismatches];
+  if (p.conflicts.length) errors.push(`projection has ${p.conflicts.length} merge conflict(s) — no trustworthy projection: ${p.conflicts.join('; ')}`);
+  return { projection, errors, texts: errors.length ? null : p.texts };
+}
+
+// Full verify run. opts: { specs:[], change, testCmd, idPattern, cwd }
+function verify(opts) {
+  const idRe = new RegExp(opts.idPattern || DEFAULT_ID);
+  let collected, projection = null;
+  if (opts.change) {
+    const b = buildChangeProjection(opts.change, opts.cwd || '.');
+    projection = b.projection;
+    if (!b.texts) {
+      // failed projection: fail closed WITHOUT running any tests
+      const verdict = evaluate(new Map(), [], new Map());
+      return { verdict, results: new Map(), fileCount: 0, failCount: 0, scenarioCount: 0,
+        missingTargets: [], duplicates: [], bailout: null, noTap: false,
+        exec: { status: null, signal: null, error: null }, errors: b.errors, projection };
+    }
+    collected = collectScenariosFromTexts(b.texts, idRe);
+  } else {
+    collected = collectScenarios(opts.specs, idRe);
+  }
+  const { byId, unidentified, files, missingTargets, duplicates } = collected;
+  const exec = runTestCommand(opts.testCmd, opts.cwd || '.');
+  const { results, untagged, untaggedFails, bailout, plans, points, dupNumbers } = parseTap(exec.out, idRe);
+  const verdict = evaluate(byId, unidentified, results);
+  const failCount = [...results.values()].reduce((s, r) => s + r.fail, 0) + untaggedFails;
+  const run = {
+    verdict, results, fileCount: files.length, failCount,
+    scenarioCount: byId.size + unidentified.length,
+    missingTargets, duplicates, bailout, plans, points, dupNumbers,
+    noTap: zeroTapParsed(exec.out, results, untagged),
+    exec: { status: exec.status, signal: exec.signal, error: exec.error },
+  };
+  if (projection) run.projection = projection;
+  run.errors = infraErrors(run);
+  return run;
+}
+
+// machine-consumable shape for a verify run
+function verifyJson(run) {
+  const { verdict: v, results } = run;
+  const clean = v.clean && run.duplicates.length === 0 && run.errors.length === 0;
+  const json = projectionless(run, clean);
+  if (run.projection) json.projection = run.projection;   // ONLY --change runs carry this field
+  return json;
+}
+
+function projectionless(run, clean) {
+  const { verdict: v, results } = run;
+  return {
+    clean,
+    result: run.errors.length ? 'ERROR' : (clean ? 'GREEN' : 'GAPS'),
+    errors: run.errors,
+    specFiles: run.fileCount,
+    exec: run.exec,
+    duplicates: run.duplicates,
+    boundGreen: v.boundGreen.map((id) => ({ id, ...results.get(id) })),
+    boundRed: v.boundRed.map((id) => ({ id, ...results.get(id) })),
+    unbound: v.unbound,
+    orphan: v.orphan.map((id) => ({ id, ...results.get(id) })),
+    unidentified: v.unidentified.map(([file, title]) => ({ file, title })),
+  };
+}
+
+// Fallback test command from apriori/process-config.md's `test-cmd` row (written by init --test-cmd)
+function configTestCmd(cwd) {
+  const p = path.join(cwd || '.', 'apriori', 'process-config.md');
+  if (!fs.existsSync(p)) return null;
+  const m = fs.readFileSync(p, 'utf8').match(/^\|\s*test-cmd\s*\|\s*(.+?)\s*\|/m);
+  return m ? m[1] : null;
+}
+
+const USAGE = 'usage: apriori verify --specs <dir...> --test-cmd "<cmd>" [--id-pattern <re>] [--cwd <dir>] [--json]\n   or: apriori verify --change <name> --test-cmd "<cmd>" [--id-pattern <re>] [--cwd <dir>] [--json]\n(--test-cmd may be omitted when apriori/process-config.md has a test-cmd row)';
+
+function cli(argv) {
+  return withStrict(argv, { sub: 'verify', usage: USAGE, positionals: 0,
+    flags: { '--specs': 'multi', '--change': 'value', '--test-cmd': 'value', '--id-pattern': 'value', '--cwd': 'value', '--json': 'flag' } }, (f) => {
+    const a = { specs: f['--specs'] || [], change: f['--change'] || null, testCmd: f['--test-cmd'] || null,
+      idPattern: f['--id-pattern'] || DEFAULT_ID, cwd: f['--cwd'] || '.', json: !!f['--json'] };
+    if (a.change && a.specs.length) {
+      console.error('verify: --specs cannot be combined with --change — the projection defines the spec set');
+      return 2;
+    }
+    if (!a.testCmd) a.testCmd = configTestCmd(a.cwd);   // init --test-cmd persists it there
+    if ((!a.specs.length && !a.change) || !a.testCmd) { console.error(USAGE); return 2; }
+    const run = verify(a);
+    if (run.projection)
+      for (const sfx of run.projection.unstampedMutations || []) console.error('warning: ' + am.unstampedWarning(sfx));
+    if (run.errors.length && !a.json)
+      for (const e of run.errors) console.error('error: ' + e);
+    console.log(a.json ? JSON.stringify(verifyJson(run), null, 2)
+                       : formatReport(run.verdict, run.results, run.fileCount, { duplicates: run.duplicates, errors: run.errors }));
+    if (run.errors.length) return 2;
+    return run.verdict.clean && run.duplicates.length === 0 ? 0 : 1;
+  });
+}
+
+module.exports = { leadId, stripFences, collectScenarios, collectScenariosFromTexts, parseTap,
+  zeroTapParsed, runTestCommand, evaluate, infraErrors, formatReport, verifyJson, verify,
+  configTestCmd, cli, DEFAULT_ID };
+
+codex
+需求对已复现的主因描述基本吻合：严格 `TAP_RE`、`untaggedFails` 被计入 `failCount`、但 verdict clean 只看带 ID 的结果，组合后会把失败“解释掉”。我现在把问题集中在会让实现者分叉的边界：报告/JSON 合同、infra 错误优先级、以及与当前 SR-01..32 的现实不一致。
+exec
+/usr/bin/zsh -lc 'rg -n "untagged|unattributed|SR-3|SR-2|Scenario: SR-|RESULT:|--json|skip|TODO|Bail out|plan" test lib/spec-runner.js apriori/changes/unattributed-fail/requirement/req-v1.md' in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc 'rg -n "TAP_RE|parseTap|infraErrors|verifyJson|formatReport|failCount|unTagged|untagged" apriori/truth/spec-runner.md lib/spec-runner.js' in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc 'rg -n "#### Scenario: SR-" apriori/specs/spec-runner/spec.md | tail -n 12' in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc 'find apriori/changes/unattributed-fail -maxdepth 3 -type f | sort' in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 175ms:
+lib/spec-runner.js:21:const TAP_RE = /^(ok|not ok)\s+\d+\s+-\s+(.*)$/gm;
+lib/spec-runner.js:93:// Parse TAP text → { results: Map<id,{pass,fail,skip}>, untagged: [], bailout: string|null,
+lib/spec-runner.js:97:function parseTap(out, idRe) {
+lib/spec-runner.js:99:  const untagged = [];
+lib/spec-runner.js:100:  let untaggedFails = 0;
+lib/spec-runner.js:120:  TAP_RE.lastIndex = 0;
+lib/spec-runner.js:121:  while ((m = TAP_RE.exec(out)) !== null) {
+lib/spec-runner.js:126:    if (id === null) { untagged.push(name); if (m[1] === 'not ok' && !directive) untaggedFails++; continue; }
+lib/spec-runner.js:132:  return { results, untagged, untaggedFails, bailout, plans, points, dupNumbers };
+lib/spec-runner.js:137:function zeroTapParsed(out, results, untagged) {
+lib/spec-runner.js:138:  if (results.size > 0 || untagged.length > 0) return false;
+lib/spec-runner.js:173:function infraErrors(run) {
+lib/spec-runner.js:194:  if (run.exec.status !== null && run.exec.status !== 0 && run.failCount === 0)
+lib/spec-runner.js:199:function formatReport(v, results, fileCount, extras = {}) {
+lib/spec-runner.js:258:      return { verdict, results: new Map(), fileCount: 0, failCount: 0, scenarioCount: 0,
+lib/spec-runner.js:268:  const { results, untagged, untaggedFails, bailout, plans, points, dupNumbers } = parseTap(exec.out, idRe);
+lib/spec-runner.js:270:  const failCount = [...results.values()].reduce((s, r) => s + r.fail, 0) + untaggedFails;
+lib/spec-runner.js:272:    verdict, results, fileCount: files.length, failCount,
+lib/spec-runner.js:275:    noTap: zeroTapParsed(exec.out, results, untagged),
+lib/spec-runner.js:279:  run.errors = infraErrors(run);
+lib/spec-runner.js:284:function verifyJson(run) {
+lib/spec-runner.js:335:    console.log(a.json ? JSON.stringify(verifyJson(run), null, 2)
+lib/spec-runner.js:336:                       : formatReport(run.verdict, run.results, run.fileCount, { duplicates: run.duplicates, errors: run.errors }));
+lib/spec-runner.js:342:module.exports = { leadId, stripFences, collectScenarios, collectScenariosFromTexts, parseTap,
+lib/spec-runner.js:343:  zeroTapParsed, runTestCommand, evaluate, infraErrors, formatReport, verifyJson, verify,
+apriori/truth/spec-runner.md:14:- `parseTap(out, idRe)` → `{ results: Map<id,{pass,fail,skip}>, untagged:[], untaggedFails, bailout, plans:number[], points, dupNumbers:number[] }`. Only lines shaped exactly `ok|not ok <n> - <name>` BIND — a TAP result line without the ` - ` separator produces no binding. Since tap-plan (3.3.x) a per-line pre-pass (one trailing `\r` stripped) additionally collects: `plans` = every top-level `1..N` (trailing `# SKIP`/`# TODO` directive legal, N still parses); `points` = count of top-level result tokens `/^(?:ok|not ok)(?:\s|$)/` (bare/unnumbered points count; `ok:`-prefixed and indented lines never do); `dupNumbers` = complete numeric point tokens (`ok 1abc` stays unnumbered) seen more than once, numerically. `# SKIP`/`# TODO` counts as skip (proves nothing); untagged `not ok` without directive increments `untaggedFails`; `Bail out!` line captured.
+apriori/truth/spec-runner.md:15:- `zeroTapParsed(out, results, untagged)` → true when output exists but no TAP line parsed AND no `TAP version`/`1..N` plan line (plan line = TAP reporter with an empty suite, not a reporter problem).
+apriori/truth/spec-runner.md:18:- `verify(opts {specs:[], change, testCmd, idPattern, cwd})` — with `change`: builds the projection via archive-merge's discoverDeltas/buildProjection (roots `<cwd>/apriori/{changes,specs}`); ANY projection failure (validation/hygiene/CAS/merge-conflict) → run with `errors` set and NO test executed; success → normal pipeline over projected texts; run gains `projection: {change, modules, conflicts}`. Without `change`: unchanged. → run object `{ verdict, results, fileCount, failCount, scenarioCount, missingTargets, duplicates, bailout, noTap, exec{status,signal,error}, errors }`. `failCount` = tagged fails + `untaggedFails`.
+apriori/truth/spec-runner.md:19:- `infraErrors(run)` → string[] (empty = trustworthy). Triggers: missing spec target · zero spec files · zero scenarios · spawn error · signal kill · bailout · zero-TAP-parsed · plan trio (defensive defaults keep legacy run shapes valid: multiple top-level plans → error naming the cure; exactly one plan and plan ≠ points → truncated/garbled; exactly one plan and duplicate point numbers) · non-zero exit with `failCount === 0` (TAP picture doesn't explain the exit). Gate surfaces any of these as ERROR exit 2 (`verify: <msg>`), outranking a C1 binding block; doctor's probe classification intentionally does not consume infraErrors.
+apriori/truth/spec-runner.md:20:- `formatReport(...)` → human report; RESULT line: `ERROR — run not trustworthy (see stderr)` / `GREEN — spec is the test suite` / `GAPS`. Duplicates block GREEN.
+apriori/truth/spec-runner.md:21:- `verifyJson(run)` → `{ clean, result: GREEN|GAPS|ERROR, errors, specFiles, exec, duplicates, boundGreen[], boundRed[], unbound[], orphan[], unidentified[] }`; `--change` runs add exactly one field `projection: {change, modules, conflicts}` — never present otherwise. Since cas-enforcement (3.3.x): `--change` runs carry `projection.unstampedMutations` (suffixes, `[]` when none) + `projection.notes`; the cli prints one stderr warning per unstamped mutation delta — verdict untouched (WARN grade).
+apriori/truth/spec-runner.md:26:**Data flow.** spec targets → collectScenarios → run test cmd once → parseTap → evaluate → infraErrors → report/JSON. One test-command invocation per verify run; no state persists between runs (stateless, reads FS + spawns only).
+
+ succeeded in 181ms:
+lib/spec-runner.js:20:// TAP result line, directive split off separately (# SKIP / # TODO)
+lib/spec-runner.js:87:// the TAP plan (1..N, optionally with a # SKIP/# TODO directive) and result tokens,
+lib/spec-runner.js:93:// Parse TAP text → { results: Map<id,{pass,fail,skip}>, untagged: [], bailout: string|null,
+lib/spec-runner.js:94://                    plans: number[], points: number, dupNumbers: number[] }
+lib/spec-runner.js:95:// A # SKIP / # TODO directive is neither pass nor fail — a skipped test proves nothing.
+lib/spec-runner.js:96:// plans/points/dupNumbers feed the plan-is-a-checked-promise infra guards (SR-26..31).
+lib/spec-runner.js:99:  const untagged = [];
+lib/spec-runner.js:100:  let untaggedFails = 0;
+lib/spec-runner.js:101:  const bm = out.match(/^Bail out!(.*)$/m);
+lib/spec-runner.js:103:  const plans = [];
+lib/spec-runner.js:109:    if (p) { plans.push(Number(p[1])); continue; }
+lib/spec-runner.js:122:    const hash = m[2].search(/#\s*(SKIP|TODO)\b/i);
+lib/spec-runner.js:126:    if (id === null) { untagged.push(name); if (m[1] === 'not ok' && !directive) untaggedFails++; continue; }
+lib/spec-runner.js:127:    const cur = results.get(id) || { pass: 0, fail: 0, skip: 0 };
+lib/spec-runner.js:128:    if (directive) cur.skip++;
+lib/spec-runner.js:132:  return { results, untagged, untaggedFails, bailout, plans, points, dupNumbers };
+lib/spec-runner.js:137:function zeroTapParsed(out, results, untagged) {
+lib/spec-runner.js:138:  if (results.size > 0 || untagged.length > 0) return false;
+lib/spec-runner.js:140:  // a TAP version line or plan (1..N) proves the reporter IS TAP — an empty suite is not a reporter problem
+lib/spec-runner.js:156:// A scenario whose only results are skips is UNBOUND — skips prove nothing.
+lib/spec-runner.js:185:  // the TAP plan is a checked promise — defensive defaults keep legacy run shapes
+lib/spec-runner.js:187:  const plans = run.plans || [], points = run.points || 0, dupNumbers = run.dupNumbers || [];
+lib/spec-runner.js:188:  if (plans.length > 1)
+lib/spec-runner.js:189:    errs.push(`multiple TAP plans in one run (${plans.map((n) => `1..${n}`).join(', ')}) — cannot attribute test points to plans; run one TAP stream per verify (split the test command)`);
+lib/spec-runner.js:190:  else if (plans.length === 1 && plans[0] !== points)
+lib/spec-runner.js:191:    errs.push(`TAP plan declares ${plans[0]} test point(s) but ${points} were parsed — output truncated or garbled; refusing to trust this run`);
+lib/spec-runner.js:192:  else if (plans.length === 1 && dupNumbers.length)
+lib/spec-runner.js:203:  const skipped = [...results.values()].reduce((s, r) => s + (r.skip || 0), 0);
+lib/spec-runner.js:205:  lines.push(`tests: ${tagged} tagged result(s)${skipped ? `, ${skipped} skipped (not counted)` : ''}\n`);
+lib/spec-runner.js:213:      lines.push(`    ${id}${r ? `  ${r.pass}p/${r.fail}f${r.skip ? `/${r.skip}s` : ''}` : ''}`);
+lib/spec-runner.js:225:  lines.push('\nRESULT: ' + (errs.length ? 'ERROR — run not trustworthy (see stderr)'
+lib/spec-runner.js:268:  const { results, untagged, untaggedFails, bailout, plans, points, dupNumbers } = parseTap(exec.out, idRe);
+lib/spec-runner.js:270:  const failCount = [...results.values()].reduce((s, r) => s + r.fail, 0) + untaggedFails;
+lib/spec-runner.js:274:    missingTargets, duplicates, bailout, plans, points, dupNumbers,
+lib/spec-runner.js:275:    noTap: zeroTapParsed(exec.out, results, untagged),
+lib/spec-runner.js:317:const USAGE = 'usage: apriori verify --specs <dir...> --test-cmd "<cmd>" [--id-pattern <re>] [--cwd <dir>] [--json]\n   or: apriori verify --change <name> --test-cmd "<cmd>" [--id-pattern <re>] [--cwd <dir>] [--json]\n(--test-cmd may be omitted when apriori/process-config.md has a test-cmd row)';
+lib/spec-runner.js:321:    flags: { '--specs': 'multi', '--change': 'value', '--test-cmd': 'value', '--id-pattern': 'value', '--cwd': 'value', '--json': 'flag' } }, (f) => {
+lib/spec-runner.js:323:      idPattern: f['--id-pattern'] || DEFAULT_ID, cwd: f['--cwd'] || '.', json: !!f['--json'] };
+apriori/changes/unattributed-fail/requirement/req-v1.md:1:# 需求:unattributed-fail —— 未归因的测试失败必须阻断 GREEN (v1)
+apriori/changes/unattributed-fail/requirement/req-v1.md:3:> change: `unattributed-fail` · tier: medium · track: harden
+apriori/changes/unattributed-fail/requirement/req-v1.md:17:(进程退出 1)→ 当前输出 `RESULT: GREEN`,exit 0。
+apriori/changes/unattributed-fail/requirement/req-v1.md:21:- `TAP_RE` 只匹配 `(ok|not ok) N - desc` 全形;带描述但无场景 ID 的 `not ok` 进 `untaggedFails` 并计入 `failCount`,于是 infra 规则(非零退出且 failCount===0 才 ERROR)被"解释掉",而 verdict 的 clean 只看有 ID 的结果——两层各自有理,合起来放行。
+apriori/changes/unattributed-fail/requirement/req-v1.md:22:- 裸形 `not ok`/`not ok 3`/`not ok - desc` 是合法 TAP,却只被 `POINT_LINE_RE` 计入 plan 点数,既不进 results 也不进 untaggedFails:配合退出码 0(某些 runner 会这样)是完全不可见的假绿。
+apriori/changes/unattributed-fail/requirement/req-v1.md:26:1. **任何非 SKIP/TODO 的顶层 `not ok` 都阻断 GREEN**,无论其形状:
+apriori/changes/unattributed-fail/requirement/req-v1.md:29:   这些统称**未归因失败(unattributed failures)**。
+apriori/changes/unattributed-fail/requirement/req-v1.md:32:4. **合法 TAP 的宽容面不变**:无 ID 的 `ok` 点照旧可过(untagged 列出、不阻断);SKIP/TODO 指令(含裸形上的指令)照旧不算失败;plan 校验、Bail out!、重号等既有 infra 规则不变。
+apriori/changes/unattributed-fail/requirement/req-v1.md:33:5. **--json** 增加 `unattributedFailures`(计数 + 原始行数组);既有形状字段不破坏。
+test/check.test.js:85:  assert.match(r.stdout, /RESULT: PASS/);
+test/check.test.js:99:  assert.match(ok.stdout, /RESULT: PASS/);
+test/check.test.js:112:test('CK-08 self-mode guards docs pairs; one-sided pairs fail; absent pairs skip', () => {
+test/check.test.js:128:  // both sides absent → skipped (pass)
+test/check.test.js:195:  // absent review dir → skip (pass)
+test/check.test.js:215:  // symlinked entry skipped with a warn (capability-guarded)
+test/check.test.js:224:    // a SYMLINKED change dir is never followed — its secret stays unread, the skip is loud
+test/spec-runner.test.js:95:test('SR-09 --json emits a machine-consumable verify report; exit still encodes GREEN/GAPS', () => {
+test/spec-runner.test.js:102:  assert.deepStrictEqual(parsed.boundGreen, [{ id: 'XX-01', pass: 1, fail: 0, skip: 0 }]);
+test/spec-runner.test.js:103:  assert.deepStrictEqual(parsed.boundRed, [{ id: 'XX-02', pass: 0, fail: 1, skip: 0 }]);
+test/spec-runner.test.js:104:  assert.deepStrictEqual(parsed.orphan, [{ id: 'XX-99', pass: 1, fail: 0, skip: 0 }]);
+test/spec-runner.test.js:108:  // CLI: --json prints pure JSON and exits 1 on GAPS, 0 on GREEN
+test/spec-runner.test.js:113:  try { code = cli(['--specs', file, '--test-cmd', tapCmd('ok 1 - XX-01 a', 'ok 2 - XX-02 b'), '--json']); }
+test/spec-runner.test.js:122:  try { code2 = cli(['--specs', file, '--test-cmd', tapCmd('not ok 1 - XX-01 a'), '--json']); }
+test/spec-runner.test.js:126:  // ERROR via CLI --json: silent crash → result ERROR, exit 2, errors[] populated
+test/spec-runner.test.js:130:  try { code3 = cli(['--specs', file, '--test-cmd', 'node -e "process.exit(7)"', '--json']); }
+test/spec-runner.test.js:145:  assert.strictEqual(zeroTapParsed(human, p1.results, p1.untagged), true);
+test/spec-runner.test.js:149:  assert.strictEqual(zeroTapParsed(tap, p2.results, p2.untagged), false);
+test/spec-runner.test.js:152:  assert.strictEqual(zeroTapParsed('', p3.results, p3.untagged), false);
+test/spec-runner.test.js:153:  // valid TAP with an EMPTY suite (version/plan lines only) is not a reporter problem
+test/spec-runner.test.js:156:  assert.strictEqual(zeroTapParsed(emptySuite, p4.results, p4.untagged), false);
+test/spec-runner.test.js:179:  assert.doesNotMatch(r1.stdout, /RESULT: GREEN/);
+test/spec-runner.test.js:236:test('SR-14 TAP directives and aborts: SKIP/TODO never count green; Bail out! is an error', () => {
+test/spec-runner.test.js:239:  assert.deepStrictEqual(results.get('XX-01'), { pass: 0, fail: 0, skip: 1 });
+test/spec-runner.test.js:241:  const skip = runCli(['--specs', file, '--test-cmd', `node -e "console.log('ok 1 - XX-01 a # SKIP flaky')"`]);
+test/spec-runner.test.js:242:  assert.strictEqual(skip.status, 1);                       // UNBOUND → GAPS, not GREEN
+test/spec-runner.test.js:243:  assert.match(skip.stdout, /UNBOUND/);
+test/spec-runner.test.js:244:  // TODO likewise never counts as pass
+test/spec-runner.test.js:245:  const { results: todo } = parseTap('not ok 1 - XX-01 a # TODO later\n', idRe);
+test/spec-runner.test.js:246:  assert.deepStrictEqual(todo.get('XX-01'), { pass: 0, fail: 0, skip: 1 });
+test/spec-runner.test.js:247:  // Bail out! → ERROR even if earlier lines were green
+test/spec-runner.test.js:248:  const bail = runCli(['--specs', file, '--test-cmd', `node -e "console.log('ok 1 - XX-01 a');console.log('Bail out! db down')"`]);
+test/spec-runner.test.js:265:  assert.match(r.stdout, /RESULT: GREEN/);
+test/spec-runner.test.js:268:// ---- tap-plan (SR-26..31): the TAP plan is a checked promise ----
+test/spec-runner.test.js:270:function planProject() {
+test/spec-runner.test.js:271:  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-srplan-'));
+test/spec-runner.test.js:287:test('SR-26 a truncated plan refuses to verify', () => {
+test/spec-runner.test.js:292:  assert.doesNotMatch(r.stdout, /RESULT: GREEN/);
+test/spec-runner.test.js:295:test('SR-27 duplicate test-point numbers are untrustworthy', () => {
+test/spec-runner.test.js:297:  assert.deepStrictEqual(u.plans, [2]);
+test/spec-runner.test.js:306:test('SR-28 multiple plans fail closed even when totals mask', () => {
+test/spec-runner.test.js:312:  assert.match(r.stderr, /multiple TAP plans/);
+test/spec-runner.test.js:316:test('SR-29 the point count speaks TAP, not prefixes', () => {
+test/spec-runner.test.js:318:  assert.deepStrictEqual(u.plans, [2]);
+test/spec-runner.test.js:325:  assert.match(r.stdout, /RESULT: GREEN/);
+test/spec-runner.test.js:328:test('SR-30 plan-less, skip-all, and nested TAP stay legal', () => {
+test/spec-runner.test.js:330:  // no plan at all → no promise, no new error
+test/spec-runner.test.js:333:  // skip-all plan with a directive → zero plan, zero points, consistent; UNBOUND → GAPS as today
+test/spec-runner.test.js:336:  assert.doesNotMatch(r2.stderr, /TAP plan declares/);
+test/spec-runner.test.js:337:  // nested node-style TAP: indented subtest plans/results are invisible to plan/point/dup collection
+test/spec-runner.test.js:340:  assert.deepStrictEqual(u.plans, [1]);
+test/spec-runner.test.js:345:test('SR-31 projected verify and gate inherit the plan check', () => {
+test/spec-runner.test.js:346:  const root = planProject();
+test/spec-runner.test.js:347:  const badTap = tapCmd('1..3', 'ok 1 - XA-01 a', 'ok 2 - XB-01 b');   // plan lies: 3 declared, 2 parsed
+test/doctor.test.js:55:  const r = run(['doctor', '--json'], root);
+test/doctor.test.js:143:  assert.strictEqual(probe(tapCmd('TAP version 13', 'Bail out! oom')).status, 'finding');
+test/doctor.test.js:164:  const planOnly = probe(tapCmd('1..3'));
+test/doctor.test.js:165:  assert.strictEqual(planOnly.status, 'finding');
+test/doctor.test.js:168:test('DR-07 the probe is skippable and degrades honestly', () => {
+test/doctor.test.js:173:  const skipped = byId(doctor.runDoctor({ cwd: root, testCmd: TAP_OK, noRun: true }), 'D5')[0];
+test/doctor.test.js:174:  assert.strictEqual(skipped.status, 'n/a');
+test/doctor.test.js:175:  assert.match(skipped.detail, /skipped/);
+test/doctor.test.js:214:  // symlinked archived entry escaping archive/ is skipped, never read (where symlinks work)
+test/doctor.test.js:225:    assert.match(t, /skipped|escape/);             // and the skip is surfaced as info
+test/doctor.test.js:241:    [['doctor', '--test-cmd', TAP_OK, '--json'], healthyRoot, 0, 'HEALTHY'],
+test/doctor.test.js:242:    [['doctor', '--json', '--no-run'], mkProject({ 'apriori/specs': null, 'apriori/changes': null }), 1, 'FINDINGS'],
+test/doctor.test.js:243:    [['doctor', '--json'], mkProject({ 'x.txt': 'x' }), 2, 'UNUSABLE'],
+test/doctor.test.js:244:    [['doctor', 'stray-arg', '--json'], healthyRoot, 2, 'UNUSABLE'],
+test/archive-merge.test.js:143:  assert.doesNotMatch(outs.join('\n'), /RESULT: MERGED/);        // never claims a merge happened
+test/archive-merge.test.js:155:  assert.match(o2.join('\n'), /RESULT: MERGED \(dry-run/);
+test/archive-change.test.js:48:  assert.match(r.stdout, /RESULT:/);
+test/archive-change.test.js:198:    // a symlinked SUBDIR escaping the tree is an error, never silently skipped (IMPL-1)
+test/archive-change.test.js:422:  // a stamp under a skipped unrecognized heading is attributed to NOTHING — never the delta stamp
+test/archive-change.test.js:423:  const skipped = am.parseDeltaStrict(`## ADDDED Requirements\n\n<!-- apriori-base: new -->\n\n${ADD_A}`);
+test/archive-change.test.js:424:  assert.strictEqual(skipped.stamp, null);
+test/archive-change.test.js:425:  assert.ok(skipped.problems.some((p) => p.includes('ADDDED')));
+test/archive-change.test.js:426:  assert.ok(!skipped.problems.some((p) => /apriori-base/.test(p)), 'covered by the heading problem, no flood');
+test/gate.test.js:296:test('GT-11 --json is pure JSON in every outcome class', () => {
+test/gate.test.js:299:    [['gate', '--change', 'c', '--test-cmd', TAP_OK, '--json'], 0, 'PASS', 'in-flight'],
+test/gate.test.js:300:    [['gate', '--change', 'nope', '--test-cmd', TAP_OK, '--json'], 2, 'ERROR', null],
+test/gate.test.js:301:    [['gate', '--change', '../evil', '--test-cmd', TAP_OK, '--json'], 2, 'ERROR', null],
+test/gate.test.js:302:    [['gate', '--json'], 2, 'ERROR', null],                                   // usage: --change missing
+test/gate.test.js:312:  assert.strictEqual(JSON.parse(run(['gate', '--json'], root).stdout).change, null);
+test/gate.test.js:315:  const b = run(['gate', '--change', 'c', '--test-cmd', TAP_OK, '--json'], root);
+test/gate.test.js:320:  const nofs = run(['gate', '--change', 'c', '--test-cmd', TAP_OK, '--json'], root);
+test/gate.test.js:328:  const vu = run(['gate', '--change', 'd', '--test-cmd', TAP_OK, '--json'], bad);
+test/cli.test.js:50:  assert.match(r.stdout + r.stderr, /RESULT:/);   // it runs and reports a result
+test/init.test.js:67:  assert.ok(second.actions.some((a) => a.file === 'CLAUDE.md' && a.action === 'skipped'));
+test/init.test.js:73:  const plan = init.scaffold(root, ['claude'], { dryRun: true });
+test/init.test.js:74:  assert.ok(plan.actions.length > 0);
+test/init.test.js:149:  // an existing .gitignore is never overwritten; re-run reports skipped
+test/init.test.js:153:  assert.ok(actions.some((a) => a.file === 'apriori/.gitignore' && a.action === 'skipped'));
+test/init.test.js:198:  // a user file already sits at codex's command path — init skips it, and it must gain NO entry
+test/spec-runner-projection.test.js:83:test('SR-20 merge conflicts make the projection untrustworthy (exit 2, conflicts named)', () => {
+test/spec-runner-projection.test.js:92:  const r = jsonCli(['--change', 'c', '--cwd', root, '--test-cmd', tapCmd('ok 1 - XA-01 a'), '--json']);
+test/spec-runner-projection.test.js:96:test('SR-21 projection inputs fail closed (exit 2 naming the offender)', () => {
+test/spec-runner-projection.test.js:117:test('SR-22 --specs and --change are mutually exclusive (exit 2)', () => {
+test/spec-runner-projection.test.js:129:test('SR-23 --json carries the projection contract in every outcome class', () => {
+test/spec-runner-projection.test.js:136:  const ok = jsonCli(['--change', 'c', '--cwd', okRoot, '--test-cmd', tapCmd('ok 1 - XA-01 a', 'ok 2 - XB-01 b'), '--json']);
+test/spec-runner-projection.test.js:145:  const cf = jsonCli(['--change', 'c', '--cwd', cfRoot, '--test-cmd', tapCmd('ok 1 - XA-01 a'), '--json']);
+test/spec-runner-projection.test.js:152:  const nf = jsonCli(['--change', 'zzz', '--cwd', nfRoot, '--test-cmd', tapCmd('ok 1 - XA-01 a'), '--json']);
+test/spec-runner-projection.test.js:158:  const plain = jsonCli(['--specs', path.join(okRoot, 'apriori/specs'), '--test-cmd', tapCmd('ok 1 - XA-01 a'), '--json']);
+test/spec-runner-projection.test.js:162:test('SR-24 a diverged base stamp blocks projection (exit 2, fingerprints named)', () => {
+test/spec-runner-projection.test.js:170:  const r = jsonCli(['--change', 'c', '--cwd', root, '--test-cmd', tapCmd('ok 1 - XA-01 a'), '--json']);
+test/spec-runner-projection.test.js:174:test('SR-25 deprecated block scenarios stop being demanded; their tests are ORPHAN', () => {
+test/spec-runner-projection.test.js:186:// ---- cas-enforcement (SR-32): the projection warns but does not judge ----
+test/spec-runner-projection.test.js:193:test('SR-32 the projection warns but does not judge', () => {
+test/spec-runner-projection.test.js:199:  const r = ceSpawn('node', [CE_BIN, 'verify', '--change', 'c', '--test-cmd', tap, '--json'], { cwd: root, encoding: 'utf8' });
+test/spec-runner-projection.test.js:211:  const r2 = ceSpawn('node', [CE_BIN, 'verify', '--change', 'c', '--test-cmd', tap2, '--json'], { cwd: root2, encoding: 'utf8' });
+test/golden-path.test.js:46:test('GP-05 packed-mode plan carries prefix install, PATH preflight (plan construction)', async () => {
+test/status.test.js:71:test('ST-04 --json emits a machine-consumable report (single + list), pure JSON', () => {
+test/status.test.js:77:    assert.strictEqual(status.cli(['--change', 'demo', '--json']), 0);
+test/status.test.js:88:    assert.strictEqual(status.cli(['--json']), 0);         // list mode
+
+ succeeded in 189ms:
+87:#### Scenario: SR-21 projection inputs fail closed
+91:#### Scenario: SR-22 --specs and --change are mutually exclusive
+95:#### Scenario: SR-23 --json carries the projection contract
+99:#### Scenario: SR-24 a diverged base stamp blocks projection
+106:#### Scenario: SR-25 deprecated block scenarios stop being demanded
+113:#### Scenario: SR-26 a truncated plan refuses to verify
+117:#### Scenario: SR-27 duplicate test-point numbers are untrustworthy
+121:#### Scenario: SR-28 multiple plans fail closed even when totals mask
+125:#### Scenario: SR-29 the point count speaks TAP, not prefixes
+129:#### Scenario: SR-30 plan-less, skip-all, and nested TAP stay legal
+133:#### Scenario: SR-31 projected verify and gate inherit the plan check
+140:#### Scenario: SR-32 the projection warns but does not judge
+
+ succeeded in 197ms:
+apriori/changes/unattributed-fail/flow-state.md
+apriori/changes/unattributed-fail/requirement/req-v1.md
+
+codex
+缺陷机制核对：需求对当前 false-green 主因描述准确。`TAP_RE` 只绑定 `ok|not ok <n> - <desc>`；带描述但无场景 ID 的 `not ok` 只进入 `untaggedFails/failCount`，不会进入 verdict；裸 `not ok` 只被 `POINT_LINE_RE` 计入 plan 点数，不进入结果或 `untaggedFails`。已复现样例的解释成立。
+
+## 正式问题
+
+### UF-1 — 报告与 JSON 合同不够精确
+
+描述：需求要求人类报告列出“原始行文本(截断到合理长度)”，并要求 `--json` 增加 `unattributedFailures(计数 + 原始行数组)`，但未规定确切截断长度、字段形状、字段是否总是存在、数组元素是字符串还是对象。
+
+风险：实现和测试会分叉；后续 P8 难以判断 JSON 是否合规，也可能破坏 `--json` 稳定性。
+
+建议修复：写死合同，例如：
+`unattributedFailures: { count: number, lines: string[] }`，所有 verify JSON 结果中恒定存在；行文本按 CRLF 归一化后保留原始顶层行，超过 160 字符截断为前 157 字符 + `...`。人类报告使用同一数组。
+
+### UF-2 — infra ERROR 与 unattributed failure 同时出现时的优先级未绑定
+
+描述：需求说 unattributed failures 报 `RESULT: GAPS` exit 1，同时又说 Bail out、plan 校验、重号等既有 infra 规则不变。没有明确当同一输出同时包含 unattributed failure 和 `Bail out!`、plan mismatch、multiple plans、duplicate point number 时，最终结果必须仍为 ERROR exit 2。
+
+风险：实现者可能让新 GAPS 分支遮蔽既有 fail-closed 规则，削弱 SR-14/SR-26..31。
+
+建议修复：明确优先级：`infraErrors(run).length > 0` 永远胜出，最终 `RESULT: ERROR` exit 2；unattributed failures 可作为附加报告/JSON字段保留，但不能把 ERROR 降级为 GAPS。新增验收：`not ok` + `Bail out!`、`not ok` + plan mismatch 都 exit 2。
+
+### UF-3 — 裸点上的 SKIP/TODO 与嵌套 TAP 排除规则缺少可执行分类器
+
+描述：需求说“非 SKIP/TODO 的顶层 not ok”阻断，并说“含裸形上的指令”不算失败，但未定义宽匹配后的 directive 识别规则。当前系统对 nested TAP 依赖行首锚点排除缩进行；新逻辑如果直接搜索 `not ok`，可能误伤 node 子测试/YAML diagnostics。
+
+风险：合法 skip/todo 裸点可能被误判为失败，或缩进子测试行被错误计入顶层失败，破坏 SR-30 的合法 nested TAP 行为。
+
+建议修复：定义精确分类器：逐行去掉单个尾随 `\r`；只匹配行首 `^(not ok)(?:\s|$)`；缩进行不匹配；若该顶层行含 `/#\s*(SKIP|TODO)\b/i` 则不计入 unattributed failure。新增验收：`not ok # TODO`、`not ok 3 # SKIP reason` 不阻断；`    not ok 1 - nested` 不计入。
+
+### UF-4 — 现有场景范围与仓库现实冲突
+
+描述：约束写“既有 SR-01..19 场景不回归”，但当前 `apriori/specs/spec-runner/spec.md` 已有 SR-01..32。
+
+风险：实现计划可能漏掉 SR-20..32，尤其是 projection、deprecated、tap-plan、CAS warning 这些与本次改动存在交互的场景。
+
+建议修复：改为“既有 SR-01..32 场景与全部现有测试不回归”。
+
+### UF-5 — “untagged ok 点照旧列出”与当前 state A 不符
+
+描述：需求写“无 ID 的 `ok` 点照旧可过(untagged 列出、不阻断)”。当前 `parseTap` 会收集 `untagged`，但 `formatReport()` 和 `verifyJson()` 都不列出无 ID 的 ok 点。
+
+风险：这句话要么错误描述 state A，要么暗中引入额外报告行为；实现者可能扩大范围，造成不必要的输出/API变化。
+
+建议修复：若目标是不改变 ok 点行为，删掉“列出”，改为“无 ID 的 ok 点照旧不阻断，且报告/JSON形状除新增 unattributedFailures 外不因 ok untagged 改变”。若确实要列出，则把它作为显式新需求并定义报告/JSON合同。
+
+## Advisories
+
+- 建议在需求中预告新 spec-runner 场景应从 SR-33 起，不与现有 SR-01..32 冲突；gate 继承可在 gate 或 spec-runner E2E 场景中钉住，留给 STEP2 具体分配。
+- “CRLF 行尾照旧”可以更具体地说“与 plan 预扫描一致，只剥离每行一个尾随 `\r` 后分类”。
+
+## LEDGER DELTA
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| UF-1 | `unattributedFailures` JSON形状与人类报告截断规则未精确定义。 | 实现/测试分叉，P8无法判定合同是否满足。 | STEP0·r1 | open |
+| UF-2 | 未明确 unattributed failures 与 Bail out/plan mismatch/重号等 infra ERROR 同时出现时的优先级。 | 新 GAPS 分支可能遮蔽既有 fail-closed ERROR。 | STEP0·r1 | open |
+| UF-3 | 裸 `not ok` 的 SKIP/TODO 识别和缩进嵌套排除规则缺少精确分类器。 | 合法 TAP 可能被误伤，或 nested TAP 被错误计入顶层失败。 | STEP0·r1 | open |
+| UF-4 | 需求称现有场景为 SR-01..19，但仓库现实是 SR-01..32。 | 回归范围被错误缩小，可能漏测 projection/tap-plan/CAS 交互。 | STEP0·r1 | open |
+| UF-5 | “untagged ok 点照旧列出”与当前报告/JSON行为不符。 | 暗含未声明输出变化或误导实现者。 | STEP0·r1 | open |
+
+VERDICT: 5 issues found
+tokens used
+4,329,048
+缺陷机制核对：需求对当前 false-green 主因描述准确。`TAP_RE` 只绑定 `ok|not ok <n> - <desc>`；带描述但无场景 ID 的 `not ok` 只进入 `untaggedFails/failCount`，不会进入 verdict；裸 `not ok` 只被 `POINT_LINE_RE` 计入 plan 点数，不进入结果或 `untaggedFails`。已复现样例的解释成立。
+
+## 正式问题
+
+### UF-1 — 报告与 JSON 合同不够精确
+
+描述：需求要求人类报告列出“原始行文本(截断到合理长度)”，并要求 `--json` 增加 `unattributedFailures(计数 + 原始行数组)`，但未规定确切截断长度、字段形状、字段是否总是存在、数组元素是字符串还是对象。
+
+风险：实现和测试会分叉；后续 P8 难以判断 JSON 是否合规，也可能破坏 `--json` 稳定性。
+
+建议修复：写死合同，例如：
+`unattributedFailures: { count: number, lines: string[] }`，所有 verify JSON 结果中恒定存在；行文本按 CRLF 归一化后保留原始顶层行，超过 160 字符截断为前 157 字符 + `...`。人类报告使用同一数组。
+
+### UF-2 — infra ERROR 与 unattributed failure 同时出现时的优先级未绑定
+
+描述：需求说 unattributed failures 报 `RESULT: GAPS` exit 1，同时又说 Bail out、plan 校验、重号等既有 infra 规则不变。没有明确当同一输出同时包含 unattributed failure 和 `Bail out!`、plan mismatch、multiple plans、duplicate point number 时，最终结果必须仍为 ERROR exit 2。
+
+风险：实现者可能让新 GAPS 分支遮蔽既有 fail-closed 规则，削弱 SR-14/SR-26..31。
+
+建议修复：明确优先级：`infraErrors(run).length > 0` 永远胜出，最终 `RESULT: ERROR` exit 2；unattributed failures 可作为附加报告/JSON字段保留，但不能把 ERROR 降级为 GAPS。新增验收：`not ok` + `Bail out!`、`not ok` + plan mismatch 都 exit 2。
+
+### UF-3 — 裸点上的 SKIP/TODO 与嵌套 TAP 排除规则缺少可执行分类器
+
+描述：需求说“非 SKIP/TODO 的顶层 not ok”阻断，并说“含裸形上的指令”不算失败，但未定义宽匹配后的 directive 识别规则。当前系统对 nested TAP 依赖行首锚点排除缩进行；新逻辑如果直接搜索 `not ok`，可能误伤 node 子测试/YAML diagnostics。
+
+风险：合法 skip/todo 裸点可能被误判为失败，或缩进子测试行被错误计入顶层失败，破坏 SR-30 的合法 nested TAP 行为。
+
+建议修复：定义精确分类器：逐行去掉单个尾随 `\r`；只匹配行首 `^(not ok)(?:\s|$)`；缩进行不匹配；若该顶层行含 `/#\s*(SKIP|TODO)\b/i` 则不计入 unattributed failure。新增验收：`not ok # TODO`、`not ok 3 # SKIP reason` 不阻断；`    not ok 1 - nested` 不计入。
+
+### UF-4 — 现有场景范围与仓库现实冲突
+
+描述：约束写“既有 SR-01..19 场景不回归”，但当前 `apriori/specs/spec-runner/spec.md` 已有 SR-01..32。
+
+风险：实现计划可能漏掉 SR-20..32，尤其是 projection、deprecated、tap-plan、CAS warning 这些与本次改动存在交互的场景。
+
+建议修复：改为“既有 SR-01..32 场景与全部现有测试不回归”。
+
+### UF-5 — “untagged ok 点照旧列出”与当前 state A 不符
+
+描述：需求写“无 ID 的 `ok` 点照旧可过(untagged 列出、不阻断)”。当前 `parseTap` 会收集 `untagged`，但 `formatReport()` 和 `verifyJson()` 都不列出无 ID 的 ok 点。
+
+风险：这句话要么错误描述 state A，要么暗中引入额外报告行为；实现者可能扩大范围，造成不必要的输出/API变化。
+
+建议修复：若目标是不改变 ok 点行为，删掉“列出”，改为“无 ID 的 ok 点照旧不阻断，且报告/JSON形状除新增 unattributedFailures 外不因 ok untagged 改变”。若确实要列出，则把它作为显式新需求并定义报告/JSON合同。
+
+## Advisories
+
+- 建议在需求中预告新 spec-runner 场景应从 SR-33 起，不与现有 SR-01..32 冲突；gate 继承可在 gate 或 spec-runner E2E 场景中钉住，留给 STEP2 具体分配。
+- “CRLF 行尾照旧”可以更具体地说“与 plan 预扫描一致，只剥离每行一个尾随 `\r` 后分类”。
+
+## LEDGER DELTA
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| UF-1 | `unattributedFailures` JSON形状与人类报告截断规则未精确定义。 | 实现/测试分叉，P8无法判定合同是否满足。 | STEP0·r1 | open |
+| UF-2 | 未明确 unattributed failures 与 Bail out/plan mismatch/重号等 infra ERROR 同时出现时的优先级。 | 新 GAPS 分支可能遮蔽既有 fail-closed ERROR。 | STEP0·r1 | open |
+| UF-3 | 裸 `not ok` 的 SKIP/TODO 识别和缩进嵌套排除规则缺少精确分类器。 | 合法 TAP 可能被误伤，或 nested TAP 被错误计入顶层失败。 | STEP0·r1 | open |
+| UF-4 | 需求称现有场景为 SR-01..19，但仓库现实是 SR-01..32。 | 回归范围被错误缩小，可能漏测 projection/tap-plan/CAS 交互。 | STEP0·r1 | open |
+| UF-5 | “untagged ok 点照旧列出”与当前报告/JSON行为不符。 | 暗含未声明输出变化或误导实现者。 | STEP0·r1 | open |
+
+VERDICT: 5 issues found

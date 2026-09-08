@@ -1,0 +1,753 @@
+<!-- provenance: provider=openai model=gpt-5.6-sol session=019ff7ee-3e79-7b31-90e3-38c637d1e273 date=2026-08-13 -->
+OpenAI Codex v0.147.0
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.6-sol
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019ff7ee-3e79-7b31-90e3-38c637d1e273
+--------
+user
+Round 6 (closing). Your round-5 finding is landed (318/318 green): IMPL-6 — raw lines lying ENTIRELY inside a closed fence span within a cross-line delimiter's raw range are now prepended to that scenario's body (delimiter fragments stay excluded); your exact counterexample is an AM-45 test asserting retained KV-01 with missingLines = ['fenced-old']. IMPL-5 was flipped to verified per your round-5 delta.
+Re-review. If nothing formal remains, flip IMPL-6 to verified and close.
+Read-only sandbox: PRINT the review doc body (landed at apriori/changes/modified-block-integrity/review/step5-review-v6.md), Simplified Chinese, machine tokens English. End with the ledger delta and exactly one verdict line: 'VERDICT: no spec-vs-code gaps' or 'VERDICT: <N> issues open'.
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+codex
+我会复跑 round-5 的精确反例，并检查“entirely inside span”的边界判定是否会误收 delimiter fragments、漏收多行/多 fence 内容或破坏 raw order；之后做最终 closing sweep。
+exec
+/usr/bin/zsh -lc "rg -n \"inside.*fence|fence.*inside|prefix|preBody|delimiter|IMPL-6|fenced-old\" lib/archive-merge.js test/modified-integrity.test.js apriori/changes/modified-block-integrity/review/issues.md; nl -ba lib/archive-merge.js | sed -n '417,500p'; nl -ba test/modified-integrity.test.js | sed -n '90,140p'; git diff -- lib/archive-merge.js test/modified-integrity.test.js apriori/changes/modified-block-integrity/review/issues.md | sed -n '1,360p'" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 199ms:
+lib/archive-merge.js:318:  if (!vName.ok) return { files: [], errors: [`invalid change name '${name}' (${vName.kind}) — bare kebab-case, not date-prefixed, not a reserved name`] };
+lib/archive-merge.js:454:  // '####\nScenario: …' is a valid delimiter there, so it is one here too)
+lib/archive-merge.js:472:  // a raw line that lies ENTIRELY inside a closed fence span still participates in
+lib/archive-merge.js:473:  // comparison even when it falls within a cross-line delimiter's raw range — such
+lib/archive-merge.js:474:  // fenced content is prepended to that scenario's body (the delimiter fragments
+lib/archive-merge.js:798:    if (!vEarly.ok) { console.error(`archive: invalid change name '${a.change}' (${vEarly.kind}) — bare kebab-case, not date-prefixed, not a reserved name`); return 2; }
+test/modified-integrity.test.js:112:  // \s+ crosses newlines in state A: split headings are valid delimiters there and here
+test/modified-integrity.test.js:119:  // fenced content INSIDE a cross-line delimiter span still participates (IMPL-6)
+test/modified-integrity.test.js:120:  const oldX = blk('R', '#### ```\nfenced-old\n``` Scenario: KV-01 one\n- body\n');
+test/modified-integrity.test.js:124:  assert.deepStrictEqual(rx.missingLines, [{ scenario: 'KV-01', line: 'fenced-old' }]);
+test/modified-integrity.test.js:125:  // multi-space heading is a valid delimiter
+apriori/changes/modified-block-integrity/review/issues.md:30:| IMPL-6 | 跨行定界 span 内的闭合 fence 内容被连同定界行丢弃，未参与比较。 | med | STEP5·r4 | fixed (r5b) — span 内整行处于闭合 fence 的行归入该场景体首；反例入 AM-45 |
+   417	// closed-fence spans exactly like stripFences (an unclosed opener is ordinary text)
+   418	function closedFenceSpans(text) {
+   419	  const spans = [];
+   420	  const re = /```[\s\S]*?```/g;
+   421	  let m;
+   422	  while ((m = re.exec(text)) !== null) spans.push([m.index, m.index + m[0].length]);
+   423	  return spans;
+   424	}
+   425	
+   426	// block text → { prose: [items], scenarios: [{title, body: [items]}] } — the requirement
+   427	// heading line never participates. Scenario DELIMITERS are found exactly the state-A way:
+   428	// scan the fence-STRIPPED view (stripFences removes closed pairs, which can expose a heading
+   429	// that shares its raw line with an inline closed fence), then map each heading back to its
+   430	// raw position; body lines come from the RAW text between consecutive heading lines (fenced
+   431	// content therefore participates in comparison, per the engine contract).
+   432	function scanBlockStructure(text) {
+   433	  const clean = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+   434	  const spans = closedFenceSpans(clean);
+   435	  const stripped = clean.replace(/```[\s\S]*?```/g, '');
+   436	  // stripped offset → raw offset (piecewise: add back the lengths of spans passed)
+   437	  const toRaw = (sOff) => {
+   438	    let removed = 0;
+   439	    for (const [a, b] of spans) {
+   440	      if (sOff + removed >= a) removed += b - a;
+   441	      else break;
+   442	    }
+   443	    return sOff + removed;
+   444	  };
+   445	  const lines = clean.split('\n');
+   446	  const lineStart = [];
+   447	  { let off = 0; for (const l of lines) { lineStart.push(off); off += l.length + 1; } }
+   448	  const rawLineOf = (rawOff) => {
+   449	    let lo = 0, hi = lineStart.length - 1, ans = 0;
+   450	    while (lo <= hi) { const mid = (lo + hi) >> 1; if (lineStart[mid] <= rawOff) { ans = mid; lo = mid + 1; } else hi = mid - 1; }
+   451	    return ans;
+   452	  };
+   453	  // headings in the state-A view — the ACTUAL state-A regex (\s+ may cross newlines:
+   454	  // '####\nScenario: …' is a valid delimiter there, so it is one here too)
+   455	  const headRe = /^####\s+Scenario:\s+(.*)$/gm;
+   456	  const heads = [];
+   457	  let hm;
+   458	  while ((hm = headRe.exec(stripped)) !== null)
+   459	    heads.push({ title: hm[1], rawLine: rawLineOf(toRaw(hm.index)),
+   460	      endLine: rawLineOf(toRaw(hm.index + hm[0].length)) });
+   461	  const startLine = /^###\s+Requirement:/.test(lines[0] || '') ? 1 : 0;   // heading never compared
+   462	  const collect = (from, to) => {
+   463	    const items = [];
+   464	    for (let i = from; i < to; i++) {
+   465	      const n = norml(lines[i]);
+   466	      if (n) items.push({ raw: lines[i], norm: n });
+   467	    }
+   468	    return items;
+   469	  };
+   470	  const firstHead = heads.length ? heads[0].rawLine : lines.length;
+   471	  const prose = collect(startLine, firstHead);
+   472	  // a raw line that lies ENTIRELY inside a closed fence span still participates in
+   473	  // comparison even when it falls within a cross-line delimiter's raw range — such
+   474	  // fenced content is prepended to that scenario's body (the delimiter fragments
+   475	  // around it belong to the heading and stay excluded)
+   476	  const fencedLinesIn = (from, to) => {
+   477	    const items = [];
+   478	    for (let i = from; i <= to && i < lines.length; i++) {
+   479	      const a = lineStart[i], b = a + lines[i].length;
+   480	      if (spans.some(([sa, sb]) => a >= sa && b <= sb)) {
+   481	        const n = norml(lines[i]);
+   482	        if (n) items.push({ raw: lines[i], norm: n });
+   483	      }
+   484	    }
+   485	    return items;
+   486	  };
+   487	  const scenarios = heads.map((h, i) => ({
+   488	    title: h.title,
+   489	    body: [...fencedLinesIn(h.rawLine, h.endLine),
+   490	      ...collect(h.endLine + 1, i + 1 < heads.length ? heads[i + 1].rawLine : lines.length)],
+   491	  }));
+   492	  return { prose, scenarios };
+   493	}
+   494	
+   495	// order-preserving greedy subsequence over {raw, norm} items: matching uses the normalized
+   496	// text, the report keeps the ORIGINAL old line verbatim
+   497	function missingFrom(oldItems, newItems) {
+   498	  const missing = [];
+   499	  let j = 0;
+   500	  for (const o of oldItems) {
+    90	});
+    91	
+    92	test('AM-45 structure boundaries follow state A exactly', () => {
+    93	  // rename-then-modify with verbatim content: zero missingLines (heading never compared)
+    94	  const oldA = blk('A', 'prose line\n\n#### Scenario: KV-01 one\n- a\n');
+    95	  const newG = blk('G', 'prose line\n\n#### Scenario: KV-01 one\n- a\n');
+    96	  assert.deepStrictEqual(am.compareModifiedBlock(oldA, newG, idOfDefault).missingLines, []);
+    97	  // a CLOSED fence's fake heading does not split; its lines are body-compared
+    98	  const oldF = blk('R', '#### Scenario: KV-01 one\n- a\n```\n#### Scenario: FAKE-01 x\nfence line\n```\n- tail\n');
+    99	  const rf = am.compareModifiedBlock(oldF, blk('R', '#### Scenario: KV-01 one\n- a\n```\n#### Scenario: FAKE-01 x\n```\n- tail\n'), idOfDefault);
+   100	  assert.deepStrictEqual(rf.retained.map((x) => x.id), ['KV-01']);
+   101	  assert.deepStrictEqual(rf.missingLines, [{ scenario: 'KV-01', line: 'fence line' }]);
+   102	  // an UNCLOSED opener is ordinary text; the later heading still splits
+   103	  const oldU = blk('R', '#### Scenario: KV-01 one\n- a\n```\n#### Scenario: KV-02 two\n- b\n');
+   104	  const ru = am.compareModifiedBlock(oldU, oldU, ' '.length ? idOfDefault : idOfDefault);
+   105	  // identical text → fast path, but structure claim proven via a dropped variant:
+   106	  const ru2 = am.compareModifiedBlock(oldU, blk('R', '#### Scenario: KV-01 one\n- a\n```\n'), idOfDefault);
+   107	  assert.deepStrictEqual(ru2.dropped, [{ id: 'KV-02', title: 'KV-02 two' }], 'unclosed fence does not swallow the later heading');
+   108	  // an INLINE closed fence sharing the heading's raw line: stripFences exposes the heading (IMPL-4)
+   109	  const oldI = blk('R', '```x```#### Scenario: KV-01 one\n- body\n');
+   110	  const ri = am.compareModifiedBlock(oldI, blk('R', 'nothing here\n'), idOfDefault);
+   111	  assert.deepStrictEqual(ri.dropped, [{ id: 'KV-01', title: 'KV-01 one' }], 'inline-fence heading is valid, state-A way');
+   112	  // \s+ crosses newlines in state A: split headings are valid delimiters there and here
+   113	  const split1 = blk('R', '####\nScenario: KV-01 split-a\n- body\n');
+   114	  const rs1 = am.compareModifiedBlock(split1, blk('R', 'nothing\n'), idOfDefault);
+   115	  assert.deepStrictEqual(rs1.dropped, [{ id: 'KV-01', title: 'KV-01 split-a' }]);
+   116	  const split2 = blk('R', '#### Scenario:\nKV-02 split-b\n- body\n');
+   117	  const rs2 = am.compareModifiedBlock(split2, blk('R', 'nothing\n'), idOfDefault);
+   118	  assert.deepStrictEqual(rs2.dropped, [{ id: 'KV-02', title: 'KV-02 split-b' }]);
+   119	  // fenced content INSIDE a cross-line delimiter span still participates (IMPL-6)
+   120	  const oldX = blk('R', '#### ```\nfenced-old\n``` Scenario: KV-01 one\n- body\n');
+   121	  const newX = blk('R', '#### ```\nfenced-new\n``` Scenario: KV-01 one\n- body\n');
+   122	  const rx = am.compareModifiedBlock(oldX, newX, idOfDefault);
+   123	  assert.deepStrictEqual(rx.retained.map((x) => x.id), ['KV-01']);
+   124	  assert.deepStrictEqual(rx.missingLines, [{ scenario: 'KV-01', line: 'fenced-old' }]);
+   125	  // multi-space heading is a valid delimiter
+   126	  const oldS = blk('R', '####   Scenario:   KV-07 spaced\n- s\n');
+   127	  const rs = am.compareModifiedBlock(oldS, blk('R', 'nothing\n'), idOfDefault);
+   128	  assert.deepStrictEqual(rs.dropped, [{ id: 'KV-07', title: 'KV-07 spaced' }]);
+   129	});
+   130	
+   131	test('AM-43 the trim-equal fast path yields an all-empty entry without id extraction', () => {
+   132	  const b = blk('R', '#### Scenario: KV-01 one\n- a\n');
+   133	  let called = 0;
+   134	  const r = am.compareModifiedBlock(b, b + '\n\n', () => { called++; return null; });
+   135	  assert.deepStrictEqual(r, { retained: [], titleChanged: [], dropped: [], added: [], ambiguous: [], missingLines: [] });
+   136	  assert.strictEqual(called, 0, 'no id extraction on the fast path');
+   137	  assert.strictEqual(am.formatIntegrityHuman([{ file: 'm/spec.md', name: 'R', ...r }]), '', 'empty result renders nothing');
+   138	});
+   139	
+   140	test('AM-44 the human formatter renders safely and truncates', () => {
+diff --git a/lib/archive-merge.js b/lib/archive-merge.js
+index 611fdd7..b29fb01 100644
+--- a/lib/archive-merge.js
++++ b/lib/archive-merge.js
+@@ -341,6 +341,27 @@ function buildProjection(storeRoot, deltaFiles, change) {
+   const texts = new Map(), perModule = new Map(), modules = [];
+   const conflicts = [], casMismatches = [], hygiene = [], validation = [];
+   const unstampedMutations = [], notes = [], repaired = [];
++  // per-suffix operation buckets captured at THIS parse — the one delta snapshot
++  // (change-scope provenance must never come from a second read of the file)
++  const deltaOps = new Map();
++  // per-suffix raw old/new block text pairs for every MODIFIED operation (rename-then-modify
++  // baselines the COMPLETE pre-rename block) — the integrity engine's single-snapshot input
++  const modifiedBlocks = new Map();
++  const captureModified = (suffix, storeText, delta) => {
++    if (!delta.MODIFIED.size) return;
++    const storeBlocks = parseRequirementsStrict(storeText).map;
++    const renamedTo = new Map(delta.RENAMED.map(([o, n]) => [n, o]));
++    const pairs = [];
++    for (const [name, newBlock] of delta.MODIFIED) {
++      const oldName = renamedTo.get(name) || name;
++      // repaired rename-then-modify rerun: the pre-rename source is gone, the store already
++      // holds the post-rename block — fall back to it so the operation still owes its pair
++      const oldBlock = storeBlocks.get(oldName) !== undefined ? storeBlocks.get(oldName) : storeBlocks.get(name);
++      if (oldBlock === undefined) continue;               // missing target → the merge conflict path reports it
++      pairs.push({ name, oldBlock, newBlock });
++    }
++    if (pairs.length) modifiedBlocks.set(suffix, pairs);
++  };
+   for (const abs of mdFilesUnder(storeRoot))
+     texts.set(path.relative(storeRoot, abs).split(path.sep).join('/'), fs.readFileSync(abs, 'utf8'));
+   for (const { abs, suffix } of deltaFiles) {
+@@ -352,6 +373,10 @@ function buildProjection(storeRoot, deltaFiles, change) {
+     const { delta, stamp, problems } = parseDeltaStrict(raw);
+     if (problems.length) { hygiene.push(...problems.map((p) => `${abs}: ${p}`)); continue; }
+     if (deltaOpCount(delta) === 0) { hygiene.push(`parsed 0 delta operations from ${abs} — it has content but no recognized operations`); continue; }
++    deltaOps.set(suffix, Object.freeze({
++      added: [...delta.ADDED.keys()], modified: [...delta.MODIFIED.keys()],
++      renamedPairs: delta.RENAMED.map((p) => [...p]), removed: [...delta.REMOVED.keys()],
++    }));
+     if (!stamp && mutationOpCount(delta) > 0) unstampedMutations.push(suffix);   // WARN grade (callers print)
+     const storeText = texts.get(suffix) || '';
+     if (stamp) {
+@@ -365,6 +390,7 @@ function buildProjection(storeRoot, deltaFiles, change) {
+           notes.push(`${suffix}: stamp mismatch but the delta is already fully applied — rerun accepted`);
+           perModule.set(suffix, probe);
+           repaired.push(suffix);
++          captureModified(suffix, storeText, delta);         // a repaired module still owes its pairs
+           continue;                                          // contributes no writes
+         }
+         casMismatches.push(`base mismatch for ${target}: delta expects ${stamp}, store is ${actual}`); continue;
+@@ -372,11 +398,226 @@ function buildProjection(storeRoot, deltaFiles, change) {
+     }
+     const r = merge(storeText, delta, change);
+     perModule.set(suffix, r);
++    captureModified(suffix, storeText, delta);
+     if (r.conflicts.length) { conflicts.push(...r.conflicts.map((c) => `${suffix}: ${c}`)); continue; }
+     texts.set(suffix, renderStore(storeText, r.store));
+   }
+   modules.sort();
+-  return { texts, modules, perModule, conflicts, casMismatches, hygiene, validation, unstampedMutations, notes, repaired };
++  return { texts, modules, perModule, deltaOps, modifiedBlocks, conflicts, casMismatches, hygiene, validation, unstampedMutations, notes, repaired };
++}
++
++
++// ---- modified-block integrity engine (pure; zero fs, zero matcher) ---------------------
++// Compares a MODIFIED operation's old store block against its replacement and reports
++// structural fidelity. INFORMATIVE by contract: callers never let it change a verdict,
++// an exit code or write semantics.
++
++const norml = (l) => l.replace(/\s+$/, '').replace(/^\s+/, '');
++
++// closed-fence spans exactly like stripFences (an unclosed opener is ordinary text)
++function closedFenceSpans(text) {
++  const spans = [];
++  const re = /```[\s\S]*?```/g;
++  let m;
++  while ((m = re.exec(text)) !== null) spans.push([m.index, m.index + m[0].length]);
++  return spans;
++}
++
++// block text → { prose: [items], scenarios: [{title, body: [items]}] } — the requirement
++// heading line never participates. Scenario DELIMITERS are found exactly the state-A way:
++// scan the fence-STRIPPED view (stripFences removes closed pairs, which can expose a heading
++// that shares its raw line with an inline closed fence), then map each heading back to its
++// raw position; body lines come from the RAW text between consecutive heading lines (fenced
++// content therefore participates in comparison, per the engine contract).
++function scanBlockStructure(text) {
++  const clean = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
++  const spans = closedFenceSpans(clean);
++  const stripped = clean.replace(/```[\s\S]*?```/g, '');
++  // stripped offset → raw offset (piecewise: add back the lengths of spans passed)
++  const toRaw = (sOff) => {
++    let removed = 0;
++    for (const [a, b] of spans) {
++      if (sOff + removed >= a) removed += b - a;
++      else break;
++    }
++    return sOff + removed;
++  };
++  const lines = clean.split('\n');
++  const lineStart = [];
++  { let off = 0; for (const l of lines) { lineStart.push(off); off += l.length + 1; } }
++  const rawLineOf = (rawOff) => {
++    let lo = 0, hi = lineStart.length - 1, ans = 0;
++    while (lo <= hi) { const mid = (lo + hi) >> 1; if (lineStart[mid] <= rawOff) { ans = mid; lo = mid + 1; } else hi = mid - 1; }
++    return ans;
++  };
++  // headings in the state-A view — the ACTUAL state-A regex (\s+ may cross newlines:
++  // '####\nScenario: …' is a valid delimiter there, so it is one here too)
++  const headRe = /^####\s+Scenario:\s+(.*)$/gm;
++  const heads = [];
++  let hm;
++  while ((hm = headRe.exec(stripped)) !== null)
++    heads.push({ title: hm[1], rawLine: rawLineOf(toRaw(hm.index)),
++      endLine: rawLineOf(toRaw(hm.index + hm[0].length)) });
++  const startLine = /^###\s+Requirement:/.test(lines[0] || '') ? 1 : 0;   // heading never compared
++  const collect = (from, to) => {
++    const items = [];
++    for (let i = from; i < to; i++) {
++      const n = norml(lines[i]);
++      if (n) items.push({ raw: lines[i], norm: n });
++    }
++    return items;
++  };
++  const firstHead = heads.length ? heads[0].rawLine : lines.length;
++  const prose = collect(startLine, firstHead);
++  // a raw line that lies ENTIRELY inside a closed fence span still participates in
++  // comparison even when it falls within a cross-line delimiter's raw range — such
++  // fenced content is prepended to that scenario's body (the delimiter fragments
++  // around it belong to the heading and stay excluded)
++  const fencedLinesIn = (from, to) => {
++    const items = [];
++    for (let i = from; i <= to && i < lines.length; i++) {
++      const a = lineStart[i], b = a + lines[i].length;
++      if (spans.some(([sa, sb]) => a >= sa && b <= sb)) {
++        const n = norml(lines[i]);
++        if (n) items.push({ raw: lines[i], norm: n });
++      }
++    }
++    return items;
++  };
++  const scenarios = heads.map((h, i) => ({
++    title: h.title,
++    body: [...fencedLinesIn(h.rawLine, h.endLine),
++      ...collect(h.endLine + 1, i + 1 < heads.length ? heads[i + 1].rawLine : lines.length)],
++  }));
++  return { prose, scenarios };
++}
++
++// order-preserving greedy subsequence over {raw, norm} items: matching uses the normalized
++// text, the report keeps the ORIGINAL old line verbatim
++function missingFrom(oldItems, newItems) {
++  const missing = [];
++  let j = 0;
++  for (const o of oldItems) {
++    let found = -1;
++    for (let k = j; k < newItems.length; k++) if (newItems[k].norm === o.norm) { found = k; break; }
++    if (found === -1) missing.push(o.raw);
++    else j = found + 1;
++  }
++  return missing;
++}
++
++// → { retained, titleChanged, dropped, added, ambiguous, missingLines } (req B4 shapes/order)
++function compareModifiedBlock(oldBlock, newBlock, idOf) {
++  const empty = { retained: [], titleChanged: [], dropped: [], added: [], ambiguous: [], missingLines: [] };
++  if (oldBlock.trim() === newBlock.trim()) return { ...empty };   // idempotent fast path — no scan, no idOf
++  const o = scanBlockStructure(oldBlock);
++  const n = scanBlockStructure(newBlock);
++  const keyOf = (title) => { const id = idOf(title); return id !== null ? { key: id, id } : { key: norml(title), id: null }; };
++  const group = (list) => {
++    const m = new Map();
++    list.forEach((sc, idx) => {
++      const { key, id } = keyOf(sc.title);
++      if (!m.has(key)) m.set(key, { id, occ: [] });
++      m.get(key).occ.push({ ...sc, idx });
++    });
++    return m;
++  };
++  const om = group(o.scenarios), nm = group(n.scenarios);
++  const res = { retained: [], titleChanged: [], dropped: [], added: [], ambiguous: [], missingLines: [] };
++  // requirement prose first
++  for (const line of missingFrom(o.prose, n.prose)) res.missingLines.push({ scenario: null, line });
++  const ambON = [], ambNewOnly = [];
++  for (const [key, og] of om) {
++    const ng = nm.get(key);
++    const oc = og.occ.length, nc = ng ? ng.occ.length : 0;
++    if (oc === 1 && nc === 1) {
++      const oldSc = og.occ[0], newSc = ng.occ[0];
++      const entry = { id: og.id, title: newSc.title };
++      if (norml(oldSc.title) === norml(newSc.title)) res.retained.push(entry);
++      else res.titleChanged.push({ id: og.id, oldTitle: oldSc.title, newTitle: newSc.title });
++      const scenLabel = og.id !== null ? og.id : oldSc.title;
++      for (const line of missingFrom(oldSc.body, newSc.body)) res.missingLines.push({ scenario: scenLabel, line });
++    } else if (oc >= 1 && nc === 0) {
++      if (oc === 1) res.dropped.push({ id: og.id, title: og.occ[0].title });
++      else ambON.push({ key, side: 'old', oldCount: oc, newCount: 0, idx: og.occ[0].idx });
++    } else {
++      // any side > 1 with the other >= 1
++      const side = oc > 1 && nc > 1 ? 'both' : (oc > 1 ? 'old' : 'new');
++      ambON.push({ key, side, oldCount: oc, newCount: nc, idx: og.occ[0].idx });
++    }
++  }
++  for (const [key, ng] of nm) {
++    if (om.has(key)) continue;
++    const nc = ng.occ.length;
++    if (nc === 1) res.added.push({ id: ng.id, title: ng.occ[0].title });
++    else ambNewOnly.push({ key, side: 'new', oldCount: 0, newCount: nc, idx: ng.occ[0].idx });
++  }
++  ambON.sort((a, b) => a.idx - b.idx);
++  ambNewOnly.sort((a, b) => a.idx - b.idx);
++  res.ambiguous = [...ambON, ...ambNewOnly].map(({ key, side, oldCount, newCount }) => ({ key, side, oldCount, newCount }));
++  return res;
++}
++
++// safe rendering: C0/DEL control characters become the middle dot BEFORE the 119+ellipsis cut
++function sanField(s) {
++  const clean = String(s).replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '·').replace(/[\n\t]/g, '·');
++  return clean.length > 120 ? clean.slice(0, 119) + '…' : clean;
++}
++
++// human section shared by verify and archive; '' when every entry's four classes are empty
++function formatIntegrityHuman(entries) {
++  const printable = entries.filter((e) =>
++    e.dropped.length || e.missingLines.length || e.ambiguous.length || e.titleChanged.length);
++  if (!printable.length) return '';
++  // fields are sanitized (C0/DEL → ·) then the ASSEMBLED line takes the state-A cut:
++  // whole line ≤ 120 UTF-16 units via slice(0,119)+'…'
++  const cap = (l) => (l.length > 120 ? l.slice(0, 119) + '…' : l);
++  const lines = ['— MODIFIED INTEGRITY —'];
++  for (const e of printable) {
++    lines.push(cap(`  ${sanField(e.file)} · ${sanField(e.name)}: retained ${e.retained.length}, added ${e.added.length}`));
++    for (const t of e.titleChanged) lines.push(cap(`    titleChanged: ${sanField(t.oldTitle)} -> ${sanField(t.newTitle)}`));
++    for (const d of e.dropped) lines.push(cap(`    ! dropped: ${sanField(d.title)}`));
++    for (const a of e.ambiguous) lines.push(cap(`    ! ambiguous: ${sanField(a.key)} (${a.side}; old ${a.oldCount}/new ${a.newCount})`));
++    for (const ml of e.missingLines) lines.push(cap(`    ! missing (${ml.scenario === null ? 'prose' : sanField(ml.scenario)}): ${sanField(ml.line)}`));
++  }
++  return lines.join('\n');
++}
++
++
++// The archive-side integrity section. The matcher factory is INJECTED at the bin seam
++// ((cwd) => matcher | {error}) so this module never requires spec-runner; a missing factory
++// degrades exactly like a factory error — one bounded stderr warning, report skipped,
++// every other archive output/exit/write unchanged.
++function pushIntegritySection(out, err, modifiedBlocks, idMatcherFactory, cwd) {
++  if (!modifiedBlocks || modifiedBlocks.size === 0) return;
++  const sanitizeMsg = require('./config').sanitizeMsg;
++  const warn = (reason) => err.push(sanitizeMsg('warning: modified-integrity ' + reason));
++  if (!idMatcherFactory) { warn('id matcher unavailable (no factory injected)'); return; }
++  let matcher;
++  try { matcher = idMatcherFactory(cwd); } catch (e) { warn('id-pattern resolution failed: ' + String(e.message || e)); return; }
++  if (!matcher || matcher.error) { warn('id-pattern resolution failed: ' + String(matcher && matcher.error)); return; }
++  // one batch over every old+new block scenario title — discovered the SAME state-A way
++  // the engine does (fence-STRIPPED view: an inline closed fence can expose a heading)
++  const titles = [];
++  const collect = (text) => {
++    const stripped = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').replace(/```[\s\S]*?```/g, '');
++    let m;
++    const re = /^####\s+Scenario:\s+(.*)$/gm;                 // the state-A regex, verbatim
++    while ((m = re.exec(stripped)) !== null) titles.push(m[1]);
++  };
++  for (const list of modifiedBlocks.values()) for (const { oldBlock, newBlock } of list) { collect(oldBlock); collect(newBlock); }
++  const res = matcher.batch(titles);
++  if (res.failure) { warn('matcher failure: ' + res.failure); return; }
++  const titleId = new Map();
++  titles.forEach((t, i) => { if (!titleId.has(t)) titleId.set(t, res.ids[i]); });
++  const idOf = (t) => { const v = titleId.get(t); return v === undefined ? null : v; };
++  const entries = [];
++  for (const [file, list] of modifiedBlocks)
++    for (const { name, oldBlock, newBlock } of list)
++      entries.push({ file, name, ...compareModifiedBlock(oldBlock, newBlock, idOf) });
++  entries.sort((a, b) => (a.file === b.file ? (a.name < b.name ? -1 : 1) : (a.file < b.file ? -1 : 1)));
++  const seg = formatIntegrityHuman(entries);
++  if (seg) out.push('\n' + seg);
+ }
+ 
+ // ---- archive commit machinery ----------------------------------------------
+@@ -470,6 +711,9 @@ function archiveChange(o) {
+       }
+     }
+   }
++  // the modified-block integrity section: AFTER every preflight guard (incl. the --write
++  // temp/containment checks above), BEFORE any write-result line — informative only
++  pushIntegritySection(out, err, p.modifiedBlocks, o.idMatcherFactory, cwd);
+   if (!o.write) {
+     out.push(`\nRESULT: MERGED (dry-run; ${jobs.length} module(s)) — pass --write to apply`);
+     return { code: 0, out, err };
+@@ -531,7 +775,7 @@ function stampCli(argv) {
+ 
+ const USAGE = 'usage: apriori archive --store <f> --delta <f> --change <name> [--write] [--changes-dir <dir>] [--no-cas]\n   or: apriori archive --change <name> [--write] [--changes-dir <dir>] [--no-cas]';
+ 
+-function cli(argv) {
++function cli(argv, deps = {}) {
+   return withStrict(argv, { sub: 'archive', usage: USAGE, positionals: 0,
+     flags: { '--store': 'value', '--delta': 'value', '--change': 'value', '--write': 'flag', '--changes-dir': 'value', '--no-cas': 'flag' } }, (f) => {
+     const a = { store: f['--store'] || null, delta: f['--delta'] || null, change: f['--change'] || null,
+@@ -539,7 +783,8 @@ function cli(argv) {
+   // high-level form: --change alone (no --store/--delta) drives the whole change
+     if (a.change && !a.store && !a.delta) {
+       const r = archiveChange({ cwd: process.cwd(), change: a.change, write: a.write,
+-        changesDir: a.changesDir || undefined, changesDirExplicit: !!a.changesDir, noCas: a.noCas });
++        changesDir: a.changesDir || undefined, changesDirExplicit: !!a.changesDir, noCas: a.noCas,
++        idMatcherFactory: deps.idMatcherFactory });
+       for (const l of r.out) console.log(l);
+       for (const l of r.err) console.error(l);
+       return r.code;
+@@ -625,6 +870,7 @@ function cli(argv) {
+   });
+ }
+ module.exports = { parseRequirements, parseRequirementsStrict, parseDelta, parseDeltaStrict, deltaOpCount, mutationOpCount, unstampedWarning,
++  compareModifiedBlock, formatIntegrityHuman,
+   merge, renderStore, archiveStamp, archiveChangeDir, archiveChange, CHANGE_NAME_RE,
+   fingerprint, parseStamp, containsReal, discoverDeltas, buildProjection,
+   DEPRECATED_RE, stripDeprecatedBlocks, stampCli, cli };
+
+exec
+/usr/bin/zsh -lc "node -e \"const am=require('./lib/archive-merge'),sr=require('./lib/spec-runner');const id=t=>sr.leadId(t,/[A-Z]+-[0-9]+/),q=String.fromCharCode(96).repeat(3);const old='### Requirement: R\\\\n#### '+q+'\\\\nfenced-old\\\\nsecond-old\\\\n'+q+' Scenario: KV-01 one\\\\n- body\\\\n';const neu='### Requirement: R\\\\n#### '+q+'\\\\nfenced-new\\\\nsecond-old\\\\n'+q+' Scenario: KV-01 one\\\\n- body\\\\n';console.log(JSON.stringify(am.compareModifiedBlock(old,neu,id),null,2));\"; cat apriori/changes/modified-block-integrity/review/issues.md; rg -n \"modified-integrity|MODIFIED INTEGRITY|modifiedIntegrity|mechanical integrity|机械保真\" docs/cli.md docs/cli_cn.md RUNBOOK.md RUNBOOK_cn.md CHANGELOG.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 191ms:
+{
+  "retained": [
+    {
+      "id": "KV-01",
+      "title": "KV-01 one"
+    }
+  ],
+  "titleChanged": [],
+  "dropped": [],
+  "added": [],
+  "ambiguous": [],
+  "missingLines": [
+    {
+      "scenario": "KV-01",
+      "line": "fenced-old"
+    }
+  ]
+}
+# Issue ledger — modified-block-integrity
+
+<!-- recorded on behalf of the reviewer (codex read-only sandbox), R2 transcription rule; raws: review/*-raw.txt -->
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| REQ-1 | subsequence 与 unordered preservation 冲突，line normalization/scope 未闭合（维度 1, 2, 4） | med | STEP0·r1 | verified |
+| REQ-2 | scenario identity、titleChanged、duplicate ID、无 ID occurrence 语义未定义（维度 1, 2, 4） | med | STEP0·r1 | verified |
+| REQ-3 | JSON/human schema、排序、截断及 identical entry 存在性不确定（维度 1, 4） | med | STEP0·r1 | verified |
+| REQ-4 | effective id-pattern failure policy 未定义，并可能破坏 state A matcher 调用纪律（维度 2, 3, 5） | med | STEP0·r1 | verified |
+| REQ-5 | archive high-level 与 single-file form 的覆盖范围不明（维度 1, 2, 5） | med | STEP0·r1 | verified |
+| REQ-6 | archive ERROR/preflight failure 的 report 存在性矩阵缺失（维度 2, 4） | med | STEP0·r1 | verified |
+| REQ-7 | AC7 的“missingLines 若干如实”不是确定 oracle，fixture 也未固定（维度 4） | med | STEP0·r1 | verified |
+| REQ-8 | target lineage 未包含两个未归档先行 change，不符合实际 state A（维度 5, 6） | med | STEP0·r1 | verified |
+| REQ-9 | Q2 confirmation flag 未裁定且与既定 informative/write semantics 冲突（维度 1, 3, 5） | med | STEP0·r1 | verified |
+| REQ-10 | requirement/scenario body 结构边界未钉死（标题行入比较=rename 假阳性；fence 内伪标题切分）。 | med | STEP0·r2 | verified |
+| REQ-11 | AC4 无确定 verdict/exit oracle。 | med | STEP0·r2 | verified |
+| REQ-ADV-1 | Advisory batch acknowledged (4 items: 测试数量为本轮基线；AC7 期望人工推导；RUNBOOK 双语补句；analyzer 纯共享 helper——均已吸收)。 | — | STEP0·r2 | advisory-acked |
+| SPEC-1 | identical MODIFIED 的全空 entry 契约与无条件基数分类冲突。 | med | STEP2·r1 | verified |
+| SPEC-2 | archive 缓冲输出无法满足真实写前打印，且设计插入点早于 temp/destination preflight guards。 | high | STEP2·r1 | verified |
+| SPEC-3 | AM-45/SR-66 无法证明 rename 前 raw capture 与 repaired-rerun entry。 | med | STEP2·r1 | verified |
+| SPEC-4 | bin→cli→archiveChange 的 matcher DI 接口及 missing-factory 行为未定义，且所称 export 在 State A 不存在。 | med | STEP2·r1 | verified |
+| SPEC-5 | integrity human section 直接输出外部文本，缺少 control-character sanitization。 | high | STEP2·r1 | verified |
+| MBI-1 | T1 人工推导发现 req/SR-68 早先断言（titleChanged=2）与冻结材料不符——两场景仅 THEN 行变、标题未变。 | low | STEP5·r0(producer) | fixed (T1) — SR-68 与 AC7 期望更正为 retained=9/titleChanged=0/missingLines=旧 THEN 两行；独立推导条款自证价值；待 P8 复核 |
+| IMPL-1 | `missingLines.line` 输出 normalized line，未保存完整旧行原文 | med | STEP5·r1 | verified |
+| IMPL-2 | human formatter 截断 external fields 而非最终 line，输出可超过 120 UTF-16 units | med | STEP5·r1 | verified |
+| IMPL-3 | stamped repaired `RENAMED + MODIFIED` 因只查 pre-rename key 而漏掉 MODIFIED entry | med | STEP5·r1 | verified |
+| IMPL-4 | 同行内闭合 fence 后的场景标题在 state A（先剥后扫）有效，按行过滤实现漏识别。 | med | STEP5·r2 | verified |
+| IMPL-5 | archive 侧标题采集器未跟上剥离视图语义（inline-fence 标题不入 matcher batch，ID 配对退化）。 | med | STEP5·r3 | verified |
+| IMPL-6 | 跨行定界 span 内的闭合 fence 内容被连同定界行丢弃，未参与比较。 | med | STEP5·r4 | fixed (r5b) — span 内整行处于闭合 fence 的行归入该场景体首；反例入 AM-45 |
+RUNBOOK_cn.md:181:- **archive 算法:**`apriori archive` 按稳定 Requirement ID 把变更的增量规格并入规格库——`## ADDED` → 追加;`## MODIFIED` → 整块替换(verify --change 与 archive 会打印机械保真报告——丢失的场景与子句逐条列出);`## REMOVED` → 规格库保留原块并标 `deprecated (superseded by <change>)`(弃用块内的 scenario 不再被 `verify` 要求;残留的测试转为 ORPHAN);`## RENAMED`(`- Old -> New`)→ 就地把块的 ID 改名、内容保留。与分叉后已合并的并行变更发生同 ID 冲突 → **停止、开台账、人工裁决**(§4.11 按模块串行)。高层形式 **`apriori archive --change <name>`** 自动发现 `apriori/changes/<name>/specs/` 下的全部增量文件,按路径后缀映射到 `apriori/specs/<同后缀>`,默认整组 dry-run,`--write` 时按"预检 → 暂存 → 提交 → 移动"四阶段失败原子地提交(提交点之前任何失败都不落一个字节);单文件形式(`--store <f> --delta <f>`)保留用于单模块手术。两种形式都列出每条 merged / modified / deprecated / renamed 的 Requirement,并在 `--write` **且带 `--changes-dir apriori/changes`** 时把在途变更目录挪到 `apriori/changes/archive/<YYYY-MM-DDThhmm>-<name>/`(日期时间由 CLI 盖;不带该 flag 只写规格库)。注意时序:移动发生在 gate④ 之前,该闸口悬决期间 flow-state 位于——且更新于——它的**归档**路径;STEP6 移动之后,续跑会话要去 `archive/` 下找它。
+CHANGELOG.md:10:- **`verify --change` carries the report** — JSON `modifiedIntegrity` always present on GREEN/GAPS (absent on ERROR and on `--specs`, byte-golden proven); the human `— MODIFIED INTEGRITY —` section prints when a risk class is non-empty (`!`-prefixed, control chars sanitized, 120-unit field truncation). Old-block titles ride the existing single matcher batch; the verdict and exit codes never change — the report is informative by contract (a machine cannot tell an intended deletion from a slipped one; it puts the difference on the table for humans and the P8 review).
+CHANGELOG.md:11:- **`archive --change` prints the same section** (high-level form; dry-run and pre-write) after every preflight guard; the id matcher is injected at the bin seam (archive-merge still never requires spec-runner); a broken id-pattern channel degrades to one bounded `warning: modified-integrity …` line and changes nothing else.
+RUNBOOK.md:185:- **Archive algorithm:** `apriori archive` merges a change's delta specs into the store by stable Requirement ID — `## ADDED` → append; `## MODIFIED` → replace the whole block (verify --change and archive print a mechanical integrity report — dropped scenarios and lost clauses are listed line by line); `## REMOVED` → keep the store block, marked `deprecated (superseded by <change>)` (scenarios inside deprecated blocks stop being demanded by `verify`; their lingering tests turn ORPHAN); `## RENAMED` (`- Old -> New`) → rename the block's ID in place, content preserved. A same-ID conflict with a change merged since branching → **stop, open a ledger issue, a human resolves** (§4.11's serialize-per-module rule). The high-level form **`apriori archive --change <name>`** discovers every delta under `apriori/changes/<name>/specs/`, maps each to `apriori/specs/<same suffix>`, dry-runs the whole set by default, and on `--write` commits failure-atomically (preflight → stage → commit → move: any failure before commit means nothing is written); the single-file form (`--store <f> --delta <f>`) remains for one-module surgery. Either form lists every merged / modified / deprecated / renamed requirement and, on `--write` **with `--changes-dir apriori/changes`**, moves the in-flight change dir to `apriori/changes/archive/<YYYY-MM-DDThhmm>-<name>/` (date-time stamped by the CLI; without the flag only the store is written). Note the sequencing: the move happens before gate④, so while that gate is pending the flow-state lives — and is updated — at its **archived** path; a resumed session must look under `archive/` once STEP6's move has happened.
+docs/cli.md:70:`--change` runs are **change-scoped**: the verdict (exit 0/1) judges only this change's requirement blocks (their scenarios bound green, no scoped duplicate/unidentified, no unprovable failure signal — an ID-less failure or a failing ID that no sibling active change declares still blocks, fail-closed); a red bound to an out-of-scope scenario, or one attributed to a sibling change's cleanly-parsed delta (only its ADDED/MODIFIED block scenarios grant the exemption), never blocks. The same run prints an informative **store report** (whole projection, six classes) so parallel changes go green independently while historical gaps stay visible. `--change --json` adds `storeReport`, `changeScope` and `modifiedIntegrity` on GREEN/GAPS (absent on every ERROR); `--specs` output is byte-identical to before. `modifiedIntegrity` reports every MODIFIED block's replacement fidelity (retained/titleChanged/dropped/added/ambiguous scenarios plus lost lines, requirement prose included) — informative only, never a verdict change; the human `— MODIFIED INTEGRITY —` section prints when a risk class is non-empty.
+docs/cli_cn.md:70:`--change` 运行是**变更收窄**的:verdict(exit 0/1)只判本 change 的 Requirement 块(场景全绿、无收窄范围内重复/无 ID 场景、无不可归属失败信号——无 ID 的失败、任何兄弟活 change 都不认领的失败 ID 照旧阻断,fail-closed);绑定到范围外场景的 red、或可归因于兄弟 change **完整解析** delta 的失败(仅其 ADDED/MODIFIED 块内场景可授予豁免),不阻断。同一次运行打印信息性 **store report**(全投影六类)——并行 change 各自独立变绿,历史缺口持续可见。`--change --json` 在 GREEN/GAPS 附 `storeReport`、`changeScope` 与 `modifiedIntegrity`(一切 ERROR 缺省);`--specs` 输出与之前 byte 级一致。`modifiedIntegrity` 报告每个 MODIFIED 块的替换保真性(retained/titleChanged/dropped/added/ambiguous 场景与丢失行,含 requirement 散文)——仅信息性,绝不改判;human 的 `— MODIFIED INTEGRITY —` 段在存在风险类时打印。
+
+codex
+# STEP5 implementation review v6 — modified-block-integrity
+
+## 结论
+
+IMPL-6 已正确修复，可更新为 `verified`。本轮未发现新的 spec-vs-code gap；此前 IMPL-1..6 与 MBI-1 均可关闭。
+
+## IMPL-6 复核
+
+`scanBlockStructure()` 现在对跨行 scenario delimiter 的 raw range 做了精确区分：
+
+- 构成 delimiter 的 raw fragments 继续排除；
+- 完整位于 closed fence span 内的非空 raw lines 被 prepend 到该 scenario body；
+- 随后的普通 body lines保持原始顺序；
+- line matching 使用 normalized text，报告继续返回 raw old line。
+
+Round-5 精确反例现在得到：
+
+```json
+{
+  "retained": [
+    {"id":"KV-01","title":"KV-01 one"}
+  ],
+  "titleChanged": [],
+  "dropped": [],
+  "added": [],
+  "ambiguous": [],
+  "missingLines": [
+    {"scenario":"KV-01","line":"fenced-old"}
+  ]
+}
+```
+
+扩展为多条 fenced lines 后，未变化行仍被 subsequence 消费，只有被替换的 `fenced-old` 被报告；delimiter fragments 没有产生假阳性。该行为同时满足：
+
+- state-A fence-stripped delimiter discovery；
+- fenced non-empty lines 参与 body comparison；
+- heading 本身不参与比较；
+- `missingLines` 保留旧侧 raw text。
+
+新增 AM-45 exact oracle 能区分旧实现与当前修补。
+
+## 最终 P8 checklist
+
+### Semantic faithfulness
+
+AM-43..47 与 SR-65..68 的实现路径均符合场景意图：
+
+- cardinality truth table、互斥分类与 ambiguous ordering；
+- normalized greedy subsequence 与 raw missing-line reporting；
+- requirement prose、closed/unclosed fence、inline fence、split heading及 fence-within-delimiter 边界；
+- rename-then-modify 与 repaired rerun capture；
+- verify fourth matcher segment 零 binding 污染；
+- archive matcher DI、warning degradation 与 preflight 后输出；
+- GREEN/GAPS presence、ERROR/`--specs` absence；
+- frozen fixture 的 retained=9、titleChanged=0、两条旧 THEN line。
+
+### Spec’d behavior and silent branches
+
+未发现仍未实现或被静默忽略的正式分支。历轮发现的 raw preservation、assembled-line truncation、repaired rename capture 与复杂 fence boundaries 均已有能够击穿旧实现的 regression oracle。
+
+### External-input report path
+
+human formatter 对 titles、lines、requirement names、file suffixes 与 ambiguous keys先执行 C0/DEL replacement，再对 assembled line 执行 state-A 120 UTF-16-unit cap。JSON 继续保留完整 raw text并由 `JSON.stringify()` 转义。
+
+### Guarantee claims
+
+实现结构继续满足：
+
+- report 不参与 verdict、exit 或 write bytes；
+- config-origin verify 保持 exactly two matcher batches；
+- `modifiedIntegrity` 在 GREEN/GAPS always present，在 ERROR 与 `--specs` absent；
+- archive integrity section 位于所有 preflight guards 后、RESULT/write-result lines 前。
+
+此前提出的 reportless differential baseline、完整 preflight failure table 与 warning full-string oracle仍可作为测试强化，但未发现相应实现偏差，不计 verdict。
+
+### Design fidelity
+
+G1–G3 的核心设计均已实现：
+
+- single-snapshot `modifiedBlocks`；
+- pure comparison helper；
+- fourth title segment；
+- bin-level matcher factory seam；
+- shared human formatter；
+- raw-boundary-aware state-A structure scan。
+
+文档方面仍建议把 CHANGELOG 的 `120-unit field truncation` 改为 assembled-line truncation，并在双语 archive CLI 段明确 warning degradation；这些属于非阻断性文档精度 advisory。
+
+只读 sandbox 下，纯 engine tests 与精确对抗样本可执行通过；依赖 `mkdtemp` 的集成测试受 `EROFS` 限制。该结果属于题面指定的 R2 artifact；完整环境证据为 318/318 GREEN、`verify --change` GREEN、`check --self` PASS。
+
+## Ledger delta
+
+| ID | Final status | 裁定 |
+|---|---|---|
+| MBI-1 | verified | 冻结 fixture 的正确人工推导为 retained=9、titleChanged=0、两条旧 THEN line。 |
+| IMPL-1 | verified | normalized matching 与 raw missing-line reporting 正确。 |
+| IMPL-2 | verified | assembled human lines 正确执行 state-A 120-unit truncation。 |
+| IMPL-3 | verified | repaired `RENAMED + MODIFIED` 保留 equal-text pair。 |
+| IMPL-4 | verified | inline closed fence 后暴露的 heading 正确映射。 |
+| IMPL-5 | verified | engine/archive 使用 verbatim state-A regex，split headings 与 archive ID pairing 正确。 |
+| IMPL-6 | verified | delimiter raw range 内的 fenced content 正确进入 scenario body并参与比较。 |
+
+VERDICT: no spec-vs-code gaps
+tokens used
+415,453
+# STEP5 implementation review v6 — modified-block-integrity
+
+## 结论
+
+IMPL-6 已正确修复，可更新为 `verified`。本轮未发现新的 spec-vs-code gap；此前 IMPL-1..6 与 MBI-1 均可关闭。
+
+## IMPL-6 复核
+
+`scanBlockStructure()` 现在对跨行 scenario delimiter 的 raw range 做了精确区分：
+
+- 构成 delimiter 的 raw fragments 继续排除；
+- 完整位于 closed fence span 内的非空 raw lines 被 prepend 到该 scenario body；
+- 随后的普通 body lines保持原始顺序；
+- line matching 使用 normalized text，报告继续返回 raw old line。
+
+Round-5 精确反例现在得到：
+
+```json
+{
+  "retained": [
+    {"id":"KV-01","title":"KV-01 one"}
+  ],
+  "titleChanged": [],
+  "dropped": [],
+  "added": [],
+  "ambiguous": [],
+  "missingLines": [
+    {"scenario":"KV-01","line":"fenced-old"}
+  ]
+}
+```
+
+扩展为多条 fenced lines 后，未变化行仍被 subsequence 消费，只有被替换的 `fenced-old` 被报告；delimiter fragments 没有产生假阳性。该行为同时满足：
+
+- state-A fence-stripped delimiter discovery；
+- fenced non-empty lines 参与 body comparison；
+- heading 本身不参与比较；
+- `missingLines` 保留旧侧 raw text。
+
+新增 AM-45 exact oracle 能区分旧实现与当前修补。
+
+## 最终 P8 checklist
+
+### Semantic faithfulness
+
+AM-43..47 与 SR-65..68 的实现路径均符合场景意图：
+
+- cardinality truth table、互斥分类与 ambiguous ordering；
+- normalized greedy subsequence 与 raw missing-line reporting；
+- requirement prose、closed/unclosed fence、inline fence、split heading及 fence-within-delimiter 边界；
+- rename-then-modify 与 repaired rerun capture；
+- verify fourth matcher segment 零 binding 污染；
+- archive matcher DI、warning degradation 与 preflight 后输出；
+- GREEN/GAPS presence、ERROR/`--specs` absence；
+- frozen fixture 的 retained=9、titleChanged=0、两条旧 THEN line。
+
+### Spec’d behavior and silent branches
+
+未发现仍未实现或被静默忽略的正式分支。历轮发现的 raw preservation、assembled-line truncation、repaired rename capture 与复杂 fence boundaries 均已有能够击穿旧实现的 regression oracle。
+
+### External-input report path
+
+human formatter 对 titles、lines、requirement names、file suffixes 与 ambiguous keys先执行 C0/DEL replacement，再对 assembled line 执行 state-A 120 UTF-16-unit cap。JSON 继续保留完整 raw text并由 `JSON.stringify()` 转义。
+
+### Guarantee claims
+
+实现结构继续满足：
+
+- report 不参与 verdict、exit 或 write bytes；
+- config-origin verify 保持 exactly two matcher batches；
+- `modifiedIntegrity` 在 GREEN/GAPS always present，在 ERROR 与 `--specs` absent；
+- archive integrity section 位于所有 preflight guards 后、RESULT/write-result lines 前。
+
+此前提出的 reportless differential baseline、完整 preflight failure table 与 warning full-string oracle仍可作为测试强化，但未发现相应实现偏差，不计 verdict。
+
+### Design fidelity
+
+G1–G3 的核心设计均已实现：
+
+- single-snapshot `modifiedBlocks`；
+- pure comparison helper；
+- fourth title segment；
+- bin-level matcher factory seam；
+- shared human formatter；
+- raw-boundary-aware state-A structure scan。
+
+文档方面仍建议把 CHANGELOG 的 `120-unit field truncation` 改为 assembled-line truncation，并在双语 archive CLI 段明确 warning degradation；这些属于非阻断性文档精度 advisory。
+
+只读 sandbox 下，纯 engine tests 与精确对抗样本可执行通过；依赖 `mkdtemp` 的集成测试受 `EROFS` 限制。该结果属于题面指定的 R2 artifact；完整环境证据为 318/318 GREEN、`verify --change` GREEN、`check --self` PASS。
+
+## Ledger delta
+
+| ID | Final status | 裁定 |
+|---|---|---|
+| MBI-1 | verified | 冻结 fixture 的正确人工推导为 retained=9、titleChanged=0、两条旧 THEN line。 |
+| IMPL-1 | verified | normalized matching 与 raw missing-line reporting 正确。 |
+| IMPL-2 | verified | assembled human lines 正确执行 state-A 120-unit truncation。 |
+| IMPL-3 | verified | repaired `RENAMED + MODIFIED` 保留 equal-text pair。 |
+| IMPL-4 | verified | inline closed fence 后暴露的 heading 正确映射。 |
+| IMPL-5 | verified | engine/archive 使用 verbatim state-A regex，split headings 与 archive ID pairing 正确。 |
+| IMPL-6 | verified | delimiter raw range 内的 fenced content 正确进入 scenario body并参与比较。 |
+
+VERDICT: no spec-vs-code gaps

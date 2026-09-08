@@ -1,0 +1,1218 @@
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f5310-28e4-7103-9c14-1c1181180f9b
+--------
+user
+You are the STEP0 requirement reviewer (P1) for change config-contract in this repo (apriori-cli 4.0.1, branch v4). Context: fourth GPT-5.6 review P0-2, reproduced: a fenced code block containing "| cas | optional |" grants the CAS waiver while the EFFECTIVE "| cas | required |" outside the fence is ignored — archive overwrites the store exit 0; HTML-comment rows also match; duplicates are silent first-wins. Root cause: configCas/configTestCmd run a first-match regex over the whole markdown. Review apriori/changes/config-contract/requirement/req-v1.md against lib/resolve.js configCas, lib/spec-runner.js configTestCmd, templates/process-config.md, and every other config consumer you find (grep process-config across lib/):
+1. The parser contract: fence + HTML-comment skipping semantics precise enough (nested/unterminated fences? comment spanning table rows?); the duplicate policy (same-value tolerated, different-value conflict fail-closed) sound; unknown keys ignored — right?
+2. Fail-closed semantics: on conflict/illegal value the requirement says archive/gate report a CONFIG ERROR and no waiver applies — exit codes specified? does verify's configTestCmd fallback need the same treatment (bad config -> which behavior)?
+3. --no-cas supremacy over broken config: stated; any hole?
+4. Discoverability section (usage text, template row): complete? testable?
+5. Anything bundled that should split, or missing consumers (language field? gate's test-cmd fallback?).
+[Scope] requirement defects only; style = advisory. READ-ONLY sandbox (R2).
+[Output] Chinese prose, English IDs; LEDGER DELTA (new rows CC-n); exactly one verdict line.
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-12T04:07:03.838812Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-12T04:07:04.023406Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-12T04:07:04.357212Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-12T04:07:04.912277Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-12T04:07:05.845684Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-12T04:07:07.614514Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-12T04:07:10.876263Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: pe2AvnjzIhBz
+codex
+我会先读 req-v1，再 grep 所有 process-config 消费点，按“需求是否足够精确/完整”审，不把实现缺陷本身算进 verdict。
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' apriori/changes/config-contract/requirement/req-v1.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "rg -n \"process-config|configCas|configTestCmd|language|test-cmd|cas \\| optional|cas\\s*\\|\" lib templates test apriori/changes/config-contract -S" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' lib/spec-runner.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,220p' lib/resolve.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,180p' templates/process-config.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 136ms:
+# 需求:config-contract —— process-config 是配置,不是全文 regex (v1)
+
+> change: `config-contract` · tier: medium · track: harden
+> lineage: v4;不合并 main/v1/v3
+> 来源:GPT-5.6 四审 P0-2 + P2-4,豁免绕过已本机复现(fenced 块内的 `| cas | optional |` 授予豁免,围栏外真正的 `| cas | required |` 反被忽略)。
+
+## 目标
+
+`process-config.md` 的读取目前是对整份 Markdown 做首匹配 regex(`configCas`、`configTestCmd` 同病)。fenced 代码块、HTML 注释里的示例行会被当成生效配置;重复/冲突行"第一行获胜"且无声。本变更引入**一个共享的结构化配置读取器**,所有配置消费方走同一入口。
+
+## 行为需求
+
+1. **共享解析器 `readConfig(cwd)`**(建议落在 lib/resolve.js 或独立小模块):
+   - 逐行扫描,**跳过 fenced 代码块**(``` 开闭,与 spec-runner 的 fence 语义一致)与 **HTML 注释**(`<!-- … -->`,含多行);
+   - 只识别**有效配置行**:`| key | value |` 形状的表行(表头/分隔行按现状忽略);
+   - 产出 `{values: Map<key,value>, problems: string[]}`:**同 key 重复且值不同 → problem(冲突)**;重复同值 → 取一并记 note 级 problem?(决策:同值重复容忍,异值冲突 fail-closed);
+   - 解析器纯函数、可单测。
+2. **消费方切换 + fail-closed 语义**:
+   - `configCas`:走 readConfig;`cas` 键值非 `optional`/`required` → 配置错误;**存在冲突或非法值时,一切豁免judgment fail-closed 为"无豁免"且消费面(archive/gate)报配置错误**——坏配置绝不放行写入;
+   - `configTestCmd`:同解析器(fence 内的 test-cmd 示例不再生效);
+   - `language` 等其他消费方(以实测为准全库 grep)统一切换。
+   - `--no-cas` flag 保持显式最高优先级(flag 在,配置坏也可明确豁免——flag 本身就是人的显式意志)。
+3. **可发现性(P2-4)**:
+   - `archive`/`gate` 的 usage 文本列出 `--no-cas`;
+   - `templates/process-config.md` 增加带注释的 `cas` 行示例(默认 required 语义,注明 optional 的含义);
+   - init 出的新项目因此天然可发现。
+4. **回归钉子**:复现输入(fenced optional + 生效 required)必须:archive 拒绝、gate C7 拒绝;反向排列(fenced required + 生效 optional)必须豁免生效;HTML 注释内的行无效;异值重复 → 消费面配置错误。
+
+## 非目标
+
+- YAML/TOML 等新配置格式;process-config.md 的表格形状不变。
+- 配置项白名单校验(未知 key 忽略如旧——只有已消费 key 的值域才校验)。
+
+## 约束
+
+- 零依赖;既有测试不回归;gate/archive/verify 的既有 C7/警告语义除"读取更准"外不变。
+
+## 开放问题
+
+- 无。
+
+ succeeded in 139ms:
+'use strict';
+/*
+ * spec-runner — bind spec scenario IDs to test runs, report per-scenario red/green.
+ * VISION endgame, weak form: "spec IS the test suite". Zero deps — pure Node stdlib.
+ * Coupling surface is tiny and language-agnostic: markdown scenarios + a TAP-emitting test command.
+ *
+ * FAIL-CLOSED: a deterministic gate must refuse to say GREEN when its inputs are missing,
+ * its instrument misbehaved, or its evidence is ambiguous. Vacuous success is a bug.
+ * Exit codes: 0 = GREEN · 1 = spec/test gaps · 2 = invocation or infrastructure error.
+ */
+const fs = require('fs');
+const path = require('path');
+const { spawnSync } = require('child_process');
+// merge-family helpers shared with archive (3.1 projection); archive-merge never requires spec-runner
+const am = require('./archive-merge');
+const { withStrict } = require('./args');
+
+const DEFAULT_ID = '[A-Z]+-\\d+';
+const SCENARIO_RE = /^####\s+Scenario:\s+(.*)$/gm;
+// TAP result line, directive split off separately (# SKIP / # TODO)
+const TAP_RE = /^(ok|not ok)\s+\d+\s+-\s+(.*)$/gm;
+
+// Leading scenario/test ID. The match must end at a word boundary: `XX-01b` is NOT `XX-01` —
+// silently truncating would merge two different scenarios into one binding.
+function leadId(text, idRe) {
+  const m = text.trim().match(idRe);
+  if (!m || m.index !== 0) return null;
+  const next = text.trim()[m[0].length];
+  if (next !== undefined && /[A-Za-z0-9_]/.test(next)) return null;
+  return m[0];
+}
+
+function stripFences(text) { return text.replace(/```[\s\S]*?```/g, ''); }
+
+function mdFiles(target) {
+  if (!fs.existsSync(target)) return [];
+  const st = fs.statSync(target);
+  if (st.isFile()) return [target];
+  const out = [];
+  for (const e of fs.readdirSync(target, { withFileTypes: true })) {
+    const p = path.join(target, e.name);
+    if (e.isDirectory()) out.push(...mdFiles(p));
+    else if (e.name.endsWith('.md')) out.push(p);
+  }
+  return out.sort();
+}
+
+// Shared scenario scan over one text. Fenced content is documentation; scenarios inside
+// DEPRECATED requirement blocks (the marker REMOVED injects) are excluded in every form —
+// they are neither demanded nor listed, and their lingering tests become ORPHAN.
+function scanText(text, label, idRe, acc) {
+  const clean = am.stripDeprecatedBlocks(stripFences(text));
+  let m;
+  SCENARIO_RE.lastIndex = 0;
+  while ((m = SCENARIO_RE.exec(clean)) !== null) {
+    const id = leadId(m[1], idRe);
+    if (id) {
+      if (!acc.byId.has(id)) { acc.byId.set(id, []); acc.idFiles.set(id, []); }
+      acc.byId.get(id).push(m[1]);
+      acc.idFiles.get(id).push(label);
+    } else acc.unidentified.push([label, m[1]]);
+  }
+}
+
+function dupsOf(acc) {
+  return [...acc.byId.entries()].filter(([, titles]) => titles.length > 1)
+    .map(([id]) => ({ id, files: [...new Set(acc.idFiles.get(id))] }));
+}
+
+// Collect scenarios from spec files.
+// → { byId, unidentified:[[file,title]], files, missingTargets:[], duplicates:[{id,files}] }
+function collectScenarios(specTargets, idRe) {
+  const acc = { byId: new Map(), idFiles: new Map(), unidentified: [] };
+  const missingTargets = specTargets.filter((t) => !fs.existsSync(t));
+  const files = [...new Set(specTargets.flatMap(mdFiles))].sort();
+  for (const f of files) scanText(fs.readFileSync(f, 'utf8'), f, idRe, acc);
+  return { byId: acc.byId, unidentified: acc.unidentified, files, missingTargets, duplicates: dupsOf(acc) };
+}
+
+// Same collection over in-memory texts (the projection path) — label = store-relative suffix.
+function collectScenariosFromTexts(texts, idRe) {
+  const acc = { byId: new Map(), idFiles: new Map(), unidentified: [] };
+  for (const [label, text] of texts) scanText(text, label, idRe, acc);
+  return { byId: acc.byId, unidentified: acc.unidentified, files: [...texts.keys()], missingTargets: [], duplicates: dupsOf(acc) };
+}
+
+// the TAP plan (1..N, optionally with a # SKIP/# TODO directive) and result tokens,
+// matched per top-level line — indented subtest/YAML lines are invisible by the ^ anchor
+const PLAN_LINE_RE = /^1\.\.(\d+)\s*(?:#.*)?$/;
+const POINT_LINE_RE = /^(?:ok|not ok)(?:\s|$)/;
+const POINT_NUM_RE = /^(?:ok|not ok)\s+(\d+)(?:\s|$)/;   // complete numeric token only — `ok 1abc` stays unnumbered
+
+// Parse TAP text → { results: Map<id,{pass,fail,skip}>, untagged: [], bailout: string|null,
+//                    plans: number[], points: number, dupNumbers: number[] }
+// A # SKIP / # TODO directive is neither pass nor fail — a skipped test proves nothing.
+// plans/points/dupNumbers feed the plan-is-a-checked-promise infra guards (SR-26..31).
+function parseTap(out, idRe) {
+  const results = new Map();
+  const untagged = [];
+  let untaggedFails = 0;
+  const unattributedFailures = [];   // column-0 not-ok points that no scenario owns (SR-33/34)
+  const bm = out.match(/^Bail out!(.*)$/m);
+  const bailout = bm ? bm[0].trim() : null;
+  const plans = [];
+  let points = 0;
+  const numSeen = new Set(), dupSet = new Set();
+  for (const raw of out.split('\n')) {
+    const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw;
+    const p = PLAN_LINE_RE.exec(line);
+    if (p) { plans.push(Number(p[1])); continue; }
+    if (!POINT_LINE_RE.test(line)) continue;
+    points++;
+    // the unattributed-failure classifier shares POINT_LINE_RE's shape (SR-35: `not ok:` stays a non-point)
+    if (/^not ok(?:\s|$)/.test(line)) {
+      const rest = line.slice('not ok'.length);
+      const directive = /#\s*(SKIP|TODO)\b/i.test(rest);
+      const strict = /^not ok\s+\d+\s+-\s+(.*)$/.exec(line);
+      const attributed = strict !== null && leadId(strict[1].replace(/#\s*(SKIP|TODO)\b.*$/i, '').trim(), idRe) !== null;
+      if (!directive && !attributed) unattributedFailures.push(line);
+    }
+    const n = POINT_NUM_RE.exec(line);
+    if (n) {
+      const num = Number(n[1]);
+      if (numSeen.has(num)) dupSet.add(num); else numSeen.add(num);
+    }
+  }
+  const dupNumbers = [...dupSet].sort((a, b) => a - b);
+  let m;
+  TAP_RE.lastIndex = 0;
+  while ((m = TAP_RE.exec(out)) !== null) {
+    const hash = m[2].search(/#\s*(SKIP|TODO)\b/i);
+    const name = hash >= 0 ? m[2].slice(0, hash).trim() : m[2];
+    const directive = hash >= 0;
+    const id = leadId(name, idRe);
+    if (id === null) { untagged.push(name); continue; }
+    const cur = results.get(id) || { pass: 0, fail: 0, skip: 0 };
+    if (directive) cur.skip++;
+    else cur[m[1] === 'ok' ? 'pass' : 'fail']++;
+    results.set(id, cur);
+  }
+  untaggedFails = unattributedFailures.length;   // kept exported and compatible — doctor consumes it
+  return { results, untagged, untaggedFails, unattributedFailures, bailout, plans, points, dupNumbers };
+}
+
+// true when the test command produced output but not a single TAP result line was parsed —
+// almost always means the runner used a human reporter (node: add --test-reporter=tap)
+function zeroTapParsed(out, results, untagged, unattributedFailures = []) {
+  if (results.size > 0 || untagged.length > 0 || unattributedFailures.length > 0) return false;
+  if (!out.trim()) return false;
+  // a TAP version line or plan (1..N) proves the reporter IS TAP — an empty suite is not a reporter problem
+  if (/^TAP version \d+|^1\.\.\d+/m.test(out)) return false;
+  return true;
+}
+
+function runTestCommand(cmd, cwd) {
+  const r = spawnSync(cmd, { shell: true, cwd, encoding: 'utf8' });
+  return {
+    out: (r.stdout || '') + '\n' + (r.stderr || ''),
+    status: r.status,               // null when killed by signal
+    signal: r.signal || null,
+    error: r.error ? String(r.error.message || r.error) : null,
+  };
+}
+
+// Pure evaluation: cross-reference scenarios vs results → verdict object.
+// A scenario whose only results are skips is UNBOUND — skips prove nothing.
+function evaluate(byId, unidentified, results, unattributedFailures = []) {
+  const specIds = [...byId.keys()].sort();
+  const boundGreen = [], boundRed = [], unbound = [], orphan = [];
+  for (const id of specIds) {
+    const r = results.get(id);
+    if (!r || (r.pass === 0 && r.fail === 0)) unbound.push(id);
+    else if (r.fail === 0) boundGreen.push(id);
+    else boundRed.push(id);
+  }
+  for (const id of [...results.keys()].sort()) if (!byId.has(id)) orphan.push(id);
+  const unattributed = unattributedFailures;
+  const clean = !boundRed.length && !unbound.length && !orphan.length && !unidentified.length && !unattributed.length;
+  return { boundGreen, boundRed, unbound, orphan, unidentified, unattributed, clean };
+}
+
+// Fail-closed guard: reasons this run cannot be trusted regardless of the TAP picture.
+// Returns [] when the run is trustworthy.
+function infraErrors(run) {
+  const errs = [];
+  for (const t of run.missingTargets) errs.push(`spec target does not exist: ${t}`);
+  if (!run.missingTargets.length && run.fileCount === 0)
+    errs.push('no spec files found under the given targets — nothing to verify');
+  if (run.fileCount > 0 && run.scenarioCount === 0)
+    errs.push('spec files contain zero scenarios — nothing to verify');
+  if (run.exec.error) errs.push(`test command failed to spawn: ${run.exec.error}`);
+  if (run.exec.signal) errs.push(`test command was killed by signal ${run.exec.signal}`);
+  if (run.bailout) errs.push(`test run aborted: ${run.bailout}`);
+  if (run.noTap)
+    errs.push('test command produced output but ZERO TAP results were parsed — the command is probably not emitting TAP (node test runner: add --test-reporter=tap)');
+  // the TAP plan is a checked promise — defensive defaults keep legacy run shapes
+  // (direct callers of this exported helper) valid; only verify-created runs carry the fields
+  const plans = run.plans || [], points = run.points || 0, dupNumbers = run.dupNumbers || [];
+  if (plans.length > 1)
+    errs.push(`multiple TAP plans in one run (${plans.map((n) => `1..${n}`).join(', ')}) — cannot attribute test points to plans; run one TAP stream per verify (split the test command)`);
+  else if (plans.length === 1 && plans[0] !== points)
+    errs.push(`TAP plan declares ${plans[0]} test point(s) but ${points} were parsed — output truncated or garbled; refusing to trust this run`);
+  else if (plans.length === 1 && dupNumbers.length)
+    errs.push(`duplicate TAP test-point number(s): ${dupNumbers.join(', ')}`);
+  if (run.exec.status !== null && run.exec.status !== 0 && run.failCount === 0)
+    errs.push(`test command exited with status ${run.exec.status} but no parsed TAP failure explains it — the TAP picture is incomplete or truncated; refusing to trust this run`);
+  return errs;
+}
+
+function formatReport(v, results, fileCount, extras = {}) {
+  const lines = [];
+  const specCount = v.boundGreen.length + v.boundRed.length + v.unbound.length;
+  const tagged = [...results.values()].reduce((s, r) => s + r.pass + r.fail, 0);
+  const skipped = [...results.values()].reduce((s, r) => s + (r.skip || 0), 0);
+  lines.push(`specs: ${fileCount} file(s), ${specCount} identified scenario(s)`);
+  lines.push(`tests: ${tagged} tagged result(s)${skipped ? `, ${skipped} skipped (not counted)` : ''}\n`);
+  const groups = [['BOUND-GREEN', v.boundGreen], ['BOUND-RED', v.boundRed],
+                 ['UNBOUND (scenario, no test)', v.unbound], ['ORPHAN (test, no scenario)', v.orphan]];
+  for (const [label, items] of groups) {
+    if (!items.length) continue;
+    lines.push(`${label === 'BOUND-GREEN' ? '✓' : '✗'} ${label}: ${items.length}`);
+    for (const id of items) {
+      const r = results.get(id);
+      lines.push(`    ${id}${r ? `  ${r.pass}p/${r.fail}f${r.skip ? `/${r.skip}s` : ''}` : ''}`);
+    }
+  }
+  if (v.unattributed && v.unattributed.length) {
+    lines.push(`✗ UNATTRIBUTED FAILURES (not ok without a scenario ID): ${v.unattributed.length}`);
+    for (const raw of v.unattributed.slice(0, 20))
+      lines.push(`    ${raw.length > 120 ? raw.slice(0, 119) + '…' : raw}`);
+    if (v.unattributed.length > 20) lines.push(`    … and ${v.unattributed.length - 20} more`);
+  }
+  if (v.unidentified.length) {
+    lines.push(`✗ UNIDENTIFIED (scenario, no ID — unbindable): ${v.unidentified.length}`);
+    for (const [f, t] of v.unidentified) lines.push(`    ${path.basename(f)}: ${t.slice(0, 60)}`);
+  }
+  if (extras.duplicates && extras.duplicates.length) {
+    lines.push(`✗ DUPLICATE scenario IDs (ambiguous binding): ${extras.duplicates.length}`);
+    for (const d of extras.duplicates) lines.push(`    ${d.id}: ${d.files.map((f) => path.basename(f)).join(', ')}`);
+  }
+  const errs = extras.errors || [];
+  lines.push('\nRESULT: ' + (errs.length ? 'ERROR — run not trustworthy (see stderr)'
+    : (v.clean && !(extras.duplicates || []).length ? 'GREEN — spec is the test suite' : 'GAPS')));
+  return lines.join('\n');
+}
+
+// Projection inputs for `verify --change` (all failure classes → run.errors, exit 2).
+// Roots resolve against cwd exactly as `apriori status` resolves change dirs.
+function buildChangeProjection(change, cwd) {
+  const changesDir = path.resolve(cwd, 'apriori', 'changes');
+  const storeRoot = path.resolve(cwd, 'apriori', 'specs');
+  const projection = { change, modules: [], conflicts: [], unstampedMutations: [] };
+  const d = am.discoverDeltas(changesDir, change);
+  if (d.errors.length) return { projection, errors: d.errors, texts: null };
+  const p = am.buildProjection(storeRoot, d.files, change);
+  projection.modules = p.modules;
+  projection.conflicts = p.conflicts;
+  projection.unstampedMutations = p.unstampedMutations;      // WARN grade — cli prints, verdict untouched
+  projection.notes = p.notes;
+  const errors = [...p.validation, ...p.hygiene, ...p.casMismatches];
+
+ succeeded in 120ms:
+'use strict';
+/*
+ * Shared change-resolution helpers — one home so gate, status, and archive-merge
+ * can all use them without a require cycle (this module requires no lib sibling).
+ */
+const fs = require('fs');
+const path = require('path');
+
+const CHANGE_NAME_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;   // bare kebab-case — same rule as `apriori new`
+
+// realpath containment (own copy — importing archive-merge's would create a cycle)
+function containsReal(root, target) {
+  let realRoot;
+  try { realRoot = fs.realpathSync(root); } catch { return false; }
+  let real;
+  try { real = fs.realpathSync(target); } catch { return false; }
+  return real === realRoot || real.startsWith(realRoot + path.sep);
+}
+
+// stage resolution: in-flight first, else newest archived (exact stamp regex, lexicographic last).
+// NAME IS NOT VALIDATED HERE — callers gate on CHANGE_NAME_RE first (a raw name reaches the regex below).
+function resolveChange(cwd, name) {
+  const changesDir = path.join(cwd, 'apriori', 'changes');
+  const inflight = path.join(changesDir, name);
+  if (fs.existsSync(inflight)) {
+    if (!containsReal(changesDir, inflight)) return { error: `change path escapes ${changesDir}` };
+    return { stage: 'in-flight', dir: inflight };
+  }
+  const archRoot = path.join(changesDir, 'archive');
+  if (fs.existsSync(archRoot)) {
+    const re = new RegExp(`^\\d{4}-\\d{2}-\\d{2}T\\d{4}-${name}$`);
+    // candidates must be DIRECTORIES (following symlinks) — a stray file with a stamp name is ignored
+    const hits = fs.readdirSync(archRoot).filter((b) => {
+      if (!re.test(b)) return false;
+      try { return fs.statSync(path.join(archRoot, b)).isDirectory(); } catch { return false; }
+    }).sort();
+    if (hits.length) {
+      const dir = path.join(archRoot, hits[hits.length - 1]);
+      // containment against the ARCHIVE root — a symlink pointing elsewhere under changes/ is still an escape
+      if (!containsReal(archRoot, dir)) return { error: `archived change path escapes ${archRoot}` };
+      return { stage: 'archived', dir };
+    }
+  }
+  return { error: `change '${name}' found neither at ${inflight} nor under ${archRoot}` };
+}
+
+// process-config `| cas | optional |` row — the project-level twin of --no-cas (flag wins)
+function configCas(cwd) {
+  const p = path.join(cwd, 'apriori', 'process-config.md');
+  if (!fs.existsSync(p)) return null;
+  const m = fs.readFileSync(p, 'utf8').match(/^\|\s*cas\s*\|\s*([^|]+?)\s*\|/mi);
+  return m ? m[1].trim().split(/\s+/)[0].toLowerCase() : null;
+}
+
+// pre-4.0 scattered roots — existence-level probes only (lstat, never followed or read through)
+const LEGACY_ROOTS = ['requirement', 'spike', 'apriori/review', 'apriori/design', 'apriori/explore'];
+function legacyRoots(root) {
+  const hits = [];
+  for (const rel of LEGACY_ROOTS) {
+    try { fs.lstatSync(path.join(root, ...rel.split('/'))); hits.push(rel + '/'); } catch { /* absent */ }
+  }
+  return hits;
+}
+
+// file-level read guard: a path the tool is about to read must be a REGULAR file
+// contained (realpath) within its bundle — returns null when safe, else the defect
+function fileReadDefect(bundleDir, p) {
+  let st;
+  try { st = fs.lstatSync(p); } catch { return `missing: ${p}`; }
+  if (st.isSymbolicLink()) return `symlink: ${p}`;
+  if (!st.isFile()) return `not a regular file: ${p}`;
+  if (!containsReal(bundleDir, p)) return `escapes the change dir: ${p}`;
+  return null;
+}
+
+module.exports = { CHANGE_NAME_RE, containsReal, resolveChange, configCas, legacyRoots, fileReadDefect };
+
+ succeeded in 149ms:
+# process-config — supervision parameters (HUMAN-HELD)
+
+<!-- Lives at `apriori/process-config.md` (scaffolded there by `apriori init`).
+     Governance: this file is owned by a human; the agent READS it and never writes it (RUNBOOK §1 R3).
+     Missing file → the defaults printed in RUNBOOK §4 apply.
+     Invalid value (< 1, or unparsable) → the default applies, with a warning.
+     Every review-stage cap has a hard floor of 1 — no review stage ever goes to zero. -->
+
+| Field | Value | Legal range | Default |
+|---|---|---|---|
+| language | auto | auto (match the human) / any language name, e.g. `中文`, `English` | auto |
+| step0-cap | 5 | ≥ 1 | 5 |
+| step2-cap | 4 | ≥ 1 | 4 |
+| step5-cap | 25 | ≥ 1 | 25 |
+| step6-cap | 4 | ≥ 1 | 4 |
+| spike-cap | 10 | ≥ 1 | 10 |
+| extraction-review-cap | 2 | ≥ 1 | 2 |
+| shrink-state | none | none / <stage>: <new-cap> entries, human-approved only | none |
+| rejected-ratio-guard | 50% | 0–100%; above it, shrinking is blocked | 50% |
+| shrink-proposal-freq | 5 | ≥ 1 — a proposal every N changes | 5 |
+| post-merge-review-freq | 1 in 5 | ≥ 1 in N merged changes (sampling rate) | 1 in 5 |
+
+<!-- shrink-state is written only after a human gate approves a shrink proposal (RUNBOOK §6),
+     e.g. `shrink-state: step2-cap: 2 (approved 2026-07-04, gates log)`.
+     A post-merge re-review that finds a high-risk miss restores the previous cap. -->
+
+ succeeded in 192ms:
+lib/resolve.js:47:// process-config `| cas | optional |` row — the project-level twin of --no-cas (flag wins)
+lib/resolve.js:48:function configCas(cwd) {
+lib/resolve.js:49:  const p = path.join(cwd, 'apriori', 'process-config.md');
+lib/resolve.js:76:module.exports = { CHANGE_NAME_RE, containsReal, resolveChange, configCas, legacyRoots, fileReadDefect };
+lib/init.js:81:  // 1. apriori/ root: runbook + process-config (never clobbered) + working dirs
+lib/init.js:83:  seed('apriori/process-config.md', path.join(TEMPLATES, 'process-config.md'));
+lib/init.js:88:  // pin a language and/or persist a test command in the scaffolded config (only on a freshly-created config)
+lib/init.js:89:  if ((opts.language || opts.testCmd) && !dry) {
+lib/init.js:90:    const cfg = path.join(root, 'apriori', 'process-config.md');
+lib/init.js:91:    const created = actions.some((a) => a.file === 'apriori/process-config.md' && a.action === 'created');
+lib/init.js:94:      if (opts.language) body = body.replace(/(\| language \| )auto( \|)/, `$1${opts.language}$2`);
+lib/init.js:95:      if (opts.testCmd)  // consumed by `apriori verify` as the default when --test-cmd is omitted
+lib/init.js:96:        body = body.replace(/^(\| language \|.*)$/m, `$1\n| test-cmd | ${opts.testCmd} | any shell command emitting TAP — \`apriori verify\`'s default | (none) |`);
+lib/init.js:131:  const a = { tools: null, testCmd: null, yes: false, language: null };
+lib/init.js:135:    else if (k === '--test-cmd') a.testCmd = argv[++i];
+lib/init.js:136:    else if (k === '--language') a.language = argv[++i];
+lib/init.js:260:const USAGE = 'usage: apriori init [--tools <a,b,...>] [--test-cmd "<cmd>"] [--language <lang>] [--yes]';
+lib/init.js:264:    flags: { '--tools': 'value', '--test-cmd': 'value', '--language': 'value', '--yes': 'flag' } }, async (f) => {
+lib/init.js:266:      testCmd: f['--test-cmd'] || null, language: f['--language'] || null, yes: !!f['--yes'] };
+lib/init.js:277:      report(scaffold(root, tools, { testCmd: a.testCmd, language: a.language }));
+lib/update.js:6: * User-owned is NEVER touched: process-config.md, specs/, changes/, review/, truth/,
+lib/update.js:110:    console.log('  (user-owned files — process-config.md, specs/, changes/, rules files — are never touched.)');
+lib/archive-merge.js:14:const { configCas } = require('./resolve');
+lib/archive-merge.js:195:  if (configCas(cwd) === 'optional') return 'process-config cas: optional';
+lib/archive-merge.js:432:        casDenials.push(`${unstampedWarning(sfx)} — denied by default; waive with --no-cas or a | cas | optional | config row`);
+lib/archive-merge.js:572:        console.error(`archive: ${unstampedWarning(a.delta)} — denied by default; waive with --no-cas or a | cas | optional | config row`);
+lib/doctor.js:12:const { collectScenarios, parseTap, zeroTapParsed, runTestCommand, configTestCmd, DEFAULT_ID } = require('./spec-runner');
+lib/doctor.js:84:  else checks.push({ id: 'D2', status: 'ok', detail: 'scaffold complete' + (fs.existsSync(path.join(ap, 'process-config.md')) ? '' : ' (no process-config.md — optional, defaults apply)') });
+lib/doctor.js:118:  const testCmd = opts.testCmd || configTestCmd(cwd);
+lib/doctor.js:119:  if (!testCmd) checks.push({ id: 'D5', status: 'n/a', detail: 'no test command configured — pass --test-cmd or set one via apriori init --test-cmd' });
+lib/doctor.js:191:const USAGE = 'usage: apriori doctor [--test-cmd "<cmd>"] [--no-run] [--cwd <dir>] [--json]';
+lib/doctor.js:195:    flags: { '--test-cmd': 'value', '--no-run': 'flag', '--cwd': 'value', '--json': 'flag' },
+lib/doctor.js:197:    const a = { testCmd: f['--test-cmd'] || null, noRun: !!f['--no-run'], cwd: f['--cwd'] || process.cwd(), json: !!f['--json'] };
+lib/gate.js:11:const { verify, configTestCmd } = require('./spec-runner');
+lib/gate.js:13:const { resolveChange, configCas } = require('./resolve');
+lib/gate.js:220:  if (configCas(cwd) === 'optional') return { id: 'C7', status: 'pass', detail: 'waived (process-config cas: optional)' };
+lib/gate.js:224:    detail: `unstamped mutation delta(s): ${um.join(', ')} — run: apriori stamp <store-file> (or waive with --no-cas / a process-config cas: optional row)` };
+lib/gate.js:231:  if (!opts.change) return err(res, 'usage: apriori gate --change <name> [--test-cmd "<cmd>"] [--cwd <dir>] [--json]');
+lib/gate.js:241:  const testCmd = opts.testCmd || configTestCmd(cwd);
+lib/gate.js:242:  if (!testCmd) return err(res, 'no test command: pass --test-cmd or add a test-cmd row to apriori/process-config.md');
+lib/gate.js:272:const USAGE = 'usage: apriori gate --change <name> [--test-cmd "<cmd>"] [--cwd <dir>] [--json]';
+lib/gate.js:276:    flags: { '--change': 'value', '--test-cmd': 'value', '--cwd': 'value', '--json': 'flag', '--no-cas': 'flag' },
+lib/gate.js:278:    const a = { change: f['--change'] || null, testCmd: f['--test-cmd'] || null, cwd: f['--cwd'] || process.cwd(), json: !!f['--json'], noCas: !!f['--no-cas'] };
+lib/spec-runner.js:5: * Coupling surface is tiny and language-agnostic: markdown scenarios + a TAP-emitting test command.
+lib/spec-runner.js:327:// Fallback test command from apriori/process-config.md's `test-cmd` row (written by init --test-cmd)
+lib/spec-runner.js:328:function configTestCmd(cwd) {
+lib/spec-runner.js:329:  const p = path.join(cwd || '.', 'apriori', 'process-config.md');
+lib/spec-runner.js:331:  const m = fs.readFileSync(p, 'utf8').match(/^\|\s*test-cmd\s*\|\s*(.+?)\s*\|/m);
+lib/spec-runner.js:335:const USAGE = 'usage: apriori verify --specs <dir...> --test-cmd "<cmd>" [--id-pattern <re>] [--cwd <dir>] [--json]\n   or: apriori verify --change <name> --test-cmd "<cmd>" [--id-pattern <re>] [--cwd <dir>] [--json]\n(--test-cmd may be omitted when apriori/process-config.md has a test-cmd row)';
+lib/spec-runner.js:339:    flags: { '--specs': 'multi', '--change': 'value', '--test-cmd': 'value', '--id-pattern': 'value', '--cwd': 'value', '--json': 'flag' } }, (f) => {
+lib/spec-runner.js:340:    const a = { specs: f['--specs'] || [], change: f['--change'] || null, testCmd: f['--test-cmd'] || null,
+lib/spec-runner.js:346:    if (!a.testCmd) a.testCmd = configTestCmd(a.cwd);   // init --test-cmd persists it there
+lib/spec-runner.js:362:  configTestCmd, cli, DEFAULT_ID };
+test/update.test.js:52:  const cfgPath = path.join(root, 'apriori', 'process-config.md');
+test/update.test.js:53:  fs.writeFileSync(cfgPath, '| language | 中文 |  # human-held, hands off\n');
+test/update.test.js:69:  assert.strictEqual(fs.readFileSync(cfgPath, 'utf8'), '| language | 中文 |  # human-held, hands off\n');
+test/update.test.js:202:    JSON.stringify({ version: 1, files: { 'apriori/process-config.md': 'sha256:' + 'a'.repeat(64) } }),  // not a refresh target
+test/init.test.js:26:test('IN-03 non-interactive via flags parses tools/test-cmd/yes/language', () => {
+test/init.test.js:27:  const a = init.parseArgs(['--tools', 'claude,cursor', '--test-cmd', 'npm test', '--yes', '--language', '中文']);
+test/init.test.js:31:  assert.strictEqual(a.language, '中文');
+test/init.test.js:32:  assert.strictEqual(init.parseArgs([]).language, null);   // default: no pin (auto)
+test/init.test.js:129:test('IN-09 --language pins a language in the scaffolded config; default is auto', () => {
+test/init.test.js:131:  init.scaffold(withLang, ['claude'], { language: '中文' });
+test/init.test.js:132:  assert.match(read(withLang, 'apriori/process-config.md'), /\| language \| 中文 \|/);
+test/init.test.js:135:  assert.match(read(noLang, 'apriori/process-config.md'), /\| language \| auto \|/);   // default
+test/init.test.js:139:  fs.writeFileSync(path.join(existing, 'apriori', 'process-config.md'), 'MINE\n');
+test/init.test.js:140:  init.scaffold(existing, ['claude'], { language: '中文' });
+test/init.test.js:141:  assert.strictEqual(read(existing, 'apriori/process-config.md'), 'MINE\n');
+test/init.test.js:156:test('IN-12 --test-cmd persists into the fresh config and verify uses it as default', () => {
+test/init.test.js:159:  const cfg = read(root, 'apriori/process-config.md');
+test/init.test.js:160:  assert.match(cfg, /\| test-cmd \| node -e "console\.log\(1\)" \|/);
+test/init.test.js:162:  const { configTestCmd } = require('../lib/spec-runner');
+test/init.test.js:163:  assert.strictEqual(configTestCmd(root), 'node -e "console.log(1)"');
+test/init.test.js:167:  fs.writeFileSync(path.join(existing, 'apriori', 'process-config.md'), 'MINE\n');
+test/init.test.js:169:  assert.strictEqual(read(existing, 'apriori/process-config.md'), 'MINE\n');
+test/protocol.test.js:48:test('PR-06 a configurable language governs prose; machine tokens stay English', () => {
+test/protocol.test.js:49:  // the runbook documents the language field + the "match the human" default
+test/protocol.test.js:51:  assert.match(EN, /match the language the human is using/);
+test/protocol.test.js:59:  // and the scaffolded config carries the language field (default auto)
+test/protocol.test.js:60:  const cfg = fs.readFileSync(path.join(ROOT, 'templates', 'process-config.md'), 'utf8');
+test/protocol.test.js:61:  assert.match(cfg, /\| language \| auto \|/);
+test/protocol.test.js:159:  // hard gate: no durable artifacts before approval, stated in plain language
+test/protocol.test.js:162:  assert.match(en, /plain-language sentence/);
+test/protocol.test.js:183:test('PR-08 proposal.md is a STEP2 artifact (table + P4 + STEP3 packet, both languages)', () => {
+test/protocol.test.js:267:test('PR: P4 produces tasks.md as a STEP2 output (both languages)', () => {
+test/protocol.test.js:275:test('PR-13 UI render-and-look drives spec boundaries, not the happy path (P7, both languages)', () => {
+test/protocol.test.js:303:  // runbook §0 names the two doors (both languages)
+test/protocol.test.js:333:test('PR-16 legacy-project clarity clauses (both languages)', () => {
+test/protocol.test.js:458:  // concepts §7.0 vocabulary strings updated in both languages
+test/archive-change.test.js:602:  assert.match(r.stdout + r.stderr, /waived.*--no-cas|--no-cas.*waiv/i);
+test/archive-change.test.js:607:    'apriori/process-config.md': '| cas | optional |\n',
+test/archive-change.test.js:611:  assert.match(r2.stdout + r2.stderr, /waived.*process-config|process-config.*waiv/i);
+test/archive-change.test.js:615:    'apriori/process-config.md': '| cas | optional |\n',
+test/archive-change.test.js:624:  const v = run(['verify', '--change', 'c', '--test-cmd',
+test/doctor.test.js:36:    'apriori/process-config.md': '| language | auto |\n',
+test/doctor.test.js:84:  // missing process-config is NOT a finding
+test/doctor.test.js:86:  fs.rmSync(path.join(root2, 'apriori/process-config.md'));
+test/doctor.test.js:169:  const root = healthy();   // healthy() has no test-cmd row in its config
+test/doctor.test.js:172:  assert.match(none.detail, /--test-cmd|init/);
+test/doctor.test.js:241:    [['doctor', '--test-cmd', TAP_OK, '--json'], healthyRoot, 0, 'HEALTHY'],
+test/args.test.js:31:    'apriori/process-config.md': `| language | auto |\n| test-cmd | node -e "require('fs').writeFileSync('SENTINEL','x');console.log('ok 1 - XA-01')" | x | (none) |\n`,
+test/args.test.js:78:  const r1 = run(['verify', '--test-cmd']);
+test/args.test.js:80:  assert.match(r1.stderr, /--test-cmd/);
+test/args.test.js:81:  const r2 = run(['verify', '--specs', '--test-cmd', 't']);
+test/args.test.js:93:  const r = run(['verify', '--specs', 'a', '--specs', 'b', '--test-cmd', tap], root);
+test/args.test.js:108:  const r = run(['verify', '--specs', 'a', '-x', '--test-cmd', 't']);
+templates/process-config.md:1:# process-config — supervision parameters (HUMAN-HELD)
+templates/process-config.md:3:<!-- Lives at `apriori/process-config.md` (scaffolded there by `apriori init`).
+templates/process-config.md:11:| language | auto | auto (match the human) / any language name, e.g. `中文`, `English` | auto |
+test/gate.test.js:190:  const bad = run(['gate', '--change', '../evil', '--test-cmd', TAP_OK], root);
+test/gate.test.js:299:    [['gate', '--change', 'c', '--test-cmd', TAP_OK, '--json'], 0, 'PASS', 'in-flight'],
+test/gate.test.js:300:    [['gate', '--change', 'nope', '--test-cmd', TAP_OK, '--json'], 2, 'ERROR', null],
+test/gate.test.js:301:    [['gate', '--change', '../evil', '--test-cmd', TAP_OK, '--json'], 2, 'ERROR', null],
+test/gate.test.js:315:  const b = run(['gate', '--change', 'c', '--test-cmd', TAP_OK, '--json'], root);
+test/gate.test.js:320:  const nofs = run(['gate', '--change', 'c', '--test-cmd', TAP_OK, '--json'], root);
+test/gate.test.js:328:  const vu = run(['gate', '--change', 'd', '--test-cmd', TAP_OK, '--json'], bad);
+test/gate.test.js:473:  // config row | cas | optional | → waived naming the config
+test/gate.test.js:474:  const rootC = modProject({ 'apriori/process-config.md': '| Field | Value |\n|---|---|\n| cas | optional |\n' });
+test/gate.test.js:477:  assert.match(wc.detail, /process-config/);
+test/gate.test.js:479:  const rootR = modProject({ 'apriori/process-config.md': '| Field | Value |\n|---|---|\n| cas | required |\n' });
+test/gate.test.js:496:  const cli = run(['gate', '--change', 'c', '--no-cas', '--test-cmd', MOD_TAP], modProject());
+test/spec-runner.test.js:113:  try { code = cli(['--specs', file, '--test-cmd', tapCmd('ok 1 - XX-01 a', 'ok 2 - XX-02 b'), '--json']); }
+test/spec-runner.test.js:122:  try { code2 = cli(['--specs', file, '--test-cmd', tapCmd('not ok 1 - XX-01 a'), '--json']); }
+test/spec-runner.test.js:130:  try { code3 = cli(['--specs', file, '--test-cmd', 'node -e "process.exit(7)"', '--json']); }
+test/spec-runner.test.js:163:    '--specs', dir, '--test-cmd', tapCmd('not tap at all')], { encoding: 'utf8' });
+test/spec-runner.test.js:176:  const r1 = runCli(['--specs', file, '--test-cmd', `node -e "console.log('ok 1 - XX-01 a');process.exit(7)"`]);
+test/spec-runner.test.js:181:  const r2 = runCli(['--specs', file, '--test-cmd', `node -e "console.log('not ok 1 - XX-01 a');process.exit(1)"`]);
+test/spec-runner.test.js:184:  const r3 = runCli(['--specs', file, '--test-cmd', 'definitely-not-a-real-command-xyz']);
+test/spec-runner.test.js:193:  const r4 = runCli(['--specs', file, '--test-cmd', 'node -e "process.exit(7)"']);
+test/spec-runner.test.js:200:  const miss = runCli(['--specs', path.join(os.tmpdir(), 'no-such-dir-xyz'), '--test-cmd', 'node -e ""']);
+test/spec-runner.test.js:205:  const zf = runCli(['--specs', empty, '--test-cmd', 'node -e ""']);
+test/spec-runner.test.js:210:  const zs = runCli(['--specs', file, '--test-cmd', 'node -e ""']);
+test/spec-runner.test.js:220:  const dup = runCli(['--specs', d, '--test-cmd', `node -e "console.log('ok 1 - XX-01 x')"`]);
+test/spec-runner.test.js:241:  const skip = runCli(['--specs', file, '--test-cmd', `node -e "console.log('ok 1 - XX-01 a # SKIP flaky')"`]);
+test/spec-runner.test.js:248:  const bail = runCli(['--specs', file, '--test-cmd', `node -e "console.log('ok 1 - XX-01 a');console.log('Bail out! db down')"`]);
+test/spec-runner.test.js:253:test('SR-15 --test-cmd falls back to the test-cmd row in apriori/process-config.md', () => {
+test/spec-runner.test.js:254:  const { configTestCmd } = require('../lib/spec-runner');
+test/spec-runner.test.js:257:  fs.writeFileSync(path.join(root, 'apriori', 'process-config.md'),
+test/spec-runner.test.js:258:    '| Field | Value |\n|---|---|\n| test-cmd | node -e "console.log(\'ok 1 - XX-01 a\')" |\n');
+test/spec-runner.test.js:259:  assert.match(configTestCmd(root), /^node -e/);
+test/spec-runner.test.js:260:  assert.strictEqual(configTestCmd(os.tmpdir()), null);      // no config → null
+test/spec-runner.test.js:261:  // CLI end-to-end: omit --test-cmd, cwd carries the config
+test/spec-runner.test.js:289:  const r = runCli(['--specs', file, '--test-cmd', tapCmd('TAP version 13', '1..2', 'ok 1 - XX-01 a')]);
+test/spec-runner.test.js:301:  const r = runCli(['--specs', file, '--test-cmd', tapCmd('1..2', 'ok 1 - XX-01 a', 'ok 1 - XX-02 b')]);
+test/spec-runner.test.js:309:  const r = runCli(['--specs', file, '--test-cmd',
+test/spec-runner.test.js:323:  const r = runCli(['--specs', file, '--test-cmd', tapCmd('1..2', 'ok 1 - XX-01 a', 'ok', 'ok: note')]);
+test/spec-runner.test.js:331:  const r1 = runCli(['--specs', file, '--test-cmd', tapCmd('ok 1 - XX-01 a')]);
+test/spec-runner.test.js:334:  const r2 = runCli(['--specs', file, '--test-cmd', tapCmd('TAP version 13', '1..0 # SKIP no backend')]);
+test/spec-runner.test.js:348:  const v = spawnSync('node', [BIN, 'verify', '--change', 'c', '--test-cmd', badTap], { encoding: 'utf8', cwd: root });
+test/spec-runner.test.js:351:  const g = spawnSync('node', [BIN, 'gate', '--change', 'c', '--test-cmd', badTap], { encoding: 'utf8', cwd: root });
+test/spec-runner.test.js:360:  const r = runCli(['--specs', file, '--test-cmd',
+test/spec-runner.test.js:371:    const r = runCli(['--specs', file, '--test-cmd',
+test/spec-runner.test.js:377:  const ok = runCli(['--specs', file, '--test-cmd',
+test/spec-runner.test.js:382:  const only = runCli(['--specs', file, '--test-cmd', `node -e "console.log('not ok')"`]);
+test/spec-runner.test.js:397:  const r = runCli(['--specs', file, '--test-cmd', `node -e "${lines}"`]);
+test/spec-runner.test.js:406:  const r = runCli(['--specs', file, '--test-cmd',
+test/spec-runner.test.js:412:  const b = runCli(['--specs', file, '--test-cmd',
+test/spec-runner.test.js:423:  const r = runCli(['--specs', file, '--test-cmd', `node -e "${mk}"`, '--json']);
+test/spec-runner.test.js:430:  const h = runCli(['--specs', file, '--test-cmd', `node -e "${mk}"`]);
+test/spec-runner.test.js:438:  const g = runCli(['--specs', file, '--test-cmd', `node -e "console.log('ok 1 - XX-01 a')"`, '--json']);
+apriori/changes/config-contract/flow-state.md:4:track-rationale: process-config 结构化解析,fence/注释/重复 fail-closed
+test/spec-runner-projection.test.js:92:  const r = jsonCli(['--change', 'c', '--cwd', root, '--test-cmd', tapCmd('ok 1 - XA-01 a'), '--json']);
+test/spec-runner-projection.test.js:123:  try { code = cli(['--change', 'c', '--specs', 'apriori/specs', '--cwd', root, '--test-cmd', 'x']); }
+test/spec-runner-projection.test.js:136:  const ok = jsonCli(['--change', 'c', '--cwd', okRoot, '--test-cmd', tapCmd('ok 1 - XA-01 a', 'ok 2 - XB-01 b'), '--json']);
+test/spec-runner-projection.test.js:145:  const cf = jsonCli(['--change', 'c', '--cwd', cfRoot, '--test-cmd', tapCmd('ok 1 - XA-01 a'), '--json']);
+test/spec-runner-projection.test.js:152:  const nf = jsonCli(['--change', 'zzz', '--cwd', nfRoot, '--test-cmd', tapCmd('ok 1 - XA-01 a'), '--json']);
+test/spec-runner-projection.test.js:158:  const plain = jsonCli(['--specs', path.join(okRoot, 'apriori/specs'), '--test-cmd', tapCmd('ok 1 - XA-01 a'), '--json']);
+test/spec-runner-projection.test.js:170:  const r = jsonCli(['--change', 'c', '--cwd', root, '--test-cmd', tapCmd('ok 1 - XA-01 a'), '--json']);
+test/spec-runner-projection.test.js:199:  const r = ceSpawn('node', [CE_BIN, 'verify', '--change', 'c', '--test-cmd', tap, '--json'], { cwd: root, encoding: 'utf8' });
+test/spec-runner-projection.test.js:211:  const r2 = ceSpawn('node', [CE_BIN, 'verify', '--change', 'c', '--test-cmd', tap2, '--json'], { cwd: root2, encoding: 'utf8' });
+apriori/changes/config-contract/requirement/req-v1.md:1:# 需求:config-contract —— process-config 是配置,不是全文 regex (v1)
+apriori/changes/config-contract/requirement/req-v1.md:5:> 来源:GPT-5.6 四审 P0-2 + P2-4,豁免绕过已本机复现(fenced 块内的 `| cas | optional |` 授予豁免,围栏外真正的 `| cas | required |` 反被忽略)。
+apriori/changes/config-contract/requirement/req-v1.md:9:`process-config.md` 的读取目前是对整份 Markdown 做首匹配 regex(`configCas`、`configTestCmd` 同病)。fenced 代码块、HTML 注释里的示例行会被当成生效配置;重复/冲突行"第一行获胜"且无声。本变更引入**一个共享的结构化配置读取器**,所有配置消费方走同一入口。
+apriori/changes/config-contract/requirement/req-v1.md:19:   - `configCas`:走 readConfig;`cas` 键值非 `optional`/`required` → 配置错误;**存在冲突或非法值时,一切豁免judgment fail-closed 为"无豁免"且消费面(archive/gate)报配置错误**——坏配置绝不放行写入;
+apriori/changes/config-contract/requirement/req-v1.md:20:   - `configTestCmd`:同解析器(fence 内的 test-cmd 示例不再生效);
+apriori/changes/config-contract/requirement/req-v1.md:21:   - `language` 等其他消费方(以实测为准全库 grep)统一切换。
+apriori/changes/config-contract/requirement/req-v1.md:25:   - `templates/process-config.md` 增加带注释的 `cas` 行示例(默认 required 语义,注明 optional 的含义);
+apriori/changes/config-contract/requirement/req-v1.md:31:- YAML/TOML 等新配置格式;process-config.md 的表格形状不变。
+
+codex
+初步看到 req-v1 覆盖了 cas/test-cmd/language，但“其他配置消费方”里还有 init 写入模板、doctor/gate/verify fallback 的 exit 语义。现在继续精读 configTestCmd 调用结果如何表达错误，确认 fail-closed 要求是否足够可实现/可测。
+exec
+/usr/bin/zsh -lc "sed -n '260,380p' lib/spec-runner.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "rg -n \"step0-cap|step2-cap|step5-cap|step6-cap|spike-cap|extraction-review-cap|shrink-state|rejected-ratio|post-merge|language \\|\" -S ." in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '200,300p' lib/gate.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '100,135p' lib/doctor.js" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 156ms:
+  const errors = [...p.validation, ...p.hygiene, ...p.casMismatches];
+  if (p.conflicts.length) errors.push(`projection has ${p.conflicts.length} merge conflict(s) — no trustworthy projection: ${p.conflicts.join('; ')}`);
+  return { projection, errors, texts: errors.length ? null : p.texts };
+}
+
+// Full verify run. opts: { specs:[], change, testCmd, idPattern, cwd }
+function verify(opts) {
+  const idRe = new RegExp(opts.idPattern || DEFAULT_ID);
+  let collected, projection = null;
+  if (opts.change) {
+    const b = buildChangeProjection(opts.change, opts.cwd || '.');
+    projection = b.projection;
+    if (!b.texts) {
+      // failed projection: fail closed WITHOUT running any tests
+      const verdict = evaluate(new Map(), [], new Map(), []);
+      return { verdict, results: new Map(), fileCount: 0, failCount: 0, scenarioCount: 0,
+        missingTargets: [], duplicates: [], bailout: null, noTap: false,
+        exec: { status: null, signal: null, error: null }, errors: b.errors, projection };
+    }
+    collected = collectScenariosFromTexts(b.texts, idRe);
+  } else {
+    collected = collectScenarios(opts.specs, idRe);
+  }
+  const { byId, unidentified, files, missingTargets, duplicates } = collected;
+  const exec = runTestCommand(opts.testCmd, opts.cwd || '.');
+  const { results, untagged, untaggedFails, unattributedFailures, bailout, plans, points, dupNumbers } = parseTap(exec.out, idRe);
+  const verdict = evaluate(byId, unidentified, results, unattributedFailures);
+  const failCount = [...results.values()].reduce((s, r) => s + r.fail, 0) + untaggedFails;
+  const run = {
+    verdict, results, fileCount: files.length, failCount,
+    scenarioCount: byId.size + unidentified.length,
+    missingTargets, duplicates, bailout, plans, points, dupNumbers,
+    noTap: zeroTapParsed(exec.out, results, untagged, unattributedFailures),
+    exec: { status: exec.status, signal: exec.signal, error: exec.error },
+  };
+  if (projection) run.projection = projection;
+  run.errors = infraErrors(run);
+  return run;
+}
+
+// machine-consumable shape for a verify run
+function verifyJson(run) {
+  const { verdict: v, results } = run;
+  const clean = v.clean && run.duplicates.length === 0 && run.errors.length === 0;
+  const json = projectionless(run, clean);
+  if (run.projection) json.projection = run.projection;   // ONLY --change runs carry this field
+  return json;
+}
+
+function projectionless(run, clean) {
+  const { verdict: v, results } = run;
+  return {
+    clean,
+    result: run.errors.length ? 'ERROR' : (clean ? 'GREEN' : 'GAPS'),
+    errors: run.errors,
+    specFiles: run.fileCount,
+    exec: run.exec,
+    duplicates: run.duplicates,
+    boundGreen: v.boundGreen.map((id) => ({ id, ...results.get(id) })),
+    boundRed: v.boundRed.map((id) => ({ id, ...results.get(id) })),
+    unbound: v.unbound,
+    orphan: v.orphan.map((id) => ({ id, ...results.get(id) })),
+    unidentified: v.unidentified.map(([file, title]) => ({ file, title })),
+    unattributedFailures: { count: (v.unattributed || []).length, lines: v.unattributed || [] },
+  };
+}
+
+// Fallback test command from apriori/process-config.md's `test-cmd` row (written by init --test-cmd)
+function configTestCmd(cwd) {
+  const p = path.join(cwd || '.', 'apriori', 'process-config.md');
+  if (!fs.existsSync(p)) return null;
+  const m = fs.readFileSync(p, 'utf8').match(/^\|\s*test-cmd\s*\|\s*(.+?)\s*\|/m);
+  return m ? m[1] : null;
+}
+
+const USAGE = 'usage: apriori verify --specs <dir...> --test-cmd "<cmd>" [--id-pattern <re>] [--cwd <dir>] [--json]\n   or: apriori verify --change <name> --test-cmd "<cmd>" [--id-pattern <re>] [--cwd <dir>] [--json]\n(--test-cmd may be omitted when apriori/process-config.md has a test-cmd row)';
+
+function cli(argv) {
+  return withStrict(argv, { sub: 'verify', usage: USAGE, positionals: 0,
+    flags: { '--specs': 'multi', '--change': 'value', '--test-cmd': 'value', '--id-pattern': 'value', '--cwd': 'value', '--json': 'flag' } }, (f) => {
+    const a = { specs: f['--specs'] || [], change: f['--change'] || null, testCmd: f['--test-cmd'] || null,
+      idPattern: f['--id-pattern'] || DEFAULT_ID, cwd: f['--cwd'] || '.', json: !!f['--json'] };
+    if (a.change && a.specs.length) {
+      console.error('verify: --specs cannot be combined with --change — the projection defines the spec set');
+      return 2;
+    }
+    if (!a.testCmd) a.testCmd = configTestCmd(a.cwd);   // init --test-cmd persists it there
+    if ((!a.specs.length && !a.change) || !a.testCmd) { console.error(USAGE); return 2; }
+    const run = verify(a);
+    if (run.projection)
+      for (const sfx of run.projection.unstampedMutations || []) console.error('warning: ' + am.unstampedWarning(sfx));
+    if (run.errors.length && !a.json)
+      for (const e of run.errors) console.error('error: ' + e);
+    console.log(a.json ? JSON.stringify(verifyJson(run), null, 2)
+                       : formatReport(run.verdict, run.results, run.fileCount, { duplicates: run.duplicates, errors: run.errors }));
+    if (run.errors.length) return 2;
+    return run.verdict.clean && run.duplicates.length === 0 ? 0 : 1;
+  });
+}
+
+module.exports = { leadId, stripFences, collectScenarios, collectScenariosFromTexts, parseTap,
+  zeroTapParsed, runTestCommand, evaluate, infraErrors, formatReport, verifyJson, verify,
+  configTestCmd, cli, DEFAULT_ID };
+
+ succeeded in 128ms:
+function checkBinding(cwd, name, stage, testCmd) {
+  const run = stage === 'in-flight'
+    ? verify({ change: name, cwd, testCmd })
+    : verify({ specs: [path.join(cwd, 'apriori', 'specs')], cwd, testCmd });
+  if (run.errors.length) return { infra: run.errors };
+  const v = run.verdict;
+  const clean = v.clean && run.duplicates.length === 0;
+  if (clean) return { check: { id: 'C1', status: 'pass', detail: `verify GREEN (${stage})` }, projection: run.projection };
+  const parts = [];
+  for (const [label, arr] of [['red', v.boundRed], ['unbound', v.unbound], ['orphan', v.orphan], ['unidentified', v.unidentified], ['unattributed-failures', v.unattributed || []], ['duplicate-IDs', run.duplicates]])
+    if (arr.length) parts.push(`${arr.length} ${label}`);
+  return { check: { id: 'C1', status: 'blocked', detail: `verify GAPS: ${parts.join(', ')}` }, projection: run.projection };
+}
+
+
+// C7: unstamped mutation deltas are denied by default — a waiver is always visible (GT-16).
+// Archived stage: the deltas are already merged; there is nothing left to stamp-check.
+function checkCas(projection, stage, noCas, cwd) {
+  if (stage === 'archived') return { id: 'C7', status: 'n/a', detail: 'deltas already merged' };
+  if (noCas) return { id: 'C7', status: 'pass', detail: 'waived (--no-cas)' };
+  if (configCas(cwd) === 'optional') return { id: 'C7', status: 'pass', detail: 'waived (process-config cas: optional)' };
+  const um = (projection && projection.unstampedMutations) || [];
+  if (!um.length) return { id: 'C7', status: 'pass', detail: 'every mutation delta is stamped' };
+  return { id: 'C7', status: 'blocked',
+    detail: `unstamped mutation delta(s): ${um.join(', ')} — run: apriori stamp <store-file> (or waive with --no-cas / a process-config cas: optional row)` };
+}
+
+// The whole evaluation. → { code, stage, checks, result, blocked, errors }
+function runGate(opts) {
+  const cwd = opts.cwd || process.cwd();
+  const res = { code: 0, stage: null, checks: [], result: 'PASS', blocked: 0, errors: [], change: opts.change || null };
+  if (!opts.change) return err(res, 'usage: apriori gate --change <name> [--test-cmd "<cmd>"] [--cwd <dir>] [--json]');
+  if (!CHANGE_NAME_RE.test(opts.change)) return err(res, `invalid change name '${opts.change}' — bare kebab-case only`);
+  const loc = resolveChange(cwd, opts.change);
+  if (loc.error) return err(res, loc.error);
+  res.stage = loc.stage;
+  const flowPath = path.join(loc.dir, 'flow-state.md');
+  if (!fs.existsSync(flowPath)) return err(res, `no readable flow-state.md at ${flowPath} — tier-aware checks are impossible`);
+  let state;
+  try { state = parseFlowState(fs.readFileSync(flowPath, 'utf8')); }
+  catch (e) { return err(res, `flow-state unreadable: ${e.message}`); }
+  const testCmd = opts.testCmd || configTestCmd(cwd);
+  if (!testCmd) return err(res, 'no test command: pass --test-cmd or add a test-cmd row to apriori/process-config.md');
+
+  const b = checkBinding(cwd, opts.change, loc.stage, testCmd);
+  if (b.infra) { for (const e of b.infra) res.errors.push(`verify: ${e}`); res.result = 'ERROR'; res.code = 2; return res; }
+  res.checks.push(b.check);
+  const tier = TIER_ENUM.includes(state.tier) ? state.tier : null;
+  res.checks.push(checkTasks(loc.dir, tier));
+  res.checks.push(checkFlowState(state, opts.change));
+  const rdDefect = reviewDirDefect(loc.dir);
+  if (rdDefect) {
+    res.checks.push({ id: 'C4', status: 'blocked', detail: rdDefect });
+    res.checks.push({ id: 'C5', status: 'blocked', detail: rdDefect });
+  } else {
+    res.checks.push(checkLedger(tier, loc.stage, loc.dir));
+    res.checks.push(checkEvidence(loc.dir));
+  }
+
+  res.checks.push(checkKb(cwd, loc.dir));
+  res.checks.push(checkCas(b.projection, loc.stage, !!opts.noCas, cwd));
+
+  res.blocked = res.checks.filter((c) => c.status === 'blocked').length;
+  res.result = res.blocked ? 'BLOCKED' : 'PASS';
+  res.code = res.blocked ? 1 : 0;
+  return res;
+}
+
+function toJson(res) {
+  return { change: res.change, stage: res.stage, checks: res.checks, result: res.result, blocked: res.blocked, errors: res.errors };
+}
+
+const USAGE = 'usage: apriori gate --change <name> [--test-cmd "<cmd>"] [--cwd <dir>] [--json]';
+
+function cli(argv) {
+  return withStrict(argv, { sub: 'gate', usage: USAGE, positionals: 0,
+    flags: { '--change': 'value', '--test-cmd': 'value', '--cwd': 'value', '--json': 'flag', '--no-cas': 'flag' },
+    jsonError: (m) => JSON.stringify({ change: null, stage: null, checks: [], result: 'ERROR', blocked: 0, errors: [m] }, null, 2) }, (f) => {
+    const a = { change: f['--change'] || null, testCmd: f['--test-cmd'] || null, cwd: f['--cwd'] || process.cwd(), json: !!f['--json'], noCas: !!f['--no-cas'] };
+    const res = runGate(a);
+    if (a.json) { console.log(JSON.stringify(toJson(res), null, 2)); return res.code; }
+    for (const e of res.errors) console.error('gate: ' + e);
+    const mark = { pass: '✓', blocked: '✗', 'n/a': '–' };
+    for (const c of res.checks) console.log(`${mark[c.status]} ${c.id} ${c.status === 'blocked' ? 'BLOCKED — ' : ''}${c.detail}`);
+    if (res.code !== 2) console.log(res.code === 0 ? `\nGATE: PASS — ${CAVEAT}` : `\nGATE: BLOCKED (${res.blocked} item(s))`);
+    return res.code;
+  });
+}
+
+module.exports = { runGate, resolveChange, classifyStatus, cli };
+
+ succeeded in 139ms:
+    let broken = 0;
+    for (const key of detected) {
+      const t = TOOLS[key];
+      const rules = path.join(cwd, t.rules);
+      const rulesText = readIfFile(rules);
+      if (rulesText === null || !rulesText.includes('apriori/runbook.md')) {
+        checks.push({ id: 'D4', status: 'finding', detail: `${t.name}: ${t.rules} ${rulesText !== null ? 'lost its runbook pointer' : (fs.existsSync(rules) ? 'is not a regular readable file' : 'is missing')}`, fix: 'apriori init' });
+        broken++;
+      }
+      if (t.command && !isFile(path.join(cwd, t.command))) {
+        checks.push({ id: 'D4', status: 'finding', detail: `${t.name}: command file ${t.command} is missing`, fix: 'apriori init' });
+        broken++;
+      }
+    }
+    if (!broken) checks.push({ id: 'D4', status: 'ok', detail: `pointers intact for: ${detected.join(', ')}` });
+  }
+
+  // D5 — TAP probe (the one declared side effect; --no-run skips)
+  const testCmd = opts.testCmd || configTestCmd(cwd);
+  if (!testCmd) checks.push({ id: 'D5', status: 'n/a', detail: 'no test command configured — pass --test-cmd or set one via apriori init --test-cmd' });
+  else if (opts.noRun) checks.push({ id: 'D5', status: 'n/a', detail: 'probe skipped (--no-run)' });
+  else checks.push(classifyProbe(runTestCommand(testCmd, cwd)));
+
+  // D6 — store health (no test run; default ID pattern only)
+  const specsDir = path.join(ap, 'specs');
+  if (!fs.existsSync(specsDir)) checks.push({ id: 'D6', status: 'n/a', detail: 'no store dir — see D2' });
+  else {
+    const { byId, unidentified, files, duplicates } = collectScenarios([specsDir], new RegExp(DEFAULT_ID));
+    if (!files.length || (byId.size === 0 && unidentified.length === 0))
+      checks.push({ id: 'D6', status: 'n/a', detail: 'empty store — normal for a new project' });
+    else {
+      let bad = 0;
+      if (unidentified.length) { checks.push({ id: 'D6', status: 'finding', detail: `scenario(s) without a bindable ${DEFAULT_ID} ID: ${unidentified.map(([, t]) => t.slice(0, 40)).join(' · ')}`, fix: 'add leading IDs' }); bad++; }
+      if (duplicates.length) { checks.push({ id: 'D6', status: 'finding', detail: `duplicate scenario IDs: ${duplicates.map((d) => d.id).join(', ')}`, fix: 'deduplicate IDs' }); bad++; }
+      if (!bad) checks.push({ id: 'D6', status: 'ok', detail: `${byId.size} scenario(s), all bindable, no duplicates` });
+    }
+
+ succeeded in 395ms:
+./RUNBOOK.md:201:### STEP0 — requirement refinement · adversarial loop · cap: `step0-cap` (default 5)
+./RUNBOOK.md:210:1. **Spike (bounded):** prototype freely under `changes/<change>/spike/`; cap: `spike-cap` (default 10) turns; exit = every intent-card question answered. Cap hit → **gate ⑤**.
+./RUNBOOK.md:212:3. **P12 — extraction review (heterogeneous, R2):** cap: `extraction-review-cap` (default 2). Verdict line `VERDICT: extraction accepted` → step 4. `VERDICT: extraction rejected` + unfaithful extraction → redo P11; `VERDICT: extraction rejected` + intent hypothesis falsified → back to SPIKE, or `ABANDONED` (archive the intent card + findings; log in the ledger).
+./RUNBOOK.md:230:- **Research-spike variant** (vague-but-tripwired changes, §2): probe code is allowed under `changes/<change>/spike/` — the explore track's full isolation rules apply — capped by `spike-cap` (default 10); findings land as a "research conclusions" appendix to the gap report. P3 carries the matching variant clause.
+./RUNBOOK.md:233:### STEP2 — propose · adversarial loop · cap: `step2-cap` (default 4)
+./RUNBOOK.md:247:### STEP5 — apply · cap: `step5-cap` (default 25)
+./RUNBOOK.md:294:- **Advisory findings (scope discipline):** only gaps affecting **correctness, security, or the stated requirements** enter as formal rows; everything else the reviewer labels `advisory`. Labeling is the **reviewer's exclusive call** — the producer may never downgrade an open row to advisory. Per-item advisory lists live in the review doc; the ledger takes **one batch row per round** (`advisory batch acknowledged (n items)`), terminal state `advisory-acked` — the "record verbatim" rule (R2) governs the reviewer's delta *content*, while the row *shape* is always normalized to this batch form, so a reviewer that free-forms its advisory rows is normalized, not copied literally; "ignoring" advisories means no per-item handling — the batch row still lands. A reviewer may later **upgrade** an advisory to open (with a reason, new row tagged `upgraded-from-advisory`): it counts in the data pack's reopened statistic but does **not** by itself trip gate ⑤ (only a closed formal ID re-reopening does). **Correctness and security findings can never be advisory.** Mislabel handling: sampled at STEP3 (Medium+), gate ④, or the pre-merge PR review (Trivial); a real gap found mislabeled → upgrade + log; one that slips past merge counts as a post-merge miss (triggers cap restoration, §6).
+./RUNBOOK.md:338:Probe code is allowed under changes/<change>/spike/ (explore-track isolation rules apply), capped by spike-cap;
+./RUNBOOK.md:472:Cap: extraction-review-cap (default 2). Rejected + unfaithful extraction → producer redoes P11;
+./RUNBOOK.md:508:/goal "Goal: apriori/changes/<change>/requirement/req-final.md exists and the latest review pass reports 'VERDICT: no major issues'. Cap: step0-cap rounds (default 5).
+./RUNBOOK.md:520:/goal "Goal: apriori/changes/<change>/ has SPEC-DOC+DESIGN-DOC and the latest review verdict line is 'VERDICT: no major issues, ready to proceed to execution'. Cap: step2-cap rounds (default 4).
+./RUNBOOK.md:530:/goal "Goal — ALL must hold: `npm test` exits 0; lint/static analysis green (where configured); every scenario ID in apriori/changes/<change>/specs/ appears in at least one test name (list any missing IDs); every item in apriori/changes/<change>/tasks.md is [x]; (UI projects only) the Playwright E2E suite passes and screenshot diffs are within threshold; AND a consistency review by a DIFFERENT model (the P8 prompt) reports 'VERDICT: no spec-vs-code gaps'. Cap: step5-cap turns (default 25).
+./RUNBOOK.md:538:/goal "Goal: the change is archived (`apriori archive` merges the delta specs into the living store apriori/specs/) AND the KB file for module <module> reflects this change's new/changed facts with a refreshed source-commit stamp. Cap: step6-cap turns (default 4).
+./RUNBOOK.md:545:**Shrink governance (the metabolism rule).** Every N changes (default 5, `shrink-proposal-freq`) the agent **reports — never applies** — a shrink/expand proposal whose data pack MUST contain: verified count; rejected count (with sampled reasons); reopened-ID count (including `upgraded-from-advisory` rows); advisory ratio (monitoring only — never a decision threshold); total wall-clock per change and per review stage (derived from the state file's timestamps; wall-clock includes human-gate waits — note this so cost curves aren't misread; missing timestamps → `n/a`, never estimated). The rejected ratio for `rejected-ratio-guard` (default 50%) counts **formal findings only — advisories are excluded from both numerator and denominator** (so relabeling can't dilute the guard). Shrinking a review stage is a **human gate decision**, blocked outright when the guard trips or the change class is tripwired (shared state / migration / security / production data). Shrinking means lowering a stage's round cap — **floor 1; no stage ever reaches zero** — and shrunk review rounds can never be traded for fewer deterministic checks: **you may shrink review rounds, you may not substitute them for lint, tests or traceability**. Post-merge re-review (sampling rate `post-merge-review-freq`, default 1 in 5 merged changes) finding ≥1 high-risk miss — including a real gap that had been mislabeled advisory — → restore the stage's previous cap, logged the same way. Beware both directions: producers can zero the metric by rejecting findings (that's what the guard is for); reviewers can inflate it by careless verifies (which merely delays shrinking).
+./RUNBOOK_cn.md:197:### STEP0 —— 需求精细化 · 对抗循环 · 上限:`step0-cap`(默认 5)
+./RUNBOOK_cn.md:206:1. **spike(有界):**在 `changes/<change>/spike/` 下自由做原型;上限:`spike-cap`(默认 10)轮;退出=意图卡问题逐条有答案。触顶 → **闸口 ⑤**。
+./RUNBOOK_cn.md:208:3. **P12 —— 提取评审(异构,R2):**上限:`extraction-review-cap`(默认 2)。结论行 `VERDICT: extraction accepted` → 第 4 步;`VERDICT: extraction rejected` + 提取不忠实 → 重跑 P11;`VERDICT: extraction rejected` + 意图假设被证伪 → 回 SPIKE,或 `ABANDONED`(归档意图卡与结论;记台账)。
+./RUNBOOK_cn.md:226:- **调研 spike 变体**(模糊但触绊线的变更,§2):允许在 `changes/<change>/spike/` 下写探针代码——探索轨的全部隔离规则适用——上限 `spike-cap`(默认 10);结论作为 gap 报告的"调研结论"附录。P3 带对应变体条款。
+./RUNBOOK_cn.md:229:### STEP2 —— propose · 对抗循环 · 上限:`step2-cap`(默认 4)
+./RUNBOOK_cn.md:243:### STEP5 —— apply · 上限:`step5-cap`(默认 25)
+./RUNBOOK_cn.md:290:- **advisory(范围纪律):**只有影响**正确性、安全或既定需求**的缺口才立正式行;其余由评审方标 `advisory`。标注权**评审方独占**——生产方永远不得把 open 行降级为 advisory。逐条 advisory 只存于评审文档;台账每轮只落**一行批量行**(`advisory batch acknowledged (n 条)`),终态 `advisory-acked`——"原文代录"(R2)约束的是评审方增量的*内容*,而行的*形态*一律归一为这个批量形式,所以评审方自创格式的 advisory 行按归一处理、不逐字照抄;"忽略"=不逐条处理,批量行仍落。评审方可在后续轮把 advisory **升级为 open**(须给理由,新行标 `upgraded-from-advisory`):计入数据包的 reopened 统计,但**不单独触发闸口⑤**(⑤仍只由已闭合正式 ID 复发触发)。**正确性与安全类发现永远不得标 advisory。**误标处置:STEP3(Medium+)、闸口④、或合并前 PR 评审(Trivial)抽查;发现真缺口被误标→升级+记档;漏到合并后按 post-merge miss 处理(触发上限恢复,§6)。
+./RUNBOOK_cn.md:334:允许在 changes/<change>/spike/ 下写探针代码(探索轨隔离规则适用),上限 spike-cap;
+./RUNBOOK_cn.md:464:上限:extraction-review-cap(默认 2)。rejected+提取不忠实 → 生产方重跑 P11;
+./RUNBOOK_cn.md:496:/goal "目标:apriori/changes/<change>/requirement/req-final.md 存在,且最新一轮评审报告 'VERDICT: no major issues'。上限:step0-cap 轮(默认 5)。
+./RUNBOOK_cn.md:508:/goal "目标:apriori/changes/<change>/有 SPEC-DOC+DESIGN-DOC,且最新评审结论行为 'VERDICT: no major issues, ready to proceed to execution'。上限:step2-cap 轮(默认 4)。
+./RUNBOOK_cn.md:518:/goal "目标 —— 以下全部成立:`npm test` 退出码 0;lint/静态分析全绿(where configured);apriori/changes/<change>/specs/里每个 scenario ID 至少出现在一个测试名里(列出缺失的 ID);apriori/changes/<change>/tasks.md每项均为 [x];(仅 UI 项目)Playwright E2E 套件通过且截图差异在阈值内;并且由一个不同模型做的一致性评审(P8 提示词)报告 'VERDICT: no spec-vs-code gaps'。上限:step5-cap 轮(默认 25)。
+./RUNBOOK_cn.md:526:/goal "目标:本次变更已归档(`apriori archive` 把增量规格合并进 living 规格库 apriori/specs/),且模块 <module> 的知识库文件已反映本次新增/变更的事实、并刷新了 source-commit 标记。上限:step6-cap 轮(默认 4)。
+./RUNBOOK_cn.md:533:**收缩治理(新陈代谢规则)。** 每 N 个变更(默认 5,`shrink-proposal-freq`)由 agent **汇报——绝不自行执行**——一份收缩/恢复建议,数据包必含:verified 数;rejected 数(附理由抽样);reopened ID 数(含 `upgraded-from-advisory` 行);advisory 占比(**仅监控,永不作决策阈值**);每变更总时长与各评审环节时长(由状态文件时间戳推导;**墙钟口径,含人工闸口等待——注明,防成本曲线被闸口延迟主导的误读**;时间戳缺失记 `n/a`,绝不估算)。`rejected-ratio-guard`(默认 50%)的口径**只计正式发现——分子分母均不含 advisory**(防改标稀释守卫)。收缩任何评审环节都是**人工闸口决策**;守卫触发或变更类别触绊线(共享状态/迁移/安全/生产数据)时一律不得收缩。收缩=下调该环节轮次上限——**地板 1,任何环节绝不归零**——且**可收缩评审轮数,不可用评审轮数置换确定性检查**(lint/测试/追溯不做交易)。合并后复查(采样率 `post-merge-review-freq`,默认每 5 个合并变更抽 1 个)发现 ≥1 个高风险漏网——含被误标 advisory 的真缺口——→ 恢复该环节原上限,同样记档。两个方向都要提防:生产方靠拒单可以把指标压零(守卫防的就是这个);评审方轻率 verify 只会推迟收缩(方向安全)。
+./templates/process-config.md:11:| language | auto | auto (match the human) / any language name, e.g. `中文`, `English` | auto |
+./templates/process-config.md:12:| step0-cap | 5 | ≥ 1 | 5 |
+./templates/process-config.md:13:| step2-cap | 4 | ≥ 1 | 4 |
+./templates/process-config.md:14:| step5-cap | 25 | ≥ 1 | 25 |
+./templates/process-config.md:15:| step6-cap | 4 | ≥ 1 | 4 |
+./templates/process-config.md:16:| spike-cap | 10 | ≥ 1 | 10 |
+./templates/process-config.md:17:| extraction-review-cap | 2 | ≥ 1 | 2 |
+./templates/process-config.md:18:| shrink-state | none | none / <stage>: <new-cap> entries, human-approved only | none |
+./templates/process-config.md:19:| rejected-ratio-guard | 50% | 0–100%; above it, shrinking is blocked | 50% |
+./templates/process-config.md:21:| post-merge-review-freq | 1 in 5 | ≥ 1 in N merged changes (sampling rate) | 1 in 5 |
+./templates/process-config.md:23:<!-- shrink-state is written only after a human gate approves a shrink proposal (RUNBOOK §6),
+./templates/process-config.md:24:     e.g. `shrink-state: step2-cap: 2 (approved 2026-07-04, gates log)`.
+./templates/process-config.md:25:     A post-merge re-review that finds a high-risk miss restores the previous cap. -->
+./test/update.test.js:53:  fs.writeFileSync(cfgPath, '| language | 中文 |  # human-held, hands off\n');
+./test/update.test.js:69:  assert.strictEqual(fs.readFileSync(cfgPath, 'utf8'), '| language | 中文 |  # human-held, hands off\n');
+./CHANGELOG.md:66:- **`apriori verify --change <name>`** — verify against the in-memory projected (post-merge) store; the mid-change STEP5 gate. Fixes the verification-target misalignment: store-only scans miss new scenarios, dual-dir scans miscount MODIFIED/REMOVED/RENAMED.
+./test/doctor.test.js:36:    'apriori/process-config.md': '| language | auto |\n',
+./test/args.test.js:31:    'apriori/process-config.md': `| language | auto |\n| test-cmd | node -e "require('fs').writeFileSync('SENTINEL','x');console.log('ok 1 - XA-01')" | x | (none) |\n`,
+./docs/cli.md:55:bind every spec scenario ID to a passing TAP test — the STEP5 gate; `--change` verifies against the projected (post-merge) store, the mid-change form
+./docs/ci.md:14:## verify — the post-merge binding gate
+./docs/concepts_cn.md:266:    IC[意图卡 ≤15 行<br/>人签核] --> SP[changes/name/spike/ 下做原型<br/>上限: spike-cap]
+./docs/concepts_cn.md:440:| STEP0 | REQ-REVIEW-DOC 已产出且结论行 = `VERDICT: no major issues`，或 step0-cap 轮（默认 5） | 每轮一次异构评审调用 |
+./lib/init.js:89:  if ((opts.language || opts.testCmd) && !dry) {
+./docs/concepts.md:266:    IC[Intent card, ≤15 lines<br/>human sign-off] --> SP[Spike in changes/name/spike/<br/>cap: spike-cap]
+./docs/concepts.md:440:| STEP0 | REQ-REVIEW-DOC written and its verdict line = `VERDICT: no major issues`, or step0-cap rounds (default 5) | a heterogeneous reviewer call each round |
+./docs/concepts.md:448:> **Tune the caps with data — under governance, not autopilot.** Every N changes (default 5) the agent *reports* a shrink/expand proposal whose data pack must contain: verified count, rejected count (with sampled reasons), reopened-ID count (including advisory upgrades), the advisory ratio (monitoring only), and wall-clock per change and per review stage (from the state file's timestamps; wall-clock includes human-gate waits — note it, or cost curves mislead; missing timestamps are `n/a`, never estimated). The rejected-ratio guard counts formal findings only — advisories are excluded from both sides, so relabeling can't dilute it. Shrinking is a **human gate decision** — blocked outright when the guard trips or the change class is tripwired. Shrinking lowers a stage's round cap with a hard floor of 1, so no stage ever reaches zero and exit conditions stay intact — and **you may shrink review rounds, but never trade them for fewer deterministic checks**; a post-merge re-review that finds a high-risk miss (including a real gap mislabeled advisory) restores the previous cap. Mind both directions: a producer can zero the metric by rejecting findings (that is what the guard is for); careless verifies merely delay shrinking. And if round 5 still surfaces real issues, the fix is upstream — requirement quality — not a higher cap.
+./validation/brainstorm-lab/v3-music/apriori/process-config.md:11:| language | auto | auto (match the human) / any language name, e.g. `中文`, `English` | auto |
+./validation/brainstorm-lab/v3-music/apriori/process-config.md:12:| step0-cap | 5 | ≥ 1 | 5 |
+./validation/brainstorm-lab/v3-music/apriori/process-config.md:13:| step2-cap | 4 | ≥ 1 | 4 |
+./validation/brainstorm-lab/v3-music/apriori/process-config.md:14:| step5-cap | 25 | ≥ 1 | 25 |
+./validation/brainstorm-lab/v3-music/apriori/process-config.md:15:| step6-cap | 4 | ≥ 1 | 4 |
+./validation/brainstorm-lab/v3-music/apriori/process-config.md:16:| spike-cap | 10 | ≥ 1 | 10 |
+./validation/brainstorm-lab/v3-music/apriori/process-config.md:17:| extraction-review-cap | 2 | ≥ 1 | 2 |
+./validation/brainstorm-lab/v3-music/apriori/process-config.md:18:| shrink-state | none | none / <stage>: <new-cap> entries, human-approved only | none |
+./validation/brainstorm-lab/v3-music/apriori/process-config.md:19:| rejected-ratio-guard | 50% | 0–100%; above it, shrinking is blocked | 50% |
+./validation/brainstorm-lab/v3-music/apriori/process-config.md:21:| post-merge-review-freq | 1 in 5 | ≥ 1 in N merged changes (sampling rate) | 1 in 5 |
+./validation/brainstorm-lab/v3-music/apriori/process-config.md:23:<!-- shrink-state is written only after a human gate approves a shrink proposal (RUNBOOK §6),
+./validation/brainstorm-lab/v3-music/apriori/process-config.md:24:     e.g. `shrink-state: step2-cap: 2 (approved 2026-07-04, gates log)`.
+./validation/brainstorm-lab/v3-music/apriori/process-config.md:25:     A post-merge re-review that finds a high-risk miss restores the previous cap. -->
+./validation/brainstorm-lab/v3-music/apriori/runbook.md:180:### STEP0 — requirement refinement · adversarial loop · cap: `step0-cap` (default 5)
+./validation/brainstorm-lab/v3-music/apriori/runbook.md:189:1. **Spike (bounded):** prototype freely under `spike/`; cap: `spike-cap` (default 10) turns; exit = every intent-card question answered. Cap hit → **gate ⑤**.
+./validation/brainstorm-lab/v3-music/apriori/runbook.md:191:3. **P12 — extraction review (heterogeneous, R2):** cap: `extraction-review-cap` (default 2). Verdict line `VERDICT: extraction accepted` → step 4. `VERDICT: extraction rejected` + unfaithful extraction → redo P11; `VERDICT: extraction rejected` + intent hypothesis falsified → back to SPIKE, or `ABANDONED` (archive the intent card + findings; log in the ledger).
+./validation/brainstorm-lab/v3-music/apriori/runbook.md:206:- **Research-spike variant** (vague-but-tripwired changes, §2): probe code is allowed under `spike/` — the explore track's full isolation rules apply — capped by `spike-cap` (default 10); findings land as a "research conclusions" appendix to the gap report. P3 carries the matching variant clause.
+./validation/brainstorm-lab/v3-music/apriori/runbook.md:209:### STEP2 — propose · adversarial loop · cap: `step2-cap` (default 4)
+./validation/brainstorm-lab/v3-music/apriori/runbook.md:223:### STEP5 — apply · cap: `step5-cap` (default 25)
+./validation/brainstorm-lab/v3-music/apriori/runbook.md:266:- **Advisory findings (scope discipline):** only gaps affecting **correctness, security, or the stated requirements** enter as formal rows; everything else the reviewer labels `advisory`. Labeling is the **reviewer's exclusive call** — the producer may never downgrade an open row to advisory. Per-item advisory lists live in the review doc; the ledger takes **one batch row per round** (`advisory batch acknowledged (n items)`), terminal state `advisory-acked`; "ignoring" advisories means no per-item handling — the batch row still lands. A reviewer may later **upgrade** an advisory to open (with a reason, new row tagged `upgraded-from-advisory`): it counts in the data pack's reopened statistic but does **not** by itself trip gate ⑤ (only a closed formal ID re-reopening does). **Correctness and security findings can never be advisory.** Mislabel handling: sampled at STEP3 (Medium+), gate ④, or the pre-merge PR review (Trivial); a real gap found mislabeled → upgrade + log; one that slips past merge counts as a post-merge miss (triggers cap restoration, §6).
+./validation/brainstorm-lab/v3-music/apriori/runbook.md:310:Probe code is allowed under spike/ (explore-track isolation rules apply), capped by spike-cap;
+./validation/brainstorm-lab/v3-music/apriori/runbook.md:426:Cap: extraction-review-cap (default 2). Rejected + unfaithful extraction → producer redoes P11;
+./validation/brainstorm-lab/v3-music/apriori/runbook.md:456:/goal "Goal: requirement/req-final.md exists and the latest review pass reports 'VERDICT: no major issues'. Cap: step0-cap rounds (default 5).
+./validation/brainstorm-lab/v3-music/apriori/runbook.md:468:/goal "Goal: apriori/changes/<change>/ has SPEC-DOC+DESIGN-DOC and the latest review verdict line is 'VERDICT: no major issues, ready to proceed to execution'. Cap: step2-cap rounds (default 4).
+./validation/brainstorm-lab/v3-music/apriori/runbook.md:478:/goal "Goal — ALL must hold: `npm test` exits 0; lint/static analysis green (where configured); every scenario ID in apriori/changes/<change>/specs/ appears in at least one test name (list any missing IDs); every item in apriori/changes/<change>/tasks.md is [x]; (UI projects only) the Playwright E2E suite passes and screenshot diffs are within threshold; AND a consistency review by a DIFFERENT model (the P8 prompt) reports 'VERDICT: no spec-vs-code gaps'. Cap: step5-cap turns (default 25).
+./validation/brainstorm-lab/v3-music/apriori/runbook.md:486:/goal "Goal: the change is archived (`apriori archive` merges the delta specs into the living store apriori/specs/) AND the KB file for module <module> reflects this change's new/changed facts with a refreshed source-commit stamp. Cap: step6-cap turns (default 4).
+./validation/brainstorm-lab/v3-music/apriori/runbook.md:493:**Shrink governance (the metabolism rule).** Every N changes (default 5, `shrink-proposal-freq`) the agent **reports — never applies** — a shrink/expand proposal whose data pack MUST contain: verified count; rejected count (with sampled reasons); reopened-ID count (including `upgraded-from-advisory` rows); advisory ratio (monitoring only — never a decision threshold); total wall-clock per change and per review stage (derived from the state file's timestamps; wall-clock includes human-gate waits — note this so cost curves aren't misread; missing timestamps → `n/a`, never estimated). The rejected ratio for `rejected-ratio-guard` (default 50%) counts **formal findings only — advisories are excluded from both numerator and denominator** (so relabeling can't dilute the guard). Shrinking a review stage is a **human gate decision**, blocked outright when the guard trips or the change class is tripwired (shared state / migration / security / production data). Shrinking means lowering a stage's round cap — **floor 1; no stage ever reaches zero** — and shrunk review rounds can never be traded for fewer deterministic checks: **you may shrink review rounds, you may not substitute them for lint, tests or traceability**. Post-merge re-review (sampling rate `post-merge-review-freq`, default 1 in 5 merged changes) finding ≥1 high-risk miss — including a real gap that had been mislabeled advisory — → restore the stage's previous cap, logged the same way. Beware both directions: producers can zero the metric by rejecting findings (that's what the guard is for); reviewers can inflate it by careless verifies (which merely delays shrinking).
+./validation/brainstorm-lab2/v3-organizer/apriori/runbook.md:187:### STEP0 — requirement refinement · adversarial loop · cap: `step0-cap` (default 5)
+./validation/brainstorm-lab2/v3-organizer/apriori/runbook.md:196:1. **Spike (bounded):** prototype freely under `spike/`; cap: `spike-cap` (default 10) turns; exit = every intent-card question answered. Cap hit → **gate ⑤**.
+./validation/brainstorm-lab2/v3-organizer/apriori/runbook.md:198:3. **P12 — extraction review (heterogeneous, R2):** cap: `extraction-review-cap` (default 2). Verdict line `VERDICT: extraction accepted` → step 4. `VERDICT: extraction rejected` + unfaithful extraction → redo P11; `VERDICT: extraction rejected` + intent hypothesis falsified → back to SPIKE, or `ABANDONED` (archive the intent card + findings; log in the ledger).
+./validation/brainstorm-lab2/v3-organizer/apriori/runbook.md:213:- **Research-spike variant** (vague-but-tripwired changes, §2): probe code is allowed under `spike/` — the explore track's full isolation rules apply — capped by `spike-cap` (default 10); findings land as a "research conclusions" appendix to the gap report. P3 carries the matching variant clause.
+./validation/brainstorm-lab2/v3-organizer/apriori/runbook.md:216:### STEP2 — propose · adversarial loop · cap: `step2-cap` (default 4)
+./validation/brainstorm-lab2/v3-organizer/apriori/runbook.md:230:### STEP5 — apply · cap: `step5-cap` (default 25)
+./validation/brainstorm-lab2/v3-organizer/apriori/runbook.md:274:- **Advisory findings (scope discipline):** only gaps affecting **correctness, security, or the stated requirements** enter as formal rows; everything else the reviewer labels `advisory`. Labeling is the **reviewer's exclusive call** — the producer may never downgrade an open row to advisory. Per-item advisory lists live in the review doc; the ledger takes **one batch row per round** (`advisory batch acknowledged (n items)`), terminal state `advisory-acked` — the "record verbatim" rule (R2) governs the reviewer's delta *content*, while the row *shape* is always normalized to this batch form, so a reviewer that free-forms its advisory rows is normalized, not copied literally; "ignoring" advisories means no per-item handling — the batch row still lands. A reviewer may later **upgrade** an advisory to open (with a reason, new row tagged `upgraded-from-advisory`): it counts in the data pack's reopened statistic but does **not** by itself trip gate ⑤ (only a closed formal ID re-reopening does). **Correctness and security findings can never be advisory.** Mislabel handling: sampled at STEP3 (Medium+), gate ④, or the pre-merge PR review (Trivial); a real gap found mislabeled → upgrade + log; one that slips past merge counts as a post-merge miss (triggers cap restoration, §6).
+./validation/brainstorm-lab2/v3-organizer/apriori/runbook.md:318:Probe code is allowed under spike/ (explore-track isolation rules apply), capped by spike-cap;
+./validation/brainstorm-lab2/v3-organizer/apriori/runbook.md:448:Cap: extraction-review-cap (default 2). Rejected + unfaithful extraction → producer redoes P11;
+./validation/brainstorm-lab2/v3-organizer/apriori/runbook.md:484:/goal "Goal: requirement/req-final.md exists and the latest review pass reports 'VERDICT: no major issues'. Cap: step0-cap rounds (default 5).
+./validation/brainstorm-lab2/v3-organizer/apriori/runbook.md:496:/goal "Goal: apriori/changes/<change>/ has SPEC-DOC+DESIGN-DOC and the latest review verdict line is 'VERDICT: no major issues, ready to proceed to execution'. Cap: step2-cap rounds (default 4).
+./validation/brainstorm-lab2/v3-organizer/apriori/runbook.md:506:/goal "Goal — ALL must hold: `npm test` exits 0; lint/static analysis green (where configured); every scenario ID in apriori/changes/<change>/specs/ appears in at least one test name (list any missing IDs); every item in apriori/changes/<change>/tasks.md is [x]; (UI projects only) the Playwright E2E suite passes and screenshot diffs are within threshold; AND a consistency review by a DIFFERENT model (the P8 prompt) reports 'VERDICT: no spec-vs-code gaps'. Cap: step5-cap turns (default 25).
+./validation/brainstorm-lab2/v3-organizer/apriori/runbook.md:514:/goal "Goal: the change is archived (`apriori archive` merges the delta specs into the living store apriori/specs/) AND the KB file for module <module> reflects this change's new/changed facts with a refreshed source-commit stamp. Cap: step6-cap turns (default 4).
+./validation/brainstorm-lab2/v3-organizer/apriori/runbook.md:521:**Shrink governance (the metabolism rule).** Every N changes (default 5, `shrink-proposal-freq`) the agent **reports — never applies** — a shrink/expand proposal whose data pack MUST contain: verified count; rejected count (with sampled reasons); reopened-ID count (including `upgraded-from-advisory` rows); advisory ratio (monitoring only — never a decision threshold); total wall-clock per change and per review stage (derived from the state file's timestamps; wall-clock includes human-gate waits — note this so cost curves aren't misread; missing timestamps → `n/a`, never estimated). The rejected ratio for `rejected-ratio-guard` (default 50%) counts **formal findings only — advisories are excluded from both numerator and denominator** (so relabeling can't dilute the guard). Shrinking a review stage is a **human gate decision**, blocked outright when the guard trips or the change class is tripwired (shared state / migration / security / production data). Shrinking means lowering a stage's round cap — **floor 1; no stage ever reaches zero** — and shrunk review rounds can never be traded for fewer deterministic checks: **you may shrink review rounds, you may not substitute them for lint, tests or traceability**. Post-merge re-review (sampling rate `post-merge-review-freq`, default 1 in 5 merged changes) finding ≥1 high-risk miss — including a real gap that had been mislabeled advisory — → restore the stage's previous cap, logged the same way. Beware both directions: producers can zero the metric by rejecting findings (that's what the guard is for); reviewers can inflate it by careless verifies (which merely delays shrinking).
+./validation/legacy-lab/inherited-poll/apriori/runbook.md:189:### STEP0 — requirement refinement · adversarial loop · cap: `step0-cap` (default 5)
+./validation/legacy-lab/inherited-poll/apriori/runbook.md:198:1. **Spike (bounded):** prototype freely under `spike/`; cap: `spike-cap` (default 10) turns; exit = every intent-card question answered. Cap hit → **gate ⑤**.
+./validation/legacy-lab/inherited-poll/apriori/runbook.md:200:3. **P12 — extraction review (heterogeneous, R2):** cap: `extraction-review-cap` (default 2). Verdict line `VERDICT: extraction accepted` → step 4. `VERDICT: extraction rejected` + unfaithful extraction → redo P11; `VERDICT: extraction rejected` + intent hypothesis falsified → back to SPIKE, or `ABANDONED` (archive the intent card + findings; log in the ledger).
+./validation/legacy-lab/inherited-poll/apriori/runbook.md:216:- **Research-spike variant** (vague-but-tripwired changes, §2): probe code is allowed under `spike/` — the explore track's full isolation rules apply — capped by `spike-cap` (default 10); findings land as a "research conclusions" appendix to the gap report. P3 carries the matching variant clause.
+./validation/legacy-lab/inherited-poll/apriori/runbook.md:219:### STEP2 — propose · adversarial loop · cap: `step2-cap` (default 4)
+./validation/legacy-lab/inherited-poll/apriori/runbook.md:233:### STEP5 — apply · cap: `step5-cap` (default 25)
+./validation/legacy-lab/inherited-poll/apriori/runbook.md:277:- **Advisory findings (scope discipline):** only gaps affecting **correctness, security, or the stated requirements** enter as formal rows; everything else the reviewer labels `advisory`. Labeling is the **reviewer's exclusive call** — the producer may never downgrade an open row to advisory. Per-item advisory lists live in the review doc; the ledger takes **one batch row per round** (`advisory batch acknowledged (n items)`), terminal state `advisory-acked` — the "record verbatim" rule (R2) governs the reviewer's delta *content*, while the row *shape* is always normalized to this batch form, so a reviewer that free-forms its advisory rows is normalized, not copied literally; "ignoring" advisories means no per-item handling — the batch row still lands. A reviewer may later **upgrade** an advisory to open (with a reason, new row tagged `upgraded-from-advisory`): it counts in the data pack's reopened statistic but does **not** by itself trip gate ⑤ (only a closed formal ID re-reopening does). **Correctness and security findings can never be advisory.** Mislabel handling: sampled at STEP3 (Medium+), gate ④, or the pre-merge PR review (Trivial); a real gap found mislabeled → upgrade + log; one that slips past merge counts as a post-merge miss (triggers cap restoration, §6).
+./validation/legacy-lab/inherited-poll/apriori/runbook.md:321:Probe code is allowed under spike/ (explore-track isolation rules apply), capped by spike-cap;
+./validation/legacy-lab/inherited-poll/apriori/runbook.md:451:Cap: extraction-review-cap (default 2). Rejected + unfaithful extraction → producer redoes P11;
+./validation/legacy-lab/inherited-poll/apriori/runbook.md:487:/goal "Goal: requirement/req-final.md exists and the latest review pass reports 'VERDICT: no major issues'. Cap: step0-cap rounds (default 5).
+./validation/legacy-lab/inherited-poll/apriori/runbook.md:499:/goal "Goal: apriori/changes/<change>/ has SPEC-DOC+DESIGN-DOC and the latest review verdict line is 'VERDICT: no major issues, ready to proceed to execution'. Cap: step2-cap rounds (default 4).
+./validation/legacy-lab/inherited-poll/apriori/runbook.md:509:/goal "Goal — ALL must hold: `npm test` exits 0; lint/static analysis green (where configured); every scenario ID in apriori/changes/<change>/specs/ appears in at least one test name (list any missing IDs); every item in apriori/changes/<change>/tasks.md is [x]; (UI projects only) the Playwright E2E suite passes and screenshot diffs are within threshold; AND a consistency review by a DIFFERENT model (the P8 prompt) reports 'VERDICT: no spec-vs-code gaps'. Cap: step5-cap turns (default 25).
+./validation/legacy-lab/inherited-poll/apriori/runbook.md:517:/goal "Goal: the change is archived (`apriori archive` merges the delta specs into the living store apriori/specs/) AND the KB file for module <module> reflects this change's new/changed facts with a refreshed source-commit stamp. Cap: step6-cap turns (default 4).
+./validation/legacy-lab/inherited-poll/apriori/runbook.md:524:**Shrink governance (the metabolism rule).** Every N changes (default 5, `shrink-proposal-freq`) the agent **reports — never applies** — a shrink/expand proposal whose data pack MUST contain: verified count; rejected count (with sampled reasons); reopened-ID count (including `upgraded-from-advisory` rows); advisory ratio (monitoring only — never a decision threshold); total wall-clock per change and per review stage (derived from the state file's timestamps; wall-clock includes human-gate waits — note this so cost curves aren't misread; missing timestamps → `n/a`, never estimated). The rejected ratio for `rejected-ratio-guard` (default 50%) counts **formal findings only — advisories are excluded from both numerator and denominator** (so relabeling can't dilute the guard). Shrinking a review stage is a **human gate decision**, blocked outright when the guard trips or the change class is tripwired (shared state / migration / security / production data). Shrinking means lowering a stage's round cap — **floor 1; no stage ever reaches zero** — and shrunk review rounds can never be traded for fewer deterministic checks: **you may shrink review rounds, you may not substitute them for lint, tests or traceability**. Post-merge re-review (sampling rate `post-merge-review-freq`, default 1 in 5 merged changes) finding ≥1 high-risk miss — including a real gap that had been mislabeled advisory — → restore the stage's previous cap, logged the same way. Beware both directions: producers can zero the metric by rejecting findings (that's what the guard is for); reviewers can inflate it by careless verifies (which merely delays shrinking).
+./validation/brainstorm-lab2/v3-organizer/apriori/process-config.md:11:| language | auto | auto (match the human) / any language name, e.g. `中文`, `English` | auto |
+./validation/brainstorm-lab2/v3-organizer/apriori/process-config.md:12:| step0-cap | 5 | ≥ 1 | 5 |
+./validation/brainstorm-lab2/v3-organizer/apriori/process-config.md:13:| step2-cap | 4 | ≥ 1 | 4 |
+./validation/brainstorm-lab2/v3-organizer/apriori/process-config.md:14:| step5-cap | 25 | ≥ 1 | 25 |
+./validation/brainstorm-lab2/v3-organizer/apriori/process-config.md:15:| step6-cap | 4 | ≥ 1 | 4 |
+./validation/brainstorm-lab2/v3-organizer/apriori/process-config.md:16:| spike-cap | 10 | ≥ 1 | 10 |
+./validation/brainstorm-lab2/v3-organizer/apriori/process-config.md:17:| extraction-review-cap | 2 | ≥ 1 | 2 |
+./validation/brainstorm-lab2/v3-organizer/apriori/process-config.md:18:| shrink-state | none | none / <stage>: <new-cap> entries, human-approved only | none |
+./validation/brainstorm-lab2/v3-organizer/apriori/process-config.md:19:| rejected-ratio-guard | 50% | 0–100%; above it, shrinking is blocked | 50% |
+./validation/brainstorm-lab2/v3-organizer/apriori/process-config.md:21:| post-merge-review-freq | 1 in 5 | ≥ 1 in N merged changes (sampling rate) | 1 in 5 |
+./validation/brainstorm-lab2/v3-organizer/apriori/process-config.md:23:<!-- shrink-state is written only after a human gate approves a shrink proposal (RUNBOOK §6),
+./validation/brainstorm-lab2/v3-organizer/apriori/process-config.md:24:     e.g. `shrink-state: step2-cap: 2 (approved 2026-07-04, gates log)`.
+./validation/brainstorm-lab2/v3-organizer/apriori/process-config.md:25:     A post-merge re-review that finds a high-risk miss restores the previous cap. -->
+./validation/fullrun-lab/audit-v3.txt:2348:./apriori/runbook.md:189:1. **Spike (bounded):** prototype freely under `spike/`; cap: `spike-cap` (default 10) turns; exit = every intent-card question answered. Cap hit → **gate ⑤**.
+./validation/fullrun-lab/audit-v3.txt:2353:./apriori/runbook.md:266:- **Advisory findings (scope discipline):** only gaps affecting **correctness, security, or the stated requirements** enter as formal rows; everything else the reviewer labels `advisory`. Labeling is the **reviewer's exclusive call** — the producer may never downgrade an open row to advisory. Per-item advisory lists live in the review doc; the ledger takes **one batch row per round** (`advisory batch acknowledged (n items)`), terminal state `advisory-acked`; "ignoring" advisories means no per-item handling — the batch row still lands. A reviewer may later **upgrade** an advisory to open (with a reason, new row tagged `upgraded-from-advisory`): it counts in the data pack's reopened statistic but does **not** by itself trip gate ⑤ (only a closed formal ID re-reopening does). **Correctness and security findings can never be advisory.** Mislabel handling: sampled at STEP3 (Medium+), gate ④, or the pre-merge PR review (Trivial); a real gap found mislabeled → upgrade + log; one that slips past merge counts as a post-merge miss (triggers cap restoration, §6).
+./validation/fullrun-lab/audit-v3.txt:2359:./apriori/runbook.md:503:**Shrink governance (the metabolism rule).** Every N changes (default 5, `shrink-proposal-freq`) the agent **reports — never applies** — a shrink/expand proposal whose data pack MUST contain: verified count; rejected count (with sampled reasons); reopened-ID count (including `upgraded-from-advisory` rows); advisory ratio (monitoring only — never a decision threshold); total wall-clock per change and per review stage (derived from the state file's timestamps; wall-clock includes human-gate waits — note this so cost curves aren't misread; missing timestamps → `n/a`, never estimated). The rejected ratio for `rejected-ratio-guard` (default 50%) counts **formal findings only — advisories are excluded from both numerator and denominator** (so relabeling can't dilute the guard). Shrinking a review stage is a **human gate decision**, blocked outright when the guard trips or the change class is tripwired (shared state / migration / security / production data). Shrinking means lowering a stage's round cap — **floor 1; no stage ever reaches zero** — and shrunk review rounds can never be traded for fewer deterministic checks: **you may shrink review rounds, you may not substitute them for lint, tests or traceability**. Post-merge re-review (sampling rate `post-merge-review-freq`, default 1 in 5 merged changes) finding ≥1 high-risk miss — including a real gap that had been mislabeled advisory — → restore the stage's previous cap, logged the same way. Beware both directions: producers can zero the metric by rejecting findings (that's what the guard is for); reviewers can inflate it by careless verifies (which merely delays shrinking).
+./validation/fullrun-lab/audit-v3-r3.txt:836:    11	| language | auto | auto (match the human) / any language name, e.g. `中文`, `English` | auto |
+./validation/fullrun-lab/audit-v3-r3.txt:837:    12	| step0-cap | 5 | ≥ 1 | 5 |
+./validation/fullrun-lab/audit-v3-r3.txt:838:    13	| step2-cap | 4 | ≥ 1 | 4 |
+./validation/fullrun-lab/audit-v3-r3.txt:839:    14	| step5-cap | 25 | ≥ 1 | 25 |
+./validation/fullrun-lab/audit-v3-r3.txt:840:    15	| step6-cap | 4 | ≥ 1 | 4 |
+./validation/fullrun-lab/audit-v3-r3.txt:841:    16	| spike-cap | 10 | ≥ 1 | 10 |
+./validation/fullrun-lab/audit-v3-r3.txt:842:    17	| extraction-review-cap | 2 | ≥ 1 | 2 |
+./validation/fullrun-lab/audit-v3-r3.txt:843:    18	| shrink-state | none | none / <stage>: <new-cap> entries, human-approved only | none |
+./validation/fullrun-lab/audit-v3-r3.txt:844:    19	| rejected-ratio-guard | 50% | 0–100%; above it, shrinking is blocked | 50% |
+./validation/fullrun-lab/audit-v3-r3.txt:846:    21	| post-merge-review-freq | 1 in 5 | ≥ 1 in N merged changes (sampling rate) | 1 in 5 |
+./validation/fullrun-lab/audit-v3-r3.txt:848:    23	<!-- shrink-state is written only after a human gate approves a shrink proposal (RUNBOOK §6),
+./validation/fullrun-lab/audit-v3-r3.txt:849:    24	     e.g. `shrink-state: step2-cap: 2 (approved 2026-07-04, gates log)`.
+./validation/fullrun-lab/audit-v3-r3.txt:850:    25	     A post-merge re-review that finds a high-risk miss restores the previous cap. -->
+./validation/fullrun-lab/audit-v3-r3.txt:1146:   187	### STEP0 — requirement refinement · adversarial loop · cap: `step0-cap` (default 5)
+./validation/fullrun-lab/audit-v3-r3.txt:1155:   196	1. **Spike (bounded):** prototype freely under `spike/`; cap: `spike-cap` (default 10) turns; exit = every intent-card question answered. Cap hit → **gate ⑤**.
+./validation/fullrun-lab/audit-v3-r3.txt:1157:   198	3. **P12 — extraction review (heterogeneous, R2):** cap: `extraction-review-cap` (default 2). Verdict line `VERDICT: extraction accepted` → step 4. `VERDICT: extraction rejected` + unfaithful extraction → redo P11; `VERDICT: extraction rejected` + intent hypothesis falsified → back to SPIKE, or `ABANDONED` (archive the intent card + findings; log in the ledger).
+./validation/fullrun-lab/audit-v3-r3.txt:1172:   213	- **Research-spike variant** (vague-but-tripwired changes, §2): probe code is allowed under `spike/` — the explore track's full isolation rules apply — capped by `spike-cap` (default 10); findings land as a "research conclusions" appendix to the gap report. P3 carries the matching variant clause.
+./validation/fullrun-lab/audit-v3-r3.txt:1175:   216	### STEP2 — propose · adversarial loop · cap: `step2-cap` (default 4)
+./validation/fullrun-lab/audit-v3-r3.txt:1189:   230	### STEP5 — apply · cap: `step5-cap` (default 25)
+./validation/fullrun-lab/audit-v3-r3.txt:1233:   274	- **Advisory findings (scope discipline):** only gaps affecting **correctness, security, or the stated requirements** enter as formal rows; everything else the reviewer labels `advisory`. Labeling is the **reviewer's exclusive call** — the producer may never downgrade an open row to advisory. Per-item advisory lists live in the review doc; the ledger takes **one batch row per round** (`advisory batch acknowledged (n items)`), terminal state `advisory-acked` — the "record verbatim" rule (R2) governs the reviewer's delta *content*, while the row *shape* is always normalized to this batch form, so a reviewer that free-forms its advisory rows is normalized, not copied literally; "ignoring" advisories means no per-item handling — the batch row still lands. A reviewer may later **upgrade** an advisory to open (with a reason, new row tagged `upgraded-from-advisory`): it counts in the data pack's reopened statistic but does **not** by itself trip gate ⑤ (only a closed formal ID re-reopening does). **Correctness and security findings can never be advisory.** Mislabel handling: sampled at STEP3 (Medium+), gate ④, or the pre-merge PR review (Trivial); a real gap found mislabeled → upgrade + log; one that slips past merge counts as a post-merge miss (triggers cap restoration, §6).
+./validation/fullrun-lab/audit-v3-r3.txt:1277:   318	Probe code is allowed under spike/ (explore-track isolation rules apply), capped by spike-cap;
+./validation/fullrun-lab/audit-v3-r3.txt:1405:   446	Cap: extraction-review-cap (default 2). Rejected + unfaithful extraction → producer redoes P11;
+./validation/fullrun-lab/audit-v3-r3.txt:1441:   482	/goal "Goal: requirement/req-final.md exists and the latest review pass reports 'VERDICT: no major issues'. Cap: step0-cap rounds (default 5).
+./validation/fullrun-lab/audit-v3-r3.txt:1453:   494	/goal "Goal: apriori/changes/<change>/ has SPEC-DOC+DESIGN-DOC and the latest review verdict line is 'VERDICT: no major issues, ready to proceed to execution'. Cap: step2-cap rounds (default 4).
+./validation/fullrun-lab/audit-v3-r3.txt:1463:   504	/goal "Goal — ALL must hold: `npm test` exits 0; lint/static analysis green (where configured); every scenario ID in apriori/changes/<change>/specs/ appears in at least one test name (list any missing IDs); every item in apriori/changes/<change>/tasks.md is [x]; (UI projects only) the Playwright E2E suite passes and screenshot diffs are within threshold; AND a consistency review by a DIFFERENT model (the P8 prompt) reports 'VERDICT: no spec-vs-code gaps'. Cap: step5-cap turns (default 25).
+./validation/fullrun-lab/audit-v3-r3.txt:1471:   512	/goal "Goal: the change is archived (`apriori archive` merges the delta specs into the living store apriori/specs/) AND the KB file for module <module> reflects this change's new/changed facts with a refreshed source-commit stamp. Cap: step6-cap turns (default 4).
+./validation/fullrun-lab/audit-v3-r3.txt:1478:   519	**Shrink governance (the metabolism rule).** Every N changes (default 5, `shrink-proposal-freq`) the agent **reports — never applies** — a shrink/expand proposal whose data pack MUST contain: verified count; rejected count (with sampled reasons); reopened-ID count (including `upgraded-from-advisory` rows); advisory ratio (monitoring only — never a decision threshold); total wall-clock per change and per review stage (derived from the state file's timestamps; wall-clock includes human-gate waits — note this so cost curves aren't misread; missing timestamps → `n/a`, never estimated). The rejected ratio for `rejected-ratio-guard` (default 50%) counts **formal findings only — advisories are excluded from both numerator and denominator** (so relabeling can't dilute the guard). Shrinking a review stage is a **human gate decision**, blocked outright when the guard trips or the change class is tripwired (shared state / migration / security / production data). Shrinking means lowering a stage's round cap — **floor 1; no stage ever reaches zero** — and shrunk review rounds can never be traded for fewer deterministic checks: **you may shrink review rounds, you may not substitute them for lint, tests or traceability**. Post-merge re-review (sampling rate `post-merge-review-freq`, default 1 in 5 merged changes) finding ≥1 high-risk miss — including a real gap that had been mislabeled advisory — → restore the stage's previous cap, logged the same way. Beware both directions: producers can zero the metric by rejecting findings (that's what the guard is for); reviewers can inflate it by careless verifies (which merely delays shrinking).
+./validation/legacy-lab/inherited-poll/apriori/process-config.md:11:| language | auto | auto (match the human) / any language name, e.g. `中文`, `English` | auto |
+./validation/legacy-lab/inherited-poll/apriori/process-config.md:12:| step0-cap | 5 | ≥ 1 | 5 |
+./validation/legacy-lab/inherited-poll/apriori/process-config.md:13:| step2-cap | 4 | ≥ 1 | 4 |
+./validation/legacy-lab/inherited-poll/apriori/process-config.md:14:| step5-cap | 25 | ≥ 1 | 25 |
+./validation/legacy-lab/inherited-poll/apriori/process-config.md:15:| step6-cap | 4 | ≥ 1 | 4 |
+./validation/legacy-lab/inherited-poll/apriori/process-config.md:16:| spike-cap | 10 | ≥ 1 | 10 |
+./validation/legacy-lab/inherited-poll/apriori/process-config.md:17:| extraction-review-cap | 2 | ≥ 1 | 2 |
+./validation/legacy-lab/inherited-poll/apriori/process-config.md:18:| shrink-state | none | none / <stage>: <new-cap> entries, human-approved only | none |
+./validation/legacy-lab/inherited-poll/apriori/process-config.md:19:| rejected-ratio-guard | 50% | 0–100%; above it, shrinking is blocked | 50% |
+./validation/legacy-lab/inherited-poll/apriori/process-config.md:21:| post-merge-review-freq | 1 in 5 | ≥ 1 in N merged changes (sampling rate) | 1 in 5 |
+./validation/legacy-lab/inherited-poll/apriori/process-config.md:23:<!-- shrink-state is written only after a human gate approves a shrink proposal (RUNBOOK §6),
+./validation/legacy-lab/inherited-poll/apriori/process-config.md:24:     e.g. `shrink-state: step2-cap: 2 (approved 2026-07-04, gates log)`.
+./validation/legacy-lab/inherited-poll/apriori/process-config.md:25:     A post-merge re-review that finds a high-risk miss restores the previous cap. -->
+./validation/legacy-lab/inherited-poll/apriori/review/vote-dedup-step2-review-v1-raw.txt:2284:| language | auto | auto (match the human) / any language name, e.g. `中文`, `English` | auto |
+./validation/legacy-lab/inherited-poll/apriori/review/vote-dedup-step2-review-v1-raw.txt:2285:| step0-cap | 5 | ≥ 1 | 5 |
+./validation/legacy-lab/inherited-poll/apriori/review/vote-dedup-step2-review-v1-raw.txt:2286:| step2-cap | 4 | ≥ 1 | 4 |
+./validation/legacy-lab/inherited-poll/apriori/review/vote-dedup-step2-review-v1-raw.txt:2287:| step5-cap | 25 | ≥ 1 | 25 |
+./validation/legacy-lab/inherited-poll/apriori/review/vote-dedup-step2-review-v1-raw.txt:2288:| step6-cap | 4 | ≥ 1 | 4 |
+./validation/legacy-lab/inherited-poll/apriori/review/vote-dedup-step2-review-v1-raw.txt:2289:| spike-cap | 10 | ≥ 1 | 10 |
+./validation/legacy-lab/inherited-poll/apriori/review/vote-dedup-step2-review-v1-raw.txt:2290:| extraction-review-cap | 2 | ≥ 1 | 2 |
+./validation/legacy-lab/inherited-poll/apriori/review/vote-dedup-step2-review-v1-raw.txt:2291:| shrink-state | none | none / <stage>: <new-cap> entries, human-approved only | none |
+./validation/legacy-lab/inherited-poll/apriori/review/vote-dedup-step2-review-v1-raw.txt:2292:| rejected-ratio-guard | 50% | 0–100%; above it, shrinking is blocked | 50% |
+./validation/legacy-lab/inherited-poll/apriori/review/vote-dedup-step2-review-v1-raw.txt:2294:| post-merge-review-freq | 1 in 5 | ≥ 1 in N merged changes (sampling rate) | 1 in 5 |
+./validation/legacy-lab/inherited-poll/apriori/review/vote-dedup-step2-review-v1-raw.txt:2296:<!-- shrink-state is written only after a human gate approves a shrink proposal (RUNBOOK §6),
+./validation/legacy-lab/inherited-poll/apriori/review/vote-dedup-step2-review-v1-raw.txt:2297:     e.g. `shrink-state: step2-cap: 2 (approved 2026-07-04, gates log)`.
+./validation/legacy-lab/inherited-poll/apriori/review/vote-dedup-step2-review-v1-raw.txt:2298:     A post-merge re-review that finds a high-risk miss restores the previous cap. -->
+./validation/legacy-lab/inherited-poll/apriori/review/vote-dedup-step2-review-v1-raw.txt:2489:### STEP0 — requirement refinement · adversarial loop · cap: `step0-cap` (default 5)
+./validation/legacy-lab/inherited-poll/apriori/review/vote-dedup-step2-review-v1-raw.txt:2498:1. **Spike (bounded):** prototype freely under `spike/`; cap: `spike-cap` (default 10) turns; exit = every intent-card question answered. Cap hit → **gate ⑤**.
+./validation/legacy-lab/inherited-poll/apriori/review/vote-dedup-step2-review-v1-raw.txt:2500:3. **P12 — extraction review (heterogeneous, R2):** cap: `extraction-review-cap` (default 2). Verdict line `VERDICT: extraction accepted` → step 4. `VERDICT: extraction rejected` + unfaithful extraction → redo P11; `VERDICT: extraction rejected` + intent hypothesis falsified → back to SPIKE, or `ABANDONED` (archive the intent card + findings; log in the ledger).
+./validation/legacy-lab/inherited-poll/apriori/review/vote-dedup-step2-review-v1-raw.txt:2516:- **Research-spike variant** (vague-but-tripwired changes, §2): probe code is allowed under `spike/` — the explore track's full isolation rules apply — capped by `spike-cap` (default 10); findings land as a "research conclusions" appendix to the gap report. P3 carries the matching variant clause.
+./validation/legacy-lab/inherited-poll/apriori/review/vote-dedup-step2-review-v1-raw.txt:2519:### STEP2 — propose · adversarial loop · cap: `step2-cap` (default 4)
+./validation/legacy-lab/inherited-poll/apriori/review/vote-dedup-step2-review-v1-raw.txt:2533:### STEP5 — apply · cap: `step5-cap` (default 25)
+./validation/fullrun-lab/v3-poll-r3/apriori/process-config.md:11:| language | auto | auto (match the human) / any language name, e.g. `中文`, `English` | auto |
+./validation/fullrun-lab/v3-poll-r3/apriori/process-config.md:12:| step0-cap | 5 | ≥ 1 | 5 |
+./validation/fullrun-lab/v3-poll-r3/apriori/process-config.md:13:| step2-cap | 4 | ≥ 1 | 4 |
+./validation/fullrun-lab/v3-poll-r3/apriori/process-config.md:14:| step5-cap | 25 | ≥ 1 | 25 |
+./validation/fullrun-lab/v3-poll-r3/apriori/process-config.md:15:| step6-cap | 4 | ≥ 1 | 4 |
+./validation/fullrun-lab/v3-poll-r3/apriori/process-config.md:16:| spike-cap | 10 | ≥ 1 | 10 |
+./validation/fullrun-lab/v3-poll-r3/apriori/process-config.md:17:| extraction-review-cap | 2 | ≥ 1 | 2 |
+./validation/fullrun-lab/v3-poll-r3/apriori/process-config.md:18:| shrink-state | none | none / <stage>: <new-cap> entries, human-approved only | none |
+./validation/fullrun-lab/v3-poll-r3/apriori/process-config.md:19:| rejected-ratio-guard | 50% | 0–100%; above it, shrinking is blocked | 50% |
+./validation/fullrun-lab/v3-poll-r3/apriori/process-config.md:21:| post-merge-review-freq | 1 in 5 | ≥ 1 in N merged changes (sampling rate) | 1 in 5 |
+./validation/fullrun-lab/v3-poll-r3/apriori/process-config.md:23:<!-- shrink-state is written only after a human gate approves a shrink proposal (RUNBOOK §6),
+./validation/fullrun-lab/v3-poll-r3/apriori/process-config.md:24:     e.g. `shrink-state: step2-cap: 2 (approved 2026-07-04, gates log)`.
+./validation/fullrun-lab/v3-poll-r3/apriori/process-config.md:25:     A post-merge re-review that finds a high-risk miss restores the previous cap. -->
+./validation/fullrun-lab/v3-poll-r3/apriori/runbook.md:187:### STEP0 — requirement refinement · adversarial loop · cap: `step0-cap` (default 5)
+./validation/fullrun-lab/v3-poll-r3/apriori/runbook.md:196:1. **Spike (bounded):** prototype freely under `spike/`; cap: `spike-cap` (default 10) turns; exit = every intent-card question answered. Cap hit → **gate ⑤**.
+./validation/fullrun-lab/v3-poll-r3/apriori/runbook.md:198:3. **P12 — extraction review (heterogeneous, R2):** cap: `extraction-review-cap` (default 2). Verdict line `VERDICT: extraction accepted` → step 4. `VERDICT: extraction rejected` + unfaithful extraction → redo P11; `VERDICT: extraction rejected` + intent hypothesis falsified → back to SPIKE, or `ABANDONED` (archive the intent card + findings; log in the ledger).
+./validation/fullrun-lab/v3-poll-r3/apriori/runbook.md:213:- **Research-spike variant** (vague-but-tripwired changes, §2): probe code is allowed under `spike/` — the explore track's full isolation rules apply — capped by `spike-cap` (default 10); findings land as a "research conclusions" appendix to the gap report. P3 carries the matching variant clause.
+./validation/fullrun-lab/v3-poll-r3/apriori/runbook.md:216:### STEP2 — propose · adversarial loop · cap: `step2-cap` (default 4)
+./validation/fullrun-lab/v3-poll-r3/apriori/runbook.md:230:### STEP5 — apply · cap: `step5-cap` (default 25)
+./validation/fullrun-lab/v3-poll-r3/apriori/runbook.md:274:- **Advisory findings (scope discipline):** only gaps affecting **correctness, security, or the stated requirements** enter as formal rows; everything else the reviewer labels `advisory`. Labeling is the **reviewer's exclusive call** — the producer may never downgrade an open row to advisory. Per-item advisory lists live in the review doc; the ledger takes **one batch row per round** (`advisory batch acknowledged (n items)`), terminal state `advisory-acked` — the "record verbatim" rule (R2) governs the reviewer's delta *content*, while the row *shape* is always normalized to this batch form, so a reviewer that free-forms its advisory rows is normalized, not copied literally; "ignoring" advisories means no per-item handling — the batch row still lands. A reviewer may later **upgrade** an advisory to open (with a reason, new row tagged `upgraded-from-advisory`): it counts in the data pack's reopened statistic but does **not** by itself trip gate ⑤ (only a closed formal ID re-reopening does). **Correctness and security findings can never be advisory.** Mislabel handling: sampled at STEP3 (Medium+), gate ④, or the pre-merge PR review (Trivial); a real gap found mislabeled → upgrade + log; one that slips past merge counts as a post-merge miss (triggers cap restoration, §6).
+./validation/fullrun-lab/v3-poll-r3/apriori/runbook.md:318:Probe code is allowed under spike/ (explore-track isolation rules apply), capped by spike-cap;
+./validation/fullrun-lab/v3-poll-r3/apriori/runbook.md:446:Cap: extraction-review-cap (default 2). Rejected + unfaithful extraction → producer redoes P11;
+./validation/fullrun-lab/v3-poll-r3/apriori/runbook.md:482:/goal "Goal: requirement/req-final.md exists and the latest review pass reports 'VERDICT: no major issues'. Cap: step0-cap rounds (default 5).
+./validation/fullrun-lab/v3-poll-r3/apriori/runbook.md:494:/goal "Goal: apriori/changes/<change>/ has SPEC-DOC+DESIGN-DOC and the latest review verdict line is 'VERDICT: no major issues, ready to proceed to execution'. Cap: step2-cap rounds (default 4).
+./validation/fullrun-lab/v3-poll-r3/apriori/runbook.md:504:/goal "Goal — ALL must hold: `npm test` exits 0; lint/static analysis green (where configured); every scenario ID in apriori/changes/<change>/specs/ appears in at least one test name (list any missing IDs); every item in apriori/changes/<change>/tasks.md is [x]; (UI projects only) the Playwright E2E suite passes and screenshot diffs are within threshold; AND a consistency review by a DIFFERENT model (the P8 prompt) reports 'VERDICT: no spec-vs-code gaps'. Cap: step5-cap turns (default 25).
+./validation/fullrun-lab/v3-poll-r3/apriori/runbook.md:512:/goal "Goal: the change is archived (`apriori archive` merges the delta specs into the living store apriori/specs/) AND the KB file for module <module> reflects this change's new/changed facts with a refreshed source-commit stamp. Cap: step6-cap turns (default 4).
+./validation/fullrun-lab/v3-poll-r3/apriori/runbook.md:519:**Shrink governance (the metabolism rule).** Every N changes (default 5, `shrink-proposal-freq`) the agent **reports — never applies** — a shrink/expand proposal whose data pack MUST contain: verified count; rejected count (with sampled reasons); reopened-ID count (including `upgraded-from-advisory` rows); advisory ratio (monitoring only — never a decision threshold); total wall-clock per change and per review stage (derived from the state file's timestamps; wall-clock includes human-gate waits — note this so cost curves aren't misread; missing timestamps → `n/a`, never estimated). The rejected ratio for `rejected-ratio-guard` (default 50%) counts **formal findings only — advisories are excluded from both numerator and denominator** (so relabeling can't dilute the guard). Shrinking a review stage is a **human gate decision**, blocked outright when the guard trips or the change class is tripwired (shared state / migration / security / production data). Shrinking means lowering a stage's round cap — **floor 1; no stage ever reaches zero** — and shrunk review rounds can never be traded for fewer deterministic checks: **you may shrink review rounds, you may not substitute them for lint, tests or traceability**. Post-merge re-review (sampling rate `post-merge-review-freq`, default 1 in 5 merged changes) finding ≥1 high-risk miss — including a real gap that had been mislabeled advisory — → restore the stage's previous cap, logged the same way. Beware both directions: producers can zero the metric by rejecting findings (that's what the guard is for); reviewers can inflate it by careless verifies (which merely delays shrinking).
+./validation/fullrun-lab/v3-poll-r3/apriori/changes/archive/2026-07-08T1215-quick-poll/flow-state.md:31:  - 2026-07-08T09:57 consolidation: human authorized running through to gate ④ (KB sign-off), self-digesting STEP5's `apriori verify` + P8 consistency review without stopping. Scope: STEP5 routine completion only. Gate ④ (KB sign-off) is the stop point and is NOT covered (protected, §1). Revocable anytime by the human. A genuine blocker (step5-cap hit, a reopened closed ledger ID/oscillation = gate ⑤, lineage conflict, or a design-infeasible/requirement-wrong reversal) is a real escalation and will still be surfaced immediately.
+./validation/fullrun-lab/v3-poll-r2/apriori/process-config.md:11:| language | auto | auto (match the human) / any language name, e.g. `中文`, `English` | auto |
+./validation/fullrun-lab/v3-poll-r2/apriori/process-config.md:12:| step0-cap | 5 | ≥ 1 | 5 |
+./validation/fullrun-lab/v3-poll-r2/apriori/process-config.md:13:| step2-cap | 4 | ≥ 1 | 4 |
+./validation/fullrun-lab/v3-poll-r2/apriori/process-config.md:14:| step5-cap | 25 | ≥ 1 | 25 |
+./validation/fullrun-lab/v3-poll-r2/apriori/process-config.md:15:| step6-cap | 4 | ≥ 1 | 4 |
+./validation/fullrun-lab/v3-poll-r2/apriori/process-config.md:16:| spike-cap | 10 | ≥ 1 | 10 |
+./validation/fullrun-lab/v3-poll-r2/apriori/process-config.md:17:| extraction-review-cap | 2 | ≥ 1 | 2 |
+./validation/fullrun-lab/v3-poll-r2/apriori/process-config.md:18:| shrink-state | none | none / <stage>: <new-cap> entries, human-approved only | none |
+./validation/fullrun-lab/v3-poll-r2/apriori/process-config.md:19:| rejected-ratio-guard | 50% | 0–100%; above it, shrinking is blocked | 50% |
+./validation/fullrun-lab/v3-poll-r2/apriori/process-config.md:21:| post-merge-review-freq | 1 in 5 | ≥ 1 in N merged changes (sampling rate) | 1 in 5 |
+./validation/fullrun-lab/v3-poll-r2/apriori/process-config.md:23:<!-- shrink-state is written only after a human gate approves a shrink proposal (RUNBOOK §6),
+./validation/fullrun-lab/v3-poll-r2/apriori/process-config.md:24:     e.g. `shrink-state: step2-cap: 2 (approved 2026-07-04, gates log)`.
+./validation/fullrun-lab/v3-poll-r2/apriori/process-config.md:25:     A post-merge re-review that finds a high-risk miss restores the previous cap. -->
+./validation/fullrun-lab/v3-poll-r2/apriori/runbook.md:187:### STEP0 — requirement refinement · adversarial loop · cap: `step0-cap` (default 5)
+./validation/fullrun-lab/v3-poll-r2/apriori/runbook.md:196:1. **Spike (bounded):** prototype freely under `spike/`; cap: `spike-cap` (default 10) turns; exit = every intent-card question answered. Cap hit → **gate ⑤**.
+./validation/fullrun-lab/v3-poll-r2/apriori/runbook.md:198:3. **P12 — extraction review (heterogeneous, R2):** cap: `extraction-review-cap` (default 2). Verdict line `VERDICT: extraction accepted` → step 4. `VERDICT: extraction rejected` + unfaithful extraction → redo P11; `VERDICT: extraction rejected` + intent hypothesis falsified → back to SPIKE, or `ABANDONED` (archive the intent card + findings; log in the ledger).
+./validation/fullrun-lab/v3-poll-r2/apriori/runbook.md:213:- **Research-spike variant** (vague-but-tripwired changes, §2): probe code is allowed under `spike/` — the explore track's full isolation rules apply — capped by `spike-cap` (default 10); findings land as a "research conclusions" appendix to the gap report. P3 carries the matching variant clause.
+./validation/fullrun-lab/v3-poll-r2/apriori/runbook.md:216:### STEP2 — propose · adversarial loop · cap: `step2-cap` (default 4)
+./validation/fullrun-lab/v3-poll-r2/apriori/runbook.md:230:### STEP5 — apply · cap: `step5-cap` (default 25)
+./validation/fullrun-lab/v3-poll-r2/apriori/runbook.md:274:- **Advisory findings (scope discipline):** only gaps affecting **correctness, security, or the stated requirements** enter as formal rows; everything else the reviewer labels `advisory`. Labeling is the **reviewer's exclusive call** — the producer may never downgrade an open row to advisory. Per-item advisory lists live in the review doc; the ledger takes **one batch row per round** (`advisory batch acknowledged (n items)`), terminal state `advisory-acked` — the "record verbatim" rule (R2) governs the reviewer's delta *content*, while the row *shape* is always normalized to this batch form, so a reviewer that free-forms its advisory rows is normalized, not copied literally; "ignoring" advisories means no per-item handling — the batch row still lands. A reviewer may later **upgrade** an advisory to open (with a reason, new row tagged `upgraded-from-advisory`): it counts in the data pack's reopened statistic but does **not** by itself trip gate ⑤ (only a closed formal ID re-reopening does). **Correctness and security findings can never be advisory.** Mislabel handling: sampled at STEP3 (Medium+), gate ④, or the pre-merge PR review (Trivial); a real gap found mislabeled → upgrade + log; one that slips past merge counts as a post-merge miss (triggers cap restoration, §6).
+./validation/fullrun-lab/v3-poll-r2/apriori/runbook.md:318:Probe code is allowed under spike/ (explore-track isolation rules apply), capped by spike-cap;
+./validation/fullrun-lab/v3-poll-r2/apriori/runbook.md:440:Cap: extraction-review-cap (default 2). Rejected + unfaithful extraction → producer redoes P11;
+./validation/fullrun-lab/v3-poll-r2/apriori/runbook.md:476:/goal "Goal: requirement/req-final.md exists and the latest review pass reports 'VERDICT: no major issues'. Cap: step0-cap rounds (default 5).
+./validation/fullrun-lab/v3-poll-r2/apriori/runbook.md:488:/goal "Goal: apriori/changes/<change>/ has SPEC-DOC+DESIGN-DOC and the latest review verdict line is 'VERDICT: no major issues, ready to proceed to execution'. Cap: step2-cap rounds (default 4).
+./validation/fullrun-lab/v3-poll-r2/apriori/runbook.md:498:/goal "Goal — ALL must hold: `npm test` exits 0; lint/static analysis green (where configured); every scenario ID in apriori/changes/<change>/specs/ appears in at least one test name (list any missing IDs); every item in apriori/changes/<change>/tasks.md is [x]; (UI projects only) the Playwright E2E suite passes and screenshot diffs are within threshold; AND a consistency review by a DIFFERENT model (the P8 prompt) reports 'VERDICT: no spec-vs-code gaps'. Cap: step5-cap turns (default 25).
+./validation/fullrun-lab/v3-poll-r2/apriori/runbook.md:506:/goal "Goal: the change is archived (`apriori archive` merges the delta specs into the living store apriori/specs/) AND the KB file for module <module> reflects this change's new/changed facts with a refreshed source-commit stamp. Cap: step6-cap turns (default 4).
+./validation/fullrun-lab/v3-poll-r2/apriori/runbook.md:513:**Shrink governance (the metabolism rule).** Every N changes (default 5, `shrink-proposal-freq`) the agent **reports — never applies** — a shrink/expand proposal whose data pack MUST contain: verified count; rejected count (with sampled reasons); reopened-ID count (including `upgraded-from-advisory` rows); advisory ratio (monitoring only — never a decision threshold); total wall-clock per change and per review stage (derived from the state file's timestamps; wall-clock includes human-gate waits — note this so cost curves aren't misread; missing timestamps → `n/a`, never estimated). The rejected ratio for `rejected-ratio-guard` (default 50%) counts **formal findings only — advisories are excluded from both numerator and denominator** (so relabeling can't dilute the guard). Shrinking a review stage is a **human gate decision**, blocked outright when the guard trips or the change class is tripwired (shared state / migration / security / production data). Shrinking means lowering a stage's round cap — **floor 1; no stage ever reaches zero** — and shrunk review rounds can never be traded for fewer deterministic checks: **you may shrink review rounds, you may not substitute them for lint, tests or traceability**. Post-merge re-review (sampling rate `post-merge-review-freq`, default 1 in 5 merged changes) finding ≥1 high-risk miss — including a real gap that had been mislabeled advisory — → restore the stage's previous cap, logged the same way. Beware both directions: producers can zero the metric by rejecting findings (that's what the guard is for); reviewers can inflate it by careless verifies (which merely delays shrinking).
+./validation/fullrun-lab/v3-poll/apriori/process-config.md:11:| language | auto | auto (match the human) / any language name, e.g. `中文`, `English` | auto |
+./validation/fullrun-lab/v3-poll/apriori/process-config.md:12:| step0-cap | 5 | ≥ 1 | 5 |
+./validation/fullrun-lab/v3-poll/apriori/process-config.md:13:| step2-cap | 4 | ≥ 1 | 4 |
+./validation/fullrun-lab/v3-poll/apriori/process-config.md:14:| step5-cap | 25 | ≥ 1 | 25 |
+./validation/fullrun-lab/v3-poll/apriori/process-config.md:15:| step6-cap | 4 | ≥ 1 | 4 |
+./validation/fullrun-lab/v3-poll/apriori/process-config.md:16:| spike-cap | 10 | ≥ 1 | 10 |
+./validation/fullrun-lab/v3-poll/apriori/process-config.md:17:| extraction-review-cap | 2 | ≥ 1 | 2 |
+./validation/fullrun-lab/v3-poll/apriori/process-config.md:18:| shrink-state | none | none / <stage>: <new-cap> entries, human-approved only | none |
+./validation/fullrun-lab/v3-poll/apriori/process-config.md:19:| rejected-ratio-guard | 50% | 0–100%; above it, shrinking is blocked | 50% |
+./validation/fullrun-lab/v3-poll/apriori/process-config.md:21:| post-merge-review-freq | 1 in 5 | ≥ 1 in N merged changes (sampling rate) | 1 in 5 |
+./validation/fullrun-lab/v3-poll/apriori/process-config.md:23:<!-- shrink-state is written only after a human gate approves a shrink proposal (RUNBOOK §6),
+./validation/fullrun-lab/v3-poll/apriori/process-config.md:24:     e.g. `shrink-state: step2-cap: 2 (approved 2026-07-04, gates log)`.
+./validation/fullrun-lab/v3-poll/apriori/process-config.md:25:     A post-merge re-review that finds a high-risk miss restores the previous cap. -->
+./validation/fullrun-lab/v3-poll/apriori/runbook.md:180:### STEP0 — requirement refinement · adversarial loop · cap: `step0-cap` (default 5)
+./validation/fullrun-lab/v3-poll/apriori/runbook.md:189:1. **Spike (bounded):** prototype freely under `spike/`; cap: `spike-cap` (default 10) turns; exit = every intent-card question answered. Cap hit → **gate ⑤**.
+./validation/fullrun-lab/v3-poll/apriori/runbook.md:191:3. **P12 — extraction review (heterogeneous, R2):** cap: `extraction-review-cap` (default 2). Verdict line `VERDICT: extraction accepted` → step 4. `VERDICT: extraction rejected` + unfaithful extraction → redo P11; `VERDICT: extraction rejected` + intent hypothesis falsified → back to SPIKE, or `ABANDONED` (archive the intent card + findings; log in the ledger).
+./validation/fullrun-lab/v3-poll/apriori/runbook.md:206:- **Research-spike variant** (vague-but-tripwired changes, §2): probe code is allowed under `spike/` — the explore track's full isolation rules apply — capped by `spike-cap` (default 10); findings land as a "research conclusions" appendix to the gap report. P3 carries the matching variant clause.
+./validation/fullrun-lab/v3-poll/apriori/runbook.md:209:### STEP2 — propose · adversarial loop · cap: `step2-cap` (default 4)
+./validation/fullrun-lab/v3-poll/apriori/runbook.md:223:### STEP5 — apply · cap: `step5-cap` (default 25)
+./validation/fullrun-lab/v3-poll/apriori/runbook.md:266:- **Advisory findings (scope discipline):** only gaps affecting **correctness, security, or the stated requirements** enter as formal rows; everything else the reviewer labels `advisory`. Labeling is the **reviewer's exclusive call** — the producer may never downgrade an open row to advisory. Per-item advisory lists live in the review doc; the ledger takes **one batch row per round** (`advisory batch acknowledged (n items)`), terminal state `advisory-acked`; "ignoring" advisories means no per-item handling — the batch row still lands. A reviewer may later **upgrade** an advisory to open (with a reason, new row tagged `upgraded-from-advisory`): it counts in the data pack's reopened statistic but does **not** by itself trip gate ⑤ (only a closed formal ID re-reopening does). **Correctness and security findings can never be advisory.** Mislabel handling: sampled at STEP3 (Medium+), gate ④, or the pre-merge PR review (Trivial); a real gap found mislabeled → upgrade + log; one that slips past merge counts as a post-merge miss (triggers cap restoration, §6).
+./validation/fullrun-lab/v3-poll/apriori/runbook.md:310:Probe code is allowed under spike/ (explore-track isolation rules apply), capped by spike-cap;
+./validation/fullrun-lab/v3-poll/apriori/runbook.md:430:Cap: extraction-review-cap (default 2). Rejected + unfaithful extraction → producer redoes P11;
+./validation/fullrun-lab/v3-poll/apriori/runbook.md:466:/goal "Goal: requirement/req-final.md exists and the latest review pass reports 'VERDICT: no major issues'. Cap: step0-cap rounds (default 5).
+./validation/fullrun-lab/v3-poll/apriori/runbook.md:478:/goal "Goal: apriori/changes/<change>/ has SPEC-DOC+DESIGN-DOC and the latest review verdict line is 'VERDICT: no major issues, ready to proceed to execution'. Cap: step2-cap rounds (default 4).
+./validation/fullrun-lab/v3-poll/apriori/runbook.md:488:/goal "Goal — ALL must hold: `npm test` exits 0; lint/static analysis green (where configured); every scenario ID in apriori/changes/<change>/specs/ appears in at least one test name (list any missing IDs); every item in apriori/changes/<change>/tasks.md is [x]; (UI projects only) the Playwright E2E suite passes and screenshot diffs are within threshold; AND a consistency review by a DIFFERENT model (the P8 prompt) reports 'VERDICT: no spec-vs-code gaps'. Cap: step5-cap turns (default 25).
+./validation/fullrun-lab/v3-poll/apriori/runbook.md:496:/goal "Goal: the change is archived (`apriori archive` merges the delta specs into the living store apriori/specs/) AND the KB file for module <module> reflects this change's new/changed facts with a refreshed source-commit stamp. Cap: step6-cap turns (default 4).
+./validation/fullrun-lab/v3-poll/apriori/runbook.md:503:**Shrink governance (the metabolism rule).** Every N changes (default 5, `shrink-proposal-freq`) the agent **reports — never applies** — a shrink/expand proposal whose data pack MUST contain: verified count; rejected count (with sampled reasons); reopened-ID count (including `upgraded-from-advisory` rows); advisory ratio (monitoring only — never a decision threshold); total wall-clock per change and per review stage (derived from the state file's timestamps; wall-clock includes human-gate waits — note this so cost curves aren't misread; missing timestamps → `n/a`, never estimated). The rejected ratio for `rejected-ratio-guard` (default 50%) counts **formal findings only — advisories are excluded from both numerator and denominator** (so relabeling can't dilute the guard). Shrinking a review stage is a **human gate decision**, blocked outright when the guard trips or the change class is tripwired (shared state / migration / security / production data). Shrinking means lowering a stage's round cap — **floor 1; no stage ever reaches zero** — and shrunk review rounds can never be traded for fewer deterministic checks: **you may shrink review rounds, you may not substitute them for lint, tests or traceability**. Post-merge re-review (sampling rate `post-merge-review-freq`, default 1 in 5 merged changes) finding ≥1 high-risk miss — including a real gap that had been mislabeled advisory — → restore the stage's previous cap, logged the same way. Beware both directions: producers can zero the metric by rejecting findings (that's what the guard is for); reviewers can inflate it by careless verifies (which merely delays shrinking).
+
+codex
+**Issues**
+
+CC-1 — `configTestCmd` 的坏配置语义未定义完整。  
+req-v1 只说 `configTestCmd` 使用同一解析器、fence 内示例不再生效，但没有说明 `test-cmd` 重复异值、空值、或解析器 `problems` 出现时 `verify` / `gate` / `doctor` 各自如何 fail-closed。现在 `verify` 可省略 `--test-cmd` 走 config fallback；`gate` 和 `doctor D5` 也调用 `configTestCmd`。若坏配置只是返回 null，会和“无 test-cmd 配置”混在一起；若返回错误对象，三个消费面需要明确 exit/status。  
+Fix：定义 `configTestCmd` 的结果契约，例如 `{value, problems}`；`verify` 配置错误 → exit 2 / JSON `ERROR`，不运行测试；`gate` 配置错误 → exit 2 `ERROR`，不运行 C1；`doctor` 配置错误 → D5 finding 还是 UNUSABLE 需明确。至少要具名错误并证明不会执行 fenced/commented/冲突 test-cmd。
+
+CC-2 — 表格行 grammar 与现有模板不一致，可能导致合法配置被规范排除。  
+req-v1 写“只识别 `| key | value |` 形状的表行”，但 `templates/process-config.md` 当前是四列表：`| Field | Value | Legal range | Default |`，`init --test-cmd` 也追加多列行。若严格按两列表解释，现有 `language`、未来 `cas`、`test-cmd` 都可能不被识别。  
+Fix：明确有效配置行是 Markdown table 中“至少前两列”为 key/value，后续列忽略；表头/分隔行按 key 名或 separator 规则忽略。
+
+CC-3 — 解析边界还有未决语义，尤其 fence/comment 异常形态与同值重复。  
+req-v1 说 fence 与 spec-runner 一致，但 spec-runner 的 `stripFences` 是非行状态机的最短 regex，对未闭合 fence 不跳过到 EOF；这里又要求“逐行扫描”。HTML comment 也未说明未闭合注释是否跳到 EOF。另有“同值重复 → 取一并记 note 级 problem?” 与“同值重复容忍”混杂；如果 `problems` 触发 fail-closed，note 级 problem 会把本应容忍的情况变成错误。  
+Fix：写死规则：fence 只认行首/可缩进三反引号，开启后到下一 fence 行，未闭合则到 EOF 均跳过；HTML `<!--` 到下一 `-->`，未闭合到 EOF 跳过；同值重复不进入 `problems`，可选进入 `notes`，异值重复才 problem。
+
+CC-4 — `cas` 配置错误在无 unstamped mutation 时是否阻断未定义。  
+req-v1 说“存在冲突或非法值时，一切豁免 judgment fail-closed 为无豁免且 archive/gate 报配置错误”，但如果本次 delta 全部已 stamped 或 ADDED-only，不需要豁免，坏 `cas` 行是否仍让 archive/gate 失败没有说明。  
+Fix：明确 `cas` 错误只在需要判断 waiver 时阻断，还是任何 archive/gate 运行只要看到坏 `cas` 就 CONFIG ERROR。两者都可行，但必须可测。
+
+**Advisories**
+
+未知 key 忽略是合理的；否则模板里的 cap/shrink 行会把本变更扩大成配置 schema 迁移。
+
+`--no-cas` 高于坏 `cas` config 的设计合理，但建议限定为只压过 `cas` 键错误，不应压过 `test-cmd` 错误。
+
+LEDGER DELTA
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| CC-1 | `configTestCmd` bad-config behavior is underspecified for verify/gate/doctor. | Bad config may be treated as “missing config” or still run an unsafe fallback. | STEP0·r1 | open |
+| CC-2 | Config table grammar says `| key | value |` but existing template/init rows are multi-column. | Parser may ignore valid scaffolded config rows. | STEP0·r1 | open |
+| CC-3 | Fence/comment edge semantics and same-value duplicate handling are ambiguous. | Implementations can diverge on unterminated blocks or fail tolerated duplicates. | STEP0·r1 | open |
+| CC-4 | `cas` config errors when no waiver is needed are not specified. | Archive/gate behavior may differ on stamped/ADDED-only changes with bad config. | STEP0·r1 | open |
+
+VERDICT: 4 issues found
+tokens used
+559,959
+**Issues**
+
+CC-1 — `configTestCmd` 的坏配置语义未定义完整。  
+req-v1 只说 `configTestCmd` 使用同一解析器、fence 内示例不再生效，但没有说明 `test-cmd` 重复异值、空值、或解析器 `problems` 出现时 `verify` / `gate` / `doctor` 各自如何 fail-closed。现在 `verify` 可省略 `--test-cmd` 走 config fallback；`gate` 和 `doctor D5` 也调用 `configTestCmd`。若坏配置只是返回 null，会和“无 test-cmd 配置”混在一起；若返回错误对象，三个消费面需要明确 exit/status。  
+Fix：定义 `configTestCmd` 的结果契约，例如 `{value, problems}`；`verify` 配置错误 → exit 2 / JSON `ERROR`，不运行测试；`gate` 配置错误 → exit 2 `ERROR`，不运行 C1；`doctor` 配置错误 → D5 finding 还是 UNUSABLE 需明确。至少要具名错误并证明不会执行 fenced/commented/冲突 test-cmd。
+
+CC-2 — 表格行 grammar 与现有模板不一致，可能导致合法配置被规范排除。  
+req-v1 写“只识别 `| key | value |` 形状的表行”，但 `templates/process-config.md` 当前是四列表：`| Field | Value | Legal range | Default |`，`init --test-cmd` 也追加多列行。若严格按两列表解释，现有 `language`、未来 `cas`、`test-cmd` 都可能不被识别。  
+Fix：明确有效配置行是 Markdown table 中“至少前两列”为 key/value，后续列忽略；表头/分隔行按 key 名或 separator 规则忽略。
+
+CC-3 — 解析边界还有未决语义，尤其 fence/comment 异常形态与同值重复。  
+req-v1 说 fence 与 spec-runner 一致，但 spec-runner 的 `stripFences` 是非行状态机的最短 regex，对未闭合 fence 不跳过到 EOF；这里又要求“逐行扫描”。HTML comment 也未说明未闭合注释是否跳到 EOF。另有“同值重复 → 取一并记 note 级 problem?” 与“同值重复容忍”混杂；如果 `problems` 触发 fail-closed，note 级 problem 会把本应容忍的情况变成错误。  
+Fix：写死规则：fence 只认行首/可缩进三反引号，开启后到下一 fence 行，未闭合则到 EOF 均跳过；HTML `<!--` 到下一 `-->`，未闭合到 EOF 跳过；同值重复不进入 `problems`，可选进入 `notes`，异值重复才 problem。
+
+CC-4 — `cas` 配置错误在无 unstamped mutation 时是否阻断未定义。  
+req-v1 说“存在冲突或非法值时，一切豁免 judgment fail-closed 为无豁免且 archive/gate 报配置错误”，但如果本次 delta 全部已 stamped 或 ADDED-only，不需要豁免，坏 `cas` 行是否仍让 archive/gate 失败没有说明。  
+Fix：明确 `cas` 错误只在需要判断 waiver 时阻断，还是任何 archive/gate 运行只要看到坏 `cas` 就 CONFIG ERROR。两者都可行，但必须可测。
+
+**Advisories**
+
+未知 key 忽略是合理的；否则模板里的 cap/shrink 行会把本变更扩大成配置 schema 迁移。
+
+`--no-cas` 高于坏 `cas` config 的设计合理，但建议限定为只压过 `cas` 键错误，不应压过 `test-cmd` 错误。
+
+LEDGER DELTA
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| CC-1 | `configTestCmd` bad-config behavior is underspecified for verify/gate/doctor. | Bad config may be treated as “missing config” or still run an unsafe fallback. | STEP0·r1 | open |
+| CC-2 | Config table grammar says `| key | value |` but existing template/init rows are multi-column. | Parser may ignore valid scaffolded config rows. | STEP0·r1 | open |
+| CC-3 | Fence/comment edge semantics and same-value duplicate handling are ambiguous. | Implementations can diverge on unterminated blocks or fail tolerated duplicates. | STEP0·r1 | open |
+| CC-4 | `cas` config errors when no waiver is needed are not specified. | Archive/gate behavior may differ on stamped/ADDED-only changes with bad config. | STEP0·r1 | open |
+
+VERDICT: 4 issues found

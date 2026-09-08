@@ -1,0 +1,707 @@
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f4b30-68f9-7222-9b64-17f52a333b4c
+--------
+user
+New task: KB post-capture check (P10) for a NEW change 'doctor-command'. Three truth docs were reverse-captured: apriori/truth/init.md, apriori/truth/update.md, apriori/truth/check.md — claiming to describe lib/init.js, lib/update.js, lib/check.js respectively. Verify every Contract claim against the code (read all three libs). Flag WRONG claims (quote both sides) and MISSING load-bearing facts; do not judge Decisions against code but flag visible violations. Terse. End with exactly one line: 'KB-CHECK: accurate' or 'KB-CHECK: <N> corrections needed'.
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-10T16:24:18.112658Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-10T16:24:18.293375Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-10T16:24:18.642829Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-10T16:24:19.458930Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-10T16:24:20.415470Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-10T16:24:22.277078Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-10T16:24:25.857338Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: eqUTc5qHzOK4
+codex
+I’ll compare only the Contract sections against the three implementation files, and I’ll treat Decisions as non-contract unless the code plainly contradicts them.
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' lib/init.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' apriori/truth/update.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,240p' apriori/truth/init.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,280p' apriori/truth/check.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 126ms:
+'use strict';
+/*
+ * apriori init — scaffold the single apriori/ root and write a thin pointer to the
+ * self-contained runbook in each selected AI tool's native location/format.
+ * Zero deps — pure Node stdlib. The protocol lives once (apriori/runbook.md); tools get pointers.
+ */
+const fs = require('fs');
+const path = require('path');
+const readline = require('readline');
+
+const TEMPLATES = path.join(__dirname, '..', 'templates');
+// The runbook ships once, as the package's own RUNBOOK.md — no template duplicate (IN-04).
+const RUNBOOK_SRC = path.join(__dirname, '..', 'RUNBOOK.md');
+
+// The one adapter table — the only maintenance surface as tool conventions drift.
+// level: 'command' = gets a /apriori-style entry; 'rule' = rule-level only (no slash command).
+const TOOLS = {
+  claude:   { name: 'Claude Code',   detect: ['CLAUDE.md', '.claude'],
+              rules: 'CLAUDE.md', command: '.claude/commands/apriori.md', level: 'command' },
+  codex:    { name: 'Codex',         detect: ['AGENTS.md', '.codex'],
+              rules: 'AGENTS.md',  command: '.codex/prompts/apriori.md', level: 'command' },
+  cursor:   { name: 'Cursor',        detect: ['.cursor'],
+              rules: '.cursor/rules/apriori.mdc', mdc: true, level: 'rule' },
+  copilot:  { name: 'GitHub Copilot', detect: ['.github'],
+              rules: '.github/copilot-instructions.md', level: 'rule' },
+  opencode: { name: 'OpenCode',      detect: ['AGENTS.md', '.opencode'],
+              rules: 'AGENTS.md',  command: '.opencode/command/apriori.md', level: 'command' },
+  windsurf: { name: 'Windsurf',      detect: ['.windsurf', '.windsurfrules'],
+              rules: '.windsurf/rules/apriori.md', command: '.windsurf/workflows/apriori.md', level: 'command' },
+};
+
+const POINTER =
+  'Development follows `apriori/runbook.md`. At session start, read it per its ' +
+  'session-start rule and `apriori/changes/<change>/flow-state.md`, then continue ' +
+  'from the recorded position.';
+
+function detectTools(root) {
+  return Object.keys(TOOLS).filter((k) => TOOLS[k].detect.some((m) => fs.existsSync(path.join(root, m))));
+}
+
+function ensureDir(p) { fs.mkdirSync(path.dirname(p), { recursive: true }); }
+
+// Append a pointer to a rules file without duplicating; returns 'created'|'appended'|'skipped'.
+// dryRun computes the action without writing (IN-07 preview).
+function writePointer(root, rel, mdc, dryRun) {
+  const p = path.join(root, rel);
+  const body = mdc
+    ? `---\ndescription: apriori spec-driven development\nalwaysApply: true\n---\n\n${POINTER}\n`
+    : `${POINTER}\n`;
+  if (!fs.existsSync(p)) { if (!dryRun) { ensureDir(p); fs.writeFileSync(p, body); } return 'created'; }
+  const cur = fs.readFileSync(p, 'utf8');
+  if (cur.includes('apriori/runbook.md')) return 'skipped';
+  if (!dryRun) fs.writeFileSync(p, cur.replace(/\s*$/, '') + '\n\n' + body);
+  return 'appended';
+}
+
+function writeCommand(root, rel, dryRun) {
+  const p = path.join(root, rel);
+  if (fs.existsSync(p)) return 'skipped';
+  if (!dryRun) { ensureDir(p); fs.copyFileSync(path.join(TEMPLATES, 'command.md'), p); }
+  return 'created';
+}
+
+// Scaffold the apriori/ root + per-tool pointers. Pure enough to unit-test.
+// opts.dryRun computes actions without writing. Returns { actions:[{file,action}], levels:{tool:level} }
+function scaffold(root, toolKeys, opts = {}) {
+  const dry = !!opts.dryRun;
+  const actions = [];
+  const act = (file, action) => actions.push({ file, action });
+  const seed = (rel, srcAbs) => {
+    const p = path.join(root, rel);
+    if (!fs.existsSync(p)) { if (!dry) { ensureDir(p); fs.copyFileSync(srcAbs, p); } act(rel, 'created'); }
+    else act(rel, 'skipped');
+  };
+
+  // 1. apriori/ root: runbook + process-config (never clobbered) + working dirs
+  seed('apriori/runbook.md', RUNBOOK_SRC);
+  seed('apriori/process-config.md', path.join(TEMPLATES, 'process-config.md'));
+  // ephemeral scratch (P7 screenshot self-checks etc.) — gitignored, never committed (IN-11)
+  const gi = path.join(root, 'apriori', '.gitignore');
+  if (!fs.existsSync(gi)) { if (!dry) { ensureDir(gi); fs.writeFileSync(gi, 'tmp/\n'); } act('apriori/.gitignore', 'created'); }
+  else act('apriori/.gitignore', 'skipped');
+  // pin a language and/or persist a test command in the scaffolded config (only on a freshly-created config)
+  if ((opts.language || opts.testCmd) && !dry) {
+    const cfg = path.join(root, 'apriori', 'process-config.md');
+    const created = actions.some((a) => a.file === 'apriori/process-config.md' && a.action === 'created');
+    if (created) {
+      let body = fs.readFileSync(cfg, 'utf8');
+      if (opts.language) body = body.replace(/(\| language \| )auto( \|)/, `$1${opts.language}$2`);
+      if (opts.testCmd)  // consumed by `apriori verify` as the default when --test-cmd is omitted
+        body = body.replace(/^(\| language \|.*)$/m, `$1\n| test-cmd | ${opts.testCmd} | any shell command emitting TAP — \`apriori verify\`'s default | (none) |`);
+      fs.writeFileSync(cfg, body);
+    }
+  }
+  if (!dry) for (const sub of ['specs', 'changes', 'changes/archive', 'review', 'truth', 'tmp'])
+    fs.mkdirSync(path.join(root, 'apriori', sub), { recursive: true });
+
+  // 2. per-tool pointers / commands
+  const levels = {};
+  for (const key of toolKeys) {
+    const t = TOOLS[key];
+    if (!t) continue;
+    act(t.rules, writePointer(root, t.rules, t.mdc, dry));
+    if (t.command) act(t.command, writeCommand(root, t.command, dry));
+    levels[key] = t.level;
+  }
+  return { actions, levels };
+}
+
+function parseArgs(argv) {
+  const a = { tools: null, testCmd: null, yes: false, language: null };
+  for (let i = 0; i < argv.length; i++) {
+    const k = argv[i];
+    if (k === '--tools') a.tools = argv[++i].split(',').map((s) => s.trim()).filter(Boolean);
+    else if (k === '--test-cmd') a.testCmd = argv[++i];
+    else if (k === '--language') a.language = argv[++i];
+    else if (k === '--yes' || k === '-y') a.yes = true;
+  }
+  return a;
+}
+
+function report(scaffoldResult) {
+  console.log('\n  Wrote:');
+  for (const { file, action } of scaffoldResult.actions)
+    console.log(`    ${action === 'skipped' ? '·' : '✓'} ${file}${action !== 'created' ? `  (${action})` : ''}`);
+  const cmd = [], rule = [];
+  for (const [k, lvl] of Object.entries(scaffoldResult.levels))
+    (lvl.startsWith('command') ? cmd : rule).push(TOOLS[k].name + (lvl === 'command-experimental' ? ' (experimental)' : ''));
+  if (cmd.length) console.log(`\n  /apriori command-level: ${cmd.join(', ')}`);
+  if (rule.length) console.log(`  rule-level (no slash command, just point the agent at the runbook): ${rule.join(', ')}`);
+  console.log('\n  Next — two doors:');
+  console.log('    idea still fuzzy?  /apriori           (no arguments — brainstorm first, nothing written until you approve)');
+  console.log('    change is clear?   /apriori <change>  (or the kickoff prompt), then answer at each human gate.');
+}
+
+// --- arrow-key multi-select (pure Node, zero deps) ---------------------------
+// key names from a raw stdin chunk
+function parseKey(buf) {
+  const s = buf.toString('utf8');
+  if (s === '\x1b[A' || s === 'k') return 'up';
+  if (s === '\x1b[B' || s === 'j') return 'down';
+  if (s === ' ') return 'space';
+  if (s === '\r' || s === '\n') return 'enter';
+  if (s === 'a') return 'all';
+  if (s === '\x03' || s === '\x1b') return 'cancel';   // Ctrl-C / Esc
+  return null;
+}
+
+// pure reducer: (state, key) → state. state = { items, cursor, selected:Set }
+function reduceKey(state, key) {
+  const n = state.items.length;
+  if (!n) return state;
+  if (key === 'up') return { ...state, cursor: (state.cursor - 1 + n) % n };
+  if (key === 'down') return { ...state, cursor: (state.cursor + 1) % n };
+  if (key === 'space') {
+    const selected = new Set(state.selected);
+    const id = state.items[state.cursor].key;
+    if (selected.has(id)) selected.delete(id); else selected.add(id);
+    return { ...state, selected };
+  }
+  if (key === 'all') {
+    const selected = state.selected.size === n ? new Set() : new Set(state.items.map((i) => i.key));
+    return { ...state, selected };
+  }
+  return state;
+}
+
+const paint = (s, code, on) => (on ? `\x1b[${code}m${s}\x1b[0m` : s);
+
+function renderMenu(state, opts = {}) {
+  const c = !!opts.color;
+  const lines = ['  Select AI tools  (↑/↓ move · space toggle · a all · enter confirm):'];
+  state.items.forEach((it, i) => {
+    const cur = i === state.cursor ? '❯' : ' ';
+    const box = state.selected.has(it.key) ? paint('◉', 32, c) : '◯';   // green when selected
+    lines.push(`  ${cur} ${box} ${it.name}${it.detected ? '  (detected)' : ''}`);
+  });
+  const names = state.items.filter((i) => state.selected.has(i.key)).map((i) => i.name);
+  // footer is ALWAYS present (stable line count for in-place redraw)
+  lines.push(`  selected: ${names.length ? paint(names.join(', '), 32, c) : '(none)'}`);
+  return lines.join('\n') + '\n';
+}
+
+// selected keys, in item order
+function selectedKeys(state) { return state.items.filter((i) => state.selected.has(i.key)).map((i) => i.key); }
+
+// interactive driver; input/output default to the real TTY but are injectable for tests
+function multiselect({ items, preselected = [], input = process.stdin, output = process.stdout } = {}) {
+  return new Promise((resolve) => {
+    let state = { items, cursor: 0, selected: new Set(preselected) };
+    let first = true;
+    const color = output.isTTY === true;                 // color only on a real terminal
+    const render = () => {
+      const menu = renderMenu(state, { color });
+      const lineCount = menu.split('\n').length - 1;
+      if (!first) output.write(`\x1b[${lineCount}A\x1b[0J`);   // redraw in place
+      first = false;
+      output.write(menu);
+    };
+    const cleanup = () => {
+      if (input.setRawMode) input.setRawMode(false);
+      input.pause();
+      input.removeListener('data', onData);
+    };
+    const onData = (buf) => {
+      const key = parseKey(buf);
+      if (key === 'cancel') { cleanup(); output.write('\n'); process.exit(130); }
+      if (key === 'enter') { cleanup(); output.write('\n'); resolve(selectedKeys(state)); return; }
+      const next = reduceKey(state, key);
+      if (next !== state) { state = next; render(); }
+    };
+    if (input.setRawMode) input.setRawMode(true);
+    input.resume();
+    render();
+    input.on('data', onData);
+  });
+}
+
+async function askTools(root) {
+  const detected = new Set(detectTools(root));
+  const items = Object.keys(TOOLS).map((k) => ({ key: k, name: TOOLS[k].name, detected: detected.has(k) }));
+  return multiselect({ items, preselected: [...detected] });
+}
+
+function preview(root, tools) {
+  const plan = scaffold(root, tools, { dryRun: true });
+  console.log('\n  About to write:');
+  for (const { file, action } of plan.actions)
+    console.log(`    ${action === 'skipped' ? '·' : '✓'} ${file}${action !== 'created' ? `  (${action})` : ''}`);
+  console.log('\n  Existing files are appended-to or skipped, never overwritten.');
+}
+
+async function confirm(question) {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  const ans = await new Promise((res) => rl.question(question, res));
+  rl.close();
+  return /^(y|yes|)$/i.test(ans.trim());
+}
+
+async function cli(argv) {
+  const a = parseArgs(argv);
+  const root = process.cwd();
+  let tools = a.tools;
+  if (!tools) {
+    if (!process.stdin.isTTY) { console.error('  non-interactive: pass --tools <a,b,...>'); return 2; }
+    tools = await askTools(root);
+  }
+  if (!tools.length) { console.error('  no tools selected — nothing to do'); return 1; }
+  preview(root, tools);                          // IN-07: preview before writing
+  if (!a.yes && process.stdin.isTTY && !(await confirm('\n  Proceed? (Y/n) '))) { console.log('  aborted.'); return 0; }
+  report(scaffold(root, tools, { testCmd: a.testCmd, language: a.language }));
+  return 0;
+}
+
+module.exports = { TOOLS, POINTER, detectTools, writePointer, writeCommand, scaffold, parseArgs, cli,
+  parseKey, reduceKey, renderMenu, selectedKeys, multiselect };
+
+ succeeded in 133ms:
+# TRUTH — init (`lib/init.js`, CLI subcommand `init`)
+
+## Contract (code-is-truth)
+
+source-commit: fb3ed60
+
+**Responsibility.** Scaffold the single `apriori/` root (runbook copy, process-config, working dirs, gitignored tmp/) and write a thin runbook pointer in each selected AI tool's native location. Additive, never clobbers.
+
+**Public interface (the surface other modules consume).**
+- `TOOLS` — the one adapter table: keys `claude codex cursor copilot opencode windsurf`; each `{ name, detect: [paths], rules: <rules-file rel>, command?: <command-file rel>, mdc?: bool, level: 'command'|'rule' }`. THE single source of tool definitions (update.js already imports it).
+- `detectTools(root)` → keys whose any `detect` path exists under root.
+- `scaffold(root, toolKeys, opts {dryRun, language, testCmd})` → `{ actions: [{file, action: 'created'|'appended'|'skipped'}], levels }`. Seeds `apriori/runbook.md` (byte-copy of the package's RUNBOOK.md), `apriori/process-config.md` (template; language/test-cmd only into a FRESHLY created config), `apriori/.gitignore` (`tmp/\n`), dirs `specs changes changes/archive review truth tmp`; per-tool pointer append (dedupe key: the literal `apriori/runbook.md` in the rules file) + command file copy (skip if exists).
+- `parseArgs(argv)` — `--tools a,b · --test-cmd · --language · --yes`.
+- Interactive multiselect (arrow keys) when `--tools` absent; `cli` exits 2 on non-interactive without `--tools`.
+
+**Pitfalls.**
+- `detect` matches broad markers (`.github` ⇒ copilot) — detection over-approximates; selection is the human's.
+- Pointer dedupe is substring-based: any mention of `apriori/runbook.md` in a rules file suppresses the append.
+
+## Decisions (doc-is-truth)
+
+- D-IN-1 (active): the protocol lives ONCE (apriori/runbook.md); tools receive pointers, never copies.
+- D-IN-2 (active): init is additive and never overwrites user content; re-running is always safe.
+
+ succeeded in 153ms:
+# TRUTH — check (`lib/check.js`, CLI subcommand `check`)
+
+## Contract (code-is-truth)
+
+source-commit: fb3ed60
+
+**Responsibility.** Structural consistency checks. Two modes: CONSUMER (default) — CK-04 (every spec-store scenario carries a bindable ID; missing store path → exit 2, naming `apriori init` when apriori/ itself is absent) + CK-06 (scaffolded-runbook freshness, WARN-only `!` line, never a failure). SELF (`--self`) — additionally the apriori repo's handbook checks (anchors/file links, EN/CN heading alignment, verdict-phrase table + drift variants, codex command EN/CN parity + known-good resume forms, no-OpenSpec residue).
+
+**Public interface (surfaces others may consume).**
+- `checkScenarioIds(specText, name, idPattern)` → failure strings (fenced scenarios exempt).
+- `checkRunbookFreshness(root, packagedPath = <pkg>/RUNBOOK.md)` → [] or one warn string (byte comparison of apriori/runbook.md vs the packaged runbook).
+- `cli(argv)`: `[--specs <dir>] [--self]`; exit 0 PASS · 1 FAIL(n) · 2 missing store path.
+- Various handbook checkers (checkLinks, checkHeadingAlignment, checkVerdictPhrases, codexCandidates, checkCodexCommands, checkCodexKnownForms, checkNoOpenspec) — self-mode only.
+
+**Pitfalls.**
+- CK-06 is warn-only by design — a stale runbook never fails CI.
+- CK-04 counts scenarios inside DEPRECATED requirement blocks too (check has no deprecated-block rule; verify does — a known check-vs-verify divergence on post-REMOVED stores, flagged in change-projection's gap report R2, accepted out of scope there).
+
+## Decisions (doc-is-truth)
+
+- D-CK-1 (active): consumer/self split — a consumer legitimately using OpenSpec or shipping its own README must never be failed by apriori's self-checks. Ratified 3.0.1.
+
+ succeeded in 175ms:
+# TRUTH — update (`lib/update.js`, CLI subcommand `update`)
+
+## Contract (code-is-truth)
+
+source-commit: fb3ed60
+
+**Responsibility.** After a CLI upgrade, refresh TOOL-OWNED files to the installed version: `apriori/runbook.md` (from the package's RUNBOOK.md) and each EXISTING per-tool command file (from templates/command.md). Never creates tool entries (init's job), never touches user-owned files.
+
+**Public interface.**
+- `run(root, opts {dryRun, runbookSrc, commandSrc})` → `{ actions: [{file, action: 'updated'|'up-to-date'|'created'}] }`; throws when `apriori/runbook.md` is missing (`run 'apriori init' first`). Re-establishes `apriori/.gitignore` + `tmp/` when missing (UP-05) — the only 'created' it ever emits.
+- `refresh(target, src, dryRun)` → 'updated' | 'up-to-date' (byte comparison).
+- `cli(argv)`: `[--dry-run]`; exit 1 on uninitialized, else 0.
+
+**Pitfalls.**
+- Freshness = byte equality with the PACKAGED runbook — any local edit to apriori/runbook.md reads as "stale" (by design: tool-owned).
+- Imports `TOOLS` from ./init — the adapter table has one home.
+
+## Decisions (doc-is-truth)
+
+- D-UP-1 (active): tool-owned vs user-owned is the load-bearing boundary — update refreshes the former, never the latter (process-config.md, specs/, changes/, rules files).
+
+codex
+I’ve got the init contract against code. Next I’m reading update/check implementations and then I’ll report only wrong or missing load-bearing facts.
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' lib/update.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,360p' lib/check.js" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 178ms:
+'use strict';
+/*
+ * apriori update — refresh tool-owned scaffolded files after a CLI upgrade.
+ * Tool-owned: apriori/runbook.md (copied from the package's own RUNBOOK.md — single source)
+ * and per-tool command files that already exist (from templates/command.md).
+ * User-owned is NEVER touched: process-config.md, specs/, changes/, review/, truth/,
+ * and the rules files the init pointer was appended to (CLAUDE.md, AGENTS.md, …).
+ * Zero deps — pure Node stdlib.
+ */
+const fs = require('fs');
+const path = require('path');
+const { TOOLS } = require('./init');
+
+const PKG_ROOT = path.join(__dirname, '..');
+const RUNBOOK_SRC = path.join(PKG_ROOT, 'RUNBOOK.md');
+const COMMAND_SRC = path.join(PKG_ROOT, 'templates', 'command.md');
+
+// Refresh one existing target from src; returns 'updated' | 'up-to-date'.
+function refresh(target, src, dryRun) {
+  const want = fs.readFileSync(src, 'utf8');
+  if (fs.readFileSync(target, 'utf8') === want) return 'up-to-date';
+  if (!dryRun) fs.writeFileSync(target, want);
+  return 'updated';
+}
+
+// Refresh all tool-owned files under root. Only files that exist are refreshed —
+// update never creates anything (adding a tool is init's job).
+// Returns { actions: [{file, action}] }; throws if the project isn't initialized.
+function run(root, opts = {}) {
+  const rb = path.join(root, 'apriori', 'runbook.md');
+  if (!fs.existsSync(rb)) throw new Error(`no apriori/runbook.md here — run 'apriori init' first`);
+  const actions = [{ file: 'apriori/runbook.md', action: refresh(rb, opts.runbookSrc || RUNBOOK_SRC, opts.dryRun) }];
+  // protocol-required scaffolding the refreshed runbook relies on (IN-11): create if missing, NEVER modify
+  const gi = path.join(root, 'apriori', '.gitignore');
+  if (!fs.existsSync(gi)) {
+    if (!opts.dryRun) { fs.writeFileSync(gi, 'tmp/\n'); fs.mkdirSync(path.join(root, 'apriori', 'tmp'), { recursive: true }); }
+    actions.push({ file: 'apriori/.gitignore', action: 'created' });
+  }
+  for (const key of Object.keys(TOOLS)) {
+    const rel = TOOLS[key].command;
+    if (!rel) continue;
+    const p = path.join(root, rel);
+    if (fs.existsSync(p)) actions.push({ file: rel, action: refresh(p, opts.commandSrc || COMMAND_SRC, opts.dryRun) });
+  }
+  return { actions };
+}
+
+function cli(argv) {
+  const dryRun = argv.includes('--dry-run');
+  let res;
+  try { res = run(process.cwd(), { dryRun }); }
+  catch (e) { console.error('  ' + e.message); return 1; }
+  for (const { file, action } of res.actions)
+    console.log(`  ${action === 'updated' ? '✓' : '·'} ${file}  (${action})`);
+  const n = res.actions.filter((a) => a.action === 'updated').length;
+  const v = require('../package.json').version;
+  console.log(n
+    ? `\n  ${n} file(s) ${dryRun ? 'would be ' : ''}refreshed to apriori-cli ${v}.`
+    : `\n  everything already matches apriori-cli ${v}.`);
+  console.log('  (user-owned files — process-config.md, specs/, changes/, rules files — are never touched.)');
+  return 0;
+}
+
+module.exports = { run, refresh, cli };
+
+ succeeded in 172ms:
+'use strict';
+/*
+ * apriori check — structural consistency checks (JS port of v2's check_docs.py, adapted for V3).
+ * Zero deps — pure Node stdlib. Each check returns an array of failure strings.
+ *
+ * Ported from v2 (behaviour-equivalent): anchor resolution, file-link existence,
+ * EN/CN heading alignment, verdict-phrase table + drift variants, codex-command EN/CN parity.
+ * V3 changes: CK-04 every spec scenario carries a bindable ID; CK-05 no OpenSpec adapter
+ * references remain (the v2 "adapter wording" assertions invert to "no openspec/opsx at all").
+ */
+const fs = require('fs');
+const path = require('path');
+
+// ---- helpers (ported from gh_slug / parse / num_prefix) ---------------------
+function ghSlug(heading) {
+  const s = heading.trim().toLowerCase().replace(/`/g, '').replace(/\*/g, '');
+  let out = '';
+  for (const ch of s) {
+    if (ch === ' ') out += '-';
+    else if (ch === '-' || ch === '_') out += ch;
+    else if (/[\p{L}\p{N}\p{M}]/u.test(ch)) out += ch;
+  }
+  return out;
+}
+function stripFences(text) { return text.replace(/```[\s\S]*?```/g, ''); }
+function headings(text) {
+  const s = stripFences(text);
+  return [...s.matchAll(/^(#{1,6})\s+(.+)$/gm)].map((m) => [m[1].length, m[2]]);
+}
+function anchors(text) { return [...stripFences(text).matchAll(/\]\(#([^)]+)\)/g)].map((m) => m[1]); }
+function fileLinks(text) { return [...stripFences(text).matchAll(/\]\((\.\/[^)#]+)(?:#[^)]*)?\)/g)].map((m) => m[1]); }
+function numPrefix(t) { const m = t.trim().match(/^(\d+(?:\.\d+)*)\b/); return m ? m[1] : null; }
+function lineOf(text, idx) { return text.slice(0, idx).split('\n').length; }
+
+// ---- CK-01: anchors resolve, file links exist -------------------------------
+function checkLinks(root, name, text) {
+  const fails = [];
+  const slugs = new Set(headings(text).map(([, t]) => ghSlug(t)));
+  for (const a of anchors(text)) if (!slugs.has(a)) fails.push(`${name}: broken anchor #${a}`);
+  for (const f of fileLinks(text)) if (!fs.existsSync(path.join(root, f))) fails.push(`${name}: broken file link ${f}`);
+  return fails;
+}
+
+// ---- CK-02: EN/CN heading alignment (length, levels, numeric prefixes) -------
+function checkHeadingAlignment(enName, enText, cnName, cnText) {
+  const fails = [];
+  const eh = headings(enText), ch = headings(cnText);
+  if (eh.length !== ch.length) fails.push(`heading count mismatch: ${enName}=${eh.length} vs ${cnName}=${ch.length}`);
+  const n = Math.min(eh.length, ch.length);
+  for (let i = 0; i < n; i++) {
+    const [el, et] = eh[i], [cl, ct] = ch[i];
+    const ep = numPrefix(et), cp = numPrefix(ct);
+    const numOk = (ep && cp) ? ep === cp : true;
+    if (el !== cl || !numOk) fails.push(`heading misaligned @#${i + 1}: [h${el}] ${et.slice(0, 40)} <-> [h${cl}] ${ct.slice(0, 40)}`);
+  }
+  return fails;
+}
+
+// ---- CK-03: verdict phrase table + drift variants + codex-command parity -----
+const VERDICT_PHRASES = [
+  'VERDICT: no major issues, ready to proceed to execution',
+  'VERDICT: no major issues',
+  'VERDICT: no spec-vs-code gaps',
+  'VERDICT: extraction accepted',
+  'VERDICT: extraction rejected',
+  'VERDICT: <N> issues open',
+];
+const FORBIDDEN_VARIANTS = [
+  [/ready to execute/g, 'EN drift variant "ready to execute"'],
+  [/可进入执行(?!阶段)/g, 'CN drift variant 「可进入执行」 missing 「阶段」'],
+];
+function checkVerdictPhrases(files) {
+  // files: {name -> text}; runbooks must contain every canonical phrase; no drift variants; every VERDICT: string is a table entry
+  const fails = [];
+  for (const rb of ['RUNBOOK.md', 'RUNBOOK_cn.md'])
+    if (files[rb]) for (const p of VERDICT_PHRASES) if (!files[rb].includes(p)) fails.push(`${rb}: phrase-table entry missing: ${p}`);
+  for (const [name, text] of Object.entries(files)) {
+    for (const [re, label] of FORBIDDEN_VARIANTS)
+      for (const m of text.matchAll(re)) fails.push(`${name}:${lineOf(text, m.index)}: ${label}`);
+    for (const m of text.matchAll(/VERDICT:[^"'`」\n]+/g)) {
+      const q = m[0].replace(/[ .。);,，]+$/, '');
+      if (!VERDICT_PHRASES.some((p) => q === p || q.startsWith(p)))
+        fails.push(`${name}:${lineOf(text, m.index)}: VERDICT string not in table: ${q}`);
+    }
+  }
+  return fails;
+}
+
+// codex command extraction (ported from codex_candidates)
+const CODEX_BARE = new Set(['codex', 'exec', 'resume']);
+function codexCandidates(text) {
+  const cmds = [];
+  for (const line of text.split('\n')) {
+    let start = 0, idx;
+    while ((idx = line.indexOf('codex exec', start)) >= 0) {
+      let frag = line.slice(idx); start = idx + 10;
+      frag = frag.replace(/\\"/g, '"').replace(/——/g, ' — ');
+      const raw = frag;
+      frag = frag.replace(/(^|\s)"[^"]*"/g, '$1').replace(/(^|\s)'[^']*'/g, '$1').replace(/\s#.*$/, '');
+      const tokens = [];
+      for (let tok of frag.split(/\s+/).filter(Boolean)) {
+        tok = tok.replace(/[,;)。]+$/, '');
+        const prev = tokens[tokens.length - 1];
+        const isFlagVal = prev && prev.startsWith('-') && /^[A-Za-z0-9._/-]+$/.test(tok);
+        if (CODEX_BARE.has(tok) || isFlagVal ||
+            /^(-{1,2}[A-Za-z][\w-]*|[A-Za-z_]+=("[^"]*"|\S+)|<[^>]+>|\||2>&1|<|\/dev\/null)$/.test(tok)) tokens.push(tok);
+        else break;
+      }
+      const checkable = !raw.includes('...') && !raw.includes('…') && !tokens.includes('--last') &&
+        (tokens.some((t) => t.startsWith('-')) || raw.includes('"'));
+      if (checkable && tokens.length > 2) cmds.push(tokens);
+    }
+  }
+  return cmds;
+}
+function checkCodexCommands(enText, cnText) {
+  const fails = [];
+  const en = codexCandidates(enText), cn = codexCandidates(cnText);
+  if (en.length !== cn.length) { fails.push(`codex command count mismatch: ${en.length} vs ${cn.length}`); return fails; }
+  for (let i = 0; i < en.length; i++)
+    if (en[i].join(' ') !== cn[i].join(' ')) fails.push(`codex command #${i + 1} token mismatch: EN[${en[i]}] CN[${cn[i]}]`);
+  return fails;
+}
+
+// ---- CK-03 (checker 8): codex known-good forms (ported from v2) --------------
+const CODEX_EXEMPT = [['codex', 'exec', 'resume', '-s', 'read-only', '<session-id>']];
+function checkCodexKnownForms(files) {
+  const fails = [];
+  for (const [name, text] of Object.entries(files)) {
+    for (const tokens of codexCandidates(text)) {
+      if (!tokens.includes('resume')) continue;
+      if (CODEX_EXEMPT.some((e) => e.join(' ') === tokens.join(' '))) continue;
+      if (tokens.includes('-s')) fails.push(`${name}: resume command uses -s (rejected on codex >=0.14x): ${tokens.join(' ')}`);
+      if (!(tokens.includes('-c') && tokens.includes('sandbox_mode="read-only"')))
+        fails.push(`${name}: resume command missing -c sandbox_mode="read-only": ${tokens.join(' ')}`);
+    }
+  }
+  for (const rb of ['RUNBOOK.md', 'RUNBOOK_cn.md'])
+    if (files[rb] && !files[rb].includes('< /dev/null')) fails.push(`${rb}: missing the \`< /dev/null\` non-interactive guidance`);
+  return fails;
+}
+
+// ---- CK-04: every spec scenario carries a bindable ID -----------------------
+function checkScenarioIds(specText, name, idPattern = '[A-Z]+-\\d+') {
+  const idRe = new RegExp('^(' + idPattern + ')\\b');
+  const fails = [];
+  // fenced scenarios are documentation, not spec — same rule as the spec-runner (SR-13)
+  for (const m of stripFences(specText).matchAll(/^####\s+Scenario:\s+(.*)$/gm))
+    if (!idRe.test(m[1].trim())) fails.push(`${name}: scenario without a bindable ID: ${m[1].slice(0, 50)}`);
+  return fails;
+}
+
+// ---- CK-05: no OpenSpec adapter references remain (V3 is single plain-files) --
+const OPENSPEC_MARKERS = [/\/opsx:/, /openspec\//, /\(adapter:/i, /OpenSpec adapter/];
+function checkNoOpenspec(name, text) {
+  const fails = [];
+  for (const line of text.split('\n')) for (const re of OPENSPEC_MARKERS)
+    if (re.test(line)) { fails.push(`${name}: residual OpenSpec reference: ${line.trim().slice(0, 60)}`); break; }
+  return fails;
+}
+
+// ---- CK-06: scaffolded-runbook freshness (warn-only, never a failure) ---------
+const PACKAGED_RUNBOOK = path.join(__dirname, '..', 'RUNBOOK.md');
+function checkRunbookFreshness(root, packagedPath = PACKAGED_RUNBOOK) {
+  const scaffolded = path.join(root, 'apriori', 'runbook.md');
+  if (!fs.existsSync(scaffolded) || !fs.existsSync(packagedPath)) return [];
+  if (fs.readFileSync(scaffolded, 'utf8') === fs.readFileSync(packagedPath, 'utf8')) return [];
+  return [`apriori/runbook.md differs from the installed apriori-cli runbook — run 'apriori update' to refresh`];
+}
+
+// ---- cli --------------------------------------------------------------------
+// Two modes. CONSUMER (default): checks the project's own spec store (CK-04) and
+// scaffolded-runbook freshness (CK-06) — nothing else, so a consumer legitimately using
+// OpenSpec or shipping its own README is never failed by apriori's self-checks.
+// SELF (--self): additionally runs the apriori repo's handbook checks (EN/CN pairs,
+// verdict phrases, codex commands, no-openspec residue) — used by this repo's own CI.
+function cli(argv) {
+  const root = process.cwd();
+  let specsDir = 'apriori/specs';
+  let self = false;
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--specs') specsDir = argv[++i];
+    else if (argv[i] === '--self') self = true;
+  }
+  const fails = [];
+
+  // CK-04 over the spec store — a missing path is an ERROR, never a silent PASS
+  const specsPath = path.join(root, specsDir);
+  if (!fs.existsSync(specsPath)) {
+    console.error(`error: spec store path does not exist: ${specsDir}` +
+      (fs.existsSync(path.join(root, 'apriori')) ? '' : ` — is this an apriori project? (run 'apriori init')`));
+    console.log('\nRESULT: ERROR');
+    return 2;
+  }
+  const specFiles = [];
+  (function walk(d) {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, e.name);
+      if (e.isDirectory()) walk(p); else if (e.name.endsWith('.md')) specFiles.push(p);
+    }
+  })(specsPath);
+  for (const f of specFiles) fails.push(...checkScenarioIds(fs.readFileSync(f, 'utf8'), path.relative(root, f)));
+
+  if (self) {
+    // Handbook checks (apriori repo dogfooding) — run when the pairs exist
+    const PAIRS = [['README.md', 'README_cn.md'], ['RUNBOOK.md', 'RUNBOOK_cn.md'], ['VISION.md', 'VISION_cn.md']];
+    const files = {};
+    for (const [en, cn] of PAIRS) for (const nm of [en, cn]) {
+      const p = path.join(root, nm);
+      if (fs.existsSync(p)) files[nm] = fs.readFileSync(p, 'utf8');
+    }
+    for (const [name, text] of Object.entries(files)) {
+      fails.push(...checkLinks(root, name, text));
+      fails.push(...checkNoOpenspec(name, text));
+    }
+    for (const [en, cn] of PAIRS) if (files[en] && files[cn]) fails.push(...checkHeadingAlignment(en, files[en], cn, files[cn]));
+    if (Object.keys(files).length) fails.push(...checkVerdictPhrases(files));
+    if (files['RUNBOOK.md'] && files['RUNBOOK_cn.md']) fails.push(...checkCodexCommands(files['RUNBOOK.md'], files['RUNBOOK_cn.md']));
+    if (Object.keys(files).length) fails.push(...checkCodexKnownForms(files));
+  }
+
+  for (const f of fails) console.log('✗ ' + f);
+  for (const w of checkRunbookFreshness(root)) console.log('! ' + w);   // CK-06: warn-only
+  console.log('\nRESULT:', fails.length ? `FAIL (${fails.length})` : 'PASS');
+  return fails.length ? 1 : 0;
+}
+
+module.exports = {
+  ghSlug, headings, anchors, fileLinks, checkLinks, checkHeadingAlignment,
+  checkVerdictPhrases, codexCandidates, checkCodexCommands, checkCodexKnownForms, checkScenarioIds, checkNoOpenspec,
+  checkRunbookFreshness, cli,
+};
+
+codex
+WRONG claims
+
+1. `apriori/truth/update.md`
+- KB: “Re-establishes `apriori/.gitignore` + `tmp/` when missing”
+- Code: `if (!fs.existsSync(gi)) { ... writeFileSync(gi, 'tmp/\n'); fs.mkdirSync(... 'tmp') }`
+- Correction: `tmp/` is recreated only when `.gitignore` is missing; if `.gitignore` exists and `tmp/` is missing, `update.run()` does not recreate `tmp/`.
+
+MISSING load-bearing facts
+
+1. `init.md`: `cli()` always prints a dry-run preview before writing; on TTY it asks for confirmation unless `--yes/-y` is provided.
+2. `init.md`: `cli()` exits `1` when the selected tool list is empty.
+3. `check.md`: `checkRunbookFreshness()` returns `[]` when either `apriori/runbook.md` or the packaged runbook path is missing; absence is not warned.
+4. `check.md`: `cli --self` still requires the spec store path first; if it is missing, self-mode exits `2` before running handbook checks.
+
+Decisions visible violations: none.
+
+KB-CHECK: 5 corrections needed
+tokens used
+882,892
+WRONG claims
+
+1. `apriori/truth/update.md`
+- KB: “Re-establishes `apriori/.gitignore` + `tmp/` when missing”
+- Code: `if (!fs.existsSync(gi)) { ... writeFileSync(gi, 'tmp/\n'); fs.mkdirSync(... 'tmp') }`
+- Correction: `tmp/` is recreated only when `.gitignore` is missing; if `.gitignore` exists and `tmp/` is missing, `update.run()` does not recreate `tmp/`.
+
+MISSING load-bearing facts
+
+1. `init.md`: `cli()` always prints a dry-run preview before writing; on TTY it asks for confirmation unless `--yes/-y` is provided.
+2. `init.md`: `cli()` exits `1` when the selected tool list is empty.
+3. `check.md`: `checkRunbookFreshness()` returns `[]` when either `apriori/runbook.md` or the packaged runbook path is missing; absence is not warned.
+4. `check.md`: `cli --self` still requires the spec store path first; if it is missing, self-mode exits `2` before running handbook checks.
+
+Decisions visible violations: none.
+
+KB-CHECK: 5 corrections needed

@@ -1,0 +1,669 @@
+<!-- provenance: provider=openai model=gpt-5.6-sol session=019ff75f-81a2-7193-99bc-98ff06d34e09 date=2026-08-13 -->
+OpenAI Codex v0.147.0
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.6-sol
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019ff75f-81a2-7193-99bc-98ff06d34e09
+--------
+user
+Round 3. Your four round-2 findings are implemented and tested (284/284 green; `verify --change gate-id-pattern` GREEN):
+* IMPL-1: after ENOENT, lstatSync distinguishes a truly absent entry from a dangling symlink — the latter is unreadable (fail closed); new CF-11 dangling-symlink case asserts getConfig's problem and verify exit 2.
+* IMPL-2: the child spawn contract is a frozen exported constant CHILD_SPAWN_OPTS {timeout: 2000, killSignal: 'SIGKILL', shell: false}, spread into defaultChildRunner's spawnSync — asserted deterministically; the e2e catastrophic run stays as termination evidence.
+* IMPL-3: SR-55 now drives every failure class THROUGH verify() and asserts the final errors[] (origin, no control chars, <=200, no whole re-leak of a 400-char dirty spawn detail); doctor's final D6 detail and check's final CLI output (in-process cli with captured console) are asserted sanitized the same way.
+* IMPL-9: a sequential child seam proves the SECOND application branch — title batch succeeds, the test command runs (marker asserted), then the TAP-description batch times out / returns malformed — verify fails closed with the sanitized config-origin error; the same-store contrast now swaps the real multi-segment pattern into the SAME adversarial-title store and asserts no matcher failure (plain unidentified GAPS).
+Re-review per the P8 checklist. Ledger delta: fixed -> verified where genuinely closed; reopen with reason where not; new rows only for new formal spec-vs-code gaps; advisories separately.
+Read-only sandbox: PRINT the review doc body (landed at apriori/changes/gate-id-pattern/review/step5-review-v3.md), Simplified Chinese, machine tokens English. End with the ledger delta and exactly one verdict line: 'VERDICT: no spec-vs-code gaps' or 'VERDICT: <N> issues open'.
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+codex
+我会逐项核实这四条 r3 修复的代码与对抗测试，并重新走一遍全部硬保证，重点看新增 test seam 是否真实穿过消费者、是否可能改变生产路径。
+  → 读取 r3 ledger、实现和测试，复验 IMPL-1/2/3/9
+  • 重新扫描全部 delta、design 与消费分支，寻找新 gap
+  • 执行只读静态/针对性诊断并形成 ledger delta
+  • 打印 step5-review-v3 完整正文与唯一 verdict
+exec
+/usr/bin/zsh -lc "git status --short && git diff --stat && sed -n '1,260p' apriori/changes/gate-id-pattern/review/issues.md && rg -n \"CHILD_SPAWN_OPTS|lstatSync|dangling|second|SECOND|TAP-description|dirty|400|matcherFailureMsg|sequential|timeout\" lib/config.js lib/spec-runner.js lib/check.js lib/doctor.js test/config.test.js test/id-pattern.test.js CHANGELOG.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 3769ms:
+ M CHANGELOG.md
+ M docs/cli.md
+ M docs/cli_cn.md
+ M lib/check.js
+ M lib/config.js
+ M lib/doctor.js
+ M lib/gate.js
+ M lib/spec-runner.js
+ M templates/process-config.md
+ M test/config.test.js
+?? lib/id-match-child.js
+?? test/id-pattern.test.js
+ CHANGELOG.md                |  13 ++++
+ docs/cli.md                 |  19 ++++-
+ docs/cli_cn.md              |  19 ++++-
+ lib/check.js                |  39 +++++++++-
+ lib/config.js               |  81 ++++++++++++++++++--
+ lib/doctor.js               |  54 ++++++++-----
+ lib/gate.js                 |  18 +++--
+ lib/spec-runner.js          | 182 +++++++++++++++++++++++++++++++++++---------
+ templates/process-config.md |   9 +++
+ test/config.test.js         |  55 +++++++++++++
+ 10 files changed, 412 insertions(+), 77 deletions(-)
+# Issue ledger — gate-id-pattern
+
+<!-- recorded on behalf of the reviewer (codex read-only sandbox), R2 transcription rule; raw: review/req-review-v1-raw.txt -->
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| REQ-1 | Q1–Q3 未收口，导致 `check` CLI、模板默认内容及 `parseConfig` 的全键语义不唯一。 | AI 可产出多个互不兼容但均看似满足需求的实现。 | STEP0·r1 | verified |
+| REQ-2 | 非法 `id-pattern` 在 `doctor` 上应 exit 2 还是形成 D6 finding/exit 1 未定义，库入口异常形状也未声明。 | 可能破坏 doctor 的 FINDINGS/UNUSABLE 契约或让异常逃逸。 | STEP0·r1 | verified |
+| REQ-3 | 冲突行、同值重复、空值、不可读/错误类型配置及 flag 覆盖坏配置的边界语义缺失。 | 坏配置可能静默回退、跨命令结果不一致或直接崩溃。 | STEP0·r1 | verified |
+| REQ-4 | 四消费点只统一了来源优先级，未统一 pattern 的开头匹配和尾边界语义。 | 同一 `id-pattern` 可能被 verify/doctor 接受而被 check 拒绝。 | STEP0·r1 | verified |
+| REQ-5 | AC1、AC4、AC6 和 AC7 含不稳定、可选或无确定 oracle 的表述。 | 无法据此生成唯一、可重复的验收测试。 | STEP0·r1 | verified |
+| REQ-6 | 新 pattern 错误在既有文本和 `--json` 契约中的输出形状未声明。 | 可能破坏 gate/verify 的机器可解析接口。 | STEP0·r1 | verified |
+| REQ-ADV-1 | Advisory batch acknowledged (3 items: won't-do 已存在确认；并发/超时/回滚不适用注明保持现状；文档清单应含配置格式说明——已吸收进 req-v2)。 | — | STEP0·r1 | advisory-acked |
+| REQ-7 | `\|` 全键解析规则未定义 pipe 前连续反斜杠的奇偶语义，也未说明如何表达最终 regex source 中的 literal pipe。 | 不同实现可能产生不同的 cell 边界和配置值，并影响 regex 与 `test-cmd` 等所有键。 | STEP0·r2 | verified |
+| REQ-ADV-2 | Advisory batch acknowledged (3 items: 样本证据记录不可变身份 hash/CLI 版本/确切计数；doctor 来源 detail 断言进 AC1；非 regex 键回归样本进 AC5——均已吸收进 req-v3)。 | — | STEP0·r2 | advisory-acked |
+| REQ-8 | B6 模板文案「字面 pipe 写 \|」与 B5 语义冲突：`\|` 经解析产出裸 `|`（alternation），非 regex 字面 pipe。 | 用户/AI 照模板得到与文字承诺相反的正则，扩大匹配范围。 | STEP0·r3 | verified |
+| REQ-ADV-3 | Advisory batch acknowledged (2 items: AC7 禁止性断言建议语义化——吸收进 STEP5 测试实现措辞；台账 REQ-1 行多余单元格——已就地修复)。 | — | STEP0·r4 | advisory-acked |
+| SPEC-1 | `[\|]`（正则字符类中的 pipe）含未转义表格分隔符，无法按文档原样写入 process-config；模板与 literal-pipe AC 不可实现。 | high | STEP2·r1 | fixed (v3) — 模板单元格无 pipe 散文，指南移入 HTML 注释；CF-12 端到端断言整表（r2 复燃：design 模板行含未转义 [| verified |
+| SPEC-2 | 合法但灾难性回溯的外部 regex 可阻塞四个命令；设计只有语法校验，没有 ReDoS 边界。 | high | STEP2·r1 | verified |
+| SPEC-3 | doctor 在 D6 校验非法 id-pattern 前执行 D5 test command，违反前置校验和无副作用错误路径。 | high | STEP2·r1 | verified |
+| SPEC-4 | verify 的 pattern 早退路径未定义如何保持 `--change --json` 的 projection/modules 既有契约。 | med | STEP2·r1 | verified |
+| SPEC-5 | verify/gate 用 `|| null` 丢失空字符串 flag 的存在性，错误消费被覆盖配置。 | med | STEP2·r1 | verified |
+| SPEC-6 | 错误消息拼接原始 e.message 会二次泄漏未净化 source；boundedSource 实际上限 81 字符。 | med | STEP2·r2 | verified |
+| SPEC-7 | child probe 的输入传递与失败分类未定义（-e 插值=注入面；spawn/signal/非零/malformed 无契约；三消费点缺 probe-failure 场景）。 | high | STEP2·r3 | fixed (v5) — 成功形状唯一化（单 JSON 文档/长度相等/string| verified |
+| SPEC-8 | 64-char cap 是未兼容的公共识别语义变更，且违反 req 范围外"不动 leadId"声明。 | high | STEP2·r3 | verified |
+| IMPL-1 | `readConfig` 的 `existsSync` 早退可能把权限导致的不可见配置当作 absent；CF-11 也未覆盖四命令消费矩阵。 | high | STEP5·r1 | fixed (r3) — ENOENT 后 lstat 区分真缺席与 dangling symlink；CF-11 加 dangling-symlink 用例（getConfig problem + verify exit 2） |
+| IMPL-2 | timeout 因错误判定顺序被归为 `spawn-error`，termination 文案与固定 budget 未被实现和测试完整证明。 | med | STEP5·r1 | fixed (r3) — CHILD_SPAWN_OPTS 冻结导出（timeout 2000/SIGKILL/shell:false），defaultChildRunner 展开使用；确定性断言 + e2e 保留 |
+| IMPL-3 | check 与 doctor 直接回显 child failure，doctor 还回显未 bounded 的 config source，绕过统一净化出口。 | high | STEP5·r1 | fixed (r3) — SR-55 表驱动穿透 verify() 断言最终 errors[]（含脏 spawn error 注入）；doctor d6.detail 与 check cli 最终输出（in-process console 捕获）均断言净化/有界/来源 |
+| IMPL-4 | child response validator 接受 `{ids}` 之外的额外字段，不符合 exact success shape。 | med | STEP5·r1 | verified |
+| IMPL-5 | SR-52 与 DR-17 未通过 adversarial seams 证明 validation-before-read、no-scan 及双来源完整净化保证。 | high | STEP5·r1 | verified |
+| IMPL-6 | CK-14 比较两个共享同一 `leadId` 的路径且无 expected oracle，无法证明 edge semantics 或真实消费者一致。 | med | STEP5·r1 | verified |
+| IMPL-7 | 四命令文档落点、gate usage 一致性及 CF-12 和 AC7 的文档验收未完整实现。 | med | STEP5·r1 | verified |
+| IMPL-8 | GT-24 与 GT-25 未经过完整 CLI error matrix，empty flag、invalid config 与 terminated JSON guarantees 未被证明。 | med | STEP5·r1 | verified |
+| IMPL-9 | config matcher 的 TAP 描述批（第二应用分支）无对抗测试；SR-54 same-store 对照未忠实执行。 | med | STEP5·r2 | fixed (r3) — 顺序 seam：标题批成功→命令已跑→TAP 批 timeout/malformed 均 fail closed（marker 断言）；same-store 对照改为同一 adversarial store 换真实 pattern（无 matcher failure，仅普通 unidentified GAPS） |
+CHANGELOG.md:65:- **Resolution validates its trust chain** — the four gate-PASS bypasses die: symlinked/non-directory `changes/` or `archive/` roots are structural errors, a broken active entry never falls back to the archive, the reserved name `archive` and date-prefixed names are rejected on every by-name surface (one `validateChangeName`, kind-classified), pseudo-stamps like `9999-99-99T9999` and `2026-02-31` neither sort nor resolve (Gregorian round-trip), `status` checks flow-state identity, and file reads speak structured defect kinds (a dangling `review/` ancestor is a defect, not an empty ledger).
+CHANGELOG.md:96:## 3.4.0 — 2026-07-12 · the second-review hardening release
+CHANGELOG.md:98:Every item traces to the second external GPT-5.6 review (7 changes, each through the full V3 loop with adversarial codex reviews) plus one defect dogfooding found on ourselves.
+CHANGELOG.md:100:- **The delta parser consumes its whole input** — `parseDeltaStrict` is a sequential line walker: misspelled section headings (`## ADDDED`), requirements/scenarios outside their legal home, and stray/duplicate/malformed CAS stamps are line-numbered problems instead of being silently re-homed into the wrong bucket; fences stay opaque; CRLF parses identically; well-formed deltas parse byte-identically (corpus-verified against every archived delta).
+lib/spec-runner.js:42:const CHILD_SPAWN_OPTS = Object.freeze({ timeout: 2000, killSignal: 'SIGKILL', shell: false });
+lib/spec-runner.js:47:    input: payload, ...CHILD_SPAWN_OPTS,
+lib/spec-runner.js:63:    // timeout FIRST: a real spawnSync timeout carries ETIMEDOUT and/or the kill signal —
+lib/spec-runner.js:66:      return { failure: 'timeout (budget exceeded, child terminated)' };
+lib/spec-runner.js:82:function matcherFailureMsg(failure) {
+lib/spec-runner.js:453:  if (collected.failure) return errorsRun([matcherFailureMsg(collected.failure)], projection);
+lib/spec-runner.js:458:    const run = errorsRun([matcherFailureMsg(parsed.matchFailure)], projection);
+lib/spec-runner.js:548:  configTestCmd, cli, DEFAULT_ID, makeIdMatcher, _setChildRunner, matcherFailureMsg, CHILD_SPAWN_OPTS };
+test/id-pattern.test.js:153:  assert.match(errText, /timeout|terminated/, 'the message names the termination, not a spawn error');
+test/id-pattern.test.js:166:    ['timeout', { status: null, signal: 'SIGKILL', stdout: '', error: null }, /^timeout/],
+test/id-pattern.test.js:167:    ['timeout-etimedout', { status: null, signal: 'SIGKILL', stdout: '', error: etimedout }, /^timeout/],   // real spawnSync timeout carries BOTH
+test/id-pattern.test.js:286:  assert.match(j.errors.join(' '), /timeout|terminated/);
+test/id-pattern.test.js:515:// ---- P8 r2 hardening: IMPL-1 dangling symlink, IMPL-2 budget contract, IMPL-3 end-to-end
+test/id-pattern.test.js:516:// sanitization, IMPL-9 second-application branch + same-store contrast ----
+test/id-pattern.test.js:518:test('CF-11 a dangling-symlink config is present-but-unreadable, never absent', () => {
+test/id-pattern.test.js:532:  assert.strictEqual(sr.CHILD_SPAWN_OPTS.timeout, 2000);
+test/id-pattern.test.js:533:  assert.strictEqual(sr.CHILD_SPAWN_OPTS.killSignal, 'SIGKILL');
+test/id-pattern.test.js:534:  assert.strictEqual(sr.CHILD_SPAWN_OPTS.shell, false);
+test/id-pattern.test.js:539:  const dirtyDetail = 'X\x01\x02' + 'z'.repeat(400);
+test/id-pattern.test.js:540:  const dirtyErr = new Error(dirtyDetail);
+test/id-pattern.test.js:542:    ['timeout', { status: null, signal: 'SIGKILL', stdout: '', error: null }],
+test/id-pattern.test.js:543:    ['spawn-error-dirty', { status: null, signal: null, stdout: '', error: dirtyErr }],
+test/id-pattern.test.js:561:      assert.ok(!e.includes('z'.repeat(250)), `${label}: dirty detail does not re-leak whole`);
+test/id-pattern.test.js:565:  sr._setChildRunner(() => ({ status: null, signal: null, stdout: '', error: dirtyErr }));
+test/id-pattern.test.js:601:  // sequential seam: title batch answers well-formed; the TAP-description batch times out
+test/id-pattern.test.js:602:  for (const [label, second] of [
+test/id-pattern.test.js:603:    ['tap-timeout', { status: null, signal: 'SIGKILL', stdout: '', error: null }],
+test/id-pattern.test.js:611:      return second;
+lib/check.js:16:const { leadId, makeIdMatcher, matcherFailureMsg } = require('./spec-runner');   // one recognition contract for all consumers
+lib/check.js:205:      try { cst = fs.lstatSync(cd); } catch { continue; }   // lstat: never follow a symlinked change dir
+lib/check.js:213:      try { rst = fs.lstatSync(rd); } catch { continue; }   // lstat: a dangling review symlink warns, plain absence skips
+lib/check.js:328:      console.error('error: ' + matcherFailureMsg(batch.failure));   // the ONE sanitized exit (IMPL-3)
+lib/doctor.js:12:const { collectScenarios, parseTap, zeroTapParsed, runTestCommand, configTestCmd, DEFAULT_ID, looksLikeTap, makeIdMatcher, matcherFailureMsg } = require('./spec-runner');
+lib/doctor.js:139:      d6Entries.push({ id: 'D6', status: 'finding', detail: matcherFailureMsg(collected.failure), fix: 'fix the id-pattern row in apriori/process-config.md' });
+lib/config.js:7: * cell key, second cell value, extra columns ignored; same-key same-value
+lib/config.js:86:      // ENOENT alone does not prove absence: a dangling symlink stats as an existing
+lib/config.js:89:      try { fs.lstatSync(p); present = true; } catch { /* truly absent */ }
+
+exec
+/usr/bin/zsh -lc "nl -ba lib/config.js | sed -n '72,110p'; nl -ba lib/spec-runner.js | sed -n '35,92p'; nl -ba test/id-pattern.test.js | sed -n '510,660p'; tail -n 25 CHANGELOG.md | head -n 3; sed -n '1,22p' CHANGELOG.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 88ms:
+    72	  }
+    73	  return { values, conflicts };
+    74	}
+    75	
+    76	function readConfig(cwd) {
+    77	  const p = path.join(cwd || '.', 'apriori', 'process-config.md');
+    78	  // read first, classify after: ONLY a definite ENOENT is absence — every other failure
+    79	  // (directory, permissions, unreachable ancestor, …) is an unreadable-config problem,
+    80	  // never a silent fall-through to defaults (an existsSync pre-check would misreport a
+    81	  // permission-blocked file as absent)
+    82	  let text;
+    83	  try { text = fs.readFileSync(p, 'utf8'); }
+    84	  catch (e) {
+    85	    if (e.code === 'ENOENT') {
+    86	      // ENOENT alone does not prove absence: a dangling symlink stats as an existing
+    87	      // directory ENTRY whose read fails — that is present-but-unreadable, never absent
+    88	      let present = false;
+    89	      try { fs.lstatSync(p); present = true; } catch { /* truly absent */ }
+    90	      if (!present) return { values: new Map(), conflicts: new Set() };
+    91	    }
+    92	    return { values: new Map(), conflicts: new Set(), unreadable: String(e.code || e.message) };
+    93	  }
+    94	  return parseConfig(text);
+    95	}
+    96	
+    97	// one key → { value: string|null, problem: string|null } (problem only when consumed)
+    98	function getConfig(cwd, key) {
+    99	  const { values, conflicts, unreadable } = readConfig(cwd);
+   100	  if (unreadable) return { value: null, problem: `apriori/process-config.md exists but cannot be read (${unreadable}) — fix the file` };
+   101	  if (conflicts.has(key)) return { value: null, problem: `process-config carries conflicting '${key}' rows — resolve the conflict (one live row per key)` };
+   102	  return { value: values.has(key) ? values.get(key) : null, problem: null };
+   103	}
+   104	
+   105	// Message sanitization is the single exit for pattern errors: control chars stripped,
+   106	// total length capped INCLUDING the ellipsis; the engine's e.message is never concatenated.
+   107	function sanitizeMsg(msg) {
+   108	  const clean = msg.replace(/[\x00-\x1f\x7f]/g, '·');
+   109	  return clean.length > 200 ? clean.slice(0, 199) + '…' : clean;
+   110	}
+    35	// ---- the id matcher: one recognition contract, two execution channels -------------------
+    36	// A config-sourced pattern is repository input that CI consumes automatically; its every
+    37	// actual application runs inside a terminable child (SIGKILL on budget) so a catastrophic
+    38	// pattern can never hang the CLI. Flag/default origins are operator/built-in trust: inline.
+    39	const CHILD_PATH = path.join(__dirname, 'id-match-child.js');
+    40	// the child's spawn contract, exported so tests assert the budget DETERMINISTICALLY
+    41	// (a wall-clock window cannot prove the 2000ms figure)
+    42	const CHILD_SPAWN_OPTS = Object.freeze({ timeout: 2000, killSignal: 'SIGKILL', shell: false });
+    43	let childRunnerOverride = null;                 // test seam — SR-55 injects failures here
+    44	function _setChildRunner(fn) { childRunnerOverride = fn; }
+    45	function defaultChildRunner(payload) {
+    46	  const r = spawnSync(process.execPath, [CHILD_PATH], {
+    47	    input: payload, ...CHILD_SPAWN_OPTS,
+    48	    encoding: 'utf8', maxBuffer: 8 * 1024 * 1024,
+    49	  });
+    50	  return { status: r.status, signal: r.signal || null, stdout: r.stdout || '', error: r.error || null };
+    51	}
+    52	// resolved = resolveIdPattern's success shape → { batch(texts) → {ids:(string|null)[]} | {failure} }
+    53	function makeIdMatcher(resolved) {
+    54	  if (resolved.origin !== 'config') {
+    55	    const re = new RegExp(resolved.source);
+    56	    return { batch: (texts) => ({ ids: texts.map((t) => leadId(t, re)) }) };
+    57	  }
+    58	  return { batch: (texts) => {
+    59	    const runner = childRunnerOverride || defaultChildRunner;
+    60	    let r;
+    61	    try { r = runner(JSON.stringify({ pattern: resolved.source, texts })); }
+    62	    catch (e) { return { failure: `spawn-error: ${String(e.message || e)}` }; }
+    63	    // timeout FIRST: a real spawnSync timeout carries ETIMEDOUT and/or the kill signal —
+    64	    // classifying by r.error first would misreport the termination as a spawn error
+    65	    if ((r.error && r.error.code === 'ETIMEDOUT') || r.signal === 'SIGKILL')
+    66	      return { failure: 'timeout (budget exceeded, child terminated)' };
+    67	    if (r.error) return { failure: `spawn-error: ${String(r.error.message || r.error)}` };
+    68	    if (r.signal) return { failure: `signal ${r.signal}` };
+    69	    if (r.status !== 0) return { failure: `non-zero-exit (${r.status})` };
+    70	    let parsed;
+    71	    try { parsed = JSON.parse(r.stdout); } catch { return { failure: 'malformed-output (not JSON)' }; }
+    72	    // strict success shape: exactly one JSON document whose ONLY key is a well-formed ids array
+    73	    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) ||
+    74	        Object.keys(parsed).length !== 1 || !Array.isArray(parsed.ids) ||
+    75	        parsed.ids.length !== texts.length ||
+    76	        parsed.ids.some((x) => x !== null && typeof x !== 'string'))
+    77	      return { failure: 'malformed-output (bad shape)' };
+    78	    return { ids: parsed.ids };
+    79	  } };
+    80	}
+    81	// the one sanitized failure text every consumer surfaces for a config-origin matcher failure
+    82	function matcherFailureMsg(failure) {
+    83	  return sanitizeMsg(`process-config id-pattern matching failed (${failure})`);
+    84	}
+    85	const inlineMatcher = (idRe) => makeIdMatcher({ source: idRe.source, origin: 'default' });
+    86	
+    87	function mdFiles(target) {
+    88	  if (!fs.existsSync(target)) return [];
+    89	  const st = fs.statSync(target);
+    90	  if (st.isFile()) return [target];
+    91	  const out = [];
+    92	  for (const e of fs.readdirSync(target, { withFileTypes: true })) {
+   510	  // check --self stays green with the doc edits
+   511	  const self = spawnSync('node', [BIN, 'check', '--self'], { encoding: 'utf8', cwd: repo });
+   512	  assert.strictEqual(self.status, 0, self.stdout);
+   513	});
+   514	
+   515	// ---- P8 r2 hardening: IMPL-1 dangling symlink, IMPL-2 budget contract, IMPL-3 end-to-end
+   516	// sanitization, IMPL-9 second-application branch + same-store contrast ----
+   517	
+   518	test('CF-11 a dangling-symlink config is present-but-unreadable, never absent', () => {
+   519	  const { getConfig } = require('../lib/config');
+   520	  const root = proj({ 'apriori/specs/m/spec.md': '#### Scenario: AC-01 a\n' });
+   521	  fs.symlinkSync(path.join(root, 'no-such-target.md'), path.join(root, 'apriori', 'process-config.md'));
+   522	  const { value, problem } = getConfig(root, 'id-pattern');
+   523	  assert.strictEqual(value, null);
+   524	  assert.match(String(problem), /process-config/, 'fails closed, not silent-absent');
+   525	  const v = vrun(root, ['--specs', 'apriori/specs', '--test-cmd', 'node -e ""', '--json']);
+   526	  assert.strictEqual(v.status, 2);
+   527	  assert.match(JSON.parse(v.stdout).errors.join(' '), /process-config/);
+   528	});
+   529	
+   530	test('SR-54 the child spawn contract pins the budget deterministically', () => {
+   531	  const sr = require('../lib/spec-runner');
+   532	  assert.strictEqual(sr.CHILD_SPAWN_OPTS.timeout, 2000);
+   533	  assert.strictEqual(sr.CHILD_SPAWN_OPTS.killSignal, 'SIGKILL');
+   534	  assert.strictEqual(sr.CHILD_SPAWN_OPTS.shell, false);
+   535	});
+   536	
+   537	test('SR-55 every child failure class surfaces sanitized through verify, check and doctor', () => {
+   538	  const sr = require('../lib/spec-runner');
+   539	  const dirtyDetail = 'X\x01\x02' + 'z'.repeat(400);
+   540	  const dirtyErr = new Error(dirtyDetail);
+   541	  const classes = [
+   542	    ['timeout', { status: null, signal: 'SIGKILL', stdout: '', error: null }],
+   543	    ['spawn-error-dirty', { status: null, signal: null, stdout: '', error: dirtyErr }],
+   544	    ['signal', { status: null, signal: 'SIGSEGV', stdout: '{"ids":[]}', error: null }],
+   545	    ['non-zero-exit', { status: 1, signal: null, stdout: '', error: null }],
+   546	    ['malformed', { status: 0, signal: null, stdout: 'nope', error: null }],
+   547	  ];
+   548	  const root = proj({
+   549	    'apriori/specs/m/spec.md': '#### Scenario: AC-01 a\n',
+   550	    'apriori/process-config.md': '| id-pattern | [A-Z]+-\\d+ |\n',
+   551	  });
+   552	  for (const [label, fake] of classes) {
+   553	    sr._setChildRunner(() => fake);
+   554	    // through verify(): the final errors[] is the sanitized config-origin channel
+   555	    const run2 = sr.verify({ specs: [path.join(root, 'apriori/specs')], testCmd: 'node -e ""', cwd: root });
+   556	    assert.strictEqual(run2.errors.length > 0, true, `${label}: verify fails closed`);
+   557	    for (const e of run2.errors) {
+   558	      assert.match(e, /process-config/, `${label}: origin named`);
+   559	      assert.doesNotMatch(e, CTRL, `${label}: no control chars`);
+   560	      assert.ok(e.length <= 200, `${label}: bounded (${e.length})`);
+   561	      assert.ok(!e.includes('z'.repeat(250)), `${label}: dirty detail does not re-leak whole`);
+   562	    }
+   563	  }
+   564	  // doctor's final finding is sanitized too
+   565	  sr._setChildRunner(() => ({ status: null, signal: null, stdout: '', error: dirtyErr }));
+   566	  const droot = drProject('| id-pattern | [A-Z]+-\\d+ |\n', '#### Scenario: AC-01 a\n');
+   567	  const dr = require('../lib/doctor').runDoctor({ cwd: droot, testCmd: markerCmd(droot) });
+   568	  const d6 = dr.checks.find((c) => c.id === 'D6');
+   569	  assert.strictEqual(d6.status, 'finding');
+   570	  assert.match(d6.detail, /process-config/);
+   571	  assert.doesNotMatch(d6.detail, CTRL);
+   572	  assert.ok(d6.detail.length <= 200);
+   573	  assert.ok(!fs.existsSync(marker(droot)), 'D5 probe skipped');
+   574	  // check's final error is sanitized (in-process cli with captured console)
+   575	  const checkMod = require('../lib/check');
+   576	  const croot = proj({
+   577	    'apriori/specs/m/spec.md': '#### Scenario: AC-01 a\n',
+   578	    'apriori/process-config.md': '| id-pattern | [A-Z]+-\\d+ |\n',
+   579	  });
+   580	  const oldCwd = process.cwd(); const logs = [], errsOut = [];
+   581	  const oldLog = console.log, oldErr = console.error;
+   582	  console.log = (...a) => logs.push(a.join(' ')); console.error = (...a) => errsOut.push(a.join(' '));
+   583	  let code;
+   584	  try { process.chdir(croot); code = checkMod.cli([]); }
+   585	  finally { process.chdir(oldCwd); console.log = oldLog; console.error = oldErr; sr._setChildRunner(null); }
+   586	  assert.strictEqual(code, 2);
+   587	  assert.match(logs.join('\n'), /RESULT: ERROR/);
+   588	  const errLine = errsOut.join('\n');
+   589	  assert.match(errLine, /process-config/);
+   590	  assert.doesNotMatch(errLine, CTRL);
+   591	  assert.ok(!errLine.includes('z'.repeat(250)));
+   592	});
+   593	
+   594	test('SR-54 a TAP-batch failure after the test command still fails closed, and the real pattern passes the same store', () => {
+   595	  const sr = require('../lib/spec-runner');
+   596	  const evilTitle = 'a'.repeat(40) + '!';
+   597	  const root = proj({
+   598	    'apriori/specs/m/spec.md': `#### Scenario: AC-01 ok\n#### Scenario: ${evilTitle}\n`,
+   599	    'apriori/process-config.md': '| id-pattern | [A-Z]+-\\d+ |\n',
+   600	  });
+   601	  // sequential seam: title batch answers well-formed; the TAP-description batch times out
+   602	  for (const [label, second] of [
+   603	    ['tap-timeout', { status: null, signal: 'SIGKILL', stdout: '', error: null }],
+   604	    ['tap-malformed', { status: 0, signal: null, stdout: '{"ids":"nope"}', error: null }],
+   605	  ]) {
+   606	    let call = 0;
+   607	    sr._setChildRunner((payload) => {
+   608	      call++;
+   609	      const { texts } = JSON.parse(payload);
+   610	      if (call === 1) return { status: 0, signal: null, stdout: JSON.stringify({ ids: texts.map((t) => (t.startsWith('AC-01') ? 'AC-01' : null)) }), error: null };
+   611	      return second;
+   612	    });
+   613	    const run2 = sr.verify({ specs: [path.join(root, 'apriori/specs')], testCmd: markerCmd(root), cwd: root });
+   614	    sr._setChildRunner(null);
+   615	    assert.strictEqual(call >= 2, true, `${label}: both application branches went through the child`);
+   616	    assert.ok(fs.existsSync(marker(root)), `${label}: the test command DID run before the TAP batch`);
+   617	    fs.rmSync(marker(root));
+   618	    assert.ok(run2.errors.length > 0, `${label}: fails closed`);
+   619	    assert.match(run2.errors.join(' '), /process-config/);
+   620	    for (const e of run2.errors) { assert.doesNotMatch(e, CTRL); assert.ok(e.length <= 200); }
+   621	  }
+   622	  // same-store contrast: the real multi-segment pattern over the SAME adversarial-title store
+   623	  // completes through the child — no matcher failure (the evil title is merely unidentified)
+   624	  const sameStore = proj({
+   625	    'apriori/specs/m/spec.md': `#### Scenario: AC-01 ok\n#### Scenario: ${evilTitle}\n`,
+   626	    'apriori/process-config.md': `| id-pattern | ${PATTERN} |\n`,
+   627	  });
+   628	  const rok = vrun(sameStore, ['--specs', 'apriori/specs', '--test-cmd', `node -e "console.log('ok 1 - AC-01 ok')"`, '--json']);
+   629	  const jok = JSON.parse(rok.stdout);
+   630	  assert.strictEqual(jok.result, 'GAPS', rok.stdout);                 // ordinary gap, not a matcher failure
+   631	  assert.strictEqual(jok.errors.length, 0, 'no matcher failure');
+   632	  assert.strictEqual(jok.unidentified.length, 1);
+   633	});
+- 26 new scenarios (GT-01..12, DR-01..12, CL-09..10); 142 tests.
+
+## 3.1.0 — 2026-07-10 · the projection release
+# Changelog
+
+All notable changes to `apriori-cli`. Versions follow semver; the stability promise: CLI surface & flags, `--json` shapes, the delta format and the flow-state schema only break in a major.
+
+## Unreleased · id-pattern becomes project configuration (change gate-id-pattern)
+
+Brownfield feedback P0-1: on a real store with letter-suffixed (`AC-08a`) and multi-segment (`AC-BIS-01`) IDs, `gate` C1 was permanently BLOCKED (no id-pattern channel) and `check` CK-04 false-failed — a forever-red gate carries no signal.
+
+- **New process-config key `id-pattern`** (bare JS regex source) — one declaration, four consumers. Resolution: `--id-pattern` flag (verify + **gate, new flag**; judged by presence — an empty flag errors, never falls back) > config row > built-in `[A-Z]+-\d+`. `check` CK-04 and `doctor` D6 consume the row (no new flags); D6 names its pattern source (`config`/`default`).
+- **One recognition contract** — `check` drops its private `^(…)\b` anchoring and recognizes through the same `leadId` semantics as verify/gate/doctor; the four consumers can no longer disagree on the same title.
+- **Markdown cell escaping, all keys** — `parseConfig` cells now honor `\|` by backslash parity (odd escapes the pipe into the value, even separates); a regex matching a literal pipe is written `[\|]` in the cell (parses to `[|]`). Behavior change is additive: configs without backslash-pipe sequences parse identically. The template documents both layers.
+- **Fail-closed errors naming their origin** — invalid patterns error at consumption before any spec read or test spawn: verify/gate exit 2 through their existing text/JSON shapes (`--change --json` keeps its `projection` field), check `RESULT: ERROR` exit 2, doctor D6 finding + skipped D5 probe (FINDINGS, exit 1). Messages are sanitized whole (control chars stripped, ≤200 chars; the engine message never re-leaks the source).
+- **Config-origin matching is terminable** — a config row is repository input CI consumes automatically, so its actual matching runs in a SIGKILL-able child (`lib/id-match-child.js`, stdin data channel, 2s budget); every child failure class fails closed. A catastrophic-backtracking row cannot hang CI. The flag stays in-process (operator-trusted, documented).
+- An unreadable `process-config.md` (e.g. a directory) is now a consumption-time problem for every key, never a thrown exception.
+
+276 tests (254 + 22: CF-08..12, SR-50..55, GT-22..25, CK-13..16, DR-16..18).
+
+## 4.0.7 — 2026-07-18 · drop the broken npm badge
+
+Docs only — no CLI, flag, or behavior change; the published files are byte-identical to 4.0.6 apart from `README.md`.
+
+- **The shields.io npm version badge is removed from both READMEs** — it rendered as a broken image on the npm package page; both READMEs now open directly on the language switcher.
+
+codex
+四条修复的生产路径与测试接线均已核实：dangling symlink fail-closed、固定 child spawn 契约、五类失败的最终净化通道，以及 TAP 第二批次失败都真实覆盖。新鲜扫描未发现新的 spec-vs-code gap；我正在完成只读一致性检查并整理终态 ledger delta。
+exec
+/usr/bin/zsh -lc "node --check lib/config.js && node --check lib/spec-runner.js && node --check lib/id-match-child.js && node --check lib/gate.js && node --check lib/check.js && node --check lib/doctor.js && node --check test/config.test.js && node --check test/id-pattern.test.js && git diff --check && rg -n \"process-config|id-pattern|child|never|ANY|before|BEFORE|within|fails closed|silently|skip\" apriori/changes/gate-id-pattern/specs apriori/changes/gate-id-pattern/design.md | sed -n '1,260p'" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 2079ms:
+apriori/changes/gate-id-pattern/design.md:1:# design — gate-id-pattern
+apriori/changes/gate-id-pattern/design.md:11:  // flag 判定用"存在性"而非 truthiness（SPEC-5）：cli 层用 ('--id-pattern' in f) 传入
+apriori/changes/gate-id-pattern/design.md:17:      if (flagValue === '') return { error: 'empty --id-pattern' };
+apriori/changes/gate-id-pattern/design.md:18:      try { new RegExp(flagValue); } catch { return { error: sanitizeMsg(`invalid --id-pattern '${boundedSource(flagValue)}' (regex does not compile)`) }; }
+apriori/changes/gate-id-pattern/design.md:21:    const { value, problem } = getConfig(cwd, 'id-pattern');
+apriori/changes/gate-id-pattern/design.md:22:    if (problem) return { error: problem };                    // CONFLICT/读取失败文本已含 process-config
+apriori/changes/gate-id-pattern/design.md:24:      try { new RegExp(value); } catch { return { error: sanitizeMsg(`process-config id-pattern row is invalid: '${boundedSource(value)}' (regex does not compile)`) }; }
+apriori/changes/gate-id-pattern/design.md:34:- `readConfig`：`readFileSync` 包 try/catch → 返回哨兵 `{ values: new Map(), conflicts: new Set(), unreadable: '<msg>' }`；`getConfig` 见 `unreadable` 即返回 `{ value:null, problem: 'apriori/process-config.md exists but cannot be read (...) — fix the file' }`（文本含 process-config）。
+apriori/changes/gate-id-pattern/design.md:38:- cli：`idPattern: ('--id-pattern' in f) ? f['--id-pattern'] : null`（存在性判定，SPEC-5；不再预填 DEFAULT_ID）。※需先确认 args.js withStrict 对空值 flag 的返回形态，测试覆盖 `--id-pattern ''`。
+apriori/changes/gate-id-pattern/design.md:39:- `verify()` 开头：`const r = resolveIdPattern(opts.cwd || '.', opts.idPattern)`；`matcher = makeIdMatcher(r)`（config→child、flag/default→inline，见安全契约节）；collect 与 parseTap 均走 matcher 批量通道；`r.error` →
+apriori/changes/gate-id-pattern/design.md:44:- USAGE 补一句 `(--id-pattern may be omitted when apriori/process-config.md has an id-pattern row)`。
+apriori/changes/gate-id-pattern/design.md:48:- flags 表 + USAGE 加 `--id-pattern`；`a.idPattern = ('--id-pattern' in f) ? f['--id-pattern'] : null`（存在性判定，SPEC-5）。
+apriori/changes/gate-id-pattern/design.md:53:- `checkScenarioIds(specText, name, idPattern = DEFAULT_ID)`：保留兼容签名（inline 判定用 `leadId` 语义）；cli 的 CK-04 主路径改走共享 matcher 抽象（config 来源→child 批量；错误/失败→`error:`+`RESULT: ERROR` exit 2），保证与 verify/doctor 同一执行通道。
+apriori/changes/gate-id-pattern/design.md:59:- **顺序（SPEC-3）**：`runDoctor` 在 D5 之前先 `const idp = resolveIdPattern(cwd, null)` 并缓存。`idp.error` 时：D5 push `{id:'D5', status:'n/a', detail:'probe skipped (invalid id-pattern config)'}`（test command 不 spawn），D6 push finding（点名 process-config，fix: 修行）且跳过扫描。
+apriori/changes/gate-id-pattern/design.md:60:- idp 合法时：D6 扫描经共享 matcher（config 来源→child 批量；child 失败→D6 finding + D5 sentinel 跳过，DR-18）；D5 照旧跑（classifyProbe 内部解析保持 DEFAULT_ID——对计数不敏感，KB 注明）；D6 detail 尾缀 `(id-pattern: config)` / `(id-pattern: default)`，unidentified finding 文本用实际 source（bounded）替代硬编码 DEFAULT_ID。
+apriori/changes/gate-id-pattern/design.md:68:  - **子进程协议（SPEC-7）**：固定脚本 `lib/id-match-child.js` 随 CLI 发布（绝不 `-e` 插值外部 source）；`spawnSync(process.execPath, [childPath], { input: JSON.stringify({pattern, texts}), timeout: 2000, killSignal: 'SIGKILL', shell: false, encoding: 'utf8', maxBuffer: 8*1024*1024 })`；pattern 与文本批一律走 **stdin 数据通道**（无 argv 长度/前导 dash/注入问题）；子进程对每条 text 执行 leadId 并输出 JSON `{ids:[...]}` 到 stdout。
+apriori/changes/gate-id-pattern/design.md:75:    resolved.origin === 'config' → child 模式（经 lib/id-match-child.js）
+apriori/changes/gate-id-pattern/design.md:79:  - **成功响应的唯一合法形状**：child stdout 是单个 JSON 文档 `{ids:[...]}`，`ids.length === texts.length`，每项为 `string | null`；任何偏离（多文档、长度不符、元素类型不符）= `malformed-output` failure。失败类枚举：`timeout` / `spawn-error` / `signal` / `non-zero-exit` / `malformed-output`（maxBuffer 超限表现为 spawn error 或截断→malformed，两者均已覆盖）。
+apriori/changes/gate-id-pattern/design.md:80:  - **测试 seam**：child 模式的 spawn 封装为可注入函数（`matcher._spawn` 或模块级 `_childRunner`，测试替身可模拟五类失败），SR-55 逐类断言。
+apriori/changes/gate-id-pattern/design.md:91:  //   flag:   sanitizeMsg(`invalid --id-pattern '${boundedSource(src)}' (regex does not compile)`)
+apriori/changes/gate-id-pattern/design.md:92:  //   empty:  'empty --id-pattern'
+apriori/changes/gate-id-pattern/design.md:93:  //   config: sanitizeMsg(`process-config id-pattern row is invalid: '${boundedSource(src)}' (regex does not compile)`)
+apriori/changes/gate-id-pattern/design.md:94:  //   terminated: sanitizeMsg(`process-config id-pattern matching terminated (budget exceeded or child failure)`)
+apriori/changes/gate-id-pattern/design.md:104:- **模板（SPEC-1 r2 定案）**：表格单元格一律**无 pipe 散文**（解析后的单元格值无法显示单独的 `\|`，任何含 pipe 的示例文字都写不进单元格）；id-pattern 行形如 `| id-pattern | [A-Z]+-\d+ | bare JS regex source; pipe escaping: see comment below | [A-Z]+-\d+ |`；紧邻表格的 **HTML 注释**（parseConfig 非内容，零转义负担）承载完整指南：alternation 的 pipe 在单元格里写 `\|`（解析为正则裸 `|`）；匹配字面 pipe 字符写 `[\|]`（解析为 `[|]`）；禁称 `\|` 为"字面 pipe"。CF-12 对模板整表做端到端解析断言（结构 + id-pattern 值）。
+apriori/changes/gate-id-pattern/design.md:105:- docs/cli*.md：verify/gate/check/doctor 四节 + "Configuration keys" 处补 id-pattern（优先级、错误矩阵、`\|`/`[|]` 两层语义）；EN/CN 成对。
+apriori/changes/gate-id-pattern/design.md:111:- `test/spec-runner.test.js`：SR-50..55（fixture：3 场景 spec + `printf` TAP 桩；SR-55 表驱动五类 child 失败 + success shape + inline origins）。
+apriori/changes/gate-id-pattern/design.md:119:- `~/terra/p0-gate-id-pattern-lab/`：新 lab，`apriori init` 出的新项目 + 配置行，四命令全跑一遍。
+apriori/changes/gate-id-pattern/specs/doctor/spec.md:6:`doctor`'s D6 SHALL scan the store with the effective id-pattern (config `id-pattern` row > `DEFAULT_ID`; doctor gains no flag) and its detail SHALL name the source — `config` when the row supplied the pattern, `default` otherwise. The id-pattern is resolved AND its D6 store scan is executed BEFORE the D5 probe runs (execution order; the report keeps its display order): an uncompilable config row — or a config-origin scan whose terminable child fails (timeout/kill/crash/malformed output) — makes D6 a `finding` that names `process-config` (fix: repair the row) WITHOUT throwing, AND D5 becomes `n/a` with the deterministic detail `probe skipped (invalid id-pattern config)` — the test command is never spawned under a broken id-pattern (the validate-before-any-test-command rule covers doctor too). Absent any other unusable condition the overall result stays `FINDINGS`, exit 1 — doctor diagnoses a repairable config, it does not refuse to run. When the pattern is valid, D5's probe parsing keeps `DEFAULT_ID` (its parsed-count classification is pattern-insensitive; unchanged by this change).
+apriori/changes/gate-id-pattern/specs/doctor/spec.md:9:- WHEN doctor runs with a valid config `id-pattern` row covering the store's IDs, and separately without any row
+apriori/changes/gate-id-pattern/specs/doctor/spec.md:12:#### Scenario: DR-17 an invalid config id-pattern is a D6 finding and skips the probe
+apriori/changes/gate-id-pattern/specs/doctor/spec.md:13:- WHEN the config `id-pattern` row does not compile and doctor runs on an otherwise healthy project whose test command is a sentinel (it would leave a marker file if spawned)
+apriori/changes/gate-id-pattern/specs/doctor/spec.md:14:- THEN D6 is a `finding` naming `process-config` with a repair fix, no scenario scan happens, no exception escapes, D5 is `n/a` with detail `probe skipped (invalid id-pattern config)`, the sentinel marker does NOT exist (the command never ran), and the overall result is `FINDINGS` (exit 1)
+apriori/changes/gate-id-pattern/specs/doctor/spec.md:16:#### Scenario: DR-18 a terminated config-pattern scan is a D6 finding and skips the probe
+apriori/changes/gate-id-pattern/specs/doctor/spec.md:18:- THEN the D6 child scan is killed within its budget, D6 is a `finding` naming `process-config`, D5 is `n/a` (`probe skipped (invalid id-pattern config)`), the sentinel marker does NOT exist, and the overall result is `FINDINGS` (exit 1)
+apriori/changes/gate-id-pattern/specs/check/spec.md:6:`check`'s CK-04 SHALL resolve its id-pattern from the config `id-pattern` row (else `DEFAULT_ID`; check gains NO CLI flag — a CI gate consumes the project constant) and SHALL recognize scenario IDs through the same `leadId` semantics as verify — replacing its private `^(…)\b` anchoring — so the four consumers can never disagree on the same title. An invalid config row is `RESULT: ERROR`, exit 2, through check's existing error channel.
+apriori/changes/gate-id-pattern/specs/check/spec.md:8:#### Scenario: CK-13 CK-04 honors the config id-pattern row
+apriori/changes/gate-id-pattern/specs/check/spec.md:9:- WHEN the config carries `| id-pattern | [A-Z]+(-[A-Z]+)*-\d+[a-z]* |` and the store contains scenarios `AC-08a` and `AC-BIS-01`
+apriori/changes/gate-id-pattern/specs/check/spec.md:16:#### Scenario: CK-15 an invalid config id-pattern is a check ERROR
+apriori/changes/gate-id-pattern/specs/check/spec.md:17:- WHEN the config `id-pattern` row does not compile and `apriori check` runs
+apriori/changes/gate-id-pattern/specs/check/spec.md:18:- THEN check prints an error naming `process-config` and `RESULT: ERROR`, exit 2 — CK-04 never silently falls back to the default
+apriori/changes/gate-id-pattern/specs/check/spec.md:22:- THEN the child is killed within its budget and check prints a sanitized error naming `process-config` with `RESULT: ERROR`, exit 2 — CI cannot be hung by a config row
+apriori/changes/gate-id-pattern/specs/spec-runner/spec.md:5:### Requirement: the effective id-pattern resolves flag over config over default
+apriori/changes/gate-id-pattern/specs/spec-runner/spec.md:6:`verify` SHALL resolve its effective id-pattern in this order: the `--id-pattern` flag; else the `id-pattern` row of `apriori/process-config.md` (read through the shared structured reader, inheriting the full config-contract — fenced/commented rows inert, same-value duplicates tolerated, different-value rows a consumption-time CONFLICT); else `DEFAULT_ID`. When the flag is present the config key is NOT consumed — a broken or conflicting config row is invisible to a flagged run. The resolved source SHALL be validated (compiled) BEFORE any spec file is read and BEFORE the test command is spawned; an invalid effective pattern is an infra ERROR (exit 2) whose message names its origin — the flag message contains `--id-pattern`, the config message contains `process-config` — through the existing error contract (text mode `error:` lines + `RESULT: ERROR`; `--json` the existing ERROR shape with the message in `errors[]`). Flag presence is judged by PRESENCE, never truthiness: a present-but-empty `--id-pattern` is a flag-origin validation error (`empty --id-pattern`) and never falls back to the config. Pattern-error messages are sanitized AS A WHOLE — the assembled message (raw engine `e.message` never concatenated verbatim) is control-char-stripped and capped at 200 characters INCLUDING any ellipsis, so the raw source can never re-leak through the engine's own message. The two origins carry DIFFERENT trust contracts. The flag is operator-interactive input: compile validation only, matching runs in-process (documented trust assumption); `leadId`'s public semantics are untouched for every origin. A config-sourced pattern is repository input that CI consumes automatically, so EVERY actual application of it (scenario titles before the test command runs; TAP descriptions after) executes inside a terminable child process: a fixed child script shipped with the CLI (never source-interpolated code), spawned `shell:false` with the pattern and the text batch passed as data on stdin, answering on stdout, under a kill budget (SIGKILL). ANY child failure — timeout, spawn error, signal, non-zero exit, malformed output — fails closed through the config-origin sanitized error channel of the consuming command (verify/gate/check exit 2; doctor per its D6 finding rule); a title-batch failure aborts BEFORE the test command is spawned. On a `--change` run the error path still carries the existing `projection` JSON field (`{change, modules, conflicts, unstampedMutations}` with modules from delta discovery — a directory enumeration only; no spec content is read and no test command is spawned on the error path). The recognition contract itself is `leadId` semantics, shared by every consumer: the match starts at the title's first character, a following `[A-Za-z0-9_]` rejects the match, no `\b` is appended, the source compiles as written.
+apriori/changes/gate-id-pattern/specs/spec-runner/spec.md:9:- WHEN `apriori/process-config.md` carries `| id-pattern | [A-Z]+(-[A-Z]+)*-\d+[a-z]* |` and `apriori verify --specs <dir>` runs without `--id-pattern` over scenarios `AC-01`, `AC-08a`, `AC-BIS-01`
+apriori/changes/gate-id-pattern/specs/spec-runner/spec.md:13:- WHEN `--id-pattern` is passed while the config carries a different — or even a syntactically invalid — `id-pattern` row
+apriori/changes/gate-id-pattern/specs/spec-runner/spec.md:14:- THEN the run binds by the flag's pattern and reports no config error (the overridden key was never consumed)
+apriori/changes/gate-id-pattern/specs/spec-runner/spec.md:18:- THEN the run is an infra ERROR (exit 2), the message names `--id-pattern` (flag origin, empty included) or `process-config` (config origin), the WHOLE message is control-char-free and ≤200 chars including ellipsis (the raw source does not re-leak via the engine message — asserted on both origins), the test command is never spawned, no spec content is read, `--json` output keeps the existing ERROR shape with the message in `errors[]`, and a `--change --json` run still carries the `projection` field with its discovered `modules`
+apriori/changes/gate-id-pattern/specs/spec-runner/spec.md:22:- THEN the title-matching child is killed within its budget and the run is an infra ERROR (exit 2) whose sanitized message names `process-config` and the termination, with NO test command spawned; the same pattern via `--id-pattern` runs in-process (operator-trusted, documented); the project's real multi-segment pattern over the same store completes normally through the child
+apriori/changes/gate-id-pattern/specs/spec-runner/spec.md:24:#### Scenario: SR-55 every child failure class fails closed
+apriori/changes/gate-id-pattern/specs/spec-runner/spec.md:25:- WHEN the config-origin child runner (via its injectable test seam) is made to fail in each class — timeout, spawn error, signal, non-zero exit, and malformed output (non-JSON stdout; parseable JSON whose `ids` length differs from the input batch; an `ids` element that is neither string nor null)
+apriori/changes/gate-id-pattern/specs/spec-runner/spec.md:26:- THEN every class resolves to the same config-origin sanitized failure (verify: infra ERROR exit 2 naming `process-config`; the flag/default origins never touch the child), and a well-formed child response binds normally — the success shape is exactly one JSON document `{ids}` with `ids.length` equal to the batch length and each element `string|null`
+apriori/changes/gate-id-pattern/specs/spec-runner/spec.md:30:- THEN the effective pattern is `DEFAULT_ID` and the run behaves exactly as before this change
+apriori/changes/gate-id-pattern/specs/gate/spec.md:5:### Requirement: gate consumes the effective id-pattern in C1
+apriori/changes/gate-id-pattern/specs/gate/spec.md:6:`gate` SHALL accept an `--id-pattern` flag and thread the effective id-pattern (flag > config `id-pattern` row > `DEFAULT_ID`, same resolution as verify) into C1's verify run in BOTH stages — the in-flight projected form and the archived store form. Flag presence is judged by presence, never truthiness (a present-but-empty `--id-pattern` is a flag-origin validation error and never falls back to the config). An invalid effective pattern is a gate ERROR (exit 2) through the existing structured error path: `runGate` returns the existing `{result:'ERROR', errors:[...]}` shape with the origin-naming message (source echo bounded per the verify rule), text mode prints `gate:` lines, and `--json` stays pure JSON in every outcome class.
+apriori/changes/gate-id-pattern/specs/gate/spec.md:8:#### Scenario: GT-22 gate accepts --id-pattern for C1
+apriori/changes/gate-id-pattern/specs/gate/spec.md:9:- WHEN `apriori gate --change <name> --id-pattern <re>` runs against a store whose scenario IDs only `<re>` recognizes
+apriori/changes/gate-id-pattern/specs/gate/spec.md:13:- WHEN gate runs without a flag over a config pattern whose matching the child terminates (catastrophic pattern + adversarial titles)
+apriori/changes/gate-id-pattern/specs/gate/spec.md:14:- THEN gate exits 2 with `result: ERROR`, the sanitized message in `errors[]` names `process-config`, and `--json` stays pure JSON
+apriori/changes/gate-id-pattern/specs/gate/spec.md:17:- WHEN the config carries an `id-pattern` row and gate runs without the flag
+apriori/changes/gate-id-pattern/specs/gate/spec.md:21:- WHEN gate runs with an uncompilable `--id-pattern`, or with a present-but-EMPTY `--id-pattern` over a valid (or invalid) config row, or without a flag over an uncompilable config row
+apriori/changes/gate-id-pattern/specs/gate/spec.md:22:- THEN gate exits 2 with `result: ERROR`, the message in `errors[]` names `--id-pattern` (uncompilable and empty flag alike — the empty flag never falls back to the config) or `process-config` respectively, and `--json` output is still pure JSON
+apriori/changes/gate-id-pattern/specs/config/spec.md:5:### Requirement: process-config cells honor the markdown pipe escape
+apriori/changes/gate-id-pattern/specs/config/spec.md:6:`parseConfig` SHALL split table rows into cells by a per-character scan: for each `|`, count the consecutive backslashes immediately before it — an odd count means the last backslash escapes the pipe (that backslash is removed and the pipe joins the current cell's value; the remaining backslashes stay literal); an even count (including zero) means the pipe is a cell separator and every backslash stays literal. No other backslash sequence is ever unescaped (`\\` never collapses to `\` — parseConfig is not a markdown renderer). The rule applies to EVERY key uniformly — including a pipe inside a regex character class: EVERY pipe that belongs to a cell's value is written `\|` in the cell, wherever it sits in the value. Consequently a regex that must match a literal pipe character is written `[\|]` in the cell, parsing to the source `[|]` (a bare escaped pipe `\|` in the final source is unreachable by construction — the character-class form is the canonical literal-pipe spelling). `readConfig` SHALL surface a present-but-unreadable `process-config.md` (directory, permission failure, any read error) as a consumption-time problem through `getConfig`, never as a thrown exception.
+apriori/changes/gate-id-pattern/specs/config/spec.md:9:- WHEN a live row reads `| id-pattern | (AC\|BR)-\d+ |` and another config carries a cell fragment `a\\\|b`
+apriori/changes/gate-id-pattern/specs/config/spec.md:16:#### Scenario: CF-10 unescaped configs parse exactly as before
+apriori/changes/gate-id-pattern/specs/config/spec.md:21:- WHEN `apriori/process-config.md` exists but cannot be read as a file (e.g. it is a directory) and a consumer asks `getConfig` for any key
+apriori/changes/gate-id-pattern/specs/config/spec.md:22:- THEN the consumer receives a problem naming `process-config` (no exception is thrown), and each command surfaces it per its own error contract
+apriori/changes/gate-id-pattern/specs/config/spec.md:24:#### Scenario: CF-12 the template names the id-pattern row with two-layer pipe wording
+apriori/changes/gate-id-pattern/specs/config/spec.md:25:- WHEN `templates/process-config.md` is read AND parsed by `parseConfig`
+apriori/changes/gate-id-pattern/specs/config/spec.md:26:- THEN it carries an `id-pattern` row whose parsed value is the built-in default and whose table cells are PIPE-FREE prose (a parsed cell value can never display a lone `\|`, so the escaping guidance must not live in a cell); the pipe-escaping guidance lives in an adjacent HTML comment (non-content for parseConfig — no escaping applies there), stating BOTH layers separately — every in-cell pipe is written `\|` (an alternation parses to a bare `|` in the regex source; a literal-pipe match is written `[\|]`, parsing to `[|]`) — with no phrasing that calls `\|` a "literal pipe" of the regex; AND the template's whole table survives parsing end-to-end (structure + parsed id-pattern value asserted, not only a text grep)
+
+四条 fixed 均满足原问题及相应 hard guarantees；全量新鲜扫描未发现新增正式 gap。只读语法检查与 diff 检查通过。
+  ✓ 读取 r3 ledger、实现和测试，复验 IMPL-1/2/3/9
+  ✓ 重新扫描全部 delta、design 与消费分支，寻找新 gap
+  ✓ 执行只读静态/针对性诊断并形成 ledger delta
+  ✓ 打印 step5-review-v3 完整正文与唯一 verdict
+codex
+# gate-id-pattern STEP5 一致性评审 v3
+
+## 评审结论
+
+本轮逐项复验 IMPL-1、IMPL-2、IMPL-3、IMPL-9，并重新扫描全部 delta scenario、`design.md`、实现、错误分支及 hard guarantees。
+
+接受生产环境提供的 `284/284` 与 `verify --change gate-id-pattern` GREEN 证据。本轮只读执行了所有相关 JS 文件的语法检查和 `git diff --check`，均通过。
+
+四条待复验问题均已真正闭环，没有发现新的 spec-vs-code gap。
+
+## 问题复验
+
+### IMPL-1 — verified
+
+`readConfig` 现在先执行 `readFileSync`：
+
+- 非 `ENOENT` 错误一律形成 unreadable problem；
+- `ENOENT` 后通过 `lstatSync` 区分真正不存在与仍存在的 dangling symlink；
+- dangling symlink 被视为 present-but-unreadable，不再静默回退默认值。
+
+新增 CF-11 用例同时观察 `getConfig` problem 与 verify exit 2；原有目录用例和四消费者矩阵继续覆盖 `EISDIR` 及各命令错误契约。实现符合“definite absence only”与 consumption-time fail-closed 语义。
+
+### IMPL-2 — verified
+
+child spawn 契约现由冻结常量定义：
+
+```js
+Object.freeze({
+  timeout: 2000,
+  killSignal: 'SIGKILL',
+  shell: false
+})
+```
+
+`defaultChildRunner` 将其直接展开进实际 `spawnSync` options。测试确定性断言三个值，真实灾难性回溯用例继续证明进程确实被终止并产生 termination error。
+
+固定 budget、`SIGKILL` 与 `shell:false` 不再依赖宽松墙钟窗口推断。
+
+### IMPL-3 — verified
+
+SR-55 现在将 timeout、spawn error、signal、non-zero exit、malformed output 全部通过 `verify()` 的真实 title-batch failure path，逐类观察最终 `errors[]`：
+
+- 命名 `process-config`；
+- 无控制字符；
+- 长度不超过 200；
+- 400 字符的 dirty spawn detail 不会完整回漏。
+
+doctor 的最终 D6 finding 与 check 的最终 CLI error output 也使用同一 dirty failure 注入，证明共享 `matcherFailureMsg` 确实贯穿消费者，而非仅在 matcher 单元层返回正确结果。D5 skip 与 `RESULT: ERROR` 同时被观察。
+
+### IMPL-9 — verified
+
+顺序 child seam 已覆盖第二次实际应用：
+
+1. scenario-title batch 成功；
+2. test command 运行并留下 marker；
+3. TAP-description batch 分别注入 timeout 和 malformed output；
+4. verify 通过 sanitized config-origin error fail closed。
+
+这忠实覆盖了 config pattern 在 test command 后的第二个 matcher 分支。
+
+SR-54 的正常对照也已改为同一个 adversarial-title store，仅替换为项目真实 multi-segment pattern；结果是普通 unidentified GAPS，且 `errors[]` 为空，证明 child 正常完成而非 matcher failure。
+
+## 全量一致性复查
+
+重新核对后，以下契约均有与 intent 相符的实现及测试证据：
+
+- flag > config > default，且 flag 按 presence 判定并屏蔽坏配置；
+- invalid pattern 在 spec content 和 test command 之前失败；
+- `--change --json` error path 保留 projection/modules；
+- config-origin 的 title 与 TAP 两批匹配均在固定 child 中执行；
+- child 使用固定脚本、stdin data channel、`shell:false`、2 秒 budget 与 `SIGKILL`；
+- 五类 child failure fail closed，response 严格为单键 `{ids}`；
+- verify、gate、check、doctor 遵守各自错误矩阵；
+- doctor 在 D5 前完成 D6 resolution/scan，坏配置或 child failure 均跳过 probe；
+- 四消费者统一 `leadId` edge semantics；
+- pipe parity、模板整表解析、HTML comment 指南及 EN/CN 文档一致；
+- unreadable config 不抛异常、不静默按 absent/default 处理；
+- continue/skip/silent-ignore 分支没有遗漏 spec 要求的用户可见结果。
+
+## Advisories
+
+1. `CHANGELOG.md` 仍记录 `276 tests`，而本轮证据为 `284/284`。该数字不属于 delta 的行为契约，不计正式问题；建议更新以避免发布说明漂移。
+
+## Ledger delta
+
+状态翻转：
+
+| ID | Status |
+|---|---|
+| IMPL-1 | verified — `ENOENT` 经 `lstatSync` 区分真正缺席与 dangling symlink，CF-11 fail-closed evidence 完整（step5-review-v3）。 |
+| IMPL-2 | verified — 冻结的 `CHILD_SPAWN_OPTS` 确定性约束 2000ms、`SIGKILL`、`shell:false`，并保留真实 termination evidence（step5-review-v3）。 |
+| IMPL-3 | verified — 五类 failure 已穿透 verify 最终 sanitized channel，check 与 doctor 最终输出亦有 dirty failure 对抗断言（step5-review-v3）。 |
+| IMPL-9 | verified — TAP-description 第二批次 timeout/malformed 均 fail closed，same-store real-pattern contrast 已忠实覆盖（step5-review-v3）。 |
+
+Advisory batch：
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| IMPL-ADV-1 | Advisory batch acknowledged（1 item：CHANGELOG 的测试数量仍为 276，当前 suite evidence 为 284）。 | — | STEP5·r3 | advisory-acked |
+
+无新增正式行，无 reopen。
+
+VERDICT: no spec-vs-code gaps
+tokens used
+374,059
+# gate-id-pattern STEP5 一致性评审 v3
+
+## 评审结论
+
+本轮逐项复验 IMPL-1、IMPL-2、IMPL-3、IMPL-9，并重新扫描全部 delta scenario、`design.md`、实现、错误分支及 hard guarantees。
+
+接受生产环境提供的 `284/284` 与 `verify --change gate-id-pattern` GREEN 证据。本轮只读执行了所有相关 JS 文件的语法检查和 `git diff --check`，均通过。
+
+四条待复验问题均已真正闭环，没有发现新的 spec-vs-code gap。
+
+## 问题复验
+
+### IMPL-1 — verified
+
+`readConfig` 现在先执行 `readFileSync`：
+
+- 非 `ENOENT` 错误一律形成 unreadable problem；
+- `ENOENT` 后通过 `lstatSync` 区分真正不存在与仍存在的 dangling symlink；
+- dangling symlink 被视为 present-but-unreadable，不再静默回退默认值。
+
+新增 CF-11 用例同时观察 `getConfig` problem 与 verify exit 2；原有目录用例和四消费者矩阵继续覆盖 `EISDIR` 及各命令错误契约。实现符合“definite absence only”与 consumption-time fail-closed 语义。
+
+### IMPL-2 — verified
+
+child spawn 契约现由冻结常量定义：
+
+```js
+Object.freeze({
+  timeout: 2000,
+  killSignal: 'SIGKILL',
+  shell: false
+})
+```
+
+`defaultChildRunner` 将其直接展开进实际 `spawnSync` options。测试确定性断言三个值，真实灾难性回溯用例继续证明进程确实被终止并产生 termination error。
+
+固定 budget、`SIGKILL` 与 `shell:false` 不再依赖宽松墙钟窗口推断。
+
+### IMPL-3 — verified
+
+SR-55 现在将 timeout、spawn error、signal、non-zero exit、malformed output 全部通过 `verify()` 的真实 title-batch failure path，逐类观察最终 `errors[]`：
+
+- 命名 `process-config`；
+- 无控制字符；
+- 长度不超过 200；
+- 400 字符的 dirty spawn detail 不会完整回漏。
+
+doctor 的最终 D6 finding 与 check 的最终 CLI error output 也使用同一 dirty failure 注入，证明共享 `matcherFailureMsg` 确实贯穿消费者，而非仅在 matcher 单元层返回正确结果。D5 skip 与 `RESULT: ERROR` 同时被观察。
+
+### IMPL-9 — verified
+
+顺序 child seam 已覆盖第二次实际应用：
+
+1. scenario-title batch 成功；
+2. test command 运行并留下 marker；
+3. TAP-description batch 分别注入 timeout 和 malformed output；
+4. verify 通过 sanitized config-origin error fail closed。
+
+这忠实覆盖了 config pattern 在 test command 后的第二个 matcher 分支。
+
+SR-54 的正常对照也已改为同一个 adversarial-title store，仅替换为项目真实 multi-segment pattern；结果是普通 unidentified GAPS，且 `errors[]` 为空，证明 child 正常完成而非 matcher failure。
+
+## 全量一致性复查
+
+重新核对后，以下契约均有与 intent 相符的实现及测试证据：
+
+- flag > config > default，且 flag 按 presence 判定并屏蔽坏配置；
+- invalid pattern 在 spec content 和 test command 之前失败；
+- `--change --json` error path 保留 projection/modules；
+- config-origin 的 title 与 TAP 两批匹配均在固定 child 中执行；
+- child 使用固定脚本、stdin data channel、`shell:false`、2 秒 budget 与 `SIGKILL`；
+- 五类 child failure fail closed，response 严格为单键 `{ids}`；
+- verify、gate、check、doctor 遵守各自错误矩阵；
+- doctor 在 D5 前完成 D6 resolution/scan，坏配置或 child failure 均跳过 probe；
+- 四消费者统一 `leadId` edge semantics；
+- pipe parity、模板整表解析、HTML comment 指南及 EN/CN 文档一致；
+- unreadable config 不抛异常、不静默按 absent/default 处理；
+- continue/skip/silent-ignore 分支没有遗漏 spec 要求的用户可见结果。
+
+## Advisories
+
+1. `CHANGELOG.md` 仍记录 `276 tests`，而本轮证据为 `284/284`。该数字不属于 delta 的行为契约，不计正式问题；建议更新以避免发布说明漂移。
+
+## Ledger delta
+
+状态翻转：
+
+| ID | Status |
+|---|---|
+| IMPL-1 | verified — `ENOENT` 经 `lstatSync` 区分真正缺席与 dangling symlink，CF-11 fail-closed evidence 完整（step5-review-v3）。 |
+| IMPL-2 | verified — 冻结的 `CHILD_SPAWN_OPTS` 确定性约束 2000ms、`SIGKILL`、`shell:false`，并保留真实 termination evidence（step5-review-v3）。 |
+| IMPL-3 | verified — 五类 failure 已穿透 verify 最终 sanitized channel，check 与 doctor 最终输出亦有 dirty failure 对抗断言（step5-review-v3）。 |
+| IMPL-9 | verified — TAP-description 第二批次 timeout/malformed 均 fail closed，same-store real-pattern contrast 已忠实覆盖（step5-review-v3）。 |
+
+Advisory batch：
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| IMPL-ADV-1 | Advisory batch acknowledged（1 item：CHANGELOG 的测试数量仍为 276，当前 suite evidence 为 284）。 | — | STEP5·r3 | advisory-acked |
+
+无新增正式行，无 reopen。
+
+VERDICT: no spec-vs-code gaps

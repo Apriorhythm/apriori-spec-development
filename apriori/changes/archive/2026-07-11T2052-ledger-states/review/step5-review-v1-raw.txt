@@ -1,0 +1,1194 @@
+
+GATE: PASS — mechanical checks only; human gates remain human
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f4b30-68f9-7222-9b64-17f52a333b4c
+--------
+user
+P8 consistency review round 1 for ledger-states (STEP5 exit). On disk; suite 191/191, verify --change GREEN, gate PASS, check --self PASS, golden-path OK.
+
+Review the ACTUAL implementation against the converged design:
+- lib/gate.js: STATUS_RE (rejected-verified before rejected), classifyStatus export ({legal,terminal,needsReason,hasReason,isWaived,token}), escapeRe, gatesEntries (block bounded at next unindented key; '- ' entries; continuation lines attach), waiveEvidence (exact ID token boundaries + /waiv/i, same entry), checkLedger(cwd,name,tier,stage,dir) with the stage rules and cure messages; call site passes loc.stage/loc.dir; classifyStatus exported.
+- test/gate.test.js GT-13/14/15 (incl. the Q-1-vs-Q-10 token case, same-entry case, in-flight unknown-status, reasonless rejected-verified, in-flight fixed/rejected still passing, corpus walk with the reason floor).
+- test/protocol.test.js PR-18 (sectionBlock on P0 + STEP6 both editions; two CN anchors were widened during TDD to match the landed prose: 归人 for human-only, 原始拒绝理由 for the original-reason clause — check they still bind the intended clauses and nothing else).
+- RUNBOOK.md/RUNBOOK_cn.md P0 four-bullet rewrite + waived example row (EN only — should CN also get the example row? judge) + STEP6 exit line; docs/concepts{,_cn}.md §7.0 literals.
+- Migrations: apriori/review/update-manifest-issues.md UMIMPL-1 → rejected-verified with original reason + concurrence ref; apriori/review/python-example-issues.md placeholder row removed in favor of a prose zero-findings note.
+
+Hunt for: classifier edge cases (status cells with markdown bold/backticks around the token? leading whitespace? parseLedger trims — verify), gatesEntries on real flow-states (the timestamped bullets — does the '- ' entry regex cope with the two-space indent and multiline gate④ entries used in this repo's archives?), waiveEvidence false negatives (IDs containing regex metachars — escapeRe covers, but IDs with spaces?), checkLedger reading flow-state from dir at BOTH stages (in-flight dir = changes/<name> — verify loc.dir is set there), the CN P0 translation completeness vs EN's four bullets, PR-18 anchor drift risk, and whether the EN-only waived example row is a translation-parity gap. Rows LSIMPL-N. Print the COMPLETE review document body (landed verbatim at apriori/review/ledger-states-impl-review-v1.md) with a ledger-delta section, ending with exactly one verdict line: "VERDICT: no major issues, ready to proceed" or "VERDICT: <N> issues open".
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-11T12:48:09.857960Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T12:48:10.053954Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T12:48:08.815510Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-11T12:48:09.414733Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-11T12:48:10.411104Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-11T12:48:12.238111Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-11T12:48:15.735245Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: BjY4iCNTQt4q
+codex
+I’ll inspect the actual gate implementation, tests, migrated ledgers, and EN/CN doc edits, then compare them against the converged design and requirement.
+exec
+/usr/bin/zsh -lc "sed -n '277,304p' RUNBOOK.md && sed -n '277,306p' RUNBOOK_cn.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' lib/gate.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '360,460p' test/protocol.test.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,380p' test/gate.test.js" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 136ms:
+### P0 — issue ledger (every prompt below reads/writes it)
+
+`apriori/review/<change>-issues.md`:
+
+```markdown
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| REQ-3 | `ttlMs<=0` behavior undefined | med | 1 | fixed (v2) |
+| SPEC-1 | cleanup moment missing for the in-memory map | high | 1 | verified |
+| SPEC-2 | rename `del` to `delete` | low | 2 | rejected — cosmetic, out of scope |
+| SPEC-3 | eviction jitter unbounded under load | med | 2 | waived — owner accepts for v1 (gates: entry 2026-07-12) |
+```
+
+- **Reviewer**: appends new rows; flips `fixed → verified` after confirming a fix landed, and `rejected → rejected-verified` after CONCURRING with a rejection — the cell keeps the original rejection reason plus a concurrence evidence ref (e.g. `rejected-verified — cosmetic, out of scope; reviewer concurred (review-v2)`); a re-found issue **reopens its old ID** back to `open` — reopened is an event, not a status, and never a new row.
+- **Producer**: flips `open → fixed` or `open → rejected`; a rejection MUST carry a reason — human gates read rejections first. The producer never terminalizes its own findings: `verified` and `rejected-verified` belong to the reviewer, `waived` to the human.
+- **Human (only)**: may set `waived + reason` — accepting the risk — with a `gates:` entry recording the decision (the entry must carry the row's ID and the word "waived"; gate C4 machine-checks exactly that).
+- **Terminal set for archival**: `verified` · `rejected-verified` · `waived` · `advisory-acked`. The archived-stage gate blocks anything else — `fixed` is a claim awaiting verification, plain `rejected` awaits concurrence, and unknown statuses are illegal at every stage.
+- **Advisory findings (scope discipline):** only gaps affecting **correctness, security, or the stated requirements** enter as formal rows; everything else the reviewer labels `advisory`. Labeling is the **reviewer's exclusive call** — the producer may never downgrade an open row to advisory. Per-item advisory lists live in the review doc; the ledger takes **one batch row per round** (`advisory batch acknowledged (n items)`), terminal state `advisory-acked` — the "record verbatim" rule (R2) governs the reviewer's delta *content*, while the row *shape* is always normalized to this batch form, so a reviewer that free-forms its advisory rows is normalized, not copied literally; "ignoring" advisories means no per-item handling — the batch row still lands. A reviewer may later **upgrade** an advisory to open (with a reason, new row tagged `upgraded-from-advisory`): it counts in the data pack's reopened statistic but does **not** by itself trip gate ⑤ (only a closed formal ID re-reopening does). **Correctness and security findings can never be advisory.** Mislabel handling: sampled at STEP3 (Medium+), gate ④, or the pre-merge PR review (Trivial); a real gap found mislabeled → upgrade + log; one that slips past merge counts as a post-merge miss (triggers cap restoration, §6).
+
+### P1 — STEP0 reviewer (heterogeneous, R2)
+
+```text
+You are a senior requirements reviewer. Review the requirement doc; the goal is to make it precise enough to hand straight to an AI for implementation.
+[Input]
+* Requirement doc: requirement/req-v{N}.md
+* System knowledge base (if any): apriori/truth/<module>.md
+* Issue ledger (if any): apriori/review/<change>-issues.md
+[Review dimensions, give a verdict on each]
+```markdown
+| ID | 问题 | 风险 | 发现轮次 | 状态 |
+|---|---|---|---|---|
+| REQ-3 | `ttlMs<=0` 行为未定义 | 中 | 1 | fixed (v2) |
+| SPEC-1 | 内存 map 缺"清理"时机 | 高 | 1 | verified |
+| SPEC-2 | 把 `del` 改名为 `delete` | 低 | 2 | rejected —— 纯外观,超出范围 |
+```
+
+- **评审方**:追加新行;确认修复落地后把 `fixed → verified`;认同某项拒绝后把 `rejected → rejected-verified`——单元格保留原始拒绝理由外加认同证据引用(如 `rejected-verified — 纯外观,超范围; reviewer concurred (review-v2)`);再次发现的问题**重开旧 ID**回到 `open`——重开是事件而非状态,绝不另起新行。
+- **生产方**:把 `open → fixed` 或 `open → rejected`;拒绝必须给理由——人工闸口最先看拒绝项。生产方永不给自己的发现定终态:`verified` 和 `rejected-verified` 归评审方,`waived` 归人。
+- **人(独有)**:可置 `waived + 理由`——接受该风险——同时在 `gates:` 落一条记录该决定的条目(条目须含该行 ID 和"waived"字样;gate C4 机器核查的正是这个)。
+- **归档终态集**:`verified` · `rejected-verified` · `waived` · `advisory-acked`。归档态闸口拦下其余一切——`fixed` 是待核实的声明,裸 `rejected` 等待认同,词汇表之外的状态在任何阶段都非法。
+- **advisory(范围纪律):**只有影响**正确性、安全或既定需求**的缺口才立正式行;其余由评审方标 `advisory`。标注权**评审方独占**——生产方永远不得把 open 行降级为 advisory。逐条 advisory 只存于评审文档;台账每轮只落**一行批量行**(`advisory batch acknowledged (n 条)`),终态 `advisory-acked`——"原文代录"(R2)约束的是评审方增量的*内容*,而行的*形态*一律归一为这个批量形式,所以评审方自创格式的 advisory 行按归一处理、不逐字照抄;"忽略"=不逐条处理,批量行仍落。评审方可在后续轮把 advisory **升级为 open**(须给理由,新行标 `upgraded-from-advisory`):计入数据包的 reopened 统计,但**不单独触发闸口⑤**(⑤仍只由已闭合正式 ID 复发触发)。**正确性与安全类发现永远不得标 advisory。**误标处置:STEP3(Medium+)、闸口④、或合并前 PR 评审(Trivial)抽查;发现真缺口被误标→升级+记档;漏到合并后按 post-merge miss 处理(触发上限恢复,§6)。
+
+### P1 —— STEP0 评审方(异构,R2)
+
+```text
+你是一名资深需求评审专家。请审查需求文档,目标是让它精确到可以直接交给 AI 实现。
+【输入】
+* 需求文档: requirement/req-v{N}.md
+* 系统知识库(如有): apriori/truth/<模块名>.md
+* 问题台账(如有): apriori/review/<change>-issues.md
+【评审维度,逐条给结论】
+1. 目标状态 B 是否清晰、无歧义
+2. 边界条件与异常路径是否覆盖(空值、越界、并发、超时、失败回滚)
+3. 是否存在"隐含但未声明"的状态变更或副作用
+4. 每条验收标准是否可测(能写成「如果…那么…」)
+5. 与系统现状 A 是否冲突(若提供了知识库)
+6. 目标谱系是否已声明且与仓库现实一致(多谱系仓库:落在哪条分支/线上)
+【范围】只把以下缺口计入结论行:目标歧义、验收不可测、边界/异常缺失、与现状 A 冲突。其余一律标 advisory(P0 规则)。顺带核查"明确不做"(范围外)节是否存在。
+
+ succeeded in 125ms:
+'use strict';
+/*
+ * apriori gate — aggregate the MECHANICAL exit conditions for one change into one exit code.
+ * 0 = PASS · 1 = BLOCKED · 2 = the evaluation itself is untrustworthy.
+ * Strictly read-only. PASS covers machine checks only — human gates remain human.
+ */
+const fs = require('fs');
+const path = require('path');
+const { spawnSync } = require('child_process');
+const { parseFlowState, parseLedger } = require('./status');
+const { verify, configTestCmd } = require('./spec-runner');
+const { CHANGE_NAME_RE, containsReal } = require('./archive-merge');
+const { withStrict } = require('./args');
+
+const STEP_ENUM = ['STEP0', 'STEP1', 'STEP2', 'STEP3', 'STEP4', 'STEP5', 'STEP6',
+  'INTENT-CARD', 'SPIKE', 'EXTRACTION', 'DONE', 'ABANDONED'];
+const TIER_ENUM = ['trivial', 'medium', 'large'];
+const CAVEAT = 'mechanical checks only; human gates remain human';
+
+function err(res, msg) { res.errors.push(msg); res.result = 'ERROR'; res.code = 2; return res; }
+
+// stage resolution: in-flight first, else newest archived (exact stamp regex, lexicographic last)
+function resolveChange(cwd, name) {
+  const changesDir = path.join(cwd, 'apriori', 'changes');
+  const inflight = path.join(changesDir, name);
+  if (fs.existsSync(inflight)) {
+    if (!containsReal(changesDir, inflight)) return { error: `change path escapes ${changesDir}` };
+    return { stage: 'in-flight', dir: inflight };
+  }
+  const archRoot = path.join(changesDir, 'archive');
+  if (fs.existsSync(archRoot)) {
+    const re = new RegExp(`^\\d{4}-\\d{2}-\\d{2}T\\d{4}-${name}$`);
+    // candidates must be DIRECTORIES (following symlinks) — a stray file with a stamp name is ignored
+    const hits = fs.readdirSync(archRoot).filter((b) => {
+      if (!re.test(b)) return false;
+      try { return fs.statSync(path.join(archRoot, b)).isDirectory(); } catch { return false; }
+    }).sort();
+    if (hits.length) {
+      const dir = path.join(archRoot, hits[hits.length - 1]);
+      // containment against the ARCHIVE root — a symlink pointing elsewhere under changes/ is still an escape
+      if (!containsReal(archRoot, dir)) return { error: `archived change path escapes ${archRoot}` };
+      return { stage: 'archived', dir };
+    }
+  }
+  return { error: `change '${name}' found neither at ${inflight} nor under ${archRoot}` };
+}
+
+// --- individual checks; each returns {id, status: 'pass'|'blocked'|'n/a', detail} ---
+
+function checkFlowState(state, name) {
+  for (const key of ['change', 'tier', 'track', 'lineage', 'current-step']) {
+    const v = state[key];
+    if (v === undefined || v === '') return { id: 'C3', status: 'blocked', detail: `flow-state: required key '${key}' missing` };
+    if (v.includes('<') || v.includes('>')) return { id: 'C3', status: 'blocked', detail: `flow-state: '${key}' is an unfilled placeholder (${v})` };
+  }
+  if (state.change !== name) return { id: 'C3', status: 'blocked', detail: `flow-state: 'change' is '${state.change}', expected '${name}'` };
+  if (!STEP_ENUM.includes(state['current-step'])) return { id: 'C3', status: 'blocked', detail: `flow-state: 'current-step' '${state['current-step']}' not in the legal vocabulary` };
+  if (!TIER_ENUM.includes(state.tier)) return { id: 'C3', status: 'blocked', detail: `flow-state: 'tier' '${state.tier}' not in {trivial, medium, large}` };
+  return { id: 'C3', status: 'pass', detail: `legal (tier ${state.tier}, ${state['current-step']})` };
+}
+
+function checkTasks(dir, tier) {
+  const p = path.join(dir, 'tasks.md');
+  if (!fs.existsSync(p)) {
+    return tier === 'trivial'
+      ? { id: 'C2', status: 'n/a', detail: 'no tasks.md — trivial tier has no STEP2' }
+      : { id: 'C2', status: 'blocked', detail: `tasks.md missing at ${p}` };
+  }
+  const open = (fs.readFileSync(p, 'utf8').match(/^\s*-\s\[\s\]/gm) || []).length;
+  return open
+    ? { id: 'C2', status: 'blocked', detail: `tasks.md has ${open} unchecked box(es)` }
+    : { id: 'C2', status: 'pass', detail: 'all tasks checked' };
+}
+
+// the ledger vocabulary, one classifier shared by C4 and the corpus test (GT-15).
+// leading token, case-insensitive; rejected-verified BEFORE rejected (alternation order).
+const STATUS_RE = /^(open|fixed|verified|rejected-verified|rejected|advisory-acked|waived)\b/i;
+function classifyStatus(status) {
+  const m = STATUS_RE.exec(status);
+  if (!m) return { legal: false, terminal: false, needsReason: false, hasReason: false, isWaived: false };
+  const tok = m[1].toLowerCase();
+  const needsReason = tok === 'rejected' || tok === 'rejected-verified' || tok === 'waived';
+  return {
+    legal: true,
+    terminal: tok === 'verified' || tok === 'rejected-verified' || tok === 'waived' || tok === 'advisory-acked',
+    needsReason,
+    hasReason: !needsReason || /\w/.test(status.slice(m[0].length)),
+    isWaived: tok === 'waived',
+    token: tok,
+  };
+}
+
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// gates: entries from a flow-state text — the block runs from the unindented `gates:` line
+// to the next unindented top-level key; entries start `- `, continuation lines attach.
+function gatesEntries(flowText) {
+  const start = flowText.search(/^gates:/m);
+  if (start < 0) return [];
+  const rest = flowText.slice(start + 'gates:'.length);
+  const end = rest.search(/^[A-Za-z][\w-]*:/m);
+  const block = end < 0 ? rest : rest.slice(0, end);
+  const entries = [];
+  for (const line of block.split('\n')) {
+    if (/^\s*-\s/.test(line)) entries.push(line.trim());
+    else if (entries.length && line.trim()) entries[entries.length - 1] += ' ' + line.trim();
+  }
+  return entries;
+}
+
+// a waive is a HUMAN act: one single gates: entry must carry the row ID as an exact
+// token (LS-1 never matches inside LS-10) AND the word waive/waived.
+function waiveEvidence(flowText, id) {
+  const idRe = new RegExp(`(^|[^A-Za-z0-9-])${escapeRe(id)}([^A-Za-z0-9-]|$)`);
+  return gatesEntries(flowText).some((e) => idRe.test(e) && /waiv/i.test(e));
+}
+
+function checkLedger(cwd, name, tier, stage, dir) {
+  const p = path.join(cwd, 'apriori', 'review', `${name}-issues.md`);
+  if (!fs.existsSync(p)) {
+    return tier === 'trivial'
+      ? { id: 'C4', status: 'n/a', detail: 'no ledger — trivial tier may never open one' }
+      : { id: 'C4', status: 'blocked', detail: `ledger missing at ${p}` };
+  }
+  const rows = parseLedger(fs.readFileSync(p, 'utf8'));
+  const fsPath = dir ? path.join(dir, 'flow-state.md') : null;
+  const flowText = fsPath && fs.existsSync(fsPath) ? fs.readFileSync(fsPath, 'utf8') : '';
+  const bad = [];
+  for (const r of rows) {
+    const c = classifyStatus(r.status);
+    if (!c.legal) { bad.push(`${r.id}: '${r.status}' is not in the ledger vocabulary`); continue; }
+    if (c.needsReason && !c.hasReason) { bad.push(`${r.id} is ${c.token} without a reason`); continue; }
+    if (c.isWaived && !waiveEvidence(flowText, r.id)) {
+      bad.push(`${r.id} is waived without a gates: entry recording the human decision`); continue;
+    }
+    if (c.token === 'open') { bad.push(`${r.id} is open`); continue; }
+    if (stage === 'archived' && !c.terminal) {
+      bad.push(c.token === 'fixed'
+        ? `${r.id} is fixed but never verified — reviewer must verify, or the human waives it`
+        : `${r.id} is rejected without reviewer concurrence — flip to rejected-verified, or the human waives it`);
+    }
+  }
+  return bad.length
+    ? { id: 'C4', status: 'blocked', detail: bad.join('; ') }
+    : { id: 'C4', status: 'pass', detail: `${rows.length} row(s), none blocking` };
+}
+
+function checkEvidence(cwd, name) {
+  const reviewDir = path.join(cwd, 'apriori', 'review');
+  const designDir = path.join(cwd, 'apriori', 'design');
+  const docs = [];
+  const collect = (dir, re) => {
+    if (!fs.existsSync(dir)) return;
+    for (const b of fs.readdirSync(dir)) {
+      if (!re.test(b)) continue;
+      if (b === `${name}-issues.md`) continue;
+      if (/-raw\.[^.]+$/.test(b) || b.replace(/\.md$/, '').endsWith('-raw')) continue;
+      docs.push(path.join(dir, b));
+    }
+  };
+  collect(reviewDir, new RegExp(`^${name}-.*\\.md$`));
+  collect(designDir, new RegExp(`^${name}-review-v.*\\.md$`));
+  const bad = [];
+  for (const doc of docs.sort()) {
+    if (fs.lstatSync(doc).isSymbolicLink()) { bad.push(`${path.basename(doc)} is a symlink — evidence docs must be regular files`); continue; }
+    if (!fs.statSync(doc).isFile()) continue;
+    if (!/^VERDICT:/m.test(fs.readFileSync(doc, 'utf8'))) continue;
+    const stem = path.basename(doc, '.md');
+    const raws = fs.existsSync(reviewDir) ? fs.readdirSync(reviewDir).filter((b) =>
+      b.startsWith(stem + '-raw.') &&
+      fs.lstatSync(path.join(reviewDir, b)).isFile() &&                     // lstat FIRST: symlinked raws are not evidence
+      containsReal(reviewDir, path.join(reviewDir, b))) : [];
+    if (!raws.length) bad.push(`${path.basename(doc)} carries a VERDICT but no ${stem}-raw.* exists`);
+  }
+  return bad.length
+    ? { id: 'C5', status: 'blocked', detail: bad.join('; ') }
+    : { id: 'C5', status: 'pass', detail: `${docs.length} review doc(s), every verdict has raw evidence` };
+}
+
+function checkKb(cwd, dir) {
+  const specsDir = path.join(dir, 'specs');
+  const modules = new Set();
+  const walk = (d, base) => {
+    if (!fs.existsSync(d)) return;
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, e.name);
+      if (e.isDirectory()) walk(p, base);
+      else if (e.name.endsWith('.md')) modules.add(path.relative(base, p).split(path.sep)[0]);
+    }
+  };
+  walk(specsDir, specsDir);
+  if (!modules.size) return { id: 'C6', status: 'n/a', detail: 'no delta specs to map' };
+  const blocked = [], notes = [];
+  let checked = 0;
+  for (const m of [...modules].sort()) {
+    const truth = path.join(cwd, 'apriori', 'truth', `${m}.md`);
+    if (!fs.existsSync(truth)) { notes.push(`${m}: no truth doc`); continue; }
+    const sc = fs.readFileSync(truth, 'utf8').match(/^source-commit:\s*(\S+)/m);
+    if (!sc) { notes.push(`${m}: truth doc has no source-commit`); continue; }
+    if (!fs.existsSync(path.join(cwd, 'lib', `${m}.js`))) { notes.push(`${m}: no lib/${m}.js to compare`); continue; }
+    const g = spawnSync('git', ['-C', cwd, 'log', '--oneline', `${sc[1]}..HEAD`, '--', `lib/${m}.js`], { encoding: 'utf8' });
+    if (g.error) { notes.push(`${m}: git unavailable (${g.error.message})`); continue; }
+    if (g.status !== 0) { notes.push(`${m}: git failed (${(g.stderr || '').split('\n')[0]})`); continue; }
+    const n = g.stdout.trim() ? g.stdout.trim().split('\n').length : 0;
+    if (n > 0) blocked.push(`${m}: ${n} commit(s) since ${sc[1]}`);
+    else checked++;
+  }
+  if (blocked.length) return { id: 'C6', status: 'blocked', detail: blocked.join('; ') };
+  if (checked > 0) return { id: 'C6', status: 'pass', detail: `${checked} module stamp(s) up to date${notes.length ? `; ${notes.join('; ')}` : ''}` };
+  return { id: 'C6', status: 'n/a', detail: notes.join('; ') };
+}
+
+function checkBinding(cwd, name, stage, testCmd) {
+  const run = stage === 'in-flight'
+    ? verify({ change: name, cwd, testCmd })
+    : verify({ specs: [path.join(cwd, 'apriori', 'specs')], cwd, testCmd });
+  if (run.errors.length) return { infra: run.errors };
+  const v = run.verdict;
+  const clean = v.clean && run.duplicates.length === 0;
+  if (clean) return { check: { id: 'C1', status: 'pass', detail: `verify GREEN (${stage})` } };
+  const parts = [];
+  for (const [label, arr] of [['red', v.boundRed], ['unbound', v.unbound], ['orphan', v.orphan], ['unidentified', v.unidentified], ['duplicate-IDs', run.duplicates]])
+    if (arr.length) parts.push(`${arr.length} ${label}`);
+  return { check: { id: 'C1', status: 'blocked', detail: `verify GAPS: ${parts.join(', ')}` } };
+}
+
+// The whole evaluation. → { code, stage, checks, result, blocked, errors }
+function runGate(opts) {
+  const cwd = opts.cwd || process.cwd();
+  const res = { code: 0, stage: null, checks: [], result: 'PASS', blocked: 0, errors: [], change: opts.change || null };
+  if (!opts.change) return err(res, 'usage: apriori gate --change <name> [--test-cmd "<cmd>"] [--cwd <dir>] [--json]');
+  if (!CHANGE_NAME_RE.test(opts.change)) return err(res, `invalid change name '${opts.change}' — bare kebab-case only`);
+  const loc = resolveChange(cwd, opts.change);
+  if (loc.error) return err(res, loc.error);
+  res.stage = loc.stage;
+  const flowPath = path.join(loc.dir, 'flow-state.md');
+  if (!fs.existsSync(flowPath)) return err(res, `no readable flow-state.md at ${flowPath} — tier-aware checks are impossible`);
+  let state;
+  try { state = parseFlowState(fs.readFileSync(flowPath, 'utf8')); }
+  catch (e) { return err(res, `flow-state unreadable: ${e.message}`); }
+  const testCmd = opts.testCmd || configTestCmd(cwd);
+  if (!testCmd) return err(res, 'no test command: pass --test-cmd or add a test-cmd row to apriori/process-config.md');
+
+  const b = checkBinding(cwd, opts.change, loc.stage, testCmd);
+  if (b.infra) { for (const e of b.infra) res.errors.push(`verify: ${e}`); res.result = 'ERROR'; res.code = 2; return res; }
+  res.checks.push(b.check);
+  const tier = TIER_ENUM.includes(state.tier) ? state.tier : null;
+  res.checks.push(checkTasks(loc.dir, tier));
+  res.checks.push(checkFlowState(state, opts.change));
+  res.checks.push(checkLedger(cwd, opts.change, tier, loc.stage, loc.dir));
+  res.checks.push(checkEvidence(cwd, opts.change));
+  res.checks.push(checkKb(cwd, loc.dir));
+
+  res.blocked = res.checks.filter((c) => c.status === 'blocked').length;
+  res.result = res.blocked ? 'BLOCKED' : 'PASS';
+  res.code = res.blocked ? 1 : 0;
+  return res;
+}
+
+function toJson(res) {
+
+ succeeded in 136ms:
+
+// PR-17 helper: like block(), but bounded by the NEXT ## or ### heading — the
+// external-side-effects rule is the last ### in §1, so block() would swallow §2/§3
+function sectionBlock(text, headingRe) {
+  const m = text.match(headingRe);
+  if (!m) return '';
+  const rest = text.slice(m.index);
+  const next = rest.slice(m[0].length).search(/^#{2,3} /m);
+  return next < 0 ? rest : rest.slice(0, m[0].length + next);
+}
+
+test('PR-17 external side effects require the principal\'s explicit authorization (both editions)', () => {
+  const en = sectionBlock(EN, /^### External side effects \(hard rule\)$/m);
+  assert.ok(en.length > 0, 'EN subsection missing');
+  // the rule + recording
+  assert.match(en, /outside the local repository/);
+  assert.match(en, /never covers external side effects/);
+  assert.match(en, /one-shot/i);
+  assert.match(en, /recorded verbatim in `gates:`/);
+  assert.match(en, /class, scope, and expiry/i);
+  assert.match(en, /invalid/);
+  assert.match(en, /never authorizes an external side effect/);
+  assert.match(en, /internal state-machine transitions/);
+  // every mandatory class family
+  for (const re of [/push/, /merg/, /release|package|tag/, /deploy/, /production data/, /settings/,
+                    /secrets/, /webhooks/, /permissions|collaborators/, /environments/, /paid/,
+                    /messages to external|external humans/])
+    assert.match(en, re, String(re));
+  // the carve-out, both sides
+  assert.match(en, /routine configured verification|expected verification path/);
+  assert.match(en, /new paid service/i);
+  assert.match(en, /unusual spend/);
+  assert.match(en, /production-affecting/);
+  assert.match(en, /non-public.*data|data outside the expected verification path/);
+  // the gate-consolidation paragraph cross-references the rule (asserted OUTSIDE the block)
+  const consEn = EN.match(/\*\*Gate consolidation \(explicit authorization\)\.\*\*[^\n]*/)[0];
+  assert.match(consEn, /external side effects/i);
+  // CN mirror
+  const cn = sectionBlock(CN, /^### 外部副作用\(硬规则\)$/m);
+  assert.ok(cn.length > 0, 'CN subsection missing');
+  assert.match(cn, /本地仓库.*之外|工作区之外/);
+  assert.match(cn, /永不覆盖外部副作用|绝不.*覆盖外部副作用/);
+  assert.match(cn, /一次性/);
+  assert.match(cn, /逐字记入|原文记入/);
+  assert.match(cn, /失效边界/);
+  assert.match(cn, /无效/);
+  assert.match(cn, /永不授权外部副作用|绝不授权外部副作用/);
+  assert.match(cn, /内部状态机/);
+  for (const re of [/推送/, /合并/, /发布/, /部署/, /生产数据/, /设置/, /密钥/, /webhook/i,
+                    /权限|协作者/, /环境/, /付费/, /外部.*消息|外部的人/])
+    assert.match(cn, re, String(re));
+  assert.match(cn, /验证路径/);
+  assert.match(cn, /新的付费服务|新付费服务/);
+  assert.match(cn, /异常花费|异常开销/);
+  assert.match(cn, /影响生产/);
+  assert.match(cn, /非公开.*数据/);
+  const consCn = CN.match(/\*\*闸口整合\(显式授权\)。\*\*[^\n]*/)[0];
+  assert.match(consCn, /外部副作用/);
+  // the concepts handbook mirrors the boundary
+  assert.match(CONCEPTS, /outside the local repository|external side effects?.*explicit authorization/i);
+  assert.match(CONCEPTS, /never authorizes an external side effect|data,? never authorization/i);
+  assert.match(CONCEPTS_CN, /本地仓库.*之外|外部副作用/);
+  assert.match(CONCEPTS_CN, /永不授权外部副作用|绝不授权外部副作用|是数据.*不是授权/);
+});
+
+test('PR-18 the ledger vocabulary and the post-archive gate bind in both editions', () => {
+  const p0en = sectionBlock(EN, /^### P0 — issue ledger.*$/m);
+  assert.ok(p0en.length > 0, 'EN P0 block missing');
+  for (const re of [/open/, /fixed/, /\brejected\b/, /verified/, /rejected-verified/, /waived/, /advisory-acked/])
+    assert.match(p0en, re, String(re));
+  assert.match(p0en, /human/i);                               // waived is human-only
+  assert.match(p0en, /gates:/);                               // with a gates: entry
+  assert.match(p0en, /never terminalizes|never sets a terminal/i);
+  assert.match(p0en, /reopens its old ID/i);
+  assert.match(p0en, /event, not a status/);
+  assert.match(p0en, /original/);                             // rejected-verified keeps the original reason
+  assert.match(p0en, /concurr/i);
+  const s6en = sectionBlock(EN, /^### STEP6 — archive.*$/m);
+  assert.ok(s6en.length > 0, 'EN STEP6 block missing');
+  assert.match(s6en, /gate --change/);
+  assert.match(s6en, /archived/);
+  assert.match(s6en, /gate ④|gate④/);
+  const p0cn = sectionBlock(CN, /^### P0 ——.*$/m);
+  assert.ok(p0cn.length > 0, 'CN P0 block missing');
+  for (const re of [/open/, /fixed/, /rejected-verified/, /verified/, /waived/, /advisory-acked/])
+    assert.match(p0cn, re, String(re));
+  assert.match(p0cn, /只能由人|唯一由人|人(独有)|人\(独有\)|归人/);
+  assert.match(p0cn, /gates:/);
+  assert.match(p0cn, /重开旧 ID|重开旧ID/);
+  assert.match(p0cn, /事件.*不是.*状态|事件而非状态/);
+  assert.match(p0cn, /原始拒绝理由|原始理由/);
+  const s6cn = sectionBlock(CN, /^### STEP6 —— 归档.*$/m);
+  assert.ok(s6cn.length > 0, 'CN STEP6 block missing');
+  assert.match(s6cn, /gate --change/);
+  assert.match(s6cn, /归档后|archived/);
+  assert.match(s6cn, /④/);
+  // concepts §7.0 vocabulary strings updated in both languages
+  assert.match(CONCEPTS, /rejected-verified/);
+  assert.match(CONCEPTS, /waived/);
+  assert.match(CONCEPTS_CN, /rejected-verified/);
+  assert.match(CONCEPTS_CN, /waived/);
+
+ succeeded in 151ms:
+'use strict';
+const { test } = require('node:test');
+const assert = require('node:assert');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { spawnSync } = require('node:child_process');
+const gate = require('../lib/gate');
+
+const BIN = path.join(__dirname, '..', 'bin', 'apriori.js');
+function run(args, cwd) { return spawnSync('node', [BIN, ...args], { encoding: 'utf8', cwd }); }
+function tapCmd(...lines) {
+  return `node -e "${lines.map((l) => `console.log('${l}')`).join(';')}"`;
+}
+
+function mkProject(files) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-gate-'));
+  for (const [rel, content] of Object.entries(files)) {
+    const p = path.join(root, rel);
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, content);
+  }
+  return root;
+}
+
+const STORE = '### Requirement: Alpha\n\n#### Scenario: XA-01 base\n- t\n';
+const DELTA = '## ADDED Requirements\n\n### Requirement: Beta\n\n#### Scenario: XB-01 new\n- t\n';
+const FLOW = (name, tier = 'medium') => `change: ${name}\ntier: ${tier}\ntrack: harden\ntrack-rationale: r\nlineage: v3\ncurrent-step: STEP5\nround: 1\nnext-action: x\ngates:\n  - 2026-07-11T00:00 note: n\n`;
+const LEDGER_OK = '| ID | Issue | Risk | Round found | Status |\n|---|---|---|---|---|\n| Q-1 | a | low | 1 | verified |\n';
+
+// a healthy in-flight medium change
+function healthy(name = 'c') {
+  return mkProject({
+    'apriori/specs/kv/spec.md': STORE,
+    [`apriori/changes/${name}/flow-state.md`]: FLOW(name),
+    [`apriori/changes/${name}/tasks.md`]: '- [x] T1 done\n- [X] T2 done\n',
+    [`apriori/changes/${name}/specs/kv/spec.md`]: DELTA,
+    [`apriori/review/${name}-issues.md`]: LEDGER_OK,
+  });
+}
+const TAP_OK = tapCmd('ok 1 - XA-01 a', 'ok 2 - XB-01 b');
+
+test('GT-01 a clean in-flight change passes (exit 0, all checks ✓)', () => {
+  const root = healthy();
+  const r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
+  assert.strictEqual(r.code, 0);
+  assert.strictEqual(r.result, 'PASS');
+  assert.strictEqual(r.stage, 'in-flight');
+  for (const id of ['C1', 'C2', 'C3', 'C4', 'C5']) {
+    const c = r.checks.find((x) => x.id === id);
+    assert.ok(c && c.status !== 'blocked', `${id}: ${c && c.detail}`);
+  }
+});
+
+test('GT-02 an unchecked task blocks', () => {
+  const root = healthy();
+  fs.appendFileSync(path.join(root, 'apriori/changes/c/tasks.md'), '- [ ] T3 not done\n');
+  const r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
+  assert.strictEqual(r.code, 1);
+  assert.strictEqual(r.result, 'BLOCKED');
+  const c2 = r.checks.find((x) => x.id === 'C2');
+  assert.strictEqual(c2.status, 'blocked');
+  assert.match(c2.detail, /tasks\.md/);
+});
+
+test('GT-03 ledger blocks on open rows and reasonless rejections', () => {
+  for (const [row, blocked] of [
+    ['| Q-2 | b | high | 1 | open |', true],
+    ['| Q-2 | b | high | 1 | rejected |', true],
+    ['| Q-2 | b | high | 1 | rejected: |', true],
+    ['| Q-2 | b | high | 1 | rejected - |', true],
+    ['| Q-2 | b | high | 1 | rejected: duplicate of Q-1 |', false],
+    ['| Q-2 | b | high | 1 | advisory-acked |', false],
+  ]) {
+    const root = healthy();
+    fs.appendFileSync(path.join(root, 'apriori/review/c-issues.md'), row + '\n');
+    const r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
+    const c4 = r.checks.find((x) => x.id === 'C4');
+    assert.strictEqual(c4.status, blocked ? 'blocked' : 'pass', row);
+    if (blocked) assert.match(c4.detail, /Q-2/);
+  }
+});
+
+test('GT-04 flow-state legality is enforced', () => {
+  for (const [flow, offender] of [
+    [FLOW('c').replace('tier: medium', 'tier: <trivial | medium | large>'), /tier/],
+    [FLOW('c').replace('current-step: STEP5', 'current-step: STEP9'), /current-step/],
+    [FLOW('c').replace('tier: medium', 'tier: huge'), /tier/],
+    [FLOW('wrong-name'), /change/],
+    [FLOW('c').replace('lineage: v3\n', ''), /lineage/],
+  ]) {
+    const root = healthy();
+    fs.writeFileSync(path.join(root, 'apriori/changes/c/flow-state.md'), flow);
+    const r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
+    const c3 = r.checks.find((x) => x.id === 'C3');
+    assert.strictEqual(c3.status, 'blocked');
+    assert.match(c3.detail, offender);
+  }
+});
+
+test('GT-05 verdict evidence is mechanical (missing raw blocks; raw fixes; symlink blocks)', () => {
+  const root = healthy();
+  fs.writeFileSync(path.join(root, 'apriori/review/c-req-review-v1.md'), 'body\nVERDICT: no major issues\n');
+  let r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
+  let c5 = r.checks.find((x) => x.id === 'C5');
+  assert.strictEqual(c5.status, 'blocked');
+  assert.match(c5.detail, /c-req-review-v1/);
+  fs.writeFileSync(path.join(root, 'apriori/review/c-req-review-v1-raw.txt'), 'raw transcript');
+  r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
+  c5 = r.checks.find((x) => x.id === 'C5');
+  assert.strictEqual(c5.status, 'pass', c5.detail);
+  // design-dir docs participate too
+  fs.mkdirSync(path.join(root, 'apriori/design'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'apriori/design/c-review-v1.md'), 'VERDICT: 1 issues open\n');
+  r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
+  assert.strictEqual(r.checks.find((x) => x.id === 'C5').status, 'blocked');
+  fs.writeFileSync(path.join(root, 'apriori/review/c-review-v1-raw.txt'), 'raw');
+  r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
+  assert.strictEqual(r.checks.find((x) => x.id === 'C5').status, 'pass');
+  // a VERDICT-free doc needs no raw
+  fs.writeFileSync(path.join(root, 'apriori/review/c-kb-check.md'), 'notes only\n');
+  assert.strictEqual(gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK }).checks.find((x) => x.id === 'C5').status, 'pass');
+  // symlinked doc-glob match blocks (where the platform allows symlinks)
+  let canSymlink = true;
+  try { fs.symlinkSync(path.join(root, 'apriori/review/c-req-review-v1.md'), path.join(root, 'apriori/review/c-linked.md')); }
+  catch { canSymlink = false; }
+  if (canSymlink) {
+    r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
+    c5 = r.checks.find((x) => x.id === 'C5');
+    assert.strictEqual(c5.status, 'blocked');
+    assert.match(c5.detail, /c-linked/);
+    fs.rmSync(path.join(root, 'apriori/review/c-linked.md'));
+    // a SYMLINKED raw is not evidence: replace the real raw with a symlink → blocked again
+    fs.renameSync(path.join(root, 'apriori/review/c-req-review-v1-raw.txt'), path.join(root, 'apriori/review/elsewhere.txt'));
+    fs.symlinkSync(path.join(root, 'apriori/review/elsewhere.txt'), path.join(root, 'apriori/review/c-req-review-v1-raw.txt'));
+    r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
+    assert.strictEqual(r.checks.find((x) => x.id === 'C5').status, 'blocked');
+  }
+});
+
+test('GT-06 the binding gate is stage-aware (in-flight projected; archived plain)', () => {
+  // in-flight: XB-01 exists only in the delta — passing C1 proves the projection ran
+  const inflight = healthy();
+  const r1 = gate.runGate({ cwd: inflight, change: 'c', testCmd: TAP_OK });
+  assert.strictEqual(r1.checks.find((x) => x.id === 'C1').status, 'pass');
+  // gaps → blocked with counts
+  const r1b = gate.runGate({ cwd: inflight, change: 'c', testCmd: tapCmd('ok 1 - XA-01 a') });
+  const c1b = r1b.checks.find((x) => x.id === 'C1');
+  assert.strictEqual(c1b.status, 'blocked');
+  assert.match(c1b.detail, /unbound/);
+  // archived: change only under archive/, store already merged, plain verify runs
+  const arch = mkProject({
+    'apriori/specs/kv/spec.md': STORE + '\n### Requirement: Beta\n\n#### Scenario: XB-01 new\n- t\n',
+    'apriori/changes/archive/2026-07-10T1200-c/flow-state.md': FLOW('c'),
+    'apriori/changes/archive/2026-07-10T1200-c/tasks.md': '- [x] T1\n',
+    'apriori/changes/archive/2026-07-10T1200-c/specs/kv/spec.md': DELTA,
+    'apriori/review/c-issues.md': LEDGER_OK,
+  });
+  const r2 = gate.runGate({ cwd: arch, change: 'c', testCmd: TAP_OK });
+  assert.strictEqual(r2.stage, 'archived');
+  assert.strictEqual(r2.code, 0, JSON.stringify(r2.checks));
+});
+
+test('GT-07 resolution is validated and deterministic', () => {
+  const root = healthy();
+  // invalid name → exit 2 (spawned: also proves usage surface)
+  const bad = run(['gate', '--change', '../evil', '--test-cmd', TAP_OK], root);
+  assert.strictEqual(bad.status, 2);
+  // not found → exit 2 naming both locations
+  const nf = gate.runGate({ cwd: root, change: 'nope', testCmd: TAP_OK });
+  assert.strictEqual(nf.code, 2);
+  assert.ok(nf.errors.some((e) => e.includes('apriori/changes') || e.includes('archive')), nf.errors.join());
+  // two archived dirs → lexicographically last basename wins
+  const arch = mkProject({
+    'apriori/specs/kv/spec.md': STORE + '\n### Requirement: Beta\n\n#### Scenario: XB-01 new\n- t\n',
+    'apriori/changes/archive/2026-07-10T1200-c/flow-state.md': FLOW('c'),
+    'apriori/changes/archive/2026-07-10T1200-c/tasks.md': '- [ ] stale unchecked\n',
+    'apriori/changes/archive/2026-07-10T1200-c/specs/kv/spec.md': DELTA,
+    'apriori/changes/archive/2026-07-10T1400-c/flow-state.md': FLOW('c'),
+    'apriori/changes/archive/2026-07-10T1400-c/tasks.md': '- [x] fresh checked\n',
+    'apriori/changes/archive/2026-07-10T1400-c/specs/kv/spec.md': DELTA,
+    'apriori/review/c-issues.md': LEDGER_OK,
+  });
+  const r = gate.runGate({ cwd: arch, change: 'c', testCmd: TAP_OK });
+  assert.strictEqual(r.checks.find((x) => x.id === 'C2').status, 'pass');   // newer dir used
+  // a stray FILE with a stamp-shaped name is ignored, older real dir still wins deterministically
+  fs.writeFileSync(path.join(arch, 'apriori/changes/archive/2026-07-10T1600-c'), 'not a dir');
+  const r2 = gate.runGate({ cwd: arch, change: 'c', testCmd: TAP_OK });
+  assert.strictEqual(r2.stage, 'archived');
+  assert.strictEqual(r2.checks.find((x) => x.id === 'C2').status, 'pass'); // still the 1400 dir, not the file
+  // an archived entry symlinking OUTSIDE archive/ (but inside changes/) is an escape → exit 2
+  let canSymlink = true;
+  const elsewhere = path.join(arch, 'apriori/changes/elsewhere-c');
+  fs.mkdirSync(elsewhere, { recursive: true });
+  fs.writeFileSync(path.join(elsewhere, 'flow-state.md'), FLOW('c'));
+  try { fs.symlinkSync(elsewhere, path.join(arch, 'apriori/changes/archive/2026-07-10T1700-c')); }
+  catch { canSymlink = false; }
+  if (canSymlink) {
+    const r3 = gate.runGate({ cwd: arch, change: 'c', testCmd: TAP_OK });
+    assert.strictEqual(r3.code, 2);
+    assert.ok(r3.errors.some((e) => e.includes('escape')), r3.errors.join());
+  }
+});
+
+test('GT-08 a missing or mismatched flow-state fails closed', () => {
+  const root = healthy();
+  fs.rmSync(path.join(root, 'apriori/changes/c/flow-state.md'));
+  const r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
+  assert.strictEqual(r.code, 2);
+  assert.strictEqual(r.result, 'ERROR');
+  // mismatch case is GT-04's /change/ row (C3-blocked, not exit 2) — assert the distinction here too
+  const root2 = healthy();
+  fs.writeFileSync(path.join(root2, 'apriori/changes/c/flow-state.md'), FLOW('other'));
+  assert.strictEqual(gate.runGate({ cwd: root2, change: 'c', testCmd: TAP_OK }).code, 1);
+});
+
+test('GT-09 trivial tier is not asked for artifacts it never produces', () => {
+  const root = mkProject({
+    'apriori/specs/kv/spec.md': STORE,
+    'apriori/changes/c/flow-state.md': FLOW('c', 'trivial'),
+    'apriori/changes/c/specs/kv/spec.md': DELTA,
+  });
+  const r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
+  assert.strictEqual(r.checks.find((x) => x.id === 'C2').status, 'n/a');
+  assert.strictEqual(r.checks.find((x) => x.id === 'C4').status, 'n/a');
+  assert.strictEqual(r.code, 0, JSON.stringify(r.checks));
+  // medium: same absences block
+  const root2 = mkProject({
+    'apriori/specs/kv/spec.md': STORE,
+    'apriori/changes/c/flow-state.md': FLOW('c'),
+    'apriori/changes/c/specs/kv/spec.md': DELTA,
+  });
+  const r2 = gate.runGate({ cwd: root2, change: 'c', testCmd: TAP_OK });
+  assert.strictEqual(r2.checks.find((x) => x.id === 'C2').status, 'blocked');
+  assert.strictEqual(r2.checks.find((x) => x.id === 'C4').status, 'blocked');
+});
+
+test('GT-10 KB freshness degrades honestly', () => {
+  // n/a branches need no git: no truth doc at all
+  const root = healthy();
+  const na = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK }).checks.find((x) => x.id === 'C6');
+  assert.strictEqual(na.status, 'n/a');
+  // truth doc without lib file → n/a
+  fs.mkdirSync(path.join(root, 'apriori/truth'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'apriori/truth/kv.md'), 'source-commit: deadbeef\n');
+  const na2 = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK }).checks.find((x) => x.id === 'C6');
+  assert.strictEqual(na2.status, 'n/a');
+  // full git fixture — guarded on git availability
+  const g = spawnSync('git', ['--version'], { encoding: 'utf8' });
+  if (!g.error && g.status === 0) {
+    const root3 = healthy();
+    const env = { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' };
+    const git = (...a) => { const r = spawnSync('git', ['-C', root3, ...a], { encoding: 'utf8', env }); assert.strictEqual(r.status, 0, r.stderr); return r; };
+    git('init', '-q');
+    fs.mkdirSync(path.join(root3, 'lib'), { recursive: true });
+    fs.writeFileSync(path.join(root3, 'lib/kv.js'), '1');
+    git('add', '-A'); git('commit', '-q', '-m', 'one');
+    const c1 = git('rev-parse', 'HEAD').stdout.trim();
+    fs.mkdirSync(path.join(root3, 'apriori/truth'), { recursive: true });
+    fs.writeFileSync(path.join(root3, 'apriori/truth/kv.md'), `source-commit: ${c1}\n`);
+    let c6 = gate.runGate({ cwd: root3, change: 'c', testCmd: TAP_OK }).checks.find((x) => x.id === 'C6');
+    assert.strictEqual(c6.status, 'pass', c6.detail);           // stamp up to date
+    fs.writeFileSync(path.join(root3, 'lib/kv.js'), '2');
+    git('add', '-A'); git('commit', '-q', '-m', 'two');
+    c6 = gate.runGate({ cwd: root3, change: 'c', testCmd: TAP_OK }).checks.find((x) => x.id === 'C6');
+    assert.strictEqual(c6.status, 'blocked');                   // stale stamp
+    fs.writeFileSync(path.join(root3, 'apriori/truth/kv.md'), 'source-commit: 0000000\n');
+    c6 = gate.runGate({ cwd: root3, change: 'c', testCmd: TAP_OK }).checks.find((x) => x.id === 'C6');
+    assert.strictEqual(c6.status, 'n/a');                       // bad commit = infra, never a block
+  }
+});
+
+test('GT-11 --json is pure JSON in every outcome class', () => {
+  const root = healthy();
+  const cases = [
+    [['gate', '--change', 'c', '--test-cmd', TAP_OK, '--json'], 0, 'PASS', 'in-flight'],
+    [['gate', '--change', 'nope', '--test-cmd', TAP_OK, '--json'], 2, 'ERROR', null],
+    [['gate', '--change', '../evil', '--test-cmd', TAP_OK, '--json'], 2, 'ERROR', null],
+    [['gate', '--json'], 2, 'ERROR', null],                                   // usage: --change missing
+  ];
+  for (const [args, code, result, stage] of cases) {
+    const r = run(args, root);
+    assert.strictEqual(r.status, code, args.join(' ') + ': ' + r.stdout + r.stderr);
+    const j = JSON.parse(r.stdout);
+    assert.strictEqual(j.result, result);
+    assert.strictEqual(j.stage, stage);
+    assert.ok(Array.isArray(j.checks) && Array.isArray(j.errors));
+  }
+  assert.strictEqual(JSON.parse(run(['gate', '--json'], root).stdout).change, null);
+  // BLOCKED class
+  fs.appendFileSync(path.join(root, 'apriori/changes/c/tasks.md'), '- [ ] nope\n');
+  const b = run(['gate', '--change', 'c', '--test-cmd', TAP_OK, '--json'], root);
+  assert.strictEqual(b.status, 1);
+  assert.strictEqual(JSON.parse(b.stdout).result, 'BLOCKED');
+  // missing flow-state class: still pure JSON, stage resolved, result ERROR
+  fs.rmSync(path.join(root, 'apriori/changes/c/flow-state.md'));
+  const nofs = run(['gate', '--change', 'c', '--test-cmd', TAP_OK, '--json'], root);
+  assert.strictEqual(nofs.status, 2);
+  const jn = JSON.parse(nofs.stdout);
+  assert.strictEqual(jn.result, 'ERROR');
+  assert.ok(jn.errors.length > 0);
+  // verify-untrustworthy class (broken delta → projection fails): pure JSON, ERROR
+  const bad = healthy('d');
+  fs.writeFileSync(path.join(bad, 'apriori/changes/d/specs/kv/spec.md'), '# prose, zero ops\n');
+  const vu = run(['gate', '--change', 'd', '--test-cmd', TAP_OK, '--json'], bad);
+  assert.strictEqual(vu.status, 2);
+  assert.strictEqual(JSON.parse(vu.stdout).result, 'ERROR');
+});
+
+test('GT-12 gate is read-only', () => {
+  const root = healthy();
+  const snap = () => {
+    const out = [];
+    const walk = (d) => { for (const e of fs.readdirSync(d, { withFileTypes: true })) { const p = path.join(d, e.name); if (e.isDirectory()) walk(p); else out.push(p + ':' + fs.statSync(p).size + ':' + fs.statSync(p).mtimeMs); } };
+    walk(root);
+    return out.sort().join('\n');
+  };
+  const before = snap();
+  gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
+  gate.runGate({ cwd: root, change: 'nope', testCmd: TAP_OK });
+  assert.strictEqual(snap(), before);
+});
+
+// ---- ledger-states (GT-13..15): C4 speaks the terminal-state vocabulary ----
+
+const LEDGER_HDR = '| ID | Issue | Risk | Round found | Status |\n|---|---|---|---|---|\n';
+const ledgerWith = (...rows) => LEDGER_HDR + rows.map((r) => `| ${r[0]} | i | low | 1 | ${r[1]} |\n`).join('');
+// FLOW plus an extra gates: entry line (the human waive record)
+const FLOW_G = (name, extra) => FLOW(name) + (extra ? `  - ${extra}\n` : '');
+
+function archProject(ledger, flowExtra) {
+  return mkProject({
+    'apriori/specs/kv/spec.md': STORE + '\n### Requirement: Beta\n\n#### Scenario: XB-01 new\n- t\n',
+    'apriori/changes/archive/2026-07-10T1200-c/flow-state.md': FLOW_G('c', flowExtra),
+    'apriori/changes/archive/2026-07-10T1200-c/tasks.md': '- [x] T1\n',
+    'apriori/changes/archive/2026-07-10T1200-c/specs/kv/spec.md': DELTA,
+    'apriori/review/c-issues.md': ledger,
+  });
+}
+const c4Of = (root) => gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK }).checks.find((x) => x.id === 'C4');
+
+test('GT-13 archived ledgers must be terminal', () => {
+  // fixed at archived stage → blocked with the reviewer-verify cure
+  const f = c4Of(archProject(ledgerWith(['Q-1', 'fixed (v2)'])));
+  assert.strictEqual(f.status, 'blocked');
+  assert.match(f.detail, /reviewer must verify|never verified/);
+  // plain reasoned rejected → blocked with the concurrence cure
+  const r = c4Of(archProject(ledgerWith(['Q-1', 'rejected — cosmetic, out of scope'])));
+  assert.strictEqual(r.status, 'blocked');
+  assert.match(r.detail, /rejected-verified|reviewer concurrence/);
+  // unknown status → blocked naming the vocabulary
+  const u = c4Of(archProject(ledgerWith(['Q-1', 'done'])));
+  assert.strictEqual(u.status, 'blocked');
+  assert.match(u.detail, /vocabulary/);
+  // all-terminal → pass (waived backed by a gates: entry naming the ID)
+  const ok = c4Of(archProject(
+    ledgerWith(['Q-1', 'verified'],
+               ['Q-2', 'rejected-verified — cosmetic; reviewer concurred (review-v2)'],
+               ['Q-3', 'waived — owner accepts the perf risk'],
+               ['Q-4', 'advisory-acked']),
+    '2026-07-12T01:00 gate: owner waived Q-3 (perf risk accepted for this release)'));
+  assert.strictEqual(ok.status, 'pass', ok.detail);
+});
+
+test('GT-14 waives belong to humans, unknown states belong to nobody', () => {
+  // in-flight: waived without any gates: evidence → blocked
+  const root1 = healthy();
+  fs.writeFileSync(path.join(root1, 'apriori/review/c-issues.md'), ledgerWith(['Q-1', 'waived — accepted']));
+  const w1 = c4Of(root1);
+  assert.strictEqual(w1.status, 'blocked');
+  assert.match(w1.detail, /gates: entry/);
+  // same row passes once the human decision is recorded in gates:
+  const root2 = healthy();
+  fs.writeFileSync(path.join(root2, 'apriori/review/c-issues.md'), ledgerWith(['Q-1', 'waived — accepted']));
+  fs.appendFileSync(path.join(root2, 'apriori/changes/c/flow-state.md'),
+    '  - 2026-07-12T01:00 owner waived Q-1: risk accepted\n');
+  assert.strictEqual(c4Of(root2).status, 'pass');
+  // exact ID token: an entry waiving Q-10 never satisfies row Q-1
+  const root3 = healthy();
+  fs.writeFileSync(path.join(root3, 'apriori/review/c-issues.md'), ledgerWith(['Q-1', 'waived — accepted']));
+
+codex
+The implementation largely matches the converged design so far. I’m checking the newer GT-14/15 bodies, STEP6 text, concepts literals, and migrated ledger rows for any semantic drift.
+exec
+/usr/bin/zsh -lc "sed -n '250,264p' RUNBOOK.md && sed -n '246,260p' RUNBOOK_cn.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '380,520p' test/gate.test.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '56,64p' docs/concepts.md && sed -n '56,64p' docs/concepts_cn.md && sed -n '592,602p' docs/concepts.md && sed -n '592,602p' docs/concepts_cn.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,80p' apriori/review/update-manifest-issues.md && sed -n '1,80p' apriori/review/python-example-issues.md 2>/dev/null || true" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 144ms:
+- **The spec-runner gate (`apriori verify`).** Mid-change, the gate is the **projected** form: `apriori verify --change <name> --test-cmd "<your test command>"` applies the change's delta specs to the living store in memory (the same `merge()` archive will run — MODIFIED replaces, REMOVED stops demanding, RENAMED demands the post-rename picture) and binds scenarios against that candidate store; scanning the raw store misses new scenarios, and scanning store+change double-counts MODIFIED. Post-archive (or store-only checks), the plain form `apriori verify --specs apriori/specs --test-cmd "…"` binds against the store as-is. Both report BOUND-GREEN / BOUND-RED / UNBOUND (scenario with no test) / ORPHAN (test with no scenario) / UNIDENTIFIED (scenario with no ID). GREEN (exit 0) means every scenario has a passing test and there are no orphans; exit 1 = gaps, exit 2 = the run itself is untrustworthy (missing spec paths, zero scenarios, non-TAP output, test-command crash/abort, a non-zero exit hiding behind all-green TAP — or, with `--change`: merge conflicts, a diverged base stamp, malformed deltas) — **fail-closed: a broken or vacuous run is never GREEN**. This is what used to be P8's mechanical coverage check, now deterministic.
+- **Verification matrix by project type:** all code projects — `apriori verify` GREEN + lint/static analysis green (plus SAST where security-sensitive) — where configured; backend/library — unit + property tests, mutation spot-checks; UI — plus E2E/visual regression (scenario IDs bind to `apriori verify` via unit/component tests — verify's gate speaks TAP, which Playwright does not emit; the Playwright E2E/visual layer sits **on top of** the binding gate as an additional exit condition, with visual checks emitting a textual pass/fail; visual-regression baseline images belong to the project's own test suite per its framework's convention, not to `apriori/`); deployed service — plus runtime contracts, canary + rollback; **docs-only project — `apriori check` green + the P8 consistency review stand in for `npm test`.** Where an executable instrument doesn't exist for the project type, the LLM review is the primary instrument there — that is not a downgrade.
+- **Guarantee-claim discipline (a spec must not promise what no test exercises):** whenever a spec or KB asserts a hard guarantee — crash durability ("a success response means the write is persisted"), atomicity, an invariant that holds "always" / "under concurrency" / "after restart" — that guarantee is only real if a test **injects the adversarial condition** and observes it hold. **Match the injection to the exact claim, on its SUCCESS path — an error-path test does not prove a success-path guarantee.** In particular: a *crash-durability* claim is proven only by *killing the process AFTER the success is acknowledged, then restarting and verifying the data survived* — injecting a write/rename **failure** proves only "no false success on error", a different claim. And "verify the data survived" means **read it back through the app's own load path after a real restart**, not peek at the file directly — a file-peek skips the very read/parse/recover code a crash exercises, so it passes while the app-level recovery is still broken. And know the classic gotcha the test must expose: durable atomic-file replacement needs `fsync` on **both the temp file AND its containing directory** before the rename counts as persisted; a temp-file-only fsync passes a naive test but still loses the ack on a real crash. (Root-run environments — most CI sandboxes — silently defeat permission-bit fault injection: `chmod` does nothing to root; inject at the I/O primitive via dependency injection instead.) If no adequate test exists, either add it or **scope the wording down to what is actually verified** (e.g. "atomic rename" not "crash-durable"). P8 checks this specifically: an unexercised hard guarantee in the prose is a spec-vs-code gap, not a nicety.
+- **Exit — ALL of:** tests green (per the matrix above); `apriori verify` GREEN (docs-only: `apriori check` green); lint/static analysis green (where configured); tasks.md all `[x]`; consistency verdict line = `VERDICT: no spec-vs-code gaps`. Design infeasible → back to STEP2; requirement itself wrong → back to STEP0 (both: update the state file and tell the human). Cap hit → **gate ⑤**.
+
+### STEP6 — archive + KB writeback
+
+- **Before P9:** make sure the change's work is **committed** — `source-commit` must reference a real commit containing the implementation the Contract section is reconciled against (greenfield repos included: commit first, then stamp).
+- **Do:** the **archive action** with **P9** — merge per the interface's archive algorithm above; update `apriori/truth/<module>.md` (Contract section from the final implementation + refreshed `source-commit`; Decisions section appends this change's new decisions/invariants); list exactly which files/sections changed. Explore-track changes: delete or quarantine `spike/` here.
+- **Exit:** delta specs merged + KB updated + a post-archive `apriori gate --change <name>` run (it now resolves the archived stage — C4 demands every ledger row terminal) whose result goes into the **gate ④** packet → the human approves the KB diff (same-repo layout: that's just PR review). Then set `current-step: DONE`.
+
+
+---
+
+## 5. Prompts
+- **spec-runner 闸口(`apriori verify`)。** 变更进行中,闸口用**投影**形式:`apriori verify --change <name> --test-cmd "<你的测试命令>"` 把变更的增量规格在内存中套到规格库上(跑的正是 archive 将来要跑的同一个 `merge()`——MODIFIED 整块替换、REMOVED 不再要求、RENAMED 按改名后的图景要求),再对这个候选规格库做绑定;只扫原始规格库会看不见新 scenario,库+变更两个目录一起扫则会把 MODIFIED 算重。归档之后(或纯库检查)用普通形式 `apriori verify --specs apriori/specs --test-cmd "…"` 按库现状绑定。两种形式都报告 BOUND-GREEN / BOUND-RED / UNBOUND(scenario 无测试)/ ORPHAN(测试无 scenario)/ UNIDENTIFIED(scenario 无 ID)。GREEN(exit 0)= 每条 scenario 有绿测试且无孤儿;exit 1 = 有缺口,exit 2 = 这次运行本身不可信(spec 路径缺失、零场景、非 TAP 输出、测试命令崩溃/中止、全绿 TAP 背后藏着非零退出码——`--change` 下还包括:合并冲突、基线章不匹配、增量文件格式坏)——**fail-closed:坏掉或空洞的运行绝不算 GREEN**。这就是过去 P8 的机械覆盖检查,现在确定性化了。
+- **按项目类型的验证矩阵:**所有代码项目——`apriori verify` GREEN + lint/静态分析全绿(安全敏感加 SAST)——where configured;后端/库——单测+属性测试+变异抽查;UI——另加 E2E/视觉回归(scenario ID 经单测/组件测绑定给 `apriori verify`——verify 的闸口只认 TAP,而 Playwright 不输出 TAP;Playwright 的 E2E/视觉层**叠在**绑定闸口之上作为额外退出条件,视觉检查须输出文本化 pass/fail;视觉回归的基线图属于项目自己的测试套件、按其框架惯例存放,不属于 `apriori/`);有部署面的服务——另加运行时契约、金丝雀+回滚;**纯文档项目——`apriori check` 全绿 + P8 一致性评审,替代 `npm test`。** 项目类型不具备某种可执行仪器时,LLM 评审在该处就是主力仪器——这不是降级。
+- **保证声明纪律(规格不得承诺没有测试验证的东西):**规格或 KB 每当断言一个硬保证——崩溃持久性("成功响应即已落盘")、原子性、"始终/并发下/重启后"成立的不变量——该保证只有当存在一个**注入对抗条件**并观测其成立的测试时才算真的成立。**注入要对准那个具体断言、且打在它的成功路径上——测错误路径证明不了成功路径的保证。**尤其:*崩溃持久性*的断言只有靠*在成功被确认之后杀掉进程、再重启、验证数据仍在*才算证明;注入一个写/rename **失败**只证明了"出错时不假成功",那是另一个断言。而"验证数据仍在"指的是**真重启后经应用自己的读回路读出来**,不是直接窥探文件——直接读文件会跳过崩溃真正会走的读取/解析/恢复代码,于是测试过了、应用级恢复其实还是坏的。还要知道测试必须暴露的那个经典漏点:持久的原子文件替换需要对**临时文件和它的承载目录都做 `fsync`**,rename 才算落盘;只 fsync 临时文件能骗过朴素测试,真崩溃时仍丢掉已确认的写。(root 运行的环境——多数 CI 沙箱——会让权限位故障注入静默失效:`chmod` 对 root 无效;改为在 I/O 原语处用依赖注入。)若无够格的测试,要么补上,要么**把措辞收窄到实际验证到的程度**(例如写"原子 rename"而非"崩溃持久")。P8 专门查这条:散文里未经验证的硬保证是规格-代码缺口,不是可有可无的润色。
+- **退出——以下全部:**测试全绿(按上述矩阵);`apriori verify` GREEN(纯文档:`apriori check` 全绿);lint/静态分析全绿(where configured);tasks.md 全 `[x]`;一致性结论行 = `VERDICT: no spec-vs-code gaps`(无 spec-vs-代码缺口)。设计不可行 → 回 STEP2;需求本身错了 → 回 STEP0(两者都要:更新状态文件并告知人)。触顶 → **闸口 ⑤**。
+
+### STEP6 —— 归档 + 知识库回写
+
+- **P9 之前:**确保本变更的工作已**提交**——`source-commit` 必须指向一个真实存在、包含契约节所校对实现的 commit(全新仓库同样:先提交,再盖标)。
+- **动作:**执行 **archive 接口动作**,用 **P9**——按上文接口的 archive 算法合并;更新 `apriori/truth/<module>.md`(契约节按最终实现更新+刷新 `source-commit`;决策节追加本次变更的新决策/不变式);列出改了哪些文件/段落。探索轨变更:在此删除或隔离 `spike/`。
+- **退出:**增量规格已合并 + 知识库已更新 + 归档后再跑一次 `apriori gate --change <name>`(此时解析到 archived 归档态——C4 要求台账每行都是终态),其结果放进**闸口 ④**的材料包 → 人批准知识库 diff(同仓库布局下就是 PR 评审)。然后置 `current-step: DONE`。
+
+
+---
+
+## 5. 提示词
+
+ succeeded in 145ms:
+  fs.writeFileSync(path.join(root3, 'apriori/review/c-issues.md'), ledgerWith(['Q-1', 'waived — accepted']));
+  fs.appendFileSync(path.join(root3, 'apriori/changes/c/flow-state.md'),
+    '  - 2026-07-12T01:00 owner waived Q-10: a different row\n');
+  assert.strictEqual(c4Of(root3).status, 'blocked');
+  // ID in one entry + 'waived' in another entry never passes (same-entry rule)
+  const root4 = healthy();
+  fs.writeFileSync(path.join(root4, 'apriori/review/c-issues.md'), ledgerWith(['Q-1', 'waived — accepted']));
+  fs.appendFileSync(path.join(root4, 'apriori/changes/c/flow-state.md'),
+    '  - 2026-07-12T01:00 note: Q-1 discussed\n  - 2026-07-12T01:01 something else waived here\n');
+  assert.strictEqual(c4Of(root4).status, 'blocked');
+  // unknown status blocks IN-FLIGHT too; reasonless terminals block
+  const root5 = healthy();
+  fs.writeFileSync(path.join(root5, 'apriori/review/c-issues.md'), ledgerWith(['Q-1', 'verifed']));
+  assert.strictEqual(c4Of(root5).status, 'blocked');
+  const root6 = healthy();
+  fs.writeFileSync(path.join(root6, 'apriori/review/c-issues.md'), ledgerWith(['Q-1', 'rejected-verified']));
+  assert.strictEqual(c4Of(root6).status, 'blocked');
+  // in-flight fixed and reasoned rejected still pass (the loop is running)
+  const root7 = healthy();
+  fs.writeFileSync(path.join(root7, 'apriori/review/c-issues.md'),
+    ledgerWith(['Q-1', 'fixed (v2)'], ['Q-2', 'rejected — cosmetic, out of scope']));
+  assert.strictEqual(c4Of(root7).status, 'pass');
+});
+
+test('GT-15 every archived ledger in this repo parses legal and terminal', () => {
+  const archRoot = path.join(__dirname, '..', 'apriori', 'changes', 'archive');
+  if (!fs.existsSync(archRoot)) return;                     // corpus is local-only
+  const { classifyStatus } = gate;
+  assert.strictEqual(typeof classifyStatus, 'function');
+  for (const d of fs.readdirSync(archRoot)) {
+    const name = d.replace(/^\d{4}-\d{2}-\d{2}T\d{4}-/, '');
+    const lp = path.join(__dirname, '..', 'apriori', 'review', `${name}-issues.md`);
+    if (name === d || !fs.existsSync(lp)) continue;
+    const { parseLedger } = require('../lib/status');
+    for (const row of parseLedger(fs.readFileSync(lp, 'utf8'))) {
+      const c = classifyStatus(row.status);
+      assert.ok(c.legal, `${name} ${row.id}: illegal status '${row.status}'`);
+      assert.ok(c.terminal, `${name} ${row.id}: non-terminal archived status '${row.status}'`);
+      if (c.needsReason) assert.ok(c.hasReason, `${name} ${row.id}: reasonless '${row.status}'`);
+    }
+  }
+});
+
+ succeeded in 182ms:
+| **Fresh context** | The reviewer never sees the producer's reasoning, so it isn't anchored to its conclusions | No |
+| **Adversarial role** | The producer optimizes for "make it work"; the reviewer optimizes for "find where it breaks" | No |
+
+> The last two levers matter *more* than the first, and neither requires a second tool. A **freshly-started session explicitly told to refute** catches most issues even when it runs the same model as the producer — because it isn't bound to its own earlier reasoning. The worst anti-pattern is **asking the model to "review what you just wrote" in the same conversation**: its context is full of its own justifications, so it rubber-stamps. Switching models but staying in one session is *weaker* than the same model in a fresh one. If you only have Claude Code, see [§2.4](#24-adversarial-review-with-only-claude-code).
+
+**Fresh context vs. cross-round memory — the issue ledger.** Multi-round review has a built-in tension: each round's reviewer should be *fresh* (the second lever), yet it must remember earlier rounds to verify "was issue #3 actually fixed?" Keeping one long-lived reviewer session buys memory at the cost of freshness — after round 1, the reviewer is anchored to *its own* past findings too. The fix is to move the memory out of the session and into a file: a cumulative **issue ledger** per change ([§7.0](#70-the-issue-ledger-shared-by-all-review-loops)), where every issue carries an ID and a status (`open / fixed / rejected + reason / verified / rejected-verified / waived (human, gates:) / advisory-acked`). Each round's reviewer can then be a brand-new session: it reads the ledger to verify fixes and appends new findings, staying unanchored. The ledger doubles as the audit trail for human gates — rejections stay visible with their reasons, and a resurfacing issue reopens its old ID instead of masquerading as a new finding.
+
+Adversarial review runs through three points: **① requirement-doc review (STEP0) ② spec + design review (STEP2) ③ code implementation review (STEP5)** — and every round of each one logs to the same per-change issue ledger.
+
+| **全新上下文** | 评审方看不到生产方的推理链,不被其结论锚定 | 不需要 |
+| **对抗性角色** | 生产方求"能跑通",评审方求"找它哪会崩" | 不需要 |
+
+> 后两个杠杆比第一个**更**重要,而且都不需要第二个工具。一个**新开会话、被明确要求"证伪/挑刺"的 Claude**,即使跑的是和生产方相同的模型,也能逮到大半问题——因为它没有被自己之前的推理绑架。最糟的反模式是**在同一段对话里让模型"评审一下你刚写的"**:它的上下文里全是自己的理由,于是直接盖章。换了模型却留在同一会话,反而**不如**同模型但新开会话。若你只有 Claude Code,见 [§2.4](#24-只有-claude-code-时的对抗评审)。
+
+**全新上下文 vs 跨轮记忆——用问题台账化解。** 多轮评审有个内生矛盾:每一轮的评审方应当是*新鲜的*(第二个杠杆),但它又必须记得前几轮,才能核对"问题 #3 是否真的修好了"。让评审方常驻同一个会话,是拿新鲜度换记忆——第 1 轮之后,它也开始被*自己*过去的结论锚定。解法是把记忆从会话挪进文件:每个变更维护一份累积的**问题台账**([§7.0](#70-问题台账所有评审循环共用)),每条问题带 ID 和状态(`open / fixed / rejected+理由 / verified / rejected-verified / waived(人,gates:) / advisory-acked`)。这样每一轮的评审方都可以是全新会话:读台账核对修复、追加新发现,同时不被锚定。台账还兼作人工闸口的审计记录——被拒绝的问题连同理由一直可见;反复出现的问题会重开旧 ID,而不是每轮都伪装成"新发现"。
+
+对抗训练贯穿三个环节：**① 需求文档评审（STEP0）② 规格+设计评审（STEP2）③ 代码实现评审（STEP5）**——三处的每一轮都写入同一份变更级问题台账。
+
+
+> **The prompt texts themselves live in [RUNBOOK.md](../RUNBOOK.md) §5 (P0–P13)** — one source, distributed with the protocol, so agents never need this handbook. This section keeps the design notes: what each prompt must achieve and why it's shaped that way. Every prompt shares one structure — explicit "Role / Input / Task / Output / Constraints," with version numbers, loops, and exit conditions made explicit.
+
+### 7.0 The Issue Ledger (Shared by All Review Loops)
+
+One cumulative ledger per change, `apriori/review/<change>-issues.md` (format: RUNBOOK **P0**). Reviews follow a **scope discipline** (per Anthropic's fully-verified warning that gap-hunting reviewers report gaps even in sound work): only correctness/security/stated-requirement gaps become formal rows; the rest are `advisory` — per-item lists stay in the review doc, the ledger takes one batch row per round. Why it exists: cross-round memory lives in a file instead of a session, so every round's reviewer can be a **fresh** session without losing the thread ([§1.4](#14-adversarial-review)). Who writes what: the reviewer appends rows and flips `fixed → verified`; the producer flips `open → fixed/rejected` — a rejection must carry a reason, because human gates read the rejections first. A re-found issue **reopens its old ID** rather than getting a new row; that reopened ID is exactly the oscillation alarm [§4.10](#410-automating-the-loop-with-goal-claude-code) watches for.
+
+### 7.1 STEP0: Requirement-Doc Adversarial Review
+
+Prompts: RUNBOOK **P1** (reviewer) / **P2** (producer's revise). Design notes:
+
+
+> **提示词正文只存一份，在 [RUNBOOK_cn.md](../RUNBOOK_cn.md) §5（P0–P13）**——随协议分发，Agent 无需读本手册。本节只保留设计说明:每条提示词要达成什么、为什么长成那样。所有提示词统一结构:明确「角色 / 输入 / 任务 / 输出 / 约束」,并把版本号、循环、退出条件显式化。
+
+### 7.0 问题台账（所有评审循环共用）
+
+每个变更一份累积台账 `apriori/review/<change>-issues.md`（格式:RUNBOOK **P0**）。评审执行**范围纪律**(依据 Anthropic 全票验证的警告:被要求找缺口的评审者对健康工作也会报缺口):只有正确性/安全/既定需求类缺口立正式行;其余为 `advisory`——逐条清单留在评审文档,台账每轮只落一行批量行。它存在的理由:跨轮记忆放在文件里而不是会话里,于是每一轮的评审方都可以是**全新**会话而不丢线索（[§1.4](#14-对抗训练)）。谁写什么:评审方追加新行并把 `fixed → verified`;生产方把 `open → fixed/rejected`——拒绝必须给理由,因为人工闸口最先看的就是拒绝项。再次发现的问题**重开旧 ID**而不是另起新行;被重开的 ID 正是 [§4.10](#410-用-goal-自动化整个流程) 盯的振荡警报。
+
+### 7.1 STEP0｜需求文档对抗评审
+
+提示词:RUNBOOK **P1**（评审方）/ **P2**（生产方修订）。设计说明:
+
+
+ succeeded in 179ms:
+# Issue ledger — update-manifest
+
+Rows recorded on behalf of the reviewer (codex session 019f4b30-68f9-7222-9b64-17f52a333b4c; raws: update-manifest-*-raw.txt).
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| UM-1 | Corrupt/schema-invalid/unsupported-version managed.json behavior undefined. | Fail-open overwrite despite untrusted manifest, or unhelpful crash. | STEP0·r1 | verified |
+| UM-2 | Manifest path containment/allowed-path validation unspecified. | Corrupt manifest entries could write outside the project. | STEP0·r1 | verified |
+| UM-3 | init --dry-run manifest behavior undeclared. | Dry-run could mutate the manifest or diverge from tests. | STEP0·r1 | verified |
+| UM-4 | init merge could blindly adopt skipped existing files into the manifest. | Laundering user-owned files into managed ownership → future clobber. | STEP0·r1 | verified |
+| UM-5 | Missing-file hand-back via init not specified (stale hash after recreate). | The prescribed cure leaves a false 'modified' state. | STEP0·r1 | verified |
+| UM-ADV-1 | CRLF consequence, F6 wording, full ancestor hashes. | Advisory precision. | STEP0·r1 | verified |
+| UMSPEC-1 | Design required containment only before writes; manifest-listed symlinks could be read/hashed outside the project and classified modified/up-to-date instead of hygiene-invalid. | Security boundary weakened; fail-closed rule violated on reads. | STEP2·r1 | verified |
+| UMSPEC-ADV-1 | Advisory: adoption counts as manifest-write trigger even when byte-identical; writeManifest ensures apriori/ exists; UP-01 fixture note kept explicit. | Implementation precision. | STEP2·r1 | verified |
+| UMIMPL-1 | Claim: manifest-listed missing command files never considered (no `missing` row). REFUTED by direct run — the TOOLS loop calls consider() unconditionally and the missing row is emitted; regression made durable in UP-10b. | (claimed) missing files unreported. | STEP5·r1 | rejected-verified — the missing-row claim refuted with reproduction evidence: the TOOLS loop has no existence pre-check and the missing row IS emitted (UP-10b); reviewer concurred (impl-review-v2) |
+| UMIMPL-2 | Backslash manifest keys passed hygiene (validated on the normalized form) but were returned uncanonicalized — consumers would treat them as unlisted. | Hand-edited/Windows-shaped manifests behave inconsistently. | STEP5·r1 | verified |
+| UMIMPL-ADV-1 | Advisory: direct symlink-escape containment test added (UP-10b); byte-vs-utf8 refresh alignment declined — an invalid-utf8 local edit already hash-mismatches into a `modified` skip before refresh can run. | Test hardening. | STEP5·r1 | verified |
+# Issue ledger — python-example
+
+Rows recorded on behalf of the reviewer (codex session 019f4b30-68f9-7222-9b64-17f52a333b4c; raws: python-example-p8-review-v1-raw.txt).
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+
+P8 round 1 clean — VERDICT: no spec-vs-code gaps (zero findings; no rows).
+
+codex
+The gate code and tests cover the main status and waiver cases, including the Q-1/Q-10 collision and same-entry rule. I’m doing a final pass over exports and any status/corpus edge cases before writing the review.
+exec
+/usr/bin/zsh -lc 'tail -40 lib/gate.js' in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc 'rg -n "waived|rejected-verified|advisory-acked|post-archive|gate --change|original|原始|归人|归档后" RUNBOOK.md RUNBOOK_cn.md docs/concepts.md docs/concepts_cn.md test/protocol.test.js' in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "node - <<'NODE'
+const { classifyStatus } = require('./lib/gate');
+for (const s of [' verified ','**verified**','"'`verified`'"','rejected-verified — ok','rejected-verified','rejected — -','waived — owner','advisory-acked','done']) console.log(JSON.stringify(s), classifyStatus(s));
+NODE" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 137ms:
+  if (!testCmd) return err(res, 'no test command: pass --test-cmd or add a test-cmd row to apriori/process-config.md');
+
+  const b = checkBinding(cwd, opts.change, loc.stage, testCmd);
+  if (b.infra) { for (const e of b.infra) res.errors.push(`verify: ${e}`); res.result = 'ERROR'; res.code = 2; return res; }
+  res.checks.push(b.check);
+  const tier = TIER_ENUM.includes(state.tier) ? state.tier : null;
+  res.checks.push(checkTasks(loc.dir, tier));
+  res.checks.push(checkFlowState(state, opts.change));
+  res.checks.push(checkLedger(cwd, opts.change, tier, loc.stage, loc.dir));
+  res.checks.push(checkEvidence(cwd, opts.change));
+  res.checks.push(checkKb(cwd, loc.dir));
+
+  res.blocked = res.checks.filter((c) => c.status === 'blocked').length;
+  res.result = res.blocked ? 'BLOCKED' : 'PASS';
+  res.code = res.blocked ? 1 : 0;
+  return res;
+}
+
+function toJson(res) {
+  return { change: res.change, stage: res.stage, checks: res.checks, result: res.result, blocked: res.blocked, errors: res.errors };
+}
+
+const USAGE = 'usage: apriori gate --change <name> [--test-cmd "<cmd>"] [--cwd <dir>] [--json]';
+
+function cli(argv) {
+  return withStrict(argv, { sub: 'gate', usage: USAGE, positionals: 0,
+    flags: { '--change': 'value', '--test-cmd': 'value', '--cwd': 'value', '--json': 'flag' },
+    jsonError: (m) => JSON.stringify({ change: null, stage: null, checks: [], result: 'ERROR', blocked: 0, errors: [m] }, null, 2) }, (f) => {
+    const a = { change: f['--change'] || null, testCmd: f['--test-cmd'] || null, cwd: f['--cwd'] || process.cwd(), json: !!f['--json'] };
+    const res = runGate(a);
+    if (a.json) { console.log(JSON.stringify(toJson(res), null, 2)); return res.code; }
+    for (const e of res.errors) console.error('gate: ' + e);
+    const mark = { pass: '✓', blocked: '✗', 'n/a': '–' };
+    for (const c of res.checks) console.log(`${mark[c.status]} ${c.id} ${c.status === 'blocked' ? 'BLOCKED — ' : ''}${c.detail}`);
+    if (res.code !== 2) console.log(res.code === 0 ? `\nGATE: PASS — ${CAVEAT}` : `\nGATE: BLOCKED (${res.blocked} item(s))`);
+    return res.code;
+  });
+}
+
+module.exports = { runGate, resolveChange, classifyStatus, cli };
+
+ succeeded in 135ms:
+RUNBOOK_cn.md:76:**R2 —— 评审必须真实外调。** 生产会话永远不出评审结论。真实调起异构评审方:`codex exec -s read-only "<提示词>"`(第 2 轮起:`codex exec resume -c sandbox_mode="read-only" <session-id> "..."`——codex CLI ≥0.14x 的 resume 子命令不接受 `-s`;旧版本在 session id 之前用 `-s read-only`);没有 Codex 就**新开**一个不同档位的 `claude` 会话,喂给它产物加问题台账(P0)。把评审方的结论行**原文**贴回。评审方通常跑在只读沙箱里、无法自己写台账:由评审方在输出末尾给出**台账增量**(新行+状态翻转),生产方原样落盘并注明"代评审方录入";评审方原始输出全文存档于 `apriori/review/<change>-<stage>-raw.*`,代录增量随时可与其对照;落盘 raw 时在文件头预置单行来源标注 `<!-- provenance: provider=<name> model=<id> session=<id> date=<YYYY-MM-DD> -->`(未知字段写 `unknown`;既有旧 raw 不追溯)。同一代录机制也覆盖**评审文档本体**:只读评审方把文档正文打印到 stdout,生产方原样落到固定路径——这就是设计内的流程,不是权宜之计。非交互/后台调用 codex 时必须关闭 stdin——命令末尾加 `< /dev/null`(PowerShell 没有 /dev/null:改用管道 `$null | codex exec …`)——否则它会打印 "Reading additional input from stdin..." 并挂起。评审方在结论行落盘前死亡(评审中途网络/服务故障)→ **resume 同一会话**让它续完——绝不代填结论行。要让它也扛得住*生产方*侧的中断,第 1 轮一打印评审方的 session id 就记进 flow-state 的 `reviewer-session` 字段——否则崩溃后 resume 无会话可重连。只读评审方的**动态观测不可信**——跑测试、构建、任何需要写入的操作在其沙箱内都可能降级并产生幻影发现;只有它的静态阅读作数,生产方以真实环境的证据拒绝此类沙箱伪象发现。如果无法真实调起评审方,停下来说明——**禁止模拟评审**。
+RUNBOOK_cn.md:80:**强制层级**(举例式,非穷尽;下列强制项在本仓库现状为*可配置而非已生效*)。劝告性文本在压力下会被忽略——按可强制方式给规则分层:①**现在即可确定性强制**——`process-config.md` 只读(hook 拦截写入)、`apriori check` 作 pre-commit/CI 必过、`apriori verify` 作 STEP5 绑定闸口、以及**结论行证据检查**:每个 verdict 行必须有对应 raw 存档文件(命名规则:主干名为 `S` 的评审文档,其原始归档为 `apriori/review/S-raw.*`)——对模拟评审的机械化后盾,由 **`apriori gate --change <name>`** 落地,它同时把 verify/tasks/flow-state/台账/KB 新鲜度合成一个退出码(其 PASS 只覆盖机械面——人工闸口仍归人);②**闸口级**——Stop hooks 与 `/goal` 条件;③**本质劝告性**——评审方的独立判断质量、对 P 提示词的语义遵循。参考实现为 Claude Code hooks;任何 CI 都能强制同样的检查。示例(拦配置写入的 PreToolUse hook——示意伪配置;确切 schema 见 Claude Code hooks 文档):
+RUNBOOK_cn.md:175:| 评审方原始输出 | `apriori/review/<change>-<stage>-raw.*` |
+RUNBOOK_cn.md:246:- **spec-runner 闸口(`apriori verify`)。** 变更进行中,闸口用**投影**形式:`apriori verify --change <name> --test-cmd "<你的测试命令>"` 把变更的增量规格在内存中套到规格库上(跑的正是 archive 将来要跑的同一个 `merge()`——MODIFIED 整块替换、REMOVED 不再要求、RENAMED 按改名后的图景要求),再对这个候选规格库做绑定;只扫原始规格库会看不见新 scenario,库+变更两个目录一起扫则会把 MODIFIED 算重。归档之后(或纯库检查)用普通形式 `apriori verify --specs apriori/specs --test-cmd "…"` 按库现状绑定。两种形式都报告 BOUND-GREEN / BOUND-RED / UNBOUND(scenario 无测试)/ ORPHAN(测试无 scenario)/ UNIDENTIFIED(scenario 无 ID)。GREEN(exit 0)= 每条 scenario 有绿测试且无孤儿;exit 1 = 有缺口,exit 2 = 这次运行本身不可信(spec 路径缺失、零场景、非 TAP 输出、测试命令崩溃/中止、全绿 TAP 背后藏着非零退出码——`--change` 下还包括:合并冲突、基线章不匹配、增量文件格式坏)——**fail-closed:坏掉或空洞的运行绝不算 GREEN**。这就是过去 P8 的机械覆盖检查,现在确定性化了。
+RUNBOOK_cn.md:255:- **退出:**增量规格已合并 + 知识库已更新 + 归档后再跑一次 `apriori gate --change <name>`(此时解析到 archived 归档态——C4 要求台账每行都是终态),其结果放进**闸口 ④**的材料包 → 人批准知识库 diff(同仓库布局下就是 PR 评审)。然后置 `current-step: DONE`。
+RUNBOOK_cn.md:285:- **评审方**:追加新行;确认修复落地后把 `fixed → verified`;认同某项拒绝后把 `rejected → rejected-verified`——单元格保留原始拒绝理由外加认同证据引用(如 `rejected-verified — 纯外观,超范围; reviewer concurred (review-v2)`);再次发现的问题**重开旧 ID**回到 `open`——重开是事件而非状态,绝不另起新行。
+RUNBOOK_cn.md:286:- **生产方**:把 `open → fixed` 或 `open → rejected`;拒绝必须给理由——人工闸口最先看拒绝项。生产方永不给自己的发现定终态:`verified` 和 `rejected-verified` 归评审方,`waived` 归人。
+RUNBOOK_cn.md:287:- **人(独有)**:可置 `waived + 理由`——接受该风险——同时在 `gates:` 落一条记录该决定的条目(条目须含该行 ID 和"waived"字样;gate C4 机器核查的正是这个)。
+RUNBOOK_cn.md:288:- **归档终态集**:`verified` · `rejected-verified` · `waived` · `advisory-acked`。归档态闸口拦下其余一切——`fixed` 是待核实的声明,裸 `rejected` 等待认同,词汇表之外的状态在任何阶段都非法。
+RUNBOOK_cn.md:289:- **advisory(范围纪律):**只有影响**正确性、安全或既定需求**的缺口才立正式行;其余由评审方标 `advisory`。标注权**评审方独占**——生产方永远不得把 open 行降级为 advisory。逐条 advisory 只存于评审文档;台账每轮只落**一行批量行**(`advisory batch acknowledged (n 条)`),终态 `advisory-acked`——"原文代录"(R2)约束的是评审方增量的*内容*,而行的*形态*一律归一为这个批量形式,所以评审方自创格式的 advisory 行按归一处理、不逐字照抄;"忽略"=不逐条处理,批量行仍落。评审方可在后续轮把 advisory **升级为 open**(须给理由,新行标 `upgraded-from-advisory`):计入数据包的 reopened 统计,但**不单独触发闸口⑤**(⑤仍只由已闭合正式 ID 复发触发)。**正确性与安全类发现永远不得标 advisory。**误标处置:STEP3(Medium+)、闸口④、或合并前 PR 评审(Trivial)抽查;发现真缺口被误标→升级+记档;漏到合并后按 post-merge miss 处理(触发上限恢复,§6)。
+docs/concepts_cn.md:61:**全新上下文 vs 跨轮记忆——用问题台账化解。** 多轮评审有个内生矛盾:每一轮的评审方应当是*新鲜的*(第二个杠杆),但它又必须记得前几轮,才能核对"问题 #3 是否真的修好了"。让评审方常驻同一个会话,是拿新鲜度换记忆——第 1 轮之后,它也开始被*自己*过去的结论锚定。解法是把记忆从会话挪进文件:每个变更维护一份累积的**问题台账**([§7.0](#70-问题台账所有评审循环共用)),每条问题带 ID 和状态(`open / fixed / rejected+理由 / verified / rejected-verified / waived(人,gates:) / advisory-acked`)。这样每一轮的评审方都可以是全新会话:读台账核对修复、追加新发现,同时不被锚定。台账还兼作人工闸口的审计记录——被拒绝的问题连同理由一直可见;反复出现的问题会重开旧 ID,而不是每轮都伪装成"新发现"。
+test/protocol.test.js:425:test('PR-18 the ledger vocabulary and the post-archive gate bind in both editions', () => {
+test/protocol.test.js:428:  for (const re of [/open/, /fixed/, /\brejected\b/, /verified/, /rejected-verified/, /waived/, /advisory-acked/])
+test/protocol.test.js:430:  assert.match(p0en, /human/i);                               // waived is human-only
+test/protocol.test.js:435:  assert.match(p0en, /original/);                             // rejected-verified keeps the original reason
+test/protocol.test.js:439:  assert.match(s6en, /gate --change/);
+test/protocol.test.js:444:  for (const re of [/open/, /fixed/, /rejected-verified/, /verified/, /waived/, /advisory-acked/])
+test/protocol.test.js:446:  assert.match(p0cn, /只能由人|唯一由人|人(独有)|人\(独有\)|归人/);
+test/protocol.test.js:450:  assert.match(p0cn, /原始拒绝理由|原始理由/);
+test/protocol.test.js:453:  assert.match(s6cn, /gate --change/);
+test/protocol.test.js:454:  assert.match(s6cn, /归档后|archived/);
+test/protocol.test.js:457:  assert.match(CONCEPTS, /rejected-verified/);
+test/protocol.test.js:458:  assert.match(CONCEPTS, /waived/);
+test/protocol.test.js:459:  assert.match(CONCEPTS_CN, /rejected-verified/);
+test/protocol.test.js:460:  assert.match(CONCEPTS_CN, /waived/);
+docs/concepts.md:61:**Fresh context vs. cross-round memory — the issue ledger.** Multi-round review has a built-in tension: each round's reviewer should be *fresh* (the second lever), yet it must remember earlier rounds to verify "was issue #3 actually fixed?" Keeping one long-lived reviewer session buys memory at the cost of freshness — after round 1, the reviewer is anchored to *its own* past findings too. The fix is to move the memory out of the session and into a file: a cumulative **issue ledger** per change ([§7.0](#70-the-issue-ledger-shared-by-all-review-loops)), where every issue carries an ID and a status (`open / fixed / rejected + reason / verified / rejected-verified / waived (human, gates:) / advisory-acked`). Each round's reviewer can then be a brand-new session: it reads the ledger to verify fixes and appends new findings, staying unanchored. The ledger doubles as the audit trail for human gates — rejections stay visible with their reasons, and a resurfacing issue reopens its old ID instead of masquerading as a new finding.
+RUNBOOK.md:80:**Enforcement layers** (examples, not exhaustive; the deterministic items below are *available to configure*, not active by default in this repo). Advisory text gets ignored under pressure — classify each rule by how it can be enforced: ① **deterministically enforceable now** — `process-config.md` read-only (a hook blocking agent writes), `apriori check` as a required pre-commit/CI check, `apriori verify` as the STEP5 binding gate, and the **verdict-evidence check**: every verdict line must have a matching raw archive file (naming rule: a review doc with stem `S` archives its raw as `apriori/review/S-raw.*`) — a mechanical backstop against simulated reviews, implemented by **`apriori gate --change <name>`**, which aggregates it with verify/tasks/flow-state/ledger/KB-freshness into one exit code (its PASS covers the mechanical face only — human gates remain human); ② **gate-level** — Stop hooks and `/goal` conditions; ③ **inherently advisory** — a reviewer's independent judgment quality, semantic adherence to the P prompts. Reference implementation is Claude Code hooks; any CI can enforce the same checks. Example (a PreToolUse hook blocking config writes — illustrative sketch; exact schema in the Claude Code hooks docs):
+RUNBOOK.md:259:- **Exit:** delta specs merged + KB updated + a post-archive `apriori gate --change <name>` run (it now resolves the archived stage — C4 demands every ledger row terminal) whose result goes into the **gate ④** packet → the human approves the KB diff (same-repo layout: that's just PR review). Then set `current-step: DONE`.
+RUNBOOK.md:287:| SPEC-3 | eviction jitter unbounded under load | med | 2 | waived — owner accepts for v1 (gates: entry 2026-07-12) |
+RUNBOOK.md:290:- **Reviewer**: appends new rows; flips `fixed → verified` after confirming a fix landed, and `rejected → rejected-verified` after CONCURRING with a rejection — the cell keeps the original rejection reason plus a concurrence evidence ref (e.g. `rejected-verified — cosmetic, out of scope; reviewer concurred (review-v2)`); a re-found issue **reopens its old ID** back to `open` — reopened is an event, not a status, and never a new row.
+RUNBOOK.md:291:- **Producer**: flips `open → fixed` or `open → rejected`; a rejection MUST carry a reason — human gates read rejections first. The producer never terminalizes its own findings: `verified` and `rejected-verified` belong to the reviewer, `waived` to the human.
+RUNBOOK.md:292:- **Human (only)**: may set `waived + reason` — accepting the risk — with a `gates:` entry recording the decision (the entry must carry the row's ID and the word "waived"; gate C4 machine-checks exactly that).
+RUNBOOK.md:293:- **Terminal set for archival**: `verified` · `rejected-verified` · `waived` · `advisory-acked`. The archived-stage gate blocks anything else — `fixed` is a claim awaiting verification, plain `rejected` awaits concurrence, and unknown statuses are illegal at every stage.
+RUNBOOK.md:294:- **Advisory findings (scope discipline):** only gaps affecting **correctness, security, or the stated requirements** enter as formal rows; everything else the reviewer labels `advisory`. Labeling is the **reviewer's exclusive call** — the producer may never downgrade an open row to advisory. Per-item advisory lists live in the review doc; the ledger takes **one batch row per round** (`advisory batch acknowledged (n items)`), terminal state `advisory-acked` — the "record verbatim" rule (R2) governs the reviewer's delta *content*, while the row *shape* is always normalized to this batch form, so a reviewer that free-forms its advisory rows is normalized, not copied literally; "ignoring" advisories means no per-item handling — the batch row still lands. A reviewer may later **upgrade** an advisory to open (with a reason, new row tagged `upgraded-from-advisory`): it counts in the data pack's reopened statistic but does **not** by itself trip gate ⑤ (only a closed formal ID re-reopening does). **Correctness and security findings can never be advisory.** Mislabel handling: sampled at STEP3 (Medium+), gate ④, or the pre-merge PR review (Trivial); a real gap found mislabeled → upgrade + log; one that slips past merge counts as a post-merge miss (triggers cap restoration, §6).
+
+ exited 1 in 159ms:
+zsh:1: can't create temp file for here document: read-only file system
+
+codex
+The attempted inline Node probe hit a read-only shell here-doc limitation, so I’m treating that as a sandbox artifact. The static code is sufficient for the classifier edge cases.
+exec
+/usr/bin/zsh -lc "node -e \"const { classifyStatus } = require('./lib/gate'); for (const s of [' verified ','**verified**','"'`verified`'"','rejected-verified — ok','rejected-verified','rejected — -','waived — owner','advisory-acked','done']) console.log(JSON.stringify(s), JSON.stringify(classifyStatus(s)));\"" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 422ms:
+zsh:1: command not found: verified
+" verified " {"legal":false,"terminal":false,"needsReason":false,"hasReason":false,"isWaived":false}
+"**verified**" {"legal":false,"terminal":false,"needsReason":false,"hasReason":false,"isWaived":false}
+"" {"legal":false,"terminal":false,"needsReason":false,"hasReason":false,"isWaived":false}
+"rejected-verified — ok" {"legal":true,"terminal":true,"needsReason":true,"hasReason":true,"isWaived":false,"token":"rejected-verified"}
+"rejected-verified" {"legal":true,"terminal":true,"needsReason":true,"hasReason":false,"isWaived":false,"token":"rejected-verified"}
+"rejected — -" {"legal":true,"terminal":false,"needsReason":true,"hasReason":false,"isWaived":false,"token":"rejected"}
+"waived — owner" {"legal":true,"terminal":true,"needsReason":true,"hasReason":true,"isWaived":true,"token":"waived"}
+"advisory-acked" {"legal":true,"terminal":true,"needsReason":false,"hasReason":true,"isWaived":false,"token":"advisory-acked"}
+"done" {"legal":false,"terminal":false,"needsReason":false,"hasReason":false,"isWaived":false}
+
+codex
+# ledger-states STEP5 consistency review v1
+
+## Findings
+
+### LSIMPL-1 — PR-18 does not bind the plain `rejected + reason` status in the CN P0 block
+
+**Description:** PR-18 says both editions document the seven statuses and their setters. The EN assertions include `/\brejected\b/`, but the CN status loop checks `open`, `fixed`, `rejected-verified`, `verified`, `waived`, and `advisory-acked` only. Because `rejected-verified` is present, the test can pass even if the CN P0 text drops the plain producer-set `rejected + reason` state.
+
+The landed CN prose currently does include plain `rejected`, so the documentation itself is not wrong. The gap is that the PR-18 binding is weaker than the scenario it claims to bind.
+
+**Risk:** A future CN edit can drop the non-terminal rejected state while PR-18 stays green, weakening translation parity and the ledger vocabulary contract.
+
+**Suggested fix:** Add a CN assertion for the plain status token, e.g. `/\brejected\b/`, preferably scoped near the producer bullet or alongside `open → rejected`.
+
+## No Gap Found
+
+The C4 implementation matches the converged design: `checkLedger` receives `loc.stage` and `loc.dir`, reads the active or archived `flow-state.md`, applies stage-aware terminal rules, blocks unknown statuses in both stages, preserves in-flight `fixed` / reasoned `rejected`, and exports `classifyStatus` for the corpus test.
+
+Waiver evidence is implemented with same-entry matching and exact escaped ID token boundaries, including the Q-1 vs Q-10 test. The `gates:` entry parser handles the current two-space-indented timestamp bullets and continuation lines.
+
+GT-13/14/15 cover the main ledger behavior, including archived terminal-only rows, waived-without-evidence, same-entry enforcement, in-flight unknown status, reasonless `rejected-verified`, and the archived-ledger corpus reason floor.
+
+RUNBOOK EN/CN P0 text carries the four-bullet vocabulary/setter model; STEP6 in both editions requires the post-archive `apriori gate --change <name>` run in the gate④ packet. The UMIMPL-1 migration preserves the original rejection rationale and concurrence reference.
+
+## Advisories
+
+- CN does not include the waived example row that EN adds to the sample table. The CN bullets still document `waived + reason` and the `gates:` requirement clearly, so this is translation polish rather than a blocking gap.
+- `classifyStatus` intentionally treats markdown-decorated status cells such as `` `verified` `` or `**verified**` as illegal. That is consistent with the tightened status vocabulary.
+
+## Ledger delta
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| LSIMPL-1 | PR-18’s CN P0 assertions omit the plain `rejected + reason` status; `rejected-verified` can satisfy the only rejected-related CN check. | CN can drop the producer-set rejected state while PR-18 stays green. | STEP5 r1 | open |
+| LSIMPL-ADV-1 | Advisory batch: CN lacks the waived example row present in EN; markdown-decorated status cells remain illegal by design. | Low. | STEP5 r1 | open |
+
+VERDICT: 1 issues open
+tokens used
+2,997,096
+# ledger-states STEP5 consistency review v1
+
+## Findings
+
+### LSIMPL-1 — PR-18 does not bind the plain `rejected + reason` status in the CN P0 block
+
+**Description:** PR-18 says both editions document the seven statuses and their setters. The EN assertions include `/\brejected\b/`, but the CN status loop checks `open`, `fixed`, `rejected-verified`, `verified`, `waived`, and `advisory-acked` only. Because `rejected-verified` is present, the test can pass even if the CN P0 text drops the plain producer-set `rejected + reason` state.
+
+The landed CN prose currently does include plain `rejected`, so the documentation itself is not wrong. The gap is that the PR-18 binding is weaker than the scenario it claims to bind.
+
+**Risk:** A future CN edit can drop the non-terminal rejected state while PR-18 stays green, weakening translation parity and the ledger vocabulary contract.
+
+**Suggested fix:** Add a CN assertion for the plain status token, e.g. `/\brejected\b/`, preferably scoped near the producer bullet or alongside `open → rejected`.
+
+## No Gap Found
+
+The C4 implementation matches the converged design: `checkLedger` receives `loc.stage` and `loc.dir`, reads the active or archived `flow-state.md`, applies stage-aware terminal rules, blocks unknown statuses in both stages, preserves in-flight `fixed` / reasoned `rejected`, and exports `classifyStatus` for the corpus test.
+
+Waiver evidence is implemented with same-entry matching and exact escaped ID token boundaries, including the Q-1 vs Q-10 test. The `gates:` entry parser handles the current two-space-indented timestamp bullets and continuation lines.
+
+GT-13/14/15 cover the main ledger behavior, including archived terminal-only rows, waived-without-evidence, same-entry enforcement, in-flight unknown status, reasonless `rejected-verified`, and the archived-ledger corpus reason floor.
+
+RUNBOOK EN/CN P0 text carries the four-bullet vocabulary/setter model; STEP6 in both editions requires the post-archive `apriori gate --change <name>` run in the gate④ packet. The UMIMPL-1 migration preserves the original rejection rationale and concurrence reference.
+
+## Advisories
+
+- CN does not include the waived example row that EN adds to the sample table. The CN bullets still document `waived + reason` and the `gates:` requirement clearly, so this is translation polish rather than a blocking gap.
+- `classifyStatus` intentionally treats markdown-decorated status cells such as `` `verified` `` or `**verified**` as illegal. That is consistent with the tightened status vocabulary.
+
+## Ledger delta
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| LSIMPL-1 | PR-18’s CN P0 assertions omit the plain `rejected + reason` status; `rejected-verified` can satisfy the only rejected-related CN check. | CN can drop the producer-set rejected state while PR-18 stays green. | STEP5 r1 | open |
+| LSIMPL-ADV-1 | Advisory batch: CN lacks the waived example row present in EN; markdown-decorated status cells remain illegal by design. | Low. | STEP5 r1 | open |
+
+VERDICT: 1 issues open

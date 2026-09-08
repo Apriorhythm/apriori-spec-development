@@ -1,0 +1,918 @@
+<!-- provenance: provider=openai model=gpt-5.6-sol session=019ff77b-fd77-7302-8537-c597e7e3ae1f date=2026-08-13 -->
+OpenAI Codex v0.147.0
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.6-sol
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019ff77b-fd77-7302-8537-c597e7e3ae1f
+--------
+user
+Round 2. The producer revised per your round-1 review: apriori/changes/verify-change-scope/requirement/req-v2.md (see its '需求裁定记录（对 r1 评审）'). Ledger apriori/changes/verify-change-scope/review/issues.md carries your rows flipped to 'fixed (v2)'.
+Key rulings: REQ-1 RENAMED keeps state-A semantics (SR-19 untouched); REQ-2 scope by requirement-block provenance at occurrence level with per-class duplicate/unidentified boundaries; REQ-3 storeReport = full six-class evaluation; REQ-4 output contracts pinned in B6 (top-level JSON flips to change semantics, storeReport always present on GREEN/GAPS, projection unchanged, --specs untouched); REQ-5 a scoped --change amendment to D-SR-x (explained non-zero + no infra + clean => GREEN 0; unexplained non-zero => ERROR 2 unchanged); REQ-6 zero-scope truth table in B5; REQ-7 single-execution contract in B3 with a sentinel oracle.
+Re-review req-v2 on the six dimensions. Ledger delta: fixed -> verified where genuinely closed, reopen with reason where not, new REQ-n rows for new formal findings; advisories separately.
+Read-only sandbox: PRINT the review doc body (landed at apriori/changes/verify-change-scope/review/req-review-v2.md), Simplified Chinese, machine tokens English. End with the ledger delta and exactly one verdict line: 'VERDICT: no major issues' or 'VERDICT: <N> issues open'.
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+codex
+我会逐条复核 REQ-1..7 的修订是否真正形成唯一 oracle，再检查 v2 是否因 provenance、完整 `storeReport`、非零退出修正规则和零范围表引入新的内部矛盾；仍以实际 `lib/` workspace 为 state A，只输出正文。
+exec
+/usr/bin/zsh -lc "sed -n '1,360p' apriori/changes/verify-change-scope/requirement/req-v2.md
+sed -n '1,260p' apriori/changes/verify-change-scope/review/issues.md
+sed -n '1,180p' apriori/changes/verify-change-scope/flow-state.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 123ms:
+# req-v2 — verify-change-scope："本 change 达标"成为一等公民，历史缺口出 verdict 入报告
+
+target lineage: main（v4 产品线；不合并 v1/v3）
+
+## 背景（现状 A，实测证据）
+
+同 req-v1（副本复现：`--change` 107 场景 61 UNBOUND 2 ORPHAN 42 unattributed 淹没；`--specs <delta>` 46 ORPHAN 误报；"达标"需两命令+人工解释）。
+
+## 目标（目标态 B）
+
+### B1. change 范围：按 Requirement 块 provenance 定义（REQ-2 收口）
+
+- **change 块集** = 投影后 store 中，由本 delta 的 ADDED / MODIFIED / RENAMED 操作产出或改名的 **Requirement 块**（含 idempotent rerun 的 unchanged 路径——块内容相同仍属本 change 块集；REMOVED 产出的 deprecated 块不属于）。
+- **change 场景集（occurrence 级）** = change 块集内的全部场景 occurrence；其 ID 集用于测试归属。
+- **RENAMED 语义沿用 state A（REQ-1 收口）**：只改 Requirement 名，块内场景 ID 原样保留（SR-19 不动）；change scope 含改名后目标块的场景；场景 ID 变更必须由 MODIFIED 显式表达。
+- **本 change 测试集** = TAP 中 leading ID ∈ change 场景 ID 集的结果行。
+- **change verdict（exit 0/1 判据）**：change 场景每个 ≥1 passing、无 red；**duplicate**：任一 change 场景 ID 在整个投影中出现 >1 次（不论另一 occurrence 在不在 change 块集内）→ 不 GREEN（绑定歧义伤及本 change）；完全发生在 change 块集外的 duplicate → 只进 store report。**unidentified**：change 块集内的 unidentified occurrence → 计入 change verdict（不 GREEN）；块集外 → store report。
+
+### B2. store report：同一运行的**完整**信息性评估（REQ-3 收口）
+
+`--change` 输出两段：①change verdict 段（唯一判据）；②store report 段——对**整个投影 + 同一份 TAP 结果**的完整评估，六类全列：`boundRed` / `unbound` / true-`orphan`（leading ID 在整个投影中不存在的测试）/ `unidentified` / `unattributedFailures` / `duplicates`（各类给 count + 清单，human 输出沿用现行每类逐行、unattributed 现行 20 条截断规则；`boundGreen` 只给 count 不展开）。范围外 tagged red / duplicate / unidentified **不阻断** change verdict，但**必须**出现在 store report——不允许任何信息丢失。
+
+### B3. 单次执行契约（REQ-7 收口）
+
+每次 `verify --change`：恰好一次 `buildProjection`、一次 `runTestCommand`、一次 TAP parse、一个 resolved matcher；两段共享同一内存投影与同一 TAP 结果快照。pre-test ERROR（投影失败/pattern 非法/标题批 matcher 失败）照旧不执行 test command；不新增任何 timeout/rollback 语义；matcher 的 2000ms 子进程预算不变。
+
+### B4. exit 语义与 D-SR-x 的 --change 限定（REQ-5 收口）
+
+- infra ERROR（exit 2）类完全不变。
+- **仅对 `verify --change`**，非零 `exec.status` 的规则限定为：非零状态**可由已解析的失败解释**（范围内或范围外的 tagged red，或 unattributed failure——即 `failCount > 0`）且无 infra error 时，不再强制非 0 退出——change verdict clean 则 **GREEN exit 0**（范围外失败已完整呈现在 store report）；非零且 `failCount === 0`（无已解析失败可解释）→ 照旧 ERROR exit 2。
+- `--specs` 形式与 D-SR-x 原文完全不动；本限定作为 D-SR-x 的 scoped amendment 记入 CHANGELOG 与（归档时）truth Decisions。
+
+### B5. 零范围真值表（REQ-6 收口）
+
+| 情形 | 判定 |
+|---|---|
+| change scope 空 + delta 有合法操作（如 removal-only）+ 投影非空 | change verdict **GREEN（vacuous-by-design）**，报告显式标注 `0 scenario(s) in change scope (removal-only change)`；REMOVED 场景的 lingering 测试进 store report 的 orphan |
+| change scope 空 + 整个投影零场景 | **ERROR exit 2**（沿用 D-SR-1 全局 vacuous 拒绝——投影空是 store 级 infra 事实） |
+| change 块集内只有 unidentified 场景（scope 的 ID 集空但 occurrence 非空） | **GAPS exit 1**（unidentified 计入 change verdict，B1） |
+| delta 零操作/malformed | 现行投影失败路径不变（ERROR exit 2） |
+
+D-SR-1 的全局面（投影零场景/零文件 → ERROR）原样保留。
+
+### B6. 输出契约定稿（REQ-4/Q1 收口）
+
+- **JSON（`--change` 运行）**：顶层 `clean` / `result` / `boundGreen` / `boundRed` / `unbound` / `orphan` / `unidentified` / `unattributedFailures` **改为 change 语义**（Q1 裁定：--change 的机器消费者即 gate/CI，本就要"本 change 达标"；行为变化入 CHANGELOG）；新增恒存在字段 `storeReport`（GREEN/GAPS 两类恒有；ERROR 类照现行——errors-run 不含绑定数据时 storeReport 亦缺省，声明之）：`{ boundGreen: <count>, boundRed: [...], unbound: [...], orphan: [...], unidentified: [...], unattributedFailures: {count, lines}, duplicates: [...] }`；`projection` 形状不变；`specFiles`/`exec` 属整个投影/运行不变。`--specs` 运行的 JSON 完全不变（无 storeReport）。
+- **模块 API（`verify()` run 对象）**：`run.verdict` 等既有字段改按 change 语义（--change 时）；新增 `run.storeReport`（同上结构的原始形态）与 `run.changeScope = { requirements: [...], scenarioIds: [...] }`；`--specs` 运行不带这两个字段。`formatReport` 接受可选 storeReport 段渲染。
+- **gate C1（in-flight）**：消费 change 语义 verdict 与 change 范围 duplicates；detail 变为 `verify GREEN (in-flight, change-scoped)` / `verify GAPS: <change 范围各类计数>`，尾缀追加 `; store: <boundRed>/<unbound>/<orphan>/<unattributed> outstanding`（纯文本摘要，JSON 的 checks[].detail 仍是字符串——gate JSON shape 不变）。archived 分支不动。
+
+### B7. 文档同步（Q3 收口：最小幅度）
+
+RUNBOOK.md/RUNBOOK_cn.md §4 STEP5 投影段改写两段式语义（verdict=change 达标；store report=信息性），验证矩阵处加一句两视角；runbook-version 不动（4.0 内行为细化，CLI major 未变——评审可再裁）。docs/cli*.md verify/gate 节；CHANGELOG 显式声明三处行为变化（--change verdict 收窄、JSON 字段语义、D-SR-x 限定）。
+
+## 范围外（won't do）
+
+同 req-v1（MODIFIED 完整性、hotfix、--specs/三态定义不动、跨 change 协调视图不做、id-pattern 机制不动）；另加：不改 archive 语义、不改 `merge()`。
+
+## 验收标准（确定 oracle）
+
+- AC1（一等公民）：fixture——store `### R-A`(XA-01)+`### R-B`(XB-01)；delta ADDED `### R-C`(XC-01)；test-cmd 输出 `ok XC-01`、`ok XA-01`、`ok XZ-99`、`not ok`（无 ID）后 `process.exit(1)`。`verify --change` → **GREEN exit 0**；storeReport：unbound=[XB-01]、orphan=[XZ-99]、unattributed.count=1、boundRed=[]；`--json` 顶层 clean=true 且 storeReport 恒在。（对照断言：同 fixture 在 `--specs apriori/specs` 下现行为不变——GAPS。）
+- AC2（change 缺口）：XC-01 无测试 → GAPS exit 1 且 unbound=[XC-01]（change 段）；XC-01 not ok → GAPS 且 boundRed=[XC-01]。
+- AC3（操作语义）：MODIFIED 替换后块含 XA-01+XA-02 → 两者皆 in scope；REMOVED 块场景不被要求、其 lingering 测试 → storeReport.orphan；RENAMED `R-A -> R-G`（块含 XA-01）→ XA-01 in scope 且 ID 不变（SR-19 兼容）。
+- AC4（范围内严格）：change 块内 unidentified → 不 GREEN；change 场景 ID 与块外 store 场景撞 ID → 不 GREEN（duplicate 进 change verdict）；纯块外 duplicate → GREEN 可达 + storeReport.duplicates 列出。
+- AC5（gate 独立变绿）：两个活 change（场景/测试互不重叠，另有一红测试属 change-B 范围）→ change-A 的 `gate --change` C1 pass（detail 含 change-scoped 与 store 摘要尾缀）、change-B 的 C1 blocked；同一 fixture 下测试命令 exit 1 不影响 change-A 的 C1（B4 限定生效）。
+- AC6（真实样本对比，证据入 review/，含不可变身份）：副本 batch3——改前 `--change`＝107 场景 61 UNBOUND 2 ORPHAN 42 unattributed GAPS；改后 change 段仅 batch3 的 9 场景（2 green/7 unbound → GAPS，缺口属于本 change），storeReport 计数与改前全局一致（61/2/42 保持可见）；无需再跑 `--specs <delta>`。
+- AC7（兼容）：`--specs` 一切形式 byte 级行为不变；`--change` infra ERROR 类不变（含"非零且 failCount=0 → ERROR"反例断言）；单次执行契约——sentinel test-cmd 计数恰好 1 次 spawn；存量测试保持绿（数量不钉死，现 284）。
+- AC8（零范围真值表）：B5 四行各有对应断言（removal-only GREEN + 标注文案；空投影 ERROR；scoped-unidentified GAPS；malformed 不变）。
+- AC9（文档）：RUNBOOK 双语 STEP5 段 + 验证矩阵一句、docs/cli 双语 verify/gate 节、CHANGELOG 三处变化声明；`check --self` 绿。
+
+## 需求裁定记录（对 r1 评审）
+
+- REQ-1：RENAMED 沿用 state A（只改 Requirement 名、场景 ID 保留、SR-19 不动）；AC3 oracle 重写。
+- REQ-2：scope 改为 Requirement 块 provenance（occurrence 级）；duplicate/unidentified 的 change/store 边界逐类裁定（B1）。
+- REQ-3：store report 定义为完整六类评估（B2），范围外 red/duplicate/unidentified 必须可见。
+- REQ-4：JSON/模块 API/gate detail 契约钉死（B6）；Q1 裁定顶层字段改 change 语义。
+- REQ-5：D-SR-x 加 --change 限定（非零可解释 + 无 infra + change clean → GREEN；不可解释非零照旧 ERROR）；AC1/AC5 显式 exit 1 fixture + AC7 反例。
+- REQ-6：零范围真值表（B5），D-SR-1 全局面保留。
+- REQ-7：单次执行契约（B3）+ AC7 sentinel 断言。
+# Issue ledger — verify-change-scope
+
+<!-- recorded on behalf of the reviewer (codex read-only sandbox), R2 transcription rule; raws: review/*-raw.txt -->
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| REQ-1 | `RENAMED` 被写成产生新场景 ID，与现有 Requirement-only rename 语法冲突 | high | 1 | fixed (v2) — RENAMED 沿用 state A，场景 ID 保留，SR-19 不动；AC3 重写 |
+| REQ-2 | change scope 缺少 scenario occurrence provenance，duplicate/unidentified 边界及 idempotent operation 未定义 | high | 1 | fixed (v2) — scope 改 Requirement 块 provenance（occurrence 级）；duplicate/unidentified 边界逐类裁定 |
+| REQ-3 | store report 未声明 `BOUND-RED`、duplicate、`UNIDENTIFIED`，会丢失范围外问题 | high | 1 | fixed (v2) — store report 完整六类（boundRed/unbound/orphan/unidentified/unattributed/duplicates），零信息丢失 |
+| REQ-4 | human、JSON、module API 与 gate summary 的目标 shape 未定，Q1 仍开放 | high | 1 | fixed (v2) — B6 钉死 JSON/模块 API/gate detail 契约；Q1 裁定顶层改 change 语义 |
+| REQ-5 | 范围外失败导致 non-zero exec 时的 exit 规则未定，并与 D-SR-x 冲突 | high | 1 | fixed (v2) — D-SR-x 加 --change 限定（可解释非零+clean→GREEN；不可解释→ERROR 不变）；AC 显式 exit 1 fixture+反例 |
+| REQ-6 | 空 change scope、removal-only 和全 projection 零场景的 verdict 未定义 | medium | 1 | fixed (v2) — B5 零范围真值表四行；D-SR-1 全局面保留 |
+| REQ-7 | 两视角是否共享一次 projection/TAP/test invocation 未声明，存在新增副作用与并发不一致风险 | high | 1 | fixed (v2) — B3 单次执行契约 + AC7 sentinel 单次 spawn 断言 |
+change: verify-change-scope
+tier: medium
+track: harden
+track-rationale: 目标可陈述（"本 change 达标"成为一等公民命令形态，历史缺口出 verdict 入报告）；样本有现成验证场——harden
+lineage: main（v4 产品线；不合并 v1/v3）
+current-step: STEP0
+round: 1                # STEP0·r1 09:41-10:05 "VERDICT: 7 issues open"（RENAMED 语义冲突/块 provenance/store report 信息丢失/输出契约/D-SR-x 冲突/零范围/单次执行——七条全 substantive）
+reviewer-session: 019ff77b-fd77-7302-8537-c597e7e3ae1f   # codex(WSL, proxy) gpt-5.6-sol, STEP0
+next-action: 等待 STEP0·r2 P1 verdict（req-v2 已按七条全部裁定收口）  # 2026-08-13T10:20
+artifact-root: .
+gates:
+  - 2026-08-13T09:18 note: change scaffolded by `apriori new`
+  - 2026-08-13T09:18 consolidation (owner, verbatim): 「本 goal 预授权：gate②（gap-report 放行）、gate③（技术评审并入 P8 轮次）可自决通过并留痕；gate⑤（cap 触顶/振荡）按 RUNBOOK 呈报格式写入 flow-state 后可选保守方案继续；gate④（KB 签收/归档批准）不在授权范围——每个 change 走到 STEP6 归档前停下，把 gate④ packet 留在 flow-state 里，继续下一个 change 的 STEP0（归档动作全部留给我回来批）。撤销方式：我任意时刻声明即失效。」另：不 commit、不 push——全部改动留工作区，代码与文档的提交由我验收后执行。
+  - 2026-08-13T09:18 note: KB 预检——spec-runner/gate truth 的 source-commit 相对基线 main@10aef21 仍新鲜；但两模块的 lib 代码已含上一 change（gate-id-pattern，未归档未提交）的工作区改动，其 KB 写回在该 change 的 gate④ 之后——本 change 的 spec/design 以**工作区代码现实**为 state A（含 matcher/resolveIdPattern 等新机制），评审时需注意 truth doc 尚未反映这些。
+  - 2026-08-13T09:18 note: 依赖关系——本 change 建立在 gate-id-pattern 的 id-pattern 解析之上（样本复现需 --id-pattern/config 才能看清 scope 噪音本体）；两 change 的 delta specs 无同名 Requirement，可独立归档。
+
+codex
+v2 已实质关闭大部分 r1 问题；我正在重点核对两个剩余形式化接口：`duplicates` 在顶层/module run 中到底属于哪个视角，以及 ERROR 的 post-TAP 情形是否仍有 `storeReport`。这两处若不钉死，会让不同实现都“符合文字”但产出不同机器结构。
+exec
+/usr/bin/zsh -lc "nl -ba lib/archive-merge.js | sed -n '90,260p'
+nl -ba lib/archive-merge.js | sed -n '260,440p'
+rg -n \"RENAMED.*MODIFIED|MODIFIED.*RENAMED|REMOVED.*RENAMED|RENAMED.*REMOVED|cross.*section|duplicate requirement\" test/archive-change.test.js apriori/truth/archive-merge.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 116ms:
+    90	// strict form: a sequential, fully-consuming line walker — every line (outside
+    91	// code fences, which are opaque) belongs to exactly one legal construct, and
+    92	// anything else is a problems[] entry carrying its 1-based line number.
+    93	// Well-formed deltas parse byte-identically to the old split()-based grammar.
+    94	function parseDeltaStrict(text) {
+    95	  const problems = [];
+    96	  const buckets = { ADDED: new Map(), MODIFIED: new Map(), REMOVED: new Map(), RENAMED: [] };
+    97	  const seen = new Map();               // name -> first section carrying it
+    98	  const lines = text.split('\n').map((l) => (l.endsWith('\r') ? l.slice(0, -1) : l));
+    99	
+   100	  let state = 'FILE_PREAMBLE';          // | 'IN_SECTION' | 'IN_REQUIREMENT' | 'SKIP_UNRECOGNIZED'
+   101	  let kind = null;                      // current section kind while IN_SECTION/IN_REQUIREMENT
+   102	  let blockName = null, blockLines = null, blockDiscard = false;
+   103	  let inFence = false;
+   104	  let stamp = null, stampSeen = false, stampProblems = false, sectionSeen = false;
+   105	
+   106	  const flush = () => {
+   107	    if (blockLines === null) return;
+   108	    if (!blockDiscard) buckets[kind].set(blockName, blockLines.join('\n').replace(/\s+$/, '') + '\n');
+   109	    blockName = null; blockLines = null; blockDiscard = false;
+   110	  };
+   111	  const stampProblem = (msg) => { problems.push(msg); stampProblems = true; };
+   112	
+   113	  for (let i = 0; i < lines.length; i++) {
+   114	    const line = lines[i], n = i + 1;
+   115	    if (inFence) {                      // opaque: never structure, never a problem
+   116	      if (blockLines !== null) blockLines.push(line);
+   117	      if (FENCE_LINE_RE.test(line)) inFence = false;
+   118	      continue;
+   119	    }
+   120	    if (FENCE_LINE_RE.test(line)) {
+   121	      inFence = true;
+   122	      if (blockLines !== null) blockLines.push(line);
+   123	      continue;
+   124	    }
+   125	    const sec = SECTION_LINE_RE.exec(line);
+   126	    if (sec) { flush(); state = 'IN_SECTION'; kind = sec[1]; sectionSeen = true; continue; }
+   127	    if (H2_LINE_RE.test(line)) {        // one problem per unrecognized heading; its lines are skipped, not re-homed
+   128	      flush();
+   129	      problems.push(`line ${n}: unrecognized section heading '${line.trim()}'`);
+   130	      state = 'SKIP_UNRECOGNIZED'; kind = null;
+   131	      continue;
+   132	    }
+   133	    if (state === 'SKIP_UNRECOGNIZED') continue;   // covered by the heading's problem — no flood, no attribution (stamps included)
+   134	    // stamps are matched in every remaining state so a stray one is never absorbed as body text
+   135	    if (STAMP_ATTEMPT_LINE_RE.test(line)) {
+   136	      const m = STAMP_STRICT_LINE_RE.exec(line.trim());
+   137	      if (!m) { stampProblem(`line ${n}: malformed apriori-base stamp line: ${line.trim()}`); continue; }
+   138	      if (stampSeen) { stampProblem(`line ${n}: carries more than one apriori-base stamp line`); continue; }
+   139	      stampSeen = true;
+   140	      if (sectionSeen) { stampProblem(`line ${n}: apriori-base stamp appears after the first delta section heading`); continue; }
+   141	      if (m[1] !== 'new' && !/^sha256:[0-9a-f]{64}$/.test(m[1])) { stampProblem(`line ${n}: malformed apriori-base stamp '${m[1]}'`); continue; }
+   142	      stamp = m[1];
+   143	      continue;
+   144	    }
+   145	    const req = REQ_LINE_RE.exec(line);
+   146	    if (req) {
+   147	      if (state === 'FILE_PREAMBLE') { problems.push(`line ${n}: requirement block before any section heading`); continue; }
+   148	      if (kind === 'RENAMED') {
+   149	        // the whole illegal block is discarded — its body must not be reinterpreted as rename lines
+   150	        problems.push(`line ${n}: requirement block inside the RENAMED section`);
+   151	        flush();
+   152	        state = 'IN_REQUIREMENT'; blockName = null; blockLines = []; blockDiscard = true;
+   153	        continue;
+   154	      }
+   155	      flush();
+   156	      state = 'IN_REQUIREMENT';
+   157	      blockName = req[1].trim(); blockLines = [line]; blockDiscard = false;
+   158	      if (buckets[kind].has(blockName)) {          // first block wins, as before
+   159	        problems.push(`line ${n}: duplicate requirement '${blockName}' in the ${kind} section`);
+   160	        blockDiscard = true;
+   161	      } else if (seen.has(blockName)) {
+   162	        problems.push(`line ${n}: duplicate requirement '${blockName}' appears in both ${seen.get(blockName)} and ${kind}`);
+   163	      } else seen.set(blockName, kind);
+   164	      continue;
+   165	    }
+   166	    if (state === 'IN_REQUIREMENT') { blockLines.push(line); continue; }   // scenarios and prose are body
+   167	    if (SCENARIO_LINE_RE.test(line)) { problems.push(`line ${n}: scenario outside any requirement block`); continue; }
+   168	    if (state === 'IN_SECTION' && kind === 'RENAMED') {
+   169	      const rn = RENAME_LINE_RE.exec(line);
+   170	      if (rn) buckets.RENAMED.push([rn[1].trim(), rn[2].trim()]);
+   171	      continue;                          // other lines are free text
+   172	    }
+   173	    // FILE_PREAMBLE / section preamble free text and blanks are legal
+   174	  }
+   175	  flush();
+   176	  return { delta: buckets, stamp: stampProblems ? null : stamp, problems };
+   177	}
+   178	
+   179	function parseDelta(text) { return parseDeltaStrict(text).delta; }
+   180	
+   181	// total number of operations a parsed delta carries (0 = nothing recognized/parseable)
+   182	function deltaOpCount(delta) {
+   183	  return delta.ADDED.size + delta.MODIFIED.size + delta.REMOVED.size + delta.RENAMED.length;
+   184	}
+   185	
+   186	// mutation ops can silently clobber concurrent edits; ADDED-only deltas conflict or no-op instead
+   187	function mutationOpCount(delta) {
+   188	  return delta.MODIFIED.size + delta.REMOVED.size + delta.RENAMED.length;
+   189	}
+   190	
+   191	// the one warning text every surface shares (WARN grade this minor; 4.0 makes stamps mandatory)
+   192	// 4.0: unstamped mutation deltas are DENIED by default; --no-cas or the config row waives visibly
+   193	// waiver source, or {problem} when the config itself is broken (deny + name it) — the
+   194	// explicit flag stays supreme even over a broken config (the flag is a human's will)
+   195	function casWaiver(cwd, noCas) {
+   196	  if (noCas) return { waiver: '--no-cas' };
+   197	  const problem = configCasProblem(cwd);
+   198	  if (problem) return { problem };
+   199	  if (configCas(cwd) === 'optional') return { waiver: 'process-config cas: optional' };
+   200	  return {};
+   201	}
+   202	
+   203	function unstampedWarning(suffix) {
+   204	  return `unstamped mutation delta ${suffix} — divergence undetectable; run: apriori stamp <store-file>`;
+   205	}
+   206	
+   207	// ---- merge (pure) ----------------------------------------------------------
+   208	
+   209	// Pure merge. Returns { store: Map, merged, modified, deprecated, renamed, conflicts, unchanged }
+   210	function merge(storeText, delta, change) {
+   211	  const parsed = parseRequirementsStrict(storeText);
+   212	  const store = parsed.map;
+   213	  const merged = [], modified = [], deprecated = [], renamed = [], conflicts = [], unchanged = [];
+   214	  // a corrupt store (same requirement name twice) must never be silently collapsed
+   215	  for (const d of parsed.duplicates) conflicts.push(`duplicate requirement '${d}' in the store (corrupt store)`);
+   216	  const renamedTargets = new Set();   // names created by THIS run's renames — an ADDED hitting one is a same-delta collision, never a rerun no-op
+   217	  // RENAMED first: rename the store block's ID, preserving its content
+   218	  for (const [oldName, newName] of (delta.RENAMED || [])) {
+   219	    if (!store.has(oldName)) {
+   220	      // rerun signature: source already gone AND target present → this rename already happened
+   221	      if (store.has(newName)) { unchanged.push(`${oldName} -> ${newName} (already renamed)`); continue; }
+   222	      conflicts.push(`RENAMED '${oldName}' has no target in store`); continue;
+   223	    }
+   224	    if (store.has(newName)) { conflicts.push(`RENAMED target '${newName}' already exists in store`); continue; }
+   225	    const block = store.get(oldName);
+   226	    const renamedBlock = block.replace(/^###\s+Requirement:\s+.+$/m, `### Requirement: ${newName}`);
+   227	    // rebuild the map preserving order, swapping the key at the old position
+   228	    const rebuilt = new Map();
+   229	    for (const [k, v] of store) rebuilt.set(k === oldName ? newName : k, k === oldName ? renamedBlock : v);
+   230	    store.clear();
+   231	    for (const [k, v] of rebuilt) store.set(k, v);
+   232	    renamed.push(`${oldName} -> ${newName}`);
+   233	    renamedTargets.add(newName);
+   234	  }
+   235	  for (const [name, block] of delta.ADDED) {
+   236	    if (store.has(name)) {
+   237	      // idempotent rerun: identical content means this delta already merged — a no-op, not a collision.
+   238	      // But a name just created by THIS run's RENAMED is a same-delta collision, never a rerun.
+   239	      if (!renamedTargets.has(name) && store.get(name).trim() === block.trim()) unchanged.push(name);
+   240	      else conflicts.push(`ADDED '${name}' already exists in store`);
+   241	    } else { store.set(name, block); merged.push(name); }
+   242	  }
+   243	  for (const [name, block] of delta.MODIFIED) {
+   244	    if (!store.has(name)) conflicts.push(`MODIFIED '${name}' has no target in store`);
+   245	    // already applied (rerun signature) — same trim comparison the ADDED no-op uses
+   246	    else if (store.get(name).trim() === block.trim()) unchanged.push(name);
+   247	    else { store.set(name, block); modified.push(name); }
+   248	  }
+   249	  for (const name of delta.REMOVED.keys()) {
+   250	    if (!store.has(name)) {
+   251	      // rerun signature: already deprecated BY THIS CHANGE → no-op; by another change → real collision
+   252	      const depByThis = `${name}  _deprecated (superseded by ${change})_`;
+   253	      if (store.has(depByThis)) { unchanged.push(`${name} (already deprecated)`); continue; }
+   254	      const depOther = [...store.keys()].find((k) => k.startsWith(`${name}  _deprecated (superseded by `));
+   255	      if (depOther) { conflicts.push(`REMOVED '${name}' was already deprecated by a different change ('${depOther}')`); continue; }
+   256	      conflicts.push(`REMOVED '${name}' has no target in store`);
+   257	    } else {
+   258	      const block = store.get(name);
+   259	      const nl = block.indexOf('\n');
+   260	      store.set(name, block.slice(0, nl) + `  _deprecated (superseded by ${change})_` + block.slice(nl));
+   260	      store.set(name, block.slice(0, nl) + `  _deprecated (superseded by ${change})_` + block.slice(nl));
+   261	      deprecated.push(name);
+   262	    }
+   263	  }
+   264	  return { store, merged, modified, deprecated, renamed, conflicts, unchanged };
+   265	}
+   266	
+   267	function renderStore(storeText, store) {
+   268	  const idx = storeText.indexOf('### Requirement:');
+   269	  const header = idx >= 0 ? storeText.slice(0, idx) : '';
+   270	  return header + [...store.values()].join('\n');
+   271	}
+   272	
+   273	// ---- paths and discovery ---------------------------------------------------
+   274	
+   275	// Realpath containment: target (followed through symlinks; not-yet-existing targets judged
+   276	// by their nearest existing ancestor) must resolve STRICTLY inside root. Fail-closed.
+   277	function containsReal(root, target) {
+   278	  let realRoot;
+   279	  try { realRoot = fs.realpathSync(root); } catch { return false; }
+   280	  let cur = path.resolve(target);
+   281	  const rest = [];
+   282	  while (!fs.existsSync(cur)) {
+   283	    const parent = path.dirname(cur);
+   284	    if (parent === cur) return false;
+   285	    rest.unshift(path.basename(cur));
+   286	    cur = parent;
+   287	  }
+   288	  let realCur;
+   289	  try { realCur = fs.realpathSync(cur); } catch { return false; }
+   290	  const full = rest.length ? path.join(realCur, ...rest) : realCur;
+   291	  return full !== realRoot && (full + path.sep).startsWith(realRoot + path.sep);
+   292	}
+   293	
+   294	function mdFilesUnder(dir) {
+   295	  const out = [];
+   296	  const walk = (d) => {
+   297	    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+   298	      const p = path.join(d, e.name);
+   299	      // Dirents reflect lstat: a symlink is neither file nor directory. Follow it explicitly —
+   300	      // silently skipping a symlinked dir would hide deltas (fail-open); containment judges the target.
+   301	      let isDir = e.isDirectory();
+   302	      if (e.isSymbolicLink()) {
+   303	        try { isDir = fs.statSync(p).isDirectory(); } catch { isDir = false; /* broken link: fall through, read fails loudly */ }
+   304	      }
+   305	      if (isDir) walk(p);
+   306	      else if (e.name.endsWith('.md')) out.push(p);
+   307	    }
+   308	  };
+   309	  if (fs.existsSync(dir)) walk(dir);
+   310	  return out.sort();
+   311	}
+   312	
+   313	// Discover a change's delta files. → { files: [{abs, suffix}], errors: [] } — errors are
+   314	// VALIDATION class (exit 2 on both surfaces): bad name, missing dir, escape, zero files.
+   315	function discoverDeltas(changesDirAbs, name) {
+   316	  const errors = [];
+   317	  const vName = require('./resolve').validateChangeName(name);
+   318	  if (!vName.ok) return { files: [], errors: [`invalid change name '${name}' (${vName.kind}) — bare kebab-case, not date-prefixed, not a reserved name`] };
+   319	  const changeDir = path.join(changesDirAbs, name);
+   320	  if (!fs.existsSync(changeDir)) return { files: [], errors: [`change '${name}' not found under ${changesDirAbs}`] };
+   321	  if (!containsReal(changesDirAbs, changeDir)) return { files: [], errors: [`change path escapes ${changesDirAbs}: ${changeDir}`] };
+   322	  const specsDir = path.join(changeDir, 'specs');
+   323	  // a symlinked specs/ pointing outside would smuggle its target in as the containment ROOT —
+   324	  // require specs/ itself to really live inside the change dir before trusting it as a root
+   325	  if (fs.existsSync(specsDir) && !containsReal(changeDir, specsDir))
+   326	    return { files: [], errors: [`specs dir escapes the change dir (symlink?): ${specsDir}`] };
+   327	  const all = mdFilesUnder(specsDir);
+   328	  if (!all.length) return { files: [], errors: [`no delta spec files (*.md) found under ${specsDir}`] };
+   329	  const files = [];
+   330	  for (const abs of all) {
+   331	    if (!containsReal(specsDir, abs)) { errors.push(`delta path escapes the change root: ${abs}`); continue; }
+   332	    files.push({ abs, suffix: path.relative(specsDir, abs).split(path.sep).join('/') });
+   333	  }
+   334	  return { files, errors };
+   335	}
+   336	
+   337	// Build the projection: apply every delta to its mapped store file IN MEMORY.
+   338	// → { texts: Map<suffix, projectedText>, modules, perModule, conflicts, casMismatches,
+   339	//     hygiene, validation } — texts covers ALL store files (pass-through + projected).
+   340	function buildProjection(storeRoot, deltaFiles, change) {
+   341	  const texts = new Map(), perModule = new Map(), modules = [];
+   342	  const conflicts = [], casMismatches = [], hygiene = [], validation = [];
+   343	  const unstampedMutations = [], notes = [], repaired = [];
+   344	  for (const abs of mdFilesUnder(storeRoot))
+   345	    texts.set(path.relative(storeRoot, abs).split(path.sep).join('/'), fs.readFileSync(abs, 'utf8'));
+   346	  for (const { abs, suffix } of deltaFiles) {
+   347	    modules.push(suffix);
+   348	    const target = path.join(storeRoot, ...suffix.split('/'));
+   349	    if (!containsReal(storeRoot, target)) { validation.push(`store target escapes ${storeRoot}: ${target}`); continue; }
+   350	    const raw = fs.readFileSync(abs, 'utf8');
+   351	    if (!raw.trim()) { hygiene.push(`empty delta file: ${abs}`); continue; }
+   352	    const { delta, stamp, problems } = parseDeltaStrict(raw);
+   353	    if (problems.length) { hygiene.push(...problems.map((p) => `${abs}: ${p}`)); continue; }
+   354	    if (deltaOpCount(delta) === 0) { hygiene.push(`parsed 0 delta operations from ${abs} — it has content but no recognized operations`); continue; }
+   355	    if (!stamp && mutationOpCount(delta) > 0) unstampedMutations.push(suffix);   // WARN grade (callers print)
+   356	    const storeText = texts.get(suffix) || '';
+   357	    if (stamp) {
+   358	      const actual = texts.has(suffix) ? fingerprint(storeText) : 'new';
+   359	      if (stamp !== actual) {
+   360	        // rerun repair: a mismatch whose every op is already applied is the resumed-rerun
+   361	        // signature — divergence with ANY real pending op still fails exactly as before
+   362	        const probe = merge(storeText, delta, change);
+   363	        const pending = probe.merged.length + probe.modified.length + probe.deprecated.length + probe.renamed.length;
+   364	        if (pending === 0 && probe.conflicts.length === 0) {
+   365	          notes.push(`${suffix}: stamp mismatch but the delta is already fully applied — rerun accepted`);
+   366	          perModule.set(suffix, probe);
+   367	          repaired.push(suffix);
+   368	          continue;                                          // contributes no writes
+   369	        }
+   370	        casMismatches.push(`base mismatch for ${target}: delta expects ${stamp}, store is ${actual}`); continue;
+   371	      }
+   372	    }
+   373	    const r = merge(storeText, delta, change);
+   374	    perModule.set(suffix, r);
+   375	    if (r.conflicts.length) { conflicts.push(...r.conflicts.map((c) => `${suffix}: ${c}`)); continue; }
+   376	    texts.set(suffix, renderStore(storeText, r.store));
+   377	  }
+   378	  modules.sort();
+   379	  return { texts, modules, perModule, conflicts, casMismatches, hygiene, validation, unstampedMutations, notes, repaired };
+   380	}
+   381	
+   382	// ---- archive commit machinery ----------------------------------------------
+   383	
+   384	// colon-free date-time stamp YYYY-MM-DDThhmm (CLI's own clock; never an agent guess)
+   385	function archiveStamp(d) {
+   386	  const p = (n) => String(n).padStart(2, '0');
+   387	  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}${p(d.getMinutes())}`;
+   388	}
+   389	
+   390	const CHANGE_NAME_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;   // bare kebab-case — same rule as `apriori new`
+   391	
+   392	
+   393	// Move an in-flight change dir (bare name) → changes/archive/<stamp>-<name>/
+   394	// Fail-closed: source AND destination must resolve (realpath) strictly inside changesDir.
+   395	function archiveChangeDir(changesDir, name, now, ops) {
+   396	  const rename = (ops && ops.renameSync) || fs.renameSync;
+   397	  if (!CHANGE_NAME_RE.test(name)) throw new Error(`invalid change name '${name}' — bare kebab-case only`);
+   398	  const src = path.join(changesDir, name);
+   399	  if (!fs.existsSync(src)) return null;
+   400	  if (!containsReal(changesDir, src)) throw new Error(`change path escapes ${changesDir}`);
+   401	  const dest = path.join(changesDir, 'archive', `${archiveStamp(now)}-${name}`);
+   402	  if (!containsReal(changesDir, dest)) throw new Error(`archive destination escapes ${changesDir} (symlinked archive/?)`);
+   403	  fs.mkdirSync(path.dirname(dest), { recursive: true });
+   404	  rename(src, dest);
+   405	  return dest;
+   406	}
+   407	
+   408	const CATEGORY_LABELS = [['merged (ADDED)', 'merged'], ['modified (MODIFIED)', 'modified'],
+   409	  ['deprecated (REMOVED)', 'deprecated'], ['renamed (RENAMED)', 'renamed'], ['already merged (no-op)', 'unchanged']];
+   410	
+   411	// High-level archive: the whole change, four phases (preflight → stage → commit → move).
+   412	// → { code, out: [], err: [] } — pure return; cli() prints. ops is the fault-injection seam.
+   413	function archiveChange(o) {
+   414	  const out = [], err = [];
+   415	  const ops = o.ops || { writeFileSync: fs.writeFileSync.bind(fs), renameSync: fs.renameSync.bind(fs), rmSync: fs.rmSync.bind(fs) };
+   416	  const cwd = o.cwd || process.cwd();
+   417	  const changesDir = path.resolve(cwd, o.changesDir || path.join('apriori', 'changes'));
+   418	  const storeRoot = path.resolve(cwd, 'apriori', 'specs');
+   419	
+   420	  // --- phase 1: preflight (no writes) ---
+   421	  const d = discoverDeltas(changesDir, o.change);
+   422	  if (d.errors.length) { err.push(...d.errors.map((e) => `archive: ${e}`)); return { code: 2, out, err }; }
+   423	  const p = buildProjection(storeRoot, d.files, o.change);
+   424	  if (p.validation.length) { err.push(...p.validation.map((e) => `archive: ${e}`)); return { code: 2, out, err }; }
+   425	  // per-module report for whatever merged cleanly (dry-run info comes first, then failures)
+   426	  for (const suffix of p.modules) {
+   427	    const r = p.perModule.get(suffix);
+   428	    if (!r || r.conflicts.length) continue;
+   429	    out.push(`--- ${suffix}`);
+   430	    for (const [label, key] of CATEGORY_LABELS) if (r[key].length) out.push(`${label}: ${r[key].join(', ')}`);
+   431	  }
+   432	  const casDenials = [];
+   433	  if (p.unstampedMutations.length) {
+   434	    const w = casWaiver(cwd, o.noCas);
+   435	    if (w.problem) {
+   436	      casDenials.push(`${w.problem} — a broken config never equals a waiver (denied)`);
+   437	    } else if (!w.waiver) {
+   438	      for (const sfx of p.unstampedMutations)
+   439	        casDenials.push(`${unstampedWarning(sfx)} — denied by default; waive with --no-cas or a | cas | optional | config row`);
+   440	    } else {
+test/archive-change.test.js:159:test('AM-21 duplicate requirement names in the store are corruption (conflict)', () => {
+test/archive-change.test.js:310:  const removed = { ADDED: new Map(), MODIFIED: new Map(), REMOVED: new Map([['Alpha', '### Requirement: Alpha\n']]), RENAMED: [] };
+test/archive-change.test.js:329:  const SECTION = /^##\s+(ADDED|MODIFIED|REMOVED|RENAMED)\s+Requirements\s*$/m;
+test/archive-change.test.js:331:  const buckets = { ADDED: new Map(), MODIFIED: new Map(), REMOVED: new Map(), RENAMED: [] };
+test/archive-change.test.js:513:  const same = am.merge(STORE_A, { ADDED: new Map(), MODIFIED: new Map([['Alpha', sameBlock]]), REMOVED: new Map(), RENAMED: [] }, 'c');
+test/archive-change.test.js:516:  const diff = am.merge(STORE_A, { ADDED: new Map(), MODIFIED: new Map([['Alpha', sameBlock.replace('- t', '- x')]]), REMOVED: new Map(), RENAMED: [] }, 'c');
+apriori/truth/archive-merge.md:9:**Delta format.** `## ADDED|MODIFIED|REMOVED|RENAMED Requirements` (h2 sections) containing `### Requirement: <name>` blocks (h3); RENAMED carries `- Old -> New` lines; optionally ONE CAS stamp line `<!-- apriori-base: sha256:<64hex> | new -->` before the first section. Parsing: `parseDeltaStrict(text)` → `{ delta, stamp, problems[] }` — since delta-consumption (3.3.x) a sequential fully-consuming line walker: every line outside opaque ``` fences belongs to exactly one legal construct (file preamble, legal section heading, section-preamble free text, requirement block, RENAMED rename line), and anything else — unrecognized h2 headings (one problem per heading, its lines attributed to NOTHING, stamps included), requirement/scenario markers outside their legal home, duplicate requirement names (within/across sections), and stamp problems (malformed/duplicate/late, matched in every non-skipped state) — is a `problems[]` entry carrying its 1-based line number; CRLF parses identically to LF; well-formed deltas parse byte-identically to the pre-walker grammar; `parseDelta(text)` = its delta only; `parseRequirementsStrict(text)` → `{ map, duplicates[] }` (first block wins, duplicates reported); `parseRequirements` = its map; `deltaOpCount(delta)` → total parsed ops (0 = no recognized section OR recognized sections with no parseable requirement/rename lines). `parseStamp(text)` → `{ stamp, problems }` — any standalone comment line ATTEMPTING apriori-base that fails the strict form is a problem, never silently 'unstamped'. `fingerprint(text)` → `sha256:<64hex>` over CRLF/CR→LF-normalized content.
+apriori/truth/archive-merge.md:12:- `merge(storeText, delta, change)` — PURE. → `{ store:Map, merged, modified, deprecated, renamed, conflicts, unchanged }`. Duplicate requirement names in the STORE text → conflicts (corruption guard). Order of application: RENAMED first (in-place key swap preserving document order), then ADDED, MODIFIED, REMOVED.
+apriori/truth/archive-merge.md:38:- CAS enforcement is GRADED since cas-enforcement (3.3.x): an unstamped delta STILL MERGES, but mutation-carrying ones (MODIFIED/REMOVED/RENAMED — ADDED-only exempt, the exemption is clobber-focused) warn on every surface (`unstampedWarning(suffix)`, both archive forms + verify --change stderr) and `buildProjection` returns `unstampedMutations: string[]` (suffixes) that gate C7 denies by default (--no-cas / `| cas | optional |` waive it, visibly). Stamps become mandatory in 4.0. Rerun repair: a stamped file whose base mismatches but whose EVERY op is `unchanged` (the already-applied signature; MODIFIED now reports `unchanged` on trim-equality) downgrades to a `rerun accepted` note in `notes[]`/`repaired[]` and contributes no writes — the move phase completes; a mismatch with ANY real pending op still fails the whole preflight.
+apriori/truth/archive-merge.md:39:- Deprecation rewrites the heading LINE (`### Requirement: Name  _deprecated (superseded by x)_`), so on re-parse the requirement's map KEY includes the marker — MODIFIED/RENAMED can no longer address the block by its original name. (REMOVED reruns by the SAME change are now a no-op signature; see merge().) `DEPRECATED_RE`/`stripDeprecatedBlocks` exported — spec-runner uses them to exclude deprecated blocks from scenario collection.
+apriori/truth/archive-merge.md:50:- D-AM-7 (superseded-by: D-AM-8): rerun idempotency covered THREE signatures — identical-content ADDED; RENAMED source-gone+target-present; REMOVED already-deprecated-by-THIS-change. MODIFIED reruns re-applied. Supersedes D-AM-2. Ratified in change-projection.
+
+codex
+# req-review-v2 — verify-change-scope 需求复审
+
+评审基线：
+
+- 需求：`apriori/changes/verify-change-scope/requirement/req-v2.md`
+- ledger：`apriori/changes/verify-change-scope/review/issues.md`
+- state A：当前 workspace 的 `lib/spec-runner.js`、`lib/gate.js`
+- lineage：当前分支 `main`，HEAD `10aef21`，package `4.0.7`
+- r1 复核结果：REQ-1、REQ-2、REQ-3、REQ-5 已关闭；REQ-4、REQ-6、REQ-7 需 reopen
+- 新增独立 issue：无
+- 明确的 `范围外（won't do）`：已存在
+
+## 维度 1：target state B 是否清晰、无歧义
+
+结论：不通过。REQ-4、REQ-6 仍未完全形成唯一实现。
+
+### REQ-4 reopen：输出契约仍有三个未钉死的机器接口
+
+描述：
+
+B6 已明确大部分 JSON、module API 和 gate detail，但仍有以下歧义：
+
+1. 当前顶层 JSON 存在 `duplicates`，当前 module run 存在 `run.duplicates`，但 B6 列出的“改为 change 语义”的顶层字段没有包含 `duplicates`。与此同时，B1 要求 scoped duplicate 阻断 change verdict，gate 又被要求消费“change 范围 duplicates”。因此无法确定：
+
+   - `run.duplicates` 是否改为 scoped duplicates；
+   - 顶层 `duplicates` 是否改为 scoped duplicates；
+   - full-projection duplicates 是否只保存在 `storeReport.duplicates`；
+   - 还是要新增另一个字段。
+
+2. B2 要求六类“各类给 count + 清单”，但 B6 schema 中只有 `boundGreen` 和 `unattributedFailures` 显式带 count，其余五类只是数组。数组长度是否就是规定的 count，还是应使用 `{count, items}`，没有唯一答案。
+
+3. ERROR shape 只规定“errors-run 不含绑定数据时 `storeReport` 缺省”，没有规定 test command 已运行、TAP 已解析后才发现 infra ERROR 时的 shape，例如 bailout、plan mismatch、signal 或 unexplained non-zero。此时 state A 已持有 binding 数据，但实现可以合理选择保留或省略 `storeReport`。
+
+此外，`run.changeScope.requirements` 没有声明元素形状。Requirement 名称只在 module 内唯一；若只输出字符串名称，跨 module 同名时无法表达 occurrence provenance。
+
+风险：
+
+不同实现可能给出相同 exit code，却产生不兼容的 module/JSON shape。gate 对 duplicate 的消费也可能继续误用 full-projection `run.duplicates`，使纯范围外 duplicate 错误阻断当前 change。
+
+建议修复：
+
+在 B6 增加明确 schema：
+
+- `run.duplicates` 和顶层 JSON `duplicates` 均为 change-scoped duplicates；
+- full-projection duplicates 仅放在 `run.storeReport.duplicates` / JSON `storeReport.duplicates`；
+- 六类统一采用明确形状，例如 `{count, items}`，或明确声明数组的 `length` 就是 count；
+- 定义 pre-test ERROR 与 post-TAP ERROR 的字段存在矩阵；
+- 将 `changeScope.requirements` 定义为带 module identity 的对象，例如 `{file, name, operation}`，并明确排序；
+- 为 GREEN、GAPS、pre-test ERROR、post-TAP ERROR 各提供完整 JSON oracle。
+
+### REQ-6 reopen：零范围表遗漏非 removal-only 的合法空范围
+
+描述：
+
+B5 第一行覆盖“change scope 空 + delta 有合法操作 + projection 非空”，但要求输出固定文案：
+
+`0 scenario(s) in change scope (removal-only change)`
+
+然而 state A 允许其他合法空范围：
+
+- `ADDED` 一个没有 Scenario 的 Requirement；
+- `MODIFIED` 后目标块没有 Scenario；
+- `RENAMED` 一个本来没有 Scenario 的 Requirement；
+- 上述操作与 `REMOVED` 混合，但最终 change scope 仍为空。
+
+这些情况会命中同一行，却被错误标注为 `removal-only change`。AC8 只要求“四行各一个断言”，很可能只测试真正的 removal-only，无法覆盖这一边界。
+
+风险：
+
+实现会输出事实错误的原因说明；或者实现者为避免误报，自行把这些情况改判 GAPS/ERROR，从而出现不同 verdict。
+
+建议修复：
+
+将第一行拆成至少两类并分别裁定：
+
+- 真正的 removal-only：GREEN，并使用 removal-only 文案；
+- ADDED/MODIFIED/RENAMED change 块存在但没有 identified/unidentified Scenario occurrence：明确 GREEN、GAPS 或 ERROR，并使用准确的通用文案；
+- 混合操作导致空范围时，明确按最终块 provenance 还是按 operation composition 选择原因文案。
+
+AC8 为非 removal-only 的合法空范围增加独立 oracle。
+
+## 维度 2：边界与异常路径是否覆盖
+
+结论：不通过。REQ-6 和 REQ-7 仍有缺口，REQ-4 的 post-TAP ERROR shape 也未覆盖。
+
+### REQ-7 reopen：`buildProjection` “恰好一次”与实际 state A 的 invalid-pattern 路径冲突
+
+描述：
+
+B3 规定每次 `verify --change` 都“恰好一次 `buildProjection`、一次 `runTestCommand`、一次 TAP parse、一个 resolved matcher”，随后又规定 pattern 非法是 pre-test ERROR。
+
+实际 workspace state A 在 `verify()` 中先执行 `resolveIdPattern()`。若 pattern 非法，会调用 enumeration-only 的 `enumerateProjection()` 后直接返回：
+
+- `buildProjection` 调用 0 次；
+- `runTestCommand` 调用 0 次；
+- TAP parse 0 次；
+- 不读取 delta 内容。
+
+这是上一 change 特意建立的安全顺序。要求 invalid pattern 时仍恰好调用一次 `buildProjection`，会改变该顺序并读取 delta/store 内容，与“id-pattern 机制不动”和“infra ERROR 类不变”不一致。
+
+AC7 的 sentinel 只断言 test command spawn 一次，没有覆盖 projection、parse 和 invalid-pattern 的调用次数，因此不能解除矛盾。
+
+风险：
+
+AI 可能为了满足“恰好一次 buildProjection”而把 pattern resolution 移到 projection 之后，回退 `gate-id-pattern` 的 fail-early 契约；也可能保持 state A，却违反 B3 的绝对表述。
+
+建议修复：
+
+将 B3 改为条件式契约：
+
+- pattern resolution 成功后，`verify --change` 至多且恰好一次 `buildProjection`；
+- invalid pattern 保持 state A：0 次 `buildProjection`、0 次 spec/delta content read、0 次 test spawn、0 次 TAP parse；
+- projection failure 或 scenario-title matcher failure：1 次 projection、0 次 test spawn、0 次 TAP parse；
+- test command 已启动的正常/post-TAP ERROR 路径：1 次 projection、1 次 test spawn、1 次 TAP parse；
+- 两视角永远共享同一个成功 projection 和同一份 parsed TAP snapshot。
+
+为上述路径增加 spy/sentinel oracle，而不只统计 test-command spawn。
+
+## 维度 3：是否存在 implied but undeclared 的状态变化或副作用
+
+结论：不通过。
+
+- REQ-7 的绝对“一次 buildProjection”会隐含改变 invalid-pattern 路径的文件读取行为。
+- REQ-4 未明确 `run.duplicates` 的语义变化，却要求 gate 改为消费 scoped duplicates。
+- REQ-6 会对非 removal-only change 输出错误的状态原因。
+
+持久化方面已明确不新增 rollback；`verify`/`gate` 继续 read-only，test command 的既有外部副作用不回滚。该部分已覆盖。
+
+## 维度 4：acceptance criteria 是否均可表达为 if/then oracle
+
+结论：不通过。
+
+已改善并可测试：
+
+- AC1 明确了 `process.exit(1)` 下的 GREEN oracle；
+- AC3 与 state-A `RENAMED` 一致；
+- AC4 覆盖 scoped、cross-boundary 和纯范围外 duplicate；
+- AC5 可验证不同 change 的 C1 独立性；
+- AC7 包含 unexplained non-zero 反例和单次 spawn；
+- AC8 覆盖当前 B5 表中四种主路径。
+
+仍缺少：
+
+- 顶层及 `run.duplicates` 的准确 JSON/module oracle；
+- post-TAP ERROR 是否携带 `storeReport` 的 oracle；
+- `changeScope.requirements` 的元素形状及跨 module 同名 oracle；
+- 非 removal-only 合法空范围的 oracle；
+- invalid-pattern 路径 0 次 projection/content read，以及其他路径 projection/parse 次数的 oracle。
+
+## 维度 5：是否与当前 state A 冲突
+
+结论：不通过，仅 REQ-7 构成尚未解决的直接冲突。
+
+- REQ-1 已与 Requirement-only `RENAMED` 和 SR-19 对齐。
+- REQ-5 已明确成为 D-SR-x 的 scoped amendment，不再是未裁定冲突。
+- REQ-7 仍要求 invalid-pattern 路径调用一次 `buildProjection`，与当前 `resolveIdPattern` 优先、enumeration-only early exit 冲突。
+- REQ-4 属待明确的目标接口变化，不是已经确定的 state-A 冲突。
+- `--specs`、archive、merge、id-pattern timeout 和 matcher threading 均声明保持不变。
+
+## 维度 6：target lineage 是否声明且符合仓库现实
+
+结论：通过。
+
+需求和 flow-state 均声明 `main（v4 产品线；不合并 v1/v3）`；当前仓库确在 `main@10aef21`、package `4.0.7`。对尚未归档 `gate-id-pattern` 的依赖也已记录，并以 workspace code 作为 state A，符合仓库现实。
+
+## r1 issue 逐条复核
+
+- REQ-1：已关闭。`RENAMED` 只改 Requirement 名，场景 ID 保持，AC3 与 SR-19 一致。
+- REQ-2：已关闭。Requirement-block provenance、occurrence scope、idempotent unchanged、duplicate/unidentified 边界均已裁定。
+- REQ-3：已关闭。store report 已覆盖六类完整评估，范围外信息不会从 verify 输出消失。
+- REQ-4：reopen。duplicate 字段归属、ERROR presence matrix 和 `changeScope.requirements` shape 仍未钉死。
+- REQ-5：已关闭。explained/unexplained non-zero 的 scoped amendment 和反例均明确。
+- REQ-6：reopen。合法的非 removal-only 空范围没有独立语义和 oracle。
+- REQ-7：reopen。绝对的一次 projection 与 invalid-pattern state A 冲突，现有 sentinel 只覆盖 spawn。
+
+## Advisories（不计入 verdict）
+
+### ADV-1：gate store summary 可考虑覆盖六类 outstanding
+
+B6 的 gate suffix 只列 `boundRed/unbound/orphan/unattributed`，不列 `duplicates/unidentified`。这不会违反已明确的 gate string shape，但会让 `gate --change` 用户看不到两类 store 级问题；建议至少加入相应 count。
+
+### ADV-2：`runbook-version` 保持 `4.0` 合理
+
+当前 CLI/package major 为 4，CK-11 检查 major 同步。本 change 属同 major 行为细化，更新双语语义文字和 CHANGELOG、保持 `runbook-version: 4.0` 与仓库规则一致。
+
+### ADV-3：真实样本证据应记录执行状态和 matcher 来源
+
+AC6 已要求 HEAD、CLI、命令和计数。建议同时记录 test command exit status、resolved `id-pattern` source/origin，便于复核 B4 的 explained non-zero 分支。
+
+### ADV-4：`won't do` 已满足显式范围外要求
+
+v2 明确继承 v1 的范围外项目，并新增“不改 archive 语义、不改 `merge()`”，范围边界清楚。
+
+## Ledger delta
+
+| ID | Status delta | Reason |
+|---|---|---|
+| REQ-1 | fixed (v2) → verified | `RENAMED` 已恢复 state-A Requirement-only 语义，AC3 可唯一测试 |
+| REQ-2 | fixed (v2) → verified | block provenance、occurrence scope、idempotent path 和分类边界已明确 |
+| REQ-3 | fixed (v2) → verified | store report 已声明完整六类评估 |
+| REQ-4 | fixed (v2) → open (reopened r2) | 顶层/module `duplicates` 归属、post-TAP ERROR 的 `storeReport` presence、`changeScope.requirements` shape 仍不明确 |
+| REQ-5 | fixed (v2) → verified | D-SR-x scoped amendment、exit oracle 和反例均已明确 |
+| REQ-6 | fixed (v2) → open (reopened r2) | 非 removal-only 的合法空 scope 未单独裁定，固定 removal-only 文案会误报 |
+| REQ-7 | fixed (v2) → open (reopened r2) | “每次恰好一次 buildProjection”与 invalid-pattern 的 state-A early exit 冲突，AC7 未覆盖该路径 |
+
+VERDICT: 3 issues open
+tokens used
+160,783
+# req-review-v2 — verify-change-scope 需求复审
+
+评审基线：
+
+- 需求：`apriori/changes/verify-change-scope/requirement/req-v2.md`
+- ledger：`apriori/changes/verify-change-scope/review/issues.md`
+- state A：当前 workspace 的 `lib/spec-runner.js`、`lib/gate.js`
+- lineage：当前分支 `main`，HEAD `10aef21`，package `4.0.7`
+- r1 复核结果：REQ-1、REQ-2、REQ-3、REQ-5 已关闭；REQ-4、REQ-6、REQ-7 需 reopen
+- 新增独立 issue：无
+- 明确的 `范围外（won't do）`：已存在
+
+## 维度 1：target state B 是否清晰、无歧义
+
+结论：不通过。REQ-4、REQ-6 仍未完全形成唯一实现。
+
+### REQ-4 reopen：输出契约仍有三个未钉死的机器接口
+
+描述：
+
+B6 已明确大部分 JSON、module API 和 gate detail，但仍有以下歧义：
+
+1. 当前顶层 JSON 存在 `duplicates`，当前 module run 存在 `run.duplicates`，但 B6 列出的“改为 change 语义”的顶层字段没有包含 `duplicates`。与此同时，B1 要求 scoped duplicate 阻断 change verdict，gate 又被要求消费“change 范围 duplicates”。因此无法确定：
+
+   - `run.duplicates` 是否改为 scoped duplicates；
+   - 顶层 `duplicates` 是否改为 scoped duplicates；
+   - full-projection duplicates 是否只保存在 `storeReport.duplicates`；
+   - 还是要新增另一个字段。
+
+2. B2 要求六类“各类给 count + 清单”，但 B6 schema 中只有 `boundGreen` 和 `unattributedFailures` 显式带 count，其余五类只是数组。数组长度是否就是规定的 count，还是应使用 `{count, items}`，没有唯一答案。
+
+3. ERROR shape 只规定“errors-run 不含绑定数据时 `storeReport` 缺省”，没有规定 test command 已运行、TAP 已解析后才发现 infra ERROR 时的 shape，例如 bailout、plan mismatch、signal 或 unexplained non-zero。此时 state A 已持有 binding 数据，但实现可以合理选择保留或省略 `storeReport`。
+
+此外，`run.changeScope.requirements` 没有声明元素形状。Requirement 名称只在 module 内唯一；若只输出字符串名称，跨 module 同名时无法表达 occurrence provenance。
+
+风险：
+
+不同实现可能给出相同 exit code，却产生不兼容的 module/JSON shape。gate 对 duplicate 的消费也可能继续误用 full-projection `run.duplicates`，使纯范围外 duplicate 错误阻断当前 change。
+
+建议修复：
+
+在 B6 增加明确 schema：
+
+- `run.duplicates` 和顶层 JSON `duplicates` 均为 change-scoped duplicates；
+- full-projection duplicates 仅放在 `run.storeReport.duplicates` / JSON `storeReport.duplicates`；
+- 六类统一采用明确形状，例如 `{count, items}`，或明确声明数组的 `length` 就是 count；
+- 定义 pre-test ERROR 与 post-TAP ERROR 的字段存在矩阵；
+- 将 `changeScope.requirements` 定义为带 module identity 的对象，例如 `{file, name, operation}`，并明确排序；
+- 为 GREEN、GAPS、pre-test ERROR、post-TAP ERROR 各提供完整 JSON oracle。
+
+### REQ-6 reopen：零范围表遗漏非 removal-only 的合法空范围
+
+描述：
+
+B5 第一行覆盖“change scope 空 + delta 有合法操作 + projection 非空”，但要求输出固定文案：
+
+`0 scenario(s) in change scope (removal-only change)`
+
+然而 state A 允许其他合法空范围：
+
+- `ADDED` 一个没有 Scenario 的 Requirement；
+- `MODIFIED` 后目标块没有 Scenario；
+- `RENAMED` 一个本来没有 Scenario 的 Requirement；
+- 上述操作与 `REMOVED` 混合，但最终 change scope 仍为空。
+
+这些情况会命中同一行，却被错误标注为 `removal-only change`。AC8 只要求“四行各一个断言”，很可能只测试真正的 removal-only，无法覆盖这一边界。
+
+风险：
+
+实现会输出事实错误的原因说明；或者实现者为避免误报，自行把这些情况改判 GAPS/ERROR，从而出现不同 verdict。
+
+建议修复：
+
+将第一行拆成至少两类并分别裁定：
+
+- 真正的 removal-only：GREEN，并使用 removal-only 文案；
+- ADDED/MODIFIED/RENAMED change 块存在但没有 identified/unidentified Scenario occurrence：明确 GREEN、GAPS 或 ERROR，并使用准确的通用文案；
+- 混合操作导致空范围时，明确按最终块 provenance 还是按 operation composition 选择原因文案。
+
+AC8 为非 removal-only 的合法空范围增加独立 oracle。
+
+## 维度 2：边界与异常路径是否覆盖
+
+结论：不通过。REQ-6 和 REQ-7 仍有缺口，REQ-4 的 post-TAP ERROR shape 也未覆盖。
+
+### REQ-7 reopen：`buildProjection` “恰好一次”与实际 state A 的 invalid-pattern 路径冲突
+
+描述：
+
+B3 规定每次 `verify --change` 都“恰好一次 `buildProjection`、一次 `runTestCommand`、一次 TAP parse、一个 resolved matcher”，随后又规定 pattern 非法是 pre-test ERROR。
+
+实际 workspace state A 在 `verify()` 中先执行 `resolveIdPattern()`。若 pattern 非法，会调用 enumeration-only 的 `enumerateProjection()` 后直接返回：
+
+- `buildProjection` 调用 0 次；
+- `runTestCommand` 调用 0 次；
+- TAP parse 0 次；
+- 不读取 delta 内容。
+
+这是上一 change 特意建立的安全顺序。要求 invalid pattern 时仍恰好调用一次 `buildProjection`，会改变该顺序并读取 delta/store 内容，与“id-pattern 机制不动”和“infra ERROR 类不变”不一致。
+
+AC7 的 sentinel 只断言 test command spawn 一次，没有覆盖 projection、parse 和 invalid-pattern 的调用次数，因此不能解除矛盾。
+
+风险：
+
+AI 可能为了满足“恰好一次 buildProjection”而把 pattern resolution 移到 projection 之后，回退 `gate-id-pattern` 的 fail-early 契约；也可能保持 state A，却违反 B3 的绝对表述。
+
+建议修复：
+
+将 B3 改为条件式契约：
+
+- pattern resolution 成功后，`verify --change` 至多且恰好一次 `buildProjection`；
+- invalid pattern 保持 state A：0 次 `buildProjection`、0 次 spec/delta content read、0 次 test spawn、0 次 TAP parse；
+- projection failure 或 scenario-title matcher failure：1 次 projection、0 次 test spawn、0 次 TAP parse；
+- test command 已启动的正常/post-TAP ERROR 路径：1 次 projection、1 次 test spawn、1 次 TAP parse；
+- 两视角永远共享同一个成功 projection 和同一份 parsed TAP snapshot。
+
+为上述路径增加 spy/sentinel oracle，而不只统计 test-command spawn。
+
+## 维度 3：是否存在 implied but undeclared 的状态变化或副作用
+
+结论：不通过。
+
+- REQ-7 的绝对“一次 buildProjection”会隐含改变 invalid-pattern 路径的文件读取行为。
+- REQ-4 未明确 `run.duplicates` 的语义变化，却要求 gate 改为消费 scoped duplicates。
+- REQ-6 会对非 removal-only change 输出错误的状态原因。
+
+持久化方面已明确不新增 rollback；`verify`/`gate` 继续 read-only，test command 的既有外部副作用不回滚。该部分已覆盖。
+
+## 维度 4：acceptance criteria 是否均可表达为 if/then oracle
+
+结论：不通过。
+
+已改善并可测试：
+
+- AC1 明确了 `process.exit(1)` 下的 GREEN oracle；
+- AC3 与 state-A `RENAMED` 一致；
+- AC4 覆盖 scoped、cross-boundary 和纯范围外 duplicate；
+- AC5 可验证不同 change 的 C1 独立性；
+- AC7 包含 unexplained non-zero 反例和单次 spawn；
+- AC8 覆盖当前 B5 表中四种主路径。
+
+仍缺少：
+
+- 顶层及 `run.duplicates` 的准确 JSON/module oracle；
+- post-TAP ERROR 是否携带 `storeReport` 的 oracle；
+- `changeScope.requirements` 的元素形状及跨 module 同名 oracle；
+- 非 removal-only 合法空范围的 oracle；
+- invalid-pattern 路径 0 次 projection/content read，以及其他路径 projection/parse 次数的 oracle。
+
+## 维度 5：是否与当前 state A 冲突
+
+结论：不通过，仅 REQ-7 构成尚未解决的直接冲突。
+
+- REQ-1 已与 Requirement-only `RENAMED` 和 SR-19 对齐。
+- REQ-5 已明确成为 D-SR-x 的 scoped amendment，不再是未裁定冲突。
+- REQ-7 仍要求 invalid-pattern 路径调用一次 `buildProjection`，与当前 `resolveIdPattern` 优先、enumeration-only early exit 冲突。
+- REQ-4 属待明确的目标接口变化，不是已经确定的 state-A 冲突。
+- `--specs`、archive、merge、id-pattern timeout 和 matcher threading 均声明保持不变。
+
+## 维度 6：target lineage 是否声明且符合仓库现实
+
+结论：通过。
+
+需求和 flow-state 均声明 `main（v4 产品线；不合并 v1/v3）`；当前仓库确在 `main@10aef21`、package `4.0.7`。对尚未归档 `gate-id-pattern` 的依赖也已记录，并以 workspace code 作为 state A，符合仓库现实。
+
+## r1 issue 逐条复核
+
+- REQ-1：已关闭。`RENAMED` 只改 Requirement 名，场景 ID 保持，AC3 与 SR-19 一致。
+- REQ-2：已关闭。Requirement-block provenance、occurrence scope、idempotent unchanged、duplicate/unidentified 边界均已裁定。
+- REQ-3：已关闭。store report 已覆盖六类完整评估，范围外信息不会从 verify 输出消失。
+- REQ-4：reopen。duplicate 字段归属、ERROR presence matrix 和 `changeScope.requirements` shape 仍未钉死。
+- REQ-5：已关闭。explained/unexplained non-zero 的 scoped amendment 和反例均明确。
+- REQ-6：reopen。合法的非 removal-only 空范围没有独立语义和 oracle。
+- REQ-7：reopen。绝对的一次 projection 与 invalid-pattern state A 冲突，现有 sentinel 只覆盖 spawn。
+
+## Advisories（不计入 verdict）
+
+### ADV-1：gate store summary 可考虑覆盖六类 outstanding
+
+B6 的 gate suffix 只列 `boundRed/unbound/orphan/unattributed`，不列 `duplicates/unidentified`。这不会违反已明确的 gate string shape，但会让 `gate --change` 用户看不到两类 store 级问题；建议至少加入相应 count。
+
+### ADV-2：`runbook-version` 保持 `4.0` 合理
+
+当前 CLI/package major 为 4，CK-11 检查 major 同步。本 change 属同 major 行为细化，更新双语语义文字和 CHANGELOG、保持 `runbook-version: 4.0` 与仓库规则一致。
+
+### ADV-3：真实样本证据应记录执行状态和 matcher 来源
+
+AC6 已要求 HEAD、CLI、命令和计数。建议同时记录 test command exit status、resolved `id-pattern` source/origin，便于复核 B4 的 explained non-zero 分支。
+
+### ADV-4：`won't do` 已满足显式范围外要求
+
+v2 明确继承 v1 的范围外项目，并新增“不改 archive 语义、不改 `merge()`”，范围边界清楚。
+
+## Ledger delta
+
+| ID | Status delta | Reason |
+|---|---|---|
+| REQ-1 | fixed (v2) → verified | `RENAMED` 已恢复 state-A Requirement-only 语义，AC3 可唯一测试 |
+| REQ-2 | fixed (v2) → verified | block provenance、occurrence scope、idempotent path 和分类边界已明确 |
+| REQ-3 | fixed (v2) → verified | store report 已声明完整六类评估 |
+| REQ-4 | fixed (v2) → open (reopened r2) | 顶层/module `duplicates` 归属、post-TAP ERROR 的 `storeReport` presence、`changeScope.requirements` shape 仍不明确 |
+| REQ-5 | fixed (v2) → verified | D-SR-x scoped amendment、exit oracle 和反例均已明确 |
+| REQ-6 | fixed (v2) → open (reopened r2) | 非 removal-only 的合法空 scope 未单独裁定，固定 removal-only 文案会误报 |
+| REQ-7 | fixed (v2) → open (reopened r2) | “每次恰好一次 buildProjection”与 invalid-pattern 的 state-A early exit 冲突，AC7 未覆盖该路径 |
+
+VERDICT: 3 issues open

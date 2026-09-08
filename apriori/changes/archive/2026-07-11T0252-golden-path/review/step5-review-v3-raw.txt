@@ -1,0 +1,317 @@
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f4b30-68f9-7222-9b64-17f52a333b4c
+--------
+user
+P8 round 3 for golden-path. Producer closed GPIMPL-1 properly: scripts/golden-path.mjs exports assertSentinels(stdout, expects) as a pure seam (throws 'block N: exit X, contract expects Y' / 'no exit sentinel'), main() delegates to it, and GP-04 asserts the exact thrown message on the stub-walk output (assert.throws matching /block 2: exit 0, contract expects 1/). 157/157 green. Confirm (flip to 'verified') or reopen; new gaps? [Read-only sandbox: print the COMPLETE review doc body for verbatim landing at apriori/review/golden-path-p8-review-v3.md] End with the ledger delta and exactly one verdict line: 'VERDICT: no spec-vs-code gaps' or 'VERDICT: <N> issues open'.
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-10T18:51:19.949889Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-10T18:51:20.128657Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-10T18:51:21.533002Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-10T18:51:22.107933Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-10T18:51:21.822686Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-10T18:51:23.855278Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-10T18:51:27.165975Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: yA7M9HZlLVbf
+codex
+I’ll check the new `assertSentinels` seam, the GP-04 assertion, and the ledger status before closing this out.
+exec
+/usr/bin/zsh -lc "sed -n '1,120p' apriori/review/golden-path-issues.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,130p' test/golden-path.test.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,180p' scripts/golden-path.mjs" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc 'rg -n "assertSentinels|GP-04|GPIMPL-1|block 2|no exit sentinel|contract expects" scripts/golden-path.mjs test/golden-path.test.js apriori/review/golden-path-issues.md' in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 116ms:
+# Issue ledger — golden-path
+
+Rows recorded on behalf of the reviewer (codex session 019f4b30-68f9-7222-9b64-17f52a333b4c; raws: golden-path-req-review-v1-raw.txt).
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| GPREQ-1 | Packed-mode PATH isolation underspecified for Windows bash (npm global layout differs). | CI could silently test the wrong installation. | STEP0·r1 | verified |
+| GPREQ-2 | The doctored-README fixture test lacks an explicit seam. | Tests could mutate the real README or go unwritten. | STEP0·r1 | verified |
+| GPSPEC-1 | Per-block exit capture could abort before later blocks run. | The walk dies at the documented red step. | STEP2·r1 | verified |
+| GPSPEC-2 | Packed-mode CI tarball selection ambiguous (glob). | Stale tarballs could be installed. | STEP2·r1 | verified |
+| GPSPEC-3 | Final assertions didn't reuse the walk's apriori resolution. | Could assert with the wrong CLI / depend on a global install. | STEP2·r2 | verified |
+| GPSPEC-4 | Windows bash PATH form underspecified. | Packed job could fail or prove the wrong path form. | STEP2·r2 | verified |
+| GPIMPL-1 | GP-04's bound test covered block-count drift but not exit-code drift (r2 reopened: message assertion missing). | The failure/reporting path could regress green. | STEP5·r1 | fixed (r3: assertSentinels exported as a pure seam, main() uses it, GP-04 asserts the thrown 'block 2: exit 0, contract expects 1' message) |
+
+ succeeded in 127ms:
+'use strict';
+const { test } = require('node:test');
+const assert = require('node:assert');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { spawnSync } = require('node:child_process');
+
+const ROOT = path.join(__dirname, '..');
+const README = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
+async function gp() { return import(path.join(ROOT, 'scripts', 'golden-path.mjs').replace(/\\/g, '/')); }
+
+test('GP-01 the extractor is a pure text seam', async () => {
+  const { extractBlocks } = await gp();
+  const blocks = extractBlocks(README);
+  assert.strictEqual(blocks.length, 4);
+  assert.match(blocks[0], /npm i -g apriori-cli/);
+  assert.match(blocks[1], /apriori verify --change hello/);
+  assert.match(blocks[3], /apriori check/);
+  // pure: works on arbitrary text, throws without a Quickstart section
+  assert.throws(() => extractBlocks('# nothing here'), /Quickstart/);
+});
+
+test('GP-04 drift between README and contract fails loudly', async () => {
+  const { extractBlocks, buildPlan } = await gp();
+  // block-count drift: a doctored text with a block removed
+  const doctored = README.replace(/```shell\n[\s\S]*?```/, '');
+  assert.throws(() => buildPlan(extractBlocks(doctored), 'local', { binDir: '/x' }), /README drift: 3 shell block/);
+  // exit-code drift: a stub apriori that always exits 0 makes block 2's documented red vanish —
+  // the runner must fail naming block 2 (GPIMPL-1)
+  const stubBin = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-stub-'));
+  fs.writeFileSync(path.join(stubBin, 'apriori'), '#!/bin/sh\nexit 0\n');
+  fs.chmodSync(path.join(stubBin, 'apriori'), 0o755);
+  const { script } = buildPlan(extractBlocks(README), 'local', { binDir: stubBin });
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-gp4-'));
+  const sp = path.join(work, 'walk.sh');
+  fs.writeFileSync(sp, script);
+  const env = { ...process.env, PATH: stubBin + path.delimiter + process.env.PATH };
+  delete env.NODE_TEST_CONTEXT; delete env.NODE_OPTIONS;
+  const r = spawnSync('bash', [sp], { cwd: work, env, encoding: 'utf8' });
+  // the RUNNER's own comparison must fail naming block 2 with expected/actual (GPIMPL-1)
+  const { assertSentinels, EXPECTS } = await gp();
+  assert.throws(() => assertSentinels(r.stdout, EXPECTS), /block 2: exit 0, contract expects 1/);
+});
+
+test('GP-05 packed-mode plan carries prefix install, PATH preflight (plan construction)', async () => {
+  const { extractBlocks, buildPlan } = await gp();
+  const { script } = buildPlan(extractBlocks(README), 'packed', { binDir: '/p/bin', tgz: '/t/x.tgz', prefix: '/p' });
+  assert.match(script, /npm i -g "\/t\/x\.tgz" --prefix "\/p"/);
+  assert.match(script, /command -v apriori/);
+  assert.match(script, /exit 90/);
+  assert.doesNotMatch(script, /npm i -g apriori-cli/);   // registry line substituted
+});
+
+// one shared --local walk feeds GP-02 and GP-03 (running it twice would double suite time)
+let walk = null;
+function runWalkOnce() {
+  if (walk) return walk;
+  // hijack guard (GPSPEC-3): a bogus global `apriori` earlier on the ORIGINAL PATH must never win
+  const bogus = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-bogus-'));
+  fs.writeFileSync(path.join(bogus, 'apriori'), '#!/bin/sh\necho BOGUS; exit 99\n');
+  fs.chmodSync(path.join(bogus, 'apriori'), 0o755);
+  walk = spawnSync('node', [path.join(ROOT, 'scripts', 'golden-path.mjs'), '--local'], {
+    encoding: 'utf8', env: { ...process.env, PATH: bogus + path.delimiter + process.env.PATH },
+  });
+  return walk;
+}
+
+test('GP-02 a --local run walks the whole Quickstart with the documented exits', () => {
+  const r = runWalkOnce();
+  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+  for (const [i, code] of [[1, 0], [2, 1], [3, 0], [4, 0]])
+    assert.match(r.stdout, new RegExp(`__BLOCK_${i}_EXIT=${code}`));
+  assert.doesNotMatch(r.stdout, /BOGUS/);   // the walk's resolver beat the hijacker
+});
+
+test('GP-03 final state is asserted, not assumed', () => {
+  const r = runWalkOnce();
+  // the runner only prints the OK line AFTER re-asserting verify/check/doctor and the archive dir
+  assert.match(r.stdout, /golden-path: OK \(local\) — 4 blocks, exits \[0, 1, 0, 0\], final state green/);
+  // and the assertion code path is real: the script names the assertion when one fails
+  const src = fs.readFileSync(path.join(ROOT, 'scripts', 'golden-path.mjs'), 'utf8');
+  for (const label of ['store verify', 'check', 'doctor', 'archived demo change'])
+    assert.ok(src.includes(label), `final-state assertion '${label}' present in the runner`);
+});
+
+ succeeded in 144ms:
+#!/usr/bin/env node
+// golden-path — prove the README Quickstart end-to-end, exactly as documented (GP-01..05).
+// The expected per-block exit sequence lives HERE, beside the contract it enforces:
+// README "## Quickstart", its ```shell blocks in order — install/doctor 0, red verify 1,
+// green verify 0, gate→check 0. Drift between README and this sequence FAILS the run (GP-04).
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+
+export const EXPECTS = [0, 1, 0, 0];
+
+// GP-01: pure text seam — never touches the filesystem
+export function extractBlocks(readmeText) {
+  // fence-aware: heading-looking lines INSIDE ```shell blocks (heredoc'd delta specs) must not
+  // terminate the Quickstart section
+  const lines = readmeText.split('\n');
+  const sectionLines = [];
+  let inSection = false, inFence = false;
+  for (const ln of lines) {
+    if (ln.startsWith('```')) inFence = !inFence;
+    if (!inFence && ln.startsWith('## ') && !ln.startsWith('### ')) {
+      if (inSection) break;
+      inSection = ln.trim() === '## Quickstart';
+      continue;
+    }
+    if (inSection) sectionLines.push(ln);
+  }
+  if (!inSection && sectionLines.length === 0) throw new Error('no "## Quickstart" section in the given README text');
+  const section = sectionLines.join('\n');
+  return [...section.matchAll(/```shell\n([\s\S]*?)```/g)].map((m) => m[1]);
+}
+
+// GP-02/05: assemble the walk. One resolver rule: binDir is prepended to PATH and that same
+// env drives the block walk AND every final assertion (never a bash function, never a global).
+export function buildPlan(blocks, mode, opts = {}) {
+  if (blocks.length !== EXPECTS.length)
+    throw new Error(`README drift: ${blocks.length} shell block(s) in Quickstart, contract expects ${EXPECTS.length}`);
+  const lines = ['#!/bin/bash', '# assembled by golden-path.mjs — runs WITHOUT set -e: documented reds must not abort the walk'];
+  // bash-native binDir normalization + preflight (GPSPEC-4): cd&&pwd yields the same form command -v returns
+  lines.push(`BD="$(cd "${opts.binDir.replace(/\\/g, '/')}" && pwd)"`);
+  lines.push('case "$(command -v apriori)" in "$BD"/*) ;; *) echo "PREFLIGHT: apriori resolves outside $BD: $(command -v apriori)"; exit 90;; esac');
+  blocks.forEach((block, i) => {
+    let body = block.trimEnd();
+    if (i === 0) {
+      body = body.split('\n').map((ln) => {
+        if (!ln.startsWith('npm i -g apriori-cli')) return ln;
+        return mode === 'packed'
+          ? `npm i -g "${opts.tgz.replace(/\\/g, '/')}" --prefix "${opts.prefix.replace(/\\/g, '/')}"`
+          : 'true # local mode: checkout bin shimmed onto PATH';
+      }).join('\n');
+    }
+    lines.push(`# ---- block ${i + 1} ----`);
+    lines.push(body);
+    lines.push(`echo "__BLOCK_${i + 1}_EXIT=$?"`);
+  });
+  return { script: lines.join('\n') + '\n', expects: EXPECTS };
+}
+
+function fail(msg) { console.error('golden-path: ' + msg); process.exit(1); }
+
+// the sentinel comparison as a pure seam (GP-04 asserts its message directly)
+export function assertSentinels(stdout, expects) {
+  for (let i = 0; i < expects.length; i++) {
+    const m = (stdout || '').match(new RegExp(`__BLOCK_${i + 1}_EXIT=(\\d+)`));
+    if (!m) throw new Error(`block ${i + 1}: no exit sentinel — the walk died inside or before this block`);
+    if (Number(m[1]) !== expects[i]) throw new Error(`block ${i + 1}: exit ${m[1]}, contract expects ${expects[i]}`);
+  }
+}
+
+export function main(argv) {
+  const mode = argv.includes('--packed') ? 'packed' : (argv.includes('--local') ? 'local' : null);
+  if (!mode) fail('usage: golden-path.mjs --local | --packed <tgz>');
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  const checkout = path.join(here, '..');
+  const work = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-golden-'));
+  let binDir, tgz = null, prefix = null;
+  if (mode === 'local') {
+    binDir = path.join(work, 'shim-bin');
+    fs.mkdirSync(binDir, { recursive: true });
+    const shim = path.join(binDir, 'apriori');
+    fs.writeFileSync(shim, `#!/bin/sh\nexec node "${path.join(checkout, 'bin', 'apriori.js').replace(/\\/g, '/')}" "$@"\n`);
+    fs.chmodSync(shim, 0o755);
+  } else {
+    tgz = path.resolve(argv[argv.indexOf('--packed') + 1] || '');
+    if (!fs.existsSync(tgz)) fail(`tarball not found: ${tgz}`);
+    prefix = path.join(work, 'prefix');
+    fs.mkdirSync(prefix, { recursive: true });
+    binDir = process.platform === 'win32' ? prefix : path.join(prefix, 'bin');
+    // install BEFORE the walk so the preflight can resolve inside the prefix
+    const inst = spawnSync('npm', ['i', '-g', tgz, '--prefix', prefix], { encoding: 'utf8', shell: process.platform === 'win32' });
+    if (inst.status !== 0) fail(`npm i -g failed: ${inst.stderr}`);
+  }
+  const env = { ...process.env, PATH: binDir + path.delimiter + process.env.PATH };
+  // sanitize test-runner inheritance: a nested `node --test` inside the walk must behave like a
+  // fresh invocation, not like a child of THIS process's test run
+  delete env.NODE_TEST_CONTEXT;
+  delete env.NODE_OPTIONS;
+  const readme = fs.readFileSync(path.join(checkout, 'README.md'), 'utf8');
+  const { script, expects } = buildPlan(extractBlocks(readme), mode, { binDir, tgz, prefix });
+  const scriptPath = path.join(work, 'walk.sh');
+  fs.writeFileSync(scriptPath, script);
+  const run = spawnSync('bash', [scriptPath], { cwd: work, env, encoding: 'utf8' });
+  process.stdout.write(run.stdout || '');
+  process.stderr.write(run.stderr || '');
+  // parse sentinels — a missing one means the script itself died (named)
+  try { assertSentinels(run.stdout, expects); } catch (e) { fail(e.message); }
+  // GP-03: final state, asserted through the SAME medium and env as the walk
+  const demo = path.join(work, 'hello-apriori');
+  const assertCmd = (label, cmd, expect = 0) => {
+    const r = spawnSync('bash', ['-c', cmd], { cwd: demo, env, encoding: 'utf8' });
+    if (r.status !== expect) fail(`final-state ${label}: exit ${r.status}, expected ${expect}\n${r.stdout}${r.stderr}`);
+  };
+  assertCmd('store verify', 'apriori verify --specs apriori/specs');
+  assertCmd('check', 'apriori check');
+  assertCmd('doctor', 'apriori doctor --no-run');
+  const archiveDir = path.join(demo, 'apriori', 'changes', 'archive');
+  const archived = fs.existsSync(archiveDir) && fs.readdirSync(archiveDir).some((b) => b.endsWith('-hello'));
+  if (!archived) fail('final-state: archived demo change not found under apriori/changes/archive/');
+  console.log(`golden-path: OK (${mode}) — ${expects.length} blocks, exits [${expects.join(', ')}], final state green`);
+}
+
+if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main(process.argv.slice(2));
+
+ succeeded in 151ms:
+test/golden-path.test.js:24:test('GP-04 drift between README and contract fails loudly', async () => {
+test/golden-path.test.js:29:  // exit-code drift: a stub apriori that always exits 0 makes block 2's documented red vanish —
+test/golden-path.test.js:30:  // the runner must fail naming block 2 (GPIMPL-1)
+test/golden-path.test.js:41:  // the RUNNER's own comparison must fail naming block 2 with expected/actual (GPIMPL-1)
+test/golden-path.test.js:42:  const { assertSentinels, EXPECTS } = await gp();
+test/golden-path.test.js:43:  assert.throws(() => assertSentinels(r.stdout, EXPECTS), /block 2: exit 0, contract expects 1/);
+scripts/golden-path.mjs:5:// green verify 0, gate→check 0. Drift between README and this sequence FAILS the run (GP-04).
+scripts/golden-path.mjs:39:    throw new Error(`README drift: ${blocks.length} shell block(s) in Quickstart, contract expects ${EXPECTS.length}`);
+scripts/golden-path.mjs:63:// the sentinel comparison as a pure seam (GP-04 asserts its message directly)
+scripts/golden-path.mjs:64:export function assertSentinels(stdout, expects) {
+scripts/golden-path.mjs:67:    if (!m) throw new Error(`block ${i + 1}: no exit sentinel — the walk died inside or before this block`);
+scripts/golden-path.mjs:68:    if (Number(m[1]) !== expects[i]) throw new Error(`block ${i + 1}: exit ${m[1]}, contract expects ${expects[i]}`);
+scripts/golden-path.mjs:108:  try { assertSentinels(run.stdout, expects); } catch (e) { fail(e.message); }
+apriori/review/golden-path-issues.md:13:| GPIMPL-1 | GP-04's bound test covered block-count drift but not exit-code drift (r2 reopened: message assertion missing). | The failure/reporting path could regress green. | STEP5·r1 | fixed (r3: assertSentinels exported as a pure seam, main() uses it, GP-04 asserts the thrown 'block 2: exit 0, contract expects 1' message) |
+
+codex
+**Resolution Check**
+
+GPIMPL-1 is verified. `scripts/golden-path.mjs` now exports `assertSentinels(stdout, expects)`, `main()` delegates the runner’s sentinel comparison to that seam, and GP-04 asserts the exact failure class with `/block 2: exit 0, contract expects 1/`. This binds the exit-drift behavior and the required user-visible failure message.
+
+**New Gaps**
+
+No new spec-vs-code gaps found.
+
+**Advisories**
+
+No new advisory items.
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| GPIMPL-1 | GP-04's bound test covered block-count drift but not exit-code drift; r2 still missed the runner failure message assertion. | The failure/reporting path could regress green. | STEP5·r1 | verified |
+
+VERDICT: no spec-vs-code gaps
+tokens used
+1,511,471
+**Resolution Check**
+
+GPIMPL-1 is verified. `scripts/golden-path.mjs` now exports `assertSentinels(stdout, expects)`, `main()` delegates the runner’s sentinel comparison to that seam, and GP-04 asserts the exact failure class with `/block 2: exit 0, contract expects 1/`. This binds the exit-drift behavior and the required user-visible failure message.
+
+**New Gaps**
+
+No new spec-vs-code gaps found.
+
+**Advisories**
+
+No new advisory items.
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| GPIMPL-1 | GP-04's bound test covered block-count drift but not exit-code drift; r2 still missed the runner failure message assertion. | The failure/reporting path could regress green. | STEP5·r1 | verified |
+
+VERDICT: no spec-vs-code gaps

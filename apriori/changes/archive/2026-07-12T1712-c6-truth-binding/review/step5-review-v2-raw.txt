@@ -1,0 +1,153 @@
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f4b30-68f9-7222-9b64-17f52a333b4c
+--------
+user
+P8 round 2 for c6-truth-binding. C6IMPL-1 fixed: in checkKb's explicit source-files loop, before lstat every token is now syntax-checked — an explicit token that is empty, absolute (path.isAbsolute), contains a backslash, or has any '', '.', or '..' segment BLOCKS naming it as malformed (a repo-relative promise), so a `/src/a.js` that path.join would silently normalize inside the repo can no longer sneak through. The default fallback (lib/<m>.js) is tool-generated and not syntax-gated. New GT-19 subtest: `source-files: /src/a.js` with `<cwd>/src/a.js` present asserts blocked + /malformed/. Suite 254/254; verify --change GREEN. Re-read the source-files token loop in lib/gate.js checkKb and the GT-19 malformed subtest. End with LEDGER DELTA then exactly one verdict line ("VERDICT: no spec-vs-code gaps" or "VERDICT: <N> issues open").
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-12T09:11:06.330346Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-12T09:11:06.639194Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-12T09:11:07.264351Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-12T09:11:07.789443Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-12T09:11:08.655773Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-12T09:11:10.347640Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-12T09:11:13.615911Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: 86v1727NsQCx
+codex
+我会复核显式 `source-files` 的语法门现在是否在 lstat 前执行，并确认 GT-19 的绝对路径回归测试确实防住了 `path.join` 归一化漏检。
+exec
+/usr/bin/zsh -lc "sed -n '572,610p' test/gate.test.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,140p' apriori/changes/c6-truth-binding/review/issues.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '210,245p' lib/gate.js" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 0ms:
+    const sc = noFence.match(/^source-commit:\s+(\S+)/m);
+    if (!sc) {
+      const attempt = noFence.split('\n').some((l) => l.includes('source-commit:') && !/^source-commit:\s+\S+/.test(l));
+      notes.push(attempt
+        ? `${m}: source-commit is not in the canonical fence-outside line-start form 'source-commit: <ref>'`
+        : `${m}: truth doc has no source-commit`);
+      continue;
+    }
+    const ref = sc[1];
+    const explicit = entry.sourceFiles !== null;
+    const declared = explicit ? entry.sourceFiles : [`lib/${m}.js`];
+    // an explicit declaration is a complete promise: every token must be verifiable
+    const usable = [];
+    let tokenBad = null;
+    for (const rel of declared) {
+      // an explicit token is a repo-relative promise: reject absolute/backslash/empty/. or .. segments
+      if (explicit && (rel === '' || path.isAbsolute(rel) || rel.includes('\\') ||
+          rel.split('/').some((seg) => seg === '' || seg === '.' || seg === '..'))) {
+        tokenBad = `${m}: malformed source-files token (must be a normalized repo-relative path): ${rel}`; break;
+      }
+      const abs = path.join(cwd, rel);
+      let st = null; try { st = fs.lstatSync(abs); } catch { /* absent */ }
+      if (!st) { if (explicit) { tokenBad = `${m}: declared source-files token missing: ${rel}`; break; } continue; }
+      if (st.isSymbolicLink()) { if (explicit) { tokenBad = `${m}: declared source-files token is a symlink: ${rel}`; break; } continue; }
+      if (!containsReal(cwd, abs)) { if (explicit) { tokenBad = `${m}: declared source-files token escapes the repo: ${rel}`; break; } continue; }
+      if (!st.isFile() && !st.isDirectory()) { if (explicit) { tokenBad = `${m}: declared source-files token is neither file nor directory: ${rel}`; break; } continue; }
+      usable.push(rel);
+    }
+    if (tokenBad) { blocked.push(tokenBad); continue; }
+    if (!usable.length) { notes.push(`${m}: no ${declared.join(' / ')} to compare`); continue; }
+    const g = spawnSync('git', ['-C', cwd, 'log', '--oneline', `${ref}..HEAD`, '--', ...usable], { encoding: 'utf8' });
+    if (g.error) { notes.push(`${m}: git unavailable (${g.error.message})`); continue; }
+    if (g.status !== 0) { notes.push(`${m}: git failed (${(g.stderr || '').split('\n')[0]})`); continue; }
+    const n = g.stdout.trim() ? g.stdout.trim().split('\n').length : 0;
+    if (n > 0) blocked.push(`${m}: ${n} commit(s) since ${ref}`);
+    else checked++;
+
+ succeeded in 108ms:
+# Issue ledger — c6-truth-binding
+
+Rows recorded on behalf of the reviewer (codex session 019f4b30-68f9-7222-9b64-17f52a333b4c; raws beside their docs in this dir).
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| C6-1 | 已覆盖模块+有效戳,source-files 指向不存在时仍能 PASS/n/a(note 不进 blocked)。 | 声明的 KB 覆盖从未被机械校验却静默通过。 | STEP0·r1 | verified |
+| C6-2 | source-files 语法/containment/malformed/missing/symlink 分类欠说明。 | 路径逃逸或部分范围漏检。 | STEP0·r1 | verified |
+| C6-3 | source-commit-looking 诊断触发规则不够可测(缺 matcher+样例)。 | 畸形戳仍拿到模糊/不一致诊断。 | STEP0·r1 | verified |
+| C6SPEC-1 | GT-19/design 未绑定显式 source-files 全部不可校验 token 类(尤 malformed/dangling)与目录接受。 | 显式覆盖仍可能部分漏检或误拒目录。 | STEP2·r1 | verified |
+| C6SPEC-2 | design 默认 source-files 用 lib/<truth-basename>.js 而非 lib/<store-module>.js。 | 别名 truth 校验错文件/静默漏。 | STEP2·r1 | verified |
+| C6SPEC-ADV-1 | Advisory:GT-21 回退 oracle 精确化;design 触点把冲突误标 GT-21(实为 GT-18)。 | 低。 | STEP2·r1 | advisory-acked |
+| C6IMPL-1 | 显式 source-files 缺 malformed token 语法校验(绝对路径经 path.join 被吞)。 | 错误写法被当另一 repo 内路径校验,掩盖覆盖问题。 | STEP5·r1 | open |
+
+ succeeded in 124ms:
+test('GT-19 an explicit source-files declaration is a complete promise', () => {
+  if (!gitAvail) return;
+  const root = kbProject('kv');
+  const git = gitKB(root);
+  git('init', '-q');
+  fs.mkdirSync(path.join(root, 'src'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'src/a.js'), '1');
+  git('add', '-A'); git('commit', '-q', '-m', 'one');
+  const c1 = git('rev-parse', 'HEAD').stdout.trim();
+  fs.mkdirSync(path.join(root, 'apriori/truth'), { recursive: true });
+  // src-layout: declared source-files points outside lib/
+  fs.writeFileSync(path.join(root, 'apriori/truth/kv.md'), `source-files: src/a.js\nsource-commit: ${c1}\n`);
+  assert.strictEqual(c6of(root).status, 'pass', c6of(root).detail);
+  fs.writeFileSync(path.join(root, 'src/a.js'), '2');
+  git('add', '-A'); git('commit', '-q', '-m', 'two');
+  assert.strictEqual(c6of(root).status, 'blocked');                    // git logged the declared src path
+  // an explicit token that is missing → blocked (a declaration is a complete promise)
+  fs.writeFileSync(path.join(root, 'apriori/truth/kv.md'), `source-files: src/a.js src/gone.js\nsource-commit: ${c1}\n`);
+  const miss = c6of(root);
+  assert.strictEqual(miss.status, 'blocked');
+  assert.match(miss.detail, /gone\.js/);
+  // an escaping token → blocked
+  fs.writeFileSync(path.join(root, 'apriori/truth/kv.md'), `source-files: ../outside.js\nsource-commit: ${c1}\n`);
+  assert.strictEqual(c6of(root).status, 'blocked');
+  // a malformed absolute token → blocked even if path.join would resolve it inside the repo (C6IMPL-1)
+  fs.writeFileSync(path.join(root, 'apriori/truth/kv.md'), `source-files: /src/a.js\nsource-commit: ${c1}\n`);
+  const mal = c6of(root);
+  assert.strictEqual(mal.status, 'blocked');
+  assert.match(mal.detail, /malformed/);
+});
+
+test('GT-20 malformed source-commit stamps are diagnosed, not silently skipped', () => {
+  const root = kbProject('kv', {
+    'apriori/truth/kv.md': '# T\n\n> `source-commit: deadbeef`\n',   // blockquote form, not the bare line
+  });
+  const c6 = c6of(root);
+  assert.strictEqual(c6.status, 'n/a');
+  assert.match(c6.detail, /canonical|line-start/i);        // points at the format, not vague "no source-commit"
+  // a source-commit only inside a code fence raises no diagnostic
+
+codex
+C6IMPL-1 已解决。`checkKb` 现在在任何 `lstat` 前先校验显式 `source-files` token：空、绝对路径、反斜杠、空段、`.`、`..` 段都会 BLOCKED，并点名 malformed token。默认 fallback `lib/<m>.js` 不走这个门，符合兼容约束。
+
+GT-19 的新增用例也足够针对原漏洞：`source-files: /src/a.js` 在 `<cwd>/src/a.js` 存在的情况下仍要求 blocked + `/malformed/`，能防住 `path.join` 把绝对 token 吞进 repo 内路径的回归。未发现新的 spec-vs-code 缺口。
+
+## LEDGER DELTA
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| C6IMPL-1 | 显式 source-files 缺 malformed token 语法校验(绝对路径经 path.join 被吞)。 | 错误写法被当另一 repo 内路径校验,掩盖覆盖问题。 | STEP5·r1 | verified |
+
+VERDICT: no spec-vs-code gaps
+tokens used
+5,295,788
+C6IMPL-1 已解决。`checkKb` 现在在任何 `lstat` 前先校验显式 `source-files` token：空、绝对路径、反斜杠、空段、`.`、`..` 段都会 BLOCKED，并点名 malformed token。默认 fallback `lib/<m>.js` 不走这个门，符合兼容约束。
+
+GT-19 的新增用例也足够针对原漏洞：`source-files: /src/a.js` 在 `<cwd>/src/a.js` 存在的情况下仍要求 blocked + `/malformed/`，能防住 `path.join` 把绝对 token 吞进 repo 内路径的回归。未发现新的 spec-vs-code 缺口。
+
+## LEDGER DELTA
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| C6IMPL-1 | 显式 source-files 缺 malformed token 语法校验(绝对路径经 path.join 被吞)。 | 错误写法被当另一 repo 内路径校验,掩盖覆盖问题。 | STEP5·r1 | verified |
+
+VERDICT: no spec-vs-code gaps

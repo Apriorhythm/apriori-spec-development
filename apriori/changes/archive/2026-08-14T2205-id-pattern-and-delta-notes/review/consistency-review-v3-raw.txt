@@ -1,0 +1,1430 @@
+<!-- provenance: provider=codex model=gpt-5.6-sol session=019fff86-4745-7921-b240-adf357a18c51 date=2026-08-15 -->
+2026-08-14T13:50:00.657863Z ERROR codex_models_manager::manager: failed to refresh available models: timeout waiting for child process to exit
+OpenAI Codex v0.147.0
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.6-sol
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019fff86-4745-7921-b240-adf357a18c51
+--------
+user
+STEP5 consistency review, round 3 (P8). Both round-2 points were accepted.
+
+[What changed]
+* IMPL-3 → CF-18 now really covers four consumers. The same fresh-init project gains a minimal change bundle (flow-state at STEP5, a checked tasks.md, a terminal ledger, and an ADDED delta carrying `AC-BIS-99`), and the test runs `gate.runGate({ cwd, change: 'c', testCmd })`, asserting C1 is `pass` and its detail reports `0 unidentified`.
+* IMPL-7 → your diagnosis was exactly right and this is the most instructive finding of the change. `SUFFIX_PATTERN` was `[A-Z]+-\d+[a-z]*`, which the widened default now subsumes for the `XA-01b` fixture, so GT-22 and GT-23 passed with or without the flag/config and proved nothing — and GT-22's `/unidentified/` assertion was satisfied by the store summary's `0 unidentified`, hiding it. The fixture now uses a shape the default deliberately does NOT recognise (`xa-01`, lowercase) with `SUFFIX_PATTERN = [A-Za-z]+-\d+` (wide enough to also cover the delta's uppercase `XB-01`), and GT-22's assertion is tightened to `/[1-9]\d* unidentified/`.
+
+State: 420 tests pass / 0 fail; `apriori check --self` PASS; `apriori verify --change id-pattern-and-delta-notes` GREEN.
+
+[Your job]
+1. Verify IMPL-3 and IMPL-7 — flip to `verified` or reopen with specifics.
+2. IMPL-7 raises a general question worth one sweep: are there any OTHER existing tests that the widened default has quietly made non-discriminating — still green, but no longer proving their scenario? Please look specifically for fixtures whose "narrow pattern" is now subsumed by the default, and for assertions loose enough to be satisfied by a zero count.
+3. Re-check the P8 dimensions. New gaps get new IDs.
+4. Do not manufacture findings. If there are no spec-vs-code gaps left, say so.
+
+[Scope] Count toward the verdict only spec-vs-code gaps. Style and taste — advisory.
+
+[Output]
+READ-ONLY, no file writes. Print the COMPLETE review doc body for landing at apriori/changes/id-pattern-and-delta-notes/review/consistency-review-v3.md, ending with a "Ledger delta" section and exactly one verdict line.
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+codex
+I’ll verify both fixes directly, then sweep the full test tree for default-vs-custom fixtures and zero-count assertions that can pass vacuously. I’ll also re-run the scenario and guarantee audit so the final verdict does not depend only on the two targeted edits.
+exec
+/usr/bin/zsh -lc "git diff --check && git diff -- test/id-default-and-notes.test.js test/id-pattern.test.js && rg -n \"DEFAULT_ID|id-pattern|idPattern|PATTERN|pattern|unidentified|untagged|orphan|duplicates|boundGreen|boundRed\" test -g '*.test.js'" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 1918ms:
+diff --git a/test/id-pattern.test.js b/test/id-pattern.test.js
+index 8b002eb..7c90639 100644
+--- a/test/id-pattern.test.js
++++ b/test/id-pattern.test.js
+@@ -10,6 +10,9 @@ const { spawnSync } = require('node:child_process');
+ 
+ const BIN = path.join(__dirname, '..', 'bin', 'apriori.js');
+ const PATTERN = '[A-Z]+(-[A-Z]+)*-\\d+[a-z]*';
++// a row NARROWER than the built-in default: the only way left to prove config precedence,
++// now that the default recognises the multi-segment and suffixed shapes itself
++const NARROW = '[A-Z]+-\\d+';
+ const SPEC3 = '#### Scenario: AC-01 plain\n#### Scenario: AC-08a suffixed\n#### Scenario: AC-BIS-01 multi\n';
+ const TAP3 = `node -e "['AC-01 plain','AC-08a suffixed','AC-BIS-01 multi'].forEach((t,i)=>console.log('ok '+(i+1)+' - '+t))"`;
+ const CTRL = new RegExp('[\\x00-\\x1f\\x7f]');
+@@ -30,15 +33,17 @@ const markerCmd = (root) => `node -e "require('fs').writeFileSync(${JSON.stringi
+ // ---- SR: verify ----
+ 
+ test('SR-50 the config row takes effect without a flag', () => {
++  // The row is proven to govern by making the run STRICTER than the built-in default — an
++  // assertion the default alone cannot satisfy now that it recognises these shapes itself.
+   const files = { 'apriori/specs/m/spec.md': SPEC3 };
+   const bare = proj(files);
+-  const r1 = JSON.parse(vrun(bare, ['--specs', 'apriori/specs', '--test-cmd', TAP3, '--json']).stdout);
+-  assert.strictEqual(r1.unidentified.length, 2, 'without the row only AC-01 is identified');
+-  const cfg = proj({ ...files, 'apriori/process-config.md': `| id-pattern | ${PATTERN} |\n` });
++  const out1 = vrun(bare, ['--specs', 'apriori/specs', '--test-cmd', TAP3, '--json']);
++  const r1 = JSON.parse(out1.stdout);
++  assert.strictEqual(r1.unidentified.length, 0, 'without a row the default identifies all three: ' + out1.stdout);
++  const cfg = proj({ ...files, 'apriori/process-config.md': `| id-pattern | ${NARROW} |\n` });
+   const out = vrun(cfg, ['--specs', 'apriori/specs', '--test-cmd', TAP3, '--json']);
+   const r2 = JSON.parse(out.stdout);
+-  assert.strictEqual(r2.unidentified.length, 0, 'config row identifies all three: ' + out.stdout + out.stderr);
+-  assert.strictEqual(r2.result, 'GREEN');
++  assert.strictEqual(r2.unidentified.length, 2, 'the narrower row governs: ' + out.stdout + out.stderr);
+ });
+ 
+ test('SR-51 the flag overrides and shields the config', () => {
+@@ -198,10 +203,13 @@ test('SR-55 every child failure class fails closed', () => {
+ const gate = require('../lib/gate');
+ const FLOW = (name) => `change: ${name}\ntier: medium\ntrack: harden\ntrack-rationale: r\nlineage: main\ncurrent-step: STEP5\nround: 1\nnext-action: x\ngates:\n  - 2026-08-13T00:00 note: n\n`;
+ const LEDGER_OK = '| ID | Issue | Risk | Round found | Status |\n|---|---|---|---|---|\n| Q-1 | a | low | 1 | verified |\n';
+-const SUFFIX_STORE = '### Requirement: Alpha\n\n#### Scenario: XA-01b base\n- t\n';
++// A LOWERCASE id: the built-in default deliberately does not recognise it, so a flag or config
++// row genuinely changes the outcome. (The old `XA-01b` fixture stopped discriminating once the
++// default learned lowercase suffixes — both sides then passed and the test proved nothing.)
++const SUFFIX_STORE = '### Requirement: Alpha\n\n#### Scenario: xa-01 base\n- t\n';
+ const PLAIN_DELTA = '## ADDED Requirements\n\n### Requirement: Beta\n\n#### Scenario: XB-01 new\n- t\n';
+-const SUFFIX_PATTERN = '[A-Z]+-\\d+[a-z]*';
+-const SUFFIX_TAP = `node -e "console.log('ok 1 - XA-01b a');console.log('ok 2 - XB-01 b')"`;
++const SUFFIX_PATTERN = '[A-Za-z]+-\\d+';   // covers the lowercase store ID and the delta's uppercase one
++const SUFFIX_TAP = `node -e "console.log('ok 1 - xa-01 a');console.log('ok 2 - XB-01 b')"`;
+ 
+ function gateProj(extra) {
+   return proj({
+@@ -222,7 +230,7 @@ test('GT-22 gate accepts --id-pattern for C1', () => {
+   assert.strictEqual(c1.status, 'pass', c1 && c1.detail);
+   const bare = gate.runGate({ cwd: root, change: 'c', testCmd: SUFFIX_TAP });
+   const c1b = bare.checks.find((x) => x.id === 'C1');
+-  assert.match(c1b.detail, /unidentified/, 'without the pattern the suffixed ID is unidentified');
++  assert.match(c1b.detail, /[1-9]\d* unidentified/, 'without the pattern the lowercase ID is unidentified — a bare /unidentified/ would also match the store summary\'s `0 unidentified`');
+   // archived stage
+   const aroot = proj({
+     'apriori/specs/kv/spec.md': SUFFIX_STORE,
+@@ -230,7 +238,7 @@ test('GT-22 gate accepts --id-pattern for C1', () => {
+     'apriori/changes/archive/2026-01-01T0000-z/tasks.md': '- [x] T1\n',
+     'apriori/changes/archive/2026-01-01T0000-z/review/issues.md': LEDGER_OK,
+   });
+-  const ra = gate.runGate({ cwd: aroot, change: 'z', testCmd: `node -e "console.log('ok 1 - XA-01b a')"`, idPattern: SUFFIX_PATTERN });
++  const ra = gate.runGate({ cwd: aroot, change: 'z', testCmd: `node -e "console.log('ok 1 - xa-01 a')"`, idPattern: SUFFIX_PATTERN });
+   const c1a = ra.checks.find((x) => x.id === 'C1');
+   assert.strictEqual(c1a.status, 'pass', c1a && c1a.detail);
+ });
+@@ -318,11 +326,12 @@ test('CK-13 CK-04 honors the config id-pattern row', () => {
+   const files = { 'apriori/specs/m/spec.md': '#### Scenario: AC-08a suffixed\n#### Scenario: AC-BIS-01 multi\n' };
+   const bare = proj(files);
+   const r1 = run(bare, ['check']);
+-  assert.strictEqual(r1.status, 1, r1.stdout);
+-  assert.match(r1.stdout, /without a bindable ID/);
+-  const cfg = proj({ ...files, 'apriori/process-config.md': `| id-pattern | ${PATTERN} |\n` });
++  assert.strictEqual(r1.status, 0, 'the built-in default recognises both shapes: ' + r1.stdout);
++  // a row NARROWER than the default proves precedence by making check stricter
++  const cfg = proj({ ...files, 'apriori/process-config.md': `| id-pattern | ${NARROW} |\n` });
+   const r2 = run(cfg, ['check']);
+-  assert.strictEqual(r2.status, 0, r2.stdout + r2.stderr);
++  assert.strictEqual(r2.status, 1, r2.stdout + r2.stderr);
++  assert.match(r2.stdout, /bindable/);
+ });
+ 
+ test('CK-14 check and verify judge identically at the edges', () => {
+@@ -408,7 +417,7 @@ test('DR-16 D6 names its pattern source', () => {
+   const bare = drProject('', '#### Scenario: AC-08a s\n');
+   const r2 = doctor.runDoctor({ cwd: bare, testCmd: DR_TAP });
+   const d6b = r2.checks.find((c) => c.id === 'D6');
+-  assert.strictEqual(d6b.status, 'finding', d6b.detail);   // suffixed ID unbindable under default
++  assert.strictEqual(d6b.status, 'ok', d6b.detail);        // the built-in default recognises AC-08a
+   assert.match(d6b.detail, /default/, 'names the default source');
+ });
+ 
+@@ -488,7 +497,7 @@ test('CF-12 template, docs and changelog carry the full id-pattern story', () =>
+   // the whole template table survives parsing: full expected key/value map
+   const { values, conflicts } = parseConfig(tpl);
+   assert.strictEqual(conflicts.size, 0);
+-  for (const [k, v] of [['language', 'auto'], ['id-pattern', '[A-Z]+-\\d+'], ['cas', 'required'],
++  for (const [k, v] of [['language', 'auto'], ['id-pattern', require('../lib/config').DEFAULT_ID], ['cas', 'required'],
+     ['step0-cap', '5'], ['step2-cap', '4'], ['step5-cap', '25'], ['step6-cap', '4'],
+     ['spike-cap', '10'], ['extraction-review-cap', '2'], ['shrink-state', 'none'],
+     ['rejected-ratio-guard', '50%'], ['shrink-proposal-freq', '5'], ['post-merge-review-freq', '1 in 5']])
+test/verification-profile.test.js:114:  for (const key of ['language', 'id-pattern', 'cas', 'verification-profile']) {
+test/change-scope.test.js:46:  const good = ['ok 1 - XC-01 c', 'ok 2 - XA-01 a', 'ok 3 - XZ-99 orphan', 'not ok 4 - XA-01 again'];
+test/change-scope.test.js:52:  assert.deepStrictEqual(j.storeReport.orphan, ['XZ-99']);
+test/change-scope.test.js:53:  assert.deepStrictEqual(j.storeReport.boundRed, ['XA-01']);
+test/change-scope.test.js:61:  const forphan = chg(root, ['--test-cmd', tap(['ok 1 - XC-01 c', 'not ok 2 - XQ-77 ghost'], 1), '--json']);
+test/change-scope.test.js:62:  assert.strictEqual(forphan.status, 1, 'failing orphan blocks');
+test/change-scope.test.js:72:  assert.deepStrictEqual(JSON.parse(red.stdout).boundRed.map((x) => x.id || x), ['XC-01']);
+test/change-scope.test.js:83:  // REMOVED: not demanded; lingering test is a store-report orphan
+test/change-scope.test.js:88:  assert.deepStrictEqual(jr.storeReport.orphan, ['XB-01']);
+test/change-scope.test.js:103:  // rename-then-remove: final deprecated block is out of scope; lingering test is an orphan
+test/change-scope.test.js:110:  assert.deepStrictEqual(jrtr.storeReport.orphan, ['XA-01']);
+test/change-scope.test.js:114:  // scoped unidentified
+test/change-scope.test.js:121:  assert.ok(JSON.parse(rd.stdout).duplicates.some((d) => d.id === 'XA-01'));
+test/change-scope.test.js:126:  assert.ok(JSON.parse(ro.stdout).storeReport.duplicates.some((d) => d.id === 'XB-01'));
+test/change-scope.test.js:135:  assert.deepStrictEqual(j.storeReport.boundRed, ['XA-01']);
+test/change-scope.test.js:136:  assert.ok(j.storeReport.duplicates.some((d) => d.id === 'XB-01'));
+test/change-scope.test.js:137:  assert.strictEqual(j.storeReport.unidentified.length, 1);
+test/change-scope.test.js:147:  assert.strictEqual(fo.status, 1, 'failing orphan blocks');
+test/change-scope.test.js:167:  // scope whose only occurrences are unidentified: GAPS (SR-59 case, asserted here for the table)
+test/change-scope.test.js:178:  const root = mkChange(STORE_AB, DELTA_C, { 'apriori/process-config.md': '| id-pattern | [A-Z]+-\\d+ |\n' });
+test/change-scope.test.js:196:  const root2 = mkChange(STORE_AB, DELTA_C, { 'apriori/process-config.md': '| id-pattern | [A-Z]+-\\d+ |\n' });
+test/change-scope.test.js:205:  const root3 = mkChange(STORE_AB, DELTA_C, { 'apriori/process-config.md': '| id-pattern | [A-Z]+-\\d+ |\n' });
+test/change-scope.test.js:226:  assert.strictEqual(typeof g.storeReport.boundGreen, 'number');
+test/change-scope.test.js:233:  // pre-test ERROR (invalid config pattern): both fields absent
+test/change-scope.test.js:234:  const pre = mkChange(STORE_AB, DELTA_C, { 'apriori/process-config.md': '| id-pattern | ( |\n' });
+test/change-scope.test.js:310:  // a failing orphan blocks too
+test/change-scope.test.js:313:  assert.strictEqual(ra3.checks.find((c) => c.id === 'C1').status, 'blocked', 'failing orphan blocks C1');
+test/change-scope.test.js:326:  // malformed sibling delta (bare scenario, zero ops): grants nothing → failing orphan blocks
+test/change-scope.test.js:357:  const dup = JSON.parse(r.stdout).duplicates.find((d) => d.id === 'XN-01');
+test/change-scope.test.js:376:      'apriori/process-config.md': '| id-pattern | [A-Z]+-\\d+ |\n',
+test/change-scope.test.js:391:    // invalid pattern: zero projection builds, zero spawns
+test/change-scope.test.js:396:      'apriori/process-config.md': '| id-pattern | ( |\n',
+test/change-scope.test.js:401:    assert.strictEqual(builds, 0, 'invalid pattern: no projection build');
+test/change-scope.test.js:402:    assert.ok(!fs.existsSync(marker(bad)), 'invalid pattern: no spawn');
+test/change-scope.test.js:439:    'apriori/process-config.md': '| id-pattern | ( |\n',
+test/change-scope.test.js:469:    'verify GREEN (in-flight, change-scoped); store: 0 red, 1 unbound, 0 orphan, 0 unidentified, 0 unattributed, 0 duplicate(s) outstanding');
+test/change-scope.test.js:494:  assert.deepStrictEqual(run.verdict.orphan, ['ZZ-99']);
+test/change-scope.test.js:505:  const lines = ['ok 1 - XC-01 c', 'not ok 2 - XA-01 a', 'ok 3 - XZ-99 pass-orphan', ...many];
+test/change-scope.test.js:512:  assert.match(out, /orphan: 1  \(XZ-99\)/);
+test/change-scope.test.js:513:  assert.match(out, /unidentified: 1\n\s+spec\.md: nameless one/);
+test/change-scope.test.js:533:  for (const lbl of ['bound-red: 0', 'unbound: 0', 'orphan: 0', 'unidentified: 0', 'unattributed failures: 0', 'duplicate IDs: 0'])
+test/change-scope.test.js:547:    'apriori/process-config.md': '| id-pattern | [A-Z]+-\\d+ |\n',
+test/change-scope.test.js:581:    duplicates: [],
+test/change-scope.test.js:582:    boundGreen: [{ id: 'XC-01', pass: 1, fail: 0, skip: 0 }],
+test/change-scope.test.js:583:    boundRed: [], unbound: [], orphan: [], unidentified: [],
+test/change-scope.test.js:588:      boundGreen: 1, boundRed: ['XA-01'], unbound: ['XB-01'], orphan: ['XZ-99'],
+test/change-scope.test.js:589:      unidentified: [], unattributedFailures: { count: 0, lines: [] }, duplicates: [],
+test/change-scope.test.js:600:    duplicates: [],
+test/change-scope.test.js:601:    boundGreen: [], boundRed: [], unbound: ['XC-01'], orphan: [], unidentified: [],
+test/change-scope.test.js:606:      boundGreen: 2, boundRed: [], unbound: ['XC-01'], orphan: [],
+test/change-scope.test.js:607:      unidentified: [], unattributedFailures: { count: 0, lines: [] }, duplicates: [],
+test/change-scope.test.js:612:  // pre-test ERROR (invalid config pattern)
+test/change-scope.test.js:613:  const e1 = mk('| id-pattern | ( |\n');
+test/change-scope.test.js:620:    duplicates: [], boundGreen: [], boundRed: [], unbound: [], orphan: [], unidentified: [],
+test/change-scope.test.js:633:    duplicates: [],
+test/change-scope.test.js:634:    boundGreen: [
+test/change-scope.test.js:639:    boundRed: [],
+test/change-scope.test.js:641:    orphan: [],
+test/change-scope.test.js:642:    unidentified: [],
+test/id-pattern.test.js:2:// gate-id-pattern — SR-50..SR-55, GT-22..GT-25, CK-13..CK-16, DR-16..DR-18:
+test/id-pattern.test.js:3:// the effective id-pattern resolves flag > config > default, one contract for four consumers.
+test/id-pattern.test.js:12:const PATTERN = '[A-Z]+(-[A-Z]+)*-\\d+[a-z]*';
+test/id-pattern.test.js:42:  assert.strictEqual(r1.unidentified.length, 0, 'without a row the default identifies all three: ' + out1.stdout);
+test/id-pattern.test.js:43:  const cfg = proj({ ...files, 'apriori/process-config.md': `| id-pattern | ${NARROW} |\n` });
+test/id-pattern.test.js:46:  assert.strictEqual(r2.unidentified.length, 2, 'the narrower row governs: ' + out.stdout + out.stderr);
+test/id-pattern.test.js:52:    'apriori/process-config.md': '| id-pattern | ( |\n',        // syntactically INVALID row
+test/id-pattern.test.js:54:  const r = vrun(root, ['--specs', 'apriori/specs', '--id-pattern', PATTERN, '--test-cmd', TAP3, '--json']);
+test/id-pattern.test.js:60:test('SR-52 an invalid effective pattern refuses to run', () => {
+test/id-pattern.test.js:63:  const ra = vrun(a, ['--specs', 'apriori/specs', '--id-pattern', '(', '--test-cmd', markerCmd(a), '--json']);
+test/id-pattern.test.js:67:  assert.match(ja.errors.join(' '), /--id-pattern/);
+test/id-pattern.test.js:70:  const e = proj({ 'apriori/specs/m/spec.md': SPEC3, 'apriori/process-config.md': `| id-pattern | ${PATTERN} |\n` });
+test/id-pattern.test.js:71:  const re = vrun(e, ['--specs', 'apriori/specs', '--id-pattern', '', '--test-cmd', markerCmd(e), '--json']);
+test/id-pattern.test.js:73:  assert.match(JSON.parse(re.stdout).errors.join(' '), /empty --id-pattern/);
+test/id-pattern.test.js:76:  const c = proj({ 'apriori/specs/m/spec.md': SPEC3, 'apriori/process-config.md': '| id-pattern | ( |\n' });
+test/id-pattern.test.js:83:  const rs = vrun(a, ['--specs', 'apriori/specs', '--id-pattern', evil, '--test-cmd', markerCmd(a), '--json']);
+test/id-pattern.test.js:94:    'apriori/process-config.md': '| id-pattern | ( |\n',
+test/id-pattern.test.js:105:  // invalid flag + NONEXISTENT specs target: the error must be about the pattern, not the
+test/id-pattern.test.js:108:  const r = vrun(a, ['--specs', 'no/such/dir', '--id-pattern', '(', '--test-cmd', 'node -e ""', '--json']);
+test/id-pattern.test.js:111:  assert.match(j.errors.join(' '), /--id-pattern/);
+test/id-pattern.test.js:115:  const rf = vrun(a, ['--specs', 'no/such/dir', '--id-pattern', evilFlag, '--test-cmd', 'node -e ""', '--json']);
+test/id-pattern.test.js:122:    'apriori/process-config.md': '| id-pattern | (\x01' + 'y'.repeat(300) + ' |\n' });
+test/id-pattern.test.js:148:    'apriori/process-config.md': '| id-pattern | (a+)+$ |\n',
+test/id-pattern.test.js:161:  // the real multi-segment pattern completes normally through the child
+test/id-pattern.test.js:162:  const ok = proj({ 'apriori/specs/m/spec.md': SPEC3, 'apriori/process-config.md': `| id-pattern | ${PATTERN} |\n` });
+test/id-pattern.test.js:211:const SUFFIX_PATTERN = '[A-Za-z]+-\\d+';   // covers the lowercase store ID and the delta's uppercase one
+test/id-pattern.test.js:225:test('GT-22 gate accepts --id-pattern for C1', () => {
+test/id-pattern.test.js:228:  const r = gate.runGate({ cwd: root, change: 'c', testCmd: SUFFIX_TAP, idPattern: SUFFIX_PATTERN });
+test/id-pattern.test.js:233:  assert.match(c1b.detail, /[1-9]\d* unidentified/, 'without the pattern the lowercase ID is unidentified — a bare /unidentified/ would also match the store summary\'s `0 unidentified`');
+test/id-pattern.test.js:241:  const ra = gate.runGate({ cwd: aroot, change: 'z', testCmd: `node -e "console.log('ok 1 - xa-01 a')"`, idPattern: SUFFIX_PATTERN });
+test/id-pattern.test.js:247:  const root = gateProj({ 'apriori/process-config.md': `| id-pattern | ${SUFFIX_PATTERN} |\n` });
+test/id-pattern.test.js:253:test('GT-24 an invalid effective pattern is a gate ERROR', () => {
+test/id-pattern.test.js:256:  const r1 = gate.runGate({ cwd: root, change: 'c', testCmd: SUFFIX_TAP, idPattern: '(' });
+test/id-pattern.test.js:259:  assert.match(r1.errors.join(' '), /--id-pattern/);
+test/id-pattern.test.js:261:  const root2 = gateProj({ 'apriori/process-config.md': `| id-pattern | ${SUFFIX_PATTERN} |\n` });
+test/id-pattern.test.js:262:  const r2 = gate.runGate({ cwd: root2, change: 'c', testCmd: SUFFIX_TAP, idPattern: '' });
+test/id-pattern.test.js:264:  assert.match(r2.errors.join(' '), /--id-pattern/);
+test/id-pattern.test.js:267:  const root3 = gateProj({ 'apriori/process-config.md': '| id-pattern | ( |\n' });
+test/id-pattern.test.js:272:  const rj = run(root, ['gate', '--change', 'c', '--id-pattern', '(', '--test-cmd', SUFFIX_TAP, '--json']);
+test/id-pattern.test.js:276:  assert.match(j.errors.join(' '), /--id-pattern/);
+test/id-pattern.test.js:279:test('GT-25 a terminated config-pattern match is a gate ERROR', () => {
+test/id-pattern.test.js:287:    'apriori/process-config.md': '| id-pattern | (a+)+$ |\n',
+test/id-pattern.test.js:308:    [mk(null), ['--id-pattern', '('], /--id-pattern/],                                    // invalid flag
+test/id-pattern.test.js:309:    [mk(`| id-pattern | ${SUFFIX_PATTERN} |\n`), ['--id-pattern', ''], /--id-pattern/],   // empty flag over VALID config
+test/id-pattern.test.js:310:    [mk('| id-pattern | ( |\n'), ['--id-pattern', ''], /--id-pattern/],                   // empty flag over INVALID config (still flag origin)
+test/id-pattern.test.js:311:    [mk('| id-pattern | ( |\n'), [], /process-config/],                                   // invalid config, no flag
+test/id-pattern.test.js:325:test('CK-13 CK-04 honors the config id-pattern row', () => {
+test/id-pattern.test.js:331:  const cfg = proj({ ...files, 'apriori/process-config.md': `| id-pattern | ${NARROW} |\n` });
+test/id-pattern.test.js:341:  // states whether the title's leading token is a legal ID under the pattern.
+test/id-pattern.test.js:347:    ['X\\d+\\.', 'X1. dot-ending pattern', true],
+test/id-pattern.test.js:351:  for (const [pattern, title, expected] of cases) {
+test/id-pattern.test.js:353:    const checkSide = checkScenarioIds(`#### Scenario: ${title}\n`, 'f.md', pattern).length === 0;
+test/id-pattern.test.js:354:    assert.strictEqual(checkSide, expected, `check: ${pattern} vs '${title}'`);
+test/id-pattern.test.js:358:    const col = sr.collectScenarios([d], new RegExp(pattern));
+test/id-pattern.test.js:359:    assert.strictEqual(col.unidentified.length === 0, expected, `collect: ${pattern} vs '${title}'`);
+test/id-pattern.test.js:361:    const child = sr.makeIdMatcher({ source: pattern, origin: 'config' }).batch([title]);
+test/id-pattern.test.js:363:    assert.strictEqual(child.ids[0] !== null, expected, `child: ${pattern} vs '${title}'`);
+test/id-pattern.test.js:367:test('CK-15 an invalid config id-pattern is a check ERROR', () => {
+test/id-pattern.test.js:370:    'apriori/process-config.md': '| id-pattern | ( |\n',
+test/id-pattern.test.js:378:test('CK-16 a terminated config-pattern match is a check ERROR', () => {
+test/id-pattern.test.js:382:    'apriori/process-config.md': '| id-pattern | (a+)+$ |\n',
+test/id-pattern.test.js:411:test('DR-16 D6 names its pattern source', () => {
+test/id-pattern.test.js:412:  const cfg = drProject(`| id-pattern | ${PATTERN} |\n`, '#### Scenario: AC-08a s\n');
+test/id-pattern.test.js:424:test('DR-17 an invalid config id-pattern is a D6 finding and skips the probe', () => {
+test/id-pattern.test.js:425:  const root = drProject('| id-pattern | ( |\n', '#### Scenario: AC-01 a\n');
+test/id-pattern.test.js:437:  assert.match(String(d6.fix), /id-pattern/, 'the finding carries its repair fix');
+test/id-pattern.test.js:440:  assert.match(d5.detail, /probe skipped \(invalid id-pattern config\)/);
+test/id-pattern.test.js:446:test('DR-18 a terminated config-pattern scan is a D6 finding and skips the probe', () => {
+test/id-pattern.test.js:448:  const root = drProject('| id-pattern | (a+)+$ |\n', `#### Scenario: ${evilTitle}\n`);
+test/id-pattern.test.js:456:  assert.match(d5.detail, /probe skipped \(invalid id-pattern config\)/);
+test/id-pattern.test.js:493:test('CF-12 template, docs and changelog carry the full id-pattern story', () => {
+test/id-pattern.test.js:500:  for (const [k, v] of [['language', 'auto'], ['id-pattern', require('../lib/config').DEFAULT_ID], ['cas', 'required'],
+test/id-pattern.test.js:507:  const guide = comments.find((c) => c.includes('id-pattern'));
+test/id-pattern.test.js:508:  assert.ok(guide, 'an id-pattern comment exists');
+test/id-pattern.test.js:516:    assert.match(text, /id-pattern/, `${doc} documents the key`);
+test/id-pattern.test.js:519:  assert.match(fs.readFileSync(path.join(repo, 'CHANGELOG.md'), 'utf8'), /id-pattern/);
+test/id-pattern.test.js:532:  const { value, problem } = getConfig(root, 'id-pattern');
+test/id-pattern.test.js:560:    'apriori/process-config.md': '| id-pattern | [A-Z]+-\\d+ |\n',
+test/id-pattern.test.js:576:  const droot = drProject('| id-pattern | [A-Z]+-\\d+ |\n', '#### Scenario: AC-01 a\n');
+test/id-pattern.test.js:588:    'apriori/process-config.md': '| id-pattern | [A-Z]+-\\d+ |\n',
+test/id-pattern.test.js:604:test('SR-54 a TAP-batch failure after the test command still fails closed, and the real pattern passes the same store', () => {
+test/id-pattern.test.js:609:    'apriori/process-config.md': '| id-pattern | [A-Z]+-\\d+ |\n',
+test/id-pattern.test.js:632:  // same-store contrast: the real multi-segment pattern over the SAME adversarial-title store
+test/id-pattern.test.js:633:  // completes through the child — no matcher failure (the evil title is merely unidentified)
+test/id-pattern.test.js:636:    'apriori/process-config.md': `| id-pattern | ${PATTERN} |\n`,
+test/id-pattern.test.js:642:  assert.strictEqual(jok.unidentified.length, 1);
+test/hotfix-grade.test.js:19:const CONCLUSION = 'The channel filter returned nothing because the venue rebuild orphaned the address rows.';
+test/hotfix-grade.test.js:22:    { hotfix: 'venue-orphan', date: '2026-08-14', kinds: '2', 'change-kind': 'no-code', ...over },
+test/hotfix-grade.test.js:43:  assert.strictEqual(r.header.get('hotfix'), 'venue-orphan');
+test/modified-integrity.test.js:218:  const err1 = mkChange(MOD_DROP, { 'apriori/process-config.md': '| id-pattern | ( |\n' });
+test/modified-integrity.test.js:229:  const root = mkChange(MOD_DROP, { 'apriori/process-config.md': '| id-pattern | [A-Z]+-\\d+ |\n' });
+test/modified-integrity.test.js:292:test('AM-47 the archive id-pattern channel is resolved, terminable and degradable', () => {
+test/modified-integrity.test.js:293:  // custom config pattern recognizes letter-suffixed IDs
+test/modified-integrity.test.js:300:    'apriori/process-config.md': '| id-pattern | [A-Z]+-\\d+[a-z]* |\n',
+test/modified-integrity.test.js:309:  const root3 = archiveProj(stamped(MOD_DROP), { 'apriori/process-config.md': '| id-pattern | ( |\n' });
+test/spec-runner-projection.test.js:44:  assert.deepStrictEqual(run.verdict.boundGreen, ['XB-01']);   // the change verdict demands the delta's scenarios
+test/spec-runner-projection.test.js:45:  assert.strictEqual(run.storeReport.boundGreen, 2);           // store scenario bindings report informatively
+test/spec-runner-projection.test.js:46:  assert.strictEqual(run.duplicates.length, 0);                // overlay produced no dup-ID error
+test/spec-runner-projection.test.js:58:  assert.deepStrictEqual(run.verdict.boundGreen, ['XA-01']);
+test/spec-runner-projection.test.js:63:test('SR-18 REMOVED delta scenarios are not demanded and their lingering tests orphan', () => {
+test/spec-runner-projection.test.js:71:  assert.deepStrictEqual(run.storeReport.orphan, ['XA-01']);  // test survives, scenario gone → store-report ORPHAN
+test/spec-runner-projection.test.js:84:  assert.deepStrictEqual(run.verdict.boundGreen, ['XA-01']);  // content (and IDs) preserved, demanded once
+test/spec-runner-projection.test.js:186:  assert.deepStrictEqual(run.verdict.boundGreen, ['XA-01']);   // non-deprecated block unaffected
+test/spec-runner-projection.test.js:188:  assert.deepStrictEqual(run.verdict.orphan, ['XO-01']);       // lingering test flagged
+test/id-default-and-notes.test.js:2:// id-pattern-and-delta-notes — the built-in default recognises the ID shapes real projects use
+test/id-default-and-notes.test.js:13:const { DEFAULT_ID, resolveIdPattern } = require('../lib/config');
+test/id-default-and-notes.test.js:40:  const re = new RegExp(DEFAULT_ID);
+test/id-default-and-notes.test.js:51:  const oldRe = new RegExp(OLD_ID), newRe = new RegExp(DEFAULT_ID);
+test/id-default-and-notes.test.js:63:    if (o === null) continue;              // the claim is only about titles the OLD pattern BOUND
+test/id-default-and-notes.test.js:83:  const re = new RegExp(DEFAULT_ID);
+test/id-default-and-notes.test.js:93:  const b = collectScenarios(specs, new RegExp(DEFAULT_ID));
+test/id-default-and-notes.test.js:95:  assert.strictEqual(b.unidentified.length, a.unidentified.length);
+test/id-default-and-notes.test.js:96:  assert.strictEqual(b.duplicates.length, a.duplicates.length);
+test/id-default-and-notes.test.js:99:test('SR-08 a title with no leading ID stays unidentified, and near-misses do not bind', () => {
+test/id-default-and-notes.test.js:100:  const re = new RegExp(DEFAULT_ID);
+test/id-default-and-notes.test.js:107:  const { byId, duplicates } = collectScenarios([f], new RegExp(DEFAULT_ID));
+test/id-default-and-notes.test.js:109:  assert.deepStrictEqual(duplicates, []);
+test/id-default-and-notes.test.js:112:test('SR-08 newly-recognised titles that collide are reported as duplicates', () => {
+test/id-default-and-notes.test.js:114:  const { duplicates } = collectScenarios([f], new RegExp(DEFAULT_ID));
+test/id-default-and-notes.test.js:115:  assert.strictEqual(duplicates.length, 1);
+test/id-default-and-notes.test.js:116:  assert.strictEqual(duplicates[0].id, 'AC-BIS-01');
+test/id-default-and-notes.test.js:121:    'apriori/process-config.md': `| Field | Value |\n|---|---|\n| id-pattern | ${OLD_ID} |\n`,
+test/id-default-and-notes.test.js:131:  assert.strictEqual(collectScenarios(specs(root), new RegExp(withRow.source)).unidentified.length, 2, 'the row makes it stricter');
+test/id-default-and-notes.test.js:132:  assert.strictEqual(collectScenarios(specs(bare), new RegExp(noRow.source)).unidentified.length, 0, 'the default recognises all three');
+test/id-default-and-notes.test.js:139:  // would move from `untagged` (parsed=1, ok) to a tagged skip (parsed=0, "truncated or malformed")
+test/id-default-and-notes.test.js:146:  assert.ok(!/DEFAULT_ID/.test(src), 'lib/doctor.js must not mention the project ID constant anywhere');
+test/id-default-and-notes.test.js:162:  // both classes present: an ID-shaped token the pattern rejects, and a title with no ID at all
+test/id-default-and-notes.test.js:163:  const root = drProject(`| id-pattern | ${OLD_ID} |\n`,
+test/id-default-and-notes.test.js:167:  const mismatch = d6.find((c) => /id-pattern/.test(c.fix));
+test/id-default-and-notes.test.js:168:  const missing = d6.find((c) => !/id-pattern/.test(c.fix));
+test/id-default-and-notes.test.js:169:  assert.ok(mismatch, 'a pattern-mismatch finding whose fix names the id-pattern row');
+test/id-default-and-notes.test.js:181:  assert.ok(!/id-pattern/.test(f1[0].fix), 'a title with no ID never blames the pattern');
+test/id-default-and-notes.test.js:186:  const root = drProject(`| id-pattern | ${OLD_ID} |\n`, many);
+test/id-default-and-notes.test.js:187:  const f = doctor.runDoctor({ cwd: root, noRun: true }).checks.find((c) => c.id === 'D6' && /id-pattern/.test(c.fix || ''));
+test/id-default-and-notes.test.js:188:  assert.ok(f, 'the pattern-mismatch finding exists');
+test/id-default-and-notes.test.js:195:  assert.ok(f.detail.includes(OLD_ID), 'the effective pattern source is echoed');
+test/id-default-and-notes.test.js:355:test('CF-12 the template carries one pattern in all three places, each pinned separately', () => {
+test/id-default-and-notes.test.js:357:  const want = DEFAULT_ID;                    // the source string as the parser will see it
+test/id-default-and-notes.test.js:360:  assert.strictEqual(parseConfig(t).values.get('id-pattern'), want, 'VALUE cell');
+test/id-default-and-notes.test.js:362:  const row = t.split('\n').find((l) => /^\|\s*id-pattern\s*\|/.test(l));
+test/id-default-and-notes.test.js:363:  assert.ok(row, 'the id-pattern row exists');
+test/id-default-and-notes.test.js:371:    assert.ok(!(line.includes('[A-Z]+-\\d+') && !line.includes(want)), `stale pattern: ${line}`);
+test/id-default-and-notes.test.js:374:test('CF-18 a freshly initialised project inherits the current pattern end to end', () => {
+test/id-default-and-notes.test.js:404:  assert.strictEqual(vj.unidentified.length, 0, 'verify: ' + vf.stdout);
+test/id-default-and-notes.test.js:422:  assert.match(c1.detail, /0 unidentified/, 'and nothing unidentified: ' + c1.detail);
+test/scoped-verdict.test.js:18:  assert.deepStrictEqual(v.boundGreen, ['A-01']);
+test/scoped-verdict.test.js:19:  assert.deepStrictEqual({ red: v.boundRed, unbound: v.unbound, missing: v.missing }, { red: [], unbound: [], missing: [] });
+test/scoped-verdict.test.js:27:  assert.deepStrictEqual({ clean: red.clean, boundRed: red.boundRed }, { clean: false, boundRed: ['A-01'] });
+test/scoped-verdict.test.js:36:test('SR-71 out-of-scope results are not orphans and an empty scope is clean', () => {
+test/scoped-verdict.test.js:40:  assert.strictEqual(v.clean, true, 'an out-of-scope orphan does not dirty a scoped run');
+test/scoped-verdict.test.js:41:  assert.deepStrictEqual(v.orphan, [], 'orphan is not a scope class');
+test/scoped-verdict.test.js:45:  assert.deepStrictEqual([empty.boundGreen, empty.boundRed, empty.unbound, empty.missing], [[], [], [], []]);
+test/spec-runner.test.js:4:const { collectScenarios, parseTap, evaluate, verify, DEFAULT_ID } = require('../lib/spec-runner');
+test/spec-runner.test.js:9:const idRe = new RegExp(DEFAULT_ID);
+test/spec-runner.test.js:26:  const { byId, unidentified } = collectScenarios([file], idRe);
+test/spec-runner.test.js:28:  return { verdict: evaluate(byId, unidentified, results), results };
+test/spec-runner.test.js:35:  assert.deepStrictEqual(verdict.boundGreen, ['XX-01', 'XX-02']);
+test/spec-runner.test.js:47:  assert.deepStrictEqual(verdict.boundRed, ['XX-01']);
+test/spec-runner.test.js:53:  assert.deepStrictEqual(green.verdict.boundGreen, ['XX-01']);
+test/spec-runner.test.js:55:  assert.deepStrictEqual(red.verdict.boundRed, ['XX-01']);
+test/spec-runner.test.js:59:  const { verdict } = run('#### Scenario: XX-01 a\n', 'ok 1 - XX-01 a\nok 2 - XX-99 orphan\n');
+test/spec-runner.test.js:60:  assert.deepStrictEqual(verdict.orphan, ['XX-99']);
+test/spec-runner.test.js:66:  assert.strictEqual(verdict.unidentified.length, 1);
+test/spec-runner.test.js:74:  assert.deepStrictEqual(verdict.boundGreen, ['XX-01']);
+test/spec-runner.test.js:77:test('SR-08 the id-pattern is configurable, default [A-Z]+-\\d+', () => {
+test/spec-runner.test.js:78:  // default pattern ignores lowercase-led ids
+test/spec-runner.test.js:80:  assert.strictEqual(def.verdict.unidentified.length, 1);
+test/spec-runner.test.js:81:  // custom pattern picks them up in BOTH spec extraction and TAP/test extraction
+test/spec-runner.test.js:86:  const { results: defTap } = parseTap('ok 1 - ab-1 lower\n', idRe);   // default pattern misses it
+test/spec-runner.test.js:88:  const { results: cust } = parseTap('ok 1 - ab-1 lower\n', lowRe);    // custom pattern binds it
+test/spec-runner.test.js:90:  // end-to-end: same custom pattern governs spec + test → BOUND-GREEN
+test/spec-runner.test.js:91:  const e2e = verify({ specs: [file], testCmd: tapCmd('ok 1 - ab-1 lower'), idPattern: '[a-z]+-\\d+' });
+test/spec-runner.test.js:92:  assert.deepStrictEqual(e2e.verdict.boundGreen, ['ab-1']);
+test/spec-runner.test.js:98:  const r = verify({ specs: [file], testCmd: tapCmd('ok 1 - XX-01 a', 'not ok 2 - XX-02 b', 'ok 3 - XX-99 orphan') });
+test/spec-runner.test.js:102:  assert.deepStrictEqual(parsed.boundGreen, [{ id: 'XX-01', pass: 1, fail: 0, skip: 0 }]);
+test/spec-runner.test.js:103:  assert.deepStrictEqual(parsed.boundRed, [{ id: 'XX-02', pass: 0, fail: 1, skip: 0 }]);
+test/spec-runner.test.js:104:  assert.deepStrictEqual(parsed.orphan, [{ id: 'XX-99', pass: 1, fail: 0, skip: 0 }]);
+test/spec-runner.test.js:107:  assert.deepStrictEqual(parsed.duplicates, []);
+test/spec-runner.test.js:145:  assert.strictEqual(zeroTapParsed(human, p1.results, p1.untagged), true);
+test/spec-runner.test.js:149:  assert.strictEqual(zeroTapParsed(tap, p2.results, p2.untagged), false);
+test/spec-runner.test.js:152:  assert.strictEqual(zeroTapParsed('', p3.results, p3.untagged), false);
+test/spec-runner.test.js:156:  assert.strictEqual(zeroTapParsed(emptySuite, p4.results, p4.untagged), false);
+test/spec-runner.test.js:301:  assert.deepStrictEqual(u.dupNumbers, [1]);      // numeric comparison: 01 duplicates 1
+test/spec-runner.test.js:378:  // bare/untagged ok points block nothing
+test/gate-degrade.test.js:179:test('GT-36 a broken id-pattern is an error even when C1 is skipped', () => {
+test/gate-degrade.test.js:181:    ['flag empty', { idPattern: '' }, {}],
+test/gate-degrade.test.js:182:    ['flag uncompilable', { idPattern: '[' }, {}],
+test/gate-degrade.test.js:183:    ['config uncompilable', {}, { 'apriori/process-config.md': cfg('| id-pattern | [ |\n') }],
+test/gate-degrade.test.js:184:    ['config conflicting', {}, { 'apriori/process-config.md': cfg('| id-pattern | [A-Z]+-\\d+ |\n| id-pattern | [a-z]+ |\n') }],
+test/gate-degrade.test.js:191:  // archived stage too — a broken pattern outranks the archived degradation
+test/gate-degrade.test.js:197:    'apriori/process-config.md': cfg('| id-pattern | [ |\n'),
+test/gate-degrade.test.js:199:  assert.strictEqual(gate.runGate({ cwd: arch, change: 'c' }).code, 2, 'archived + broken pattern');
+test/gate-degrade.test.js:201:  // a VALID config-origin pattern is compile-checked but never MATCHED — no matcher child runs
+test/gate-degrade.test.js:202:  const okCfg = noCmdProject('c', { 'apriori/process-config.md': cfg('| id-pattern | [A-Z]+-\\d+ |\n') });
+test/config.test.js:52:test('CF-03 duplicates tolerate sameness and refuse conflict', () => {
+test/config.test.js:101:// ---- gate-id-pattern: CF-08..CF-12 — cell escaping, unreadable config, template row ----
+test/config.test.js:105:  const { values } = parseConfig('| id-pattern | (AC\\|BR)-\\d+ |\n');
+test/config.test.js:106:  assert.strictEqual(values.get('id-pattern'), '(AC|BR)-\\d+');
+test/config.test.js:134:  const { value, problem } = getConfig(root, 'id-pattern');
+test/config.test.js:139:test('CF-12 the template names the id-pattern row with two-layer pipe wording', () => {
+test/config.test.js:143:  assert.strictEqual(values.get('id-pattern'), require('../lib/config').DEFAULT_ID);  // parsed value = built-in default, whatever it currently is
+test/config.test.js:148:  const rowLine = tpl.split('\n').find((l) => /^\|\s*id-pattern\s*\|/.test(l));
+test/config.test.js:149:  assert.ok(rowLine, 'id-pattern row exists');
+test/doctor.test.js:200:  // an uncompilable id-pattern still outranks everything: the probe is n/a, not a finding
+test/doctor.test.js:203:    '| Field | Value |\n|---|---|\n| id-pattern | [ |\n');
+test/doctor.test.js:206:  assert.match(skipped.detail, /id-pattern/);
+
+codex
+The two targeted edits themselves are present. The broader sweep found one additional candidate outside `id-pattern.test.js`: AM-47 still labels `[A-Z]+-\\d+[a-z]*` a custom pattern for suffix recognition, even though the widened default now recognizes its fixture. I’m tracing whether its assertions still distinguish config-origin behavior or have become vacuous.
+exec
+/usr/bin/zsh -lc "sed -n '270,325p' test/modified-integrity.test.js && sed -n '540,650p' test/id-pattern.test.js && rg -n \"id-pattern \\| .*\\[a-z\\]\\*|idPattern: .*\\[a-z\\]\\*|const .*PATTERN.*\\[a-z\\]\\*|custom .*pattern|without (the )?(row|pattern|config)|no row|bare\" test -g '*.test.js'" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 116ms:
+  const rIdx = dry.stdout.indexOf('RESULT:');
+  assert.ok(iIdx < rIdx, 'report before the result line');
+  assert.match(dry.stdout, /RESULT: MERGED \(dry-run; 1 module\(s\)\) — pass --write to apply/);
+  // --write: report appears before write-result lines; bytes identical to a reportless write
+  const rootW = archiveProj(stamped(MOD_DROP));
+  const w = run(rootW, ['archive', '--change', 'c', '--write']);
+  assert.strictEqual(w.status, 0, w.stdout + w.stderr);
+  assert.match(w.stdout, /— MODIFIED INTEGRITY —/);
+  const written = fs.readFileSync(path.join(rootW, 'apriori/specs/m/spec.md'), 'utf8');
+  assert.ok(written.includes('#### Scenario: KV-01 one') && !written.includes('KV-02'), 'write semantics unchanged');
+  // preflight failure classes print NO section
+  const bad = archiveProj('## MODIFIED Requirements\n\n### Requirement: R-K\n\n#### Scenario: KV-01 one\n- t\n'); // unstamped mutation → CAS denial
+  const rb = run(bad, ['archive', '--change', 'c']);
+  assert.strictEqual(rb.status, 1);
+  assert.doesNotMatch(rb.stdout, /MODIFIED INTEGRITY/);
+  const tmpBlock = archiveProj(stamped(MOD_DROP));
+  fs.writeFileSync(path.join(tmpBlock, 'apriori/specs/m/spec.md.tmp-archive'), 'x');
+  const rt = run(tmpBlock, ['archive', '--change', 'c', '--write']);
+  assert.strictEqual(rt.status, 1);
+  assert.doesNotMatch(rt.stdout, /MODIFIED INTEGRITY/, 'pre-existing temp: no section');
+});
+
+test('AM-47 the archive id-pattern channel is resolved, terminable and degradable', () => {
+  // custom config pattern recognizes letter-suffixed IDs
+  const store = '### Requirement: R-S\n\n#### Scenario: AC-08a suffixed\n- a\n\n#### Scenario: AC-09b other\n- b\n';
+  const delta = '## MODIFIED Requirements\n\n### Requirement: R-S\n\n#### Scenario: AC-08a suffixed\n- a\n';
+  const root = proj({
+    'apriori/specs/m/spec.md': store,
+    'apriori/changes/c/flow-state.md': FLOW('c'),
+    'apriori/changes/c/specs/m/spec.md': `<!-- apriori-base: ${am.fingerprint(store)} -->\n\n` + delta,
+    'apriori/process-config.md': '| id-pattern | [A-Z]+-\\d+[a-z]* |\n',
+  });
+  const r = run(root, ['archive', '--change', 'c']);
+  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /! dropped: AC-09b/);
+  // default positive path
+  const root2 = archiveProj(stamped(MOD_DROP));
+  assert.match(run(root2, ['archive', '--change', 'c']).stdout, /! .*KV-02/);
+  // invalid config row: warning + skip, archive unchanged
+  const root3 = archiveProj(stamped(MOD_DROP), { 'apriori/process-config.md': '| id-pattern | ( |\n' });
+  const r3 = run(root3, ['archive', '--change', 'c']);
+  assert.strictEqual(r3.status, 0, 'archive result unchanged');
+  assert.doesNotMatch(r3.stdout, /MODIFIED INTEGRITY/);
+  const wline = r3.stderr.split('\n').find((l) => l.includes('modified-integrity'));
+  assert.ok(wline && wline.startsWith('warning: modified-integrity '), wline);
+  assert.ok(wline.length <= 200);
+  assert.doesNotMatch(wline, /[\x00-\x1f\x7f]/);
+  assert.match(r3.stdout, /RESULT: MERGED/);
+  // inline-fence heading pairs by ID through the archive matcher channel too (IMPL-5)
+  const storeI = '### Requirement: R-I\n```x```#### Scenario: KV-01 old title\n- a\n';
+  const rootI = proj({
+    'apriori/specs/m/spec.md': storeI,
+    'apriori/changes/c/flow-state.md': FLOW('c'),
+    'apriori/changes/c/specs/m/spec.md': `<!-- apriori-base: ${am.fingerprint(storeI)} -->\n\n` +
+      '## MODIFIED Requirements\n\n### Requirement: R-I\n```x```#### Scenario: KV-01 new title\n- a\n',
+  });
+test('SR-54 the child spawn contract pins the budget deterministically', () => {
+  const sr = require('../lib/spec-runner');
+  assert.strictEqual(sr.CHILD_SPAWN_OPTS.timeout, 2000);
+  assert.strictEqual(sr.CHILD_SPAWN_OPTS.killSignal, 'SIGKILL');
+  assert.strictEqual(sr.CHILD_SPAWN_OPTS.shell, false);
+});
+
+test('SR-55 every child failure class surfaces sanitized through verify, check and doctor', () => {
+  const sr = require('../lib/spec-runner');
+  const dirtyDetail = 'X\x01\x02' + 'z'.repeat(400);
+  const dirtyErr = new Error(dirtyDetail);
+  const classes = [
+    ['timeout', { status: null, signal: 'SIGKILL', stdout: '', error: null }],
+    ['spawn-error-dirty', { status: null, signal: null, stdout: '', error: dirtyErr }],
+    ['signal', { status: null, signal: 'SIGSEGV', stdout: '{"ids":[]}', error: null }],
+    ['non-zero-exit', { status: 1, signal: null, stdout: '', error: null }],
+    ['malformed', { status: 0, signal: null, stdout: 'nope', error: null }],
+  ];
+  const root = proj({
+    'apriori/specs/m/spec.md': '#### Scenario: AC-01 a\n',
+    'apriori/process-config.md': '| id-pattern | [A-Z]+-\\d+ |\n',
+  });
+  for (const [label, fake] of classes) {
+    sr._setChildRunner(() => fake);
+    // through verify(): the final errors[] is the sanitized config-origin channel
+    const run2 = sr.verify({ specs: [path.join(root, 'apriori/specs')], testCmd: 'node -e ""', cwd: root });
+    assert.strictEqual(run2.errors.length > 0, true, `${label}: verify fails closed`);
+    for (const e of run2.errors) {
+      assert.match(e, /process-config/, `${label}: origin named`);
+      assert.doesNotMatch(e, CTRL, `${label}: no control chars`);
+      assert.ok(e.length <= 200, `${label}: bounded (${e.length})`);
+      assert.ok(!e.includes('z'.repeat(250)), `${label}: dirty detail does not re-leak whole`);
+    }
+  }
+  // doctor's final finding is sanitized too
+  sr._setChildRunner(() => ({ status: null, signal: null, stdout: '', error: dirtyErr }));
+  const droot = drProject('| id-pattern | [A-Z]+-\\d+ |\n', '#### Scenario: AC-01 a\n');
+  const dr = require('../lib/doctor').runDoctor({ cwd: droot, testCmd: markerCmd(droot) });
+  const d6 = dr.checks.find((c) => c.id === 'D6');
+  assert.strictEqual(d6.status, 'finding');
+  assert.match(d6.detail, /process-config/);
+  assert.doesNotMatch(d6.detail, CTRL);
+  assert.ok(d6.detail.length <= 200);
+  assert.ok(!fs.existsSync(marker(droot)), 'D5 probe skipped');
+  // check's final error is sanitized (in-process cli with captured console)
+  const checkMod = require('../lib/check');
+  const croot = proj({
+    'apriori/specs/m/spec.md': '#### Scenario: AC-01 a\n',
+    'apriori/process-config.md': '| id-pattern | [A-Z]+-\\d+ |\n',
+  });
+  const oldCwd = process.cwd(); const logs = [], errsOut = [];
+  const oldLog = console.log, oldErr = console.error;
+  console.log = (...a) => logs.push(a.join(' ')); console.error = (...a) => errsOut.push(a.join(' '));
+  let code;
+  try { process.chdir(croot); code = checkMod.cli([]); }
+  finally { process.chdir(oldCwd); console.log = oldLog; console.error = oldErr; sr._setChildRunner(null); }
+  assert.strictEqual(code, 2);
+  assert.match(logs.join('\n'), /RESULT: ERROR/);
+  const errLine = errsOut.join('\n');
+  assert.match(errLine, /process-config/);
+  assert.doesNotMatch(errLine, CTRL);
+  assert.ok(!errLine.includes('z'.repeat(250)));
+});
+
+test('SR-54 a TAP-batch failure after the test command still fails closed, and the real pattern passes the same store', () => {
+  const sr = require('../lib/spec-runner');
+  const evilTitle = 'a'.repeat(40) + '!';
+  const root = proj({
+    'apriori/specs/m/spec.md': `#### Scenario: AC-01 ok\n#### Scenario: ${evilTitle}\n`,
+    'apriori/process-config.md': '| id-pattern | [A-Z]+-\\d+ |\n',
+  });
+  // sequential seam: title batch answers well-formed; the TAP-description batch times out
+  for (const [label, second] of [
+    ['tap-timeout', { status: null, signal: 'SIGKILL', stdout: '', error: null }],
+    ['tap-malformed', { status: 0, signal: null, stdout: '{"ids":"nope"}', error: null }],
+  ]) {
+    let call = 0;
+    sr._setChildRunner((payload) => {
+      call++;
+      const { texts } = JSON.parse(payload);
+      if (call === 1) return { status: 0, signal: null, stdout: JSON.stringify({ ids: texts.map((t) => (t.startsWith('AC-01') ? 'AC-01' : null)) }), error: null };
+      return second;
+    });
+    const run2 = sr.verify({ specs: [path.join(root, 'apriori/specs')], testCmd: markerCmd(root), cwd: root });
+    sr._setChildRunner(null);
+    assert.strictEqual(call >= 2, true, `${label}: both application branches went through the child`);
+    assert.ok(fs.existsSync(marker(root)), `${label}: the test command DID run before the TAP batch`);
+    fs.rmSync(marker(root));
+    assert.ok(run2.errors.length > 0, `${label}: fails closed`);
+    assert.match(run2.errors.join(' '), /process-config/);
+    for (const e of run2.errors) { assert.doesNotMatch(e, CTRL); assert.ok(e.length <= 200); }
+  }
+  // same-store contrast: the real multi-segment pattern over the SAME adversarial-title store
+  // completes through the child — no matcher failure (the evil title is merely unidentified)
+  const sameStore = proj({
+    'apriori/specs/m/spec.md': `#### Scenario: AC-01 ok\n#### Scenario: ${evilTitle}\n`,
+    'apriori/process-config.md': `| id-pattern | ${PATTERN} |\n`,
+  });
+  const rok = vrun(sameStore, ['--specs', 'apriori/specs', '--test-cmd', `node -e "console.log('ok 1 - AC-01 ok')"`, '--json']);
+  const jok = JSON.parse(rok.stdout);
+  assert.strictEqual(jok.result, 'GAPS', rok.stdout);                 // ordinary gap, not a matcher failure
+  assert.strictEqual(jok.errors.length, 0, 'no matcher failure');
+  assert.strictEqual(jok.unidentified.length, 1);
+});
+test/verification-profile.test.js:30:  const bare = repo(null);
+test/verification-profile.test.js:31:  const b = resolveVerificationProfile(bare);
+test/new.test.js:37:test('NW-03 enforces bare kebab-case names (dates stamped at archive time, not here)', () => {
+test/doctor.test.js:126:  const bare = mkProject({
+test/doctor.test.js:130:  assert.strictEqual(byId(doctor.runDoctor({ cwd: bare, testCmd: TAP_OK }), 'D4')[0].status, 'n/a');
+test/hotfix-grade.test.js:189:  const bare = gradeOf({}, { delta });
+test/hotfix-grade.test.js:190:  assert.deepStrictEqual({ radius: bare.radius, subtype: bare.subtype }, { radius: 'R3', subtype: 'n/a' }, 'fail-up on an unannotated rewrite');
+test/modified-integrity.test.js:293:  // custom config pattern recognizes letter-suffixed IDs
+test/modified-integrity.test.js:300:    'apriori/process-config.md': '| id-pattern | [A-Z]+-\\d+[a-z]* |\n',
+test/id-pattern.test.js:12:const PATTERN = '[A-Z]+(-[A-Z]+)*-\\d+[a-z]*';
+test/id-pattern.test.js:39:  const bare = proj(files);
+test/id-pattern.test.js:40:  const out1 = vrun(bare, ['--specs', 'apriori/specs', '--test-cmd', TAP3, '--json']);
+test/id-pattern.test.js:231:  const bare = gate.runGate({ cwd: root, change: 'c', testCmd: SUFFIX_TAP });
+test/id-pattern.test.js:232:  const c1b = bare.checks.find((x) => x.id === 'C1');
+test/id-pattern.test.js:233:  assert.match(c1b.detail, /[1-9]\d* unidentified/, 'without the pattern the lowercase ID is unidentified — a bare /unidentified/ would also match the store summary\'s `0 unidentified`');
+test/id-pattern.test.js:327:  const bare = proj(files);
+test/id-pattern.test.js:328:  const r1 = run(bare, ['check']);
+test/id-pattern.test.js:417:  const bare = drProject('', '#### Scenario: AC-08a s\n');
+test/id-pattern.test.js:418:  const r2 = doctor.runDoctor({ cwd: bare, testCmd: DR_TAP });
+test/protocol.test.js:294:test('PR-14 two entry doors: bare /apriori opens Brainstorm via P13', () => {
+test/spec-runner.test.js:81:  // custom pattern picks them up in BOTH spec extraction and TAP/test extraction
+test/spec-runner.test.js:88:  const { results: cust } = parseTap('ok 1 - ab-1 lower\n', lowRe);    // custom pattern binds it
+test/spec-runner.test.js:90:  // end-to-end: same custom pattern governs spec + test → BOUND-GREEN
+test/spec-runner.test.js:321:  assert.strictEqual(u.points, 2);                 // bare `ok` counts; `ok:`/`not ok:` never do
+test/spec-runner.test.js:370:test('SR-34 bare and half-shaped not-ok points block even on exit 0', () => {
+test/spec-runner.test.js:378:  // bare/untagged ok points block nothing
+test/change-scope.test.js:326:  // malformed sibling delta (bare scenario, zero ops): grants nothing → failing orphan blocks
+test/golden-path-resolve.test.js:24:test('GP-06 posix stays bare bash', async () => {
+test/golden-path-resolve.test.js:85:  // the never-bare-bash sweep: every win32 fixture that RESOLVES must return an absolute .exe path
+test/id-default-and-notes.test.js:127:  const bare = proj({ 'apriori/specs/m/spec.md': '#### Scenario: AC-01 a\n#### Scenario: AC-08a b\n#### Scenario: AC-BIS-01 c\n' });
+test/id-default-and-notes.test.js:128:  const noRow = resolveIdPattern(bare, null);
+test/id-default-and-notes.test.js:132:  assert.strictEqual(collectScenarios(specs(bare), new RegExp(noRow.source)).unidentified.length, 0, 'the default recognises all three');
+test/hotfix-review.test.js:50:  const r0bare = checkReview({ radius: 'R0', subtype: 'n/a' }, state({ 'change-kind': 'no-code', kinds: '2' }), null);
+test/hotfix-review.test.js:51:  assert.deepStrictEqual(r0bare.problems, [], 'a bare conclusion carries no point-check');
+test/check.test.js:80:  // through the CLI: warning is printed but RESULT stays PASS (nothing else fails in a bare dir)
+test/check.test.js:105:  const bare = fs2.mkdtempSync(path2.join(os2.tmpdir(), 'apriori-ck7b-'));
+test/check.test.js:106:  const miss = spawnSync('node', [BIN, 'check'], { cwd: bare, encoding: 'utf8' });
+test/cli.test.js:12:  // update dispatches to lib/update (bare cwd is uninitialized → its own error, not "unknown command")
+test/cli.test.js:25:  // status dispatches to lib/status (no active changes in a bare cwd → its own message, not "unknown command")
+test/cli.test.js:100:  const bare = run(['hotfix']);
+test/cli.test.js:101:  assert.strictEqual(bare.status, 0, bare.stderr);
+test/cli.test.js:102:  assert.match(bare.stdout, /apriori hotfix new <name>/);
+test/cli.test.js:111:  assert.match(scaffold.stderr, /bare kebab-case/);
+test/gate.test.js:605:    'apriori/truth/kv.md': '# T\n\n> `source-commit: deadbeef`\n',   // blockquote form, not the bare line
+test/gate.test.js:619:  // this is the pre-change default-layout path: bare stamp + lib/<module>.js
+test/gate-degrade.test.js:150:  const bare = mkProject({
+test/gate-degrade.test.js:156:  const rBare = gate.runGate({ cwd: bare, change: 'c' });
+test/gate-degrade.test.js:334:    const bare = mkProject({
+test/gate-degrade.test.js:342:    gate.runGate({ cwd: bare, change: 'c' });
+test/gate-degrade.test.js:343:    sr.verify({ change: 'c', cwd: bare, testCmd: 'node -e "console.log(1)"' });
+
+exec
+/usr/bin/zsh -lc "rg -n -C 5 \"Scenario: AM-47\" apriori/specs/archive-merge/spec.md apriori/changes/id-pattern-and-delta-notes/specs/archive-merge/spec.md && rg -n \"\\| id-pattern \\|\" test -g '*.test.js' | sort" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 105ms:
+apriori/specs/archive-merge/spec.md-223-
+apriori/specs/archive-merge/spec.md-224-#### Scenario: AM-46 archive prints the integrity section without changing its semantics
+apriori/specs/archive-merge/spec.md-225-- WHEN `apriori archive --change <name>` (the high-level form only; the single-file form is out of scope) passes preflight with a MODIFIED delta whose replacement drops a scenario — on dry-run and on `--write`
+apriori/specs/archive-merge/spec.md-226-- THEN the same human integrity section appears in the output BEFORE the write-result lines (an output-order guarantee — archive's output stays buffered as in state A; physical I/O timing is not promised), the RESULT line, exit code and written bytes are identical to a run without the report, and ANY preflight failure — malformed, CAS, conflict, denial, a pre-existing temp file, an escaping --changes-dir destination — prints NO integrity section
+apriori/specs/archive-merge/spec.md-227-
+apriori/specs/archive-merge/spec.md:228:#### Scenario: AM-47 the archive id-pattern channel is resolved, terminable and degradable
+apriori/specs/archive-merge/spec.md-229-- WHEN archive runs with a custom config `id-pattern` row recognizing letter-suffixed IDs; with no row (default); with an uncompilable row; and with an injected matcher failure
+apriori/specs/archive-merge/spec.md-230-- THEN the first two produce correct reports through the injected terminable matcher — the pinned seam: `archiveMerge.cli(argv, deps)` and `archiveChange({..., idMatcherFactory})` accept an optional factory `(cwd) => matcher | {error}`; bin builds it lazily from `lib/config`'s resolveIdPattern plus spec-runner's makeIdMatcher; a MISSING factory degrades exactly like a factory error (warning + skip); archive-merge itself never requires spec-runner; the last two print exactly one stderr warning — the WHOLE line `warning: modified-integrity <reason>` passed through sanitizeMsg (control chars replaced with `·`, ≤200 UTF-16 units) — skip the report, and leave every other archive output and exit unchanged
+test/change-scope.test.js:178:  const root = mkChange(STORE_AB, DELTA_C, { 'apriori/process-config.md': '| id-pattern | [A-Z]+-\\d+ |\n' });
+test/change-scope.test.js:196:  const root2 = mkChange(STORE_AB, DELTA_C, { 'apriori/process-config.md': '| id-pattern | [A-Z]+-\\d+ |\n' });
+test/change-scope.test.js:205:  const root3 = mkChange(STORE_AB, DELTA_C, { 'apriori/process-config.md': '| id-pattern | [A-Z]+-\\d+ |\n' });
+test/change-scope.test.js:234:  const pre = mkChange(STORE_AB, DELTA_C, { 'apriori/process-config.md': '| id-pattern | ( |\n' });
+test/change-scope.test.js:376:      'apriori/process-config.md': '| id-pattern | [A-Z]+-\\d+ |\n',
+test/change-scope.test.js:396:      'apriori/process-config.md': '| id-pattern | ( |\n',
+test/change-scope.test.js:439:    'apriori/process-config.md': '| id-pattern | ( |\n',
+test/change-scope.test.js:547:    'apriori/process-config.md': '| id-pattern | [A-Z]+-\\d+ |\n',
+test/change-scope.test.js:613:  const e1 = mk('| id-pattern | ( |\n');
+test/config.test.js:105:  const { values } = parseConfig('| id-pattern | (AC\\|BR)-\\d+ |\n');
+test/doctor.test.js:203:    '| Field | Value |\n|---|---|\n| id-pattern | [ |\n');
+test/gate-degrade.test.js:183:    ['config uncompilable', {}, { 'apriori/process-config.md': cfg('| id-pattern | [ |\n') }],
+test/gate-degrade.test.js:184:    ['config conflicting', {}, { 'apriori/process-config.md': cfg('| id-pattern | [A-Z]+-\\d+ |\n| id-pattern | [a-z]+ |\n') }],
+test/gate-degrade.test.js:197:    'apriori/process-config.md': cfg('| id-pattern | [ |\n'),
+test/gate-degrade.test.js:202:  const okCfg = noCmdProject('c', { 'apriori/process-config.md': cfg('| id-pattern | [A-Z]+-\\d+ |\n') });
+test/id-default-and-notes.test.js:121:    'apriori/process-config.md': `| Field | Value |\n|---|---|\n| id-pattern | ${OLD_ID} |\n`,
+test/id-default-and-notes.test.js:163:  const root = drProject(`| id-pattern | ${OLD_ID} |\n`,
+test/id-default-and-notes.test.js:186:  const root = drProject(`| id-pattern | ${OLD_ID} |\n`, many);
+test/id-pattern.test.js:122:    'apriori/process-config.md': '| id-pattern | (\x01' + 'y'.repeat(300) + ' |\n' });
+test/id-pattern.test.js:148:    'apriori/process-config.md': '| id-pattern | (a+)+$ |\n',
+test/id-pattern.test.js:162:  const ok = proj({ 'apriori/specs/m/spec.md': SPEC3, 'apriori/process-config.md': `| id-pattern | ${PATTERN} |\n` });
+test/id-pattern.test.js:247:  const root = gateProj({ 'apriori/process-config.md': `| id-pattern | ${SUFFIX_PATTERN} |\n` });
+test/id-pattern.test.js:261:  const root2 = gateProj({ 'apriori/process-config.md': `| id-pattern | ${SUFFIX_PATTERN} |\n` });
+test/id-pattern.test.js:267:  const root3 = gateProj({ 'apriori/process-config.md': '| id-pattern | ( |\n' });
+test/id-pattern.test.js:287:    'apriori/process-config.md': '| id-pattern | (a+)+$ |\n',
+test/id-pattern.test.js:309:    [mk(`| id-pattern | ${SUFFIX_PATTERN} |\n`), ['--id-pattern', ''], /--id-pattern/],   // empty flag over VALID config
+test/id-pattern.test.js:310:    [mk('| id-pattern | ( |\n'), ['--id-pattern', ''], /--id-pattern/],                   // empty flag over INVALID config (still flag origin)
+test/id-pattern.test.js:311:    [mk('| id-pattern | ( |\n'), [], /process-config/],                                   // invalid config, no flag
+test/id-pattern.test.js:331:  const cfg = proj({ ...files, 'apriori/process-config.md': `| id-pattern | ${NARROW} |\n` });
+test/id-pattern.test.js:370:    'apriori/process-config.md': '| id-pattern | ( |\n',
+test/id-pattern.test.js:382:    'apriori/process-config.md': '| id-pattern | (a+)+$ |\n',
+test/id-pattern.test.js:412:  const cfg = drProject(`| id-pattern | ${PATTERN} |\n`, '#### Scenario: AC-08a s\n');
+test/id-pattern.test.js:425:  const root = drProject('| id-pattern | ( |\n', '#### Scenario: AC-01 a\n');
+test/id-pattern.test.js:43:  const cfg = proj({ ...files, 'apriori/process-config.md': `| id-pattern | ${NARROW} |\n` });
+test/id-pattern.test.js:448:  const root = drProject('| id-pattern | (a+)+$ |\n', `#### Scenario: ${evilTitle}\n`);
+test/id-pattern.test.js:52:    'apriori/process-config.md': '| id-pattern | ( |\n',        // syntactically INVALID row
+test/id-pattern.test.js:560:    'apriori/process-config.md': '| id-pattern | [A-Z]+-\\d+ |\n',
+test/id-pattern.test.js:576:  const droot = drProject('| id-pattern | [A-Z]+-\\d+ |\n', '#### Scenario: AC-01 a\n');
+test/id-pattern.test.js:588:    'apriori/process-config.md': '| id-pattern | [A-Z]+-\\d+ |\n',
+test/id-pattern.test.js:609:    'apriori/process-config.md': '| id-pattern | [A-Z]+-\\d+ |\n',
+test/id-pattern.test.js:636:    'apriori/process-config.md': `| id-pattern | ${PATTERN} |\n`,
+test/id-pattern.test.js:70:  const e = proj({ 'apriori/specs/m/spec.md': SPEC3, 'apriori/process-config.md': `| id-pattern | ${PATTERN} |\n` });
+test/id-pattern.test.js:76:  const c = proj({ 'apriori/specs/m/spec.md': SPEC3, 'apriori/process-config.md': '| id-pattern | ( |\n' });
+test/id-pattern.test.js:94:    'apriori/process-config.md': '| id-pattern | ( |\n',
+test/modified-integrity.test.js:218:  const err1 = mkChange(MOD_DROP, { 'apriori/process-config.md': '| id-pattern | ( |\n' });
+test/modified-integrity.test.js:229:  const root = mkChange(MOD_DROP, { 'apriori/process-config.md': '| id-pattern | [A-Z]+-\\d+ |\n' });
+test/modified-integrity.test.js:300:    'apriori/process-config.md': '| id-pattern | [A-Z]+-\\d+[a-z]* |\n',
+test/modified-integrity.test.js:309:  const root3 = archiveProj(stamped(MOD_DROP), { 'apriori/process-config.md': '| id-pattern | ( |\n' });
+
+exec
+/usr/bin/zsh -lc "sed -n '292,370p' test/modified-integrity.test.js && sed -n '370,435p' test/modified-integrity.test.js && sed -n '400,435p' test/id-default-and-notes.test.js" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 103ms:
+test('AM-47 the archive id-pattern channel is resolved, terminable and degradable', () => {
+  // custom config pattern recognizes letter-suffixed IDs
+  const store = '### Requirement: R-S\n\n#### Scenario: AC-08a suffixed\n- a\n\n#### Scenario: AC-09b other\n- b\n';
+  const delta = '## MODIFIED Requirements\n\n### Requirement: R-S\n\n#### Scenario: AC-08a suffixed\n- a\n';
+  const root = proj({
+    'apriori/specs/m/spec.md': store,
+    'apriori/changes/c/flow-state.md': FLOW('c'),
+    'apriori/changes/c/specs/m/spec.md': `<!-- apriori-base: ${am.fingerprint(store)} -->\n\n` + delta,
+    'apriori/process-config.md': '| id-pattern | [A-Z]+-\\d+[a-z]* |\n',
+  });
+  const r = run(root, ['archive', '--change', 'c']);
+  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /! dropped: AC-09b/);
+  // default positive path
+  const root2 = archiveProj(stamped(MOD_DROP));
+  assert.match(run(root2, ['archive', '--change', 'c']).stdout, /! .*KV-02/);
+  // invalid config row: warning + skip, archive unchanged
+  const root3 = archiveProj(stamped(MOD_DROP), { 'apriori/process-config.md': '| id-pattern | ( |\n' });
+  const r3 = run(root3, ['archive', '--change', 'c']);
+  assert.strictEqual(r3.status, 0, 'archive result unchanged');
+  assert.doesNotMatch(r3.stdout, /MODIFIED INTEGRITY/);
+  const wline = r3.stderr.split('\n').find((l) => l.includes('modified-integrity'));
+  assert.ok(wline && wline.startsWith('warning: modified-integrity '), wline);
+  assert.ok(wline.length <= 200);
+  assert.doesNotMatch(wline, /[\x00-\x1f\x7f]/);
+  assert.match(r3.stdout, /RESULT: MERGED/);
+  // inline-fence heading pairs by ID through the archive matcher channel too (IMPL-5)
+  const storeI = '### Requirement: R-I\n```x```#### Scenario: KV-01 old title\n- a\n';
+  const rootI = proj({
+    'apriori/specs/m/spec.md': storeI,
+    'apriori/changes/c/flow-state.md': FLOW('c'),
+    'apriori/changes/c/specs/m/spec.md': `<!-- apriori-base: ${am.fingerprint(storeI)} -->\n\n` +
+      '## MODIFIED Requirements\n\n### Requirement: R-I\n```x```#### Scenario: KV-01 new title\n- a\n',
+  });
+  const factory = () => ({ batch: (ts) => ({ ids: ts.map((t) => sr.leadId(t, /[A-Z]+-\d+/)) }) });
+  const resI = am.archiveChange({ change: 'c', cwd: rootI, write: false, idMatcherFactory: factory });
+  assert.strictEqual(resI.code, 0, resI.err.join('\n'));
+  const outI = resI.out.join('\n');
+  assert.match(outI, /titleChanged: .*old title.*->.*new title/, 'inline-fence titles pair by ID: ' + outI);
+  // programmatic call without a factory degrades the same way (module-level)
+  const root4 = archiveProj(stamped(MOD_DROP));
+  const res = am.archiveChange({ change: 'c', cwd: root4, write: false });
+  assert.strictEqual(res.code, 0);
+  assert.ok(!res.out.join('\n').includes('MODIFIED INTEGRITY'), 'missing factory = skip');
+  assert.ok(res.err.some((l) => l.includes('modified-integrity')), 'missing factory warns');
+});
+
+test('AM-45 buildProjection captures old blocks at the right points', () => {
+  // rename-then-modify: oldBlock is the COMPLETE pre-rename block
+  const store = '### Requirement: A\nprose\n\n#### Scenario: KV-01 one\n- a\n';
+  const delta = '## RENAMED Requirements\n\n- A -> G\n\n## MODIFIED Requirements\n\n### Requirement: G\nprose\n\n#### Scenario: KV-01 one\n- a\n- b\n';
+  const root = proj({
+    'apriori/specs/m/spec.md': store,
+    'apriori/changes/c/specs/m/spec.md': `<!-- apriori-base: ${am.fingerprint(store)} -->\n\n` + delta,
+  });
+  const d = am.discoverDeltas(path.join(root, 'apriori', 'changes'), 'c');
+  const p = am.buildProjection(path.join(root, 'apriori', 'specs'), d.files, 'c');
+  const pairs = p.modifiedBlocks.get('m/spec.md');
+  assert.strictEqual(pairs.length, 1);
+  assert.strictEqual(pairs[0].name, 'G');
+  assert.match(pairs[0].oldBlock, /^### Requirement: A\nprose/, 'pre-rename baseline');
+  assert.match(pairs[0].newBlock, /^### Requirement: G/);
+  // repaired-rerun path still contributes its pair
+  const storeApplied = '### Requirement: R-K\nkeep me\n\n#### Scenario: KV-01 one\n- WHEN w\n- THEN t\n';
+  const root2 = proj({
+    'apriori/specs/m/spec.md': storeApplied,
+    'apriori/changes/c/specs/m/spec.md': `<!-- apriori-base: ${am.fingerprint(STORE_KV)} -->\n\n` +
+      '## MODIFIED Requirements\n\n### Requirement: R-K\nkeep me\n\n#### Scenario: KV-01 one\n- WHEN w\n- THEN t\n',
+  });
+  const d2 = am.discoverDeltas(path.join(root2, 'apriori', 'changes'), 'c');
+  const p2 = am.buildProjection(path.join(root2, 'apriori', 'specs'), d2.files, 'c');
+  assert.ok(p2.repaired.includes('m/spec.md'), 'rerun repair path taken');
+  const pairs2 = p2.modifiedBlocks.get('m/spec.md');
+  assert.strictEqual(pairs2.length, 1, 'repaired module still contributes its pair');
+  assert.strictEqual(pairs2[0].oldBlock.trim(), pairs2[0].newBlock.trim());
+  // repaired RENAME-then-modify rerun: pre-rename source gone — still one equal-text pair
+  const storeDone = '### Requirement: G\nprose\n\n#### Scenario: KV-01 one\n- a\n- b\n';
+  const storeBefore = '### Requirement: A\nprose\n\n#### Scenario: KV-01 one\n- a\n';
+  const root3 = proj({
+  const root3 = proj({
+    'apriori/specs/m/spec.md': storeDone,
+    'apriori/changes/c/specs/m/spec.md': `<!-- apriori-base: ${am.fingerprint(storeBefore)} -->\n\n` +
+      '## RENAMED Requirements\n\n- A -> G\n\n## MODIFIED Requirements\n\n### Requirement: G\nprose\n\n#### Scenario: KV-01 one\n- a\n- b\n',
+  });
+  const d3 = am.discoverDeltas(path.join(root3, 'apriori', 'changes'), 'c');
+  const p3 = am.buildProjection(path.join(root3, 'apriori', 'specs'), d3.files, 'c');
+  assert.ok(p3.repaired.includes('m/spec.md'), 'rerun repair path taken');
+  const pairs3 = p3.modifiedBlocks.get('m/spec.md');
+  assert.strictEqual(pairs3.length, 1, 'repaired rename-then-modify still owes its pair');
+  assert.strictEqual(pairs3[0].oldBlock.trim(), pairs3[0].newBlock.trim());
+});
+  const d6 = dr.checks.filter((c) => c.id === 'D6');
+  assert.ok(d6.every((c) => c.status !== 'finding'), 'doctor D6: ' + JSON.stringify(d6));
+  const vf = run(root, ['verify', '--specs', 'apriori/specs', '--test-cmd', tap, '--json']);
+  const vj = JSON.parse(vf.stdout);
+  assert.strictEqual(vj.unidentified.length, 0, 'verify: ' + vf.stdout);
+  assert.strictEqual(vj.result, 'GREEN', 'verify verdict: ' + vf.stdout);
+
+  // the fourth consumer — gate C1 — needs a change bundle to judge, so give it one
+  const bundle = path.join(root, 'apriori', 'changes', 'c');
+  fs.mkdirSync(path.join(bundle, 'specs', 'm'), { recursive: true });
+  fs.mkdirSync(path.join(bundle, 'review'), { recursive: true });
+  fs.writeFileSync(path.join(bundle, 'flow-state.md'),
+    'change: c\ntier: medium\ntrack: harden\ntrack-rationale: r\nlineage: main\ncurrent-step: STEP5\nround: 1\nnext-action: x\ngates:\n  - 2026-08-15T00:00 note: n\n');
+  fs.writeFileSync(path.join(bundle, 'tasks.md'), '- [x] T1 done\n');
+  fs.writeFileSync(path.join(bundle, 'review', 'issues.md'),
+    '| ID | Issue | Risk | Round found | Status |\n|---|---|---|---|---|\n| Q-1 | a | low | 1 | verified |\n');
+  fs.writeFileSync(path.join(bundle, 'specs', 'm', 'spec.md'),
+    '## ADDED Requirements\n\n### Requirement: Delta\n\n#### Scenario: AC-BIS-99 added\n- t\n');
+  const gtap = `node -e "${[...titles, 'AC-BIS-99 added'].map((t, i) => `console.log('ok ${i + 1} - ${t}')`).join(';')}"`;
+  const g = require('../lib/gate').runGate({ cwd: root, change: 'c', testCmd: gtap });
+  const c1 = g.checks.find((c) => c.id === 'C1');
+  assert.strictEqual(c1.status, 'pass', 'gate C1: ' + (c1 && c1.detail));
+  assert.match(c1.detail, /0 unidentified/, 'and nothing unidentified: ' + c1.detail);
+});
+
+exec
+/usr/bin/zsh -lc 'rg -n -C 4 "Scenario: SR-54|Scenario: DR-16|Scenario: SR-51" apriori/specs/spec-runner/spec.md apriori/specs/doctor/spec.md && rg -n "const PATTERN|PATTERN" test/id-pattern.test.js' in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 163ms:
+apriori/specs/doctor/spec.md-72-
+apriori/specs/doctor/spec.md-73-### Requirement: D6 shows its pattern source and diagnoses a bad config row
+apriori/specs/doctor/spec.md-74-`doctor`'s D6 SHALL scan the store with the effective id-pattern (config `id-pattern` row > `DEFAULT_ID`; doctor gains no flag) and its detail SHALL name the source — `config` when the row supplied the pattern, `default` otherwise. The id-pattern is resolved AND its D6 store scan is executed BEFORE the D5 probe runs (execution order; the report keeps its display order): an uncompilable config row — or a config-origin scan whose terminable child fails (timeout/kill/crash/malformed output) — makes D6 a `finding` that names `process-config` (fix: repair the row) WITHOUT throwing, AND D5 becomes `n/a` with the deterministic detail `probe skipped (invalid id-pattern config)` — the test command is never spawned under a broken id-pattern (the validate-before-any-test-command rule covers doctor too). Absent any other unusable condition the overall result stays `FINDINGS`, exit 1 — doctor diagnoses a repairable config, it does not refuse to run. When the pattern is valid, D5's probe parsing keeps `DEFAULT_ID` (its parsed-count classification is pattern-insensitive; unchanged by this change).
+apriori/specs/doctor/spec.md-75-
+apriori/specs/doctor/spec.md:76:#### Scenario: DR-16 D6 names its pattern source
+apriori/specs/doctor/spec.md-77-- WHEN doctor runs with a valid config `id-pattern` row covering the store's IDs, and separately without any row
+apriori/specs/doctor/spec.md-78-- THEN the first D6 is `ok` with a detail naming the config source, and the second names the default source (finding or ok per the store's IDs) — both source texts are asserted
+apriori/specs/doctor/spec.md-79-
+apriori/specs/doctor/spec.md-80-#### Scenario: DR-17 an invalid config id-pattern is a D6 finding and skips the probe
+--
+apriori/specs/spec-runner/spec.md-224-#### Scenario: SR-50 the config row takes effect without a flag
+apriori/specs/spec-runner/spec.md-225-- WHEN `apriori/process-config.md` carries `| id-pattern | [A-Z]+(-[A-Z]+)*-\d+[a-z]* |` and `apriori verify --specs <dir>` runs without `--id-pattern` over scenarios `AC-01`, `AC-08a`, `AC-BIS-01`
+apriori/specs/spec-runner/spec.md-226-- THEN all three are identified (0 UNIDENTIFIED) — whereas the same run without the config row identifies only `AC-01` and reports 2 UNIDENTIFIED
+apriori/specs/spec-runner/spec.md-227-
+apriori/specs/spec-runner/spec.md:228:#### Scenario: SR-51 the flag overrides and shields the config
+apriori/specs/spec-runner/spec.md-229-- WHEN `--id-pattern` is passed while the config carries a different — or even a syntactically invalid — `id-pattern` row
+apriori/specs/spec-runner/spec.md-230-- THEN the run binds by the flag's pattern and reports no config error (the overridden key was never consumed)
+apriori/specs/spec-runner/spec.md-231-
+apriori/specs/spec-runner/spec.md-232-#### Scenario: SR-52 an invalid effective pattern refuses to run
+apriori/specs/spec-runner/spec.md-233-- WHEN the effective pattern comes from a flag whose source does not compile (or is empty), or from a config row whose source does not compile (no flag given) — including a `--change --json` run
+apriori/specs/spec-runner/spec.md-234-- THEN the run is an infra ERROR (exit 2), the message names `--id-pattern` (flag origin, empty included) or `process-config` (config origin), the WHOLE message is control-char-free and ≤200 chars including ellipsis (the raw source does not re-leak via the engine message — asserted on both origins), the test command is never spawned, no spec content is read, `--json` output keeps the existing ERROR shape with the message in `errors[]`, and a `--change --json` run still carries the `projection` field with its discovered `modules`
+apriori/specs/spec-runner/spec.md-235-
+apriori/specs/spec-runner/spec.md:236:#### Scenario: SR-54 catastrophic config matching is terminated, adversarial titles included
+apriori/specs/spec-runner/spec.md-237-- WHEN the config row carries a syntactically valid catastrophic pattern AND the spec titles are crafted to trigger its backtracking (both under the same repository's control) and verify runs without a flag
+apriori/specs/spec-runner/spec.md-238-- THEN the title-matching child is killed within its budget and the run is an infra ERROR (exit 2) whose sanitized message names `process-config` and the termination, with NO test command spawned; the same pattern via `--id-pattern` runs in-process (operator-trusted, documented); the project's real multi-segment pattern over the same store completes normally through the child
+apriori/specs/spec-runner/spec.md-239-
+apriori/specs/spec-runner/spec.md-240-#### Scenario: SR-55 every child failure class fails closed
+12:const PATTERN = '[A-Z]+(-[A-Z]+)*-\\d+[a-z]*';
+54:  const r = vrun(root, ['--specs', 'apriori/specs', '--id-pattern', PATTERN, '--test-cmd', TAP3, '--json']);
+70:  const e = proj({ 'apriori/specs/m/spec.md': SPEC3, 'apriori/process-config.md': `| id-pattern | ${PATTERN} |\n` });
+162:  const ok = proj({ 'apriori/specs/m/spec.md': SPEC3, 'apriori/process-config.md': `| id-pattern | ${PATTERN} |\n` });
+211:const SUFFIX_PATTERN = '[A-Za-z]+-\\d+';   // covers the lowercase store ID and the delta's uppercase one
+228:  const r = gate.runGate({ cwd: root, change: 'c', testCmd: SUFFIX_TAP, idPattern: SUFFIX_PATTERN });
+241:  const ra = gate.runGate({ cwd: aroot, change: 'z', testCmd: `node -e "console.log('ok 1 - xa-01 a')"`, idPattern: SUFFIX_PATTERN });
+247:  const root = gateProj({ 'apriori/process-config.md': `| id-pattern | ${SUFFIX_PATTERN} |\n` });
+261:  const root2 = gateProj({ 'apriori/process-config.md': `| id-pattern | ${SUFFIX_PATTERN} |\n` });
+309:    [mk(`| id-pattern | ${SUFFIX_PATTERN} |\n`), ['--id-pattern', ''], /--id-pattern/],   // empty flag over VALID config
+412:  const cfg = drProject(`| id-pattern | ${PATTERN} |\n`, '#### Scenario: AC-08a s\n');
+636:    'apriori/process-config.md': `| id-pattern | ${PATTERN} |\n`,
+
+exec
+/usr/bin/zsh -lc "sed -n '135,170p' test/id-pattern.test.js && sed -n '600,650p' test/id-pattern.test.js" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 98ms:
+  assert.match(rt.stdout, /RESULT: ERROR/);
+});
+
+test('SR-53 absent flag and config the default binds unchanged', () => {
+  const root = proj({ 'apriori/specs/m/spec.md': '#### Scenario: XX-01 a\n' });
+  const r = JSON.parse(vrun(root, ['--specs', 'apriori/specs', '--test-cmd', `node -e "console.log('ok 1 - XX-01 a')"`, '--json']).stdout);
+  assert.strictEqual(r.result, 'GREEN');
+});
+
+test('SR-54 catastrophic config matching is terminated, adversarial titles included', () => {
+  const evilTitle = 'a'.repeat(40) + '!';
+  const root = proj({
+    'apriori/specs/m/spec.md': `#### Scenario: ${evilTitle}\n`,
+    'apriori/process-config.md': '| id-pattern | (a+)+$ |\n',
+  });
+  const t0 = Date.now();
+  const r = vrun(root, ['--specs', 'apriori/specs', '--test-cmd', markerCmd(root), '--json']);
+  const elapsed = Date.now() - t0;
+  // the deterministic 2000ms budget proof lives in the CHILD_SPAWN_OPTS assertion; here we
+  // only need termination evidence — a tight lower bound flakes under full-suite load
+  assert.ok(elapsed < 15000, `terminated within budget (${elapsed}ms)`);
+  assert.strictEqual(r.status, 2, r.stdout + r.stderr);
+  const errText = JSON.parse(r.stdout).errors.join(' ');
+  assert.match(errText, /process-config/);
+  assert.match(errText, /timeout|terminated/, 'the message names the termination, not a spawn error');
+  assert.ok(!fs.existsSync(marker(root)), 'test command never spawned');
+  // the real multi-segment pattern completes normally through the child
+  const ok = proj({ 'apriori/specs/m/spec.md': SPEC3, 'apriori/process-config.md': `| id-pattern | ${PATTERN} |\n` });
+  const rok = vrun(ok, ['--specs', 'apriori/specs', '--test-cmd', TAP3, '--json']);
+  assert.strictEqual(JSON.parse(rok.stdout).result, 'GREEN');
+});
+
+test('SR-55 every child failure class fails closed', () => {
+  const sr = require('../lib/spec-runner');
+  const resolvedCfg = { source: '[A-Z]+-\\d+', origin: 'config' };
+  const etimedout = new Error('spawnSync ETIMEDOUT'); etimedout.code = 'ETIMEDOUT';
+  assert.doesNotMatch(errLine, CTRL);
+  assert.ok(!errLine.includes('z'.repeat(250)));
+});
+
+test('SR-54 a TAP-batch failure after the test command still fails closed, and the real pattern passes the same store', () => {
+  const sr = require('../lib/spec-runner');
+  const evilTitle = 'a'.repeat(40) + '!';
+  const root = proj({
+    'apriori/specs/m/spec.md': `#### Scenario: AC-01 ok\n#### Scenario: ${evilTitle}\n`,
+    'apriori/process-config.md': '| id-pattern | [A-Z]+-\\d+ |\n',
+  });
+  // sequential seam: title batch answers well-formed; the TAP-description batch times out
+  for (const [label, second] of [
+    ['tap-timeout', { status: null, signal: 'SIGKILL', stdout: '', error: null }],
+    ['tap-malformed', { status: 0, signal: null, stdout: '{"ids":"nope"}', error: null }],
+  ]) {
+    let call = 0;
+    sr._setChildRunner((payload) => {
+      call++;
+      const { texts } = JSON.parse(payload);
+      if (call === 1) return { status: 0, signal: null, stdout: JSON.stringify({ ids: texts.map((t) => (t.startsWith('AC-01') ? 'AC-01' : null)) }), error: null };
+      return second;
+    });
+    const run2 = sr.verify({ specs: [path.join(root, 'apriori/specs')], testCmd: markerCmd(root), cwd: root });
+    sr._setChildRunner(null);
+    assert.strictEqual(call >= 2, true, `${label}: both application branches went through the child`);
+    assert.ok(fs.existsSync(marker(root)), `${label}: the test command DID run before the TAP batch`);
+    fs.rmSync(marker(root));
+    assert.ok(run2.errors.length > 0, `${label}: fails closed`);
+    assert.match(run2.errors.join(' '), /process-config/);
+    for (const e of run2.errors) { assert.doesNotMatch(e, CTRL); assert.ok(e.length <= 200); }
+  }
+  // same-store contrast: the real multi-segment pattern over the SAME adversarial-title store
+  // completes through the child — no matcher failure (the evil title is merely unidentified)
+  const sameStore = proj({
+    'apriori/specs/m/spec.md': `#### Scenario: AC-01 ok\n#### Scenario: ${evilTitle}\n`,
+    'apriori/process-config.md': `| id-pattern | ${PATTERN} |\n`,
+  });
+  const rok = vrun(sameStore, ['--specs', 'apriori/specs', '--test-cmd', `node -e "console.log('ok 1 - AC-01 ok')"`, '--json']);
+  const jok = JSON.parse(rok.stdout);
+  assert.strictEqual(jok.result, 'GAPS', rok.stdout);                 // ordinary gap, not a matcher failure
+  assert.strictEqual(jok.errors.length, 0, 'no matcher failure');
+  assert.strictEqual(jok.unidentified.length, 1);
+});
+
+exec
+/usr/bin/zsh -lc "sed -n '160,215p' test/change-scope.test.js && sed -n '360,410p' test/change-scope.test.js && sed -n '530,560p' test/change-scope.test.js && sed -n '210,240p' test/modified-integrity.test.js" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 154ms:
+  const r2 = chg(mixed, ['--test-cmd', tap(['1..0'])]);
+  assert.strictEqual(r2.status, 0, r2.stdout + r2.stderr);
+  assert.match(r2.stdout, /0 scenario\(s\) in change scope \(ops:/);
+  assert.doesNotMatch(r2.stdout, /removal-only/);
+  // all-empty projection: global vacuous ERROR
+  const empty = mkChange('### Requirement: R-A\nprose\n', '## ADDED Requirements\n\n### Requirement: R-E\nprose\n');
+  assert.strictEqual(chg(empty, ['--test-cmd', tap(['1..0'])]).status, 2);
+  // scope whose only occurrences are unidentified: GAPS (SR-59 case, asserted here for the table)
+  const uni = mkChange(STORE_AB, '## ADDED Requirements\n\n### Requirement: R-C\n\n#### Scenario: nameless\n- t\n');
+  assert.strictEqual(chg(uni, ['--test-cmd', tap(['ok 1 - XA-01 a'])]).status, 1);
+  // malformed delta keeps today's projection-failure ERROR
+  const bad = mkChange(STORE_AB, '## NONSENSE Requirements\n\n### Requirement: R-X\n');
+  assert.strictEqual(chg(bad, ['--test-cmd', tap(['1..0'])]).status, 2);
+});
+
+test('SR-63 one projection, one test run, one parse — and exactly two matcher batches', () => {
+  const marker = (root) => path.join(root, 'spawned.count');
+  const countingTap = (root) => `node -e "require('fs').appendFileSync(${JSON.stringify(marker(root)).replace(/"/g, '\\"')},'x');console.log('ok 1 - XC-01 c');console.log('ok 2 - XA-01 a');console.log('ok 3 - XB-01 b')"`;
+  const root = mkChange(STORE_AB, DELTA_C, { 'apriori/process-config.md': '| id-pattern | [A-Z]+-\\d+ |\n' });
+  const calls = [];
+  sr._setChildRunner((payload) => {
+    const { texts } = JSON.parse(payload);
+    calls.push(texts);
+    const re = new RegExp('[A-Z]+-\\d+');
+    return { status: 0, signal: null, stdout: JSON.stringify({ ids: texts.map((t) => sr.leadId(t, re)) }), error: null };
+  });
+  let run;
+  try {
+    run = sr.verify({ change: 'c', cwd: root, testCmd: countingTap(root) });
+  } finally { sr._setChildRunner(null); }
+  assert.strictEqual(run.errors.length, 0, JSON.stringify(run.errors));
+  assert.strictEqual(calls.length, 2, 'exactly two matcher batches (titles, TAP descriptions)');
+  assert.ok(calls[0].some((t) => t.startsWith('XC-01')) && calls[0].some((t) => t.startsWith('XA-01')), 'first batch = projection titles');
+  assert.ok(calls[1].some((t) => t.startsWith('XC-01 c')), 'second batch = TAP descriptions');
+  assert.strictEqual(fs.readFileSync(marker(root), 'utf8'), 'x', 'exactly one test spawn');
+  // title-batch failure: zero spawns
+  const root2 = mkChange(STORE_AB, DELTA_C, { 'apriori/process-config.md': '| id-pattern | [A-Z]+-\\d+ |\n' });
+  let n2 = 0;
+  sr._setChildRunner(() => { n2++; return { status: 1, signal: null, stdout: '', error: null }; });
+  let run2;
+  try { run2 = sr.verify({ change: 'c', cwd: root2, testCmd: countingTap(root2) }); }
+  finally { sr._setChildRunner(null); }
+  assert.ok(run2.errors.length > 0);
+  assert.ok(!fs.existsSync(marker(root2)), 'title-batch failure spawns nothing');
+  // TAP-batch failure: exactly one spawn, still fails closed
+  const root3 = mkChange(STORE_AB, DELTA_C, { 'apriori/process-config.md': '| id-pattern | [A-Z]+-\\d+ |\n' });
+  let n3 = 0;
+  sr._setChildRunner((payload) => {
+    n3++;
+    const { texts } = JSON.parse(payload);
+    if (n3 === 1) return { status: 0, signal: null, stdout: JSON.stringify({ ids: texts.map((t) => sr.leadId(t, new RegExp('[A-Z]+-\\d+'))) }), error: null };
+    return { status: null, signal: 'SIGKILL', stdout: '', error: null };
+  });
+  let run3;
+  try { run3 = sr.verify({ change: 'c', cwd: root3, testCmd: countingTap(root3) }); }
+  finally { sr._setChildRunner(null); }
+
+test('SR-63 the projection builds exactly once per path, and sibling titles ride the first batch', () => {
+  const amMod = require('../lib/archive-merge');
+  const realBuild = amMod.buildProjection;
+  let builds = 0;
+  amMod.buildProjection = function (...a) { builds++; return realBuild.apply(this, a); };
+  const marker = (root) => path.join(root, 'ran.marker');
+  const mCmd = (root) => `node -e "require('fs').writeFileSync(${JSON.stringify(marker(root)).replace(/"/g, '\\"')},'x');console.log('ok 1 - XC-01 c');console.log('ok 2 - XA-01 a');console.log('ok 3 - XB-01 b');console.log('ok 4 - YS-01 s')"`;
+  try {
+    // normal path with a config-origin matcher and a sibling: exactly 1 projection, 2 batches,
+    // sibling titles inside the FIRST payload
+    const root = proj({
+      'apriori/specs/m/spec.md': STORE_AB,
+      'apriori/changes/c/flow-state.md': FLOW('c'),
+      'apriori/changes/c/specs/m/spec.md': DELTA_C,
+      'apriori/changes/s/specs/m/spec.md': '## ADDED Requirements\n\n### Requirement: R-S\n\n#### Scenario: YS-01 s\n- t\n',
+      'apriori/process-config.md': '| id-pattern | [A-Z]+-\\d+ |\n',
+    });
+    const payloads = [];
+    sr._setChildRunner((payload) => {
+      const { texts } = JSON.parse(payload);
+      payloads.push(texts);
+      return { status: 0, signal: null, stdout: JSON.stringify({ ids: texts.map((t) => sr.leadId(t, /[A-Z]+-\d+/)) }), error: null };
+    });
+    builds = 0;
+    const run = sr.verify({ change: 'c', cwd: root, testCmd: mCmd(root) });
+    sr._setChildRunner(null);
+    assert.strictEqual(run.errors.length, 0, JSON.stringify(run.errors));
+    assert.strictEqual(builds, 1, 'exactly one projection build');
+    assert.strictEqual(payloads.length, 2, 'exactly two matcher batches');
+    assert.ok(payloads[0].some((t) => t.startsWith('YS-01')), 'sibling titles ride the FIRST batch');
+    // invalid pattern: zero projection builds, zero spawns
+    const bad = proj({
+      'apriori/specs/m/spec.md': STORE_AB,
+      'apriori/changes/c/flow-state.md': FLOW('c'),
+      'apriori/changes/c/specs/m/spec.md': DELTA_C,
+      'apriori/process-config.md': '| id-pattern | ( |\n',
+    });
+    builds = 0;
+    const r2 = sr.verify({ change: 'c', cwd: bad, testCmd: mCmd(bad) });
+    assert.ok(r2.errors.length > 0);
+    assert.strictEqual(builds, 0, 'invalid pattern: no projection build');
+    assert.ok(!fs.existsSync(marker(bad)), 'invalid pattern: no spawn');
+    // projection failure: one build, zero spawns
+    const conflicted = proj({
+      'apriori/specs/m/spec.md': STORE_AB,
+      'apriori/changes/c/flow-state.md': FLOW('c'),
+      'apriori/changes/c/specs/m/spec.md': '## MODIFIED Requirements\n\n### Requirement: R-MISSING\n\n#### Scenario: XM-01 m\n- t\n',
+    });
+    builds = 0;
+    const r3 = sr.verify({ change: 'c', cwd: conflicted, testCmd: mCmd(conflicted) });
+  });
+  const gout = chg(groot, ['--test-cmd', tap(['ok 1 - XC-01 c', 'ok 2 - XA-01 a'])]).stdout;
+  const gsec = gout.slice(gout.indexOf('— STORE REPORT'));
+  for (const lbl of ['bound-red: 0', 'unbound: 0', 'orphan: 0', 'unidentified: 0', 'unattributed failures: 0', 'duplicate IDs: 0'])
+    assert.ok(gsec.includes(lbl), 'stable zero count: ' + lbl);
+});
+
+test('SR-63 the post-TAP-error path keeps one build, one spawn, two batches', () => {
+  const amMod = require('../lib/archive-merge');
+  const realBuild = amMod.buildProjection;
+  let builds = 0;
+  amMod.buildProjection = function (...a) { builds++; return realBuild.apply(this, a); };
+  const marker = (root) => path.join(root, 'ran.marker');
+  const root = proj({
+    'apriori/specs/m/spec.md': STORE_AB,
+    'apriori/changes/c/flow-state.md': FLOW('c'),
+    'apriori/changes/c/specs/m/spec.md': DELTA_C,
+    'apriori/process-config.md': '| id-pattern | [A-Z]+-\\d+ |\n',
+  });
+  let batches = 0;
+  sr._setChildRunner((payload) => {
+    batches++;
+    const { texts } = JSON.parse(payload);
+    return { status: 0, signal: null, stdout: JSON.stringify({ ids: texts.map((t) => sr.leadId(t, /[A-Z]+-\d+/)) }), error: null };
+  });
+  let run;
+  try {
+    // unexplained non-zero: TAP all green but exit 7 → post-TAP infra ERROR
+    run = sr.verify({ change: 'c', cwd: root,
+      testCmd: `node -e "require('fs').writeFileSync(${JSON.stringify(marker(root)).replace(/"/g, '\\"')},'x');console.log('ok 1 - XC-01 c');console.log('ok 2 - XA-01 a');console.log('ok 3 - XB-01 b');process.exit(7)"` });
+  } finally { amMod.buildProjection = realBuild; sr._setChildRunner(null); }
+  const added = mkChange('## ADDED Requirements\n\n### Requirement: R-N\n\n#### Scenario: KV-09 nine\n- t\n');
+  const ja = JSON.parse(run(added, ['verify', '--change', 'c', '--test-cmd', tap(['ok 1 - KV-09 nine', 'ok 2 - KV-01 one', 'ok 3 - KV-02 two']), '--json']).stdout);
+  assert.deepStrictEqual(ja.modifiedIntegrity, [], 'ADDED-only → empty array, field present');
+  // idempotent MODIFIED (trim-equal): empty-diff entry present
+  const idem = mkChange('## MODIFIED Requirements\n\n' + STORE_KV.trim() + '\n');
+  const ji = JSON.parse(run(idem, ['verify', '--change', 'c', '--test-cmd', tap(['ok 1 - KV-01 one', 'ok 2 - KV-02 two']), '--json']).stdout);
+  assert.deepStrictEqual(ji.modifiedIntegrity, [{ file: 'm/spec.md', name: 'R-K', retained: [], titleChanged: [], dropped: [], added: [], ambiguous: [], missingLines: [] }]);
+  // ERROR classes: absent
+  const err1 = mkChange(MOD_DROP, { 'apriori/process-config.md': '| id-pattern | ( |\n' });
+  assert.ok(!('modifiedIntegrity' in JSON.parse(run(err1, ['verify', '--change', 'c', '--test-cmd', tap(['1..0']), '--json']).stdout)));
+  const err2 = mkChange(MOD_DROP);
+  const je2 = JSON.parse(run(err2, ['verify', '--change', 'c', '--test-cmd', `node -e "console.log('ok 1 - KV-01 one');process.exit(7)"`, '--json']).stdout);
+  assert.ok(!('modifiedIntegrity' in je2));
+  // --specs: absent
+  const js = JSON.parse(run(err2, ['verify', '--specs', 'apriori/specs', '--test-cmd', tap(['ok 1 - KV-01 one', 'ok 2 - KV-02 two']), '--json']).stdout);
+  assert.ok(!('modifiedIntegrity' in js));
+});
+
+test('SR-67 the old-block titles join the one batch and bind nothing', () => {
+  const root = mkChange(MOD_DROP, { 'apriori/process-config.md': '| id-pattern | [A-Z]+-\\d+ |\n' });
+  const payloads = [];
+  sr._setChildRunner((payload) => {
+    const { texts } = JSON.parse(payload);
+    payloads.push(texts);
+    return { status: 0, signal: null, stdout: JSON.stringify({ ids: texts.map((t) => sr.leadId(t, /[A-Z]+-\d+/)) }), error: null };
+  });
+  let r;
+  try { r = sr.verify({ change: 'c', cwd: root, testCmd: tap(['ok 1 - KV-01 one']) }); }
+  finally { sr._setChildRunner(null); }
+  assert.strictEqual(r.errors.length, 0, JSON.stringify(r.errors));
+  assert.strictEqual(payloads.length, 2, 'still exactly two batches');
+
+exec
+/usr/bin/zsh -lc "rg -n \"assert\\.(match|ok)\\(["'^'"\\n]*unidentified|assert\\.(match|ok)\\(["'^'"\\n]*untagged|/unidentified/|/untagged/\" test -g '*.test.js' && rg -n \"\\[A-Z\\]\\+.*\\\\d\\+.*\\[a-z\\]\\*|\\[A-Z\\]\\+\\(-\\[A-Z\\]\\+\\)\\*.*\\\\d\\+\" test -g '*.test.js'" in /mnt/d/Workbench/misc/apriori-spec-development
+ exited 1 in 273ms:
+test/id-default-and-notes.test.js:422:  assert.match(c1.detail, /0 unidentified/, 'and nothing unidentified: ' + c1.detail);
+test/id-pattern.test.js:233:  assert.match(c1b.detail, /[1-9]\d* unidentified/, 'without the pattern the lowercase ID is unidentified — a bare /unidentified/ would also match the store summary\'s `0 unidentified`');
+test/change-scope.test.js:513:  assert.match(out, /unidentified: 1\n\s+spec\.md: nameless one/);
+
+codex
+# STEP5 Consistency Review — Round 3
+
+## Summary
+
+IMPL-3 and IMPL-7 are verified.
+
+The requested broader sweep found one remaining non-discriminating class: AM-47 and SR-54 still contain successful config-origin controls whose patterns are now subsumed by, or language-equivalent to, the widened default. Those assertions remain green if the config row is ignored. This is recorded as IMPL-8.
+
+No production-code defect or security gap was found.
+
+## Finding verification
+
+### IMPL-3 — verified
+
+CF-18 now exercises all four required consumers on the same freshly initialized project:
+
+- check CK-04 exits successfully.
+- doctor D6 has no finding.
+- verify is GREEN with zero unidentified scenarios.
+- gate C1 is `pass` and reports `0 unidentified`.
+
+The gate fixture includes the necessary STEP5 flow state, completed task, terminal ledger, and an ADDED delta containing the widened-default shape `AC-BIS-99`. Gate resolves the untouched initialized config row, so this is the required fresh-init path.
+
+### IMPL-7 — verified
+
+GT-22 and GT-23 now use a genuinely discriminating fixture:
+
+- The store ID is lowercase-led `xa-01`, which the built-in default deliberately rejects.
+- The flag/config pattern `[A-Za-z]+-\d+` recognizes both `xa-01` and the delta’s uppercase `XB-01`.
+- GT-22’s unconfigured control requires a positive count with `/[1-9]\d* unidentified/`, which cannot be satisfied by `0 unidentified`.
+- Flagged in-flight and archived paths pass.
+- GT-23 exercises the same distinguishing shape through the config row.
+
+The tests would now fail if gate ignored the flag or config pattern.
+
+## Open inconsistency
+
+### IMPL-8 — Other successful config-origin controls are non-discriminating after the widening
+
+- **Description:** Two existing scenario areas still use patterns whose relevant language is now covered by the built-in default:
+
+  1. AM-47 uses `[A-Z]+-\d+[a-z]*` with `AC-08a` and `AC-09b`. This pattern is a subset of the widened default. The expected dropped-ID report is therefore unchanged if archive ignores the config row and uses the default.
+  2. SR-54’s successful “real multi-segment pattern completes through the child” controls use `[A-Z]+(-[A-Z]+)*-\d+[a-z]*`. Apart from capturing versus non-capturing grouping, this has the same language as the new default. Both successful controls remain green if resolution incorrectly falls back to the in-process default matcher, so they do not prove successful config-origin child execution.
+
+  The catastrophic and injected-failure tests still prove failure-path child behavior. The gap is specifically the successful config-origin path claimed by AM-47 and SR-54.
+
+- **Risk:** med
+- **Suggested fix:** For AM-47, use an ID shape rejected by the default, such as uppercase letter suffixes with a custom `[A-Z]+-\d+[A-Z]` row, and assert a no-row control produces a different integrity result. For SR-54, instrument the child seam on the successful config-origin case and assert that it receives both title and TAP batches, instead of relying on a pattern whose observable matches equal the default.
+
+## P8 dimension review
+
+### 1. Semantic faithfulness
+
+All twelve scenarios added or amended by this change are now faithfully exercised:
+
+| Scenario | Result |
+|---|---|
+| SR-08 | Faithful |
+| SR-13 | Faithful |
+| SR-50 | Faithful |
+| SR-53 | Faithful collectively |
+| CK-13 | Faithful |
+| CF-12 | Faithful |
+| CF-18 | Faithful |
+| DR-19 | Faithful |
+| DR-20 | Faithful |
+| AM-71 | Faithful |
+| AM-72 | Faithful |
+| AM-73 | Faithful |
+
+The remaining IMPL-8 gap concerns existing AM-47 and SR-54 successful config-origin assertions exposed by the widened default.
+
+### 2. Required behavior missing from code
+
+No required production behavior was found missing. IMPL-8 is a semantic test-strength gap: the current implementation does use the config-origin child, but the affected successful controls would not catch a regression to default-origin matching.
+
+### 3. Continue, skip, and silently ignored branches
+
+The archive parser ordering remains faithful:
+
+- Legal operation sections are recognized before Notes.
+- Notes is recognized before generic unrecognized h2 handling.
+- Notes can terminate `SKIP_UNRECOGNIZED`.
+- Notes content is swallowed before stamp handling.
+- Stamp handling precedes Requirement recognition, bad-h3 detection, and body accumulation.
+- `!blockDiscard` suppresses only the new repeated-h3 diagnostic.
+
+No silently ignored branch is required to produce an additional user-visible diagnostic.
+
+### 4. External input and security
+
+No security inconsistency found.
+
+Config-origin patterns retain child-process isolation and bounded failure messages. Notes opacity cannot bypass CAS because a hidden stamp remains unadopted and the mutation is denied by default.
+
+### 5. Guarantee claims
+
+- Universal old-binding compatibility: systematically tested.
+- Real-store compatibility: tested over more than 300 IDs.
+- Archive corpus zero-problem guarantee: dynamically tested.
+- D5 independence from `DEFAULT_ID`: structurally and behaviorally tested.
+- D6 finding count, order, sample count, truncation, source, and origin: tested.
+- Template VALUE, DEFAULT, and comment synchronization: tested.
+- Notes-only refusal and hidden-stamp CAS denial: tested through the real CLI.
+- Four-consumer fresh-init agreement: now tested.
+
+No remaining gap was found in the change’s explicit guarantee claims.
+
+### 6. Updated and affected pre-existing tests
+
+This remains the highest-risk dimension.
+
+The six tests updated during implementation still follow the amended specification:
+
+1. `test/config.test.js` CF-12 — faithful.
+2. `test/id-pattern.test.js` SR-50 — faithful and discriminating through a narrower row.
+3. `test/id-pattern.test.js` CK-13 — faithful and discriminating through a narrower row.
+4. `test/id-pattern.test.js` DR-16 — faithful; config/default origin remains asserted.
+5. `test/id-pattern.test.js` CF-12 — faithful, supplemented by independent three-location checks.
+6. `test/spec-runner.test.js` SR-13 — faithful and stricter about complete suffix binding.
+
+The widened-default sweep additionally found:
+
+- GT-22 and GT-23: now repaired and discriminating.
+- AM-47 successful custom-pattern case: still non-discriminating — IMPL-8.
+- SR-54 successful config-origin controls: still non-discriminating — IMPL-8.
+- SR-51 remains discriminating because its invalid config row proves flag shielding.
+- DR-16 remains discriminating because its output explicitly names `config` versus `default`.
+- Config-child failure tests remain discriminating through injected call counts or forced failures.
+- No other loose assertion capable of accepting a zero unidentified/untagged/orphan count was found.
+
+## Advisories
+
+### ADV-1 — Two legacy test titles retain retired default wording
+
+The legacy SR-08 title still prints the old regex, and SR-53 still says “binds unchanged.” Their behavior is correct, but renaming them would prevent obsolete claims from resurfacing during later maintenance.
+
+### ADV-2 — CF-18’s standalone `parseTap` existence assertion adds no behavioral evidence
+
+The real verify and gate executions provide the meaningful TAP-path coverage. The `assert.ok(parseTap)` line is redundant.
+
+## Ledger delta
+
+### Status updates
+
+| ID | Previous status | New status | Review note |
+|---|---|---|---|
+| IMPL-3 | fixed (r2) | verified | CF-18 now exercises check, doctor, verify, and gate C1 on the fresh-init project |
+| IMPL-7 | fixed (r2) | verified | Lowercase fixture and positive-count assertion restore flag/config discrimination |
+
+### Row to append
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| IMPL-8 | AM-47 and SR-54 successful config-origin controls use patterns now subsumed by or language-equivalent to the widened default, so they remain green if the config row is ignored | med | STEP5·r3 | open |
+
+VERDICT: 1 issues open
+tokens used
+1,013,877
+# STEP5 Consistency Review — Round 3
+
+## Summary
+
+IMPL-3 and IMPL-7 are verified.
+
+The requested broader sweep found one remaining non-discriminating class: AM-47 and SR-54 still contain successful config-origin controls whose patterns are now subsumed by, or language-equivalent to, the widened default. Those assertions remain green if the config row is ignored. This is recorded as IMPL-8.
+
+No production-code defect or security gap was found.
+
+## Finding verification
+
+### IMPL-3 — verified
+
+CF-18 now exercises all four required consumers on the same freshly initialized project:
+
+- check CK-04 exits successfully.
+- doctor D6 has no finding.
+- verify is GREEN with zero unidentified scenarios.
+- gate C1 is `pass` and reports `0 unidentified`.
+
+The gate fixture includes the necessary STEP5 flow state, completed task, terminal ledger, and an ADDED delta containing the widened-default shape `AC-BIS-99`. Gate resolves the untouched initialized config row, so this is the required fresh-init path.
+
+### IMPL-7 — verified
+
+GT-22 and GT-23 now use a genuinely discriminating fixture:
+
+- The store ID is lowercase-led `xa-01`, which the built-in default deliberately rejects.
+- The flag/config pattern `[A-Za-z]+-\d+` recognizes both `xa-01` and the delta’s uppercase `XB-01`.
+- GT-22’s unconfigured control requires a positive count with `/[1-9]\d* unidentified/`, which cannot be satisfied by `0 unidentified`.
+- Flagged in-flight and archived paths pass.
+- GT-23 exercises the same distinguishing shape through the config row.
+
+The tests would now fail if gate ignored the flag or config pattern.
+
+## Open inconsistency
+
+### IMPL-8 — Other successful config-origin controls are non-discriminating after the widening
+
+- **Description:** Two existing scenario areas still use patterns whose relevant language is now covered by the built-in default:
+
+  1. AM-47 uses `[A-Z]+-\d+[a-z]*` with `AC-08a` and `AC-09b`. This pattern is a subset of the widened default. The expected dropped-ID report is therefore unchanged if archive ignores the config row and uses the default.
+  2. SR-54’s successful “real multi-segment pattern completes through the child” controls use `[A-Z]+(-[A-Z]+)*-\d+[a-z]*`. Apart from capturing versus non-capturing grouping, this has the same language as the new default. Both successful controls remain green if resolution incorrectly falls back to the in-process default matcher, so they do not prove successful config-origin child execution.
+
+  The catastrophic and injected-failure tests still prove failure-path child behavior. The gap is specifically the successful config-origin path claimed by AM-47 and SR-54.
+
+- **Risk:** med
+- **Suggested fix:** For AM-47, use an ID shape rejected by the default, such as uppercase letter suffixes with a custom `[A-Z]+-\d+[A-Z]` row, and assert a no-row control produces a different integrity result. For SR-54, instrument the child seam on the successful config-origin case and assert that it receives both title and TAP batches, instead of relying on a pattern whose observable matches equal the default.
+
+## P8 dimension review
+
+### 1. Semantic faithfulness
+
+All twelve scenarios added or amended by this change are now faithfully exercised:
+
+| Scenario | Result |
+|---|---|
+| SR-08 | Faithful |
+| SR-13 | Faithful |
+| SR-50 | Faithful |
+| SR-53 | Faithful collectively |
+| CK-13 | Faithful |
+| CF-12 | Faithful |
+| CF-18 | Faithful |
+| DR-19 | Faithful |
+| DR-20 | Faithful |
+| AM-71 | Faithful |
+| AM-72 | Faithful |
+| AM-73 | Faithful |
+
+The remaining IMPL-8 gap concerns existing AM-47 and SR-54 successful config-origin assertions exposed by the widened default.
+
+### 2. Required behavior missing from code
+
+No required production behavior was found missing. IMPL-8 is a semantic test-strength gap: the current implementation does use the config-origin child, but the affected successful controls would not catch a regression to default-origin matching.
+
+### 3. Continue, skip, and silently ignored branches
+
+The archive parser ordering remains faithful:
+
+- Legal operation sections are recognized before Notes.
+- Notes is recognized before generic unrecognized h2 handling.
+- Notes can terminate `SKIP_UNRECOGNIZED`.
+- Notes content is swallowed before stamp handling.
+- Stamp handling precedes Requirement recognition, bad-h3 detection, and body accumulation.
+- `!blockDiscard` suppresses only the new repeated-h3 diagnostic.
+
+No silently ignored branch is required to produce an additional user-visible diagnostic.
+
+### 4. External input and security
+
+No security inconsistency found.
+
+Config-origin patterns retain child-process isolation and bounded failure messages. Notes opacity cannot bypass CAS because a hidden stamp remains unadopted and the mutation is denied by default.
+
+### 5. Guarantee claims
+
+- Universal old-binding compatibility: systematically tested.
+- Real-store compatibility: tested over more than 300 IDs.
+- Archive corpus zero-problem guarantee: dynamically tested.
+- D5 independence from `DEFAULT_ID`: structurally and behaviorally tested.
+- D6 finding count, order, sample count, truncation, source, and origin: tested.
+- Template VALUE, DEFAULT, and comment synchronization: tested.
+- Notes-only refusal and hidden-stamp CAS denial: tested through the real CLI.
+- Four-consumer fresh-init agreement: now tested.
+
+No remaining gap was found in the change’s explicit guarantee claims.
+
+### 6. Updated and affected pre-existing tests
+
+This remains the highest-risk dimension.
+
+The six tests updated during implementation still follow the amended specification:
+
+1. `test/config.test.js` CF-12 — faithful.
+2. `test/id-pattern.test.js` SR-50 — faithful and discriminating through a narrower row.
+3. `test/id-pattern.test.js` CK-13 — faithful and discriminating through a narrower row.
+4. `test/id-pattern.test.js` DR-16 — faithful; config/default origin remains asserted.
+5. `test/id-pattern.test.js` CF-12 — faithful, supplemented by independent three-location checks.
+6. `test/spec-runner.test.js` SR-13 — faithful and stricter about complete suffix binding.
+
+The widened-default sweep additionally found:
+
+- GT-22 and GT-23: now repaired and discriminating.
+- AM-47 successful custom-pattern case: still non-discriminating — IMPL-8.
+- SR-54 successful config-origin controls: still non-discriminating — IMPL-8.
+- SR-51 remains discriminating because its invalid config row proves flag shielding.
+- DR-16 remains discriminating because its output explicitly names `config` versus `default`.
+- Config-child failure tests remain discriminating through injected call counts or forced failures.
+- No other loose assertion capable of accepting a zero unidentified/untagged/orphan count was found.
+
+## Advisories
+
+### ADV-1 — Two legacy test titles retain retired default wording
+
+The legacy SR-08 title still prints the old regex, and SR-53 still says “binds unchanged.” Their behavior is correct, but renaming them would prevent obsolete claims from resurfacing during later maintenance.
+
+### ADV-2 — CF-18’s standalone `parseTap` existence assertion adds no behavioral evidence
+
+The real verify and gate executions provide the meaningful TAP-path coverage. The `assert.ok(parseTap)` line is redundant.
+
+## Ledger delta
+
+### Status updates
+
+| ID | Previous status | New status | Review note |
+|---|---|---|---|
+| IMPL-3 | fixed (r2) | verified | CF-18 now exercises check, doctor, verify, and gate C1 on the fresh-init project |
+| IMPL-7 | fixed (r2) | verified | Lowercase fixture and positive-count assertion restore flag/config discrimination |
+
+### Row to append
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| IMPL-8 | AM-47 and SR-54 successful config-origin controls use patterns now subsumed by or language-equivalent to the widened default, so they remain green if the config row is ignored | med | STEP5·r3 | open |
+
+VERDICT: 1 issues open

@@ -1,0 +1,1198 @@
+<!-- provenance: provider=codex model=gpt-5.6-sol session=019ffeaa-f747-7d40-9cf5-467ccb34cdc6 date=2026-08-14 -->
+OpenAI Codex v0.147.0
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.6-sol
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019ffeaa-f747-7d40-9cf5-467ccb34cdc6
+--------
+user
+STEP0 round 2. The producer revised the requirement per your round-1 review.
+
+[Input]
+* NEW requirement doc: apriori/changes/gate-degrades/requirement/req-v2.md  (this is what you review)
+* Your round-1 review: apriori/changes/gate-degrades/review/req-review-v1.md
+* Issue ledger (REQ-1..5 now marked `fixed (v2)` by the producer): apriori/changes/gate-degrades/review/issues.md
+* Everything else as in round 1 (KB under apriori/truth/, living spec under apriori/specs/, source under lib/).
+
+[Your job this round]
+1. For each of REQ-1..REQ-5: confirm the fix actually landed and is correct, then flip `fixed → verified` — or, if it did not land or landed wrongly, REOPEN the same ID back to `open` with what is still missing (a re-found issue reopens its old ID; never a new row).
+   * REQ-1: §1.2 now records the C7↔projection coupling and adds lib/spec-runner.js to scope with AC-GD-14/15. Is the "projection-only export, no second implementation" constraint tight enough to be implemented one way only? Does AC-GD-15's equivalence assertion actually pin it?
+   * REQ-2: §three is new — a 7-row test-command classification (§3.1) and an 8-row per-check matrix (§3.2), plus B2's single decision expression. Is the matrix now COMPLETE for reachable combinations, and is every cell decidable? Check specifically the claim that GT-25's precondition is unreachable when C1 is skipped, and the claim that M8 (archived stage) needs no projection.
+   * REQ-3: AC-GD-10 now says the JSON key set is fixed and no `code` field is added. Consistent with B4/AC-GD-09?
+   * REQ-4: §1.4 corrects state A and AC-GD-24 requires the truth/doctor.md fix. Sufficient?
+   * REQ-5: AC-GD-21/22/23/25 replaced the vague predicates; the RUNBOOK criterion was deleted with a stated reason. Verify the deletion's justification against RUNBOOK.md, and verify that the named docs files actually contain the tables/sections the ACs assert on.
+2. Then review req-v2 fresh on all six P1 dimensions — new issues get NEW ids (REQ-6, REQ-7, ...). Do not manufacture findings to look thorough; if it is ready, say so.
+
+[Scope] Count toward the verdict only: ambiguous target state, untestable acceptance criteria, missing edge/boundary coverage, conflicts with state A. Everything else — label advisory. Correctness and security findings can never be advisory.
+
+[Output]
+You are READ-ONLY and cannot write files. Print the COMPLETE body of the review doc to stdout — the producer lands it verbatim at apriori/changes/gate-degrades/review/req-review-v2.md. Structure: per-dimension findings (ID / description / risk / suggested fix), advisories separately, then a "Ledger delta" section listing the exact status flips for REQ-1..5 and any new rows.
+End with exactly one verdict line, verbatim from the phrase table: "VERDICT: no major issues" or "VERDICT: <N> issues open".
+Do not write any files.
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+codex
+I’ll statically diff req-v2 against the round-1 findings and ledger first, then re-trace the projection, archived-stage, id-pattern, JSON, and documentation claims against the current source and protocol. No files will be modified.
+exec
+/usr/bin/zsh -lc "sed -n '1,360p' apriori/changes/gate-degrades/requirement/req-v2.md && sed -n '1,300p' apriori/changes/gate-degrades/review/req-review-v1.md && sed -n '1,180p' apriori/changes/gate-degrades/review/issues.md" in /root/apriori-spec-development
+ succeeded in 106ms:
+# req-v2 — gate-degrades：缺一行配置不该让七项机械检查全体停摆
+
+> change: `gate-degrades` · tier: large · track: harden
+> lineage: 分支 `brownfield-round2`（自 main@235a121 切出）；产品线 v4，最终目标 main；**禁止**合并到 v1 / v3
+> 证据来源：`apriori-in-practice/5.1/Apriori棕地项目使用复盘.md` §5 FN-4 / §7-1 / §8 P0-1，加本仓源码实证
+> 本版处置 STEP0·r1 的 REQ-1..5（处置说明见 §八）
+
+---
+
+## 一、问题（状态 A，全部可复现）
+
+### 1.1 `apriori gate` 把「C1 的前置条件」当成了「整个 gate 的前置条件」
+
+`lib/gate.js:316`：
+
+```js
+if (!testCmd) return err(res, 'no test command: pass --test-cmd or add a test-cmd row to apriori/process-config.md');
+```
+
+这一行位于**七项检查全部之前**。后果：项目的 `apriori/process-config.md` 少一行 `test-cmd`，
+则 C1..C7 **一项都不执行**，gate 退出码 2（评估不可信）。
+
+**真实后果（棕地实测）**：`dashboard-etl-slim-pipeline` 这个 change 的**整个生命周期内 gate 运行次数 = 0**。
+而该 change 的 `tasks.md` 有 45 项未勾、bundle 内 P8 一致性评审 0 份——
+**C2 与 C4 恰好就是能抓住这两件事的检查，它们因为一行缺失的配置而从未启动。**
+
+### 1.2 「只有 C1 需要测试命令」这句话在语义上成立，在**代码耦合**上不成立（r1·REQ-1 勘误）
+
+语义上：C2（tasks）、C3（flow-state）、C4（ledger）、C5（verdict↔raw）、C6（KB 新鲜度，一次 `git log`）、
+C7（CAS 戳）全是纯文件读取，都不需要跑测试。
+
+但**代码上 C7 的输入由 C1 的执行路径生产**：
+
+```js
+// lib/gate.js:318          const b = checkBinding(cwd, opts.change, loc.stage, testCmd, ...)
+// lib/gate.js:334          res.checks.push(checkCas(b.projection, loc.stage, !!opts.noCas, cwd));
+```
+
+`b.projection` 来自 `verify()`。关键事实（决定本 change 可行性）：
+
+```
+lib/spec-runner.js:512-523   projection 在此构建（modules / conflicts / unstampedMutations / notes）
+lib/spec-runner.js:642       runTestCommand(opts.testCmd, cwd)   ← 测试在此才执行
+```
+
+即 **projection 的构建先于测试执行，且不依赖测试命令**——但 `spec-runner` 目前**没有导出**
+projection-only 的入口，`gate` 也没有别的合法途径拿到它。
+
+因此：若只删掉 `gate.js:316` 的提前返回，无 test 命令时要么无法安全调用 `verify()`，
+要么以空 projection 调用 `checkCas()`——后者会把 `unstampedMutations` 当成空数组而**错误放行 C7**，
+恰好复制出本 change 要消灭的那类 false-negative。
+
+**结论**：本 change 的触及范围必须包含 `lib/spec-runner.js`（导出一个 projection-only 接口），
+且 gate **不得**自行重建一套 projection 逻辑。
+
+### 1.3 `apriori doctor` 在同一情形下报「健康」
+
+`lib/doctor.js:159`：
+
+```js
+else if (!testCmd) checks.push({ id: 'D5', status: 'n/a',
+  detail: 'no test command configured — pass --test-cmd or set one via apriori init --test-cmd' });
+```
+
+`n/a` 不计入 findings → 整体 `DOCTOR: HEALTHY`。
+于是形成闭环：**gate 因为缺配置而死，而唯一该诊断这件事的命令说一切正常。**
+
+### 1.4 状态 A 的其余事实（r1·REQ-4 勘误 + r1 反馈的调用点核查）
+
+- **doctor 实际有 D1..D8**（`lib/doctor.js:206-210` 的 D8 = legacy 3.x 布局检测，living spec 的 `DR-13` 绑定它）。
+  而 `apriori/truth/doctor.md` 的 Contract 段仍写「**The seven checks**」并只列 D1..D7。
+  **该 Contract 段的 `source-commit: 4127653` 按 `git log <stamp>..HEAD -- lib/doctor.js` 判定为「新鲜」，
+  但文本本身是陈旧的**——戳被刷新过而正文没跟上。本 change 的 STEP6 必须顺带修正它（见 AC-GD-24）。
+  （这条本身是对「新鲜度检查只看 commit range、看不见内容陈旧」这一机制局限的证据，
+  但**不在本 change 范围内**处理，只作观察记录。）
+- **仓内没有把 gate 退出码钉死为 0/1/2 的可执行消费者**：`.github/workflows/ci.yml` 不调用 gate；
+  `docs/ci*.md` 的示例显式传 test command；`scripts/golden-path.mjs` 的流程由 `init --test-cmd` 写入配置。
+  受影响的是**文档**（见 §四文档侧）与 `test/doctor.test.js:168` 的 `DR-07`（当前断言缺配置 = `n/a`，实施 AC-GD-13 时必须改写）。
+- `truth/gate.md` 的既有契约：`runGate` → `{ code, stage, checks:[{id,status,detail}], result, blocked, errors, change }`；
+  但 `toJson()` **不含 `code` 字段**，`--json` 形状是 `{change, stage, checks, result, blocked, errors}`（r1·REQ-3 勘误）。
+- `truth/gate.md` D-GT-2（active）：基础设施性失败产出带原因的 `n/a`，**绝不伪造 block**。
+- `truth/gate.md` D-GT-5（active）：`--id-pattern` 按**存在性**判定，空 flag 是 flag 来源的错误，绝不回落到 config。
+- `truth/doctor.md` D-DR-a（active）：坏掉的 id-pattern 配置是 **finding（退出 1）而非 UNUSABLE**。
+- `truth/doctor.md` D-DR-3（active）：doctor 只诊断、指向修复者，从不自己修。
+
+---
+
+## 二、目标状态 B
+
+**一句话**：机械检查的可执行范围由「配置是否齐备」决定，而不是被它**归零**；
+凡是不能执行的部分，必须在输出与退出码上**说出来**，而不是伪装成通过，也不是让整体拒绝。
+
+### B1 — gate：C1 降级为 skipped，其余六项照常执行
+
+在「**测试命令缺席**」这一种情形下（区别于「配置坏了」，见 §三的分类表）：
+- C1 状态 = `skipped`，detail 说明未执行的事实、原因与修复方式；
+- C2..C7 照常执行并给出真实结论——**C7 基于真实 projection**，绝不因缺测试命令而空过；
+- 整体结果不是 PASS。
+
+**例外（B1 的边界）**：任何在检查开始**之前**就已判定「评估不可信」的情形（§三矩阵中结果为 ERROR/2 的行），
+按现状整体退出，不产出逐检查结论——这与本 change 前的行为一致，B1 不覆盖它们。
+
+### B2 — 新增一个「不完整」的结果类别与退出码
+
+现有三值（PASS/BLOCKED/ERROR ↔ 0/1/2）无法表达「跑了，但没跑全」：
+- 报 PASS/0 = **说谎**（C1 没跑过却宣布通过），正是本 change 要消灭的那类失效；
+- 报 BLOCKED/1 = **伪造阻断**，违反 D-GT-2；
+- 报 ERROR/2 = 回到现状，而六项检查的结论明明是可信的。
+
+因此引入第四类：`INCOMPLETE` ↔ 退出码 **3**。
+
+**优先级（严格全序）**：`ERROR(2) > BLOCKED(1) > INCOMPLETE(3) > PASS(0)`。
+即：真有 block 时报 BLOCKED——一个已确证的阻断不因为另一项没跑成而降级。
+
+**判定式（唯一，无歧义）**：
+```
+if (errors.length)                    → ERROR,      exit 2
+else if (blocked > 0)                 → BLOCKED,    exit 1        // blocked = status==='blocked' 的条数
+else if (any check status==='skipped')→ INCOMPLETE, exit 3
+else                                  → PASS,       exit 0
+```
+`blocked` 字段的语义不变：**只数 `blocked`，不数 `skipped`**。
+
+### B3 — doctor：把「未配置」的后果说出来
+
+完全未配置测试命令时，D5 由 `n/a` 升为 `finding`，其 detail 必须点明**后果**
+（`apriori gate` 的 C1 无法执行），`fix` 指向 `process-config.md` 的 `test-cmd` 行。
+
+人类显式要求跳过（`--no-run`）时**仍是 `n/a`**——显式跳过不是缺陷。
+
+### B4 — 有配置时零变化
+
+配置齐备的项目，本 change 后 gate 与 doctor 的检查集合、每项 detail 文案、
+`--json` 的**键集与取值**、退出码**完全不变**。
+
+---
+
+## 三、判定矩阵（r1·REQ-2 的处置）
+
+### 3.1 测试命令来源的分类（穷举）
+
+| # | 输入 | 分类 | 结果 |
+|---|---|---|---|
+| T1 | `--test-cmd "<非空>"` | 有效（flag） | 照常执行，与本 change 前一致 |
+| T2 | `--test-cmd ""`（flag 存在、值为空） | **flag 来源错误** | ERROR / exit 2；**绝不**回落到 config、绝不降级为 skipped（与 D-GT-5 对 `--id-pattern` 的存在性判定同构） |
+| T3 | `--test-cmd "   "`（仅空白） | **flag 来源错误** | 同 T2——一个只有空白的命令无法执行，静默降级会造出新的 false-negative |
+| T4 | 无 flag，config 有合法 `test-cmd` 行 | 有效（config） | 照常执行，与本 change 前一致 |
+| T5 | 无 flag，config 的 `test-cmd` 行**冲突**（同键不同值） | **配置错误** | ERROR / exit 2（现状不变）——「配置坏了」与「配置没有」是两件事 |
+| T6 | 无 flag，config 的 `test-cmd` 行存在但值为空/仅空白 | **配置错误** | ERROR / exit 2——同样不得归入「缺席」 |
+| T7 | 无 flag，无 config 文件 / 无该行 | **缺席** | C1 = `skipped`，进入 §3.2 |
+
+### 3.2 「缺席」情形下的逐检查行为矩阵
+
+前置说明——`runGate` 的判定顺序（本 change 只在标注处插入，其余次序不动）：
+
+```
+① --change 缺失 / 名字非法 / 解析失败            → ERROR 2
+② hotfix bundle（mapping m1）                    → ERROR 2   ← 发生在测试命令解析之前，不受本 change 影响
+③ flow-state 缺失 / 不可读                       → ERROR 2
+④ 测试命令来源判定（§3.1）                        ← 本 change 在此改：T7 不再 ERROR，标记 c1-skipped
+⑤ id-pattern 解析（flag > config > 默认）         ← 本 change 在此显式化：**无论 C1 是否跑，都要解析并校验**
+⑥ 绑定阶段：有命令 → verify()；缺席 → 只建 projection
+⑦ C2..C6
+⑧ C7（消费 ⑥ 的 projection）
+```
+
+| # | 情形（均以 §3.1 的 T7「缺席」为前提） | id-pattern 是否解析 | 是否建 projection | 是否启动测试进程 | C1 | C7 | C2..C6 | errors | result / exit |
+|---|---|---|---|---|---|---|---|---|---|
+| M1 | 一切正常，C2..C7 无阻断 | 是 | 是 | **否** | `skipped` | 真实结论 | 各自真实结论 | `[]` | **INCOMPLETE / 3** |
+| M2 | C2..C7 中至少一项 `blocked` | 是 | 是 | 否 | `skipped` | 真实结论 | 真实结论 | `[]` | **BLOCKED / 1** |
+| M3 | id-pattern（flag 或 config）**不可编译** | 是（并失败） | 否 | 否 | — | — | — | 非空 | **ERROR / 2**（GT-24 语义保持） |
+| M4 | projection 存在 merge conflict / delta 畸形 / CAS base 已偏移 | 是 | 是（失败） | 否 | — | — | — | 非空 | **ERROR / 2**（AC-GD-05；C7 绝不基于坏 projection 出结论） |
+| M5 | flow-state 缺失/不可读 | — | — | 否 | — | — | — | 非空 | **ERROR / 2**（发生在 ④ 之前） |
+| M6 | flow-state 可读但内容非法（C3 可判定） | 是 | 是 | 否 | `skipped` | 真实结论 | C3 = `blocked` | `[]` | **BLOCKED / 1**（同 M2） |
+| M7 | 目标是 hotfix bundle | — | — | 否 | — | — | — | 非空 | **ERROR / 2**（② 早于 ④） |
+| M8 | **已归档**的 change | 是 | **否**（归档态 C7 恒为 `n/a`，无需 projection） | 否 | `skipped` | `n/a` | 真实结论（C4 按归档态要求全行终态） | `[]` | 按 B2 优先级（无阻断 → INCOMPLETE / 3） |
+
+**关于 GT-25（config 来源的 matcher 被终止 → gate ERROR）**：该场景的前提是**执行**场景匹配子进程，
+而匹配只在收集场景时发生（C1 的工作）。C1 被 skip 时不收集场景，故 GT-25 的前提**不可达**，
+其判定保持原样、无需修改。M3 覆盖的是**编译期**失败（进程内、廉价），与 GT-25 不是同一件事。
+
+**为什么 C1 被 skip 时仍要解析 id-pattern（M3）**：一个不可编译的 pattern 是**坏配置**，
+不是**缺配置**。容忍它会造出第二个 false-negative（"配置全坏但 gate 说 INCOMPLETE"），
+且会让 GT-24 的既有断言不再普遍成立。O4 要求七项检查的判据一字不动——保持 ERROR 正是履行它。
+
+---
+
+## 四、验收标准（每条可表达为「若…则…」）
+
+### gate 侧
+
+| ID | 若 | 则 |
+|---|---|---|
+| AC-GD-01 | T7（测试命令缺席），对一个 in-flight change 跑 `apriori gate --change X` | C1 状态为 `skipped`，其 detail 同时含「未执行」的事实与修复指引；C2..C7 各自产出真实状态 |
+| AC-GD-02 | 矩阵 M1 | `result: INCOMPLETE`，退出码 **3**；人类可读输出显式声明「未达成 PASS，因为 C1 未执行」 |
+| AC-GD-03 | 矩阵 M2 | `BLOCKED`，退出码 **1**——已确证的阻断优先于不完整 |
+| AC-GD-04 | 矩阵 M5 | 退出码 **2**，与本 change 前逐字节一致 |
+| AC-GD-05 | 矩阵 M4 | 退出码 **2**；C7 不得基于坏 projection 给出任何结论 |
+| AC-GD-06 | T7 且该 change 有**未打戳的 mutation delta** | C7 仍 `blocked` 并给出 `apriori stamp` 修复指引——证明 C7 消费的是**真实** projection |
+| AC-GD-07 | T2 / T3（`--test-cmd ""` 或仅空白） | ERROR，退出码 **2**；不回落 config、不降级 skipped |
+| AC-GD-08 | T5 / T6（config 冲突，或值为空/仅空白） | ERROR，退出码 **2** |
+| AC-GD-09 | T1 / T4（任一有效来源） | gate 的检查集合、每项 detail 文案、`--json` 键集与取值、退出码**与本 change 前完全一致**（回归护栏） |
+| AC-GD-10 | 任一情形加 `--json` | 输出是纯 JSON，键集恒为 `{change, stage, checks, result, blocked, errors}`（**不新增 `code` 字段**）；`result` 可取 `INCOMPLETE`，`checks[].status` 可取 `skipped`；进程退出码按 `PASS→0 / BLOCKED→1 / ERROR→2 / INCOMPLETE→3` 映射 |
+| AC-GD-11 | 矩阵 M8（已归档 change + T7） | C1 `skipped`、C7 `n/a`、C4 按归档态要求全行终态；退出码按 B2 优先级 |
+| AC-GD-12 | 矩阵 M7（hotfix bundle + T7） | 仍以 mapping m1 的拒绝退出（退出码 2 并指向 `apriori hotfix archive`） |
+| AC-GD-13 | 矩阵 M3（id-pattern 不可编译 + T7） | 退出码 **2**，与本 change 前一致 |
+| AC-GD-14 | T7 的任一情形 | **测试进程一次都不被 spawn**（可用 sentinel 命令——如写标记文件的脚本——断言其副作用未发生） |
+| AC-GD-15 | 同一个 change，分别走「有测试命令」与「T7」两条路径 | 两次得到的 projection **等价**（modules / conflicts / unstampedMutations 逐字段相等）——证明没有第二套实现 |
+
+### doctor 侧
+
+| ID | 若 | 则 |
+|---|---|---|
+| AC-GD-16 | 项目无 `test-cmd` 配置行、未传 `--test-cmd`、未加 `--no-run` | D5 = `finding`，detail 点明「`apriori gate` 的 C1 无法执行」这一后果，`fix` 指向 process-config 的 `test-cmd` 行；整体 `FINDINGS`，退出码 1 |
+| AC-GD-17 | 同上但加了 `--no-run` | D5 仍为 `n/a`（显式跳过不是缺陷） |
+| AC-GD-18 | `test-cmd` 配置行冲突 | 维持现状：D5 = `finding`，其 detail 与 AC-GD-16 的「未配置」文案**可区分** |
+| AC-GD-19 | id-pattern 配置不可编译 | 维持现状：D5 = `n/a`「probe skipped (invalid id-pattern config)」，优先于本 change 的新分支 |
+| AC-GD-20 | 测试命令可用 | doctor 全部行为不变；**D8 原样保留**（回归护栏） |
+
+### 文档与 KB 侧（r1·REQ-5 / REQ-4 的处置——全部改为可 grep 的断言）
+
+| ID | 若 | 则 |
+|---|---|---|
+| AC-GD-21 | 读 `docs/ci.md` 与 `docs/ci_cn.md` 的 exit-code cheat table | 表中存在一行，其 `code` 列为 `3`，`gate` 列含 `INCOMPLETE` |
+| AC-GD-22 | 读 `docs/cli.md` 与 `docs/cli_cn.md` 的 `apriori gate` 小节 | 其 Exit 行含 `3` 与 `INCOMPLETE` |
+| AC-GD-23 | 读 `docs/troubleshooting.md` 与 `docs/troubleshooting_cn.md` 的 D5 小节 | 含「未配置 test-cmd → D5 finding」的说明，且点明 `apriori gate` 的 C1 会 `skipped`，并给出修复行 |
+| AC-GD-24 | 读 `apriori/truth/doctor.md` 的 Contract 段 | 不再出现 `seven checks`；正确描述 D1..D8（含 D8 legacy 布局检测），且 `source-commit` 刷新到本 change 的实现 commit |
+| AC-GD-25 | 读 `CHANGELOG.md` 的本次条目 | 含字面串 `INCOMPLETE` 与 `exit code 3`，并声明这是**退出码语义扩展**（仓外 CI 受影响） |
+
+> AC-GD-19（原 v1 的 RUNBOOK 一致性条）已**删除**：实测 `RUNBOOK.md` 只写「aggregates … into one exit code」，
+> 从不枚举 gate 的退出码取值，因此没有需要同步的断言面。留着会是一条永远无法机械判定的验收。
+
+---
+
+## 五、明确不做（out of scope）
+
+| # | 不做的事 | 理由 |
+|---|---|---|
+| O1 | 自动探测项目的测试命令（按语言/框架内置猜测） | 脆弱且不可预测；复盘 P0-1 亦明确列为「不建议的过度方案」 |
+| O2 | 让 agent 自动把 `test-cmd` 写进 `process-config.md` | 违反 R3（该文件人类持有，agent 只读） |
+| O3 | 新增 `test-cmd: none` 一类的「本项目声明没有测试命令」取值 | 见 §六 K1；它是独立的一件事，需要自己的验收面 |
+| O4 | 改动 C1..C7 **各自的判定逻辑** | 本 change 只改「哪些能跑」与「跑不成怎么说」，七项检查的内部判据一字不动 |
+| O5 | 让 `apriori verify` 在无 test-cmd 时降级 | verify 的全部职责就是把测试绑到场景上；没有测试命令时它没有任何可降级的产出。**本 change 对 `lib/spec-runner.js` 的改动仅限于导出一个既有 projection 构建路径的入口，不改 verify 自身的任何行为** |
+| O6 | 改动 hotfix bundle 的拒绝路径（mapping m1） | 该拒绝发生在测试命令解析**之前**，不受影响；保持原样 |
+| O7 | 修复「新鲜度检查看不见内容陈旧」这一机制局限（由 §1.4 的 truth/doctor.md 暴露） | 本 change 只把这一份文档改对；机制本身是独立议题，需要自己的证据与设计 |
+
+**触及范围（源码）**：`lib/gate.js`、`lib/doctor.js`、`lib/spec-runner.js`（仅导出 projection-only 入口）。
+
+---
+
+## 六、已知后果与风险
+
+| # | 事项 | 处置 |
+|---|---|---|
+| K1 | 真正 docs-only 的项目（RUNBOOK §4 允许其以 `apriori check` 代替 `npm test`）本就没有测试命令，本 change 后其 doctor 会**长期显示一条 D5 finding** | 接受。这条 finding 陈述的是事实（该项目的 gate C1 确实不可执行），不是误报。若将来出现真实的 docs-only 使用者抱怨，走 O3 的声明式取值，作为独立 change |
+| K2 | 退出码 3 是**仓外可见**的契约扩展；按 `exit != 0` 判定的 CI 会把 INCOMPLETE 当失败 | 这是**期望行为**——不完整的 gate 本就不该被当作通过。必须在 CHANGELOG 与 docs 显著说明（AC-GD-21/22/25） |
+| K3 | 新增 `skipped` 进入 `--json` 的 `checks[].status` 枚举，是机器消费面的扩展 | 同 K2 一并说明；键集不变（AC-GD-10），只有取值域扩大 |
+| K4 | 本 change 之后 gate 仍**不会**因为「C1 没跑」而变红（只变 INCOMPLETE），因此仍不能替代「必须配 test-cmd」这件事 | 这正是 B3（doctor 升为 finding）存在的理由：两条命令各说各的一半，合起来才完整 |
+| K5 | 导出 projection-only 入口扩大了 `spec-runner` 的公共面 | 用 AC-GD-15 的等价性断言钉死「只有一套实现」；truth/spec-runner.md 的 Contract 需在 STEP6 记录该入口 |
+
+---
+
+## 七、与后续两个 change 的边界
+
+本 change 是三连中的第 1 个。**不涉及**：
+- `apriori archive` 的前置校验（→ change 2 `archive-preflight`）；
+- 默认 id-pattern 的宽窄、doctor D6 的 fix 指向、delta 的说明性内容位置（→ change 3）。
+
+三者按模块重叠串行执行；本 change 触及 `lib/doctor.js`，change 3 也会触及它（D6），
+故 change 3 必须在本 change 归档之后开始。
+
+---
+
+## 八、STEP0·r1 处置说明
+
+| ID | 处置 | 说明 |
+|---|---|---|
+| REQ-1 | **accept** | 新增 §1.2 完整记录 C7↔projection 的真实耦合与两处行号；触及范围加入 `lib/spec-runner.js` 并限定为「仅导出既有 projection 构建入口」（O5）；新增 AC-GD-14（测试进程不启动）与 AC-GD-15（两条路径的 projection 等价，钉死无第二套实现）；K5 记录公共面扩大的后果 |
+| REQ-2 | **accept** | 新增 §三：§3.1 测试命令来源 7 分类（含空 flag / 仅空白 / config 空值三种此前未定义的边界），§3.2 八行逐检查矩阵（含 id-pattern 是否解析、是否建 projection、是否启动测试、C1/C7 状态、errors、退出码）；B2 给出唯一判定式；B1 显式声明 ERROR 类为其例外；并说明 GT-25 前提不可达、GT-24 语义保持 |
+| REQ-3 | **accept**（取「不新增字段」一支） | AC-GD-10 改写为：键集恒为 `{change, stage, checks, result, blocked, errors}`，**不新增 `code`**；退出码按 result 映射。§1.4 勘误了 v1 对 `toJson()` 的错误描述，B4 的字节不变承诺因此成立 |
+| REQ-4 | **accept** | §1.4 勘误状态 A：doctor 实际 D1..D8，`truth/doctor.md` 的 Contract 文本陈旧（戳新鲜但正文没跟上）；新增 AC-GD-24 要求 STEP6 修正该文档；AC-GD-20 补上「D8 原样保留」的回归护栏；机制层面的局限记入 O7 不做 |
+| REQ-5 | **accept** | 文档验收面补齐 `docs/ci{,_cn}.md`、`docs/cli{,_cn}.md`、`docs/troubleshooting{,_cn}.md`；「一致」「显著」全部替换为可 grep 的断言（AC-GD-21/22/23/25）；原 AC-GD-19（RUNBOOK 一致性）经实测无断言面，**删除并记录理由** |
+# req-v1 需求评审
+
+## 维度 1：目标状态 B 是否清晰且无歧义
+
+结论：未通过。存在 REQ-1、REQ-2、REQ-3。
+
+### REQ-1
+
+- 描述：需求声称只有 C1 依赖 test command，但当前实现中 C7 也间接依赖 C1 的执行路径。`lib/gate.js:318-334` 将 `checkBinding()` 返回的 `b.projection` 传给 `checkCas()`；该 projection 由 `lib/spec-runner.js` 的 `verify()` 在执行测试前构建，但没有独立导出的 projection-only 接口。若仅删除 `lib/gate.js:316` 的提前返回，缺少 test command 时不能安全调用现有 `verify()`；若直接以空 projection 调用 `checkCas()`，则 `checkCas()` 会把 `unstampedMutations` 当作空数组，从而错误放行 C7。需求同时把源码范围限定为 `lib/gate.js` 和 `lib/doctor.js`，却没有声明如何解除这一依赖。
+- 风险：high。实现者可能让 C7 假通过、重复一套与 verify 不一致的 projection 逻辑，或被迫越过已声明的源码范围；这会破坏 CAS 完整性检查，直接重现 false-negative。
+- 建议修复：准确记录状态 A：语义上只有 C1需要执行测试，但 C7 的输入目前由 C1/verify 路径生产。明确指定唯一 projection seam：例如导出并复用 `spec-runner` 的 projection-only 构建接口，并把 `lib/spec-runner.js` 加入触及范围；或者明确要求 `gate` 通过 `archive-merge` 的既有原语构建同一 projection，并用差分测试证明其错误、冲突、CAS mismatch 与 verify 完全一致。验收标准还应断言缺少 test command 时测试进程不启动，而 C7 使用真实 projection。
+
+### REQ-2
+
+- 描述：`ERROR > BLOCKED > INCOMPLETE > PASS` 给出了结果类别的抽象全序，但没有完整定义若干可达组合的验证顺序和逐检查输出：
+  - 缺少 test command，同时 `--id-pattern` 为空、不可编译，或 config 中的 id-pattern 不可编译；
+  - 缺少 test command，同时 config-origin matcher 会超时、被杀或返回畸形结果；
+  - 缺少 test command，同时 in-flight projection 出现 validation、hygiene、CAS mismatch 或 merge conflict；
+  - 缺少 test command，同时 flow-state 缺失、不可读，或仅为 C3 可判定的非法内容。
+  
+  AC-GD-04/05 只规定部分情形的最终退出码。它们没有规定 C1 是否仍为 `skipped`、C7 应为 `n/a`/`skipped`/缺席中的哪一种、C2..C6 是否继续，以及 `blocked`/`errors` 的精确值。B1 的“C2..C7 各自产出真实状态”与坏 projection 下 C7 无法得出结论也存在张力。另需明确 test command 的边界分类：缺失、`null`/`undefined`、显式空字符串、仅空白字符串、不可读配置和冲突配置。
+- 风险：high。不同实现会产生不同的 JSON、检查数量、错误优先级和退出码；机器消费者无法可靠穷举第四种结果和第四种检查状态。
+- 建议修复：增加输入与结果矩阵，至少列出上述组合，并为每格规定：是否读取 id-pattern、是否构建 projection、是否启动测试、C1/C7 状态、是否继续 C2..C6、`errors`、`blocked`、`result` 和退出码。明确早期 ERROR 类是否例外于 B1。保留现有 GT-24/GT-25 时，应明确其在 C1 因缺命令而 skipped 时是否仍适用。
+
+### REQ-3
+
+- 描述：AC-GD-10 写道 `--json` 下“`code` 与进程退出码一致”，容易被解释为 JSON 新增 `code` 字段；但当前 `toJson()` 和 GT-11 的契约都没有 `code` 字段，而 B4/AC-GD-09 又要求有效 test command 下 JSON 形状逐字节不变。这两个要求不能同时成立。
+- 风险：med。实现者可能破坏所有既有 JSON 输出的字节兼容性，或省略验收者以为必须新增的字段。
+- 建议修复：二选一并写成精确 schema：
+  - 若不新增字段，将 AC-GD-10 改为“进程退出码必须与 `result` 的 0/1/2/3 映射一致”，并明确 INCOMPLETE JSON 仍为 `{change,stage,checks,result,blocked,errors}`；
+  - 若确实新增 `code`，删除 B4/AC-GD-09 的 JSON 字节不变承诺，并把所有四类 JSON 的完整 schema 和兼容影响写清楚。
+
+明确的 out-of-scope 章节已经存在，O1–O6 边界清楚。
+
+## 维度 2：边界与异常路径是否覆盖
+
+结论：未通过，原因是 REQ-2。
+
+缺配置、显式空 flag、配置冲突、flow-state 失败、projection conflict、未打戳 mutation、归档态和 hotfix 拒绝均已有验收面；但缺命令与 id-pattern 错误、matcher timeout、projection 错误叠加时的逐检查行为仍未定义。并发、回滚不适用于这个只读同步聚合器；有效 test command 下的既有超时和失败语义由 B4 保持。
+
+## 维度 3：是否存在隐含但未声明的状态变化或副作用
+
+结论：未通过，存在 REQ-5。
+
+### REQ-5
+
+- 描述：机器契约扩展已在 K2/K3 声明，但文档影响面不完整，部分验收措辞也不可机械判定：
+  - `docs/ci.md` 和 `docs/ci_cn.md` 的 exit-code cheat table 当前只列 0/1/2；AC-GD-18 未覆盖它们。
+  - `docs/troubleshooting.md` 和 `docs/troubleshooting_cn.md` 声称按 doctor findings 排查，但 D5 章节没有“未配置 test-cmd”这一新增 finding；需求未要求更新。
+  - AC-GD-19 的“与新语义一致”和 AC-GD-20 的“显著标注”没有规定可断言的文本或表格内容。
+- 风险：med。实现完成后，同仓公开文档会给出冲突的机器契约；“一致”“显著”也无法形成确定的自动化验收。
+- 建议修复：把上述中英文文件加入文档验收面。为每项规定精确断言，例如 exit-code 表必须含 `3 | INCOMPLETE`，gate JSON 状态枚举必须含 `skipped`，D5 troubleshooting 必须说明缺少 test-cmd 会导致 finding、C1 skipped 及对应修复行；用这些可搜索文本替换“显著”“一致”。
+
+仓内调用点核查结果：`.github/workflows/ci.yml` 不调用 gate；`docs/ci*` 示例显式传入 test command；golden-path 的 README 流程由 `init --test-cmd` 写入配置，因此仍期待 exit 0。没有发现 `scripts/` 或 `.github/` 中把 gate 退出码限定为 0/1/2 的可执行消费者。测试侧 `test/doctor.test.js` 的 DR-07 当前明确断言缺配置为 `n/a`，实施 AC-GD-13 时必须更新；其余主要 gate 调用均传入有效 test command，受 AC-GD-09 保护。
+
+## 维度 4：每条验收标准是否可测试
+
+结论：未通过。REQ-3 使 AC-GD-10 的 JSON 断言不确定；REQ-5 使 AC-GD-19/20 无法表达成唯一的 if/then 断言。其余验收标准原则上可通过 CLI 退出码、JSON schema、检查状态、输出子串和 sentinel test command 表达。
+
+## 维度 5：是否与状态 A 冲突
+
+结论：未通过，存在 REQ-1 和 REQ-4。
+
+### REQ-4
+
+- 描述：需求声称 `truth/gate.md` 与 `truth/doctor.md` 的 Contract 均已验证为新鲜，但 `apriori/truth/doctor.md` 仍把 doctor 描述为“seven checks”并只列 D1..D7；实际 `lib/doctor.js:206-210` 已执行 D8，living spec 也明确写的是 eight checks，并包含 DR-13。该新鲜度声明不符合仓库现实。
+- 风险：med。实现者可能依据错误的 KB 摘要忽略 D8，或把 D8 的保留误判为额外范围；B4/AC-GD-17 的“全部行为不变”也缺少准确基线。
+- 建议修复：修正需求中的状态 A，明确 doctor 当前有 D1..D8 且本变更只修改 D5、D8 必须原样保留；不要宣称 `truth/doctor.md` Contract 已完全新鲜，除非先完成并验证对应 KB 修正。
+
+REQ-1 另揭示了 C7 与 C1 projection 的真实源码耦合，需求当前的状态 A 描述未包含这一事实。
+
+## 维度 6：目标 lineage 是否声明且符合仓库现实
+
+结论：通过。
+
+需求声明目标为 `brownfield-round2`，从 `main@235a121` 切出，最终进入 `main` 且不得进入 v1/v3。仓库当前 `brownfield-round2`、`main` 和 `origin/main` 均指向 `235a121`，分叉计数为 0/0；package 版本为 4.1.0，属于声明的 v4 产品线。lineage 清晰且与仓库现实一致。
+
+## Advisories
+
+无。
+
+## Ledger delta
+
+将以下行追加到 `apriori/changes/gate-degrades/review/issues.md`：
+
+```markdown
+| REQ-1 | C7 currently consumes projection produced through C1 verify, but the requirement claims only C1 depends on that path and limits source scope without declaring a projection-only seam | high | 1 | open |
+| REQ-2 | Reachable missing-test-command combinations do not define validation order, per-check statuses, continuation behavior, blocked count, and errors completely | high | 1 | open |
+| REQ-3 | AC-GD-10 implies a JSON code field while B4 and AC-GD-09 require the existing code-free JSON shape to remain byte-identical | med | 1 | open |
+| REQ-4 | The requirement claims the doctor KB Contract is fresh although it omits the implemented and living-spec D8 check | med | 1 | open |
+| REQ-5 | Documentation impact is incomplete and AC-GD-19/20 use non-mechanical consistency and prominence predicates | med | 1 | open |
+```
+
+VERDICT: 5 issues open
+# issue ledger — gate-degrades
+
+轮次标签：`STEP0·rN`（P1 需求评审）/ `STEP2·rN`（P5 规格设计评审）/ `STEP5·rN`（P8 一致性评审）。
+状态词汇：`open` / `fixed` / `verified` / `rejected` / `rejected-verified` / `waived` / `advisory-acked`。
+生产方只能 `open → fixed | rejected`；`verified` / `rejected-verified` 属评审方，`waived` 属人类。
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| REQ-1 | C7 currently consumes projection produced through C1 verify, but the requirement claims only C1 depends on that path and limits source scope without declaring a projection-only seam | high | 1 | fixed (v2) |
+| REQ-2 | Reachable missing-test-command combinations do not define validation order, per-check statuses, continuation behavior, blocked count, and errors completely | high | 1 | fixed (v2) |
+| REQ-3 | AC-GD-10 implies a JSON code field while B4 and AC-GD-09 require the existing code-free JSON shape to remain byte-identical | med | 1 | fixed (v2) |
+| REQ-4 | The requirement claims the doctor KB Contract is fresh although it omits the implemented and living-spec D8 check | med | 1 | fixed (v2) |
+| REQ-5 | Documentation impact is incomplete and AC-GD-19/20 use non-mechanical consistency and prominence predicates | med | 1 | fixed (v2) |
+
+<!-- 以上 5 行为 STEP0·r1 评审方（codex gpt-5.6-sol, session 019ffeaa）的 ledger delta，
+     由生产方 recorded on behalf of the reviewer，逐字落盘。 -->
+
+codex
+The revision correctly resolves the JSON-schema contradiction and accurately records the doctor D8 drift. I’m checking the two harder fixes now: whether the new “exhaustive” command-source table is actually distinguishable using the shared config parser, and whether AC-GD-15 enforces reuse rather than merely comparing two sample outputs.
+exec
+/usr/bin/zsh -lc "rg -n -C 5 \"Exit-code cheat table|退出码|## gate|D5|test command|测试命令\" docs/ci.md docs/ci_cn.md docs/cli.md docs/cli_cn.md docs/troubleshooting.md docs/troubleshooting_cn.md CHANGELOG.md RUNBOOK.md RUNBOOK_cn.md | sed -n '1,420p'; rg -n \"gate.*(?:exit|code)|exit.*gate|退出码.*gate|gate.*退出码|INCOMPLETE\" RUNBOOK.md RUNBOOK_cn.md" in /root/apriori-spec-development
+ succeeded in 93ms:
+CHANGELOG.md-83-Brownfield feedback P0-1: on a real store with letter-suffixed (`AC-08a`) and multi-segment (`AC-BIS-01`) IDs, `gate` C1 was permanently BLOCKED (no id-pattern channel) and `check` CK-04 false-failed — a forever-red gate carries no signal.
+CHANGELOG.md-84-
+CHANGELOG.md-85-- **New process-config key `id-pattern`** (bare JS regex source) — one declaration, four consumers. Resolution: `--id-pattern` flag (verify + **gate, new flag**; judged by presence — an empty flag errors, never falls back) > config row > built-in `[A-Z]+-\d+`. `check` CK-04 and `doctor` D6 consume the row (no new flags); D6 names its pattern source (`config`/`default`).
+CHANGELOG.md-86-- **One recognition contract** — `check` drops its private `^(…)\b` anchoring and recognizes through the same `leadId` semantics as verify/gate/doctor; the four consumers can no longer disagree on the same title.
+CHANGELOG.md-87-- **Markdown cell escaping, all keys** — `parseConfig` cells now honor `\|` by backslash parity (odd escapes the pipe into the value, even separates); a regex matching a literal pipe is written `[\|]` in the cell (parses to `[|]`). Behavior change is additive: configs without backslash-pipe sequences parse identically. The template documents both layers.
+CHANGELOG.md:88:- **Fail-closed errors naming their origin** — invalid patterns error at consumption before any spec read or test spawn: verify/gate exit 2 through their existing text/JSON shapes (`--change --json` keeps its `projection` field), check `RESULT: ERROR` exit 2, doctor D6 finding + skipped D5 probe (FINDINGS, exit 1). Messages are sanitized whole (control chars stripped, ≤200 chars; the engine message never re-leaks the source).
+CHANGELOG.md-89-- **Config-origin matching is terminable** — a config row is repository input CI consumes automatically, so its actual matching runs in a SIGKILL-able child (`lib/id-match-child.js`, stdin data channel, 2s budget); every child failure class fails closed. A catastrophic-backtracking row cannot hang CI. The flag stays in-process (operator-trusted, documented).
+CHANGELOG.md-90-- An unreadable `process-config.md` (e.g. a directory) is now a consumption-time problem for every key, never a thrown exception.
+CHANGELOG.md-91-
+CHANGELOG.md-92-276 tests (254 + 22: CF-08..12, SR-50..55, GT-22..25, CK-13..16, DR-16..18).
+CHANGELOG.md-93-
+--
+CHANGELOG.md-134-
+CHANGELOG.md-135-## 4.0.2 — 2026-07-12 · the judge's input boundaries harden
+CHANGELOG.md-136-
+CHANGELOG.md-137-Every item answers the GPT-5.6 fourth review (each defect reproduced first; three changes through the full loop with adversarial codex reviews). The theme: the three places a verdict-maker touched raw input — TAP, markdown config, the filesystem — now treat it as protocol, structure, and trust chain.
+CHANGELOG.md-138-
+CHANGELOG.md:139:- **TAP is a version-aware protocol** — a line lexer replaces the regex pile: closed version matrix (12/13/14/absent accepted; anything else, `banana` included, is an infra ERROR), `\#` escapes never open a directive (the reviewer's TAP-14 false-green dies), `bail out!` matches any casing at any indent, lone-CR streams cannot hide failures, mid-stream plans and out-of-plan numbers are untrustworthy, unterminated top-level YAML fails closed, `pragma` lines are the only ignored construct, dashless descriptions bind and `# SKIPPED:` skips. **stdout/stderr split (behavior change)**: TAP parses from stdout only; stderr becomes a reported diagnostics channel (report group + constant `--json` `stderr` field); TAP misrouted to stderr — bail-outs included — gets a `2>&1` remedy. Doctor's D5 probe speaks the same lexer.
+CHANGELOG.md-140-- **process-config parses as structure** — the fenced-example waiver bypass dies: fenced/commented rows grant nothing (inline comments are spans), conflicting or illegal values fail closed at consumption (archive denies, gate C7 blocks, verify/doctor refuse a conflicted `test-cmd`), same-value duplicates stay benign, `--no-cas` stays supreme and is now discoverable (usage texts + a template `cas` row).
+CHANGELOG.md-141-- **Resolution validates its trust chain** — the four gate-PASS bypasses die: symlinked/non-directory `changes/` or `archive/` roots are structural errors, a broken active entry never falls back to the archive, the reserved name `archive` and date-prefixed names are rejected on every by-name surface (one `validateChangeName`, kind-classified), pseudo-stamps like `9999-99-99T9999` and `2026-02-31` neither sort nor resolve (Gregorian round-trip), `status` checks flow-state identity, and file reads speak structured defect kinds (a dangling `review/` ancestor is a defect, not an empty ledger).
+CHANGELOG.md-142-- `MIGRATING.md` now ships in the npm package and the D8/update pointers carry a stable URL; stale spec/doc sentences (AM-25, the gate waiver line, doctor's check list, MIGRATING's old CAS table) say what the code does. 247 tests.
+CHANGELOG.md-143-
+CHANGELOG.md-144-## 4.0.1 — 2026-07-12 · the false-green dies and CAS keeps its word
+CHANGELOG.md-145-
+CHANGELOG.md-146-Both fixes trace to the GPT-5.6 external review of 4.0.0 (each reproduced before work started; two changes through the full loop with adversarial codex reviews).
+CHANGELOG.md-147-
+CHANGELOG.md:148:- **Unattributed test failures block GREEN** — any top-level non-SKIP/TODO `not ok`, whatever its shape (numbered-without-ID, bare, number-only, dash-less), is an *unattributed failure*: verdict GAPS (exit 1) even when the test command exits 0, a new report group (first 20 lines, 120-char cap) and `--json` `unattributedFailures {count, lines}` in every outcome class. Infra ERRORs keep precedence; `exec.status !== 0` never exits 0; nested-subtest indentation, directives, and `not ok:`-style prefixes stay exempt; gate C1 names the class. This kills the reviewer-reproduced teardown false-green.
+CHANGELOG.md-149-- **`archive` denies unstamped mutation deltas by default** — the promise "mandatory in 4.0" is now code on both archive forms: preflight error naming the file and the cure, nothing written or moved; the two visible waivers are `--no-cas` and a `| cas | optional |` config row (the flag wins, the output names the source). `verify --change` stays warn-only; ADDED-only deltas stay exempt.
+CHANGELOG.md-150-- **`status` sees archived changes** — the shared resolver (new `lib/resolve.js`) plus file-level containment guards: `stage`/`path` in output and JSON, bad names / missing changes / escaping paths exit 2.
+CHANGELOG.md-151-- **`doctor` D8 + `update` warnings** name the five legacy 3.x roots with a pointer at MIGRATING.md's new 4.0 section (manual mapping table; a full migrate command stays out until external users need it).
+CHANGELOG.md-152-- `package.json` homepage now points at the v4 tree. 218 tests.
+CHANGELOG.md-153-
+--
+RUNBOOK.md-21-```shell
+RUNBOOK.md-22-npm i -g apriori-cli     # or run any command below via `npx apriori-cli …`
+RUNBOOK.md-23-cd your-project && apriori init  # interactive: pick the AI tools to configure
+RUNBOOK.md-24-```
+RUNBOOK.md-25-
+RUNBOOK.md:26:`apriori init` scaffolds the single `apriori/` root (this runbook at `apriori/runbook.md`, `apriori/process-config.md`, and the `specs/ changes/ truth/` working dirs) and writes a thin pointer to the runbook in each selected tool's native location — `CLAUDE.md` + `.claude/commands/apriori.md`, `AGENTS.md` (Codex/OpenCode), `.cursor/rules/apriori.mdc`, `.github/copilot-instructions.md`, `.windsurf/…`. The protocol lives once; tools just point at it. It is additive and never overwrites; re-run it any time to add a tool. `apriori doctor` diagnoses the whole seam afterwards — Node floor, scaffold gaps, runbook freshness, tool pointers, whether the test command actually emits TAP — each finding naming the command that fixes it. After a CLI upgrade, `apriori update` refreshes the tool-owned files (this runbook copy and the command pointers) — it never touches user-owned files (`process-config.md`, `specs/`, `changes/`, rules files), and a stale runbook copy surfaces as an `apriori check` warning.
+RUNBOOK.md-27-
+RUNBOOK.md-28-`apriori/process-config.md` is **human-held; the agent treats it as read-only** (R3). Without it, the defaults printed in §4 apply. The three deterministic gates run as CLI commands: `apriori verify` (STEP5), `apriori archive` (STEP6), `apriori check` (CI) — all zero-dependency Node, detailed in §4/§6.
+RUNBOOK.md-29-
+RUNBOOK.md-30-**Language.** Human-facing prose — requirement docs, spec scenario descriptions, gap/design/review docs, ledger descriptions, `flow-state` notes, and every message to the human — uses the `language` field in `apriori/process-config.md`. If it is unset or `auto`, **match the language the human is using** (their kickoff and messages). Machine tokens are ALWAYS English, whatever the language: verdict lines (§5 phrase table), scenario IDs (`KV-03`), the delta keywords `ADDED`/`MODIFIED`/`REMOVED`, file paths, and this runbook. So a Chinese kickoff yields Chinese artifacts with English IDs and verdict lines — `apriori verify`/`check` keep working unchanged.
+RUNBOOK.md-31-
+--
+RUNBOOK.md-312-- Apply the DESIGN-REVIEW-DOC changes to spec/design; optionally one more P5/P6 round. Skip if STEP3 changed nothing.
+RUNBOOK.md-313-
+RUNBOOK.md-314-### STEP5 — apply · cap: `step5-cap` (default 25)
+RUNBOOK.md-315-
+RUNBOOK.md-316-- **Do, in order:** (1) one failing test per spec scenario, test names carry scenario IDs — show the failing run; (2) implement in tasks.md order with **P7**, marking `[x]` as you go; (3) run until green; (4) `apriori verify` GREEN (the deterministic binding gate); (5) heterogeneous consistency review **P8** (R2); ledger.
+RUNBOOK.md:317:- **The spec-runner gate (`apriori verify`).** Mid-change, the gate is the **projected** form: `apriori verify --change <name> --test-cmd "<your test command>"` applies the change's delta specs to the living store in memory (the same `merge()` archive will run — MODIFIED replaces, REMOVED stops demanding, RENAMED demands the post-rename picture) and binds scenarios against that candidate store; scanning the raw store misses new scenarios, and scanning store+change double-counts MODIFIED. Post-archive (or store-only checks), the plain form `apriori verify --specs apriori/specs --test-cmd "…"` binds against the store as-is. Both report BOUND-GREEN / BOUND-RED / UNBOUND (scenario with no test) / ORPHAN (test with no scenario) / UNIDENTIFIED (scenario with no ID). The projected form's VERDICT is **change-scoped**: GREEN (exit 0) means every scenario of THIS change's requirement blocks has a passing test, with no scoped duplicate/unidentified and no unprovable failure signal (an ID-less failure or a failing ID no SIBLING active change declares still blocks — fail-closed); the whole projection's remaining picture prints as an informative **store report** in the same run, so historical gaps stay visible without drowning the verdict — parallel changes go green independently. The plain `--specs` form's GREEN still means every store scenario has a passing test and there are no orphans; exit 1 = gaps, exit 2 = the run itself is untrustworthy (missing spec paths, zero scenarios, non-TAP output, test-command crash/abort, a non-zero exit hiding behind all-green TAP — or, with `--change`: merge conflicts, a diverged base stamp, malformed deltas) — **fail-closed: a broken or vacuous run is never GREEN**. This is what used to be P8's mechanical coverage check, now deterministic.
+RUNBOOK.md-318-- **Verification matrix by project type:** (two views: change readiness is the `--change` form's change-scoped verdict; independent store health is the post-archive `--specs` form) all code projects — `apriori verify` GREEN + lint/static analysis green (plus SAST where security-sensitive) — where configured; backend/library — unit + property tests, mutation spot-checks; UI — plus E2E/visual regression (scenario IDs bind to `apriori verify` via unit/component tests — verify's gate speaks TAP, which Playwright does not emit; the Playwright E2E/visual layer sits **on top of** the binding gate as an additional exit condition, with visual checks emitting a textual pass/fail; visual-regression baseline images belong to the project's own test suite per its framework's convention, not to `apriori/`); deployed service — plus runtime contracts, canary + rollback; **docs-only project — `apriori check` green + the P8 consistency review stand in for `npm test`.** Where an executable instrument doesn't exist for the project type, the LLM review is the primary instrument there — that is not a downgrade.
+RUNBOOK.md-319-- **Guarantee-claim discipline (a spec must not promise what no test exercises):** whenever a spec or KB asserts a hard guarantee — crash durability ("a success response means the write is persisted"), atomicity, an invariant that holds "always" / "under concurrency" / "after restart" — that guarantee is only real if a test **injects the adversarial condition** and observes it hold. **Match the injection to the exact claim, on its SUCCESS path — an error-path test does not prove a success-path guarantee.** In particular: a *crash-durability* claim is proven only by *killing the process AFTER the success is acknowledged, then restarting and verifying the data survived* — injecting a write/rename **failure** proves only "no false success on error", a different claim. And "verify the data survived" means **read it back through the app's own load path after a real restart**, not peek at the file directly — a file-peek skips the very read/parse/recover code a crash exercises, so it passes while the app-level recovery is still broken. And know the classic gotcha the test must expose: durable atomic-file replacement needs `fsync` on **both the temp file AND its containing directory** before the rename counts as persisted; a temp-file-only fsync passes a naive test but still loses the ack on a real crash. (Root-run environments — most CI sandboxes — silently defeat permission-bit fault injection: `chmod` does nothing to root; inject at the I/O primitive via dependency injection instead.) If no adequate test exists, either add it or **scope the wording down to what is actually verified** (e.g. "atomic rename" not "crash-durable"). P8 checks this specifically: an unexercised hard guarantee in the prose is a spec-vs-code gap, not a nicety.
+RUNBOOK.md-320-- **Exit — ALL of:** tests green (per the matrix above); `apriori verify` GREEN (docs-only: `apriori check` green); lint/static analysis green (where configured); tasks.md all `[x]`; consistency verdict line = `VERDICT: no spec-vs-code gaps`. Design infeasible → back to STEP2; requirement itself wrong → back to STEP0 (both: update the state file and tell the human). Cap hit → **gate ⑤**.
+RUNBOOK.md-321-
+RUNBOOK.md-322-### STEP6 — archive + KB writeback
+--
+RUNBOOK_cn.md-21-```shell
+RUNBOOK_cn.md-22-npm i -g apriori-cli     # 或用 `npx apriori-cli …` 跑下面任一命令
+RUNBOOK_cn.md-23-cd your-project && apriori init  # 交互式:勾选要接入的 AI 工具
+RUNBOOK_cn.md-24-```
+RUNBOOK_cn.md-25-
+RUNBOOK_cn.md:26:`apriori init` 搭建单一 `apriori/` 根(本 runbook 落在 `apriori/runbook.md`、`apriori/process-config.md`,以及 `specs/ changes/ truth/` 工作目录),并把一行指向 runbook 的指针写进你勾选的每个工具的原生位置——`CLAUDE.md` + `.claude/commands/apriori.md`、`AGENTS.md`(Codex/OpenCode)、`.cursor/rules/apriori.mdc`、`.github/copilot-instructions.md`、`.windsurf/…`。协议只存一份;工具都指向它。增量写入、绝不覆盖;随时可重跑以加一个工具。接入后用 `apriori doctor` 给整个接缝做体检——Node 地板、脚手架缺口、runbook 新鲜度、工具指针、测试命令是否真的输出 TAP——每个发现都指名修复它的命令。CLI 升级后,`apriori update` 把工具所有的文件(本 runbook 副本和命令指针)刷新到已安装版本——绝不碰属于用户的文件(`process-config.md`、`specs/`、`changes/`、规则文件);runbook 副本过期时 `apriori check` 会给出警告。
+RUNBOOK_cn.md-27-
+RUNBOOK_cn.md-28-`apriori/process-config.md` **人类持有;agent 视其为只读**(R3)。缺失时,§4 打印的默认值生效。三个确定性闸口以 CLI 命令运行:`apriori verify`(STEP5)、`apriori archive`(STEP6)、`apriori check`(CI)——均为零依赖 Node,详见 §4/§6。
+RUNBOOK_cn.md-29-
+RUNBOOK_cn.md-30-**语言。** 人可读的散文——需求文档、spec 的 scenario 描述、gap/设计/评审文档、台账描述、`flow-state` 备注,以及每一条对人的消息——使用 `apriori/process-config.md` 里的 `language` 字段。未设或为 `auto` 时,**跟随人正在使用的语言**(其 kickoff 与消息)。机器令牌无论何种语言**永远是英文**:结论行(§5 短语表)、scenario ID(`KV-03`)、delta 关键字 `ADDED`/`MODIFIED`/`REMOVED`、文件路径,以及本 runbook。所以中文 kickoff 产出中文产物,但 ID 与结论行是英文——`apriori verify`/`check` 照常工作。
+RUNBOOK_cn.md-31-
+--
+RUNBOOK_cn.md-75-
+RUNBOOK_cn.md-76-**R2 —— 评审必须真实外调。** 生产会话永远不出评审结论。真实调起异构评审方:`codex exec -s read-only "<提示词>"`(第 2 轮起:`codex exec resume -c sandbox_mode="read-only" <session-id> "..."`——codex CLI ≥0.14x 的 resume 子命令不接受 `-s`;旧版本在 session id 之前用 `-s read-only`);没有 Codex 就**新开**一个不同档位的 `claude` 会话,喂给它产物加问题台账(P0)。把评审方的结论行**原文**贴回。评审方通常跑在只读沙箱里、无法自己写台账:由评审方在输出末尾给出**台账增量**(新行+状态翻转),生产方原样落盘并注明"代评审方录入";评审方原始输出全文存档于 `apriori/changes/<change>/review/<stem>-raw.* (the stem = its review doc)`,代录增量随时可与其对照;落盘 raw 时在文件头预置单行来源标注 `<!-- provenance: provider=<name> model=<id> session=<id> date=<YYYY-MM-DD> -->`(未知字段写 `unknown`;既有旧 raw 不追溯)。同一代录机制也覆盖**评审文档本体**:只读评审方把文档正文打印到 stdout,生产方原样落到固定路径——这就是设计内的流程,不是权宜之计。非交互/后台调用 codex 时必须关闭 stdin——命令末尾加 `< /dev/null`(PowerShell 没有 /dev/null:改用管道 `$null | codex exec …`)——否则它会打印 "Reading additional input from stdin..." 并挂起。评审方在结论行落盘前死亡(评审中途网络/服务故障)→ **resume 同一会话**让它续完——绝不代填结论行。要让它也扛得住*生产方*侧的中断,第 1 轮一打印评审方的 session id 就记进 flow-state 的 `reviewer-session` 字段——否则崩溃后 resume 无会话可重连。只读评审方的**动态观测不可信**——跑测试、构建、任何需要写入的操作在其沙箱内都可能降级并产生幻影发现;只有它的静态阅读作数,生产方以真实环境的证据拒绝此类沙箱伪象发现。如果无法真实调起评审方,停下来说明——**禁止模拟评审**。
+RUNBOOK_cn.md-77-
+RUNBOOK_cn.md-78-**R3 —— 一切落盘;`/goal` 属于人;配置也属于人。** 产物写到 §4 表格的确切路径;每完成一步、每轮评审后都更新状态文件。所有轮次上限读取项目根的 `process-config.md`——**人类持有,agent 绝不写它**;文件缺失时,§4 打印的默认值生效。**每个评审环节的上限有硬性地板:每变更 1 轮——配置值小于 1 或不可解析,一律按默认值生效并警告;任何评审环节绝不归零。** `/goal` 是人执行的命令(§6)——绝不声称自己在跑 `/goal`,也不模仿它的评估器。你在会话内自行驱动的循环,同样遵守上限。
+RUNBOOK_cn.md-79-
+RUNBOOK_cn.md:80:**强制层级**(举例式,非穷尽;下列强制项在本仓库现状为*可配置而非已生效*)。劝告性文本在压力下会被忽略——按可强制方式给规则分层:①**现在即可确定性强制**——`process-config.md` 只读(hook 拦截写入)、`apriori check` 作 pre-commit/CI 必过、`apriori verify` 作 STEP5 绑定闸口、以及**结论行证据检查**:每个 verdict 行必须有对应 raw 存档文件(命名规则:主干名为 `S` 的评审文档,其原始归档为 `apriori/changes/<change>/review/S-raw.*`)——对模拟评审的机械化后盾,由 **`apriori gate --change <name>`** 落地,它同时把 verify/tasks/flow-state/台账/KB 新鲜度合成一个退出码(其 PASS 只覆盖机械面——人工闸口仍归人);②**闸口级**——Stop hooks 与 `/goal` 条件;③**本质劝告性**——评审方的独立判断质量、对 P 提示词的语义遵循。参考实现为 Claude Code hooks;任何 CI 都能强制同样的检查。示例(拦配置写入的 PreToolUse hook——示意伪配置;确切 schema 见 Claude Code hooks 文档):
+RUNBOOK_cn.md-81-
+RUNBOOK_cn.md-82-```text
+RUNBOOK_cn.md-83-# 伪配置: PreToolUse 对 Write|Edit 匹配并运行守卫命令;
+RUNBOOK_cn.md-84-# 目标为 process-config.md 时命令以非零退出,即拒绝该调用
+RUNBOOK_cn.md-85-```
+--
+RUNBOOK_cn.md-302-- 按 DESIGN-REVIEW-DOC 修订 spec/design;可选再来一轮 P5/P6。STEP3 无改动则跳过。
+RUNBOOK_cn.md-303-
+RUNBOOK_cn.md-304-### STEP5 —— apply · 上限:`step5-cap`(默认 25)
+RUNBOOK_cn.md-305-
+RUNBOOK_cn.md-306-- **动作,按序:**(1)每个 spec scenario 一条失败测试,测试名带 scenario ID——展示失败运行;(2)用 **P7** 按 tasks.md 顺序实现,随做随标 `[x]`;(3)跑到全绿;(4)`apriori verify` GREEN(确定性绑定闸口);(5)异构一致性评审 **P8**(R2);更新台账。
+RUNBOOK_cn.md:307:- **spec-runner 闸口(`apriori verify`)。** 变更进行中,闸口用**投影**形式:`apriori verify --change <name> --test-cmd "<你的测试命令>"` 把变更的增量规格在内存中套到规格库上(跑的正是 archive 将来要跑的同一个 `merge()`——MODIFIED 整块替换、REMOVED 不再要求、RENAMED 按改名后的图景要求),再对这个候选规格库做绑定;只扫原始规格库会看不见新 scenario,库+变更两个目录一起扫则会把 MODIFIED 算重。归档之后(或纯库检查)用普通形式 `apriori verify --specs apriori/specs --test-cmd "…"` 按库现状绑定。两种形式都报告 BOUND-GREEN / BOUND-RED / UNBOUND(scenario 无测试)/ ORPHAN(测试无 scenario)/ UNIDENTIFIED(scenario 无 ID)。投影形式的 VERDICT 是**变更收窄**的:GREEN(exit 0)= 本变更的 Requirement 块内每条 scenario 都有绿测试,且无收窄范围内的重复/无 ID 场景、无不可归属的失败信号(无 ID 的失败、任何**兄弟**活变更都不认领的失败 ID 照旧阻断——fail-closed);同一次运行还会打印整个投影的**store report**(信息性),历史缺口持续可见但不再淹没 verdict——并行变更可各自独立变绿。普通 `--specs` 形式的 GREEN 仍是每条库 scenario 有绿测试且无孤儿;exit 1 = 有缺口,exit 2 = 这次运行本身不可信(spec 路径缺失、零场景、非 TAP 输出、测试命令崩溃/中止、全绿 TAP 背后藏着非零退出码——`--change` 下还包括:合并冲突、基线章不匹配、增量文件格式坏)——**fail-closed:坏掉或空洞的运行绝不算 GREEN**。这就是过去 P8 的机械覆盖检查,现在确定性化了。
+RUNBOOK_cn.md-308-- **按项目类型的验证矩阵:**(两个视角:本变更达标看 `--change` 形式的变更收窄 verdict;独立的规格库健康看归档后的 `--specs` 形式)所有代码项目——`apriori verify` GREEN + lint/静态分析全绿(安全敏感加 SAST)——where configured;后端/库——单测+属性测试+变异抽查;UI——另加 E2E/视觉回归(scenario ID 经单测/组件测绑定给 `apriori verify`——verify 的闸口只认 TAP,而 Playwright 不输出 TAP;Playwright 的 E2E/视觉层**叠在**绑定闸口之上作为额外退出条件,视觉检查须输出文本化 pass/fail;视觉回归的基线图属于项目自己的测试套件、按其框架惯例存放,不属于 `apriori/`);有部署面的服务——另加运行时契约、金丝雀+回滚;**纯文档项目——`apriori check` 全绿 + P8 一致性评审,替代 `npm test`。** 项目类型不具备某种可执行仪器时,LLM 评审在该处就是主力仪器——这不是降级。
+RUNBOOK_cn.md-309-- **保证声明纪律(规格不得承诺没有测试验证的东西):**规格或 KB 每当断言一个硬保证——崩溃持久性("成功响应即已落盘")、原子性、"始终/并发下/重启后"成立的不变量——该保证只有当存在一个**注入对抗条件**并观测其成立的测试时才算真的成立。**注入要对准那个具体断言、且打在它的成功路径上——测错误路径证明不了成功路径的保证。**尤其:*崩溃持久性*的断言只有靠*在成功被确认之后杀掉进程、再重启、验证数据仍在*才算证明;注入一个写/rename **失败**只证明了"出错时不假成功",那是另一个断言。而"验证数据仍在"指的是**真重启后经应用自己的读回路读出来**,不是直接窥探文件——直接读文件会跳过崩溃真正会走的读取/解析/恢复代码,于是测试过了、应用级恢复其实还是坏的。还要知道测试必须暴露的那个经典漏点:持久的原子文件替换需要对**临时文件和它的承载目录都做 `fsync`**,rename 才算落盘;只 fsync 临时文件能骗过朴素测试,真崩溃时仍丢掉已确认的写。(root 运行的环境——多数 CI 沙箱——会让权限位故障注入静默失效:`chmod` 对 root 无效;改为在 I/O 原语处用依赖注入。)若无够格的测试,要么补上,要么**把措辞收窄到实际验证到的程度**(例如写"原子 rename"而非"崩溃持久")。P8 专门查这条:散文里未经验证的硬保证是规格-代码缺口,不是可有可无的润色。
+RUNBOOK_cn.md-310-- **退出——以下全部:**测试全绿(按上述矩阵);`apriori verify` GREEN(纯文档:`apriori check` 全绿);lint/静态分析全绿(where configured);tasks.md 全 `[x]`;一致性结论行 = `VERDICT: no spec-vs-code gaps`(无 spec-vs-代码缺口)。设计不可行 → 回 STEP2;需求本身错了 → 回 STEP0(两者都要:更新状态文件并告知人)。触顶 → **闸口 ⑤**。
+RUNBOOK_cn.md-311-
+RUNBOOK_cn.md-312-### STEP6 —— 归档 + 知识库回写
+--
+RUNBOOK_cn.md-580-当结论行为 'VERDICT: no major issues, ready to proceed to execution' 时停,或触顶停。"
+RUNBOOK_cn.md-581-```
+RUNBOOK_cn.md-582-
+RUNBOOK_cn.md-583-**STEP5 循环:**
+RUNBOOK_cn.md-584-```text
+RUNBOOK_cn.md:585:/goal "目标 —— 以下全部成立:`npm test` 退出码 0;lint/静态分析全绿(where configured);apriori/changes/<change>/specs/里每个 scenario ID 至少出现在一个测试名里(列出缺失的 ID);apriori/changes/<change>/tasks.md每项均为 [x];(仅 UI 项目)Playwright E2E 套件通过且截图差异在阈值内;并且由一个不同模型做的一致性评审(P8 提示词)报告 'VERDICT: no spec-vs-code gaps'。上限:step5-cap 轮(默认 25)。
+RUNBOOK_cn.md-586-第 1 轮:为每个 spec scenario 派生一条失败测试(以其 scenario ID 命名),并把失败运行结果打印出来。之后每一轮:按 tasks.md 顺序实现下一项,然后跑 `npm test`(有界面再跑 Playwright)并把命令输出打印出来,让结果进 transcript。代码完成后,跑一致性评审(codex exec / 新开 claude)并把结论贴回。
+RUNBOOK_cn.md-587-当全部条件成立时停,或触顶停。"
+RUNBOOK_cn.md-588-```
+RUNBOOK_cn.md-589-> 纯文档项目:`npm test` 换成 `apriori check`,去掉 Playwright 条款,保留一致性评审。
+RUNBOOK_cn.md-590-
+--
+docs/ci_cn.md-1-# CI 接入
+docs/ci_cn.md-2-
+docs/ci_cn.md:3:三个确定性命令可直接挂进任意 CI。退出码即契约:0 = 放行,1 = 需要人看一眼的缺口,2 = 这次运行本身不可信(按失败处理,但要读消息——它通常指向环境问题而非代码问题)。
+docs/ci_cn.md-4-
+docs/ci_cn.md-5-## check —— PR 闸口
+docs/ci_cn.md-6-
+docs/ci_cn.md-7-规格库结构一致性:每条 scenario 都带可绑定 ID。开销小;每个 PR 都跑。
+docs/ci_cn.md-8-
+--
+docs/ci_cn.md-11-  run: npx apriori-cli check
+docs/ci_cn.md-12-```
+docs/ci_cn.md-13-
+docs/ci_cn.md-14-## verify —— 合并后的绑定闸口
+docs/ci_cn.md-15-
+docs/ci_cn.md:16:living 规格库里每条 scenario 都有绿测试、无孤儿。跑你自己的测试命令;必须输出 TAP(node 加 `--test-reporter=tap`)。
+docs/ci_cn.md-17-
+docs/ci_cn.md-18-```yaml
+docs/ci_cn.md-19-- name: apriori verify
+docs/ci_cn.md-20-  run: npx apriori-cli verify --specs apriori/specs --test-cmd "node --test --test-reporter=tap"
+docs/ci_cn.md-21-```
+docs/ci_cn.md-22-
+docs/ci_cn.md:23:## gate —— 按在途变更
+docs/ci_cn.md-24-
+docs/ci_cn.md:25:把一个变更的机械退出条件合成一个退出码:阶段感知的绑定 verify、tasks 全勾、flow-state 合法、台账干净、verdict↔raw 证据、KB 新鲜度。`PASS` 只覆盖机械面——人工闸口仍归人。
+docs/ci_cn.md-26-
+docs/ci_cn.md-27-```yaml
+docs/ci_cn.md-28-- name: apriori gate
+docs/ci_cn.md-29-  run: npx apriori-cli gate --change ${{ inputs.change }} --test-cmd "node --test --test-reporter=tap" --json
+docs/ci_cn.md-30-```
+docs/ci_cn.md-31-
+docs/ci_cn.md:32:## 退出码速查表
+docs/ci_cn.md-33-
+docs/ci_cn.md-34-| 码 | check | verify | gate |
+docs/ci_cn.md-35-|---|---|---|---|
+docs/ci_cn.md-36-| 0 | PASS | GREEN | PASS(机械面) |
+docs/ci_cn.md-37-| 1 | FAIL(n) | 缺口:unbound/red/orphan/重复 | BLOCKED(n) |
+docs/ci_cn.md-38-| 2 | 规格库路径缺失 | 运行不可信(非 TAP、崩溃、冲突、CAS) | 评估不可信 |
+docs/ci_cn.md-39-
+docs/ci_cn.md:40:接入新 runner?`npx apriori-cli doctor --no-run` 不执行你的测试命令就能体检整条接缝。
+--
+docs/cli_cn.md-1-# CLI 参考
+docs/cli_cn.md-2-
+docs/cli_cn.md:3:每个子命令都响应 `--help`(退出码 0);未知旗标与多余参数一律退出码 2——不存在静默忽略。下面的用法行与 `--help` 打印的字符串逐字一致。
+docs/cli_cn.md-4-
+docs/cli_cn.md-5-## apriori init
+docs/cli_cn.md-6-
+docs/cli_cn.md-7-搭建 apriori/ + 各工具的 runbook 指针(不带 --tools 时交互多选)
+docs/cli_cn.md-8-
+--
+docs/cli_cn.md-10-usage: apriori init [--tools <a,b,...>] [--test-cmd "<cmd>"] [--language <lang>] [--yes]
+docs/cli_cn.md-11-```
+docs/cli_cn.md-12-
+docs/cli_cn.md-13-示例:`apriori init --tools claude,cursor --test-cmd "npm test" --yes`
+docs/cli_cn.md-14-
+docs/cli_cn.md:15:退出码:0 完成/你主动放弃 · 1 空选择 · 2 非交互且未给 --tools。
+docs/cli_cn.md-16-
+docs/cli_cn.md-17-## apriori doctor
+docs/cli_cn.md-18-
+docs/cli_cn.md-19-体检项目与 apriori 的接缝:Node 地板、脚手架、runbook 新鲜度、工具指针、TAP 管道探针(`--no-run` 跳过)、规格库健康、变更总览——每个发现指名修复命令
+docs/cli_cn.md-20-
+--
+docs/cli_cn.md-22-usage: apriori doctor [--test-cmd "<cmd>"] [--no-run] [--cwd <dir>] [--json]
+docs/cli_cn.md-23-```
+docs/cli_cn.md-24-
+docs/cli_cn.md-25-示例:`apriori doctor`
+docs/cli_cn.md-26-
+docs/cli_cn.md:27:退出码:0 HEALTHY · 1 有发现 · 2 不可用(未初始化 / Node 过老)。
+docs/cli_cn.md-28-
+docs/cli_cn.md:29:D6 用 `id-pattern` 配置行扫描 store(无 flag;detail 标注来源 `config` 或 `default`)。配置行非法或匹配被终止时 D6 报 finding 且 D5 探针跳过——坏 id-pattern 下 test command 绝不运行(§8.0)。
+docs/cli_cn.md-30-
+docs/cli_cn.md-31-## apriori new
+docs/cli_cn.md-32-
+docs/cli_cn.md-33-搭建变更目录 + flow-state 骨架
+docs/cli_cn.md-34-
+--
+docs/cli_cn.md-36-usage: apriori new <change-name>   (bare kebab-case, e.g. add-playback)
+docs/cli_cn.md-37-```
+docs/cli_cn.md-38-
+docs/cli_cn.md-39-示例:`apriori new add-playback`
+docs/cli_cn.md-40-
+docs/cli_cn.md:41:退出码:0 已创建 · 1 名字非法/已存在 · 2 用法错误。
+docs/cli_cn.md-42-
+docs/cli_cn.md-43-## apriori hotfix
+docs/cli_cn.md-44-
+docs/cli_cn.md-45-最小回写通道：一条结论、可选的 spec delta 及其测试绑定、直接归档——给那些小到不值得开正式 change 的记录
+docs/cli_cn.md-46-
+--
+docs/cli_cn.md-65-
+docs/cli_cn.md-66-`R3` 不是警告。REMOVED/RENAMED 块、跨两个模块、前后端双端命中、decision 取代、无 scenario 的 MODIFIED/ADDED 块、以及任何 store 未白名单的 delta 块，一律判 `R3` 并给出指向正式流程的拒绝信息。**fail-up 是有意为之**：机械上分不清的，一律归到更严的一侧。
+docs/cli_cn.md-67-
+docs/cli_cn.md-68-例：`apriori hotfix new summary-wording` → 填写 → `apriori hotfix archive summary-wording` → `apriori hotfix archive summary-wording --approve <token>`
+docs/cli_cn.md-69-
+docs/cli_cn.md:70:退出码：0 preflight 通过 / 已归档 · 1 被拒（分级、字段契约、评审、verdict 或令牌）· 2 用法错误或 bundle 不可读。
+docs/cli_cn.md-71-
+docs/cli_cn.md-72-## apriori status
+docs/cli_cn.md-73-
+docs/cli_cn.md-74-每个变更走到哪了:步骤、下一动作、台账 open 项
+docs/cli_cn.md-75-
+--
+docs/cli_cn.md-77-usage: apriori status [--change <name>] [--json]
+docs/cli_cn.md-78-```
+docs/cli_cn.md-79-
+docs/cli_cn.md-80-示例:`apriori status --change add-playback --json`
+docs/cli_cn.md-81-
+docs/cli_cn.md:82:退出码:成功路径恒为 0(status 只报告,不守门)。
+docs/cli_cn.md-83-
+docs/cli_cn.md-84-## apriori verify
+docs/cli_cn.md-85-
+docs/cli_cn.md-86-把每条 spec scenario ID 绑定到绿的 TAP 测试——STEP5 闸口;`--change` 对投影(合并后)规格库验证,变更进行中用这个形式
+docs/cli_cn.md-87-
+--
+docs/cli_cn.md-92- --id-pattern may be omitted when apriori/process-config.md has an id-pattern row)
+docs/cli_cn.md-93-```
+docs/cli_cn.md-94-
+docs/cli_cn.md-95-示例:`apriori verify --change add-playback --test-cmd "npm test"`
+docs/cli_cn.md-96-
+docs/cli_cn.md:97:退出码:0 GREEN · 1 有缺口 · 2 运行不可信(输入缺失、非 TAP 输出、崩溃、合并冲突、CAS 不匹配)。
+docs/cli_cn.md-98-
+docs/cli_cn.md-99-`--change` 运行是**变更收窄**的:verdict(exit 0/1)只判本 change 的 Requirement 块(场景全绿、无收窄范围内重复/无 ID 场景、无不可归属失败信号——无 ID 的失败、任何兄弟活 change 都不认领的失败 ID 照旧阻断,fail-closed);绑定到范围外场景的 red、或可归因于兄弟 change **完整解析** delta 的失败(仅其 ADDED/MODIFIED 块内场景可授予豁免),不阻断。同一次运行打印信息性 **store report**(全投影六类)——并行 change 各自独立变绿,历史缺口持续可见。`--change --json` 在 GREEN/GAPS 附 `storeReport`、`changeScope` 与 `modifiedIntegrity`(一切 ERROR 缺省);`--specs` 输出与之前 byte 级一致。`modifiedIntegrity` 报告每个 MODIFIED 块的替换保真性(retained/titleChanged/dropped/added/ambiguous 场景与丢失行,含 requirement 散文)——仅信息性,绝不改判;human 的 `— MODIFIED INTEGRITY —` 段在存在风险类时打印。
+docs/cli_cn.md-100-
+docs/cli_cn.md-101-## apriori archive
+docs/cli_cn.md-102-
+--
+docs/cli_cn.md-107-   or: apriori archive --change <name> [--write] [--changes-dir <dir>]
+docs/cli_cn.md-108-```
+docs/cli_cn.md-109-
+docs/cli_cn.md-110-示例:`apriori archive --change add-playback --write --changes-dir apriori/changes`
+docs/cli_cn.md-111-
+docs/cli_cn.md:112:退出码:0 已合并/幂等空转 · 1 冲突/CAS/格式坏/暂存-提交-移动失败 · 2 用法/未找到/路径越界。
+docs/cli_cn.md-113-
+docs/cli_cn.md-114-## apriori stamp
+docs/cli_cn.md-115-
+docs/cli_cn.md-116-打印规格库文件的 CAS 基线章——贴在增量顶部;库若分叉,verify/archive 会拒绝
+docs/cli_cn.md-117-
+--
+docs/cli_cn.md-119-usage: apriori stamp <store-file>
+docs/cli_cn.md-120-```
+docs/cli_cn.md-121-
+docs/cli_cn.md-122-示例:`apriori stamp apriori/specs/kv/spec.md`
+docs/cli_cn.md-123-
+docs/cli_cn.md:124:退出码:0 已打印(文件不存在 → `new` 形式)· 2 用法/目录/不可读。
+docs/cli_cn.md-125-
+docs/cli_cn.md-126-## apriori gate
+docs/cli_cn.md-127-
+docs/cli_cn.md:128:把一个变更的机械闸口检查合成一个退出码(绑定 verify、tasks、flow-state、台账、verdict↔raw 证据、KB 新鲜度);PASS ≠ 人工闸口
+docs/cli_cn.md-129-
+docs/cli_cn.md-130-```text
+docs/cli_cn.md-131-usage: apriori gate --change <name> [--test-cmd "<cmd>"] [--id-pattern <re>] [--cwd <dir>] [--json] [--no-cas]
+docs/cli_cn.md-132-```
+docs/cli_cn.md-133-
+docs/cli_cn.md-134-示例:`apriori gate --change add-playback --json`
+docs/cli_cn.md-135-
+docs/cli_cn.md:136:退出码:0 PASS · 1 BLOCKED · 2 评估不可信。
+docs/cli_cn.md-137-
+docs/cli_cn.md-138-in-flight 的 C1 消费变更收窄 verdict(detail 为 `verify GREEN (in-flight, change-scoped)` + 六类 store 摘要尾缀)——并行 change 的 gate 各自独立变绿;archived 阶段仍验证全库。
+docs/cli_cn.md-139-
+docs/cli_cn.md-140-## apriori check
+docs/cli_cn.md-141-
+--
+docs/cli_cn.md-145-usage: apriori check [--specs <dir>] [--self]
+docs/cli_cn.md-146-```
+docs/cli_cn.md-147-
+docs/cli_cn.md-148-示例:`apriori check`
+docs/cli_cn.md-149-
+docs/cli_cn.md:150:退出码:0 PASS · 1 FAIL(n) · 2 规格库路径缺失或 `id-pattern` 配置非法/被终止(`RESULT: ERROR`)。
+docs/cli_cn.md-151-
+docs/cli_cn.md-152-CK-04 用项目的 `id-pattern` 配置行识别场景 ID(无 flag——CI 门吃项目恒量,见 §8.0),识别契约与 verify 完全一致。
+docs/cli_cn.md-153-
+docs/cli_cn.md-154-## apriori update
+docs/cli_cn.md-155-
+--
+docs/cli_cn.md-159-usage: apriori update [--dry-run]
+docs/cli_cn.md-160-```
+docs/cli_cn.md-161-
+docs/cli_cn.md-162-示例:`apriori update --dry-run`
+docs/cli_cn.md-163-
+docs/cli_cn.md:164:退出码:0 完成 · 1 未初始化。
+docs/cli_cn.md-165-
+docs/cli_cn.md-166-## 八、配置参考
+docs/cli_cn.md-167-
+docs/cli_cn.md-168-### 8.0 process-config 配置键：id-pattern
+docs/cli_cn.md-169-
+docs/cli_cn.md-170-在 `apriori/process-config.md` 写一行 `| id-pattern | <裸 JS 正则源串> |`，一处声明项目的场景 ID 形状，处处生效。解析优先级：`--id-pattern` flag（仅 verify 与 gate；按存在性判定——空 flag 是错误，绝不回退）> 配置行 > 内置默认 `[A-Z]+-\d+`。`check`（CK-04）与 `doctor`（D6）只吃配置行、无 flag。四个消费点用同一识别契约：从标题第一个字符开始匹配，后继为字母/数字/下划线则拒绝，不额外拼接 `\b`，源串按原样编译。
+docs/cli_cn.md-171-
+docs/cli_cn.md-172-pipe 转义分两层，切勿混为一谈：表格单元格内属于值的每个 pipe 都写 `\|`（如 alternation 单元格 `(AC\|BR)-\d+` 解析为正则源串 `(AC|BR)-\d+`，裸 `|` 即 alternation）；正则要**匹配**字面 pipe 字符时用字符类——单元格里写 `[\|]`，解析为 `[|]`。该转义规则对全部配置键统一生效。
+docs/cli_cn.md-173-
+docs/cli_cn.md:174:错误在消费时上浮且 fail-closed，消息指明来源（`--id-pattern` 或 `process-config`）：verify 与 gate 按既有文本/JSON 错误形状 exit 2；check 打印 `RESULT: ERROR`（exit 2）；doctor 报 D6 finding 并跳过 D5 探针（结果 FINDINGS，exit 1）——绝不静默回退默认。配置来源的 pattern 是 CI 自动消费的仓库输入，其匹配在可终止子进程内执行（超预算即杀——灾难性回溯的配置行无法挂死 CI）；flag 是操作者交互输入，进程内执行。
+docs/cli_cn.md-175-
+docs/cli_cn.md-176-### 8.0b process-config 配置键：verification-profile
+docs/cli_cn.md-177-
+docs/cli_cn.md-178-`| verification-profile | ui / backend / fullstack / docs / none |` 一次性声明这个仓库是什么类型的东西——从而声明它的验证要什么证据。该行**由人拥有**：agent 只读不写，与 `test-cmd` 同一语义。
+docs/cli_cn.md-179-
+--
+docs/cli_cn.md-281-* 用例编号 / 命名：<约定，例如成功场景与失败场景的编号区间>
+docs/cli_cn.md-282-* 覆盖率要求：<scenario 覆盖是硬性标准——每个 spec scenario ↔ 至少一条带其 ID 的测试；行/分支覆盖率只作排查信号（如低于 85% 就去看看），绝不当追逐目标——被要求冲数字的模型会拿无断言测试凑数>
+docs/cli_cn.md-283-* 测试方法体模板：<给出一个空壳示例，统一风格>
+docs/cli_cn.md-284-````
+docs/cli_cn.md-285-
+docs/cli_cn.md:286:> 填写建议：把团队里"需要靠人反复口头提醒"的约定,逐条沉淀进规则文件——从观察中生长,绝不预置大全、绝不自动生成(自动生成的指令文件实测*有害*:约 −2% 成功率、+23% 成本;人写的约 +4%)。目标个位数 KB,用官方删除测试无情修剪:*"删掉这一行会让 agent 出错吗?不会就删"*——臃肿的文件会让指令被忽略。六类内容稳定有效:构建/测试命令、与默认不同的代码风格、项目结构、测试说明、git 惯例、边界。**规则越具体、越可执行,Agent 产出越稳定。**
+docs/cli_cn.md-287-
+docs/cli_cn.md-288----
+--
+docs/cli.md-24-
+docs/cli.md-25-Example: `apriori doctor`
+docs/cli.md-26-
+docs/cli.md-27-Exit: 0 HEALTHY · 1 findings · 2 unusable (uninitialized / old Node).
+docs/cli.md-28-
+docs/cli.md:29:D6 scans the store with the `id-pattern` row (no flag; detail names the source, `config` or `default`). An invalid or terminated row is a D6 finding and the D5 probe is skipped — the test command never runs under a broken id-pattern (§8.0).
+docs/cli.md-30-
+docs/cli.md-31-## apriori new
+docs/cli.md-32-
+docs/cli.md-33-scaffold a change dir + flow-state skeleton
+docs/cli.md-34-
+--
+docs/cli.md-169-
+docs/cli.md-170-`| id-pattern | <bare JS regex source> |` in `apriori/process-config.md` declares the project's scenario-ID shape once, for every consumer. Resolution order: the `--id-pattern` flag (verify and gate only; judged by presence — an empty flag is an error, never a fallback) > the config row > the built-in default `[A-Z]+-\d+`. `check` (CK-04) and `doctor` (D6) consume the row with no flag. All four consumers recognize IDs through the same contract: the match starts at the title's first character, a following letter/digit/underscore rejects it, no `\b` is appended, the source compiles as written.
+docs/cli.md-171-
+docs/cli.md-172-Pipe escaping has two layers — never conflate them: inside a table cell every pipe belonging to the value is written `\|` (so an alternation cell `(AC\|BR)-\d+` parses to the regex source `(AC|BR)-\d+`, where the bare `|` is alternation); a regex that must MATCH a literal pipe character uses a character class, written `[\|]` in the cell and parsing to `[|]`. This escape rule applies to every config key uniformly.
+docs/cli.md-173-
+docs/cli.md:174:Errors are consumption-time and fail closed, naming their origin (`--id-pattern` or `process-config`): verify and gate exit 2 through their existing text/JSON error shapes, check prints `RESULT: ERROR` (exit 2), doctor reports a D6 finding and skips the D5 probe (result FINDINGS, exit 1) — never a silent fallback to the default. A config-sourced pattern is repository input that CI consumes automatically, so its matching runs inside a terminable child process (killed on budget — a catastrophic-backtracking row cannot hang CI); the flag is operator-interactive input and runs in-process.
+docs/cli.md-175-
+docs/cli.md-176-### 8.0b process-config keys: verification-profile
+docs/cli.md-177-
+docs/cli.md-178-`| verification-profile | ui / backend / fullstack / docs / none |` declares once, for the whole project, what kind of thing this repository is — and therefore what evidence its verification asks for. The row is **human-owned**: agents read it, never write it, exactly like `test-cmd`.
+docs/cli.md-179-
+--
+docs/cli.md-281-* Test numbering / naming: <convention, e.g. numbering ranges for success vs failure scenarios>
+docs/cli.md-282-* Coverage requirement: <scenario coverage is the hard bar — every spec scenario ↔ at least one test carrying its ID; treat line/branch coverage as a signal to investigate (e.g. anything below 85%), never a target to chase — a model told to hit a number will pad with assertion-free tests>
+docs/cli.md-283-* Test method-body template: <give an empty-shell example to unify the style>
+docs/cli.md-284-````
+docs/cli.md-285-
+docs/cli.md:286:> Tip: deposit, one by one, the conventions your team keeps having to remind each other of into the rules file — grow it from observed needs, never front-load an encyclopedia and never auto-generate it (auto-generated instruction files measurably *hurt*: ≈−2% success, +23% cost, versus ≈+4% for human-written ones). Aim for single-digit kilobytes, and prune ruthlessly with the official test: *"would removing this line cause the agent to make mistakes? If not, cut it"* — bloated files cause instructions to be ignored. Six content categories consistently earn their keep: build/test commands, code-style rules that differ from defaults, project structure, testing instructions, git conventions, and boundaries. **The more specific and executable the rules, the more stable the Agent's output.**
+docs/cli.md-287-
+docs/cli.md-288----
+--
+docs/ci.md-11-  run: npx apriori-cli check
+docs/ci.md-12-```
+docs/ci.md-13-
+docs/ci.md-14-## verify — the post-merge binding gate
+docs/ci.md-15-
+docs/ci.md:16:Every scenario in the living store has a passing test, no orphans. Runs your own test command; it must emit TAP (node: `--test-reporter=tap`).
+docs/ci.md-17-
+docs/ci.md-18-```yaml
+docs/ci.md-19-- name: apriori verify
+docs/ci.md-20-  run: npx apriori-cli verify --specs apriori/specs --test-cmd "node --test --test-reporter=tap"
+docs/ci.md-21-```
+docs/ci.md-22-
+docs/ci.md:23:## gate — per in-flight change
+docs/ci.md-24-
+docs/ci.md-25-One exit code over the mechanical exit conditions of a change: stage-aware binding verify, tasks all checked, legal flow-state, clean ledger, verdict↔raw evidence, KB freshness. `PASS` covers the mechanical face only — human gates remain human.
+docs/ci.md-26-
+docs/ci.md-27-```yaml
+docs/ci.md-28-- name: apriori gate
+docs/ci.md-29-  run: npx apriori-cli gate --change ${{ inputs.change }} --test-cmd "node --test --test-reporter=tap" --json
+docs/ci.md-30-```
+docs/ci.md-31-
+docs/ci.md:32:## Exit-code cheat table
+docs/ci.md-33-
+docs/ci.md-34-| code | check | verify | gate |
+docs/ci.md-35-|---|---|---|---|
+docs/ci.md-36-| 0 | PASS | GREEN | PASS (mechanical) |
+docs/ci.md-37-| 1 | FAIL(n) | gaps: unbound/red/orphan/duplicate | BLOCKED(n) |
+docs/ci.md-38-| 2 | store path missing | untrustworthy run (non-TAP, crash, conflict, CAS) | untrustworthy evaluation |
+docs/ci.md-39-
+docs/ci.md:40:Onboarding a runner? `npx apriori-cli doctor --no-run` diagnoses the seam without executing your test command.
+--
+docs/troubleshooting_cn.md-14-`apriori/runbook.md` 过期(或被本地改过——它是工具所有的文件)。修复:`apriori update`。
+docs/troubleshooting_cn.md-15-
+docs/troubleshooting_cn.md-16-### D4 —— 工具指针丢失 / 命令文件缺失
+docs/troubleshooting_cn.md-17-某个已检测到的 AI 工具,其规则文件不再指向 `apriori/runbook.md`,或命令文件没了。修复:重跑 `apriori init`(增量写入,绝不覆盖你的内容)。
+docs/troubleshooting_cn.md-18-
+docs/troubleshooting_cn.md:19:### D5 —— 测试命令类发现
+docs/troubleshooting_cn.md-20-- *无法启动 / 被信号杀死*:命令行本身坏了;手动跑一遍。
+docs/troubleshooting_cn.md-21-- *无输出 / 非 TAP*:runner 在用人类报告器。Node 加 `--test-reporter=tap`;pytest 用 `pytest --tap-stream`(插件 `pytest-tap`)。
+docs/troubleshooting_cn.md-22-- *TAP 流截断或畸形*:出现了 version/plan 行但零结果行——运行中途死了。
+docs/troubleshooting_cn.md:23:- *退出码 N 无 TAP 解释*:命令失败却没有对应的 `not ok`——常见于崩溃的测试文件或配置错误的 runner。
+docs/troubleshooting_cn.md-24-- 测试红不是 doctor 发现——那是 `verify` 的事。
+docs/troubleshooting_cn.md-25-
+docs/troubleshooting_cn.md-26-### D6 —— scenario 无可绑定 ID / ID 重复
+docs/troubleshooting_cn.md-27-每个 `#### Scenario:` 标题必须以形如 `KV-03` 的 ID 开头,且全库唯一。改规格文件;CI 里 `check` 强制同一规则。
+docs/troubleshooting_cn.md-28-
+--
+docs/troubleshooting_cn.md-30-活动变更目录缺可解析的 `flow-state.md`(或其 `change:` 与目录名不符)需手工修复。"gate ④ possibly pending" 一行是信息不是问题:归档后等人类 KB 签核正是设计内的时序。
+docs/troubleshooting_cn.md-31-
+docs/troubleshooting_cn.md-32-## 经典陷阱
+docs/troubleshooting_cn.md-33-
+docs/troubleshooting_cn.md-34-### verify 报 GAPS 且全部 UNBOUND,并附报告器提示
+docs/troubleshooting_cn.md:35:测试命令没输出 TAP。修法同 D5。
+docs/troubleshooting_cn.md-36-
+docs/troubleshooting_cn.md-37-### 删除 requirement 后出现 ORPHAN 测试
+docs/troubleshooting_cn.md-38-REMOVED 增量归档后,其 scenario 不再被要求——但旧测试还带着那些 ID。删掉测试;ORPHAN 就是提醒。
+docs/troubleshooting_cn.md-39-
+docs/troubleshooting_cn.md-40-### archive/verify 拒绝并报 "base mismatch … expects sha256:…"
+--
+docs/troubleshooting.md-14-Your `apriori/runbook.md` is stale (or locally edited — it is tool-owned). Fix: `apriori update`.
+docs/troubleshooting.md-15-
+docs/troubleshooting.md-16-### D4 — tool pointer lost / command file missing
+docs/troubleshooting.md-17-A detected AI tool's rules file no longer points at `apriori/runbook.md`, or its command file vanished. Fix: re-run `apriori init` (additive, never overwrites your content).
+docs/troubleshooting.md-18-
+docs/troubleshooting.md:19:### D5 — test command findings
+docs/troubleshooting.md-20-- *failed to spawn / killed by signal*: the command line itself is broken; run it by hand.
+docs/troubleshooting.md-21-- *produced no output / not TAP*: your runner uses a human reporter. Node: add `--test-reporter=tap`; pytest: `pytest --tap-stream` (plugin `pytest-tap`).
+docs/troubleshooting.md-22-- *TAP stream truncated or malformed*: a version/plan line appeared but zero result lines — the run died mid-stream.
+docs/troubleshooting.md-23-- *exit N unexplained by TAP*: the command failed without a corresponding `not ok` — often a crashing test file or a misconfigured runner.
+docs/troubleshooting.md-24-- Red tests are NOT doctor findings — that is `verify`'s business.
+--
+docs/troubleshooting.md-30-An active change dir without a parseable `flow-state.md` (or whose `change:` mismatches the dir name) needs manual repair. The "gate ④ possibly pending" line is information, not a problem: an archived change awaiting its human KB sign-off is the designed sequence.
+docs/troubleshooting.md-31-
+docs/troubleshooting.md-32-## Classic traps
+docs/troubleshooting.md-33-
+docs/troubleshooting.md-34-### verify says GAPS with everything UNBOUND, plus a reporter hint
+docs/troubleshooting.md:35:Your test command is not emitting TAP. Same fix as D5.
+docs/troubleshooting.md-36-
+docs/troubleshooting.md-37-### ORPHAN tests after removing a requirement
+docs/troubleshooting.md-38-When a REMOVED delta archives, its scenarios stop being demanded — but your old tests still carry their IDs. Delete the tests; ORPHAN is the reminder.
+RUNBOOK_cn.md:80:**强制层级**(举例式,非穷尽;下列强制项在本仓库现状为*可配置而非已生效*)。劝告性文本在压力下会被忽略——按可强制方式给规则分层:①**现在即可确定性强制**——`process-config.md` 只读(hook 拦截写入)、`apriori check` 作 pre-commit/CI 必过、`apriori verify` 作 STEP5 绑定闸口、以及**结论行证据检查**:每个 verdict 行必须有对应 raw 存档文件(命名规则:主干名为 `S` 的评审文档,其原始归档为 `apriori/changes/<change>/review/S-raw.*`)——对模拟评审的机械化后盾,由 **`apriori gate --change <name>`** 落地,它同时把 verify/tasks/flow-state/台账/KB 新鲜度合成一个退出码(其 PASS 只覆盖机械面——人工闸口仍归人);②**闸口级**——Stop hooks 与 `/goal` 条件;③**本质劝告性**——评审方的独立判断质量、对 P 提示词的语义遵循。参考实现为 Claude Code hooks;任何 CI 都能强制同样的检查。示例(拦配置写入的 PreToolUse hook——示意伪配置;确切 schema 见 Claude Code hooks 文档):
+RUNBOOK.md:80:**Enforcement layers** (examples, not exhaustive; the deterministic items below are *available to configure*, not active by default in this repo). Advisory text gets ignored under pressure — classify each rule by how it can be enforced: ① **deterministically enforceable now** — `process-config.md` read-only (a hook blocking agent writes), `apriori check` as a required pre-commit/CI check, `apriori verify` as the STEP5 binding gate, and the **verdict-evidence check**: every verdict line must have a matching raw archive file (naming rule: a review doc with stem `S` archives its raw as `apriori/changes/<change>/review/S-raw.*`) — a mechanical backstop against simulated reviews, implemented by **`apriori gate --change <name>`**, which aggregates it with verify/tasks/flow-state/ledger/KB-freshness into one exit code (its PASS covers the mechanical face only — human gates remain human); ② **gate-level** — Stop hooks and `/goal` conditions; ③ **inherently advisory** — a reviewer's independent judgment quality, semantic adherence to the P prompts. Reference implementation is Claude Code hooks; any CI can enforce the same checks. Example (a PreToolUse hook blocking config writes — illustrative sketch; exact schema in the Claude Code hooks docs):
+RUNBOOK.md:260:**Hard gate — nothing durable before approval.** Until the human explicitly approves the exit, write nothing that outlives the conversation: **never write code**, and never create workflow artifacts either — no requirement doc, no spec/proposal/design file, no `apriori new`, no flow-state. The conversation is brainstorm's only medium; the first file is written *after* the human says go. State this protection **in one plain-language sentence** ("I won't create any files until you say go — for now we just talk"); never recite protocol internals (artifact names, commands, step numbers) at the human. And no idea is "too simple to brainstorm" — simple-looking ideas hide the most unexamined assumptions. (Skipping brainstorm entirely and going straight to STEP0 is always the human's right — theirs, never yours to presume.)
+RUNBOOK.md:277:1. **Spike (bounded):** prototype freely under `changes/<change>/spike/`; cap: `spike-cap` (default 10) turns; exit = every intent-card question answered. Cap hit → **gate ⑤**.
+RUNBOOK.md:317:- **The spec-runner gate (`apriori verify`).** Mid-change, the gate is the **projected** form: `apriori verify --change <name> --test-cmd "<your test command>"` applies the change's delta specs to the living store in memory (the same `merge()` archive will run — MODIFIED replaces, REMOVED stops demanding, RENAMED demands the post-rename picture) and binds scenarios against that candidate store; scanning the raw store misses new scenarios, and scanning store+change double-counts MODIFIED. Post-archive (or store-only checks), the plain form `apriori verify --specs apriori/specs --test-cmd "…"` binds against the store as-is. Both report BOUND-GREEN / BOUND-RED / UNBOUND (scenario with no test) / ORPHAN (test with no scenario) / UNIDENTIFIED (scenario with no ID). The projected form's VERDICT is **change-scoped**: GREEN (exit 0) means every scenario of THIS change's requirement blocks has a passing test, with no scoped duplicate/unidentified and no unprovable failure signal (an ID-less failure or a failing ID no SIBLING active change declares still blocks — fail-closed); the whole projection's remaining picture prints as an informative **store report** in the same run, so historical gaps stay visible without drowning the verdict — parallel changes go green independently. The plain `--specs` form's GREEN still means every store scenario has a passing test and there are no orphans; exit 1 = gaps, exit 2 = the run itself is untrustworthy (missing spec paths, zero scenarios, non-TAP output, test-command crash/abort, a non-zero exit hiding behind all-green TAP — or, with `--change`: merge conflicts, a diverged base stamp, malformed deltas) — **fail-closed: a broken or vacuous run is never GREEN**. This is what used to be P8's mechanical coverage check, now deterministic.
+RUNBOOK.md:318:- **Verification matrix by project type:** (two views: change readiness is the `--change` form's change-scoped verdict; independent store health is the post-archive `--specs` form) all code projects — `apriori verify` GREEN + lint/static analysis green (plus SAST where security-sensitive) — where configured; backend/library — unit + property tests, mutation spot-checks; UI — plus E2E/visual regression (scenario IDs bind to `apriori verify` via unit/component tests — verify's gate speaks TAP, which Playwright does not emit; the Playwright E2E/visual layer sits **on top of** the binding gate as an additional exit condition, with visual checks emitting a textual pass/fail; visual-regression baseline images belong to the project's own test suite per its framework's convention, not to `apriori/`); deployed service — plus runtime contracts, canary + rollback; **docs-only project — `apriori check` green + the P8 consistency review stand in for `npm test`.** Where an executable instrument doesn't exist for the project type, the LLM review is the primary instrument there — that is not a downgrade.
+RUNBOOK.md:554:You are a thinking partner, not a builder. Hard gate: until I explicitly approve the exit,
+
+exec
+/usr/bin/zsh -lc "sed -n '1,70p' CHANGELOG.md && sed -n '20,48p' docs/ci_cn.md && sed -n '120,146p' docs/cli_cn.md && git status --short --branch && git rev-parse --short HEAD && git rev-list --left-right --count brownfield-round2...main" in /root/apriori-spec-development
+ succeeded in 2411ms:
+# Changelog
+
+All notable changes to `apriori-cli`. Versions follow semver; the stability promise: CLI surface & flags, `--json` shapes, the delta format and the flow-state schema only break in a major.
+
+## Unreleased · the SR-64 byte-golden guard becomes platform-correct
+
+The `--specs` byte goldens were captured on POSIX and compared byte-for-byte on every
+platform, but spec file paths in the JSON come from a filesystem walk and are therefore
+platform-native — as they were in state A too, which is what the guard compares against. On
+Windows the run emitted `apriori\\specs\\m\\spec.md` against a golden holding
+`apriori/specs/m/spec.md`, so SR-64 failed there and only there. The replay now folds the path
+separator — and only the separator: a separator appears in the JSON text as two backslashes
+while an escape like `\n` carries one, so folding pairs leaves escapes untouched, and the fold
+itself is asserted in the test. No product behavior changes; the published 4.1.0 tarball ships
+`bin/`, `lib/`, `templates/` and the two docs, so it is unaffected.
+
+Found by CI the first time these commits reached `main` — the branch had never been through
+the Windows matrix.
+
+375 tests.
+
+## 4.1.0 — 2026-08-14 · the brownfield P0 answers land: the change verdict judges the change, MODIFIED fidelity is mechanical, id-pattern is project config, and small records finally have a lane
+
+Four changes, each run through the full loop with adversarial heterogeneous review, all
+tracing to one brownfield deployment's feedback. Three of them harden what the tool already
+claimed to do; the fourth adds the first new command since 4.0 — a lane for the records that
+were too small to survive the formal process, with a verification floor built in so the light
+path is not a hole.
+
+**Upgrading from 4.0.x:** `npm i -g apriori-cli@latest`, then `apriori update` (refreshes
+`apriori/runbook.md` to `runbook-version: 4.1`, which gains §2b the hotfix lane and §2c
+verification scaling), then `apriori doctor`. Nothing else changes for existing projects — no
+flag, no `--json` shape, and no gate check behaves differently. `apriori/process-config.md` is
+user-owned and is never touched, so the new `verification-profile` row does **not** appear
+automatically; an absent row means nothing escalates, which is the safe default. Add it by hand
+to opt in:
+
+    | verification-profile | ui | ui / backend / fullstack / docs / none | absent or `none` = nothing escalates |
+
+375 tests.
+
+### the hotfix lane, and verification strength that scales mechanically (change hotfix-lane)
+
+Brownfield feedback P0-4 plus the verification-scaling half of the same problem: a conclusion too small for a change bundle went unwritten (a typo fix, a config correction, a two-hour "nothing is broken" investigation), and a "light path" without a declared verification floor would just have been a hole in the process. The two ship together on purpose — the lane defines the light path, the scaling rule defines the floor on it.
+
+- **`apriori hotfix new|archive`** — the minimal write-back unit: `hotfix-state.md` (a fixed header block, `## Conclusion`, `## Bindings`), an optional spec delta, a direct archive. `hotfix archive` runs a **zero-write preflight** (field contract, grading, carrier exclusivity, CAS stamp, screenshot evidence, clean tree, review projection, scoped verdict) and prints grade, scope, digest, write set and a signoff token; `--approve <token>` writes in **three stages — stores → truth → bundle move**, each through a temp file and one atomic rename, and every failure names what committed and what did not.
+- **Admission is graded mechanically by blast radius**, ordered-first: `(R3, n/a)` for REMOVED/RENAMED · a two-module union · a decision supersession or more than three decisions per module · a dual-end touch · any MODIFIED/ADDED block without a scenario; then a non-zero delta is `R3` **by default**, demoted to `(R2, whitelist)` only when every touched store block carries a human-granted `blast: low` marker; then `(R2, behavior)`, `(R1, n/a)`, `(R0, n/a)`. Fail-up is the rule — the defect account's GROUP BY and "latest"-criteria rewrites never reach the lane by construction. A delta may neither self-grant nor revoke the marker.
+- **`| verification-profile | ui / backend / fullstack / docs / none |`** — a human-owned project declaration (same ownership semantics as `test-cmd`; absent, empty and `none` all mean nothing escalates). What is mandatory is the EXISTENCE of evidence; what scales with the tier is its COVERAGE: the screenshot observation record is required at the full tier and **advisory in the lane** (it prints a reminder and never blocks), while a record that IS present is validated identically at both tiers — full field set, repo-relative path under `apriori/tmp/`, ISO-UTC-seconds time, one `run` per bundle, `baseline` equal to repo HEAD, no marker impersonation, and `hash=` refused outright.
+- **`verify` gains a scoped verdict** (`scope`): a named scenario set is judged and nothing else — out-of-scope orphans do not dirty it, an empty scope is clean by construction, and a scope member the store does not carry is a caller error rather than a silently satisfied one. The whole-store verdict is untouched.
+- **The review surface is a grammar, not a convention**: one `=== VERDICT ===` zone per raw transcript, `VERDICT: <phrase> role=<inspection|p8> digest=<64 lowercase hex> [boundary=within|exceeds]`, role×phrase pairing closed, rounds named `round-<n>.md` + `round-<n>-raw.txt` with the highest `n` consumed and every pair complete. The projection is fixed by grade (R1 none · R0 only with decisions · R2 code one inspection · R2×docs inspection then p8), and the `boundary=` trailer is required exactly where the whitelist point-check stands in for a human signoff.
+- **Two digest domains over one record encoding** (`<tag length>\n<tag>\n<bytes length>\n<bytes>`, both parts length-prefixed, UTF-8 byte ordering throughout): the review digest covers business entities only — `## Gates`, `approval.md` and `review/` are the exclusion domain and cannot move it — and the d1 signoff token binds that digest to the store and truth baselines in the fixed domain order `core → store → truth`.
+- **Mapping m1 at the gate**: a hotfix bundle is refused with a pointer at `apriori hotfix archive`, and the seven checks are neither run nor reinterpreted — their logic is untouched. `status` lists and labels the lane; `--change` on a bundle reports it instead of erroring about the absent flow-state; `--json` carries `hotfix`. A directory holding both state files is an identity error at every consumption point.
+- New truth docs: `truth/hotfix.md`, plus the previously missing `truth/new.md`, `truth/resolve.md` and `truth/config.md`. RUNBOOK §2b/§2c (bilingual), `runbook-version` 4.0 → 4.1.
+
+375 tests (318 + 57: CF-13..17, HF-01..42, SR-69..72, GT-28/29, ST-10/11, CL-18, CK-17).
+
+### MODIFIED replacement fidelity becomes a mechanical report (change modified-block-integrity)
+
+Brownfield feedback P0-3: "MODIFIED replaces the whole block" fidelity was guarded only by LLM reviewer attention (a real deployment confirmed 11/13 preserved lines by manual subsequence comparison — the one ⚠ row in its defense table, "build it into the CLI").
+
+- **A pure integrity engine** (`compareModifiedBlock`) compares every MODIFIED block against its store baseline at the projection's own snapshot (`buildProjection` returns `modifiedBlocks`; rename-then-modify baselines the complete pre-rename block; repaired reruns included): occurrence-level cardinality classification (retained / titleChanged / dropped / added / ambiguous), order-preserving greedy-subsequence line comparison (requirement prose and fenced content included), trim-equal fast path.
+- **`verify --change` carries the report** — JSON `modifiedIntegrity` always present on GREEN/GAPS (absent on ERROR and on `--specs`, byte-golden proven); the human `— MODIFIED INTEGRITY —` section prints when a risk class is non-empty (`!`-prefixed, control chars sanitized, 120-unit field truncation). Old-block titles ride the existing single matcher batch; the verdict and exit codes never change — the report is informative by contract (a machine cannot tell an intended deletion from a slipped one; it puts the difference on the table for humans and the P8 review).
+- **`archive --change` prints the same section** (high-level form; dry-run and pre-write) after every preflight guard; the id matcher is injected at the bin seam (archive-merge still never requires spec-runner); a broken id-pattern channel degrades to one bounded `warning: modified-integrity …` line and changes nothing else.
+- The frozen live-specimen regression: the previous change's real nine-scenario MODIFIED rewrite reports exactly retained 9 / two lost THEN lines — hand-derived before implementation (the derivation itself corrected the spec author's wrong assumption, which is the point).
+
+318 tests (306 + 12: AM-43..47, SR-65..68).
+
+### the change verdict separates from store health (change verify-change-scope)
+
+Brownfield feedback P0-2: with 8 parallel unarchived changes, `verify --change` drowned in historical UNBOUND (real replay: 107 scenarios, 61 unbound) while `--specs <delta>` false-orphaned every other change's tests (46) — "is THIS change done" took two commands plus a hand-written disclaimer per change.
+  run: npx apriori-cli verify --specs apriori/specs --test-cmd "node --test --test-reporter=tap"
+```
+
+## gate —— 按在途变更
+
+把一个变更的机械退出条件合成一个退出码:阶段感知的绑定 verify、tasks 全勾、flow-state 合法、台账干净、verdict↔raw 证据、KB 新鲜度。`PASS` 只覆盖机械面——人工闸口仍归人。
+
+```yaml
+- name: apriori gate
+  run: npx apriori-cli gate --change ${{ inputs.change }} --test-cmd "node --test --test-reporter=tap" --json
+```
+
+## 退出码速查表
+
+| 码 | check | verify | gate |
+|---|---|---|---|
+| 0 | PASS | GREEN | PASS(机械面) |
+| 1 | FAIL(n) | 缺口:unbound/red/orphan/重复 | BLOCKED(n) |
+| 2 | 规格库路径缺失 | 运行不可信(非 TAP、崩溃、冲突、CAS) | 评估不可信 |
+
+接入新 runner?`npx apriori-cli doctor --no-run` 不执行你的测试命令就能体检整条接缝。
+```
+
+示例:`apriori stamp apriori/specs/kv/spec.md`
+
+退出码:0 已打印(文件不存在 → `new` 形式)· 2 用法/目录/不可读。
+
+## apriori gate
+
+把一个变更的机械闸口检查合成一个退出码(绑定 verify、tasks、flow-state、台账、verdict↔raw 证据、KB 新鲜度);PASS ≠ 人工闸口
+
+```text
+usage: apriori gate --change <name> [--test-cmd "<cmd>"] [--id-pattern <re>] [--cwd <dir>] [--json] [--no-cas]
+```
+
+示例:`apriori gate --change add-playback --json`
+
+退出码:0 PASS · 1 BLOCKED · 2 评估不可信。
+
+in-flight 的 C1 消费变更收窄 verdict(detail 为 `verify GREEN (in-flight, change-scoped)` + 六类 store 摘要尾缀)——并行 change 的 gate 各自独立变绿;archived 阶段仍验证全库。
+
+## apriori check
+
+结构一致性(scenario ID 可绑定;`--self` 另跑 apriori 仓库自己的手册检查)
+
+```text
+usage: apriori check [--specs <dir>] [--self]
+```
+## brownfield-round2
+235a121
+0	0
+
+codex
+# req-v2 需求评审
+
+## 维度 1：目标状态 B 是否清晰且无歧义
+
+结论：未通过。REQ-1、REQ-2 需重新打开。
+
+### REQ-1 — REOPEN
+
+- 描述：§1.2、O5 和源码触及范围已经明确要求“导出既有 projection 构建路径，gate 不得重建”，方向正确；但 AC-GD-15 不能证明这一约束。两个独立实现完全可能在一个测试 fixture 上产生相同的 `modules / conflicts / unstampedMutations`。该 AC 还遗漏现有 projection 的 `notes` 字段，没有覆盖 projection 构建的错误结果，也无法通过 `runGate()` 的公开返回值直接观察 T7 路径内部取得的 projection。因此“AC-GD-15 钉死只有一套实现”的声明不成立。
+- 风险：high。实现仍可能复制 projection 逻辑，之后与 verify 在 delta validation、CAS mismatch、conflict 或新增 projection 字段上发生漂移，再次造成 C7 false-negative。
+- 建议修复：保留现有规范约束，并增加可机械检查的结构性验收：
+  - `lib/gate.js` 必须调用 `lib/spec-runner.js` 导出的同一个 projection-only 函数；
+  - `gate.js` 不得直接调用或重新组合 `discoverDeltas()` / `buildProjection()`；
+  - `verify()` 与 gate 的 T7 路径必须共享该函数；
+  - 对 clean、unstamped mutation、malformed delta、CAS mismatch、merge conflict fixtures 比较完整 projection 和错误结果，而不只比较三个字段。若采用注入 seam，可直接断言 T7 恰调用该共享 builder 一次且测试 runner 零次。
+
+### REQ-2 — REOPEN
+
+- 描述：新增的分类和矩阵解决了大部分组合，GT-25 不可达及 M8 无需 projection 的判断本身正确：
+  - config-origin matcher 只在场景收集/匹配时启动；C1 skipped 时仅编译 id-pattern，因此 GT-25 的运行期前提确实不可达。
+  - archived 阶段 C7 恒为 `n/a`，C1 又 skipped，C2–C6 均从归档 bundle/store 读取，因此不需要构建 in-flight projection。
+  
+  但所谓“穷举”仍不完整且有不可判定的行：
+  - T6 与当前 `lib/config.js:64-68`、`truth/config.md` 冲突。配置单元格会先 trim，空值和仅空白值随后被统一跳过；对所有 key，它们都与“无该行”不可区分。因此现有共享 reader 无法把 T6 判成 ERROR，只能得到 T7。若实现 T6，必须修改 `lib/config.js` 及其全局契约，或绕过共享 reader；两者均不在声明范围内。
+  - T1 的“非空”包含仅空白字符串，与 T3 重叠，七类并非互斥。
+  - 无 flag 且 `process-config.md` 存在但不可读是当前可达的 config error，分类表未覆盖。
+  - 缺命令同时 id-pattern config 冲突或不可读时，`resolveIdPattern()` 也会返回 ERROR；M3 只写了“不可编译”，没有覆盖这些 config problem。
+  - M8 未限定 id-pattern 有效，因此与 M3 重叠；按声明顺序，archived + invalid id-pattern 应落入 M3，而不是 M8 的常规结果。
+  - `runGate({testCmd: ''|null|undefined})` 这一公开接口如何区分显式空 flag 与缺席仍未声明；只有 CLI 层拥有 flag-presence 信息。
+- 风险：high。实现者无法同时满足 T6、共享 config 契约和声明的源码范围；不同实现还会对不可读配置、archived + invalid id-pattern 及直接 API 调用给出不同结果。
+- 建议修复：让分类与状态 A 对齐：
+  - 将空/仅空白 config 值归入 T7，因为共享 parser 按契约将其视为 absent；若坚持 ERROR，则必须显式扩大到 `lib/config.js`，修改 config KB/living spec，并说明所有 key 是否受影响。
+  - 把 T1 改为“至少一个非空白字符”，消除与 T3 的交集。
+  - 增加“config 存在但不可读”行，结果为当前的 ERROR/2。
+  - 将 M3 扩为 id-pattern 的全部解析期问题：空/不可编译 flag、不可编译/conflicting/unreadable config。
+  - 将 M8 限定为 id-pattern 解析成功；失败时明确由 M3 优先。
+  - 明确 CLI flag presence 如何传入 `runGate`，以及直接调用 `runGate` 时 `''`、`null`、`undefined` 的契约。
+
+## 维度 2：边界与异常路径是否覆盖
+
+结论：未通过，原因是 REQ-2。
+
+projection conflict、flow-state、hotfix、归档态、未打戳 mutation、空/空白 flag 和结果优先级已经覆盖。剩余缺口是不可读 test-cmd 配置、id-pattern 的非编译型 config problem、重叠分类及直接 API 的 presence 语义。
+
+并发和回滚对该只读同步命令不适用；T7 明确禁止启动测试进程。现有有效 test command 的失败和超时行为由 B4 保持。
+
+## 维度 3：是否存在隐含但未声明的状态变化或副作用
+
+结论：通过。
+
+退出码 3、`INCOMPLETE`、`skipped`、仓外 CI 影响、doctor finding、文档更新、测试更新及 `spec-runner` 公共面扩大均已声明。仓内没有依赖 gate 仅返回 0/1/2 的可执行脚本或 workflow；golden-path 使用已配置的 test command，受 B4 保护。
+
+## 维度 4：每条验收标准是否可测试
+
+结论：未通过。
+
+AC-GD-10 已修正为固定 JSON 键集且明确不新增 `code`，与 B4/AC-GD-09 一致，REQ-3 可验证。
+
+但 AC-GD-15 的输出等价断言不能证明没有第二套实现，且只比较部分字段；REQ-1 因此重新打开。T6 又无法通过当前共享 reader 构造为独立于 T7 的可观察输入，REQ-2 也仍不可测试。
+
+## 维度 5：是否与状态 A 冲突
+
+结论：未通过，原因是 REQ-2。
+
+REQ-4 的修复正确：§1.4 已准确说明 doctor 实际执行 D1..D8、KB 文本陈旧而 commit-range 检查仍显示新鲜；AC-GD-20 保留 D8，AC-GD-24 要求修正 Contract 并刷新实现 commit，足以验证该修复。
+
+剩余冲突是 T6：当前 config 契约明确将空值和仅空白值统一视为 absent，req-v2 却要求将其判为配置错误。
+
+## 维度 6：目标 lineage 是否声明且符合仓库现实
+
+结论：通过。
+
+`brownfield-round2`、`main` 和 `origin/main` 当前均位于 `235a121`，分叉计数为 0/0；目标 main、v4 产品线及禁止进入 v1/v3 的声明保持准确。
+
+## Round-1 issue verification
+
+- REQ-1：重新打开。真实耦合、源码范围和共享 seam 已写入，但 AC-GD-15 尚不能机械保证“只有一套实现”。
+- REQ-2：重新打开。矩阵显著完善，GT-25 与 M8 的核心判断正确，但分类仍非互斥、非穷举，且 T6 与共享 config 契约冲突。
+- REQ-3：verified。JSON 键集固定为 `{change, stage, checks, result, blocked, errors}`，不新增 `code`；只扩展取值域，和 B4/AC-GD-09 一致。
+- REQ-4：verified。状态 A 已纠正，D8 有回归护栏，KB 修正有明确验收。
+- REQ-5：verified。所列中英文文档确实分别存在 exit-code table、gate Exit 行和 D5 troubleshooting 小节；CHANGELOG 存在 Unreleased 条目位置。RUNBOOK 只说 gate 聚合为一个退出码，并未枚举 gate 的 0/1/2，因此删除原 RUNBOOK 同步标准的理由成立。AC-GD-21/22/23/25 均已改成可机械检查的内容要求。
+
+明确的 out-of-scope 章节仍存在，O1–O7 边界清楚。
+
+## Advisories
+
+无。
+
+## Ledger delta
+
+精确状态翻转：
+
+- REQ-1：`fixed (v2) → open` — AC-GD-15 仅比较部分样例输出，不能证明 gate 与 verify 复用同一个 projection 实现。
+- REQ-2：`fixed (v2) → open` — T6 与共享 config parser 冲突，且不可读配置、id-pattern config problem、分类交集及直接 API presence 语义仍未覆盖。
+- REQ-3：`fixed (v2) → verified`
+- REQ-4：`fixed (v2) → verified`
+- REQ-5：`fixed (v2) → verified`
+
+无新 ledger 行。
+
+VERDICT: 2 issues open
+tokens used
+206,266
+# req-v2 需求评审
+
+## 维度 1：目标状态 B 是否清晰且无歧义
+
+结论：未通过。REQ-1、REQ-2 需重新打开。
+
+### REQ-1 — REOPEN
+
+- 描述：§1.2、O5 和源码触及范围已经明确要求“导出既有 projection 构建路径，gate 不得重建”，方向正确；但 AC-GD-15 不能证明这一约束。两个独立实现完全可能在一个测试 fixture 上产生相同的 `modules / conflicts / unstampedMutations`。该 AC 还遗漏现有 projection 的 `notes` 字段，没有覆盖 projection 构建的错误结果，也无法通过 `runGate()` 的公开返回值直接观察 T7 路径内部取得的 projection。因此“AC-GD-15 钉死只有一套实现”的声明不成立。
+- 风险：high。实现仍可能复制 projection 逻辑，之后与 verify 在 delta validation、CAS mismatch、conflict 或新增 projection 字段上发生漂移，再次造成 C7 false-negative。
+- 建议修复：保留现有规范约束，并增加可机械检查的结构性验收：
+  - `lib/gate.js` 必须调用 `lib/spec-runner.js` 导出的同一个 projection-only 函数；
+  - `gate.js` 不得直接调用或重新组合 `discoverDeltas()` / `buildProjection()`；
+  - `verify()` 与 gate 的 T7 路径必须共享该函数；
+  - 对 clean、unstamped mutation、malformed delta、CAS mismatch、merge conflict fixtures 比较完整 projection 和错误结果，而不只比较三个字段。若采用注入 seam，可直接断言 T7 恰调用该共享 builder 一次且测试 runner 零次。
+
+### REQ-2 — REOPEN
+
+- 描述：新增的分类和矩阵解决了大部分组合，GT-25 不可达及 M8 无需 projection 的判断本身正确：
+  - config-origin matcher 只在场景收集/匹配时启动；C1 skipped 时仅编译 id-pattern，因此 GT-25 的运行期前提确实不可达。
+  - archived 阶段 C7 恒为 `n/a`，C1 又 skipped，C2–C6 均从归档 bundle/store 读取，因此不需要构建 in-flight projection。
+  
+  但所谓“穷举”仍不完整且有不可判定的行：
+  - T6 与当前 `lib/config.js:64-68`、`truth/config.md` 冲突。配置单元格会先 trim，空值和仅空白值随后被统一跳过；对所有 key，它们都与“无该行”不可区分。因此现有共享 reader 无法把 T6 判成 ERROR，只能得到 T7。若实现 T6，必须修改 `lib/config.js` 及其全局契约，或绕过共享 reader；两者均不在声明范围内。
+  - T1 的“非空”包含仅空白字符串，与 T3 重叠，七类并非互斥。
+  - 无 flag 且 `process-config.md` 存在但不可读是当前可达的 config error，分类表未覆盖。
+  - 缺命令同时 id-pattern config 冲突或不可读时，`resolveIdPattern()` 也会返回 ERROR；M3 只写了“不可编译”，没有覆盖这些 config problem。
+  - M8 未限定 id-pattern 有效，因此与 M3 重叠；按声明顺序，archived + invalid id-pattern 应落入 M3，而不是 M8 的常规结果。
+  - `runGate({testCmd: ''|null|undefined})` 这一公开接口如何区分显式空 flag 与缺席仍未声明；只有 CLI 层拥有 flag-presence 信息。
+- 风险：high。实现者无法同时满足 T6、共享 config 契约和声明的源码范围；不同实现还会对不可读配置、archived + invalid id-pattern 及直接 API 调用给出不同结果。
+- 建议修复：让分类与状态 A 对齐：
+  - 将空/仅空白 config 值归入 T7，因为共享 parser 按契约将其视为 absent；若坚持 ERROR，则必须显式扩大到 `lib/config.js`，修改 config KB/living spec，并说明所有 key 是否受影响。
+  - 把 T1 改为“至少一个非空白字符”，消除与 T3 的交集。
+  - 增加“config 存在但不可读”行，结果为当前的 ERROR/2。
+  - 将 M3 扩为 id-pattern 的全部解析期问题：空/不可编译 flag、不可编译/conflicting/unreadable config。
+  - 将 M8 限定为 id-pattern 解析成功；失败时明确由 M3 优先。
+  - 明确 CLI flag presence 如何传入 `runGate`，以及直接调用 `runGate` 时 `''`、`null`、`undefined` 的契约。
+
+## 维度 2：边界与异常路径是否覆盖
+
+结论：未通过，原因是 REQ-2。
+
+projection conflict、flow-state、hotfix、归档态、未打戳 mutation、空/空白 flag 和结果优先级已经覆盖。剩余缺口是不可读 test-cmd 配置、id-pattern 的非编译型 config problem、重叠分类及直接 API 的 presence 语义。
+
+并发和回滚对该只读同步命令不适用；T7 明确禁止启动测试进程。现有有效 test command 的失败和超时行为由 B4 保持。
+
+## 维度 3：是否存在隐含但未声明的状态变化或副作用
+
+结论：通过。
+
+退出码 3、`INCOMPLETE`、`skipped`、仓外 CI 影响、doctor finding、文档更新、测试更新及 `spec-runner` 公共面扩大均已声明。仓内没有依赖 gate 仅返回 0/1/2 的可执行脚本或 workflow；golden-path 使用已配置的 test command，受 B4 保护。
+
+## 维度 4：每条验收标准是否可测试
+
+结论：未通过。
+
+AC-GD-10 已修正为固定 JSON 键集且明确不新增 `code`，与 B4/AC-GD-09 一致，REQ-3 可验证。
+
+但 AC-GD-15 的输出等价断言不能证明没有第二套实现，且只比较部分字段；REQ-1 因此重新打开。T6 又无法通过当前共享 reader 构造为独立于 T7 的可观察输入，REQ-2 也仍不可测试。
+
+## 维度 5：是否与状态 A 冲突
+
+结论：未通过，原因是 REQ-2。
+
+REQ-4 的修复正确：§1.4 已准确说明 doctor 实际执行 D1..D8、KB 文本陈旧而 commit-range 检查仍显示新鲜；AC-GD-20 保留 D8，AC-GD-24 要求修正 Contract 并刷新实现 commit，足以验证该修复。
+
+剩余冲突是 T6：当前 config 契约明确将空值和仅空白值统一视为 absent，req-v2 却要求将其判为配置错误。
+
+## 维度 6：目标 lineage 是否声明且符合仓库现实
+
+结论：通过。
+
+`brownfield-round2`、`main` 和 `origin/main` 当前均位于 `235a121`，分叉计数为 0/0；目标 main、v4 产品线及禁止进入 v1/v3 的声明保持准确。
+
+## Round-1 issue verification
+
+- REQ-1：重新打开。真实耦合、源码范围和共享 seam 已写入，但 AC-GD-15 尚不能机械保证“只有一套实现”。
+- REQ-2：重新打开。矩阵显著完善，GT-25 与 M8 的核心判断正确，但分类仍非互斥、非穷举，且 T6 与共享 config 契约冲突。
+- REQ-3：verified。JSON 键集固定为 `{change, stage, checks, result, blocked, errors}`，不新增 `code`；只扩展取值域，和 B4/AC-GD-09 一致。
+- REQ-4：verified。状态 A 已纠正，D8 有回归护栏，KB 修正有明确验收。
+- REQ-5：verified。所列中英文文档确实分别存在 exit-code table、gate Exit 行和 D5 troubleshooting 小节；CHANGELOG 存在 Unreleased 条目位置。RUNBOOK 只说 gate 聚合为一个退出码，并未枚举 gate 的 0/1/2，因此删除原 RUNBOOK 同步标准的理由成立。AC-GD-21/22/23/25 均已改成可机械检查的内容要求。
+
+明确的 out-of-scope 章节仍存在，O1–O7 边界清楚。
+
+## Advisories
+
+无。
+
+## Ledger delta
+
+精确状态翻转：
+
+- REQ-1：`fixed (v2) → open` — AC-GD-15 仅比较部分样例输出，不能证明 gate 与 verify 复用同一个 projection 实现。
+- REQ-2：`fixed (v2) → open` — T6 与共享 config parser 冲突，且不可读配置、id-pattern config problem、分类交集及直接 API presence 语义仍未覆盖。
+- REQ-3：`fixed (v2) → verified`
+- REQ-4：`fixed (v2) → verified`
+- REQ-5：`fixed (v2) → verified`
+
+无新 ledger 行。
+
+VERDICT: 2 issues open

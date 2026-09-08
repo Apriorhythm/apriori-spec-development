@@ -1,0 +1,188 @@
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f4b30-68f9-7222-9b64-17f52a333b4c
+--------
+user
+P1 round 2 for win-bash. Read requirement/req-v2.md from disk. All findings applied: WB-1 — explicit per-layout root derivation (strip trailing cmd\git.exe | mingw64\bin\git.exe | mingw32\bin\git.exe | bin\git.exe, case-insensitive; unmatched shapes derive nothing) and each root contributes <root>\bin\bash.exe THEN <root>\usr\bin\bash.exe; conventional paths also get usr\bin variants. WB-2 — where git invoked via spawnSync('where',['git'],{shell:false}); nonzero/spawn-error/empty = zero derived candidates never a hard error; split /\r?\n/, outer-trim only, blanks dropped, interior spaces preserved. WB-3 — export function resolveBash(opts={}) with seams platform/env/whereGit/existsFile, real defaults, ESM-imported in tests. WB-4 — G2/G3/G4 all run on SIMULATED win32 via seams on any host; G4 additionally asserts the win32 answer is never bare 'bash' across every fixture; System32 shim never a candidate. WB-ADV-1 — APRIORI_GIT_BASH must be absolute (DD-3), spawn sites use the resolved value without shell:true (spaces survive), candidates deduplicated. Confirm each resolved (flip to verified) or reopen; any new issues? Print the COMPLETE review document body (landed verbatim at apriori/review/win-bash-req-review-v2.md) with a ledger-delta section, ending with exactly one verdict line: 'VERDICT: no major issues, ready to proceed' or 'VERDICT: <N> issues open'.
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-11T08:38:25.704917Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T08:38:25.966309Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T08:38:26.307230Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-11T08:38:26.929111Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-11T08:38:27.906328Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-11T08:38:29.727487Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-11T08:38:33.301259Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: jCZJOYmiiZjJ
+codex
+I’ll read the revised win-bash requirement and verify each round-1 issue is actually resolved in the contract.
+exec
+/usr/bin/zsh -lc "rg -n \"resolveBash|where git|mingw|usr\\\\bin|APRIORI_GIT_BASH|shell|System32|dedup|G[1-6]|DD-\" requirement/req-v2.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,240p' apriori/review/win-bash-issues.md 2>/dev/null || true" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,360p' requirement/req-v2.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 123ms:
+# Requirement — win-bash (v2)
+
+change: win-bash
+target lineage: **v3 branch**. Next patch/minor. CI-infrastructure hardening: the golden-path walker resolves the RIGHT bash on native Windows or fails with a named cure; POSIX platforms unchanged.
+
+Revisions vs v1 (P1 r1): WB-1 explicit per-layout root derivation + usr\bin fallback; WB-2 exact `where git` invocation/parsing rules; WB-3 ESM seam signature; WB-4 the hardening itself is unit-asserted (not left to a lucky runner); WB-ADV-1 absolute-only env var, shell-free spawn, dedupe.
+
+## Background — the problem (current state A, code-verified)
+
+`scripts/golden-path.mjs` spawns bare `bash` at three sites (the `walk.sh` run and two final-state `bash -c` asserts via `assertCmd`). On native Windows, PATH resolution finds `C:\Windows\System32\bash.exe` — the WSL shim — before Git Bash whenever WSL is installed. The WSL bash executes in a Linux world: the Windows-side npm prefix, the `binDir` PATH prepend, and every `C:`-rooted cwd are meaningless there, so the walk fails in confusing ways. Today's CI passes only because the GitHub windows-2022 runner exposes Git Bash first — the defect bites real user machines with WSL enabled. (GPT-5.6 second review; batch item P0-4.)
+
+## Goal (target state B)
+
+On `win32`, the walker resolves an EXPLICIT Git Bash executable and never spawns bare `bash`; when none can be found it fails immediately with a message naming the cure. Non-Windows platforms keep spawning `bash` exactly as today.
+
+**Resolver contract — `export function resolveBash(opts = {})` in golden-path.mjs** (WB-3: injectable seams with real defaults — `platform` = process.platform, `env` = process.env, `whereGit` = () => spawnSync('where', ['git'], {shell: false, encoding: 'utf8'}), `existsFile` = fs-based is-a-file probe; tests import the named export and pass fakes):
+- non-win32 → returns `'bash'` (never probes anything).
+- win32, `env.APRIORI_GIT_BASH` set → the value must be an ABSOLUTE path to an existing file → returned verbatim; relative or nonexistent → hard fail naming the variable (an explicit override is never silently ignored or reinterpreted).
+- win32 otherwise, candidates assembled in order and DEDUPLICATED, first existing file wins:
+  1. From `whereGit()` (WB-2: nonzero exit, spawn error, or empty stdout = ZERO derived candidates, never a hard error; stdout split on `/\r?\n/`, lines trimmed of outer whitespace only, blanks dropped, interior spaces preserved). Each hit derives its Git-for-Windows install root (WB-1): strip a trailing `\cmd\git.exe` | `\mingw64\bin\git.exe` | `\mingw32\bin\git.exe` | `\bin\git.exe` (case-insensitive) — a hit matching none of these shapes derives nothing. Each root contributes TWO candidates: `<root>\bin\bash.exe`, then `<root>\usr\bin\bash.exe`.
+  2. Conventional installs (each only when its env var is present): `%ProgramFiles%\Git\bin\bash.exe`, `%ProgramFiles(x86)%\Git\bin\bash.exe`, `%LocalAppData%\Programs\Git\bin\bash.exe` — plus the same three with `\usr\bin\bash.exe`.
+  3. Nothing found → throw: "golden-path: no Git Bash found on this Windows machine — install Git for Windows or set APRIORI_GIT_BASH to its bin\\bash.exe". Bare `bash` is NEVER the win32 answer; `C:\Windows\System32\bash.exe` is never a candidate.
+- The resolved target is logged once per run (`golden-path: bash = <path>`).
+
+**Spawn sites:** all three use the single resolved value, spawned WITHOUT `shell: true` (WB-ADV-1: an absolute path with spaces — `C:\Program Files\Git\...` — survives spawnSync argv-style; shell-quoting is what breaks it).
+
+## Acceptance criteria (testable; the win32 branch is proven by seams on any host — WB-4)
+
+- G1. Non-win32: `resolveBash()` === 'bash'; walker behavior byte-identical; existing golden-path CI jobs stay green.
+- G2. Simulated win32 + `APRIORI_GIT_BASH` absolute-and-existing → that exact value; relative → hard fail naming the var; absolute-but-missing → hard fail naming the var.
+- G3. Simulated win32: `whereGit` faked to each layout shape (cmd\, mingw64\bin\, mingw32\bin\, bin\) with a fake `existsFile` → the derived `<root>\bin\bash.exe` (and `<root>\usr\bin\bash.exe` when bin\ is absent) is returned; multi-hit/CRLF/space-containing/blank-line stdout parses per the contract; nonzero `where` falls through to conventional paths.
+- G4. Simulated win32, no override, `whereGit` empty, no conventional file → throws the install/set-var cure; the returned value is never 'bash' on win32 in ANY case (asserted across all G2/G3 fixtures).
+- G5. The resolved bash is logged once (asserted on the win32 unit path).
+- G6. All existing tests pass; suite + golden-path --local green here and in CI (ubuntu + windows).
+
+## Out of scope
+
+- The CLI itself (lib/) — unchanged.
+- Running the walker INSIDE WSL (that is the linux path; already works).
+- P1 items (authz-boundary next).
+
+## Decisions proposed
+
+- DD-1: resolution lives in golden-path.mjs (single consumer today); promoting to lib/ waits for a second consumer.
+- DD-2: `where git` derivation before conventional paths — respecting the machine's actual git beats guessing install dirs.
+- DD-3: APRIORI_GIT_BASH must be absolute — a relative override is ambiguous about its base and is rejected loudly rather than resolved quietly.
+
+ succeeded in 141ms:
+6:Revisions vs v1 (P1 r1): WB-1 explicit per-layout root derivation + usr\bin fallback; WB-2 exact `where git` invocation/parsing rules; WB-3 ESM seam signature; WB-4 the hardening itself is unit-asserted (not left to a lucky runner); WB-ADV-1 absolute-only env var, shell-free spawn, dedupe.
+10:`scripts/golden-path.mjs` spawns bare `bash` at three sites (the `walk.sh` run and two final-state `bash -c` asserts via `assertCmd`). On native Windows, PATH resolution finds `C:\Windows\System32\bash.exe` — the WSL shim — before Git Bash whenever WSL is installed. The WSL bash executes in a Linux world: the Windows-side npm prefix, the `binDir` PATH prepend, and every `C:`-rooted cwd are meaningless there, so the walk fails in confusing ways. Today's CI passes only because the GitHub windows-2022 runner exposes Git Bash first — the defect bites real user machines with WSL enabled. (GPT-5.6 second review; batch item P0-4.)
+16:**Resolver contract — `export function resolveBash(opts = {})` in golden-path.mjs** (WB-3: injectable seams with real defaults — `platform` = process.platform, `env` = process.env, `whereGit` = () => spawnSync('where', ['git'], {shell: false, encoding: 'utf8'}), `existsFile` = fs-based is-a-file probe; tests import the named export and pass fakes):
+18:- win32, `env.APRIORI_GIT_BASH` set → the value must be an ABSOLUTE path to an existing file → returned verbatim; relative or nonexistent → hard fail naming the variable (an explicit override is never silently ignored or reinterpreted).
+20:  1. From `whereGit()` (WB-2: nonzero exit, spawn error, or empty stdout = ZERO derived candidates, never a hard error; stdout split on `/\r?\n/`, lines trimmed of outer whitespace only, blanks dropped, interior spaces preserved). Each hit derives its Git-for-Windows install root (WB-1): strip a trailing `\cmd\git.exe` | `\mingw64\bin\git.exe` | `\mingw32\bin\git.exe` | `\bin\git.exe` (case-insensitive) — a hit matching none of these shapes derives nothing. Each root contributes TWO candidates: `<root>\bin\bash.exe`, then `<root>\usr\bin\bash.exe`.
+22:  3. Nothing found → throw: "golden-path: no Git Bash found on this Windows machine — install Git for Windows or set APRIORI_GIT_BASH to its bin\\bash.exe". Bare `bash` is NEVER the win32 answer; `C:\Windows\System32\bash.exe` is never a candidate.
+25:**Spawn sites:** all three use the single resolved value, spawned WITHOUT `shell: true` (WB-ADV-1: an absolute path with spaces — `C:\Program Files\Git\...` — survives spawnSync argv-style; shell-quoting is what breaks it).
+29:- G1. Non-win32: `resolveBash()` === 'bash'; walker behavior byte-identical; existing golden-path CI jobs stay green.
+30:- G2. Simulated win32 + `APRIORI_GIT_BASH` absolute-and-existing → that exact value; relative → hard fail naming the var; absolute-but-missing → hard fail naming the var.
+31:- G3. Simulated win32: `whereGit` faked to each layout shape (cmd\, mingw64\bin\, mingw32\bin\, bin\) with a fake `existsFile` → the derived `<root>\bin\bash.exe` (and `<root>\usr\bin\bash.exe` when bin\ is absent) is returned; multi-hit/CRLF/space-containing/blank-line stdout parses per the contract; nonzero `where` falls through to conventional paths.
+32:- G4. Simulated win32, no override, `whereGit` empty, no conventional file → throws the install/set-var cure; the returned value is never 'bash' on win32 in ANY case (asserted across all G2/G3 fixtures).
+33:- G5. The resolved bash is logged once (asserted on the win32 unit path).
+34:- G6. All existing tests pass; suite + golden-path --local green here and in CI (ubuntu + windows).
+44:- DD-1: resolution lives in golden-path.mjs (single consumer today); promoting to lib/ waits for a second consumer.
+45:- DD-2: `where git` derivation before conventional paths — respecting the machine's actual git beats guessing install dirs.
+46:- DD-3: APRIORI_GIT_BASH must be absolute — a relative override is ambiguous about its base and is rejected loudly rather than resolved quietly.
+
+ succeeded in 154ms:
+# Issue ledger — win-bash
+
+Rows recorded on behalf of the reviewer (codex session 019f4b30-68f9-7222-9b64-17f52a333b4c; raws: win-bash-*-raw.txt).
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| WB-1 | Root derivation wrong for mingw64\bin layout; usr\bin\bash.exe undecided. | Valid installs unresolvable or wrong path derived. | STEP0·r1 | fixed |
+| WB-2 | `where git` parsing/nonzero behavior underspecified. | Spaces/CRLF/multi-hit/no-git inconsistencies. | STEP0·r1 | fixed |
+| WB-3 | ESM injection seam for resolveBash not precise. | Windows branches untestable off-Windows. | STEP0·r1 | fixed |
+| WB-4 | Windows CI may not exercise the resolver hardening. | The WSL-shim bug survives green CI. | STEP0·r1 | fixed |
+| WB-ADV-1 | Env-var absolute rule, shell-free spawn with spaces, candidate dedupe. | Advisory precision. | STEP0·r1 | fixed |
+
+codex
+**Round-1 Confirmations**
+
+WB-1: **verified**. The requirement now defines each supported Git-for-Windows layout explicitly, including `mingw64`, `mingw32`, `cmd`, and `bin`, with root stripping and both `bin\bash.exe` and `usr\bin\bash.exe` candidates.
+
+WB-2: **verified**. `where git` invocation and parsing are now concrete: `spawnSync('where', ['git'], { shell: false })`, CRLF splitting, outer trimming, blank dropping, interior-space preservation, and nonzero/spawn-error/empty as zero candidates.
+
+WB-3: **verified**. `resolveBash(opts = {})` is now an exported ESM seam with injectable `platform`, `env`, `whereGit`, and `existsFile`.
+
+WB-4: **verified**. The Windows branch is now tested through simulated `win32` seams on any host, and the contract explicitly asserts win32 never returns bare `bash`.
+
+WB-ADV-1: **verified**. The env var is absolute-only, spawn sites are shell-free, and candidates are deduplicated.
+
+**New Issues**
+
+None.
+
+**Dimension Verdicts**
+
+1. Target state B: **clear**.
+2. Edge/exception coverage: **covered** for layout variants, `where` output shape, no-git fallback, explicit override failures, WSL shim avoidance, and spaces in paths.
+3. Side effects: **none undeclared**; this is script resolution/logging behavior only.
+4. Acceptance criteria: **testable**; G1-G6 can be implemented with the exported seam and existing golden-path runs.
+5. State-A conflicts: **none**; the three current bare `bash` spawn sites are accurately described.
+6. Lineage: **declared and plausible**.
+
+**Ledger Delta**
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| WB-1 | Git-for-Windows root derivation was wrong/incomplete for `mingw64\bin` and `usr\bin\bash.exe` was undecided. | Valid installs could be unresolvable or derive the wrong path. | P1·r1 | verified |
+| WB-2 | `where git` parsing and nonzero behavior were underspecified. | Spaces, CRLF, multiple hits, and no-git cases could diverge. | P1·r1 | verified |
+| WB-3 | ESM injection seam for `resolveBash` was not precise. | Windows branches could be untestable off-Windows. | P1·r1 | verified |
+| WB-4 | Windows CI might not exercise resolver hardening. | WSL-shim bug could survive green CI. | P1·r1 | verified |
+| WB-ADV-1 | Env-var absolute rule, shell-free spawn with spaces, and candidate dedupe needed precision. | Advisory precision. | P1·r1 | verified |
+
+VERDICT: no major issues, ready to proceed
+tokens used
+2,518,183
+**Round-1 Confirmations**
+
+WB-1: **verified**. The requirement now defines each supported Git-for-Windows layout explicitly, including `mingw64`, `mingw32`, `cmd`, and `bin`, with root stripping and both `bin\bash.exe` and `usr\bin\bash.exe` candidates.
+
+WB-2: **verified**. `where git` invocation and parsing are now concrete: `spawnSync('where', ['git'], { shell: false })`, CRLF splitting, outer trimming, blank dropping, interior-space preservation, and nonzero/spawn-error/empty as zero candidates.
+
+WB-3: **verified**. `resolveBash(opts = {})` is now an exported ESM seam with injectable `platform`, `env`, `whereGit`, and `existsFile`.
+
+WB-4: **verified**. The Windows branch is now tested through simulated `win32` seams on any host, and the contract explicitly asserts win32 never returns bare `bash`.
+
+WB-ADV-1: **verified**. The env var is absolute-only, spawn sites are shell-free, and candidates are deduplicated.
+
+**New Issues**
+
+None.
+
+**Dimension Verdicts**
+
+1. Target state B: **clear**.
+2. Edge/exception coverage: **covered** for layout variants, `where` output shape, no-git fallback, explicit override failures, WSL shim avoidance, and spaces in paths.
+3. Side effects: **none undeclared**; this is script resolution/logging behavior only.
+4. Acceptance criteria: **testable**; G1-G6 can be implemented with the exported seam and existing golden-path runs.
+5. State-A conflicts: **none**; the three current bare `bash` spawn sites are accurately described.
+6. Lineage: **declared and plausible**.
+
+**Ledger Delta**
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| WB-1 | Git-for-Windows root derivation was wrong/incomplete for `mingw64\bin` and `usr\bin\bash.exe` was undecided. | Valid installs could be unresolvable or derive the wrong path. | P1·r1 | verified |
+| WB-2 | `where git` parsing and nonzero behavior were underspecified. | Spaces, CRLF, multiple hits, and no-git cases could diverge. | P1·r1 | verified |
+| WB-3 | ESM injection seam for `resolveBash` was not precise. | Windows branches could be untestable off-Windows. | P1·r1 | verified |
+| WB-4 | Windows CI might not exercise resolver hardening. | WSL-shim bug could survive green CI. | P1·r1 | verified |
+| WB-ADV-1 | Env-var absolute rule, shell-free spawn with spaces, and candidate dedupe needed precision. | Advisory precision. | P1·r1 | verified |
+
+VERDICT: no major issues, ready to proceed

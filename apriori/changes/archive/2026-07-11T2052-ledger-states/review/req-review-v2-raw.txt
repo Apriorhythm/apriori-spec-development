@@ -1,0 +1,280 @@
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f4b30-68f9-7222-9b64-17f52a333b4c
+--------
+user
+P1 round 2 for ledger-states. Read requirement/req-v2.md from disk. All five findings + advisory applied: LS-1 — waived rows now require machine-checked gates: evidence (the flow-state entry must contain the row ID and 'waiv', case-insensitive) in BOTH stages; a producer-written row alone never passes; I3 gains the with-reason-but-no-gates-evidence blocking case. LS-2 — STEP6 exit now REQUIRES a post-archive 'apriori gate --change' run (archived stage) whose result enters the gate④ packet; bound via PR-18 (I4). LS-3 — a legal-status parser governs both stages: leading-token case-insensitive matching, ANY unknown status blocks everywhere (I1 covers in-flight unknowns; DD-4). LS-4 — rejected-verified's form preserves the original rejection reason plus a reviewer-concurrence evidence ref in the cell; machine floor = word-char reason, full form P8/human-checked. LS-5 — migration is a STANDING corpus test over every archived change's ledger (skip-if-absent packaging pattern), green from day one via the truthful UMIMPL-1 upgrade (I6). LS-ADV-1 — reopened stays an event returning the old ID to open (docs say explicitly); advisory-acked cross-references the reviewer-only labeling discipline; cure message content-tested. Confirm each resolved (flip to verified) or reopen; any new issues? Print the COMPLETE review document body (landed verbatim at apriori/review/ledger-states-req-review-v2.md) with a ledger-delta section, ending with exactly one verdict line: 'VERDICT: no major issues, ready to proceed' or 'VERDICT: <N> issues open'.
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-11T12:33:21.271387Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T12:33:21.447537Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T12:33:21.912726Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-11T12:33:22.438554Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-11T12:33:23.535225Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-11T12:33:25.311752Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-11T12:33:27.442197Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: DGCFJdFrZHm6
+codex
+I’ll read v2 and verify each prior issue against the revised acceptance criteria, then check the new gates-evidence and post-archive rules for fresh ambiguities.
+exec
+/usr/bin/zsh -lc "sed -n '1,300p' requirement/req-v2.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,220p' apriori/review/ledger-states-issues.md 2>/dev/null || true" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '277,294p' RUNBOOK.md && sed -n '420,432p' RUNBOOK.md && sed -n '592,602p' docs/concepts.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 130ms:
+# Requirement — ledger-states (v2)
+
+change: ledger-states
+target lineage: **v3 branch**. Next patch/minor. Fail-closed tightening of gate C4 + the ledger vocabulary in the protocol docs; in-flight loops keep their working rhythm.
+
+Revisions vs v1 (P1 r1): LS-1 waived rows are gate-checked against `gates:` evidence in BOTH stages; LS-2 the post-archive gate run becomes a protocol requirement; LS-3 a legal-status parser governs both stages (unknown blocks everywhere, case-insensitive); LS-4 rejected-verified preserves the original rationale + concurrence reference; LS-5 the migration is a standing corpus test, not a hand-scan; LS-ADV-1 reopened stays an event, advisory-acked cross-references the labeling discipline.
+
+## Background — the problem (current state A, code-verified)
+
+`lib/gate.js` `checkLedger` blocks on `open` and on `rejected` WITHOUT a word-character reason — nothing else. Three consequences: (1) a producer can self-reject a blocking finding and C4 passes, in-flight AND archived (GPT-5.6 second review, the C4 evidence-binding defect); (2) `fixed` — an unverified claim — survives archival; (3) there is no human-waive state, so real waives masquerade as rejections. Live evidence: update-manifest's UMIMPL-1 sits archived as plain `rejected — refuted…` though the reviewer concurred in r2; two `advisory-acked` rows live outside the named vocabulary.
+
+## Goal (target state B)
+
+**Vocabulary (docs: runbook P0 EN/CN, concepts §7.0 EN/CN, gate spec) — the legal statuses, matched case-insensitively on the leading token:**
+- Non-terminal: `open` · `fixed` (fixed-awaiting-verification) · `rejected + reason` (awaiting reviewer concurrence).
+- Terminal: `verified` · `rejected-verified — <original rejection reason>; reviewer concurred (<evidence ref>)` (the original rationale STAYS in the cell — machine-checked for a word-char reason, full form protocol-checked by P8/humans) · `waived + reason` (HUMAN-only) · `advisory-acked` (batch-acknowledged advisory rows; advisory labeling itself stays reviewer-only per the existing correctness/security-never-advisory discipline, cross-referenced).
+- ANY other status is ILLEGAL — unknown text (typos, invented states) blocks C4 at BOTH stages.
+- Re-found issues REOPEN their old ID by returning its status to `open` — "reopened" is an event, not a status (docs say this explicitly).
+
+**Gate C4 (stage-aware, `lib/gate.js`):**
+- Both stages: unknown status → block; `rejected`/`rejected-verified`/`waived` without a word-char reason → block; `open` → block. `waived` rows additionally require `gates:` evidence in the change's flow-state (same file C3 already reads): an entry containing the row's ID and the word "waiv" (case-insensitive) — a producer-written row alone NEVER passes (LS-1).
+- In-flight only: `fixed` and reasoned `rejected` pass — the loop is still running.
+- Archived only: every row must be TERMINAL (`verified` / `rejected-verified`+reason / gates:-backed `waived`+reason / `advisory-acked`); `fixed` and plain `rejected` block with the cure: reviewer verifies (fixed) or concurs (rejected → rejected-verified), or the human waives (waived + gates: entry). Cure message content-tested, not exact-string (design's call).
+
+**Protocol (runbook STEP6, both editions):** after `archive` moves the change, the STEP6 exit REQUIRES a post-archive `apriori gate --change <name>` run (now resolving the archived stage) and its result goes in the gate④ packet — the archived-stage C4 rule is thereby always exercised (LS-2). Bound by the PR-18 scenario together with the P0 vocabulary.
+
+**Repo hygiene as a standing test (LS-5):** a corpus test iterates every archived change (from `apriori/changes/archive/*`, name = stamp-stripped dir) that has a ledger at `apriori/review/<name>-issues.md` and asserts every row parses legal AND terminal — skip-if-absent for packaged environments (same pattern as the delta corpus test). Migration duty: upgrade UMIMPL-1 to `rejected-verified — …; reviewer concurred (impl-review-v2)` (truthful, evidence archived) so the corpus test is green from day one.
+
+## Acceptance criteria (testable)
+
+- I1. Archived stage: `fixed`, plain `rejected`, and an unknown status (`verifed`, `done`) each → C4 BLOCKED naming the row and a cure; in-flight: the same unknown statuses ALSO block.
+- I2. Archived stage: all-terminal ledgers (verified / rejected-verified+reason / waived+reason WITH a gates: entry naming the ID / advisory-acked) → C4 pass.
+- I3. In-flight: `fixed` and reasoned `rejected` still pass (existing GT tests stay green); `waived` or `rejected-verified` without a reason blocks in both stages; `waived` WITH a reason but WITHOUT the gates: evidence blocks in both stages.
+- I4. Runbook P0 (both editions) documents the full vocabulary, who sets what (reviewer: verified/rejected-verified; human only: waived + gates: entry), the reopen-is-an-event rule, and STEP6's post-archive gate requirement; PR-18 binds all of it scoped to the P0/STEP6 blocks.
+- I5. concepts §7.0 vocabulary strings updated in both languages.
+- I6. UMIMPL-1 reads `rejected-verified — …; reviewer concurred (impl-review-v2)`; `gate --change update-manifest` (archived) passes C4; the corpus test over ALL archived ledgers is green.
+- I7. All existing tests pass; suite + verify + gate + check --self green.
+
+## Out of scope
+
+- CAS enforcement (P1-6, next change).
+- Shrink-guard metrics (advisories already excluded; counting unchanged).
+- Ledger file format (the 5-column table stays; only Status tightens).
+- C4 does NOT semantically validate the gates: entry's content beyond ID+waiv presence — the human-auditable half stays protocol-checked (declared honesty boundary, now WITH a mechanical floor).
+
+## Decisions proposed
+
+- DD-1: `fixed` blocks only at ARCHIVED stage — blocking it in-flight would break every running loop between rounds.
+- DD-2: `advisory-acked` is terminal — reviewer-labeled, shrink-guard-excluded, existing practice named; the labeling discipline is cross-referenced, not restated.
+- DD-3 (revised): `waived` needs the row reason AND machine-checked gates: evidence (ID + "waiv") in both stages; full semantic audit stays with P8/humans.
+- DD-4: unknown statuses block everywhere — a vocabulary is only a vocabulary if straying from it is visible.
+
+ succeeded in 141ms:
+# Issue ledger — ledger-states
+
+Rows recorded on behalf of the reviewer (codex session 019f4b30-68f9-7222-9b64-17f52a333b4c; raws: ledger-states-*-raw.txt).
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| LS-1 | waived passed C4 on the row alone — producer self-waive recreates the self-rejection hole. | Formal issues waived without the human. | STEP0·r1 | fixed |
+| LS-2 | Archived-stage C4 not tied to a required post-archive gate run. | The terminal-only rule may never execute. | STEP0·r1 | fixed |
+| LS-3 | Unknown-status handling unspecified in-flight; case rules undeclared. | Typos/invented states pass. | STEP0·r1 | fixed |
+| LS-4 | rejected-verified reason provenance undefined. | Audit trail loses the original rationale. | STEP0·r1 | fixed |
+| LS-5 | Migration lacked a deterministic all-archived-ledgers scan. | Hidden non-terminal rows survive. | STEP0·r1 | fixed |
+| LS-ADV-1 | Advisory: advisory-acked ok with scope discipline; reopened stays an event (docs say so); cure-message exactness left to design. | Low. | STEP0·r1 | fixed |
+
+ succeeded in 187ms:
+### P0 — issue ledger (every prompt below reads/writes it)
+
+`apriori/review/<change>-issues.md`:
+
+```markdown
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| REQ-3 | `ttlMs<=0` behavior undefined | med | 1 | fixed (v2) |
+| SPEC-1 | cleanup moment missing for the in-memory map | high | 1 | verified |
+| SPEC-2 | rename `del` to `delete` | low | 2 | rejected — cosmetic, out of scope |
+```
+
+- **Reviewer**: appends new rows; flips `fixed → verified` after confirming a fix landed; a re-found issue **reopens its old ID** — never a new row.
+- **Producer**: flips `open → fixed` or `open → rejected`; a rejection MUST carry a reason — human gates read rejections first.
+- **Advisory findings (scope discipline):** only gaps affecting **correctness, security, or the stated requirements** enter as formal rows; everything else the reviewer labels `advisory`. Labeling is the **reviewer's exclusive call** — the producer may never downgrade an open row to advisory. Per-item advisory lists live in the review doc; the ledger takes **one batch row per round** (`advisory batch acknowledged (n items)`), terminal state `advisory-acked` — the "record verbatim" rule (R2) governs the reviewer's delta *content*, while the row *shape* is always normalized to this batch form, so a reviewer that free-forms its advisory rows is normalized, not copied literally; "ignoring" advisories means no per-item handling — the batch row still lands. A reviewer may later **upgrade** an advisory to open (with a reason, new row tagged `upgraded-from-advisory`): it counts in the data pack's reopened statistic but does **not** by itself trip gate ⑤ (only a closed formal ID re-reopening does). **Correctness and security findings can never be advisory.** Mislabel handling: sampled at STEP3 (Medium+), gate ④, or the pre-merge PR review (Trivial); a real gap found mislabeled → upgrade + log; one that slips past merge counts as a post-merge miss (triggers cap restoration, §6).
+
+### P1 — STEP0 reviewer (heterogeneous, R2)
+
+```
+
+### P9 — STEP6 archive (producer)
+
+```text
+Archive this change per the interface's archive algorithm (§4) — list every merged/modified/deprecated/renamed ID; on a same-ID conflict, stop and open a ledger issue. Then update the knowledge base in lockstep. KB docs have two sections with opposite truth directions:
+* "## Contract (code-is-truth)": update it from the final implementation; refresh the source-commit stamp (it covers this section only);
+* "## Decisions (doc-is-truth)": append decisions/invariants/rejected alternatives made in this change, each with status (active / superseded-by: <id>). NEVER rewrite an active invariant to match code — if the code violates one, file a bug instead;
+List exactly which KB files and sections you updated.
+```
+
+### P10 — KB reverse-capture / reconcile (legacy projects)
+
+
+> **The prompt texts themselves live in [RUNBOOK.md](../RUNBOOK.md) §5 (P0–P13)** — one source, distributed with the protocol, so agents never need this handbook. This section keeps the design notes: what each prompt must achieve and why it's shaped that way. Every prompt shares one structure — explicit "Role / Input / Task / Output / Constraints," with version numbers, loops, and exit conditions made explicit.
+
+### 7.0 The Issue Ledger (Shared by All Review Loops)
+
+One cumulative ledger per change, `apriori/review/<change>-issues.md` (format: RUNBOOK **P0**). Reviews follow a **scope discipline** (per Anthropic's fully-verified warning that gap-hunting reviewers report gaps even in sound work): only correctness/security/stated-requirement gaps become formal rows; the rest are `advisory` — per-item lists stay in the review doc, the ledger takes one batch row per round. Why it exists: cross-round memory lives in a file instead of a session, so every round's reviewer can be a **fresh** session without losing the thread ([§1.4](#14-adversarial-review)). Who writes what: the reviewer appends rows and flips `fixed → verified`; the producer flips `open → fixed/rejected` — a rejection must carry a reason, because human gates read the rejections first. A re-found issue **reopens its old ID** rather than getting a new row; that reopened ID is exactly the oscillation alarm [§4.10](#410-automating-the-loop-with-goal-claude-code) watches for.
+
+### 7.1 STEP0: Requirement-Doc Adversarial Review
+
+Prompts: RUNBOOK **P1** (reviewer) / **P2** (producer's revise). Design notes:
+
+
+codex
+# ledger-states requirement review v2
+
+## Resolution review
+
+### LS-1 — Verified
+
+**Description:** v2 now requires `waived` rows to have both a reason and machine-checked `gates:` evidence in the change flow-state: the entry must contain the row ID and `waiv`, case-insensitively. This applies in both stages, and I3 explicitly covers the with-reason-but-no-gates-evidence blocking case.
+
+**Risk:** Resolved. A producer-written `waived` row alone no longer passes C4.
+
+**Suggested fix:** None.
+
+### LS-2 — Verified
+
+**Description:** v2 makes the post-archive `apriori gate --change <name>` run a STEP6 protocol requirement, with the result entering the gate④ packet. PR-18 is assigned to bind this along with the P0 vocabulary.
+
+**Risk:** Resolved. The archived-stage C4 rule is no longer optional or latent.
+
+**Suggested fix:** None.
+
+### LS-3 — Verified
+
+**Description:** v2 introduces a legal-status parser for both stages, with case-insensitive leading-token matching and unknown statuses blocking everywhere. I1 now covers in-flight unknown statuses as well as archived unknowns.
+
+**Risk:** Resolved. Typos and invented statuses are no longer silently accepted.
+
+**Suggested fix:** None.
+
+### LS-4 — Verified
+
+**Description:** v2 defines `rejected-verified` as preserving the original rejection reason plus a reviewer-concurrence evidence reference in the status cell. The machine floor remains word-character reason checking, with the full form left to P8/human review.
+
+**Risk:** Resolved. The audit trail requirement is now declared.
+
+**Suggested fix:** None.
+
+### LS-5 — Verified
+
+**Description:** v2 replaces the hand-scan with a standing corpus test over archived ledgers, with packaged-environment skip behavior and the UMIMPL-1 migration required so the corpus is green from day one.
+
+**Risk:** Resolved. Migration completeness is now mechanically checkable.
+
+**Suggested fix:** None.
+
+## New issue review
+
+No new formal issues found.
+
+## Advisories
+
+LS-ADV-1 is resolved. `reopened` is explicitly an event that returns the old ID to `open`; `advisory-acked` is terminal while cross-referencing the reviewer-only advisory discipline; and cure message exactness is intentionally left to design/content testing.
+
+One minor design note for the next stage: the legal-status parser should define token boundaries carefully so hyphenated legal states like `rejected-verified` and `advisory-acked` are matched before shorter prefixes. The v2 acceptance criteria are strong enough to catch this, so this is not a requirement issue.
+
+## Ledger delta
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| LS-1 | `waived` passed C4 on the row alone; v2 now requires gates evidence containing row ID + `waiv`. | Formal issues waived without the human. | STEP0 r1 | verified |
+| LS-2 | Archived-stage C4 was not tied to a required post-archive gate run; v2 adds the STEP6 post-archive gate requirement. | The terminal-only rule may never execute. | STEP0 r1 | verified |
+| LS-3 | Unknown-status handling was unspecified in-flight; v2 makes unknown statuses block in both stages and declares case-insensitive matching. | Typos/invented states pass. | STEP0 r1 | verified |
+| LS-4 | `rejected-verified` reason provenance was undefined; v2 preserves the original rationale plus reviewer concurrence evidence. | Audit trail loses the original rationale. | STEP0 r1 | verified |
+| LS-5 | Migration lacked a deterministic all-archived-ledgers scan; v2 adds a standing archived-ledger corpus test. | Hidden non-terminal rows survive. | STEP0 r1 | verified |
+| LS-ADV-1 | Advisory batch: `advisory-acked`, reopen-as-event, and cure-message content testing are now sufficiently specified. | Low. | STEP0 r1 | verified |
+
+VERDICT: no major issues, ready to proceed
+tokens used
+2,934,071
+# ledger-states requirement review v2
+
+## Resolution review
+
+### LS-1 — Verified
+
+**Description:** v2 now requires `waived` rows to have both a reason and machine-checked `gates:` evidence in the change flow-state: the entry must contain the row ID and `waiv`, case-insensitively. This applies in both stages, and I3 explicitly covers the with-reason-but-no-gates-evidence blocking case.
+
+**Risk:** Resolved. A producer-written `waived` row alone no longer passes C4.
+
+**Suggested fix:** None.
+
+### LS-2 — Verified
+
+**Description:** v2 makes the post-archive `apriori gate --change <name>` run a STEP6 protocol requirement, with the result entering the gate④ packet. PR-18 is assigned to bind this along with the P0 vocabulary.
+
+**Risk:** Resolved. The archived-stage C4 rule is no longer optional or latent.
+
+**Suggested fix:** None.
+
+### LS-3 — Verified
+
+**Description:** v2 introduces a legal-status parser for both stages, with case-insensitive leading-token matching and unknown statuses blocking everywhere. I1 now covers in-flight unknown statuses as well as archived unknowns.
+
+**Risk:** Resolved. Typos and invented statuses are no longer silently accepted.
+
+**Suggested fix:** None.
+
+### LS-4 — Verified
+
+**Description:** v2 defines `rejected-verified` as preserving the original rejection reason plus a reviewer-concurrence evidence reference in the status cell. The machine floor remains word-character reason checking, with the full form left to P8/human review.
+
+**Risk:** Resolved. The audit trail requirement is now declared.
+
+**Suggested fix:** None.
+
+### LS-5 — Verified
+
+**Description:** v2 replaces the hand-scan with a standing corpus test over archived ledgers, with packaged-environment skip behavior and the UMIMPL-1 migration required so the corpus is green from day one.
+
+**Risk:** Resolved. Migration completeness is now mechanically checkable.
+
+**Suggested fix:** None.
+
+## New issue review
+
+No new formal issues found.
+
+## Advisories
+
+LS-ADV-1 is resolved. `reopened` is explicitly an event that returns the old ID to `open`; `advisory-acked` is terminal while cross-referencing the reviewer-only advisory discipline; and cure message exactness is intentionally left to design/content testing.
+
+One minor design note for the next stage: the legal-status parser should define token boundaries carefully so hyphenated legal states like `rejected-verified` and `advisory-acked` are matched before shorter prefixes. The v2 acceptance criteria are strong enough to catch this, so this is not a requirement issue.
+
+## Ledger delta
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| LS-1 | `waived` passed C4 on the row alone; v2 now requires gates evidence containing row ID + `waiv`. | Formal issues waived without the human. | STEP0 r1 | verified |
+| LS-2 | Archived-stage C4 was not tied to a required post-archive gate run; v2 adds the STEP6 post-archive gate requirement. | The terminal-only rule may never execute. | STEP0 r1 | verified |
+| LS-3 | Unknown-status handling was unspecified in-flight; v2 makes unknown statuses block in both stages and declares case-insensitive matching. | Typos/invented states pass. | STEP0 r1 | verified |
+| LS-4 | `rejected-verified` reason provenance was undefined; v2 preserves the original rationale plus reviewer concurrence evidence. | Audit trail loses the original rationale. | STEP0 r1 | verified |
+| LS-5 | Migration lacked a deterministic all-archived-ledgers scan; v2 adds a standing archived-ledger corpus test. | Hidden non-terminal rows survive. | STEP0 r1 | verified |
+| LS-ADV-1 | Advisory batch: `advisory-acked`, reopen-as-event, and cure-message content testing are now sufficiently specified. | Low. | STEP0 r1 | verified |
+
+VERDICT: no major issues, ready to proceed

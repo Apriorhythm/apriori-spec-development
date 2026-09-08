@@ -1,0 +1,641 @@
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f4b30-68f9-7222-9b64-17f52a333b4c
+--------
+user
+New change, P1 requirement review round 1: change "update-manifest" (P0-3 of the owner-approved batch; delta-consumption and tap-plan are done, archived, and pushed). Read requirement/req-v1.md from disk.
+
+Context you can verify: lib/update.js run() refreshes any file that exists at a TOOLS command path (existence-only test, no record of what init created); lib/init.js writeCommand/writeRules; templates/command.md has exactly two shipped generations in git history (current sha256 4ada03a2..., pre-front-door 1dfa5eec...).
+
+Review the requirement as a contract: ambiguities causing implementer rework, holes in F1-F8, risky decisions (DD-1 manifest path/name apriori/managed.json, DD-2 modified-runbook skip semantics + unconditional pre-manifest adoption, DD-3 hardcoded ancestor-hash array with a CI membership test). Think about: manifest corruption/invalid JSON (fail open or closed?), partial init (--dry-run interplay at init), manifest listing a path outside the project (containment?), CRLF (a git-checkout with autocrlf rewrites the bytes init wrote — does every adopted/managed file become 'modified' on Windows? is that acceptable or does it need normalization?), version field forward-compat, init --tools merge overwriting a modified file's hash (init overwrites the file itself today — does the manifest hash follow?), what `missing` should do when init later recreates. Rows UM-N with risk. Print the COMPLETE review document body (landed verbatim at apriori/review/update-manifest-req-review-v1.md) with a ledger section, ending with exactly one verdict line: "VERDICT: no major issues, ready to proceed" or "VERDICT: <N> issues open".
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-11T08:12:38.481237Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T08:12:38.663380Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T08:12:39.110576Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-11T08:12:39.642247Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-11T08:12:40.569311Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-11T08:12:42.272526Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-11T08:12:45.889274Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: dxoyllkXuCoi
+codex
+I’ll read the update-manifest requirement and verify the current init/update/template behavior it relies on, then review the contract for the edge cases you listed.
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' lib/update.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,320p' requirement/req-v1.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' lib/init.js" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 140ms:
+# Requirement — update-manifest (v1)
+
+change: update-manifest
+target lineage: **v3 branch**. Next patch/minor. Fail-closed tightening: `apriori update` stops overwriting files it cannot prove it owns; unmodified tool-owned files keep refreshing exactly as today.
+
+## Background — the problem (current state A, code-verified)
+
+`lib/update.js` `run()` refreshes any file that merely EXISTS at a TOOLS command path: `if (fs.existsSync(p)) actions.push({file: rel, action: refresh(p, ...)})`. Existence is the only test — there is no record of what init actually created. Two failure modes:
+
+1. **Foreign file clobbered.** The user (or another tool) owns a file at a command path init never touched — e.g. their own `.claude/commands/apriori.md` written before ever selecting the claude tool, or a hand-rolled `.codex/prompts/apriori.md`. `update` silently replaces it with `templates/command.md`.
+2. **Customization reverted.** A command file init DID create, later customized by the user (team-specific instructions appended), is silently reset to the pristine template on every `update`.
+
+The closing line `update` prints — "user-owned files … are never touched" — is false for both. (GPT-5.6 second review, defect #5.)
+
+## Goal (target state B)
+
+`init` records what it creates; `update` refreshes only what the manifest proves is tool-owned AND unmodified. Everything else is reported and left byte-identical.
+
+**Manifest** — `apriori/managed.json`, written by init and maintained by update:
+```json
+{ "version": 1, "files": { "apriori/runbook.md": "sha256:<64hex>", ".claude/commands/apriori.md": "sha256:<64hex>" } }
+```
+Hashes are over the exact bytes the tool last wrote (same `sha256:<hex>` vocabulary as CAS stamps; LF/CRLF NOT normalized — we hash what we wrote). Scope: the refresh targets only (runbook + per-tool command files). `process-config.md`, rules-file pointers, specs/, `.gitignore` stay outside — update never rewrites them anyway.
+
+**update semantics (per candidate file):**
+- listed in manifest + current hash == manifest hash → refresh from the package source as today (`updated`/`up-to-date`); after a real write, store the new hash.
+- listed + current hash ≠ manifest hash → **`modified` — skipped**, warning naming the file: locally modified since the tool last wrote it — left untouched (delete it and rerun `apriori init --tools <t>` to hand it back).
+- exists on disk but NOT listed → **`unmanaged` — skipped** with the same cure hint. Never written.
+- listed but missing on disk → **`missing` — skipped** (recreating is init's job, as today).
+- `--dry-run` reports all of the above and writes nothing — including the manifest.
+
+**Migration (no manifest on disk — every pre-manifest project):** update ADOPTS what it can prove:
+- `apriori/runbook.md`: adopted unconditionally and refreshed as today — it is the init precondition and has been declared tool-owned since 1.0; its refresh is `update`'s reason to exist.
+- each existing command file: adopted iff its current content hash equals the CURRENT package template or a KNOWN ANCESTOR hash (the package embeds the sha256 of every template generation it has ever shipped — today: `4ada03a2…` current, `1dfa5eec…` pre-front-door). Match → adopt + refresh. No match → `unmanaged` skip (fail closed: content we never wrote is not ours to replace).
+- The adoption pass writes the manifest (unless `--dry-run`).
+- `init` on an existing project (adding a tool) merges into an existing manifest rather than replacing it.
+
+**Output:** the per-file action column gains `modified`/`unmanaged`/`missing`; the closing "never touched" line becomes literally true.
+
+## Acceptance criteria (testable)
+
+- F1. Repro 1: a foreign file at an unselected tool's command path (no manifest entry) survives `update` byte-identical; the report says `unmanaged` with the cure hint.
+- F2. A manifest-listed, unmodified command file whose package template has changed → refreshed; the manifest hash is updated to the new content.
+- F3. A manifest-listed file with local edits → `modified` skip, byte-identical afterward; `--dry-run` gives the same report and writes nothing (manifest included).
+- F4. Pre-manifest project: a command file byte-equal to the current template → adopted, `up-to-date`; byte-equal to the known-ancestor template → adopted + `updated`; arbitrary content → `unmanaged` skip. In all three, the manifest exists afterward (except under `--dry-run`).
+- F5. `init` writes the manifest covering the runbook and every command file it created; `init` for an additional tool merges, preserving existing entries.
+- F6. The runbook refreshes exactly as today in every scenario (manifest present, absent, stale hash — a locally-modified runbook IS skipped as `modified`, since the manifest can now prove modification).
+- F7. `update` exit code stays 0 for skip-only runs (skips are reports, not failures); output names every skip.
+- F8. All existing tests pass; suite + verify + gate + check --self green.
+
+## Out of scope
+
+- Rules-file pointer blocks (append-only at init, never refreshed — unchanged).
+- `--force` overwrite flag (not offered this minor; the cure is delete + re-init).
+- Windows Git Bash resolution (P0-4, next change).
+
+## Decisions proposed
+
+- DD-1: manifest lives at `apriori/managed.json` (inside the apriori dir, next to runbook.md; trackable by git; NOT dot-prefixed so it is visible and greppable).
+- DD-2: a locally-modified runbook is skipped like any modified file once a manifest exists — protecting user edits beats forcing the upgrade; the skip warning tells them what happened. (Pre-manifest adoption still refreshes it unconditionally: no proof of modification exists, and historical behavior wins once.)
+- DD-3: known-ancestor hashes are a hardcoded array in lib/update.js, appended whenever templates/command.md changes — enforced by a test that hashes the live template and asserts membership (so forgetting the append fails CI).
+
+ succeeded in 166ms:
+'use strict';
+/*
+ * apriori update — refresh tool-owned scaffolded files after a CLI upgrade.
+ * Tool-owned: apriori/runbook.md (copied from the package's own RUNBOOK.md — single source)
+ * and per-tool command files that already exist (from templates/command.md).
+ * User-owned is NEVER touched: process-config.md, specs/, changes/, review/, truth/,
+ * and the rules files the init pointer was appended to (CLAUDE.md, AGENTS.md, …).
+ * Zero deps — pure Node stdlib.
+ */
+const fs = require('fs');
+const path = require('path');
+const { TOOLS } = require('./init');
+const { withStrict } = require('./args');
+
+const PKG_ROOT = path.join(__dirname, '..');
+const RUNBOOK_SRC = path.join(PKG_ROOT, 'RUNBOOK.md');
+const COMMAND_SRC = path.join(PKG_ROOT, 'templates', 'command.md');
+
+// Refresh one existing target from src; returns 'updated' | 'up-to-date'.
+function refresh(target, src, dryRun) {
+  const want = fs.readFileSync(src, 'utf8');
+  if (fs.readFileSync(target, 'utf8') === want) return 'up-to-date';
+  if (!dryRun) fs.writeFileSync(target, want);
+  return 'updated';
+}
+
+// Refresh all tool-owned files under root. Only files that exist are refreshed —
+// update never creates anything (adding a tool is init's job).
+// Returns { actions: [{file, action}] }; throws if the project isn't initialized.
+function run(root, opts = {}) {
+  const rb = path.join(root, 'apriori', 'runbook.md');
+  if (!fs.existsSync(rb)) throw new Error(`no apriori/runbook.md here — run 'apriori init' first`);
+  const actions = [{ file: 'apriori/runbook.md', action: refresh(rb, opts.runbookSrc || RUNBOOK_SRC, opts.dryRun) }];
+  // protocol-required scaffolding the refreshed runbook relies on (IN-11): create if missing, NEVER modify
+  const gi = path.join(root, 'apriori', '.gitignore');
+  if (!fs.existsSync(gi)) {
+    if (!opts.dryRun) { fs.writeFileSync(gi, 'tmp/\n'); fs.mkdirSync(path.join(root, 'apriori', 'tmp'), { recursive: true }); }
+    actions.push({ file: 'apriori/.gitignore', action: 'created' });
+  }
+  for (const key of Object.keys(TOOLS)) {
+    const rel = TOOLS[key].command;
+    if (!rel) continue;
+    const p = path.join(root, rel);
+    if (fs.existsSync(p)) actions.push({ file: rel, action: refresh(p, opts.commandSrc || COMMAND_SRC, opts.dryRun) });
+  }
+  return { actions };
+}
+
+const USAGE = 'usage: apriori update [--dry-run]';
+
+function cli(argv) {
+  return withStrict(argv, { sub: 'update', usage: USAGE, positionals: 0, flags: { '--dry-run': 'flag' } }, (f) => {
+    const dryRun = !!f['--dry-run'];
+    let res;
+    try { res = run(process.cwd(), { dryRun }); }
+    catch (e) { console.error('  ' + e.message); return 1; }
+    for (const { file, action } of res.actions)
+      console.log(`  ${action === 'updated' ? '✓' : '·'} ${file}  (${action})`);
+    const n = res.actions.filter((a) => a.action === 'updated').length;
+    const v = require('../package.json').version;
+    console.log(n
+      ? `\n  ${n} file(s) ${dryRun ? 'would be ' : ''}refreshed to apriori-cli ${v}.`
+      : `\n  everything already matches apriori-cli ${v}.`);
+    console.log('  (user-owned files — process-config.md, specs/, changes/, rules files — are never touched.)');
+    return 0;
+  });
+}
+
+module.exports = { run, refresh, cli };
+
+ succeeded in 196ms:
+'use strict';
+/*
+ * apriori init — scaffold the single apriori/ root and write a thin pointer to the
+ * self-contained runbook in each selected AI tool's native location/format.
+ * Zero deps — pure Node stdlib. The protocol lives once (apriori/runbook.md); tools get pointers.
+ */
+const fs = require('fs');
+const path = require('path');
+const readline = require('readline');
+const { withStrict } = require('./args');
+
+const TEMPLATES = path.join(__dirname, '..', 'templates');
+// The runbook ships once, as the package's own RUNBOOK.md — no template duplicate (IN-04).
+const RUNBOOK_SRC = path.join(__dirname, '..', 'RUNBOOK.md');
+
+// The one adapter table — the only maintenance surface as tool conventions drift.
+// level: 'command' = gets a /apriori-style entry; 'rule' = rule-level only (no slash command).
+const TOOLS = {
+  claude:   { name: 'Claude Code',   detect: ['CLAUDE.md', '.claude'],
+              rules: 'CLAUDE.md', command: '.claude/commands/apriori.md', level: 'command' },
+  codex:    { name: 'Codex',         detect: ['AGENTS.md', '.codex'],
+              rules: 'AGENTS.md',  command: '.codex/prompts/apriori.md', level: 'command' },
+  cursor:   { name: 'Cursor',        detect: ['.cursor'],
+              rules: '.cursor/rules/apriori.mdc', mdc: true, level: 'rule' },
+  copilot:  { name: 'GitHub Copilot', detect: ['.github'],
+              rules: '.github/copilot-instructions.md', level: 'rule' },
+  opencode: { name: 'OpenCode',      detect: ['AGENTS.md', '.opencode'],
+              rules: 'AGENTS.md',  command: '.opencode/command/apriori.md', level: 'command' },
+  windsurf: { name: 'Windsurf',      detect: ['.windsurf', '.windsurfrules'],
+              rules: '.windsurf/rules/apriori.md', command: '.windsurf/workflows/apriori.md', level: 'command' },
+};
+
+const POINTER =
+  'Development follows `apriori/runbook.md`. At session start, read it per its ' +
+  'session-start rule and `apriori/changes/<change>/flow-state.md`, then continue ' +
+  'from the recorded position.';
+
+function detectTools(root) {
+  return Object.keys(TOOLS).filter((k) => TOOLS[k].detect.some((m) => fs.existsSync(path.join(root, m))));
+}
+
+function ensureDir(p) { fs.mkdirSync(path.dirname(p), { recursive: true }); }
+
+// Append a pointer to a rules file without duplicating; returns 'created'|'appended'|'skipped'.
+// dryRun computes the action without writing (IN-07 preview).
+function writePointer(root, rel, mdc, dryRun) {
+  const p = path.join(root, rel);
+  const body = mdc
+    ? `---\ndescription: apriori spec-driven development\nalwaysApply: true\n---\n\n${POINTER}\n`
+    : `${POINTER}\n`;
+  if (!fs.existsSync(p)) { if (!dryRun) { ensureDir(p); fs.writeFileSync(p, body); } return 'created'; }
+  const cur = fs.readFileSync(p, 'utf8');
+  if (cur.includes('apriori/runbook.md')) return 'skipped';
+  if (!dryRun) fs.writeFileSync(p, cur.replace(/\s*$/, '') + '\n\n' + body);
+  return 'appended';
+}
+
+function writeCommand(root, rel, dryRun) {
+  const p = path.join(root, rel);
+  if (fs.existsSync(p)) return 'skipped';
+  if (!dryRun) { ensureDir(p); fs.copyFileSync(path.join(TEMPLATES, 'command.md'), p); }
+  return 'created';
+}
+
+// Scaffold the apriori/ root + per-tool pointers. Pure enough to unit-test.
+// opts.dryRun computes actions without writing. Returns { actions:[{file,action}], levels:{tool:level} }
+function scaffold(root, toolKeys, opts = {}) {
+  const dry = !!opts.dryRun;
+  const actions = [];
+  const act = (file, action) => actions.push({ file, action });
+  const seed = (rel, srcAbs) => {
+    const p = path.join(root, rel);
+    if (!fs.existsSync(p)) { if (!dry) { ensureDir(p); fs.copyFileSync(srcAbs, p); } act(rel, 'created'); }
+    else act(rel, 'skipped');
+  };
+
+  // 1. apriori/ root: runbook + process-config (never clobbered) + working dirs
+  seed('apriori/runbook.md', RUNBOOK_SRC);
+  seed('apriori/process-config.md', path.join(TEMPLATES, 'process-config.md'));
+  // ephemeral scratch (P7 screenshot self-checks etc.) — gitignored, never committed (IN-11)
+  const gi = path.join(root, 'apriori', '.gitignore');
+  if (!fs.existsSync(gi)) { if (!dry) { ensureDir(gi); fs.writeFileSync(gi, 'tmp/\n'); } act('apriori/.gitignore', 'created'); }
+  else act('apriori/.gitignore', 'skipped');
+  // pin a language and/or persist a test command in the scaffolded config (only on a freshly-created config)
+  if ((opts.language || opts.testCmd) && !dry) {
+    const cfg = path.join(root, 'apriori', 'process-config.md');
+    const created = actions.some((a) => a.file === 'apriori/process-config.md' && a.action === 'created');
+    if (created) {
+      let body = fs.readFileSync(cfg, 'utf8');
+      if (opts.language) body = body.replace(/(\| language \| )auto( \|)/, `$1${opts.language}$2`);
+      if (opts.testCmd)  // consumed by `apriori verify` as the default when --test-cmd is omitted
+        body = body.replace(/^(\| language \|.*)$/m, `$1\n| test-cmd | ${opts.testCmd} | any shell command emitting TAP — \`apriori verify\`'s default | (none) |`);
+      fs.writeFileSync(cfg, body);
+    }
+  }
+  if (!dry) for (const sub of ['specs', 'changes', 'changes/archive', 'review', 'truth', 'tmp'])
+    fs.mkdirSync(path.join(root, 'apriori', sub), { recursive: true });
+
+  // 2. per-tool pointers / commands
+  const levels = {};
+  for (const key of toolKeys) {
+    const t = TOOLS[key];
+    if (!t) continue;
+    act(t.rules, writePointer(root, t.rules, t.mdc, dry));
+    if (t.command) act(t.command, writeCommand(root, t.command, dry));
+    levels[key] = t.level;
+  }
+  return { actions, levels };
+}
+
+function parseArgs(argv) {
+  const a = { tools: null, testCmd: null, yes: false, language: null };
+  for (let i = 0; i < argv.length; i++) {
+    const k = argv[i];
+    if (k === '--tools') a.tools = argv[++i].split(',').map((s) => s.trim()).filter(Boolean);
+    else if (k === '--test-cmd') a.testCmd = argv[++i];
+    else if (k === '--language') a.language = argv[++i];
+    else if (k === '--yes' || k === '-y') a.yes = true;
+  }
+  return a;
+}
+
+function report(scaffoldResult) {
+  console.log('\n  Wrote:');
+  for (const { file, action } of scaffoldResult.actions)
+    console.log(`    ${action === 'skipped' ? '·' : '✓'} ${file}${action !== 'created' ? `  (${action})` : ''}`);
+  const cmd = [], rule = [];
+  for (const [k, lvl] of Object.entries(scaffoldResult.levels))
+    (lvl.startsWith('command') ? cmd : rule).push(TOOLS[k].name + (lvl === 'command-experimental' ? ' (experimental)' : ''));
+  if (cmd.length) console.log(`\n  /apriori command-level: ${cmd.join(', ')}`);
+  if (rule.length) console.log(`  rule-level (no slash command, just point the agent at the runbook): ${rule.join(', ')}`);
+  console.log('\n  Next — two doors:');
+  console.log('    idea still fuzzy?  /apriori           (no arguments — brainstorm first, nothing written until you approve)');
+  console.log('    change is clear?   /apriori <change>  (or the kickoff prompt), then answer at each human gate.');
+}
+
+// --- arrow-key multi-select (pure Node, zero deps) ---------------------------
+// key names from a raw stdin chunk
+function parseKey(buf) {
+  const s = buf.toString('utf8');
+  if (s === '\x1b[A' || s === 'k') return 'up';
+  if (s === '\x1b[B' || s === 'j') return 'down';
+  if (s === ' ') return 'space';
+  if (s === '\r' || s === '\n') return 'enter';
+  if (s === 'a') return 'all';
+  if (s === '\x03' || s === '\x1b') return 'cancel';   // Ctrl-C / Esc
+  return null;
+}
+
+// pure reducer: (state, key) → state. state = { items, cursor, selected:Set }
+function reduceKey(state, key) {
+  const n = state.items.length;
+  if (!n) return state;
+  if (key === 'up') return { ...state, cursor: (state.cursor - 1 + n) % n };
+  if (key === 'down') return { ...state, cursor: (state.cursor + 1) % n };
+  if (key === 'space') {
+    const selected = new Set(state.selected);
+    const id = state.items[state.cursor].key;
+    if (selected.has(id)) selected.delete(id); else selected.add(id);
+    return { ...state, selected };
+  }
+  if (key === 'all') {
+    const selected = state.selected.size === n ? new Set() : new Set(state.items.map((i) => i.key));
+    return { ...state, selected };
+  }
+  return state;
+}
+
+const paint = (s, code, on) => (on ? `\x1b[${code}m${s}\x1b[0m` : s);
+
+function renderMenu(state, opts = {}) {
+  const c = !!opts.color;
+  const lines = ['  Select AI tools  (↑/↓ move · space toggle · a all · enter confirm):'];
+  state.items.forEach((it, i) => {
+    const cur = i === state.cursor ? '❯' : ' ';
+    const box = state.selected.has(it.key) ? paint('◉', 32, c) : '◯';   // green when selected
+    lines.push(`  ${cur} ${box} ${it.name}${it.detected ? '  (detected)' : ''}`);
+  });
+  const names = state.items.filter((i) => state.selected.has(i.key)).map((i) => i.name);
+  // footer is ALWAYS present (stable line count for in-place redraw)
+  lines.push(`  selected: ${names.length ? paint(names.join(', '), 32, c) : '(none)'}`);
+  return lines.join('\n') + '\n';
+}
+
+// selected keys, in item order
+function selectedKeys(state) { return state.items.filter((i) => state.selected.has(i.key)).map((i) => i.key); }
+
+// interactive driver; input/output default to the real TTY but are injectable for tests
+function multiselect({ items, preselected = [], input = process.stdin, output = process.stdout } = {}) {
+  return new Promise((resolve) => {
+    let state = { items, cursor: 0, selected: new Set(preselected) };
+    let first = true;
+    const color = output.isTTY === true;                 // color only on a real terminal
+    const render = () => {
+      const menu = renderMenu(state, { color });
+      const lineCount = menu.split('\n').length - 1;
+      if (!first) output.write(`\x1b[${lineCount}A\x1b[0J`);   // redraw in place
+      first = false;
+      output.write(menu);
+    };
+    const cleanup = () => {
+      if (input.setRawMode) input.setRawMode(false);
+      input.pause();
+      input.removeListener('data', onData);
+    };
+    const onData = (buf) => {
+      const key = parseKey(buf);
+      if (key === 'cancel') { cleanup(); output.write('\n'); process.exit(130); }
+      if (key === 'enter') { cleanup(); output.write('\n'); resolve(selectedKeys(state)); return; }
+      const next = reduceKey(state, key);
+      if (next !== state) { state = next; render(); }
+    };
+    if (input.setRawMode) input.setRawMode(true);
+    input.resume();
+    render();
+    input.on('data', onData);
+  });
+}
+
+async function askTools(root) {
+  const detected = new Set(detectTools(root));
+  const items = Object.keys(TOOLS).map((k) => ({ key: k, name: TOOLS[k].name, detected: detected.has(k) }));
+  return multiselect({ items, preselected: [...detected] });
+}
+
+function preview(root, tools) {
+  const plan = scaffold(root, tools, { dryRun: true });
+  console.log('\n  About to write:');
+  for (const { file, action } of plan.actions)
+    console.log(`    ${action === 'skipped' ? '·' : '✓'} ${file}${action !== 'created' ? `  (${action})` : ''}`);
+  console.log('\n  Existing files are appended-to or skipped, never overwritten.');
+}
+
+async function confirm(question) {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  const ans = await new Promise((res) => rl.question(question, res));
+  rl.close();
+  return /^(y|yes|)$/i.test(ans.trim());
+}
+
+const USAGE = 'usage: apriori init [--tools <a,b,...>] [--test-cmd "<cmd>"] [--language <lang>] [--yes]';
+
+async function cli(argv) {
+  return withStrict(argv, { sub: 'init', usage: USAGE, positionals: 0, aliases: { '-y': '--yes' },
+    flags: { '--tools': 'value', '--test-cmd': 'value', '--language': 'value', '--yes': 'flag' } }, async (f) => {
+    const a = { tools: f['--tools'] ? f['--tools'].split(',').map((x) => x.trim()).filter(Boolean) : null,
+      testCmd: f['--test-cmd'] || null, language: f['--language'] || null, yes: !!f['--yes'] };
+    const root = process.cwd();
+    let tools = a.tools;
+    if (!tools) {
+      if (!process.stdin.isTTY) { console.error('  non-interactive: pass --tools <a,b,...>'); return 2; }
+      tools = await askTools(root);
+    }
+    if (!tools.length) { console.error('  no tools selected — nothing to do'); return 1; }
+    preview(root, tools);                          // IN-07: preview before writing
+    if (!a.yes && process.stdin.isTTY && !(await confirm('\n  Proceed? (Y/n) '))) { console.log('  aborted.'); return 0; }
+    report(scaffold(root, tools, { testCmd: a.testCmd, language: a.language }));
+    return 0;
+  });
+}
+
+codex
+The current requirement is strong on ownership semantics, but I’m seeing missing contracts around manifest trust boundaries: invalid JSON, paths outside the project, and unknown manifest versions are not classified. Those are likely formal because they decide whether update fails open or closed.
+exec
+/usr/bin/zsh -lc "node -e \"const fs=require('fs'),crypto=require('crypto'); const p='templates/command.md'; const b=fs.readFileSync(p); console.log(crypto.createHash('sha256').update(b).digest('hex'));\"" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc 'git log --oneline -- templates/command.md | head -20' in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "git show HEAD~1:templates/command.md 2>/dev/null | node -e \"const fs=require('fs'),crypto=require('crypto'); const b=fs.readFileSync(0); if (b.length) console.log(crypto.createHash('sha256').update(b).digest('hex'));\"" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 171ms:
+4ada03a2b8a9d6b86fd610e0f4363c31dcea2ba2460d6e96e1231004e4a9c8a0
+
+ succeeded in 213ms:
+4ada03a2b8a9d6b86fd610e0f4363c31dcea2ba2460d6e96e1231004e4a9c8a0
+
+ succeeded in 961ms:
+deaf76c feat(v3): front door — bare /apriori opens Brainstorm (P13), ABANDONED legal on harden track, PowerShell stdin rider (Change: front-door)
+1c4757a feat(v3): phase 3 — apriori init multi-tool scaffolding (IN-01..08)
+
+codex
+The current command-template hash matches the requirement’s current value, and git history shows the expected two template-changing commits. I’ll check the pre-front-door hash from the older commit and then produce the review.
+exec
+/usr/bin/zsh -lc "git show 1c4757a:templates/command.md 2>/dev/null | node -e \"const fs=require('fs'),crypto=require('crypto'); const b=fs.readFileSync(0); if (b.length) console.log(crypto.createHash('sha256').update(b).digest('hex'));\"" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc 'rg -n "dry-run|managed|manifest|runbook|modified|unmanaged|missing|sha256|CRLF|version|outside|path" requirement/req-v1.md' in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc 'git show deaf76c''^:templates/command.md 2>/dev/null | node -e "const fs=require('"'fs'),crypto=require('crypto'); const b=fs.readFileSync(0); if (b.length) console.log(crypto.createHash('sha256').update(b).digest('hex'));\"" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 128ms:
+1:# Requirement — update-manifest (v1)
+3:change: update-manifest
+4:target lineage: **v3 branch**. Next patch/minor. Fail-closed tightening: `apriori update` stops overwriting files it cannot prove it owns; unmodified tool-owned files keep refreshing exactly as today.
+8:`lib/update.js` `run()` refreshes any file that merely EXISTS at a TOOLS command path: `if (fs.existsSync(p)) actions.push({file: rel, action: refresh(p, ...)})`. Existence is the only test — there is no record of what init actually created. Two failure modes:
+10:1. **Foreign file clobbered.** The user (or another tool) owns a file at a command path init never touched — e.g. their own `.claude/commands/apriori.md` written before ever selecting the claude tool, or a hand-rolled `.codex/prompts/apriori.md`. `update` silently replaces it with `templates/command.md`.
+17:`init` records what it creates; `update` refreshes only what the manifest proves is tool-owned AND unmodified. Everything else is reported and left byte-identical.
+19:**Manifest** — `apriori/managed.json`, written by init and maintained by update:
+21:{ "version": 1, "files": { "apriori/runbook.md": "sha256:<64hex>", ".claude/commands/apriori.md": "sha256:<64hex>" } }
+23:Hashes are over the exact bytes the tool last wrote (same `sha256:<hex>` vocabulary as CAS stamps; LF/CRLF NOT normalized — we hash what we wrote). Scope: the refresh targets only (runbook + per-tool command files). `process-config.md`, rules-file pointers, specs/, `.gitignore` stay outside — update never rewrites them anyway.
+26:- listed in manifest + current hash == manifest hash → refresh from the package source as today (`updated`/`up-to-date`); after a real write, store the new hash.
+27:- listed + current hash ≠ manifest hash → **`modified` — skipped**, warning naming the file: locally modified since the tool last wrote it — left untouched (delete it and rerun `apriori init --tools <t>` to hand it back).
+28:- exists on disk but NOT listed → **`unmanaged` — skipped** with the same cure hint. Never written.
+29:- listed but missing on disk → **`missing` — skipped** (recreating is init's job, as today).
+30:- `--dry-run` reports all of the above and writes nothing — including the manifest.
+32:**Migration (no manifest on disk — every pre-manifest project):** update ADOPTS what it can prove:
+33:- `apriori/runbook.md`: adopted unconditionally and refreshed as today — it is the init precondition and has been declared tool-owned since 1.0; its refresh is `update`'s reason to exist.
+34:- each existing command file: adopted iff its current content hash equals the CURRENT package template or a KNOWN ANCESTOR hash (the package embeds the sha256 of every template generation it has ever shipped — today: `4ada03a2…` current, `1dfa5eec…` pre-front-door). Match → adopt + refresh. No match → `unmanaged` skip (fail closed: content we never wrote is not ours to replace).
+35:- The adoption pass writes the manifest (unless `--dry-run`).
+36:- `init` on an existing project (adding a tool) merges into an existing manifest rather than replacing it.
+38:**Output:** the per-file action column gains `modified`/`unmanaged`/`missing`; the closing "never touched" line becomes literally true.
+42:- F1. Repro 1: a foreign file at an unselected tool's command path (no manifest entry) survives `update` byte-identical; the report says `unmanaged` with the cure hint.
+43:- F2. A manifest-listed, unmodified command file whose package template has changed → refreshed; the manifest hash is updated to the new content.
+44:- F3. A manifest-listed file with local edits → `modified` skip, byte-identical afterward; `--dry-run` gives the same report and writes nothing (manifest included).
+45:- F4. Pre-manifest project: a command file byte-equal to the current template → adopted, `up-to-date`; byte-equal to the known-ancestor template → adopted + `updated`; arbitrary content → `unmanaged` skip. In all three, the manifest exists afterward (except under `--dry-run`).
+46:- F5. `init` writes the manifest covering the runbook and every command file it created; `init` for an additional tool merges, preserving existing entries.
+47:- F6. The runbook refreshes exactly as today in every scenario (manifest present, absent, stale hash — a locally-modified runbook IS skipped as `modified`, since the manifest can now prove modification).
+59:- DD-1: manifest lives at `apriori/managed.json` (inside the apriori dir, next to runbook.md; trackable by git; NOT dot-prefixed so it is visible and greppable).
+60:- DD-2: a locally-modified runbook is skipped like any modified file once a manifest exists — protecting user edits beats forcing the upgrade; the skip warning tells them what happened. (Pre-manifest adoption still refreshes it unconditionally: no proof of modification exists, and historical behavior wins once.)
+
+ succeeded in 201ms:
+1dfa5eece0f3c109aae765aa52ffb89f59c0f0f3b494f9430148ac6baeeab046
+
+ succeeded in 252ms:
+1dfa5eece0f3c109aae765aa52ffb89f59c0f0f3b494f9430148ac6baeeab046
+
+codex
+**Requirement Review — update-manifest v1**
+
+**Dimension Verdicts**
+
+1. Target state B: Mostly clear, but manifest trust/error semantics are under-specified.
+2. Edge/exception coverage: Missing important failure paths: corrupt/unknown manifest, path containment, and init dry-run behavior.
+3. Side effects: Manifest creation/update is declared, but init’s existing overwrite behavior needs a sharper manifest rule.
+4. Acceptance criteria: F1-F8 cover the core ownership cases, but not enough boundary/error cases.
+5. State-A conflicts: The current code matches the problem statement. Template hashes are plausible: current `4ada03a2...`, pre-front-door `1dfa5eec...`.
+6. Lineage: Declared and consistent with the repo.
+
+**Formal Issues**
+
+**UM-1 — Corrupt or unsupported `apriori/managed.json` behavior is undefined**
+
+Description: The requirement defines the manifest shape but does not say what `update` or `init` should do when `apriori/managed.json` exists but is invalid JSON, has no `files`, has malformed hash values, or has an unsupported `version`.
+
+Risk: Implementers may fail open and fall back to pre-manifest adoption, overwriting user files despite the presence of an untrusted ownership record. Or they may crash with an unhelpful stack trace.
+
+Suggested fix: Add a fail-closed rule and acceptance case: if `managed.json` exists but is unreadable, invalid, unsupported-version, or schema-invalid, `update` exits nonzero before touching any managed target; `--dry-run` reports the same; `init --tools` also refuses to merge until the manifest is fixed.
+
+**UM-2 — Manifest path containment is unspecified**
+
+Description: The manifest maps relative paths to hashes, but the requirement does not constrain entries to safe in-project refresh targets. A malicious or corrupted manifest could list `../outside.md`, an absolute path, or a symlinked path escaping the project.
+
+Risk: `update` could read/hash or overwrite files outside the project, which is a correctness and security issue.
+
+Suggested fix: Specify that manifest entries must be normalized relative paths, never absolute, never containing `..`, and must be one of the declared refresh target paths: `apriori/runbook.md` or current `TOOLS[*].command` paths. Any other entry is a manifest hygiene error that fails closed before writing. If symlinks are possible, require realpath containment before any read/write.
+
+**UM-3 — `init --dry-run` manifest behavior is not declared**
+
+Description: F5 says `init` writes the manifest covering created files and merges for added tools, while update semantics say `--dry-run` writes nothing. But init also supports dry-run behavior through preview/scaffold, and the requirement does not say whether init dry-run should report manifest actions, omit them, or leave manifest untouched.
+
+Risk: Tests and implementation can diverge on whether dry-run init mutates or previews `apriori/managed.json`.
+
+Suggested fix: Add an explicit rule: init dry-run never writes or modifies the manifest, but reports what manifest entries would be created/merged if useful. Add an acceptance case covering fresh init dry-run and add-tool dry-run.
+
+**UM-4 — `init` merge semantics can erase a modified-file hash without an explicit rule**
+
+Description: State A `init` skips existing command files and only creates missing ones. The requirement says init on an existing project merges into the manifest, but does not state what happens when the file exists and differs from an existing manifest hash, or exists without a manifest entry. If init blindly records the current hash for a skipped file, it can reclassify a modified or foreign file as managed, allowing future update to overwrite it.
+
+Risk: The manifest can become a laundering mechanism for user-owned or modified files, recreating the clobber bug through `init --tools`.
+
+Suggested fix: Define init manifest writes only for files it actually creates in that run, plus newly created runbook on fresh init. For skipped existing command files, do not add or change a manifest entry; report unmanaged/skipped if needed. If init overwrites or recreates a missing managed file in a future design, then and only then update that hash.
+
+**UM-5 — Missing managed file hand-back flow is contradictory**
+
+Description: Update says a listed-but-missing file is `missing` and recreating is init’s job. But F5/init merge semantics do not define what happens when a manifest-listed command file is missing and the user reruns `apriori init --tools <t>`. Current `init` would create the missing file; the requirement does not say whether the manifest hash must then be updated from `missing` to the new content.
+
+Risk: A user following the prescribed cure can end with a recreated file but a stale manifest hash, causing the next update to classify it as `modified`.
+
+Suggested fix: Add a rule: when init creates a file that is absent on disk, it writes/replaces that file’s manifest entry with the hash of the bytes it just wrote. This is distinct from skipped existing files, whose manifest entries must not be adopted blindly.
+
+**Advisories**
+
+- CRLF exact-byte hashing is declared. That is acceptable, but the Windows consequence should be explicit: if a checkout rewrites bytes after init/update, update will report `modified` and skip rather than normalize.
+- F6’s “runbook refreshes exactly as today in every scenario” conflicts slightly with the same sentence’s modified-runbook skip under a manifest. Consider rewording to “pre-manifest runbook refreshes as today; manifest-listed modified runbook is protected.”
+- DD-3’s hardcoded ancestor list is reasonable; include the full hashes in the final requirement or tests, not only abbreviated prefixes.
+
+**Ledger Delta**
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| UM-1 | Corrupt, schema-invalid, unreadable, or unsupported-version `apriori/managed.json` behavior is undefined. | Implementer may fail open and overwrite files despite an untrusted manifest. | P1·r1 | open |
+| UM-2 | Manifest path containment and allowed-path validation are unspecified. | Malicious/corrupt manifest entries could read or overwrite files outside the project. | P1·r1 | open |
+| UM-3 | `init --dry-run` manifest behavior is not declared. | Dry-run tests and implementation may disagree or mutate unexpectedly. | P1·r1 | open |
+| UM-4 | `init` merge semantics can blindly adopt skipped existing or modified files into the manifest. | User-owned/modified files can be laundered into managed ownership and later clobbered. | P1·r1 | open |
+| UM-5 | Missing managed file hand-back through `init` is not specified. | User follows the cure but manifest remains stale, causing false `modified` later. | P1·r1 | open |
+| UM-ADV-1 | CRLF consequence, F6 wording, and full ancestor hashes should be made explicit. | Advisory precision. | P1·r1 | open |
+
+VERDICT: 5 issues open
+tokens used
+2,445,365
+**Requirement Review — update-manifest v1**
+
+**Dimension Verdicts**
+
+1. Target state B: Mostly clear, but manifest trust/error semantics are under-specified.
+2. Edge/exception coverage: Missing important failure paths: corrupt/unknown manifest, path containment, and init dry-run behavior.
+3. Side effects: Manifest creation/update is declared, but init’s existing overwrite behavior needs a sharper manifest rule.
+4. Acceptance criteria: F1-F8 cover the core ownership cases, but not enough boundary/error cases.
+5. State-A conflicts: The current code matches the problem statement. Template hashes are plausible: current `4ada03a2...`, pre-front-door `1dfa5eec...`.
+6. Lineage: Declared and consistent with the repo.
+
+**Formal Issues**
+
+**UM-1 — Corrupt or unsupported `apriori/managed.json` behavior is undefined**
+
+Description: The requirement defines the manifest shape but does not say what `update` or `init` should do when `apriori/managed.json` exists but is invalid JSON, has no `files`, has malformed hash values, or has an unsupported `version`.
+
+Risk: Implementers may fail open and fall back to pre-manifest adoption, overwriting user files despite the presence of an untrusted ownership record. Or they may crash with an unhelpful stack trace.
+
+Suggested fix: Add a fail-closed rule and acceptance case: if `managed.json` exists but is unreadable, invalid, unsupported-version, or schema-invalid, `update` exits nonzero before touching any managed target; `--dry-run` reports the same; `init --tools` also refuses to merge until the manifest is fixed.
+
+**UM-2 — Manifest path containment is unspecified**
+
+Description: The manifest maps relative paths to hashes, but the requirement does not constrain entries to safe in-project refresh targets. A malicious or corrupted manifest could list `../outside.md`, an absolute path, or a symlinked path escaping the project.
+
+Risk: `update` could read/hash or overwrite files outside the project, which is a correctness and security issue.
+
+Suggested fix: Specify that manifest entries must be normalized relative paths, never absolute, never containing `..`, and must be one of the declared refresh target paths: `apriori/runbook.md` or current `TOOLS[*].command` paths. Any other entry is a manifest hygiene error that fails closed before writing. If symlinks are possible, require realpath containment before any read/write.
+
+**UM-3 — `init --dry-run` manifest behavior is not declared**
+
+Description: F5 says `init` writes the manifest covering created files and merges for added tools, while update semantics say `--dry-run` writes nothing. But init also supports dry-run behavior through preview/scaffold, and the requirement does not say whether init dry-run should report manifest actions, omit them, or leave manifest untouched.
+
+Risk: Tests and implementation can diverge on whether dry-run init mutates or previews `apriori/managed.json`.
+
+Suggested fix: Add an explicit rule: init dry-run never writes or modifies the manifest, but reports what manifest entries would be created/merged if useful. Add an acceptance case covering fresh init dry-run and add-tool dry-run.
+
+**UM-4 — `init` merge semantics can erase a modified-file hash without an explicit rule**
+
+Description: State A `init` skips existing command files and only creates missing ones. The requirement says init on an existing project merges into the manifest, but does not state what happens when the file exists and differs from an existing manifest hash, or exists without a manifest entry. If init blindly records the current hash for a skipped file, it can reclassify a modified or foreign file as managed, allowing future update to overwrite it.
+
+Risk: The manifest can become a laundering mechanism for user-owned or modified files, recreating the clobber bug through `init --tools`.
+
+Suggested fix: Define init manifest writes only for files it actually creates in that run, plus newly created runbook on fresh init. For skipped existing command files, do not add or change a manifest entry; report unmanaged/skipped if needed. If init overwrites or recreates a missing managed file in a future design, then and only then update that hash.
+
+**UM-5 — Missing managed file hand-back flow is contradictory**
+
+Description: Update says a listed-but-missing file is `missing` and recreating is init’s job. But F5/init merge semantics do not define what happens when a manifest-listed command file is missing and the user reruns `apriori init --tools <t>`. Current `init` would create the missing file; the requirement does not say whether the manifest hash must then be updated from `missing` to the new content.
+
+Risk: A user following the prescribed cure can end with a recreated file but a stale manifest hash, causing the next update to classify it as `modified`.
+
+Suggested fix: Add a rule: when init creates a file that is absent on disk, it writes/replaces that file’s manifest entry with the hash of the bytes it just wrote. This is distinct from skipped existing files, whose manifest entries must not be adopted blindly.
+
+**Advisories**
+
+- CRLF exact-byte hashing is declared. That is acceptable, but the Windows consequence should be explicit: if a checkout rewrites bytes after init/update, update will report `modified` and skip rather than normalize.
+- F6’s “runbook refreshes exactly as today in every scenario” conflicts slightly with the same sentence’s modified-runbook skip under a manifest. Consider rewording to “pre-manifest runbook refreshes as today; manifest-listed modified runbook is protected.”
+- DD-3’s hardcoded ancestor list is reasonable; include the full hashes in the final requirement or tests, not only abbreviated prefixes.
+
+**Ledger Delta**
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| UM-1 | Corrupt, schema-invalid, unreadable, or unsupported-version `apriori/managed.json` behavior is undefined. | Implementer may fail open and overwrite files despite an untrusted manifest. | P1·r1 | open |
+| UM-2 | Manifest path containment and allowed-path validation are unspecified. | Malicious/corrupt manifest entries could read or overwrite files outside the project. | P1·r1 | open |
+| UM-3 | `init --dry-run` manifest behavior is not declared. | Dry-run tests and implementation may disagree or mutate unexpectedly. | P1·r1 | open |
+| UM-4 | `init` merge semantics can blindly adopt skipped existing or modified files into the manifest. | User-owned/modified files can be laundered into managed ownership and later clobbered. | P1·r1 | open |
+| UM-5 | Missing managed file hand-back through `init` is not specified. | User follows the cure but manifest remains stale, causing false `modified` later. | P1·r1 | open |
+| UM-ADV-1 | CRLF consequence, F6 wording, and full ancestor hashes should be made explicit. | Advisory precision. | P1·r1 | open |
+
+VERDICT: 5 issues open

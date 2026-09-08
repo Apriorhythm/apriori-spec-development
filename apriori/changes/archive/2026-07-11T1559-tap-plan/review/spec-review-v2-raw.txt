@@ -1,0 +1,128 @@
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f4b30-68f9-7222-9b64-17f52a333b4c
+--------
+user
+P5 design review round 2 for tap-plan. Both round-1 findings applied to apriori/changes/tap-plan/design.md:
+- TPSPEC-1: infraErrors now specified to read the new fields defensively (const plans = run.plans || [], points = run.points || 0, dupNumbers = run.dupNumbers || []) — legacy run shapes from direct callers of the exported helper stay valid; only verify-created runs carry the real fields. Guard expressions rewritten against the defaulted locals.
+- TPSPEC-2: dup-number collector now requires a complete numeric point token /^(?:ok|not ok)\s+(\d+)(?:\s|$)/ — `ok 1abc` stays unnumbered and dup-exempt.
+Re-read the design. Confirm both resolved (flip to verified) or reopen; any new issues? Print the COMPLETE review document body (landed verbatim at apriori/design/tap-plan-review-v2.md) with a ledger-delta section, ending with exactly one verdict line: "VERDICT: no major issues, ready to proceed to execution" or "VERDICT: <N> issues open".
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-11T07:50:44.590529Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T07:50:44.894913Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T07:50:45.253580Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-11T07:50:45.833924Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-11T07:50:46.745247Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-11T07:50:48.459533Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-11T07:50:52.147808Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: xRFeekHkInY3
+codex
+I’ll re-read the updated design and ledger to confirm the defensive `infraErrors` defaults and the stricter duplicate-number token rule, then check for any new design regressions.
+exec
+/usr/bin/zsh -lc "sed -n '1,180p' apriori/changes/tap-plan/tasks.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,240p' apriori/review/tap-plan-issues.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' apriori/changes/tap-plan/design.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 111ms:
+# Issue ledger — tap-plan
+
+Rows recorded on behalf of the reviewer (codex session 019f4b30-68f9-7222-9b64-17f52a333b4c; raws: tap-plan-req-review-v*.txt).
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| TP-1 | Multi-plan sum rule maskable: one stream's truncation offset by another's extra points; dup check skipped exactly there. | Truncated/garbled concatenated TAP still verifies GREEN. | STEP0·r1 | verified |
+| TP-2 | Point-count regex /^(ok|not ok)\b/ broader than TAP result syntax (counts `ok:` diagnostic-like lines). | False plan mismatches; implementer divergence. | STEP0·r1 | verified |
+| TP-ADV-1 | Advisory: `1..0 # SKIP` directive case, numeric dup-number comparison, doctor-scope exclusion kept intentional. | Edge precision. | STEP0·r1 | verified |
+| TPSPEC-1 | infraErrors guards read run.plans/.points/.dupNumbers without defaults — legacy run shapes from direct callers would throw (signature break on an exported helper). | Existing tests/external callers crash. | STEP2·r1 | fixed |
+| TPSPEC-2 | Dup-number regex captured incomplete numeric tokens (`ok 1abc` misread as number 1). | False duplicate-number infra errors. | STEP2·r1 | fixed |
+
+ succeeded in 115ms:
+# Tasks — tap-plan
+
+- [ ] T1. Failing tests SR-26..31 (parseTap unit cases + fake-TAP E2E fixtures incl. the E3 masking fixture verbatim, `ok 01` numeric dup, `ok:` non-point, `1..0 # SKIP`, plan-less, verify --change + gate inheritance) — red run.
+- [ ] T2. parseTap: plans/points/dupNumbers collection (PLAN_LINE_RE, POINT_LINE_RE, numeric dup set); infraErrors: the three new guards after noTap.
+- [ ] T3. Suite green; verify --change GREEN; gate PASS; check --self PASS.
+
+ succeeded in 132ms:
+# Design — tap-plan
+
+All in `lib/spec-runner.js`; no new files, no signature breaks.
+
+**parseTap** (additive return fields — existing callers destructure what they need):
+- New per-line pre-pass over `out.split('\n')` with one trailing `\r` stripped per line (consistent with fingerprint/delta handling); the existing TAP_RE binding pass is untouched.
+- `plans: number[]` — every line matching `PLAN_LINE_RE = /^1\.\.(\d+)\s*(?:#.*)?$/` (top-level only: the `^` is per split line, no indent tolerated; the optional trailing comment covers `# SKIP`/`# TODO` directives; N parsed via Number()).
+- `points: number` — count of lines matching `POINT_LINE_RE = /^(?:ok|not ok)(?:\s|$)/` (top-level result tokens; `ok:` fails the `(?:\s|$)` guard; indented subtest/YAML lines fail `^`).
+- `dupNumbers: number[]` — for point lines that carry a COMPLETE numeric point token (`/^(?:ok|not ok)\s+(\d+)(?:\s|$)/` — the trailing boundary keeps `ok 1abc` unnumbered rather than misread as number 1; TPSPEC-2), Number() them, collect values seen more than once (Set-based, each dup reported once, sorted). Unnumbered points contribute nothing.
+- Return `{ results, untagged, untaggedFails, bailout, plans, points, dupNumbers }`.
+
+**infraErrors** (three new guards, after the existing noTap guard so the "not TAP at all" cure keeps precedence). `infraErrors` is an EXPORTED helper with existing direct callers passing run objects that predate the new fields — it reads them defensively (`const plans = run.plans || [], points = run.points || 0, dupNumbers = run.dupNumbers || []`), so legacy run shapes stay valid and only verify-created runs (which carry the real fields) can trip the new guards (TPSPEC-1):
+- `plans.length > 1` → `multiple TAP plans in one run (${plans.join(', ')} …)` — cannot attribute test points to plans; run one TAP stream per verify (split the test command).
+- `plans.length === 1 && plans[0] !== points` → `TAP plan declares ${plan} test point(s) but ${points} were parsed — output truncated or garbled; refusing to trust this run`.
+- `plans.length === 1 && dupNumbers.length` → `duplicate TAP test-point number(s): ${dupNumbers.join(', ')}`.
+- No plan (`plans.length === 0`): nothing new (DD-1).
+
+**verify plumbing**: the `run` object passed to `infraErrors` gains `plans/points/dupNumbers` from parseTap's return at the existing call site (verify and verifyChange share it). gate C1 and `--json` inherit via the existing infra array — no new wiring; `doctor` does not call `infraErrors` and stays out of scope by construction.
+
+**Tests** (`test/spec-runner.test.js` or the existing verify test home): SR-26..31 — unit-level parseTap assertions (plans/points/dupNumbers on crafted strings incl. CRLF) + E2E fixtures with a fake TAP-emitting test-cmd (repro scripts from req-final verbatim: E1 truncation, E2 dup incl. `01`, E3 masking fixture, E4 bare-`ok` + `ok:` line, E5 plan-less, E7 `1..0 # SKIP`, E6 nested via the repo's own suite, E8 verify --change + gate). Existing tests must stay green (E9).
+
+**Self-test note**: the repo's own gates run through run-tests.mjs → single node --test stream → one trailing plan whose count matches — SR-30/E6 is proven by the gate chain itself staying green.
+
+codex
+**Round-1 Confirmations**
+
+TPSPEC-1: **verified**. The design now explicitly defaults `plans`, `points`, and `dupNumbers` inside exported `infraErrors`, preserving legacy/direct caller compatibility while allowing verify-created runs to trigger the new guards.
+
+TPSPEC-2: **verified**. The duplicate-number collector now requires a complete numeric point token with `/^(?:ok|not ok)\s+(\d+)(?:\s|$)/`, so `ok 1abc` remains unnumbered and duplicate-exempt.
+
+**New Issues**
+
+None.
+
+**Advisories**
+
+None.
+
+**Ledger Delta**
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| TPSPEC-1 | `infraErrors` guards lacked defaults for legacy run shapes without `plans`, `points`, and `dupNumbers`. | Existing tests or external direct callers could crash. | STEP2·r1 | verified |
+| TPSPEC-2 | Duplicate-number regex captured incomplete numeric tokens such as `ok 1abc`. | False duplicate-number infra errors. | STEP2·r1 | verified |
+
+VERDICT: no major issues, ready to proceed to execution
+tokens used
+2,394,873
+**Round-1 Confirmations**
+
+TPSPEC-1: **verified**. The design now explicitly defaults `plans`, `points`, and `dupNumbers` inside exported `infraErrors`, preserving legacy/direct caller compatibility while allowing verify-created runs to trigger the new guards.
+
+TPSPEC-2: **verified**. The duplicate-number collector now requires a complete numeric point token with `/^(?:ok|not ok)\s+(\d+)(?:\s|$)/`, so `ok 1abc` remains unnumbered and duplicate-exempt.
+
+**New Issues**
+
+None.
+
+**Advisories**
+
+None.
+
+**Ledger Delta**
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| TPSPEC-1 | `infraErrors` guards lacked defaults for legacy run shapes without `plans`, `points`, and `dupNumbers`. | Existing tests or external direct callers could crash. | STEP2·r1 | verified |
+| TPSPEC-2 | Duplicate-number regex captured incomplete numeric tokens such as `ok 1abc`. | False duplicate-number infra errors. | STEP2·r1 | verified |
+
+VERDICT: no major issues, ready to proceed to execution

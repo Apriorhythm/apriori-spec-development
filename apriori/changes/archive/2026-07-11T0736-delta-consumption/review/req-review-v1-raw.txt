@@ -1,0 +1,1250 @@
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f4b30-68f9-7222-9b64-17f52a333b4c
+--------
+user
+New change, STEP0 P1 round 1 for 'delta-consumption' (requirement/req-v1.md rotated) — P0-1 of the owner-approved P0+P1 batch, fixing YOUR second review's defect #1 (the ADDDED swallow, which the producer reproduced verbatim).
+[Input] requirement/req-v1.md · lib/archive-merge.js (parseDeltaStrict/parseRequirementsStrict/SECTION_SPLIT_RE/parseStamp — judge the legal-construct taxonomy against real parsing needs) · the archived deltas under apriori/changes/archive/*/specs/ (would D5's regression corpus actually stay clean under the proposed rules? Spot-check: our deltas carry '# Delta — x' titles and '> v2 handling notes' quote blocks in requirement docs — wait, those are req docs not deltas; check the actual delta files) · Ledger: none yet (IDs DC-1...).
+[Dimensions] 1 clarity 2 edges (the D3 stricter-tail question is open — take a position) 3 side effects 4 testability 5 state-A conflicts 6 lineage.
+[Output — read-only sandbox: print the COMPLETE review doc body for verbatim landing at apriori/review/delta-consumption-req-review-v1.md] End with the ledger delta and exactly one verdict line: 'VERDICT: no major issues' or 'VERDICT: <N> issues open'.
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-11T06:59:11.016418Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T06:59:11.348446Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T06:59:11.970238Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-11T06:59:12.639334Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-11T06:59:13.690991Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-11T06:59:15.364057Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-11T06:59:18.914335Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: Nj8bthCHz6In
+codex
+I’ll read the new requirement, current delta parser, and archived delta files, then assess whether the proposed “unconsumed content” taxonomy is precise and compatible with real existing deltas.
+exec
+/usr/bin/zsh -lc "sed -n '1,320p' requirement/req-v1.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "find apriori/changes/archive -path '*/specs/*' -type f -maxdepth 8 -print -exec sed -n '1,120p' {} \\;" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' lib/archive-merge.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "find apriori/changes/archive -path '*/specs/*' -type f | sort | sed -n '1,240p'" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 116ms:
+'use strict';
+/*
+ * archive-merge — plain-files native implementation of the archive action (§4).
+ * Zero deps — pure Node stdlib. Consumes the same delta format the OpenSpec adapter used
+ * (## ADDED/MODIFIED/REMOVED/RENAMED Requirements), so it is the adapter-free path.
+ *
+ * 3.1: also home of the merge-family pure helpers shared with `verify --change` —
+ * delta discovery, projection building, CAS base stamps, realpath containment.
+ */
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+const { withStrict } = require('./args');
+
+const REQ_RE = /^###\s+Requirement:\s+(.+?)\s*$([\s\S]*?)(?=^###\s+Requirement:|$(?![\s\S]))/gm;
+const SECTION_SPLIT_RE = /^##\s+(ADDED|MODIFIED|REMOVED|RENAMED)\s+Requirements\s*$/m;
+// the exact marker merge() injects on REMOVED; heading LINE of a deprecated block
+const DEPRECATED_RE = /^###\s+Requirement:.*_deprecated \(superseded by [^)]*\)_/;
+// a whole deprecated block (heading line + body up to the next requirement)
+const DEPRECATED_BLOCK_RE = /^###[ \t]+Requirement:[^\n]*_deprecated \(superseded by [^)]*\)_[^\n]*$[\s\S]*?(?=^###[ \t]+Requirement:|$(?![\s\S]))/gm;
+
+function stripDeprecatedBlocks(text) { return text.replace(DEPRECATED_BLOCK_RE, ''); }
+
+// name -> full block (heading + body), in document order; duplicates reported (first block wins)
+function parseRequirementsStrict(text) {
+  const map = new Map();
+  const duplicates = [];
+  let m;
+  REQ_RE.lastIndex = 0;
+  while ((m = REQ_RE.exec(text)) !== null) {
+    const name = m[1].trim();
+    if (map.has(name)) duplicates.push(name);
+    else map.set(name, m[0].replace(/\s+$/, '') + '\n');
+  }
+  return { map, duplicates };
+}
+
+function parseRequirements(text) { return parseRequirementsStrict(text).map; }
+
+// ---- CAS base stamps -------------------------------------------------------
+
+// sha256 over content with line endings normalized — a delta authored on Windows
+// must fingerprint identically to the same store checked out with LF
+function fingerprint(text) {
+  const norm = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  return 'sha256:' + crypto.createHash('sha256').update(norm, 'utf8').digest('hex');
+}
+
+const STAMP_LINE_RE = /^<!--\s*apriori-base:\s*(\S+)\s*-->\s*$/gm;
+// any standalone comment line ATTEMPTING to be a stamp — a malformed attempt must be an error,
+// never silently treated as "unstamped" (that would quietly disable CAS)
+const STAMP_ATTEMPT_RE = /^\s*<!--(?=[^>]*apriori-base)[^>]*-->\s*$/gm;
+
+// → { stamp: 'sha256:<hex>' | 'new' | null, problems: [] }
+// Exactly one stamp line, before the first delta section, well-formed digest.
+function parseStamp(text) {
+  const problems = [];
+  const sectionIdx = text.search(SECTION_SPLIT_RE);
+  STAMP_ATTEMPT_RE.lastIndex = 0;
+  let m;
+  while ((m = STAMP_ATTEMPT_RE.exec(text)) !== null) {
+    STAMP_LINE_RE.lastIndex = 0;
+    if (!STAMP_LINE_RE.test(m[0].trim())) problems.push(`malformed apriori-base stamp line: ${m[0].trim()}`);
+  }
+  const found = [];
+  STAMP_LINE_RE.lastIndex = 0;
+  while ((m = STAMP_LINE_RE.exec(text)) !== null) found.push({ value: m[1], index: m.index });
+  if (!found.length) return { stamp: null, problems };
+  if (found.length > 1) problems.push('carries more than one apriori-base stamp line');
+  for (const f of found) {
+    if (sectionIdx >= 0 && f.index > sectionIdx) problems.push('apriori-base stamp appears after the first delta section heading');
+    if (f.value !== 'new' && !/^sha256:[0-9a-f]{64}$/.test(f.value)) problems.push(`malformed apriori-base stamp '${f.value}'`);
+  }
+  return { stamp: problems.length ? null : found[0].value, problems };
+}
+
+// ---- delta parsing ---------------------------------------------------------
+
+// strict form: duplicate requirement names (within a section or across sections)
+// and stamp problems are surfaced instead of silently collapsed
+function parseDeltaStrict(text) {
+  const problems = [];
+  const buckets = { ADDED: new Map(), MODIFIED: new Map(), REMOVED: new Map(), RENAMED: [] };
+  const seen = new Map();   // name -> first section carrying it
+  const parts = text.split(SECTION_SPLIT_RE);
+  for (let i = 1; i < parts.length; i += 2) {
+    const kind = parts[i];
+    if (kind === 'RENAMED') {
+      for (const m of parts[i + 1].matchAll(/^\s*-\s*(.+?)\s*->\s*(.+?)\s*$/gm))
+        buckets.RENAMED.push([m[1].trim(), m[2].trim()]);
+    } else {
+      const { map, duplicates } = parseRequirementsStrict(parts[i + 1]);
+      for (const d of duplicates) problems.push(`duplicate requirement '${d}' in the ${kind} section`);
+      for (const [name, block] of map) {
+        if (seen.has(name)) problems.push(`duplicate requirement '${name}' appears in both ${seen.get(name)} and ${kind}`);
+        else seen.set(name, kind);
+        buckets[kind].set(name, block);
+      }
+    }
+  }
+  const st = parseStamp(text);
+  problems.push(...st.problems);
+  return { delta: buckets, stamp: st.stamp, problems };
+}
+
+function parseDelta(text) { return parseDeltaStrict(text).delta; }
+
+// total number of operations a parsed delta carries (0 = nothing recognized/parseable)
+function deltaOpCount(delta) {
+  return delta.ADDED.size + delta.MODIFIED.size + delta.REMOVED.size + delta.RENAMED.length;
+}
+
+// ---- merge (pure) ----------------------------------------------------------
+
+// Pure merge. Returns { store: Map, merged, modified, deprecated, renamed, conflicts, unchanged }
+function merge(storeText, delta, change) {
+  const parsed = parseRequirementsStrict(storeText);
+  const store = parsed.map;
+  const merged = [], modified = [], deprecated = [], renamed = [], conflicts = [], unchanged = [];
+  // a corrupt store (same requirement name twice) must never be silently collapsed
+  for (const d of parsed.duplicates) conflicts.push(`duplicate requirement '${d}' in the store (corrupt store)`);
+  const renamedTargets = new Set();   // names created by THIS run's renames — an ADDED hitting one is a same-delta collision, never a rerun no-op
+  // RENAMED first: rename the store block's ID, preserving its content
+  for (const [oldName, newName] of (delta.RENAMED || [])) {
+    if (!store.has(oldName)) {
+      // rerun signature: source already gone AND target present → this rename already happened
+      if (store.has(newName)) { unchanged.push(`${oldName} -> ${newName} (already renamed)`); continue; }
+      conflicts.push(`RENAMED '${oldName}' has no target in store`); continue;
+    }
+    if (store.has(newName)) { conflicts.push(`RENAMED target '${newName}' already exists in store`); continue; }
+    const block = store.get(oldName);
+    const renamedBlock = block.replace(/^###\s+Requirement:\s+.+$/m, `### Requirement: ${newName}`);
+    // rebuild the map preserving order, swapping the key at the old position
+    const rebuilt = new Map();
+    for (const [k, v] of store) rebuilt.set(k === oldName ? newName : k, k === oldName ? renamedBlock : v);
+    store.clear();
+    for (const [k, v] of rebuilt) store.set(k, v);
+    renamed.push(`${oldName} -> ${newName}`);
+    renamedTargets.add(newName);
+  }
+  for (const [name, block] of delta.ADDED) {
+    if (store.has(name)) {
+      // idempotent rerun: identical content means this delta already merged — a no-op, not a collision.
+      // But a name just created by THIS run's RENAMED is a same-delta collision, never a rerun.
+      if (!renamedTargets.has(name) && store.get(name).trim() === block.trim()) unchanged.push(name);
+      else conflicts.push(`ADDED '${name}' already exists in store`);
+    } else { store.set(name, block); merged.push(name); }
+  }
+  for (const [name, block] of delta.MODIFIED) {
+    if (!store.has(name)) conflicts.push(`MODIFIED '${name}' has no target in store`);
+    else { store.set(name, block); modified.push(name); }
+  }
+  for (const name of delta.REMOVED.keys()) {
+    if (!store.has(name)) {
+      // rerun signature: already deprecated BY THIS CHANGE → no-op; by another change → real collision
+      const depByThis = `${name}  _deprecated (superseded by ${change})_`;
+      if (store.has(depByThis)) { unchanged.push(`${name} (already deprecated)`); continue; }
+      const depOther = [...store.keys()].find((k) => k.startsWith(`${name}  _deprecated (superseded by `));
+      if (depOther) { conflicts.push(`REMOVED '${name}' was already deprecated by a different change ('${depOther}')`); continue; }
+      conflicts.push(`REMOVED '${name}' has no target in store`);
+    } else {
+      const block = store.get(name);
+      const nl = block.indexOf('\n');
+      store.set(name, block.slice(0, nl) + `  _deprecated (superseded by ${change})_` + block.slice(nl));
+      deprecated.push(name);
+    }
+  }
+  return { store, merged, modified, deprecated, renamed, conflicts, unchanged };
+}
+
+function renderStore(storeText, store) {
+  const idx = storeText.indexOf('### Requirement:');
+  const header = idx >= 0 ? storeText.slice(0, idx) : '';
+  return header + [...store.values()].join('\n');
+}
+
+// ---- paths and discovery ---------------------------------------------------
+
+// Realpath containment: target (followed through symlinks; not-yet-existing targets judged
+// by their nearest existing ancestor) must resolve STRICTLY inside root. Fail-closed.
+function containsReal(root, target) {
+  let realRoot;
+  try { realRoot = fs.realpathSync(root); } catch { return false; }
+  let cur = path.resolve(target);
+  const rest = [];
+  while (!fs.existsSync(cur)) {
+    const parent = path.dirname(cur);
+    if (parent === cur) return false;
+    rest.unshift(path.basename(cur));
+    cur = parent;
+  }
+  let realCur;
+  try { realCur = fs.realpathSync(cur); } catch { return false; }
+  const full = rest.length ? path.join(realCur, ...rest) : realCur;
+  return full !== realRoot && (full + path.sep).startsWith(realRoot + path.sep);
+}
+
+function mdFilesUnder(dir) {
+  const out = [];
+  const walk = (d) => {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, e.name);
+      // Dirents reflect lstat: a symlink is neither file nor directory. Follow it explicitly —
+      // silently skipping a symlinked dir would hide deltas (fail-open); containment judges the target.
+      let isDir = e.isDirectory();
+      if (e.isSymbolicLink()) {
+        try { isDir = fs.statSync(p).isDirectory(); } catch { isDir = false; /* broken link: fall through, read fails loudly */ }
+      }
+      if (isDir) walk(p);
+      else if (e.name.endsWith('.md')) out.push(p);
+    }
+  };
+  if (fs.existsSync(dir)) walk(dir);
+  return out.sort();
+}
+
+// Discover a change's delta files. → { files: [{abs, suffix}], errors: [] } — errors are
+// VALIDATION class (exit 2 on both surfaces): bad name, missing dir, escape, zero files.
+function discoverDeltas(changesDirAbs, name) {
+  const errors = [];
+  if (!name || !CHANGE_NAME_RE.test(name)) return { files: [], errors: [`invalid change name '${name}' — bare kebab-case only`] };
+  const changeDir = path.join(changesDirAbs, name);
+  if (!fs.existsSync(changeDir)) return { files: [], errors: [`change '${name}' not found under ${changesDirAbs}`] };
+  if (!containsReal(changesDirAbs, changeDir)) return { files: [], errors: [`change path escapes ${changesDirAbs}: ${changeDir}`] };
+  const specsDir = path.join(changeDir, 'specs');
+  // a symlinked specs/ pointing outside would smuggle its target in as the containment ROOT —
+  // require specs/ itself to really live inside the change dir before trusting it as a root
+  if (fs.existsSync(specsDir) && !containsReal(changeDir, specsDir))
+    return { files: [], errors: [`specs dir escapes the change dir (symlink?): ${specsDir}`] };
+  const all = mdFilesUnder(specsDir);
+  if (!all.length) return { files: [], errors: [`no delta spec files (*.md) found under ${specsDir}`] };
+  const files = [];
+  for (const abs of all) {
+    if (!containsReal(specsDir, abs)) { errors.push(`delta path escapes the change root: ${abs}`); continue; }
+    files.push({ abs, suffix: path.relative(specsDir, abs).split(path.sep).join('/') });
+  }
+  return { files, errors };
+}
+
+// Build the projection: apply every delta to its mapped store file IN MEMORY.
+// → { texts: Map<suffix, projectedText>, modules, perModule, conflicts, casMismatches,
+//     hygiene, validation } — texts covers ALL store files (pass-through + projected).
+function buildProjection(storeRoot, deltaFiles, change) {
+  const texts = new Map(), perModule = new Map(), modules = [];
+  const conflicts = [], casMismatches = [], hygiene = [], validation = [];
+  for (const abs of mdFilesUnder(storeRoot))
+    texts.set(path.relative(storeRoot, abs).split(path.sep).join('/'), fs.readFileSync(abs, 'utf8'));
+  for (const { abs, suffix } of deltaFiles) {
+    modules.push(suffix);
+    const target = path.join(storeRoot, ...suffix.split('/'));
+    if (!containsReal(storeRoot, target)) { validation.push(`store target escapes ${storeRoot}: ${target}`); continue; }
+    const raw = fs.readFileSync(abs, 'utf8');
+    if (!raw.trim()) { hygiene.push(`empty delta file: ${abs}`); continue; }
+    const { delta, stamp, problems } = parseDeltaStrict(raw);
+    if (problems.length) { hygiene.push(...problems.map((p) => `${abs}: ${p}`)); continue; }
+    if (deltaOpCount(delta) === 0) { hygiene.push(`parsed 0 delta operations from ${abs} — it has content but no recognized operations`); continue; }
+    const storeText = texts.get(suffix) || '';
+    if (stamp) {
+      const actual = texts.has(suffix) ? fingerprint(storeText) : 'new';
+      if (stamp !== actual) { casMismatches.push(`base mismatch for ${target}: delta expects ${stamp}, store is ${actual}`); continue; }
+
+ succeeded in 138ms:
+# Requirement — delta-consumption (v1)
+
+change: delta-consumption
+target lineage: **v3 branch**. Next patch/minor (expected **3.3.1**). Fail-closed tightening: previously-silently-mangled input now errors; well-formed deltas parse identically.
+
+## Background — the problem (current state A, reproduced)
+
+`parseDeltaStrict` splits on the four KNOWN section headings only. Anything else is invisible structure: a misspelled `## ADDDED Requirements` heading is not a split point, so the requirements under it are absorbed into the PRECEDING section's bucket with `problems=[]` — reproduced verbatim (a `WronglyClassified` requirement landed in ADDED silently). The parser has no obligation to consume its whole input: unknown h2 headings, requirements before any section, prose between blocks, and trailing junk all pass unreported. Both `verify --change` and `archive` inherit the blindness. (GPT-5.6 second review, defect #1 — called the top code fix.)
+
+## Goal (target state B)
+
+`parseDeltaStrict` becomes a **sequential, fully-consuming parser**: every line of the delta must belong to exactly one legal construct, and anything else is a `problems[]` entry with its 1-based line number.
+
+**Legal constructs (exhaustive):**
+1. **Preamble** — lines BEFORE the first legal section heading: the optional CAS stamp line, blank lines, and free text/headings of level h1 or h3+ that contain no `### Requirement:` and no `#### Scenario:` (titles like `# Delta — x (change)` stay legal). An `### Requirement:` or `#### Scenario:` in the preamble → problem "requirement/scenario before any section" with line number.
+2. **Legal section heading** — exactly `## ADDED|MODIFIED|REMOVED|RENAMED Requirements` (the existing regex).
+3. **Illegal h2 heading** — ANY other line matching `/^##\s/` (outside fences) → problem naming the heading text and line number ("unrecognized section heading"), and the lines under it are attributed to NOTHING (skipped until the next legal section heading, each contentful skipped line already covered by the one problem — no flood).
+4. **Section body** — inside ADDED/MODIFIED/REMOVED: `### Requirement:` blocks (as today, duplicates still reported); inside RENAMED: `- Old -> New` lines, blanks, or free text WITHOUT `### Requirement:` (a requirement block inside RENAMED → problem with line number).
+5. **Code fences** — content inside ``` fences is opaque (never parsed as structure), consistent with every other consumer.
+
+**Consumption proof:** parsing ends with every line accounted for (construct or reported problem); there is no "leftover" category.
+
+**Behavioral consequences (both surfaces, existing plumbing):** any `problems[]` entry already fails closed — `verify --change` exit 2, `archive` exit 1, nothing projected/written. No new wiring needed beyond the parser.
+
+## Acceptance criteria (testable)
+
+- D1. The review's exact repro: `## ADDDED Requirements` → problem naming `ADDDED` with its line number; `WronglyClassified` does NOT appear in any bucket; archive exits 1 / verify --change exits 2.
+- D2. A requirement block before any section heading → problem with line number.
+- D3. Trailing prose after the last block containing an `### Requirement:` → reported; plain trailing prose/blank lines → legal (preamble-style tail text without structure markers is not an error — the rule targets swallowed STRUCTURE, not comments). *(If review prefers stricter: flag any non-blank tail; decide in STEP0.)*
+- D4. A `### Requirement:` inside a RENAMED section → problem with line number.
+- D5. Every existing well-formed delta in this repo's archived changes parses with zero problems (regression corpus: run the parser over `apriori/changes/archive/*/specs/**/*.md` — all must stay clean).
+- D6. Fenced content never produces structure problems.
+- D7. Problems carry 1-based line numbers; multiple distinct problems all reported (not first-only).
+- D8. All existing tests pass; suite + verify GREEN; the cheat-sheet wording rider lands (README/README_cn archive row gains "(up to the commit point)" — the one-line P0-5 item riding along, declared here).
+
+## Out of scope
+
+- TAP plan validation (P0-2, next change).
+- Any change to the STORE parser (`parseRequirementsStrict` on store text keeps its semantics; only DELTA parsing gains the consumption obligation — store files legally carry prose headers).
+- New delta syntax.
+
+## Decisions proposed
+
+- DD-1: one problem per unrecognized heading (lines under it covered by that problem) — a flood of per-line errors would bury the signal.
+- DD-2: free text without structure markers stays legal in preamble/tail — deltas legitimately carry titles and notes; the obligation is that STRUCTURE is never silently re-homed.
+
+ succeeded in 225ms:
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/cli/spec.md
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/cli/spec.md
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/cli/spec.md
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md
+apriori/changes/archive/2026-07-11T0159-cli-strictness/specs/cli/spec.md
+apriori/changes/archive/2026-07-11T0230-readme-split/specs/check/spec.md
+apriori/changes/archive/2026-07-11T0252-golden-path/specs/golden/spec.md
+apriori/changes/archive/2026-07-11T0415-evidence-governance/specs/check/spec.md
+
+ succeeded in 260ms:
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md
+<!-- apriori-base: sha256:72003b108f8cf3645fe3da823b1a8cda49d1447e44adf2082b33e348b4d19851 -->
+# Delta — archive-merge (change-projection)
+
+## ADDED Requirements
+
+### Requirement: high-level archive merges a whole change transactionally
+`apriori archive --change <name>` SHALL discover every `.md` delta file under `<changes-dir>/<name>/specs/` (`--changes-dir` defaults to `apriori/changes` and sets both the discovery root and the move root), map each to its store target `apriori/specs/<suffix>` by path suffix, dry-run the whole set by default, and on `--write` commit in four phases — preflight (validate, parse, CAS-check, merge in memory; any failure anywhere → nothing written), stage (write every `<store>.tmp-archive`), commit (rename each temp in sorted path order), move (only when `--changes-dir` was explicitly passed, only after all stores committed). The guarantee is failure-atomicity up to the commit point; crash durability is not claimed.
+
+#### Scenario: AM-13 dry-run reports the whole change and writes nothing
+- WHEN `apriori archive --change <name>` runs without `--write` on a change spanning several modules
+- THEN it prints per-module merged/modified/deprecated/renamed/no-op requirement names and a result line, and no file on disk changes
+
+#### Scenario: AM-14 any preflight failure means nothing is written
+- WHEN any module's merge reports a conflict, any delta file fails a hygiene guard, or any CAS stamp mismatches during `--write`
+- THEN every failure across all modules is reported, no store file changes, and the exit code is 1
+
+#### Scenario: AM-15 a mid-commit failure is reported exactly
+- WHEN a rename in the commit phase fails after earlier renames succeeded
+- THEN archive reports exactly which modules committed, which did not, and which temp files remain for manual completion, and exits 1 — already-committed renames are not rolled back
+
+#### Scenario: AM-16 a pre-existing temp file blocks the run
+- WHEN any target `<store>.tmp-archive` already exists at preflight
+- THEN archive exits 1 naming that file, writes nothing, and leaves the pre-existing file untouched (it may be another run in flight or a manual-recovery artifact)
+
+#### Scenario: AM-17 zero discovered delta files fail closed
+- WHEN `<changes-dir>/<name>/specs/` exists but contains no `.md` delta files, or the change dir itself is missing
+- THEN archive exits 2 naming the searched path
+
+#### Scenario: AM-18 the change-dir move waits for every store commit
+- WHEN `--write --changes-dir <dir>` succeeds
+- THEN the change dir moves to `<dir>/archive/<stamp>-<name>/` only after ALL stores committed; without an explicit `--changes-dir` no move happens; a move failure leaves the committed stores in place and exits 1
+
+#### Scenario: AM-19 high-level and single-file forms are mutually exclusive
+- WHEN `--change` is combined with `--store` or `--delta`
+- THEN archive exits 2 with usage; the single-file form by itself keeps its 3.0.1 behavior unchanged
+
+#### Scenario: AM-20 per-file delta hygiene guards the whole set
+- WHEN any discovered delta file is empty/whitespace-only, parses to zero operations despite content, or carries duplicate requirement names (within a section or across sections)
+- THEN the run refuses naming the file (and requirement, for duplicates), nothing is written, and no partial projection or merge survives
+
+#### Scenario: AM-21 duplicate requirement names in the store are corruption
+- WHEN the store text handed to any merge contains the same requirement name twice
+- THEN the merge reports it as a conflict instead of silently keeping the last block
+
+#### Scenario: AM-22 realpath containment governs every participating path
+- WHEN the change dir, a delta file, a mapped store target, or the move destination (`<changes-dir>/archive/…` — e.g. an `archive/` that is a symlink pointing outside) — each followed through symlinks — resolves outside its root (changes dir / `apriori/specs/`), or a not-yet-existing path's nearest existing ancestor resolves outside its root
+- THEN the command exits 2 naming the offending path, and nothing is read as spec input, written, or moved
+
+### Requirement: CAS base stamps detect store divergence
+A delta file MAY carry exactly one base stamp `<!-- apriori-base: sha256:<64 lowercase hex> -->` or `<!-- apriori-base: new -->` before its first `## <OP> Requirements` section, declaring the fingerprint of the store file it was authored against. The fingerprint SHALL be SHA-256 over the store file's content with line endings normalized (`\r\n` and lone `\r` → `\n`). `apriori verify --change`, `apriori archive --change`, and single-file `apriori archive` SHALL check present stamps; an absent stamp means no check. `apriori stamp <store-file>` SHALL print the stamp line matching the file's current content.
+
+#### Scenario: AM-23 malformed or duplicated stamps are hygiene errors
+- WHEN a delta file carries more than one stamp line, a stamp after the first section heading, or a malformed digest
+- THEN the file is rejected by the hygiene guard (nothing projected or written) naming the file
+
+#### Scenario: AM-24 a diverged stamp stops archive before any write, on both surfaces
+- WHEN a stamped delta's store file fingerprint no longer matches (including a `new` stamp whose store now exists) — whether archive is invoked as `--change <name>` or as single-file `--store <f> --delta <f>`
+- THEN each form reports the store path with expected vs actual fingerprint, writes nothing, and exits 1 — the §4.11 serialize rule made mechanical; both surfaces are exercised, not just one
+
+#### Scenario: AM-25 stamp-free deltas behave exactly as before, on both surfaces
+- WHEN a delta carries no base stamp — in the high-level `--change` form and in the single-file form alike
+- THEN no CAS check runs and behavior is identical to pre-3.1 for that file
+
+#### Scenario: AM-26 the new sentinel matches only an absent store
+- WHEN a delta is stamped `<!-- apriori-base: new -->`
+- THEN the check passes while the mapped store file does not exist and fails as a mismatch once it does
+
+#### Scenario: AM-27 apriori stamp prints the current stamp line
+- WHEN `apriori stamp <store-file>` runs on an existing readable file, an absent path, a directory, or with a wrong argument count
+- THEN it prints the exact matching stamp line (absent path → the `new` form) and exits 0; a directory or unreadable file → error naming the path, exit 2; zero or multiple arguments → usage, exit 2
+
+## MODIFIED Requirements
+
+### Requirement: archive-merge applies delta specs to the living store
+`apriori archive` SHALL merge a change's delta requirements into the living spec store by stable Requirement ID, consuming the same `## ADDED/MODIFIED/REMOVED/RENAMED Requirements` delta format the OpenSpec adapter used, so it is the adapter-free native implementation of §4's archive action.
+
+#### Scenario: AM-01 ADDED appends a new requirement
+- WHEN the delta has an ADDED requirement whose ID is absent from the store
+- THEN it is appended and the ID is listed as merged
+
+#### Scenario: AM-02 MODIFIED replaces the existing block
+- WHEN the delta has a MODIFIED requirement whose ID exists in the store
+- THEN the whole store block is replaced and the ID is listed as modified
+
+#### Scenario: AM-03 REMOVED marks the block deprecated, not deleted
+- WHEN the delta has a REMOVED requirement present in the store
+- THEN the store block is kept and marked `deprecated (superseded by <change>)`, listed as deprecated
+
+#### Scenario: AM-04 same-ID conflict stops without writing
+- WHEN an ADDED ID already exists, or a MODIFIED/REMOVED target is missing
+- THEN the merge reports the conflict, writes nothing, and exits 1 (a human opens a ledger issue)
+
+#### Scenario: AM-05 the action lists every merged/modified/deprecated ID
+- WHEN a merge succeeds
+- THEN every affected Requirement ID is printed by category (§4 requires the action list them)
+
+#### Scenario: AM-06 archive moves the in-flight change under a dated archive dir
+- WHEN archive completes on change `<name>`
+- THEN the in-flight `apriori/changes/<name>/` (bare name, no prefix) is moved to `apriori/changes/archive/<YYYY-MM-DDThhmm>-<name>/` — a colon-free date-time stamped by the CLI's own clock (never an agent guess); e.g. `archive/2026-07-06T0657-add-playback/`
+
+#### Scenario: AM-07 RENAMED renames a requirement in place, preserving content
+- WHEN the delta has a `## RENAMED Requirements` entry `- Old Name -> New Name` and `Old Name` exists while `New Name` does not
+- THEN the store block keeps its content but its heading ID becomes `New Name`, listed as renamed; a missing source (with no existing target) or a colliding target is a conflict (stop, exit 1, nothing written) — the source-gone-AND-target-present rerun case is AM-10's no-op, not a conflict
+
+#### Scenario: AM-08 a content-bearing delta that parses to zero operations is a hard error
+- WHEN `apriori archive` reads a delta file that has non-whitespace content but matches no recognized section (e.g. wrong heading level or keyword, so 0 delta operations parse)
+- THEN it writes nothing, prints an error naming the expected `## ADDED|MODIFIED|REMOVED|RENAMED Requirements` + `### Requirement:` format, and exits non-zero — never reporting MERGED for a delta the parser did not understand
+
+#### Scenario: AM-09 the first archive in a repo creates the store file
+- WHEN `apriori archive --write` targets a store file that does not exist yet
+- THEN it notes the store will be created, starts from an empty store, and writes the merged result — no ENOENT
+
+#### Scenario: AM-10 re-running an already-merged delta is an idempotent no-op
+- WHEN an ADDED requirement in the delta already exists in the store with byte-identical (trimmed) content, or a RENAMED entry's source is gone while its target is present, or a REMOVED entry's target is gone while its deprecated form marked `superseded by <THIS change>` is present — each the signature of a rerun after a partial archive
+- THEN each is reported as already merged / already renamed / already deprecated (no-op), not a conflict, and the run can proceed to move the change dir; but an ADDED whose name was created by THIS run's own RENAMED is a same-delta collision and still conflicts even with identical content, and a REMOVED target deprecated by a DIFFERENT change remains a conflict
+
+#### Scenario: AM-11 change names are validated and the dir move cannot escape
+- WHEN `--change` is not bare kebab-case (e.g. `../victim`), or `--changes-dir` is given but the change dir does not exist
+- THEN archive exits 2 before writing anything; the move helper independently rejects any source that resolves outside the changes dir
+
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/cli/spec.md
+<!-- apriori-base: sha256:4a03da27f18719ab025517493eef99c349511f776a39137f0859e352c4f52cf4 -->
+# Delta — cli (change-projection)
+
+## MODIFIED Requirements
+
+### Requirement: single self-contained apriori CLI
+The toolchain SHALL ship as one npm package `apriori-cli` exposing a `bin` named `apriori` with subcommands `init | new | status | verify | archive | check | update | stamp` plus a `--version` flag, requiring zero npm runtime dependencies (pure Node stdlib), runnable via global install or `npx`, and failing cleanly (one-line error, no stack trace) on unexpected errors.
+
+#### Scenario: CL-01 subcommand dispatch
+- WHEN `apriori <sub> ...` is invoked with sub in {init, new, status, verify, archive, check, update, stamp}
+- THEN it dispatches to that subcommand; an unknown sub prints usage and exits non-zero
+
+#### Scenario: CL-02 verify subcommand is the spec-runner
+- WHEN `apriori verify --specs <dir> --test-cmd <cmd>` (or `apriori verify --change <name>`) runs
+- THEN it behaves per the spec-runner requirements (SR-01..25)
+
+#### Scenario: CL-03 archive subcommand is archive-merge
+- WHEN `apriori archive --store <f> --delta <f> --change <name> [--write]` or `apriori archive --change <name> [--write] [--changes-dir <dir>]` runs
+- THEN it behaves per the archive-merge requirements (AM-01..27)
+
+#### Scenario: CL-04 check subcommand is the doc checker
+- WHEN `apriori check` runs
+- THEN it behaves per the check requirement (CK-01..06)
+
+#### Scenario: CL-05 zero runtime dependencies
+- WHEN the package is installed
+- THEN it pulls no npm dependencies; only Node's standard library is used
+
+#### Scenario: CL-06 --version prints the package version
+- WHEN `apriori --version` (or `-v`) is invoked
+- THEN it prints the installed package version verbatim on stdout and exits 0
+
+#### Scenario: CL-07 unexpected subcommand failures exit cleanly
+- WHEN a subcommand throws an unexpected error (e.g. an unreadable input file)
+- THEN the CLI prints a single `apriori: <message>` line on stderr and exits 1 — never a raw stack trace
+
+#### Scenario: CL-08 stamp subcommand appears in usage
+- WHEN `apriori` runs with no arguments or `--help`
+- THEN the printed usage lists `stamp` alongside the other subcommands (behavior per AM-27)
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md
+<!-- apriori-base: sha256:0669ba66ac9cd49624a63c6a691114e44420bee02d7361baf26461eddddf21fd -->
+# Delta — spec-runner (change-projection)
+
+## ADDED Requirements
+
+### Requirement: projected verify binds against the candidate merged store
+`apriori verify --change <name>` SHALL construct the projection — the store as `apriori archive` would leave it after merging every delta spec under `apriori/changes/<name>/specs/` — in memory, never writing to the living store's location, and SHALL bind scenarios against that projection using the same `merge()` semantics archive uses. Discovery maps `changes/<name>/specs/<suffix>` to `apriori/specs/<suffix>` (`.md` files only); roots resolve against `--cwd` exactly as `apriori status` resolves change dirs.
+
+#### Scenario: SR-16 ADDED delta scenarios join the projection
+- WHEN a change carries an ADDED-only delta for a module and `verify --change <name>` runs
+- THEN the delta's scenarios are demanded alongside every existing store scenario, with no duplicate-ID error from the overlay (genuinely duplicate IDs in the projection remain GAPS)
+
+#### Scenario: SR-17 MODIFIED delta replaces the demanded scenario set
+- WHEN a delta MODIFIES a requirement, changing its scenario set
+- THEN verification demands exactly the delta's version of that requirement's scenarios; scenarios the modification drops are not demanded
+
+#### Scenario: SR-18 REMOVED delta scenarios are not demanded and their tests orphan
+- WHEN a delta REMOVES a requirement whose scenarios have tests still tagged with their IDs
+- THEN the projection deprecates the block, its scenarios are not demanded, and each lingering test is reported ORPHAN (exit 1 until the tests are deleted)
+
+#### Scenario: SR-19 RENAMED delta demands the post-rename picture
+- WHEN a delta RENAMES a requirement Old → New
+- THEN verification demands exactly the projected picture — the block's scenarios under their unchanged IDs, with no demand arising from the pre-rename block
+
+#### Scenario: SR-20 merge conflicts make the projection untrustworthy
+- WHEN any module's merge reports one or more conflicts
+- THEN `verify --change` prints every conflict and exits 2 — it never verifies a partial or wrong projection
+
+#### Scenario: SR-21 projection inputs fail closed
+- WHEN the change name is invalid or fails realpath containment, the change dir does not exist, zero delta files are discovered, or any delta file violates a hygiene guard (empty/whitespace-only, content with zero operations, malformed or duplicated base stamp, duplicate requirement names)
+- THEN `verify --change` exits 2 with a message naming the offending path or file, and runs no tests
+
+#### Scenario: SR-22 --specs and --change are mutually exclusive
+- WHEN `apriori verify --change <name> --specs <dir>` is invoked
+- THEN it exits 2 explaining the projection defines the spec set
+
+#### Scenario: SR-23 --json carries the projection contract
+- WHEN `verify --change --json` runs — success, gaps, merge conflict, or any projection failure
+- THEN stdout is pure JSON in every class: the 3.0.1 fields plus `projection: {change, modules, conflicts}` where modules lists discovered store-relative suffixes (sorted) and conflicts carries merge-conflict strings verbatim; non-`--change` runs never emit a `projection` field
+
+#### Scenario: SR-24 a diverged base stamp blocks projection
+- WHEN a discovered delta file carries a base stamp that does not match the current fingerprint of its mapped store file
+- THEN `verify --change` exits 2 naming the store path and the expected vs actual fingerprint, and runs no tests
+
+### Requirement: deprecated blocks are excluded from verification
+In every verify form (plain `--specs` and `--change`), a requirement block whose heading line matches `/^###\s+Requirement:.*_deprecated \(superseded by [^)]*\)_/` SHALL be excluded from scenario collection: its scenarios are neither demanded nor listed, and a test still tagged with such a scenario's ID counts as ORPHAN. On stores containing no deprecated blocks, behavior is identical to 3.0.1.
+
+#### Scenario: SR-25 deprecated block scenarios stop being demanded
+- WHEN a store (or projection) contains a deprecated requirement block with scenarios, and a test still carries one of those scenario IDs
+- THEN those scenarios appear in no report group, the lingering test is ORPHAN, and all non-deprecated blocks are unaffected
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/cli/spec.md
+<!-- apriori-base: sha256:6c80b94210d4c750506b6a15b21525b2d1fbfa191d32ae6023390c8e0c433637 -->
+# Delta — cli (gate-command)
+
+## MODIFIED Requirements
+
+### Requirement: single self-contained apriori CLI
+The toolchain SHALL ship as one npm package `apriori-cli` exposing a `bin` named `apriori` with subcommands `init | new | status | verify | archive | check | update | stamp | gate` plus a `--version` flag, requiring zero npm runtime dependencies (pure Node stdlib), runnable via global install or `npx`, and failing cleanly (one-line error, no stack trace) on unexpected errors.
+
+#### Scenario: CL-01 subcommand dispatch
+- WHEN `apriori <sub> ...` is invoked with sub in {init, new, status, verify, archive, check, update, stamp, gate}
+- THEN it dispatches to that subcommand; an unknown sub prints usage and exits non-zero
+
+#### Scenario: CL-02 verify subcommand is the spec-runner
+- WHEN `apriori verify --specs <dir> --test-cmd <cmd>` (or `apriori verify --change <name>`) runs
+- THEN it behaves per the spec-runner requirements (SR-01..25)
+
+#### Scenario: CL-03 archive subcommand is archive-merge
+- WHEN `apriori archive --store <f> --delta <f> --change <name> [--write]` or `apriori archive --change <name> [--write] [--changes-dir <dir>]` runs
+- THEN it behaves per the archive-merge requirements (AM-01..27)
+
+#### Scenario: CL-04 check subcommand is the doc checker
+- WHEN `apriori check` runs
+- THEN it behaves per the check requirement (CK-01..06)
+
+#### Scenario: CL-05 zero runtime dependencies
+- WHEN the package is installed
+- THEN it pulls no npm dependencies; only Node's standard library is used
+
+#### Scenario: CL-06 --version prints the package version
+- WHEN `apriori --version` (or `-v`) is invoked
+- THEN it prints the installed package version verbatim on stdout and exits 0
+
+#### Scenario: CL-07 unexpected subcommand failures exit cleanly
+- WHEN a subcommand throws an unexpected error (e.g. an unreadable input file)
+- THEN the CLI prints a single `apriori: <message>` line on stderr and exits 1 — never a raw stack trace
+
+#### Scenario: CL-08 stamp subcommand appears in usage
+- WHEN `apriori` runs with no arguments or `--help`
+- THEN the printed usage lists `stamp` alongside the other subcommands (behavior per AM-27)
+
+#### Scenario: CL-09 gate subcommand appears in usage
+- WHEN `apriori` runs with no arguments or `--help`
+- THEN the printed usage lists `gate` alongside the other subcommands (behavior per GT-01..12); `apriori gate` without `--change` prints its own usage and exits 2
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md
+<!-- apriori-base: new -->
+# Delta — gate (gate-command)
+
+## ADDED Requirements
+
+### Requirement: gate aggregates the mechanical exit conditions for one change
+`apriori gate --change <name>` SHALL evaluate the machine-checkable gate conditions for exactly one change and encode the aggregate in its exit code: 0 = every applicable check passed (`GATE: PASS`), 1 = at least one check blocked (`GATE: BLOCKED (<n> item(s))`), 2 = the evaluation itself is untrustworthy (usage error, invalid or escaping name, change found nowhere, unreadable flow-state, or an untrustworthy C1 verify run). It SHALL be strictly read-only and SHALL state in its output that PASS covers mechanical checks only — human gates remain human.
+
+#### Scenario: GT-01 a clean in-flight change passes
+- WHEN every applicable check passes for an in-flight change
+- THEN each check reports `✓`, the final line is `GATE: PASS` (with the mechanical-only caveat), and the exit code is 0
+
+#### Scenario: GT-02 an unchecked task blocks
+- WHEN the resolved change dir's tasks.md contains an unchecked `- [ ]` box (while `- [x]` and `- [X]` count as checked)
+- THEN C2 reports `✗` naming the file, the final line is `GATE: BLOCKED` with the count, and the exit code is 1
+
+#### Scenario: GT-03 the ledger blocks on open rows and reasonless rejections
+- WHEN the ledger at `apriori/review/<name>-issues.md` contains a row whose status starts `open` (case-insensitive), or a `rejected` row with no reason text beyond the word itself
+- THEN C4 blocks naming the row ID; a `rejected` row passes only when, after stripping the leading word `rejected`, the remaining text contains at least one word character (`rejected: duplicate` passes; `rejected`, `rejected:`, `rejected -` block); `advisory*`/`fixed`/`verified` rows never block
+
+#### Scenario: GT-04 flow-state legality is enforced
+- WHEN a required flow-state key (`change`, `tier`, `track`, `lineage`, `current-step`) is missing, still a `<placeholder>`, has a `current-step` outside the exact vocabulary (STEP0..STEP6, INTENT-CARD, SPIKE, EXTRACTION, DONE, ABANDONED), a `tier` outside {trivial, medium, large}, or a `change` value that does not equal `--change`
+- THEN C3 blocks naming the offending key; a fully legal flow-state passes
+
+#### Scenario: GT-05 verdict evidence is mechanical
+- WHEN a review doc for the change (files matching `apriori/review/<name>-*.md` or `apriori/design/<name>-review-v*.md`, excluding the ledger and `*-raw` stems, regular files only) contains a `^VERDICT:` line but no file that is REGULAR by lstat (symlinks are not evidence) matches `apriori/review/<stem>-raw.*`
+- THEN C5 blocks naming the doc; adding the raw flips it to `✓`; a symlink matching the doc globs blocks naming the symlink (an evidence doc must never silently drop out by file type)
+
+#### Scenario: GT-06 the binding gate is stage-aware
+- WHEN the change is in-flight
+- THEN C1 runs the projected verify (`verify --change` semantics, same code path incl. CAS and hygiene); WHEN the change exists only under `apriori/changes/archive/<stamp>-<name>/` THEN C1 runs plain verify against `apriori/specs/` and flow-state/tasks resolve from the archived dir; verify gaps → C1 blocked with the red/unbound/orphan counts; a verify-untrustworthy run → gate exit 2 carrying verify's errors
+
+#### Scenario: GT-07 resolution is validated and deterministic
+- WHEN `--change` fails bare-kebab-case validation or the resolved dir escapes its root (realpath containment)
+- THEN gate exits 2 before reading anything; WHEN the change is found in neither location THEN gate exits 2 naming both searched paths; WHEN several archived dirs match `/^\d{4}-\d{2}-\d{2}T\d{4}-<name>$/ THEN the lexicographically last basename is used
+
+#### Scenario: GT-08 a missing or mismatched flow-state fails closed
+- WHEN the resolved change dir has no readable flow-state.md
+- THEN gate exits 2 (tier-aware checks are impossible); a readable flow-state whose `change` key mismatches `--change` is C3-blocked, not exit 2
+
+#### Scenario: GT-09 trivial tier is not asked for artifacts it never produces
+- WHEN flow-state declares `tier: trivial` and tasks.md or the ledger file is absent
+- THEN C2/C4 report `–` (not applicable) instead of blocking; on medium/large the same absences block
+
+#### Scenario: GT-10 KB freshness degrades honestly
+- WHEN a touched module `<m>` (first path segment of the change's delta-spec suffixes) has `apriori/truth/<m>.md` with a `source-commit` stamp, `lib/<m>.js` exists, and git reports commits in `<stamp>..HEAD -- lib/<m>.js`
+- THEN C6 blocks with the commit count; an up-to-date stamp passes; a missing truth doc, missing lib file, missing git, or a non-zero git exit yields `–` with the reason — an infra failure never fabricates a block
+
+#### Scenario: GT-11 --json is pure JSON in every outcome class
+- WHEN `gate --change <name> --json` runs — PASS, BLOCKED, or any exit-2 class (usage error, invalid name, not found, unreadable flow-state, untrustworthy verify)
+- THEN stdout parses as JSON shaped `{ change, stage: "in-flight"|"archived"|null, checks:[{id,status,detail}], result: "PASS"|"BLOCKED"|"ERROR", blocked, errors }` — `stage: null` when resolution never happened, `change: null` when `--change` was missing
+
+#### Scenario: GT-12 gate is read-only
+- WHEN gate runs to any outcome against a project tree
+- THEN no file in the tree is created, modified, or deleted (only the C1 test command's own side effects, which gate does not add to)
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/cli/spec.md
+<!-- apriori-base: sha256:5435ee2e84ed397c1b06175cb693ab448c69099bc40eae51c91252699db7bf29 -->
+# Delta — cli (doctor-command)
+
+## MODIFIED Requirements
+
+### Requirement: single self-contained apriori CLI
+The toolchain SHALL ship as one npm package `apriori-cli` exposing a `bin` named `apriori` with subcommands `init | new | status | verify | archive | check | update | stamp | gate | doctor` plus a `--version` flag, requiring zero npm runtime dependencies (pure Node stdlib), runnable via global install or `npx`, and failing cleanly (one-line error, no stack trace) on unexpected errors.
+
+#### Scenario: CL-01 subcommand dispatch
+- WHEN `apriori <sub> ...` is invoked with sub in {init, new, status, verify, archive, check, update, stamp, gate, doctor}
+- THEN it dispatches to that subcommand; an unknown sub prints usage and exits non-zero
+
+#### Scenario: CL-02 verify subcommand is the spec-runner
+- WHEN `apriori verify --specs <dir> --test-cmd <cmd>` (or `apriori verify --change <name>`) runs
+- THEN it behaves per the spec-runner requirements (SR-01..25)
+
+#### Scenario: CL-03 archive subcommand is archive-merge
+- WHEN `apriori archive --store <f> --delta <f> --change <name> [--write]` or `apriori archive --change <name> [--write] [--changes-dir <dir>]` runs
+- THEN it behaves per the archive-merge requirements (AM-01..27)
+
+#### Scenario: CL-04 check subcommand is the doc checker
+- WHEN `apriori check` runs
+- THEN it behaves per the check requirement (CK-01..06)
+
+#### Scenario: CL-05 zero runtime dependencies
+- WHEN the package is installed
+- THEN it pulls no npm dependencies; only Node's standard library is used
+
+#### Scenario: CL-06 --version prints the package version
+- WHEN `apriori --version` (or `-v`) is invoked
+- THEN it prints the installed package version verbatim on stdout and exits 0
+
+#### Scenario: CL-07 unexpected subcommand failures exit cleanly
+- WHEN a subcommand throws an unexpected error (e.g. an unreadable input file)
+- THEN the CLI prints a single `apriori: <message>` line on stderr and exits 1 — never a raw stack trace
+
+#### Scenario: CL-08 stamp subcommand appears in usage
+- WHEN `apriori` runs with no arguments or `--help`
+- THEN the printed usage lists `stamp` alongside the other subcommands (behavior per AM-27)
+
+#### Scenario: CL-09 gate subcommand appears in usage
+- WHEN `apriori` runs with no arguments or `--help`
+- THEN the printed usage lists `gate` alongside the other subcommands (behavior per GT-01..12); `apriori gate` without `--change` prints its own usage and exits 2
+
+#### Scenario: CL-10 doctor subcommand appears in usage
+- WHEN `apriori` runs with no arguments or `--help`
+- THEN the printed usage lists `doctor` alongside the other subcommands (behavior per DR-01..12); `apriori doctor <positional>` prints its own usage and exits 2
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md
+<!-- apriori-base: new -->
+# Delta — doctor (doctor-command)
+
+## ADDED Requirements
+
+### Requirement: doctor diagnoses the project-apriori seam
+`apriori doctor` SHALL run seven read-only checks (D1 Node floor · D2 init scaffold · D3 runbook freshness · D4 tool pointers · D5 TAP probe · D6 store health · D7 changes overview), each reporting ok/finding/not-applicable with a fix hint on findings, and SHALL encode the aggregate in its exit code: 0 = zero findings (`DOCTOR: HEALTHY`), 1 = ≥1 finding (`DOCTOR: <n> finding(s)`), 2 = unusable (Node below floor, `apriori/` missing entirely, positional-arg usage error) — printing whatever checks already ran. Doctor never repairs and never writes; its ONLY side effect is D5 executing the project's test command once, removed by `--no-run`.
+
+#### Scenario: DR-01 a healthy initialized project reports HEALTHY
+- WHEN every applicable check passes on a freshly initialized project with a valid TAP test command
+- THEN each check reports ok or not-applicable, the final line is `DOCTOR: HEALTHY`, and the exit code is 0
+
+#### Scenario: DR-02 an uninitialized project is unusable, with guidance
+- WHEN `apriori/` does not exist under the target root
+- THEN doctor exits 2, the message names `apriori init`, and `--json` reports `result: "UNUSABLE"` with the already-run checks (D1) listed
+
+#### Scenario: DR-03 init-scaffold gaps are findings with their fixer
+- WHEN `apriori/runbook.md`, `apriori/specs/`, `apriori/.gitignore` (with its `tmp/` line), or the `apriori/tmp/` dir is missing
+- THEN D2 emits ONE check entry PER GAP (each with id `D2`, status finding, naming the file and its fixer `apriori init` / `apriori update`) — the aggregate `findings` count equals the number of finding-status entries; a missing `apriori/process-config.md` is not-applicable (optional, defaults apply), never a finding
+
+#### Scenario: DR-04 runbook freshness points at update, and never contradicts D2
+- WHEN the runbook copy differs by any byte from the packaged RUNBOOK.md
+- THEN D3 is a finding naming `apriori update`; WHEN the copy is absent THEN D3 is not-applicable ("see D2") — absence is D2's finding alone
+
+#### Scenario: DR-05 detected tools must keep their pointers
+- WHEN a tool that `detectTools` finds has a missing rules file, a rules file without the `apriori/runbook.md` pointer, or (command-level tools) a missing command file
+- THEN D4 reports a finding per tool naming the file and `apriori init`; a project with no known tool markers reports not-applicable
+
+#### Scenario: DR-06 the TAP probe classifies every plumbing edge
+- WHEN the test command (from `--test-cmd` or the config row) runs
+- THEN D5 classifies: spawn error, signal kill, `Bail out!`, empty output, zero parsed TAP without a version/plan line (naming `--test-reporter=tap`), a TAP version or non-`1..0` plan with zero result lines ("truncated or malformed"), and a non-zero exit unexplained by parsed TAP failures — each a finding; parsed TAP whose failures explain any non-zero exit is ok (counts as info — test failures are NOT doctor findings), and an exactly-`1..0` plan with exit status 0 is ok ("empty suite") — a `1..0` plan with a NON-ZERO exit is the unexplained-exit finding, classified first
+
+#### Scenario: DR-07 the probe is skippable and degrades honestly
+- WHEN no test command is configured anywhere, or `--no-run` is given
+- THEN D5 reports not-applicable with the reason (the `apriori init --test-cmd` hint, or "probe skipped") — never a finding
+
+#### Scenario: DR-08 store health flags unbindable and ambiguous scenarios
+- WHEN `apriori/specs/` contains scenarios without a leading default-pattern ID, or the same ID in more than one scenario
+- THEN D6 reports findings listing them (detail names the default ID pattern); an empty store or zero scenario files is not-applicable ("normal for a new project"); a missing specs dir is not-applicable here ("see D2")
+
+#### Scenario: DR-09 changes overview validates flow-states and surfaces pending gates
+- WHEN an active change dir has no readable flow-state.md, or `parseFlowState` yields an empty `change`, or its `change` mismatches the dir name
+- THEN D7 reports a finding naming the dir and the failed clause; healthy active changes are info lines; archived candidates (basenames matching `<YYYY-MM-DDThhmm>-<name>`, directories only) are read ONLY when they satisfy realpath containment under `apriori/changes/archive/` — an escaping symlinked entry is skipped with an info note, never read; contained not-DONE/ABANDONED archived changes are listed as info ("gate ④ possibly pending") — never a finding
+
+#### Scenario: DR-10 output is machine-consumable in every class
+- WHEN `apriori doctor --json` runs — HEALTHY, FINDINGS, or UNUSABLE (incl. the positional-arg usage error)
+- THEN stdout parses as JSON shaped `{ result, findings, checks: [{id, status: "ok"|"finding"|"n/a", detail, fix?}], errors }`
+
+#### Scenario: DR-11 doctor is read-only and rejects stray arguments
+- WHEN doctor runs with `--no-run` against any project tree
+- THEN no file is created, modified, or deleted; WHEN any positional argument is given THEN doctor exits 2 with usage (pure JSON under `--json`)
+
+#### Scenario: DR-12 the Node floor is enforced testably
+- WHEN the detected Node major version (injectable for tests) is below 18
+- THEN D1 is a finding entry and doctor exits 2 (`result: "UNUSABLE"`), with D1 listed in the checks; at or above 18 → ok
+apriori/changes/archive/2026-07-11T0159-cli-strictness/specs/cli/spec.md
+<!-- apriori-base: sha256:0f70116eb937ff2465cf4f5ab18166697b56186264c6c45fcfb4461ef8e16817 -->
+# Delta — cli (cli-strictness)
+
+## ADDED Requirements
+
+### Requirement: uniform argument strictness across subcommands
+Every subcommand SHALL parse argv through one shared helper with three uniform behaviors: `--help`/`-h` prints that subcommand's usage on stdout and exits 0 (checked before any other validation); an unknown `-`-prefixed token prints `unknown flag` naming it plus the usage on stderr and exits 2 — nothing is silently ignored; positional arity is enforced (`new` and `stamp` exactly one, all others zero). Known-flag semantics: `value` flags consume exactly the next token (missing → exit 2 naming the flag; repeats last-write-wins), `multi` flags consume until the next `-`-prefixed token (empty set → exit 2 naming the flag; repeats accumulate), boolean flags are idempotent. Success paths of all documented invocations are unchanged; the three declared behavior changes are: `new` extras now error (previously ignored), `stamp --foo` is now an unknown flag (previously its positional), and multi consumption stops at single-dash tokens (previously `--`-only).
+
+#### Scenario: CL-11 every subcommand answers --help
+- WHEN `apriori <sub> --help` (or `-h`) runs for each sub in {new, status, verify, archive, check, init, update, stamp, gate, doctor}
+- THEN usage containing `apriori <sub>` prints on stdout and the exit code is 0, even where required args are missing
+
+#### Scenario: CL-12 unknown flags fail loudly everywhere, before any action
+- WHEN `apriori <sub> --no-such-flag` runs for each subcommand — and, for the test-spawning commands (verify, gate, doctor), in an OTHERWISE-VALID project fixture whose configured test command writes a sentinel file
+- THEN stderr names `--no-such-flag` alongside the usage, the exit code is 2, and no action is performed: nothing written, and the sentinel proves the test command never executed
+
+#### Scenario: CL-13 positional arity is enforced
+- WHEN a zero-positional subcommand receives a stray positional, or `new`/`stamp` receive zero or two positionals
+- THEN it exits 2 naming the offender — including the declared changes: `apriori new a b` errors naming `b`; `apriori stamp --foo` errors as an unknown flag
+
+#### Scenario: CL-14 missing values fail closed
+- WHEN a `value` flag ends argv with no value (`verify --test-cmd`), or a `multi` flag consumes an empty set (`verify --specs --test-cmd t`)
+- THEN it exits 2 naming that flag, never consuming undefined or acting on an empty set
+
+#### Scenario: CL-15 repeats and aliases behave declaredly
+- WHEN flags repeat or aliases are used
+- THEN `verify --specs a --specs b` accumulates both targets, `status --change a --change b` uses `b`, doubled boolean flags act once, and `init -y` equals `--yes`
+
+#### Scenario: CL-16 multi consumption stops at any dash token
+- WHEN `apriori verify --specs a -x --test-cmd t` runs
+- THEN `-x` is never consumed as a spec target and the command exits 2 naming `-x`
+
+#### Scenario: CL-17 init's no-flag interactive door survives the migration
+- WHEN `apriori init` runs with no arguments
+- THEN strict parsing succeeds with empty flags and the EXISTING branch decides: non-interactive (no TTY) → init's own usage naming `--tools`, exit 2; a TTY → the interactive tool picker (IN-10's machinery) — the strict parser never converts the bare invocation into an unknown-usage error
+apriori/changes/archive/2026-07-11T0230-readme-split/specs/check/spec.md
+<!-- apriori-base: sha256:16119de0eff16f2c4def022d985dfa218fe52a0b5e04c876b6a73105dbe6f7f4 -->
+# Delta — check (readme-split)
+
+## ADDED Requirements
+
+### Requirement: self-mode guards the split documentation set
+`apriori check --self` SHALL extend its EN/CN pair coverage to the docs/ pairs (concepts, legacy, ci, cli, troubleshooting — `_cn` suffix convention) and SHALL resolve links relative to the linking file, validating cross-file fragments.
+
+#### Scenario: CK-08 docs pairs are guarded, one-sided pairs fail
+- WHEN `check --self` runs where a docs/ pair misaligns (heading count, level, or numeric prefix), or exactly ONE side of a pair exists
+- THEN it FAILs naming the pair (or the missing mirror); WHEN both sides of a pair are absent THEN that pair is skipped and older checkouts pass as before
+
+#### Scenario: CK-09 links resolve from the linking file and fragments are validated
+- WHEN a checked file links `./y.md` or `./y.md#frag`
+- THEN the target resolves relative to THAT file's directory (root files unchanged); a missing target file FAILs naming the linking file; and a fragment with no heading in the target slugifying (ghSlug) to it FAILs naming both — self-mode only
+apriori/changes/archive/2026-07-11T0252-golden-path/specs/golden/spec.md
+<!-- apriori-base: new -->
+# Delta — golden (golden-path)
+
+## ADDED Requirements
+
+### Requirement: the golden path proves the packaged CLI end-to-end
+`scripts/golden-path.mjs` SHALL extract the README Quickstart's shell blocks in document order and run them as one bash script in a fresh temp directory, with `apriori` resolving to the local checkout bin (`--local`) or to a tarball installed into an isolated prefix (`--packed <tgz>`, PATH prepended with the platform bin dir and a preflight asserting `apriori` resolves inside the prefix); it SHALL assert each block's last command against the documented exit sequence `[0, 1, 0, 0]` and the final state (store verify 0, check 0, doctor --no-run 0, archived demo change present), failing loudly with the block index and expected/actual on any mismatch. The CI workflow SHALL run the packed mode on ubuntu and windows.
+
+#### Scenario: GP-01 the extractor is a pure text seam
+- WHEN `extractBlocks(readmeText)` runs on the real README (and on doctored variants in tests)
+- THEN it returns the Quickstart's ```shell blocks in document order (four today), never reading or writing the filesystem itself
+
+#### Scenario: GP-02 a --local run walks the whole Quickstart
+- WHEN `node scripts/golden-path.mjs --local` runs in a fresh temp dir
+- THEN every block executes in sequence with the checkout bin aliased over `npm i -g`, per-block last exits match `[0, 1, 0, 0]`, and the run finishes exit 0
+
+#### Scenario: GP-03 final state is asserted, not assumed
+- WHEN the blocks complete
+- THEN the runner re-asserts: `verify --specs apriori/specs` exits 0, `check` exits 0, `doctor --no-run` exits 0, and `apriori/changes/archive/` contains the archived demo change — any miss fails the run naming the assertion
+
+#### Scenario: GP-04 drift between README and contract fails loudly
+- WHEN a doctored README text changes the block count or makes a block's exit diverge from the expected sequence
+- THEN the runner (fed through the text seam) fails naming the block index and expected/actual — the README cannot silently drift from the contract
+
+#### Scenario: GP-05 packed mode proves the published file set
+- WHEN `--packed <tgz>` installs the tarball into an isolated prefix (platform bin dir on PATH, resolve-inside-prefix preflight)
+- THEN the same walk succeeds using ONLY the packaged files — a package.json `files:` gap surfaces here; the runner aborts if `apriori` resolves outside the prefix
+apriori/changes/archive/2026-07-11T0415-evidence-governance/specs/check/spec.md
+<!-- apriori-base: sha256:b20466d7602959c1ac604169f8c2dd584ee5e84eec8999d2180fd2d4dad25faa -->
+# Delta — check (evidence-governance)
+
+## ADDED Requirements
+
+### Requirement: review evidence is guarded against committed secrets
+`apriori check` (consumer mode) SHALL scan `apriori/review/` — recursive, regular files only, symlinked entries skipped with a warn line naming them, the directory absent → the check skips — for exactly three literal secret formats: AWS access keys (`AKIA[0-9A-Z]{16}`), GitHub tokens (`gh[pousr]_[A-Za-z0-9]{36,}`), and PEM private-key headers (`-----BEGIN [A-Z ]*PRIVATE KEY-----`). A hit SHALL fail the check naming the file, line number, and pattern class — never echoing the matched value — with a remedy pointer (sanitize the raw; if already pushed, rewrite history per SECURITY.md).
+
+#### Scenario: CK-10 committed secrets in review evidence fail the check
+- WHEN a file under `apriori/review/` (any depth) contains an AWS key, a GitHub token, or a PEM private-key header
+- THEN `check` FAILs naming the file, line and pattern class without echoing the secret, and the message points at the remedy; a clean review dir passes; a symlinked entry is skipped with a warn naming it; an absent review dir skips the check entirely
+
+## MODIFIED Requirements
+
+### Requirement: check warns on a stale scaffolded runbook without failing
+`apriori check` SHALL compare the project's scaffolded `apriori/runbook.md` (when present) against the installed package's `RUNBOOK.md` and warn on divergence, without turning the warning into a failure.
+
+#### Scenario: CK-06 stale scaffolded runbook warns, never fails
+- WHEN `apriori check` runs in a project whose `apriori/runbook.md` differs byte-wise from the installed package's runbook
+- THEN it prints a warning naming `apriori update`, and RESULT stays PASS if nothing else failed; a missing `apriori/runbook.md` produces no warning
+
+#### Scenario: CK-07 consumer mode is the default; self-checks require --self
+- WHEN `apriori check` runs in a consumer project
+- THEN only the spec-store checks (CK-04), runbook freshness (CK-06), and the review-evidence secret tripwire (CK-10) run — a consumer legitimately using OpenSpec or shipping its own README is never failed by apriori's handbook self-checks (EN/CN pairs, verdict phrases, codex forms, no-openspec), which run only under `--self`; and a missing spec-store path is an error (exit 2, naming `apriori init` when uninitialized), never a silent PASS
+
+codex
+I have the main parser and archived deltas loaded. I’m doing one targeted structural scan over the archived delta corpus for h2 headings, pre-section requirement markers, and fenced content so D5 is judged against actual files rather than assumption.
+exec
+/usr/bin/zsh -lc 'rg -n "''^##'"\\s|"'^###'"\\s+Requirement:|"'^####'"\\s+Scenario:\" apriori/changes/archive/*/specs/**/*.md | tail -80" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc 'rg -n "''^##'"\\s|"'^###'"\\s+Requirement:|"'^####'"\\s+Scenario:|"'^```|''^#'"\\s\" apriori/changes/archive/*/specs/**/*.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc 'rg -n "''^> |''^[-*] |''^'"\\s*[A-Za-z].+\" apriori/changes/archive/*/specs/**/*.md | sed -n '1,180p'" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc 'rg -n "''^##'"\\s+(?"'!ADDED|MODIFIED|REMOVED|RENAMED)" --pcre2 apriori/changes/archive/*/specs/**/*.md || true' in /mnt/d/Workbench/misc/apriori-spec-development
+ exited 1 in 169ms:
+zsh:1: unmatched "
+
+ succeeded in 285ms:
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:13:#### Scenario: DR-02 an uninitialized project is unusable, with guidance
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:17:#### Scenario: DR-03 init-scaffold gaps are findings with their fixer
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:21:#### Scenario: DR-04 runbook freshness points at update, and never contradicts D2
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:25:#### Scenario: DR-05 detected tools must keep their pointers
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:29:#### Scenario: DR-06 the TAP probe classifies every plumbing edge
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:33:#### Scenario: DR-07 the probe is skippable and degrades honestly
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:37:#### Scenario: DR-08 store health flags unbindable and ambiguous scenarios
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:41:#### Scenario: DR-09 changes overview validates flow-states and surfaces pending gates
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:45:#### Scenario: DR-10 output is machine-consumable in every class
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:49:#### Scenario: DR-11 doctor is read-only and rejects stray arguments
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:53:#### Scenario: DR-12 the Node floor is enforced testably
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:4:## ADDED Requirements
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:6:### Requirement: projected verify binds against the candidate merged store
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:9:#### Scenario: SR-16 ADDED delta scenarios join the projection
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:13:#### Scenario: SR-17 MODIFIED delta replaces the demanded scenario set
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:17:#### Scenario: SR-18 REMOVED delta scenarios are not demanded and their tests orphan
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:21:#### Scenario: SR-19 RENAMED delta demands the post-rename picture
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:25:#### Scenario: SR-20 merge conflicts make the projection untrustworthy
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:29:#### Scenario: SR-21 projection inputs fail closed
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:33:#### Scenario: SR-22 --specs and --change are mutually exclusive
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:37:#### Scenario: SR-23 --json carries the projection contract
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:41:#### Scenario: SR-24 a diverged base stamp blocks projection
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:45:### Requirement: deprecated blocks are excluded from verification
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:48:#### Scenario: SR-25 deprecated block scenarios stop being demanded
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:4:## ADDED Requirements
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:6:### Requirement: high-level archive merges a whole change transactionally
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:9:#### Scenario: AM-13 dry-run reports the whole change and writes nothing
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:13:#### Scenario: AM-14 any preflight failure means nothing is written
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:17:#### Scenario: AM-15 a mid-commit failure is reported exactly
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:21:#### Scenario: AM-16 a pre-existing temp file blocks the run
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:25:#### Scenario: AM-17 zero discovered delta files fail closed
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:29:#### Scenario: AM-18 the change-dir move waits for every store commit
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:33:#### Scenario: AM-19 high-level and single-file forms are mutually exclusive
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:37:#### Scenario: AM-20 per-file delta hygiene guards the whole set
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:41:#### Scenario: AM-21 duplicate requirement names in the store are corruption
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:45:#### Scenario: AM-22 realpath containment governs every participating path
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:49:### Requirement: CAS base stamps detect store divergence
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:52:#### Scenario: AM-23 malformed or duplicated stamps are hygiene errors
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:56:#### Scenario: AM-24 a diverged stamp stops archive before any write, on both surfaces
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:60:#### Scenario: AM-25 stamp-free deltas behave exactly as before, on both surfaces
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:64:#### Scenario: AM-26 the new sentinel matches only an absent store
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:68:#### Scenario: AM-27 apriori stamp prints the current stamp line
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:72:## MODIFIED Requirements
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:74:### Requirement: archive-merge applies delta specs to the living store
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:77:#### Scenario: AM-01 ADDED appends a new requirement
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:81:#### Scenario: AM-02 MODIFIED replaces the existing block
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:85:#### Scenario: AM-03 REMOVED marks the block deprecated, not deleted
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:89:#### Scenario: AM-04 same-ID conflict stops without writing
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:93:#### Scenario: AM-05 the action lists every merged/modified/deprecated ID
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:97:#### Scenario: AM-06 archive moves the in-flight change under a dated archive dir
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:101:#### Scenario: AM-07 RENAMED renames a requirement in place, preserving content
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:105:#### Scenario: AM-08 a content-bearing delta that parses to zero operations is a hard error
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:109:#### Scenario: AM-09 the first archive in a repo creates the store file
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:113:#### Scenario: AM-10 re-running an already-merged delta is an idempotent no-op
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:117:#### Scenario: AM-11 change names are validated and the dir move cannot escape
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:121:#### Scenario: AM-12 the store commit and the dir move are one transaction (single-file form)
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:4:## ADDED Requirements
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:6:### Requirement: gate aggregates the mechanical exit conditions for one change
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:9:#### Scenario: GT-01 a clean in-flight change passes
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:13:#### Scenario: GT-02 an unchecked task blocks
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:17:#### Scenario: GT-03 the ledger blocks on open rows and reasonless rejections
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:21:#### Scenario: GT-04 flow-state legality is enforced
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:25:#### Scenario: GT-05 verdict evidence is mechanical
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:29:#### Scenario: GT-06 the binding gate is stage-aware
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:33:#### Scenario: GT-07 resolution is validated and deterministic
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:37:#### Scenario: GT-08 a missing or mismatched flow-state fails closed
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:41:#### Scenario: GT-09 trivial tier is not asked for artifacts it never produces
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:45:#### Scenario: GT-10 KB freshness degrades honestly
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:49:#### Scenario: GT-11 --json is pure JSON in every outcome class
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:53:#### Scenario: GT-12 gate is read-only
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/cli/spec.md:4:## MODIFIED Requirements
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/cli/spec.md:6:### Requirement: single self-contained apriori CLI
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/cli/spec.md:9:#### Scenario: CL-01 subcommand dispatch
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/cli/spec.md:13:#### Scenario: CL-02 verify subcommand is the spec-runner
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/cli/spec.md:17:#### Scenario: CL-03 archive subcommand is archive-merge
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/cli/spec.md:21:#### Scenario: CL-04 check subcommand is the doc checker
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/cli/spec.md:25:#### Scenario: CL-05 zero runtime dependencies
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/cli/spec.md:29:#### Scenario: CL-06 --version prints the package version
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/cli/spec.md:33:#### Scenario: CL-07 unexpected subcommand failures exit cleanly
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/cli/spec.md:37:#### Scenario: CL-08 stamp subcommand appears in usage
+
+ succeeded in 277ms:
+ succeeded in 393ms:
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/cli/spec.md:7:The toolchain SHALL ship as one npm package `apriori-cli` exposing a `bin` named `apriori` with subcommands `init | new | status | verify | archive | check | update | stamp | gate` plus a `--version` flag, requiring zero npm runtime dependencies (pure Node stdlib), runnable via global install or `npx`, and failing cleanly (one-line error, no stack trace) on unexpected errors.
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/cli/spec.md:10:- WHEN `apriori <sub> ...` is invoked with sub in {init, new, status, verify, archive, check, update, stamp, gate}
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/cli/spec.md:11:- THEN it dispatches to that subcommand; an unknown sub prints usage and exits non-zero
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/cli/spec.md:14:- WHEN `apriori verify --specs <dir> --test-cmd <cmd>` (or `apriori verify --change <name>`) runs
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/cli/spec.md:15:- THEN it behaves per the spec-runner requirements (SR-01..25)
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/cli/spec.md:18:- WHEN `apriori archive --store <f> --delta <f> --change <name> [--write]` or `apriori archive --change <name> [--write] [--changes-dir <dir>]` runs
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/cli/spec.md:19:- THEN it behaves per the archive-merge requirements (AM-01..27)
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/cli/spec.md:22:- WHEN `apriori check` runs
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/cli/spec.md:23:- THEN it behaves per the check requirement (CK-01..06)
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/cli/spec.md:26:- WHEN the package is installed
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/cli/spec.md:27:- THEN it pulls no npm dependencies; only Node's standard library is used
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/cli/spec.md:30:- WHEN `apriori --version` (or `-v`) is invoked
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/cli/spec.md:31:- THEN it prints the installed package version verbatim on stdout and exits 0
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/cli/spec.md:34:- WHEN a subcommand throws an unexpected error (e.g. an unreadable input file)
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/cli/spec.md:35:- THEN the CLI prints a single `apriori: <message>` line on stderr and exits 1 — never a raw stack trace
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/cli/spec.md:38:- WHEN `apriori` runs with no arguments or `--help`
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/cli/spec.md:39:- THEN the printed usage lists `stamp` alongside the other subcommands (behavior per AM-27)
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/cli/spec.md:42:- WHEN `apriori` runs with no arguments or `--help`
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/cli/spec.md:43:- THEN the printed usage lists `gate` alongside the other subcommands (behavior per GT-01..12); `apriori gate` without `--change` prints its own usage and exits 2
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/cli/spec.md:7:The toolchain SHALL ship as one npm package `apriori-cli` exposing a `bin` named `apriori` with subcommands `init | new | status | verify | archive | check | update | stamp | gate | doctor` plus a `--version` flag, requiring zero npm runtime dependencies (pure Node stdlib), runnable via global install or `npx`, and failing cleanly (one-line error, no stack trace) on unexpected errors.
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/cli/spec.md:10:- WHEN `apriori <sub> ...` is invoked with sub in {init, new, status, verify, archive, check, update, stamp, gate, doctor}
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/cli/spec.md:11:- THEN it dispatches to that subcommand; an unknown sub prints usage and exits non-zero
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/cli/spec.md:14:- WHEN `apriori verify --specs <dir> --test-cmd <cmd>` (or `apriori verify --change <name>`) runs
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/cli/spec.md:15:- THEN it behaves per the spec-runner requirements (SR-01..25)
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/cli/spec.md:18:- WHEN `apriori archive --store <f> --delta <f> --change <name> [--write]` or `apriori archive --change <name> [--write] [--changes-dir <dir>]` runs
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/cli/spec.md:19:- THEN it behaves per the archive-merge requirements (AM-01..27)
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/cli/spec.md:22:- WHEN `apriori check` runs
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/cli/spec.md:23:- THEN it behaves per the check requirement (CK-01..06)
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/cli/spec.md:26:- WHEN the package is installed
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/cli/spec.md:27:- THEN it pulls no npm dependencies; only Node's standard library is used
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/cli/spec.md:30:- WHEN `apriori --version` (or `-v`) is invoked
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/cli/spec.md:31:- THEN it prints the installed package version verbatim on stdout and exits 0
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/cli/spec.md:34:- WHEN a subcommand throws an unexpected error (e.g. an unreadable input file)
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/cli/spec.md:35:- THEN the CLI prints a single `apriori: <message>` line on stderr and exits 1 — never a raw stack trace
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/cli/spec.md:38:- WHEN `apriori` runs with no arguments or `--help`
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/cli/spec.md:39:- THEN the printed usage lists `stamp` alongside the other subcommands (behavior per AM-27)
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/cli/spec.md:42:- WHEN `apriori` runs with no arguments or `--help`
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/cli/spec.md:43:- THEN the printed usage lists `gate` alongside the other subcommands (behavior per GT-01..12); `apriori gate` without `--change` prints its own usage and exits 2
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/cli/spec.md:46:- WHEN `apriori` runs with no arguments or `--help`
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/cli/spec.md:47:- THEN the printed usage lists `doctor` alongside the other subcommands (behavior per DR-01..12); `apriori doctor <positional>` prints its own usage and exits 2
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:10:- WHEN a change carries an ADDED-only delta for a module and `verify --change <name>` runs
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:11:- THEN the delta's scenarios are demanded alongside every existing store scenario, with no duplicate-ID error from the overlay (genuinely duplicate IDs in the projection remain GAPS)
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:14:- WHEN a delta MODIFIES a requirement, changing its scenario set
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:15:- THEN verification demands exactly the delta's version of that requirement's scenarios; scenarios the modification drops are not demanded
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:18:- WHEN a delta REMOVES a requirement whose scenarios have tests still tagged with their IDs
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:19:- THEN the projection deprecates the block, its scenarios are not demanded, and each lingering test is reported ORPHAN (exit 1 until the tests are deleted)
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:22:- WHEN a delta RENAMES a requirement Old → New
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:23:- THEN verification demands exactly the projected picture — the block's scenarios under their unchanged IDs, with no demand arising from the pre-rename block
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:26:- WHEN any module's merge reports one or more conflicts
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:27:- THEN `verify --change` prints every conflict and exits 2 — it never verifies a partial or wrong projection
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:30:- WHEN the change name is invalid or fails realpath containment, the change dir does not exist, zero delta files are discovered, or any delta file violates a hygiene guard (empty/whitespace-only, content with zero operations, malformed or duplicated base stamp, duplicate requirement names)
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:31:- THEN `verify --change` exits 2 with a message naming the offending path or file, and runs no tests
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:34:- WHEN `apriori verify --change <name> --specs <dir>` is invoked
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:35:- THEN it exits 2 explaining the projection defines the spec set
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:38:- WHEN `verify --change --json` runs — success, gaps, merge conflict, or any projection failure
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:39:- THEN stdout is pure JSON in every class: the 3.0.1 fields plus `projection: {change, modules, conflicts}` where modules lists discovered store-relative suffixes (sorted) and conflicts carries merge-conflict strings verbatim; non-`--change` runs never emit a `projection` field
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:42:- WHEN a discovered delta file carries a base stamp that does not match the current fingerprint of its mapped store file
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:43:- THEN `verify --change` exits 2 naming the store path and the expected vs actual fingerprint, and runs no tests
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:46:In every verify form (plain `--specs` and `--change`), a requirement block whose heading line matches `/^###\s+Requirement:.*_deprecated \(superseded by [^)]*\)_/` SHALL be excluded from scenario collection: its scenarios are neither demanded nor listed, and a test still tagged with such a scenario's ID counts as ORPHAN. On stores containing no deprecated blocks, behavior is identical to 3.0.1.
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:49:- WHEN a store (or projection) contains a deprecated requirement block with scenarios, and a test still carries one of those scenario IDs
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/spec-runner/spec.md:50:- THEN those scenarios appear in no report group, the lingering test is ORPHAN, and all non-deprecated blocks are unaffected
+apriori/changes/archive/2026-07-11T0252-golden-path/specs/golden/spec.md:10:- WHEN `extractBlocks(readmeText)` runs on the real README (and on doctored variants in tests)
+apriori/changes/archive/2026-07-11T0252-golden-path/specs/golden/spec.md:11:- THEN it returns the Quickstart's ```shell blocks in document order (four today), never reading or writing the filesystem itself
+apriori/changes/archive/2026-07-11T0252-golden-path/specs/golden/spec.md:14:- WHEN `node scripts/golden-path.mjs --local` runs in a fresh temp dir
+apriori/changes/archive/2026-07-11T0252-golden-path/specs/golden/spec.md:15:- THEN every block executes in sequence with the checkout bin aliased over `npm i -g`, per-block last exits match `[0, 1, 0, 0]`, and the run finishes exit 0
+apriori/changes/archive/2026-07-11T0252-golden-path/specs/golden/spec.md:18:- WHEN the blocks complete
+apriori/changes/archive/2026-07-11T0252-golden-path/specs/golden/spec.md:19:- THEN the runner re-asserts: `verify --specs apriori/specs` exits 0, `check` exits 0, `doctor --no-run` exits 0, and `apriori/changes/archive/` contains the archived demo change — any miss fails the run naming the assertion
+apriori/changes/archive/2026-07-11T0252-golden-path/specs/golden/spec.md:22:- WHEN a doctored README text changes the block count or makes a block's exit diverge from the expected sequence
+apriori/changes/archive/2026-07-11T0252-golden-path/specs/golden/spec.md:23:- THEN the runner (fed through the text seam) fails naming the block index and expected/actual — the README cannot silently drift from the contract
+apriori/changes/archive/2026-07-11T0252-golden-path/specs/golden/spec.md:26:- WHEN `--packed <tgz>` installs the tarball into an isolated prefix (platform bin dir on PATH, resolve-inside-prefix preflight)
+apriori/changes/archive/2026-07-11T0252-golden-path/specs/golden/spec.md:27:- THEN the same walk succeeds using ONLY the packaged files — a package.json `files:` gap surfaces here; the runner aborts if `apriori` resolves outside the prefix
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:10:- WHEN `apriori archive --change <name>` runs without `--write` on a change spanning several modules
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:11:- THEN it prints per-module merged/modified/deprecated/renamed/no-op requirement names and a result line, and no file on disk changes
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:14:- WHEN any module's merge reports a conflict, any delta file fails a hygiene guard, or any CAS stamp mismatches during `--write`
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:15:- THEN every failure across all modules is reported, no store file changes, and the exit code is 1
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:18:- WHEN a rename in the commit phase fails after earlier renames succeeded
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:19:- THEN archive reports exactly which modules committed, which did not, and which temp files remain for manual completion, and exits 1 — already-committed renames are not rolled back
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:22:- WHEN any target `<store>.tmp-archive` already exists at preflight
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:23:- THEN archive exits 1 naming that file, writes nothing, and leaves the pre-existing file untouched (it may be another run in flight or a manual-recovery artifact)
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:26:- WHEN `<changes-dir>/<name>/specs/` exists but contains no `.md` delta files, or the change dir itself is missing
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:27:- THEN archive exits 2 naming the searched path
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:30:- WHEN `--write --changes-dir <dir>` succeeds
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:31:- THEN the change dir moves to `<dir>/archive/<stamp>-<name>/` only after ALL stores committed; without an explicit `--changes-dir` no move happens; a move failure leaves the committed stores in place and exits 1
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:34:- WHEN `--change` is combined with `--store` or `--delta`
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:35:- THEN archive exits 2 with usage; the single-file form by itself keeps its 3.0.1 behavior unchanged
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:38:- WHEN any discovered delta file is empty/whitespace-only, parses to zero operations despite content, or carries duplicate requirement names (within a section or across sections)
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:39:- THEN the run refuses naming the file (and requirement, for duplicates), nothing is written, and no partial projection or merge survives
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:42:- WHEN the store text handed to any merge contains the same requirement name twice
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:43:- THEN the merge reports it as a conflict instead of silently keeping the last block
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:46:- WHEN the change dir, a delta file, a mapped store target, or the move destination (`<changes-dir>/archive/…` — e.g. an `archive/` that is a symlink pointing outside) — each followed through symlinks — resolves outside its root (changes dir / `apriori/specs/`), or a not-yet-existing path's nearest existing ancestor resolves outside its root
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:47:- THEN the command exits 2 naming the offending path, and nothing is read as spec input, written, or moved
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:50:A delta file MAY carry exactly one base stamp `<!-- apriori-base: sha256:<64 lowercase hex> -->` or `<!-- apriori-base: new -->` before its first `## <OP> Requirements` section, declaring the fingerprint of the store file it was authored against. The fingerprint SHALL be SHA-256 over the store file's content with line endings normalized (`\r\n` and lone `\r` → `\n`). `apriori verify --change`, `apriori archive --change`, and single-file `apriori archive` SHALL check present stamps; an absent stamp means no check. `apriori stamp <store-file>` SHALL print the stamp line matching the file's current content.
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:53:- WHEN a delta file carries more than one stamp line, a stamp after the first section heading, or a malformed digest
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:54:- THEN the file is rejected by the hygiene guard (nothing projected or written) naming the file
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:57:- WHEN a stamped delta's store file fingerprint no longer matches (including a `new` stamp whose store now exists) — whether archive is invoked as `--change <name>` or as single-file `--store <f> --delta <f>`
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:58:- THEN each form reports the store path with expected vs actual fingerprint, writes nothing, and exits 1 — the §4.11 serialize rule made mechanical; both surfaces are exercised, not just one
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:61:- WHEN a delta carries no base stamp — in the high-level `--change` form and in the single-file form alike
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:62:- THEN no CAS check runs and behavior is identical to pre-3.1 for that file
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:65:- WHEN a delta is stamped `<!-- apriori-base: new -->`
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:66:- THEN the check passes while the mapped store file does not exist and fails as a mismatch once it does
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:69:- WHEN `apriori stamp <store-file>` runs on an existing readable file, an absent path, a directory, or with a wrong argument count
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:70:- THEN it prints the exact matching stamp line (absent path → the `new` form) and exits 0; a directory or unreadable file → error naming the path, exit 2; zero or multiple arguments → usage, exit 2
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:78:- WHEN the delta has an ADDED requirement whose ID is absent from the store
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:79:- THEN it is appended and the ID is listed as merged
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:82:- WHEN the delta has a MODIFIED requirement whose ID exists in the store
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:83:- THEN the whole store block is replaced and the ID is listed as modified
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:86:- WHEN the delta has a REMOVED requirement present in the store
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:87:- THEN the store block is kept and marked `deprecated (superseded by <change>)`, listed as deprecated
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:90:- WHEN an ADDED ID already exists, or a MODIFIED/REMOVED target is missing
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:91:- THEN the merge reports the conflict, writes nothing, and exits 1 (a human opens a ledger issue)
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:94:- WHEN a merge succeeds
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:95:- THEN every affected Requirement ID is printed by category (§4 requires the action list them)
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:98:- WHEN archive completes on change `<name>`
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:99:- THEN the in-flight `apriori/changes/<name>/` (bare name, no prefix) is moved to `apriori/changes/archive/<YYYY-MM-DDThhmm>-<name>/` — a colon-free date-time stamped by the CLI's own clock (never an agent guess); e.g. `archive/2026-07-06T0657-add-playback/`
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:102:- WHEN the delta has a `## RENAMED Requirements` entry `- Old Name -> New Name` and `Old Name` exists while `New Name` does not
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:103:- THEN the store block keeps its content but its heading ID becomes `New Name`, listed as renamed; a missing source (with no existing target) or a colliding target is a conflict (stop, exit 1, nothing written) — the source-gone-AND-target-present rerun case is AM-10's no-op, not a conflict
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:106:- WHEN `apriori archive` reads a delta file that has non-whitespace content but matches no recognized section (e.g. wrong heading level or keyword, so 0 delta operations parse)
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:107:- THEN it writes nothing, prints an error naming the expected `## ADDED|MODIFIED|REMOVED|RENAMED Requirements` + `### Requirement:` format, and exits non-zero — never reporting MERGED for a delta the parser did not understand
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:110:- WHEN `apriori archive --write` targets a store file that does not exist yet
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:111:- THEN it notes the store will be created, starts from an empty store, and writes the merged result — no ENOENT
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:114:- WHEN an ADDED requirement in the delta already exists in the store with byte-identical (trimmed) content, or a RENAMED entry's source is gone while its target is present, or a REMOVED entry's target is gone while its deprecated form marked `superseded by <THIS change>` is present — each the signature of a rerun after a partial archive
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:115:- THEN each is reported as already merged / already renamed / already deprecated (no-op), not a conflict, and the run can proceed to move the change dir; but an ADDED whose name was created by THIS run's own RENAMED is a same-delta collision and still conflicts even with identical content, and a REMOVED target deprecated by a DIFFERENT change remains a conflict
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:118:- WHEN `--change` is not bare kebab-case (e.g. `../victim`), or `--changes-dir` is given but the change dir does not exist
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:119:- THEN archive exits 2 before writing anything; the move helper independently rejects any source that resolves outside the changes dir
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:122:- WHEN the single-file form `apriori archive --store <f> --delta <f> --change <name> --write --changes-dir <dir>` runs and the change-dir move fails
+apriori/changes/archive/2026-07-10T1738-change-projection/specs/archive-merge/spec.md:123:- THEN the store on disk stays byte-for-byte untouched (staged to a temp file, committed by rename only after the move succeeds) and no temp residue remains — the high-level `--change` form's move-failure rule is AM-18's (stores already committed stay committed)
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:10:- WHEN every applicable check passes for an in-flight change
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:11:- THEN each check reports `✓`, the final line is `GATE: PASS` (with the mechanical-only caveat), and the exit code is 0
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:14:- WHEN the resolved change dir's tasks.md contains an unchecked `- [ ]` box (while `- [x]` and `- [X]` count as checked)
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:15:- THEN C2 reports `✗` naming the file, the final line is `GATE: BLOCKED` with the count, and the exit code is 1
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:18:- WHEN the ledger at `apriori/review/<name>-issues.md` contains a row whose status starts `open` (case-insensitive), or a `rejected` row with no reason text beyond the word itself
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:19:- THEN C4 blocks naming the row ID; a `rejected` row passes only when, after stripping the leading word `rejected`, the remaining text contains at least one word character (`rejected: duplicate` passes; `rejected`, `rejected:`, `rejected -` block); `advisory*`/`fixed`/`verified` rows never block
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:22:- WHEN a required flow-state key (`change`, `tier`, `track`, `lineage`, `current-step`) is missing, still a `<placeholder>`, has a `current-step` outside the exact vocabulary (STEP0..STEP6, INTENT-CARD, SPIKE, EXTRACTION, DONE, ABANDONED), a `tier` outside {trivial, medium, large}, or a `change` value that does not equal `--change`
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:23:- THEN C3 blocks naming the offending key; a fully legal flow-state passes
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:26:- WHEN a review doc for the change (files matching `apriori/review/<name>-*.md` or `apriori/design/<name>-review-v*.md`, excluding the ledger and `*-raw` stems, regular files only) contains a `^VERDICT:` line but no file that is REGULAR by lstat (symlinks are not evidence) matches `apriori/review/<stem>-raw.*`
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:27:- THEN C5 blocks naming the doc; adding the raw flips it to `✓`; a symlink matching the doc globs blocks naming the symlink (an evidence doc must never silently drop out by file type)
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:30:- WHEN the change is in-flight
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:31:- THEN C1 runs the projected verify (`verify --change` semantics, same code path incl. CAS and hygiene); WHEN the change exists only under `apriori/changes/archive/<stamp>-<name>/` THEN C1 runs plain verify against `apriori/specs/` and flow-state/tasks resolve from the archived dir; verify gaps → C1 blocked with the red/unbound/orphan counts; a verify-untrustworthy run → gate exit 2 carrying verify's errors
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:34:- WHEN `--change` fails bare-kebab-case validation or the resolved dir escapes its root (realpath containment)
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:35:- THEN gate exits 2 before reading anything; WHEN the change is found in neither location THEN gate exits 2 naming both searched paths; WHEN several archived dirs match `/^\d{4}-\d{2}-\d{2}T\d{4}-<name>$/ THEN the lexicographically last basename is used
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:38:- WHEN the resolved change dir has no readable flow-state.md
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:39:- THEN gate exits 2 (tier-aware checks are impossible); a readable flow-state whose `change` key mismatches `--change` is C3-blocked, not exit 2
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:42:- WHEN flow-state declares `tier: trivial` and tasks.md or the ledger file is absent
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:43:- THEN C2/C4 report `–` (not applicable) instead of blocking; on medium/large the same absences block
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:46:- WHEN a touched module `<m>` (first path segment of the change's delta-spec suffixes) has `apriori/truth/<m>.md` with a `source-commit` stamp, `lib/<m>.js` exists, and git reports commits in `<stamp>..HEAD -- lib/<m>.js`
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:47:- THEN C6 blocks with the commit count; an up-to-date stamp passes; a missing truth doc, missing lib file, missing git, or a non-zero git exit yields `–` with the reason — an infra failure never fabricates a block
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:50:- WHEN `gate --change <name> --json` runs — PASS, BLOCKED, or any exit-2 class (usage error, invalid name, not found, unreadable flow-state, untrustworthy verify)
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:51:- THEN stdout parses as JSON shaped `{ change, stage: "in-flight"|"archived"|null, checks:[{id,status,detail}], result: "PASS"|"BLOCKED"|"ERROR", blocked, errors }` — `stage: null` when resolution never happened, `change: null` when `--change` was missing
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:54:- WHEN gate runs to any outcome against a project tree
+apriori/changes/archive/2026-07-11T0009-gate-command/specs/gate/spec.md:55:- THEN no file in the tree is created, modified, or deleted (only the C1 test command's own side effects, which gate does not add to)
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:10:- WHEN every applicable check passes on a freshly initialized project with a valid TAP test command
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:11:- THEN each check reports ok or not-applicable, the final line is `DOCTOR: HEALTHY`, and the exit code is 0
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:14:- WHEN `apriori/` does not exist under the target root
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:15:- THEN doctor exits 2, the message names `apriori init`, and `--json` reports `result: "UNUSABLE"` with the already-run checks (D1) listed
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:18:- WHEN `apriori/runbook.md`, `apriori/specs/`, `apriori/.gitignore` (with its `tmp/` line), or the `apriori/tmp/` dir is missing
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:19:- THEN D2 emits ONE check entry PER GAP (each with id `D2`, status finding, naming the file and its fixer `apriori init` / `apriori update`) — the aggregate `findings` count equals the number of finding-status entries; a missing `apriori/process-config.md` is not-applicable (optional, defaults apply), never a finding
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:22:- WHEN the runbook copy differs by any byte from the packaged RUNBOOK.md
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:23:- THEN D3 is a finding naming `apriori update`; WHEN the copy is absent THEN D3 is not-applicable ("see D2") — absence is D2's finding alone
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:26:- WHEN a tool that `detectTools` finds has a missing rules file, a rules file without the `apriori/runbook.md` pointer, or (command-level tools) a missing command file
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:27:- THEN D4 reports a finding per tool naming the file and `apriori init`; a project with no known tool markers reports not-applicable
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:30:- WHEN the test command (from `--test-cmd` or the config row) runs
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:31:- THEN D5 classifies: spawn error, signal kill, `Bail out!`, empty output, zero parsed TAP without a version/plan line (naming `--test-reporter=tap`), a TAP version or non-`1..0` plan with zero result lines ("truncated or malformed"), and a non-zero exit unexplained by parsed TAP failures — each a finding; parsed TAP whose failures explain any non-zero exit is ok (counts as info — test failures are NOT doctor findings), and an exactly-`1..0` plan with exit status 0 is ok ("empty suite") — a `1..0` plan with a NON-ZERO exit is the unexplained-exit finding, classified first
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:34:- WHEN no test command is configured anywhere, or `--no-run` is given
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:35:- THEN D5 reports not-applicable with the reason (the `apriori init --test-cmd` hint, or "probe skipped") — never a finding
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:38:- WHEN `apriori/specs/` contains scenarios without a leading default-pattern ID, or the same ID in more than one scenario
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:39:- THEN D6 reports findings listing them (detail names the default ID pattern); an empty store or zero scenario files is not-applicable ("normal for a new project"); a missing specs dir is not-applicable here ("see D2")
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:42:- WHEN an active change dir has no readable flow-state.md, or `parseFlowState` yields an empty `change`, or its `change` mismatches the dir name
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:43:- THEN D7 reports a finding naming the dir and the failed clause; healthy active changes are info lines; archived candidates (basenames matching `<YYYY-MM-DDThhmm>-<name>`, directories only) are read ONLY when they satisfy realpath containment under `apriori/changes/archive/` — an escaping symlinked entry is skipped with an info note, never read; contained not-DONE/ABANDONED archived changes are listed as info ("gate ④ possibly pending") — never a finding
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:46:- WHEN `apriori doctor --json` runs — HEALTHY, FINDINGS, or UNUSABLE (incl. the positional-arg usage error)
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:47:- THEN stdout parses as JSON shaped `{ result, findings, checks: [{id, status: "ok"|"finding"|"n/a", detail, fix?}], errors }`
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:50:- WHEN doctor runs with `--no-run` against any project tree
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:51:- THEN no file is created, modified, or deleted; WHEN any positional argument is given THEN doctor exits 2 with usage (pure JSON under `--json`)
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:54:- WHEN the detected Node major version (injectable for tests) is below 18
+apriori/changes/archive/2026-07-11T0116-doctor-command/specs/doctor/spec.md:55:- THEN D1 is a finding entry and doctor exits 2 (`result: "UNUSABLE"`), with D1 listed in the checks; at or above 18 → ok
+apriori/changes/archive/2026-07-11T0230-readme-split/specs/check/spec.md:10:- WHEN `check --self` runs where a docs/ pair misaligns (heading count, level, or numeric prefix), or exactly ONE side of a pair exists
+apriori/changes/archive/2026-07-11T0230-readme-split/specs/check/spec.md:11:- THEN it FAILs naming the pair (or the missing mirror); WHEN both sides of a pair are absent THEN that pair is skipped and older checkouts pass as before
+apriori/changes/archive/2026-07-11T0230-readme-split/specs/check/spec.md:14:- WHEN a checked file links `./y.md` or `./y.md#frag`
+apriori/changes/archive/2026-07-11T0230-readme-split/specs/check/spec.md:15:- THEN the target resolves relative to THAT file's directory (root files unchanged); a missing target file FAILs naming the linking file; and a fragment with no heading in the target slugifying (ghSlug) to it FAILs naming both — self-mode only
+apriori/changes/archive/2026-07-11T0159-cli-strictness/specs/cli/spec.md:7:Every subcommand SHALL parse argv through one shared helper with three uniform behaviors: `--help`/`-h` prints that subcommand's usage on stdout and exits 0 (checked before any other validation); an unknown `-`-prefixed token prints `unknown flag` naming it plus the usage on stderr and exits 2 — nothing is silently ignored; positional arity is enforced (`new` and `stamp` exactly one, all others zero). Known-flag semantics: `value` flags consume exactly the next token (missing → exit 2 naming the flag; repeats last-write-wins), `multi` flags consume until the next `-`-prefixed token (empty set → exit 2 naming the flag; repeats accumulate), boolean flags are idempotent. Success paths of all documented invocations are unchanged; the three declared behavior changes are: `new` extras now error (previously ignored), `stamp --foo` is now an unknown flag (previously its positional), and multi consumption stops at single-dash tokens (previously `--`-only).
+apriori/changes/archive/2026-07-11T0159-cli-strictness/specs/cli/spec.md:10:- WHEN `apriori <sub> --help` (or `-h`) runs for each sub in {new, status, verify, archive, check, init, update, stamp, gate, doctor}
+
+context compacted
+codex
+**Dimension Verdicts**
+
+1. Target state B: **has major ambiguity** around D3/tail handling.
+2. Edge and exception paths: **mostly covered**, but stamp-problem line numbering is missing.
+3. Implied side effects: **no major issue**; verify/archive behavior is declared as inherited from existing parser failure handling.
+4. Acceptance criteria testability: **partly blocked** by D3’s undefined “tail after last block” model.
+5. Conflicts with state A: **no direct conflict found**. Current archived delta files use `# Delta ...` titles and legal `## ADDED|MODIFIED|REMOVED|RENAMED Requirements` sections; I did not find illegal `##` headings in the archived `spec.md` deltas.
+6. Target lineage: **declared and plausible** as v3 / 3.3.1.
+
+**Formal Issues**
+
+**DC-1 — D3 leaves the tail grammar unresolved**
+
+Description: D3 explicitly leaves the stricter-tail question open, and the legal-construct taxonomy does not define a parseable “tail after the last block” boundary. In the current delta format, a `### Requirement:` block has no closing delimiter; its body naturally runs until the next requirement heading, section heading, or EOF. That means “plain trailing prose after the last block” is not distinguishable from the last requirement body unless the requirement defines a new block-ending rule.
+
+Risk: Implementers can make incompatible choices: one parser may treat post-requirement prose as legal requirement body, another as legal tail, another as junk. This undermines the “fully-consuming parser” goal and makes D3’s acceptance test arbitrary.
+
+Suggested fix: Make a final decision in the requirement. My recommendation is the stricter rule: outside fences, after a legal `ADDED`/`MODIFIED`/`REMOVED` section starts, all nonblank content must be inside a `### Requirement:` block, and a requirement block consumes through the next requirement heading, legal section heading, illegal `##` heading, or EOF. Do not define a separate lenient tail unless the requirement also defines an explicit block boundary and tests it.
+
+**DC-2 — Line-number requirement does not cover existing stamp hygiene problems**
+
+Description: The goal says every `problems[]` entry gets a 1-based line number, and D7 requires line numbers on multiple distinct problems. But `parseStamp` currently contributes parser problems for malformed stamps, duplicate stamps, and stamps after the first legal section, and the requirement does not explicitly say those existing stamp problems must gain line numbers too.
+
+Risk: An implementation can satisfy the new section/requirement parsing cases while leaving stamp-related `problems[]` entries without line numbers, violating the stated global contract and producing inconsistent diagnostics.
+
+Suggested fix: Add an acceptance case or explicit rule: every problem emitted by `parseDeltaStrict`, including `parseStamp` hygiene problems, must include the offending 1-based line number. For duplicate stamps, specify whether the reported line is the duplicate line, all duplicate lines, or the first duplicate after the first valid stamp.
+
+**Advisories**
+
+- D5 is a useful regression guard. The requirement should say the corpus is the archived `apriori/changes/archive/*/specs/**/spec.md` delta files, not requirement docs, since requirement docs contain quote blocks and handling notes that are intentionally outside this parser’s scope.
+- The “one problem per unrecognized heading” decision is reasonable, but the test should assert both halves: the bad heading produces exactly one heading problem, and any requirements under it are absent from all section buckets.
+- The README/README_cn archive-row rider is unrelated to parser correctness but is declared and testable; keep it in tasks so it does not disappear during implementation.
+
+**Ledger Delta**
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| DC-1 | D3 leaves the tail grammar unresolved because requirement blocks have no closing delimiter and “plain trailing prose after the last block” is not parseably defined. | Inconsistent implementations and untestable/fragile D3 acceptance behavior. | 1 | open |
+| DC-2 | The global line-number contract does not explicitly include existing `parseStamp` hygiene problems. | Inconsistent diagnostics and partial compliance with the new `problems[]` contract. | 1 | open |
+| ADV-1 | Regression-corpus scope, illegal-heading assertion strength, and unrelated README rider tracking should be tightened. | Advisory clarity and implementation hygiene. | 1 | open |
+
+VERDICT: 2 issues open
+tokens used
+2,228,746
+**Dimension Verdicts**
+
+1. Target state B: **has major ambiguity** around D3/tail handling.
+2. Edge and exception paths: **mostly covered**, but stamp-problem line numbering is missing.
+3. Implied side effects: **no major issue**; verify/archive behavior is declared as inherited from existing parser failure handling.
+4. Acceptance criteria testability: **partly blocked** by D3’s undefined “tail after last block” model.
+5. Conflicts with state A: **no direct conflict found**. Current archived delta files use `# Delta ...` titles and legal `## ADDED|MODIFIED|REMOVED|RENAMED Requirements` sections; I did not find illegal `##` headings in the archived `spec.md` deltas.
+6. Target lineage: **declared and plausible** as v3 / 3.3.1.
+
+**Formal Issues**
+
+**DC-1 — D3 leaves the tail grammar unresolved**
+
+Description: D3 explicitly leaves the stricter-tail question open, and the legal-construct taxonomy does not define a parseable “tail after the last block” boundary. In the current delta format, a `### Requirement:` block has no closing delimiter; its body naturally runs until the next requirement heading, section heading, or EOF. That means “plain trailing prose after the last block” is not distinguishable from the last requirement body unless the requirement defines a new block-ending rule.
+
+Risk: Implementers can make incompatible choices: one parser may treat post-requirement prose as legal requirement body, another as legal tail, another as junk. This undermines the “fully-consuming parser” goal and makes D3’s acceptance test arbitrary.
+
+Suggested fix: Make a final decision in the requirement. My recommendation is the stricter rule: outside fences, after a legal `ADDED`/`MODIFIED`/`REMOVED` section starts, all nonblank content must be inside a `### Requirement:` block, and a requirement block consumes through the next requirement heading, legal section heading, illegal `##` heading, or EOF. Do not define a separate lenient tail unless the requirement also defines an explicit block boundary and tests it.
+
+**DC-2 — Line-number requirement does not cover existing stamp hygiene problems**
+
+Description: The goal says every `problems[]` entry gets a 1-based line number, and D7 requires line numbers on multiple distinct problems. But `parseStamp` currently contributes parser problems for malformed stamps, duplicate stamps, and stamps after the first legal section, and the requirement does not explicitly say those existing stamp problems must gain line numbers too.
+
+Risk: An implementation can satisfy the new section/requirement parsing cases while leaving stamp-related `problems[]` entries without line numbers, violating the stated global contract and producing inconsistent diagnostics.
+
+Suggested fix: Add an acceptance case or explicit rule: every problem emitted by `parseDeltaStrict`, including `parseStamp` hygiene problems, must include the offending 1-based line number. For duplicate stamps, specify whether the reported line is the duplicate line, all duplicate lines, or the first duplicate after the first valid stamp.
+
+**Advisories**
+
+- D5 is a useful regression guard. The requirement should say the corpus is the archived `apriori/changes/archive/*/specs/**/spec.md` delta files, not requirement docs, since requirement docs contain quote blocks and handling notes that are intentionally outside this parser’s scope.
+- The “one problem per unrecognized heading” decision is reasonable, but the test should assert both halves: the bad heading produces exactly one heading problem, and any requirements under it are absent from all section buckets.
+- The README/README_cn archive-row rider is unrelated to parser correctness but is declared and testable; keep it in tasks so it does not disappear during implementation.
+
+**Ledger Delta**
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| DC-1 | D3 leaves the tail grammar unresolved because requirement blocks have no closing delimiter and “plain trailing prose after the last block” is not parseably defined. | Inconsistent implementations and untestable/fragile D3 acceptance behavior. | 1 | open |
+| DC-2 | The global line-number contract does not explicitly include existing `parseStamp` hygiene problems. | Inconsistent diagnostics and partial compliance with the new `problems[]` contract. | 1 | open |
+| ADV-1 | Regression-corpus scope, illegal-heading assertion strength, and unrelated README rider tracking should be tightened. | Advisory clarity and implementation hygiene. | 1 | open |
+
+VERDICT: 2 issues open

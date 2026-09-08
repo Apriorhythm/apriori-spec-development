@@ -1,0 +1,2591 @@
+<!-- provenance: provider=codex model=gpt-5.6-sol session=01a000cd-51a6-78a1-901b-1c431e33e274 sandbox=read-only date=2026-08-15 prompt=P1(STEP0 reviewer) round=3 -->
+OpenAI Codex v0.147.0
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.6-sol
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 01a000cd-51a6-78a1-901b-1c431e33e274
+--------
+user
+STEP0 round 3. Same role, same read-only rule: do NOT write any files; print your review to stdout.
+
+* New requirement doc: apriori/changes/archive-readiness/requirement/req-v3.md
+* Your round-2 review: apriori/changes/archive-readiness/review/req-review-v2.md
+* Ledger: apriori/changes/archive-readiness/review/issues.md
+
+You reopened REQ-1, REQ-2, REQ-6 in round 2. All three were ACCEPTED — none rejected. Section 八·2 of
+req-v3.md is the producer's disposition table for this round. Highlights of what changed:
+
+* REQ-1 → new B7a (the archive safe-read layer classifies lstat errors itself: only a true ENOENT enters
+  the tier-sensitive "missing" branch; every other e.code is structural and non-forceable) and new B7b
+  (readiness.reviewDirDefect takes resolve.containsReal, not archive-merge's, to break the cycle).
+  New ACs AM-107 (guard itself throws EACCES/EIO/ELOOP, INCLUDING the trivial-tier control that proves
+  the fail-open you found is closed), AM-108, RY-07 (static no-require + five-case differential).
+* REQ-2 → the evidence token is now class-scoped (`archive-force tasks` / `archive-force ledger`), a
+  record authorizes only the classes it names, the reason must contain a word character, "written by a
+  human" became "records a prior human decision", AM-88 now prints a copyable TEMPLATE, and the output
+  prints the entry's RAW FIRST LINE. Crucially the producer did NOT claim per-run semantics: section
+  六-5 now states plainly that this is a STANDING authorization for that class for the bundle's lifetime
+  until the entry is removed, and hands that limitation to the human at gate ④.
+* REQ-6 → both of your refutations were verified against the source and ACCEPTED. AM-99 is now
+  "## MODIFIED the enclosing Requirement, keep AM-01..AM-11, drop only AM-12, integrity report must print
+  exactly `! dropped: AM-12`". AM-106 is now "UPDATE SECURITY.md" — the producer retracted its refutation
+  after finding its earlier grep output had been truncated before the final sentence.
+
+Your job this round:
+* For each of REQ-1, REQ-2, REQ-6: state `verified` or reopen with the specific residual defect
+  (reuse the same REQ-N; reopening is an event, not a new ID).
+* Re-check that the fixes did not damage REQ-3/4/5/7, which you verified last round.
+* Raise new issues only if this revision introduced them.
+* Judge in particular whether the honest "standing authorization" framing in 六-5 is acceptable as a
+  requirement, or whether it is a defect that must be fixed rather than disclosed.
+* Do not be agreeable. This change's predecessor failed to converge twice on the same goal, and the
+  producer will report your verdict verbatim to a human decision-maker.
+
+[Scope] Count toward the verdict only: ambiguous target state, untestable acceptance criteria, missing
+edge/boundary coverage, conflicts with state A. Everything else - advisory.
+
+[Output]
+Print the content of apriori/changes/archive-readiness/review/req-review-v3.md: per-issue disposition,
+then any new issues, then advisories with A- IDs.
+End with exactly one verdict line: "VERDICT: no major issues" or "VERDICT: <N> issues open".
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-08-14T15:33:54.781386Z ERROR codex_models_manager::manager: failed to refresh available models: timeout waiting for child process to exit
+codex
+I’ll verify the three reopened fixes against the actual helper semantics and delta grammar, then regression-check the four previously verified issues. I’ll treat the standing authorization as a product contract question: whether it is explicit and testable, not whether it is the policy I would personally choose.
+exec
+/usr/bin/zsh -lc "wc -l apriori/changes/archive-readiness/requirement/req-v3.md apriori/changes/archive-readiness/review/req-review-v2.md apriori/changes/archive-readiness/review/issues.md && sed -n '1,260p' apriori/changes/archive-readiness/requirement/req-v3.md && sed -n '261,620p' apriori/changes/archive-readiness/requirement/req-v3.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 136ms:
+  586 apriori/changes/archive-readiness/requirement/req-v3.md
+  208 apriori/changes/archive-readiness/review/req-review-v2.md
+   20 apriori/changes/archive-readiness/review/issues.md
+  814 total
+# req-v2 — archive-readiness：不可逆的归档写入，现在完全不问这个 change 做完了没有
+
+> change: `archive-readiness` · tier: large · track: harden
+> lineage: 分支 `brownfield-round2`（自 main@235a121 切出）；产品线 v4，最终目标 main；**禁止**合并到 v1 / v3
+> 证据来源：`apriori-in-practice/5.1/Apriori棕地项目使用复盘.md` §5 FN-1 / §8 P0-2，加本仓源码实证
+> 前身：`apriori/changes/archive-preflight/`（current-step: SUPERSEDED）
+> **本版处置 STEP0·r2 重开的 3 条（REQ-1 / REQ-2 / REQ-6）**；r2 已 verified 的 REQ-3/4/5/7 不再改动。
+> 处置说明见 §八·2（本版）与 §八（r1）
+
+---
+
+## 〇、收窄主张的现状（r1 已判，本节按判定重写）
+
+评审方 r1 对 v1 §零 的三条断言逐条判定：
+
+| 断言 | r1 判定 | 本版处置 |
+|---|---|---|
+| 1. 收窄不违反 advisory A-3 | **成立** | 保留；但 A-3 的**准确结论**是「不必重建 G2/G3，**必须恢复 G1 里前身已验证过的安全读取与 force 分类**」——v1 把它们随收窄一并删掉了，这是错误。见 B7 与 B3。 |
+| 2. G3 可整体放弃 | **成立** | 保留。条件：需求**不得**声称 post-archive gate 的充分性（本版全文无此语句），且 F-2 / F-4 必须保有独立追踪入口（见 §五-7）。 |
+| 3. 单文件收窄的成本可接受 | **不成立** | **撤回**。v1 的「全仓 19 处、全部在 test」是**只量了 `test/` 却写成「全仓」**——生产方的测量错误。真实迁移面见 §1.6，并入验收标准 §四。**本断言在 owner 于 gate④ 接受这项破坏性变更之前，不再作为成立的前提使用。** |
+
+**r2 补充：生产方在 v2 §八 提出的两点，评审方逐条判定——**
+
+| v2 的主张 | r2 判定 | 本版处置 |
+|---|---|---|
+| concepts 教程命令同时触发 B2a/B2b，比一般陈旧 usage 更重 | **确认** | 保留 AM-101 |
+| AM-12 变为空洞 | **确认** | 保留该事实 |
+| 因此应对 AM-12 用 `## REMOVED` | **反驳，且成立** | **改正**：AM-12 是 **Scenario** 不是 Requirement，delta 语法的 `REMOVED` 作用于整个 `### Requirement:` 块。经实测，AM-12 所在块是 `archive-merge applies delta specs to the living store`，含 **AM-01..AM-12 共 12 个场景**——用 `REMOVED` 会把仍然有效的 AM-01..AM-11 一并 deprecated。见 §1.8 与改写后的 AM-99。 |
+| `SECURITY.md` 无需修改 | **反驳，且成立** | **撤回生产方的反驳**。`SECURITY.md:10` 的**末句**（v2 的测量被 250 字符截断而漏读）原文为 “Explicit operator-given file arguments (single-file `archive --store <f> --delta <f>`, `stamp <file>`) are used as given, like any file tool.”——这正是对单文件形式的显式承诺，B2b 与之直接冲突。AM-106 改为**修改** SECURITY.md。 |
+
+---
+
+## 一、问题（状态 A，全部可复现）
+
+### 1.1 `apriori archive` 从来没有读过 change bundle 的任何流程文件
+
+```
+$ grep -n "flow-state\|tasks\.md\|ledger" lib/archive-merge.js
+860:      console.log('\nCONFLICTS (stop — open a ledger issue, human resolves):');
+```
+
+唯一命中是一句提示文本中的 "ledger" 一词。**零判据。**
+`apriori archive --change X --write` 会在 X 仍在 STEP2、`tasks.md` 还有 45 项未勾、
+ledger 还有 `open` 行的情况下，把它的规格增量并进 living store，并把目录移进 `archive/`。
+这是**不可逆写入**（写规格库 + 移目录）。
+
+### 1.2 这不是假想
+
+复盘 §5 FN-1：一次归档时 `tasks.md` 是 6 项 `[x]` / 45 项 `[ ]`，无人拦下。
+FN-1 的直接原因（gate 缺 `test-cmd` 时整体不启动）已由本分支的 `gate-degrades` 修好——
+但 **gate 是事后检查**：归档已经发生了。`gate-degrades` 让人**知道**出了事，本 change 让它**不发生**。
+
+### 1.3 单文件形式是同一个洞的第二个入口（前身 F-1，已实证）
+
+`lib/archive-merge.js` 的单文件路径：带 `--changes-dir` 时**同样会移动**正式 bundle；
+**不带**该 flag 时 `--delta apriori/changes/X/specs/foo/spec.md` **照样把内容写进 store**。
+
+### 1.4 判据现在住在哪里
+
+| gate | 函数 | 行 | 判什么 |
+|---|---|---|---|
+| C3 | `checkFlowState(state, name)` | `:28` | 五个必填键存在且非占位符、`change` 与名字一致、`current-step` ∈ `STEP_ENUM`、`tier` ∈ `TIER_ENUM` |
+| C2 | `checkTasks(dir, tier)` | `:40` | `/^\s*-\s\[\s\]/gm` 计数；缺文件时 trivial → `n/a`，其余 → `blocked` |
+| C4 | `checkLedger(tier, stage, dir)` | `:96` | 逐行 `classifyStatus`；`stage === 'archived'` 时额外要求终态 |
+
+辅助：`classifyStatus`（`:56`，**已导出**）、`gatesEntries`（`:75`）、`waiveEvidence`（`:91`）、
+`reviewDirDefect`（`:128`，**私有**）、`STEP_ENUM`（`:18`，**含 `ABANDONED` 与 `DONE`**）、`TIER_ENUM`（`:20`）。
+
+**C3 判「词汇表合法」，不判「可以归档」**——`ABANDONED` 能通过 C3。
+
+### 1.5 状态 A 的读取安全现状（r1·REQ-1 的实证）
+
+- `checkTasks`（`:41`）用 **裸 `fs.existsSync` + `fs.readFileSync`**，无 symlink / 类型 / 逃逸判断。
+- `checkLedger`（`:97`）同样裸读 `review/issues.md`；它的结构守卫 `reviewDirDefect` 是 **gate 在别处调用的**（C4/C5 共用的 review 根守卫），**不在 `checkLedger` 内部**。
+- `checkFlowState` 接的是**已解析好的 state 对象**，读取发生在调用方。
+- `lib/resolve.js:134` 已有 **`fileReadDefect(bundleDir, p)`** 并**已导出**（`:158`），
+  返回 `{kind: 'missing'|'symlink'|'not-file'|'escape'|'bad-ancestor', path}`；`lib/status.js:9` 已在用。
+  → 结构类判定（symlink / not-file / escape / bad-ancestor）**可以复用**。
+  **但它不能兑现权限语义**（r2·REQ-1）：`:136` 的 `catch` **不检查 `e.code`**，
+  任何 `lstatSync` 异常（`EACCES` / `EIO` / …）都落进 `missing` 分支；祖先探测的 `catch`（`:141`）同样吞掉全部异常。
+  `reviewDirDefect`（`gate.js:131`）的 `catch { return null; }` 亦然——把「读不到」当成「不存在」。
+  → **archive 安全层必须自己做错误分类**，见 B7a。
+- `reviewDirDefect` 用的 `containsReal` 是 **`gate.js:13` 从 `archive-merge.js` 引入的那一份**。
+  若「原样搬入」`readiness.js`，就会形成 `archive-merge → readiness → archive-merge` **环**（r2·REQ-1）。
+  本仓有**两份** `containsReal`：`resolve.js:41`（要求 target 已存在）与 `archive-merge.js:277`
+  （容忍不存在路径、且排除「等于根」）。前身实测：二者**只在 `target === root` 一格分歧**，
+  而 `reviewDirDefect` 的 target 恒为 `<dir>/review`，**永不等于 root** → 在该调用形态下行为一致。
+  → `readiness.reviewDirDefect` **必须取 `resolve.containsReal`**，并以差分测试证明该调用域内与状态 A 一致。
+- 附带发现（advisory，不在本 change 处理）：`resolve.js:153` 与 `:154` 是**完全相同的两行**
+  `if (!containsReal(bundleDir, p)) return { kind: 'escape', path: p };`——重复的死代码。
+
+**gate 的裸读对 gate 自己是可接受的**（gate 只报告，不写）；对 **archive 不可接受**（archive 不可逆写入）。
+这正是需要**两层**而不是一层的理由。
+
+### 1.6 单文件收窄的真实迁移面（r1·REQ-6，v1 漏报，本版补全）
+
+全仓 `--delta` 命中 **38 处**（排除前身目录）：
+
+| 类别 | 处数 | 文件 |
+|---|---|---|
+| 测试 | 19 | `test/archive-merge.test.js`(12) `test/archive-change.test.js`(5) `test/resolve.test.js`(1) `test/cli.test.js`(1) |
+| 实现 | 5 | `lib/archive-merge.js` |
+| **活跃文档** | **7** | `docs/concepts.md` `docs/concepts_cn.md` `docs/cli.md` `docs/cli_cn.md` `RUNBOOK.md` `RUNBOOK_cn.md` `SECURITY.md` |
+| **living spec** | **7** | `apriori/specs/archive-merge/spec.md`(5) `apriori/specs/resolve/spec.md`(1) `apriori/specs/cli/spec.md`(1) |
+
+**两处比 r1 描述得更重：**
+
+1. `docs/concepts.md:553-555`（与 `docs/concepts_cn.md:553-555`）——**入门教程的 STEP6 归档命令**：
+
+   ```shell
+   apriori archive --store apriori/specs/mini-kv.md \
+     --delta apriori/changes/add-mini-kv/specs/mini-kv.md \
+     --change add-mini-kv --changes-dir apriori/changes --write
+   ```
+
+   它**同时**触发 B2 的两条判据（带 `--changes-dir`，且 delta 在 changes root 内）。
+
+2. `apriori/specs/archive-merge/spec.md:48` 的 **`AM-12`**：
+
+   > WHEN the single-file form `apriori archive --store <f> --delta <f> --change <name> --write --changes-dir <dir>` runs and the change-dir move fails
+
+   B2 之后，单文件形式**不再接受 `--changes-dir`**，因此**永不移动目录**——
+   AM-12 的 WHEN 子句失去主语，该场景**变为空洞**。这不是文档更新，是 **living spec 的 `## REMOVED` 操作**。
+
+`AM-19`（两种形式互斥）与 `apriori/specs/cli/spec.md:13`（usage 行）需 MODIFIED；
+`SECURITY.md:10` 只描述「由 change name 派生的路径」，**不涉及**单文件形式，经核**无需修改**（r1 此条不成立，见 §八 REQ-6 的处置）。
+
+### 1.8 delta 语法的操作粒度是 Requirement 块，不是 Scenario（r2·REQ-6，实测）
+
+`AM-12` 位于 `apriori/specs/archive-merge/spec.md:48`，其所属 Requirement 块为
+**`### Requirement: archive-merge applies delta specs to the living store`**（`:1`），
+该块含 **`AM-01` … `AM-12` 共 12 个场景**。
+
+delta 的 `## REMOVED` / `## MODIFIED` 都以**整个 `### Requirement:` 块**为单位
+（`## REMOVED` 保留块并标 `deprecated (superseded by <change>)`，块内 scenario 停止被 `verify` 要求）。
+**不存在 scenario 级的 REMOVED。**
+
+→ 对 AM-12 用 `## REMOVED` 会把仍然有效的 **AM-01..AM-11 一并弃用**。
+正确操作是 `## MODIFIED` 整块、保留 AM-01..AM-11、只去掉 AM-12，
+并由 **MODIFIED 完整性报告**打印 `! dropped: AM-12` 作为机械证据。
+
+### 1.9 `SECURITY.md:10` 确实承诺了单文件形式（r2·REQ-6，生产方的反驳被推翻）
+
+该行**末句**原文：
+
+> Explicit operator-given file arguments (single-file `archive --store <f> --delta <f>`, `stamp <file>`)
+> are used as given, like any file tool.
+
+B2b 让一部分 operator-given 的 `--delta` 不再 "used as given"。**这是直接冲突**，须同步该文档。
+（v2 §八 断言此处无需修改，系生产方读取被截断所致的错误，本版撤回。）
+
+### 1.7 `--force` 今天不存在
+
+`USAGE`（`:790`）无 `--force`；今天向 archive 传 `--force` 会因 unknown flag **exit 2**（`withStrict`）。
+
+---
+
+## 二、目标状态 B
+
+### B1 — 就绪度：三条判据，与 gate 同源
+
+`apriori archive --change <name>`（dry-run 与 `--write` 皆然）在合并结果落盘之前判定：
+
+- **R1 步位**：flow-state 通过 C3 的全部合法性检查，**且** `current-step` 恰为 `STEP6`。
+- **R2 任务**：`tasks.md` 零个未勾选框；缺文件时 trivial 层 n/a，medium/large 层不就绪。
+- **R3 台账**：`review/issues.md` 按 **`stage = 'archived'`** 判；缺文件时 trivial 层 n/a，medium/large 层不就绪。
+
+三条判据与 gate 的 C3 / C2 / archived-C4 **由同一份代码实现**（新增 `lib/readiness.js`，gate 改为从它取）。
+
+### B7 — 安全读取层：archive 独有的一层，gate 一字不变（r1·REQ-1）
+
+**两层结构，职责分明：**
+
+- **基础层**（`lib/readiness.js`）：`checkFlowState` / `checkTasks` / `checkLedger` / `classifyStatus` /
+  `gatesEntries` / `waiveEvidence` / `reviewDirDefect` / `STEP_ENUM` / `TIER_ENUM` 原样搬入，
+  **行为逐字节等于状态 A 的 gate**（含裸读）。gate 改为从这里取，对外零变化。
+- **archive 层**（`lib/archive-merge.js` 侧）：在调用基础层**之前**，对每个 artifact 跑
+  `fileReadDefect(bundleDir, p)`（`lib/resolve.js:134`，已导出）；台账另需**先**跑 `reviewDirDefect(bundleDir)`
+  再判叶子文件。
+
+#### B7a — 错误分类：只有真正的 `ENOENT` 才算「缺失」（r2·REQ-1）
+
+`fileReadDefect` 与 `reviewDirDefect` 的 `catch` **都不看 `e.code`**（§1.5），
+因此「复用既有 helper」**无法**兑现权限语义：`EACCES` 会被报成 `missing`，
+在 trivial 层被判 `n/a`，archive 继续写入——**这是一个 fail-open**。
+
+archive 安全层 SHALL 在调用 helper **之外**自行分类：
+
+1. 对每个 artifact（含 `review/` 根）先做一次 `fs.lstatSync`；
+2. 抛错且 **`e.code === 'ENOENT'`** → 交由 helper 走 tier 敏感的「缺失」分支；
+3. 抛错且 `e.code` **不是** `ENOENT`（`EACCES` / `EIO` / `ELOOP` / `ENOTDIR` / …）
+   → **结构类**，不就绪，**不可 force**，诊断含原始 `e.code`；
+4. 不抛错 → 交由 helper 判 symlink / not-file / escape / bad-ancestor；
+5. `realpath` 在本层若被使用，适用同一分类规则。
+
+**基础层不做这件事**——它必须保持状态 A 的 gate 行为（RY-06）。
+
+#### B7b — `containsReal` 的取用（r2·REQ-1）
+
+`readiness.reviewDirDefect` SHALL 使用 **`require('./resolve').containsReal`**，
+**不得**使用 `archive-merge.js` 的那一份——后者会形成
+`archive-merge → readiness → archive-merge` 的环。
+两份实现只在 `target === root` 一格分歧，而此处 target 恒为 `<dir>/review`，
+故在该调用形态下行为一致（§1.5），须以差分测试证明（RY-07）。
+
+**artifact × 缺陷类 × tier 判定表**（穷举）：
+
+| artifact | `fileReadDefect` 结果 | trivial | medium / large |
+|---|---|---|---|
+| `flow-state.md` | `null`（干净） | 继续判 C3 + STEP6 | 同左 |
+| `flow-state.md` | `missing` | **不就绪·R1·结构类** | 同左 |
+| `flow-state.md` | `symlink` / `not-file` / `escape` / `bad-ancestor` | **不就绪·R1·结构类** | 同左 |
+| `tasks.md` | `null` | 继续判 R2 | 同左 |
+| `tasks.md` | `missing` | **R2 = n/a** | **不就绪·R2·进度类** |
+| `tasks.md` | `symlink` / `not-file` / `escape` / `bad-ancestor` | **不就绪·R2·结构类** | 同左 |
+| `review/`（目录） | `reviewDirDefect` 非空 | **不就绪·R3·结构类** | 同左 |
+| `review/issues.md` | `null` | 继续判 R3 | 同左 |
+| `review/issues.md` | `missing` | **R3 = n/a** | **不就绪·R3·进度类** |
+| `review/issues.md` | `symlink` / `not-file` / `escape` / `bad-ancestor` | **不就绪·R3·结构类** | 同左 |
+| 任一 | 守卫通过后 `readFileSync` 抛错（竞态/权限） | **不就绪·结构类**，诊断含原始 `e.code` | 同左 |
+
+**结构类一律不可 force**（B3）。`flow-state.md` 缺失在 **trivial 层也是结构类**——
+因为无法排除这是一个 ABANDONED 的 change，而 R1 的存在理由就是这条排除。
+
+### B2 — 单文件形式：不再触碰 change bundle（r1·REQ-5 重写为可实现的算法）
+
+**用一句话陈述目标：单文件形式失去移动 bundle 的能力，也不再消费 bundle 内的 delta。**
+
+**B2a — `--changes-dir` 不再与单文件形式兼容。** 二者同时出现 → exit 2 + usage
+（与既有的「`--change` 不能只配 `--store`/`--delta` 之一」同类）。
+**推论：单文件形式此后永不移动任何目录**（移动本就只在 `--changes-dir` 显式给出时发生）。
+
+**B2b — `--delta` 落在规范 changes root 内 → 拒绝。** 算法（穷举、可直接实现）：
+
+1. `deltaAbs = path.resolve(cwd, <--delta 实参>)`（`path.resolve` 已规范化 `.` 与 `..`）。
+2. `rootAbs = path.resolve(cwd, 'apriori', 'changes')`。**只有规范 root**——显式 root 已被 B2a 吃掉。
+3. **词法量度**：`deltaAbs === rootAbs || deltaAbs.startsWith(rootAbs + path.sep)`。
+   用**路径段边界**，不用裸字符串前缀 → `apriori/changes-other/...` **不命中**。
+4. **realpath 量度**：对 `rootAbs` 与 `deltaAbs` 各取 `fs.realpathSync`；
+   - 任一取 realpath 失败（不存在 / 悬空 / 权限）→ **该量度不产生命中**（不是命中，也不是免罪），
+   - 两者都成功 → 按第 3 步同样的段边界判定。
+5. **两个量度任一命中即拒绝。** 皆不命中 → 落入既有行为（若 delta 本就不存在，仍由既有的
+   「delta 文件读不到」错误按状态 A 报，退出码不变）。
+
+**词法量度必须保留**：root 自身是 symlink 而调用方用词法路径书写时，realpath 量度会失配。
+**realpath 量度必须保留**：外部 symlink 指向 bundle 内 delta 时，词法量度会失配。
+
+**时机措辞（r1·REQ-5）**：判定发生在**读取 store 或 delta 的内容之前**；
+作用域判定本身所需的路径元数据读取（`path.resolve` / `realpathSync` / `lstat`）**不在此限**。
+
+**诊断必须给出替代命令**：`use the high-level form: apriori archive --change <name> [--changes-dir <dir>] [--write]`。
+
+**不落在 changes root 内的 `--delta`**（真正的单模块手术）——除 B2a 外行为不变（见 B5 的精确表述）。
+
+### B3 — `--force`：可 force 的类别是穷举的，且需要预存的人类证据（r1·REQ-2 / REQ-3）
+
+**可 force（进度类，穷举）：**
+
+- R2：`tasks.md` 存在且有 N 个未勾选框；
+- R3：台账行 status 为 `open`、`fixed`、或**带理由的** plain `rejected`（即 `classifyStatus` 判 `legal && hasReason`）。
+
+**不可 force（穷举）：**
+
+- **R1 的任何情形**（含 `ABANDONED`——RUNBOOK §283 的硬规则在代码层**没有旁路**）；
+- 任何**结构类**（B7 表中的 symlink / not-file / escape / bad-ancestor / 守卫后读取异常）；
+- **artifact 缺失**：medium/large 层缺 `tasks.md` 或缺台账；
+- 台账行 status **不在词汇表内**（格式问题，不是进度问题）；
+- `rejected` / `rejected-verified` / `waived` **缺理由**；
+- `waived` **缺 `gates:` 人类记录**——`--force` **不能**代替 waive 证据。
+
+**人类证据协议（r2·REQ-2 重写——按类绑定，且如实命名其有效期）**：
+
+`--force` 对某一类失败生效的前提是，bundle 的 `flow-state.md` 的 `gates:` 段里**预先存在**
+一条**按类具名**的记录：
+
+```
+archive-force tasks   <reason>
+archive-force ledger  <reason>
+```
+
+- **类 token 必须精确匹配**：`archive-force` 与其后的类名各自按
+  `(^|[^A-Za-z0-9-])<tok>([^A-Za-z0-9-]|$)` 判边界（`archive-force-2` / `tasks2` 均不命中）。
+- **一条记录只授权它列出的那一类**。要同时越过 R2 与 R3，需要两条记录（或一条同时列出两个类名）。
+- **理由必须含至少一个 `\w` 字符**（`archive-force tasks —` 不算理由）。
+- **有效期，如实陈述**：该记录是**该类在本 bundle 生命周期内持续有效的授权**（standing），
+  **不是**「本次运行」的证据——文件内容无法证明「本次」。
+  记录写下之后新出现的同类失败**会被同一条记录覆盖**，直到该记录被显式删除。
+  **这是本协议已知的弱点，须在 gate④ 如实呈报**；不把它包装成 per-run 证据。
+- **来源的准确表述**：该条目**记录一项先前的人类决定**（RUNBOOK 的机制是人类作决定、
+  agent 把其原话记进 flow-state）；文件本身**无法证明作者身份**。
+  它的作用是让 force 需要一次**独立于本次运行的、可审计的书面动作**，而不是身份证明。
+- 证据缺失时 `--force` **无效果**，archive 仍拒绝，并打印一段**可复制的模板**
+  （形如 `  - <date> gate⑤ (owner): archive-force tasks — <your reason>`）——
+  **不声称**打印人类尚未写下的理由全文。
+
+**输出格式**：force 生效时逐条打印被越过的项，一项一行，前缀 `forced: `；
+随后打印所引用的每条 `gates:` 记录的 **原始首行**（`flow-state.md` 中的字面文本，
+**不是** `gatesEntries()` 拼接续行后的规范化文本）。**不打印笼统的一句 "forced"。**
+
+**dry-run 与 write 的关系（r1·REQ-2 的矛盾修正）**：
+`--force` 在 dry-run 与 `--write` 中**同样改变就绪度结论**；**只有 `--write` 产生磁盘副作用**。
+
+**单文件形式与 `--force`（r1·REQ-3）**：`--force` **只出现在高层 usage**；
+单文件形式收到 `--force` → **exit 2 + usage**。这是 B5 的**唯一一处**兼容性例外，见 B5。
+
+### B4 — dry-run 说的就是 `--write` 会做的
+
+未就绪时 dry-run **不得**打印 `RESULT: MERGED (dry-run…)`，退出码 1，零写入。
+
+### B5 — 零变化的精确边界（r1·REQ-4 / REQ-3）
+
+- **既有 preflight 失败**（`discoverDeltas` 错误 / `buildProjection` validation / CAS 拒绝 / hygiene /
+  base 失配 / 同 ID 冲突 / `--write` 的预存温存文件 / 显式 root 的归档目的地包含性）时：
+  诊断与退出码**一字不变**，且就绪度**不被求值**。
+- **就绪的 bundle** 的成功输出（逐模块报告、MODIFIED 完整性报告、`RESULT: MERGED…`、移动路径）**一字不变**。
+- **单文件形式、delta 在 changes root 之外**：行为不变，**唯二例外**是
+  ① 同时传 `--changes-dir` → exit 2（B2a）；② 传 `--force` → exit 2（B3）。
+  两者在状态 A 分别是「合法组合」与「unknown flag exit 2」，本版把前者改为 exit 2、
+  后者保持 exit 2 但**改变诊断文本**。这两处例外**必须逐条写进 CHANGELOG**。
+
+### B6 — 精确调用序（r1·REQ-4，按源码事实书写）
+
+```
+cli 参数校验（含 B2a：单文件 + --changes-dir → exit 2；单文件 + --force → exit 2）
+  ↓ [单文件形式]  B2b 作用域判定 → 命中即拒绝，零读取内容、零写入、零移动
+  ↓ [高层形式]
+discoverDeltas          (:676)   ── 既有
+buildProjection         (:678)   ── 既有；**内存合并在此完成**
+逐模块报告 / CAS 拒绝集 (:681)   ── 既有
+preflightFailures 判定  (:702)   ── 既有；失败即 FAILED PREFLIGHT
+jobs 构造               (:708)   ── 既有
+--write 温存文件守卫    (:713)   ── 既有
+--write 归档目的地守卫  (:721)   ── 既有
+**readiness（R1 → R2+R3）**      ── 新增，插在这里
+pushIntegritySection    (:733)   ── 既有；未就绪时**不打印**
+dry-run 出口 / stage / commit / move ── 既有
+```
+
+「合并」一词在本文件中一律指 **`buildProjection` 的内存投影**；落盘只在 commit 阶段发生。
+把 readiness 放在两个 `--write` 守卫之后、integrity report 之前，
+是为了让 dry-run 与 `--write` 在**同一个逻辑点**求值就绪度（B4），同时保住 B5 的字节不变。
+
+---
+
+## 三、判定矩阵
+
+### 3.1 就绪度结论（**有序**；先命中者先报）
+
+顺序：**读取/结构失败 → C3 基础合法性 → STEP6 overlay → R2/R3 进度**（r1·REQ-7）。
+
+| # | 情形 | 类 | 结论 | 可 force |
+|---|---|---|---|---|
+| 1 | flow-state 的 `fileReadDefect` 非空，或守卫后读取抛错 | R1·结构 | 不就绪 | **否** |
+| 2 | flow-state 解析后未过 C3（缺键、占位符、名字不符、step/tier 不在词汇表） | R1·合法性 | 不就绪，**报 C3 的原始 detail** | **否** |
+| 3 | C3 全过，`current-step: ABANDONED` | R1·STEP6 overlay | 不就绪，专门措辞 + 引 RUNBOOK §283 | **否** |
+| 4 | C3 全过，`current-step: DONE` | R1·STEP6 overlay | 不就绪，措辞：`in-flight bundle declares DONE; expected STEP6` | **否** |
+| 5 | C3 全过，`current-step` 为其他合法值 | R1·STEP6 overlay | 不就绪，报实际值与期望值 `STEP6` | **否** |
+| 6 | R1 全过，`tasks.md`/台账 的结构缺陷 | R2/R3·结构 | 不就绪 | **否** |
+| 7 | R1 全过，medium/large 层 `tasks.md` 或台账缺失 | R2/R3·缺失 | 不就绪 | **否** |
+| 8 | R1 全过，trivial 层 `tasks.md` 或台账缺失 | — | n/a | — |
+| 9 | R1 全过，`tasks.md` 有 N 个未勾选框 | R2·进度 | 不就绪，报 N | **是**（需 `archive-force tasks`） |
+| 10 | R1 全过，台账行为 `open` / `fixed` / 带理由的 `rejected` | R3·进度 | 不就绪，逐条报 | **是**（需 `archive-force ledger`） |
+| 11 | R1 全过，台账行 status 非法 / 缺理由 / `waived` 缺人类记录 | R3·格式·证据 | 不就绪，逐条报 | **否** |
+| 12 | 全过 | — | 就绪 | — |
+
+> **互斥性的准确表述（r1·REQ-7）**：#1..#5 属 R1，**内部有序**，只报第一个命中者。
+> #6..#11 属 R2/R3，**可同时成立**，R1 通过时**一次报全**（避免挤牙膏式往返）。
+> #3/#4 的专门措辞**只在 C3 其余部分已通过时**使用；C3 有其他错误时按 #2 报 C3 的原始 detail。
+
+### 3.2 单文件形式的作用域（**有序**、穷举）
+
+| # | 情形 | 结论 |
+|---|---|---|
+| 1 | 同时传 `--changes-dir` | exit 2 + usage（B2a） |
+| 2 | 传 `--force` | exit 2 + usage（B3） |
+| 3 | `deltaAbs` 词法落在 `rootAbs` 内（段边界） | 拒绝，零写入零移动，诊断给出高层形式 |
+| 4 | `realpath(deltaAbs)` 落在 `realpath(rootAbs)` 内（两者 realpath 均成功） | 同上 |
+| 5 | 以上皆否 | 现有行为不变（含 delta 不存在时的既有错误与退出码） |
+
+---
+
+## 四、验收标准
+
+### 新模块 `readiness`（store 前缀 `RY-`）
+
+- **RY-01** 基础层的三条判据与状态 A 的 gate C3 / C2 / archived-C4 **逐项一致**：
+  同一批 bundle 喂给两边，`{id,status,detail}` 逐条相同（差分断言）。
+- **RY-02** gate 改用基础层之后，`runGate()` 的返回对象与每条 detail **字节不变**；
+  抛错分支只比 error class / code / message，**显式排除** stack 的文件名与行号。
+- **RY-03** `STEP6` 是在 C3 通过**之后**追加的一条 overlay，不是替换 C3：
+  C3 失败时报 C3 的原始 detail，不报 STEP6 措辞。
+- **RY-04** 每个合法的非 `STEP6` 取值都使 archive 不就绪，而 gate 的 C3 仍 pass
+  （断言方向：`archive 就绪 ⇒ gate C3 pass`，反之不成立）。
+- **RY-05** 静态断言：`archive-merge.js` 不出现 `require('./gate')`；`gate.js` 不重实现三条判据；
+  `gate.js` 仍导出 `classifyStatus`。
+- **RY-06** 基础层**不含**任何 `fileReadDefect` 调用（安全层是 archive 独有的；
+  基础层若加守卫就会改变 gate 行为，与 RY-02 冲突）。
+- **RY-07**（r2·REQ-1）静态断言 `readiness.js` **不 require `archive-merge.js`**；
+  且 `readiness.reviewDirDefect` 用 `resolve.containsReal` 时，
+  与状态 A（`archive-merge.containsReal`）在**该调用形态**下结论逐例相同——
+  差分测试至少覆盖：正常目录 / symlink / 非目录 / 逃逸 / 不存在，五种输入各一。
+
+### archive 的安全读取层（r1·REQ-1）
+
+- **AM-74** B7 表逐格：三个 artifact × 五个缺陷类（`missing` / `symlink` / `not-file` / `escape` /
+  `bad-ancestor`）× 两个 tier 侧，各自 refuse 或 n/a，**结果与表一致**。
+- **AM-75** 构造一个 `current-step: ABANDONED` 的 bundle，其 `flow-state.md` 是**指向 bundle 外一份
+  `STEP6` 文件**的 symlink → refuse（结构类），且**带 `--force` 仍 refuse**。
+- **AM-76** `review/` 本身是**指向 bundle 内另一目录**的 symlink、而 `issues.md` 完全正常
+  → refuse（只守叶子会放行）。
+- **AM-77** 守卫通过后 `readFileSync` 抛错（注入 seam 模拟竞态/权限）→ refuse，诊断含原始 `e.code`，不可 force。
+- **AM-107**（r2·REQ-1）**守卫自身**抛错：`lstatSync` 抛 `EACCES` / `EIO` / `ELOOP`
+  → **结构类** refuse，诊断含原始 `e.code`，不可 force。
+  **关键控制**：同一场景在 **trivial 层**也必须 refuse，**不得**因 helper 把它归成 `missing` 而判 `n/a`
+  （这条是 r2 指出的 fail-open 的直接机械证明）。
+- **AM-108** 真正的 `ENOENT` 仍走 tier 敏感分支：trivial 层 `tasks.md`/台账不存在 → `n/a`。
+
+### archive 的就绪度（r1·REQ-4 / REQ-7）
+
+- **AM-78** 三类不就绪各自 refuse：打印 `RESULT: NOT READY — nothing written`，退出码 1，零写入零移动。
+- **AM-79** R1 有序：#1..#5 只报第一个命中者；R1 通过则 R2 与 R3 一次报全。
+- **AM-80** `ABANDONED` 与 `DONE` 各有专门措辞（`DONE` 的文案为
+  `in-flight bundle declares DONE; expected STEP6`，**不得**声称「已经归档过」），且不可 force。
+- **AM-81** C3 有其他错误的 `ABANDONED` bundle → 报 C3 的原始 detail，**不报** ABANDONED 专门措辞。
+- **AM-82** trivial 层缺 `tasks.md` / 缺台账 = n/a；medium/large 层缺失即不就绪且**不可 force**。
+- **AM-83** 既有 preflight 的**每一个** guard（discoverDeltas 错误 / validation / CAS 拒绝 / hygiene /
+  base 失配 / 冲突 / 温存文件 / 归档目的地）失败时，诊断与退出码**一字不变**，
+  且就绪度**未被求值**（以计数 seam 断言调用次数为 0）。
+- **AM-84** 未就绪时 **integrity report 不打印**；就绪时打印且位置不变。
+- **AM-85** 未就绪的 dry-run **不**打印 `RESULT: MERGED (dry-run…)`，退出码 1，零写入。
+
+### `--force`（r1·REQ-2 / REQ-3）
+
+- **AM-86** 可 force 类逐项：未勾任务、`open`、`fixed`、带理由的 `rejected` → 有证据时放行。
+- **AM-87** 不可 force 类逐项：R1 全部五种、结构类全部、medium/large 的 artifact 缺失、
+  非法 status、缺理由、`waived` 缺人类记录 → 带 `--force` 仍 refuse。
+- **AM-88**（r2·REQ-2）人类证据协议：无 `archive-force <class>` 条目 → `--force` 无效果，
+  且打印**可复制的模板**（断言输出含模板骨架，**不**断言含任何人类理由文字）；
+  有条目但理由不含 `\w` → 同样无效果；token 边界正确
+  （`archive-force-2 tasks` / `archive-force tasks2` 均不命中）。
+- **AM-89**（r2·REQ-2）**按类绑定**：只有 `archive-force tasks` 时，R2 被越过而 R3 仍 refuse；
+  只有 `archive-force ledger` 时反之；两条（或一条同时列两类）时两者皆过。
+- **AM-109** 输出逐条 `forced: …`，并打印所引用记录的**原始首行**——
+  控制：构造一条**跨行**的 `gates:` 记录，断言打印的是首行字面文本，
+  **不是** `gatesEntries()` 拼接后的规范化文本。
+- **AM-90** `--force` 在 dry-run 与 `--write` 中同样改变结论；dry-run 下**零磁盘副作用**。
+- **AM-91** 单文件形式 + `--force` → exit 2 + usage。
+
+### 单文件形式的作用域（r1·REQ-5）
+
+- **AM-92** 单文件 + `--changes-dir` → exit 2 + usage，零写入零移动。
+- **AM-93** 词法命中逐例：`apriori/changes/X/specs/a.md`、`./apriori/changes/X/specs/a.md`、
+  `apriori/changes/../changes/X/specs/a.md` → 全部拒绝。
+- **AM-94** 段边界：`apriori/changes-other/X/specs/a.md` → **不**拒绝（前缀兄弟目录）。
+- **AM-95** realpath 命中：bundle 外的 symlink 指向 `apriori/changes/X/specs/a.md` → 拒绝。
+- **AM-96** 词法命中而 root 自身是 symlink（realpath 量度失配）→ 仍拒绝（词法量度保住）。
+- **AM-97** root 不存在 / delta 悬空 / realpath 权限失败 → realpath 量度不产生命中；
+  若词法亦不命中，则落入既有行为，**退出码与诊断与状态 A 一致**。
+- **AM-98** changes root 之外的单文件手术（含 `--write` 成功路径）→ **逐字节不变**。
+
+### 迁移与文档（r1·REQ-6，v1 漏报的全部补入）
+
+- **AM-99**（r2·REQ-6 改正）`apriori/specs/archive-merge/spec.md` 的 **AM-12** 经
+  **`## MODIFIED` 其所属 Requirement 块**去除——该块是
+  `### Requirement: archive-merge applies delta specs to the living store`，含 AM-01..AM-12。
+  **不得使用 `## REMOVED`**：那会把仍然有效的 AM-01..AM-11 一并 deprecated（§1.8）。
+  验收三条：① 合并后该块仍含 AM-01..AM-11 共 **11** 个场景，内容逐字节不变；
+  ② **MODIFIED 完整性报告**恰好打印 `! dropped: AM-12`，**且不打印其他 dropped**；
+  ③ AM-12 的绑定测试相应处置。`AM-19` 经 `## MODIFIED` 更新为新的互斥规则。
+- **AM-100** `apriori/specs/cli/spec.md` 的 usage 场景经 `## MODIFIED` 更新。
+- **AM-101** `docs/concepts.md` 与 `docs/concepts_cn.md` 的 STEP6 教程命令迁移到高层形式
+  （`apriori archive --change add-mini-kv --changes-dir apriori/changes --write`）；
+  可 grep 断言：两份文件中不再出现 `archive --store`。
+- **AM-102** `docs/cli.md` / `docs/cli_cn.md` 的 archive 段落描述就绪度、`--force` 的边界与证据协议、
+  单文件形式的作用域限制；`USAGE` 的高层行含 `--force`，单文件行**不含**。
+- **AM-103** `RUNBOOK.md` / `RUNBOOK_cn.md` 的 archive 算法段落记录：归档前判就绪度；
+  单文件形式仅用于**不在 changes root 内**的单模块手术，且不再接受 `--changes-dir`。
+- **AM-104** `CHANGELOG.md` 显著位置声明**三项破坏性变更**：
+  ① 未就绪的 change 不再能归档（新退出路径 `RESULT: NOT READY`）；
+  ② 单文件形式不再接受 `--changes-dir`（**失去移动能力**）；
+  ③ 单文件形式不再接受 changes root 内的 `--delta`。
+- **AM-105** `truth/archive-merge.md` 与新增的 `truth/readiness.md` 记录：判据同源、两层结构、
+  不成环的理由、以及「基础层不加守卫」的决策；`truth/gate.md` 记录 gate 改从基础层取。
+- **AM-106**（r2·REQ-6 改正，生产方的反驳被推翻）**`SECURITY.md` 必须修改**：
+  `:10` 末句 "Explicit operator-given file arguments (single-file `archive --store <f> --delta <f>`,
+  `stamp <file>`) are used as given, like any file tool." 是对单文件形式的显式承诺，与 B2b 冲突。
+  改为写明新的拒绝边界（changes root 内的 `--delta` 不再 used as given，`--changes-dir` 不再兼容），
+  并以可 grep 断言新边界文字存在。
+
+---
+
+## 五、明确不做（out of scope）
+
+1. **G3 全组**——不作任何「归档之后那次 gate 会解析到这个 bundle」的承诺。
+   随之不做：N0..N3 命名空间前置条件、时钟 seam、同名归档目录排序检查、自定义 root 的提示语。
+2. **前身 F-2**：`resolveChange` 在同名归档中取字典序最后者 → resolver 自身缺陷，本 change 不处理。
+3. **前身 F-4**：`archive-merge.js:753` 的 phase 4 自行 `new Date()` → 属 G3，不处理。
+4. **不改 `lib/resolve.js`**（含 §1.5 发现的 `:153`/`:154` 重复行——那是独立的清理项）。
+5. **不改 gate 的任何对外行为**（RY-02 是机械保证）。
+6. **不引入并发/锁**。TOCTOU 窗口存在且不在本 change 关闭（见 §六-1）。
+7. **G3 findings 的独立追踪入口（r1·A-2，按 r2·A-1 改形）**：F-2 与 F-4 的稳定标识
+   `finding:resolver-archive-tiebreak` 与 `finding:archive-move-clock`
+   **写进本轮 advisory batch row 的 Issue 文本**（而不是另开两条 `advisory-acked` 行——
+   RUNBOOK/P0 规定 advisory 每轮只落一个 batch row）。目的不变：本 change 完成后仍可 grep 到。
+
+---
+
+## 六、已知后果与风险
+
+1. **TOCTOU 窗口存在（r1·A-1，本版给出精确前置条件）**：
+   本 change 保证的区间是「**从第一次读取 readiness artifact 开始，到 dry-run 返回、
+   或（无 move 的）commit 结束、或 move 尝试结束为止，调用方不得并发修改 bundle**」。
+   实现**不声称**能检测该竞态。机械化表述（r2·A-2）：`--write` 路径须提供一个 hook，
+   **在就绪度全部判完之后、第一次写 store 之前**触发；测试在该 hook 内修改 bundle，
+   并断言 archive **不重新读取 readiness artifact、也不检测该修改**。
+   「看守一次」**不等于**提交时刻的状态保证。**须在 gate④ 如实呈报。**
+2. **三项对外可见的破坏性变更**（AM-104 已具名）。其中「单文件形式失去移动能力」
+   会使 **living spec 的 AM-12 变为空洞**，须以 `## MODIFIED` 整块的方式去除该 scenario（§1.8）——
+   这是本 change 唯一一处**删除既有承诺**的地方，须在 gate④ 单独点名，
+   并以 MODIFIED 完整性报告的 `! dropped: AM-12` 作为呈报证据。
+   同时 `SECURITY.md` 的显式承诺句需同步（§1.9）。
+3. **入门教程会改**：`docs/concepts{,_cn}.md` 的 STEP6 命令迁移到高层形式。
+   这实际上让教程与 RUNBOOK 的推荐路径一致（RUNBOOK 早已把高层形式作为正道），
+   但它是**用户第一次归档时照抄的那条命令**，改错的代价很高。
+4. **迁移面：61 个高层调用点 / 6 个测试文件**（gap-report §A6）。
+   风险不在数量，在**遗漏**——该清单是单行 grep 判据，抓不到跨行调用，
+   STEP5 的 M1 必须逐文件人工走完，**不得以该表收尾**。
+5. **`--force` 是一个新的逃生舱**。缓解：类别穷举、结构类与 R1 永不可解、
+   需要**预存的、按类具名的人类 `gates:` 证据**、逐条打印。
+   **已知弱点，如实呈报（r2·REQ-2）**：该证据是**该类在本 bundle 生命周期内持续有效的授权**，
+   不是「本次运行」的证据——记录写下之后新出现的同类失败会被同一条记录覆盖，
+   直到该记录被显式删除。本版**不把它包装成 per-run 证据**；
+   若 owner 认为这个有效期太宽，可在 gate④ 要求改为绑定当前失败集合摘要。
+6. **第二次不收敛的处置**：若本轮 STEP0 再撞 cap，生产方**不提议第三次重开**，
+   而是把「判 ABANDONED」作为选项如实呈给 owner（RUNBOOK §283：只能由人类裁定）。
+
+---
+
+## 七、与前身 `archive-preflight` 的关系
+
+前身**不删除、不实现、不归档**，原地保留（`current-step: SUPERSEDED`）。
+其九轮评审的实证发现 F-1..F-4 已转录在它的 flow-state 尾部。
+本 change 继承 F-1（以拒绝方式关闭），F-2/F-4 转独立 finding（§五-7），F-3 存档备查。
+
+**CAS 复核（已做）**：当前 `apriori/specs/archive-merge/spec.md` 的 base 为
+`sha256:51620e96cd6b3c4a4b1af5e1e0865fd7f55bcf0333ecc47aeca727cf997282c5`；
+前身触及的块与 `id-pattern-and-delta-notes` 新增 AM-71..73 所在的块**不同**，无 §4.11 冲突。
+（r1 独立复核并确认了这一点。）
+
+---
+
+## 八、STEP0·r1 处置说明（本版）
+
+**7 条全部 accept，无一 rejected。**
+
+| ID | 处置 |
+|---|---|
+| REQ-1 | 新增 **B7**（两层结构 + artifact × 缺陷类 × tier 判定表）与 **RY-06 / AM-74..77**。实证补充：`fileReadDefect` 已存在且已导出（`resolve.js:134`/`:158`），**不需新写**；`reviewDirDefect` 是 gate 私有，随基础层搬入。 |
+| REQ-2 | **B3 重写**：可 force / 不可 force 两个穷举清单 + 预存的人类 `gates: archive-force` 证据协议 + 多失败覆盖规则 + 逐条输出格式；矛盾措辞改为「dry-run 与 write 同样改变结论，只有 write 产生磁盘副作用」。验收 AM-86..90。 |
+| REQ-3 | 采纳评审方的**推荐分支**：`--force` 只出现在高层 usage，单文件形式收到即 exit 2；并把它写成 **B5 的具名例外**（连同 B2a 共两处），验收 AM-91。 |
+| REQ-4 | **B6 按源码逐行重写**，明确 readiness 插在两个 `--write` 守卫之后、`pushIntegritySection` 之前；「合并」一词统一指内存投影。验收 AM-83（逐 guard + 计数 seam）与 AM-84（integrity report 的出现条件）。 |
+| REQ-5 | **B2b 给出五步算法**（`path.resolve` / 段边界 / 双量度 / realpath 失败的 disposition / 时机措辞修正）；验收 AM-93..97 逐例覆盖 `.`、`..`、前缀兄弟、symlink root、外部 symlink、缺失 root、悬空 delta。 |
+| REQ-6 | **§零-3 撤回**，§1.6 补全真实迁移面（38 处的分类清点）。**两点比评审方描述得更重**：`docs/concepts.md:553` 是入门教程的 STEP6 命令；living spec 的 **AM-12 变为空洞**，需 `## REMOVED` 而不只是文档更新。**一处不成立**：`SECURITY.md:10` 只描述「由 change name 派生的路径」，与单文件形式无关，故改为 **AM-106 的可 grep 断言**（断言其确实不含该承诺）而非修改。 |
+| REQ-7 | **3.1 改为有序矩阵**（读取/结构 → C3 → STEP6 overlay → 进度），互斥性改为精确表述；`DONE` 文案改为 `in-flight bundle declares DONE; expected STEP6`。验收 AM-79..81。 |
+| A-1 | §六-1 写成精确的调用前置条件区间 + seam 要求。 |
+| A-2 | §五-7：F-2/F-4 以带稳定标识的 `advisory-acked` 台账行落地，可 grep。 |
+| A-3 | 采纳其准确结论：不重建 G2/G3，但**完整恢复** G1 的安全读取（B7）与 force 分类（B3）。 |
+
+---
+
+## 八·2、STEP0·r2 处置说明（本版）
+
+**verdict 序列 7 → 3。** r2 verified 四条：**REQ-3 / REQ-4 / REQ-5 / REQ-7**（本版不再改动）。
+重开三条，**全部 accept，无一 rejected**：
+
+| ID | 残余缺陷 | 本版处置 |
+|---|---|---|
+| REQ-1 | ① `fileReadDefect` 与 `reviewDirDefect` 的 `catch` 都不看 `e.code`，`EACCES` 被报成 `missing`，在 trivial 层判 `n/a` → **fail-open**；AM-77 只覆盖「守卫之后」的读取异常，抓不到守卫**自身**的异常。② 「原样搬入」`reviewDirDefect` 会连 `archive-merge.containsReal` 一起搬，形成 `archive-merge → readiness → archive-merge` 的**环**。 | 新增 **B7a**（archive 安全层自行分类：只有真正的 `ENOENT` 才进 tier 敏感的缺失分支，其余 `e.code` 一律结构类不可 force）与 **B7b**（`readiness.reviewDirDefect` 取 `resolve.containsReal`）。§1.5 补入两条实证。新增 **AM-107**（守卫自身抛 `EACCES`/`EIO`/`ELOOP`，**含 trivial 层的关键控制**）、**AM-108**、**RY-07**（静态禁 require + 五例差分）。 |
+| REQ-2 | 泛化的 `archive-force <reason>` 是**永久的、无范围绑定的 blanket waiver**，却被称作「本次运行」的证据：为两项旧任务写的记录会自动授权后来出现的任意 tasks/ledger 问题。另外「由人类写入」不可由文件证明；AM-88 要求打印「需要写入的确切文字」而人类理由尚未知；「非空文字」不构成理由定义；「打印 gates 条目原文」未说明是原始多行还是规范化拼接。 | **采纳推荐分支并加一条诚实声明**：token 改为**按类具名**（`archive-force tasks` / `archive-force ledger`），一条记录只授权它列出的类；理由须含 `\w`；措辞由「由人类写入」改为「**记录一项先前的人类决定**」，并注明文件无法证明作者身份；AM-88 改为打印**可复制的模板**；输出改为打印记录的**原始首行**。**并如实命名其有效期**：这是该类在本 bundle 生命周期内**持续有效的授权**，不是 per-run 证据——写进 §六-5 供 gate④ 裁决。新增 **AM-89**（按类绑定）与 **AM-109**（原始首行 vs 规范化文本的控制）。 |
+| REQ-6 | ① 生产方主张对 AM-12 用 `## REMOVED` —— **错误**：AM-12 是 Scenario，delta 语法的操作粒度是整个 `### Requirement:` 块，实测该块含 **AM-01..AM-12 共 12 个场景**，`REMOVED` 会把 AM-01..AM-11 一并弃用。② 生产方对 `SECURITY.md` 的反驳 —— **不成立**：`:10` 末句明确承诺单文件形式 "used as given"。 | **两条都改正**。新增 **§1.8**（delta 语法的操作粒度，含实测的 12 个场景清单）与 **§1.9**（SECURITY.md 末句原文）。**AM-99 改写**为 `## MODIFIED` 整块 + 三条验收（AM-01..AM-11 共 11 个场景逐字节保留 / 完整性报告恰好打印 `! dropped: AM-12` 且无其他 dropped / 绑定测试处置）。**AM-106 改写**为**修改** SECURITY.md。**生产方的两处判断错误已记录在案**：一处是把 scenario 当 Requirement，一处是 grep 输出被截断而漏读末句。 |
+
+**r2 确认的两条**：concepts 教程命令同时触发 B2a/B2b（比一般陈旧 usage 更重）；AM-12 确将变为空洞。
+
+**advisory 处置**：A-1 → §五-7 改为写进 batch row 文本；A-2 → §六-1 机械化为「就绪度判完之后、
+首次写 store 之前」的 hook + 「不重读、不检测」的断言；A-3 → **接受**，本文件的 `:676` 等行号
+**只作定位**，STEP2 的 design/tasks 一律绑定**命名步骤与函数调用**，不得以行号为验收接口。
+
+context compacted
+codex
+One repo-level policy detail is decisive here: the proposed “until removed” revocation must be compatible with the runbook’s rules for `flow-state.md`. I’m checking that and the exact integrity-report grammar before accepting the fixes.
+exec
+/usr/bin/zsh -lc "sed -n '250,430p' apriori/changes/archive-readiness/requirement/req-v3.md && sed -n '1,220p' lib/archive-merge.js && rg -n \"formatIntegrityHuman|dropped:|append-only|archive-force|SECURITY.md|AM-12|req-v2\" RUNBOOK.md lib apriori test tests docs SECURITY.md package.json 2>/dev/null" in /mnt/d/Workbench/misc/apriori-spec-development
+ exited 2 in 185ms:
+
+**诊断必须给出替代命令**：`use the high-level form: apriori archive --change <name> [--changes-dir <dir>] [--write]`。
+
+**不落在 changes root 内的 `--delta`**（真正的单模块手术）——除 B2a 外行为不变（见 B5 的精确表述）。
+
+### B3 — `--force`：可 force 的类别是穷举的，且需要预存的人类证据（r1·REQ-2 / REQ-3）
+
+**可 force（进度类，穷举）：**
+
+- R2：`tasks.md` 存在且有 N 个未勾选框；
+- R3：台账行 status 为 `open`、`fixed`、或**带理由的** plain `rejected`（即 `classifyStatus` 判 `legal && hasReason`）。
+
+**不可 force（穷举）：**
+
+- **R1 的任何情形**（含 `ABANDONED`——RUNBOOK §283 的硬规则在代码层**没有旁路**）；
+- 任何**结构类**（B7 表中的 symlink / not-file / escape / bad-ancestor / 守卫后读取异常）；
+- **artifact 缺失**：medium/large 层缺 `tasks.md` 或缺台账；
+- 台账行 status **不在词汇表内**（格式问题，不是进度问题）；
+- `rejected` / `rejected-verified` / `waived` **缺理由**；
+- `waived` **缺 `gates:` 人类记录**——`--force` **不能**代替 waive 证据。
+
+**人类证据协议（r2·REQ-2 重写——按类绑定，且如实命名其有效期）**：
+
+`--force` 对某一类失败生效的前提是，bundle 的 `flow-state.md` 的 `gates:` 段里**预先存在**
+一条**按类具名**的记录：
+
+```
+archive-force tasks   <reason>
+archive-force ledger  <reason>
+```
+
+- **类 token 必须精确匹配**：`archive-force` 与其后的类名各自按
+  `(^|[^A-Za-z0-9-])<tok>([^A-Za-z0-9-]|$)` 判边界（`archive-force-2` / `tasks2` 均不命中）。
+- **一条记录只授权它列出的那一类**。要同时越过 R2 与 R3，需要两条记录（或一条同时列出两个类名）。
+- **理由必须含至少一个 `\w` 字符**（`archive-force tasks —` 不算理由）。
+- **有效期，如实陈述**：该记录是**该类在本 bundle 生命周期内持续有效的授权**（standing），
+  **不是**「本次运行」的证据——文件内容无法证明「本次」。
+  记录写下之后新出现的同类失败**会被同一条记录覆盖**，直到该记录被显式删除。
+  **这是本协议已知的弱点，须在 gate④ 如实呈报**；不把它包装成 per-run 证据。
+- **来源的准确表述**：该条目**记录一项先前的人类决定**（RUNBOOK 的机制是人类作决定、
+  agent 把其原话记进 flow-state）；文件本身**无法证明作者身份**。
+  它的作用是让 force 需要一次**独立于本次运行的、可审计的书面动作**，而不是身份证明。
+- 证据缺失时 `--force` **无效果**，archive 仍拒绝，并打印一段**可复制的模板**
+  （形如 `  - <date> gate⑤ (owner): archive-force tasks — <your reason>`）——
+  **不声称**打印人类尚未写下的理由全文。
+
+**输出格式**：force 生效时逐条打印被越过的项，一项一行，前缀 `forced: `；
+随后打印所引用的每条 `gates:` 记录的 **原始首行**（`flow-state.md` 中的字面文本，
+**不是** `gatesEntries()` 拼接续行后的规范化文本）。**不打印笼统的一句 "forced"。**
+
+**dry-run 与 write 的关系（r1·REQ-2 的矛盾修正）**：
+`--force` 在 dry-run 与 `--write` 中**同样改变就绪度结论**；**只有 `--write` 产生磁盘副作用**。
+
+**单文件形式与 `--force`（r1·REQ-3）**：`--force` **只出现在高层 usage**；
+单文件形式收到 `--force` → **exit 2 + usage**。这是 B5 的**唯一一处**兼容性例外，见 B5。
+
+### B4 — dry-run 说的就是 `--write` 会做的
+
+未就绪时 dry-run **不得**打印 `RESULT: MERGED (dry-run…)`，退出码 1，零写入。
+
+### B5 — 零变化的精确边界（r1·REQ-4 / REQ-3）
+
+- **既有 preflight 失败**（`discoverDeltas` 错误 / `buildProjection` validation / CAS 拒绝 / hygiene /
+  base 失配 / 同 ID 冲突 / `--write` 的预存温存文件 / 显式 root 的归档目的地包含性）时：
+  诊断与退出码**一字不变**，且就绪度**不被求值**。
+- **就绪的 bundle** 的成功输出（逐模块报告、MODIFIED 完整性报告、`RESULT: MERGED…`、移动路径）**一字不变**。
+- **单文件形式、delta 在 changes root 之外**：行为不变，**唯二例外**是
+  ① 同时传 `--changes-dir` → exit 2（B2a）；② 传 `--force` → exit 2（B3）。
+  两者在状态 A 分别是「合法组合」与「unknown flag exit 2」，本版把前者改为 exit 2、
+  后者保持 exit 2 但**改变诊断文本**。这两处例外**必须逐条写进 CHANGELOG**。
+
+### B6 — 精确调用序（r1·REQ-4，按源码事实书写）
+
+```
+cli 参数校验（含 B2a：单文件 + --changes-dir → exit 2；单文件 + --force → exit 2）
+  ↓ [单文件形式]  B2b 作用域判定 → 命中即拒绝，零读取内容、零写入、零移动
+  ↓ [高层形式]
+discoverDeltas          (:676)   ── 既有
+buildProjection         (:678)   ── 既有；**内存合并在此完成**
+逐模块报告 / CAS 拒绝集 (:681)   ── 既有
+preflightFailures 判定  (:702)   ── 既有；失败即 FAILED PREFLIGHT
+jobs 构造               (:708)   ── 既有
+--write 温存文件守卫    (:713)   ── 既有
+--write 归档目的地守卫  (:721)   ── 既有
+**readiness（R1 → R2+R3）**      ── 新增，插在这里
+pushIntegritySection    (:733)   ── 既有；未就绪时**不打印**
+dry-run 出口 / stage / commit / move ── 既有
+```
+
+「合并」一词在本文件中一律指 **`buildProjection` 的内存投影**；落盘只在 commit 阶段发生。
+把 readiness 放在两个 `--write` 守卫之后、integrity report 之前，
+是为了让 dry-run 与 `--write` 在**同一个逻辑点**求值就绪度（B4），同时保住 B5 的字节不变。
+
+---
+
+## 三、判定矩阵
+
+### 3.1 就绪度结论（**有序**；先命中者先报）
+
+顺序：**读取/结构失败 → C3 基础合法性 → STEP6 overlay → R2/R3 进度**（r1·REQ-7）。
+
+| # | 情形 | 类 | 结论 | 可 force |
+|---|---|---|---|---|
+| 1 | flow-state 的 `fileReadDefect` 非空，或守卫后读取抛错 | R1·结构 | 不就绪 | **否** |
+| 2 | flow-state 解析后未过 C3（缺键、占位符、名字不符、step/tier 不在词汇表） | R1·合法性 | 不就绪，**报 C3 的原始 detail** | **否** |
+| 3 | C3 全过，`current-step: ABANDONED` | R1·STEP6 overlay | 不就绪，专门措辞 + 引 RUNBOOK §283 | **否** |
+| 4 | C3 全过，`current-step: DONE` | R1·STEP6 overlay | 不就绪，措辞：`in-flight bundle declares DONE; expected STEP6` | **否** |
+| 5 | C3 全过，`current-step` 为其他合法值 | R1·STEP6 overlay | 不就绪，报实际值与期望值 `STEP6` | **否** |
+| 6 | R1 全过，`tasks.md`/台账 的结构缺陷 | R2/R3·结构 | 不就绪 | **否** |
+| 7 | R1 全过，medium/large 层 `tasks.md` 或台账缺失 | R2/R3·缺失 | 不就绪 | **否** |
+| 8 | R1 全过，trivial 层 `tasks.md` 或台账缺失 | — | n/a | — |
+| 9 | R1 全过，`tasks.md` 有 N 个未勾选框 | R2·进度 | 不就绪，报 N | **是**（需 `archive-force tasks`） |
+| 10 | R1 全过，台账行为 `open` / `fixed` / 带理由的 `rejected` | R3·进度 | 不就绪，逐条报 | **是**（需 `archive-force ledger`） |
+| 11 | R1 全过，台账行 status 非法 / 缺理由 / `waived` 缺人类记录 | R3·格式·证据 | 不就绪，逐条报 | **否** |
+| 12 | 全过 | — | 就绪 | — |
+
+> **互斥性的准确表述（r1·REQ-7）**：#1..#5 属 R1，**内部有序**，只报第一个命中者。
+> #6..#11 属 R2/R3，**可同时成立**，R1 通过时**一次报全**（避免挤牙膏式往返）。
+> #3/#4 的专门措辞**只在 C3 其余部分已通过时**使用；C3 有其他错误时按 #2 报 C3 的原始 detail。
+
+### 3.2 单文件形式的作用域（**有序**、穷举）
+
+| # | 情形 | 结论 |
+|---|---|---|
+| 1 | 同时传 `--changes-dir` | exit 2 + usage（B2a） |
+| 2 | 传 `--force` | exit 2 + usage（B3） |
+| 3 | `deltaAbs` 词法落在 `rootAbs` 内（段边界） | 拒绝，零写入零移动，诊断给出高层形式 |
+| 4 | `realpath(deltaAbs)` 落在 `realpath(rootAbs)` 内（两者 realpath 均成功） | 同上 |
+| 5 | 以上皆否 | 现有行为不变（含 delta 不存在时的既有错误与退出码） |
+
+---
+
+## 四、验收标准
+
+### 新模块 `readiness`（store 前缀 `RY-`）
+
+- **RY-01** 基础层的三条判据与状态 A 的 gate C3 / C2 / archived-C4 **逐项一致**：
+  同一批 bundle 喂给两边，`{id,status,detail}` 逐条相同（差分断言）。
+- **RY-02** gate 改用基础层之后，`runGate()` 的返回对象与每条 detail **字节不变**；
+  抛错分支只比 error class / code / message，**显式排除** stack 的文件名与行号。
+- **RY-03** `STEP6` 是在 C3 通过**之后**追加的一条 overlay，不是替换 C3：
+  C3 失败时报 C3 的原始 detail，不报 STEP6 措辞。
+- **RY-04** 每个合法的非 `STEP6` 取值都使 archive 不就绪，而 gate 的 C3 仍 pass
+  （断言方向：`archive 就绪 ⇒ gate C3 pass`，反之不成立）。
+- **RY-05** 静态断言：`archive-merge.js` 不出现 `require('./gate')`；`gate.js` 不重实现三条判据；
+  `gate.js` 仍导出 `classifyStatus`。
+- **RY-06** 基础层**不含**任何 `fileReadDefect` 调用（安全层是 archive 独有的；
+  基础层若加守卫就会改变 gate 行为，与 RY-02 冲突）。
+- **RY-07**（r2·REQ-1）静态断言 `readiness.js` **不 require `archive-merge.js`**；
+  且 `readiness.reviewDirDefect` 用 `resolve.containsReal` 时，
+  与状态 A（`archive-merge.containsReal`）在**该调用形态**下结论逐例相同——
+  差分测试至少覆盖：正常目录 / symlink / 非目录 / 逃逸 / 不存在，五种输入各一。
+
+### archive 的安全读取层（r1·REQ-1）
+
+- **AM-74** B7 表逐格：三个 artifact × 五个缺陷类（`missing` / `symlink` / `not-file` / `escape` /
+  `bad-ancestor`）× 两个 tier 侧，各自 refuse 或 n/a，**结果与表一致**。
+- **AM-75** 构造一个 `current-step: ABANDONED` 的 bundle，其 `flow-state.md` 是**指向 bundle 外一份
+  `STEP6` 文件**的 symlink → refuse（结构类），且**带 `--force` 仍 refuse**。
+- **AM-76** `review/` 本身是**指向 bundle 内另一目录**的 symlink、而 `issues.md` 完全正常
+  → refuse（只守叶子会放行）。
+- **AM-77** 守卫通过后 `readFileSync` 抛错（注入 seam 模拟竞态/权限）→ refuse，诊断含原始 `e.code`，不可 force。
+- **AM-107**（r2·REQ-1）**守卫自身**抛错：`lstatSync` 抛 `EACCES` / `EIO` / `ELOOP`
+  → **结构类** refuse，诊断含原始 `e.code`，不可 force。
+  **关键控制**：同一场景在 **trivial 层**也必须 refuse，**不得**因 helper 把它归成 `missing` 而判 `n/a`
+  （这条是 r2 指出的 fail-open 的直接机械证明）。
+- **AM-108** 真正的 `ENOENT` 仍走 tier 敏感分支：trivial 层 `tasks.md`/台账不存在 → `n/a`。
+
+### archive 的就绪度（r1·REQ-4 / REQ-7）
+
+- **AM-78** 三类不就绪各自 refuse：打印 `RESULT: NOT READY — nothing written`，退出码 1，零写入零移动。
+- **AM-79** R1 有序：#1..#5 只报第一个命中者；R1 通过则 R2 与 R3 一次报全。
+- **AM-80** `ABANDONED` 与 `DONE` 各有专门措辞（`DONE` 的文案为
+  `in-flight bundle declares DONE; expected STEP6`，**不得**声称「已经归档过」），且不可 force。
+- **AM-81** C3 有其他错误的 `ABANDONED` bundle → 报 C3 的原始 detail，**不报** ABANDONED 专门措辞。
+- **AM-82** trivial 层缺 `tasks.md` / 缺台账 = n/a；medium/large 层缺失即不就绪且**不可 force**。
+- **AM-83** 既有 preflight 的**每一个** guard（discoverDeltas 错误 / validation / CAS 拒绝 / hygiene /
+  base 失配 / 冲突 / 温存文件 / 归档目的地）失败时，诊断与退出码**一字不变**，
+  且就绪度**未被求值**（以计数 seam 断言调用次数为 0）。
+- **AM-84** 未就绪时 **integrity report 不打印**；就绪时打印且位置不变。
+- **AM-85** 未就绪的 dry-run **不**打印 `RESULT: MERGED (dry-run…)`，退出码 1，零写入。
+'use strict';
+/*
+ * archive-merge — plain-files native implementation of the archive action (§4).
+ * Zero deps — pure Node stdlib. Consumes the same delta format the OpenSpec adapter used
+ * (## ADDED/MODIFIED/REMOVED/RENAMED Requirements), so it is the adapter-free path.
+ *
+ * 3.1: also home of the merge-family pure helpers shared with `verify --change` —
+ * delta discovery, projection building, CAS base stamps, realpath containment.
+ */
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+const { withStrict } = require('./args');
+const { configCas, configCasProblem } = require('./resolve');
+
+const REQ_RE = /^###\s+Requirement:\s+(.+?)\s*$([\s\S]*?)(?=^###\s+Requirement:|$(?![\s\S]))/gm;
+const SECTION_SPLIT_RE = /^##\s+(ADDED|MODIFIED|REMOVED|RENAMED)\s+Requirements\s*$/m;
+// the exact marker merge() injects on REMOVED; heading LINE of a deprecated block
+const DEPRECATED_RE = /^###\s+Requirement:.*_deprecated \(superseded by [^)]*\)_/;
+// a whole deprecated block (heading line + body up to the next requirement)
+const DEPRECATED_BLOCK_RE = /^###[ \t]+Requirement:[^\n]*_deprecated \(superseded by [^)]*\)_[^\n]*$[\s\S]*?(?=^###[ \t]+Requirement:|$(?![\s\S]))/gm;
+
+function stripDeprecatedBlocks(text) { return text.replace(DEPRECATED_BLOCK_RE, ''); }
+
+// name -> full block (heading + body), in document order; duplicates reported (first block wins)
+function parseRequirementsStrict(text) {
+  const map = new Map();
+  const duplicates = [];
+  let m;
+  REQ_RE.lastIndex = 0;
+  while ((m = REQ_RE.exec(text)) !== null) {
+    const name = m[1].trim();
+    if (map.has(name)) duplicates.push(name);
+    else map.set(name, m[0].replace(/\s+$/, '') + '\n');
+  }
+  return { map, duplicates };
+}
+
+function parseRequirements(text) { return parseRequirementsStrict(text).map; }
+
+// ---- CAS base stamps -------------------------------------------------------
+
+// sha256 over content with line endings normalized — a delta authored on Windows
+// must fingerprint identically to the same store checked out with LF
+function fingerprint(text) {
+  const norm = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  return 'sha256:' + crypto.createHash('sha256').update(norm, 'utf8').digest('hex');
+}
+
+const STAMP_LINE_RE = /^<!--\s*apriori-base:\s*(\S+)\s*-->\s*$/gm;
+// any standalone comment line ATTEMPTING to be a stamp — a malformed attempt must be an error,
+// never silently treated as "unstamped" (that would quietly disable CAS)
+const STAMP_ATTEMPT_RE = /^\s*<!--(?=[^>]*apriori-base)[^>]*-->\s*$/gm;
+
+// → { stamp: 'sha256:<hex>' | 'new' | null, problems: [] }
+// Exactly one stamp line, before the first delta section, well-formed digest.
+function parseStamp(text) {
+  const problems = [];
+  const sectionIdx = text.search(SECTION_SPLIT_RE);
+  STAMP_ATTEMPT_RE.lastIndex = 0;
+  let m;
+  while ((m = STAMP_ATTEMPT_RE.exec(text)) !== null) {
+    STAMP_LINE_RE.lastIndex = 0;
+    if (!STAMP_LINE_RE.test(m[0].trim())) problems.push(`malformed apriori-base stamp line: ${m[0].trim()}`);
+  }
+  const found = [];
+  STAMP_LINE_RE.lastIndex = 0;
+  while ((m = STAMP_LINE_RE.exec(text)) !== null) found.push({ value: m[1], index: m.index });
+  if (!found.length) return { stamp: null, problems };
+  if (found.length > 1) problems.push('carries more than one apriori-base stamp line');
+  for (const f of found) {
+    if (sectionIdx >= 0 && f.index > sectionIdx) problems.push('apriori-base stamp appears after the first delta section heading');
+    if (f.value !== 'new' && !/^sha256:[0-9a-f]{64}$/.test(f.value)) problems.push(`malformed apriori-base stamp '${f.value}'`);
+  }
+  return { stamp: problems.length ? null : found[0].value, problems };
+}
+
+// ---- delta parsing ---------------------------------------------------------
+
+// per-line forms of the shared regexes (no /m — the walker feeds one normalized line at a time)
+const SECTION_LINE_RE = /^##\s+(ADDED|MODIFIED|REMOVED|RENAMED)\s+Requirements\s*$/;
+const NOTES_LINE_RE = /^##\s+Notes\s*$/;   // the one h2 the parser is allowed to ignore
+const H2_LINE_RE = /^##\s/;
+const REQ_LINE_RE = /^###\s+Requirement:\s+(.+?)\s*$/;
+const SCENARIO_LINE_RE = /^####\s+Scenario:/;
+const RENAME_LINE_RE = /^\s*-\s*(.+?)\s*->\s*(.+?)\s*$/;
+const STAMP_ATTEMPT_LINE_RE = /^\s*<!--(?=[^>]*apriori-base)[^>]*-->\s*$/;
+const STAMP_STRICT_LINE_RE = /^<!--\s*apriori-base:\s*(\S+)\s*-->\s*$/;
+const FENCE_LINE_RE = /^\s*```/;
+
+// strict form: a sequential, fully-consuming line walker — every line (outside
+// code fences, which are opaque) belongs to exactly one legal construct, and
+// anything else is a problems[] entry carrying its 1-based line number.
+// Well-formed deltas parse byte-identically to the old split()-based grammar.
+function parseDeltaStrict(text) {
+  const problems = [];
+  const buckets = { ADDED: new Map(), MODIFIED: new Map(), REMOVED: new Map(), RENAMED: [] };
+  const seen = new Map();               // name -> first section carrying it
+  const lines = text.split('\n').map((l) => (l.endsWith('\r') ? l.slice(0, -1) : l));
+
+  let state = 'FILE_PREAMBLE';          // | 'IN_SECTION' | 'IN_REQUIREMENT' | 'SKIP_UNRECOGNIZED' | 'IN_NOTES'
+  let kind = null;                      // current section kind while IN_SECTION/IN_REQUIREMENT
+  let blockName = null, blockLines = null, blockDiscard = false;
+  let inFence = false;
+  let stamp = null, stampSeen = false, stampProblems = false, sectionSeen = false;
+
+  const flush = () => {
+    if (blockLines === null) return;
+    if (!blockDiscard) buckets[kind].set(blockName, blockLines.join('\n').replace(/\s+$/, '') + '\n');
+    blockName = null; blockLines = null; blockDiscard = false;
+  };
+  const stampProblem = (msg) => { problems.push(msg); stampProblems = true; };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i], n = i + 1;
+    if (inFence) {                      // opaque: never structure, never a problem
+      if (blockLines !== null) blockLines.push(line);
+      if (FENCE_LINE_RE.test(line)) inFence = false;
+      continue;
+    }
+    if (FENCE_LINE_RE.test(line)) {
+      inFence = true;
+      if (blockLines !== null) blockLines.push(line);
+      continue;
+    }
+    const sec = SECTION_LINE_RE.exec(line);
+    if (sec) { flush(); state = 'IN_SECTION'; kind = sec[1]; sectionSeen = true; continue; }
+    // `## Notes` is commentary, not an instruction: authors need somewhere to say WHY a block
+    // changed, and without a legal home they wrote headings the parser read as structure.
+    if (NOTES_LINE_RE.test(line)) { flush(); state = 'IN_NOTES'; kind = null; continue; }
+    if (H2_LINE_RE.test(line)) {        // one problem per unrecognized heading; its lines are skipped, not re-homed
+      flush();
+      problems.push(`line ${n}: unrecognized section heading '${line.trim()}'`);
+      state = 'SKIP_UNRECOGNIZED'; kind = null;
+      continue;
+    }
+    if (state === 'SKIP_UNRECOGNIZED') continue;   // covered by the heading's problem — no flood, no attribution (stamps included)
+    if (state === 'IN_NOTES') continue;           // opaque: requirements, scenarios and stamps inside Notes are commentary
+    // stamps are matched in every remaining state so a stray one is never absorbed as body text
+    if (STAMP_ATTEMPT_LINE_RE.test(line)) {
+      const m = STAMP_STRICT_LINE_RE.exec(line.trim());
+      if (!m) { stampProblem(`line ${n}: malformed apriori-base stamp line: ${line.trim()}`); continue; }
+      if (stampSeen) { stampProblem(`line ${n}: carries more than one apriori-base stamp line`); continue; }
+      stampSeen = true;
+      if (sectionSeen) { stampProblem(`line ${n}: apriori-base stamp appears after the first delta section heading`); continue; }
+      if (m[1] !== 'new' && !/^sha256:[0-9a-f]{64}$/.test(m[1])) { stampProblem(`line ${n}: malformed apriori-base stamp '${m[1]}'`); continue; }
+      stamp = m[1];
+      continue;
+    }
+    const req = REQ_LINE_RE.exec(line);
+    if (req) {
+      if (state === 'FILE_PREAMBLE') { problems.push(`line ${n}: requirement block before any section heading`); continue; }
+      if (kind === 'RENAMED') {
+        // the whole illegal block is discarded — its body must not be reinterpreted as rename lines
+        problems.push(`line ${n}: requirement block inside the RENAMED section`);
+        flush();
+        state = 'IN_REQUIREMENT'; blockName = null; blockLines = []; blockDiscard = true;
+        continue;
+      }
+      flush();
+      state = 'IN_REQUIREMENT';
+      blockName = req[1].trim(); blockLines = [line]; blockDiscard = false;
+      if (buckets[kind].has(blockName)) {          // first block wins, as before
+        problems.push(`line ${n}: duplicate requirement '${blockName}' in the ${kind} section`);
+        blockDiscard = true;
+      } else if (seen.has(blockName)) {
+        problems.push(`line ${n}: duplicate requirement '${blockName}' appears in both ${seen.get(blockName)} and ${kind}`);
+      } else seen.set(blockName, kind);
+      continue;
+    }
+    // A non-`Requirement` h3 inside a block used to be absorbed as body text and written
+    // verbatim into the store — loud on a MODIFIED operation (the integrity report shows it)
+    // but silent on an ADDED one. `blockDiscard` outranks this check so an already-void block
+    // does not report twice, and so RENAMED's existing void-block behaviour is untouched.
+    if (state === 'IN_REQUIREMENT' && !blockDiscard && /^###\s/.test(line)) {
+      problems.push(`line ${n}: '${line.trim()}' is not a requirement heading — put explanatory content in a '## Notes' section`);
+      blockDiscard = true;
+      continue;
+    }
+    if (state === 'IN_REQUIREMENT') { blockLines.push(line); continue; }   // scenarios and prose are body
+    if (SCENARIO_LINE_RE.test(line)) { problems.push(`line ${n}: scenario outside any requirement block`); continue; }
+    if (state === 'IN_SECTION' && kind === 'RENAMED') {
+      const rn = RENAME_LINE_RE.exec(line);
+      if (rn) buckets.RENAMED.push([rn[1].trim(), rn[2].trim()]);
+      continue;                          // other lines are free text
+    }
+    // FILE_PREAMBLE / section preamble free text and blanks are legal
+  }
+  flush();
+  return { delta: buckets, stamp: stampProblems ? null : stamp, problems };
+}
+
+function parseDelta(text) { return parseDeltaStrict(text).delta; }
+
+// total number of operations a parsed delta carries (0 = nothing recognized/parseable)
+function deltaOpCount(delta) {
+  return delta.ADDED.size + delta.MODIFIED.size + delta.REMOVED.size + delta.RENAMED.length;
+}
+
+// mutation ops can silently clobber concurrent edits; ADDED-only deltas conflict or no-op instead
+function mutationOpCount(delta) {
+  return delta.MODIFIED.size + delta.REMOVED.size + delta.RENAMED.length;
+}
+
+// the one warning text every surface shares (WARN grade this minor; 4.0 makes stamps mandatory)
+// 4.0: unstamped mutation deltas are DENIED by default; --no-cas or the config row waives visibly
+// waiver source, or {problem} when the config itself is broken (deny + name it) — the
+// explicit flag stays supreme even over a broken config (the flag is a human's will)
+function casWaiver(cwd, noCas) {
+  if (noCas) return { waiver: '--no-cas' };
+  const problem = configCasProblem(cwd);
+  if (problem) return { problem };
+  if (configCas(cwd) === 'optional') return { waiver: 'process-config cas: optional' };
+  return {};
+}
+
+function unstampedWarning(suffix) {
+  return `unstamped mutation delta ${suffix} — divergence undetectable; run: apriori stamp <store-file>`;
+}
+
+RUNBOOK.md:212:gates:                  # append-only log of human decisions
+test/modified-integrity.test.js:135:  assert.deepStrictEqual(r, { retained: [], titleChanged: [], dropped: [], added: [], ambiguous: [], missingLines: [] });
+test/modified-integrity.test.js:137:  assert.strictEqual(am.formatIntegrityHuman([{ file: 'm/spec.md', name: 'R', ...r }]), '', 'empty result renders nothing');
+test/modified-integrity.test.js:143:    dropped: [{ id: 'KV-02', title: 'KV-02 ' + evil }], added: [], ambiguous: [],
+test/modified-integrity.test.js:145:  const out = am.formatIntegrityHuman(entries);
+test/modified-integrity.test.js:150:  const longs = am.formatIntegrityHuman([{ file: 'f'.repeat(130) + '.md', name: 'N'.repeat(130),
+test/modified-integrity.test.js:152:    dropped: [], added: [], ambiguous: [], missingLines: [{ scenario: 'S'.repeat(130), line: 'L'.repeat(130) }] }]);
+test/modified-integrity.test.js:196:    dropped: [{ id: 'KV-02', title: 'KV-02 two' }],
+test/modified-integrity.test.js:216:  assert.deepStrictEqual(ji.modifiedIntegrity, [{ file: 'm/spec.md', name: 'R-K', retained: [], titleChanged: [], dropped: [], added: [], ambiguous: [], missingLines: [] }]);
+test/modified-integrity.test.js:312:  assert.match(rn.stdout, /! dropped: ac-08a old title/, rn.stdout);
+lib/spec-runner.js:483:    const seg = am.formatIntegrityHuman(extras.modifiedIntegrity);
+test/archive-merge.test.js:236:test('AM-12 store commit is transactional with the dir move — move fails ⇒ store untouched', () => {
+apriori/specs/archive-merge/spec.md:48:#### Scenario: AM-12 the store commit and the dir move are one transaction (single-file form)
+apriori/specs/archive-merge/spec.md:184:- WHEN a change with `<change>-req-v1.md`, `-req-v2.md`, `-req-final.md`, and `-intent-card.md` in requirement/ archives with --write --changes-dir
+apriori/specs/check/spec.md:47:`apriori check` (consumer mode) SHALL scan every `review/` directory under `apriori/changes/*/` and `apriori/changes/archive/*/` — recursive, regular files only, symlinked entries skipped with a warn line naming them, an absent dir skipped — for exactly three literal secret formats: AWS access keys (`AKIA[0-9A-Z]{16}`), GitHub tokens (`gh[pousr]_[A-Za-z0-9]{36,}`), and PEM private-key headers (`-----BEGIN [A-Z ]*PRIVATE KEY-----`). Root discovery is itself guarded: each discovered change dir and its `review/` must realpath-resolve inside the changes root; escaping or symlinked dirs are warn-skipped like symlinked files. A hit SHALL fail the check naming the file, line number, and pattern class — never echoing the matched value — with a remedy pointer (sanitize the raw; if already pushed, rewrite history per SECURITY.md).
+lib/check.js:233:          if (re.test(ln)) fails.push(`${path.relative(root, p)}:${i + 1}: ${label} detected in review evidence — sanitize the raw (see SECURITY.md; rewrite history if already pushed)`);
+lib/archive-merge.js:525:  const empty = { retained: [], titleChanged: [], dropped: [], added: [], ambiguous: [], missingLines: [] };
+lib/archive-merge.js:540:  const res = { retained: [], titleChanged: [], dropped: [], added: [], ambiguous: [], missingLines: [] };
+lib/archive-merge.js:582:function formatIntegrityHuman(entries) {
+lib/archive-merge.js:593:    for (const d of e.dropped) lines.push(cap(`    ! dropped: ${sanField(d.title)}`));
+lib/archive-merge.js:633:  const seg = formatIntegrityHuman(entries);
+lib/archive-merge.js:887:  compareModifiedBlock, formatIntegrityHuman,
+
+exec
+/usr/bin/zsh -lc "sed -n '1,250p' apriori/changes/archive-readiness/requirement/req-v3.md && sed -n '430,620p' apriori/changes/archive-readiness/requirement/req-v3.md && sed -n '560,610p' lib/archive-merge.js && sed -n '180,230p' RUNBOOK.md && sed -n '1,240p' apriori/changes/archive-readiness/review/req-review-v2.md && sed -n '1,220p' apriori/changes/archive-readiness/review/issues.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 86ms:
+# req-v2 — archive-readiness：不可逆的归档写入，现在完全不问这个 change 做完了没有
+
+> change: `archive-readiness` · tier: large · track: harden
+> lineage: 分支 `brownfield-round2`（自 main@235a121 切出）；产品线 v4，最终目标 main；**禁止**合并到 v1 / v3
+> 证据来源：`apriori-in-practice/5.1/Apriori棕地项目使用复盘.md` §5 FN-1 / §8 P0-2，加本仓源码实证
+> 前身：`apriori/changes/archive-preflight/`（current-step: SUPERSEDED）
+> **本版处置 STEP0·r2 重开的 3 条（REQ-1 / REQ-2 / REQ-6）**；r2 已 verified 的 REQ-3/4/5/7 不再改动。
+> 处置说明见 §八·2（本版）与 §八（r1）
+
+---
+
+## 〇、收窄主张的现状（r1 已判，本节按判定重写）
+
+评审方 r1 对 v1 §零 的三条断言逐条判定：
+
+| 断言 | r1 判定 | 本版处置 |
+|---|---|---|
+| 1. 收窄不违反 advisory A-3 | **成立** | 保留；但 A-3 的**准确结论**是「不必重建 G2/G3，**必须恢复 G1 里前身已验证过的安全读取与 force 分类**」——v1 把它们随收窄一并删掉了，这是错误。见 B7 与 B3。 |
+| 2. G3 可整体放弃 | **成立** | 保留。条件：需求**不得**声称 post-archive gate 的充分性（本版全文无此语句），且 F-2 / F-4 必须保有独立追踪入口（见 §五-7）。 |
+| 3. 单文件收窄的成本可接受 | **不成立** | **撤回**。v1 的「全仓 19 处、全部在 test」是**只量了 `test/` 却写成「全仓」**——生产方的测量错误。真实迁移面见 §1.6，并入验收标准 §四。**本断言在 owner 于 gate④ 接受这项破坏性变更之前，不再作为成立的前提使用。** |
+
+**r2 补充：生产方在 v2 §八 提出的两点，评审方逐条判定——**
+
+| v2 的主张 | r2 判定 | 本版处置 |
+|---|---|---|
+| concepts 教程命令同时触发 B2a/B2b，比一般陈旧 usage 更重 | **确认** | 保留 AM-101 |
+| AM-12 变为空洞 | **确认** | 保留该事实 |
+| 因此应对 AM-12 用 `## REMOVED` | **反驳，且成立** | **改正**：AM-12 是 **Scenario** 不是 Requirement，delta 语法的 `REMOVED` 作用于整个 `### Requirement:` 块。经实测，AM-12 所在块是 `archive-merge applies delta specs to the living store`，含 **AM-01..AM-12 共 12 个场景**——用 `REMOVED` 会把仍然有效的 AM-01..AM-11 一并 deprecated。见 §1.8 与改写后的 AM-99。 |
+| `SECURITY.md` 无需修改 | **反驳，且成立** | **撤回生产方的反驳**。`SECURITY.md:10` 的**末句**（v2 的测量被 250 字符截断而漏读）原文为 “Explicit operator-given file arguments (single-file `archive --store <f> --delta <f>`, `stamp <file>`) are used as given, like any file tool.”——这正是对单文件形式的显式承诺，B2b 与之直接冲突。AM-106 改为**修改** SECURITY.md。 |
+
+---
+
+## 一、问题（状态 A，全部可复现）
+
+### 1.1 `apriori archive` 从来没有读过 change bundle 的任何流程文件
+
+```
+$ grep -n "flow-state\|tasks\.md\|ledger" lib/archive-merge.js
+860:      console.log('\nCONFLICTS (stop — open a ledger issue, human resolves):');
+```
+
+唯一命中是一句提示文本中的 "ledger" 一词。**零判据。**
+`apriori archive --change X --write` 会在 X 仍在 STEP2、`tasks.md` 还有 45 项未勾、
+ledger 还有 `open` 行的情况下，把它的规格增量并进 living store，并把目录移进 `archive/`。
+这是**不可逆写入**（写规格库 + 移目录）。
+
+### 1.2 这不是假想
+
+复盘 §5 FN-1：一次归档时 `tasks.md` 是 6 项 `[x]` / 45 项 `[ ]`，无人拦下。
+FN-1 的直接原因（gate 缺 `test-cmd` 时整体不启动）已由本分支的 `gate-degrades` 修好——
+但 **gate 是事后检查**：归档已经发生了。`gate-degrades` 让人**知道**出了事，本 change 让它**不发生**。
+
+### 1.3 单文件形式是同一个洞的第二个入口（前身 F-1，已实证）
+
+`lib/archive-merge.js` 的单文件路径：带 `--changes-dir` 时**同样会移动**正式 bundle；
+**不带**该 flag 时 `--delta apriori/changes/X/specs/foo/spec.md` **照样把内容写进 store**。
+
+### 1.4 判据现在住在哪里
+
+| gate | 函数 | 行 | 判什么 |
+|---|---|---|---|
+| C3 | `checkFlowState(state, name)` | `:28` | 五个必填键存在且非占位符、`change` 与名字一致、`current-step` ∈ `STEP_ENUM`、`tier` ∈ `TIER_ENUM` |
+| C2 | `checkTasks(dir, tier)` | `:40` | `/^\s*-\s\[\s\]/gm` 计数；缺文件时 trivial → `n/a`，其余 → `blocked` |
+| C4 | `checkLedger(tier, stage, dir)` | `:96` | 逐行 `classifyStatus`；`stage === 'archived'` 时额外要求终态 |
+
+辅助：`classifyStatus`（`:56`，**已导出**）、`gatesEntries`（`:75`）、`waiveEvidence`（`:91`）、
+`reviewDirDefect`（`:128`，**私有**）、`STEP_ENUM`（`:18`，**含 `ABANDONED` 与 `DONE`**）、`TIER_ENUM`（`:20`）。
+
+**C3 判「词汇表合法」，不判「可以归档」**——`ABANDONED` 能通过 C3。
+
+### 1.5 状态 A 的读取安全现状（r1·REQ-1 的实证）
+
+- `checkTasks`（`:41`）用 **裸 `fs.existsSync` + `fs.readFileSync`**，无 symlink / 类型 / 逃逸判断。
+- `checkLedger`（`:97`）同样裸读 `review/issues.md`；它的结构守卫 `reviewDirDefect` 是 **gate 在别处调用的**（C4/C5 共用的 review 根守卫），**不在 `checkLedger` 内部**。
+- `checkFlowState` 接的是**已解析好的 state 对象**，读取发生在调用方。
+- `lib/resolve.js:134` 已有 **`fileReadDefect(bundleDir, p)`** 并**已导出**（`:158`），
+  返回 `{kind: 'missing'|'symlink'|'not-file'|'escape'|'bad-ancestor', path}`；`lib/status.js:9` 已在用。
+  → 结构类判定（symlink / not-file / escape / bad-ancestor）**可以复用**。
+  **但它不能兑现权限语义**（r2·REQ-1）：`:136` 的 `catch` **不检查 `e.code`**，
+  任何 `lstatSync` 异常（`EACCES` / `EIO` / …）都落进 `missing` 分支；祖先探测的 `catch`（`:141`）同样吞掉全部异常。
+  `reviewDirDefect`（`gate.js:131`）的 `catch { return null; }` 亦然——把「读不到」当成「不存在」。
+  → **archive 安全层必须自己做错误分类**，见 B7a。
+- `reviewDirDefect` 用的 `containsReal` 是 **`gate.js:13` 从 `archive-merge.js` 引入的那一份**。
+  若「原样搬入」`readiness.js`，就会形成 `archive-merge → readiness → archive-merge` **环**（r2·REQ-1）。
+  本仓有**两份** `containsReal`：`resolve.js:41`（要求 target 已存在）与 `archive-merge.js:277`
+  （容忍不存在路径、且排除「等于根」）。前身实测：二者**只在 `target === root` 一格分歧**，
+  而 `reviewDirDefect` 的 target 恒为 `<dir>/review`，**永不等于 root** → 在该调用形态下行为一致。
+  → `readiness.reviewDirDefect` **必须取 `resolve.containsReal`**，并以差分测试证明该调用域内与状态 A 一致。
+- 附带发现（advisory，不在本 change 处理）：`resolve.js:153` 与 `:154` 是**完全相同的两行**
+  `if (!containsReal(bundleDir, p)) return { kind: 'escape', path: p };`——重复的死代码。
+
+**gate 的裸读对 gate 自己是可接受的**（gate 只报告，不写）；对 **archive 不可接受**（archive 不可逆写入）。
+这正是需要**两层**而不是一层的理由。
+
+### 1.6 单文件收窄的真实迁移面（r1·REQ-6，v1 漏报，本版补全）
+
+全仓 `--delta` 命中 **38 处**（排除前身目录）：
+
+| 类别 | 处数 | 文件 |
+|---|---|---|
+| 测试 | 19 | `test/archive-merge.test.js`(12) `test/archive-change.test.js`(5) `test/resolve.test.js`(1) `test/cli.test.js`(1) |
+| 实现 | 5 | `lib/archive-merge.js` |
+| **活跃文档** | **7** | `docs/concepts.md` `docs/concepts_cn.md` `docs/cli.md` `docs/cli_cn.md` `RUNBOOK.md` `RUNBOOK_cn.md` `SECURITY.md` |
+| **living spec** | **7** | `apriori/specs/archive-merge/spec.md`(5) `apriori/specs/resolve/spec.md`(1) `apriori/specs/cli/spec.md`(1) |
+
+**两处比 r1 描述得更重：**
+
+1. `docs/concepts.md:553-555`（与 `docs/concepts_cn.md:553-555`）——**入门教程的 STEP6 归档命令**：
+
+   ```shell
+   apriori archive --store apriori/specs/mini-kv.md \
+     --delta apriori/changes/add-mini-kv/specs/mini-kv.md \
+     --change add-mini-kv --changes-dir apriori/changes --write
+   ```
+
+   它**同时**触发 B2 的两条判据（带 `--changes-dir`，且 delta 在 changes root 内）。
+
+2. `apriori/specs/archive-merge/spec.md:48` 的 **`AM-12`**：
+
+   > WHEN the single-file form `apriori archive --store <f> --delta <f> --change <name> --write --changes-dir <dir>` runs and the change-dir move fails
+
+   B2 之后，单文件形式**不再接受 `--changes-dir`**，因此**永不移动目录**——
+   AM-12 的 WHEN 子句失去主语，该场景**变为空洞**。这不是文档更新，是 **living spec 的 `## REMOVED` 操作**。
+
+`AM-19`（两种形式互斥）与 `apriori/specs/cli/spec.md:13`（usage 行）需 MODIFIED；
+`SECURITY.md:10` 只描述「由 change name 派生的路径」，**不涉及**单文件形式，经核**无需修改**（r1 此条不成立，见 §八 REQ-6 的处置）。
+
+### 1.8 delta 语法的操作粒度是 Requirement 块，不是 Scenario（r2·REQ-6，实测）
+
+`AM-12` 位于 `apriori/specs/archive-merge/spec.md:48`，其所属 Requirement 块为
+**`### Requirement: archive-merge applies delta specs to the living store`**（`:1`），
+该块含 **`AM-01` … `AM-12` 共 12 个场景**。
+
+delta 的 `## REMOVED` / `## MODIFIED` 都以**整个 `### Requirement:` 块**为单位
+（`## REMOVED` 保留块并标 `deprecated (superseded by <change>)`，块内 scenario 停止被 `verify` 要求）。
+**不存在 scenario 级的 REMOVED。**
+
+→ 对 AM-12 用 `## REMOVED` 会把仍然有效的 **AM-01..AM-11 一并弃用**。
+正确操作是 `## MODIFIED` 整块、保留 AM-01..AM-11、只去掉 AM-12，
+并由 **MODIFIED 完整性报告**打印 `! dropped: AM-12` 作为机械证据。
+
+### 1.9 `SECURITY.md:10` 确实承诺了单文件形式（r2·REQ-6，生产方的反驳被推翻）
+
+该行**末句**原文：
+
+> Explicit operator-given file arguments (single-file `archive --store <f> --delta <f>`, `stamp <file>`)
+> are used as given, like any file tool.
+
+B2b 让一部分 operator-given 的 `--delta` 不再 "used as given"。**这是直接冲突**，须同步该文档。
+（v2 §八 断言此处无需修改，系生产方读取被截断所致的错误，本版撤回。）
+
+### 1.7 `--force` 今天不存在
+
+`USAGE`（`:790`）无 `--force`；今天向 archive 传 `--force` 会因 unknown flag **exit 2**（`withStrict`）。
+
+---
+
+## 二、目标状态 B
+
+### B1 — 就绪度：三条判据，与 gate 同源
+
+`apriori archive --change <name>`（dry-run 与 `--write` 皆然）在合并结果落盘之前判定：
+
+- **R1 步位**：flow-state 通过 C3 的全部合法性检查，**且** `current-step` 恰为 `STEP6`。
+- **R2 任务**：`tasks.md` 零个未勾选框；缺文件时 trivial 层 n/a，medium/large 层不就绪。
+- **R3 台账**：`review/issues.md` 按 **`stage = 'archived'`** 判；缺文件时 trivial 层 n/a，medium/large 层不就绪。
+
+三条判据与 gate 的 C3 / C2 / archived-C4 **由同一份代码实现**（新增 `lib/readiness.js`，gate 改为从它取）。
+
+### B7 — 安全读取层：archive 独有的一层，gate 一字不变（r1·REQ-1）
+
+**两层结构，职责分明：**
+
+- **基础层**（`lib/readiness.js`）：`checkFlowState` / `checkTasks` / `checkLedger` / `classifyStatus` /
+  `gatesEntries` / `waiveEvidence` / `reviewDirDefect` / `STEP_ENUM` / `TIER_ENUM` 原样搬入，
+  **行为逐字节等于状态 A 的 gate**（含裸读）。gate 改为从这里取，对外零变化。
+- **archive 层**（`lib/archive-merge.js` 侧）：在调用基础层**之前**，对每个 artifact 跑
+  `fileReadDefect(bundleDir, p)`（`lib/resolve.js:134`，已导出）；台账另需**先**跑 `reviewDirDefect(bundleDir)`
+  再判叶子文件。
+
+#### B7a — 错误分类：只有真正的 `ENOENT` 才算「缺失」（r2·REQ-1）
+
+`fileReadDefect` 与 `reviewDirDefect` 的 `catch` **都不看 `e.code`**（§1.5），
+因此「复用既有 helper」**无法**兑现权限语义：`EACCES` 会被报成 `missing`，
+在 trivial 层被判 `n/a`，archive 继续写入——**这是一个 fail-open**。
+
+archive 安全层 SHALL 在调用 helper **之外**自行分类：
+
+1. 对每个 artifact（含 `review/` 根）先做一次 `fs.lstatSync`；
+2. 抛错且 **`e.code === 'ENOENT'`** → 交由 helper 走 tier 敏感的「缺失」分支；
+3. 抛错且 `e.code` **不是** `ENOENT`（`EACCES` / `EIO` / `ELOOP` / `ENOTDIR` / …）
+   → **结构类**，不就绪，**不可 force**，诊断含原始 `e.code`；
+4. 不抛错 → 交由 helper 判 symlink / not-file / escape / bad-ancestor；
+5. `realpath` 在本层若被使用，适用同一分类规则。
+
+**基础层不做这件事**——它必须保持状态 A 的 gate 行为（RY-06）。
+
+#### B7b — `containsReal` 的取用（r2·REQ-1）
+
+`readiness.reviewDirDefect` SHALL 使用 **`require('./resolve').containsReal`**，
+**不得**使用 `archive-merge.js` 的那一份——后者会形成
+`archive-merge → readiness → archive-merge` 的环。
+两份实现只在 `target === root` 一格分歧，而此处 target 恒为 `<dir>/review`，
+故在该调用形态下行为一致（§1.5），须以差分测试证明（RY-07）。
+
+**artifact × 缺陷类 × tier 判定表**（穷举）：
+
+| artifact | `fileReadDefect` 结果 | trivial | medium / large |
+|---|---|---|---|
+| `flow-state.md` | `null`（干净） | 继续判 C3 + STEP6 | 同左 |
+| `flow-state.md` | `missing` | **不就绪·R1·结构类** | 同左 |
+| `flow-state.md` | `symlink` / `not-file` / `escape` / `bad-ancestor` | **不就绪·R1·结构类** | 同左 |
+| `tasks.md` | `null` | 继续判 R2 | 同左 |
+| `tasks.md` | `missing` | **R2 = n/a** | **不就绪·R2·进度类** |
+| `tasks.md` | `symlink` / `not-file` / `escape` / `bad-ancestor` | **不就绪·R2·结构类** | 同左 |
+| `review/`（目录） | `reviewDirDefect` 非空 | **不就绪·R3·结构类** | 同左 |
+| `review/issues.md` | `null` | 继续判 R3 | 同左 |
+| `review/issues.md` | `missing` | **R3 = n/a** | **不就绪·R3·进度类** |
+| `review/issues.md` | `symlink` / `not-file` / `escape` / `bad-ancestor` | **不就绪·R3·结构类** | 同左 |
+| 任一 | 守卫通过后 `readFileSync` 抛错（竞态/权限） | **不就绪·结构类**，诊断含原始 `e.code` | 同左 |
+
+**结构类一律不可 force**（B3）。`flow-state.md` 缺失在 **trivial 层也是结构类**——
+因为无法排除这是一个 ABANDONED 的 change，而 R1 的存在理由就是这条排除。
+
+### B2 — 单文件形式：不再触碰 change bundle（r1·REQ-5 重写为可实现的算法）
+
+**用一句话陈述目标：单文件形式失去移动 bundle 的能力，也不再消费 bundle 内的 delta。**
+
+**B2a — `--changes-dir` 不再与单文件形式兼容。** 二者同时出现 → exit 2 + usage
+（与既有的「`--change` 不能只配 `--store`/`--delta` 之一」同类）。
+**推论：单文件形式此后永不移动任何目录**（移动本就只在 `--changes-dir` 显式给出时发生）。
+
+**B2b — `--delta` 落在规范 changes root 内 → 拒绝。** 算法（穷举、可直接实现）：
+
+1. `deltaAbs = path.resolve(cwd, <--delta 实参>)`（`path.resolve` 已规范化 `.` 与 `..`）。
+2. `rootAbs = path.resolve(cwd, 'apriori', 'changes')`。**只有规范 root**——显式 root 已被 B2a 吃掉。
+3. **词法量度**：`deltaAbs === rootAbs || deltaAbs.startsWith(rootAbs + path.sep)`。
+   用**路径段边界**，不用裸字符串前缀 → `apriori/changes-other/...` **不命中**。
+4. **realpath 量度**：对 `rootAbs` 与 `deltaAbs` 各取 `fs.realpathSync`；
+   - 任一取 realpath 失败（不存在 / 悬空 / 权限）→ **该量度不产生命中**（不是命中，也不是免罪），
+   - 两者都成功 → 按第 3 步同样的段边界判定。
+5. **两个量度任一命中即拒绝。** 皆不命中 → 落入既有行为（若 delta 本就不存在，仍由既有的
+   「delta 文件读不到」错误按状态 A 报，退出码不变）。
+
+**词法量度必须保留**：root 自身是 symlink 而调用方用词法路径书写时，realpath 量度会失配。
+**realpath 量度必须保留**：外部 symlink 指向 bundle 内 delta 时，词法量度会失配。
+
+**时机措辞（r1·REQ-5）**：判定发生在**读取 store 或 delta 的内容之前**；
+作用域判定本身所需的路径元数据读取（`path.resolve` / `realpathSync` / `lstat`）**不在此限**。
+
+- **AM-85** 未就绪的 dry-run **不**打印 `RESULT: MERGED (dry-run…)`，退出码 1，零写入。
+
+### `--force`（r1·REQ-2 / REQ-3）
+
+- **AM-86** 可 force 类逐项：未勾任务、`open`、`fixed`、带理由的 `rejected` → 有证据时放行。
+- **AM-87** 不可 force 类逐项：R1 全部五种、结构类全部、medium/large 的 artifact 缺失、
+  非法 status、缺理由、`waived` 缺人类记录 → 带 `--force` 仍 refuse。
+- **AM-88**（r2·REQ-2）人类证据协议：无 `archive-force <class>` 条目 → `--force` 无效果，
+  且打印**可复制的模板**（断言输出含模板骨架，**不**断言含任何人类理由文字）；
+  有条目但理由不含 `\w` → 同样无效果；token 边界正确
+  （`archive-force-2 tasks` / `archive-force tasks2` 均不命中）。
+- **AM-89**（r2·REQ-2）**按类绑定**：只有 `archive-force tasks` 时，R2 被越过而 R3 仍 refuse；
+  只有 `archive-force ledger` 时反之；两条（或一条同时列两类）时两者皆过。
+- **AM-109** 输出逐条 `forced: …`，并打印所引用记录的**原始首行**——
+  控制：构造一条**跨行**的 `gates:` 记录，断言打印的是首行字面文本，
+  **不是** `gatesEntries()` 拼接后的规范化文本。
+- **AM-90** `--force` 在 dry-run 与 `--write` 中同样改变结论；dry-run 下**零磁盘副作用**。
+- **AM-91** 单文件形式 + `--force` → exit 2 + usage。
+
+### 单文件形式的作用域（r1·REQ-5）
+
+- **AM-92** 单文件 + `--changes-dir` → exit 2 + usage，零写入零移动。
+- **AM-93** 词法命中逐例：`apriori/changes/X/specs/a.md`、`./apriori/changes/X/specs/a.md`、
+  `apriori/changes/../changes/X/specs/a.md` → 全部拒绝。
+- **AM-94** 段边界：`apriori/changes-other/X/specs/a.md` → **不**拒绝（前缀兄弟目录）。
+- **AM-95** realpath 命中：bundle 外的 symlink 指向 `apriori/changes/X/specs/a.md` → 拒绝。
+- **AM-96** 词法命中而 root 自身是 symlink（realpath 量度失配）→ 仍拒绝（词法量度保住）。
+- **AM-97** root 不存在 / delta 悬空 / realpath 权限失败 → realpath 量度不产生命中；
+  若词法亦不命中，则落入既有行为，**退出码与诊断与状态 A 一致**。
+- **AM-98** changes root 之外的单文件手术（含 `--write` 成功路径）→ **逐字节不变**。
+
+### 迁移与文档（r1·REQ-6，v1 漏报的全部补入）
+
+- **AM-99**（r2·REQ-6 改正）`apriori/specs/archive-merge/spec.md` 的 **AM-12** 经
+  **`## MODIFIED` 其所属 Requirement 块**去除——该块是
+  `### Requirement: archive-merge applies delta specs to the living store`，含 AM-01..AM-12。
+  **不得使用 `## REMOVED`**：那会把仍然有效的 AM-01..AM-11 一并 deprecated（§1.8）。
+  验收三条：① 合并后该块仍含 AM-01..AM-11 共 **11** 个场景，内容逐字节不变；
+  ② **MODIFIED 完整性报告**恰好打印 `! dropped: AM-12`，**且不打印其他 dropped**；
+  ③ AM-12 的绑定测试相应处置。`AM-19` 经 `## MODIFIED` 更新为新的互斥规则。
+- **AM-100** `apriori/specs/cli/spec.md` 的 usage 场景经 `## MODIFIED` 更新。
+- **AM-101** `docs/concepts.md` 与 `docs/concepts_cn.md` 的 STEP6 教程命令迁移到高层形式
+  （`apriori archive --change add-mini-kv --changes-dir apriori/changes --write`）；
+  可 grep 断言：两份文件中不再出现 `archive --store`。
+- **AM-102** `docs/cli.md` / `docs/cli_cn.md` 的 archive 段落描述就绪度、`--force` 的边界与证据协议、
+  单文件形式的作用域限制；`USAGE` 的高层行含 `--force`，单文件行**不含**。
+- **AM-103** `RUNBOOK.md` / `RUNBOOK_cn.md` 的 archive 算法段落记录：归档前判就绪度；
+  单文件形式仅用于**不在 changes root 内**的单模块手术，且不再接受 `--changes-dir`。
+- **AM-104** `CHANGELOG.md` 显著位置声明**三项破坏性变更**：
+  ① 未就绪的 change 不再能归档（新退出路径 `RESULT: NOT READY`）；
+  ② 单文件形式不再接受 `--changes-dir`（**失去移动能力**）；
+  ③ 单文件形式不再接受 changes root 内的 `--delta`。
+- **AM-105** `truth/archive-merge.md` 与新增的 `truth/readiness.md` 记录：判据同源、两层结构、
+  不成环的理由、以及「基础层不加守卫」的决策；`truth/gate.md` 记录 gate 改从基础层取。
+- **AM-106**（r2·REQ-6 改正，生产方的反驳被推翻）**`SECURITY.md` 必须修改**：
+  `:10` 末句 "Explicit operator-given file arguments (single-file `archive --store <f> --delta <f>`,
+  `stamp <file>`) are used as given, like any file tool." 是对单文件形式的显式承诺，与 B2b 冲突。
+  改为写明新的拒绝边界（changes root 内的 `--delta` 不再 used as given，`--changes-dir` 不再兼容），
+  并以可 grep 断言新边界文字存在。
+
+---
+
+## 五、明确不做（out of scope）
+
+1. **G3 全组**——不作任何「归档之后那次 gate 会解析到这个 bundle」的承诺。
+   随之不做：N0..N3 命名空间前置条件、时钟 seam、同名归档目录排序检查、自定义 root 的提示语。
+2. **前身 F-2**：`resolveChange` 在同名归档中取字典序最后者 → resolver 自身缺陷，本 change 不处理。
+3. **前身 F-4**：`archive-merge.js:753` 的 phase 4 自行 `new Date()` → 属 G3，不处理。
+4. **不改 `lib/resolve.js`**（含 §1.5 发现的 `:153`/`:154` 重复行——那是独立的清理项）。
+5. **不改 gate 的任何对外行为**（RY-02 是机械保证）。
+6. **不引入并发/锁**。TOCTOU 窗口存在且不在本 change 关闭（见 §六-1）。
+7. **G3 findings 的独立追踪入口（r1·A-2，按 r2·A-1 改形）**：F-2 与 F-4 的稳定标识
+   `finding:resolver-archive-tiebreak` 与 `finding:archive-move-clock`
+   **写进本轮 advisory batch row 的 Issue 文本**（而不是另开两条 `advisory-acked` 行——
+   RUNBOOK/P0 规定 advisory 每轮只落一个 batch row）。目的不变：本 change 完成后仍可 grep 到。
+
+---
+
+## 六、已知后果与风险
+
+1. **TOCTOU 窗口存在（r1·A-1，本版给出精确前置条件）**：
+   本 change 保证的区间是「**从第一次读取 readiness artifact 开始，到 dry-run 返回、
+   或（无 move 的）commit 结束、或 move 尝试结束为止，调用方不得并发修改 bundle**」。
+   实现**不声称**能检测该竞态。机械化表述（r2·A-2）：`--write` 路径须提供一个 hook，
+   **在就绪度全部判完之后、第一次写 store 之前**触发；测试在该 hook 内修改 bundle，
+   并断言 archive **不重新读取 readiness artifact、也不检测该修改**。
+   「看守一次」**不等于**提交时刻的状态保证。**须在 gate④ 如实呈报。**
+2. **三项对外可见的破坏性变更**（AM-104 已具名）。其中「单文件形式失去移动能力」
+   会使 **living spec 的 AM-12 变为空洞**，须以 `## MODIFIED` 整块的方式去除该 scenario（§1.8）——
+   这是本 change 唯一一处**删除既有承诺**的地方，须在 gate④ 单独点名，
+   并以 MODIFIED 完整性报告的 `! dropped: AM-12` 作为呈报证据。
+   同时 `SECURITY.md` 的显式承诺句需同步（§1.9）。
+3. **入门教程会改**：`docs/concepts{,_cn}.md` 的 STEP6 命令迁移到高层形式。
+   这实际上让教程与 RUNBOOK 的推荐路径一致（RUNBOOK 早已把高层形式作为正道），
+   但它是**用户第一次归档时照抄的那条命令**，改错的代价很高。
+4. **迁移面：61 个高层调用点 / 6 个测试文件**（gap-report §A6）。
+   风险不在数量，在**遗漏**——该清单是单行 grep 判据，抓不到跨行调用，
+   STEP5 的 M1 必须逐文件人工走完，**不得以该表收尾**。
+5. **`--force` 是一个新的逃生舱**。缓解：类别穷举、结构类与 R1 永不可解、
+   需要**预存的、按类具名的人类 `gates:` 证据**、逐条打印。
+   **已知弱点，如实呈报（r2·REQ-2）**：该证据是**该类在本 bundle 生命周期内持续有效的授权**，
+   不是「本次运行」的证据——记录写下之后新出现的同类失败会被同一条记录覆盖，
+   直到该记录被显式删除。本版**不把它包装成 per-run 证据**；
+   若 owner 认为这个有效期太宽，可在 gate④ 要求改为绑定当前失败集合摘要。
+6. **第二次不收敛的处置**：若本轮 STEP0 再撞 cap，生产方**不提议第三次重开**，
+   而是把「判 ABANDONED」作为选项如实呈给 owner（RUNBOOK §283：只能由人类裁定）。
+
+---
+
+## 七、与前身 `archive-preflight` 的关系
+
+前身**不删除、不实现、不归档**，原地保留（`current-step: SUPERSEDED`）。
+其九轮评审的实证发现 F-1..F-4 已转录在它的 flow-state 尾部。
+本 change 继承 F-1（以拒绝方式关闭），F-2/F-4 转独立 finding（§五-7），F-3 存档备查。
+
+**CAS 复核（已做）**：当前 `apriori/specs/archive-merge/spec.md` 的 base 为
+`sha256:51620e96cd6b3c4a4b1af5e1e0865fd7f55bcf0333ecc47aeca727cf997282c5`；
+前身触及的块与 `id-pattern-and-delta-notes` 新增 AM-71..73 所在的块**不同**，无 §4.11 冲突。
+（r1 独立复核并确认了这一点。）
+
+---
+
+## 八、STEP0·r1 处置说明（本版）
+
+**7 条全部 accept，无一 rejected。**
+
+| ID | 处置 |
+|---|---|
+| REQ-1 | 新增 **B7**（两层结构 + artifact × 缺陷类 × tier 判定表）与 **RY-06 / AM-74..77**。实证补充：`fileReadDefect` 已存在且已导出（`resolve.js:134`/`:158`），**不需新写**；`reviewDirDefect` 是 gate 私有，随基础层搬入。 |
+| REQ-2 | **B3 重写**：可 force / 不可 force 两个穷举清单 + 预存的人类 `gates: archive-force` 证据协议 + 多失败覆盖规则 + 逐条输出格式；矛盾措辞改为「dry-run 与 write 同样改变结论，只有 write 产生磁盘副作用」。验收 AM-86..90。 |
+| REQ-3 | 采纳评审方的**推荐分支**：`--force` 只出现在高层 usage，单文件形式收到即 exit 2；并把它写成 **B5 的具名例外**（连同 B2a 共两处），验收 AM-91。 |
+| REQ-4 | **B6 按源码逐行重写**，明确 readiness 插在两个 `--write` 守卫之后、`pushIntegritySection` 之前；「合并」一词统一指内存投影。验收 AM-83（逐 guard + 计数 seam）与 AM-84（integrity report 的出现条件）。 |
+| REQ-5 | **B2b 给出五步算法**（`path.resolve` / 段边界 / 双量度 / realpath 失败的 disposition / 时机措辞修正）；验收 AM-93..97 逐例覆盖 `.`、`..`、前缀兄弟、symlink root、外部 symlink、缺失 root、悬空 delta。 |
+| REQ-6 | **§零-3 撤回**，§1.6 补全真实迁移面（38 处的分类清点）。**两点比评审方描述得更重**：`docs/concepts.md:553` 是入门教程的 STEP6 命令；living spec 的 **AM-12 变为空洞**，需 `## REMOVED` 而不只是文档更新。**一处不成立**：`SECURITY.md:10` 只描述「由 change name 派生的路径」，与单文件形式无关，故改为 **AM-106 的可 grep 断言**（断言其确实不含该承诺）而非修改。 |
+| REQ-7 | **3.1 改为有序矩阵**（读取/结构 → C3 → STEP6 overlay → 进度），互斥性改为精确表述；`DONE` 文案改为 `in-flight bundle declares DONE; expected STEP6`。验收 AM-79..81。 |
+| A-1 | §六-1 写成精确的调用前置条件区间 + seam 要求。 |
+| A-2 | §五-7：F-2/F-4 以带稳定标识的 `advisory-acked` 台账行落地，可 grep。 |
+| A-3 | 采纳其准确结论：不重建 G2/G3，但**完整恢复** G1 的安全读取（B7）与 force 分类（B3）。 |
+
+---
+
+## 八·2、STEP0·r2 处置说明（本版）
+
+**verdict 序列 7 → 3。** r2 verified 四条：**REQ-3 / REQ-4 / REQ-5 / REQ-7**（本版不再改动）。
+重开三条，**全部 accept，无一 rejected**：
+
+| ID | 残余缺陷 | 本版处置 |
+|---|---|---|
+| REQ-1 | ① `fileReadDefect` 与 `reviewDirDefect` 的 `catch` 都不看 `e.code`，`EACCES` 被报成 `missing`，在 trivial 层判 `n/a` → **fail-open**；AM-77 只覆盖「守卫之后」的读取异常，抓不到守卫**自身**的异常。② 「原样搬入」`reviewDirDefect` 会连 `archive-merge.containsReal` 一起搬，形成 `archive-merge → readiness → archive-merge` 的**环**。 | 新增 **B7a**（archive 安全层自行分类：只有真正的 `ENOENT` 才进 tier 敏感的缺失分支，其余 `e.code` 一律结构类不可 force）与 **B7b**（`readiness.reviewDirDefect` 取 `resolve.containsReal`）。§1.5 补入两条实证。新增 **AM-107**（守卫自身抛 `EACCES`/`EIO`/`ELOOP`，**含 trivial 层的关键控制**）、**AM-108**、**RY-07**（静态禁 require + 五例差分）。 |
+| REQ-2 | 泛化的 `archive-force <reason>` 是**永久的、无范围绑定的 blanket waiver**，却被称作「本次运行」的证据：为两项旧任务写的记录会自动授权后来出现的任意 tasks/ledger 问题。另外「由人类写入」不可由文件证明；AM-88 要求打印「需要写入的确切文字」而人类理由尚未知；「非空文字」不构成理由定义；「打印 gates 条目原文」未说明是原始多行还是规范化拼接。 | **采纳推荐分支并加一条诚实声明**：token 改为**按类具名**（`archive-force tasks` / `archive-force ledger`），一条记录只授权它列出的类；理由须含 `\w`；措辞由「由人类写入」改为「**记录一项先前的人类决定**」，并注明文件无法证明作者身份；AM-88 改为打印**可复制的模板**；输出改为打印记录的**原始首行**。**并如实命名其有效期**：这是该类在本 bundle 生命周期内**持续有效的授权**，不是 per-run 证据——写进 §六-5 供 gate④ 裁决。新增 **AM-89**（按类绑定）与 **AM-109**（原始首行 vs 规范化文本的控制）。 |
+| REQ-6 | ① 生产方主张对 AM-12 用 `## REMOVED` —— **错误**：AM-12 是 Scenario，delta 语法的操作粒度是整个 `### Requirement:` 块，实测该块含 **AM-01..AM-12 共 12 个场景**，`REMOVED` 会把 AM-01..AM-11 一并弃用。② 生产方对 `SECURITY.md` 的反驳 —— **不成立**：`:10` 末句明确承诺单文件形式 "used as given"。 | **两条都改正**。新增 **§1.8**（delta 语法的操作粒度，含实测的 12 个场景清单）与 **§1.9**（SECURITY.md 末句原文）。**AM-99 改写**为 `## MODIFIED` 整块 + 三条验收（AM-01..AM-11 共 11 个场景逐字节保留 / 完整性报告恰好打印 `! dropped: AM-12` 且无其他 dropped / 绑定测试处置）。**AM-106 改写**为**修改** SECURITY.md。**生产方的两处判断错误已记录在案**：一处是把 scenario 当 Requirement，一处是 grep 输出被截断而漏读末句。 |
+
+**r2 确认的两条**：concepts 教程命令同时触发 B2a/B2b（比一般陈旧 usage 更重）；AM-12 确将变为空洞。
+
+**advisory 处置**：A-1 → §五-7 改为写进 batch row 文本；A-2 → §六-1 机械化为「就绪度判完之后、
+首次写 store 之前」的 hook + 「不重读、不检测」的断言；A-3 → **接受**，本文件的 `:676` 等行号
+**只作定位**，STEP2 的 design/tasks 一律绑定**命名步骤与函数调用**，不得以行号为验收接口。
+      ambON.push({ key, side, oldCount: oc, newCount: nc, idx: og.occ[0].idx });
+    }
+  }
+  for (const [key, ng] of nm) {
+    if (om.has(key)) continue;
+    const nc = ng.occ.length;
+    if (nc === 1) res.added.push({ id: ng.id, title: ng.occ[0].title });
+    else ambNewOnly.push({ key, side: 'new', oldCount: 0, newCount: nc, idx: ng.occ[0].idx });
+  }
+  ambON.sort((a, b) => a.idx - b.idx);
+  ambNewOnly.sort((a, b) => a.idx - b.idx);
+  res.ambiguous = [...ambON, ...ambNewOnly].map(({ key, side, oldCount, newCount }) => ({ key, side, oldCount, newCount }));
+  return res;
+}
+
+// safe rendering: C0/DEL control characters become the middle dot BEFORE the 119+ellipsis cut
+function sanField(s) {
+  const clean = String(s).replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '·').replace(/[\n\t]/g, '·');
+  return clean.length > 120 ? clean.slice(0, 119) + '…' : clean;
+}
+
+// human section shared by verify and archive; '' when every entry's four classes are empty
+function formatIntegrityHuman(entries) {
+  const printable = entries.filter((e) =>
+    e.dropped.length || e.missingLines.length || e.ambiguous.length || e.titleChanged.length);
+  if (!printable.length) return '';
+  // fields are sanitized (C0/DEL → ·) then the ASSEMBLED line takes the state-A cut:
+  // whole line ≤ 120 UTF-16 units via slice(0,119)+'…'
+  const cap = (l) => (l.length > 120 ? l.slice(0, 119) + '…' : l);
+  const lines = ['— MODIFIED INTEGRITY —'];
+  for (const e of printable) {
+    lines.push(cap(`  ${sanField(e.file)} · ${sanField(e.name)}: retained ${e.retained.length}, added ${e.added.length}`));
+    for (const t of e.titleChanged) lines.push(cap(`    titleChanged: ${sanField(t.oldTitle)} -> ${sanField(t.newTitle)}`));
+    for (const d of e.dropped) lines.push(cap(`    ! dropped: ${sanField(d.title)}`));
+    for (const a of e.ambiguous) lines.push(cap(`    ! ambiguous: ${sanField(a.key)} (${a.side}; old ${a.oldCount}/new ${a.newCount})`));
+    for (const ml of e.missingLines) lines.push(cap(`    ! missing (${ml.scenario === null ? 'prose' : sanField(ml.scenario)}): ${sanField(ml.line)}`));
+  }
+  return lines.join('\n');
+}
+
+
+// The archive-side integrity section. The matcher factory is INJECTED at the bin seam
+// ((cwd) => matcher | {error}) so this module never requires spec-runner; a missing factory
+// degrades exactly like a factory error — one bounded stderr warning, report skipped,
+// every other archive output/exit/write unchanged.
+function pushIntegritySection(out, err, modifiedBlocks, idMatcherFactory, cwd) {
+  if (!modifiedBlocks || modifiedBlocks.size === 0) return;
+  const sanitizeMsg = require('./config').sanitizeMsg;
+  const warn = (reason) => err.push(sanitizeMsg('warning: modified-integrity ' + reason));
+  if (!idMatcherFactory) { warn('id matcher unavailable (no factory injected)'); return; }
+  let matcher;
+
+`apriori/changes/<change>/flow-state.md`:
+
+```markdown
+change: <change-name>
+tier: trivial | medium | large
+track: harden | explore
+track-rationale: <one line: why this track — reported at the next human gate>
+lineage: <target branch/line + its merge taboo, e.g. "v2 (never merge to main)">
+                        # copied from the requirement at kickoff; a lineage
+                        # conflict discovered mid-change is an immediate stop
+current-step: STEP0 | STEP1 | STEP2 | STEP3 | STEP4 | STEP5 | STEP6 |
+              INTENT-CARD | SPIKE | EXTRACTION |     # explore-track positions
+              DONE | ABANDONED
+round: 0                # review round / apply turn; log round-started/round-ended
+                        # timestamps (ISO, minute precision) when it changes.
+                        # When one ledger is shared across steps, label rounds with
+                        # their step (STEP0·r1, STEP5·r1) so the same number in two
+                        # steps is never ambiguous.
+reviewer-session: <id or n/a>   # the heterogeneous reviewer's resumable session id
+                        # (e.g. codex's printed session id), recorded the moment round 1
+                        # prints it — so a mid-review interruption resumes the SAME
+                        # session (R2) instead of archaeology; n/a until a review starts
+next-action: <ONE concrete action — never bundle two steps into one line;
+              after a session death this line is the resume point and must be unambiguous>
+                        # append an ISO timestamp comment on every update;
+                        # a missing duration is recorded as n/a — NEVER estimated
+artifact-root: .        # optional; default = project root.
+                        # Applies ONLY to process artifacts — the change bundles
+                        # under apriori/changes/. NEVER to apriori/truth/ or
+                        # apriori/specs/ (same-repo atomicity). When externalized, the
+                        # kickoff prompt must state it — this file itself lives under it.
+gates:                  # append-only log of human decisions
+  - <YYYY-MM-DDTHH:MM> <label>: <the human's decision, verbatim>
+                        # label from the fixed vocabulary: gate① … gate⑤ | KB sign-off |
+                        # intent-card sign-off | extraction review |
+                        # STEP2 full review | consolidation | note
+                        # (note = non-decision events: degradations, closeout, …)
+                        # the format constrains the prefix ONLY — the decision text
+                        # stays verbatim free text; the fixed prefix is what lets
+                        # §6's wall-clock duration fields be machine-extracted
+```
+
+Update it immediately after each step and each round; append every gate decision; a new session trusts this file over its own inference.
+
+---
+
+## 4. State Machine
+
+**Artifact paths** (every step writes here — never invent paths):
+
+# req-review-v2 — archive-readiness requirement review（Round 2）
+
+评审基于 req-v2、Round-1 review、ledger、提前产出的 gap-report、RUNBOOK、living specs、实际源码与活跃文档；未修改任何文件。
+
+## REQ-1 — REOPENED
+
+已确认修复的部分：
+
+- B7 恢复了基础 checker 与 archive 安全读取的两层结构；
+- ledger 明确先判 `reviewDirDefect`、再判 leaf；
+- symlink、非文件、逃逸、坏祖先和 guard 后读取竞态都有验收；
+- 结构类统一不可 force。
+
+但仍有两个实质缺口。
+
+### 残余缺陷 1：既有 helper 会把权限错误伪装成 missing
+
+`resolve.fileReadDefect()` 在首次 `lstatSync` 抛错时不检查 `e.code`，任何异常都进入 missing 分支；检查祖先时也吞掉所有异常。`reviewDirDefect()` 同样把 `lstatSync(review/)` 的任何异常当成目录不存在。
+
+因此，“复用既有 helper”不能兑现 B7 的权限语义。尤其在 trivial tier：
+
+- tasks/ledger 的 `lstat` 因 `EACCES` 失败；
+- helper 可能返回 `missing`；
+- B7 将其判为 `n/a`；
+- archive 继续写入，而不是按结构/读取失败拒绝。
+
+AM-77 只覆盖“guard 已通过，后续 read 抛错”，捕获不了发生在 guard 自身的 `EACCES`/`EIO`。
+
+### 残余缺陷 2：`reviewDirDefect` 的搬迁依赖仍可能成环
+
+State A 的 `reviewDirDefect` 使用的是从 `archive-merge.js` 引入的 `containsReal`。若所谓“原样搬入 readiness”仍从 archive-merge 取它，就形成：
+
+```text
+archive-merge → readiness → archive-merge
+```
+
+gap-report 推测可使用 `resolve.containsReal`，但 normative requirement 没有指定；“原样搬入”与该替换也不是同一件事。
+
+- **风险**：high。权限故障存在 trivial-tier fail-open；共享模块也仍有两种不等价依赖实现。
+- **建议修复**：
+  - archive 安全层在调用 `fileReadDefect` 前/外围区分 `ENOENT` 与其他 `lstat/realpath` 错误；只有真实 ENOENT 可进入 tier-sensitive missing，其他错误一律结构失败；
+  - 对 `review/` 根采用相同错误分类；
+  - 增加 guard 自身抛 `EACCES`/`EIO` 的 AC，而不只测试 guard 后读取；
+  - 明确 `readiness.reviewDirDefect` 使用 `resolve.containsReal`，并以差分测试证明其在该调用域与 state A 相同；静态禁止 `readiness.js` require `archive-merge.js`。
+
+## REQ-2 — REOPENED
+
+已确认修复的部分：
+
+- 可 force 与不可 force 类别已经正确拆开；
+- R1、结构错误、缺失 artifact、格式/证据错误不可 force；
+- dry-run 与 write 的措辞矛盾已消除；
+- evidence token、理由存在性、多失败输出均已进入目标与 AC。
+
+但新的人类证据协议没有机械兑现其声称的授权范围。
+
+### 残余缺陷：一个永久、无范围绑定的 token 被称为“本次运行”的人类批准
+
+一条泛化的：
+
+```text
+archive-force <reason>
+```
+
+不携带 `tasks`/`ledger` 失败类、ledger ID、当前失败集合或一次性标识，却被规定覆盖“本次运行的全部可 force 失败”。文件内容无法证明“本次”：
+
+- 为两项旧任务写下的记录，会自动授权后来出现的任意 tasks 与 ledger 问题；
+- 新增的 open ledger 行不要求人类重新看见；
+- 记录不会在一次调用后失效，因此实际语义是 bundle 级永久 blanket waiver，而非本次运行证据。
+
+“该条目由人类写入”也与 RUNBOOK 的实际记录机制不准确：人类作决定，agent 把其原话记录进 flow-state；文件本身无法证明作者身份。AM-88 还要求打印“需要写入的确切文字”，但人类理由尚未知，只能打印模板，不能打印确切完整记录。
+
+此外，“token 后有非空文字”不足以定义理由：仅有 `archive-force —` 是否算理由并不明确；而“打印 gates 条目原文”也没有说明是保留多行原始文本，还是打印 `gatesEntries()` 拼接后的规范化文本。
+
+- **风险**：high。旧授权可静默覆盖后来出现的未完成工作，与“预存的人类证据针对当前 force”的安全主张不符。
+- **建议修复**：二选一明确并可测试：
+  - 推荐：记录包含精确失败类 token `tasks` / `ledger`；只允许覆盖记录中列出的类。若要绑定具体当前失败，再包含 ledger IDs 或当前失败集合摘要；
+  - 或诚实声明它是 bundle 生命周期内持续有效的 standing waiver，直到记录被显式撤销，不再称为“本次运行”的证据。
+  
+  同时把“人类写入”改成“记录一项先前的人类决定”，用稳定语法要求理由含单词字符，并规定输出使用原始首行或规范化 entry。AM-88 应打印可复制的模板，不能声称打印未知的人类理由全文。
+
+## REQ-3 — VERIFIED
+
+修复真实且完整：
+
+- `--force` 只属于高层 usage；
+- 单文件形式收到它时固定 exit 2 + usage；
+- B5 明确该路径相对 state A 只保持退出码、不保持诊断字节；
+- AM-91 提供直接 if/then 验收。
+
+未发现剩余歧义。
+
+## REQ-4 — VERIFIED
+
+B5/B6 已按源码真实顺序固定 insertion point：
+
+- discovery、projection 和所有既有 failure guards 先执行；
+- readiness 位于 temp/destination guards 之后；
+- integrity report 位于 readiness 之后；
+- 内存 projection 与落盘 commit 已区分；
+- AM-83 逐 guard 验证旧诊断优先且 readiness 未调用；
+- AM-84 固定未就绪时不打印 integrity report。
+
+修复完整。
+
+## REQ-5 — VERIFIED
+
+B2b 已补全 Round-1 要求的实现语义：
+
+- `path.resolve(cwd, ...)`；
+- 路径段边界；
+- `.`/`..`；
+- prefix sibling；
+- lexical 与 realpath 双量度；
+- symlinked root 与外部 symlink；
+- realpath 失败 disposition；
+- 元数据读取与内容读取的时机区分。
+
+AM-93～AM-98 对应这些边界。未发现仍可由不同实现得出相反作用域结论的缺口。
+
+## REQ-6 — REOPENED
+
+### 对生产方两项“更重”判断的明确判定
+
+1. **双语 concepts 是 onboarding 教程的 STEP6 命令，且同时触发 B2a/B2b：确认。**
+
+   `docs/concepts.md:553` 与 `docs/concepts_cn.md:553` 确实位于 “Acceptance & STEP6 · archive” 教程段，并同时：
+
+   - 使用单文件形式的 `--changes-dir`；
+   - 把 `--delta` 指向 canonical changes root 内。
+
+   这比普通参考文档中的一次陈旧 usage 更严重。AM-101 的高层形式迁移是必要修复。
+
+2. **AM-12 将变为不可达/空洞：确认；但“需要 `## REMOVED` operation”：反驳。**
+
+   AM-12 是一个 Scenario，不是 Requirement。当前 delta grammar 的 `MODIFIED`/`REMOVED` 操作对象都是 `### Requirement:` 整块；不存在 scenario-level `REMOVED`。
+
+   对 AM-12 所在 Requirement 使用 `## REMOVED` 会把 AM-01～AM-12 整个 Requirement 一并 deprecated，错误删除仍然有效的 AM-01～AM-11。
+
+   正确操作是：
+
+   - 对包含 AM-01～AM-12 的整个 Requirement 使用 `## MODIFIED Requirements`；
+   - 保留 AM-01～AM-11；
+   - 删除 AM-12 scenario；
+   - 让 MODIFIED integrity report 明确报告 dropped scenario AM-12；
+   - 在 gate④单独呈报这是唯一一次既有 scenario promise 的删除。
+
+   所以“这是唯一一处语义上的既有承诺删除”可以成立，“应使用 `## REMOVED`”不成立。AM-99 当前会指导实现者生成破坏整个 Requirement 的错误 delta。
+
+### 对 SECURITY.md 部分反驳的判定：不成立
+
+`SECURITY.md:10` 的第一句确实只谈 change-name-derived paths；但同一行随后明确写道：
+
+> Explicit operator-given file arguments (single-file `archive --store <f> --delta <f>`, `stamp <file>`) are used as given, like any file tool.
+
+这就是对单文件形式的显式承诺。B2b 新增了基于 canonical changes root 的作用域判断，并拒绝一部分 operator-given delta；它们不再只是 “used as given”。
+
+因此：
+
+- SECURITY.md 需要同步，至少明确单文件 delta 的新拒绝边界；
+- AM-106 当前声称该文件“不含单文件形式承诺”，与文件字面内容直接相反；
+- 所谓 grep assertion 在 state A 上就应失败，因为该行明确包含 `single-file archive --store <f> --delta <f>`。
+
+- **风险**：high。错误的 `REMOVED` 会废弃整个 Requirement；SECURITY 文档也会继续发布与实现相反的路径契约。
+- **建议修复**：
+  - 将 AM-99 改成 MODIFIED enclosing Requirement、删除 AM-12 scenario，并验收 AM-01～AM-11 全部保留；
+  - 增加 integrity report 必须只报告 dropped AM-12 的检查；
+  - 撤销 AM-106 的“不需修改”结论，改为更新 SECURITY.md 的 explicit-argument 句子并 grep 验证新边界存在。
+
+## REQ-7 — VERIFIED
+
+3.1 已改为明确的有序判定：
+
+```text
+读取/结构 → C3 → STEP6 overlay → R2/R3
+```
+
+ABANDONED/DONE 专门措辞只在其余 C3 条件通过后使用；DONE 文案也准确描述 in-flight bundle，而不再推断已归档。AM-79～AM-81 能直接验证优先级。修复完整。
+
+## 新问题（按维度）
+
+本轮没有另开新的 formal ID。发现的阻断缺口分别是 REQ-1、REQ-2、REQ-6 修复不完整或错误，按 reopen 规则复用原 ID。
+
+各维度结论：
+
+- **目标状态清晰性**：未通过，见 REQ-1、REQ-2、REQ-6。
+- **边界与异常路径**：未通过，见 REQ-1 的 guard 自身权限异常。
+- **隐含状态变化/副作用**：未通过，见 REQ-2 的可重放 blanket waiver及 REQ-6 的错误 spec 删除范围。
+- **验收可测试性**：未通过，见 REQ-2 的“本次运行/人类写入/确切文字”与 AM-106。
+- **state A 一致性**：未通过，见 `fileReadDefect`/`reviewDirDefect` 的真实异常行为、scenario-level delta grammar及 SECURITY.md 原文。
+- **lineage**：通过；目标仍为 `brownfield-round2` → v4/main，禁止合入 v1/v3，与仓库现实一致。
+- **out of scope**：明确存在。
+
+## Advisories
+
+### A-1 — F-2/F-4 的两条独立 `advisory-acked` 行不符合 ledger 的 batch 形态
+
+RUNBOOK/P0 规定 advisory 每轮在 ledger 中落一个 batch row，而 §五-7 要求两条独立 finding 行直接使用 `advisory-acked`。这不影响 archive-readiness 的实现正确性，因此不计 verdict；建议将稳定 finding 放进一个专门的 known-findings 段，或让本轮 advisory batch row 的 Issue 文本同时携带两个稳定标识。
+
+### A-2 — TOCTOU seam 的措辞应再机械化
+
+§六的稳定区间已经落实 Round-1 advisory。但“seam 可断言未做任何提交时复检”容易被理解成“没有 commit”或“没有 recheck”两种意思。建议明确成：hook 在 readiness 全部完成后、首次 store 写入前触发；测试在 hook 中修改 bundle，并断言 archive 不重新读取、不检测该修改。
+
+### A-3 — 源码行号只作定位，不应成为验收接口
+
+B6 的顺序已经足够明确；其中 `:676`、`:733` 等行号会随函数搬迁立即漂移。后续 design/tasks 应绑定命名步骤和函数调用，而不是继续依赖行号。
+
+VERDICT: 3 issues open
+# issue ledger — archive-readiness
+
+轮次标签：`STEP0·rN`（P1）/ `STEP2·rN`（P5）/ `STEP5·rN`（P8）。
+状态词汇：`open` / `fixed` / `verified` / `rejected` / `rejected-verified` / `waived` / `advisory-acked`。
+生产方只能 `open → fixed | rejected`；`verified` / `rejected-verified` 属评审方，`waived` 属人类。
+重开（reopen）是**事件**不是状态：复现的问题回到原 ID 的 `open`，绝不新开一行。
+
+本 change 是 `archive-preflight` 的收窄重开；前身的台账**不并入**本台账，
+其 ID 空间（REQ-1..REQ-9 / SPEC-1..SPEC-4）与本台账无关，引用时须写全 `archive-preflight:REQ-N`。
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| REQ-1 | G1 的结构安全读取层被随收窄一并删掉：flow-state/tasks/ledger 的 symlink、非文件、坏祖先、逃逸、读取异常未定义；外部「已完成」文件可让 ABANDONED bundle 通过 | high | 1 | fixed |
+| REQ-2 | `--force` 自称只解进度类，矩阵却把整个 R3 设为可 force（含非法 status、缺理由、waived 无人类证据、台账缺失）；且「只在 --write 下有意义」与「dry-run 同样改变结论」自相矛盾 | high | 1 | fixed |
+| REQ-3 | 单文件形式的 `--force` 语义不唯一：AM-86 要求 USAGE 两行都出现，AM-84 又要求该形式逐字节不变 | med | 1 | verified |
+| REQ-4 | readiness 的插入点相对既有 guard 集合不唯一：B5 漏列 temp guard / destination containment / integrity report；B6 的「→ 合并」与源码不符（buildProjection 已在 preflight 内完成内存合并） | med | 1 | verified |
+| REQ-5 | B2 的「词法/realpath 双量度」不足以实现：未定义 path.resolve、路径段边界、`.`/`..`、前缀兄弟目录、symlink root、缺失/悬空/权限失败；且「任何读取之前」与计算 realpath 本身冲突 | high | 1 | verified |
+| REQ-6 | 单文件收窄的迁移面严重漏报：docs/concepts{,_cn}.md 的 STEP6 教程命令、SECURITY.md、living spec AM-12/AM-19、cli spec、CHANGELOG 均未纳入；§零-3 的成本断言据此不成立 | high | 1 | fixed |
+| REQ-7 | `DONE` 诊断与 R1 优先级矩阵冲突：高层 archive 读的是 in-flight 路径，`DONE` 不能断言「已归档过」；且 ABANDONED/DONE 可与其他 C3 错误同时出现，与「互斥」声明矛盾 | med | 1 | verified |
+| REQ-8 | advisory batch acknowledged (A-1 TOCTOU 前置条件写法 / A-2 G3 findings 独立追踪入口 / A-3 收窄后的准确结论) | low | 1 | advisory-acked |
+
+exec
+/usr/bin/zsh -lc "sed -n '120,165p' lib/resolve.js && sed -n '120,150p' lib/gate.js && sed -n '470,590p' apriori/changes/archive-readiness/requirement/req-v3.md && sed -n '590,680p' apriori/changes/archive-readiness/requirement/req-v3.md && sed -n '1,80p' apriori/specs/archive-merge/spec.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 131ms:
+function legacyRoots(root) {
+  const hits = [];
+  for (const rel of LEGACY_ROOTS) {
+    try { fs.lstatSync(path.join(root, ...rel.split('/'))); hits.push(rel + '/'); } catch { /* absent */ }
+  }
+  return hits;
+}
+
+// file-level read guard: a path the tool is about to read must be a REGULAR file
+// contained (realpath) within its bundle. Returns null (safe) or a STRUCTURED defect
+// { kind: 'missing'|'symlink'|'not-file'|'bad-ancestor'|'escape', path } — consumers
+// switch on kind, never on message prefixes (resolver-trust). A missing leaf walks
+// its ancestors up to the bundle root: a symlinked/non-directory ancestor is a
+// bad-ancestor defect; only a cleanly-absent chain is 'missing'.
+function fileReadDefect(bundleDir, p) {
+  let st;
+  try { st = fs.lstatSync(p); } catch {
+    let cur = path.dirname(p);
+    const stop = path.resolve(bundleDir);
+    while (cur.startsWith(stop)) {
+      let ast = null;
+      try { ast = fs.lstatSync(cur); } catch { /* keep walking */ }
+      if (ast) {
+        if (ast.isSymbolicLink() || !ast.isDirectory()) return { kind: 'bad-ancestor', path: cur };
+        break;                                             // nearest existing ancestor is a clean dir
+      }
+      if (cur === stop) break;
+      cur = path.dirname(cur);
+    }
+    return { kind: 'missing', path: p };
+  }
+  if (st.isSymbolicLink()) return { kind: 'symlink', path: p };
+  if (!st.isFile()) return { kind: 'not-file', path: p };
+  if (!containsReal(bundleDir, p)) return { kind: 'escape', path: p };
+  if (!containsReal(bundleDir, p)) return { kind: 'escape', path: p };
+  return null;
+}
+
+module.exports = { CHANGE_NAME_RE, containsReal, resolveChange, configCas, configCasProblem, legacyRoots, fileReadDefect, validateChangeName, stampValid };
+  }
+  return bad.length
+    ? { id: 'C4', status: 'blocked', detail: bad.join('; ') }
+    : { id: 'C4', status: 'pass', detail: `${rows.length} row(s), none blocking` };
+}
+
+// the bundle review/ dir is the shared evidence root for C4 and C5 — when present it must be
+// a REAL contained directory (symlinked/escaping/non-dir entries block, never read through)
+function reviewDirDefect(dir) {
+  const rd = path.join(dir, 'review');
+  let st;
+  try { st = fs.lstatSync(rd); } catch { return null; }  // lstat, not exists: a dangling symlink is a defect, not absence
+  if (st.isSymbolicLink()) return `review is a symlink: ${rd}`;
+  if (!st.isDirectory()) return `review is not a directory: ${rd}`;
+  if (!containsReal(dir, rd)) return `review escapes the change dir: ${rd}`;
+  return null;
+}
+
+function checkEvidence(dir) {
+  const rd = path.join(dir, 'review');
+  const docs = [];
+  if (fs.existsSync(rd)) {
+    for (const e of fs.readdirSync(rd, { withFileTypes: true })) {
+      if (!e.name.endsWith('.md') || e.name === 'issues.md' || /-raw(\.|$)/.test(e.name.replace(/\.md$/, ''))) continue;
+      if (e.name.includes('-raw')) continue;
+      const p = path.join(rd, e.name);
+      if (fs.lstatSync(p).isSymbolicLink())
+        return { id: 'C5', status: 'blocked', detail: `evidence doc is a symlink: ${e.name}` };
+      if (!fs.lstatSync(p).isFile()) continue;
+      docs.push(p);
+    }
+- **AM-100** `apriori/specs/cli/spec.md` 的 usage 场景经 `## MODIFIED` 更新。
+- **AM-101** `docs/concepts.md` 与 `docs/concepts_cn.md` 的 STEP6 教程命令迁移到高层形式
+  （`apriori archive --change add-mini-kv --changes-dir apriori/changes --write`）；
+  可 grep 断言：两份文件中不再出现 `archive --store`。
+- **AM-102** `docs/cli.md` / `docs/cli_cn.md` 的 archive 段落描述就绪度、`--force` 的边界与证据协议、
+  单文件形式的作用域限制；`USAGE` 的高层行含 `--force`，单文件行**不含**。
+- **AM-103** `RUNBOOK.md` / `RUNBOOK_cn.md` 的 archive 算法段落记录：归档前判就绪度；
+  单文件形式仅用于**不在 changes root 内**的单模块手术，且不再接受 `--changes-dir`。
+- **AM-104** `CHANGELOG.md` 显著位置声明**三项破坏性变更**：
+  ① 未就绪的 change 不再能归档（新退出路径 `RESULT: NOT READY`）；
+  ② 单文件形式不再接受 `--changes-dir`（**失去移动能力**）；
+  ③ 单文件形式不再接受 changes root 内的 `--delta`。
+- **AM-105** `truth/archive-merge.md` 与新增的 `truth/readiness.md` 记录：判据同源、两层结构、
+  不成环的理由、以及「基础层不加守卫」的决策；`truth/gate.md` 记录 gate 改从基础层取。
+- **AM-106**（r2·REQ-6 改正，生产方的反驳被推翻）**`SECURITY.md` 必须修改**：
+  `:10` 末句 "Explicit operator-given file arguments (single-file `archive --store <f> --delta <f>`,
+  `stamp <file>`) are used as given, like any file tool." 是对单文件形式的显式承诺，与 B2b 冲突。
+  改为写明新的拒绝边界（changes root 内的 `--delta` 不再 used as given，`--changes-dir` 不再兼容），
+  并以可 grep 断言新边界文字存在。
+
+---
+
+## 五、明确不做（out of scope）
+
+1. **G3 全组**——不作任何「归档之后那次 gate 会解析到这个 bundle」的承诺。
+   随之不做：N0..N3 命名空间前置条件、时钟 seam、同名归档目录排序检查、自定义 root 的提示语。
+2. **前身 F-2**：`resolveChange` 在同名归档中取字典序最后者 → resolver 自身缺陷，本 change 不处理。
+3. **前身 F-4**：`archive-merge.js:753` 的 phase 4 自行 `new Date()` → 属 G3，不处理。
+4. **不改 `lib/resolve.js`**（含 §1.5 发现的 `:153`/`:154` 重复行——那是独立的清理项）。
+5. **不改 gate 的任何对外行为**（RY-02 是机械保证）。
+6. **不引入并发/锁**。TOCTOU 窗口存在且不在本 change 关闭（见 §六-1）。
+7. **G3 findings 的独立追踪入口（r1·A-2，按 r2·A-1 改形）**：F-2 与 F-4 的稳定标识
+   `finding:resolver-archive-tiebreak` 与 `finding:archive-move-clock`
+   **写进本轮 advisory batch row 的 Issue 文本**（而不是另开两条 `advisory-acked` 行——
+   RUNBOOK/P0 规定 advisory 每轮只落一个 batch row）。目的不变：本 change 完成后仍可 grep 到。
+
+---
+
+## 六、已知后果与风险
+
+1. **TOCTOU 窗口存在（r1·A-1，本版给出精确前置条件）**：
+   本 change 保证的区间是「**从第一次读取 readiness artifact 开始，到 dry-run 返回、
+   或（无 move 的）commit 结束、或 move 尝试结束为止，调用方不得并发修改 bundle**」。
+   实现**不声称**能检测该竞态。机械化表述（r2·A-2）：`--write` 路径须提供一个 hook，
+   **在就绪度全部判完之后、第一次写 store 之前**触发；测试在该 hook 内修改 bundle，
+   并断言 archive **不重新读取 readiness artifact、也不检测该修改**。
+   「看守一次」**不等于**提交时刻的状态保证。**须在 gate④ 如实呈报。**
+2. **三项对外可见的破坏性变更**（AM-104 已具名）。其中「单文件形式失去移动能力」
+   会使 **living spec 的 AM-12 变为空洞**，须以 `## MODIFIED` 整块的方式去除该 scenario（§1.8）——
+   这是本 change 唯一一处**删除既有承诺**的地方，须在 gate④ 单独点名，
+   并以 MODIFIED 完整性报告的 `! dropped: AM-12` 作为呈报证据。
+   同时 `SECURITY.md` 的显式承诺句需同步（§1.9）。
+3. **入门教程会改**：`docs/concepts{,_cn}.md` 的 STEP6 命令迁移到高层形式。
+   这实际上让教程与 RUNBOOK 的推荐路径一致（RUNBOOK 早已把高层形式作为正道），
+   但它是**用户第一次归档时照抄的那条命令**，改错的代价很高。
+4. **迁移面：61 个高层调用点 / 6 个测试文件**（gap-report §A6）。
+   风险不在数量，在**遗漏**——该清单是单行 grep 判据，抓不到跨行调用，
+   STEP5 的 M1 必须逐文件人工走完，**不得以该表收尾**。
+5. **`--force` 是一个新的逃生舱**。缓解：类别穷举、结构类与 R1 永不可解、
+   需要**预存的、按类具名的人类 `gates:` 证据**、逐条打印。
+   **已知弱点，如实呈报（r2·REQ-2）**：该证据是**该类在本 bundle 生命周期内持续有效的授权**，
+   不是「本次运行」的证据——记录写下之后新出现的同类失败会被同一条记录覆盖，
+   直到该记录被显式删除。本版**不把它包装成 per-run 证据**；
+   若 owner 认为这个有效期太宽，可在 gate④ 要求改为绑定当前失败集合摘要。
+6. **第二次不收敛的处置**：若本轮 STEP0 再撞 cap，生产方**不提议第三次重开**，
+   而是把「判 ABANDONED」作为选项如实呈给 owner（RUNBOOK §283：只能由人类裁定）。
+
+---
+
+## 七、与前身 `archive-preflight` 的关系
+
+前身**不删除、不实现、不归档**，原地保留（`current-step: SUPERSEDED`）。
+其九轮评审的实证发现 F-1..F-4 已转录在它的 flow-state 尾部。
+本 change 继承 F-1（以拒绝方式关闭），F-2/F-4 转独立 finding（§五-7），F-3 存档备查。
+
+**CAS 复核（已做）**：当前 `apriori/specs/archive-merge/spec.md` 的 base 为
+`sha256:51620e96cd6b3c4a4b1af5e1e0865fd7f55bcf0333ecc47aeca727cf997282c5`；
+前身触及的块与 `id-pattern-and-delta-notes` 新增 AM-71..73 所在的块**不同**，无 §4.11 冲突。
+（r1 独立复核并确认了这一点。）
+
+---
+
+## 八、STEP0·r1 处置说明（本版）
+
+**7 条全部 accept，无一 rejected。**
+
+| ID | 处置 |
+|---|---|
+| REQ-1 | 新增 **B7**（两层结构 + artifact × 缺陷类 × tier 判定表）与 **RY-06 / AM-74..77**。实证补充：`fileReadDefect` 已存在且已导出（`resolve.js:134`/`:158`），**不需新写**；`reviewDirDefect` 是 gate 私有，随基础层搬入。 |
+| REQ-2 | **B3 重写**：可 force / 不可 force 两个穷举清单 + 预存的人类 `gates: archive-force` 证据协议 + 多失败覆盖规则 + 逐条输出格式；矛盾措辞改为「dry-run 与 write 同样改变结论，只有 write 产生磁盘副作用」。验收 AM-86..90。 |
+| REQ-3 | 采纳评审方的**推荐分支**：`--force` 只出现在高层 usage，单文件形式收到即 exit 2；并把它写成 **B5 的具名例外**（连同 B2a 共两处），验收 AM-91。 |
+| REQ-4 | **B6 按源码逐行重写**，明确 readiness 插在两个 `--write` 守卫之后、`pushIntegritySection` 之前；「合并」一词统一指内存投影。验收 AM-83（逐 guard + 计数 seam）与 AM-84（integrity report 的出现条件）。 |
+| REQ-5 | **B2b 给出五步算法**（`path.resolve` / 段边界 / 双量度 / realpath 失败的 disposition / 时机措辞修正）；验收 AM-93..97 逐例覆盖 `.`、`..`、前缀兄弟、symlink root、外部 symlink、缺失 root、悬空 delta。 |
+| REQ-6 | **§零-3 撤回**，§1.6 补全真实迁移面（38 处的分类清点）。**两点比评审方描述得更重**：`docs/concepts.md:553` 是入门教程的 STEP6 命令；living spec 的 **AM-12 变为空洞**，需 `## REMOVED` 而不只是文档更新。**一处不成立**：`SECURITY.md:10` 只描述「由 change name 派生的路径」，与单文件形式无关，故改为 **AM-106 的可 grep 断言**（断言其确实不含该承诺）而非修改。 |
+| REQ-7 | **3.1 改为有序矩阵**（读取/结构 → C3 → STEP6 overlay → 进度），互斥性改为精确表述；`DONE` 文案改为 `in-flight bundle declares DONE; expected STEP6`。验收 AM-79..81。 |
+| A-1 | §六-1 写成精确的调用前置条件区间 + seam 要求。 |
+| A-2 | §五-7：F-2/F-4 以带稳定标识的 `advisory-acked` 台账行落地，可 grep。 |
+| A-3 | 采纳其准确结论：不重建 G2/G3，但**完整恢复** G1 的安全读取（B7）与 force 分类（B3）。 |
+
+---
+
+## 八·2、STEP0·r2 处置说明（本版）
+
+**verdict 序列 7 → 3。** r2 verified 四条：**REQ-3 / REQ-4 / REQ-5 / REQ-7**（本版不再改动）。
+重开三条，**全部 accept，无一 rejected**：
+
+| ID | 残余缺陷 | 本版处置 |
+|---|---|---|
+| REQ-1 | ① `fileReadDefect` 与 `reviewDirDefect` 的 `catch` 都不看 `e.code`，`EACCES` 被报成 `missing`，在 trivial 层判 `n/a` → **fail-open**；AM-77 只覆盖「守卫之后」的读取异常，抓不到守卫**自身**的异常。② 「原样搬入」`reviewDirDefect` 会连 `archive-merge.containsReal` 一起搬，形成 `archive-merge → readiness → archive-merge` 的**环**。 | 新增 **B7a**（archive 安全层自行分类：只有真正的 `ENOENT` 才进 tier 敏感的缺失分支，其余 `e.code` 一律结构类不可 force）与 **B7b**（`readiness.reviewDirDefect` 取 `resolve.containsReal`）。§1.5 补入两条实证。新增 **AM-107**（守卫自身抛 `EACCES`/`EIO`/`ELOOP`，**含 trivial 层的关键控制**）、**AM-108**、**RY-07**（静态禁 require + 五例差分）。 |
+| REQ-2 | 泛化的 `archive-force <reason>` 是**永久的、无范围绑定的 blanket waiver**，却被称作「本次运行」的证据：为两项旧任务写的记录会自动授权后来出现的任意 tasks/ledger 问题。另外「由人类写入」不可由文件证明；AM-88 要求打印「需要写入的确切文字」而人类理由尚未知；「非空文字」不构成理由定义；「打印 gates 条目原文」未说明是原始多行还是规范化拼接。 | **采纳推荐分支并加一条诚实声明**：token 改为**按类具名**（`archive-force tasks` / `archive-force ledger`），一条记录只授权它列出的类；理由须含 `\w`；措辞由「由人类写入」改为「**记录一项先前的人类决定**」，并注明文件无法证明作者身份；AM-88 改为打印**可复制的模板**；输出改为打印记录的**原始首行**。**并如实命名其有效期**：这是该类在本 bundle 生命周期内**持续有效的授权**，不是 per-run 证据——写进 §六-5 供 gate④ 裁决。新增 **AM-89**（按类绑定）与 **AM-109**（原始首行 vs 规范化文本的控制）。 |
+| REQ-6 | ① 生产方主张对 AM-12 用 `## REMOVED` —— **错误**：AM-12 是 Scenario，delta 语法的操作粒度是整个 `### Requirement:` 块，实测该块含 **AM-01..AM-12 共 12 个场景**，`REMOVED` 会把 AM-01..AM-11 一并弃用。② 生产方对 `SECURITY.md` 的反驳 —— **不成立**：`:10` 末句明确承诺单文件形式 "used as given"。 | **两条都改正**。新增 **§1.8**（delta 语法的操作粒度，含实测的 12 个场景清单）与 **§1.9**（SECURITY.md 末句原文）。**AM-99 改写**为 `## MODIFIED` 整块 + 三条验收（AM-01..AM-11 共 11 个场景逐字节保留 / 完整性报告恰好打印 `! dropped: AM-12` 且无其他 dropped / 绑定测试处置）。**AM-106 改写**为**修改** SECURITY.md。**生产方的两处判断错误已记录在案**：一处是把 scenario 当 Requirement，一处是 grep 输出被截断而漏读末句。 |
+
+**r2 确认的两条**：concepts 教程命令同时触发 B2a/B2b（比一般陈旧 usage 更重）；AM-12 确将变为空洞。
+
+**advisory 处置**：A-1 → §五-7 改为写进 batch row 文本；A-2 → §六-1 机械化为「就绪度判完之后、
+首次写 store 之前」的 hook + 「不重读、不检测」的断言；A-3 → **接受**，本文件的 `:676` 等行号
+**只作定位**，STEP2 的 design/tasks 一律绑定**命名步骤与函数调用**，不得以行号为验收接口。
+### Requirement: archive-merge applies delta specs to the living store
+`apriori archive` SHALL merge a change's delta requirements into the living spec store by stable Requirement ID, consuming the same `## ADDED/MODIFIED/REMOVED/RENAMED Requirements` delta format the OpenSpec adapter used, so it is the adapter-free native implementation of §4's archive action.
+
+#### Scenario: AM-01 ADDED appends a new requirement
+- WHEN the delta has an ADDED requirement whose ID is absent from the store
+- THEN it is appended and the ID is listed as merged
+
+#### Scenario: AM-02 MODIFIED replaces the existing block
+- WHEN the delta has a MODIFIED requirement whose ID exists in the store
+- THEN the whole store block is replaced and the ID is listed as modified
+
+#### Scenario: AM-03 REMOVED marks the block deprecated, not deleted
+- WHEN the delta has a REMOVED requirement present in the store
+- THEN the store block is kept and marked `deprecated (superseded by <change>)`, listed as deprecated
+
+#### Scenario: AM-04 same-ID conflict stops without writing
+- WHEN an ADDED ID already exists, or a MODIFIED/REMOVED target is missing
+- THEN the merge reports the conflict, writes nothing, and exits 1 (a human opens a ledger issue)
+
+#### Scenario: AM-05 the action lists every merged/modified/deprecated ID
+- WHEN a merge succeeds
+- THEN every affected Requirement ID is printed by category (§4 requires the action list them)
+
+#### Scenario: AM-06 archive moves the in-flight change under a dated archive dir
+- WHEN archive completes on change `<name>`
+- THEN the in-flight `apriori/changes/<name>/` (bare name, no prefix) is moved to `apriori/changes/archive/<YYYY-MM-DDThhmm>-<name>/` — a colon-free date-time stamped by the CLI's own clock (never an agent guess); e.g. `archive/2026-07-06T0657-add-playback/`
+
+#### Scenario: AM-07 RENAMED renames a requirement in place, preserving content
+- WHEN the delta has a `## RENAMED Requirements` entry `- Old Name -> New Name` and `Old Name` exists while `New Name` does not
+- THEN the store block keeps its content but its heading ID becomes `New Name`, listed as renamed; a missing source (with no existing target) or a colliding target is a conflict (stop, exit 1, nothing written) — the source-gone-AND-target-present rerun case is AM-10's no-op, not a conflict
+
+#### Scenario: AM-08 a content-bearing delta that parses to zero operations is a hard error
+- WHEN `apriori archive` reads a delta file that has non-whitespace content but matches no recognized section (e.g. wrong heading level or keyword, so 0 delta operations parse)
+- THEN it writes nothing, prints an error naming the expected `## ADDED|MODIFIED|REMOVED|RENAMED Requirements` + `### Requirement:` format, and exits non-zero — never reporting MERGED for a delta the parser did not understand
+
+#### Scenario: AM-09 the first archive in a repo creates the store file
+- WHEN `apriori archive --write` targets a store file that does not exist yet
+- THEN it notes the store will be created, starts from an empty store, and writes the merged result — no ENOENT
+
+#### Scenario: AM-10 re-running an already-merged delta is an idempotent no-op
+- WHEN an ADDED requirement in the delta already exists in the store with byte-identical (trimmed) content, or a RENAMED entry's source is gone while its target is present, or a REMOVED entry's target is gone while its deprecated form marked `superseded by <THIS change>` is present — each the signature of a rerun after a partial archive
+- THEN each is reported as already merged / already renamed / already deprecated (no-op), not a conflict, and the run can proceed to move the change dir; but an ADDED whose name was created by THIS run's own RENAMED is a same-delta collision and still conflicts even with identical content, and a REMOVED target deprecated by a DIFFERENT change remains a conflict
+
+#### Scenario: AM-11 change names are validated and the dir move cannot escape
+- WHEN `--change` is not bare kebab-case (e.g. `../victim`), or `--changes-dir` is given but the change dir does not exist
+- THEN archive exits 2 before writing anything; the move helper independently rejects any source that resolves outside the changes dir
+
+#### Scenario: AM-12 the store commit and the dir move are one transaction (single-file form)
+- WHEN the single-file form `apriori archive --store <f> --delta <f> --change <name> --write --changes-dir <dir>` runs and the change-dir move fails
+- THEN the store on disk stays byte-for-byte untouched (staged to a temp file, committed by rename only after the move succeeds) and no temp residue remains — the high-level `--change` form's move-failure rule is AM-18's (stores already committed stay committed)
+
+### Requirement: high-level archive merges a whole change transactionally
+`apriori archive --change <name>` SHALL discover every `.md` delta file under `<changes-dir>/<name>/specs/` (`--changes-dir` defaults to `apriori/changes` and sets both the discovery root and the move root), map each to its store target `apriori/specs/<suffix>` by path suffix, dry-run the whole set by default, and on `--write` commit in four phases — preflight (validate, parse, CAS-check, merge in memory; any failure anywhere → nothing written), stage (write every `<store>.tmp-archive`), commit (rename each temp in sorted path order), move (only when `--changes-dir` was explicitly passed, only after all stores committed). The guarantee is failure-atomicity up to the commit point; crash durability is not claimed.
+
+#### Scenario: AM-13 dry-run reports the whole change and writes nothing
+- WHEN `apriori archive --change <name>` runs without `--write` on a change spanning several modules
+- THEN it prints per-module merged/modified/deprecated/renamed/no-op requirement names and a result line, and no file on disk changes
+
+#### Scenario: AM-14 any preflight failure means nothing is written
+- WHEN any module's merge reports a conflict, any delta file fails a hygiene guard, or any CAS stamp mismatches during `--write`
+- THEN every failure across all modules is reported, no store file changes, and the exit code is 1
+
+#### Scenario: AM-15 a mid-commit failure is reported exactly
+- WHEN a rename in the commit phase fails after earlier renames succeeded
+- THEN archive reports exactly which modules committed, which did not, and which temp files remain for manual completion, and exits 1 — already-committed renames are not rolled back
+
+#### Scenario: AM-16 a pre-existing temp file blocks the run
+- WHEN any target `<store>.tmp-archive` already exists at preflight
+- THEN archive exits 1 naming that file, writes nothing, and leaves the pre-existing file untouched (it may be another run in flight or a manual-recovery artifact)
+
+#### Scenario: AM-17 zero discovered delta files fail closed
+- WHEN `<changes-dir>/<name>/specs/` exists but contains no `.md` delta files, or the change dir itself is missing
+- THEN archive exits 2 naming the searched path
+
+#### Scenario: AM-18 the change-dir move waits for every store commit
+- WHEN `--write --changes-dir <dir>` succeeds
+- THEN the change dir moves to `<dir>/archive/<stamp>-<name>/` only after ALL stores committed; without an explicit `--changes-dir` no move happens; a move failure leaves the committed stores in place and exits 1
+
+#### Scenario: AM-19 high-level and single-file forms are mutually exclusive
+- WHEN `--change` is combined with `--store` or `--delta`
+
+codex
+The revisions close much of the intended gap, but two acceptance-level contradictions remain visible already: the force record is described as deletable even though `gates:` is append-only, and the required AM-12 integrity line does not match the repository’s formatter, which prints the full scenario title. I’m doing the final regression pass now.
+exec
+/usr/bin/zsh -lc "rg -n \"4\\.11|serialize-per-module|serializ|串行|module\" RUNBOOK.md RUNBOOK_cn.md | head -80 && sed -n '275,305p' RUNBOOK.md && sed -n '60,115p' lib/gate.js && git status --short && git branch --show-current && git rev-parse --short HEAD && rg -n \"brownfield-round2|main@235a121|产品线 v4|never merge|禁止.*v1|禁止.*v3\" apriori/changes/archive-readiness apriori/truth RUNBOOK.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 2301ms:
+RUNBOOK_cn.md:231:| 知识库(TRUTH-DOC) | `apriori/truth/<module>.md`——必须带围栏外行首裸行 `source-commit: <ref>` 标记(只覆盖契约节,§5 P9/P10);C6 默认按文件基名把 truth 绑到 store 模块、比对 `lib/<module>.js`——文件名异名或代码不在 `lib/` 时,在头部区声明 `store-module:` / `source-files:` |
+RUNBOOK_cn.md:242:- **archive 算法:**`apriori archive` 按稳定 Requirement ID 把变更的增量规格并入规格库——`## ADDED` → 追加;`## MODIFIED` → 整块替换(verify --change 与 archive 会打印机械保真报告——丢失的场景与子句逐条列出);`## REMOVED` → 规格库保留原块并标 `deprecated (superseded by <change>)`(弃用块内的 scenario 不再被 `verify` 要求;残留的测试转为 ORPHAN);`## RENAMED`(`- Old -> New`)→ 就地把块的 ID 改名、内容保留;`## Notes` → 合并**完全忽略**的说明段——需要解释「这个块为什么这么改」时写在这里,因为写在别处的标题会被当成结构,而 requirement 块内的非-`Requirement` `###` 现在会被**拒绝**而不再原样并进规格库(给本增量用的 CAS 戳必须写在 Notes 段**之前**,因为该段是不透明的;只有 Notes 的增量仍属零操作)。与分叉后已合并的并行变更发生同 ID 冲突 → **停止、开台账、人工裁决**(§4.11 按模块串行)。高层形式 **`apriori archive --change <name>`** 自动发现 `apriori/changes/<name>/specs/` 下的全部增量文件,按路径后缀映射到 `apriori/specs/<同后缀>`,默认整组 dry-run,`--write` 时按"预检 → 暂存 → 提交 → 移动"四阶段失败原子地提交(提交点之前任何失败都不落一个字节);单文件形式(`--store <f> --delta <f>`)保留用于单模块手术。两种形式都列出每条 merged / modified / deprecated / renamed 的 Requirement,并在 `--write` **且带 `--changes-dir apriori/changes`** 时把在途变更目录挪到 `apriori/changes/archive/<YYYY-MM-DDThhmm>-<name>/`(日期时间由 CLI 盖;不带该 flag 只写规格库)。注意时序:移动发生在 gate④ 之前,该闸口悬决期间 flow-state 位于——且更新于——它的**归档**路径;STEP6 移动之后,续跑会话要去 `archive/` 下找它。
+RUNBOOK_cn.md:244:- **CAS 基线章(串行规则的工具化):**写增量规格时,先跑 `apriori stamp apriori/specs/<module>/spec.md`,把打印出的 `<!-- apriori-base: … -->` 行贴在增量文件顶部(第一个 `## … Requirements` 小节之前;规格库文件尚不存在时用 `new`)。此后 `verify --change` 和 `archive` 都会在规格库自增量作成以来已发生变化时拒绝执行——§4.11 的串行规则由此机械化。强制规则:不盖章的**变更类**增量(MODIFIED/REMOVED/RENAMED)**默认被拒绝**——`archive` 在预检即拒、什么都不写,gate C7 同样拦截;两个可见豁免是 `--no-cas` flag 与配置行 `| cas | optional |`(flag 优先,输出会点名生效的豁免源)。`verify --change` 保持只告警不裁决。已完全落地的盖章增量可以干净重跑(不匹配降级为 rerun-accepted 提示)。
+RUNBOOK_cn.md:281:- **契约节:**`apriori/truth/<module>.md` 有契约节吗?新鲜吗——`git log --oneline <source-commit>..HEAD -- <模块目录>` 是否为空?(`source-commit` 只覆盖契约节。)新鲜 → STEP1。过期 → 用 **P10** 校对**契约节**(在那里代码是真相),刷新标记。缺失 → 用 **P10** 反向沉淀;产出的文档必须先经人或异构模型复核,**之后**下游才能使用。
+RUNBOOK_cn.md:315:- **动作:**执行 **archive 接口动作**,用 **P9**——按上文接口的 archive 算法合并;更新 `apriori/truth/<module>.md`(契约节按最终实现更新+刷新 `source-commit`;决策节追加本次变更的新决策/不变式);列出改了哪些文件/段落。探索轨变更:在归档动作**之前**删除或隔离 `changes/<change>/spike/`。**原子移动携带整个 bundle:**`apriori/changes/<change>/` 下的一切——flow-state、`requirement` 需求史、`gap-report.md`、proposal、design、tasks、`specs/`、`review/` 证据——作为一个整体落至 `apriori/changes/archive/<stamp>-<change>/`;你剩下的唯一职责是收尾提交。
+RUNBOOK_cn.md:593:/goal "目标:本次变更已归档(`apriori archive` 把增量规格合并进 living 规格库 apriori/specs/),且模块 <module> 的知识库文件已反映本次新增/变更的事实、并刷新了 source-commit 标记。上限:step6-cap 轮(默认 4)。
+RUNBOOK_cn.md:594:执行 archive 接口动作,然后更新 apriori/truth/<module>.md,并列出究竟改了哪些文件/段落。
+RUNBOOK.md:55:- **Just-in-time knowledge:** load KB docs per touched module (P3 already scopes this way) — never preload the whole store.
+RUNBOOK.md:94:| **Medium** | One module; new user-visible behavior | STEP0 (1–2 rounds) → STEP1 → STEP2 (1–2 rounds) → STEP5 → STEP6; STEP3 shrinks to an async design look-over |
+RUNBOOK.md:95:| **Large** | Cross-module / external shared state / data migration / new subsystem | Full STEP0–STEP6, every gate included |
+RUNBOOK.md:97:Anything touching external shared state or crossing module boundaries is **Large**, regardless of diff size. When unsure, start one tier lower and escalate on the first surprise; record the tier — and any escalation — in the state file.
+RUNBOOK.md:108:**Tripwires outrank the certainty axis**: anything touching external shared state / production data / module boundaries / migrations is barred from the explore track no matter how vague — run it on the harden track, optionally with a **research spike** (the STEP1 variant, §4). Default when unsure: **harden** — the opposite direction from the size axis, because the risks point the opposite way.
+RUNBOOK.md:135:| `(R1, n/a)` | single-module trivial fix, no spec change | nothing further |
+RUNBOOK.md:141:modules, a dual-end (frontend *and* backend) touch, a decision that supersedes another,
+RUNBOOK.md:241:| Knowledge base (TRUTH-DOC) | `apriori/truth/<module>.md` — a fence-outside line-start `source-commit: <ref>` stamp required (covers the Contract section only, §5 P9/P10); C6 binds a truth doc to its store module by filename basename and checks `lib/<module>.js` by default — for an aliased filename or non-`lib/` code, declare `store-module:` / `source-files:` in the header region |
+RUNBOOK.md:252:- **Archive algorithm:** `apriori archive` merges a change's delta specs into the store by stable Requirement ID — `## ADDED` → append; `## MODIFIED` → replace the whole block (verify --change and archive print a mechanical integrity report — dropped scenarios and lost clauses are listed line by line); `## REMOVED` → keep the store block, marked `deprecated (superseded by <change>)` (scenarios inside deprecated blocks stop being demanded by `verify`; their lingering tests turn ORPHAN); `## RENAMED` (`- Old -> New`) → rename the block's ID in place, content preserved; `## Notes` → commentary the merge ignores entirely — write there when you need to explain WHY a block changed, because a heading anywhere else is read as structure and a non-`Requirement` `###` inside a requirement block is now REFUSED rather than absorbed verbatim into the store (a stamp meant for the delta must precede the Notes section, since the section is opaque; a Notes-only delta is still zero operations). A same-ID conflict with a change merged since branching → **stop, open a ledger issue, a human resolves** (§4.11's serialize-per-module rule). The high-level form **`apriori archive --change <name>`** discovers every delta under `apriori/changes/<name>/specs/`, maps each to `apriori/specs/<same suffix>`, dry-runs the whole set by default, and on `--write` commits failure-atomically (preflight → stage → commit → move: any failure before commit means nothing is written); the single-file form (`--store <f> --delta <f>`) remains for one-module surgery. Either form lists every merged / modified / deprecated / renamed requirement and, on `--write` **with `--changes-dir apriori/changes`**, moves the in-flight change dir to `apriori/changes/archive/<YYYY-MM-DDThhmm>-<name>/` (date-time stamped by the CLI; without the flag only the store is written). Note the sequencing: the move happens before gate④, so while that gate is pending the flow-state lives — and is updated — at its **archived** path; a resumed session must look under `archive/` once STEP6's move has happened.
+RUNBOOK.md:254:- **CAS base stamps (serialize-rule tooling):** when authoring a delta, run `apriori stamp apriori/specs/<module>/spec.md` and paste the printed `<!-- apriori-base: … -->` line at the top of the delta file (before the first `## … Requirements` section; `new` for a not-yet-existing store). Both `verify --change` and `archive` then refuse if the store has diverged since the delta was authored — §4.11's serialize rule made mechanical. Enforcement: unstamped MUTATION deltas (MODIFIED/REMOVED/RENAMED) are **denied by default** — `archive` refuses at preflight with nothing written, and gate C7 blocks; the two visible waivers are the `--no-cas` flag and a `| cas | optional |` config row (the flag wins, and the output names which waiver applied). `verify --change` stays informative (warns, never judges). A stamped delta already fully applied re-runs cleanly (the mismatch downgrades to a rerun-accepted note).
+RUNBOOK.md:291:- **Contract section:** does `apriori/truth/<module>.md` have one, and is it fresh — is `git log --oneline <source-commit>..HEAD -- <module-dir>` empty? (`source-commit` covers the Contract section only.) Fresh → STEP1. Stale → reconcile the Contract section with **P10** (there, code is truth), refresh the stamp. Missing → reverse-capture with **P10**; the produced doc must be checked by a human or a heterogeneous model **before** anything downstream consumes it.
+RUNBOOK.md:325:- **Do:** the **archive action** with **P9** — merge per the interface's archive algorithm above; update `apriori/truth/<module>.md` (Contract section from the final implementation + refreshed `source-commit`; Decisions section appends this change's new decisions/invariants); list exactly which files/sections changed. Explore-track changes: delete or quarantine `changes/<change>/spike/` **before** the archive action. **The atomic move carries the whole bundle:** everything under `apriori/changes/<change>/` — flow-state, the `requirement` history, `gap-report.md`, proposal, design, tasks, `specs/`, `review/` evidence — lands as one unit at `apriori/changes/archive/<stamp>-<change>/`; your only residual duty is the closeout commit.
+RUNBOOK.md:376:* System knowledge base (if any): apriori/truth/<module>.md
+RUNBOOK.md:406:* System knowledge base: apriori/truth/ (module: <module>; new project: note "none")
+RUNBOOK.md:511:You are a system knowledge-base engineer. Read the module's code and produce/reconcile its KB doc.
+RUNBOOK.md:512:[Input] Code scope: <dirs/files>. Existing KB (if any): apriori/truth/<module>.md
+RUNBOOK.md:513:(First contact with unfamiliar code and no module map? One KB doc for the whole app is fine up to
+RUNBOOK.md:518:[Output] apriori/truth/<module>.md on the change branch (so the PR diff is where it gets reviewed), structured as two fixed sections with opposite truth directions:
+RUNBOOK.md:612:/goal "Goal: the change is archived (`apriori archive` merges the delta specs into the living store apriori/specs/) AND the KB file for module <module> reflects this change's new/changed facts with a refreshed source-commit stamp. Cap: step6-cap turns (default 4).
+RUNBOOK.md:613:Run the archive action, then update apriori/truth/<module>.md and list exactly which files/sections changed.
+
+0. **Intent card first (non-waivable):** ≤15 lines at `apriori/changes/<change>/requirement/intent-card.md` — goal hypothesis / success criteria / the questions the spike must answer. Requires **human sign-off** (`intent-card sign-off`; a heterogeneous review may inform it, but cannot replace it). On this track the intent card is the independent review baseline — the extracted spec is never judged against the prototype alone.
+1. **Spike (bounded):** prototype freely under `changes/<change>/spike/`; cap: `spike-cap` (default 10) turns; exit = every intent-card question answered. Cap hit → **gate ⑤**.
+2. **P11 — spec extraction:** inputs = intent card + prototype + spike findings; outputs = spec drafts under `apriori/changes/<change>/specs/` as the **sole intent-side authority**, plus `apriori/changes/<change>/requirement/req-final.md` as a thin index over them (§5 P11 — never a second acceptance narrative). Declared extraction-time decisions (`EXT-n`) get their final ruling at the `extraction review` decision point.
+3. **P12 — extraction review (heterogeneous, R2):** cap: `extraction-review-cap` (default 2). Verdict line `VERDICT: extraction accepted` → step 4. `VERDICT: extraction rejected` + unfaithful extraction → redo P11; `VERDICT: extraction rejected` + intent hypothesis falsified → back to SPIKE, or `ABANDONED` (archive the intent card + findings; log in the ledger).
+4. **Merge:** enter STEP2's full P5/P6 loop — from here the tracks are identical.
+5. **The prototype is disposable, machine-checkably:** STEP5 rebuilds from failing tests; tasks.md must not reference the `spike` dir; `changes/<change>/spike/` is deleted (or quarantined) before archive.
+6. **Track transitions:** explore→harden (extraction accepted, or the goal turns out clear); harden→explore (STEP0 finds the goal unstateable — via a human gate); explore→ABANDONED (hypothesis falsified). Each transition keeps the intent card, findings and ledger; only the `spike` dir is dropped.
+7. **Abandoning a harden change (the human changes their mind, any step):** ABANDONED is a legal exit on the harden track too — on the human's word (their call alone; never proposed by the agent as a way out of failing reviews): land one ledger row `abandoned — <the human's reason, verbatim>`, move the change dir to `apriori/changes/archive/<stamp>-<name>/` (flow-state `current-step: ABANDONED`), write nothing to the KB or spec store, and leave any code the change already touched exactly where the human directs (revert / keep on a branch — ask, don't assume). The requirement docs and ledger are kept: an abandoned change is a recorded decision, not an erased one.
+
+### KB pre-check — before STEP1, whenever the project already has code
+
+> On a legacy kickoff it may — and usually should — run **before STEP0 even drafts req-v1**: a requirement written blind to current-state facts (what protections already exist, what the data model actually is) wastes a review round rediscovering them. Pulling it ahead is always legal.
+
+KB docs have two sections with **opposite truth directions** (§5 P9/P10): `Contract (code-is-truth)` and `Decisions (doc-is-truth)`.
+
+- **Contract section:** does `apriori/truth/<module>.md` have one, and is it fresh — is `git log --oneline <source-commit>..HEAD -- <module-dir>` empty? (`source-commit` covers the Contract section only.) Fresh → STEP1. Stale → reconcile the Contract section with **P10** (there, code is truth), refresh the stamp. Missing → reverse-capture with **P10**; the produced doc must be checked by a human or a heterogeneous model **before** anything downstream consumes it.
+- **Decisions section:** never reconciled from code. If code violates an `active` invariant recorded there, that is a **bug to report, not a doc to update**; a decision expires only when a newer decision supersedes it (`superseded-by: <id>`).
+
+### STEP1 — explore
+
+- **Do:** the **explore action** with **P3**. **Out:** the gap report.
+- **Research-spike variant** (vague-but-tripwired changes, §2): probe code is allowed under `changes/<change>/spike/` — the explore track's full isolation rules apply — capped by `spike-cap` (default 10); findings land as a "research conclusions" appendix to the gap report. P3 carries the matching variant clause.
+- **Exit:** Large tier → **gate ②** (human skims the gap report). Other tiers: fold the report's top risks into your next report and proceed.
+
+### STEP2 — propose · adversarial loop · cap: `step2-cap` (default 4)
+
+- **Do:** the **propose action** with **P4**; then loop: reviewer **P5** (R2) → producer revises with **P6** (spec/design only — never source); ledger every round.
+- **Exit:** verdict line = `VERDICT: no major issues, ready to proceed to execution` → advance. Cap hit or oscillation → **gate ⑤**.
+
+### STEP3 — technical review — **gate ③ (human)**
+  const needsReason = tok === 'rejected' || tok === 'rejected-verified' || tok === 'waived';
+  return {
+    legal: true,
+    terminal: tok === 'verified' || tok === 'rejected-verified' || tok === 'waived' || tok === 'advisory-acked',
+    needsReason,
+    hasReason: !needsReason || /\w/.test(status.slice(m[0].length)),
+    isWaived: tok === 'waived',
+    token: tok,
+  };
+}
+
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// gates: entries from a flow-state text — the block runs from the unindented `gates:` line
+// to the next unindented top-level key; entries start `- `, continuation lines attach.
+function gatesEntries(flowText) {
+  const start = flowText.search(/^gates:/m);
+  if (start < 0) return [];
+  const rest = flowText.slice(start + 'gates:'.length);
+  const end = rest.search(/^[A-Za-z][\w-]*:/m);
+  const block = end < 0 ? rest : rest.slice(0, end);
+  const entries = [];
+  for (const line of block.split('\n')) {
+    if (/^\s*-\s/.test(line)) entries.push(line.trim());
+    else if (entries.length && line.trim()) entries[entries.length - 1] += ' ' + line.trim();
+  }
+  return entries;
+}
+
+// a waive is a HUMAN act: one single gates: entry must carry the row ID as an exact
+// token (LS-1 never matches inside LS-10) AND the word waive/waived.
+function waiveEvidence(flowText, id) {
+  const idRe = new RegExp(`(^|[^A-Za-z0-9-])${escapeRe(id)}([^A-Za-z0-9-]|$)`);
+  return gatesEntries(flowText).some((e) => idRe.test(e) && /waiv/i.test(e));
+}
+
+function checkLedger(tier, stage, dir) {
+  const p = path.join(dir, 'review', 'issues.md');
+  if (!fs.existsSync(p)) {
+    return tier === 'trivial'
+      ? { id: 'C4', status: 'n/a', detail: 'no ledger — trivial tier may never open one' }
+      : { id: 'C4', status: 'blocked', detail: `ledger missing at ${p}` };
+  }
+  const rows = parseLedger(fs.readFileSync(p, 'utf8'));
+  const fsPath = dir ? path.join(dir, 'flow-state.md') : null;
+  const flowText = fsPath && fs.existsSync(fsPath) ? fs.readFileSync(fsPath, 'utf8') : '';
+  const bad = [];
+  for (const r of rows) {
+    const c = classifyStatus(r.status);
+    if (!c.legal) { bad.push(`${r.id}: '${r.status}' is not in the ledger vocabulary`); continue; }
+    if (c.needsReason && !c.hasReason) { bad.push(`${r.id} is ${c.token} without a reason`); continue; }
+    if (c.isWaived && !waiveEvidence(flowText, r.id)) {
+      bad.push(`${r.id} is waived without a gates: entry recording the human decision`); continue;
+    }
+    if (c.token === 'open') { bad.push(`${r.id} is open`); continue; }
+    if (stage === 'archived' && !c.terminal) {
+brownfield-round2
+edfdf2e
+RUNBOOK.md:188:lineage: <target branch/line + its merge taboo, e.g. "v2 (never merge to main)">
+RUNBOOK.md:422:* Every user-visible output gets its own scenario with a stable ID (e.g. KV-03); never merge visible side-effects;
+apriori/changes/archive-readiness/gap-report.md:4:> 采集时间 2026-08-15，分支 `brownfield-round2` @ `edfdf2e`（两个 gate④ 已由 owner 签收）。
+apriori/changes/archive-readiness/flow-state.md:5:lineage: 分支 `brownfield-round2`（自 main@235a121 切出）；产品线 v4，最终目标 main；**禁止**合并到 v1 / v3
+apriori/changes/archive-readiness/review/req-review-v1.md:183:当前分支确为 `brownfield-round2`，HEAD 为 `edfdf2e`；`235a121` 是当前 main 且为该分支祖先。v4 已成为 main，禁止合入 v1/v3 的声明与仓库现实一致。
+apriori/changes/archive-readiness/review/req-review-v2.md:191:- **lineage**：通过；目标仍为 `brownfield-round2` → v4/main，禁止合入 v1/v3，与仓库现实一致。
+apriori/changes/archive-readiness/review/req-review-v2-raw.txt:71:> lineage: 分支 `brownfield-round2`（自 main@235a121 切出）；产品线 v4，最终目标 main；**禁止**合并到 v1 / v3
+apriori/changes/archive-readiness/review/req-review-v2-raw.txt:705:当前分支确为 `brownfield-round2`，HEAD 为 `edfdf2e`；`235a121` 是当前 main 且为该分支祖先。v4 已成为 main，禁止合入 v1/v3 的声明与仓库现实一致。
+apriori/changes/archive-readiness/review/req-review-v2-raw.txt:751:> 采集时间 2026-08-15，分支 `brownfield-round2` @ `edfdf2e`（两个 gate④ 已由 owner 签收）。
+apriori/changes/archive-readiness/review/req-review-v2-raw.txt:1256:- **lineage**：通过；目标仍为 `brownfield-round2` → v4/main，禁止合入 v1/v3，与仓库现实一致。
+apriori/changes/archive-readiness/review/req-review-v2-raw.txt:1466:- **lineage**：通过；目标仍为 `brownfield-round2` → v4/main，禁止合入 v1/v3，与仓库现实一致。
+apriori/changes/archive-readiness/requirement/req-v3.md:4:> lineage: 分支 `brownfield-round2`（自 main@235a121 切出）；产品线 v4，最终目标 main；**禁止**合并到 v1 / v3
+apriori/changes/archive-readiness/requirement/req-v2.md:4:> lineage: 分支 `brownfield-round2`（自 main@235a121 切出）；产品线 v4，最终目标 main；**禁止**合并到 v1 / v3
+apriori/changes/archive-readiness/review/req-review-v1-raw.txt:138:> lineage: 分支 `brownfield-round2`（自 main@235a121 切出）；产品线 v4，最终目标 main；**禁止**合并到 v1 / v3
+apriori/changes/archive-readiness/review/req-review-v1-raw.txt:552:lineage: 分支 `brownfield-round2`（自 main@235a121 切出）；产品线 v4，最终目标 main；**禁止**合并到 v1 / v3
+apriori/changes/archive-readiness/review/req-review-v1-raw.txt:810:- D-GT-7 (active): BROKEN configuration and ABSENT configuration are different classes and must never merge. A conflicting or unreadable `process-config.md`, and a present-but-blank `--test-cmd`, stay exit 2; only a genuine absence degrades. Merging them would turn a typo'd quote into a quiet INCOMPLETE. Ratified in gate-degrades (2026-08-14).
+apriori/changes/archive-readiness/review/req-review-v1-raw.txt:1416:## brownfield-round2
+apriori/changes/archive-readiness/review/req-review-v1-raw.txt:1417:brownfield-round2
+apriori/changes/archive-readiness/review/req-review-v1-raw.txt:1421:* brownfield-round2
+apriori/changes/archive-readiness/review/req-review-v1-raw.txt:1426:/usr/bin/zsh -lc "rg -n \"product line|产品线|\\bv[134]\\b|brownfield-round2|main@235a121|target lineage|lineage:\" README.md RUNBOOK.md apriori package.json . 2>/dev/null | head -n 300" in /mnt/d/Workbench/misc/apriori-spec-development
+apriori/changes/archive-readiness/review/req-review-v1-raw.txt:1429:RUNBOOK.md:188:lineage: <target branch/line + its merge taboo, e.g. "v2 (never merge to main)">
+apriori/changes/archive-readiness/review/req-review-v1-raw.txt:1449:./RUNBOOK.md:188:lineage: <target branch/line + its merge taboo, e.g. "v2 (never merge to main)">
+apriori/changes/archive-readiness/review/req-review-v1-raw.txt:1480:./validation/brainstorm-lab/v3-music/apriori/runbook.md:110:lineage: <target branch/line + its merge taboo, e.g. "v2 (never merge to main)">
+apriori/changes/archive-readiness/review/req-review-v1-raw.txt:1485:./validation/legacy-lab/inherited-poll/apriori/runbook.md:112:lineage: <target branch/line + its merge taboo, e.g. "v2 (never merge to main)">
+apriori/changes/archive-readiness/review/req-review-v1-raw.txt:1559:./validation/fullrun-lab/audit-v3-r3.txt:1069:   110	lineage: <target branch/line + its merge taboo, e.g. "v2 (never merge to main)">
+apriori/changes/archive-readiness/review/req-review-v1-raw.txt:2979:apriori/changes/archive-preflight/requirement/req-final.md:4:> lineage: 分支 `brownfield-round2`（自 main@235a121 切出）；产品线 v4，最终目标 main；**禁止**合并到 v1 / v3
+apriori/changes/archive-readiness/review/req-review-v1-raw.txt:3427:lineage: <target branch/line + its merge taboo, e.g. "v2 (never merge to main)">
+apriori/changes/archive-readiness/review/req-review-v1-raw.txt:3452:> lineage: 分支 `brownfield-round2`（自 main@235a121 切出）；产品线 v4，最终目标 main；**禁止**合并到 v1 / v3
+apriori/changes/archive-readiness/review/req-review-v1-raw.txt:4135:- 当前分支为 `brownfield-round2`。
+apriori/changes/archive-readiness/review/req-review-v1-raw.txt:4139:- requirement 声明目标 `main`，禁止落入 v1/v3，与仓库现实一致。
+apriori/changes/archive-readiness/review/req-review-v1-raw.txt:4277:- 当前分支为 `brownfield-round2`。
+apriori/changes/archive-readiness/review/req-review-v1-raw.txt:4281:- requirement 声明目标 `main`，禁止落入 v1/v3，与仓库现实一致。
+apriori/changes/archive-readiness/review/req-review-v1-raw.txt:4443:当前仍为 `brownfield-round2`；`main` 与 merge-base 均为 `235a121`，HEAD 为 `f415824`。仓库版本为 v4 主线，最终目标 main 且禁止 v1/v3 的声明正确。
+apriori/changes/archive-readiness/review/req-review-v1-raw.txt:4629:当前分支仍为 `brownfield-round2`；其 merge-base 与 `main` 均为 `235a121`，当前 HEAD 为 `f415824`。产品线 v4、目标 main、禁止 v1/v3 的声明正确。
+apriori/changes/archive-readiness/review/req-review-v1-raw.txt:4801:仓库当前分支是 `brownfield-round2`，HEAD 为 `f415824`；其与 `main` 的 merge-base 及当前 `main` 均为 `235a121`。V4 声明的分支来源、产品线版本、最终目标 main 和禁止合并到旧需求版本均符合实际。
+apriori/changes/archive-readiness/review/req-review-v1-raw.txt:4996:当前分支为 `brownfield-round2`，HEAD 为 `f415824`；其与 `main` 的 merge-base 及当前 `main` 均为 `235a121`。需求声明的来源分支、产品线和最终目标符合仓库现实。
+apriori/changes/archive-readiness/review/req-review-v1-raw.txt:5790:lineage: 分支 `brownfield-round2`（自 main@235a121 切出）；产品线 v4，最终目标 main；**禁止**合并到 v1 / v3
+apriori/changes/archive-readiness/review/req-review-v1-raw.txt:5860:edfdf2e (HEAD -> brownfield-round2) archive: id-pattern-and-delta-notes merged into the living spec
+apriori/changes/archive-readiness/review/req-review-v1-raw.txt:5929:- D-GT-7 (active): BROKEN configuration and ABSENT configuration are different classes and must never merge. A conflicting or unreadable `process-config.md`, and a present-but-blank `--test-cmd`, stay exit 2; only a genuine absence degrades. Merging them would turn a typo'd quote into a quiet INCOMPLETE. Ratified in gate-degrades (2026-08-14).
+apriori/changes/archive-readiness/review/req-review-v1-raw.txt:6516:`parseDeltaStrict` SHALL be a sequential, fully-consuming parser: every line (outside code fences, which are opaque) belongs to exactly one legal construct — file preamble (stamp/blank/free text without structure markers), a legal `## ADDED|MODIFIED|REMOVED|RENAMED Requirements` heading, section-preamble free text, a `### Requirement:` block (body runs to the next heading or EOF), a RENAMED `- Old -> New` line, or a `## Notes` section (opaque commentary: everything under it up to the next fence-outside h2 is ignored entirely — never merged, never a problem) — and anything else is a `problems[]` entry carrying its 1-based line number. The exhaustive problem set: unrecognized h2 headings (one problem per heading; its lines are never absorbed into any bucket), requirement/scenario markers before any section, a requirement block inside RENAMED, a scenario marker outside any requirement, duplicate requirement names, A NON-`Requirement` h3 INSIDE A REQUIREMENT BLOCK, and the stamp problems (which also gain line numbers). Both `verify --change` (exit 2) and `archive` (exit 1) inherit the failure.
+apriori/changes/archive-readiness/review/req-review-v1-raw.txt:6800:当前分支确为 `brownfield-round2`，HEAD 为 `edfdf2e`；`235a121` 是当前 main 且为该分支祖先。v4 已成为 main，禁止合入 v1/v3 的声明与仓库现实一致。
+apriori/changes/archive-readiness/review/req-review-v1-raw.txt:7007:当前分支确为 `brownfield-round2`，HEAD 为 `edfdf2e`；`235a121` 是当前 main 且为该分支祖先。v4 已成为 main，禁止合入 v1/v3 的声明与仓库现实一致。
+apriori/changes/archive-readiness/requirement/req-v1.md:4:> lineage: 分支 `brownfield-round2`（自 main@235a121 切出）；产品线 v4，最终目标 main；**禁止**合并到 v1 / v3
+apriori/truth/gate.md:32:- D-GT-7 (active): BROKEN configuration and ABSENT configuration are different classes and must never merge. A conflicting or unreadable `process-config.md`, and a present-but-blank `--test-cmd`, stay exit 2; only a genuine absence degrades. Merging them would turn a typo'd quote into a quiet INCOMPLETE. Ratified in gate-degrades (2026-08-14).
+apriori/truth/new.md:12:- `scaffoldChange(root, name, now)` → `{ok, path}` or `{ok:false, error}`. Creates `apriori/changes/<name>/{specs,requirement,review}/` and writes `flow-state.md`. An existing directory is refused, never merged into.
+
+exec
+/usr/bin/zsh -lc 'git rev-parse --short main && git merge-base main HEAD && git rev-parse main && rg -n "''^# req-v2|until.*deleted|显式删除|## REMOVED|无需修改|恰好打印 `! dropped: AM-12`|AM-106" apriori/changes/archive-readiness/requirement/req-v3.md' in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 547ms:
+235a121
+235a121c49be832e290f419da180115d6d28c0b7
+235a121c49be832e290f419da180115d6d28c0b7
+zsh:1: command not found: dropped:
+1:# req-v2 — archive-readiness：不可逆的归档写入，现在完全不问这个 change 做完了没有
+28:| 因此应对 AM-12 用 `## REMOVED` | **反驳，且成立** | **改正**：AM-12 是 **Scenario** 不是 Requirement，delta 语法的 `REMOVED` 作用于整个 `### Requirement:` 块。经实测，AM-12 所在块是 `archive-merge applies delta specs to the living store`，含 **AM-01..AM-12 共 12 个场景**——用 `REMOVED` 会把仍然有效的 AM-01..AM-11 一并 deprecated。见 §1.8 与改写后的 AM-99。 |
+29:| `SECURITY.md` 无需修改 | **反驳，且成立** | **撤回生产方的反驳**。`SECURITY.md:10` 的**末句**（v2 的测量被 250 字符截断而漏读）原文为 “Explicit operator-given file arguments (single-file `archive --store <f> --delta <f>`, `stamp <file>`) are used as given, like any file tool.”——这正是对单文件形式的显式承诺，B2b 与之直接冲突。AM-106 改为**修改** SECURITY.md。 |
+123:   AM-12 的 WHEN 子句失去主语，该场景**变为空洞**。这不是文档更新，是 **living spec 的 `## REMOVED` 操作**。
+126:`SECURITY.md:10` 只描述「由 change name 派生的路径」，**不涉及**单文件形式，经核**无需修改**（r1 此条不成立，见 §八 REQ-6 的处置）。
+134:delta 的 `## REMOVED` / `## MODIFIED` 都以**整个 `### Requirement:` 块**为单位
+135:（`## REMOVED` 保留块并标 `deprecated (superseded by <change>)`，块内 scenario 停止被 `verify` 要求）。
+138:→ 对 AM-12 用 `## REMOVED` 会把仍然有效的 **AM-01..AM-11 一并弃用**。
+150:（v2 §八 断言此处无需修改，系生产方读取被截断所致的错误，本版撤回。）
+287:  记录写下之后新出现的同类失败**会被同一条记录覆盖**，直到该记录被显式删除。
+466:  **不得使用 `## REMOVED`**：那会把仍然有效的 AM-01..AM-11 一并 deprecated（§1.8）。
+468:  ② **MODIFIED 完整性报告**恰好打印 `! dropped: AM-12`，**且不打印其他 dropped**；
+484:- **AM-106**（r2·REQ-6 改正，生产方的反驳被推翻）**`SECURITY.md` 必须修改**：
+532:   直到该记录被显式删除。本版**不把它包装成 per-run 证据**；
+563:| REQ-6 | **§零-3 撤回**，§1.6 补全真实迁移面（38 处的分类清点）。**两点比评审方描述得更重**：`docs/concepts.md:553` 是入门教程的 STEP6 命令；living spec 的 **AM-12 变为空洞**，需 `## REMOVED` 而不只是文档更新。**一处不成立**：`SECURITY.md:10` 只描述「由 change name 派生的路径」，与单文件形式无关，故改为 **AM-106 的可 grep 断言**（断言其确实不含该承诺）而非修改。 |
+580:| REQ-6 | ① 生产方主张对 AM-12 用 `## REMOVED` —— **错误**：AM-12 是 Scenario，delta 语法的操作粒度是整个 `### Requirement:` 块，实测该块含 **AM-01..AM-12 共 12 个场景**，`REMOVED` 会把 AM-01..AM-11 一并弃用。② 生产方对 `SECURITY.md` 的反驳 —— **不成立**：`:10` 末句明确承诺单文件形式 "used as given"。 | **两条都改正**。新增 **§1.8**（delta 语法的操作粒度，含实测的 12 个场景清单）与 **§1.9**（SECURITY.md 末句原文）。**AM-99 改写**为 `## MODIFIED` 整块 + 三条验收（AM-01..AM-11 共 11 个场景逐字节保留 / 完整性报告恰好打印 `! dropped: AM-12` 且无其他 dropped / 绑定测试处置）。**AM-106 改写**为**修改** SECURITY.md。**生产方的两处判断错误已记录在案**：一处是把 scenario 当 Requirement，一处是 grep 输出被截断而漏读末句。 |
+
+codex
+# req-review-v3 — archive-readiness requirement review（Round 3）
+
+评审基于 req-v3、Round-2 review、issue ledger、RUNBOOK、living specs 与实际源码；未修改任何文件。
+
+## 原问题处置
+
+### REQ-1 — REOPENED
+
+B7a/B7b 已真实修复以下部分：
+
+- archive 外层能区分首次 `lstatSync` 的 `ENOENT` 与其他错误；
+- `EACCES`、`EIO`、`ELOOP` 等被定义为不可 force 的结构失败；
+- `readiness.reviewDirDefect` 明确改用 `resolve.containsReal`，依赖环已消除；
+- RY-07 的五例差分足以验证 `reviewDirDefect` 当前调用域内的行为兼容性。
+
+但安全读取仍存在第二次 `lstat` 的 fail-open 窗口。
+
+B7a 规定外层先 `lstatSync`，成功后再调用既有 `fileReadDefect()`。后者会再次执行 `lstatSync`，且其 `catch` 仍吞掉所有错误：
+
+1. 外层首次 `lstatSync(tasks.md)` 成功；
+2. `fileReadDefect()` 内部第二次 `lstatSync` 抛 `EACCES`、`EIO` 或 `ELOOP`；
+3. helper 把它归成 `missing`；
+4. trivial tier 将 tasks 判为 `n/a`；
+5. archive 继续执行。
+
+这违反 B7a 的绝对声明：“只有真正的 ENOENT 才进入 missing；其他 `e.code` 全部结构失败”。同类问题也存在于 helper 的祖先检查和 `reviewDirDefect()` 自己的第二次 `lstat`。AM-107 只写“守卫自身抛错”，未指定错误发生在外层预检还是 helper 内部调用，因此实现只覆盖第一次调用也能通过测试。
+
+- **维度**：边界/异常路径、验收可测试性、与 state A 冲突。
+- **风险**：high。trivial tier 仍可能把读取故障降为不存在并放行不可逆归档。
+- **建议修复**：让 archive 专用安全检查拥有完整、单一的错误分类路径，不在成功预检后调用会重新 `lstat` 且吞错的 helper；或为 helper 增加返回结构化 I/O 错误、接受预取得 stat 的接口。AM-107 应分别注入外层、helper 内部、祖先检查及 realpath 阶段的非-ENOENT 错误，并包含 trivial tasks/ledger 控制。
+
+### REQ-2 — REOPENED
+
+以下修复已确认：
+
+- evidence 已按 tasks/ledger 分类；
+- 不再声称 per-run 或作者身份证明；
+- 理由、模板及原始首行输出均有机械验收；
+- standing authorization 的范围和后果已明确披露。
+
+“standing authorization”本身可以是一个合法的产品选择：只要有效期明确、行为可测试，并由 gate④ 的人类接受，其范围较宽不自动构成 requirement 缺陷。
+
+但当前协议仍有两个实质问题。
+
+第一，撤销机制与 RUNBOOK 冲突。B3 和 §六-5 都称授权持续到记录被“显式删除”；RUNBOOK 将 `flow-state.md` 的 `gates:` 定义为 **append-only log of human decisions**。删除该记录不是合法流程动作，因此需求声称存在的撤销路径实际上不可用。
+
+第二，多类别记录的语法没有定义类别列表与理由的边界。需求允许“一条同时列出两个类名”，同时又通过任意 token 边界寻找 `tasks`/`ledger`，例如：
+
+```text
+archive-force tasks — ledger cleanup deferred
+```
+
+其中 `ledger` 究竟是第二个授权类别还是理由正文并不唯一。类似地，类别 token 本身含 `\w`，若未明确理由从最后一个类别之后开始，`archive-force tasks ledger` 可能在没有独立理由时仍通过理由检查。AM-88/89 没有覆盖这些歧义。
+
+- **维度**：目标状态清晰性、隐含状态变化、验收可测试性、与 state A/RUNBOOK 冲突。
+- **风险**：high。授权无法按声明撤销，理由文字还可能意外扩大授权类别。
+- **建议修复**：
+  - 定义锚定且完全消费的记录语法；最简单的是每条记录只能授权一个类，同时授权两类必须写两条；
+  - 理由必须是类别字段之后的独立后缀，类别词出现在理由中不得授予该类；
+  - 撤销使用新的 append-only 决策记录，并定义“最后一条同类决定生效”的顺序及 AC；或者明确授权在 bundle 生命周期内不可撤销，删除所有“直到显式删除”的表述，由 gate④ 决定是否接受该代价。
+
+### REQ-6 — REOPENED
+
+核心修正方向正确：
+
+- §1.8 正确确认 delta 操作粒度是整个 Requirement；
+- AM-99 改为 MODIFIED enclosing Requirement，保留 AM-01～AM-11、只删除 AM-12；
+- §1.9 和 AM-106 正确要求更新 SECURITY.md。
+
+但文档仍有两组冲突。
+
+其一，§1.6 仍保留 v2 的错误结论：
+
+- 称 AM-12 需要 living-spec `## REMOVED`；
+- 称 SECURITY.md 不涉及单文件形式、无需修改。
+
+§八的 REQ-6 旧处置行也仍以“本版”措辞重复这两个错误。它们与 §零、§1.8、§1.9、AM-99、AM-106 直接相反，AI 实现者无法判断应服从哪一组指令。
+
+其二，AM-99 要求完整性报告“恰好打印 `! dropped: AM-12`”，与实际 formatter 不符。`formatIntegrityHuman()` 输出的是：
+
+```text
+! dropped: ${d.title}
+```
+
+AM-12 的完整 scenario title 是：
+
+```text
+AM-12 the store commit and the dir move are one transaction (single-file form)
+```
+
+因此 state A 会打印完整标题，而不是只有 ID。若为了满足 AM-99 而全局修改 formatter，又会违反 B5 对既有成功输出字节不变的要求。
+
+- **维度**：目标状态清晰性、验收可测试性、与 state A 冲突。
+- **风险**：high。实现者可能错误弃用整个 Requirement、漏改 SECURITY.md，或为满足不可能的断言破坏全局完整性报告格式。
+- **建议修复**：
+  - 清除或显式标为 superseded 的 §1.6 与 §八旧结论，保证全文只保留 MODIFIED + SECURITY update；
+  - 将 AM-99 的精确期望改成 formatter 实际产生的完整 dropped title，并断言 dropped 集合仅含 AM-12；不要修改 formatter。
+
+### REQ-3 — VERIFIED（回归复核）
+
+B3/B5/AM-91 仍一致：`--force` 只属于高层形式；单文件形式固定 exit 2 + usage。v3 未破坏该修复。
+
+### REQ-4 — VERIFIED（回归复核）
+
+readiness 仍位于既有 preflight、temp guard 和 destination guard 之后、integrity report 之前。新增安全层属于 readiness 内部，不改变 B6 的优先顺序。
+
+### REQ-5 — VERIFIED（回归复核）
+
+五步路径作用域算法及 AM-92～AM-98 未被改动；词法/realpath、段边界、失败回落和读取时机仍明确。
+
+### REQ-7 — VERIFIED（回归复核）
+
+读取/结构 → C3 → STEP6 overlay → R2/R3 的顺序仍完整；ABANDONED、DONE 与其他 C3 错误的优先级没有回退。
+
+## 新问题
+
+本轮不新增 formal ID。新发现均是 REQ-1、REQ-2、REQ-6 修复本身的残余缺陷，按 reopen 规则复用原 ID。
+
+各维度结论：
+
+- **目标状态 B**：未通过，见 REQ-2、REQ-6。
+- **边界与异常路径**：未通过，见 REQ-1 的 helper 内部二次读取异常。
+- **隐含状态变化/副作用**：未通过，见 REQ-2 要求删除 append-only 决策记录。
+- **验收可测试性**：未通过，见 AM-107、force 记录语法及 AM-99。
+- **与 state A 一致性**：未通过，见三个 reopened issue。
+- **lineage**：通过。当前分支、main@235a121、目标 main/v4 及禁止合入 v1/v3 均与仓库现实一致。
+- **out of scope**：通过。§五明确存在并列出 G3、F-2/F-4、并发锁及其他不会处理的事项。
+
+## Advisories
+
+### A-1 — VERIFIED
+
+F-2/F-4 已改为本轮 advisory batch row 内的稳定 finding 标识，符合 ledger 的 batch 规则。
+
+### A-2 — VERIFIED
+
+TOCTOU hook 已明确位于 readiness 完成后、首次 store 写入前，并明确断言不重读、不检测修改。
+
+### A-3 — VERIFIED
+
+§八·2 已声明源码行号仅作定位，后续 design/tasks 绑定命名步骤和函数调用。
+
+### A-4 — req-v3 的一级标题仍写作 req-v2
+
+文件首行是 `# req-v2`。路径和正文足以识别版本，因此不计 verdict，但应改为 `req-v3`，避免后续证据和评审引用混淆。
+
+### A-5 — standing authorization 的产品代价已诚实披露
+
+除 REQ-2 的语法与撤销冲突外，“同类新失败会复用旧授权”已被准确声明，不再是假称 per-run 的需求缺陷。若 owner 认为授权范围过宽，可在 gate④要求绑定失败集合摘要；这属于产品裁决，不应由评审者替代。
+
+VERDICT: 3 issues open
+tokens used
+333,279
+# req-review-v3 — archive-readiness requirement review（Round 3）
+
+评审基于 req-v3、Round-2 review、issue ledger、RUNBOOK、living specs 与实际源码；未修改任何文件。
+
+## 原问题处置
+
+### REQ-1 — REOPENED
+
+B7a/B7b 已真实修复以下部分：
+
+- archive 外层能区分首次 `lstatSync` 的 `ENOENT` 与其他错误；
+- `EACCES`、`EIO`、`ELOOP` 等被定义为不可 force 的结构失败；
+- `readiness.reviewDirDefect` 明确改用 `resolve.containsReal`，依赖环已消除；
+- RY-07 的五例差分足以验证 `reviewDirDefect` 当前调用域内的行为兼容性。
+
+但安全读取仍存在第二次 `lstat` 的 fail-open 窗口。
+
+B7a 规定外层先 `lstatSync`，成功后再调用既有 `fileReadDefect()`。后者会再次执行 `lstatSync`，且其 `catch` 仍吞掉所有错误：
+
+1. 外层首次 `lstatSync(tasks.md)` 成功；
+2. `fileReadDefect()` 内部第二次 `lstatSync` 抛 `EACCES`、`EIO` 或 `ELOOP`；
+3. helper 把它归成 `missing`；
+4. trivial tier 将 tasks 判为 `n/a`；
+5. archive 继续执行。
+
+这违反 B7a 的绝对声明：“只有真正的 ENOENT 才进入 missing；其他 `e.code` 全部结构失败”。同类问题也存在于 helper 的祖先检查和 `reviewDirDefect()` 自己的第二次 `lstat`。AM-107 只写“守卫自身抛错”，未指定错误发生在外层预检还是 helper 内部调用，因此实现只覆盖第一次调用也能通过测试。
+
+- **维度**：边界/异常路径、验收可测试性、与 state A 冲突。
+- **风险**：high。trivial tier 仍可能把读取故障降为不存在并放行不可逆归档。
+- **建议修复**：让 archive 专用安全检查拥有完整、单一的错误分类路径，不在成功预检后调用会重新 `lstat` 且吞错的 helper；或为 helper 增加返回结构化 I/O 错误、接受预取得 stat 的接口。AM-107 应分别注入外层、helper 内部、祖先检查及 realpath 阶段的非-ENOENT 错误，并包含 trivial tasks/ledger 控制。
+
+### REQ-2 — REOPENED
+
+以下修复已确认：
+
+- evidence 已按 tasks/ledger 分类；
+- 不再声称 per-run 或作者身份证明；
+- 理由、模板及原始首行输出均有机械验收；
+- standing authorization 的范围和后果已明确披露。
+
+“standing authorization”本身可以是一个合法的产品选择：只要有效期明确、行为可测试，并由 gate④ 的人类接受，其范围较宽不自动构成 requirement 缺陷。
+
+但当前协议仍有两个实质问题。
+
+第一，撤销机制与 RUNBOOK 冲突。B3 和 §六-5 都称授权持续到记录被“显式删除”；RUNBOOK 将 `flow-state.md` 的 `gates:` 定义为 **append-only log of human decisions**。删除该记录不是合法流程动作，因此需求声称存在的撤销路径实际上不可用。
+
+第二，多类别记录的语法没有定义类别列表与理由的边界。需求允许“一条同时列出两个类名”，同时又通过任意 token 边界寻找 `tasks`/`ledger`，例如：
+
+```text
+archive-force tasks — ledger cleanup deferred
+```
+
+其中 `ledger` 究竟是第二个授权类别还是理由正文并不唯一。类似地，类别 token 本身含 `\w`，若未明确理由从最后一个类别之后开始，`archive-force tasks ledger` 可能在没有独立理由时仍通过理由检查。AM-88/89 没有覆盖这些歧义。
+
+- **维度**：目标状态清晰性、隐含状态变化、验收可测试性、与 state A/RUNBOOK 冲突。
+- **风险**：high。授权无法按声明撤销，理由文字还可能意外扩大授权类别。
+- **建议修复**：
+  - 定义锚定且完全消费的记录语法；最简单的是每条记录只能授权一个类，同时授权两类必须写两条；
+  - 理由必须是类别字段之后的独立后缀，类别词出现在理由中不得授予该类；
+  - 撤销使用新的 append-only 决策记录，并定义“最后一条同类决定生效”的顺序及 AC；或者明确授权在 bundle 生命周期内不可撤销，删除所有“直到显式删除”的表述，由 gate④ 决定是否接受该代价。
+
+### REQ-6 — REOPENED
+
+核心修正方向正确：
+
+- §1.8 正确确认 delta 操作粒度是整个 Requirement；
+- AM-99 改为 MODIFIED enclosing Requirement，保留 AM-01～AM-11、只删除 AM-12；
+- §1.9 和 AM-106 正确要求更新 SECURITY.md。
+
+但文档仍有两组冲突。
+
+其一，§1.6 仍保留 v2 的错误结论：
+
+- 称 AM-12 需要 living-spec `## REMOVED`；
+- 称 SECURITY.md 不涉及单文件形式、无需修改。
+
+§八的 REQ-6 旧处置行也仍以“本版”措辞重复这两个错误。它们与 §零、§1.8、§1.9、AM-99、AM-106 直接相反，AI 实现者无法判断应服从哪一组指令。
+
+其二，AM-99 要求完整性报告“恰好打印 `! dropped: AM-12`”，与实际 formatter 不符。`formatIntegrityHuman()` 输出的是：
+
+```text
+! dropped: ${d.title}
+```
+
+AM-12 的完整 scenario title 是：
+
+```text
+AM-12 the store commit and the dir move are one transaction (single-file form)
+```
+
+因此 state A 会打印完整标题，而不是只有 ID。若为了满足 AM-99 而全局修改 formatter，又会违反 B5 对既有成功输出字节不变的要求。
+
+- **维度**：目标状态清晰性、验收可测试性、与 state A 冲突。
+- **风险**：high。实现者可能错误弃用整个 Requirement、漏改 SECURITY.md，或为满足不可能的断言破坏全局完整性报告格式。
+- **建议修复**：
+  - 清除或显式标为 superseded 的 §1.6 与 §八旧结论，保证全文只保留 MODIFIED + SECURITY update；
+  - 将 AM-99 的精确期望改成 formatter 实际产生的完整 dropped title，并断言 dropped 集合仅含 AM-12；不要修改 formatter。
+
+### REQ-3 — VERIFIED（回归复核）
+
+B3/B5/AM-91 仍一致：`--force` 只属于高层形式；单文件形式固定 exit 2 + usage。v3 未破坏该修复。
+
+### REQ-4 — VERIFIED（回归复核）
+
+readiness 仍位于既有 preflight、temp guard 和 destination guard 之后、integrity report 之前。新增安全层属于 readiness 内部，不改变 B6 的优先顺序。
+
+### REQ-5 — VERIFIED（回归复核）
+
+五步路径作用域算法及 AM-92～AM-98 未被改动；词法/realpath、段边界、失败回落和读取时机仍明确。
+
+### REQ-7 — VERIFIED（回归复核）
+
+读取/结构 → C3 → STEP6 overlay → R2/R3 的顺序仍完整；ABANDONED、DONE 与其他 C3 错误的优先级没有回退。
+
+## 新问题
+
+本轮不新增 formal ID。新发现均是 REQ-1、REQ-2、REQ-6 修复本身的残余缺陷，按 reopen 规则复用原 ID。
+
+各维度结论：
+
+- **目标状态 B**：未通过，见 REQ-2、REQ-6。
+- **边界与异常路径**：未通过，见 REQ-1 的 helper 内部二次读取异常。
+- **隐含状态变化/副作用**：未通过，见 REQ-2 要求删除 append-only 决策记录。
+- **验收可测试性**：未通过，见 AM-107、force 记录语法及 AM-99。
+- **与 state A 一致性**：未通过，见三个 reopened issue。
+- **lineage**：通过。当前分支、main@235a121、目标 main/v4 及禁止合入 v1/v3 均与仓库现实一致。
+- **out of scope**：通过。§五明确存在并列出 G3、F-2/F-4、并发锁及其他不会处理的事项。
+
+## Advisories
+
+### A-1 — VERIFIED
+
+F-2/F-4 已改为本轮 advisory batch row 内的稳定 finding 标识，符合 ledger 的 batch 规则。
+
+### A-2 — VERIFIED
+
+TOCTOU hook 已明确位于 readiness 完成后、首次 store 写入前，并明确断言不重读、不检测修改。
+
+### A-3 — VERIFIED
+
+§八·2 已声明源码行号仅作定位，后续 design/tasks 绑定命名步骤和函数调用。
+
+### A-4 — req-v3 的一级标题仍写作 req-v2
+
+文件首行是 `# req-v2`。路径和正文足以识别版本，因此不计 verdict，但应改为 `req-v3`，避免后续证据和评审引用混淆。
+
+### A-5 — standing authorization 的产品代价已诚实披露
+
+除 REQ-2 的语法与撤销冲突外，“同类新失败会复用旧授权”已被准确声明，不再是假称 per-run 的需求缺陷。若 owner 认为授权范围过宽，可在 gate④要求绑定失败集合摘要；这属于产品裁决，不应由评审者替代。
+
+VERDICT: 3 issues open

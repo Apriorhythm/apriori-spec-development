@@ -1,0 +1,31 @@
+# P5 design review — change-bundle (round 2)
+
+Reviewer: codex (gpt-5.5), session 019f4b30-68f9-7222-9b64-17f52a333b4c. Raw: change-bundle-review-v2-raw.txt
+
+# P5 Design Review — change-bundle v2
+
+## Resolution Check
+
+CBSPEC-1 is resolved. The new strip rule consumes whole bundle path tokens, including archived bundle forms such as `apriori/changes/archive/<stamp>-<name>/requirement/`, so legitimate bundle mentions no longer strand `requirement/` or `review/` tails for the legacy-root negative.
+
+CBSPEC-2 is resolved for symlink/escape containment. The design now requires one guard before C4/C5, and GT-05 binds the escaping `review/` case: a symlinked or escaping bundle `review/` blocks both checks naming the path and is never read through.
+
+## New Issue
+
+### CBSPEC-3 — Existing non-directory `review` path is not specified
+
+Description: The new guard covers symlink/escape, but not the case where `<changeDir>/review` exists as a regular file or other non-directory. `containsReal(dir, reviewPath)` can still pass for a contained file. A naïve `checkEvidence(dir)` implementation may then `readdirSync` a file, or C4/C5 may disagree on whether the ledger is absent versus the review root is malformed.
+
+Risk: A malformed bundle can crash gate or produce inconsistent C4/C5 results instead of a deterministic blocked/error result naming the bad path.
+
+Suggested fix: Extend the shared review-root guard: if `<changeDir>/review` exists, it must be a contained real directory. If it exists but is not a directory, block C4/C5 naming the path. Add a GT-05 subcase for `review` as a regular file.
+
+## Ledger Delta
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| CBSPEC-1 | Strip-scan regex broke on archived bundle paths. | PR-21 false-fails or gets weakened. | STEP2·r1 | verified |
+| CBSPEC-2 | C5/C4 lacked containment on the bundle `review/` dir itself. | Evidence read through an escaping symlink. | STEP2·r1 | verified |
+| CBSPEC-3 | Existing non-directory `<changeDir>/review` path is not specified. | Gate can crash or report inconsistent C4/C5 behavior on a malformed bundle. | STEP2·r2 | open |
+
+VERDICT: 1 issues open

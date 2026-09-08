@@ -1,0 +1,325 @@
+ok
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f4b30-68f9-7222-9b64-17f52a333b4c
+--------
+user
+P8 round 2 for cli-strictness. Producer fixed both: SIMPL-1 → parseStrict pre-scans argv for --help/-h (alias-resolved) before ANY validation; SIMPL-2 → 'value' flags now consume exactly the next token verbatim (only absence errors). Unit cases added for both (test/args.test.js). 150/150 green. Confirm both (flip to 'verified') or reopen; new gaps? [Read-only sandbox: print the COMPLETE review doc body for verbatim landing at apriori/review/cli-strictness-p8-review-v2.md] End with the ledger delta and exactly one verdict line: 'VERDICT: no spec-vs-code gaps' or 'VERDICT: <N> issues open'.
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-10T17:57:45.262754Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-10T17:57:45.845181Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-10T17:57:46.173643Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-10T17:57:46.804605Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-10T17:57:47.820709Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-10T17:57:49.640227Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-10T17:57:53.343891Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: tNT5BHBUMWX7
+codex
+I’ll verify the parser fixes directly in `lib/args.js`, check the added tests, and then rerun the narrow semantic scan for any new drift from the parser changes.
+exec
+/usr/bin/zsh -lc "sed -n '1,280p' test/args.test.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,220p' apriori/changes/cli-strictness/specs/cli/spec.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,220p' apriori/review/cli-strictness-issues.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,220p' lib/args.js" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 0ms:
+'use strict';
+/*
+ * args — the one strict argv parser every subcommand shares (CL-11..17).
+ * --help/-h anywhere → {ok:false, code:0} (caller prints usage to stdout, exits 0).
+ * Unknown dash-tokens, missing values, empty multi sets, arity violations →
+ * {ok:false, code:2, message} (caller prints message + usage to stderr, exits 2).
+ * Nothing is ever silently ignored — a typo must never verify the wrong thing green.
+ */
+
+// spec = { sub, usage, flags: {'--name': 'value'|'multi'|'flag'}, positionals: 0|1, aliases: {'-y':'--yes'} }
+function parseStrict(argv, spec) {
+  const aliases = { '-h': '--help', ...(spec.aliases || {}) };
+  const def = spec.flags || {};
+  const flags = {};
+  const positionals = [];
+  const err = (message) => ({ ok: false, code: 2, message });
+  // help wins over EVERYTHING, wherever it appears (S6/CL-11) — pre-scan before any validation
+  for (const raw of argv) if ((aliases[raw] || raw) === '--help') return { ok: false, code: 0 };
+  for (let i = 0; i < argv.length; i++) {
+    const raw = argv[i];
+    const tok = aliases[raw] || raw;
+    if (tok.startsWith('-')) {
+      const kind = def[tok];
+      if (!kind) return err(`unknown flag '${raw}' for 'apriori ${spec.sub}'`);
+      if (kind === 'flag') flags[tok] = true;                       // idempotent on repeat
+      else if (kind === 'value') {
+        // consumes EXACTLY the next token, verbatim (the req's rule) — only absence is an error
+        if (argv[i + 1] === undefined) return err(`flag '${tok}' needs a value`);
+        flags[tok] = argv[++i];                                     // repeats: last-write-wins
+      } else {                                                      // multi: until the next dash token
+        const vals = flags[tok] || [];
+        const before = vals.length;
+        while (argv[i + 1] !== undefined && !argv[i + 1].startsWith('-')) vals.push(argv[++i]);
+        if (vals.length === before) return err(`flag '${tok}' needs at least one value`);
+        flags[tok] = vals;                                          // repeats: accumulate
+      }
+    } else positionals.push(raw);
+  }
+  const arity = spec.positionals || 0;
+  if (positionals.length > arity) return err(`unexpected argument '${positionals[arity]}' for 'apriori ${spec.sub}'`);
+  if (positionals.length < arity) return err(`'apriori ${spec.sub}' expects ${arity} argument(s)`);
+  return { ok: true, flags, positionals };
+}
+
+// Uniform wiring: parse; help → usage to stdout, 0; error → message + usage to stderr, 2;
+// ok → hand {flags, positionals} to the command body.
+function withStrict(argv, spec, body) {
+  const p = parseStrict(argv, spec);
+  if (!p.ok) {
+    if (p.code === 0) { console.log(spec.usage); return 0; }
+    // commands with a pure-JSON contract (gate GT-11, doctor DR-10) keep stdout JSON
+    // even for parse errors when --json was requested
+    if (spec.jsonError && argv.includes('--json')) { console.log(spec.jsonError(p.message)); return 2; }
+    console.error(`${spec.sub}: ${p.message}\n${spec.usage}`);
+    return 2;
+  }
+  return body(p.flags, p.positionals);
+}
+
+module.exports = { parseStrict, withStrict };
+
+ succeeded in 107ms:
+'use strict';
+const { test } = require('node:test');
+const assert = require('node:assert');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { spawnSync } = require('node:child_process');
+const { parseStrict } = require('../lib/args');
+
+const BIN = path.join(__dirname, '..', 'bin', 'apriori.js');
+function run(args, cwd) { return spawnSync('node', [BIN, ...args], { encoding: 'utf8', cwd: cwd || fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-args-')) }); }
+
+const SUBS = ['new', 'status', 'verify', 'archive', 'check', 'init', 'update', 'stamp', 'gate', 'doctor'];
+
+function mkProject(files) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-args-'));
+  for (const [rel, content] of Object.entries(files)) {
+    const p = path.join(root, rel);
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    if (content === null) fs.mkdirSync(p, { recursive: true });
+    else fs.writeFileSync(p, content);
+  }
+  return root;
+}
+// a valid project whose configured test command writes a SENTINEL file (SSPEC-1 fixtures)
+function sentinelProject() {
+  return mkProject({
+    'apriori/specs/m/spec.md': '### Requirement: R\n\n#### Scenario: XA-01 a\n- t\n',
+    'apriori/changes/c/flow-state.md': 'change: c\ntier: trivial\ntrack: harden\nlineage: v3\ncurrent-step: STEP5\n',
+    'apriori/changes/c/specs/m/spec.md': '## ADDED Requirements\n\n### Requirement: S\n\n#### Scenario: XB-01 b\n- t\n',
+    'apriori/process-config.md': `| language | auto |\n| test-cmd | node -e "require('fs').writeFileSync('SENTINEL','x');console.log('ok 1 - XA-01')" | x | (none) |\n`,
+  });
+}
+
+test('CL-11 every subcommand answers --help and -h (exit 0, usage on stdout)', () => {
+  for (const sub of SUBS) for (const h of ['--help', '-h']) {
+    const r = run([sub, h]);
+    assert.strictEqual(r.status, 0, `${sub} ${h}: ${r.stderr}`);
+    assert.ok(r.stdout.includes(`apriori ${sub}`), `${sub} ${h} usage: ${r.stdout}`);
+  }
+});
+
+test('CL-12 unknown flags fail loudly everywhere, before any action', () => {
+  for (const sub of SUBS) {
+    const r = run([sub, '--no-such-flag']);
+    assert.strictEqual(r.status, 2, `${sub}: ${r.stdout}${r.stderr}`);
+    assert.match(r.stderr, /--no-such-flag/);
+  }
+  // sentinel fixtures: the test-spawning commands must not execute the test command
+  for (const args of [
+    ['verify', '--no-such-flag', '--specs', 'apriori/specs'],
+    ['gate', '--change', 'c', '--no-such-flag'],
+    ['doctor', '--no-such-flag'],
+  ]) {
+    const root = sentinelProject();
+    const r = run(args, root);
+    assert.strictEqual(r.status, 2, args.join(' ') + r.stderr);
+    assert.match(r.stderr, /--no-such-flag/);
+    assert.ok(!fs.existsSync(path.join(root, 'SENTINEL')), `${args[0]}: test command RAN despite unknown flag`);
+  }
+});
+
+test('CL-13 positional arity is enforced', () => {
+  assert.strictEqual(run(['status', 'extra']).status, 2);
+  assert.match(run(['verify', 'extra']).stderr, /extra/);
+  const nb = run(['new', 'a', 'b']);
+  assert.strictEqual(nb.status, 2);
+  assert.match(nb.stderr, /'b'/);
+  assert.strictEqual(run(['new']).status, 2);
+  assert.strictEqual(run(['stamp']).status, 2);
+  assert.strictEqual(run(['stamp', 'a', 'b']).status, 2);
+  const sf = run(['stamp', '--foo']);              // declared change: unknown flag, not a positional
+  assert.strictEqual(sf.status, 2);
+  assert.match(sf.stderr, /--foo/);
+});
+
+test('CL-14 missing values fail closed', () => {
+  const r1 = run(['verify', '--test-cmd']);
+  assert.strictEqual(r1.status, 2);
+  assert.match(r1.stderr, /--test-cmd/);
+  const r2 = run(['verify', '--specs', '--test-cmd', 't']);
+  assert.strictEqual(r2.status, 2);
+  assert.match(r2.stderr, /--specs/);
+});
+
+test('CL-15 repeats and aliases behave declaredly', () => {
+  // multi accumulates: scenarios from BOTH spec targets demanded
+  const root = mkProject({
+    'a/spec.md': '#### Scenario: XA-01 a\n- t\n',
+    'b/spec.md': '#### Scenario: XB-01 b\n- t\n',
+  });
+  const tap = `node -e "console.log('ok 1 - XA-01');console.log('ok 2 - XB-01')"`;
+  const r = run(['verify', '--specs', 'a', '--specs', 'b', '--test-cmd', tap], root);
+  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+  // value last-write-wins
+  const root2 = mkProject({ 'apriori/changes/b/flow-state.md': 'change: b\ncurrent-step: STEP0\n' });
+  const r2 = run(['status', '--change', 'a', '--change', 'b'], root2);
+  assert.match(r2.stdout, /\bb\b/);
+  // boolean idempotent
+  const root3 = mkProject({ 'apriori/specs/m/spec.md': '#### Scenario: XA-01 a\n- t\n' });
+  assert.strictEqual(run(['check', '--self', '--self'], root3).status, run(['check', '--self'], root3).status);
+  // alias: init -y == --yes (non-interactive completes)
+  const root4 = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-args-'));
+  assert.strictEqual(run(['init', '--tools', 'claude', '-y'], root4).status, 0);
+});
+
+test('CL-16 multi consumption stops at any dash token', () => {
+  const r = run(['verify', '--specs', 'a', '-x', '--test-cmd', 't']);
+  assert.strictEqual(r.status, 2);
+  assert.match(r.stderr, /-x/);
+});
+
+test('CL-17 init no-flag door survives the migration (non-TTY → its own --tools usage)', () => {
+  const r = run(['init']);
+  assert.strictEqual(r.status, 2);
+  assert.match(r.stderr, /--tools/);
+  assert.doesNotMatch(r.stderr, /unknown flag/);
+});
+
+test('CL-11..16 parseStrict unit edges', () => {
+  const spec = { sub: 'x', usage: 'u', flags: { '--v': 'value', '--m': 'multi', '--b': 'flag' }, positionals: 0, aliases: { '-b': '--b' } };
+  assert.strictEqual(parseStrict(['--help'], spec).code, 0);
+  assert.strictEqual(parseStrict(['-h'], spec).code, 0);
+  assert.strictEqual(parseStrict(['--v'], spec).code, 2);                       // missing value
+  assert.strictEqual(parseStrict(['--m', '--v', 'x'], spec).code, 2);           // empty multi
+  assert.strictEqual(parseStrict(['--m', 'a', '--m', '--v', 'x'], spec).code, 2); // empty SECOND occurrence
+  assert.deepStrictEqual(parseStrict(['--m', 'a', '--m', 'b'], spec).flags['--m'], ['a', 'b']);
+  assert.strictEqual(parseStrict(['--v', 'a', '--v', 'b'], spec).flags['--v'], 'b');
+  assert.strictEqual(parseStrict(['-b', '--b'], spec).flags['--b'], true);
+  assert.strictEqual(parseStrict(['--nope'], spec).code, 2);
+  assert.strictEqual(parseStrict(['stray'], spec).code, 2);
+  assert.strictEqual(parseStrict(['--m', 'a', '--help'], spec).code, 0);        // help wins anywhere
+  assert.strictEqual(parseStrict(['--nope', '--help'], spec).code, 0);          // ...even after an unknown flag (SIMPL-1)
+  assert.strictEqual(parseStrict(['--v', '-h'], spec).code, 0);                 // ...and via alias after a value flag
+  assert.strictEqual(parseStrict(['--v', '-e'], spec).flags['--v'], '-e');      // value takes the next token verbatim (SIMPL-2)
+});
+
+ succeeded in 116ms:
+<!-- apriori-base: sha256:0f70116eb937ff2465cf4f5ab18166697b56186264c6c45fcfb4461ef8e16817 -->
+# Delta — cli (cli-strictness)
+
+## ADDED Requirements
+
+### Requirement: uniform argument strictness across subcommands
+Every subcommand SHALL parse argv through one shared helper with three uniform behaviors: `--help`/`-h` prints that subcommand's usage on stdout and exits 0 (checked before any other validation); an unknown `-`-prefixed token prints `unknown flag` naming it plus the usage on stderr and exits 2 — nothing is silently ignored; positional arity is enforced (`new` and `stamp` exactly one, all others zero). Known-flag semantics: `value` flags consume exactly the next token (missing → exit 2 naming the flag; repeats last-write-wins), `multi` flags consume until the next `-`-prefixed token (empty set → exit 2 naming the flag; repeats accumulate), boolean flags are idempotent. Success paths of all documented invocations are unchanged; the three declared behavior changes are: `new` extras now error (previously ignored), `stamp --foo` is now an unknown flag (previously its positional), and multi consumption stops at single-dash tokens (previously `--`-only).
+
+#### Scenario: CL-11 every subcommand answers --help
+- WHEN `apriori <sub> --help` (or `-h`) runs for each sub in {new, status, verify, archive, check, init, update, stamp, gate, doctor}
+- THEN usage containing `apriori <sub>` prints on stdout and the exit code is 0, even where required args are missing
+
+#### Scenario: CL-12 unknown flags fail loudly everywhere, before any action
+- WHEN `apriori <sub> --no-such-flag` runs for each subcommand — and, for the test-spawning commands (verify, gate, doctor), in an OTHERWISE-VALID project fixture whose configured test command writes a sentinel file
+- THEN stderr names `--no-such-flag` alongside the usage, the exit code is 2, and no action is performed: nothing written, and the sentinel proves the test command never executed
+
+#### Scenario: CL-13 positional arity is enforced
+- WHEN a zero-positional subcommand receives a stray positional, or `new`/`stamp` receive zero or two positionals
+- THEN it exits 2 naming the offender — including the declared changes: `apriori new a b` errors naming `b`; `apriori stamp --foo` errors as an unknown flag
+
+#### Scenario: CL-14 missing values fail closed
+- WHEN a `value` flag ends argv with no value (`verify --test-cmd`), or a `multi` flag consumes an empty set (`verify --specs --test-cmd t`)
+- THEN it exits 2 naming that flag, never consuming undefined or acting on an empty set
+
+#### Scenario: CL-15 repeats and aliases behave declaredly
+- WHEN flags repeat or aliases are used
+- THEN `verify --specs a --specs b` accumulates both targets, `status --change a --change b` uses `b`, doubled boolean flags act once, and `init -y` equals `--yes`
+
+#### Scenario: CL-16 multi consumption stops at any dash token
+- WHEN `apriori verify --specs a -x --test-cmd t` runs
+- THEN `-x` is never consumed as a spec target and the command exits 2 naming `-x`
+
+#### Scenario: CL-17 init's no-flag interactive door survives the migration
+- WHEN `apriori init` runs with no arguments
+- THEN strict parsing succeeds with empty flags and the EXISTING branch decides: non-interactive (no TTY) → init's own usage naming `--tools`, exit 2; a TTY → the interactive tool picker (IN-10's machinery) — the strict parser never converts the bare invocation into an unknown-usage error
+
+ succeeded in 126ms:
+# Issue ledger — cli-strictness
+
+Rows recorded on behalf of the reviewer (codex session 019f4b30-68f9-7222-9b64-17f52a333b4c; raws: cli-strictness-req-review-v1-raw.txt).
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| SREQ-1 | Known flag surface is not declared per subcommand (r2 reopened: init row listed a non-existent --dry-run). | Implementations can disagree on what "known" means per command. | STEP0·r1 | verified |
+| SREQ-2 | `multi` consumption conflicts with the "unknown -x" rule (r2 reopened: one stale sentence kept the old `--`-only wording). | `-x` silently consumed as a spec target instead of rejected. | STEP0·r1 | verified |
+| SREQ-3 | Empty `multi` values are not classified. | `--specs` with no values is ambiguous. | STEP0·r1 | verified |
+| SREQ-4 | Repeated known flags are not specified. | Accumulate vs last-wins can diverge from today's behavior. | STEP0·r1 | verified |
+| SREQ-5 | Acceptance criteria miss the parser edge cases the helper introduces. | Helper edges ship untested. | STEP0·r1 | verified |
+| SREQ-6 | Current-state claims about `new` and `stamp` are inaccurate. | "Unchanged" claims would hide two real behavior changes. | STEP0·r1 | verified |
+| SSPEC-1 | CL-12 no-action guarantee not testable as designed for test-spawning commands. | Typoed flags could still run side-effecting test commands. | STEP2·r1 | verified |
+| SSPEC-2 | init no-flag TTY interactivity required but not scenario-bound. | Parser migration could regress onboarding silently. | STEP2·r1 | verified |
+| ADV-SSPEC-1 | advisory batch acknowledged (2 items: stampCli migration wording — design now explicit; CL-11 exercises both help aliases — design updated) | low | STEP2·r1 | advisory-acked |
+| SSPEC-3 | tasks.md omitted the new CL-17 (stale range — same class as doctor-command's DSPEC-5). | CL-17 could ship unbound. | STEP2·r2 | verified |
+| SIMPL-1 | --help did not win over earlier parse errors (left-to-right scan). | `verify --nope --help` errored instead of printing usage. | STEP5·r1 | fixed (r2: pre-scan for help before any validation; unit cases added) |
+| SIMPL-2 | `value` flags rejected dash-prefixed values, contradicting the req's "exactly the next token" rule. | Legitimate dash-leading values unusable. | STEP5·r1 | fixed (r2: verbatim next-token consumption; unit case added) |
+
+codex
+**Resolution Check**
+
+SIMPL-1 is verified. `parseStrict` now pre-scans alias-resolved argv for `--help`/`-h` before any validation, so help wins over earlier unknown flags, missing values, and arity errors.
+
+SIMPL-2 is verified. `value` flags now only error when the next token is absent; dash-prefixed values are consumed verbatim, while dash-stopping remains limited to `multi`.
+
+No new spec-vs-code gaps found in the amended parser behavior. The added unit cases cover both fixes, and the migrated subcommand surfaces still match CL-11..17, including gate/doctor JSON parse-error handling.
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| SIMPL-1 | `--help`/`-h` did not win over earlier parse errors. | Help behavior depended on argument order, violating CL-11/S6. | STEP5·r1 | verified |
+| SIMPL-2 | `value` flags rejected dash-prefixed values instead of consuming the next token verbatim. | Undeclared success-path behavior change for known flags. | STEP5·r1 | verified |
+
+VERDICT: no spec-vs-code gaps
+tokens used
+1,214,681
+**Resolution Check**
+
+SIMPL-1 is verified. `parseStrict` now pre-scans alias-resolved argv for `--help`/`-h` before any validation, so help wins over earlier unknown flags, missing values, and arity errors.
+
+SIMPL-2 is verified. `value` flags now only error when the next token is absent; dash-prefixed values are consumed verbatim, while dash-stopping remains limited to `multi`.
+
+No new spec-vs-code gaps found in the amended parser behavior. The added unit cases cover both fixes, and the migrated subcommand surfaces still match CL-11..17, including gate/doctor JSON parse-error handling.
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| SIMPL-1 | `--help`/`-h` did not win over earlier parse errors. | Help behavior depended on argument order, violating CL-11/S6. | STEP5·r1 | verified |
+| SIMPL-2 | `value` flags rejected dash-prefixed values instead of consuming the next token verbatim. | Undeclared success-path behavior change for known flags. | STEP5·r1 | verified |
+
+VERDICT: no spec-vs-code gaps

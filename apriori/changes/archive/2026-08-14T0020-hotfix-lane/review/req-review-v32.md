@@ -1,0 +1,11 @@
+<!-- provenance: provider=openai model=gpt-5.6-sol session=019ff946-122a-7532-ac83-e50910aa0efc date=2026-08-13 round=STEP0-r32 transport=codex-exec-wsl-proxy -->
+
+核验结果：v30 为真实新字节，lineage 准确。REQ-71 已收口；REQ-70 尚有正文残留及 Q-3 执行冲突，需重开。另发现一项未经 owner 授权缩减候选空间的问题。
+
+- **REQ-70｜风险：阻断｜Q-4 保留案仍同时要求执行和免除 scoped verify。**  
+  **依据：**精确定义已承认它是 hotfix R1 的验证豁免 [req-v30.md:33](/mnt/d/Workbench/misc/apriori-spec-development/apriori/changes/hotfix-lane/requirement/req-v30.md:33)，但正式推论仍残留“留痕非豁免” [req-v30.md:65](/mnt/d/Workbench/misc/apriori-spec-development/apriori/changes/hotfix-lane/requirement/req-v30.md:65)。更实质的冲突是：Q-3/i 仍无条件规定归档 preflight 隐式运行 scoped verify [req-v30.md:80](/mnt/d/Workbench/misc/apriori-spec-development/apriori/changes/hotfix-lane/requirement/req-v30.md:80)，而 B-C 与 AC 又规定 Q-4 保留案免除此义务 [req-v30.md:93](/mnt/d/Workbench/misc/apriori-spec-development/apriori/changes/hotfix-lane/requirement/req-v30.md:93)、[req-v30.md:117](/mnt/d/Workbench/misc/apriori-spec-development/apriori/changes/hotfix-lane/requirement/req-v30.md:117)。同一合法选择 `Q-3=i + Q-4=保留 + R1` 因而没有唯一结果。应把 Q-3×Q-4 纳入合法联合表：明确该组合非法，或明确 Q-4 是仅对 R1 的优先例外，并同步 B4、Q-3 摘要及 AC。
+
+- **REQ-72｜风险：阻断｜把 R2 no-test 禁令误称为 owner 已拍板，预裁了 Q-4。**  
+  **依据：**最高优先 goal 要求最小 bundle 支持“绑定测试或显式 no-test 理由”，没有给出 R1/R2 限定 [goal-verbatim.md:26](/mnt/d/Workbench/misc/apriori-spec-development/apriori/changes/hotfix-lane/requirement/goal-verbatim.md:26)。prior art 同样把 `tests:`/`no-test:` 作为候选契约 [req-v13.md:49](/mnt/d/Workbench/misc/apriori-spec-development/apriori/changes/hotfix-channel/requirement/req-v13.md:49)。v30 却把“按半径限制”列为“新拍板” [req-v30.md:27](/mnt/d/Workbench/misc/apriori-spec-development/apriori/changes/hotfix-lane/requirement/req-v30.md:27)，并称 R2 禁令恒定、恢复它需 owner “推翻拍板” [req-v30.md:33](/mnt/d/Workbench/misc/apriori-spec-development/apriori/changes/hotfix-lane/requirement/req-v30.md:33)；现有 owner 记录没有这项拍板。Q-4 摘要还只问是否整体移除 no-test [req-v30.md:124](/mnt/d/Workbench/misc/apriori-spec-development/apriori/changes/hotfix-lane/requirement/req-v30.md:124)，没有提供保持 goal 原义的 R2 候选及其 UNBOUND/gate 后果。可以倾向禁止 R2，但必须把它列为待裁方案而非既成拍板，或指出支持该拍板的 owner 原文。
+
+VERDICT: 2 issues open

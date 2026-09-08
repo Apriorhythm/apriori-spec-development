@@ -1,0 +1,1100 @@
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f4b30-68f9-7222-9b64-17f52a333b4c
+--------
+user
+P8 round 2 (STEP5). The producer fixed both formal issues and all three ADV-4 items:
+- IMPL-1: lib/archive-merge.js — mdFilesUnder now follows symlink dirents explicitly (a symlinked subdir escaping the tree becomes a containment ERROR via per-file containsReal, never a silent skip); discoverDeltas now containment-checks specs/ itself against the change dir before trusting it as a root. New test cases in test/archive-change.test.js AM-22 (symlinked specs/, symlinked escaping subdir, symlinked archive/ move destination).
+- IMPL-2: parseStamp now flags ANY standalone comment line attempting apriori-base that fails the strict form (STAMP_ATTEMPT_RE) as a hygiene error. New AM-23 test case (missing colon).
+- ADV-4: README/README_cn cheat-sheet wording scoped "(up to the commit point)"; stampCli requires exactly one argv entry (flag-like args no longer silently dropped); move-destination symlink test added.
+State: 116/116 green, verify --change change-projection GREEN, check --self PASS. Ledger updated.
+
+Your job: confirm IMPL-1 and IMPL-2 resolutions (flip to "verified") or reopen the SAME ID; check the fixes for any NEW spec-vs-code gaps (IMPL-3, ...).
+
+[Output — read-only sandbox: print the COMPLETE review document body to stdout for the producer to land verbatim at apriori/review/change-projection-p8-review-v2.md]
+End with: ledger delta table, then exactly one verdict line: "VERDICT: no spec-vs-code gaps" or "VERDICT: <N> issues open".
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-10T09:36:26.254899Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-10T09:36:26.414134Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-10T09:36:26.732502Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-10T09:36:27.312176Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-10T09:36:28.285590Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-10T09:36:30.072299Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-10T09:36:33.642884Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: uSrFVZPDVpGO
+codex
+I’ll verify the exact code and test changes for the two reopened implementation issues, then do a focused pass over the touched paths for any new spec-vs-code drift.
+exec
+/usr/bin/zsh -lc "sed -n '1,360p' test/archive-change.test.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc 'rg -n "STAMP|parseStamp|mdFilesUnder|discoverDeltas|containsReal|archiveChangeDir|stampCli" lib/archive-merge.js' in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '260,620p' lib/archive-merge.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' lib/archive-merge.js" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 137ms:
+'use strict';
+const { test } = require('node:test');
+const assert = require('node:assert');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { spawnSync } = require('node:child_process');
+const am = require('../lib/archive-merge');
+
+const BIN = path.join(__dirname, '..', 'bin', 'apriori.js');
+function run(args, cwd) { return spawnSync('node', [BIN, ...args], { encoding: 'utf8', cwd }); }
+
+function mkProject(files) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-arch-'));
+  for (const [rel, content] of Object.entries(files)) {
+    const p = path.join(root, rel);
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, content);
+  }
+  return root;
+}
+
+const STORE_A = '### Requirement: Alpha\n\n#### Scenario: XA-01 a\n- t\n';
+const STORE_B = '### Requirement: Bravo\n\n#### Scenario: XV-01 b\n- t\n';
+const ADD_A = '## ADDED Requirements\n\n### Requirement: Alpha2\n\n#### Scenario: XA-09 n\n- t\n';
+const ADD_B = '## ADDED Requirements\n\n### Requirement: Bravo2\n\n#### Scenario: XV-09 n\n- t\n';
+
+function twoModuleProject(extra = {}) {
+  return mkProject({
+    'apriori/specs/a/spec.md': STORE_A,
+    'apriori/specs/b/spec.md': STORE_B,
+    'apriori/changes/c/specs/a/spec.md': ADD_A,
+    'apriori/changes/c/specs/b/spec.md': ADD_B,
+    ...extra,
+  });
+}
+
+test('AM-13 dry-run reports the whole change per module and writes nothing', () => {
+  const root = twoModuleProject();
+  const before = [fs.readFileSync(path.join(root, 'apriori/specs/a/spec.md'), 'utf8'),
+                  fs.readFileSync(path.join(root, 'apriori/specs/b/spec.md'), 'utf8')];
+  const r = run(['archive', '--change', 'c'], root);
+  assert.strictEqual(r.status, 0);
+  assert.match(r.stdout, /a[\/\\]spec\.md/);
+  assert.match(r.stdout, /b[\/\\]spec\.md/);
+  assert.match(r.stdout, /Alpha2/);
+  assert.match(r.stdout, /Bravo2/);
+  assert.match(r.stdout, /RESULT:/);
+  assert.strictEqual(fs.readFileSync(path.join(root, 'apriori/specs/a/spec.md'), 'utf8'), before[0]);
+  assert.strictEqual(fs.readFileSync(path.join(root, 'apriori/specs/b/spec.md'), 'utf8'), before[1]);
+  assert.ok(!fs.existsSync(path.join(root, 'apriori/specs/a/spec.md.tmp-archive')));
+});
+
+test('AM-14 any preflight failure means nothing is written (conflict in one module)', () => {
+  const root = twoModuleProject({
+    'apriori/changes/c/specs/b/spec.md': '## MODIFIED Requirements\n\n### Requirement: NoSuch\n\n#### Scenario: XN-01 x\n- t\n',
+  });
+  const beforeA = fs.readFileSync(path.join(root, 'apriori/specs/a/spec.md'), 'utf8');
+  const r = run(['archive', '--change', 'c', '--write'], root);
+  assert.strictEqual(r.status, 1);
+  assert.match(r.stdout + r.stderr, /NoSuch/);
+  assert.strictEqual(fs.readFileSync(path.join(root, 'apriori/specs/a/spec.md'), 'utf8'), beforeA);  // module a NOT committed
+  assert.ok(!fs.existsSync(path.join(root, 'apriori/specs/a/spec.md.tmp-archive')));                 // no temp residue
+});
+
+test('AM-15 a mid-commit failure is reported exactly (DI-injected rename failure)', () => {
+  const root = twoModuleProject();
+  let renames = 0;
+  const ops = {
+    writeFileSync: fs.writeFileSync.bind(fs),
+    rmSync: fs.rmSync.bind(fs),
+    renameSync: (a, b) => { renames++; if (renames === 2) throw new Error('injected rename failure'); fs.renameSync(a, b); },
+  };
+  const res = am.archiveChange({ cwd: root, change: 'c', write: true, ops });
+  assert.strictEqual(res.code, 1);
+  const text = res.out.concat(res.err).join('\n');
+  assert.match(text, /a[\/\\]spec\.md/);           // committed module named
+  assert.match(text, /b[\/\\]spec\.md/);           // not-committed module named
+  assert.match(text, /tmp-archive/);               // remaining temp named for manual completion
+  assert.match(fs.readFileSync(path.join(root, 'apriori/specs/a/spec.md'), 'utf8'), /Alpha2/);   // first committed, kept
+  assert.doesNotMatch(fs.readFileSync(path.join(root, 'apriori/specs/b/spec.md'), 'utf8'), /Bravo2/);
+  assert.ok(fs.existsSync(path.join(root, 'apriori/specs/b/spec.md.tmp-archive')));              // artifact remains
+});
+
+test('AM-16 a pre-existing temp file blocks the run and stays untouched', () => {
+  const root = twoModuleProject({ 'apriori/specs/b/spec.md.tmp-archive': 'RECOVERY ARTIFACT' });
+  const beforeA = fs.readFileSync(path.join(root, 'apriori/specs/a/spec.md'), 'utf8');
+  const r = run(['archive', '--change', 'c', '--write'], root);
+  assert.strictEqual(r.status, 1);
+  assert.match(r.stdout + r.stderr, /tmp-archive/);
+  assert.strictEqual(fs.readFileSync(path.join(root, 'apriori/specs/b/spec.md.tmp-archive'), 'utf8'), 'RECOVERY ARTIFACT');
+  assert.strictEqual(fs.readFileSync(path.join(root, 'apriori/specs/a/spec.md'), 'utf8'), beforeA);
+});
+
+test('AM-17 zero discovered delta files fail closed (exit 2 naming the path)', () => {
+  const missing = mkProject({ 'apriori/specs/a/spec.md': STORE_A });
+  const r1 = run(['archive', '--change', 'c'], missing);
+  assert.strictEqual(r1.status, 2);
+  assert.match(r1.stderr, /c/);
+  const empty = mkProject({ 'apriori/specs/a/spec.md': STORE_A, 'apriori/changes/c/specs/.keep': '' });
+  const r2 = run(['archive', '--change', 'c'], empty);
+  assert.strictEqual(r2.status, 2);
+  assert.match(r2.stderr, /specs/);
+});
+
+test('AM-18 the change-dir move waits for every store commit and needs explicit --changes-dir', () => {
+  // without --changes-dir: stores written, no move
+  const root1 = twoModuleProject();
+  const r1 = run(['archive', '--change', 'c', '--write'], root1);
+  assert.strictEqual(r1.status, 0);
+  assert.match(fs.readFileSync(path.join(root1, 'apriori/specs/a/spec.md'), 'utf8'), /Alpha2/);
+  assert.ok(fs.existsSync(path.join(root1, 'apriori/changes/c')));                    // NOT moved
+  // with explicit --changes-dir: moved to archive/<stamp>-c after commit
+  const root2 = twoModuleProject();
+  const r2 = run(['archive', '--change', 'c', '--write', '--changes-dir', 'apriori/changes'], root2);
+  assert.strictEqual(r2.status, 0);
+  assert.ok(!fs.existsSync(path.join(root2, 'apriori/changes/c')));
+  const archived = fs.readdirSync(path.join(root2, 'apriori/changes/archive'));
+  assert.strictEqual(archived.length, 1);
+  assert.match(archived[0], /^\d{4}-\d{2}-\d{2}T\d{4}-c$/);
+  // move failure (DI): stores stay committed, exit 1
+  const root3 = twoModuleProject();
+  let renames = 0;
+  const ops = {
+    writeFileSync: fs.writeFileSync.bind(fs),
+    rmSync: fs.rmSync.bind(fs),
+    renameSync: (a, b) => { renames++; if (renames === 3) throw new Error('injected move failure'); fs.renameSync(a, b); },
+  };
+  const res = am.archiveChange({ cwd: root3, change: 'c', changesDir: 'apriori/changes', changesDirExplicit: true, write: true, ops });
+  assert.strictEqual(res.code, 1);
+  assert.match(fs.readFileSync(path.join(root3, 'apriori/specs/a/spec.md'), 'utf8'), /Alpha2/);   // committed stays
+  assert.ok(fs.existsSync(path.join(root3, 'apriori/changes/c')));                                // move failed → still in place
+});
+
+test('AM-19 high-level and single-file forms are mutually exclusive', () => {
+  const root = twoModuleProject();
+  for (const extra of [['--store', 'x.md'], ['--delta', 'y.md']]) {
+    const r = run(['archive', '--change', 'c', ...extra], root);
+    assert.strictEqual(r.status, 2);
+  }
+});
+
+test('AM-20 per-file delta hygiene guards the whole set', () => {
+  const cases = [
+    ['   \n', /a[\/\\]spec\.md/],                                        // whitespace-only
+    ['# prose only, no sections\n', /a[\/\\]spec\.md/],                  // zero ops despite content
+    ['## ADDED Requirements\n\n### Requirement: Dup\n\n#### Scenario: XD-01 a\n- t\n\n### Requirement: Dup\n\n#### Scenario: XD-02 b\n- t\n', /Dup/],  // duplicate names
+  ];
+  for (const [bad, frag] of cases) {
+    const root = twoModuleProject({ 'apriori/changes/c/specs/a/spec.md': bad });
+    const beforeB = fs.readFileSync(path.join(root, 'apriori/specs/b/spec.md'), 'utf8');
+    const r = run(['archive', '--change', 'c', '--write'], root);
+    assert.strictEqual(r.status, 1);
+    assert.match(r.stdout + r.stderr, frag);
+    assert.strictEqual(fs.readFileSync(path.join(root, 'apriori/specs/b/spec.md'), 'utf8'), beforeB);  // healthy module also not written
+  }
+});
+
+test('AM-21 duplicate requirement names in the store are corruption (conflict)', () => {
+  const dupStore = STORE_A + '\n### Requirement: Alpha\n\n#### Scenario: XA-02 dup\n- t\n';
+  const { conflicts } = am.merge(dupStore, am.parseDelta(ADD_A), 'c');
+  assert.ok(conflicts.some((c) => c.includes('Alpha')));
+});
+
+test('AM-22 realpath containment governs every participating path', () => {
+  // unit level (no symlink needed): outside target rejected, inside accepted, missing-ancestor rule
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-cont-'));
+  fs.mkdirSync(path.join(root, 'inside', 'sub'), { recursive: true });
+  fs.mkdirSync(path.join(root, 'outside'));
+  assert.strictEqual(am.containsReal(path.join(root, 'inside'), path.join(root, 'inside', 'sub')), true);
+  assert.strictEqual(am.containsReal(path.join(root, 'inside'), path.join(root, 'outside')), false);
+  assert.strictEqual(am.containsReal(path.join(root, 'inside'), path.join(root, 'inside', 'new', 'file.md')), true);   // ancestor walk
+  assert.strictEqual(am.containsReal(path.join(root, 'inside'), path.join(root, 'outside', 'new', 'file.md')), false);
+  assert.strictEqual(am.containsReal(path.join(root, 'inside'), path.join(root, 'inside')), false);                    // strict: root itself not "inside"
+  // integration with a symlinked delta escaping the change root — where the platform allows symlinks
+  let canSymlink = true;
+  const probeTarget = path.join(root, 'outside', 'real.md');
+  fs.writeFileSync(probeTarget, ADD_A);
+  try { fs.symlinkSync(probeTarget, path.join(root, 'probe-link.md')); } catch { canSymlink = false; }
+  if (canSymlink) {
+    const proj = twoModuleProject();
+    const evil = path.join(root, 'outside', 'evil.md');
+    fs.writeFileSync(evil, ADD_A);
+    fs.symlinkSync(evil, path.join(proj, 'apriori/changes/c/specs/a/spec.md.evil.md'));
+    const r = run(['archive', '--change', 'c'], proj);
+    assert.strictEqual(r.status, 2);
+    assert.match(r.stderr, /evil/);
+    // a symlinked specs/ dir must not become the containment root (IMPL-1)
+    const proj2 = mkProject({ 'apriori/specs/a/spec.md': STORE_A });
+    fs.mkdirSync(path.join(proj2, 'apriori/changes/c'), { recursive: true });
+    const outsideSpecs = path.join(root, 'outside', 'fake-specs');
+    fs.mkdirSync(path.join(outsideSpecs, 'a'), { recursive: true });
+    fs.writeFileSync(path.join(outsideSpecs, 'a', 'spec.md'), ADD_A);
+    fs.symlinkSync(outsideSpecs, path.join(proj2, 'apriori/changes/c/specs'));
+    const r2 = run(['archive', '--change', 'c'], proj2);
+    assert.strictEqual(r2.status, 2);
+    assert.match(r2.stderr, /specs/);
+    // a symlinked SUBDIR escaping the tree is an error, never silently skipped (IMPL-1)
+    const proj3 = mkProject({ 'apriori/specs/a/spec.md': STORE_A, 'apriori/changes/c/specs/.keep': '' });
+    const outsideMod = path.join(root, 'outside', 'mod');
+    fs.mkdirSync(outsideMod, { recursive: true });
+    fs.writeFileSync(path.join(outsideMod, 'spec.md'), ADD_A);
+    fs.symlinkSync(outsideMod, path.join(proj3, 'apriori/changes/c/specs/a'));
+    const r3 = run(['archive', '--change', 'c'], proj3);
+    assert.strictEqual(r3.status, 2);
+    // a symlinked move DESTINATION (archive/) pointing outside is rejected before any move
+    const proj4 = twoModuleProject();
+    const outsideArch = path.join(root, 'outside', 'arch');
+    fs.mkdirSync(outsideArch, { recursive: true });
+    fs.symlinkSync(outsideArch, path.join(proj4, 'apriori/changes/archive'));
+    const r4 = run(['archive', '--change', 'c', '--write', '--changes-dir', 'apriori/changes'], proj4);
+    assert.strictEqual(r4.status, 2);
+    assert.match(r4.stderr, /archive destination/);
+    assert.doesNotMatch(fs.readFileSync(path.join(proj4, 'apriori/specs/a/spec.md'), 'utf8'), /Alpha2/);  // nothing written
+  }
+});
+
+test('AM-23 malformed or duplicated stamps are hygiene errors', () => {
+  const good = am.fingerprint(STORE_A);
+  const cases = [
+    `<!-- apriori-base: sha256:zzz -->\n${ADD_A}`,                                        // malformed digest
+    `<!-- apriori-base: ${good} -->\n<!-- apriori-base: new -->\n${ADD_A}`,               // two stamps
+    `${ADD_A}\n<!-- apriori-base: ${good} -->\n`,                                         // stamp after first section
+    `<!-- apriori-base ${good} -->\n${ADD_A}`,                                            // structurally malformed (no colon) — must NOT silently disable CAS
+  ];
+  for (const bad of cases) {
+    const root = twoModuleProject({ 'apriori/changes/c/specs/a/spec.md': bad });
+    const r = run(['archive', '--change', 'c', '--write'], root);
+    assert.strictEqual(r.status, 1, bad.slice(0, 30));
+    assert.match(r.stdout + r.stderr, /a[\/\\]spec\.md/);
+  }
+});
+
+test('AM-24 a diverged stamp stops archive before any write, on both surfaces', () => {
+  const stale = `<!-- apriori-base: sha256:${'0'.repeat(64)} -->\n${ADD_A}`;
+  // high-level form
+  const root1 = twoModuleProject({ 'apriori/changes/c/specs/a/spec.md': stale });
+  const beforeA = fs.readFileSync(path.join(root1, 'apriori/specs/a/spec.md'), 'utf8');
+  const r1 = run(['archive', '--change', 'c', '--write'], root1);
+  assert.strictEqual(r1.status, 1);
+  assert.match(r1.stdout + r1.stderr, /sha256:/);
+  assert.strictEqual(fs.readFileSync(path.join(root1, 'apriori/specs/a/spec.md'), 'utf8'), beforeA);
+  // single-file form
+  const root2 = mkProject({ 'store.md': STORE_A, 'delta.md': stale });
+  const r2 = run(['archive', '--store', 'store.md', '--delta', 'delta.md', '--change', 'c', '--write'], root2);
+  assert.strictEqual(r2.status, 1);
+  assert.match(r2.stdout + r2.stderr, /sha256:/);
+  assert.strictEqual(fs.readFileSync(path.join(root2, 'store.md'), 'utf8'), STORE_A);
+});
+
+test('AM-25 stamp-free deltas behave exactly as before, on both surfaces', () => {
+  const root1 = twoModuleProject();
+  assert.strictEqual(run(['archive', '--change', 'c', '--write'], root1).status, 0);
+  assert.match(fs.readFileSync(path.join(root1, 'apriori/specs/a/spec.md'), 'utf8'), /Alpha2/);
+  const root2 = mkProject({ 'store.md': STORE_A, 'delta.md': ADD_A });
+  assert.strictEqual(run(['archive', '--store', 'store.md', '--delta', 'delta.md', '--change', 'c', '--write'], root2).status, 0);
+  assert.match(fs.readFileSync(path.join(root2, 'store.md'), 'utf8'), /Alpha2/);
+});
+
+test('AM-26 the new sentinel matches only an absent store', () => {
+  const delta = `<!-- apriori-base: new -->\n${ADD_A}`;
+  // store absent → passes, creates module file on write
+  const root = mkProject({
+    'apriori/specs/b/spec.md': STORE_B,
+    'apriori/changes/c/specs/newmod/spec.md': delta,
+  });
+  const r1 = run(['archive', '--change', 'c', '--write'], root);
+  assert.strictEqual(r1.status, 0);
+  assert.match(fs.readFileSync(path.join(root, 'apriori/specs/newmod/spec.md'), 'utf8'), /Alpha2/);
+  // store now exists → the same stamped delta is a mismatch
+  const root2 = mkProject({
+    'apriori/specs/newmod/spec.md': STORE_A,
+    'apriori/changes/c/specs/newmod/spec.md': delta,
+  });
+  const r2 = run(['archive', '--change', 'c', '--write'], root2);
+  assert.strictEqual(r2.status, 1);
+  assert.match(r2.stdout + r2.stderr, /new/);
+});
+
+test('AM-27 apriori stamp prints the current stamp line (all CLI branches)', async (t) => {
+  const root = mkProject({ 'store.md': 'alpha\r\nbeta\n' });
+  await t.test('existing file → matching stamp line, exit 0', () => {
+    const r = run(['stamp', 'store.md'], root);
+    assert.strictEqual(r.status, 0);
+    assert.strictEqual(r.stdout.trim(), `<!-- apriori-base: ${am.fingerprint('alpha\r\nbeta\n')} -->`);
+  });
+  await t.test('CRLF normalization: same fingerprint as LF content', () => {
+    assert.strictEqual(am.fingerprint('alpha\r\nbeta\n'), am.fingerprint('alpha\nbeta\n'));
+    assert.strictEqual(am.fingerprint('alpha\rbeta\n'), am.fingerprint('alpha\nbeta\n'));
+  });
+  await t.test('absent path → the new form, exit 0', () => {
+    const r = run(['stamp', 'no-such.md'], root);
+    assert.strictEqual(r.status, 0);
+    assert.strictEqual(r.stdout.trim(), '<!-- apriori-base: new -->');
+  });
+  await t.test('directory → error naming the path, exit 2', () => {
+    const r = run(['stamp', '.'], root);
+    assert.strictEqual(r.status, 2);
+  });
+  await t.test('zero or multiple arguments → usage, exit 2', () => {
+    assert.strictEqual(run(['stamp'], root).status, 2);
+    assert.strictEqual(run(['stamp', 'a.md', 'b.md'], root).status, 2);
+  });
+});
+
+test('AM-10 REMOVED rerun: already-deprecated by this change is a no-op; by another change conflicts', () => {
+  const removed = { ADDED: new Map(), MODIFIED: new Map(), REMOVED: new Map([['Alpha', '### Requirement: Alpha\n']]), RENAMED: [] };
+  // first application deprecates
+  const first = am.merge(STORE_A, removed, 'c');
+  assert.deepStrictEqual(first.deprecated, ['Alpha']);
+  const afterText = am.renderStore(STORE_A, first.store);
+  // rerun on the deprecated store (same change) → no-op, not a conflict
+  const rerun = am.merge(afterText, removed, 'c');
+  assert.strictEqual(rerun.conflicts.length, 0);
+  assert.ok(rerun.unchanged.some((u) => u.includes('Alpha')));
+  // deprecated by a DIFFERENT change → conflict
+  const other = am.merge(afterText, removed, 'other-change');
+  assert.ok(other.conflicts.length > 0);
+});
+
+ succeeded in 141ms:
+48:const STAMP_LINE_RE = /^<!--\s*apriori-base:\s*(\S+)\s*-->\s*$/gm;
+51:const STAMP_ATTEMPT_RE = /^\s*<!--(?=[^>]*apriori-base)[^>]*-->\s*$/gm;
+55:function parseStamp(text) {
+58:  STAMP_ATTEMPT_RE.lastIndex = 0;
+60:  while ((m = STAMP_ATTEMPT_RE.exec(text)) !== null) {
+61:    STAMP_LINE_RE.lastIndex = 0;
+62:    if (!STAMP_LINE_RE.test(m[0].trim())) problems.push(`malformed apriori-base stamp line: ${m[0].trim()}`);
+65:  STAMP_LINE_RE.lastIndex = 0;
+66:  while ((m = STAMP_LINE_RE.exec(text)) !== null) found.push({ value: m[1], index: m.index });
+100:  const st = parseStamp(text);
+180:function containsReal(root, target) {
+197:function mdFilesUnder(dir) {
+218:function discoverDeltas(changesDirAbs, name) {
+223:  if (!containsReal(changesDirAbs, changeDir)) return { files: [], errors: [`change path escapes ${changesDirAbs}: ${changeDir}`] };
+227:  if (fs.existsSync(specsDir) && !containsReal(changeDir, specsDir))
+229:  const all = mdFilesUnder(specsDir);
+233:    if (!containsReal(specsDir, abs)) { errors.push(`delta path escapes the change root: ${abs}`); continue; }
+245:  for (const abs of mdFilesUnder(storeRoot))
+250:    if (!containsReal(storeRoot, target)) { validation.push(`store target escapes ${storeRoot}: ${target}`); continue; }
+282:function archiveChangeDir(changesDir, name, now, ops) {
+287:  if (!containsReal(changesDir, src)) throw new Error(`change path escapes ${changesDir}`);
+289:  if (!containsReal(changesDir, dest)) throw new Error(`archive destination escapes ${changesDir} (symlinked archive/?)`);
+308:  const d = discoverDeltas(changesDir, o.change);
+338:      if (!containsReal(changesDir, probe)) {
+380:    try { moved = archiveChangeDir(changesDir, o.change, new Date(), ops); }
+389:function stampCli(argv) {
+475:      try { moved = archiveChangeDir(a.changesDir, a.change, new Date()); }
+488:  merge, renderStore, archiveStamp, archiveChangeDir, archiveChange, CHANGE_NAME_RE,
+489:  fingerprint, parseStamp, containsReal, discoverDeltas, buildProjection,
+490:  DEPRECATED_RE, stripDeprecatedBlocks, stampCli, cli };
+
+ succeeded in 142ms:
+    }
+    const r = merge(storeText, delta, change);
+    perModule.set(suffix, r);
+    if (r.conflicts.length) { conflicts.push(...r.conflicts.map((c) => `${suffix}: ${c}`)); continue; }
+    texts.set(suffix, renderStore(storeText, r.store));
+  }
+  modules.sort();
+  return { texts, modules, perModule, conflicts, casMismatches, hygiene, validation };
+}
+
+// ---- archive commit machinery ----------------------------------------------
+
+// colon-free date-time stamp YYYY-MM-DDThhmm (CLI's own clock; never an agent guess)
+function archiveStamp(d) {
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}${p(d.getMinutes())}`;
+}
+
+const CHANGE_NAME_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;   // bare kebab-case — same rule as `apriori new`
+
+// Move an in-flight change dir (bare name) → changes/archive/<stamp>-<name>/
+// Fail-closed: source AND destination must resolve (realpath) strictly inside changesDir.
+function archiveChangeDir(changesDir, name, now, ops) {
+  const rename = (ops && ops.renameSync) || fs.renameSync;
+  if (!CHANGE_NAME_RE.test(name)) throw new Error(`invalid change name '${name}' — bare kebab-case only`);
+  const src = path.join(changesDir, name);
+  if (!fs.existsSync(src)) return null;
+  if (!containsReal(changesDir, src)) throw new Error(`change path escapes ${changesDir}`);
+  const dest = path.join(changesDir, 'archive', `${archiveStamp(now)}-${name}`);
+  if (!containsReal(changesDir, dest)) throw new Error(`archive destination escapes ${changesDir} (symlinked archive/?)`);
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  rename(src, dest);
+  return dest;
+}
+
+const CATEGORY_LABELS = [['merged (ADDED)', 'merged'], ['modified (MODIFIED)', 'modified'],
+  ['deprecated (REMOVED)', 'deprecated'], ['renamed (RENAMED)', 'renamed'], ['already merged (no-op)', 'unchanged']];
+
+// High-level archive: the whole change, four phases (preflight → stage → commit → move).
+// → { code, out: [], err: [] } — pure return; cli() prints. ops is the fault-injection seam.
+function archiveChange(o) {
+  const out = [], err = [];
+  const ops = o.ops || { writeFileSync: fs.writeFileSync.bind(fs), renameSync: fs.renameSync.bind(fs), rmSync: fs.rmSync.bind(fs) };
+  const cwd = o.cwd || process.cwd();
+  const changesDir = path.resolve(cwd, o.changesDir || path.join('apriori', 'changes'));
+  const storeRoot = path.resolve(cwd, 'apriori', 'specs');
+
+  // --- phase 1: preflight (no writes) ---
+  const d = discoverDeltas(changesDir, o.change);
+  if (d.errors.length) { err.push(...d.errors.map((e) => `archive: ${e}`)); return { code: 2, out, err }; }
+  const p = buildProjection(storeRoot, d.files, o.change);
+  if (p.validation.length) { err.push(...p.validation.map((e) => `archive: ${e}`)); return { code: 2, out, err }; }
+  // per-module report for whatever merged cleanly (dry-run info comes first, then failures)
+  for (const suffix of p.modules) {
+    const r = p.perModule.get(suffix);
+    if (!r || r.conflicts.length) continue;
+    out.push(`--- ${suffix}`);
+    for (const [label, key] of CATEGORY_LABELS) if (r[key].length) out.push(`${label}: ${r[key].join(', ')}`);
+  }
+  const preflightFailures = [...p.hygiene, ...p.casMismatches, ...p.conflicts];
+  if (preflightFailures.length) {
+    for (const f of preflightFailures) err.push(`archive: ${f}`);
+    out.push('\nRESULT: FAILED PREFLIGHT — nothing written');
+    return { code: 1, out, err };
+  }
+  const jobs = d.files.map(({ suffix }) => {
+    const store = path.join(storeRoot, ...suffix.split('/'));
+    return { suffix, store, tmp: store + '.tmp-archive', text: p.texts.get(suffix) };
+  }).sort((a, b) => (a.store < b.store ? -1 : 1));
+  if (o.write) {
+    for (const j of jobs) if (fs.existsSync(j.tmp)) {
+      err.push(`archive: temp file already exists: ${j.tmp} — another run in flight or a manual-recovery artifact; not touching it`);
+      out.push('\nRESULT: FAILED PREFLIGHT — nothing written');
+      return { code: 1, out, err };
+    }
+    if (o.changesDirExplicit) {
+      // destination containment is checked before any write, not at move time
+      const probe = path.join(changesDir, 'archive', 'probe');
+      if (!containsReal(changesDir, probe)) {
+        err.push(`archive: archive destination escapes ${changesDir} (symlinked archive/?)`);
+        return { code: 2, out, err };
+      }
+    }
+  }
+  if (!o.write) {
+    out.push(`\nRESULT: MERGED (dry-run; ${jobs.length} module(s)) — pass --write to apply`);
+    return { code: 0, out, err };
+  }
+
+  // --- phase 2: stage (this run's temps only — preflight proved none pre-existed) ---
+  const staged = [];
+  try {
+    for (const j of jobs) {
+      fs.mkdirSync(path.dirname(j.store), { recursive: true });
+      ops.writeFileSync(j.tmp, j.text);
+      staged.push(j.tmp);
+    }
+  } catch (e) {
+    for (const t of staged) { try { ops.rmSync(t, { force: true }); } catch { /* best effort */ } }
+    err.push(`archive: staging failed (${e.message}) — stores untouched, this run's temp files removed`);
+    return { code: 1, out, err };
+  }
+
+  // --- phase 3: commit (per-file atomic renames, sorted order; no rollback on mid-commit failure) ---
+  const committed = [];
+  for (const j of jobs) {
+    try { ops.renameSync(j.tmp, j.store); committed.push(j); }
+    catch (e) {
+      err.push(`archive: COMMIT FAILED at ${j.suffix} (${e.message})`);
+      err.push(`  committed:     ${committed.map((c) => c.suffix).join(', ') || '(none)'}`);
+      const remaining = jobs.filter((x) => !committed.includes(x));
+      err.push(`  NOT committed: ${remaining.map((x) => x.suffix).join(', ')}`);
+      err.push(`  temp files remaining for manual completion: ${remaining.map((x) => x.tmp).join(', ')}`);
+      return { code: 1, out, err };
+    }
+  }
+
+  // --- phase 4: move (only with explicit --changes-dir) ---
+  let moved = null;
+  if (o.changesDirExplicit) {
+    try { moved = archiveChangeDir(changesDir, o.change, new Date(), ops); }
+    catch (e) { err.push(`archive: stores committed but the change-dir move failed: ${e.message} — rerun to complete`); return { code: 1, out, err }; }
+    if (moved === null) { err.push('archive: stores committed but the change dir vanished before the move'); return { code: 1, out, err }; }
+  }
+  out.push(`\nRESULT: MERGED — ${jobs.length} module store(s) rewritten${moved ? `; change archived → ${moved}` : ''}`);
+  return { code: 0, out, err };
+}
+
+// print the CAS stamp line for a store file's current content
+function stampCli(argv) {
+  if (argv.length !== 1) { console.error('usage: apriori stamp <store-file>'); return 2; }   // exactly one argument, no flags
+  const p = argv[0];
+  if (!fs.existsSync(p)) { console.log('<!-- apriori-base: new -->'); return 0; }
+  if (fs.statSync(p).isDirectory()) { console.error(`stamp: ${p} is a directory, not a store file`); return 2; }
+  let text;
+  try { text = fs.readFileSync(p, 'utf8'); }
+  catch (e) { console.error(`stamp: cannot read ${p}: ${e.message}`); return 2; }
+  console.log(`<!-- apriori-base: ${fingerprint(text)} -->`);
+  return 0;
+}
+
+function cli(argv) {
+  const a = { store: null, delta: null, change: null, write: false, changesDir: null };
+  for (let i = 0; i < argv.length; i++) {
+    const k = argv[i];
+    if (k === '--store') a.store = argv[++i];
+    else if (k === '--delta') a.delta = argv[++i];
+    else if (k === '--change') a.change = argv[++i];
+    else if (k === '--write') a.write = true;
+    else if (k === '--changes-dir') a.changesDir = argv[++i];
+  }
+  // high-level form: --change alone (no --store/--delta) drives the whole change
+  if (a.change && !a.store && !a.delta) {
+    const r = archiveChange({ cwd: process.cwd(), change: a.change, write: a.write,
+      changesDir: a.changesDir || undefined, changesDirExplicit: !!a.changesDir });
+    for (const l of r.out) console.log(l);
+    for (const l of r.err) console.error(l);
+    return r.code;
+  }
+  if (a.change && (a.store || a.delta) && !(a.store && a.delta)) {
+    console.error('usage: apriori archive --change <name> [--write] [--changes-dir <dir>]  (high-level form)\n   or: apriori archive --store <f> --delta <f> --change <name> [--write] [--changes-dir <dir>]  (single-file form)\n(--change cannot be combined with only one of --store/--delta)');
+    return 2;
+  }
+  if (!a.store || !a.delta || !a.change) { console.error('usage: apriori archive --store <f> --delta <f> --change <name> [--write] [--changes-dir <dir>]\n   or: apriori archive --change <name> [--write] [--changes-dir <dir>]'); return 2; }
+  if (!CHANGE_NAME_RE.test(a.change)) { console.error(`archive: invalid change name '${a.change}' — bare kebab-case only (path segments are not allowed)`); return 2; }
+  if (a.changesDir && !fs.existsSync(path.join(a.changesDir, a.change))) {
+    console.error(`archive: change '${a.change}' not found under ${a.changesDir} — nothing to move`); return 2;
+  }
+  // first archive in a repo: the store file may not exist yet — start from an empty store
+  const storeExists = fs.existsSync(a.store);
+  const storeText = storeExists ? fs.readFileSync(a.store, 'utf8') : '';
+  if (!storeExists) console.log(`store ${a.store} does not exist yet — will be created${a.write ? '' : ' on --write'}`);
+  const deltaText = fs.readFileSync(a.delta, 'utf8');
+  const { delta, stamp, problems } = parseDeltaStrict(deltaText);
+  if (problems.length) {
+    for (const p of problems) console.error(`archive: ${a.delta}: ${p}`);
+    console.log('\nRESULT: MALFORMED DELTA — nothing written');
+    return 1;
+  }
+  // Guard against a silent no-op: a delta with real content that parsed to zero operations
+  // is almost always a format mismatch (wrong heading level/keyword), not an empty change.
+  if (deltaText.trim() && deltaOpCount(delta) === 0) {
+    console.error(`archive: parsed 0 delta operations from ${a.delta} — it has content but no recognized operations.`);
+    console.error('  expected `## ADDED|MODIFIED|REMOVED Requirements` (h2) with `### Requirement: <name>` (h3) blocks,');
+    console.error('  or `## RENAMED Requirements` with `- Old -> New` lines. Nothing written.');
+    return 1;
+  }
+  // CAS: a present base stamp must match the store the delta is about to merge into (AM-24/AM-26)
+  if (stamp) {
+    const actual = storeExists ? fingerprint(storeText) : 'new';
+    if (stamp !== actual) {
+      console.error(`archive: base mismatch for ${a.store}: delta expects ${stamp}, store is ${actual} — nothing written (serialize per §4.11)`);
+      return 1;
+    }
+  }
+  const { store, merged, modified, deprecated, renamed, conflicts, unchanged } = merge(storeText, delta, a.change);
+
+  for (const [label, ids] of [['merged (ADDED)', merged], ['modified (MODIFIED)', modified], ['deprecated (REMOVED)', deprecated], ['renamed (RENAMED)', renamed], ['already merged (no-op)', unchanged]])
+    if (ids.length) console.log(`${label}: ${ids.join(', ')}`);
+
+  if (conflicts.length) {
+    console.log('\nCONFLICTS (stop — open a ledger issue, human resolves):');
+    for (const c of conflicts) console.log(`  ✗ ${c}`);
+    console.log('\nRESULT: CONFLICT — nothing written');
+    return 1;
+  }
+  if (a.write) {
+    // Transactional ordering: stage the store to a temp file, do the (atomic) dir move, then
+    // commit the store via rename. If the move fails, the temp is discarded and the store on
+    // disk stays byte-for-byte untouched — never a half-completed archive.
+    fs.mkdirSync(path.dirname(a.store), { recursive: true });
+    const tmp = a.store + '.tmp-archive';
+    fs.writeFileSync(tmp, renderStore(storeText, store));
+    let moved = null;
+    if (a.changesDir) {
+      try { moved = archiveChangeDir(a.changesDir, a.change, new Date()); }
+      catch (e) { fs.rmSync(tmp, { force: true }); console.error(`archive: ${e.message} — store left untouched`); return 1; }
+      if (moved === null) { fs.rmSync(tmp, { force: true }); console.error(`archive: change dir vanished mid-run — store left untouched`); return 1; }
+    }
+    fs.renameSync(tmp, a.store);
+    console.log(`\nRESULT: MERGED — ${a.store} rewritten${moved ? `; change archived → ${moved}` : ''}`);
+  } else {
+    console.log(`\nRESULT: MERGED (dry-run; ${store.size} requirements in result) — pass --write to apply`);
+  }
+  return 0;
+}
+
+module.exports = { parseRequirements, parseRequirementsStrict, parseDelta, parseDeltaStrict, deltaOpCount,
+  merge, renderStore, archiveStamp, archiveChangeDir, archiveChange, CHANGE_NAME_RE,
+  fingerprint, parseStamp, containsReal, discoverDeltas, buildProjection,
+  DEPRECATED_RE, stripDeprecatedBlocks, stampCli, cli };
+
+ succeeded in 148ms:
+'use strict';
+/*
+ * archive-merge — plain-files native implementation of the archive action (§4).
+ * Zero deps — pure Node stdlib. Consumes the same delta format the OpenSpec adapter used
+ * (## ADDED/MODIFIED/REMOVED/RENAMED Requirements), so it is the adapter-free path.
+ *
+ * 3.1: also home of the merge-family pure helpers shared with `verify --change` —
+ * delta discovery, projection building, CAS base stamps, realpath containment.
+ */
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+
+const REQ_RE = /^###\s+Requirement:\s+(.+?)\s*$([\s\S]*?)(?=^###\s+Requirement:|$(?![\s\S]))/gm;
+const SECTION_SPLIT_RE = /^##\s+(ADDED|MODIFIED|REMOVED|RENAMED)\s+Requirements\s*$/m;
+// the exact marker merge() injects on REMOVED; heading LINE of a deprecated block
+const DEPRECATED_RE = /^###\s+Requirement:.*_deprecated \(superseded by [^)]*\)_/;
+// a whole deprecated block (heading line + body up to the next requirement)
+const DEPRECATED_BLOCK_RE = /^###[ \t]+Requirement:[^\n]*_deprecated \(superseded by [^)]*\)_[^\n]*$[\s\S]*?(?=^###[ \t]+Requirement:|$(?![\s\S]))/gm;
+
+function stripDeprecatedBlocks(text) { return text.replace(DEPRECATED_BLOCK_RE, ''); }
+
+// name -> full block (heading + body), in document order; duplicates reported (first block wins)
+function parseRequirementsStrict(text) {
+  const map = new Map();
+  const duplicates = [];
+  let m;
+  REQ_RE.lastIndex = 0;
+  while ((m = REQ_RE.exec(text)) !== null) {
+    const name = m[1].trim();
+    if (map.has(name)) duplicates.push(name);
+    else map.set(name, m[0].replace(/\s+$/, '') + '\n');
+  }
+  return { map, duplicates };
+}
+
+function parseRequirements(text) { return parseRequirementsStrict(text).map; }
+
+// ---- CAS base stamps -------------------------------------------------------
+
+// sha256 over content with line endings normalized — a delta authored on Windows
+// must fingerprint identically to the same store checked out with LF
+function fingerprint(text) {
+  const norm = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  return 'sha256:' + crypto.createHash('sha256').update(norm, 'utf8').digest('hex');
+}
+
+const STAMP_LINE_RE = /^<!--\s*apriori-base:\s*(\S+)\s*-->\s*$/gm;
+// any standalone comment line ATTEMPTING to be a stamp — a malformed attempt must be an error,
+// never silently treated as "unstamped" (that would quietly disable CAS)
+const STAMP_ATTEMPT_RE = /^\s*<!--(?=[^>]*apriori-base)[^>]*-->\s*$/gm;
+
+// → { stamp: 'sha256:<hex>' | 'new' | null, problems: [] }
+// Exactly one stamp line, before the first delta section, well-formed digest.
+function parseStamp(text) {
+  const problems = [];
+  const sectionIdx = text.search(SECTION_SPLIT_RE);
+  STAMP_ATTEMPT_RE.lastIndex = 0;
+  let m;
+  while ((m = STAMP_ATTEMPT_RE.exec(text)) !== null) {
+    STAMP_LINE_RE.lastIndex = 0;
+    if (!STAMP_LINE_RE.test(m[0].trim())) problems.push(`malformed apriori-base stamp line: ${m[0].trim()}`);
+  }
+  const found = [];
+  STAMP_LINE_RE.lastIndex = 0;
+  while ((m = STAMP_LINE_RE.exec(text)) !== null) found.push({ value: m[1], index: m.index });
+  if (!found.length) return { stamp: null, problems };
+  if (found.length > 1) problems.push('carries more than one apriori-base stamp line');
+  for (const f of found) {
+    if (sectionIdx >= 0 && f.index > sectionIdx) problems.push('apriori-base stamp appears after the first delta section heading');
+    if (f.value !== 'new' && !/^sha256:[0-9a-f]{64}$/.test(f.value)) problems.push(`malformed apriori-base stamp '${f.value}'`);
+  }
+  return { stamp: problems.length ? null : found[0].value, problems };
+}
+
+// ---- delta parsing ---------------------------------------------------------
+
+// strict form: duplicate requirement names (within a section or across sections)
+// and stamp problems are surfaced instead of silently collapsed
+function parseDeltaStrict(text) {
+  const problems = [];
+  const buckets = { ADDED: new Map(), MODIFIED: new Map(), REMOVED: new Map(), RENAMED: [] };
+  const seen = new Map();   // name -> first section carrying it
+  const parts = text.split(SECTION_SPLIT_RE);
+  for (let i = 1; i < parts.length; i += 2) {
+    const kind = parts[i];
+    if (kind === 'RENAMED') {
+      for (const m of parts[i + 1].matchAll(/^\s*-\s*(.+?)\s*->\s*(.+?)\s*$/gm))
+        buckets.RENAMED.push([m[1].trim(), m[2].trim()]);
+    } else {
+      const { map, duplicates } = parseRequirementsStrict(parts[i + 1]);
+      for (const d of duplicates) problems.push(`duplicate requirement '${d}' in the ${kind} section`);
+      for (const [name, block] of map) {
+        if (seen.has(name)) problems.push(`duplicate requirement '${name}' appears in both ${seen.get(name)} and ${kind}`);
+        else seen.set(name, kind);
+        buckets[kind].set(name, block);
+      }
+    }
+  }
+  const st = parseStamp(text);
+  problems.push(...st.problems);
+  return { delta: buckets, stamp: st.stamp, problems };
+}
+
+function parseDelta(text) { return parseDeltaStrict(text).delta; }
+
+// total number of operations a parsed delta carries (0 = nothing recognized/parseable)
+function deltaOpCount(delta) {
+  return delta.ADDED.size + delta.MODIFIED.size + delta.REMOVED.size + delta.RENAMED.length;
+}
+
+// ---- merge (pure) ----------------------------------------------------------
+
+// Pure merge. Returns { store: Map, merged, modified, deprecated, renamed, conflicts, unchanged }
+function merge(storeText, delta, change) {
+  const parsed = parseRequirementsStrict(storeText);
+  const store = parsed.map;
+  const merged = [], modified = [], deprecated = [], renamed = [], conflicts = [], unchanged = [];
+  // a corrupt store (same requirement name twice) must never be silently collapsed
+  for (const d of parsed.duplicates) conflicts.push(`duplicate requirement '${d}' in the store (corrupt store)`);
+  const renamedTargets = new Set();   // names created by THIS run's renames — an ADDED hitting one is a same-delta collision, never a rerun no-op
+  // RENAMED first: rename the store block's ID, preserving its content
+  for (const [oldName, newName] of (delta.RENAMED || [])) {
+    if (!store.has(oldName)) {
+      // rerun signature: source already gone AND target present → this rename already happened
+      if (store.has(newName)) { unchanged.push(`${oldName} -> ${newName} (already renamed)`); continue; }
+      conflicts.push(`RENAMED '${oldName}' has no target in store`); continue;
+    }
+    if (store.has(newName)) { conflicts.push(`RENAMED target '${newName}' already exists in store`); continue; }
+    const block = store.get(oldName);
+    const renamedBlock = block.replace(/^###\s+Requirement:\s+.+$/m, `### Requirement: ${newName}`);
+    // rebuild the map preserving order, swapping the key at the old position
+    const rebuilt = new Map();
+    for (const [k, v] of store) rebuilt.set(k === oldName ? newName : k, k === oldName ? renamedBlock : v);
+    store.clear();
+    for (const [k, v] of rebuilt) store.set(k, v);
+    renamed.push(`${oldName} -> ${newName}`);
+    renamedTargets.add(newName);
+  }
+  for (const [name, block] of delta.ADDED) {
+    if (store.has(name)) {
+      // idempotent rerun: identical content means this delta already merged — a no-op, not a collision.
+      // But a name just created by THIS run's RENAMED is a same-delta collision, never a rerun.
+      if (!renamedTargets.has(name) && store.get(name).trim() === block.trim()) unchanged.push(name);
+      else conflicts.push(`ADDED '${name}' already exists in store`);
+    } else { store.set(name, block); merged.push(name); }
+  }
+  for (const [name, block] of delta.MODIFIED) {
+    if (!store.has(name)) conflicts.push(`MODIFIED '${name}' has no target in store`);
+    else { store.set(name, block); modified.push(name); }
+  }
+  for (const name of delta.REMOVED.keys()) {
+    if (!store.has(name)) {
+      // rerun signature: already deprecated BY THIS CHANGE → no-op; by another change → real collision
+      const depByThis = `${name}  _deprecated (superseded by ${change})_`;
+      if (store.has(depByThis)) { unchanged.push(`${name} (already deprecated)`); continue; }
+      const depOther = [...store.keys()].find((k) => k.startsWith(`${name}  _deprecated (superseded by `));
+      if (depOther) { conflicts.push(`REMOVED '${name}' was already deprecated by a different change ('${depOther}')`); continue; }
+      conflicts.push(`REMOVED '${name}' has no target in store`);
+    } else {
+      const block = store.get(name);
+      const nl = block.indexOf('\n');
+      store.set(name, block.slice(0, nl) + `  _deprecated (superseded by ${change})_` + block.slice(nl));
+      deprecated.push(name);
+    }
+  }
+  return { store, merged, modified, deprecated, renamed, conflicts, unchanged };
+}
+
+function renderStore(storeText, store) {
+  const idx = storeText.indexOf('### Requirement:');
+  const header = idx >= 0 ? storeText.slice(0, idx) : '';
+  return header + [...store.values()].join('\n');
+}
+
+// ---- paths and discovery ---------------------------------------------------
+
+// Realpath containment: target (followed through symlinks; not-yet-existing targets judged
+// by their nearest existing ancestor) must resolve STRICTLY inside root. Fail-closed.
+function containsReal(root, target) {
+  let realRoot;
+  try { realRoot = fs.realpathSync(root); } catch { return false; }
+  let cur = path.resolve(target);
+  const rest = [];
+  while (!fs.existsSync(cur)) {
+    const parent = path.dirname(cur);
+    if (parent === cur) return false;
+    rest.unshift(path.basename(cur));
+    cur = parent;
+  }
+  let realCur;
+  try { realCur = fs.realpathSync(cur); } catch { return false; }
+  const full = rest.length ? path.join(realCur, ...rest) : realCur;
+  return full !== realRoot && (full + path.sep).startsWith(realRoot + path.sep);
+}
+
+function mdFilesUnder(dir) {
+  const out = [];
+  const walk = (d) => {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, e.name);
+      // Dirents reflect lstat: a symlink is neither file nor directory. Follow it explicitly —
+      // silently skipping a symlinked dir would hide deltas (fail-open); containment judges the target.
+      let isDir = e.isDirectory();
+      if (e.isSymbolicLink()) {
+        try { isDir = fs.statSync(p).isDirectory(); } catch { isDir = false; /* broken link: fall through, read fails loudly */ }
+      }
+      if (isDir) walk(p);
+      else if (e.name.endsWith('.md')) out.push(p);
+    }
+  };
+  if (fs.existsSync(dir)) walk(dir);
+  return out.sort();
+}
+
+// Discover a change's delta files. → { files: [{abs, suffix}], errors: [] } — errors are
+// VALIDATION class (exit 2 on both surfaces): bad name, missing dir, escape, zero files.
+function discoverDeltas(changesDirAbs, name) {
+  const errors = [];
+  if (!name || !CHANGE_NAME_RE.test(name)) return { files: [], errors: [`invalid change name '${name}' — bare kebab-case only`] };
+  const changeDir = path.join(changesDirAbs, name);
+  if (!fs.existsSync(changeDir)) return { files: [], errors: [`change '${name}' not found under ${changesDirAbs}`] };
+  if (!containsReal(changesDirAbs, changeDir)) return { files: [], errors: [`change path escapes ${changesDirAbs}: ${changeDir}`] };
+  const specsDir = path.join(changeDir, 'specs');
+  // a symlinked specs/ pointing outside would smuggle its target in as the containment ROOT —
+  // require specs/ itself to really live inside the change dir before trusting it as a root
+  if (fs.existsSync(specsDir) && !containsReal(changeDir, specsDir))
+    return { files: [], errors: [`specs dir escapes the change dir (symlink?): ${specsDir}`] };
+  const all = mdFilesUnder(specsDir);
+  if (!all.length) return { files: [], errors: [`no delta spec files (*.md) found under ${specsDir}`] };
+  const files = [];
+  for (const abs of all) {
+    if (!containsReal(specsDir, abs)) { errors.push(`delta path escapes the change root: ${abs}`); continue; }
+    files.push({ abs, suffix: path.relative(specsDir, abs).split(path.sep).join('/') });
+  }
+  return { files, errors };
+}
+
+// Build the projection: apply every delta to its mapped store file IN MEMORY.
+// → { texts: Map<suffix, projectedText>, modules, perModule, conflicts, casMismatches,
+//     hygiene, validation } — texts covers ALL store files (pass-through + projected).
+function buildProjection(storeRoot, deltaFiles, change) {
+  const texts = new Map(), perModule = new Map(), modules = [];
+  const conflicts = [], casMismatches = [], hygiene = [], validation = [];
+  for (const abs of mdFilesUnder(storeRoot))
+    texts.set(path.relative(storeRoot, abs).split(path.sep).join('/'), fs.readFileSync(abs, 'utf8'));
+  for (const { abs, suffix } of deltaFiles) {
+    modules.push(suffix);
+    const target = path.join(storeRoot, ...suffix.split('/'));
+    if (!containsReal(storeRoot, target)) { validation.push(`store target escapes ${storeRoot}: ${target}`); continue; }
+    const raw = fs.readFileSync(abs, 'utf8');
+    if (!raw.trim()) { hygiene.push(`empty delta file: ${abs}`); continue; }
+    const { delta, stamp, problems } = parseDeltaStrict(raw);
+    if (problems.length) { hygiene.push(...problems.map((p) => `${abs}: ${p}`)); continue; }
+    if (deltaOpCount(delta) === 0) { hygiene.push(`parsed 0 delta operations from ${abs} — it has content but no recognized operations`); continue; }
+    const storeText = texts.get(suffix) || '';
+    if (stamp) {
+      const actual = texts.has(suffix) ? fingerprint(storeText) : 'new';
+      if (stamp !== actual) { casMismatches.push(`base mismatch for ${target}: delta expects ${stamp}, store is ${actual}`); continue; }
+    }
+
+codex
+The formal fixes are present in code and the AM-22/AM-23 tests now target the previously missed cases. I’m doing one final narrow check of the user-facing docs and stamp CLI test branch so the verdict includes any remaining drift.
+exec
+/usr/bin/zsh -lc "sed -n '300,330p' README.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '300,330p' README_cn.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '168,180p' RUNBOOK.md && sed -n '232,244p' RUNBOOK.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '168,180p' RUNBOOK_cn.md && sed -n '232,240p' RUNBOOK_cn.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 103ms:
+进入你的项目根目录后搭建工作流：
+```shell
+cd /path/to/your-project
+apriori init
+```
+
+`apriori init` 会让你**勾选正在使用的 AI 工具**（可多选），并为每个工具把一行指向唯一 `apriori/runbook.md` 的指针写进其原生位置（Claude Code → `CLAUDE.md` + 斜杠命令；Cursor → `.cursor/rules`；Copilot → `.github` instructions；等等）。它创建单一 `apriori/` 根(`runbook.md`、`process-config.md`,以及 `specs/ changes/ review/ truth/` 工作目录)。增量写入、绝不覆盖——**把 `apriori/` 纳入版本管理**。
+
+日后升级：`npm update -g apriori-cli && apriori update`——`update` 把工具所有的文件（runbook 副本、命令指针）刷新到新版本，绝不碰属于你的文件（`process-config.md`、`specs/`、`changes/`、规则文件）。runbook 过期时 `apriori check` 也会给出警告。
+
+> 上游仓库（含各工具最新接入说明）：https://github.com/Apriorhythm/apriori-spec-development
+
+### 3.4 命令速览
+
+| `apriori` 命令 | 何时 | 用途 |
+|---|---|---|
+| `apriori init` | 每项目一次 | 搭建 `apriori/` + 各工具指针 |
+| `apriori new <name>` | 变更启动时 | 搭建 `apriori/changes/<name>/` + flow-state 骨架 |
+| `apriori status` | 随时 | 每个变更走到哪:步骤、下一动作、未决台账项(`--json`) |
+| `apriori verify` | STEP5 退出闸口 | 把每条 scenario ID 绑定到绿测试(GREEN 或 GAPS);`--change <name>` 对投影(合并后)规格库验证——变更进行中用这个形式 |
+| `apriori archive` | STEP6 | 把变更的增量规格并入 living 规格库;`--change <name>` 自动发现整个变更、先 dry-run、失败原子地提交(至提交点为止) |
+| `apriori stamp <store-file>` | 写增量规格时 | 打印 CAS 基线章——库若已变化,`verify --change`/`archive` 会拒绝执行 |
+| `apriori check` | CI / pre-commit | 结构一致性(锚点、scenario ID、漂移) |
+| `apriori update` | CLI 升级后 | 刷新 runbook 副本 + 命令指针(绝不动你的文件) |
+
+runbook 提到的四个**步骤动作**——explore(STEP1)、propose(STEP2)、apply(STEP5)、archive(STEP6)——是 agent 执行的提示词(RUNBOOK §5);只有 archive 另有确定性 CLI(`apriori archive`)。
+
+---
+
+## 四、完整工作流程
+
+
+ succeeded in 123ms:
+| Extraction review (explore track) | `apriori/review/<change>-extraction-review-v{N}.md` |
+| Prototype (explore track) | `spike/` — deleted or quarantined at archive; never referenced by tasks.md |
+| Reviewer raw output | `apriori/review/<change>-<stage>-raw.*` |
+
+**The artifact interface (normative).** The paths above are plain files — no external SDD tool, no tool-owned spec directory. The `apriori` CLI acts on them directly.
+
+- **Layout:** a change stages its artifacts under `apriori/changes/<change>/` (`specs/`, `design.md`, `tasks.md`); accepted specs live in the store `apriori/specs/`. The `artifact-root` rule (§3) covers the staging area only.
+- **Spec structure:** Requirement blocks containing Scenario blocks with **stable IDs** (the quality rules in README §8.1). Every scenario MUST carry a leading ID (e.g. `#### Scenario: KV-03 …`) — an ID-less scenario can never be bound to a test (`apriori check` flags it).
+- **Archive algorithm:** `apriori archive` merges a change's delta specs into the store by stable Requirement ID — `## ADDED` → append; `## MODIFIED` → replace the whole block; `## REMOVED` → keep the store block, marked `deprecated (superseded by <change>)` (scenarios inside deprecated blocks stop being demanded by `verify`; their lingering tests turn ORPHAN); `## RENAMED` (`- Old -> New`) → rename the block's ID in place, content preserved. A same-ID conflict with a change merged since branching → **stop, open a ledger issue, a human resolves** (§4.11's serialize-per-module rule). The high-level form **`apriori archive --change <name>`** discovers every delta under `apriori/changes/<name>/specs/`, maps each to `apriori/specs/<same suffix>`, dry-runs the whole set by default, and on `--write` commits failure-atomically (preflight → stage → commit → move: any failure before commit means nothing is written); the single-file form (`--store <f> --delta <f>`) remains for one-module surgery. Either form lists every merged / modified / deprecated / renamed requirement and, on `--write` **with `--changes-dir apriori/changes`**, moves the in-flight change dir to `apriori/changes/archive/<YYYY-MM-DDThhmm>-<name>/` (date-time stamped by the CLI; without the flag only the store is written). Note the sequencing: the move happens before gate④, so while that gate is pending the flow-state lives — and is updated — at its **archived** path; a resumed session must look under `archive/` once STEP6's move has happened.
+- **CAS base stamps (serialize-rule tooling):** when authoring a delta, run `apriori stamp apriori/specs/<module>/spec.md` and paste the printed `<!-- apriori-base: … -->` line at the top of the delta file (before the first `## … Requirements` section; `new` for a not-yet-existing store). Both `verify --change` and `archive` then refuse if the store has diverged since the delta was authored — §4.11's serialize rule made mechanical. Stamps are opt-in; unstamped deltas behave as before.
+
+### Brainstorm — optional pre-STEP0 stance (a stance, not a step)
+
+
+### STEP4 — update docs
+
+- Apply the DESIGN-REVIEW-DOC changes to spec/design; optionally one more P5/P6 round. Skip if STEP3 changed nothing.
+
+### STEP5 — apply · cap: `step5-cap` (default 25)
+
+- **Do, in order:** (1) one failing test per spec scenario, test names carry scenario IDs — show the failing run; (2) implement in tasks.md order with **P7**, marking `[x]` as you go; (3) run until green; (4) `apriori verify` GREEN (the deterministic binding gate); (5) heterogeneous consistency review **P8** (R2); ledger.
+- **The spec-runner gate (`apriori verify`).** Mid-change, the gate is the **projected** form: `apriori verify --change <name> --test-cmd "<your test command>"` applies the change's delta specs to the living store in memory (the same `merge()` archive will run — MODIFIED replaces, REMOVED stops demanding, RENAMED demands the post-rename picture) and binds scenarios against that candidate store; scanning the raw store misses new scenarios, and scanning store+change double-counts MODIFIED. Post-archive (or store-only checks), the plain form `apriori verify --specs apriori/specs --test-cmd "…"` binds against the store as-is. Both report BOUND-GREEN / BOUND-RED / UNBOUND (scenario with no test) / ORPHAN (test with no scenario) / UNIDENTIFIED (scenario with no ID). GREEN (exit 0) means every scenario has a passing test and there are no orphans; exit 1 = gaps, exit 2 = the run itself is untrustworthy (missing spec paths, zero scenarios, non-TAP output, test-command crash/abort, a non-zero exit hiding behind all-green TAP — or, with `--change`: merge conflicts, a diverged base stamp, malformed deltas) — **fail-closed: a broken or vacuous run is never GREEN**. This is what used to be P8's mechanical coverage check, now deterministic.
+- **Verification matrix by project type:** all code projects — `apriori verify` GREEN + lint/static analysis green (plus SAST where security-sensitive) — where configured; backend/library — unit + property tests, mutation spot-checks; UI — plus E2E/visual regression (scenario IDs bind to `apriori verify` via unit/component tests — verify's gate speaks TAP, which Playwright does not emit; the Playwright E2E/visual layer sits **on top of** the binding gate as an additional exit condition, with visual checks emitting a textual pass/fail; visual-regression baseline images belong to the project's own test suite per its framework's convention, not to `apriori/`); deployed service — plus runtime contracts, canary + rollback; **docs-only project — `apriori check` green + the P8 consistency review stand in for `npm test`.** Where an executable instrument doesn't exist for the project type, the LLM review is the primary instrument there — that is not a downgrade.
+- **Guarantee-claim discipline (a spec must not promise what no test exercises):** whenever a spec or KB asserts a hard guarantee — crash durability ("a success response means the write is persisted"), atomicity, an invariant that holds "always" / "under concurrency" / "after restart" — that guarantee is only real if a test **injects the adversarial condition** and observes it hold. **Match the injection to the exact claim, on its SUCCESS path — an error-path test does not prove a success-path guarantee.** In particular: a *crash-durability* claim is proven only by *killing the process AFTER the success is acknowledged, then restarting and verifying the data survived* — injecting a write/rename **failure** proves only "no false success on error", a different claim. And "verify the data survived" means **read it back through the app's own load path after a real restart**, not peek at the file directly — a file-peek skips the very read/parse/recover code a crash exercises, so it passes while the app-level recovery is still broken. And know the classic gotcha the test must expose: durable atomic-file replacement needs `fsync` on **both the temp file AND its containing directory** before the rename counts as persisted; a temp-file-only fsync passes a naive test but still loses the ack on a real crash. (Root-run environments — most CI sandboxes — silently defeat permission-bit fault injection: `chmod` does nothing to root; inject at the I/O primitive via dependency injection instead.) If no adequate test exists, either add it or **scope the wording down to what is actually verified** (e.g. "atomic rename" not "crash-durable"). P8 checks this specifically: an unexercised hard guarantee in the prose is a spec-vs-code gap, not a nicety.
+- **Exit — ALL of:** tests green (per the matrix above); `apriori verify` GREEN (docs-only: `apriori check` green); lint/static analysis green (where configured); tasks.md all `[x]`; consistency verdict line = `VERDICT: no spec-vs-code gaps`. Design infeasible → back to STEP2; requirement itself wrong → back to STEP0 (both: update the state file and tell the human). Cap hit → **gate ⑤**.
+
+
+ succeeded in 127ms:
+**产物接口(规范性)。** 上表路径即纯文件——无外部 SDD 工具、无工具持有的规格目录。`apriori` CLI 直接作用于它们。
+
+- **布局:**变更在 `apriori/changes/<change>/` 下暂存产物(`specs/`、`design.md`、`tasks.md`);已接受的规格进入规格库 `apriori/specs/`。`artifact-root` 规则(§3)只作用于暂存区。
+- **spec 结构:**Requirement 块内含带**稳定 ID** 的 Scenario 块(README §8.1 中的质量规则)。每条 scenario 必须带前导 ID(如 `#### Scenario: KV-03 …`)——无 ID 的 scenario 永远无法绑定到测试(`apriori check` 会标它)。
+- **archive 算法:**`apriori archive` 按稳定 Requirement ID 把变更的增量规格并入规格库——`## ADDED` → 追加;`## MODIFIED` → 整块替换;`## REMOVED` → 规格库保留原块并标 `deprecated (superseded by <change>)`(弃用块内的 scenario 不再被 `verify` 要求;残留的测试转为 ORPHAN);`## RENAMED`(`- Old -> New`)→ 就地把块的 ID 改名、内容保留。与分叉后已合并的并行变更发生同 ID 冲突 → **停止、开台账、人工裁决**(§4.11 按模块串行)。高层形式 **`apriori archive --change <name>`** 自动发现 `apriori/changes/<name>/specs/` 下的全部增量文件,按路径后缀映射到 `apriori/specs/<同后缀>`,默认整组 dry-run,`--write` 时按"预检 → 暂存 → 提交 → 移动"四阶段失败原子地提交(提交点之前任何失败都不落一个字节);单文件形式(`--store <f> --delta <f>`)保留用于单模块手术。两种形式都列出每条 merged / modified / deprecated / renamed 的 Requirement,并在 `--write` **且带 `--changes-dir apriori/changes`** 时把在途变更目录挪到 `apriori/changes/archive/<YYYY-MM-DDThhmm>-<name>/`(日期时间由 CLI 盖;不带该 flag 只写规格库)。注意时序:移动发生在 gate④ 之前,该闸口悬决期间 flow-state 位于——且更新于——它的**归档**路径;STEP6 移动之后,续跑会话要去 `archive/` 下找它。
+- **CAS 基线章(串行规则的工具化):**写增量规格时,先跑 `apriori stamp apriori/specs/<module>/spec.md`,把打印出的 `<!-- apriori-base: … -->` 行贴在增量文件顶部(第一个 `## … Requirements` 小节之前;规格库文件尚不存在时用 `new`)。此后 `verify --change` 和 `archive` 都会在规格库自增量作成以来已发生变化时拒绝执行——§4.11 的串行规则由此机械化。基线章是可选的;不盖章的增量行为与从前完全一致。
+
+### 脑暴 —— STEP0 前的可选姿态(是姿态,不是步骤)
+
+在变更还说不清之前,你可以进入一种**思考伙伴姿态**(经 **P13** 进入)。它**无必需产出、无固定步骤、无 flow-state 条目**(不是被追踪的步骤)——但要把它当承重墙:STEP0 之后的一切大体自动运转,人和机器真正对齐的机会就在这场对话里,后面的流水线会放大它产出的对齐——或错位。不要赶。
+
+**硬闸口——批准之前不留任何持久物。** 在人明确批准退出之前,不写任何会留存到对话之外的东西:**绝不写代码**,也绝不创建工作流产物——不写需求文档、不写 spec/proposal/design 文件、不跑 `apriori new`、不建 flow-state。对话本身是脑暴唯一的介质;第一个文件写在人点头*之后*。这层保护**用一句大白话说明**(「你点头之前我不会创建任何文件,我们先只聊」)——绝不对人背诵协议内部词汇(产物名、命令、步骤编号)。同时,没有"简单到不用脑暴"的点子——看着简单的点子藏着最多未经检验的假设。(完全跳过脑暴直奔 STEP0 永远是人的权利——是人的,轮不到你替人默认。)
+
+
+### STEP5 —— apply · 上限:`step5-cap`(默认 25)
+
+- **动作,按序:**(1)每个 spec scenario 一条失败测试,测试名带 scenario ID——展示失败运行;(2)用 **P7** 按 tasks.md 顺序实现,随做随标 `[x]`;(3)跑到全绿;(4)`apriori verify` GREEN(确定性绑定闸口);(5)异构一致性评审 **P8**(R2);更新台账。
+- **spec-runner 闸口(`apriori verify`)。** 变更进行中,闸口用**投影**形式:`apriori verify --change <name> --test-cmd "<你的测试命令>"` 把变更的增量规格在内存中套到规格库上(跑的正是 archive 将来要跑的同一个 `merge()`——MODIFIED 整块替换、REMOVED 不再要求、RENAMED 按改名后的图景要求),再对这个候选规格库做绑定;只扫原始规格库会看不见新 scenario,库+变更两个目录一起扫则会把 MODIFIED 算重。归档之后(或纯库检查)用普通形式 `apriori verify --specs apriori/specs --test-cmd "…"` 按库现状绑定。两种形式都报告 BOUND-GREEN / BOUND-RED / UNBOUND(scenario 无测试)/ ORPHAN(测试无 scenario)/ UNIDENTIFIED(scenario 无 ID)。GREEN(exit 0)= 每条 scenario 有绿测试且无孤儿;exit 1 = 有缺口,exit 2 = 这次运行本身不可信(spec 路径缺失、零场景、非 TAP 输出、测试命令崩溃/中止、全绿 TAP 背后藏着非零退出码——`--change` 下还包括:合并冲突、基线章不匹配、增量文件格式坏)——**fail-closed:坏掉或空洞的运行绝不算 GREEN**。这就是过去 P8 的机械覆盖检查,现在确定性化了。
+- **按项目类型的验证矩阵:**所有代码项目——`apriori verify` GREEN + lint/静态分析全绿(安全敏感加 SAST)——where configured;后端/库——单测+属性测试+变异抽查;UI——另加 E2E/视觉回归(scenario ID 经单测/组件测绑定给 `apriori verify`——verify 的闸口只认 TAP,而 Playwright 不输出 TAP;Playwright 的 E2E/视觉层**叠在**绑定闸口之上作为额外退出条件,视觉检查须输出文本化 pass/fail;视觉回归的基线图属于项目自己的测试套件、按其框架惯例存放,不属于 `apriori/`);有部署面的服务——另加运行时契约、金丝雀+回滚;**纯文档项目——`apriori check` 全绿 + P8 一致性评审,替代 `npm test`。** 项目类型不具备某种可执行仪器时,LLM 评审在该处就是主力仪器——这不是降级。
+- **保证声明纪律(规格不得承诺没有测试验证的东西):**规格或 KB 每当断言一个硬保证——崩溃持久性("成功响应即已落盘")、原子性、"始终/并发下/重启后"成立的不变量——该保证只有当存在一个**注入对抗条件**并观测其成立的测试时才算真的成立。**注入要对准那个具体断言、且打在它的成功路径上——测错误路径证明不了成功路径的保证。**尤其:*崩溃持久性*的断言只有靠*在成功被确认之后杀掉进程、再重启、验证数据仍在*才算证明;注入一个写/rename **失败**只证明了"出错时不假成功",那是另一个断言。而"验证数据仍在"指的是**真重启后经应用自己的读回路读出来**,不是直接窥探文件——直接读文件会跳过崩溃真正会走的读取/解析/恢复代码,于是测试过了、应用级恢复其实还是坏的。还要知道测试必须暴露的那个经典漏点:持久的原子文件替换需要对**临时文件和它的承载目录都做 `fsync`**,rename 才算落盘;只 fsync 临时文件能骗过朴素测试,真崩溃时仍丢掉已确认的写。(root 运行的环境——多数 CI 沙箱——会让权限位故障注入静默失效:`chmod` 对 root 无效;改为在 I/O 原语处用依赖注入。)若无够格的测试,要么补上,要么**把措辞收窄到实际验证到的程度**(例如写"原子 rename"而非"崩溃持久")。P8 专门查这条:散文里未经验证的硬保证是规格-代码缺口,不是可有可无的润色。
+- **退出——以下全部:**测试全绿(按上述矩阵);`apriori verify` GREEN(纯文档:`apriori check` 全绿);lint/静态分析全绿(where configured);tasks.md 全 `[x]`;一致性结论行 = `VERDICT: no spec-vs-code gaps`(无 spec-vs-代码缺口)。设计不可行 → 回 STEP2;需求本身错了 → 回 STEP0(两者都要:更新状态文件并告知人)。触顶 → **闸口 ⑤**。
+
+
+ succeeded in 163ms:
+From your project root, scaffold the workflow:
+```shell
+cd /path/to/your-project
+apriori init
+```
+
+`apriori init` lets you **check the AI tools you use** (multiple allowed) and writes each a thin pointer to the one `apriori/runbook.md` in that tool's native location (Claude Code → `CLAUDE.md` + slash command; Cursor → `.cursor/rules`; Copilot → `.github` instructions; etc.). It creates the single `apriori/` root (`runbook.md`, `process-config.md`, and the `specs/ changes/ review/ truth/` working dirs). It is additive and never overwrites — **commit `apriori/` to version control.**
+
+To upgrade later: `npm update -g apriori-cli && apriori update` — `update` refreshes the tool-owned files (the runbook copy and command pointers) to the new version and never touches yours (`process-config.md`, `specs/`, `changes/`, rules files). A stale runbook also shows up as an `apriori check` warning.
+
+> Upstream (with the latest per-tool integration docs): https://github.com/Apriorhythm/apriori-spec-development
+
+### 3.4 Command Cheat Sheet
+
+| `apriori` command | When | Purpose |
+|---|---|---|
+| `apriori init` | once per project | scaffold `apriori/` + per-tool pointers |
+| `apriori new <name>` | change kickoff | scaffold `apriori/changes/<name>/` + a flow-state skeleton |
+| `apriori status` | anytime | where each change is: step, next action, open ledger items (`--json`) |
+| `apriori verify` | STEP5 exit gate | bind every scenario ID to a passing test (GREEN or GAPS); `--change <name>` verifies against the projected (post-merge) store — the mid-change form |
+| `apriori archive` | STEP6 | merge a change's delta specs into the living store; `--change <name>` discovers the whole change, dry-runs, commits failure-atomically (up to the commit point) |
+| `apriori stamp <store-file>` | delta authoring | print the CAS base-stamp line — `verify --change`/`archive` refuse if the store diverged since |
+| `apriori check` | CI / pre-commit | structural consistency (anchors, scenario IDs, drift) |
+| `apriori update` | after a CLI upgrade | refresh the runbook copy + command pointers (never your files) |
+
+The four **step actions** the runbook refers to — explore (STEP1), propose (STEP2), apply (STEP5), archive (STEP6) — are prompts the agent runs (RUNBOOK §5); only `archive` also has a deterministic CLI (`apriori archive`).
+
+---
+
+## 4. The Complete Workflow
+
+
+exec
+/usr/bin/zsh -lc "sed -n '1,360p' apriori/review/change-projection-issues.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 147ms:
+# Issue ledger — change-projection
+
+Rows recorded on behalf of the reviewer (codex session 019f4b30-68f9-7222-9b64-17f52a333b4c, read-only sandbox; raws: change-projection-req-review-v{1,2}-raw.txt).
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| REQ-1 | CAS base-stamp syntax, fingerprint algorithm, absent-store sentinel, and stamp CLI are unspecified. | CAS behavior is unimplementable/test-incompatible across implementations. | STEP0·r1 | verified |
+| REQ-2 | REMOVED projection conflicts with current merge output and scenario scanning. | Projected verify can prove a different scenario set than archive/plain verify will enforce. | STEP0·r1 | verified |
+| REQ-3 | Multi-module "all or none" archive lacks transaction and rollback semantics. | Partial store writes or moved change dirs can occur on I/O failure. | STEP0·r1 | verified |
+| REQ-4 | Already-archived rerun behavior conflicts with discovery path and existing idempotency rules. | Implementations may silently no-op, search archives, or widen current idempotency. | STEP0·r1 | verified |
+| REQ-5 | Path validation still lacks symlink/realpath containment semantics (reopened r2). | New `--change` surfaces can read or fingerprint outside intended roots through symlinks. | STEP0·r1 | verified |
+| REQ-6 | CLI grammar and option interactions for new surfaces are incomplete. | Backward compatibility and tests depend on unspecified parser behavior. | STEP0·r1 | verified |
+| REQ-7 | Multi-module malformed/empty/duplicate delta handling is unspecified. | Bad deltas can be silently ignored or collapsed. | STEP0·r1 | verified |
+| REQ-8 | Transaction staging uses fixed temp paths without defining ownership or pre-existing-temp behavior. | Archive can overwrite/delete stale or user-owned temp files and undermine manual recovery. | STEP0·r2 | verified |
+| REQ-9 | `verify --change --json` failure output shape is underspecified. | Machine consumers and tests cannot rely on a stable projection-error contract. | STEP0·r2 | verified |
+| ADV-1 | advisory batch acknowledged (4 items: archive item terminology; V1 duplicate-ID scope wording; exact archive path; 3.1.0 version-bump reminder) | low | STEP0·r1 | advisory-acked |
+| ADV-2 | advisory batch acknowledged (3 items: stamp path edge behavior; V7 wording; deprecated marker regex) — all three also addressed in v3 | low | STEP0·r2 | advisory-acked |
+| SPEC-1 | AM-12 retained single-file move-failure semantics but now conflicts with high-level AM-18 move-failure semantics. | Tests and implementation can require opposite store states for `--write --changes-dir` move failure. | STEP2·r1 | verified |
+| SPEC-2 | Archive CAS scenarios do not explicitly require coverage for both single-file and high-level archive forms. | CAS can be implemented or tested on only one archive surface, leaving the other unsafe. | STEP2·r1 | verified |
+| SPEC-3 | Change-dir move destination containment does not cover a symlinked `<changes-dir>/archive/` path. | Archive can move a change outside the intended changes root via symlink traversal. | STEP2·r1 | verified |
+| ADV-3 | advisory batch acknowledged (3 items: ID ranges clean; T7 stamping reordered before final dogfood verify — done; AM-27 subtests — noted in T1) | low | STEP2·r1 | advisory-acked |
+| IMPL-1 | Symlinked delta paths can be silently ignored or accepted outside the change tree. | AM-22 path-containment security can be bypassed or made invisible for delta inputs. | STEP5·r1 | fixed (r2: walk follows symlinks explicitly; specs/ itself containment-checked before becoming a root; escaping subdir now errors; tests added) |
+| IMPL-2 | Structurally malformed `apriori-base` comments can be treated as absent stamps. | CAS can silently opt out when the author intended divergence protection. | STEP5·r1 | fixed (r2: any standalone comment attempting apriori-base that fails the strict form is a hygiene error; test added) |
+| ADV-4 | advisory batch acknowledged (3 items: move-destination symlink test — added; README failure-atomic wording scoped "(up to the commit point)" EN+CN — done; stamp flag-like args now rejected (exactly one argv) — done) | low | STEP5·r1 | advisory-acked |
+
+codex
+# STEP5 P8 Consistency Review — change-projection r2
+
+## Resolution Check
+
+IMPL-1: verified. `discoverDeltas()` now validates `specs/` itself before using it as a containment root, and `mdFilesUnder()` follows symlink dirents explicitly so escaping symlinked files/subdirs become containment errors rather than silent skips. AM-22 now covers symlinked `specs/`, escaping symlinked subdir, and symlinked `archive/` move destination.
+
+IMPL-2: verified. `parseStamp()` now flags standalone `apriori-base` comment attempts that fail the strict stamp form, so structurally malformed stamp comments no longer silently disable CAS. AM-23 includes a missing-colon case.
+
+## New Issues
+
+No new spec-vs-code gaps found in the amended code, tests, or docs.
+
+## Notes
+
+The ADV-4 fixes are present: README/README_cn scope archive failure atomicity “up to the commit point,” `stampCli()` now requires exactly one raw argv entry, and the move-destination symlink case is tested.
+
+## Ledger Delta
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| IMPL-1 | Symlinked delta paths could be silently ignored or accepted outside the change tree. | AM-22 path-containment security could be bypassed or made invisible for delta inputs. | STEP5·r1 | verified |
+| IMPL-2 | Structurally malformed `apriori-base` comments could be treated as absent stamps. | CAS could silently opt out when the author intended divergence protection. | STEP5·r1 | verified |
+
+VERDICT: no spec-vs-code gaps
+tokens used
+519,795
+# STEP5 P8 Consistency Review — change-projection r2
+
+## Resolution Check
+
+IMPL-1: verified. `discoverDeltas()` now validates `specs/` itself before using it as a containment root, and `mdFilesUnder()` follows symlink dirents explicitly so escaping symlinked files/subdirs become containment errors rather than silent skips. AM-22 now covers symlinked `specs/`, escaping symlinked subdir, and symlinked `archive/` move destination.
+
+IMPL-2: verified. `parseStamp()` now flags standalone `apriori-base` comment attempts that fail the strict stamp form, so structurally malformed stamp comments no longer silently disable CAS. AM-23 includes a missing-colon case.
+
+## New Issues
+
+No new spec-vs-code gaps found in the amended code, tests, or docs.
+
+## Notes
+
+The ADV-4 fixes are present: README/README_cn scope archive failure atomicity “up to the commit point,” `stampCli()` now requires exactly one raw argv entry, and the move-destination symlink case is tested.
+
+## Ledger Delta
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| IMPL-1 | Symlinked delta paths could be silently ignored or accepted outside the change tree. | AM-22 path-containment security could be bypassed or made invisible for delta inputs. | STEP5·r1 | verified |
+| IMPL-2 | Structurally malformed `apriori-base` comments could be treated as absent stamps. | CAS could silently opt out when the author intended divergence protection. | STEP5·r1 | verified |
+
+VERDICT: no spec-vs-code gaps

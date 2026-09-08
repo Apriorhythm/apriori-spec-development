@@ -1,0 +1,614 @@
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f4b30-68f9-7222-9b64-17f52a333b4c
+--------
+user
+New stage: STEP2 technical review (P5) for doctor-command. Hunt for rework/incident risks.
+[Input] SPEC-DOC: apriori/changes/doctor-command/specs/{doctor,cli}/spec.md · DESIGN: apriori/changes/doctor-command/design.md · Proposal/tasks same dir · Requirement: requirement/req-final.md (doctor-command's) · KB: apriori/truth/{init,update,check,spec-runner,status}.md · Ledger: apriori/review/doctor-command-issues.md · State-A code: lib/{init,update,check,spec-runner,status}.js, bin/apriori.js; store spec apriori/specs/cli/spec.md.
+[Checklist] 1. scenarios cover every req-final behavior; missing edges 2. side effects (read-only + the one declared D5 probe — does the design guarantee it) 3. state-A conflicts (cli MODIFIED block fidelity vs current store incl. its CAS stamp; DR IDs fresh) 4. spec'd-not-designed / designed-not-spec'd 5. security/path handling (D7 archived-dir walk).
+[Scope] formal = rework/incident; else advisory; correctness/security never advisory.
+[Output — read-only sandbox: print the COMPLETE review doc body for verbatim landing at apriori/design/doctor-command-review-v1.md] New rows DSPEC-1, ...; advisory batch. End with the ledger delta table and exactly one verdict line: 'VERDICT: no major issues, ready to proceed to execution' or 'VERDICT: <N> issues open'.
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-10T16:50:14.982140Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-10T16:50:15.135290Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-10T16:50:15.475771Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-10T16:50:16.039049Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-10T16:50:16.969172Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-10T16:50:18.653397Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-10T16:50:22.181863Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: lBB31DcRZ8aZ
+codex
+I’ll read the doctor delta specs, design, tasks/proposal, and compare them to req-final plus current CLI/store conventions. I’ll focus on gaps that would force rework or create an unsafe/incorrect diagnostic.
+exec
+/usr/bin/zsh -lc "sed -n '1,320p' apriori/changes/doctor-command/design.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,320p' requirement/req-final.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,180p' apriori/changes/doctor-command/specs/cli/spec.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' apriori/changes/doctor-command/specs/doctor/spec.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 107ms:
+# Design — doctor-command
+
+## Module layout
+
+New `lib/doctor.js` (leaf; nothing requires it); consumes `./init` (TOOLS, detectTools), `./check` (checkRunbookFreshness), `./spec-runner` (collectScenarios, parseTap, zeroTapParsed, runTestCommand, configTestCmd, DEFAULT_ID), `./status` (activeChanges, parseFlowState). `bin/apriori.js` adds the `doctor` case + USAGE line.
+
+## Core function
+
+`runDoctor({ cwd, testCmd, noRun })` → `{ code, result: 'HEALTHY'|'FINDINGS'|'UNUSABLE', findings, checks: [{id, status: 'ok'|'finding'|'n/a', detail, fix?}], errors }`; `cli(argv)` parses flags (positional arg anywhere → usage exit 2 BEFORE running), prints text or JSON, returns code. Check order D1→D7; the two exit-2 aborts (D1 floor, D2 apriori/ missing) push their own check entry first, then return with whatever ran (A2).
+
+- **D1:** `parseInt(process.versions.node)` ≥ 18 → ok; else finding entry + UNUSABLE abort.
+- **D2:** `apriori/` missing → finding entry + UNUSABLE abort naming `apriori init`. Else one sub-finding each: runbook.md, specs/ dir, .gitignore containing `/^tmp\/$/m`, tmp/ dir. process-config absent → part of the n/a detail.
+- **D3:** runbook absent → n/a ("see D2"); else `checkRunbookFreshness(cwd)` → [] = ok, warn string = finding (fix `apriori update`).
+- **D4:** `detectTools(cwd)`; none → n/a. Per tool: rules file exists AND contains `apriori/runbook.md` (init's own dedupe key); command-level: command file exists. Findings name tool + file, fix `apriori init`.
+- **D5:** resolve testCmd (opts → configTestCmd); none → n/a hint; noRun → n/a "probe skipped". Else `runTestCommand(cmd, cwd)` then classify IN ORDER: exec.error → finding · exec.signal → finding · `Bail out!` (parseTap bailout) → finding · `!out.trim()` → finding "produced no output" · zeroTapParsed(...) → finding naming --test-reporter=tap · TAP version/plan present but zero parsed results: plan `1..0` → ok "empty suite"; else → finding "truncated or malformed" · non-zero exit with parsed failCount 0 → finding "exit N unexplained by TAP" · else ok with `${pass}p/${fail}f` info. (This ladder mirrors verify's infraErrors semantics via the same primitives — no reimplementation.)
+- **D6:** specs dir missing → n/a "see D2"; `collectScenarios([specsDir], DEFAULT_ID_re)`: zero files/scenarios → n/a "empty store"; unidentified → finding listing (detail names DEFAULT_ID); duplicates → finding listing.
+- **D7:** `activeChanges(cwd)`; per change: flow-state exists+readable, parseFlowState().change non-empty, === dir → info; else finding (failed clause named). Archived: dirs under changes/archive (directories only, stat through symlinks — gate's discipline) whose flow-state parses with current-step ∉ {DONE, ABANDONED} → appended to D7's detail as info. D7 status: finding if any clause failed, else ok (n/a when zero active changes and zero archived notes — "no changes yet").
+
+Aggregate: findings = checks with status finding (counting D2's per-gap findings individually in the count shown, but ONE check entry per D-id with a combined detail — the `findings` number = count of finding-status check entries; per-gap granularity lives in the detail text).
+
+## Tests (test/doctor.test.js)
+
+mkProject fixture builder; healthy fixture = full scaffold (runbook byte-copy from package RUNBOOK.md for D3 ✓) + CLAUDE.md with pointer + .claude/commands/apriori.md + config with test-cmd row. In-process `runDoctor` for classifications; spawn BIN for DR-02/DR-10/DR-11 exit codes + JSON purity. D5 signal case: unit-level via the exported `classifyProbe(run)` helper on a synthetic `{exec:{signal:'SIGKILL'},out:''}` (Windows-safe, per gap-report R3); all other D5 cases through the real command path with `node -e` fixtures.
+
+## Docs
+
+README/README_cn cheat-sheet row. RUNBOOK §0 install block: one clause naming `apriori doctor` as the onboarding probe (EN+CN).
+
+## Dogfood
+
+`apriori doctor` on this repo: expect FINDINGS — this repo intentionally has no apriori/runbook.md copy (it IS the source repo, uninitialized as a consumer)… actually `apriori/` exists (specs/changes/review/truth) but no runbook.md → D2 finding. That is an honest diagnosis of the dogfooding repo's unusual shape; record the output in the gate-④ packet rather than forcing a HEALTHY.
+
+ succeeded in 117ms:
+<!-- apriori-base: sha256:5435ee2e84ed397c1b06175cb693ab448c69099bc40eae51c91252699db7bf29 -->
+# Delta — cli (doctor-command)
+
+## MODIFIED Requirements
+
+### Requirement: single self-contained apriori CLI
+The toolchain SHALL ship as one npm package `apriori-cli` exposing a `bin` named `apriori` with subcommands `init | new | status | verify | archive | check | update | stamp | gate | doctor` plus a `--version` flag, requiring zero npm runtime dependencies (pure Node stdlib), runnable via global install or `npx`, and failing cleanly (one-line error, no stack trace) on unexpected errors.
+
+#### Scenario: CL-01 subcommand dispatch
+- WHEN `apriori <sub> ...` is invoked with sub in {init, new, status, verify, archive, check, update, stamp, gate, doctor}
+- THEN it dispatches to that subcommand; an unknown sub prints usage and exits non-zero
+
+#### Scenario: CL-02 verify subcommand is the spec-runner
+- WHEN `apriori verify --specs <dir> --test-cmd <cmd>` (or `apriori verify --change <name>`) runs
+- THEN it behaves per the spec-runner requirements (SR-01..25)
+
+#### Scenario: CL-03 archive subcommand is archive-merge
+- WHEN `apriori archive --store <f> --delta <f> --change <name> [--write]` or `apriori archive --change <name> [--write] [--changes-dir <dir>]` runs
+- THEN it behaves per the archive-merge requirements (AM-01..27)
+
+#### Scenario: CL-04 check subcommand is the doc checker
+- WHEN `apriori check` runs
+- THEN it behaves per the check requirement (CK-01..06)
+
+#### Scenario: CL-05 zero runtime dependencies
+- WHEN the package is installed
+- THEN it pulls no npm dependencies; only Node's standard library is used
+
+#### Scenario: CL-06 --version prints the package version
+- WHEN `apriori --version` (or `-v`) is invoked
+- THEN it prints the installed package version verbatim on stdout and exits 0
+
+#### Scenario: CL-07 unexpected subcommand failures exit cleanly
+- WHEN a subcommand throws an unexpected error (e.g. an unreadable input file)
+- THEN the CLI prints a single `apriori: <message>` line on stderr and exits 1 — never a raw stack trace
+
+#### Scenario: CL-08 stamp subcommand appears in usage
+- WHEN `apriori` runs with no arguments or `--help`
+- THEN the printed usage lists `stamp` alongside the other subcommands (behavior per AM-27)
+
+#### Scenario: CL-09 gate subcommand appears in usage
+- WHEN `apriori` runs with no arguments or `--help`
+- THEN the printed usage lists `gate` alongside the other subcommands (behavior per GT-01..12); `apriori gate` without `--change` prints its own usage and exits 2
+
+#### Scenario: CL-10 doctor subcommand appears in usage
+- WHEN `apriori` runs with no arguments or `--help`
+- THEN the printed usage lists `doctor` alongside the other subcommands (behavior per DR-01..11); `apriori doctor <positional>` prints its own usage and exits 2
+
+ succeeded in 131ms:
+# Requirement — doctor-command (v3)
+
+change: doctor-command
+target lineage: **v3 branch** (never merge to main or v2). Ships in the next minor (expected **3.2.0**, together with gate-command); purely additive subcommand, no compatibility impact.
+
+> v2 handling notes (P2): DREQ-1 → D5 now classifies EVERY runTestCommand/TAP edge. DREQ-2+DREQ-5 → D7 gains a concrete validity rule and A8 gains concrete inputs. DREQ-3 → missing `apriori/specs/` is a D2 finding; D6 reads `–` then. DREQ-4 → D3 is `–` when the runbook copy is absent (D2 owns that finding). ADV-D1 batch acknowledged: D4 explicitly covers a fully missing rules file; D6's detail names the default ID pattern.
+>
+> v3 handling notes (P2): DREQ-1 (reopened) → D5 now classifies TAP-version/plan output with zero parsed results: exactly `1..0` → ✓; anything else → finding. DREQ-6 → positional args are a usage error (exit 2, pure JSON under `--json`).
+
+## Background — the problem (current state A)
+
+Onboarding failures surface piecemeal: `verify` hints zero-TAP only after a full run, `check` errors on a missing store, a stale runbook is a warn-line inside `check`, tool pointers silently vanish when a rules file is rewritten, and nothing at all checks the Node floor or reports half-initialized projects. The legacy-project lab logged this class of friction repeatedly: each command reports only the corner it can see. Roadmap item 4 (owner-ordered "先5后4"): one command that inspects the whole seam between a project and apriori, and says what is wrong and which existing command fixes it.
+
+## Goal (target state B)
+
+`apriori doctor` — a diagnosis command: seven read-only checks (plus ONE declared side effect: actually running the project's test command to probe TAP plumbing, skippable), each reporting `✓ / ✗ (finding, with the fix) / – (not applicable, with why)`, aggregated into one exit code. Doctor only diagnoses and points at the fixer (`apriori init` / `apriori update` / the human); it never repairs anything itself.
+
+## The checks
+
+| # | Check | Rule | Finding fix hint |
+|---|---|---|---|
+| D1 | Node floor | `process.versions.node` major ≥ 18 → `✓`; below → **exit-2 class** (the CLI itself is not supported here) | upgrade Node |
+| D2 | Init state | `apriori/` dir missing → **exit-2 class** with `run 'apriori init'`. Present: `apriori/runbook.md` present (✗ if missing); **`apriori/specs/` dir present (✗ if missing — half-initialized scaffold, DREQ-3)**; `apriori/process-config.md` present (– if missing: optional, defaults apply); `apriori/.gitignore` containing a `tmp/` line AND the `apriori/tmp/` dir existing (✗ if either missing) | `apriori init` / `apriori update` |
+| D3 | Runbook freshness | byte-compare `apriori/runbook.md` vs the packaged RUNBOOK.md (same rule as check's CK-06, reusing `checkRunbookFreshness`); differs → ✗; runbook copy ABSENT → `–` ("runbook missing — see D2; freshness not checkable") — D2 owns the absence finding, D3 never contradicts it (DREQ-4) | `apriori update` |
+| D4 | Tool pointers | for each tool `detectTools(root)` finds: its rules file must EXIST and contain the `apriori/runbook.md` pointer (a fully missing rules file is the same finding, naming the file); command-level tools must have their command file (✗ otherwise). Undetected tools are not mentioned. Zero tools detected → – ("no known AI-tool markers") | `apriori init` |
+| D5 | TAP probe | test command from `--test-cmd` or the process-config row; neither → – with the hint. Present and `--no-run` NOT given: run once via `runTestCommand` and classify EVERY edge (DREQ-1): spawn error → ✗ (message) · killed by signal → ✗ (signal name) · `Bail out!` in output → ✗ (bailout is a broken run) · empty output (nothing on stdout+stderr) → ✗ ("command produced no output") · output with zero parsed TAP results and no TAP plan line (`zeroTapParsed`) → ✗ naming node's `--test-reporter=tap` · non-zero exit whose parsed TAP shows ZERO failures → ✗ ("exit N unexplained by TAP — truncated?") · TAP parsed with failures explaining any non-zero exit → ✓ (pass/fail counts as info; **test failures are NOT doctor findings** — plumbing probe, not a test gate) · TAP-version/plan output with ZERO parsed result lines: exactly a `1..0` plan → ✓ ("empty suite — plumbing OK"); any OTHER TAP version or `1..N` plan with zero `ok`/`not ok` lines → ✗ ("TAP stream truncated or malformed"). `--no-run` → – ("probe skipped") | fix the test command |
+| D6 | Store health | `apriori/specs/` scanned via `collectScenarios` with the DEFAULT ID pattern (named in the detail — custom-pattern projects read accordingly; `--id-pattern` is out of scope): dir missing → – ("no store dir — see D2"); zero scenario files or zero scenarios → – ("empty store — normal for a new project"); UNIDENTIFIED scenarios → ✗ listing them; duplicate IDs → ✗ listing them | fix the spec files |
+| D7 | Changes overview | for each active change (`activeChanges`), the VALIDITY RULE (DREQ-2): `flow-state.md` exists and is readable, AND `parseFlowState` yields a non-empty `change`, AND that `change` equals the dir name — all three hold → info line; any fails → ✗ naming the dir and which clause failed; other keys are informational only. Additionally list archived changes whose flow-state `current-step` is neither DONE nor ABANDONED as info ("gate ④ possibly pending") — informational, never a finding | `apriori status` / fix the file |
+
+## Output & CLI contract
+
+- `apriori doctor [--test-cmd "<cmd>"] [--no-run] [--cwd <dir>] [--json]`. Any POSITIONAL argument → usage error, exit 2 (pure JSON under `--json`) — doctor's audience is newcomers, a stray argument is a typo to surface, not to swallow (DREQ-6). Unknown `--flags` follow the repo-wide convention (silently ignored — strictness is roadmap item 6).
+- Text: one line per check; final line `DOCTOR: HEALTHY` / `DOCTOR: <n> finding(s)` / `DOCTOR: UNUSABLE (see errors)`.
+- Exit: **0** healthy (findings = 0) · **1** ≥1 finding · **2** unusable (D1 below floor, D2 apriori/ missing entirely, positional-arg usage error) — the exit-2 classes still print whatever checks already ran.
+- `--json` (pure JSON stdout in EVERY outcome class): `{ result: "HEALTHY"|"FINDINGS"|"UNUSABLE", findings: <n>, checks: [{id, status: "ok"|"finding"|"n/a", detail, fix?}], errors: [] }` — `errors` carries the exit-2 messages; `checks` lists whatever ran before the abort.
+- Read-only guarantee: doctor never creates/modifies/deletes any file; its ONLY side effect is executing the user's test command for D5, and `--no-run` removes even that.
+- `doctor` joins `apriori --help` usage and the CLI spec's subcommand list.
+
+## Acceptance criteria (testable)
+
+- A1. A fully healthy initialized project (fresh `init` + valid test-cmd) → every applicable check `✓`/`–`, `DOCTOR: HEALTHY`, exit 0.
+- A2. `apriori/` absent → exit 2, message contains `apriori init`, JSON `result: "UNUSABLE"` with D1 already listed in `checks`.
+- A3. Missing runbook copy / missing `apriori/specs/` / missing `.gitignore` / missing `tmp/` dir → D2 findings naming each; a missing process-config → `–`, not a finding; with the runbook missing, D3 reports `–` (never a contradictory ✓).
+- A4. A runbook copy differing from the packaged one by one byte → D3 finding naming `apriori update`.
+- A5. A detected tool whose rules file lost its pointer, or a command-level tool missing its command file → D4 findings naming the tool and file; a project with no tool markers → D4 `–`.
+- A6. D5, one case per classification: no test-cmd → `–`; `--no-run` → `–`; spawn failure → finding; signal kill → finding; `Bail out!` → finding; empty output → finding; non-TAP output → finding naming `--test-reporter=tap`; exit 7 with all-green TAP → finding ("unexplained"); failing TAP tests with matching non-zero exit → `✓`; `1..0` plan → `✓`; `TAP version 13` (or `1..3`) with zero result lines → finding ("truncated or malformed").
+- A6b. `apriori doctor extra-arg` → exit 2 usage; with `--json` → pure JSON `result: "UNUSABLE"`.
+- A7. D6: empty store → `–`; an ID-less scenario → finding listing it; a duplicate ID across files → finding listing it.
+- A8. D7, concrete inputs (DREQ-5): an active change dir with NO flow-state.md → finding; one whose flow-state lacks a `change:` key → finding; one whose `change:` mismatches the dir name → finding; a healthy active change → no finding; an archived not-DONE change → informational mention only, never a finding.
+- A9. `--json` parses as JSON for HEALTHY, FINDINGS, and UNUSABLE classes with the contracted shape.
+- A10. Read-only: a doctor run (with `--no-run`) leaves the project tree byte-identical; with a `node -e` test command, the only executed side effect is that command itself.
+- A11. Zero-dep constraint holds; no behavior change to any existing subcommand (doctor REUSES `checkRunbookFreshness`, `collectScenarios`, `parseTap`, `zeroTapParsed`, `runTestCommand`, `configTestCmd`, `TOOLS`, `detectTools`, `activeChanges` — it duplicates none of them).
+
+## Out of scope (won't do)
+
+- Any repair/auto-fix action (each finding names its fixer; doctor never writes).
+- Gate-style per-change verdicts (ledger/verify/evidence are `apriori gate`'s job — doctor stops at "flow-state parseable").
+- check's handbook self-checks (`--self` remains check's).
+- Node floor enforcement anywhere else (bin stays as-is; doctor only reports).
+- `--id-pattern` for D6 (default pattern only; custom-pattern projects read D6's `–`/finding details accordingly — documented limitation, same stance as gate).
+- CI wiring, engines field in package.json (release decision, not doctor's).
+
+## Decisions proposed (for review)
+
+- D-DR-1: test failures are explicitly NOT doctor findings — D5 probes plumbing (does the command speak TAP), not correctness; making red tests a doctor finding would duplicate `verify` and train people to run doctor less.
+- D-DR-2: D7 never blocks on gate-④-pending archived changes — that state is legitimate (the §4 archive sequencing), so it is information, not a finding.
+
+ succeeded in 148ms:
+<!-- apriori-base: new -->
+# Delta — doctor (doctor-command)
+
+## ADDED Requirements
+
+### Requirement: doctor diagnoses the project-apriori seam
+`apriori doctor` SHALL run seven read-only checks (D1 Node floor · D2 init scaffold · D3 runbook freshness · D4 tool pointers · D5 TAP probe · D6 store health · D7 changes overview), each reporting ok/finding/not-applicable with a fix hint on findings, and SHALL encode the aggregate in its exit code: 0 = zero findings (`DOCTOR: HEALTHY`), 1 = ≥1 finding (`DOCTOR: <n> finding(s)`), 2 = unusable (Node below floor, `apriori/` missing entirely, positional-arg usage error) — printing whatever checks already ran. Doctor never repairs and never writes; its ONLY side effect is D5 executing the project's test command once, removed by `--no-run`.
+
+#### Scenario: DR-01 a healthy initialized project reports HEALTHY
+- WHEN every applicable check passes on a freshly initialized project with a valid TAP test command
+- THEN each check reports ok or not-applicable, the final line is `DOCTOR: HEALTHY`, and the exit code is 0
+
+#### Scenario: DR-02 an uninitialized project is unusable, with guidance
+- WHEN `apriori/` does not exist under the target root
+- THEN doctor exits 2, the message names `apriori init`, and `--json` reports `result: "UNUSABLE"` with the already-run checks (D1) listed
+
+#### Scenario: DR-03 init-scaffold gaps are findings with their fixer
+- WHEN `apriori/runbook.md`, `apriori/specs/`, `apriori/.gitignore` (with its `tmp/` line), or the `apriori/tmp/` dir is missing
+- THEN D2 reports one finding per gap naming the file and the fixer (`apriori init` / `apriori update`); a missing `apriori/process-config.md` is not-applicable (optional, defaults apply), never a finding
+
+#### Scenario: DR-04 runbook freshness points at update, and never contradicts D2
+- WHEN the runbook copy differs by any byte from the packaged RUNBOOK.md
+- THEN D3 is a finding naming `apriori update`; WHEN the copy is absent THEN D3 is not-applicable ("see D2") — absence is D2's finding alone
+
+#### Scenario: DR-05 detected tools must keep their pointers
+- WHEN a tool that `detectTools` finds has a missing rules file, a rules file without the `apriori/runbook.md` pointer, or (command-level tools) a missing command file
+- THEN D4 reports a finding per tool naming the file and `apriori init`; a project with no known tool markers reports not-applicable
+
+#### Scenario: DR-06 the TAP probe classifies every plumbing edge
+- WHEN the test command (from `--test-cmd` or the config row) runs
+- THEN D5 classifies: spawn error, signal kill, `Bail out!`, empty output, zero parsed TAP without a version/plan line (naming `--test-reporter=tap`), a TAP version or non-`1..0` plan with zero result lines ("truncated or malformed"), and a non-zero exit unexplained by parsed TAP failures — each a finding; parsed TAP whose failures explain any non-zero exit is ok (counts as info — test failures are NOT doctor findings), and an exactly-`1..0` plan is ok ("empty suite")
+
+#### Scenario: DR-07 the probe is skippable and degrades honestly
+- WHEN no test command is configured anywhere, or `--no-run` is given
+- THEN D5 reports not-applicable with the reason (the `apriori init --test-cmd` hint, or "probe skipped") — never a finding
+
+#### Scenario: DR-08 store health flags unbindable and ambiguous scenarios
+- WHEN `apriori/specs/` contains scenarios without a leading default-pattern ID, or the same ID in more than one scenario
+- THEN D6 reports findings listing them (detail names the default ID pattern); an empty store or zero scenario files is not-applicable ("normal for a new project"); a missing specs dir is not-applicable here ("see D2")
+
+#### Scenario: DR-09 changes overview validates flow-states and surfaces pending gates
+- WHEN an active change dir has no readable flow-state.md, or `parseFlowState` yields an empty `change`, or its `change` mismatches the dir name
+- THEN D7 reports a finding naming the dir and the failed clause; healthy active changes are info lines; archived changes whose `current-step` is neither DONE nor ABANDONED are listed as info ("gate ④ possibly pending") — never a finding
+
+#### Scenario: DR-10 output is machine-consumable in every class
+- WHEN `apriori doctor --json` runs — HEALTHY, FINDINGS, or UNUSABLE (incl. the positional-arg usage error)
+- THEN stdout parses as JSON shaped `{ result, findings, checks: [{id, status: "ok"|"finding"|"n/a", detail, fix?}], errors }`
+
+#### Scenario: DR-11 doctor is read-only and rejects stray arguments
+- WHEN doctor runs with `--no-run` against any project tree
+- THEN no file is created, modified, or deleted; WHEN any positional argument is given THEN doctor exits 2 with usage (pure JSON under `--json`)
+
+codex
+I’ve read the main artifacts. Two things need closer checks now: whether the CLI MODIFIED block matches the current store block exactly apart from `doctor`, and whether the D7 archived walk has enough containment/symlink discipline for a diagnostic that reads flow-state files.
+exec
+/usr/bin/zsh -lc "sed -n '1,220p' apriori/changes/doctor-command/tasks.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' apriori/review/doctor-command-issues.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,200p' apriori/changes/doctor-command/proposal.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,140p' apriori/specs/cli/spec.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 106ms:
+# Proposal — doctor-command
+
+**WHY.** Onboarding failures surface piecemeal — each command reports only the corner it sees (zero-TAP inside verify, missing store inside check, stale runbook as a warn line, vanished tool pointers not at all, Node floor nowhere). The legacy-project lab logged this friction class repeatedly. Roadmap item 4, owner-ordered ("先5后4"), following gate-command.
+
+**WHAT.** `apriori doctor` — seven diagnosis checks with one exit code (0 HEALTHY · 1 FINDINGS · 2 UNUSABLE): D1 Node floor, D2 init-state scaffold (incl. missing specs/ and the .gitignore/tmp gap update can't repair), D3 runbook freshness, D4 tool pointers for detected tools, D5 TAP plumbing probe (the ONE declared side effect — runs the test command once, every TAP edge classified, test failures explicitly NOT findings; `--no-run` skips), D6 store health (ID-less/duplicate scenarios), D7 changes overview (flow-state validity; gate-④-pending info). Every finding names its fixer (`apriori init`/`apriori update`/the human); doctor never repairs, never writes. `--json` with a fixed shape for all outcome classes.
+
+**OUT OF SCOPE.** Auto-fix, gate-style per-change verdicts (ledger/verify/evidence = `apriori gate`), check's `--self` handbook checks, Node-floor enforcement in bin, `--id-pattern`, CI wiring, package.json engines.
+
+Full requirement: `requirement/req-final.md` (3 P1 rounds → VERDICT: no major issues; ledger 6 verified / 0 open / 2 advisory batches).
+
+ succeeded in 111ms:
+### Requirement: single self-contained apriori CLI
+The toolchain SHALL ship as one npm package `apriori-cli` exposing a `bin` named `apriori` with subcommands `init | new | status | verify | archive | check | update | stamp | gate` plus a `--version` flag, requiring zero npm runtime dependencies (pure Node stdlib), runnable via global install or `npx`, and failing cleanly (one-line error, no stack trace) on unexpected errors.
+
+#### Scenario: CL-01 subcommand dispatch
+- WHEN `apriori <sub> ...` is invoked with sub in {init, new, status, verify, archive, check, update, stamp, gate}
+- THEN it dispatches to that subcommand; an unknown sub prints usage and exits non-zero
+
+#### Scenario: CL-02 verify subcommand is the spec-runner
+- WHEN `apriori verify --specs <dir> --test-cmd <cmd>` (or `apriori verify --change <name>`) runs
+- THEN it behaves per the spec-runner requirements (SR-01..25)
+
+#### Scenario: CL-03 archive subcommand is archive-merge
+- WHEN `apriori archive --store <f> --delta <f> --change <name> [--write]` or `apriori archive --change <name> [--write] [--changes-dir <dir>]` runs
+- THEN it behaves per the archive-merge requirements (AM-01..27)
+
+#### Scenario: CL-04 check subcommand is the doc checker
+- WHEN `apriori check` runs
+- THEN it behaves per the check requirement (CK-01..06)
+
+#### Scenario: CL-05 zero runtime dependencies
+- WHEN the package is installed
+- THEN it pulls no npm dependencies; only Node's standard library is used
+
+#### Scenario: CL-06 --version prints the package version
+- WHEN `apriori --version` (or `-v`) is invoked
+- THEN it prints the installed package version verbatim on stdout and exits 0
+
+#### Scenario: CL-07 unexpected subcommand failures exit cleanly
+- WHEN a subcommand throws an unexpected error (e.g. an unreadable input file)
+- THEN the CLI prints a single `apriori: <message>` line on stderr and exits 1 — never a raw stack trace
+
+#### Scenario: CL-08 stamp subcommand appears in usage
+- WHEN `apriori` runs with no arguments or `--help`
+- THEN the printed usage lists `stamp` alongside the other subcommands (behavior per AM-27)
+
+#### Scenario: CL-09 gate subcommand appears in usage
+- WHEN `apriori` runs with no arguments or `--help`
+- THEN the printed usage lists `gate` alongside the other subcommands (behavior per GT-01..12); `apriori gate` without `--change` prints its own usage and exits 2
+
+ succeeded in 120ms:
+# Issue ledger — doctor-command
+
+Rows recorded on behalf of the reviewer (codex session 019f4b30-68f9-7222-9b64-17f52a333b4c; raws: doctor-command-req-review-v1-raw.txt).
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| DREQ-1 | D5 test-command failure taxonomy omits signal kill, TAP bailout, and non-zero/truncated TAP cases (r2 reopened: TAP-version/plan with zero results). | Broken test plumbing can be classified inconsistently or reported healthy. | STEP0·r1 | verified |
+| DREQ-2 | D7 "unparseable flow-state" is not concrete against `parseFlowState`, which rarely errors. | Junk flow-state files can pass or fail inconsistently. | STEP0·r1 | verified |
+| DREQ-3 | Missing `apriori/specs/` is not classified. | Half-initialized projects can be treated as normal empty stores. | STEP0·r1 | verified |
+| DREQ-4 | D3 behavior when `apriori/runbook.md` is missing is ambiguous. | Output can contradict itself between D2 and D3. | STEP0·r1 | verified |
+| DREQ-5 | A8's unparseable-flow-state criterion lacks a concrete test input. | Acceptance tests can assert weaker or divergent behavior. | STEP0·r1 | verified |
+| ADV-D1 | advisory batch acknowledged (2 items: D4 missing-rules-file wording — fixed; D6 default-ID-pattern visibility — fixed) | low | STEP0·r1 | advisory-acked |
+| DREQ-6 | Positional arguments are forbidden but not classified. | CLI behavior and tests can diverge on stray arguments. | STEP0·r2 | verified |
+| ADV-D2 | advisory batch acknowledged (2 items: exit-2 wording now lists positional args; A11 reuse list gains parseTap) — both applied to req-final | low | STEP0·r3 | advisory-acked |
+
+ succeeded in 140ms:
+# Tasks — doctor-command (STEP5 consumes this order)
+
+- [ ] T1. Failing tests first: one per scenario DR-01..11 (test/doctor.test.js) + CL-10 (test/cli.test.js) — show the failing run.
+- [ ] T2. lib/doctor.js: runDoctor + classifyProbe + cli per design.
+- [ ] T3. bin/apriori.js: `doctor` dispatch + USAGE line.
+- [ ] T4. Full suite green; `apriori verify --change doctor-command` GREEN.
+- [ ] T5. Dogfood: `apriori doctor` on this repo — record the honest output (expected: D2 finding, no runbook copy) in the gate-④ packet; `apriori gate --change doctor-command` → GATE: PASS.
+- [ ] T6. Docs: README/README_cn cheat-sheet rows; RUNBOOK/RUNBOOK_cn §0 doctor clause.
+- [ ] T7. `apriori check --self` PASS.
+
+codex
+The CLI delta appears to carry the current store’s `gate` state plus `doctor`; I’m checking the base stamp and ID ranges mechanically, then I’ll decide whether the D7 archive handling needs a formal finding.
+exec
+/usr/bin/zsh -lc "node - <<'NODE'
+const fs=require('fs'),crypto=require('crypto');
+const text=fs.readFileSync('apriori/specs/cli/spec.md','utf8').replace(/\\r\\n/g,'\\n').replace(/\\r/g,'\\n');
+console.log('sha256:'+crypto.createHash('sha256').update(text,'utf8').digest('hex'));
+NODE" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' bin/apriori.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "rg -n \"\\bDR-[0-9]{2}\\b|\\bCL-10\\b|doctor\" apriori/specs apriori/changes/doctor-command/specs" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc 'rg -n "containsReal|realpath|archive|symlink|lstat|stat" apriori/truth/archive-merge.md lib/archive-merge.js apriori/changes/doctor-command/design.md requirement/req-final.md' in /mnt/d/Workbench/misc/apriori-spec-development
+ exited 1 in 119ms:
+zsh:1: can't create temp file for here document: read-only file system
+
+ succeeded in 129ms:
+#!/usr/bin/env node
+'use strict';
+/* apriori CLI — single self-contained entry, zero dependencies. Dispatches subcommands. */
+
+const sub = process.argv[2];
+const rest = process.argv.slice(3);
+
+const USAGE = `apriori <command>
+
+  new       scaffold a change dir + flow-state skeleton (bare kebab-case name)
+  status    show where a change is: step, next-action, open ledger items (--json)
+  verify    bind spec scenarios to test runs (STEP5 gate) (--json)
+  archive   merge a change's delta specs into the living store (STEP6)
+  stamp     print the CAS base-stamp line for a store file (delta authoring)
+  gate      aggregate the mechanical gate checks for one change (CI-friendly)
+  check     structural consistency checks (CI / pre-commit)
+  init      scaffold the workflow + per-tool pointers
+  update    refresh tool-owned files (runbook copy, command pointers) after a CLI upgrade
+
+Run 'apriori <command>' with no args for that command's usage.`;
+
+async function main() {
+  switch (sub) {
+    case 'new':     return require('../lib/new').cli(rest);
+    case 'status':  return require('../lib/status').cli(rest);
+    case 'verify':  return require('../lib/spec-runner').cli(rest);
+    case 'archive': return require('../lib/archive-merge').cli(rest);
+    case 'stamp':   return require('../lib/archive-merge').stampCli(rest);
+    case 'gate':    return require('../lib/gate').cli(rest);
+    case 'check':   return require('../lib/check').cli(rest);
+    case 'init':    return require('../lib/init').cli(rest);
+    case 'update':  return require('../lib/update').cli(rest);
+    case '-v':
+    case '--version': console.log(require('../package.json').version); return 0;
+    case undefined:
+    case '-h':
+    case '--help':  console.log(USAGE); return 0;
+    default:        console.error(`unknown command: ${sub}\n\n${USAGE}`); return 2;
+  }
+}
+
+main().then(
+  (code) => process.exit(code),
+  (err) => { console.error(`apriori: ${err && err.message ? err.message : err}`); process.exit(1); }
+);
+
+ succeeded in 156ms:
+apriori/changes/doctor-command/design.md:5:New `lib/doctor.js` (leaf; nothing requires it); consumes `./init` (TOOLS, detectTools), `./check` (checkRunbookFreshness), `./spec-runner` (collectScenarios, parseTap, zeroTapParsed, runTestCommand, configTestCmd, DEFAULT_ID), `./status` (activeChanges, parseFlowState). `bin/apriori.js` adds the `doctor` case + USAGE line.
+apriori/changes/doctor-command/design.md:9:`runDoctor({ cwd, testCmd, noRun })` → `{ code, result: 'HEALTHY'|'FINDINGS'|'UNUSABLE', findings, checks: [{id, status: 'ok'|'finding'|'n/a', detail, fix?}], errors }`; `cli(argv)` parses flags (positional arg anywhere → usage exit 2 BEFORE running), prints text or JSON, returns code. Check order D1→D7; the two exit-2 aborts (D1 floor, D2 apriori/ missing) push their own check entry first, then return with whatever ran (A2).
+apriori/changes/doctor-command/design.md:17:- **D7:** `activeChanges(cwd)`; per change: flow-state exists+readable, parseFlowState().change non-empty, === dir → info; else finding (failed clause named). Archived: dirs under changes/archive (directories only, stat through symlinks — gate's discipline) whose flow-state parses with current-step ∉ {DONE, ABANDONED} → appended to D7's detail as info. D7 status: finding if any clause failed, else ok (n/a when zero active changes and zero archived notes — "no changes yet").
+apriori/changes/doctor-command/design.md:19:Aggregate: findings = checks with status finding (counting D2's per-gap findings individually in the count shown, but ONE check entry per D-id with a combined detail — the `findings` number = count of finding-status check entries; per-gap granularity lives in the detail text).
+requirement/req-final.md:10:## Background — the problem (current state A)
+requirement/req-final.md:14:## Goal (target state B)
+requirement/req-final.md:23:| D2 | Init state | `apriori/` dir missing → **exit-2 class** with `run 'apriori init'`. Present: `apriori/runbook.md` present (✗ if missing); **`apriori/specs/` dir present (✗ if missing — half-initialized scaffold, DREQ-3)**; `apriori/process-config.md` present (– if missing: optional, defaults apply); `apriori/.gitignore` containing a `tmp/` line AND the `apriori/tmp/` dir existing (✗ if either missing) | `apriori init` / `apriori update` |
+requirement/req-final.md:28:| D7 | Changes overview | for each active change (`activeChanges`), the VALIDITY RULE (DREQ-2): `flow-state.md` exists and is readable, AND `parseFlowState` yields a non-empty `change`, AND that `change` equals the dir name — all three hold → info line; any fails → ✗ naming the dir and which clause failed; other keys are informational only. Additionally list archived changes whose flow-state `current-step` is neither DONE nor ABANDONED as info ("gate ④ possibly pending") — informational, never a finding | `apriori status` / fix the file |
+requirement/req-final.md:35:- `--json` (pure JSON stdout in EVERY outcome class): `{ result: "HEALTHY"|"FINDINGS"|"UNUSABLE", findings: <n>, checks: [{id, status: "ok"|"finding"|"n/a", detail, fix?}], errors: [] }` — `errors` carries the exit-2 messages; `checks` lists whatever ran before the abort.
+requirement/req-final.md:49:- A8. D7, concrete inputs (DREQ-5): an active change dir with NO flow-state.md → finding; one whose flow-state lacks a `change:` key → finding; one whose `change:` mismatches the dir name → finding; a healthy active change → no finding; an archived not-DONE change → informational mention only, never a finding.
+requirement/req-final.md:57:- Gate-style per-change verdicts (ledger/verify/evidence are `apriori gate`'s job — doctor stops at "flow-state parseable").
+requirement/req-final.md:66:- D-DR-2: D7 never blocks on gate-④-pending archived changes — that state is legitimate (the §4 archive sequencing), so it is information, not a finding.
+lib/archive-merge.js:3: * archive-merge — plain-files native implementation of the archive action (§4).
+lib/archive-merge.js:8: * delta discovery, projection building, CAS base stamps, realpath containment.
+lib/archive-merge.js:178:// Realpath containment: target (followed through symlinks; not-yet-existing targets judged
+lib/archive-merge.js:180:function containsReal(root, target) {
+lib/archive-merge.js:182:  try { realRoot = fs.realpathSync(root); } catch { return false; }
+lib/archive-merge.js:192:  try { realCur = fs.realpathSync(cur); } catch { return false; }
+lib/archive-merge.js:202:      // Dirents reflect lstat: a symlink is neither file nor directory. Follow it explicitly —
+lib/archive-merge.js:203:      // silently skipping a symlinked dir would hide deltas (fail-open); containment judges the target.
+lib/archive-merge.js:206:        try { isDir = fs.statSync(p).isDirectory(); } catch { isDir = false; /* broken link: fall through, read fails loudly */ }
+lib/archive-merge.js:223:  if (!containsReal(changesDirAbs, changeDir)) return { files: [], errors: [`change path escapes ${changesDirAbs}: ${changeDir}`] };
+lib/archive-merge.js:225:  // a symlinked specs/ pointing outside would smuggle its target in as the containment ROOT —
+lib/archive-merge.js:227:  if (fs.existsSync(specsDir) && !containsReal(changeDir, specsDir))
+lib/archive-merge.js:228:    return { files: [], errors: [`specs dir escapes the change dir (symlink?): ${specsDir}`] };
+lib/archive-merge.js:233:    if (!containsReal(specsDir, abs)) { errors.push(`delta path escapes the change root: ${abs}`); continue; }
+lib/archive-merge.js:250:    if (!containsReal(storeRoot, target)) { validation.push(`store target escapes ${storeRoot}: ${target}`); continue; }
+lib/archive-merge.js:270:// ---- archive commit machinery ----------------------------------------------
+lib/archive-merge.js:273:function archiveStamp(d) {
+lib/archive-merge.js:280:// Move an in-flight change dir (bare name) → changes/archive/<stamp>-<name>/
+lib/archive-merge.js:281:// Fail-closed: source AND destination must resolve (realpath) strictly inside changesDir.
+lib/archive-merge.js:282:function archiveChangeDir(changesDir, name, now, ops) {
+lib/archive-merge.js:287:  if (!containsReal(changesDir, src)) throw new Error(`change path escapes ${changesDir}`);
+lib/archive-merge.js:288:  const dest = path.join(changesDir, 'archive', `${archiveStamp(now)}-${name}`);
+lib/archive-merge.js:289:  if (!containsReal(changesDir, dest)) throw new Error(`archive destination escapes ${changesDir} (symlinked archive/?)`);
+lib/archive-merge.js:298:// High-level archive: the whole change, four phases (preflight → stage → commit → move).
+lib/archive-merge.js:300:function archiveChange(o) {
+lib/archive-merge.js:309:  if (d.errors.length) { err.push(...d.errors.map((e) => `archive: ${e}`)); return { code: 2, out, err }; }
+lib/archive-merge.js:311:  if (p.validation.length) { err.push(...p.validation.map((e) => `archive: ${e}`)); return { code: 2, out, err }; }
+lib/archive-merge.js:321:    for (const f of preflightFailures) err.push(`archive: ${f}`);
+lib/archive-merge.js:327:    return { suffix, store, tmp: store + '.tmp-archive', text: p.texts.get(suffix) };
+lib/archive-merge.js:331:      err.push(`archive: temp file already exists: ${j.tmp} — another run in flight or a manual-recovery artifact; not touching it`);
+lib/archive-merge.js:337:      const probe = path.join(changesDir, 'archive', 'probe');
+lib/archive-merge.js:338:      if (!containsReal(changesDir, probe)) {
+lib/archive-merge.js:339:        err.push(`archive: archive destination escapes ${changesDir} (symlinked archive/?)`);
+lib/archive-merge.js:359:    err.push(`archive: staging failed (${e.message}) — stores untouched, this run's temp files removed`);
+lib/archive-merge.js:368:      err.push(`archive: COMMIT FAILED at ${j.suffix} (${e.message})`);
+lib/archive-merge.js:380:    try { moved = archiveChangeDir(changesDir, o.change, new Date(), ops); }
+lib/archive-merge.js:381:    catch (e) { err.push(`archive: stores committed but the change-dir move failed: ${e.message} — rerun to complete`); return { code: 1, out, err }; }
+lib/archive-merge.js:382:    if (moved === null) { err.push('archive: stores committed but the change dir vanished before the move'); return { code: 1, out, err }; }
+lib/archive-merge.js:384:  out.push(`\nRESULT: MERGED — ${jobs.length} module store(s) rewritten${moved ? `; change archived → ${moved}` : ''}`);
+lib/archive-merge.js:393:  if (fs.statSync(p).isDirectory()) { console.error(`stamp: ${p} is a directory, not a store file`); return 2; }
+lib/archive-merge.js:413:    const r = archiveChange({ cwd: process.cwd(), change: a.change, write: a.write,
+lib/archive-merge.js:420:    console.error('usage: apriori archive --change <name> [--write] [--changes-dir <dir>]  (high-level form)\n   or: apriori archive --store <f> --delta <f> --change <name> [--write] [--changes-dir <dir>]  (single-file form)\n(--change cannot be combined with only one of --store/--delta)');
+lib/archive-merge.js:423:  if (!a.store || !a.delta || !a.change) { console.error('usage: apriori archive --store <f> --delta <f> --change <name> [--write] [--changes-dir <dir>]\n   or: apriori archive --change <name> [--write] [--changes-dir <dir>]'); return 2; }
+lib/archive-merge.js:424:  if (!CHANGE_NAME_RE.test(a.change)) { console.error(`archive: invalid change name '${a.change}' — bare kebab-case only (path segments are not allowed)`); return 2; }
+lib/archive-merge.js:426:    console.error(`archive: change '${a.change}' not found under ${a.changesDir} — nothing to move`); return 2;
+lib/archive-merge.js:428:  // first archive in a repo: the store file may not exist yet — start from an empty store
+lib/archive-merge.js:435:    for (const p of problems) console.error(`archive: ${a.delta}: ${p}`);
+lib/archive-merge.js:442:    console.error(`archive: parsed 0 delta operations from ${a.delta} — it has content but no recognized operations.`);
+lib/archive-merge.js:451:      console.error(`archive: base mismatch for ${a.store}: delta expects ${stamp}, store is ${actual} — nothing written (serialize per §4.11)`);
+lib/archive-merge.js:469:    // disk stays byte-for-byte untouched — never a half-completed archive.
+lib/archive-merge.js:471:    const tmp = a.store + '.tmp-archive';
+lib/archive-merge.js:475:      try { moved = archiveChangeDir(a.changesDir, a.change, new Date()); }
+lib/archive-merge.js:476:      catch (e) { fs.rmSync(tmp, { force: true }); console.error(`archive: ${e.message} — store left untouched`); return 1; }
+lib/archive-merge.js:477:      if (moved === null) { fs.rmSync(tmp, { force: true }); console.error(`archive: change dir vanished mid-run — store left untouched`); return 1; }
+lib/archive-merge.js:480:    console.log(`\nRESULT: MERGED — ${a.store} rewritten${moved ? `; change archived → ${moved}` : ''}`);
+lib/archive-merge.js:488:  merge, renderStore, archiveStamp, archiveChangeDir, archiveChange, CHANGE_NAME_RE,
+lib/archive-merge.js:489:  fingerprint, parseStamp, containsReal, discoverDeltas, buildProjection,
+apriori/truth/archive-merge.md:1:# TRUTH — archive-merge (`lib/archive-merge.js`, CLI subcommand `archive`)
+apriori/truth/archive-merge.md:7:**Responsibility.** Merge a change's delta spec into the living store by stable Requirement ID (STEP6 archive action); move the change dir to `changes/archive/`. Zero deps. 3.1: also the home of the merge-family pure helpers shared with `verify --change` — delta discovery, projection building, CAS base stamps, realpath containment — plus the high-level `archive --change` transaction and the `stamp` subcommand.
+apriori/truth/archive-merge.md:20:- `archiveStamp(d)` → `YYYY-MM-DDThhmm` (colon-free, CLI clock).
+apriori/truth/archive-merge.md:22:- `archiveChangeDir(changesDir, name, now, ops?)` — validates name; realpath containment on BOTH source and destination (a symlinked `archive/` pointing outside is rejected before any move); `renameSync` (via ops when given) to `changes/archive/<stamp>-<name>/`; returns dest or null when source missing; throws on invalid name/escape.
+apriori/truth/archive-merge.md:23:- `containsReal(root, target)` — realpath containment; not-yet-existing targets judged by nearest existing ancestor; STRICT (root itself is not inside root); fail-closed on unreadable paths.
+apriori/truth/archive-merge.md:24:- `discoverDeltas(changesDirAbs, name)` → `{ files:[{abs,suffix}], errors[] }` — validates name (CHANGE_NAME_RE), change-dir existence + containment, specs/ itself containment-checked before becoming a root (symlinked specs/ rejected); walk follows symlink dirents explicitly (escaping links = errors, never silent skips). Errors are VALIDATION class → exit 2 on both surfaces.
+apriori/truth/archive-merge.md:26:- `archiveChange({cwd, change, changesDir, changesDirExplicit, write, ops})` → `{ code, out[], err[] }` — four phases: preflight (discovery+hygiene+CAS+merges+pre-existing-temp guard+destination containment; any failure → nothing written), stage (`<store>.tmp-archive`, this-run cleanup on failure), commit (sorted per-file atomic renames; mid-commit failure → exact committed/not-committed/temps report, NO rollback), move (only changesDirExplicit, only after all commits). `ops` ({writeFileSync,renameSync,rmSync}) is the fault-injection seam.
+apriori/truth/archive-merge.md:28:- `cli(argv)`: high-level form `--change <name> [--write] [--changes-dir <dir>]` (no --store/--delta) → archiveChange; single-file form `--store <FILE> --delta <FILE> --change <name> [--write] [--changes-dir <dir>]` unchanged from 3.0.1 EXCEPT it now checks a present CAS stamp (mismatch → exit 1, nothing written) and rejects malformed deltas via parseDeltaStrict problems. Mixing --change with only one of --store/--delta → exit 2. Exit: 0 merged/no-op · 1 conflict/CAS/hygiene/zero-op/stage/commit/move-failure/pre-existing-temp · 2 usage/invalid name/missing change dir/containment.
+apriori/truth/archive-merge.md:30:**Transactional write ordering (`--write`).** store staged to `<store>.tmp-archive` → dir move (atomic rename) → store committed via `renameSync(tmp, store)`. Move failure → tmp discarded, store byte-for-byte untouched. Limits: (a) tmp+rename gives single-file replace atomicity, NOT crash durability (no fsync on file or dir) — do not claim crash-durable; (b) the final `renameSync(tmp, store)` is NOT guarded — if it throws AFTER the change dir moved, the store is unchanged but the change dir is already archived and the tmp file is left behind (the "all or nothing" claim covers move failure, not store-commit failure after the move).
+apriori/truth/archive-merge.md:32:**Three moments.** The store file is the shared state: init = created on first `--write`; update = full rewrite via temp+rename; cleanup = none (grows monotonically; REMOVED deprecates, never deletes).
+apriori/truth/archive-merge.md:45:- D-AM-2 (superseded-by: D-AM-7): archive rerun idempotency as ratified in 3.0.1 covered two signatures — identical-content ADDED, and RENAMED source-gone+target-present.
+apriori/truth/archive-merge.md:49:- D-AM-6 (active): high-level archive guarantees failure-atomicity UP TO THE COMMIT POINT only; the commit phase is per-file atomic renames with an honest report on mid-commit failure and NO rollback (a rollback that half-fails is worse); crash durability (fsync) is explicitly NOT claimed (§4.8 wording discipline). Ratified in change-projection.
+
+ succeeded in 164ms:
+apriori/changes/doctor-command/specs/doctor/spec.md:2:# Delta — doctor (doctor-command)
+apriori/changes/doctor-command/specs/doctor/spec.md:6:### Requirement: doctor diagnoses the project-apriori seam
+apriori/changes/doctor-command/specs/doctor/spec.md:7:`apriori doctor` SHALL run seven read-only checks (D1 Node floor · D2 init scaffold · D3 runbook freshness · D4 tool pointers · D5 TAP probe · D6 store health · D7 changes overview), each reporting ok/finding/not-applicable with a fix hint on findings, and SHALL encode the aggregate in its exit code: 0 = zero findings (`DOCTOR: HEALTHY`), 1 = ≥1 finding (`DOCTOR: <n> finding(s)`), 2 = unusable (Node below floor, `apriori/` missing entirely, positional-arg usage error) — printing whatever checks already ran. Doctor never repairs and never writes; its ONLY side effect is D5 executing the project's test command once, removed by `--no-run`.
+apriori/changes/doctor-command/specs/doctor/spec.md:9:#### Scenario: DR-01 a healthy initialized project reports HEALTHY
+apriori/changes/doctor-command/specs/doctor/spec.md:13:#### Scenario: DR-02 an uninitialized project is unusable, with guidance
+apriori/changes/doctor-command/specs/doctor/spec.md:15:- THEN doctor exits 2, the message names `apriori init`, and `--json` reports `result: "UNUSABLE"` with the already-run checks (D1) listed
+apriori/changes/doctor-command/specs/doctor/spec.md:17:#### Scenario: DR-03 init-scaffold gaps are findings with their fixer
+apriori/changes/doctor-command/specs/doctor/spec.md:21:#### Scenario: DR-04 runbook freshness points at update, and never contradicts D2
+apriori/changes/doctor-command/specs/doctor/spec.md:25:#### Scenario: DR-05 detected tools must keep their pointers
+apriori/changes/doctor-command/specs/doctor/spec.md:29:#### Scenario: DR-06 the TAP probe classifies every plumbing edge
+apriori/changes/doctor-command/specs/doctor/spec.md:31:- THEN D5 classifies: spawn error, signal kill, `Bail out!`, empty output, zero parsed TAP without a version/plan line (naming `--test-reporter=tap`), a TAP version or non-`1..0` plan with zero result lines ("truncated or malformed"), and a non-zero exit unexplained by parsed TAP failures — each a finding; parsed TAP whose failures explain any non-zero exit is ok (counts as info — test failures are NOT doctor findings), and an exactly-`1..0` plan is ok ("empty suite")
+apriori/changes/doctor-command/specs/doctor/spec.md:33:#### Scenario: DR-07 the probe is skippable and degrades honestly
+apriori/changes/doctor-command/specs/doctor/spec.md:37:#### Scenario: DR-08 store health flags unbindable and ambiguous scenarios
+apriori/changes/doctor-command/specs/doctor/spec.md:41:#### Scenario: DR-09 changes overview validates flow-states and surfaces pending gates
+apriori/changes/doctor-command/specs/doctor/spec.md:45:#### Scenario: DR-10 output is machine-consumable in every class
+apriori/changes/doctor-command/specs/doctor/spec.md:46:- WHEN `apriori doctor --json` runs — HEALTHY, FINDINGS, or UNUSABLE (incl. the positional-arg usage error)
+apriori/changes/doctor-command/specs/doctor/spec.md:49:#### Scenario: DR-11 doctor is read-only and rejects stray arguments
+apriori/changes/doctor-command/specs/doctor/spec.md:50:- WHEN doctor runs with `--no-run` against any project tree
+apriori/changes/doctor-command/specs/doctor/spec.md:51:- THEN no file is created, modified, or deleted; WHEN any positional argument is given THEN doctor exits 2 with usage (pure JSON under `--json`)
+apriori/changes/doctor-command/specs/cli/spec.md:2:# Delta — cli (doctor-command)
+apriori/changes/doctor-command/specs/cli/spec.md:7:The toolchain SHALL ship as one npm package `apriori-cli` exposing a `bin` named `apriori` with subcommands `init | new | status | verify | archive | check | update | stamp | gate | doctor` plus a `--version` flag, requiring zero npm runtime dependencies (pure Node stdlib), runnable via global install or `npx`, and failing cleanly (one-line error, no stack trace) on unexpected errors.
+apriori/changes/doctor-command/specs/cli/spec.md:10:- WHEN `apriori <sub> ...` is invoked with sub in {init, new, status, verify, archive, check, update, stamp, gate, doctor}
+apriori/changes/doctor-command/specs/cli/spec.md:45:#### Scenario: CL-10 doctor subcommand appears in usage
+apriori/changes/doctor-command/specs/cli/spec.md:47:- THEN the printed usage lists `doctor` alongside the other subcommands (behavior per DR-01..11); `apriori doctor <positional>` prints its own usage and exits 2
+
+exec
+/usr/bin/zsh -lc "node -e \"const fs=require('fs'),crypto=require('crypto'); const text=fs.readFileSync('apriori/specs/cli/spec.md','utf8').replace(/\\r\\n/g,'\\n').replace(/\\r/g,'\\n'); console.log('sha256:'+crypto.createHash('sha256').update(text,'utf8').digest('hex'))\"" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 174ms:
+sha256:5435ee2e84ed397c1b06175cb693ab448c69099bc40eae51c91252699db7bf29
+
+codex
+**Issues**
+
+**DSPEC-1 — D2 per-gap findings conflict with the designed JSON/check-count model**
+
+Description: The spec says D2 reports “one finding per gap” for missing `runbook.md`, `specs/`, `.gitignore tmp/`, and `tmp/`. The design then says there is “ONE check entry per D-id” and also says “findings = checks with status finding,” while claiming D2 gaps are counted individually. Those cannot all be true with the contracted JSON shape.
+
+Risk: Implementations and tests can disagree on `findings`, text count, and whether JSON contains one D2 entry or multiple finding entries. This affects CI consumers of `--json`.
+
+Suggested fix: Declare one model. Either allow multiple check entries with `id: "D2"` and `findings` equals finding entries, or keep one D2 entry and add a separate per-gap count/list field. Align DR-03, design aggregate, and JSON contract.
+
+**DSPEC-2 — Node-below-floor behavior is spec’d but has no scenario**
+
+Description: D1 below Node 18 is an exit-2 class in req-final and design, but DR-01..11 contain no scenario that requires testing that branch. Mechanical binding can go green without asserting the Node-floor behavior.
+
+Risk: The unsupported-runtime exit path can be unimplemented or regress without `verify --change` catching it.
+
+Suggested fix: Add a DR scenario for Node floor, likely using an injectable version/classifier helper so the test does not require actually running old Node.
+
+**DSPEC-3 — D5 can mark non-zero `1..0` TAP output as ok**
+
+Description: The design classifies “TAP version/plan present but zero parsed results: plan `1..0` → ok” before “non-zero exit with parsed failCount 0 → finding.” That means a command emitting `1..0` and exiting non-zero can be reported ok, despite req-final also saying non-zero exits unexplained by TAP failures are findings.
+
+Risk: Broken or truncated test commands can be hidden as healthy plumbing.
+
+Suggested fix: State that `1..0` is ok only when the process exits 0, or run the non-zero-unexplained classification before the `1..0` ok branch.
+
+**DSPEC-4 — D7 archived-change walk follows symlinked directories without containment**
+
+Description: The design says archived entries are “directories only, stat through symlinks,” but does not require realpath containment under `apriori/changes/archive/` before reading `flow-state.md`. A symlinked archive entry can point outside the archive root.
+
+Risk: Security/correctness issue: doctor can read files outside the intended project/archive tree while producing archived-change info.
+
+Suggested fix: Either reject/ignore symlinked archived dirs by `lstat`, or import/use `containsReal(archiveRoot, candidate)` before reading. Add a DR-09 test for a symlinked archived entry escaping `archive/`.
+
+**Advisories**
+
+The CLI MODIFIED block matches the current store CLI block apart from adding `doctor`, and its CAS stamp matches the current store. DR-01..11 and CL-10 do not collide with existing store scenario IDs.
+
+D7 archived-change scan would be clearer if it stated the archive basename pattern, but the containment issue above is the formal blocker.
+
+**Ledger Delta**
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| DSPEC-1 | D2 per-gap findings conflict with the one-check-entry aggregate/JSON model. | CI-visible `findings` count and JSON shape can be implemented inconsistently. | STEP2·r1 | open |
+| DSPEC-2 | Node-below-floor exit-2 behavior has no scenario. | Unsupported-runtime branch can be unimplemented while binding stays green. | STEP2·r1 | open |
+| DSPEC-3 | D5 design can mark non-zero `1..0` TAP output as ok. | Broken test plumbing can be hidden as healthy. | STEP2·r1 | open |
+| DSPEC-4 | D7 archived walk follows symlinked dirs without realpath containment. | Doctor can read outside the intended archive/project tree. | STEP2·r1 | open |
+| ADV-DSPEC-1 | Advisory batch: CLI block fidelity/CAS and scenario ID ranges checked clean; clarify archive basename pattern if desired. | Low; precision only. | STEP2·r1 | advisory |
+
+VERDICT: 4 issues open
+tokens used
+952,546
+**Issues**
+
+**DSPEC-1 — D2 per-gap findings conflict with the designed JSON/check-count model**
+
+Description: The spec says D2 reports “one finding per gap” for missing `runbook.md`, `specs/`, `.gitignore tmp/`, and `tmp/`. The design then says there is “ONE check entry per D-id” and also says “findings = checks with status finding,” while claiming D2 gaps are counted individually. Those cannot all be true with the contracted JSON shape.
+
+Risk: Implementations and tests can disagree on `findings`, text count, and whether JSON contains one D2 entry or multiple finding entries. This affects CI consumers of `--json`.
+
+Suggested fix: Declare one model. Either allow multiple check entries with `id: "D2"` and `findings` equals finding entries, or keep one D2 entry and add a separate per-gap count/list field. Align DR-03, design aggregate, and JSON contract.
+
+**DSPEC-2 — Node-below-floor behavior is spec’d but has no scenario**
+
+Description: D1 below Node 18 is an exit-2 class in req-final and design, but DR-01..11 contain no scenario that requires testing that branch. Mechanical binding can go green without asserting the Node-floor behavior.
+
+Risk: The unsupported-runtime exit path can be unimplemented or regress without `verify --change` catching it.
+
+Suggested fix: Add a DR scenario for Node floor, likely using an injectable version/classifier helper so the test does not require actually running old Node.
+
+**DSPEC-3 — D5 can mark non-zero `1..0` TAP output as ok**
+
+Description: The design classifies “TAP version/plan present but zero parsed results: plan `1..0` → ok” before “non-zero exit with parsed failCount 0 → finding.” That means a command emitting `1..0` and exiting non-zero can be reported ok, despite req-final also saying non-zero exits unexplained by TAP failures are findings.
+
+Risk: Broken or truncated test commands can be hidden as healthy plumbing.
+
+Suggested fix: State that `1..0` is ok only when the process exits 0, or run the non-zero-unexplained classification before the `1..0` ok branch.
+
+**DSPEC-4 — D7 archived-change walk follows symlinked directories without containment**
+
+Description: The design says archived entries are “directories only, stat through symlinks,” but does not require realpath containment under `apriori/changes/archive/` before reading `flow-state.md`. A symlinked archive entry can point outside the archive root.
+
+Risk: Security/correctness issue: doctor can read files outside the intended project/archive tree while producing archived-change info.
+
+Suggested fix: Either reject/ignore symlinked archived dirs by `lstat`, or import/use `containsReal(archiveRoot, candidate)` before reading. Add a DR-09 test for a symlinked archived entry escaping `archive/`.
+
+**Advisories**
+
+The CLI MODIFIED block matches the current store CLI block apart from adding `doctor`, and its CAS stamp matches the current store. DR-01..11 and CL-10 do not collide with existing store scenario IDs.
+
+D7 archived-change scan would be clearer if it stated the archive basename pattern, but the containment issue above is the formal blocker.
+
+**Ledger Delta**
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| DSPEC-1 | D2 per-gap findings conflict with the one-check-entry aggregate/JSON model. | CI-visible `findings` count and JSON shape can be implemented inconsistently. | STEP2·r1 | open |
+| DSPEC-2 | Node-below-floor exit-2 behavior has no scenario. | Unsupported-runtime branch can be unimplemented while binding stays green. | STEP2·r1 | open |
+| DSPEC-3 | D5 design can mark non-zero `1..0` TAP output as ok. | Broken test plumbing can be hidden as healthy. | STEP2·r1 | open |
+| DSPEC-4 | D7 archived walk follows symlinked dirs without realpath containment. | Doctor can read outside the intended archive/project tree. | STEP2·r1 | open |
+| ADV-DSPEC-1 | Advisory batch: CLI block fidelity/CAS and scenario ID ranges checked clean; clarify archive basename pattern if desired. | Low; precision only. | STEP2·r1 | advisory |
+
+VERDICT: 4 issues open

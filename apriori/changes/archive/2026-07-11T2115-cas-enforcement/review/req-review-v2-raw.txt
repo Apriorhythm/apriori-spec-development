@@ -1,0 +1,359 @@
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f4b30-68f9-7222-9b64-17f52a333b4c
+--------
+user
+P1 round 2 for cas-enforcement. Read requirement/req-v2.md from disk. All five + advisory applied: CE-1 — merge()'s MODIFIED gains the already-applied signature (trim-equality reports unchanged, DD-5; K4d covers the MODIFIED-only rerun). CE-2 — the escape is a real process-config TABLE row | cas | optional | (leading value token, case-insensitive; absent/other = required), flag > config precedence stated (K3). CE-3 — the single-file archive form warns too (K1). CE-4 — exact contract: buildProjection returns unstampedMutations: string[] of store-suffix-relative paths, [] when none; json.projection.unstampedMutations on --change runs only. CE-5 — per-file matrix: match→merge; mismatch+all-unchanged→note+proceed; mismatch+any-real-op→whole preflight fails; the mixed resumed-partial-commit case completes with distinct notes-vs-errors diagnostics (K4c). CE-ADV-1 — exemption documented clobber-focused; C7 its own check; --no-cas never touches verify/archive. Confirm each resolved (flip to verified) or reopen; any new issues? Print the COMPLETE review document body (landed verbatim at apriori/review/cas-enforcement-req-review-v2.md) with a ledger-delta section, ending with exactly one verdict line: 'VERDICT: no major issues, ready to proceed' or 'VERDICT: <N> issues open'.
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-11T12:58:35.681492Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T12:58:35.854050Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T12:58:36.296873Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-11T12:58:36.868208Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-11T12:58:38.048644Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-11T12:58:40.341657Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-11T12:58:43.706630Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: aq2ql1pGPsfq
+codex
+I’ll read the revised CAS requirement and ledger, then verify each prior issue against the new K acceptance criteria and look for fresh ambiguities in the tightened contract.
+exec
+/usr/bin/zsh -lc "sed -n '1,360p' requirement/req-v2.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '185,245p' lib/archive-merge.js && sed -n '300,345p' lib/archive-merge.js && sed -n '280,292p' lib/spec-runner.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,220p' apriori/review/cas-enforcement-issues.md 2>/dev/null || true" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 121ms:
+# Requirement — cas-enforcement (v2)
+
+change: cas-enforcement
+target lineage: **v3 branch**. Next patch/minor. Graded tightening of CAS base-stamp enforcement: warnings this minor, gate default-deny, an explicit escape, and the rerun dead-end fixed; hard mandatory stamps wait for 4.0.
+
+Revisions vs v1 (P1 r1): CE-1 MODIFIED gains an already-applied `unchanged` signature; CE-2 the config escape is a real table row; CE-3 BOTH archive forms warn; CE-4 the JSON contract is exact; CE-5 the mixed partial-commit matrix is specified; CE-ADV-1 the exemption is described as clobber-focused, C7 stays its own check, --no-cas never touches verify/archive failures.
+
+## Background — the problem (current state A, code-verified + dogfooded)
+
+1. **Opt-in CAS.** Stamps are optional: an UNSTAMPED delta merges with zero divergence detection. A MODIFIED/REMOVED/RENAMED delta authored against a stale store silently rewrites blocks that changed underneath it. (GPT-5.6 second review.)
+2. **The rerun dead-end (dogfooded 2026-07-11).** A STAMPED delta that already COMMITTED cannot re-run to complete the move phase: store ≠ recorded base → preflight fails; manual `mv` was the only cure. Root cause deepened by review: `merge()`'s MODIFIED op NEVER reports `unchanged` — even a byte-identical re-application reports `modified` — so no rerun signature exists for the most common mutation.
+
+## Goal (target state B)
+
+**merge() semantic extension (CE-1):** a MODIFIED op whose delta block trim-equals the current store block reports `unchanged` (the already-applied signature ADDED/REMOVED/RENAMED reruns have) instead of `modified`. Visible only on re-application; first applications behave identically.
+
+**WARN grade (all mutation surfaces, always on):** a delta carrying MUTATION ops (MODIFIED/REMOVED/RENAMED) with NO stamp warns once, naming the file and the cure (`unstamped mutation delta <file> — divergence undetectable; run: apriori stamp <store-file> (stamps become mandatory in 4.0)`). Surfaces: `verify --change` (stderr; the run can still be GREEN), high-level `archive --change` (report), AND the single-file `archive --store --delta` form (CE-3) — one-module surgery is not a loophole. The exemption for ADDED-only deltas is CLOBBER-focused (they conflict or no-op, never silently overwrite) — documented as such, not as a general concurrency guarantee (CE-ADV-1).
+
+**Machine contract (CE-4):** `buildProjection` returns `unstampedMutations: string[]` — the delta files' store-suffix-relative paths (the same `suffix` vocabulary `texts`/`perModule` use), `[]` when none. verify `--json` carries it at `json.projection.unstampedMutations` on `--change` runs only (the `projection` object is already absent otherwise).
+
+**Gate default-deny (C7):** a NEW check (not folded into C6 — CAS is delta/store trust, not KB freshness): `unstampedMutations` non-empty → `C7 BLOCKED` naming each suffix and the stamp cure. Escapes, precedence flag > config:
+- `gate --no-cas` → `C7 waived (--no-cas)` in the output — a visible waiver, never a silent skip.
+- process-config table row `| cas | optional |` (leading token of the value cell, case-insensitive; absent row or any other value = required/default-deny) → `C7 waived (process-config cas: optional)`.
+- Neither escape ever affects verify/archive behavior: stamped-mismatch failures and the WARN grade are untouched by both (CE-ADV-1/DD-3).
+
+**Rerun repair (archive preflight, per-file — CE-5):** classification per stamped delta file:
+- stamp matches → merge as today (real ops apply; this is the not-yet-committed half of a resumed partial commit).
+- stamp MISMATCHES + every op reports `unchanged` → downgrade to a note (`<file>: stamp mismatch but the delta is already fully applied — rerun accepted`), file contributes no writes; the run proceeds (move included).
+- stamp MISMATCHES + ANY real pending op → `casMismatches` error as today; the WHOLE preflight fails (exit 1, nothing written or moved) — divergence with real work pending is never repaired.
+The mixed case (file A mismatched-but-applied + file B matching-with-real-ops) therefore completes: A noted, B merged, move happens — the resumed-partial-commit path. Diagnostics keep the two classes apart (notes vs errors).
+
+## Acceptance criteria (testable)
+
+- K1. Unstamped MODIFIED delta: `verify --change` warns on stderr and stays GREEN-able; `archive --change` warns in the report and still merges; `--json` carries `projection.unstampedMutations: ['<suffix>']`; the single-file archive form warns too.
+- K2. Unstamped ADDED-only delta: no warning on any surface; `unstampedMutations: []`.
+- K3. `gate --change` with an unstamped mutation delta: C7 BLOCKED naming the suffix; `--no-cas` → `C7 waived (--no-cas)`, not blocked; `| cas | optional |` row → waived naming the config; the flag also wins when config says required.
+- K4. Rerun repair: (a) a stamped, fully-committed change re-runs `archive --write --changes-dir` to completion — stores byte-identical, dir moved, exit 0, downgrade note printed; (b) the same but one real pending op → exit 1, nothing written/moved, mismatch error; (c) mixed: applied-mismatched file + matching-with-real-ops file → completes, A noted, B merged; (d) an already-applied MODIFIED-only stamped delta (the CE-1 case) reruns clean.
+- K5. Gate spec/truth record C7; the runbook's serial-rule/§4.11 vicinity mentions graded enforcement + the 4.0 trajectory (one sentence per edition); truth/archive-merge.md's opt-in pitfall paragraph updated to the graded reality.
+- K6. All existing tests pass (AM-24 divergence-with-real-ops unchanged; AM-25 unstamped behavior gains only warnings); suite + verify + gate + check --self green; post-archive gate PASS.
+
+## Out of scope
+
+- Hard-mandatory stamps (4.0).
+- Stamping tooling; the `new` sentinel; fingerprint algorithm; multi-delta transactional stamping order.
+
+## Decisions proposed
+
+- DD-1: ADDED-only exemption, clobber-focused and documented as such.
+- DD-2: per-file all-ops-unchanged is the rerun signature; divergence with pending work never repairs.
+- DD-3: `--no-cas` waives C7 only, visibly; never verify/archive semantics.
+- DD-4: config escape is the table row `| cas | optional |`, read like the existing test-cmd row; flag > config.
+- DD-5 (new, CE-1): MODIFIED trim-equality reports `unchanged` — the idempotence vocabulary all other ops already speak.
+
+ succeeded in 142ms:
+// ---- merge (pure) ----------------------------------------------------------
+
+// Pure merge. Returns { store: Map, merged, modified, deprecated, renamed, conflicts, unchanged }
+function merge(storeText, delta, change) {
+  const parsed = parseRequirementsStrict(storeText);
+  const store = parsed.map;
+  const merged = [], modified = [], deprecated = [], renamed = [], conflicts = [], unchanged = [];
+  // a corrupt store (same requirement name twice) must never be silently collapsed
+  for (const d of parsed.duplicates) conflicts.push(`duplicate requirement '${d}' in the store (corrupt store)`);
+  const renamedTargets = new Set();   // names created by THIS run's renames — an ADDED hitting one is a same-delta collision, never a rerun no-op
+  // RENAMED first: rename the store block's ID, preserving its content
+  for (const [oldName, newName] of (delta.RENAMED || [])) {
+    if (!store.has(oldName)) {
+      // rerun signature: source already gone AND target present → this rename already happened
+      if (store.has(newName)) { unchanged.push(`${oldName} -> ${newName} (already renamed)`); continue; }
+      conflicts.push(`RENAMED '${oldName}' has no target in store`); continue;
+    }
+    if (store.has(newName)) { conflicts.push(`RENAMED target '${newName}' already exists in store`); continue; }
+    const block = store.get(oldName);
+    const renamedBlock = block.replace(/^###\s+Requirement:\s+.+$/m, `### Requirement: ${newName}`);
+    // rebuild the map preserving order, swapping the key at the old position
+    const rebuilt = new Map();
+    for (const [k, v] of store) rebuilt.set(k === oldName ? newName : k, k === oldName ? renamedBlock : v);
+    store.clear();
+    for (const [k, v] of rebuilt) store.set(k, v);
+    renamed.push(`${oldName} -> ${newName}`);
+    renamedTargets.add(newName);
+  }
+  for (const [name, block] of delta.ADDED) {
+    if (store.has(name)) {
+      // idempotent rerun: identical content means this delta already merged — a no-op, not a collision.
+      // But a name just created by THIS run's RENAMED is a same-delta collision, never a rerun.
+      if (!renamedTargets.has(name) && store.get(name).trim() === block.trim()) unchanged.push(name);
+      else conflicts.push(`ADDED '${name}' already exists in store`);
+    } else { store.set(name, block); merged.push(name); }
+  }
+  for (const [name, block] of delta.MODIFIED) {
+    if (!store.has(name)) conflicts.push(`MODIFIED '${name}' has no target in store`);
+    else { store.set(name, block); modified.push(name); }
+  }
+  for (const name of delta.REMOVED.keys()) {
+    if (!store.has(name)) {
+      // rerun signature: already deprecated BY THIS CHANGE → no-op; by another change → real collision
+      const depByThis = `${name}  _deprecated (superseded by ${change})_`;
+      if (store.has(depByThis)) { unchanged.push(`${name} (already deprecated)`); continue; }
+      const depOther = [...store.keys()].find((k) => k.startsWith(`${name}  _deprecated (superseded by `));
+      if (depOther) { conflicts.push(`REMOVED '${name}' was already deprecated by a different change ('${depOther}')`); continue; }
+      conflicts.push(`REMOVED '${name}' has no target in store`);
+    } else {
+      const block = store.get(name);
+      const nl = block.indexOf('\n');
+      store.set(name, block.slice(0, nl) + `  _deprecated (superseded by ${change})_` + block.slice(nl));
+      deprecated.push(name);
+    }
+  }
+  return { store, merged, modified, deprecated, renamed, conflicts, unchanged };
+}
+
+function renderStore(storeText, store) {
+  const idx = storeText.indexOf('### Requirement:');
+  const header = idx >= 0 ? storeText.slice(0, idx) : '';
+  if (fs.existsSync(specsDir) && !containsReal(changeDir, specsDir))
+    return { files: [], errors: [`specs dir escapes the change dir (symlink?): ${specsDir}`] };
+  const all = mdFilesUnder(specsDir);
+  if (!all.length) return { files: [], errors: [`no delta spec files (*.md) found under ${specsDir}`] };
+  const files = [];
+  for (const abs of all) {
+    if (!containsReal(specsDir, abs)) { errors.push(`delta path escapes the change root: ${abs}`); continue; }
+    files.push({ abs, suffix: path.relative(specsDir, abs).split(path.sep).join('/') });
+  }
+  return { files, errors };
+}
+
+// Build the projection: apply every delta to its mapped store file IN MEMORY.
+// → { texts: Map<suffix, projectedText>, modules, perModule, conflicts, casMismatches,
+//     hygiene, validation } — texts covers ALL store files (pass-through + projected).
+function buildProjection(storeRoot, deltaFiles, change) {
+  const texts = new Map(), perModule = new Map(), modules = [];
+  const conflicts = [], casMismatches = [], hygiene = [], validation = [];
+  for (const abs of mdFilesUnder(storeRoot))
+    texts.set(path.relative(storeRoot, abs).split(path.sep).join('/'), fs.readFileSync(abs, 'utf8'));
+  for (const { abs, suffix } of deltaFiles) {
+    modules.push(suffix);
+    const target = path.join(storeRoot, ...suffix.split('/'));
+    if (!containsReal(storeRoot, target)) { validation.push(`store target escapes ${storeRoot}: ${target}`); continue; }
+    const raw = fs.readFileSync(abs, 'utf8');
+    if (!raw.trim()) { hygiene.push(`empty delta file: ${abs}`); continue; }
+    const { delta, stamp, problems } = parseDeltaStrict(raw);
+    if (problems.length) { hygiene.push(...problems.map((p) => `${abs}: ${p}`)); continue; }
+    if (deltaOpCount(delta) === 0) { hygiene.push(`parsed 0 delta operations from ${abs} — it has content but no recognized operations`); continue; }
+    const storeText = texts.get(suffix) || '';
+    if (stamp) {
+      const actual = texts.has(suffix) ? fingerprint(storeText) : 'new';
+      if (stamp !== actual) { casMismatches.push(`base mismatch for ${target}: delta expects ${stamp}, store is ${actual}`); continue; }
+    }
+    const r = merge(storeText, delta, change);
+    perModule.set(suffix, r);
+    if (r.conflicts.length) { conflicts.push(...r.conflicts.map((c) => `${suffix}: ${c}`)); continue; }
+    texts.set(suffix, renderStore(storeText, r.store));
+  }
+  modules.sort();
+  return { texts, modules, perModule, conflicts, casMismatches, hygiene, validation };
+}
+
+// ---- archive commit machinery ----------------------------------------------
+
+// colon-free date-time stamp YYYY-MM-DDThhmm (CLI's own clock; never an agent guess)
+
+// machine-consumable shape for a verify run
+function verifyJson(run) {
+  const { verdict: v, results } = run;
+  const clean = v.clean && run.duplicates.length === 0 && run.errors.length === 0;
+  const json = projectionless(run, clean);
+  if (run.projection) json.projection = run.projection;   // ONLY --change runs carry this field
+  return json;
+}
+
+function projectionless(run, clean) {
+  const { verdict: v, results } = run;
+  return {
+
+ succeeded in 147ms:
+# Issue ledger — cas-enforcement
+
+Rows recorded on behalf of the reviewer (codex session 019f4b30-68f9-7222-9b64-17f52a333b4c; raws: cas-enforcement-*-raw.txt).
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| CE-1 | Rerun signature conflicted with MODIFIED semantics (never reports unchanged). | Already-applied MODIFIED deltas keep the dead-end. | STEP0·r1 | fixed |
+| CE-2 | cas: optional conflicted with the markdown-table config format. | Waiver documented one way, parsed another. | STEP0·r1 | fixed |
+| CE-3 | Archive warning scope ambiguous across the two archive forms. | Single-file surgery keeps the silent opt-in. | STEP0·r1 | fixed |
+| CE-4 | unstampedMutations JSON location/shape unspecified. | Machine-surface disagreement. | STEP0·r1 | fixed |
+| CE-5 | Mixed multi-file rerun repair after partial commit underspecified. | Over-repair or confusing diagnostics. | STEP0·r1 | fixed |
+| CE-ADV-1 | Advisory: ADDED exemption is clobber-focused (say so); C7 separate from C6; --no-cas never waives verify/archive mismatches (document). | Low. | STEP0·r1 | fixed |
+
+codex
+# cas-enforcement requirement review v2
+
+## Resolution review
+
+### CE-1 — Verified
+
+**Description:** v2 explicitly extends `merge()` so MODIFIED trim-equality reports `unchanged` instead of `modified`, and K4d covers the already-applied MODIFIED-only rerun case.
+
+**Risk:** Resolved. The rerun repair signature now covers MODIFIED deltas instead of depending on an undeclared implementation inference.
+
+**Suggested fix:** None.
+
+### CE-2 — Verified
+
+**Description:** v2 replaces `cas: optional` with the actual process-config table row form `| cas | optional |`, defines leading value-token parsing, declares absent/other as required, and states flag-over-config precedence.
+
+**Risk:** Resolved. The waiver config is now compatible with the repository’s config format.
+
+**Suggested fix:** None.
+
+### CE-3 — Verified
+
+**Description:** v2 states the warning applies to both high-level `archive --change` and single-file `archive --store --delta --change`.
+
+**Risk:** Resolved. Single-file archive is no longer a silent unstamped-mutation loophole.
+
+**Suggested fix:** None.
+
+### CE-4 — Verified
+
+**Description:** v2 defines `buildProjection.unstampedMutations` as `string[]` of store-suffix-relative paths, `[]` when none, and `json.projection.unstampedMutations` for `verify --change` runs only.
+
+**Risk:** Resolved. The machine contract is precise enough to test.
+
+**Suggested fix:** None.
+
+### CE-5 — Verified
+
+**Description:** v2 defines the per-file rerun matrix: matching stamps merge, mismatched all-unchanged files become notes, mismatched files with any real pending op fail preflight, and mixed partial-commit cases proceed only for the safe files while preserving distinct notes vs errors diagnostics.
+
+**Risk:** Resolved. Multi-file partial-commit behavior is no longer ambiguous.
+
+**Suggested fix:** None.
+
+## New issue review
+
+No new formal issues found.
+
+## Advisories
+
+CE-ADV-1 is resolved. The ADDED exemption is documented as clobber-focused, C7 remains its own gate check, and `--no-cas` is explicitly limited to gate C7 without changing verify/archive behavior.
+
+One design-stage note: tests should include an explicit `| cas | OPTIONAL | ... |` case and an invalid value such as `| cas | optional-ish |` to pin the “leading token” rule.
+
+## Ledger delta
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| CE-1 | Rerun repair’s all-ops-unchanged signature conflicted with MODIFIED behavior; v2 adds MODIFIED trim-equality as `unchanged`. | Already-applied MODIFIED deltas keep the dead-end. | STEP0 r1 | verified |
+| CE-2 | `cas: optional` conflicted with markdown-table config; v2 uses `| cas | optional |` with flag-over-config precedence. | Waiver documented one way, parsed another. | STEP0 r1 | verified |
+| CE-3 | Archive warning scope was ambiguous; v2 applies it to both high-level and single-file archive forms. | Single-file surgery keeps the silent opt-in. | STEP0 r1 | verified |
+| CE-4 | `unstampedMutations` JSON location/shape was unspecified; v2 defines suffix-relative `string[]` under `json.projection`. | Machine-surface disagreement. | STEP0 r1 | verified |
+| CE-5 | Mixed multi-file rerun repair after partial commit was underspecified; v2 defines the per-file notes/errors matrix. | Over-repair or confusing diagnostics. | STEP0 r1 | verified |
+| CE-ADV-1 | Advisory batch: ADDED exemption scope, C7 home, and `--no-cas` gate-only boundary are now specified. | Low. | STEP0 r1 | verified |
+
+VERDICT: no major issues, ready to proceed
+tokens used
+3,116,679
+# cas-enforcement requirement review v2
+
+## Resolution review
+
+### CE-1 — Verified
+
+**Description:** v2 explicitly extends `merge()` so MODIFIED trim-equality reports `unchanged` instead of `modified`, and K4d covers the already-applied MODIFIED-only rerun case.
+
+**Risk:** Resolved. The rerun repair signature now covers MODIFIED deltas instead of depending on an undeclared implementation inference.
+
+**Suggested fix:** None.
+
+### CE-2 — Verified
+
+**Description:** v2 replaces `cas: optional` with the actual process-config table row form `| cas | optional |`, defines leading value-token parsing, declares absent/other as required, and states flag-over-config precedence.
+
+**Risk:** Resolved. The waiver config is now compatible with the repository’s config format.
+
+**Suggested fix:** None.
+
+### CE-3 — Verified
+
+**Description:** v2 states the warning applies to both high-level `archive --change` and single-file `archive --store --delta --change`.
+
+**Risk:** Resolved. Single-file archive is no longer a silent unstamped-mutation loophole.
+
+**Suggested fix:** None.
+
+### CE-4 — Verified
+
+**Description:** v2 defines `buildProjection.unstampedMutations` as `string[]` of store-suffix-relative paths, `[]` when none, and `json.projection.unstampedMutations` for `verify --change` runs only.
+
+**Risk:** Resolved. The machine contract is precise enough to test.
+
+**Suggested fix:** None.
+
+### CE-5 — Verified
+
+**Description:** v2 defines the per-file rerun matrix: matching stamps merge, mismatched all-unchanged files become notes, mismatched files with any real pending op fail preflight, and mixed partial-commit cases proceed only for the safe files while preserving distinct notes vs errors diagnostics.
+
+**Risk:** Resolved. Multi-file partial-commit behavior is no longer ambiguous.
+
+**Suggested fix:** None.
+
+## New issue review
+
+No new formal issues found.
+
+## Advisories
+
+CE-ADV-1 is resolved. The ADDED exemption is documented as clobber-focused, C7 remains its own gate check, and `--no-cas` is explicitly limited to gate C7 without changing verify/archive behavior.
+
+One design-stage note: tests should include an explicit `| cas | OPTIONAL | ... |` case and an invalid value such as `| cas | optional-ish |` to pin the “leading token” rule.
+
+## Ledger delta
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| CE-1 | Rerun repair’s all-ops-unchanged signature conflicted with MODIFIED behavior; v2 adds MODIFIED trim-equality as `unchanged`. | Already-applied MODIFIED deltas keep the dead-end. | STEP0 r1 | verified |
+| CE-2 | `cas: optional` conflicted with markdown-table config; v2 uses `| cas | optional |` with flag-over-config precedence. | Waiver documented one way, parsed another. | STEP0 r1 | verified |
+| CE-3 | Archive warning scope was ambiguous; v2 applies it to both high-level and single-file archive forms. | Single-file surgery keeps the silent opt-in. | STEP0 r1 | verified |
+| CE-4 | `unstampedMutations` JSON location/shape was unspecified; v2 defines suffix-relative `string[]` under `json.projection`. | Machine-surface disagreement. | STEP0 r1 | verified |
+| CE-5 | Mixed multi-file rerun repair after partial commit was underspecified; v2 defines the per-file notes/errors matrix. | Over-repair or confusing diagnostics. | STEP0 r1 | verified |
+| CE-ADV-1 | Advisory batch: ADDED exemption scope, C7 home, and `--no-cas` gate-only boundary are now specified. | Low. | STEP0 r1 | verified |
+
+VERDICT: no major issues, ready to proceed

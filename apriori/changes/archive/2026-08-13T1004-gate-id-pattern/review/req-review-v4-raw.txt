@@ -1,0 +1,363 @@
+<!-- provenance: provider=openai model=gpt-5.6-sol session=019ff71f-0d2f-79f3-8a2b-2c4e43cf2834 date=2026-08-13 -->
+Reading prompt from stdin...
+OpenAI Codex v0.145.0
+--------
+workdir: D:\Workbench\misc\apriori-spec-development
+model: gpt-5.6-sol
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: medium
+reasoning summaries: none
+session id: 019ff71f-0d2f-79f3-8a2b-2c4e43cf2834
+--------
+user
+Round 4. The producer revised per your round-3 review: apriori/changes/gate-id-pattern/requirement/req-v4.md ('需求裁定记录（对 r3 评审）' section: REQ-8 closed — B6 template wording now states the two layers separately: alternation | is written \| inside a Markdown cell, regex literal pipe is written [|]; AC7 gained a static assertion on the template wording). Ledger has REQ-8 flipped to 'fixed (v4)'.
+Re-review req-v4: is REQ-8 genuinely closed, and did the revision introduce any new formal issue? Ledger delta rules as before (REQ-8 fixed -> verified if closed; new rows only for new formal findings; advisories separately).
+Read-only sandbox: PRINT the full review doc body to stdout (landed verbatim at apriori/changes/gate-id-pattern/review/req-review-v4.md), Simplified Chinese, machine tokens English. End with the ledger delta and exactly one verdict line: 'VERDICT: no major issues' or 'VERDICT: <N> issues open'.
+
+codex
+我会核对 v4 中 B5、B6、AC5、AC7 四处的两层 pipe 语义是否完全一致，并快速回归六个维度，确认修文没有引入新的接口或验收矛盾。只读，不修改文件。
+exec
+"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command '$OutputEncoding = [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new(); Get-Content -Raw -Encoding UTF8 '"'apriori/changes/gate-id-pattern/requirement/req-v4.md'; Get-Content -Raw -Encoding UTF8 'apriori/changes/gate-id-pattern/review/issues.md'" in D:\Workbench\misc\apriori-spec-development
+ succeeded in 598ms:
+# req-v4 — gate-id-pattern：id-pattern 成为项目级配置，gate 获得收窄通道
+
+target lineage: main（v4 产品线；不合并 v1/v3）
+
+## 背景（现状 A，实测证据）
+
+真实棕地样本（/mnt/d/agent-base/t_just-projects，规格库仓，git HEAD 即 2026-08-13 现场；只读）实测：
+
+- store 中存在两类默认 pattern `[A-Z]+-\d+` 不认的合法 ID：字母后缀（`AC-08a`）与多段式（`AC-BIS-01`）。项目自用 pattern 为 `[A-Z]+(-[A-Z]+)*-\d+[a-z]*`（tools/ 桥接脚本注释）。
+- `apriori verify --specs apriori/specs`（默认 pattern）：71 identified / **36 UNIDENTIFIED**；加 `--id-pattern '[A-Z]+(-[A-Z]+)*-\d+[a-z]*'` 后 **107 identified / 0 UNIDENTIFIED**。
+- `apriori gate --change dashboard-launch-surface-slim`（archived stage）：C1 BLOCKED（`verify GAPS: 71 unbound, 36 unidentified`），C2–C7 全过。gate 没有任何 id-pattern 通道。
+- `apriori check`：CK-04 把上述 36 个场景全部误报 "scenario without a bindable ID"（exit 1 FAIL）。
+- `apriori doctor`：D6 用写死 DEFAULT_ID，同样误报。
+
+机制层根因：id-pattern 是**项目恒量**，但工具把它当每次调用的参数，四个消费点（verify/gate/check/doctor）中两个不可配、一个只可手输。
+
+## 目标（目标态 B）
+
+### B1. 新配置键 `id-pattern`
+
+`apriori/process-config.md` 表中一行，值为**裸 JS 正则源串**（不带 `/` 定界符、不带 flags）。人类持有（R3），agent/CLI 只读。**完整继承 config-contract**（共享 `lib/config.js` 读取；fenced/注释行不生效；同值重复容忍；异值重复为 CONFLICT，问题仅在消费时上浮；空值单元格按共享解析器现行规则视为无此行——该规则对所有键一致，本 change 声明并测试而不更改）。
+
+### B2. 统一解析优先级（一处实现，四处复用）
+
+每个消费点解析"生效 pattern"的规则：CLI `--id-pattern` flag（仅 verify、gate 有）> process-config `id-pattern` 行 > 内置 `DEFAULT_ID`。flag 存在时**不消费配置键**——坏配置对带 flag 的调用不可见、不报错（与 C7 casWaiver 的"flag 是人类意志、压过坏配置"先例一致）。
+
+### B3. 消费点与错误矩阵（REQ-2/REQ-6 收口）
+
+非法生效 pattern = `new RegExp(source)` 抛异常的源串。校验发生在**读取任何 spec 文件、启动任何 test command 之前**。错误继承各命令既有错误契约，`RegExp` 异常不得逃逸出库入口：
+
+| 命令 | 合法配置行为 | 非法生效 pattern 行为 |
+|---|---|---|
+| `verify` | 无 flag 时回退配置行 | infra ERROR：`errors[]` 增加一条消息（flag 来源含 `--id-pattern`，配置来源含 `process-config`），文本模式 `error:` 前缀 + `RESULT: ERROR`，`--json` 用既有 verify ERROR shape（`result:"ERROR"`），exit 2，不跑 test command |
+| `gate` | 新增 `--id-pattern` flag；无 flag 读配置；C1 两种 stage（in-flight 投影 / archived 全 store）均用生效 pattern | `runGate` 返回既有 `{result:'ERROR', errors:[...]}` 结构，文本 `gate:` 前缀，`--json` 保持纯 JSON shape，exit 2 |
+| `check` | CK-04 用生效 pattern（**本 change 不给 check 加 flag**——CI 门应吃项目恒量，加 flag 制造新遗忘面）；root=cwd | `error:` 行 + `RESULT: ERROR`，exit 2（沿用现有 spec-store-missing 的 ERROR 通道） |
+| `doctor` | D6 用生效 pattern 扫 store；D6 detail 中显示所用 pattern 来源（config/default） | D6 产生一条点名 `process-config` 的 `finding`（fix: 修配置行），**不扫场景、不抛异常**；无其他 unusable 条件时总结果 FINDINGS、exit 1（doctor 的职责是诊断可修问题，非法配置正是待诊断物；exit 2 仅保留给 doctor 自身既有 UNUSABLE 类） |
+
+配置 CONFLICT（两行异值）与"process-config 存在但读取失败（目录/不可读）"同入此矩阵：消费时上浮为对应命令的配置错误（verify/gate/check exit 2；doctor D6 finding）；读取失败的兜底在共享 `getConfig` 层（不抛异常，返回 problem）。`doctor` 的 D5 探针继续用 DEFAULT_ID 解析 TAP 计数（其结果对 pattern 不敏感——parsed 总数 = results+untagged+unattributed；声明保持现状）。
+
+### B4. 统一识别契约（REQ-4 收口）
+
+四个消费点用**同一识别函数**（`leadId` 语义）：匹配必须从标题起始处开始；匹配串的后继字符若属 `[A-Za-z0-9_]` 则拒绝（截断匹配不算）；**不额外拼接 `\b`**；pattern 源串按原样编译（自带锚点/alternation 是作者的责任，工具不改写）。`check` 的 `checkScenarioIds` 从 `'^('+p+')\\b'` 改为复用共享识别函数。一致性测试覆盖：字母后缀、多段式、紧邻 `_`、紧邻字母数字、以非 word 字符结尾的 pattern、自带 `^` 的 pattern、含 alternation 的 pattern——四消费点判定一致。
+
+### B5. 表格单元格中的 `|`（REQ-1/Q3 收口）
+
+共享 `parseConfig` 按以下**逐字符切分算法**处理单元格（对所有键统一）：扫描行内每个 `|`，统计其**紧邻前方的连续反斜杠个数 n**——n 为奇数：最后一个反斜杠转义该 `|`（该反斜杠被移除，`|` 进入单元格值，前面 n-1 个反斜杠逐字保留）；n 为偶数（含 0）：该 `|` 是单元格分隔符，n 个反斜杠全部逐字保留于值中。`\|` 之外的反斜杠序列一律不做反转义（parseConfig 不是 Markdown 渲染器，`\\` 不折叠为 `\`——与 GFM 的差异声明于文档）。真值表（原始单元格片段 → 解析结果）：
+
+| 原始 | 解析 |
+|---|---|
+| `a\|b` | 值含 `a|b`（pipe 入值） |
+| `a\\|b` | 值止于 `a\\`（两个反斜杠字面保留），`|` 为分隔符，`b` 属下一单元格 |
+| `a\\\|b` | 值含 `a\\|b`（三个反斜杠：移除转义者，余两个 + pipe 入值） |
+| `a\\\\|b` | 值止于 `a\\\\`，`|` 为分隔符 |
+
+由上表可知，值中 pipe 前的反斜杠数只能为偶数——正则源串 `\|`（反斜杠+pipe 的字面 pipe 转义）**不可经此通道表达**；需要在正则里匹配字面 `|` 时，**规范写法是字符类 `[|]`**（无需任何反斜杠，语义等价），文档必须给出此写法。这是 config-contract 的语义扩展：同步更新 `apriori/specs/config/spec.md`（新 scenario）与相关 KB 陈述，并为非 id-pattern 键（如 `test-cmd` 值含 `\|`）加兼容性测试。既有配置文件若含字面 `\|`（此前无法表达分隔符外的 pipe，实际不会出现于合法值），行为变化声明于 CHANGELOG。
+
+### B6. 模板与文档（REQ-1/Q2、AC7 收口）
+
+- `templates/process-config.md` 预置 id-pattern 行（值=内置默认 `[A-Z]+-\d+`，可发现性优先），其说明文字必须分开陈述两层语义：**alternation 的 `|` 在 Markdown 单元格中写 `\|`（解析后成为正则的裸 `|`）；正则要匹配字面 pipe 字符时写 `[|]`**——不得使用"字面 pipe 写 `\|`"之类把 Markdown 转义与 regex 字面量混为一谈的表述。`docs/cli*.md` 同一措辞标准。
+- 必改文件清单（穷尽）：`docs/cli.md` + `docs/cli_cn.md`（verify/gate/check/doctor 四节 + 配置键说明：裸源串、`\|`、优先级、错误语义）、`templates/process-config.md`、`CHANGELOG.md`。README/RUNBOOK **不改**（RUNBOOK 是无状态协议文件，id-pattern 属项目配置，归 process-config 与 docs/cli 管辖）。
+
+## 范围外（won't do）
+
+- verify `--change` 语义收窄（"本 change 达标"）——独立 change `verify-change-scope`。
+- MODIFIED 整块完整性检查——独立 change `modified-block-integrity`。
+- hotfix 最小回写单元——本轮不做。
+- 场景 ID 三态语义、`leadId` 词边界规则本身不动（复盘§三别改清单）；本 change 只统一"谁在用它"。
+- `check` 不新增任何 CLI flag。
+- 非 JS 生态接入附录（roadmap P2-11）。
+- 除 B5 声明的 `\|` 语义外，process-config 其他解析行为不动；`doctor` D5 探针、超时/重试/并发语义均保持现状（ADV-2）。
+
+## 验收标准（确定 oracle）
+
+- AC1（配置生效，每消费点一条 if/then，共享 fixture：一个含 `AC-01`+`AC-08a`+`AC-BIS-01` 三场景的最小 spec + 覆盖 `AC-01` 的 TAP 桩）：配置行 `[A-Z]+(-[A-Z]+)*-\d+[a-z]*`、无 flag 时——
+  - verify：3 identified / 0 UNIDENTIFIED（对照：无配置行时 1 identified / 2 UNIDENTIFIED）；
+  - gate：C1 detail 不含 `unidentified`；
+  - check：CK-04 零误报（exit 0，给定 store 无其他 fail）；
+  - doctor：D6 `ok` 且 detail 注明 pattern 来源为 config（对照：无配置行时 D6 finding 列出 2 个无 ID 场景，detail 注明来源为 default）——来源文本两种情形都必须被测试断言。
+- AC2（flag 覆盖）：verify/gate 同时给 flag 与配置行时按 flag 判定；且 flag 存在 + 配置行非法时**不报错**（配置未被消费）。
+- AC3（错误矩阵，按 B3 表逐格）：非法 flag → verify/gate exit 2、消息含 `--id-pattern`；非法配置行 → verify/gate/check exit 2、消息含 `process-config`，doctor 为 D6 finding + FINDINGS exit 1；`gate --json`/`verify --json` 下 stdout 仍是既有纯 JSON ERROR shape、错误进 `errors[]`。
+- AC4（默认回退）：无 flag、无配置行 → 生效 pattern 为 `DEFAULT_ID`，全部既有测试（现 254 个，数量不钉死）保持绿——无行为回归。
+- AC5（`\|` 转义）：配置行值 `(AC\|BR)-\d+` 解析为正则 `(AC|BR)-\d+`（`AC-1`、`BR-2` 均识别）；`test-cmd` 值含 `\|` 同样反转义（兼容性测试）；B5 真值表四行（`\|`、`\\|`、`\\\|`、`\\\\|`）各有对应解析断言，并含"字面 pipe 用 `[|]`"的可识别用例；同时保留不含转义的既有配置回归样本（普通 `test-cmd`/`cas` 行、多列表格、fenced/comment 行）断言解析结果与现版本一致。
+- AC6（真实样本对比，**flag 路径与配置路径都必须验证**，证据存本 change review/）：
+  - flag 路径（样本只读原地）：改后 `gate --change dashboard-launch-surface-slim --id-pattern '[A-Z]+(-[A-Z]+)*-\d+[a-z]*' --test-cmd "cat apriori/tmp/all-full.tap"` → C1 detail `unidentified` 计数为 0（改前同命令无 flag：36 unidentified）；
+  - 配置路径（样本副本，副本中 process-config 加 id-pattern 行）：同命令无 flag → 同样 0 unidentified；
+  - 剩余 unbound 为真实缺口（样本 TAP 存档未覆盖的历史场景），记录确切计数入证据文件；
+  - 证据文件必须记录不可变身份：样本 `git rev-parse HEAD`、本 CLI 版本与 commit、实际命令全文、副本相对原样本的 process-config 差异、`identified`/`unidentified`/`unbound` 确切计数。
+- AC7（文档）：B6 清单中每个文件都有对应改动；EN/CN 成对；CHANGELOG 有条目；`apriori check --self` 绿；模板与 docs/cli*.md 的配置说明同时含"alternation `|` 单元格内写 `\|`"与"匹配字面 pipe 写 `[|]`"两句（静态断言：测试 grep 模板文本，且断言不含「字面 pipe 写 \|」类混淆表述）。
+
+## 需求裁定记录（对 r3 评审）
+
+- REQ-8：B6 模板文案拆开两层语义（alternation 单元格写 `\|`；regex 字面 pipe 写 `[|]`），禁用混淆表述；AC7 增加模板文案静态断言。
+
+## 需求裁定记录（对 r2 评审）
+
+- REQ-7：B5 改为逐字符奇偶算法 + 真值表；值中 pipe 前反斜杠数恒为偶数的推论显式声明；regex 字面 pipe 的规范写法定为字符类 `[|]`（不引入二层转义）；AC5 补四个边界用例。
+- r2 advisories（3 条）：样本不可变身份入 AC6；doctor 来源 detail 断言入 AC1；非 regex 键回归样本入 AC5。
+
+## 需求裁定记录（对 r1 评审）
+
+- REQ-1：Q1=check 不加 flag；Q2=模板预置默认值行；Q3=共享 parseConfig 全键统一 `\|` 反转义 + config-contract spec/KB 同步 + 兼容性测试。
+- REQ-2：按 B3 矩阵；doctor=finding+exit1（诊断而非拒诊），verify/gate/check=exit 2。
+- REQ-3：继承 config-contract 全部边界；空值=共享解析器现行"行不存在"语义（**声明+测试，不更改**——单键特例化空值语义会破坏全键一致性，正是 REQ-4 要避免的分裂；fail-closed 的保护由"配置行在模板中预置、doctor D6 显示 pattern 来源"提供可见性）；读取失败在 getConfig 层兜底为 problem；flag 覆盖坏配置不报错。
+- REQ-4：按 B4 单一识别契约，check 改为复用。
+- REQ-5：AC 全部重写为确定 oracle；AC4 不钉测试数量；AC6 双路径必做 + 确切计数入证据。
+- REQ-6：按 B3 矩阵继承各命令既有输出契约。
+
+# Issue ledger — gate-id-pattern
+
+<!-- recorded on behalf of the reviewer (codex read-only sandbox), R2 transcription rule; raw: review/req-review-v1-raw.txt -->
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| REQ-1 | Q1–Q3 未收口，导致 `check` CLI、模板默认内容及 `parseConfig` 的全键语义不唯一。 | AI 可产出多个互不兼容但均看似满足需求的实现。 | STEP0·r1 | verified | 反转义+spec/KB 同步 |
+| REQ-2 | 非法 `id-pattern` 在 `doctor` 上应 exit 2 还是形成 D6 finding/exit 1 未定义，库入口异常形状也未声明。 | 可能破坏 doctor 的 FINDINGS/UNUSABLE 契约或让异常逃逸。 | STEP0·r1 | verified |
+| REQ-3 | 冲突行、同值重复、空值、不可读/错误类型配置及 flag 覆盖坏配置的边界语义缺失。 | 坏配置可能静默回退、跨命令结果不一致或直接崩溃。 | STEP0·r1 | verified |
+| REQ-4 | 四消费点只统一了来源优先级，未统一 pattern 的开头匹配和尾边界语义。 | 同一 `id-pattern` 可能被 verify/doctor 接受而被 check 拒绝。 | STEP0·r1 | verified |
+| REQ-5 | AC1、AC4、AC6 和 AC7 含不稳定、可选或无确定 oracle 的表述。 | 无法据此生成唯一、可重复的验收测试。 | STEP0·r1 | verified |
+| REQ-6 | 新 pattern 错误在既有文本和 `--json` 契约中的输出形状未声明。 | 可能破坏 gate/verify 的机器可解析接口。 | STEP0·r1 | verified |
+| REQ-ADV-1 | Advisory batch acknowledged (3 items: won't-do 已存在确认；并发/超时/回滚不适用注明保持现状；文档清单应含配置格式说明——已吸收进 req-v2)。 | — | STEP0·r1 | advisory-acked |
+| REQ-7 | `\|` 全键解析规则未定义 pipe 前连续反斜杠的奇偶语义，也未说明如何表达最终 regex source 中的 literal pipe。 | 不同实现可能产生不同的 cell 边界和配置值，并影响 regex 与 `test-cmd` 等所有键。 | STEP0·r2 | verified |
+| REQ-ADV-2 | Advisory batch acknowledged (3 items: 样本证据记录不可变身份 hash/CLI 版本/确切计数；doctor 来源 detail 断言进 AC1；非 regex 键回归样本进 AC5——均已吸收进 req-v3)。 | — | STEP0·r2 | advisory-acked |
+| REQ-8 | B6 模板文案「字面 pipe 写 \|」与 B5 语义冲突：`\|` 经解析产出裸 `|`（alternation），非 regex 字面 pipe。 | 用户/AI 照模板得到与文字承诺相反的正则，扩大匹配范围。 | STEP0·r3 | fixed (v4) — B6 文案拆两层语义；AC7 加模板静态断言 |
+
+
+codex
+# req-v4 需求复评（第 4 轮）
+
+评审基线：
+
+- 需求：`apriori/changes/gate-id-pattern/requirement/req-v4.md`
+- 台账：`apriori/changes/gate-id-pattern/review/issues.md`
+- 同前轮知识库及 `lib/` 实现
+- lineage：`main` / v4
+
+## 维度 1：目标态 B 是否清晰且无歧义
+
+结论：通过。
+
+### REQ-8：已验证关闭
+
+B6 已将两层语义明确分开：
+
+- regex alternation 的 `|` 在 Markdown 配置单元格中写作 `\|`，解析后传给 `RegExp` 的 source 为裸 `|`
+- regex 若要匹配 literal pipe 字符，则使用字符类 `[|]`
+
+B6 还明确禁止“字面 pipe 写 `\|`”这类混淆表述，并要求 `templates/process-config.md` 与 `docs/cli*.md` 使用相同措辞。
+
+该规则与 B5 的逐字符奇偶算法、真值表以及 `[|]` 规范形式完全一致，不再存在相互冲突的实现要求。
+
+## 维度 2：边界与异常路径是否覆盖
+
+结论：通过。
+
+v4 保留了此前已收口的边界：
+
+- 配置缺失、空值、重复及冲突
+- 配置文件不可读或类型错误
+- flag 覆盖非法配置
+- 非法 regex 的逐命令错误矩阵
+- 校验失败时不读取 specs、不启动 test command
+- pipe 前连续反斜杠的奇偶规则
+- timeout、retry、concurrency 和 rollback 保持现状
+
+本轮文案修订没有改变或遗漏任何异常路径。
+
+## 维度 3：是否存在暗示但未声明的状态变化或副作用
+
+结论：通过。
+
+本 change 仍为配置与 specs 的只读消费。模板、文档、config-contract spec/KB 和 CHANGELOG 的更新范围均已显式声明；没有新增文件写入、持久状态、并发状态或失败回滚行为。
+
+## 维度 4：每条验收标准是否可测试
+
+结论：通过。
+
+AC7 新增了确定的静态 oracle：
+
+- 模板与 `docs/cli*.md` 必须说明 alternation `|` 在单元格中写 `\|`
+- 必须说明 regex literal pipe 写 `[|]`
+- 必须不存在“字面 pipe 写 `\|`”类混淆表述
+
+结合 AC5 的解析真值表和 `[|]` 识别用例，既能验证解析行为，也能验证面向用户的配置说明。REQ-8 的修复因此不仅是文案调整，而且具备可执行的回归条件。
+
+其余 AC 仍保持确定：
+
+- 四消费点分别具有结果 oracle
+- flag/config/default 优先级可测
+- 错误 exit code、消息和 JSON shape 可测
+- 真实样本双路径及不可变身份有记录要求
+- 文档文件清单穷尽
+
+## 维度 5：是否与 state A 冲突
+
+结论：通过。
+
+v4 没有引入新的 state A 冲突：
+
+- `leadId` 边界语义保持不变
+- `check` 不增加 flag
+- `verify`、`gate` 保持既有 JSON shape
+- `doctor` 沿用 D6 finding 模型
+- 普通配置行保留回归测试
+- `\|` 的全键解析变化作为 config-contract 扩展被明确声明、测试并记录于 CHANGELOG
+
+## 维度 6：target lineage 是否声明且符合仓库现实
+
+结论：通过。
+
+`target lineage: main（v4 产品线；不合并 v1/v3）` 与当前仓库主线及 `4.0.7` 产品现实一致。
+
+## 新正式问题检查
+
+未发现新正式问题。v4 只修正了模板和文档的术语契约，没有扩大公共接口、改变错误分类或引入新的不可测试行为。
+
+## Advisories（不计入 verdict）
+
+### ADV-1：AC7 的禁止性断言宜采用语义检查
+
+“不得含混淆表述”不宜只 grep 一个固定中文短语。建议测试至少覆盖 EN/CN 模板及文档中的关键 token 组合，或断言规范说明完整存在；这样可避免同义改写重新引入混淆却绕过单一字符串检查。
+
+### ADV-2：台账 REQ-1 行存在多余表格单元格
+
+当前 `issues.md` 的 REQ-1 行在 `verified` 后还有 `反转义+spec/KB同步`，使其比表头多一列。该问题不影响需求正确性或本轮 verdict，但后续维护台账时宜把说明并入 Status 单元格或删除。
+
+## Ledger delta
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| REQ-8 | B6 模板文案“字面 pipe 写 `\|`”与 B5 语义冲突：`\|` 经解析产出裸 `|`（alternation），非 regex literal pipe。 | 用户或 AI 照模板会得到与文字承诺相反的正则，扩大匹配范围。 | STEP0·r3 | verified |
+
+VERDICT: no major issues
+# req-v4 需求复评（第 4 轮）
+
+评审基线：
+
+- 需求：`apriori/changes/gate-id-pattern/requirement/req-v4.md`
+- 台账：`apriori/changes/gate-id-pattern/review/issues.md`
+- 同前轮知识库及 `lib/` 实现
+- lineage：`main` / v4
+
+## 维度 1：目标态 B 是否清晰且无歧义
+
+结论：通过。
+
+### REQ-8：已验证关闭
+
+B6 已将两层语义明确分开：
+
+- regex alternation 的 `|` 在 Markdown 配置单元格中写作 `\|`，解析后传给 `RegExp` 的 source 为裸 `|`
+- regex 若要匹配 literal pipe 字符，则使用字符类 `[|]`
+
+B6 还明确禁止“字面 pipe 写 `\|`”这类混淆表述，并要求 `templates/process-config.md` 与 `docs/cli*.md` 使用相同措辞。
+
+该规则与 B5 的逐字符奇偶算法、真值表以及 `[|]` 规范形式完全一致，不再存在相互冲突的实现要求。
+
+## 维度 2：边界与异常路径是否覆盖
+
+结论：通过。
+
+v4 保留了此前已收口的边界：
+
+- 配置缺失、空值、重复及冲突
+- 配置文件不可读或类型错误
+- flag 覆盖非法配置
+- 非法 regex 的逐命令错误矩阵
+- 校验失败时不读取 specs、不启动 test command
+- pipe 前连续反斜杠的奇偶规则
+- timeout、retry、concurrency 和 rollback 保持现状
+
+本轮文案修订没有改变或遗漏任何异常路径。
+
+## 维度 3：是否存在暗示但未声明的状态变化或副作用
+
+结论：通过。
+
+本 change 仍为配置与 specs 的只读消费。模板、文档、config-contract spec/KB 和 CHANGELOG 的更新范围均已显式声明；没有新增文件写入、持久状态、并发状态或失败回滚行为。
+
+## 维度 4：每条验收标准是否可测试
+
+结论：通过。
+
+AC7 新增了确定的静态 oracle：
+
+- 模板与 `docs/cli*.md` 必须说明 alternation `|` 在单元格中写 `\|`
+- 必须说明 regex literal pipe 写 `[|]`
+- 必须不存在“字面 pipe 写 `\|`”类混淆表述
+
+结合 AC5 的解析真值表和 `[|]` 识别用例，既能验证解析行为，也能验证面向用户的配置说明。REQ-8 的修复因此不仅是文案调整，而且具备可执行的回归条件。
+
+其余 AC 仍保持确定：
+
+- 四消费点分别具有结果 oracle
+- flag/config/default 优先级可测
+- 错误 exit code、消息和 JSON shape 可测
+- 真实样本双路径及不可变身份有记录要求
+- 文档文件清单穷尽
+
+## 维度 5：是否与 state A 冲突
+
+结论：通过。
+
+v4 没有引入新的 state A 冲突：
+
+- `leadId` 边界语义保持不变
+- `check` 不增加 flag
+- `verify`、`gate` 保持既有 JSON shape
+- `doctor` 沿用 D6 finding 模型
+- 普通配置行保留回归测试
+- `\|` 的全键解析变化作为 config-contract 扩展被明确声明、测试并记录于 CHANGELOG
+
+## 维度 6：target lineage 是否声明且符合仓库现实
+
+结论：通过。
+
+`target lineage: main（v4 产品线；不合并 v1/v3）` 与当前仓库主线及 `4.0.7` 产品现实一致。
+
+## 新正式问题检查
+
+未发现新正式问题。v4 只修正了模板和文档的术语契约，没有扩大公共接口、改变错误分类或引入新的不可测试行为。
+
+## Advisories（不计入 verdict）
+
+### ADV-1：AC7 的禁止性断言宜采用语义检查
+
+“不得含混淆表述”不宜只 grep 一个固定中文短语。建议测试至少覆盖 EN/CN 模板及文档中的关键 token 组合，或断言规范说明完整存在；这样可避免同义改写重新引入混淆却绕过单一字符串检查。
+
+### ADV-2：台账 REQ-1 行存在多余表格单元格
+
+当前 `issues.md` 的 REQ-1 行在 `verified` 后还有 `反转义+spec/KB同步`，使其比表头多一列。该问题不影响需求正确性或本轮 verdict，但后续维护台账时宜把说明并入 Status 单元格或删除。
+
+## Ledger delta
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| REQ-8 | B6 模板文案“字面 pipe 写 `\|`”与 B5 语义冲突：`\|` 经解析产出裸 `|`（alternation），非 regex literal pipe。 | 用户或 AI 照模板会得到与文字承诺相反�tokens used�正则，扩大匹配范围。 | STEP0·r3 | verified |
+
+VERDICT: no major issues
+
+158,935

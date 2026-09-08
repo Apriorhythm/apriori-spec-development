@@ -1,0 +1,639 @@
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f4b30-68f9-7222-9b64-17f52a333b4c
+--------
+user
+New change, new stage: STEP0 requirement review (P1) for change "gate-command" (a NEW change, distinct from the completed change-projection).
+
+You are a senior requirements reviewer. Goal: precise enough to hand straight to an AI for implementation.
+
+[Input — read these]
+* Requirement doc: requirement/req-v1.md (this is gate-command's v1 — the shared requirement/ path has been rotated)
+* KB: apriori/truth/status.md (freshly captured, you just verified it), apriori/truth/spec-runner.md, apriori/truth/archive-merge.md
+* Ledger: none yet for this change (your formal findings seed apriori/review/gate-command-issues.md; use IDs GREQ-1, GREQ-2, ...)
+* Context code: lib/status.js, lib/spec-runner.js, lib/archive-merge.js, bin/apriori.js
+
+[Review dimensions — verdict on each]
+1. Target state B clear and unambiguous
+2. Edge cases and exception paths covered
+3. Implied but undeclared state changes or side effects
+4. Each acceptance criterion testable as if/then
+5. Conflicts with current state A (the KB docs / actual code)
+6. Target lineage declared and matches repo reality
+
+[Scope] Formal = ambiguous target, untestable acceptance, missing edge coverage, conflicts with A. Else advisory. Correctness/security never advisory. Check the out-of-scope section exists.
+
+[Output — read-only sandbox: print the COMPLETE review doc body to stdout, to be landed verbatim at apriori/review/gate-command-req-review-v1.md]
+End with (a) ledger delta table | ID | Issue | Risk | Round found | Status |, (b) exactly one verdict line: "VERDICT: no major issues" or "VERDICT: <N> issues open".
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-10T15:13:19.553837Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-10T15:13:19.673541Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-10T15:13:20.183916Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-10T15:13:20.662452Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-10T15:13:21.552822Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-10T15:13:23.241587Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-10T15:13:26.425957Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: hEMSYw7zzL5n
+codex
+I’ll read the new gate-command requirement plus the current KB/code context, then produce a P1 review with formal GREQ rows only for handoff-blocking requirement defects.
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' apriori/truth/spec-runner.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,320p' requirement/req-v1.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' apriori/truth/status.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,280p' apriori/truth/archive-merge.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 0ms:
+# TRUTH — archive-merge (`lib/archive-merge.js`, CLI subcommand `archive`)
+
+## Contract (code-is-truth)
+
+source-commit: 024ee2c
+
+**Responsibility.** Merge a change's delta spec into the living store by stable Requirement ID (STEP6 archive action); move the change dir to `changes/archive/`. Zero deps. 3.1: also the home of the merge-family pure helpers shared with `verify --change` — delta discovery, projection building, CAS base stamps, realpath containment — plus the high-level `archive --change` transaction and the `stamp` subcommand.
+
+**Delta format.** `## ADDED|MODIFIED|REMOVED|RENAMED Requirements` (h2 sections) containing `### Requirement: <name>` blocks (h3); RENAMED carries `- Old -> New` lines; optionally ONE CAS stamp line `<!-- apriori-base: sha256:<64hex> | new -->` before the first section. Parsing: `parseDeltaStrict(text)` → `{ delta, stamp, problems[] }` — duplicate requirement names (within/across sections) and stamp problems surface as problems; `parseDelta(text)` = its delta only; `parseRequirementsStrict(text)` → `{ map, duplicates[] }` (first block wins, duplicates reported); `parseRequirements` = its map; `deltaOpCount(delta)` → total parsed ops (0 = no recognized section OR recognized sections with no parseable requirement/rename lines). `parseStamp(text)` → `{ stamp, problems }` — any standalone comment line ATTEMPTING apriori-base that fails the strict form is a problem, never silently 'unstamped'. `fingerprint(text)` → `sha256:<64hex>` over CRLF/CR→LF-normalized content.
+
+**Public interface.**
+- `merge(storeText, delta, change)` — PURE. → `{ store:Map, merged, modified, deprecated, renamed, conflicts, unchanged }`. Duplicate requirement names in the STORE text → conflicts (corruption guard). Order of application: RENAMED first (in-place key swap preserving document order), then ADDED, MODIFIED, REMOVED.
+  - ADDED on existing name: identical trimmed content → `unchanged` (idempotent rerun no-op) UNLESS the name was created by this run's RENAMED (`renamedTargets`) → conflict.
+  - MODIFIED replaces the whole block; missing target → conflict.
+  - REMOVED keeps the block, injects `_deprecated (superseded by <change>)_` into the heading line.
+  - RENAMED with source gone + target present → `unchanged` ("already renamed" rerun signature); source gone + target absent → conflict; target already exists → conflict.
+  - REMOVED with target gone but `<name>  _deprecated (superseded by <THIS change>)_` present → `unchanged` ("already deprecated" rerun signature); deprecated by a DIFFERENT change → conflict.
+  - ANY conflict → nothing written (CLI exit 1).
+- `renderStore(storeText, store)` — preserves the store's header (text before the first `### Requirement:`), then blocks joined with `\n`.
+- `archiveStamp(d)` → `YYYY-MM-DDThhmm` (colon-free, CLI clock).
+- `CHANGE_NAME_RE` = `/^[a-z0-9]+(-[a-z0-9]+)*$/` (same rule as `apriori new`).
+- `archiveChangeDir(changesDir, name, now, ops?)` — validates name; realpath containment on BOTH source and destination (a symlinked `archive/` pointing outside is rejected before any move); `renameSync` (via ops when given) to `changes/archive/<stamp>-<name>/`; returns dest or null when source missing; throws on invalid name/escape.
+- `containsReal(root, target)` — realpath containment; not-yet-existing targets judged by nearest existing ancestor; STRICT (root itself is not inside root); fail-closed on unreadable paths.
+- `discoverDeltas(changesDirAbs, name)` → `{ files:[{abs,suffix}], errors[] }` — validates name (CHANGE_NAME_RE), change-dir existence + containment, specs/ itself containment-checked before becoming a root (symlinked specs/ rejected); walk follows symlink dirents explicitly (escaping links = errors, never silent skips). Errors are VALIDATION class → exit 2 on both surfaces.
+- `buildProjection(storeRoot, deltaFiles, change)` → `{ texts:Map<suffix,text>, modules, perModule, conflicts, casMismatches, hygiene, validation }` — all store files pass through; each delta strict-parsed, CAS-checked, merged in memory; nothing touches disk.
+- `archiveChange({cwd, change, changesDir, changesDirExplicit, write, ops})` → `{ code, out[], err[] }` — four phases: preflight (discovery+hygiene+CAS+merges+pre-existing-temp guard+destination containment; any failure → nothing written), stage (`<store>.tmp-archive`, this-run cleanup on failure), commit (sorted per-file atomic renames; mid-commit failure → exact committed/not-committed/temps report, NO rollback), move (only changesDirExplicit, only after all commits). `ops` ({writeFileSync,renameSync,rmSync}) is the fault-injection seam.
+- `stampCli(argv)` — exactly one argv entry; absent file → `new` form; directory/unreadable → exit 2.
+- `cli(argv)`: high-level form `--change <name> [--write] [--changes-dir <dir>]` (no --store/--delta) → archiveChange; single-file form `--store <FILE> --delta <FILE> --change <name> [--write] [--changes-dir <dir>]` unchanged from 3.0.1 EXCEPT it now checks a present CAS stamp (mismatch → exit 1, nothing written) and rejects malformed deltas via parseDeltaStrict problems. Mixing --change with only one of --store/--delta → exit 2. Exit: 0 merged/no-op · 1 conflict/CAS/hygiene/zero-op/stage/commit/move-failure/pre-existing-temp · 2 usage/invalid name/missing change dir/containment.
+
+**Transactional write ordering (`--write`).** store staged to `<store>.tmp-archive` → dir move (atomic rename) → store committed via `renameSync(tmp, store)`. Move failure → tmp discarded, store byte-for-byte untouched. Limits: (a) tmp+rename gives single-file replace atomicity, NOT crash durability (no fsync on file or dir) — do not claim crash-durable; (b) the final `renameSync(tmp, store)` is NOT guarded — if it throws AFTER the change dir moved, the store is unchanged but the change dir is already archived and the tmp file is left behind (the "all or nothing" claim covers move failure, not store-commit failure after the move).
+
+**Three moments.** The store file is the shared state: init = created on first `--write`; update = full rewrite via temp+rename; cleanup = none (grows monotonically; REMOVED deprecates, never deletes).
+
+**Pitfalls.**
+- `merge` compares ADDED blocks with `.trim()` equality — whitespace-only differences count as conflicts, not no-ops.
+- `parseRequirementsStrict` keeps the FIRST duplicate block (previously last-wins) — visible only on invalid input, which now conflicts anyway.
+- `renderStore` drops anything BETWEEN requirement blocks that isn't part of a block (inter-block prose is not preserved — only the pre-first-block header is). Needs human confirmation whether any store relies on inter-block prose (repo's own stores do not).
+- CAS stamps are OPT-IN: an unstamped delta merges without any divergence check (pre-3.1 behavior preserved).
+- Deprecation rewrites the heading LINE (`### Requirement: Name  _deprecated (superseded by x)_`), so on re-parse the requirement's map KEY includes the marker — MODIFIED/RENAMED can no longer address the block by its original name. (REMOVED reruns by the SAME change are now a no-op signature; see merge().) `DEPRECATED_RE`/`stripDeprecatedBlocks` exported — spec-runner uses them to exclude deprecated blocks from scenario collection.
+- Unknown CLI flags silently ignored (roadmap item 6).
+
+## Decisions (doc-is-truth)
+
+- D-AM-1 (active): same-ID conflict = stop, ledger issue, human resolves — the §4.11 serialize-per-module rule; the tool never auto-resolves.
+- D-AM-2 (superseded-by: D-AM-7): archive rerun idempotency as ratified in 3.0.1 covered two signatures — identical-content ADDED, and RENAMED source-gone+target-present.
+- D-AM-3 (active): a content-bearing delta parsing to zero operations errors instead of silently merging nothing.
+- D-AM-4 (active): REMOVED deprecates in place (audit trail), never physically deletes.
+- D-AM-5 (active): CAS base stamps are opt-in — §4.11's serialize rule tooling must not break unstamped pre-3.1 deltas. Ratified in change-projection (2026-07-10).
+- D-AM-6 (active): high-level archive guarantees failure-atomicity UP TO THE COMMIT POINT only; the commit phase is per-file atomic renames with an honest report on mid-commit failure and NO rollback (a rollback that half-fails is worse); crash durability (fsync) is explicitly NOT claimed (§4.8 wording discipline). Ratified in change-projection.
+- D-AM-7 (active): rerun idempotency covers THREE signatures — identical-content ADDED; RENAMED source-gone+target-present; REMOVED already-deprecated-by-THIS-change. MODIFIED reruns re-apply (same content → same store). Supersedes D-AM-2. Ratified in change-projection.
+
+ succeeded in 110ms:
+# TRUTH — spec-runner (`lib/spec-runner.js`, CLI subcommand `verify`)
+
+## Contract (code-is-truth)
+
+source-commit: 024ee2c
+
+**Responsibility.** Bind spec scenario IDs to a TAP-emitting test run; report per-scenario red/green; act as STEP5's deterministic gate. Fail-closed: a broken or vacuous run is never GREEN. 3.1: `--change <name>` verifies against the in-memory PROJECTED store (archive's merge() applied to the living store) — the mid-change form.
+
+**Public interface (module exports).**
+- `leadId(text, idRe)` → leading ID or null. Word-boundary strict: `XX-01b`, `XX-01_x` are NOT `XX-01`.
+- `stripFences(text)` → text with ``` fenced blocks removed (fenced scenarios are documentation, not spec).
+- `mdFiles` is internal; `collectScenarios(specTargets, idRe)` → `{ byId, unidentified:[[file,title]], files, missingTargets, duplicates:[{id,files}] }`. A target may be a dir (recursed for `*.md`, sorted) or a single file (accepted as-is, ANY extension); dedupes overlapping targets. Scenario discovery matches exact h4 lines `#### Scenario: …` only. Scenarios inside DEPRECATED requirement blocks (heading carries `_deprecated (superseded by …)_`) are excluded in EVERY form — not demanded, not listed; their lingering tests turn ORPHAN.
+- `collectScenariosFromTexts(Map<label,text>, idRe)` — same scan over in-memory texts (the projection path); labels are store-relative suffixes.
+- `parseTap(out, idRe)` → `{ results: Map<id,{pass,fail,skip}>, untagged:[], untaggedFails, bailout }`. Only lines shaped exactly `ok|not ok <n> - <name>` parse — a TAP result line without the ` - ` separator is ignored. `# SKIP`/`# TODO` counts as skip (proves nothing); untagged `not ok` without directive increments `untaggedFails`; `Bail out!` line captured.
+- `zeroTapParsed(out, results, untagged)` → true when output exists but no TAP line parsed AND no `TAP version`/`1..N` plan line (plan line = TAP reporter with an empty suite, not a reporter problem).
+- `runTestCommand(cmd, cwd)` → `{ out (stdout+\n+stderr), status (null if signal-killed), signal, error }` via `spawnSync(shell:true)`.
+- `evaluate(byId, unidentified, results)` → `{ boundGreen, boundRed, unbound, orphan, unidentified, clean }`. A scenario whose only results are skips is UNBOUND.
+- `verify(opts {specs:[], change, testCmd, idPattern, cwd})` — with `change`: builds the projection via archive-merge's discoverDeltas/buildProjection (roots `<cwd>/apriori/{changes,specs}`); ANY projection failure (validation/hygiene/CAS/merge-conflict) → run with `errors` set and NO test executed; success → normal pipeline over projected texts; run gains `projection: {change, modules, conflicts}`. Without `change`: unchanged. → run object `{ verdict, results, fileCount, failCount, scenarioCount, missingTargets, duplicates, bailout, noTap, exec{status,signal,error}, errors }`. `failCount` = tagged fails + `untaggedFails`.
+- `infraErrors(run)` → string[] (empty = trustworthy). Triggers: missing spec target · zero spec files · zero scenarios · spawn error · signal kill · bailout · zero-TAP-parsed · non-zero exit with `failCount === 0` (TAP picture doesn't explain the exit).
+- `formatReport(...)` → human report; RESULT line: `ERROR — run not trustworthy (see stderr)` / `GREEN — spec is the test suite` / `GAPS`. Duplicates block GREEN.
+- `verifyJson(run)` → `{ clean, result: GREEN|GAPS|ERROR, errors, specFiles, exec, duplicates, boundGreen[], boundRed[], unbound[], orphan[], unidentified[] }`; `--change` runs add exactly one field `projection: {change, modules, conflicts}` — never present otherwise.
+- `configTestCmd(cwd)` → test-cmd from `apriori/process-config.md`'s `| test-cmd | … |` row, or null.
+- `cli(argv)` → exit code. `--specs <dir...>` OR `--change <name>` (mutually exclusive, combining → exit 2) `--test-cmd "<cmd>" [--id-pattern] [--cwd] [--json]`; test-cmd falls back to config row. Exit: 0 GREEN · 1 gaps/duplicates · 2 infra/usage error, incl. all projection failure classes. Unknown flags are silently ignored (known gap, roadmap item 6).
+- `DEFAULT_ID` = `[A-Z]+-\d+`.
+
+**Data flow.** spec targets → collectScenarios → run test cmd once → parseTap → evaluate → infraErrors → report/JSON. One test-command invocation per verify run; no state persists between runs (stateless, reads FS + spawns only).
+
+**Three moments.** No external shared state. FS reads only; the spawned test command is the only side effect.
+
+**Pitfalls.**
+- `--specs` consumes following args until the next `--` flag — a path starting with `--` is impossible.
+- A direct-file `--specs` target is read whatever its extension; only directory recursion filters to `.md`.
+- `exec.status` is null when signal-killed; the non-zero-exit rule explicitly guards `status !== null`.
+- Requires `./archive-merge` (one-way: archive-merge never requires spec-runner).
+
+## Decisions (doc-is-truth)
+
+- D-SR-1 (active): fail-closed is a hard product stance — exit taxonomy 0/1/2; a vacuous or untrustworthy run must never exit 0. Ratified with 3.0.1 (owner + external review 2026-07-10).
+- D-SR-2 (active): skipped tests prove nothing — a scenario with only skips is UNBOUND, not green.
+- D-SR-3 (active): duplicate scenario IDs are a binding ambiguity → GAPS (exit 1), not a warning.
+- D-SR-4 (active): the binding gate speaks TAP only; non-TAP layers (e.g. Playwright E2E) sit above the gate as additional exit conditions, never replace it.
+- D-SR-5 (active): deprecated requirement blocks are excluded from scenario collection in ALL verify forms — post-REMOVED stores must not demand tests for removed behavior forever; lingering tests surface as ORPHAN. Ratified in change-projection (2026-07-10, STEP0 REQ-2).
+- D-SR-6 (active): mid-change, the STEP5 gate is `verify --change` (projection); plain `--specs` verify is the post-archive/store-only form. Ratified in change-projection.
+
+ succeeded in 123ms:
+# Requirement — gate-command (v1)
+
+change: gate-command
+target lineage: **v3 branch** (never merge to main or v2). Ships in apriori-cli **3.2.0-line work started as 3.1.x feature** — versioning decided at release; no compatibility impact (purely additive subcommand).
+
+## Background — the problem (current state A)
+
+The runbook's exit conditions for a change are individually machine-checkable — `verify` GREEN, tasks.md all `[x]`, a legal flow-state, a ledger with no open rows, every `VERDICT:` line backed by a raw archive (§1 enforcement layer ①), fresh KB stamps — but no command aggregates them. Today an agent (or a CI job, or a human at gate ④) assembles the picture by hand from five artifact formats. The verdict-evidence check in particular ("every verdict line must have a matching raw archive — a mechanical backstop against simulated reviews") exists only as prose; nothing enforces it.
+
+Since 3.1.0, the binding gate has two forms (projected `verify --change` mid-change, plain `verify --specs` post-archive) — picking the right one is itself a rule an aggregator should encode.
+
+## Goal (target state B)
+
+`apriori gate --change <name>` — one read-only command, one exit code, aggregating the machine-checkable gate conditions for one change. It reuses the existing parsers and gates (status's flow-state/ledger parsers, spec-runner's verify, archive-merge's discovery) — it invents no new semantics.
+
+**Explicitly NOT a human-gate substitute:** `GATE: PASS` means the mechanical face is clean; protected human gates (KB sign-off, shrink, intent-card) remain human. The output states this in one line.
+
+## The checks
+
+Stage resolution first: the change dir is looked up at `apriori/changes/<name>/` (**in-flight**) or, failing that, at the newest `apriori/changes/archive/<stamp>-<name>/` (**archived** — the gate-④-pending window). Found in neither → exit 2. All later checks read from the resolved dir.
+
+| # | Check | Rule | Blocks? |
+|---|---|---|---|
+| C1 | Binding gate | in-flight → projected verify (`verify --change` semantics, same code path, incl. CAS); archived → plain verify against `apriori/specs/` (the deltas are already merged). Test command: `--test-cmd` or the process-config row (as `verify`). verify exit 2 → gate exit 2 (run untrustworthy); verify exit 1 → blocked | yes |
+| C2 | Tasks complete | `tasks.md` in the change dir has zero unchecked `- [ ]` boxes. File absent: tier trivial → `–` not applicable (no STEP2 on that tier); tier medium/large → blocked | yes |
+| C3 | Flow-state legal | parses; `tier`/`track`/`lineage` filled with real values (a value still containing `<` and `>` is an unfilled placeholder); `current-step` ∈ the §3 vocabulary (STEP0..6, INTENT-CARD, SPIKE, EXTRACTION, DONE, ABANDONED) | yes |
+| C4 | Ledger clean | ledger file may be absent (`–` when no review ever ran AND tier is trivial; blocked otherwise). Present: no row whose status starts `open` (case-insensitive); every `rejected` row carries a reason beyond the word itself (text after `rejected` — a bare `rejected` is a blocker); `advisory*`/`fixed`/`verified` never block | yes |
+| C5 | Verdict evidence | every VERDICT-bearing review doc for this change has a raw archive: docs = files matching `apriori/review/<name>-*.md` plus `apriori/design/<name>-review-v*.md`, excluding the ledger (`<name>-issues.md`) and `*-raw.*` files, that contain a line starting `VERDICT:`; for a doc with stem S (basename minus `.md`), a raw must exist matching `apriori/review/S-raw.*` | yes |
+| C6 | KB freshness | for each module `<m>` = first path segment of the change's delta-spec suffixes (from the resolved change dir's `specs/`): if `apriori/truth/<m>.md` exists and carries `source-commit: <c>`, and `git` is available, and `lib/<m>.js` exists — `git log <c>..HEAD -- lib/<m>.js` must be empty. Any precondition missing → `–` with a note (never a false block). Stale → blocked | yes (when checkable) |
+
+## Output & CLI contract
+
+- One line per check: `✓` / `✗ (reason)` / `– (why not applicable)`; final line `GATE: PASS — mechanical checks only; human gates remain human` or `GATE: BLOCKED (<n> item(s))`.
+- `apriori gate --change <name> [--test-cmd "<cmd>"] [--cwd <dir>] [--json]`. `--json` → `{ change, stage: "in-flight"|"archived", checks: [{id, status: "pass"|"blocked"|"n/a", detail}], result: "PASS"|"BLOCKED", blocked: <n> }` (stdout pure JSON in every outcome; errors also as check details).
+- Exit: **0** PASS · **1** BLOCKED · **2** change not found in either location / flow-state file unreadable / C1's verify itself exits 2 / usage error (`--change` missing).
+- Read-only: gate writes nothing, ever.
+- `gate` joins the subcommand list in `apriori --help` and the CLI spec.
+
+## Acceptance criteria (testable)
+
+- A1. In-flight change, all conditions met → every check `✓`, `GATE: PASS`, exit 0.
+- A2. One unchecked task → C2 `✗`, `GATE: BLOCKED (1 item(s))`, exit 1; the failing check names the file.
+- A3. Ledger with an `open` row → C4 blocked naming the row ID; a `rejected` row with a reason does not block; a bare `rejected` row blocks.
+- A4. Placeholder tier (`<trivial | medium | large>`) in flow-state → C3 blocked; a legal filled flow-state passes.
+- A5. A VERDICT-bearing review doc whose `S-raw.*` sibling is missing → C5 blocked naming the doc; adding the raw file flips it to `✓`.
+- A6. In-flight stage runs the projected verify (a delta-only scenario with a bound test passes C1 in-flight; the same store WITHOUT projection would report it unbindable); archived stage (change dir only under `changes/archive/`) runs plain verify and resolves flow-state/tasks from the archived path.
+- A7. Change found nowhere → exit 2 naming both searched locations.
+- A8. Trivial tier without tasks.md and without ledger → C2 and C4 report `–`, not blockers.
+- A9. C6: a truth doc whose `source-commit` predates a later commit touching `lib/<m>.js` → blocked; same commit → `✓`; no git / no truth doc / no lib file → `–` with reason.
+- A10. `--json` parses as JSON for PASS, BLOCKED, and exit-2 outcomes; shape as contracted above.
+- A11. Zero-dep constraint holds; no behavior change to any existing subcommand.
+
+## Out of scope (won't do)
+
+- Wiring gate into CI config (docs may mention the one-liner; the workflow file is untouched this change).
+- Judging raw-archive CONTENT authenticity (that is P8's/the human's job — C5 checks existence only).
+- Environment/onboarding checks (roadmap item 4, `apriori doctor`).
+- Any write action, any auto-fix.
+- Gate for multiple changes at once (`gate` takes exactly one `--change`).
+
+## Decisions proposed (for review)
+
+- D1. Raw-naming convention becomes normative going forward: a review doc with stem S archives its raw as `apriori/review/S-raw.*` (the runbook's R2 wording gets this precision; older changes with divergent names simply predate the rule — gate is for current/future changes).
+- D2. C6's module mapping (`suffix top segment` → `lib/<m>.js`) is convention-based and degrades to `–` when the convention doesn't hold, never to a false block.
+
+ succeeded in 138ms:
+# TRUTH — status (`lib/status.js`, CLI subcommand `status`)
+
+## Contract (code-is-truth)
+
+source-commit: bd8aaec
+
+**Responsibility.** Answer "where am I / what's left" for a change: read the flow-state file + the issue ledger, report step/next-action/open items. Read-only; zero deps.
+
+**Public interface (module exports).**
+- `parseFlowState(text)` → object with keys `change, tier, track, current-step, round, next-action, lineage` (each from a `key: value` line, inline `#` comment stripped, missing keys absent) plus `lastGate` = the last `- <YYYY-MM-DD…> …` bullet's text, or null.
+- `parseLedger(text)` → `[{id, status}]` from P0 markdown table rows (header/separator rows skipped; id = col 1, status = LAST col).
+- `activeChanges(root)` → sorted dir names under `<root>/apriori/changes/`, excluding `archive`; [] when the dir is missing.
+- `changeStatus(root, change)` → `{ change, state (parsed flow-state or null), open (ledger rows with status starting "open", case-insensitive), hasFlowState }`. Flow-state read from `<root>/apriori/changes/<change>/flow-state.md`; ledger from `<root>/apriori/review/<change>-issues.md`.
+- `formatOne(s)`, `toJson(s)` — human/machine shapes.
+- `cli(argv)`: `[--change <name>] [--json]`; root = process.cwd(). Without `--change`: list actives. Always exit 0 (status never fails the build).
+
+**Pitfalls.**
+- `changeStatus` looks ONLY under `apriori/changes/<name>` — it does NOT find archived changes under `changes/archive/<stamp>-<name>/` (relevant while gate ④ is pending post-move).
+- `parseFlowState` strips ` # comment` from values — a next-action containing a literal `#` would be truncated.
+- `parseLedger` matches any `| a | … | b |` row shape — prose tables in the same file would be picked up too (ledger files carry only the one table by convention).
+- Placeholder values (`<trivial | medium | large>`) parse as ordinary strings — callers must detect unfilled skeletons themselves.
+
+## Decisions (doc-is-truth)
+
+- D-ST-1 (active): status is read-only and always exits 0 — it reports, never gates (gating is `gate`'s job, roadmap item 5).
+
+codex
+The gate requirement is readable and has an out-of-scope section. I’m checking repo lineage/version and current CLI exports next, then I’ll identify only requirement-level gaps that would block a reliable implementation handoff.
+exec
+/usr/bin/zsh -lc 'git branch --show-current' in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' lib/status.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,220p' package.json" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,160p' bin/apriori.js" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 118ms:
+'use strict';
+/*
+ * apriori status — answer "where am I / what's left" for a change.
+ * Reads the flow-state file + the issue ledger; zero deps, pure Node stdlib.
+ */
+const fs = require('fs');
+const path = require('path');
+
+// parse `key: value` lines from a flow-state file → object; plus the last gate line
+function parseFlowState(text) {
+  const out = {};
+  for (const key of ['change', 'tier', 'track', 'current-step', 'round', 'next-action', 'lineage']) {
+    const m = text.match(new RegExp('^' + key + ':\\s*(.+)$', 'm'));
+    if (m) out[key] = m[1].replace(/\s*#.*$/, '').trim();
+  }
+  const gates = [...text.matchAll(/^\s*-\s*(\d{4}-\d{2}-\d{2}\S*\s+.+)$/gm)].map((m) => m[1].trim());
+  out.lastGate = gates.length ? gates[gates.length - 1] : null;
+  return out;
+}
+
+// parse a P0 ledger markdown table → rows with {id, status}
+function parseLedger(text) {
+  const rows = [];
+  for (const line of text.split('\n')) {
+    const m = line.match(/^\|\s*([^|]+?)\s*\|.*\|\s*([^|]+?)\s*\|\s*$/);
+    if (!m) continue;
+    const id = m[1].trim(), status = m[2].trim();
+    if (id === 'ID' || /^-+$/.test(id)) continue;         // header / separator
+    rows.push({ id, status });
+  }
+  return rows;
+}
+
+function activeChanges(root) {
+  const dir = path.join(root, 'apriori', 'changes');
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir, { withFileTypes: true })
+    .filter((e) => e.isDirectory() && e.name !== 'archive')
+    .map((e) => e.name).sort();
+}
+
+function changeStatus(root, change) {
+  const fsPath = path.join(root, 'apriori', 'changes', change, 'flow-state.md');
+  const state = fs.existsSync(fsPath) ? parseFlowState(fs.readFileSync(fsPath, 'utf8')) : null;
+  const ledgerPath = path.join(root, 'apriori', 'review', `${change}-issues.md`);
+  const rows = fs.existsSync(ledgerPath) ? parseLedger(fs.readFileSync(ledgerPath, 'utf8')) : [];
+  const open = rows.filter((r) => /^open\b/i.test(r.status));
+  return { change, state, open, hasFlowState: !!state };
+}
+
+function formatOne(s) {
+  const lines = [];
+  if (!s.state) { lines.push(`change: ${s.change} (no flow-state file found)`); }
+  else {
+    lines.push(`change:       ${s.state.change || s.change}`);
+    lines.push(`step:         ${s.state['current-step'] || '?'}   (tier ${s.state.tier || '?'}, track ${s.state.track || '?'})`);
+    if (s.state['next-action']) lines.push(`next-action:  ${s.state['next-action']}`);
+    if (s.state.lastGate) lines.push(`last gate:    ${s.state.lastGate}`);
+  }
+  lines.push(`open ledger:  ${s.open.length}` + (s.open.length ? ` — ${s.open.map((r) => r.id).join(', ')}` : ''));
+  return lines.join('\n');
+}
+
+// machine-consumable shape for one change
+function toJson(s) {
+  return {
+    change: s.change,
+    step: s.state ? s.state['current-step'] || null : null,
+    tier: s.state ? s.state.tier || null : null,
+    track: s.state ? s.state.track || null : null,
+    lineage: s.state ? s.state.lineage || null : null,
+    nextAction: s.state ? s.state['next-action'] || null : null,
+    lastGate: s.state ? s.state.lastGate : null,
+    hasFlowState: s.hasFlowState,
+    openLedger: s.open.map((r) => r.id),
+  };
+}
+
+function cli(argv) {
+  const root = process.cwd();
+  let change = null, json = false;
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--change') change = argv[++i];
+    else if (argv[i] === '--json') json = true;
+  }
+  if (change) {
+    const s = changeStatus(root, change);
+    console.log(json ? JSON.stringify(toJson(s), null, 2) : formatOne(s));
+    return 0;
+  }
+  const changes = activeChanges(root);
+  if (json) {
+    console.log(JSON.stringify({ changes: changes.map((c) => toJson(changeStatus(root, c))) }, null, 2));
+    return 0;
+  }
+  if (!changes.length) { console.log('No active changes under apriori/changes/.'); return 0; }
+  console.log(`Active changes (${changes.length}):\n`);
+  for (const c of changes) {
+    const s = changeStatus(root, c);
+    const step = s.state ? s.state['current-step'] || '?' : 'no flow-state';
+    console.log(`  ${c}  —  ${step}, ${s.open.length} open`);
+  }
+  console.log('\nRun `apriori status --change <name>` for detail.');
+  return 0;
+}
+
+module.exports = { parseFlowState, parseLedger, activeChanges, changeStatus, formatOne, toJson, cli };
+
+ succeeded in 124ms:
+{
+  "name": "apriori-cli",
+  "version": "3.1.0",
+  "description": "Spec-driven development with executable specs — self-contained, zero-dependency CLI",
+  "type": "commonjs",
+  "bin": {
+    "apriori": "bin/apriori.js"
+  },
+  "scripts": {
+    "test": "node --test",
+    "verify": "node bin/apriori.js verify --specs apriori/specs --test-cmd \"node --test --test-reporter=tap\""
+  },
+  "files": [
+    "bin/",
+    "lib/",
+    "templates/",
+    "RUNBOOK.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "spec-driven-development",
+    "sdd",
+    "executable-specs",
+    "spec",
+    "ai-coding",
+    "agent-workflow",
+    "claude-code",
+    "codex",
+    "cursor",
+    "cli"
+  ],
+  "author": "Apriorhythm",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Apriorhythm/apriori-spec-development.git"
+  },
+  "homepage": "https://github.com/Apriorhythm/apriori-spec-development/tree/v3#readme",
+  "bugs": {
+    "url": "https://github.com/Apriorhythm/apriori-spec-development/issues"
+  },
+  "license": "MIT"
+}
+
+ succeeded in 145ms:
+v3
+
+ succeeded in 130ms:
+#!/usr/bin/env node
+'use strict';
+/* apriori CLI — single self-contained entry, zero dependencies. Dispatches subcommands. */
+
+const sub = process.argv[2];
+const rest = process.argv.slice(3);
+
+const USAGE = `apriori <command>
+
+  new       scaffold a change dir + flow-state skeleton (bare kebab-case name)
+  status    show where a change is: step, next-action, open ledger items (--json)
+  verify    bind spec scenarios to test runs (STEP5 gate) (--json)
+  archive   merge a change's delta specs into the living store (STEP6)
+  stamp     print the CAS base-stamp line for a store file (delta authoring)
+  check     structural consistency checks (CI / pre-commit)
+  init      scaffold the workflow + per-tool pointers
+  update    refresh tool-owned files (runbook copy, command pointers) after a CLI upgrade
+
+Run 'apriori <command>' with no args for that command's usage.`;
+
+async function main() {
+  switch (sub) {
+    case 'new':     return require('../lib/new').cli(rest);
+    case 'status':  return require('../lib/status').cli(rest);
+    case 'verify':  return require('../lib/spec-runner').cli(rest);
+    case 'archive': return require('../lib/archive-merge').cli(rest);
+    case 'stamp':   return require('../lib/archive-merge').stampCli(rest);
+    case 'check':   return require('../lib/check').cli(rest);
+    case 'init':    return require('../lib/init').cli(rest);
+    case 'update':  return require('../lib/update').cli(rest);
+    case '-v':
+    case '--version': console.log(require('../package.json').version); return 0;
+    case undefined:
+    case '-h':
+    case '--help':  console.log(USAGE); return 0;
+    default:        console.error(`unknown command: ${sub}\n\n${USAGE}`); return 2;
+  }
+}
+
+main().then(
+  (code) => process.exit(code),
+  (err) => { console.error(`apriori: ${err && err.message ? err.message : err}`); process.exit(1); }
+);
+
+codex
+I’ve confirmed the repo is on `v3` and currently at package `3.1.0`; the requirement’s “3.2.0-line / release decided later” target is a little loose but not itself a lineage mismatch. I’m now finalizing the review around ambiguous gate semantics and edge cases that would cause rework.
+codex
+# Review — gate-command req-v1
+
+## Dimension Results
+
+1. Target state B clear and unambiguous: issues open — GREQ-1, GREQ-2, GREQ-3.
+2. Edge cases and exception paths covered: issues open — GREQ-4, GREQ-5, GREQ-6.
+3. Implied but undeclared state changes or side effects: no major issues; read-only is explicit.
+4. Acceptance criteria testable as if/then: issues open — GREQ-1, GREQ-2, GREQ-3, GREQ-6.
+5. Conflicts with current state A: issue open — GREQ-7.
+6. Target lineage declared and matches repo reality: no major issues. Repo is on `v3`; package is currently `3.1.0`; target release is declared as additive but version wording is advisory below.
+
+## Issues
+
+### GREQ-1 — Stage resolution is ambiguous when multiple archived dirs match
+
+Description: The requirement says archived lookup uses the “newest `apriori/changes/archive/<stamp>-<name>/`”, but does not define the stamp parse/sort rule or tie handling. Archive stamps are minute-granularity (`YYYY-MM-DDThhmm`), so duplicate matches are possible.
+
+Risk: Implementations may choose different archived dirs, making C1/C2/C3/C6 results nondeterministic.
+
+Suggested fix: Define exact matching and ordering: parse only `<YYYY-MM-DDThhmm>-<name>` dirs, sort by stamp lexicographically or parsed timestamp, tie-break by full basename lexicographically, or treat ties as exit 2 ambiguity.
+
+### GREQ-2 — Flow-state legality vocabulary is underspecified
+
+Description: C3 says `current-step ∈ the §3 vocabulary (STEP0..6, INTENT-CARD, SPIKE, EXTRACTION, DONE, ABANDONED)`, but does not define exact accepted string forms. Existing flow-state files may use comments, case, labels, or values like `STEP5` versus `STEP5 apply`.
+
+Risk: A gate implementation could reject valid states or accept placeholders/invalid strings differently.
+
+Suggested fix: Provide the exact accepted regex or enum after comment stripping. Also state whether `change` must match `--change`, whether `round` and `next-action` are required, and whether missing required keys block or exit 2.
+
+### GREQ-3 — Verdict raw matching is not precise enough
+
+Description: C5 says docs are files matching review/design globs containing a line starting `VERDICT:`, and a raw must exist as `apriori/review/S-raw.*`. It does not define whether archived raw must be a file, how to treat directories/symlinks, duplicate raws, non-markdown review docs, or case/whitespace around `VERDICT:`.
+
+Risk: The mechanical anti-simulated-review check can be bypassed or implemented inconsistently.
+
+Suggested fix: Specify exact detection: regular files only, non-symlink or realpath-contained files, line regex such as `^VERDICT:`, raw glob must match at least one regular file under `apriori/review/`, and multiple raws are allowed or blocked.
+
+### GREQ-4 — Change name/path validation for `gate --change` is missing
+
+Description: The requirement defines lookup paths from `<name>` but does not require `CHANGE_NAME_RE` or realpath containment. Other 3.1 surfaces explicitly guard change names and symlink/path traversal.
+
+Risk: Correctness/security issue: `--change ../x` or symlinked archive/change dirs can make gate read outside intended roots while still claiming a mechanical verdict.
+
+Suggested fix: Require bare-kebab-case `CHANGE_NAME_RE` for `--change`, plus realpath containment for resolved in-flight/archived change dirs and files read under them. Invalid/escaping names should exit 2 and write nothing.
+
+### GREQ-5 — C6 uses git without defining failure modes
+
+Description: C6 says “if git is available” then run `git log <c>..HEAD -- lib/<m>.js`; otherwise `–`. It does not define invalid `source-commit`, command failure, non-git cwd, shallow history, missing `HEAD`, or whether stderr/nonzero is `–`, blocked, or exit 2.
+
+Risk: Fresh clones, shallow CI, or stale/bad truth docs can produce inconsistent or noisy gate results.
+
+Suggested fix: Define exact C6 command handling: which git executable invocation, cwd, timeout if any, and classification for nonzero exits. For example, invalid commit or git failure → `–` with note, not block, unless the log command succeeds and emits commits.
+
+### GREQ-6 — C1 verify invocation details are incomplete
+
+Description: C1 says in-flight uses projected verify and archived uses plain verify. It does not state whether gate passes `--cwd`, `--json`, `--id-pattern`, or how it handles missing test command/config. It also does not define how C1 detail should report verify GAPS versus verify ERROR.
+
+Risk: Gate may run verify against the wrong root, lose custom ID pattern support, or classify missing test command inconsistently.
+
+Suggested fix: Define the internal verify call: root is `--cwd`, `testCmd` from `--test-cmd` or config, optional `--id-pattern` if supported or explicitly out of scope, in-flight `change`, archived `specs: [<cwd>/apriori/specs]`. Missing test command should be exit 2 or blocked, explicitly.
+
+### GREQ-7 — Ledger path for archived changes conflicts with current status convention
+
+Description: C4 refers to “ledger file” but does not give the path. The status KB and code use `<root>/apriori/review/<change>-issues.md`, while all later checks read from the resolved change dir. For archived stage, using the resolved dir would imply a different path than current state A.
+
+Risk: Implementers may look for a ledger under the archived change dir or under `archive/`, missing the actual ledger and misreporting C4.
+
+Suggested fix: Declare ledger path explicitly as `<cwd>/apriori/review/<name>-issues.md` for both in-flight and archived stages.
+
+## Advisories
+
+ADV-G1 batch: The out-of-scope section exists and is clear. Version wording is odd: “3.2.0-line work started as 3.1.x feature” is not a stable target; prefer “ships in next minor after 3.1.0, expected 3.2.0” or a concrete version. C2’s trivial-tier “no STEP2” rule should mention how tier is known when `flow-state.md` is missing. C4 should define whether statuses like `open-ish` block; current status parser uses `^open\b`.
+
+## Ledger Delta
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| GREQ-1 | Archived stage resolution is ambiguous when multiple archive dirs match a change name. | Gate may read different archived artifacts across implementations. | STEP0·r1 | open |
+| GREQ-2 | Flow-state legality vocabulary and required fields are underspecified. | Valid flow states may be rejected or invalid placeholders accepted inconsistently. | STEP0·r1 | open |
+| GREQ-3 | Verdict raw matching lacks exact file, regex, symlink, and duplicate handling rules. | The simulated-review backstop can be bypassed or inconsistently enforced. | STEP0·r1 | open |
+| GREQ-4 | `gate --change` lacks explicit change-name validation and realpath containment. | Path traversal or symlink escapes can make gate read outside intended roots. | STEP0·r1 | open |
+| GREQ-5 | C6 git freshness check does not define git failure and invalid-commit handling. | CI/shallow/non-git environments can produce inconsistent PASS/BLOCKED/N/A results. | STEP0·r1 | open |
+| GREQ-6 | C1 verify invocation details and missing test-command handling are incomplete. | Gate can run the wrong verify target or classify verify setup failures inconsistently. | STEP0·r1 | open |
+| GREQ-7 | Ledger path is undeclared for archived changes and conflicts with status convention if inferred from resolved dir. | Gate may miss the actual issue ledger and falsely pass C4. | STEP0·r1 | open |
+| ADV-G1 | Advisory batch: version wording, trivial-tier without flow-state, and exact `open` status wording. | Low. | STEP0·r1 | advisory |
+
+VERDICT: 7 issues open
+tokens used
+690,717
+# Review — gate-command req-v1
+
+## Dimension Results
+
+1. Target state B clear and unambiguous: issues open — GREQ-1, GREQ-2, GREQ-3.
+2. Edge cases and exception paths covered: issues open — GREQ-4, GREQ-5, GREQ-6.
+3. Implied but undeclared state changes or side effects: no major issues; read-only is explicit.
+4. Acceptance criteria testable as if/then: issues open — GREQ-1, GREQ-2, GREQ-3, GREQ-6.
+5. Conflicts with current state A: issue open — GREQ-7.
+6. Target lineage declared and matches repo reality: no major issues. Repo is on `v3`; package is currently `3.1.0`; target release is declared as additive but version wording is advisory below.
+
+## Issues
+
+### GREQ-1 — Stage resolution is ambiguous when multiple archived dirs match
+
+Description: The requirement says archived lookup uses the “newest `apriori/changes/archive/<stamp>-<name>/`”, but does not define the stamp parse/sort rule or tie handling. Archive stamps are minute-granularity (`YYYY-MM-DDThhmm`), so duplicate matches are possible.
+
+Risk: Implementations may choose different archived dirs, making C1/C2/C3/C6 results nondeterministic.
+
+Suggested fix: Define exact matching and ordering: parse only `<YYYY-MM-DDThhmm>-<name>` dirs, sort by stamp lexicographically or parsed timestamp, tie-break by full basename lexicographically, or treat ties as exit 2 ambiguity.
+
+### GREQ-2 — Flow-state legality vocabulary is underspecified
+
+Description: C3 says `current-step ∈ the §3 vocabulary (STEP0..6, INTENT-CARD, SPIKE, EXTRACTION, DONE, ABANDONED)`, but does not define exact accepted string forms. Existing flow-state files may use comments, case, labels, or values like `STEP5` versus `STEP5 apply`.
+
+Risk: A gate implementation could reject valid states or accept placeholders/invalid strings differently.
+
+Suggested fix: Provide the exact accepted regex or enum after comment stripping. Also state whether `change` must match `--change`, whether `round` and `next-action` are required, and whether missing required keys block or exit 2.
+
+### GREQ-3 — Verdict raw matching is not precise enough
+
+Description: C5 says docs are files matching review/design globs containing a line starting `VERDICT:`, and a raw must exist as `apriori/review/S-raw.*`. It does not define whether archived raw must be a file, how to treat directories/symlinks, duplicate raws, non-markdown review docs, or case/whitespace around `VERDICT:`.
+
+Risk: The mechanical anti-simulated-review check can be bypassed or implemented inconsistently.
+
+Suggested fix: Specify exact detection: regular files only, non-symlink or realpath-contained files, line regex such as `^VERDICT:`, raw glob must match at least one regular file under `apriori/review/`, and multiple raws are allowed or blocked.
+
+### GREQ-4 — Change name/path validation for `gate --change` is missing
+
+Description: The requirement defines lookup paths from `<name>` but does not require `CHANGE_NAME_RE` or realpath containment. Other 3.1 surfaces explicitly guard change names and symlink/path traversal.
+
+Risk: Correctness/security issue: `--change ../x` or symlinked archive/change dirs can make gate read outside intended roots while still claiming a mechanical verdict.
+
+Suggested fix: Require bare-kebab-case `CHANGE_NAME_RE` for `--change`, plus realpath containment for resolved in-flight/archived change dirs and files read under them. Invalid/escaping names should exit 2 and write nothing.
+
+### GREQ-5 — C6 uses git without defining failure modes
+
+Description: C6 says “if git is available” then run `git log <c>..HEAD -- lib/<m>.js`; otherwise `–`. It does not define invalid `source-commit`, command failure, non-git cwd, shallow history, missing `HEAD`, or whether stderr/nonzero is `–`, blocked, or exit 2.
+
+Risk: Fresh clones, shallow CI, or stale/bad truth docs can produce inconsistent or noisy gate results.
+
+Suggested fix: Define exact C6 command handling: which git executable invocation, cwd, timeout if any, and classification for nonzero exits. For example, invalid commit or git failure → `–` with note, not block, unless the log command succeeds and emits commits.
+
+### GREQ-6 — C1 verify invocation details are incomplete
+
+Description: C1 says in-flight uses projected verify and archived uses plain verify. It does not state whether gate passes `--cwd`, `--json`, `--id-pattern`, or how it handles missing test command/config. It also does not define how C1 detail should report verify GAPS versus verify ERROR.
+
+Risk: Gate may run verify against the wrong root, lose custom ID pattern support, or classify missing test command inconsistently.
+
+Suggested fix: Define the internal verify call: root is `--cwd`, `testCmd` from `--test-cmd` or config, optional `--id-pattern` if supported or explicitly out of scope, in-flight `change`, archived `specs: [<cwd>/apriori/specs]`. Missing test command should be exit 2 or blocked, explicitly.
+
+### GREQ-7 — Ledger path for archived changes conflicts with current status convention
+
+Description: C4 refers to “ledger file” but does not give the path. The status KB and code use `<root>/apriori/review/<change>-issues.md`, while all later checks read from the resolved change dir. For archived stage, using the resolved dir would imply a different path than current state A.
+
+Risk: Implementers may look for a ledger under the archived change dir or under `archive/`, missing the actual ledger and misreporting C4.
+
+Suggested fix: Declare ledger path explicitly as `<cwd>/apriori/review/<name>-issues.md` for both in-flight and archived stages.
+
+## Advisories
+
+ADV-G1 batch: The out-of-scope section exists and is clear. Version wording is odd: “3.2.0-line work started as 3.1.x feature” is not a stable target; prefer “ships in next minor after 3.1.0, expected 3.2.0” or a concrete version. C2’s trivial-tier “no STEP2” rule should mention how tier is known when `flow-state.md` is missing. C4 should define whether statuses like `open-ish` block; current status parser uses `^open\b`.
+
+## Ledger Delta
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| GREQ-1 | Archived stage resolution is ambiguous when multiple archive dirs match a change name. | Gate may read different archived artifacts across implementations. | STEP0·r1 | open |
+| GREQ-2 | Flow-state legality vocabulary and required fields are underspecified. | Valid flow states may be rejected or invalid placeholders accepted inconsistently. | STEP0·r1 | open |
+| GREQ-3 | Verdict raw matching lacks exact file, regex, symlink, and duplicate handling rules. | The simulated-review backstop can be bypassed or inconsistently enforced. | STEP0·r1 | open |
+| GREQ-4 | `gate --change` lacks explicit change-name validation and realpath containment. | Path traversal or symlink escapes can make gate read outside intended roots. | STEP0·r1 | open |
+| GREQ-5 | C6 git freshness check does not define git failure and invalid-commit handling. | CI/shallow/non-git environments can produce inconsistent PASS/BLOCKED/N/A results. | STEP0·r1 | open |
+| GREQ-6 | C1 verify invocation details and missing test-command handling are incomplete. | Gate can run the wrong verify target or classify verify setup failures inconsistently. | STEP0·r1 | open |
+| GREQ-7 | Ledger path is undeclared for archived changes and conflicts with status convention if inferred from resolved dir. | Gate may miss the actual issue ledger and falsely pass C4. | STEP0·r1 | open |
+| ADV-G1 | Advisory batch: version wording, trivial-tier without flow-state, and exact `open` status wording. | Low. | STEP0·r1 | advisory |
+
+VERDICT: 7 issues open

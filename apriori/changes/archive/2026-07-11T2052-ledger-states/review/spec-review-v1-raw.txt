@@ -1,0 +1,534 @@
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f4b30-68f9-7222-9b64-17f52a333b4c
+--------
+user
+P5 design review round 1 for ledger-states (STEP0 converged r2; requirement/req-final.md = v2). Read from disk:
+- apriori/changes/ledger-states/specs/gate/spec.md (GT-13/14/15, stamped)
+- apriori/changes/ledger-states/specs/protocol/spec.md (PR-18, stamped)
+- apriori/changes/ledger-states/design.md (classifyStatus classifier with rejected-verified BEFORE rejected in the alternation; checkLedger gains stage+dir; waived gates:-evidence via the flow-state gates: block ID+/waiv/i; stage rules; corpus test importing classifyStatus; UMIMPL-1 migration text; runbook P0 four-bullet rewrite + STEP6 post-archive gate line EN/CN; concepts §7.0 literals; PR-18 sectionBlock anchor sets; GT fixture notes)
+- apriori/changes/ledger-states/tasks.md
+- lib/gate.js current checkLedger/parseLedger/runGate (verify the call-site claim, what parseLedger yields, whether dir is available)
+- test/gate.test.js FLOW/LEDGER_OK helpers and GT-06/07 archived fixtures (does any existing fixture carry fixed/plain-rejected rows that the new archived rule would break?)
+
+Check: (1) scenario coverage vs I1-I7 (map them); (2) the classifier regex order and the token boundary (does /^rejected\b/i wrongly match 'rejected-verified'? \b between 'rejected' and '-'... verify the design's alternation-order fix actually suffices given \b semantics with hyphens); (3) the gates:-block extraction (from /^gates:/m to EOF or next top-level key — what IS a top-level key in flow-state; multiline gates entries); (4) GT-15's name derivation from archive dir stamps (stamp format YYYY-MM-DDThhmm-name — is stripping unambiguous when names contain digits/hyphens?); (5) in-flight waived-evidence check needs the change dir — is loc.dir the archived dir at archived stage (flow-state travels with the archive) — verify; (6) PR-18 anchor robustness (STEP6 heading regexes both editions); (7) scenario-range hygiene GT-13..15 after GT-12, PR-18 after PR-17, tasks ranges. Rows LSSPEC-N. Print the COMPLETE review document body (landed verbatim at apriori/design/ledger-states-review-v1.md) with a ledger-delta section, ending with exactly one verdict line: "VERDICT: no major issues, ready to proceed to execution" or "VERDICT: <N> issues open".
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-11T12:36:17.794241Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T12:36:18.041040Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T12:36:18.466920Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-11T12:36:18.943338Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-11T12:36:19.886671Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-11T12:36:21.828657Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-11T12:36:25.192185Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: 3n6rH1U7Zm5x
+codex
+I’ll inspect the gate/protocol deltas, design, tasks, and current gate/test helpers, then review the edge cases around status tokenization and archived corpus derivation.
+exec
+/usr/bin/zsh -lc "sed -n '1,220p' apriori/changes/ledger-states/tasks.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,340p' apriori/changes/ledger-states/design.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,220p' apriori/changes/ledger-states/specs/protocol/spec.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,240p' apriori/changes/ledger-states/specs/gate/spec.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 137ms:
+# Tasks — ledger-states
+
+- [ ] T1. Red GT-13/14/15 (archived terminal rule, waived gates:-evidence both stages, unknown-status both stages, corpus walk) + PR-18 (P0/STEP6 blocks both editions) — red run.
+- [ ] T2. lib/gate.js: classifyStatus export, checkLedger(stage, dir) with vocabulary/reason/waived-evidence/stage rules; call-site update.
+- [ ] T3. RUNBOOK P0+STEP6 EN/CN; concepts §7.0 strings both languages; UMIMPL-1 migration to rejected-verified.
+- [ ] T4. Suite green; verify --change GREEN; gate PASS (in-flight); check --self PASS; post-archive gate run recorded in the gate④ packet for THIS change.
+
+ succeeded in 144ms:
+# Design — ledger-states
+
+**lib/gate.js — `checkLedger(cwd, name, tier, stage, dir)`** (two new params: gate's resolved stage + change dir; the one call site passes `loc.stage`/`loc.dir`):
+- Status classifier (leading token, case-insensitive): `const m = /^(open|fixed|verified|rejected-verified|rejected|advisory-acked|waived)\b/i.exec(r.status)` — NOTE `rejected-verified` alternated BEFORE `rejected` (alternation order, the delta-consumption lesson class). No match → block `«status» is not in the ledger vocabulary` (both stages).
+- Reason rule extended: `rejected`, `rejected-verified`, `waived` all require a word char after the token (reuse the existing strip-and-test).
+- `waived` evidence: read `flow-state.md` from the change dir (same file C3 reads; gate already has `dir`), extract the `gates:` block (from /^gates:/m to EOF or next top-level key), require it to contain the row ID (verbatim) AND /waiv/i; missing → block `«ID» is waived without a gates: entry recording the human decision`.
+- Stage rules: `open` blocks (both); archived additionally blocks `fixed` (`fixed but never verified — reviewer must verify, or the human waives it`) and plain `rejected` (`rejected without reviewer concurrence — flip to rejected-verified, or the human waives it`).
+- Cure messages content-tested (/reviewer must verify/, /reviewer concurrence|rejected-verified/, /gates: entry/), not exact strings.
+
+**Corpus test (GT-15)** in test/gate.test.js: walk `apriori/changes/archive/*` (skip-if-absent), derive name by stripping the leading `<stamp>-`, for each existing `apriori/review/<name>-issues.md` run the same classifier + terminal check (import the helper — export `ledgerRowIssues(row, stage)` or a small pure `classifyStatus(status)` from gate.js for reuse; pick `classifyStatus` returning {legal, terminal, needsReason, isWaived}).
+
+**Migration** (T3): apriori/review/update-manifest-issues.md UMIMPL-1 → `rejected-verified — refuted with reproduction evidence: the TOOLS loop has no existence pre-check and the missing row IS emitted (UP-10b); reviewer concurred (impl-review-v2)`.
+
+**RUNBOOK.md P0 section**: replace the two bullets with four — Reviewer (appends; flips fixed→verified AND rejected→rejected-verified after concurring, preserving the original reason + an evidence ref; a re-found issue REOPENS its old ID back to `open` — reopened is an event, not a status), Producer (open→fixed / open→rejected+reason; never terminalizes its own findings), Human (ONLY setter of `waived + reason`, with a `gates:` entry recording the decision — the gate machine-checks ID+waiv), Terminal set for archival (verified / rejected-verified / waived / advisory-acked — the archived-stage gate enforces). Example table row for waived added. **STEP6 section**: add to the exit conditions: run `apriori gate --change <name>` AFTER archive (archived stage) and put its result in the gate④ packet.
+**RUNBOOK_cn.md**: mirrored P0 bullets + STEP6 line (translation keeps every clause; ASCII parens fine per ABIMPL-ADV-1 precedent).
+**docs/concepts{,_cn}.md §7.0 strings**: `open / fixed / rejected + reason / verified` → `open / fixed / rejected + reason / verified / rejected-verified / waived (human, gates:) / advisory-acked` in both line-61 literals (and any other occurrence — grep).
+
+**test/protocol.test.js PR-18**: sectionBlock on /^### P0 — issue ledger/ + /^### STEP6 /m (EN) and CN mirrors; anchors: the seven statuses, /human/i near waived, /gates:/ near waived, /reopens its old ID|reopen/i + /event, not a status/, /rejected-verified/ + /original/ + /concurred|concurrence/, STEP6 block /gate --change/ + /archived/ + /gate ④|gate④/ packet; CN equivalents (人只能/唯一由人 near 弃权|waived, 重开旧 ID, 事件而非状态, 原始理由, 归档后 gate, ④ 包).
+
+**Tests (gate)**: GT-13/14 fixtures via the existing mkProject/FLOW/LEDGER_OK helpers (FLOW gains a gates: block param for the waived case); in-flight unknown-status case rides in GT-14. Existing GT-01..12 must stay green — LEDGER_OK's row is `verified`, safe; check any test using `fixed` rows at archived stage (GT-06/07 fixtures use '- [x]' tasks + LEDGER_OK — verify).
+Tasks: T1 red GT-13/14/15 + PR-18; T2 gate.js classifier + waived evidence + stage rules + classifyStatus export; T3 docs EN/CN + concepts + UMIMPL-1 migration; T4 gates + post-archive gate practice starts with THIS change.
+
+ succeeded in 145ms:
+<!-- apriori-base: sha256:34d220f38109c44e619cad5f9de7794c679dc16a0455474c27503021bc9e6186 -->
+# Delta — protocol (ledger-states)
+
+## ADDED Requirements
+
+### Requirement: the ledger vocabulary and the post-archive gate are protocol
+The runbook (both editions) SHALL document, in the P0 issue-ledger section: the full status vocabulary (`open` / `fixed` awaiting verification / `rejected + reason` awaiting reviewer concurrence / `verified` / `rejected-verified` preserving the original rejection reason plus a reviewer-concurrence evidence reference / `waived + reason` settable ONLY by the human with a `gates:` entry recording the decision / `advisory-acked` for reviewer-labeled advisory batches); who sets what (reviewer flips fixed→verified and rejected→rejected-verified or reopens; the producer never terminalizes its own findings); and that a re-found issue REOPENS its old ID by returning it to `open` — reopened is an event, not a status. The STEP6 section SHALL require a post-archive `apriori gate --change <name>` run (resolving the archived stage) whose result enters the gate④ packet. The concepts handbook's §7.0 vocabulary strings reflect the same states in both languages.
+
+#### Scenario: PR-18 the vocabulary and the post-archive gate bind in both editions
+- WHEN the P0 and STEP6 sections are read in either language
+- THEN the seven statuses with their setters are documented (waived = human-only with a gates: entry; rejected-verified preserves the original rationale), the reopen-is-an-event rule is stated, the STEP6 exit names the post-archive gate run feeding the gate④ packet, and concepts §7.0 carries the updated vocabulary in both languages
+
+ succeeded in 146ms:
+<!-- apriori-base: sha256:702ebda500834fcdb226271ca142d34a2ec99531693232abdbaeff16e9da2f1b -->
+# Delta — gate (ledger-states)
+
+## ADDED Requirements
+
+### Requirement: C4 speaks the terminal-state vocabulary
+Gate C4 SHALL parse every ledger row's status against the legal vocabulary (leading token, case-insensitive): non-terminal `open` / `fixed` / `rejected + reason`; terminal `verified` / `rejected-verified + reason` / `waived + reason` / `advisory-acked`. ANY other status blocks at BOTH stages. `rejected`, `rejected-verified`, and `waived` without a word-character reason block at both stages. A `waived` row additionally requires machine-checked human evidence at both stages: the change's flow-state `gates:` block must contain the row's ID and the text `waiv` (case-insensitive) — a producer-written row alone never passes. At the ARCHIVED stage every row must be terminal: `fixed` and plain `rejected` block with a cure naming the reviewer's verify/concur duty or the human waive. In-flight, `fixed` and reasoned `rejected` pass as today.
+
+#### Scenario: GT-13 archived ledgers must be terminal
+- WHEN gate resolves a change at the archived stage whose ledger carries a `fixed` row, a plain reasoned `rejected` row, or an unknown status like `done`
+- THEN C4 reports BLOCKED naming each row and a cure, while an all-terminal ledger (verified / rejected-verified + reason / gates:-backed waived + reason / advisory-acked) passes
+
+#### Scenario: GT-14 waives belong to humans, unknown states belong to nobody
+- WHEN a ledger carries a `waived — reason` row without a matching flow-state gates: entry (the ID plus "waiv"), or any row whose status is outside the vocabulary, at either stage
+- THEN C4 reports BLOCKED naming the row — and the same waived row passes once the gates: entry records the human decision
+
+#### Scenario: GT-15 every archived ledger in this repo parses legal and terminal
+- WHEN the corpus of archived changes (apriori/changes/archive/*) is walked and each change's ledger at apriori/review/<name>-issues.md is parsed
+- THEN every row is legal AND terminal under the vocabulary (skip-if-absent for packaged environments)
+
+codex
+I’ve found one likely design bug in the classifier: `\b` after a hyphenated token is not a boundary in JavaScript because both `-` and the following space/end are non-word. I’m checking current fixtures and archive naming to see whether there are any additional rework risks.
+exec
+/usr/bin/zsh -lc 'rg -n "GT-0[67]|GT-1[0-2]|FLOW|LEDGER_OK|fixed|rejected|archive" test/gate.test.js' in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "node -e \"for (const s of ['rejected-verified — ok','advisory-acked','verified','rejected — ok','waived — ok']) { const m=/"'^(open|fixed|verified|rejected-verified|rejected|advisory-acked|waived)'"\\\\b/i.exec(s); console.log(s, '=>', m&&m[1]); }\"" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' test/gate.test.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "find apriori/changes/archive -maxdepth 1 -mindepth 1 -type d -printf '%f\\n' 2>/dev/null | sort | tail -40" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 140ms:
+rejected-verified — ok => rejected-verified
+advisory-acked => advisory-acked
+verified => verified
+rejected — ok => rejected
+waived — ok => waived
+
+ succeeded in 141ms:
+2026-07-10T1738-change-projection
+2026-07-11T0009-gate-command
+2026-07-11T0116-doctor-command
+2026-07-11T0159-cli-strictness
+2026-07-11T0230-readme-split
+2026-07-11T0252-golden-path
+2026-07-11T0303-release-docs
+2026-07-11T0308-python-example
+2026-07-11T0415-evidence-governance
+2026-07-11T0736-delta-consumption
+2026-07-11T1559-tap-plan
+2026-07-11T1633-update-manifest
+2026-07-11T1650-win-bash
+2026-07-11T2026-authz-boundary
+
+ succeeded in 141ms:
+'use strict';
+const { test } = require('node:test');
+const assert = require('node:assert');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { spawnSync } = require('node:child_process');
+const gate = require('../lib/gate');
+
+const BIN = path.join(__dirname, '..', 'bin', 'apriori.js');
+function run(args, cwd) { return spawnSync('node', [BIN, ...args], { encoding: 'utf8', cwd }); }
+function tapCmd(...lines) {
+  return `node -e "${lines.map((l) => `console.log('${l}')`).join(';')}"`;
+}
+
+function mkProject(files) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-gate-'));
+  for (const [rel, content] of Object.entries(files)) {
+    const p = path.join(root, rel);
+    fs.mkdirSync(path.dirname(p), { recursive: true });
+    fs.writeFileSync(p, content);
+  }
+  return root;
+}
+
+const STORE = '### Requirement: Alpha\n\n#### Scenario: XA-01 base\n- t\n';
+const DELTA = '## ADDED Requirements\n\n### Requirement: Beta\n\n#### Scenario: XB-01 new\n- t\n';
+const FLOW = (name, tier = 'medium') => `change: ${name}\ntier: ${tier}\ntrack: harden\ntrack-rationale: r\nlineage: v3\ncurrent-step: STEP5\nround: 1\nnext-action: x\ngates:\n  - 2026-07-11T00:00 note: n\n`;
+const LEDGER_OK = '| ID | Issue | Risk | Round found | Status |\n|---|---|---|---|---|\n| Q-1 | a | low | 1 | verified |\n';
+
+// a healthy in-flight medium change
+function healthy(name = 'c') {
+  return mkProject({
+    'apriori/specs/kv/spec.md': STORE,
+    [`apriori/changes/${name}/flow-state.md`]: FLOW(name),
+    [`apriori/changes/${name}/tasks.md`]: '- [x] T1 done\n- [X] T2 done\n',
+    [`apriori/changes/${name}/specs/kv/spec.md`]: DELTA,
+    [`apriori/review/${name}-issues.md`]: LEDGER_OK,
+  });
+}
+const TAP_OK = tapCmd('ok 1 - XA-01 a', 'ok 2 - XB-01 b');
+
+test('GT-01 a clean in-flight change passes (exit 0, all checks ✓)', () => {
+  const root = healthy();
+  const r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
+  assert.strictEqual(r.code, 0);
+  assert.strictEqual(r.result, 'PASS');
+  assert.strictEqual(r.stage, 'in-flight');
+  for (const id of ['C1', 'C2', 'C3', 'C4', 'C5']) {
+    const c = r.checks.find((x) => x.id === id);
+    assert.ok(c && c.status !== 'blocked', `${id}: ${c && c.detail}`);
+  }
+});
+
+test('GT-02 an unchecked task blocks', () => {
+  const root = healthy();
+  fs.appendFileSync(path.join(root, 'apriori/changes/c/tasks.md'), '- [ ] T3 not done\n');
+  const r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
+  assert.strictEqual(r.code, 1);
+  assert.strictEqual(r.result, 'BLOCKED');
+  const c2 = r.checks.find((x) => x.id === 'C2');
+  assert.strictEqual(c2.status, 'blocked');
+  assert.match(c2.detail, /tasks\.md/);
+});
+
+test('GT-03 ledger blocks on open rows and reasonless rejections', () => {
+  for (const [row, blocked] of [
+    ['| Q-2 | b | high | 1 | open |', true],
+    ['| Q-2 | b | high | 1 | rejected |', true],
+    ['| Q-2 | b | high | 1 | rejected: |', true],
+    ['| Q-2 | b | high | 1 | rejected - |', true],
+    ['| Q-2 | b | high | 1 | rejected: duplicate of Q-1 |', false],
+    ['| Q-2 | b | high | 1 | advisory-acked |', false],
+  ]) {
+    const root = healthy();
+    fs.appendFileSync(path.join(root, 'apriori/review/c-issues.md'), row + '\n');
+    const r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
+    const c4 = r.checks.find((x) => x.id === 'C4');
+    assert.strictEqual(c4.status, blocked ? 'blocked' : 'pass', row);
+    if (blocked) assert.match(c4.detail, /Q-2/);
+  }
+});
+
+test('GT-04 flow-state legality is enforced', () => {
+  for (const [flow, offender] of [
+    [FLOW('c').replace('tier: medium', 'tier: <trivial | medium | large>'), /tier/],
+    [FLOW('c').replace('current-step: STEP5', 'current-step: STEP9'), /current-step/],
+    [FLOW('c').replace('tier: medium', 'tier: huge'), /tier/],
+    [FLOW('wrong-name'), /change/],
+    [FLOW('c').replace('lineage: v3\n', ''), /lineage/],
+  ]) {
+    const root = healthy();
+    fs.writeFileSync(path.join(root, 'apriori/changes/c/flow-state.md'), flow);
+    const r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
+    const c3 = r.checks.find((x) => x.id === 'C3');
+    assert.strictEqual(c3.status, 'blocked');
+    assert.match(c3.detail, offender);
+  }
+});
+
+test('GT-05 verdict evidence is mechanical (missing raw blocks; raw fixes; symlink blocks)', () => {
+  const root = healthy();
+  fs.writeFileSync(path.join(root, 'apriori/review/c-req-review-v1.md'), 'body\nVERDICT: no major issues\n');
+  let r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
+  let c5 = r.checks.find((x) => x.id === 'C5');
+  assert.strictEqual(c5.status, 'blocked');
+  assert.match(c5.detail, /c-req-review-v1/);
+  fs.writeFileSync(path.join(root, 'apriori/review/c-req-review-v1-raw.txt'), 'raw transcript');
+  r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
+  c5 = r.checks.find((x) => x.id === 'C5');
+  assert.strictEqual(c5.status, 'pass', c5.detail);
+  // design-dir docs participate too
+  fs.mkdirSync(path.join(root, 'apriori/design'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'apriori/design/c-review-v1.md'), 'VERDICT: 1 issues open\n');
+  r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
+  assert.strictEqual(r.checks.find((x) => x.id === 'C5').status, 'blocked');
+  fs.writeFileSync(path.join(root, 'apriori/review/c-review-v1-raw.txt'), 'raw');
+  r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
+  assert.strictEqual(r.checks.find((x) => x.id === 'C5').status, 'pass');
+  // a VERDICT-free doc needs no raw
+  fs.writeFileSync(path.join(root, 'apriori/review/c-kb-check.md'), 'notes only\n');
+  assert.strictEqual(gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK }).checks.find((x) => x.id === 'C5').status, 'pass');
+  // symlinked doc-glob match blocks (where the platform allows symlinks)
+  let canSymlink = true;
+  try { fs.symlinkSync(path.join(root, 'apriori/review/c-req-review-v1.md'), path.join(root, 'apriori/review/c-linked.md')); }
+  catch { canSymlink = false; }
+  if (canSymlink) {
+    r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
+    c5 = r.checks.find((x) => x.id === 'C5');
+    assert.strictEqual(c5.status, 'blocked');
+    assert.match(c5.detail, /c-linked/);
+    fs.rmSync(path.join(root, 'apriori/review/c-linked.md'));
+    // a SYMLINKED raw is not evidence: replace the real raw with a symlink → blocked again
+    fs.renameSync(path.join(root, 'apriori/review/c-req-review-v1-raw.txt'), path.join(root, 'apriori/review/elsewhere.txt'));
+    fs.symlinkSync(path.join(root, 'apriori/review/elsewhere.txt'), path.join(root, 'apriori/review/c-req-review-v1-raw.txt'));
+    r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
+    assert.strictEqual(r.checks.find((x) => x.id === 'C5').status, 'blocked');
+  }
+});
+
+test('GT-06 the binding gate is stage-aware (in-flight projected; archived plain)', () => {
+  // in-flight: XB-01 exists only in the delta — passing C1 proves the projection ran
+  const inflight = healthy();
+  const r1 = gate.runGate({ cwd: inflight, change: 'c', testCmd: TAP_OK });
+  assert.strictEqual(r1.checks.find((x) => x.id === 'C1').status, 'pass');
+  // gaps → blocked with counts
+  const r1b = gate.runGate({ cwd: inflight, change: 'c', testCmd: tapCmd('ok 1 - XA-01 a') });
+  const c1b = r1b.checks.find((x) => x.id === 'C1');
+  assert.strictEqual(c1b.status, 'blocked');
+  assert.match(c1b.detail, /unbound/);
+  // archived: change only under archive/, store already merged, plain verify runs
+  const arch = mkProject({
+    'apriori/specs/kv/spec.md': STORE + '\n### Requirement: Beta\n\n#### Scenario: XB-01 new\n- t\n',
+    'apriori/changes/archive/2026-07-10T1200-c/flow-state.md': FLOW('c'),
+    'apriori/changes/archive/2026-07-10T1200-c/tasks.md': '- [x] T1\n',
+    'apriori/changes/archive/2026-07-10T1200-c/specs/kv/spec.md': DELTA,
+    'apriori/review/c-issues.md': LEDGER_OK,
+  });
+  const r2 = gate.runGate({ cwd: arch, change: 'c', testCmd: TAP_OK });
+  assert.strictEqual(r2.stage, 'archived');
+  assert.strictEqual(r2.code, 0, JSON.stringify(r2.checks));
+});
+
+test('GT-07 resolution is validated and deterministic', () => {
+  const root = healthy();
+  // invalid name → exit 2 (spawned: also proves usage surface)
+  const bad = run(['gate', '--change', '../evil', '--test-cmd', TAP_OK], root);
+  assert.strictEqual(bad.status, 2);
+  // not found → exit 2 naming both locations
+  const nf = gate.runGate({ cwd: root, change: 'nope', testCmd: TAP_OK });
+  assert.strictEqual(nf.code, 2);
+  assert.ok(nf.errors.some((e) => e.includes('apriori/changes') || e.includes('archive')), nf.errors.join());
+  // two archived dirs → lexicographically last basename wins
+  const arch = mkProject({
+    'apriori/specs/kv/spec.md': STORE + '\n### Requirement: Beta\n\n#### Scenario: XB-01 new\n- t\n',
+    'apriori/changes/archive/2026-07-10T1200-c/flow-state.md': FLOW('c'),
+    'apriori/changes/archive/2026-07-10T1200-c/tasks.md': '- [ ] stale unchecked\n',
+    'apriori/changes/archive/2026-07-10T1200-c/specs/kv/spec.md': DELTA,
+    'apriori/changes/archive/2026-07-10T1400-c/flow-state.md': FLOW('c'),
+    'apriori/changes/archive/2026-07-10T1400-c/tasks.md': '- [x] fresh checked\n',
+    'apriori/changes/archive/2026-07-10T1400-c/specs/kv/spec.md': DELTA,
+    'apriori/review/c-issues.md': LEDGER_OK,
+  });
+  const r = gate.runGate({ cwd: arch, change: 'c', testCmd: TAP_OK });
+  assert.strictEqual(r.checks.find((x) => x.id === 'C2').status, 'pass');   // newer dir used
+  // a stray FILE with a stamp-shaped name is ignored, older real dir still wins deterministically
+  fs.writeFileSync(path.join(arch, 'apriori/changes/archive/2026-07-10T1600-c'), 'not a dir');
+  const r2 = gate.runGate({ cwd: arch, change: 'c', testCmd: TAP_OK });
+  assert.strictEqual(r2.stage, 'archived');
+  assert.strictEqual(r2.checks.find((x) => x.id === 'C2').status, 'pass'); // still the 1400 dir, not the file
+  // an archived entry symlinking OUTSIDE archive/ (but inside changes/) is an escape → exit 2
+  let canSymlink = true;
+  const elsewhere = path.join(arch, 'apriori/changes/elsewhere-c');
+  fs.mkdirSync(elsewhere, { recursive: true });
+  fs.writeFileSync(path.join(elsewhere, 'flow-state.md'), FLOW('c'));
+  try { fs.symlinkSync(elsewhere, path.join(arch, 'apriori/changes/archive/2026-07-10T1700-c')); }
+  catch { canSymlink = false; }
+  if (canSymlink) {
+    const r3 = gate.runGate({ cwd: arch, change: 'c', testCmd: TAP_OK });
+    assert.strictEqual(r3.code, 2);
+    assert.ok(r3.errors.some((e) => e.includes('escape')), r3.errors.join());
+  }
+});
+
+test('GT-08 a missing or mismatched flow-state fails closed', () => {
+  const root = healthy();
+  fs.rmSync(path.join(root, 'apriori/changes/c/flow-state.md'));
+  const r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
+  assert.strictEqual(r.code, 2);
+  assert.strictEqual(r.result, 'ERROR');
+  // mismatch case is GT-04's /change/ row (C3-blocked, not exit 2) — assert the distinction here too
+  const root2 = healthy();
+  fs.writeFileSync(path.join(root2, 'apriori/changes/c/flow-state.md'), FLOW('other'));
+  assert.strictEqual(gate.runGate({ cwd: root2, change: 'c', testCmd: TAP_OK }).code, 1);
+});
+
+test('GT-09 trivial tier is not asked for artifacts it never produces', () => {
+  const root = mkProject({
+    'apriori/specs/kv/spec.md': STORE,
+    'apriori/changes/c/flow-state.md': FLOW('c', 'trivial'),
+    'apriori/changes/c/specs/kv/spec.md': DELTA,
+  });
+  const r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
+  assert.strictEqual(r.checks.find((x) => x.id === 'C2').status, 'n/a');
+  assert.strictEqual(r.checks.find((x) => x.id === 'C4').status, 'n/a');
+  assert.strictEqual(r.code, 0, JSON.stringify(r.checks));
+  // medium: same absences block
+  const root2 = mkProject({
+    'apriori/specs/kv/spec.md': STORE,
+    'apriori/changes/c/flow-state.md': FLOW('c'),
+    'apriori/changes/c/specs/kv/spec.md': DELTA,
+  });
+  const r2 = gate.runGate({ cwd: root2, change: 'c', testCmd: TAP_OK });
+  assert.strictEqual(r2.checks.find((x) => x.id === 'C2').status, 'blocked');
+  assert.strictEqual(r2.checks.find((x) => x.id === 'C4').status, 'blocked');
+});
+
+test('GT-10 KB freshness degrades honestly', () => {
+  // n/a branches need no git: no truth doc at all
+  const root = healthy();
+  const na = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK }).checks.find((x) => x.id === 'C6');
+  assert.strictEqual(na.status, 'n/a');
+  // truth doc without lib file → n/a
+  fs.mkdirSync(path.join(root, 'apriori/truth'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'apriori/truth/kv.md'), 'source-commit: deadbeef\n');
+  const na2 = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK }).checks.find((x) => x.id === 'C6');
+  assert.strictEqual(na2.status, 'n/a');
+  // full git fixture — guarded on git availability
+  const g = spawnSync('git', ['--version'], { encoding: 'utf8' });
+  if (!g.error && g.status === 0) {
+    const root3 = healthy();
+    const env = { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' };
+    const git = (...a) => { const r = spawnSync('git', ['-C', root3, ...a], { encoding: 'utf8', env }); assert.strictEqual(r.status, 0, r.stderr); return r; };
+    git('init', '-q');
+    fs.mkdirSync(path.join(root3, 'lib'), { recursive: true });
+    fs.writeFileSync(path.join(root3, 'lib/kv.js'), '1');
+    git('add', '-A'); git('commit', '-q', '-m', 'one');
+    const c1 = git('rev-parse', 'HEAD').stdout.trim();
+    fs.mkdirSync(path.join(root3, 'apriori/truth'), { recursive: true });
+    fs.writeFileSync(path.join(root3, 'apriori/truth/kv.md'), `source-commit: ${c1}\n`);
+
+ succeeded in 162ms:
+28:const FLOW = (name, tier = 'medium') => `change: ${name}\ntier: ${tier}\ntrack: harden\ntrack-rationale: r\nlineage: v3\ncurrent-step: STEP5\nround: 1\nnext-action: x\ngates:\n  - 2026-07-11T00:00 note: n\n`;
+29:const LEDGER_OK = '| ID | Issue | Risk | Round found | Status |\n|---|---|---|---|---|\n| Q-1 | a | low | 1 | verified |\n';
+35:    [`apriori/changes/${name}/flow-state.md`]: FLOW(name),
+38:    [`apriori/review/${name}-issues.md`]: LEDGER_OK,
+69:    ['| Q-2 | b | high | 1 | rejected |', true],
+70:    ['| Q-2 | b | high | 1 | rejected: |', true],
+71:    ['| Q-2 | b | high | 1 | rejected - |', true],
+72:    ['| Q-2 | b | high | 1 | rejected: duplicate of Q-1 |', false],
+86:    [FLOW('c').replace('tier: medium', 'tier: <trivial | medium | large>'), /tier/],
+87:    [FLOW('c').replace('current-step: STEP5', 'current-step: STEP9'), /current-step/],
+88:    [FLOW('c').replace('tier: medium', 'tier: huge'), /tier/],
+89:    [FLOW('wrong-name'), /change/],
+90:    [FLOW('c').replace('lineage: v3\n', ''), /lineage/],
+141:test('GT-06 the binding gate is stage-aware (in-flight projected; archived plain)', () => {
+151:  // archived: change only under archive/, store already merged, plain verify runs
+154:    'apriori/changes/archive/2026-07-10T1200-c/flow-state.md': FLOW('c'),
+155:    'apriori/changes/archive/2026-07-10T1200-c/tasks.md': '- [x] T1\n',
+156:    'apriori/changes/archive/2026-07-10T1200-c/specs/kv/spec.md': DELTA,
+157:    'apriori/review/c-issues.md': LEDGER_OK,
+160:  assert.strictEqual(r2.stage, 'archived');
+164:test('GT-07 resolution is validated and deterministic', () => {
+172:  assert.ok(nf.errors.some((e) => e.includes('apriori/changes') || e.includes('archive')), nf.errors.join());
+173:  // two archived dirs → lexicographically last basename wins
+176:    'apriori/changes/archive/2026-07-10T1200-c/flow-state.md': FLOW('c'),
+177:    'apriori/changes/archive/2026-07-10T1200-c/tasks.md': '- [ ] stale unchecked\n',
+178:    'apriori/changes/archive/2026-07-10T1200-c/specs/kv/spec.md': DELTA,
+179:    'apriori/changes/archive/2026-07-10T1400-c/flow-state.md': FLOW('c'),
+180:    'apriori/changes/archive/2026-07-10T1400-c/tasks.md': '- [x] fresh checked\n',
+181:    'apriori/changes/archive/2026-07-10T1400-c/specs/kv/spec.md': DELTA,
+182:    'apriori/review/c-issues.md': LEDGER_OK,
+187:  fs.writeFileSync(path.join(arch, 'apriori/changes/archive/2026-07-10T1600-c'), 'not a dir');
+189:  assert.strictEqual(r2.stage, 'archived');
+191:  // an archived entry symlinking OUTSIDE archive/ (but inside changes/) is an escape → exit 2
+195:  fs.writeFileSync(path.join(elsewhere, 'flow-state.md'), FLOW('c'));
+196:  try { fs.symlinkSync(elsewhere, path.join(arch, 'apriori/changes/archive/2026-07-10T1700-c')); }
+213:  fs.writeFileSync(path.join(root2, 'apriori/changes/c/flow-state.md'), FLOW('other'));
+220:    'apriori/changes/c/flow-state.md': FLOW('c', 'trivial'),
+230:    'apriori/changes/c/flow-state.md': FLOW('c'),
+238:test('GT-10 KB freshness degrades honestly', () => {
+273:test('GT-11 --json is pure JSON in every outcome class', () => {
+310:test('GT-12 gate is read-only', () => {
+
+codex
+# ledger-states STEP2 design review v1
+
+## Issues
+
+### LSSPEC-1 — PR-18 STEP6 block extractor targets a heading that does not exist
+
+**Description:** The design says PR-18 will use `sectionBlock` on `^### STEP6 /m` for the EN STEP6 section. Current `RUNBOOK.md` does not have that heading; the STEP6 producer prompt is headed `### P9 — STEP6 archive (producer)`. The CN mirror likewise uses the P9/STEP6 heading form, not a bare `### STEP6`.
+
+**Risk:** PR-18 either cannot bind the post-archive gate requirement or gets implemented against the wrong text. That leaves LS-2’s core fix unproven.
+
+**Suggested fix:** Specify the actual headings: EN `^### P9 — STEP6 archive` and CN `^### P9 —— STEP6` / `归档`, or define a helper that finds the `STEP6 archive` prompt by content. Keep the assertion scoped to that block.
+
+### LSSPEC-2 — Waiver evidence is designed as block-wide text, not a single `gates:` entry
+
+**Description:** Req-final says the flow-state entry must contain the row ID and `waiv`. GT-14 also says “a matching flow-state gates: entry.” The design instead extracts the whole `gates:` block and requires the block to contain the row ID and `/waiv/i` anywhere. That can pass with the row ID in one gate entry and unrelated “waived” text in another entry.
+
+**Risk:** A waiver can be mechanically accepted without one human gate entry actually recording that specific row’s waiver. This weakens the self-waive fix.
+
+**Suggested fix:** Reuse or mirror `parseFlowState`’s gate-line model and require at least one individual gate entry line to contain both the row ID and `/waiv/i`. If multiline gate entries are intended, define their boundary precisely and still require both tokens in the same entry.
+
+## Coverage notes
+
+GT-13/14/15 cover I1/I2/I3/I6’s ledger-state behaviors at the gate layer, and PR-18 covers I4/I5 protocol/docs binding once the STEP6 heading is corrected. Existing archived GT-06/07 fixtures use `LEDGER_OK` with `verified`, so the new archived terminal rule should not break them.
+
+The classifier alternation order is directionally correct. In JavaScript, `rejected-verified` before `rejected` avoids the shorter match, and `\b` at the end of `rejected-verified` / `advisory-acked` works when followed by a space/end because the final character is a word character.
+
+Archive name derivation is acceptable if implemented as stripping the fixed stamp prefix `YYYY-MM-DDThhmm-`; names containing digits or hyphens remain unambiguous after that prefix.
+
+## Advisories
+
+- In GT-15, make the corpus assertion check the reason floor as well as `legal && terminal`, so reasonless `rejected-verified` / `waived` cannot pass the corpus helper by accident.
+- Define the `gates:` block boundary with an explicit regex even after switching to same-entry matching. A top-level flow-state key should mean an unindented `key:` line, not an indented gate bullet containing a timestamp or colon.
+
+## Ledger delta
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| LSSPEC-1 | PR-18 STEP6 block extractor targets `^### STEP6`, but the actual runbook heading is `### P9 — STEP6 archive (producer)` with a CN mirror. | The post-archive gate requirement can remain unbound or be tested against the wrong text. | STEP2 r1 | open |
+| LSSPEC-2 | Waiver evidence is checked across the whole `gates:` block instead of requiring one gate entry to contain both the row ID and `waiv`. | A waiver can pass mechanically without a single human entry recording that specific waived row. | STEP2 r1 | open |
+| LSSPEC-ADV-1 | Advisory batch: GT-15 should include reason-floor checks; define the `gates:` block boundary regex explicitly. | Low. | STEP2 r1 | open |
+
+VERDICT: 2 issues open
+tokens used
+2,949,042
+# ledger-states STEP2 design review v1
+
+## Issues
+
+### LSSPEC-1 — PR-18 STEP6 block extractor targets a heading that does not exist
+
+**Description:** The design says PR-18 will use `sectionBlock` on `^### STEP6 /m` for the EN STEP6 section. Current `RUNBOOK.md` does not have that heading; the STEP6 producer prompt is headed `### P9 — STEP6 archive (producer)`. The CN mirror likewise uses the P9/STEP6 heading form, not a bare `### STEP6`.
+
+**Risk:** PR-18 either cannot bind the post-archive gate requirement or gets implemented against the wrong text. That leaves LS-2’s core fix unproven.
+
+**Suggested fix:** Specify the actual headings: EN `^### P9 — STEP6 archive` and CN `^### P9 —— STEP6` / `归档`, or define a helper that finds the `STEP6 archive` prompt by content. Keep the assertion scoped to that block.
+
+### LSSPEC-2 — Waiver evidence is designed as block-wide text, not a single `gates:` entry
+
+**Description:** Req-final says the flow-state entry must contain the row ID and `waiv`. GT-14 also says “a matching flow-state gates: entry.” The design instead extracts the whole `gates:` block and requires the block to contain the row ID and `/waiv/i` anywhere. That can pass with the row ID in one gate entry and unrelated “waived” text in another entry.
+
+**Risk:** A waiver can be mechanically accepted without one human gate entry actually recording that specific row’s waiver. This weakens the self-waive fix.
+
+**Suggested fix:** Reuse or mirror `parseFlowState`’s gate-line model and require at least one individual gate entry line to contain both the row ID and `/waiv/i`. If multiline gate entries are intended, define their boundary precisely and still require both tokens in the same entry.
+
+## Coverage notes
+
+GT-13/14/15 cover I1/I2/I3/I6’s ledger-state behaviors at the gate layer, and PR-18 covers I4/I5 protocol/docs binding once the STEP6 heading is corrected. Existing archived GT-06/07 fixtures use `LEDGER_OK` with `verified`, so the new archived terminal rule should not break them.
+
+The classifier alternation order is directionally correct. In JavaScript, `rejected-verified` before `rejected` avoids the shorter match, and `\b` at the end of `rejected-verified` / `advisory-acked` works when followed by a space/end because the final character is a word character.
+
+Archive name derivation is acceptable if implemented as stripping the fixed stamp prefix `YYYY-MM-DDThhmm-`; names containing digits or hyphens remain unambiguous after that prefix.
+
+## Advisories
+
+- In GT-15, make the corpus assertion check the reason floor as well as `legal && terminal`, so reasonless `rejected-verified` / `waived` cannot pass the corpus helper by accident.
+- Define the `gates:` block boundary with an explicit regex even after switching to same-entry matching. A top-level flow-state key should mean an unindented `key:` line, not an indented gate bullet containing a timestamp or colon.
+
+## Ledger delta
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| LSSPEC-1 | PR-18 STEP6 block extractor targets `^### STEP6`, but the actual runbook heading is `### P9 — STEP6 archive (producer)` with a CN mirror. | The post-archive gate requirement can remain unbound or be tested against the wrong text. | STEP2 r1 | open |
+| LSSPEC-2 | Waiver evidence is checked across the whole `gates:` block instead of requiring one gate entry to contain both the row ID and `waiv`. | A waiver can pass mechanically without a single human entry recording that specific waived row. | STEP2 r1 | open |
+| LSSPEC-ADV-1 | Advisory batch: GT-15 should include reason-floor checks; define the `gates:` block boundary regex explicitly. | Low. | STEP2 r1 | open |
+
+VERDICT: 2 issues open

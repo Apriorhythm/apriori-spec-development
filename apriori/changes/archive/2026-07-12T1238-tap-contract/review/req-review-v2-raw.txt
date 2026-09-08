@@ -1,0 +1,216 @@
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f4b30-68f9-7222-9b64-17f52a333b4c
+--------
+user
+P1 round 2 for tap-contract. All five round-1 issues pinned in requirement/req-v2.md (v1 kept): TC-1 — version line = column-0, outside YAML, exactly 'TAP version <digits>', at most ONE, must precede any plan/point/bail-out; multiple/late/unparsable -> infra ERROR; indented or YAML-embedded version strings are diagnostics. TC-2 — hard-wired order: find first UNESCAPED # (backslash escapes next char) -> directive split; directive = remainder starting with SKIP/TODO case-insensitive (suffixes legal); THEN decode escapes in the description only (\\->\, \#->#, any other backslash pair kept literally, never an error); THEN leadId on the decoded description. TC-3 — an unterminated TOP-LEVEL YAML block is infra ERROR exit 2 naming the opening line; indented blocks stay excluded wholesale as indented lines. TC-4 — JSON stderr: string constant in every outcome class (empty string when none, untruncated); human report shows STDERR DIAGNOSTICS only when non-empty (20 lines, 119+ellipsis, and-N-more); zero-TAP judged on stdout only with a 2>&1 remedy in the hint. TC-5 — ignore whitelist narrowed to top-level 'pragma [+-]<word>' lines exactly (not counted as points); any other top-level line shaped like point/plan/bail-out follows normal rules. Advisory absorbed: doctor probe classifications for unsupported version and stderr-only. Ledger rows TC-1..5 open pending your concurrence. Re-read req-v2.md. End with LEDGER DELTA then exactly one verdict line.
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-12T04:03:12.186662Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-12T04:03:12.391853Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-12T04:03:12.725628Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-12T04:03:13.330813Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-12T04:03:14.268815Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-12T04:03:15.526208Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-12T04:03:18.992078Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: gyd1pOiIZT0J
+codex
+我会只复核 `req-v2.md` 是否把五个合同洞精确补齐，同时看新增规则之间有没有新的冲突，尤其是 version/pragma/YAML/stdout-only zero-TAP 的交互。
+exec
+/usr/bin/zsh -lc "sed -n '1,340p' apriori/changes/tap-contract/requirement/req-v2.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,120p' apriori/changes/tap-contract/review/issues.md 2>/dev/null || true && find apriori/changes/tap-contract -maxdepth 3 -type f | sort" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "rg -n \"TAP version|stderr|YAML|pragma|escape|SKIP|TODO|doctor|2>&1|unterminated|multiple|late|version 15|15\\+|unsupported\" apriori/changes/tap-contract/requirement/req-v2.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 114ms:
+# 需求:tap-contract —— TAP 是协议,不是文本 (v2)
+
+> change: `tap-contract` · tier: large · track: harden
+> lineage: v4;不合并 main/v1/v3
+> 来源:GPT-5.6 四审 P0-1 + P1-1 + P1-2 + P2-3(TAP 部分),关键病例均已本机复现。
+> v2 修订:TC-1..5(version 行规则、escape 顺序表、YAML 未闭合 fail-closed、stderr 合同、pragma 白名单)+ doctor D5 advisory。
+
+## 目标
+
+verify 的 TAP 解析目前是一组独立 regex,对 TAP 规范的覆盖是"碰巧的子集":接受任意 `TAP version N` 却按不完整子集解析,产生假绿(`\#` 转义被当指令、`bAiL OuT!` 大小写变体被无视、lone-CR 行尾让失败点消失)与误拦(dashless 描述、`# SKIPPED:` 兼容后缀)。本变更把 TAP 处理升级为**版本感知的行级词法器**,并声明明确的支持契约。
+
+## 支持契约(核心决策)
+
+- **声明支持:TAP 12/13 与无版本行的流**(node --test、pytest-tap 等主流 runner 的实际输出)。
+- **`TAP version 14` 流:接受,并正确处理本变更覆盖的 14 语义**(转义序列、大小写不敏感 bail-out、其余与 13 共享的行为);14 独有而本词法器不解析的构造(如 pragma、嵌套 subtest 块语法)保持"行级忽略不计入",与现状一致但**文档写明**。
+- **`TAP version 15+` 或不可解析的版本行:infra ERROR(exit 2)**,消息点名版本与支持范围——绝不"接受任意版本号却只解析一部分"。
+- **version 行规则(TC-1)**:只识别**列 0、YAML 块外**、恰为 `TAP version <digits>` 形状的行;**至多一个**,且必须出现在任何 plan/test point/bail-out **之前**;多个 version 行、晚到的 version 行、不可解析的数字 → infra ERROR。缩进行/YAML 块内的"TAP version 99"是诊断文本,不参与判定。
+
+## 行为需求
+
+1. **词法器(替换散落的 regex)**:逐行、每行剥至多一个尾随 CR;**lone-CR 行尾的流先归一化**(`\r` 不后跟 `\n` 时视同行尾)——失败点绝不因行尾风格消失。行分类:version 行 / plan 行 / test point(`ok`/`not ok`,列 0)/ bail-out / 注释诊断 / YAML 块(列 0 之外的缩进 `---`…`...` 属缩进行整体排除;**顶层** `---` 开的块内行不参与判定,**至 EOF 未闭合 → infra ERROR(exit 2),消息含起始行号**——错误的 `---` 绝不静默吞掉后续失败(TC-3))/ 其余。缩进行 = 子测试细节,照旧不计入顶层(node 嵌套 TAP 不回归)。
+2. **test point 解析**:`(not )?ok` 后可选编号、可选描述(**`-` 分隔可选**——dashless 合法描述参与 ID 绑定,修 P1-2 误拦)、可选指令。**处理顺序(TC-2,写死)**:①左到右扫描找**第一个未转义 `#`**(`\` 转义其后一个字符)作为指令分隔;②指令 = 分隔后(跳过空白)以 `SKIP`/`TODO` 开头的词(大小写不敏感,`SKIPPED:` 等后缀合法——"starts with");③对**描述部分**解码转义表:`\\`→`\`、`\#`→`#`,**其余反斜杠序列原样保留两个字符**(不 ERROR、不吞);④对解码后的描述做 `leadId()` 提取。`\#` 因此绝不是指令分隔符(修 P0-1 假绿)。
+3. **bail-out**:`bail out!` 大小写不敏感、允许前导缩进(嵌套 bail-out 同样终止整个 run——TAP 语义如此)→ 既有 infra ERROR 路径。
+4. **plan 校验强化**:plan 出现在流中间(前后都有 test point)→ infra ERROR;test point 编号超出 plan 范围(如 `1..1` 配 `ok 2`)→ infra ERROR;既有单 plan/计数/重号规则不变。
+5. **stdout/stderr 分离(P1-1,合同精确化 TC-4)**:TAP 只从 **stdout** 解析。`--json` 顶层 `stderr: string` **全结果类恒定存在**(无输出为空串,全文不截断);人类报告仅在 stderr 非空时列 `STDERR DIAGNOSTICS` 组(前 20 行,>120 字符裁到 119+`…`,`… and N more` 尾)。zero-TAP 判定只看 stdout——stdout 无 TAP 而 stderr 有 TAP 形内容时照判 zero-TAP,且提示消息给出 `2>&1` 补救。**行为变更,CHANGELOG 点名**。
+6. **doctor 同步(P2-3a + advisory)**:`classifyProbe` 复用同一词法器——`not ok` + exit 0 的探针诊断为"测试失败"而非"not TAP";不支持的 TAP version → 探针诊断点名版本;stderr-only 的 TAP 形输出 → 维持"not TAP"并给 `2>&1` 提示(与 verify 同口径)。
+7. **回归钉子**:P0-1 的三个复现输入(`\#` TODO、`bAiL OuT!`、流中 plan)+ lone-CR 流 + `TAP version 99` + dashless 绑定 + `# SKIPPED:` + stderr 日志误拦,各一条场景。
+8. **不回归**:SR-01..38 全部既有场景;计划外形状(plan-less、skip-all、嵌套)照旧。
+
+## 非目标
+
+- 完整 TAP 14 特性的结构化解析。**忽略白名单收窄(TC-5)**:仅顶层恰为 `pragma [+-]<word>` 形状的行被忽略且不计入 plan 点数;其余任何顶层行——只要形状是 test point/plan/bail-out——一律按普通规则处理,没有其他"14 专属忽略"。
+- YAML 诊断块的内容解析(只做"不参与判定"的跳过)。
+- verify 之外新增表面。
+
+## 约束
+
+- 零依赖;词法器为纯函数可单测;`parseTap` 导出面保持兼容(`untaggedFails` 等,doctor 消费)。
+- CRLF 与既有 fence/CRLF 规则不冲突。
+
+## 开放问题
+
+- 无。
+
+ succeeded in 134ms:
+# Issue ledger — tap-contract
+
+Rows recorded on behalf of the reviewer (codex session 019f4b30-68f9-7222-9b64-17f52a333b4c; raws beside their docs in this dir).
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| TC-1 | version 行的位置/重复/作用域未定义。 | mid-stream 版本被忽略或诊断文本误判。 | STEP0·r1 | open |
+| TC-2 | escape 解码范围与 directive/ID 处理顺序不完整。 | \# 归因/skip/失败分类分叉。 | STEP0·r1 | open |
+| TC-3 | YAML 块未闭合 fail-open/closed 未定。 | 错误 --- 吞掉后续失败成新假绿。 | STEP0·r1 | open |
+| TC-4 | stdout/stderr 分离的报告/JSON 合同不精确。 | 机器合同与迁移补救不一致。 | STEP0·r1 | open |
+| TC-5 | TAP14 未处理构造"行级忽略"范围过宽。 | 真实点被忽略或 pragma 造成假 ERROR。 | STEP0·r1 | open |
+apriori/changes/tap-contract/flow-state.md
+apriori/changes/tap-contract/requirement/req-v1.md
+apriori/changes/tap-contract/requirement/req-v2.md
+apriori/changes/tap-contract/review/issues.md
+apriori/changes/tap-contract/review/req-review-v1.md
+apriori/changes/tap-contract/review/req-review-v1-raw.txt
+
+ succeeded in 176ms:
+6:> v2 修订:TC-1..5(version 行规则、escape 顺序表、YAML 未闭合 fail-closed、stderr 合同、pragma 白名单)+ doctor D5 advisory。
+10:verify 的 TAP 解析目前是一组独立 regex,对 TAP 规范的覆盖是"碰巧的子集":接受任意 `TAP version N` 却按不完整子集解析,产生假绿(`\#` 转义被当指令、`bAiL OuT!` 大小写变体被无视、lone-CR 行尾让失败点消失)与误拦(dashless 描述、`# SKIPPED:` 兼容后缀)。本变更把 TAP 处理升级为**版本感知的行级词法器**,并声明明确的支持契约。
+15:- **`TAP version 14` 流:接受,并正确处理本变更覆盖的 14 语义**(转义序列、大小写不敏感 bail-out、其余与 13 共享的行为);14 独有而本词法器不解析的构造(如 pragma、嵌套 subtest 块语法)保持"行级忽略不计入",与现状一致但**文档写明**。
+16:- **`TAP version 15+` 或不可解析的版本行:infra ERROR(exit 2)**,消息点名版本与支持范围——绝不"接受任意版本号却只解析一部分"。
+17:- **version 行规则(TC-1)**:只识别**列 0、YAML 块外**、恰为 `TAP version <digits>` 形状的行;**至多一个**,且必须出现在任何 plan/test point/bail-out **之前**;多个 version 行、晚到的 version 行、不可解析的数字 → infra ERROR。缩进行/YAML 块内的"TAP version 99"是诊断文本,不参与判定。
+21:1. **词法器(替换散落的 regex)**:逐行、每行剥至多一个尾随 CR;**lone-CR 行尾的流先归一化**(`\r` 不后跟 `\n` 时视同行尾)——失败点绝不因行尾风格消失。行分类:version 行 / plan 行 / test point(`ok`/`not ok`,列 0)/ bail-out / 注释诊断 / YAML 块(列 0 之外的缩进 `---`…`...` 属缩进行整体排除;**顶层** `---` 开的块内行不参与判定,**至 EOF 未闭合 → infra ERROR(exit 2),消息含起始行号**——错误的 `---` 绝不静默吞掉后续失败(TC-3))/ 其余。缩进行 = 子测试细节,照旧不计入顶层(node 嵌套 TAP 不回归)。
+22:2. **test point 解析**:`(not )?ok` 后可选编号、可选描述(**`-` 分隔可选**——dashless 合法描述参与 ID 绑定,修 P1-2 误拦)、可选指令。**处理顺序(TC-2,写死)**:①左到右扫描找**第一个未转义 `#`**(`\` 转义其后一个字符)作为指令分隔;②指令 = 分隔后(跳过空白)以 `SKIP`/`TODO` 开头的词(大小写不敏感,`SKIPPED:` 等后缀合法——"starts with");③对**描述部分**解码转义表:`\\`→`\`、`\#`→`#`,**其余反斜杠序列原样保留两个字符**(不 ERROR、不吞);④对解码后的描述做 `leadId()` 提取。`\#` 因此绝不是指令分隔符(修 P0-1 假绿)。
+25:5. **stdout/stderr 分离(P1-1,合同精确化 TC-4)**:TAP 只从 **stdout** 解析。`--json` 顶层 `stderr: string` **全结果类恒定存在**(无输出为空串,全文不截断);人类报告仅在 stderr 非空时列 `STDERR DIAGNOSTICS` 组(前 20 行,>120 字符裁到 119+`…`,`… and N more` 尾)。zero-TAP 判定只看 stdout——stdout 无 TAP 而 stderr 有 TAP 形内容时照判 zero-TAP,且提示消息给出 `2>&1` 补救。**行为变更,CHANGELOG 点名**。
+26:6. **doctor 同步(P2-3a + advisory)**:`classifyProbe` 复用同一词法器——`not ok` + exit 0 的探针诊断为"测试失败"而非"not TAP";不支持的 TAP version → 探针诊断点名版本;stderr-only 的 TAP 形输出 → 维持"not TAP"并给 `2>&1` 提示(与 verify 同口径)。
+27:7. **回归钉子**:P0-1 的三个复现输入(`\#` TODO、`bAiL OuT!`、流中 plan)+ lone-CR 流 + `TAP version 99` + dashless 绑定 + `# SKIPPED:` + stderr 日志误拦,各一条场景。
+32:- 完整 TAP 14 特性的结构化解析。**忽略白名单收窄(TC-5)**:仅顶层恰为 `pragma [+-]<word>` 形状的行被忽略且不计入 plan 点数;其余任何顶层行——只要形状是 test point/plan/bail-out——一律按普通规则处理,没有其他"14 专属忽略"。
+33:- YAML 诊断块的内容解析(只做"不参与判定"的跳过)。
+38:- 零依赖;词法器为纯函数可单测;`parseTap` 导出面保持兼容(`untaggedFails` 等,doctor 消费)。
+
+codex
+## 复核结论
+
+v2 明显收紧了合同，TC-2/3/4 已经足够精确；但还有 3 个需求层缺口。其中两个属于原问题未完全关闭，一个是 v2 新增 doctor 同步语义后暴露出的可测试性缺口。
+
+## 已解决
+
+TC-2 已解决。escape 与 directive 顺序现在可实现、可测：先找未转义 `#`，再识别 directive，再只对描述解码 `\\` / `\#`，其他反斜杠序列保留字面，最后对解码描述做 `leadId()`。
+
+TC-3 已解决。顶层 YAML block 未闭合明确 fail-closed：infra ERROR exit 2，消息含起始行号；缩进行保持排除。
+
+TC-4 已解决。stdout/stderr 分离合同明确：TAP 只取 stdout；JSON `stderr: string` 全结果类恒定存在；人类报告 `STDERR DIAGNOSTICS` 截断规则明确；stdout-only zero-TAP 判定与 `2>&1` 补救也明确。
+
+## 仍需修正
+
+### TC-1 — reopened：version 支持范围仍有未定义区间
+
+描述：v2 明确 12/13/version-less 接受，14 接受，15+ ERROR，但没有说明 `TAP version 0..11` 怎么处理。它们不是声明支持范围，也不是 15+，实现者可能接受、忽略或报错。另一个小洞是“不可解析版本行”没有精确定义为哪类 attempt，例如列 0 `TAP version banana` 是否 ERROR 还是普通诊断。
+
+风险：版本支持合同仍不是封闭集合；unsupported 低版本可能继续被“碰巧解析”。
+
+建议修复：把版本判定写成封闭矩阵：无 version / 12 / 13 / 14 接受；其他数字版本（含 0..11、15+）均 infra ERROR；列 0、YAML 外、以 `TAP version` 开头但不匹配 exact digits 的 attempt 也是 infra ERROR。缩进/YAML 内仍为诊断。
+
+### TC-5 — reopened：支持契约仍保留宽泛“14 构造行级忽略”文字
+
+描述：v2 非目标部分已把忽略白名单收窄到 `pragma [+-]<word>`，这是正确方向；但支持契约段仍写“14 独有而本词法器不解析的构造（如 pragma、嵌套 subtest 块语法）保持行级忽略不计入”。这与后面的“仅 pragma 白名单”冲突。
+
+风险：实现者可能按前文继续忽略其它 TAP14 顶层构造，绕过后文的普通 point/plan/bail-out 规则。
+
+建议修复：删除或改写支持契约中的宽泛句。建议写成：TAP14 接受；未结构化解析的只有 exact pragma 白名单会被忽略；缩进 subtest 细节按既有缩进规则排除；任何顶层 point/plan/bail-out 形状仍按普通规则处理。
+
+### TC-6 — doctor D5 分类状态不明确
+
+描述：v2 要求 `classifyProbe` 复用词法器，并说 `not ok` + exit 0 诊断为“测试失败”而非 “not TAP”；unsupported TAP version 点名版本；stderr-only TAP 形输出维持 “not TAP” 并给 `2>&1`。但没有规定这些 doctor cases 的 `status`/exit 影响：是 D5 `ok`（沿用“test failures are verify's business”）、`finding`，还是 `UNUSABLE`？
+
+风险：实现和测试会分叉；doctor 是明确纳入 v2 的行为面，不再只是 advisory。
+
+建议修复：为 D5 写出状态矩阵。例如：test failures remain D5 `ok` with detail naming failing TAP; unsupported TAP version is D5 `finding`; stderr-only TAP is D5 `finding` with `2>&1` fix; overall doctor exit follows existing findings taxonomy。
+
+## LEDGER DELTA
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| TC-1 | version 行的位置/重复/作用域未定义。 | mid-stream 版本被忽略或诊断文本误判。 | STEP0·r1 | open |
+| TC-2 | escape 解码范围与 directive/ID 处理顺序不完整。 | `\#` 归因/skip/失败分类分叉。 | STEP0·r1 | verified |
+| TC-3 | YAML 块未闭合 fail-open/closed 未定。 | 错误 `---` 吞掉后续失败成新假绿。 | STEP0·r1 | verified |
+| TC-4 | stdout/stderr 分离的报告/JSON 合同不精确。 | 机器合同与迁移补救不一致。 | STEP0·r1 | verified |
+| TC-5 | TAP14 未处理构造“行级忽略”范围过宽。 | 真实点被忽略或 pragma 造成假 ERROR。 | STEP0·r1 | open |
+| TC-6 | doctor D5 新分类缺少 status/exit 矩阵。 | doctor 行为实现和测试会分叉。 | STEP0·r2 | open |
+
+VERDICT: 3 issues found
+tokens used
+4,862,839
+## 复核结论
+
+v2 明显收紧了合同，TC-2/3/4 已经足够精确；但还有 3 个需求层缺口。其中两个属于原问题未完全关闭，一个是 v2 新增 doctor 同步语义后暴露出的可测试性缺口。
+
+## 已解决
+
+TC-2 已解决。escape 与 directive 顺序现在可实现、可测：先找未转义 `#`，再识别 directive，再只对描述解码 `\\` / `\#`，其他反斜杠序列保留字面，最后对解码描述做 `leadId()`。
+
+TC-3 已解决。顶层 YAML block 未闭合明确 fail-closed：infra ERROR exit 2，消息含起始行号；缩进行保持排除。
+
+TC-4 已解决。stdout/stderr 分离合同明确：TAP 只取 stdout；JSON `stderr: string` 全结果类恒定存在；人类报告 `STDERR DIAGNOSTICS` 截断规则明确；stdout-only zero-TAP 判定与 `2>&1` 补救也明确。
+
+## 仍需修正
+
+### TC-1 — reopened：version 支持范围仍有未定义区间
+
+描述：v2 明确 12/13/version-less 接受，14 接受，15+ ERROR，但没有说明 `TAP version 0..11` 怎么处理。它们不是声明支持范围，也不是 15+，实现者可能接受、忽略或报错。另一个小洞是“不可解析版本行”没有精确定义为哪类 attempt，例如列 0 `TAP version banana` 是否 ERROR 还是普通诊断。
+
+风险：版本支持合同仍不是封闭集合；unsupported 低版本可能继续被“碰巧解析”。
+
+建议修复：把版本判定写成封闭矩阵：无 version / 12 / 13 / 14 接受；其他数字版本（含 0..11、15+）均 infra ERROR；列 0、YAML 外、以 `TAP version` 开头但不匹配 exact digits 的 attempt 也是 infra ERROR。缩进/YAML 内仍为诊断。
+
+### TC-5 — reopened：支持契约仍保留宽泛“14 构造行级忽略”文字
+
+描述：v2 非目标部分已把忽略白名单收窄到 `pragma [+-]<word>`，这是正确方向；但支持契约段仍写“14 独有而本词法器不解析的构造（如 pragma、嵌套 subtest 块语法）保持行级忽略不计入”。这与后面的“仅 pragma 白名单”冲突。
+
+风险：实现者可能按前文继续忽略其它 TAP14 顶层构造，绕过后文的普通 point/plan/bail-out 规则。
+
+建议修复：删除或改写支持契约中的宽泛句。建议写成：TAP14 接受；未结构化解析的只有 exact pragma 白名单会被忽略；缩进 subtest 细节按既有缩进规则排除；任何顶层 point/plan/bail-out 形状仍按普通规则处理。
+
+### TC-6 — doctor D5 分类状态不明确
+
+描述：v2 要求 `classifyProbe` 复用词法器，并说 `not ok` + exit 0 诊断为“测试失败”而非 “not TAP”；unsupported TAP version 点名版本；stderr-only TAP 形输出维持 “not TAP” 并给 `2>&1`。但没有规定这些 doctor cases 的 `status`/exit 影响：是 D5 `ok`（沿用“test failures are verify's business”）、`finding`，还是 `UNUSABLE`？
+
+风险：实现和测试会分叉；doctor 是明确纳入 v2 的行为面，不再只是 advisory。
+
+建议修复：为 D5 写出状态矩阵。例如：test failures remain D5 `ok` with detail naming failing TAP; unsupported TAP version is D5 `finding`; stderr-only TAP is D5 `finding` with `2>&1` fix; overall doctor exit follows existing findings taxonomy。
+
+## LEDGER DELTA
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| TC-1 | version 行的位置/重复/作用域未定义。 | mid-stream 版本被忽略或诊断文本误判。 | STEP0·r1 | open |
+| TC-2 | escape 解码范围与 directive/ID 处理顺序不完整。 | `\#` 归因/skip/失败分类分叉。 | STEP0·r1 | verified |
+| TC-3 | YAML 块未闭合 fail-open/closed 未定。 | 错误 `---` 吞掉后续失败成新假绿。 | STEP0·r1 | verified |
+| TC-4 | stdout/stderr 分离的报告/JSON 合同不精确。 | 机器合同与迁移补救不一致。 | STEP0·r1 | verified |
+| TC-5 | TAP14 未处理构造“行级忽略”范围过宽。 | 真实点被忽略或 pragma 造成假 ERROR。 | STEP0·r1 | open |
+| TC-6 | doctor D5 新分类缺少 status/exit 矩阵。 | doctor 行为实现和测试会分叉。 | STEP0·r2 | open |
+
+VERDICT: 3 issues found

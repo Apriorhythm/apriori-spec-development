@@ -1,0 +1,1312 @@
+<!-- provenance: provider=openai model=gpt-5.6-sol session=019ff7c5-c6bd-7cf3-bb6d-48a48ed76e6e date=2026-08-13 -->
+OpenAI Codex v0.147.0
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.6-sol
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019ff7c5-c6bd-7cf3-bb6d-48a48ed76e6e
+--------
+user
+Round 3. Revised per round-2: apriori/changes/modified-block-integrity/requirement/req-v3.md ('需求裁定记录（对 r2 评审）'): REQ-2 — your cardinality truth table adopted verbatim, uniform for ID keys and normalized-title keys; ambiguous keys skip every other class and body comparison, entries carry side+oldCount+newCount. REQ-3 — file=store-relative suffix, retained.title=the NEW block's original title, ambiguous.key semantics pinned, titleChanged DOES trigger entry printing (final ruling), truncation follows state A (slice(0,119)+ellipsis, UTF-16 units), archive warning channel/prefix/boundedness pinned. REQ-10 — six structural-scan rules (requirement heading never compared; fence-aware valid scenario headings; unclosed fence swallows the tail into the current body); AC8 extended with the rename-no-false-missing and fenced-fake-heading cases. REQ-4 — AC6 now covers five archive paths (custom-config positive, default positive, invalid config pre-matcher, injected matcher failure, warning stream/prefix/bounded assertions). REQ-11 — AC4 is a deterministic exit oracle (GREEN 0 / GAPS 1 / dry-run 0 with verbatim RESULT line and byte-identical --write). All four advisories absorbed (test-count as round baseline; AC7 expectations hand-derived; RUNBOOK bilingual sentence added to AC10; pure-shared-helper noted for design).
+Re-review req-v3. If nothing formal remains, flip REQ-2/3/4/10/11 to verified and close.
+Read-only sandbox: PRINT the review doc body (landed at apriori/changes/modified-block-integrity/review/req-review-v3.md), Simplified Chinese, machine tokens English. End with the ledger delta and exactly one verdict line: 'VERDICT: no major issues' or 'VERDICT: <N> issues open'.
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+codex
+我会按 round-2 的五个 open issue 逐项验收，并做一次交叉一致性检查，重点看新增 cardinality 表、fence scanner、archive failure degradation 与 AC 是否互相吻合。只读，不落盘。
+exec
+/usr/bin/zsh -lc "sed -n '1,420p' apriori/changes/modified-block-integrity/requirement/req-v3.md; sed -n '1,360p' apriori/changes/modified-block-integrity/review/req-review-v2.md 2>/dev/null || true" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 127ms:
+# req-v3 — modified-block-integrity：MODIFIED 整块替换的保真性成为机械报告
+
+target lineage: main（v4 产品线；不合并 v1/v3）。**state A 声明（REQ-8）**：本 change 构建在工作区中两个未归档先行 change（gate-id-pattern：id-pattern 解析与可终止 matcher；verify-change-scope：change-scoped verdict、单标题批、deltaOps、storeReport）之上；三者按序归档，spec/design 以工作区代码为 state A。
+
+## 背景（现状 A）
+
+同 req-v1（复盘 P0-3 唯一 ⚠ 防线项；活教材 = verify-change-scope delta 的 9 场景块重述；merge() 整块替换零对比；对比原料在 buildProjection 处零成本在手）。
+
+## 目标（目标态 B）
+
+### B1. 保真报告的判定算法（REQ-1/REQ-2 收口）
+
+**规范化**：行统一 CRLF/CR→LF；比较前每行去行尾空白、行首空白（含 tab）整体剥离；空行不参与比较。
+
+**occurrence 级场景配对（唯一基数真值表，REQ-2 r2 收口）**：配对键 = 场景 ID（有 ID 时）或规范化全标题（无 ID 时），同一张表对两类键统一适用。对每个键统计旧块出现数 o、新块出现数 n：
+
+| o | n | 分类 |
+|---:|---:|---|
+| 0 | 1 | added |
+| 1 | 0 | dropped |
+| 1 | 1 | 正常配对（有 ID 键：同规范化标题→retained，异→titleChanged，两类互斥且都做体行比较；标题键：即 retained） |
+| 0 | >1 | ambiguous(side=new) |
+| >1 | 0 | ambiguous(side=old) |
+| >1 | 1 | ambiguous(side=old) |
+| 1 | >1 | ambiguous(side=new) |
+| >1 | >1 | ambiguous(side=both) |
+
+ambiguous 的键**完全跳过** retained/titleChanged/dropped/added 与体行比较；每键一条 entry，携带 side 与两侧计数。
+
+**行级比较（顺序保持子序列，唯一算法）**：对每个 retained/titleChanged 场景，取旧场景体的规范化非空行序列 O 与新体序列 N，做**保序贪心子序列匹配**（O 的每行按序在 N 中找首个未被消费的相等行；重复行按出现次数逐一消费）——未匹配的旧行即 `missingLines`（重排导致的失配如实报告；子序列不要求连续）。
+
+**结构扫描规则（REQ-10 收口）**：① Requirement 标题行（`### Requirement: …`）**永不**参与比较（rename-then-modify 不得因标题差异假报缺失）；② requirement 散文 = 标题行之后第一行起、至第一个**有效**场景标题前，同规则比较，缺行记 `missingLines`（scenario=null，仅报旧内容缺失）；③ 场景体 = 有效场景标题之后至下一个有效场景标题或块尾；④ 有效场景标题沿用 state A 精确语法（`#### Scenario: `），且**fence 感知**——三反引号围栏内形如场景标题的行不是分隔符（与 verify 的场景采集一致）；⑤ fence 定界行与围栏内非空行都作为当前散文/场景体的比较行（被整块替换威胁的内容）；⑥ 未闭合 fence 沿用 state A 语义：其后内容全部归入当前围栏（即并入当前散文/体的比较行序列，不再切分场景）。
+
+### B2. 消费面与执行纪律（REQ-4/REQ-5 收口）
+
+- **`verify --change`**：旧块标题作为第 4 类 tag 并入**既有的单一标题批**（不新增 matcher 调用——SR-63 的两批契约保持；这些 pairs 不进入绑定 acc，仅供 integrity 配对）；invalid pattern / matcher failure / projection failure 走既有 ERROR 路径，此时**无** integrity 报告。id-pattern 解析与 state A 完全一致（flag > config > default）。
+- **`archive --change`（high-level form 专属；single-file form 明确 out of scope——一模块手术是专家手动路径）**：dry-run 与 `--write` preflight 输出同一数据语义的 human 段（**不新增 --json**，REQ-3 附带裁定）。id 提取沿用统一解析（config > default，archive 无 flag）与可终止通道——经 **bin 层依赖注入**（bin/apriori.js 同时持有两模块，把 spec-runner 的 matcher 工厂注入 archive cli 的可选参数；archive-merge 模块自身仍零依赖 spec-runner，方向不破）。invalid config pattern 或 matcher failure → 打印一条 bounded warning、**跳过 integrity 报告**，archive 的一切既有语义（exit/写入/输出其余部分）不变。
+- **`gate`**：不消费。
+
+### B3. 报告存在性矩阵（REQ-6 收口）
+
+| 情形 | 报告 |
+|---|---|
+| verify --change GREEN/GAPS，delta 含 MODIFIED（或 rename-then-modify） | JSON `modifiedIntegrity` **恒存在**（无差异条目也出现，见 B4）；human 段按 B4 显著性规则 |
+| verify --change 任一 ERROR 类 | 字段与段落一律缺省 |
+| verify --specs | 永不出现（byte golden continues） |
+| archive dry-run / --write preflight 全部通过 | human 段输出 |
+| archive 任一 preflight/合并失败（malformed、missing target、CAS、denial、conflict、hygiene） | 无报告段（失败信息照旧）；部分模块失败时成功模块也不输出（fail 即整体拒绝——archive 现有原子语义） |
+| idempotent rerun（unchanged 路径） | 该 MODIFIED 无差异——JSON 条目 diff 全空，human 静默 |
+
+### B4. 输出契约（REQ-3 收口）
+
+- **JSON（verify --change，GREEN/GAPS 恒在）**：`modifiedIntegrity: [ { file, name, retained: [{id, title}], titleChanged: [{id, oldTitle, newTitle}], dropped: [{id, title}], added: [{id, title}], ambiguous: [{key, side: 'old'|'new'|'both', oldCount, newCount}], missingLines: [{scenario: <id|title|null>, line: <完整原文，不截断> }] } ]`。取值裁定（REQ-3 r2）：`file` = store 相对 suffix（与 projection.modules 同制）；`retained.title` 取**新块**原始标题（规范化仅用于配对判定）；`ambiguous.key` = ID 键取 ID，标题键取规范化标题；每个 MODIFIED 操作恒一条（含全空 diff 条目）；排序：条目按 (file,name)，场景类按旧块出现序（added 按新块出现序），missingLines 按旧块行序。无 ID 场景 id=null 以 title 表达。
+- **human（verify 与 archive 同一段式）**：段标题 `— MODIFIED INTEGRITY —`；**显著性规则（Q1/REQ-3 r2 终裁）**：某 MODIFIED 条目存在 dropped/missingLines/ambiguous/titleChanged 任一非空即打印该条目——dropped/missingLines/ambiguous 行冠 `!` 前缀，titleChanged 一行提示（无 `!`），retained/added 只出计数；**全部条目四类皆空时整段静默**。行截断沿用 state A 惯例：超过 120 时 `slice(0,119)+'…'`（总长恒 ≤120，JS UTF-16 code unit 计）；JSON 保留全文。archive 的 warning（B2 降级路径）：stderr、固定前缀 `warning: modified-integrity `、经 sanitizeMsg 有界（≤200 含省略号，控制字符剥离）。
+- **确认机制（REQ-9 收口）**：**不新增**任何确认/override flag——含 dropped 的 `--write` 与既有流程完全相同；Q2 删除。
+
+## 范围外（won't do）
+
+req-v1 各项保持；另明确：single-file archive form；`--json` for archive；跨块移动检测（dropped+added 如实）；requirement 块的新旧散文"新增行"不报（只报旧内容缺失——保真检查的方向性）。
+
+## 验收标准（确定 oracle）
+
+- AC1（场景级互斥分类）：旧块 KV-01/KV-02/KV-03，新块 KV-01(同)/KV-03(标题变)/KV-04 → retained=[KV-01]、titleChanged=[KV-03(old/new 标题)]、dropped=[KV-02]、added=[KV-04]。
+- AC2（行级）：KV-01 旧体 4 行、新体缺一条 AND → missingLines 含该行全文；行尾空白/行首缩进/tab 差异不报；重排的行如实报缺；重复行次数不足按次报缺；fence 内行参与比较；requirement 散文缺行报 scenario:null。
+- AC3（ambiguous）：旧块内 KV-05 出现两次 → ambiguous 含 KV-05，且不进其他四类。
+- AC4（verdict/exit 确定 oracle，REQ-11 收口）：AC1 fixture 配 TAP（覆盖新块全部场景且全绿、无孤儿）→ verify --change **恰为 GREEN exit 0**（报告在场不改判）；同 fixture 去掉一条测试 → **GAPS exit 1**；archive dry-run **exit 0** 且 RESULT 行与现版本逐字一致、--write 写入字节与现版本一致；gate --change 输出与现版本一致（不消费报告）。
+- AC5（json schema）：AC1 fixture 的 modifiedIntegrity 整条 deepStrictEqual（含排序）；无差异 MODIFIED 条目 diff 全空但存在；一切 verify ERROR 类字段缺省；--specs 永不出现（golden 复核）。
+- AC6（执行纪律与 archive id-pattern 全路径，REQ-4 r2 收口）：verify config-origin 下 matcher batch 计数仍恰好 2（旧块标题在第一批 payload 断言）；invalid pattern 0 投影 0 spawn 无报告。archive 面五路径：①自定义 config pattern 正向——报告正确识别 default 认不出的 ID（如 AC-08a）；②无 config 时 default 正向；③invalid config row（matcher 构造前失败）→ warning+无报告段+archive 结果照旧；④matcher timeout/failure 类（注入）→ 同 ③；⑤warning 断言：stderr、`warning: modified-integrity ` 前缀、有界无控制字符。
+- AC7（活教材，冻结 fixture）：verify-change-scope 的 delta MODIFIED 块与其 store 原块**复制为测试 fixture**（内容冻结）→ 报告 deepStrictEqual 于**人工独立推导**的期望值（先读 fixture 手工列出 retained 7/titleChanged 2（SR-16、SR-18 含 old/new 标题）/dropped 0/added 0/ambiguous 0/missingLines 逐行清单，写死于测试——绝不以实现输出回填）。
+- AC8（rename-then-modify 与结构边界）：RENAMED A->G + MODIFIED G（散文与场景逐字保留）→ 条目 name=G 且 **missingLines 为空**（标题行差异不报）；fence 内伪场景标题（```` ```\n#### Scenario: FAKE-01 x\n``` ````）不切分场景、其行参与体比较。
+- AC9（archive 面）：同 AC1 fixture 走 archive dry-run → human 段与 verify 同数据；preflight 失败（CAS mismatch）→ 无报告段；--write 成功时报告在写入前打印。
+- AC10（兼容与文档）：--specs byte golden 绿；存量测试（本轮基线 306）全绿；docs/cli 双语（verify/archive 节）+ RUNBOOK 双语 MODIFIED 警告句旁补一句机械报告 + CHANGELOG；check --self 绿。
+
+## 需求裁定记录（对 r2 评审）
+
+- REQ-2：基数真值表统一两类键；ambiguous 全跳过其他类与体比较；entry 带 side/oldCount/newCount。
+- REQ-3：file=store suffix；retained.title=新块原标题；ambiguous.key 语义；titleChanged 也触发条目打印（终裁）；截断=state A 惯例 119+…；archive warning 通道/前缀/有界钉死。
+- REQ-10：结构扫描六规则（标题行不比较、fence 感知有效标题、未闭合 fence 归当前体）；AC8 扩展两案例。
+- REQ-4：AC6 扩为 archive 五路径（正向双例+invalid config+matcher 失败+warning 断言）。
+- REQ-11：AC4 改确定 exit oracle（GREEN 0/GAPS 1/dry-run 0 逐字 RESULT/写入字节一致）。
+- r2 advisories（4 条批处理）：测试数量作本轮基线不入 spec；AC7 期望值人工独立推导（已入 AC7）；RUNBOOK 双语在 MODIFIED 警告句旁加一句机械报告存在（纳入 AC10 文档清单）；analyzer 设计为纯共享 helper（设计约束记入 design）。
+
+## 需求裁定记录（对 r1 评审）
+
+- REQ-1：唯一算法=保序贪心子序列（重复行计次消费）；比较范围=场景体全部非空行含 fence 内容与 requirement 散文；规范化规则明列；Q3 删除。
+- REQ-2：occurrence 级互斥分类 + ambiguous 类；无 ID 场景标题多重集配对；titleChanged 继续体比较；元素结构带 old/new 标题。
+- REQ-3：B4 完整 schema + 存在性 + 排序 + 截断（JSON 全文/human 120）+ archive 无 --json + Q1 显著性裁定 + 空 diff 条目语义。
+- REQ-4：旧块标题并入既有单一标题批（零新增 matcher 调用）；ERROR 无报告；archive 经 bin 层注入 matcher，失败降级 warning+skip。
+- REQ-5：high-level form 专属，single-file 明确 out of scope。
+- REQ-6：B3 存在性矩阵全表。
+- REQ-7：AC7 改冻结 fixture + deepStrictEqual 钉死。
+- REQ-8：state A 声明入 lineage 段。
+- REQ-9：不新增确认 flag，Q2 删除。
+# Requirement Review v2 — modified-block-integrity
+
+评审对象：`apriori/changes/modified-block-integrity/requirement/req-v2.md`
+
+依据：
+
+- `apriori/truth/archive-merge.md`
+- `apriori/truth/spec-runner.md`
+- 当前工作区 `lib/archive-merge.js`
+- 当前工作区 `lib/spec-runner.js`
+- `bin/apriori.js`
+- round-1 review ledger REQ-1..9
+
+评审口径：仅将 target state 歧义、不可测试的 acceptance criterion、缺失的边界/异常路径、与实际 state A 冲突计入最终 verdict。其他建议列入 P0 advisories。
+
+## 总结
+
+req-v2 已实质解决 round 1 的大部分问题：
+
+- 行级比较已收敛为确定的 greedy order-preserving subsequence；
+- normalization、重复行消费、fenced content、requirement prose 已纳入目标；
+- JSON 存在性、排序、空 diff entry、完整文本与 human 截断基本明确；
+- verify 保持现有 matcher batch 数；
+- archive 明确只覆盖 high-level form；
+- ERROR/preflight presence matrix 已建立；
+- confirmation flag 已明确排除；
+- lineage 已反映两个未归档前置 change。
+
+仍有 5 个 open issues。最重要的是无 ID occurrence 的 `ambiguous` 规则与 multiset 配对规则直接冲突，以及 requirement prose 的边界可能把 Requirement heading 本身纳入比较，从而让 rename-then-modify 产生伪缺失。另有若干 machine schema 和 matcher acceptance oracle 尚未闭合。
+
+## 1. Target state B 是否清晰且无歧义
+
+结论：不通过。
+
+### REQ-2 reopened：无 ID occurrence 的分类规则互相冲突
+
+描述：
+
+B1 第 1 条规定：
+
+> 无 ID 场景同规范化标题出现次数不一 → 记入 `ambiguous`，不进其他类。
+
+但第 3 条又规定：
+
+> 无 ID 场景按规范化全标题多重集配对；配上的 retained，未配上的分别 dropped/added。
+
+例如旧块有两个同标题无 ID occurrence，新块有一个：
+
+- 按第 1 条：整个标题进入 `ambiguous`，不得进入其他类；
+- 按第 3 条：一个 occurrence 为 `retained`，另一个为 `dropped`。
+
+两个结果互斥。
+
+有 ID duplicate 的 `ambiguous` 规则也未完全定义：只说“同一 ID 出现 >1 次”，没有明确是在任一侧出现即 ambiguous，还是仅某一侧；双方都 duplicate 时，是一个 `ambiguous` entry 还是 old/new 各一个。
+
+风险：
+
+同一输入会得到不同分类、不同 JSON 和不同 human report。`ambiguous` 是否阻止 body comparison 也会随实现选择而变化。
+
+建议修复：
+
+给出唯一的 occurrence cardinality truth table，例如：
+
+| old count | new count | 分类 |
+|---:|---:|---|
+| 0 | 1 | added |
+| 1 | 0 | dropped |
+| 1 | 1 | 正常配对 |
+| 0 | >1 | ambiguous(new) |
+| >1 | 0 | ambiguous(old) |
+| >1 | 1 | ambiguous(old) |
+| 1 | >1 | ambiguous(new) |
+| >1 | >1 | ambiguous(both) |
+
+然后明确同一规则是否同时适用于 ID key 与无 ID normalized-title key。若保留 `ambiguous`，发生 ambiguity 的 key 应完全跳过 retained/dropped/added/titleChanged 和 body comparison。
+
+### REQ-3 reopened：machine/human 输出仍有未定义值
+
+描述：
+
+B4 已明确数组结构，但以下字段仍没有唯一值：
+
+- `ambiguous[].side` 的允许值未定义，例如 `"old" | "new" | "both"`，也没有 count；
+- `retained[].title` 在 old/new 原始标题只存在 whitespace 差异、规范化后相等时，应取 old title、new title还是 normalized title；
+- `file` 未明确是 store-relative delta suffix、change-relative path、绝对 delta path还是 store path；
+- `idOrTitle` 没有说明有 ID ambiguity 时放 ID，无 ID ambiguity 时放原始标题还是 normalized title；
+- human significance wording存在歧义：一方面说 `titleChanged` 有“单行提示”，另一方面又说没有 dropped/missingLines/ambiguous 时整段静默。因此仅有 `titleChanged` 时究竟打印提示还是完全静默并不唯一；
+- “120 字符 + `…`”没有说明最大输出长度是 120（119+ellipsis，state A 的既有惯例）还是 121（120+ellipsis），也没有明确按 JS UTF-16 code unit、Unicode code point 还是 display width 截断；
+- bounded archive warning 没有固定最大长度、输出通道或稳定前缀。
+
+风险：
+
+`deepStrictEqual`、golden test 和 downstream JSON consumer 无法构造唯一 oracle；不同 AI 实现会产生 shape 相同但内容不同的结果。
+
+建议修复：
+
+补充以下确定契约：
+
+- `file = delta/store-relative suffix`，例如 `spec-runner/spec.md`；
+- `side ∈ {"old","new","both"}`，并定义何时取每个值；
+- `idOrTitle`：有 ID 时为 ID；无 ID 时为 normalized title；
+- `retained.title` 固定取 old 原始 title，或改为显式 `oldTitle/newTitle`；
+- 仅有 `titleChanged` 时明确静默或打印；
+- human 截断沿用 state A：JS `length > 120` 时 `slice(0,119) + "…"`，最终最多 120 UTF-16 code units；
+- archive matcher warning 固定在 stderr、固定前缀并规定最大长度。
+
+### REQ-10 new：requirement/scenario body 的结构边界没有钉死
+
+描述：
+
+B1 将 Requirement prose 定义为“块首至第一个场景标题之间”。按字面，块首包含：
+
+```text
+### Requirement: <name>
+```
+
+这会使 Requirement heading 本身参与 line comparison。对 AC8 的 rename-then-modify：
+
+- old baseline heading 为 `### Requirement: A`；
+- new MODIFIED heading 为 `### Requirement: G`。
+
+如果 heading 属于 prose，系统会把旧 heading 报为 `missingLines[{scenario:null,...}]`，即使真正的 prose 完全保留。这与“对比基线为原 A 块、报告挂在 G 名下”的目的不一致。
+
+此外，需求要求 fenced content 参与 line comparison，却没有定义 fenced content 中形如 `#### Scenario:` 的行是否是 scenario delimiter。state A 的 scenario collection 会先排除 triple-backtick fence，因此 fence 内 heading 不是场景；integrity parser 若直接扫描原块，则可能产生不同切分。以下边界也未明确：
+
+- scenario body 到下一个有效 `#### Scenario:` 之前还是到任意 h4；
+- closing/opening fence delimiter 自身是否作为非空 body line 比较；
+- unclosed fence 如何处理；
+- 块内 `#### Scenario:` 的 exact syntax 是否继续沿用 state A。
+
+风险：
+
+rename-then-modify 会产生确定的 false positive；含示例 Markdown 的 requirement 可能被切成虚假 scenario，甚至使用与 verify binding 不同的 scenario picture。
+
+建议修复：
+
+定义结构扫描规则：
+
+1. Requirement heading 永不进入 prose comparison；
+2. Requirement prose 从 heading 后第一行开始，到第一个有效 scenario heading 前结束；
+3. scenario body 从该 heading 后开始，到下一个有效 scenario heading或 block end；
+4. scenario delimiter 使用 state A exact syntax；
+5. triple-backtick fence 内的 scenario-looking line不是 delimiter，但 fence delimiter和其内部非空行都是当前 prose/body 的比较行；
+6. 明确 unclosed fence 按 state A 的哪种 fail-open/fail-closed 行为处理。
+
+为 rename-then-modify 无伪 heading 缺失、fence 内伪 scenario heading 两个案例增加 AC。
+
+## 2. Edge cases 与 exception paths 是否覆盖
+
+结论：不通过。
+
+REQ-2 和 REQ-10 涉及 duplicate cardinality、fenced heading 和 rename boundary 等关键边界。
+
+### REQ-4 reopened：archive 的 id-pattern 路径缺少完整 acceptance coverage
+
+描述：
+
+B2 已正确声明 archive 使用 config > default，并通过 bounded matcher channel 执行；但 AC6 只覆盖“注入 matcher 失败”，没有覆盖：
+
+- 合法 custom config pattern 确实被 archive 使用，而不是误回退 default；
+- invalid config row 在 matcher 构造前失败；
+- config-origin matcher timeout/signal/malformed-output；
+- 无 config 时 default pattern 的正向路径；
+- warning 的 stream、最大长度和稳定前缀。
+
+“matcher 失败”不能自动覆盖 invalid config，因为 invalid regex 在 `resolveIdPattern` 阶段失败，matcher 根本不会建立。当前 archive 还没有 `id-pattern` consumer，这些都是本 change 新增的产品路径，不能只依赖 verify 的既有测试。
+
+风险：
+
+archive 可能始终使用 default matcher、把 invalid config 当作 matcher failure、执行未受限 regex，或因 warning formatting 泄露无界 repository input，而现有 AC 仍可能通过。
+
+建议修复：
+
+扩展 AC6，至少包括：
+
+- custom config pattern 能识别 default 无法识别的 ID，并产生正确 integrity report；
+- absent config 使用 default；
+- invalid config：既有 archive RESULT/code/write behavior 不变，仅输出固定 bounded warning并跳过报告；
+- timeout、signal、malformed child output：同样 warning + skip；
+- 每条失败路径断言 matcher/test spawn 数、warning stream/长度，以及 store/change-dir 结果不变。
+
+## 3. 是否存在 implied but undeclared state changes 或 side effects
+
+结论：通过。
+
+req-v2 已声明 archive 为识别 config-origin ID 可在 bin seam 使用可终止 matcher child process，并明确：
+
+- 不新增 matcher dependency 到 `archive-merge`；
+- 不新增 archive JSON；
+- 不新增 confirmation/override flag；
+- matcher failure 只 warning + skip；
+- 不改变 verdict、exit、写入或 gate 语义。
+
+除 REQ-3 中 warning channel 尚需明确外，没有发现新的持久化状态变化或未声明外部副作用。
+
+## 4. 每条 acceptance criterion 是否均为可测试的 if/then
+
+结论：不通过。
+
+### REQ-11 new：AC4 仍没有确定的 verdict/exit oracle
+
+描述：
+
+AC4 表述为：
+
+> AC1/AC2 fixture 的 verify exit 与报告前完全一致。
+
+但 AC1/AC2 没有定义 test command/TAP output，因此无法推导该 verify 运行应是 GREEN、GAPS 还是 ERROR。“与报告前一致”还依赖另一个 state-A executable 或预先捕获的 golden；需求没有声明该 golden 的具体值或路径。
+
+archive 的“`--write` 写入行为不变”同样没有给出最终 store bytes、write call sequence 或目标 change-dir 状态。
+
+风险：
+
+测试只能比较当前实现与另一个未指定版本，或者只断言“没有明显变化”，不能独立判断实现是否符合 requirement。报告逻辑若意外改变 exit code，也可能因错误的 baseline capture 而被共同接受。
+
+建议修复：
+
+将 AC4 改成直接 oracle。例如为 fixture 固定 TAP：
+
+- 当 scoped scenarios 均有 passing TAP 时，`verify --change` 为 GREEN exit 0，加入报告前后相同；
+- 当某 scoped scenario 无结果时，为 GAPS exit 1；
+- projection/matcher ERROR 仍 exit 2；
+- archive dry-run code 0 且 RESULT 完整字符串固定；
+- archive `--write` code 0，最终 store bytes 等于既有 `renderStore(merge(...))` 的固定 golden，change-dir move行为按现有调用形式固定；
+- gate human/JSON 与 state-A golden byte-identical。
+
+可以保留 state-A golden regression，但不能让它成为唯一 oracle。
+
+AC7 的 frozen fixture + literal `deepStrictEqual` 方向已足以关闭 round-1 REQ-7；测试实现时应确保 expected object 是独立硬编码，而不是调用 production analyzer 计算 expected。
+
+## 5. 是否与 current state A 冲突
+
+结论：通过。
+
+本轮设计已与实际 state A 对齐：
+
+- verify 仍保持 config-origin 的两个 matcher batch；
+- invalid-pattern 仍先于 projection/content read；
+- integrity 数据可随现有 projection snapshot 传递，不要求二次读取；
+- `archive-merge` 不反向依赖 `spec-runner`；
+- single-file archive 明确不变；
+- gate 不消费；
+- JSON ERROR presence 与现有 `storeReport/changeScope` 纪律一致；
+- informative report 不进入 merge/verdict/write decision。
+
+REQ-10 若不修复会产生产品 false positive，但不是当前 state A API 冲突。
+
+## 6. Target lineage 是否声明且符合 repo reality
+
+结论：通过。
+
+lineage 已声明：
+
+- 基线为 `main` v4；
+- state A 包含未归档的 `gate-id-pattern`；
+- state A 包含未归档的 `verify-change-scope`；
+- spec/design 以当前工作区代码为事实；
+- 三个 change 按前置关系顺序归档。
+
+这与当前 repo 的 dirty worktree、`lib/` 已包含 matcher/deltaOps/storeReport 的现实一致。REQ-8 可关闭。
+
+## Explicit out-of-scope 检查
+
+结论：通过。
+
+显式 `## 范围外（won't do）` section 存在，并新增明确排除：
+
+- single-file archive form；
+- archive `--json`；
+- 跨块移动检测；
+- Requirement prose 的新增行报告。
+
+原有不改变 merge/verdict/exit/write semantics、无自动补回、gate 不消费等边界继续有效。
+
+## P0 advisories（不计入 verdict）
+
+### P0-1：存量测试数量应作为本轮基线而非永久契约
+
+AC10 的“306 存量测试绿”符合当前 state A，但建议改为：
+
+> 完整存量 suite 全绿；本轮基线为 306 tests。
+
+这样后续增加本 change 测试后不会让文义过期。
+
+### P0-2：AC7 expected value 必须独立于 production analyzer
+
+`deepStrictEqual` 的 expected object 应作为 literal fixture/golden 固定，不能在测试中调用同一个 analyzer 或同构 helper 生成，否则实现与 oracle 可同时犯错。
+
+### P0-3：建议同步 RUNBOOK 双语
+
+该能力直接机械化 RUNBOOK 中的人工保真检查。除 `docs/cli.md`、`docs/cli_cn.md` 和 CHANGELOG 外，建议同步 `RUNBOOK.md`、`RUNBOOK_cn.md`，说明报告 informative、不阻断 archive。
+
+### P0-4：建议将 analyzer 保持为 pure shared helper
+
+建议由 archive projection 层生成 old/new block snapshot，由 pure analyzer 消费已经解析和匹配的 title identities。verify/archive 只负责 matcher orchestration 与 rendering。这有助于证明：
+
+- store/delta 不二次读取；
+- `merge()` 语义不变；
+- 两个 surface 使用同一数据语义；
+- config-origin matcher 不会被 pure helper 私自执行。
+
+## Ledger delta
+
+| ID | r1 状态 | r2 状态 | 复核结论 |
+|---|---|---|---|
+| REQ-1 | open | verified | greedy order-preserving subsequence、normalization、重复行消费和比较范围已明确 |
+| REQ-2 | open | reopened | 无 ID count mismatch 的 ambiguous 规则与 multiset retained/dropped/added 规则直接冲突；duplicate side/cardinality 未闭合 |
+| REQ-3 | open | reopened | schema 已大幅补齐，但 `side`、`file`、retained title、仅 titleChanged 的 human 行为及 warning/truncation 仍无唯一值 |
+| REQ-4 | open | reopened | matcher 调用纪律已闭合，但 archive custom/default/invalid/timeout 等新消费路径缺少完整 acceptance coverage |
+| REQ-5 | open | verified | high-level archive 专属，single-file form 已明确 out of scope |
+| REQ-6 | open | verified | GREEN/GAPS、ERROR、archive preflight、partial failure、idempotent presence matrix 已明确 |
+| REQ-7 | open | verified | frozen fixture 与 literal deepStrictEqual 已形成可执行回归方向 |
+| REQ-8 | open | verified | lineage 已反映两个未归档前置 change 和实际工作区 state A |
+| REQ-9 | open | verified | confirmation/override flag 已明确不做，写入与 exit semantics 不变 |
+| REQ-10 | — | new open | Requirement heading、scenario body boundary及 fenced scenario-looking line 的解析规则未定义 |
+| REQ-11 | — | new open | AC4 仍以未指定的“报告前行为”为唯一比较对象，缺少直接 GREEN/GAPS/ERROR 与写入 oracle |
+
+VERDICT: 5 issues open
+
+codex
+五个旧问题的核心裁定基本都已落地。我发现一处需要对照代码确认的新冲突：req-v3 称“未闭合 fence 吞掉后续内容”沿用 state A，但当前 `stripFences()` 的正则看起来只移除闭合 fence；我正在核准这会不会改变 scenario 切分。
+exec
+/usr/bin/zsh -lc "nl -ba apriori/changes/modified-block-integrity/requirement/req-v3.md | sed -n '1,230p'; nl -ba lib/spec-runner.js | sed -n '15,115p'; nl -ba lib/config.js | sed -n '1,155p'; nl -ba bin/apriori.js | sed -n '1,55p'; rg -n \"unclosed|unterminated|stripFences|"'```" test/spec-runner* test/change-scope.test.js apriori/truth/spec-runner.md' in /mnt/d/Workbench/misc/apriori-spec-development
+ exited 1 in 79ms:
+zsh:1: unmatched "
+
+exec
+/usr/bin/zsh -lc "nl -ba apriori/changes/modified-block-integrity/requirement/req-v3.md | sed -n '1,230p'; nl -ba lib/spec-runner.js | sed -n '15,115p'; nl -ba lib/config.js | sed -n '1,155p'; nl -ba bin/apriori.js | sed -n '1,55p'; rg -n 'unclosed|unterminated|stripFences' test apriori/truth/spec-runner.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 143ms:
+     1	# req-v3 — modified-block-integrity：MODIFIED 整块替换的保真性成为机械报告
+     2	
+     3	target lineage: main（v4 产品线；不合并 v1/v3）。**state A 声明（REQ-8）**：本 change 构建在工作区中两个未归档先行 change（gate-id-pattern：id-pattern 解析与可终止 matcher；verify-change-scope：change-scoped verdict、单标题批、deltaOps、storeReport）之上；三者按序归档，spec/design 以工作区代码为 state A。
+     4	
+     5	## 背景（现状 A）
+     6	
+     7	同 req-v1（复盘 P0-3 唯一 ⚠ 防线项；活教材 = verify-change-scope delta 的 9 场景块重述；merge() 整块替换零对比；对比原料在 buildProjection 处零成本在手）。
+     8	
+     9	## 目标（目标态 B）
+    10	
+    11	### B1. 保真报告的判定算法（REQ-1/REQ-2 收口）
+    12	
+    13	**规范化**：行统一 CRLF/CR→LF；比较前每行去行尾空白、行首空白（含 tab）整体剥离；空行不参与比较。
+    14	
+    15	**occurrence 级场景配对（唯一基数真值表，REQ-2 r2 收口）**：配对键 = 场景 ID（有 ID 时）或规范化全标题（无 ID 时），同一张表对两类键统一适用。对每个键统计旧块出现数 o、新块出现数 n：
+    16	
+    17	| o | n | 分类 |
+    18	|---:|---:|---|
+    19	| 0 | 1 | added |
+    20	| 1 | 0 | dropped |
+    21	| 1 | 1 | 正常配对（有 ID 键：同规范化标题→retained，异→titleChanged，两类互斥且都做体行比较；标题键：即 retained） |
+    22	| 0 | >1 | ambiguous(side=new) |
+    23	| >1 | 0 | ambiguous(side=old) |
+    24	| >1 | 1 | ambiguous(side=old) |
+    25	| 1 | >1 | ambiguous(side=new) |
+    26	| >1 | >1 | ambiguous(side=both) |
+    27	
+    28	ambiguous 的键**完全跳过** retained/titleChanged/dropped/added 与体行比较；每键一条 entry，携带 side 与两侧计数。
+    29	
+    30	**行级比较（顺序保持子序列，唯一算法）**：对每个 retained/titleChanged 场景，取旧场景体的规范化非空行序列 O 与新体序列 N，做**保序贪心子序列匹配**（O 的每行按序在 N 中找首个未被消费的相等行；重复行按出现次数逐一消费）——未匹配的旧行即 `missingLines`（重排导致的失配如实报告；子序列不要求连续）。
+    31	
+    32	**结构扫描规则（REQ-10 收口）**：① Requirement 标题行（`### Requirement: …`）**永不**参与比较（rename-then-modify 不得因标题差异假报缺失）；② requirement 散文 = 标题行之后第一行起、至第一个**有效**场景标题前，同规则比较，缺行记 `missingLines`（scenario=null，仅报旧内容缺失）；③ 场景体 = 有效场景标题之后至下一个有效场景标题或块尾；④ 有效场景标题沿用 state A 精确语法（`#### Scenario: `），且**fence 感知**——三反引号围栏内形如场景标题的行不是分隔符（与 verify 的场景采集一致）；⑤ fence 定界行与围栏内非空行都作为当前散文/场景体的比较行（被整块替换威胁的内容）；⑥ 未闭合 fence 沿用 state A 语义：其后内容全部归入当前围栏（即并入当前散文/体的比较行序列，不再切分场景）。
+    33	
+    34	### B2. 消费面与执行纪律（REQ-4/REQ-5 收口）
+    35	
+    36	- **`verify --change`**：旧块标题作为第 4 类 tag 并入**既有的单一标题批**（不新增 matcher 调用——SR-63 的两批契约保持；这些 pairs 不进入绑定 acc，仅供 integrity 配对）；invalid pattern / matcher failure / projection failure 走既有 ERROR 路径，此时**无** integrity 报告。id-pattern 解析与 state A 完全一致（flag > config > default）。
+    37	- **`archive --change`（high-level form 专属；single-file form 明确 out of scope——一模块手术是专家手动路径）**：dry-run 与 `--write` preflight 输出同一数据语义的 human 段（**不新增 --json**，REQ-3 附带裁定）。id 提取沿用统一解析（config > default，archive 无 flag）与可终止通道——经 **bin 层依赖注入**（bin/apriori.js 同时持有两模块，把 spec-runner 的 matcher 工厂注入 archive cli 的可选参数；archive-merge 模块自身仍零依赖 spec-runner，方向不破）。invalid config pattern 或 matcher failure → 打印一条 bounded warning、**跳过 integrity 报告**，archive 的一切既有语义（exit/写入/输出其余部分）不变。
+    38	- **`gate`**：不消费。
+    39	
+    40	### B3. 报告存在性矩阵（REQ-6 收口）
+    41	
+    42	| 情形 | 报告 |
+    43	|---|---|
+    44	| verify --change GREEN/GAPS，delta 含 MODIFIED（或 rename-then-modify） | JSON `modifiedIntegrity` **恒存在**（无差异条目也出现，见 B4）；human 段按 B4 显著性规则 |
+    45	| verify --change 任一 ERROR 类 | 字段与段落一律缺省 |
+    46	| verify --specs | 永不出现（byte golden continues） |
+    47	| archive dry-run / --write preflight 全部通过 | human 段输出 |
+    48	| archive 任一 preflight/合并失败（malformed、missing target、CAS、denial、conflict、hygiene） | 无报告段（失败信息照旧）；部分模块失败时成功模块也不输出（fail 即整体拒绝——archive 现有原子语义） |
+    49	| idempotent rerun（unchanged 路径） | 该 MODIFIED 无差异——JSON 条目 diff 全空，human 静默 |
+    50	
+    51	### B4. 输出契约（REQ-3 收口）
+    52	
+    53	- **JSON（verify --change，GREEN/GAPS 恒在）**：`modifiedIntegrity: [ { file, name, retained: [{id, title}], titleChanged: [{id, oldTitle, newTitle}], dropped: [{id, title}], added: [{id, title}], ambiguous: [{key, side: 'old'|'new'|'both', oldCount, newCount}], missingLines: [{scenario: <id|title|null>, line: <完整原文，不截断> }] } ]`。取值裁定（REQ-3 r2）：`file` = store 相对 suffix（与 projection.modules 同制）；`retained.title` 取**新块**原始标题（规范化仅用于配对判定）；`ambiguous.key` = ID 键取 ID，标题键取规范化标题；每个 MODIFIED 操作恒一条（含全空 diff 条目）；排序：条目按 (file,name)，场景类按旧块出现序（added 按新块出现序），missingLines 按旧块行序。无 ID 场景 id=null 以 title 表达。
+    54	- **human（verify 与 archive 同一段式）**：段标题 `— MODIFIED INTEGRITY —`；**显著性规则（Q1/REQ-3 r2 终裁）**：某 MODIFIED 条目存在 dropped/missingLines/ambiguous/titleChanged 任一非空即打印该条目——dropped/missingLines/ambiguous 行冠 `!` 前缀，titleChanged 一行提示（无 `!`），retained/added 只出计数；**全部条目四类皆空时整段静默**。行截断沿用 state A 惯例：超过 120 时 `slice(0,119)+'…'`（总长恒 ≤120，JS UTF-16 code unit 计）；JSON 保留全文。archive 的 warning（B2 降级路径）：stderr、固定前缀 `warning: modified-integrity `、经 sanitizeMsg 有界（≤200 含省略号，控制字符剥离）。
+    55	- **确认机制（REQ-9 收口）**：**不新增**任何确认/override flag——含 dropped 的 `--write` 与既有流程完全相同；Q2 删除。
+    56	
+    57	## 范围外（won't do）
+    58	
+    59	req-v1 各项保持；另明确：single-file archive form；`--json` for archive；跨块移动检测（dropped+added 如实）；requirement 块的新旧散文"新增行"不报（只报旧内容缺失——保真检查的方向性）。
+    60	
+    61	## 验收标准（确定 oracle）
+    62	
+    63	- AC1（场景级互斥分类）：旧块 KV-01/KV-02/KV-03，新块 KV-01(同)/KV-03(标题变)/KV-04 → retained=[KV-01]、titleChanged=[KV-03(old/new 标题)]、dropped=[KV-02]、added=[KV-04]。
+    64	- AC2（行级）：KV-01 旧体 4 行、新体缺一条 AND → missingLines 含该行全文；行尾空白/行首缩进/tab 差异不报；重排的行如实报缺；重复行次数不足按次报缺；fence 内行参与比较；requirement 散文缺行报 scenario:null。
+    65	- AC3（ambiguous）：旧块内 KV-05 出现两次 → ambiguous 含 KV-05，且不进其他四类。
+    66	- AC4（verdict/exit 确定 oracle，REQ-11 收口）：AC1 fixture 配 TAP（覆盖新块全部场景且全绿、无孤儿）→ verify --change **恰为 GREEN exit 0**（报告在场不改判）；同 fixture 去掉一条测试 → **GAPS exit 1**；archive dry-run **exit 0** 且 RESULT 行与现版本逐字一致、--write 写入字节与现版本一致；gate --change 输出与现版本一致（不消费报告）。
+    67	- AC5（json schema）：AC1 fixture 的 modifiedIntegrity 整条 deepStrictEqual（含排序）；无差异 MODIFIED 条目 diff 全空但存在；一切 verify ERROR 类字段缺省；--specs 永不出现（golden 复核）。
+    68	- AC6（执行纪律与 archive id-pattern 全路径，REQ-4 r2 收口）：verify config-origin 下 matcher batch 计数仍恰好 2（旧块标题在第一批 payload 断言）；invalid pattern 0 投影 0 spawn 无报告。archive 面五路径：①自定义 config pattern 正向——报告正确识别 default 认不出的 ID（如 AC-08a）；②无 config 时 default 正向；③invalid config row（matcher 构造前失败）→ warning+无报告段+archive 结果照旧；④matcher timeout/failure 类（注入）→ 同 ③；⑤warning 断言：stderr、`warning: modified-integrity ` 前缀、有界无控制字符。
+    69	- AC7（活教材，冻结 fixture）：verify-change-scope 的 delta MODIFIED 块与其 store 原块**复制为测试 fixture**（内容冻结）→ 报告 deepStrictEqual 于**人工独立推导**的期望值（先读 fixture 手工列出 retained 7/titleChanged 2（SR-16、SR-18 含 old/new 标题）/dropped 0/added 0/ambiguous 0/missingLines 逐行清单，写死于测试——绝不以实现输出回填）。
+    70	- AC8（rename-then-modify 与结构边界）：RENAMED A->G + MODIFIED G（散文与场景逐字保留）→ 条目 name=G 且 **missingLines 为空**（标题行差异不报）；fence 内伪场景标题（```` ```\n#### Scenario: FAKE-01 x\n``` ````）不切分场景、其行参与体比较。
+    71	- AC9（archive 面）：同 AC1 fixture 走 archive dry-run → human 段与 verify 同数据；preflight 失败（CAS mismatch）→ 无报告段；--write 成功时报告在写入前打印。
+    72	- AC10（兼容与文档）：--specs byte golden 绿；存量测试（本轮基线 306）全绿；docs/cli 双语（verify/archive 节）+ RUNBOOK 双语 MODIFIED 警告句旁补一句机械报告 + CHANGELOG；check --self 绿。
+    73	
+    74	## 需求裁定记录（对 r2 评审）
+    75	
+    76	- REQ-2：基数真值表统一两类键；ambiguous 全跳过其他类与体比较；entry 带 side/oldCount/newCount。
+    77	- REQ-3：file=store suffix；retained.title=新块原标题；ambiguous.key 语义；titleChanged 也触发条目打印（终裁）；截断=state A 惯例 119+…；archive warning 通道/前缀/有界钉死。
+    78	- REQ-10：结构扫描六规则（标题行不比较、fence 感知有效标题、未闭合 fence 归当前体）；AC8 扩展两案例。
+    79	- REQ-4：AC6 扩为 archive 五路径（正向双例+invalid config+matcher 失败+warning 断言）。
+    80	- REQ-11：AC4 改确定 exit oracle（GREEN 0/GAPS 1/dry-run 0 逐字 RESULT/写入字节一致）。
+    81	- r2 advisories（4 条批处理）：测试数量作本轮基线不入 spec；AC7 期望值人工独立推导（已入 AC7）；RUNBOOK 双语在 MODIFIED 警告句旁加一句机械报告存在（纳入 AC10 文档清单）；analyzer 设计为纯共享 helper（设计约束记入 design）。
+    82	
+    83	## 需求裁定记录（对 r1 评审）
+    84	
+    85	- REQ-1：唯一算法=保序贪心子序列（重复行计次消费）；比较范围=场景体全部非空行含 fence 内容与 requirement 散文；规范化规则明列；Q3 删除。
+    86	- REQ-2：occurrence 级互斥分类 + ambiguous 类；无 ID 场景标题多重集配对；titleChanged 继续体比较；元素结构带 old/new 标题。
+    87	- REQ-3：B4 完整 schema + 存在性 + 排序 + 截断（JSON 全文/human 120）+ archive 无 --json + Q1 显著性裁定 + 空 diff 条目语义。
+    88	- REQ-4：旧块标题并入既有单一标题批（零新增 matcher 调用）；ERROR 无报告；archive 经 bin 层注入 matcher，失败降级 warning+skip。
+    89	- REQ-5：high-level form 专属，single-file 明确 out of scope。
+    90	- REQ-6：B3 存在性矩阵全表。
+    91	- REQ-7：AC7 改冻结 fixture + deepStrictEqual 钉死。
+    92	- REQ-8：state A 声明入 lineage 段。
+    93	- REQ-9：不新增确认 flag，Q2 删除。
+    15	const am = require('./archive-merge');
+    16	const { withStrict } = require('./args');
+    17	// DEFAULT_ID lives in config (the zero-dep resolution home) and is re-exported here unchanged
+    18	const { DEFAULT_ID, resolveIdPattern, sanitizeMsg } = require('./config');
+    19	const SCENARIO_RE = /^####\s+Scenario:\s+(.*)$/gm;
+    20	// TAP result line, directive split off separately (# SKIP / # TODO)
+    21	const TAP_RE = /^(ok|not ok)\s+\d+\s+-\s+(.*)$/gm;
+    22	
+    23	// Leading scenario/test ID. The match must end at a word boundary: `XX-01b` is NOT `XX-01` —
+    24	// silently truncating would merge two different scenarios into one binding.
+    25	function leadId(text, idRe) {
+    26	  const m = text.trim().match(idRe);
+    27	  if (!m || m.index !== 0) return null;
+    28	  const next = text.trim()[m[0].length];
+    29	  if (next !== undefined && /[A-Za-z0-9_]/.test(next)) return null;
+    30	  return m[0];
+    31	}
+    32	
+    33	function stripFences(text) { return text.replace(/```[\s\S]*?```/g, ''); }
+    34	
+    35	// ---- the id matcher: one recognition contract, two execution channels -------------------
+    36	// A config-sourced pattern is repository input that CI consumes automatically; its every
+    37	// actual application runs inside a terminable child (SIGKILL on budget) so a catastrophic
+    38	// pattern can never hang the CLI. Flag/default origins are operator/built-in trust: inline.
+    39	const CHILD_PATH = path.join(__dirname, 'id-match-child.js');
+    40	// the child's spawn contract, exported so tests assert the budget DETERMINISTICALLY
+    41	// (a wall-clock window cannot prove the 2000ms figure)
+    42	const CHILD_SPAWN_OPTS = Object.freeze({ timeout: 2000, killSignal: 'SIGKILL', shell: false });
+    43	let childRunnerOverride = null;                 // test seam — SR-55 injects failures here
+    44	function _setChildRunner(fn) { childRunnerOverride = fn; }
+    45	function defaultChildRunner(payload) {
+    46	  const r = spawnSync(process.execPath, [CHILD_PATH], {
+    47	    input: payload, ...CHILD_SPAWN_OPTS,
+    48	    encoding: 'utf8', maxBuffer: 8 * 1024 * 1024,
+    49	  });
+    50	  return { status: r.status, signal: r.signal || null, stdout: r.stdout || '', error: r.error || null };
+    51	}
+    52	// resolved = resolveIdPattern's success shape → { batch(texts) → {ids:(string|null)[]} | {failure} }
+    53	function makeIdMatcher(resolved) {
+    54	  if (resolved.origin !== 'config') {
+    55	    const re = new RegExp(resolved.source);
+    56	    return { batch: (texts) => ({ ids: texts.map((t) => leadId(t, re)) }) };
+    57	  }
+    58	  return { batch: (texts) => {
+    59	    const runner = childRunnerOverride || defaultChildRunner;
+    60	    let r;
+    61	    try { r = runner(JSON.stringify({ pattern: resolved.source, texts })); }
+    62	    catch (e) { return { failure: `spawn-error: ${String(e.message || e)}` }; }
+    63	    // timeout FIRST: a real spawnSync timeout carries ETIMEDOUT and/or the kill signal —
+    64	    // classifying by r.error first would misreport the termination as a spawn error
+    65	    if ((r.error && r.error.code === 'ETIMEDOUT') || r.signal === 'SIGKILL')
+    66	      return { failure: 'timeout (budget exceeded, child terminated)' };
+    67	    if (r.error) return { failure: `spawn-error: ${String(r.error.message || r.error)}` };
+    68	    if (r.signal) return { failure: `signal ${r.signal}` };
+    69	    if (r.status !== 0) return { failure: `non-zero-exit (${r.status})` };
+    70	    let parsed;
+    71	    try { parsed = JSON.parse(r.stdout); } catch { return { failure: 'malformed-output (not JSON)' }; }
+    72	    // strict success shape: exactly one JSON document whose ONLY key is a well-formed ids array
+    73	    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) ||
+    74	        Object.keys(parsed).length !== 1 || !Array.isArray(parsed.ids) ||
+    75	        parsed.ids.length !== texts.length ||
+    76	        parsed.ids.some((x) => x !== null && typeof x !== 'string'))
+    77	      return { failure: 'malformed-output (bad shape)' };
+    78	    return { ids: parsed.ids };
+    79	  } };
+    80	}
+    81	// the one sanitized failure text every consumer surfaces for a config-origin matcher failure
+    82	function matcherFailureMsg(failure) {
+    83	  return sanitizeMsg(`process-config id-pattern matching failed (${failure})`);
+    84	}
+    85	const inlineMatcher = (idRe) => makeIdMatcher({ source: idRe.source, origin: 'default' });
+    86	
+    87	function mdFiles(target) {
+    88	  if (!fs.existsSync(target)) return [];
+    89	  const st = fs.statSync(target);
+    90	  if (st.isFile()) return [target];
+    91	  const out = [];
+    92	  for (const e of fs.readdirSync(target, { withFileTypes: true })) {
+    93	    const p = path.join(target, e.name);
+    94	    if (e.isDirectory()) out.push(...mdFiles(p));
+    95	    else if (e.name.endsWith('.md')) out.push(p);
+    96	  }
+    97	  return out.sort();
+    98	}
+    99	
+   100	// Shared scenario scan over one text — STRUCTURE ONLY (no ID extraction; that is the
+   101	// matcher's job so config-origin patterns stay inside the terminable channel).
+   102	// Fenced content is documentation; scenarios inside DEPRECATED requirement blocks
+   103	// (the marker REMOVED injects) are excluded in every form — they are neither demanded
+   104	// nor listed, and their lingering tests become ORPHAN.
+   105	function scanTitles(text, label, pairs, preClean) {
+   106	  const clean = preClean ? text : am.stripDeprecatedBlocks(stripFences(text));
+   107	  let m;
+   108	  SCENARIO_RE.lastIndex = 0;
+   109	  while ((m = SCENARIO_RE.exec(clean)) !== null) pairs.push([label, m[1]]);
+   110	}
+   111	
+   112	// One batch over tagged pairs ([label,title,scoped]) plus sibling titles (appended to the
+   113	// SAME batch — never a third matcher call) → { acc, ids, siblingIds } or { failure }.
+   114	function makeThenBind(pairs, matcher, siblingTitles = []) {
+   115	  const titles = [...pairs.map((p) => p[1]), ...siblingTitles];
+     1	'use strict';
+     2	/*
+     3	 * process-config parses as structure, never as full-text regex (config-contract).
+     4	 * One shared reader for every consumer: fenced code blocks and HTML comments are
+     5	 * non-content (unterminated blocks make the rest of the file inert — naturally
+     6	 * fail-closed for waiver keys); a config row is any |-leading table row, first
+     7	 * cell key, second cell value, extra columns ignored; same-key same-value
+     8	 * duplicates are tolerated, different values are a CONFLICT problem. Problems
+     9	 * surface only when the key is actually consumed.
+    10	 */
+    11	const fs = require('fs');
+    12	const path = require('path');
+    13	
+    14	// The built-in scenario-ID pattern. Lives here (zero-dep module) so every consumer —
+    15	// spec-runner, gate, check, doctor — resolves through one place; spec-runner re-exports it.
+    16	const DEFAULT_ID = '[A-Z]+-\\d+';
+    17	
+    18	// Cell splitting honors the markdown pipe escape by backslash parity (CF-08/CF-09):
+    19	// an odd run of backslashes before a pipe escapes it (the escaping backslash is removed,
+    20	// the pipe joins the value); an even run keeps the pipe a separator, backslashes literal.
+    21	// No other backslash sequence is ever unescaped — this is not a markdown renderer.
+    22	function splitCells(line) {
+    23	  const cells = [];
+    24	  let cur = '', run = 0;
+    25	  for (const ch of line) {
+    26	    if (ch === '\\') { run++; cur += ch; continue; }
+    27	    if (ch === '|') {
+    28	      if (run % 2 === 1) { cur = cur.slice(0, -1) + '|'; }   // drop the escaping backslash, keep the pipe
+    29	      else { cells.push(cur); cur = ''; }
+    30	      run = 0;
+    31	      continue;
+    32	    }
+    33	    run = 0;
+    34	    cur += ch;
+    35	  }
+    36	  cells.push(cur);
+    37	  return cells;
+    38	}
+    39	
+    40	// parse the raw text → { values: Map<key,value>, conflicts: Set<key> }
+    41	function parseConfig(text) {
+    42	  const values = new Map();
+    43	  const conflicts = new Set();
+    44	  let fence = false, comment = false;
+    45	  for (const raw of (text || '').split('\n')) {
+    46	    const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw;
+    47	    let t = line;
+    48	    if (comment) {
+    49	      const close = t.indexOf('-->');
+    50	      if (close < 0) continue;
+    51	      comment = false;
+    52	      t = t.slice(close + 3);
+    53	    }
+    54	    if (fence) { if (/^\s*```/.test(t)) fence = false; continue; }
+    55	    if (/^\s*```/.test(t)) { fence = true; continue; }
+    56	    // strip inline comment SPANS — content before the opener stays live
+    57	    while (t.includes('<!--')) {
+    58	      const open = t.indexOf('<!--');
+    59	      const close = t.indexOf('-->', open + 4);
+    60	      if (close < 0) { t = t.slice(0, open); comment = true; break; }
+    61	      t = t.slice(0, open) + t.slice(close + 3);
+    62	    }
+    63	    if (!t.trimStart().startsWith('|')) continue;
+    64	    const cells = splitCells(t).map((c) => c.trim());
+    65	    // cells[0] is the empty prefix before the leading pipe
+    66	    const key = cells[1], value = cells[2];
+    67	    if (!key || value === undefined || value === '') continue;
+    68	    if (key.toLowerCase() === 'key' || /^-+$/.test(key)) continue;      // header / separator
+    69	    if (/^-+$/.test(value)) continue;
+    70	    if (values.has(key) && values.get(key) !== value) { conflicts.add(key); continue; }
+    71	    values.set(key, value);
+    72	  }
+    73	  return { values, conflicts };
+    74	}
+    75	
+    76	function readConfig(cwd) {
+    77	  const p = path.join(cwd || '.', 'apriori', 'process-config.md');
+    78	  // read first, classify after: ONLY a definite ENOENT is absence — every other failure
+    79	  // (directory, permissions, unreachable ancestor, …) is an unreadable-config problem,
+    80	  // never a silent fall-through to defaults (an existsSync pre-check would misreport a
+    81	  // permission-blocked file as absent)
+    82	  let text;
+    83	  try { text = fs.readFileSync(p, 'utf8'); }
+    84	  catch (e) {
+    85	    if (e.code === 'ENOENT') {
+    86	      // ENOENT alone does not prove absence: a dangling symlink stats as an existing
+    87	      // directory ENTRY whose read fails — that is present-but-unreadable, never absent
+    88	      let present = false;
+    89	      try { fs.lstatSync(p); present = true; } catch { /* truly absent */ }
+    90	      if (!present) return { values: new Map(), conflicts: new Set() };
+    91	    }
+    92	    return { values: new Map(), conflicts: new Set(), unreadable: String(e.code || e.message) };
+    93	  }
+    94	  return parseConfig(text);
+    95	}
+    96	
+    97	// one key → { value: string|null, problem: string|null } (problem only when consumed)
+    98	function getConfig(cwd, key) {
+    99	  const { values, conflicts, unreadable } = readConfig(cwd);
+   100	  if (unreadable) return { value: null, problem: `apriori/process-config.md exists but cannot be read (${unreadable}) — fix the file` };
+   101	  if (conflicts.has(key)) return { value: null, problem: `process-config carries conflicting '${key}' rows — resolve the conflict (one live row per key)` };
+   102	  return { value: values.has(key) ? values.get(key) : null, problem: null };
+   103	}
+   104	
+   105	// Message sanitization is the single exit for pattern errors: control chars stripped,
+   106	// total length capped INCLUDING the ellipsis; the engine's e.message is never concatenated.
+   107	function sanitizeMsg(msg) {
+   108	  const clean = msg.replace(/[\x00-\x1f\x7f]/g, '·');
+   109	  return clean.length > 200 ? clean.slice(0, 199) + '…' : clean;
+   110	}
+   111	function boundedSource(s) {
+   112	  const clean = String(s).replace(/[\x00-\x1f\x7f]/g, '·');
+   113	  return clean.length > 80 ? clean.slice(0, 79) + '…' : clean;
+   114	}
+   115	
+   116	// Effective id-pattern: flag (by PRESENCE — an empty flag is a flag-origin error, never a
+   117	// config fallback) > config `id-pattern` row > DEFAULT_ID.
+   118	// → { source, origin: 'flag'|'config'|'default' } | { error }
+   119	function resolveIdPattern(cwd, flagValue) {
+   120	  if (flagValue !== null && flagValue !== undefined) {
+   121	    if (flagValue === '') return { error: 'empty --id-pattern' };
+   122	    try { new RegExp(flagValue); } catch { return { error: sanitizeMsg(`invalid --id-pattern '${boundedSource(flagValue)}' (regex does not compile)`) }; }
+   123	    return { source: flagValue, origin: 'flag' };
+   124	  }
+   125	  const { value, problem } = getConfig(cwd, 'id-pattern');
+   126	  if (problem) return { error: problem };
+   127	  if (value !== null) {
+   128	    try { new RegExp(value); } catch { return { error: sanitizeMsg(`process-config id-pattern row is invalid: '${boundedSource(value)}' (regex does not compile)`) }; }
+   129	    return { source: value, origin: 'config' };
+   130	  }
+   131	  return { source: DEFAULT_ID, origin: 'default' };
+   132	}
+   133	
+   134	module.exports = { parseConfig, readConfig, getConfig, splitCells, DEFAULT_ID, resolveIdPattern, sanitizeMsg, boundedSource };
+     1	#!/usr/bin/env node
+     2	'use strict';
+     3	/* apriori CLI — single self-contained entry, zero dependencies. Dispatches subcommands. */
+     4	
+     5	const sub = process.argv[2];
+     6	const rest = process.argv.slice(3);
+     7	
+     8	const USAGE = `apriori <command>
+     9	
+    10	  new       scaffold a change dir + flow-state skeleton (bare kebab-case name)
+    11	  status    show where a change is: step, next-action, open ledger items (--json)
+    12	  verify    bind spec scenarios to test runs (STEP5 gate) (--json)
+    13	  archive   merge a change's delta specs into the living store (STEP6)
+    14	  stamp     print the CAS base-stamp line for a store file (delta authoring)
+    15	  gate      aggregate the mechanical gate checks for one change (CI-friendly)
+    16	  doctor    diagnose the project↔apriori seam (onboarding health check)
+    17	  check     structural consistency checks (CI / pre-commit)
+    18	  init      scaffold the workflow + per-tool pointers
+    19	  update    refresh tool-owned files (runbook copy, command pointers) after a CLI upgrade
+    20	
+    21	Run 'apriori <command>' with no args for that command's usage.`;
+    22	
+    23	async function main() {
+    24	  switch (sub) {
+    25	    case 'new':     return require('../lib/new').cli(rest);
+    26	    case 'status':  return require('../lib/status').cli(rest);
+    27	    case 'verify':  return require('../lib/spec-runner').cli(rest);
+    28	    case 'archive': return require('../lib/archive-merge').cli(rest);
+    29	    case 'stamp':   return require('../lib/archive-merge').stampCli(rest);
+    30	    case 'gate':    return require('../lib/gate').cli(rest);
+    31	    case 'doctor':  return require('../lib/doctor').cli(rest);
+    32	    case 'check':   return require('../lib/check').cli(rest);
+    33	    case 'init':    return require('../lib/init').cli(rest);
+    34	    case 'update':  return require('../lib/update').cli(rest);
+    35	    case '-v':
+    36	    case '--version': console.log(require('../package.json').version); return 0;
+    37	    case undefined:
+    38	    case '-h':
+    39	    case '--help':  console.log(USAGE); return 0;
+    40	    default:        console.error(`unknown command: ${sub}\n\n${USAGE}`); return 2;
+    41	  }
+    42	}
+    43	
+    44	main().then(
+    45	  (code) => process.exit(code),
+    46	  (err) => { console.error(`apriori: ${err && err.message ? err.message : err}`); process.exit(1); }
+    47	);
+apriori/truth/spec-runner.md:11:- `stripFences(text)` → text with ``` fenced blocks removed (fenced scenarios are documentation, not spec).
+test/spec-runner.test.js:564:  assert.match(open.stderr, /YAML|unterminated/i);
+test/config.test.js:71:test('CF-04 unterminated blocks are inert, not effective', () => {
+
+codex
+# Requirement Review v3 — modified-block-integrity
+
+评审对象：`apriori/changes/modified-block-integrity/requirement/req-v3.md`
+
+依据：
+
+- `apriori/truth/archive-merge.md`
+- `apriori/truth/spec-runner.md`
+- 当前工作区 `lib/archive-merge.js`
+- 当前工作区 `lib/spec-runner.js`
+- 当前工作区 `lib/config.js`
+- `bin/apriori.js`
+- round-2 ledger REQ-1..11
+
+评审口径：仅将 ambiguous target state、untestable acceptance criteria、missing edge/boundary coverage、state-A conflicts 计入最终结论。其他建议单列为 P0 advisories。
+
+## 总结
+
+req-v3 已关闭 round 2 的大多数问题：
+
+- cardinality truth table 已统一覆盖 ID 与 normalized-title keys；
+- ambiguous key 明确跳过其他分类及 body comparison；
+- JSON 字段取值、human significance、截断规则明显收紧；
+- archive custom/default/invalid/matcher-failure 路径已有 acceptance coverage；
+- Requirement heading、closed fence 与 rename-then-modify 边界已声明；
+- AC4 已改为直接的 GREEN/GAPS/archive oracle；
+- 四条 advisory 均已吸收。
+
+仍有 2 个正式问题：
+
+1. `ambiguous` 排序以及 archive warning 的 sanitization/cap 仍没有唯一 machine oracle；
+2. unclosed fence 和 scenario-heading syntax 所宣称的 state-A 行为与实际 `spec-runner.js` 冲突。
+
+## 1. Target state B 是否清晰且无歧义
+
+结论：不通过。
+
+### REQ-3 reopened：部分输出值仍不能唯一确定
+
+描述：
+
+B4 规定“场景类按旧块出现序，added 按新块出现序”，但没有给出 `ambiguous` 的完整排序规则。
+
+对于 `o=0,n>1` 的 new-only ambiguous key，不存在旧块出现位置；当数组同时包含 old-present ambiguous keys 和多个 new-only ambiguous keys 时，可产生多种合理顺序：
+
+- union-map insertion order；
+- key lexical order；
+- old-present keys 后追加 new-only keys；
+- 全部按新块顺序。
+
+现有 AC3 只有单个 old-side ambiguous entry，无法裁决这些实现。
+
+archive warning 也仍有两处不一致：
+
+- requirement 写“经 `sanitizeMsg`”同时又写“控制字符剥离”；实际 state A 的 `sanitizeMsg()` 将控制字符替换为 `·`，不是删除；
+- `≤200` 没有明确约束完整 stderr line，还是仅约束固定前缀之后的 reason。若先 sanitize reason 再拼接 prefix，总行长会超过 200；若对完整字符串调用 `sanitizeMsg`，则总长不超过 200。
+
+风险：
+
+同一输入可产生不同 `ambiguous` 数组顺序和不同 warning bytes。`deepStrictEqual`、warning bounded assertion 和 downstream machine consumer 没有唯一 oracle。
+
+建议修复：
+
+明确：
+
+- `ambiguous` keys 中，`o>0` 的项按旧块首次出现顺序排列，其后追加 `o=0` 的 new-only keys，并按新块首次出现顺序排列；
+- 完整 warning line 先组成 `warning: modified-integrity <reason>`，再将完整字符串传入 state-A `sanitizeMsg()`；
+- 控制字符按 state A 替换为 `·`，不是删除；
+- 最终完整 stderr line 长度不超过 200 UTF-16 code units。
+
+AC3 增加混合顺序案例；AC6 对 warning 做完整字符串和长度 oracle。
+
+## 2. Edge cases 与 exception paths 是否覆盖
+
+结论：不通过。
+
+### REQ-10 remains open：unclosed fence 规则与实际 state A 冲突
+
+描述：
+
+B1 第⑥条规定：
+
+> 未闭合 fence 沿用 state A 语义：其后内容全部归入当前围栏，不再切分场景。
+
+实际 state A 并非如此。`lib/spec-runner.js` 当前实现为：
+
+```js
+function stripFences(text) {
+  return text.replace(/```[\s\S]*?```/g, '');
+}
+```
+
+该正则只移除存在 closing delimiter 的匹配。unclosed opener 不会匹配、不会移除；后续 `#### Scenario:` 仍会被 `scanTitles()` 识别。因此“unclosed fence swallows the tail”不是沿用 state A，而是新的、不同的 scenario picture。
+
+第④条也把有效标题描述为精确字面语法 ``#### Scenario: ` ``，但 state A 实际使用：
+
+```js
+/^####\s+Scenario:\s+(.*)$/gm
+```
+
+它允许 `####` 与 `Scenario:` 之间以及冒号后的一个或多个 whitespace。按字面实现 req-v3 会与 verify 当前收集到的 scenario set 不同。
+
+AC8 只覆盖 closed fence 中的 fake heading，没有覆盖：
+
+- unclosed fence 后的 scenario-looking heading；
+- state-A regex 接受的多空格或 tab 形式。
+
+风险：
+
+integrity analyzer 与 verify 对同一 block 得到不同的 scenario occurrences。旧标题 matcher payload、分类和 `missingLines` 可能与实际 projected scenario binding 不一致；若为满足 req-v3 而修改 `stripFences()`，又会违反 `--specs` byte-compatible 和“不改 state A verify semantics”的约束。
+
+建议修复：
+
+推荐保持 state A：
+
+- 有 closing delimiter 的 fenced span 中，scenario-looking line 不作为 delimiter；
+- unclosed opener 不隐藏后续 scenario headings，完全按当前 `stripFences()` 行为处理；
+- valid scenario heading 明确复用 state-A `SCENARIO_RE`，不要另写字面单空格规则。
+
+如果产品确实选择“unclosed fence swallows tail”，则必须明确这是 state-B semantic change，并同步修改 verify scenario collection、兼容声明及相关 golden；这会扩大当前 change scope。
+
+AC8 增加：
+
+- unclosed opener 后的 heading 与 `scanTitles()` 得到相同分类；
+- 多空格/tab heading 与 state-A scanner 得到相同分类；
+- integrity scanner 与 projection scanner 的 title list identity assertion。
+
+## 3. 是否有 implied but undeclared state changes 或 side effects
+
+结论：通过。
+
+已明确声明：
+
+- verify 不增加 matcher batch；
+- archive 可新增 bounded matcher child invocation；
+- archive matcher/config failure 仅 warning + skip report；
+- 不新增持久化；
+- 不新增 archive JSON；
+- 不新增 confirmation/override flag；
+- gate 不消费；
+- single-file archive 不变。
+
+除 REQ-3 的 warning byte contract 外，未发现未声明的状态变化。
+
+## 4. 每条 acceptance criterion 是否均为可测试的 if/then
+
+结论：不通过。
+
+AC4 已成为可直接执行的确定 oracle，REQ-11 可以关闭。AC6 也覆盖了 archive 的主要 matcher paths，REQ-4 可以关闭。
+
+剩余缺口来自两个正式问题：
+
+- AC3 没有覆盖多个 `ambiguous` keys，尤其是 new-only 与 mixed-side 排序；
+- AC6 没有裁定 warning 中控制字符究竟删除还是替换，以及 200 上限作用于完整 line 还是 reason；
+- AC8 没有覆盖 unclosed fence 和 state-A whitespace heading syntax。
+
+补齐上述输入和 expected values 后，现有 AC 集即可形成确定 oracle。
+
+## 5. 是否与 current state A 冲突
+
+结论：不通过。
+
+唯一实质冲突为 REQ-10：
+
+- req-v3：unclosed fence 吞掉余下内容；
+- state A：unclosed fence 不被 `stripFences()` 移除，后续 scenario heading 仍可被识别。
+
+另有 syntax 描述偏差：
+
+- req-v3 看似要求字面单空格；
+- state A 使用 `\s+`。
+
+REQ-3 的“控制字符剥离”也与 state-A `sanitizeMsg()` 的 replacement 行为不一致，但归入同一个输出契约问题，不另计 issue。
+
+其余设计与 state A 一致：
+
+- matcher 两批纪律保留；
+- invalid pattern 仍 fail early；
+- archive dependency direction 不反转；
+- high-level/single-file boundary明确；
+- ERROR report presence 与 `storeReport/changeScope` 纪律一致；
+- merge、exit、write 和 gate semantics 不变。
+
+## 6. Target lineage 是否声明且符合 repo reality
+
+结论：通过。
+
+lineage 正确声明了：
+
+- `main` v4 产品线；
+- 未归档的 `gate-id-pattern` 为前置 state A；
+- 未归档的 `verify-change-scope` 为前置 state A；
+- 当前工作区代码优先于尚未同步的 truth；
+- 三个 change 按依赖顺序归档。
+
+与 repo 当前 dirty worktree 现实相符。REQ-8 维持 verified。
+
+## Explicit out-of-scope 检查
+
+结论：通过。
+
+显式 `## 范围外（won't do）` section 存在，并明确排除：
+
+- single-file archive；
+- archive `--json`；
+- gate consumption；
+- confirmation/override flag；
+- 自动补回；
+- 跨块移动检测；
+- Requirement prose 新增行报告；
+- merge/verdict/exit/write semantic changes。
+
+## P0 advisories（不计入结论）
+
+### P0-1：对 cardinality table 做完整 table-driven test
+
+B1 已覆盖全部 cardinality classes。建议测试逐行遍历 truth table，而不只验证 `o>1,n=0`，防止将来重构时漏掉 `both` 或 new-only ambiguity。
+
+### P0-2：增加完整 human golden
+
+B4 已足以指导 renderer，但建议至少固定一个包含 retained、titleChanged、dropped、ambiguous 和 missingLines 的完整 human golden，避免 verify/archive 两个 surface 在缩进、count 或 prefix 上漂移。
+
+### P0-3：lineage 中的 “v1/v3” 建议标注为 legacy product lines
+
+当前文件本身名为 `req-v3`，“不合并 v1/v3”容易被误读为不合并 requirement revision。建议写为“不合并 legacy product v1/v3 lines”，仅改善可读性。
+
+## Ledger delta
+
+| ID | r2 状态 | r3 状态 | 复核结论 |
+|---|---|---|---|
+| REQ-1 | verified | verified | 唯一 line algorithm、normalization、duplicate consumption 与 comparison scope 保持闭合 |
+| REQ-2 | reopened | verified | cardinality truth table 已统一两类 key；ambiguous 跳过规则及 counts 已明确 |
+| REQ-3 | reopened | reopened | machine schema 主体已闭合，但 ambiguous mixed/new-only ordering 与 warning sanitization/cap 仍不唯一 |
+| REQ-4 | reopened | verified | verify batch discipline 与 archive custom/default/invalid/matcher-failure paths 已有确定 coverage |
+| REQ-5 | verified | verified | high-level archive 专属，single-file 明确 out of scope |
+| REQ-6 | verified | verified | report presence matrix 保持完整 |
+| REQ-7 | verified | verified | frozen fixture、hand-derived literal expected value 已明确 |
+| REQ-8 | verified | verified | target lineage 与实际 composite state A 一致 |
+| REQ-9 | verified | verified | 无 confirmation/override flag，既有 write/exit semantics 保持 |
+| REQ-10 | open | open | heading/fence boundary 多数已闭合，但 unclosed fence 与 whitespace syntax 仍和实际 state A 冲突 |
+| REQ-11 | open | verified | AC4 已提供 GREEN 0、GAPS 1、archive dry-run/write 的直接 oracle |
+
+VERDICT: 2 issues open
+tokens used
+178,062
+# Requirement Review v3 — modified-block-integrity
+
+评审对象：`apriori/changes/modified-block-integrity/requirement/req-v3.md`
+
+依据：
+
+- `apriori/truth/archive-merge.md`
+- `apriori/truth/spec-runner.md`
+- 当前工作区 `lib/archive-merge.js`
+- 当前工作区 `lib/spec-runner.js`
+- 当前工作区 `lib/config.js`
+- `bin/apriori.js`
+- round-2 ledger REQ-1..11
+
+评审口径：仅将 ambiguous target state、untestable acceptance criteria、missing edge/boundary coverage、state-A conflicts 计入最终结论。其他建议单列为 P0 advisories。
+
+## 总结
+
+req-v3 已关闭 round 2 的大多数问题：
+
+- cardinality truth table 已统一覆盖 ID 与 normalized-title keys；
+- ambiguous key 明确跳过其他分类及 body comparison；
+- JSON 字段取值、human significance、截断规则明显收紧；
+- archive custom/default/invalid/matcher-failure 路径已有 acceptance coverage；
+- Requirement heading、closed fence 与 rename-then-modify 边界已声明；
+- AC4 已改为直接的 GREEN/GAPS/archive oracle；
+- 四条 advisory 均已吸收。
+
+仍有 2 个正式问题：
+
+1. `ambiguous` 排序以及 archive warning 的 sanitization/cap 仍没有唯一 machine oracle；
+2. unclosed fence 和 scenario-heading syntax 所宣称的 state-A 行为与实际 `spec-runner.js` 冲突。
+
+## 1. Target state B 是否清晰且无歧义
+
+结论：不通过。
+
+### REQ-3 reopened：部分输出值仍不能唯一确定
+
+描述：
+
+B4 规定“场景类按旧块出现序，added 按新块出现序”，但没有给出 `ambiguous` 的完整排序规则。
+
+对于 `o=0,n>1` 的 new-only ambiguous key，不存在旧块出现位置；当数组同时包含 old-present ambiguous keys 和多个 new-only ambiguous keys 时，可产生多种合理顺序：
+
+- union-map insertion order；
+- key lexical order；
+- old-present keys 后追加 new-only keys；
+- 全部按新块顺序。
+
+现有 AC3 只有单个 old-side ambiguous entry，无法裁决这些实现。
+
+archive warning 也仍有两处不一致：
+
+- requirement 写“经 `sanitizeMsg`”同时又写“控制字符剥离”；实际 state A 的 `sanitizeMsg()` 将控制字符替换为 `·`，不是删除；
+- `≤200` 没有明确约束完整 stderr line，还是仅约束固定前缀之后的 reason。若先 sanitize reason 再拼接 prefix，总行长会超过 200；若对完整字符串调用 `sanitizeMsg`，则总长不超过 200。
+
+风险：
+
+同一输入可产生不同 `ambiguous` 数组顺序和不同 warning bytes。`deepStrictEqual`、warning bounded assertion 和 downstream machine consumer 没有唯一 oracle。
+
+建议修复：
+
+明确：
+
+- `ambiguous` keys 中，`o>0` 的项按旧块首次出现顺序排列，其后追加 `o=0` 的 new-only keys，并按新块首次出现顺序排列；
+- 完整 warning line 先组成 `warning: modified-integrity <reason>`，再将完整字符串传入 state-A `sanitizeMsg()`；
+- 控制字符按 state A 替换为 `·`，不是删除；
+- 最终完整 stderr line 长度不超过 200 UTF-16 code units。
+
+AC3 增加混合顺序案例；AC6 对 warning 做完整字符串和长度 oracle。
+
+## 2. Edge cases 与 exception paths 是否覆盖
+
+结论：不通过。
+
+### REQ-10 remains open：unclosed fence 规则与实际 state A 冲突
+
+描述：
+
+B1 第⑥条规定：
+
+> 未闭合 fence 沿用 state A 语义：其后内容全部归入当前围栏，不再切分场景。
+
+实际 state A 并非如此。`lib/spec-runner.js` 当前实现为：
+
+```js
+function stripFences(text) {
+  return text.replace(/```[\s\S]*?```/g, '');
+}
+```
+
+该正则只移除存在 closing delimiter 的匹配。unclosed opener 不会匹配、不会移除；后续 `#### Scenario:` 仍会被 `scanTitles()` 识别。因此“unclosed fence swallows the tail”不是沿用 state A，而是新的、不同的 scenario picture。
+
+第④条也把有效标题描述为精确字面语法 ``#### Scenario: ` ``，但 state A 实际使用：
+
+```js
+/^####\s+Scenario:\s+(.*)$/gm
+```
+
+它允许 `####` 与 `Scenario:` 之间以及冒号后的一个或多个 whitespace。按字面实现 req-v3 会与 verify 当前收集到的 scenario set 不同。
+
+AC8 只覆盖 closed fence 中的 fake heading，没有覆盖：
+
+- unclosed fence 后的 scenario-looking heading；
+- state-A regex 接受的多空格或 tab 形式。
+
+风险：
+
+integrity analyzer 与 verify 对同一 block 得到不同的 scenario occurrences。旧标题 matcher payload、分类和 `missingLines` 可能与实际 projected scenario binding 不一致；若为满足 req-v3 而修改 `stripFences()`，又会违反 `--specs` byte-compatible 和“不改 state A verify semantics”的约束。
+
+建议修复：
+
+推荐保持 state A：
+
+- 有 closing delimiter 的 fenced span 中，scenario-looking line 不作为 delimiter；
+- unclosed opener 不隐藏后续 scenario headings，完全按当前 `stripFences()` 行为处理；
+- valid scenario heading 明确复用 state-A `SCENARIO_RE`，不要另写字面单空格规则。
+
+如果产品确实选择“unclosed fence swallows tail”，则必须明确这是 state-B semantic change，并同步修改 verify scenario collection、兼容声明及相关 golden；这会扩大当前 change scope。
+
+AC8 增加：
+
+- unclosed opener 后的 heading 与 `scanTitles()` 得到相同分类；
+- 多空格/tab heading 与 state-A scanner 得到相同分类；
+- integrity scanner 与 projection scanner 的 title list identity assertion。
+
+## 3. 是否有 implied but undeclared state changes 或 side effects
+
+结论：通过。
+
+已明确声明：
+
+- verify 不增加 matcher batch；
+- archive 可新增 bounded matcher child invocation；
+- archive matcher/config failure 仅 warning + skip report；
+- 不新增持久化；
+- 不新增 archive JSON；
+- 不新增 confirmation/override flag；
+- gate 不消费；
+- single-file archive 不变。
+
+除 REQ-3 的 warning byte contract 外，未发现未声明的状态变化。
+
+## 4. 每条 acceptance criterion 是否均为可测试的 if/then
+
+结论：不通过。
+
+AC4 已成为可直接执行的确定 oracle，REQ-11 可以关闭。AC6 也覆盖了 archive 的主要 matcher paths，REQ-4 可以关闭。
+
+剩余缺口来自两个正式问题：
+
+- AC3 没有覆盖多个 `ambiguous` keys，尤其是 new-only 与 mixed-side 排序；
+- AC6 没有裁定 warning 中控制字符究竟删除还是替换，以及 200 上限作用于完整 line 还是 reason；
+- AC8 没有覆盖 unclosed fence 和 state-A whitespace heading syntax。
+
+补齐上述输入和 expected values 后，现有 AC 集即可形成确定 oracle。
+
+## 5. 是否与 current state A 冲突
+
+结论：不通过。
+
+唯一实质冲突为 REQ-10：
+
+- req-v3：unclosed fence 吞掉余下内容；
+- state A：unclosed fence 不被 `stripFences()` 移除，后续 scenario heading 仍可被识别。
+
+另有 syntax 描述偏差：
+
+- req-v3 看似要求字面单空格；
+- state A 使用 `\s+`。
+
+REQ-3 的“控制字符剥离”也与 state-A `sanitizeMsg()` 的 replacement 行为不一致，但归入同一个输出契约问题，不另计 issue。
+
+其余设计与 state A 一致：
+
+- matcher 两批纪律保留；
+- invalid pattern 仍 fail early；
+- archive dependency direction 不反转；
+- high-level/single-file boundary明确；
+- ERROR report presence 与 `storeReport/changeScope` 纪律一致；
+- merge、exit、write 和 gate semantics 不变。
+
+## 6. Target lineage 是否声明且符合 repo reality
+
+结论：通过。
+
+lineage 正确声明了：
+
+- `main` v4 产品线；
+- 未归档的 `gate-id-pattern` 为前置 state A；
+- 未归档的 `verify-change-scope` 为前置 state A；
+- 当前工作区代码优先于尚未同步的 truth；
+- 三个 change 按依赖顺序归档。
+
+与 repo 当前 dirty worktree 现实相符。REQ-8 维持 verified。
+
+## Explicit out-of-scope 检查
+
+结论：通过。
+
+显式 `## 范围外（won't do）` section 存在，并明确排除：
+
+- single-file archive；
+- archive `--json`；
+- gate consumption；
+- confirmation/override flag；
+- 自动补回；
+- 跨块移动检测；
+- Requirement prose 新增行报告；
+- merge/verdict/exit/write semantic changes。
+
+## P0 advisories（不计入结论）
+
+### P0-1：对 cardinality table 做完整 table-driven test
+
+B1 已覆盖全部 cardinality classes。建议测试逐行遍历 truth table，而不只验证 `o>1,n=0`，防止将来重构时漏掉 `both` 或 new-only ambiguity。
+
+### P0-2：增加完整 human golden
+
+B4 已足以指导 renderer，但建议至少固定一个包含 retained、titleChanged、dropped、ambiguous 和 missingLines 的完整 human golden，避免 verify/archive 两个 surface 在缩进、count 或 prefix 上漂移。
+
+### P0-3：lineage 中的 “v1/v3” 建议标注为 legacy product lines
+
+当前文件本身名为 `req-v3`，“不合并 v1/v3”容易被误读为不合并 requirement revision。建议写为“不合并 legacy product v1/v3 lines”，仅改善可读性。
+
+## Ledger delta
+
+| ID | r2 状态 | r3 状态 | 复核结论 |
+|---|---|---|---|
+| REQ-1 | verified | verified | 唯一 line algorithm、normalization、duplicate consumption 与 comparison scope 保持闭合 |
+| REQ-2 | reopened | verified | cardinality truth table 已统一两类 key；ambiguous 跳过规则及 counts 已明确 |
+| REQ-3 | reopened | reopened | machine schema 主体已闭合，但 ambiguous mixed/new-only ordering 与 warning sanitization/cap 仍不唯一 |
+| REQ-4 | reopened | verified | verify batch discipline 与 archive custom/default/invalid/matcher-failure paths 已有确定 coverage |
+| REQ-5 | verified | verified | high-level archive 专属，single-file 明确 out of scope |
+| REQ-6 | verified | verified | report presence matrix 保持完整 |
+| REQ-7 | verified | verified | frozen fixture、hand-derived literal expected value 已明确 |
+| REQ-8 | verified | verified | target lineage 与实际 composite state A 一致 |
+| REQ-9 | verified | verified | 无 confirmation/override flag，既有 write/exit semantics 保持 |
+| REQ-10 | open | open | heading/fence boundary 多数已闭合，但 unclosed fence 与 whitespace syntax 仍和实际 state A 冲突 |
+| REQ-11 | open | verified | AC4 已提供 GREEN 0、GAPS 1、archive dry-run/write 的直接 oracle |
+
+VERDICT: 2 issues open

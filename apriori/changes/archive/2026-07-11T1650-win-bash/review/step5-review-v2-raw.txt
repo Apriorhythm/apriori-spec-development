@@ -1,0 +1,190 @@
+ℹ pass 186
+ℹ fail 0
+golden-path: OK (local) — 4 blocks, exits [0, 1, 0, 0], final state green
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f4b30-68f9-7222-9b64-17f52a333b4c
+--------
+user
+P8 round 2 for win-bash. Round-1 fixes on disk: WBIMPL-1 — after the lazy match, a root suffix guard '/\\(?:usr|mingw64|mingw32)$/i.test(m[1]) -> continue' rejects MSYS/Cygwin-like derivations; GP-08 gained the sharp negative (usr\bin\git.exe hit + the wrong candidate EXISTING -> throws 'no Git Bash found', never selected). WBIMPL-ADV-1 — resolveBash throw messages are now unprefixed (fail() adds the golden-path: prefix once); the bare-bash test helper is test-only, outside the three production spawn sites. Suite 187/187 green, golden-path --local OK. Re-read the regex+guard in scripts/golden-path.mjs and the new GP-08 assertion. Confirm both resolved (flip to verified) or reopen; any new issues? Print the COMPLETE review document body (landed verbatim at apriori/review/win-bash-impl-review-v2.md) with a ledger-delta section, ending with exactly one verdict line: 'VERDICT: no major issues, ready to proceed' or 'VERDICT: <N> issues open'.
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-11T08:49:34.871587Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T08:49:35.034536Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T08:49:35.399259Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-11T08:49:35.964394Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-11T08:49:36.831973Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-11T08:49:38.661968Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-11T08:49:42.233585Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: biXUb2S8QND6
+codex
+I’ll verify the suffix guard and the new GP-08 negative case, then check that the user-facing failure message now gets only one `golden-path:` prefix.
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' apriori/review/win-bash-issues.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '15,65p' scripts/golden-path.mjs" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '45,85p' test/golden-path-resolve.test.js" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 0ms:
+  const { resolveBash } = await mod;
+  const cases = [
+    ['C:\\Program Files\\Git\\cmd\\git.exe', 'C:\\Program Files\\Git\\bin\\bash.exe'],
+    ['C:\\Program Files\\Git\\mingw64\\bin\\git.exe', 'C:\\Program Files\\Git\\bin\\bash.exe'],
+    ['D:\\Apps\\PortableGit\\mingw32\\bin\\git.exe', 'D:\\Apps\\PortableGit\\bin\\bash.exe'],
+    ['C:\\Git\\bin\\git.exe', 'C:\\Git\\bin\\bash.exe'],
+  ];
+  for (const [hit, want] of cases) {
+    const out = resolveBash(win({ whereGit: () => ({ status: 0, stdout: hit + '\r\n' }), existsFile: fileSet(want) }));
+    assert.strictEqual(out, want, hit);
+  }
+  // bin\bash.exe absent → usr\bin fallback
+  const usr = 'C:\\Program Files\\Git\\usr\\bin\\bash.exe';
+  const out = resolveBash(win({
+    whereGit: () => ({ status: 0, stdout: 'C:\\Program Files\\Git\\cmd\\git.exe\r\n' }),
+    existsFile: fileSet(usr) }));
+  assert.strictEqual(out, usr);
+  // multi-hit CRLF output with blanks and spaces: first existing candidate in first-hit order wins
+  const first = 'C:\\Program Files\\Git\\bin\\bash.exe';
+  const multi = resolveBash(win({
+    whereGit: () => ({ status: 0, stdout: '\r\nC:\\Program Files\\Git\\cmd\\git.exe\r\nC:\\Other Git\\bin\\git.exe\r\n\r\n' }),
+    existsFile: fileSet(first, 'C:\\Other Git\\bin\\bash.exe') }));
+  assert.strictEqual(multi, first);
+  // an unrecognized hit shape derives nothing; conventional path picks it up instead
+  const conv = 'C:\\PF\\Git\\bin\\bash.exe';
+  const viaConv = resolveBash(win({
+    env: { ProgramFiles: 'C:\\PF' },
+    whereGit: () => ({ status: 0, stdout: 'C:\\Weird\\usr\\bin\\git.exe\r\n' }),
+    existsFile: fileSet(conv) }));
+  assert.strictEqual(viaConv, conv);
+  // sharper: usr\bin\git.exe derives NOTHING even when the would-be wrong candidate EXISTS —
+  // an MSYS/Cygwin sibling bash is never selected (WBIMPL-1)
+  assert.throws(() => resolveBash(win({
+    whereGit: () => ({ status: 0, stdout: 'C:\\Weird\\usr\\bin\\git.exe\r\n' }),
+    existsFile: fileSet('C:\\Weird\\usr\\bin\\bash.exe') })), /no Git Bash found/);
+});
+
+test('GP-09 no Git Bash means a named cure, never the shim', async () => {
+  const { resolveBash } = await mod;
+  assert.throws(() => resolveBash(win()), /install Git for Windows|APRIORI_GIT_BASH/);
+  // the never-bare-bash sweep: every win32 fixture that RESOLVES must return an absolute .exe path
+
+ succeeded in 105ms:
+# Issue ledger — win-bash
+
+Rows recorded on behalf of the reviewer (codex session 019f4b30-68f9-7222-9b64-17f52a333b4c; raws: win-bash-*-raw.txt).
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| WB-1 | Root derivation wrong for mingw64\bin layout; usr\bin\bash.exe undecided. | Valid installs unresolvable or wrong path derived. | STEP0·r1 | verified |
+| WB-2 | `where git` parsing/nonzero behavior underspecified. | Spaces/CRLF/multi-hit/no-git inconsistencies. | STEP0·r1 | verified |
+| WB-3 | ESM injection seam for resolveBash not precise. | Windows branches untestable off-Windows. | STEP0·r1 | verified |
+| WB-4 | Windows CI may not exercise the resolver hardening. | The WSL-shim bug survives green CI. | STEP0·r1 | verified |
+| WB-ADV-1 | Env-var absolute rule, shell-free spawn with spaces, candidate dedupe. | Advisory precision. | STEP0·r1 | verified |
+| WBSPEC-1 | Design proposed an href-equality entry guard although the script already has a safe path.resolve/fileURLToPath guard. | Dynamic import or CLI entry could break for nothing. | STEP2·r1 | verified |
+| WBSPEC-2 | main()-boundary handling of resolveBash throws unspecified (stack trace instead of named cure). | Noisy, unactionable user failure. | STEP2·r1 | verified |
+| WBSPEC-ADV-1 | Advisory: dedupe first-hit-order assertion + posix no-log assertion named in the test plan. | Test precision. | STEP2·r1 | verified |
+| WBIMPL-1 | The generic bin\git.exe alternative derived MSYS/Cygwin-like usr\bin\git.exe as a root — a sibling bash could be selected. | Wrong bash chosen on unsupported layouts despite existsFile passing. | STEP5·r1 | fixed |
+| WBIMPL-ADV-1 | Advisory: resolveBash throws were double-prefixed through fail(); now unprefixed (fail adds it). Test-helper bare bash noted as test-only. | Output hygiene. | STEP5·r1 | fixed |
+
+ succeeded in 115ms:
+// shim first on real machines, and the WSL world can't see the Windows-side prefix/PATH/cwd.
+// Injectable seams; real defaults. Throws (never exits) so main() can route through fail().
+export function resolveBash(opts = {}) {
+  const platform = opts.platform ?? process.platform;
+  if (platform !== 'win32') return 'bash';                  // posix: nothing consulted, nothing logged
+  const env = opts.env ?? process.env;
+  const whereGit = opts.whereGit ?? (() => spawnSync('where', ['git'], { shell: false, encoding: 'utf8' }));
+  const existsFile = opts.existsFile ?? ((p) => { try { return fs.statSync(p).isFile(); } catch { return false; } });
+  const log = opts.log ?? ((m) => console.error(m));        // stderr keeps walk stdout sentinel-clean
+  const override = env.APRIORI_GIT_BASH;
+  if (override) {
+    // an explicit override is never silently ignored or reinterpreted
+    if (!path.win32.isAbsolute(override)) throw new Error(`APRIORI_GIT_BASH must be an absolute path (got '${override}')`);
+    if (!existsFile(override)) throw new Error(`APRIORI_GIT_BASH points to nothing: ${override}`);
+    log(`golden-path: bash = ${override}`);
+    return override;
+  }
+  const candidates = [];
+  const seen = new Set();
+  const push = (p) => { const k = p.toLowerCase(); if (!seen.has(k)) { seen.add(k); candidates.push(p); } };
+  const w = whereGit();
+  const hits = (w && w.status === 0 && w.stdout) ? w.stdout.split(/\r?\n/).map((s) => s.trim()).filter(Boolean) : [];
+  for (const hit of hits) {
+    // lazy (.*?) — greedy would let `bin` match inside `mingw64\bin`, deriving root ...\Git\mingw64
+    const m = /^(.*?)\\(?:cmd|mingw64\\bin|mingw32\\bin|bin)\\git\.exe$/i.exec(hit);
+    if (!m) continue;                                        // unrecognized shapes derive nothing
+    // the generic bin\git.exe alternative must not turn MSYS/Cygwin-like usr\bin\git.exe
+    // (or a bare mingw dir) into a "root" — only the four Git-for-Windows layouts derive
+    if (/\\(?:usr|mingw64|mingw32)$/i.test(m[1])) continue;
+    push(m[1] + '\\bin\\bash.exe');
+    push(m[1] + '\\usr\\bin\\bash.exe');
+  }
+  for (const [v, sub] of [[env.ProgramFiles, 'Git'], [env['ProgramFiles(x86)'], 'Git'],
+                          [env.LocalAppData, 'Programs\\Git']]) {
+    if (!v) continue;
+    push(`${v}\\${sub}\\bin\\bash.exe`);
+    push(`${v}\\${sub}\\usr\\bin\\bash.exe`);
+  }
+  for (const c of candidates) {
+    if (existsFile(c)) { log(`golden-path: bash = ${c}`); return c; }
+  }
+  throw new Error('no Git Bash found on this Windows machine — install Git for Windows or set APRIORI_GIT_BASH to its bin\\bash.exe');   // fail() adds the golden-path: prefix
+}
+
+// GP-01: pure text seam — never touches the filesystem
+export function extractBlocks(readmeText) {
+  // fence-aware: heading-looking lines INSIDE ```shell blocks (heredoc'd delta specs) must not
+  // terminate the Quickstart section
+  const lines = readmeText.split('\n');
+  const sectionLines = [];
+  let inSection = false, inFence = false;
+
+codex
+**Round-1 Confirmations**
+
+WBIMPL-1: **verified**. The resolver now rejects roots ending in `\usr`, `\mingw64`, or `\mingw32` after the generic `bin\git.exe` match. GP-08 now includes the sharp negative: `C:\Weird\usr\bin\git.exe` plus an existing `C:\Weird\usr\bin\bash.exe` still throws the no-Git-Bash cure instead of selecting that sibling bash.
+
+WBIMPL-ADV-1: **verified**. `resolveBash()` now throws unprefixed messages and `fail()` adds `golden-path:` exactly once. The remaining bare `bash` spawn is in the GP-04 test helper, not one of the production runner spawn sites.
+
+**New Issues**
+
+None.
+
+**Ledger Delta**
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| WBIMPL-1 | The generic `bin\git.exe` alternative derived MSYS/Cygwin-like `usr\bin\git.exe` as a root, allowing a sibling bash to be selected. | Wrong bash chosen on unsupported layouts despite `existsFile` passing. | STEP5·r1 | verified |
+| WBIMPL-ADV-1 | `resolveBash` throw messages were double-prefixed through `fail()`; test-helper bare bash noted as test-only. | Advisory output hygiene. | STEP5·r1 | verified |
+
+VERDICT: no major issues, ready to proceed
+tokens used
+2,544,326
+**Round-1 Confirmations**
+
+WBIMPL-1: **verified**. The resolver now rejects roots ending in `\usr`, `\mingw64`, or `\mingw32` after the generic `bin\git.exe` match. GP-08 now includes the sharp negative: `C:\Weird\usr\bin\git.exe` plus an existing `C:\Weird\usr\bin\bash.exe` still throws the no-Git-Bash cure instead of selecting that sibling bash.
+
+WBIMPL-ADV-1: **verified**. `resolveBash()` now throws unprefixed messages and `fail()` adds `golden-path:` exactly once. The remaining bare `bash` spawn is in the GP-04 test helper, not one of the production runner spawn sites.
+
+**New Issues**
+
+None.
+
+**Ledger Delta**
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| WBIMPL-1 | The generic `bin\git.exe` alternative derived MSYS/Cygwin-like `usr\bin\git.exe` as a root, allowing a sibling bash to be selected. | Wrong bash chosen on unsupported layouts despite `existsFile` passing. | STEP5·r1 | verified |
+| WBIMPL-ADV-1 | `resolveBash` throw messages were double-prefixed through `fail()`; test-helper bare bash noted as test-only. | Advisory output hygiene. | STEP5·r1 | verified |
+
+VERDICT: no major issues, ready to proceed

@@ -1,0 +1,692 @@
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f4b30-68f9-7222-9b64-17f52a333b4c
+--------
+user
+STEP2 spec evaluation (P5) for tap-contract, round 1. STEP0 converged (req-final = v3). Evaluate apriori/changes/tap-contract/: specs/spec-runner/spec.md (MODIFIED "the TAP plan is a checked promise" adding SR-39/40 + MODIFIED "unattributed test failures block GREEN" updating the attributed clause to the lexer/dashless semantics + ADDED "TAP is a version-aware protocol" SR-41..47), specs/doctor/spec.md (ADDED DR-14), design.md, proposal.md, tasks.md — against requirement/req-final.md, the living stores, and lib/spec-runner.js + lib/doctor.js:
+1. MODIFIED hygiene: both modified requirements re-list their full scenario sets — SR-26..31 carried verbatim? SR-33..38 carried with only the intended clause changes? any accidental drift; the plan requirement's body previously said "the test command's output" — now "stdout" — consistent with the stderr-separation being in the ADDED requirement (cross-requirement consistency);
+2. Coverage vs req-final: closed version matrix (0..11 named?), escape order table, YAML unterminated ERROR w/ opening line, pragma-only whitelist, bail-out case+indent, mid-stream plan, out-of-plan numbers, dashless binding, SKIP-suffix, stderr JSON/report contract incl. every-outcome-class, 2>&1 hints, doctor D5 matrix — each pinned by a scenario;
+3. Scenario testability: SR-41's seven-stream matrix in one scenario — binding realistic? SR-47 packs three behaviors — split needed? SR-43's attributed-pass-with-escaped-hash case;
+4. Design feasibility vs the real code: lexTap token model sufficient for zeroTapParsed/doctor reuse; runTestCommand shape change (out=stdout only + stderr field) — enumerate downstream consumers (doctor classifyProbe run shape, golden-path?) that must update;
+5. Stamps match.
+[Scope] spec/design defects only; style = advisory. READ-ONLY sandbox (R2).
+[Output] Chinese prose, English IDs; LEDGER DELTA (new rows TCSPEC-n); exactly one verdict line.
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-12T04:12:42.677562Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-12T04:12:42.846356Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-12T04:12:43.169357Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-12T04:12:43.706334Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-12T04:12:44.718830Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-12T04:12:46.483104Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-12T04:12:49.516291Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: poWNidA0Kwi5
+codex
+我会按 P5 读完整 delta specs、design/proposal/tasks，再和 living store 与当前代码交叉核对。重点会放在 MODIFIED 块是否忠实、req-final 每个边界是否有场景，以及 stdout/stderr 改动的消费面。
+exec
+/usr/bin/zsh -lc "sed -n '1,320p' apriori/changes/tap-contract/design.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,220p' apriori/changes/tap-contract/proposal.md && sed -n '1,220p' apriori/changes/tap-contract/tasks.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,360p' apriori/changes/tap-contract/specs/spec-runner/spec.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' apriori/changes/tap-contract/specs/doctor/spec.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 110ms:
+# Design — tap-contract(事实对齐)
+
+## 现状事实
+- `runTestCommand`(spec-runner.js:155)把 stdout+stderr 拼接进 `out`——P1-1 病根。
+- `parseTap` 由独立 regex 拼成:TAP_RE(全形点)、POINT_LINE_RE(plan 计数)、Bail out 大小写敏感 match、无 version 概念、无 YAML 概念;`#` 搜索不识别转义。
+- doctor `classifyProbe` 直接消费 parseTap 的 {results, untagged, untaggedFails, bailout} + zeroTapParsed。
+
+## 方案
+- **新纯函数 `lexTap(stdout)`**(spec-runner 内部):先做行尾归一(CRLF→LF;lone-CR→LF),逐行分类为 typed token:
+  `{kind: version|plan|point|bailout|pragma|yaml-open|yaml-close|diagnostic|indented|other, line, n}`;
+  YAML 状态机(顶层 `---` 开、`...` 闭;未闭合→ lex 级 problem 带起始行号);缩进行一律 kind=indented(nested);version/plan/point/bailout/pragma 只在列 0 识别。
+- **point 解析**:`^(not )?ok(?:\s+(\d+))?(?:\s+(-\s+)?(.*))?$`;指令切分:左→右找首个未转义 `#`(`\` 转义下一字符);指令 = `#` 后跳空白以 SKIP/TODO 开头(大小写不敏感);描述解码 `\\`→`\`、`\#`→`#`,其余反斜杠对原样;解码后 leadId。dashless 描述参与绑定。
+- **parseTap 重写为 lexTap 消费者**:输出形状保持 `{results, untagged, untaggedFails, unattributedFailures, bailout, plans, points, dupNumbers}` + 新 `{version, lexProblems, planIndex}`;version 矩阵/多 version/晚 version/坏 attempt、YAML 未闭合、流中 plan(planIndex 之前与之后都有 point)、超 plan 编号 → 全部汇入 infraErrors 新条目。bail-out:`/^\s*bail out!/i`。pragma:`/^pragma [+-]\w+$/` 忽略不计点。
+- **runTestCommand**:返回 `{out: stdout, stderr, status, signal, error}`——TAP 只吃 stdout;verify run 增 `stderr`;formatReport 尾部非空时列 `STDERR DIAGNOSTICS`(20 行/119+…/and-N-more);verifyJson 顶层 `stderr: string` 恒定;zeroTapParsed 只看 stdout,提示语加 `2>&1` 补救。
+- **doctor**:classifyProbe 传入新形状;D5 矩阵:失败→ok(注明 verify 业务);不支持版本→finding(点名);stderr-only TAP 形→finding(fix `2>&1`);其余沿用。
+- **兼容**:`untaggedFails` 数值语义保持(= unattributedFailures.length);既有导出面不减。
+
+## SPEC 触点
+spec-runner:MODIFIED「the TAP plan is a checked promise」(SR-26..31 保留 + SR-39 流中 plan + SR-40 超 plan 编号)、MODIFIED「unattributed test failures block GREEN」(SR-33..38 保留,归因条款改"含 dashless 的带 ID 描述")、ADDED「TAP is a version-aware protocol」(SR-41..47);doctor:ADDED DR-14(D5 矩阵)。
+
+ succeeded in 125ms:
+# Proposal — tap-contract
+
+**为什么**:verify 的 TAP 解析是"碰巧的子集"——接受任意版本却按残缺子集解析,四审复现了 `\#` 假绿、`bAiL OuT!` 无视、lone-CR 失败消失、流中 plan 放行、stderr 噪声误拦、dashless/SKIPPED 合法形误拦。TAP 是发布闸口的输入协议,必须按协议对待。
+
+**做什么**:版本感知的行级词法器(封闭版本矩阵 12/13/14/absent,其余 ERROR)、TAP14 转义与指令顺序表、YAML 未闭合 fail-closed、pragma 唯一白名单、bail-out 大小写/缩进、plan 位置与编号范围、stdout/stderr 分离(行为变更,CHANGELOG 点名)、doctor D5 状态矩阵同步。
+
+**不做什么**:TAP14 pragma/subtest 的结构化解析、YAML 内容解析。
+
+**规模**:large。核心判定器重写 + 全形状回归 + doctor 联动。
+# Tasks — tap-contract
+
+- [ ] T1. 红测试:SR-39..47 + DR-14 各一条失败测试(四审复现输入全部入钉),记录红跑。
+- [ ] T2. lexTap 词法器 + parseTap 重写(导出面兼容)。
+- [ ] T3. runTestCommand stdout/stderr 分离 + 报告/JSON 合同 + zeroTapParsed。
+- [ ] T4. doctor classifyProbe D5 矩阵。
+- [ ] T5. 套件全绿 + verify --change GREEN + P8 收敛 + gate;CHANGELOG 行为变更条目草拟。
+
+ succeeded in 133ms:
+<!-- apriori-base: sha256:91841d5585e0f8f9971ab79a1ce42c2b77083a4aa92f2334f58bbd000b090447 -->
+## MODIFIED Requirements
+
+### Requirement: the TAP plan is a checked promise
+When the test command's stdout carries exactly one top-level TAP plan line (`/^1\.\.(\d+)\s*(#.*)?$/` — a trailing `# SKIP`/`# TODO` directive is legal and `N` still parses), the run SHALL be trusted only if the plan total equals the count of top-level TAP result tokens (unnumbered, undescribed, and dashless points count; `ok:`-prefixed diagnostic-like lines, top-level `pragma [+-]<word>` lines, and indented subtest/YAML lines never count) and no top-level test-point number repeats (compared numerically, so `01` duplicates `1`; unnumbered points are exempt). More than one top-level plan SHALL itself be an infra error naming the cure (one TAP stream per verify). A plan appearing MID-STREAM — with top-level test points both before and after it — SHALL be an infra error; a numbered test point OUTSIDE the plan's declared range (e.g. `ok 2` under `1..1`) SHALL be an infra error. Absent plans keep today's behavior — no promise made, none checked. Violations are infra errors (verify exits 2 / RESULT: ERROR; gate exits 2 / ERROR reporting the verify plan error — an untrustworthy run outranks a C1 binding block), never bindings; `verify`, `verify --change`, and `gate` inherit through `infraErrors` with no new wiring.
+
+#### Scenario: SR-26 a truncated plan refuses to verify
+- WHEN the test command emits a plan `1..2`, a single passing result, and exit 0
+- THEN verify reports RESULT: ERROR (exit 2) naming 2 declared vs 1 parsed, and nothing verifies GREEN
+
+#### Scenario: SR-27 duplicate test-point numbers are untrustworthy
+- WHEN one plan is present and two top-level results carry the same number (including `ok 01` vs `ok 1`)
+- THEN verify reports RESULT: ERROR naming the duplicated number(s)
+
+#### Scenario: SR-28 multiple plans fail closed even when totals mask
+- WHEN the output carries two top-level plans whose declared totals happen to equal the parsed points (`1..2`, one point, `1..1`, two points)
+- THEN verify reports RESULT: ERROR naming multiple plans and advising one TAP stream per verify
+
+#### Scenario: SR-29 the point count speaks TAP, not prefixes
+- WHEN a plan `1..2` is followed by a numbered described result and a bare `ok`, with an `ok: note` diagnostic line nearby
+- THEN the bare point counts toward the plan, the `ok:` line does not, and no plan error is raised
+
+#### Scenario: SR-30 plan-less, skip-all, and nested TAP stay legal
+- WHEN output has no plan at all, or a `1..0 # SKIP reason` plan with zero points, or node-style nested TAP whose indented subtest lines carry their own plans and results
+- THEN no plan infra error is raised and verification behaves exactly as before
+
+#### Scenario: SR-31 projected verify and gate inherit the plan check
+- WHEN a change's projected verify (or `gate --change`) runs against a test command whose TAP plan does not match its results
+- THEN `verify --change` exits 2 (RESULT: ERROR) and gate exits 2 reporting the verify plan error (an untrustworthy run is gate ERROR, like every other infra failure — not a mere BLOCKED)
+
+#### Scenario: SR-39 a mid-stream plan is untrustworthy
+- WHEN top-level test points appear both before and after a `1..N` plan line
+- THEN verify reports RESULT: ERROR naming the mid-stream plan — a plan promises the whole stream, not a suffix
+
+#### Scenario: SR-40 out-of-plan point numbers are untrustworthy
+- WHEN the plan is `1..1` and a top-level `ok 2` (or any numbered point outside 1..N) appears
+- THEN verify reports RESULT: ERROR naming the out-of-range number
+
+### Requirement: unattributed test failures block GREEN
+Any top-level non-SKIP/TODO `not ok` SHALL block GREEN regardless of shape. Classification rides the shared TAP lexer: a column-0 point line whose remainder carries a directive (first UNESCAPED `#`, then a word starting with SKIP/TODO case-insensitively) is not a failure; a failing point whose DECODED description (escape table: `\\`→`\`, `\#`→`#`, other backslash pairs literal) leads with a scenario ID — dash-separated or dashless — stays attributed to its scenario; every other failing top-level point is an **unattributed failure**. Unattributed failures make the verdict GAPS (exit 1) even when the test command exits 0; they never downgrade an infra ERROR — when `run.errors` is non-empty both are reported and the exit is 2. `exec.status !== 0` SHALL never produce exit 0. The human report lists a new group (first 20 lines; a line longer than 120 chars is cut to 119 + `…` for a 120-char total; then `… and N more`); `--json` gains top-level `unattributedFailures: {count, lines[]}` with untruncated lines, present with a stable shape in EVERY outcome class (GREEN carries `{count: 0, lines: []}`); `parseTap`'s exported `untaggedFails` field stays present and compatible (doctor consumes it); untagged `ok` points block nothing and change no report/JSON shape beyond the new group.
+
+#### Scenario: SR-33 the teardown false-green is dead
+- WHEN the TAP stream is `ok 1 - XX-01 pass` / `not ok 2 - global teardown failed` / `1..2` and the test command exits 1 (the reviewer's reproduced input)
+- THEN the verdict is GAPS (exit 1) with the unattributed-failures group reporting 1 line — never GREEN, never exit 0
+
+#### Scenario: SR-34 bare and half-shaped not-ok points block even on exit 0
+- WHEN the stream carries a bare `not ok`, a number-only `not ok 3`, a dash-less `not ok 4 teardown`, or a number-less `not ok - teardown failed` at column 0 and the test command exits 0
+- THEN each counts as an unattributed failure and the verdict is GAPS (exit 1) — while bare or untagged `ok` points continue to block nothing
+
+#### Scenario: SR-35 directives, nesting, and prefix look-alikes stay exempt
+- WHEN a column-0 `not ok 5 # SKIP flaky` (or `# TODO`) appears, an indented `    not ok 1 - subtest detail` appears under a nested TAP block, and a diagnostic-prefix line like `not ok: summary` appears
+- THEN none counts as an unattributed failure: directives are exempt in any shape, indented lines remain nested-subtest detail, and non-point prefixes keep SR-29's shape discipline
+
+#### Scenario: SR-36 infra errors keep precedence
+- WHEN unattributed failures coexist with an infra error (a plan mismatch or a `Bail out!`)
+- THEN the run exits 2 with both the infra error and the unattributed-failures group reported — the new GAPS class never masks a fail-closed ERROR
+
+#### Scenario: SR-37 the reporting contract is exact
+- WHEN more than 20 unattributed failures occur, one of them longer than 120 characters, under `--json` and the human report
+- THEN the human report lists the first 20 lines (>120-char lines cut to 119 + `…`) and appends `… and N more`; the JSON carries `unattributedFailures.count` and the full untruncated `lines`; a GREEN run carries `{count: 0, lines: []}`; all other JSON fields keep their existing shapes
+
+#### Scenario: SR-38 gate C1 inherits the new GAPS class
+- WHEN `gate --change <name>` runs a test command whose TAP carries an unattributed failure
+- THEN C1 reports blocked with the verify gap counts — the false-green cannot re-enter through the gate
+
+## ADDED Requirements
+
+### Requirement: TAP is a version-aware protocol
+The TAP stream SHALL be handled by a version-aware line lexer over **stdout only**. Line endings normalize first (CRLF and lone-CR both end a line). The version matrix is CLOSED: no version line, or `TAP version 12|13|14`, is accepted; any other numeric version (0..11, 15+) is an infra ERROR naming the version and the supported matrix; a column-0, YAML-outside line starting `TAP version ` that does not match exact digits is an infra ERROR; at most ONE version line is legal and it must precede every plan/point/bail-out — later or repeated version lines are infra ERRORs; indented or YAML-embedded version strings are diagnostics. Directive detection splits at the first UNESCAPED `#` (backslash escapes the next character); the description decodes `\\`→`\` and `\#`→`#` (other backslash pairs stay literal) before scenario-ID extraction, so `\#` is never a directive delimiter; directives are words STARTING with SKIP/TODO, case-insensitive (`# SKIPPED: platform` skips). `bail out!` matches case-insensitively at any indentation and aborts the run (infra ERROR). A top-level `---` opens a YAML diagnostic block whose lines never participate in any judgment; an unterminated top-level block is an infra ERROR naming its opening line. The ONLY ignored TAP-14 construct is a top-level line exactly shaped `pragma [+-]<word>` (never counted as a point). stderr is a separate diagnostics channel: `--json` carries top-level `stderr: string` in every outcome class (empty string when none, untruncated); the human report lists an `STDERR DIAGNOSTICS` group only when non-empty (first 20 lines, 119+`…` cap, `… and N more`); zero-TAP is judged on stdout alone and its hint names the `2>&1` remedy.
+
+#### Scenario: SR-41 the version matrix is closed
+- WHEN streams declare `TAP version 12`, `13`, `14`, no version, `TAP version 99`, `TAP version 9`, and `TAP version banana` (column 0, outside YAML)
+- THEN the first four verify normally; the last three are RESULT: ERROR (exit 2) naming the version and the supported matrix — while an indented `    TAP version 99` stays a diagnostic
+
+#### Scenario: SR-42 a version line is single and leading
+- WHEN a second `TAP version 13` line appears, or a version line appears after the first test point
+- THEN each is RESULT: ERROR — the version promise covers the whole stream
+
+#### Scenario: SR-43 escaped hashes are description, not directives
+- WHEN a TAP-14 stream carries `not ok 2 - XX-01 cleanup \# TODO is literal text` with exit 0 (the reviewer's reproduced false-green)
+- THEN the point is a REAL failure (bound red for XX-01), never a TODO skip — and `ok 1 - XX-01 pass \# SKIP nope` stays a pass attributed to XX-01, its decoded description containing a literal `#`
+
+#### Scenario: SR-44 bail-out is case-insensitive and indentation-blind
+- WHEN the stream carries `bAiL OuT! environment lost` (any casing, optionally indented)
+- THEN the run aborts as an infra ERROR exactly like `Bail out!` today
+
+#### Scenario: SR-45 lone-CR streams cannot hide failures
+- WHEN the whole TAP stream uses `\r` (lone CR) line endings and carries a failing point
+- THEN the failure is seen (GAPS/bound-red as its shape dictates) — line-ending style never swallows a line
+
+#### Scenario: SR-46 dashless descriptions bind and SKIP-suffixes skip
+- WHEN a stream carries `ok 1 XX-01 pass` (legal dashless description) and `not ok 2 - XX-01 cleanup # SKIPPED: platform`
+- THEN the first binds to XX-01 as a pass and the second is a directive skip — neither a false UNBOUND nor a false BOUND-RED
+
+#### Scenario: SR-47 stderr is diagnostics, YAML must close, pragma is the only pass
+- WHEN a logger writes `not ok 2 - noise` to STDERR while stdout carries a clean plan-matched stream; a second stream opens a top-level `---` never closed before EOF; a third carries `pragma +bail` between points under a matching plan
+- THEN the first run is GREEN with the stderr listed under STDERR DIAGNOSTICS (and `--json` `stderr` carrying it verbatim in every outcome class, empty string otherwise); the second is RESULT: ERROR naming the unterminated block's opening line; the third raises no plan error (pragma lines are not points) — and a stdout-empty, stderr-TAP run stays zero-TAP with a `2>&1` remedy in the hint
+
+ succeeded in 142ms:
+<!-- apriori-base: sha256:7d33504fd853a368423b10948a67fcbc3c7292f4a69c92671bfbae4f8dfd8c9d -->
+## ADDED Requirements
+
+### Requirement: the probe speaks the same TAP as verify
+`classifyProbe` SHALL consume the shared version-aware lexer and judge by the D5 matrix: probe TAP containing failures (any shape, unattributed included) is D5 **ok** with a detail noting the failures are verify's business and the TAP channel itself is healthy; an unsupported TAP version is D5 **finding** naming the version and the supported matrix; a stdout-empty probe whose stderr carries TAP-shaped output is D5 **finding** with a `2>&1` fix; every other classification and doctor's exit taxonomy stay unchanged.
+
+#### Scenario: DR-14 the D5 matrix follows the lexer
+- WHEN probes emit: a failing `not ok` with exit 0; a `TAP version 99` stream; TAP on stderr with empty stdout; and a healthy TAP-13 stream
+- THEN D5 reports ok (failures noted as verify's business), finding (version named), finding (`2>&1` fix), and ok respectively — with doctor's exit taxonomy unchanged
+
+codex
+我已经读到当前 delta。接下来会核对 MODIFIED 块与 living store 的原文是否有非预期漂移，并计算 stamps 是否匹配当前 store。
+exec
+/usr/bin/zsh -lc 'rg -n "### Requirement: the TAP plan|### Requirement: unattributed test|#### Scenario: SR-2[6-9]|#### Scenario: SR-3[0-8]|### Requirement: TAP is" apriori/specs/spec-runner/spec.md apriori/changes/tap-contract/specs/spec-runner/spec.md' in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,220p' apriori/specs/doctor/spec.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '110,175p' apriori/specs/spec-runner/spec.md && sed -n '145,210p' apriori/specs/spec-runner/spec.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "node -e \"const fs=require('fs'),crypto=require('crypto'); for (const f of ['apriori/specs/spec-runner/spec.md','apriori/specs/doctor/spec.md']) { const s=fs.readFileSync(f,'utf8'); const norm=s.replace(/\\r\\n/g,'\\n').replace(/\\r/g,'\\n'); console.log(f, 'raw', 'sha256:'+crypto.createHash('sha256').update(s).digest('hex'), 'norm', 'sha256:'+crypto.createHash('sha256').update(norm,'utf8').digest('hex')); }\"" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 116ms:
+### Requirement: doctor diagnoses the project-apriori seam
+`apriori doctor` SHALL run seven read-only checks (D1 Node floor · D2 init scaffold · D3 runbook freshness · D4 tool pointers · D5 TAP probe · D6 store health · D7 changes overview), each reporting ok/finding/not-applicable with a fix hint on findings, and SHALL encode the aggregate in its exit code: 0 = zero findings (`DOCTOR: HEALTHY`), 1 = ≥1 finding (`DOCTOR: <n> finding(s)`), 2 = unusable (Node below floor, `apriori/` missing entirely, positional-arg usage error) — printing whatever checks already ran. Doctor never repairs and never writes; its ONLY side effect is D5 executing the project's test command once, removed by `--no-run`.
+
+#### Scenario: DR-01 a healthy initialized project reports HEALTHY
+- WHEN every applicable check passes on a freshly initialized project with a valid TAP test command
+- THEN each check reports ok or not-applicable, the final line is `DOCTOR: HEALTHY`, and the exit code is 0
+
+#### Scenario: DR-02 an uninitialized project is unusable, with guidance
+- WHEN `apriori/` does not exist under the target root
+- THEN doctor exits 2, the message names `apriori init`, and `--json` reports `result: "UNUSABLE"` with the already-run checks (D1) listed
+
+#### Scenario: DR-03 init-scaffold gaps are findings with their fixer
+- WHEN `apriori/runbook.md`, `apriori/specs/`, `apriori/.gitignore` (with its `tmp/` line), or the `apriori/tmp/` dir is missing
+- THEN D2 emits ONE check entry PER GAP (each with id `D2`, status finding, naming the file and its fixer `apriori init` / `apriori update`) — the aggregate `findings` count equals the number of finding-status entries; a missing `apriori/process-config.md` is not-applicable (optional, defaults apply), never a finding
+
+#### Scenario: DR-04 runbook freshness points at update, and never contradicts D2
+- WHEN the runbook copy differs by any byte from the packaged RUNBOOK.md
+- THEN D3 is a finding naming `apriori update`; WHEN the copy is absent THEN D3 is not-applicable ("see D2") — absence is D2's finding alone
+
+#### Scenario: DR-05 detected tools must keep their pointers
+- WHEN a tool that `detectTools` finds has a missing rules file, a rules file without the `apriori/runbook.md` pointer, or (command-level tools) a missing command file
+- THEN D4 reports a finding per tool naming the file and `apriori init`; a project with no known tool markers reports not-applicable
+
+#### Scenario: DR-06 the TAP probe classifies every plumbing edge
+- WHEN the test command (from `--test-cmd` or the config row) runs
+- THEN D5 classifies: spawn error, signal kill, `Bail out!`, empty output, zero parsed TAP without a version/plan line (naming `--test-reporter=tap`), a TAP version or non-`1..0` plan with zero result lines ("truncated or malformed"), and a non-zero exit unexplained by parsed TAP failures — each a finding; parsed TAP whose failures explain any non-zero exit is ok (counts as info — test failures are NOT doctor findings), and an exactly-`1..0` plan with exit status 0 is ok ("empty suite") — a `1..0` plan with a NON-ZERO exit is the unexplained-exit finding, classified first
+
+#### Scenario: DR-07 the probe is skippable and degrades honestly
+- WHEN no test command is configured anywhere, or `--no-run` is given
+- THEN D5 reports not-applicable with the reason (the `apriori init --test-cmd` hint, or "probe skipped") — never a finding
+
+#### Scenario: DR-08 store health flags unbindable and ambiguous scenarios
+- WHEN `apriori/specs/` contains scenarios without a leading default-pattern ID, or the same ID in more than one scenario
+- THEN D6 reports findings listing them (detail names the default ID pattern); an empty store or zero scenario files is not-applicable ("normal for a new project"); a missing specs dir is not-applicable here ("see D2")
+
+#### Scenario: DR-09 changes overview validates flow-states and surfaces pending gates
+- WHEN an active change dir has no readable flow-state.md, or `parseFlowState` yields an empty `change`, or its `change` mismatches the dir name
+- THEN D7 reports a finding naming the dir and the failed clause; healthy active changes are info lines; archived candidates (basenames matching `<YYYY-MM-DDThhmm>-<name>`, directories only) are read ONLY when they satisfy realpath containment under `apriori/changes/archive/` — an escaping symlinked entry is skipped with an info note, never read; contained not-DONE/ABANDONED archived changes are listed as info ("gate ④ possibly pending") — never a finding
+
+#### Scenario: DR-10 output is machine-consumable in every class
+- WHEN `apriori doctor --json` runs — HEALTHY, FINDINGS, or UNUSABLE (incl. the positional-arg usage error)
+- THEN stdout parses as JSON shaped `{ result, findings, checks: [{id, status: "ok"|"finding"|"n/a", detail, fix?}], errors }`
+
+#### Scenario: DR-11 doctor is read-only and rejects stray arguments
+- WHEN doctor runs with `--no-run` against any project tree
+- THEN no file is created, modified, or deleted; WHEN any positional argument is given THEN doctor exits 2 with usage (pure JSON under `--json`)
+
+#### Scenario: DR-12 the Node floor is enforced testably
+- WHEN the detected Node major version (injectable for tests) is below 18
+- THEN D1 is a finding entry and doctor exits 2 (`result: "UNUSABLE"`), with D1 listed in the checks; at or above 18 → ok
+
+### Requirement: doctor detects legacy 3.x layout roots
+Doctor SHALL check (D8) for the five pre-4.0 scattered roots — top-level `requirement/`, top-level `spike/`, `apriori/review/`, `apriori/design/`, `apriori/explore/` — using existence-level probes only (lstat/exists, never following or reading through); any hit is a finding listing every root found, with a fix pointing at the MIGRATING.md 4.0 section. A clean 4.0 project reports D8 ok; the check performs zero writes.
+
+#### Scenario: DR-13 mixed 3.x layouts are named, clean ones pass
+- WHEN a project carries any of the five legacy roots (a directory or a symlink at that path both count), and another project carries none
+- THEN doctor reports a D8 finding naming exactly the roots present with a fix pointing at the migration guidance, and the clean project's D8 is ok — with no file content read and nothing written
+
+ succeeded in 129ms:
+apriori/specs/spec-runner/spec.md:110:### Requirement: the TAP plan is a checked promise
+apriori/specs/spec-runner/spec.md:113:#### Scenario: SR-26 a truncated plan refuses to verify
+apriori/specs/spec-runner/spec.md:117:#### Scenario: SR-27 duplicate test-point numbers are untrustworthy
+apriori/specs/spec-runner/spec.md:121:#### Scenario: SR-28 multiple plans fail closed even when totals mask
+apriori/specs/spec-runner/spec.md:125:#### Scenario: SR-29 the point count speaks TAP, not prefixes
+apriori/specs/spec-runner/spec.md:129:#### Scenario: SR-30 plan-less, skip-all, and nested TAP stay legal
+apriori/specs/spec-runner/spec.md:133:#### Scenario: SR-31 projected verify and gate inherit the plan check
+apriori/specs/spec-runner/spec.md:140:#### Scenario: SR-32 the projection warns but does not judge
+apriori/specs/spec-runner/spec.md:144:### Requirement: unattributed test failures block GREEN
+apriori/specs/spec-runner/spec.md:147:#### Scenario: SR-33 the teardown false-green is dead
+apriori/specs/spec-runner/spec.md:151:#### Scenario: SR-34 bare and half-shaped not-ok points block even on exit 0
+apriori/specs/spec-runner/spec.md:155:#### Scenario: SR-35 directives, nesting, and prefix look-alikes stay exempt
+apriori/specs/spec-runner/spec.md:159:#### Scenario: SR-36 infra errors keep precedence
+apriori/specs/spec-runner/spec.md:163:#### Scenario: SR-37 the reporting contract is exact
+apriori/specs/spec-runner/spec.md:167:#### Scenario: SR-38 gate C1 inherits the new GAPS class
+apriori/changes/tap-contract/specs/spec-runner/spec.md:4:### Requirement: the TAP plan is a checked promise
+apriori/changes/tap-contract/specs/spec-runner/spec.md:7:#### Scenario: SR-26 a truncated plan refuses to verify
+apriori/changes/tap-contract/specs/spec-runner/spec.md:11:#### Scenario: SR-27 duplicate test-point numbers are untrustworthy
+apriori/changes/tap-contract/specs/spec-runner/spec.md:15:#### Scenario: SR-28 multiple plans fail closed even when totals mask
+apriori/changes/tap-contract/specs/spec-runner/spec.md:19:#### Scenario: SR-29 the point count speaks TAP, not prefixes
+apriori/changes/tap-contract/specs/spec-runner/spec.md:23:#### Scenario: SR-30 plan-less, skip-all, and nested TAP stay legal
+apriori/changes/tap-contract/specs/spec-runner/spec.md:27:#### Scenario: SR-31 projected verify and gate inherit the plan check
+apriori/changes/tap-contract/specs/spec-runner/spec.md:39:### Requirement: unattributed test failures block GREEN
+apriori/changes/tap-contract/specs/spec-runner/spec.md:42:#### Scenario: SR-33 the teardown false-green is dead
+apriori/changes/tap-contract/specs/spec-runner/spec.md:46:#### Scenario: SR-34 bare and half-shaped not-ok points block even on exit 0
+apriori/changes/tap-contract/specs/spec-runner/spec.md:50:#### Scenario: SR-35 directives, nesting, and prefix look-alikes stay exempt
+apriori/changes/tap-contract/specs/spec-runner/spec.md:54:#### Scenario: SR-36 infra errors keep precedence
+apriori/changes/tap-contract/specs/spec-runner/spec.md:58:#### Scenario: SR-37 the reporting contract is exact
+apriori/changes/tap-contract/specs/spec-runner/spec.md:62:#### Scenario: SR-38 gate C1 inherits the new GAPS class
+apriori/changes/tap-contract/specs/spec-runner/spec.md:68:### Requirement: TAP is a version-aware protocol
+
+ succeeded in 127ms:
+### Requirement: the TAP plan is a checked promise
+When the test command's output carries exactly one top-level TAP plan line (`/^1\.\.(\d+)\s*(#.*)?$/` — a trailing `# SKIP`/`# TODO` directive is legal and `N` still parses), the run SHALL be trusted only if the plan total equals the count of top-level TAP result tokens (`/^(?:ok|not ok)(?:\s|$)/` — unnumbered and undescribed points count; `ok:`-prefixed diagnostic-like lines and indented subtest/YAML lines never count) and no top-level test-point number repeats (compared numerically, so `01` duplicates `1`; unnumbered points are exempt). More than one top-level plan SHALL itself be an infra error naming the cure (one TAP stream per verify). Absent plans keep today's behavior — no promise made, none checked. Violations are infra errors (verify exits 2 / RESULT: ERROR; gate exits 2 / ERROR reporting the verify plan error — an untrustworthy run outranks a C1 binding block), never bindings; `verify`, `verify --change`, and `gate` inherit through `infraErrors` with no new wiring, and `doctor`'s probe classification is intentionally out of scope.
+
+#### Scenario: SR-26 a truncated plan refuses to verify
+- WHEN the test command emits a plan `1..2`, a single passing result, and exit 0
+- THEN verify reports RESULT: ERROR (exit 2) naming 2 declared vs 1 parsed, and nothing verifies GREEN
+
+#### Scenario: SR-27 duplicate test-point numbers are untrustworthy
+- WHEN one plan is present and two top-level results carry the same number (including `ok 01` vs `ok 1`)
+- THEN verify reports RESULT: ERROR naming the duplicated number(s)
+
+#### Scenario: SR-28 multiple plans fail closed even when totals mask
+- WHEN the output carries two top-level plans whose declared totals happen to equal the parsed points (`1..2`, one point, `1..1`, two points)
+- THEN verify reports RESULT: ERROR naming multiple plans and advising one TAP stream per verify
+
+#### Scenario: SR-29 the point count speaks TAP, not prefixes
+- WHEN a plan `1..2` is followed by a numbered described result and a bare `ok`, with an `ok: note` diagnostic line nearby
+- THEN the bare point counts toward the plan, the `ok:` line does not, and no plan error is raised
+
+#### Scenario: SR-30 plan-less, skip-all, and nested TAP stay legal
+- WHEN output has no plan at all, or a `1..0 # SKIP reason` plan with zero points, or node-style nested TAP whose indented subtest lines carry their own plans and results
+- THEN no plan infra error is raised and verification behaves exactly as before
+
+#### Scenario: SR-31 projected verify and gate inherit the plan check
+- WHEN a change's projected verify (or `gate --change`) runs against a test command whose TAP plan does not match its results
+- THEN `verify --change` exits 2 (RESULT: ERROR) and gate exits 2 reporting the verify plan error (an untrustworthy run is gate ERROR, like every other infra failure — not a mere BLOCKED)
+
+### Requirement: projected verify surfaces unstamped mutation deltas
+`verify --change` SHALL print one stderr warning per unstamped mutation delta (same message class as archive's) without affecting the verdict — an otherwise-GREEN run stays GREEN — and `--json` SHALL carry `projection.unstampedMutations` (the store-suffix-relative paths from buildProjection, `[]` when none; the field exists only where `projection` already does).
+
+#### Scenario: SR-32 the projection warns but does not judge
+- WHEN a change's delta carries mutation ops without a stamp
+- THEN verify --change warns on stderr naming the file and the stamp cure, the run can still be GREEN, --json carries projection.unstampedMutations with the suffix, and an ADDED-only unstamped delta yields an empty list and no warning
+
+### Requirement: unattributed test failures block GREEN
+Any top-level non-SKIP/TODO `not ok` SHALL block GREEN regardless of shape. The classifier works line-by-line with at most one trailing CR stripped (the plan pre-scan's discipline): a line matching `/^not ok(?:\s|$)/` at column 0 (the plan pre-scan's own point shape — `not ok:`-style diagnostic prefixes stay non-points, per SR-29) (indented lines are nested subtests and stay excluded) whose remainder carries a `/#\s*(SKIP|TODO)\b/i` directive is not a failure; one matching the strict `N - desc` shape with a leading scenario ID stays attributed to its scenario; everything else — numbered-with-description-but-no-ID, bare, number-only, or dash-less forms — is an **unattributed failure**. Unattributed failures make the verdict GAPS (exit 1) even when the test command exits 0; they never downgrade an infra ERROR — when `run.errors` is non-empty (bail-out, plan mismatch, duplicate points, spawn/signal, zero-TAP, unexplained non-zero exit) both are reported and the exit is 2. `exec.status !== 0` SHALL never produce exit 0. The human report lists a new group (first 20 lines; a line longer than 120 chars is cut to 119 + `…` for a 120-char total; then `… and N more`); `--json` gains top-level `unattributedFailures: {count, lines[]}` with untruncated lines, present with a stable shape in EVERY outcome class (GREEN carries `{count: 0, lines: []}`); `parseTap`'s exported `untaggedFails` field stays present and compatible (doctor consumes it); untagged `ok` points block nothing and change no report/JSON shape beyond the new group.
+
+#### Scenario: SR-33 the teardown false-green is dead
+- WHEN the TAP stream is `ok 1 - XX-01 pass` / `not ok 2 - global teardown failed` / `1..2` and the test command exits 1 (the reviewer's reproduced input)
+- THEN the verdict is GAPS (exit 1) with the unattributed-failures group reporting 1 line — never GREEN, never exit 0
+
+#### Scenario: SR-34 bare and half-shaped not-ok points block even on exit 0
+- WHEN the stream carries a bare `not ok`, a number-only `not ok 3`, a dash-less `not ok 4 teardown`, or a number-less `not ok - teardown failed` at column 0 and the test command exits 0
+- THEN each counts as an unattributed failure and the verdict is GAPS (exit 1) — while bare or untagged `ok` points continue to block nothing
+
+#### Scenario: SR-35 directives, nesting, and prefix look-alikes stay exempt
+- WHEN a column-0 `not ok 5 # SKIP flaky` (or `# TODO`) appears, an indented `    not ok 1 - subtest detail` appears under a nested TAP block, and a diagnostic-prefix line like `not ok: summary` appears
+- THEN none counts as an unattributed failure: directives are exempt in any shape, indented lines remain nested-subtest detail, and non-point prefixes keep SR-29's shape discipline
+
+#### Scenario: SR-36 infra errors keep precedence
+- WHEN unattributed failures coexist with an infra error (a plan mismatch or a `Bail out!`)
+- THEN the run exits 2 with both the infra error and the unattributed-failures group reported — the new GAPS class never masks a fail-closed ERROR
+
+#### Scenario: SR-37 the reporting contract is exact
+- WHEN more than 20 unattributed failures occur, one of them longer than 120 characters, under `--json` and the human report
+- THEN the human report lists the first 20 lines (>120-char lines cut to 119 + `…`) and appends `… and N more`; the JSON carries `unattributedFailures.count` and the full untruncated `lines`; a GREEN run carries `{count: 0, lines: []}`; all other JSON fields keep their existing shapes
+
+#### Scenario: SR-38 gate C1 inherits the new GAPS class
+- WHEN `gate --change <name>` runs a test command whose TAP carries an unattributed failure
+- THEN C1 reports blocked with the verify gap counts — the false-green cannot re-enter through the gate
+Any top-level non-SKIP/TODO `not ok` SHALL block GREEN regardless of shape. The classifier works line-by-line with at most one trailing CR stripped (the plan pre-scan's discipline): a line matching `/^not ok(?:\s|$)/` at column 0 (the plan pre-scan's own point shape — `not ok:`-style diagnostic prefixes stay non-points, per SR-29) (indented lines are nested subtests and stay excluded) whose remainder carries a `/#\s*(SKIP|TODO)\b/i` directive is not a failure; one matching the strict `N - desc` shape with a leading scenario ID stays attributed to its scenario; everything else — numbered-with-description-but-no-ID, bare, number-only, or dash-less forms — is an **unattributed failure**. Unattributed failures make the verdict GAPS (exit 1) even when the test command exits 0; they never downgrade an infra ERROR — when `run.errors` is non-empty (bail-out, plan mismatch, duplicate points, spawn/signal, zero-TAP, unexplained non-zero exit) both are reported and the exit is 2. `exec.status !== 0` SHALL never produce exit 0. The human report lists a new group (first 20 lines; a line longer than 120 chars is cut to 119 + `…` for a 120-char total; then `… and N more`); `--json` gains top-level `unattributedFailures: {count, lines[]}` with untruncated lines, present with a stable shape in EVERY outcome class (GREEN carries `{count: 0, lines: []}`); `parseTap`'s exported `untaggedFails` field stays present and compatible (doctor consumes it); untagged `ok` points block nothing and change no report/JSON shape beyond the new group.
+
+#### Scenario: SR-33 the teardown false-green is dead
+- WHEN the TAP stream is `ok 1 - XX-01 pass` / `not ok 2 - global teardown failed` / `1..2` and the test command exits 1 (the reviewer's reproduced input)
+- THEN the verdict is GAPS (exit 1) with the unattributed-failures group reporting 1 line — never GREEN, never exit 0
+
+#### Scenario: SR-34 bare and half-shaped not-ok points block even on exit 0
+- WHEN the stream carries a bare `not ok`, a number-only `not ok 3`, a dash-less `not ok 4 teardown`, or a number-less `not ok - teardown failed` at column 0 and the test command exits 0
+- THEN each counts as an unattributed failure and the verdict is GAPS (exit 1) — while bare or untagged `ok` points continue to block nothing
+
+#### Scenario: SR-35 directives, nesting, and prefix look-alikes stay exempt
+- WHEN a column-0 `not ok 5 # SKIP flaky` (or `# TODO`) appears, an indented `    not ok 1 - subtest detail` appears under a nested TAP block, and a diagnostic-prefix line like `not ok: summary` appears
+- THEN none counts as an unattributed failure: directives are exempt in any shape, indented lines remain nested-subtest detail, and non-point prefixes keep SR-29's shape discipline
+
+#### Scenario: SR-36 infra errors keep precedence
+- WHEN unattributed failures coexist with an infra error (a plan mismatch or a `Bail out!`)
+- THEN the run exits 2 with both the infra error and the unattributed-failures group reported — the new GAPS class never masks a fail-closed ERROR
+
+#### Scenario: SR-37 the reporting contract is exact
+- WHEN more than 20 unattributed failures occur, one of them longer than 120 characters, under `--json` and the human report
+- THEN the human report lists the first 20 lines (>120-char lines cut to 119 + `…`) and appends `… and N more`; the JSON carries `unattributedFailures.count` and the full untruncated `lines`; a GREEN run carries `{count: 0, lines: []}`; all other JSON fields keep their existing shapes
+
+#### Scenario: SR-38 gate C1 inherits the new GAPS class
+- WHEN `gate --change <name>` runs a test command whose TAP carries an unattributed failure
+- THEN C1 reports blocked with the verify gap counts — the false-green cannot re-enter through the gate
+
+ succeeded in 171ms:
+apriori/specs/spec-runner/spec.md raw sha256:91841d5585e0f8f9971ab79a1ce42c2b77083a4aa92f2334f58bbd000b090447 norm sha256:91841d5585e0f8f9971ab79a1ce42c2b77083a4aa92f2334f58bbd000b090447
+apriori/specs/doctor/spec.md raw sha256:7d33504fd853a368423b10948a67fcbc3c7292f4a69c92671bfbae4f8dfd8c9d norm sha256:7d33504fd853a368423b10948a67fcbc3c7292f4a69c92671bfbae4f8dfd8c9d
+
+codex
+MODIFIED 块的场景集合和 stamp 初看正常，但我发现一个覆盖层问题：req-final 要求的行为非常多，而 spec-runner 的 ADDED requirement 把多个独立行为塞进少数复合场景。现在需要区分“足够可绑定的矩阵”与“实现可以漏掉而仍绿”的缺口。
+codex
+目前主要风险集中在“场景是否足以钉住 req-final 的完整矩阵”。我会再读 req-final 与现有 issues，确认哪些是正式覆盖缺口、哪些只是场景过大但仍可测试的 advisory。
+exec
+/usr/bin/zsh -lc "rg -n \"TAP version 0|TAP version 1|0\\.\\.11|15\\+|escape|\\\\\\\\|unknown|backslash|stderr|outcome|pragma|YAML|unterminated|lone-CR|SKIPPED|dashless|2>&1\" apriori/changes/tap-contract/specs apriori/changes/tap-contract/design.md apriori/changes/tap-contract/tasks.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "rg -n \"runTestCommand\\(|\\.out\\b|\\.stderr\\b|exec\\.out|exec\\.stderr|stderr\" lib test scripts bin -S" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,160p' apriori/changes/tap-contract/review/issues.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,360p' apriori/changes/tap-contract/requirement/req-final.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 127ms:
+# Issue ledger — tap-contract
+
+Rows recorded on behalf of the reviewer (codex session 019f4b30-68f9-7222-9b64-17f52a333b4c; raws beside their docs in this dir).
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| TC-1 | version 行的位置/重复/作用域未定义。 | mid-stream 版本被忽略或诊断文本误判。 | STEP0·r1 | verified |
+| TC-2 | escape 解码范围与 directive/ID 处理顺序不完整。 | \# 归因/skip/失败分类分叉。 | STEP0·r1 | verified |
+| TC-3 | YAML 块未闭合 fail-open/closed 未定。 | 错误 --- 吞掉后续失败成新假绿。 | STEP0·r1 | verified |
+| TC-4 | stdout/stderr 分离的报告/JSON 合同不精确。 | 机器合同与迁移补救不一致。 | STEP0·r1 | verified |
+| TC-5 | TAP14 未处理构造"行级忽略"范围过宽。 | 真实点被忽略或 pragma 造成假 ERROR。 | STEP0·r1 | verified |
+| TC-6 | doctor D5 新分类缺 status/exit 矩阵。 | doctor 实现/测试分叉。 | STEP0·r2 | verified |
+
+ succeeded in 151ms:
+# 需求:tap-contract —— TAP 是协议,不是文本 (final = v3)
+
+> change: `tap-contract` · tier: large · track: harden
+> lineage: v4;不合并 main/v1/v3
+> 来源:GPT-5.6 四审 P0-1 + P1-1 + P1-2 + P2-3(TAP 部分),关键病例均已本机复现。
+> v2 修订:TC-1..5(version 行规则、escape 顺序表、YAML 未闭合 fail-closed、stderr 合同、pragma 白名单)+ doctor D5 advisory。
+
+## 目标
+
+verify 的 TAP 解析目前是一组独立 regex,对 TAP 规范的覆盖是"碰巧的子集":接受任意 `TAP version N` 却按不完整子集解析,产生假绿(`\#` 转义被当指令、`bAiL OuT!` 大小写变体被无视、lone-CR 行尾让失败点消失)与误拦(dashless 描述、`# SKIPPED:` 兼容后缀)。本变更把 TAP 处理升级为**版本感知的行级词法器**,并声明明确的支持契约。
+
+## 支持契约(核心决策)
+
+- **版本封闭矩阵(TC-1)**:无 version 行 / 12 / 13 / 14 → 接受;**其余一切数字版本(含 0..11 与 15+)→ infra ERROR**;列 0、YAML 外、以 `TAP version` 开头但不匹配"恰为数字"形状的 attempt(如 `TAP version banana`)→ infra ERROR;缩进/YAML 块内 → 诊断文本。
+- **TAP 14 语义面(TC-5 收窄)**:转义序列、大小写不敏感 bail-out 按 14 处理;**唯一被忽略的 14 构造是顶层恰为 `pragma [+-]<word>` 形状的行(不计入 plan 点数)**;缩进 subtest 细节按既有缩进规则排除;除此之外任何顶层 point/plan/bail-out 形状的行一律按普通规则处理——没有其他"14 专属忽略"。
+(版本矩阵已并入上条;原则不变:绝不"接受任意版本号却只解析一部分"。)
+- **version 行规则(TC-1)**:只识别**列 0、YAML 块外**、恰为 `TAP version <digits>` 形状的行;**至多一个**,且必须出现在任何 plan/test point/bail-out **之前**;多个 version 行、晚到的 version 行、不可解析的数字 → infra ERROR。缩进行/YAML 块内的"TAP version 99"是诊断文本,不参与判定。
+
+## 行为需求
+
+1. **词法器(替换散落的 regex)**:逐行、每行剥至多一个尾随 CR;**lone-CR 行尾的流先归一化**(`\r` 不后跟 `\n` 时视同行尾)——失败点绝不因行尾风格消失。行分类:version 行 / plan 行 / test point(`ok`/`not ok`,列 0)/ bail-out / 注释诊断 / YAML 块(列 0 之外的缩进 `---`…`...` 属缩进行整体排除;**顶层** `---` 开的块内行不参与判定,**至 EOF 未闭合 → infra ERROR(exit 2),消息含起始行号**——错误的 `---` 绝不静默吞掉后续失败(TC-3))/ 其余。缩进行 = 子测试细节,照旧不计入顶层(node 嵌套 TAP 不回归)。
+2. **test point 解析**:`(not )?ok` 后可选编号、可选描述(**`-` 分隔可选**——dashless 合法描述参与 ID 绑定,修 P1-2 误拦)、可选指令。**处理顺序(TC-2,写死)**:①左到右扫描找**第一个未转义 `#`**(`\` 转义其后一个字符)作为指令分隔;②指令 = 分隔后(跳过空白)以 `SKIP`/`TODO` 开头的词(大小写不敏感,`SKIPPED:` 等后缀合法——"starts with");③对**描述部分**解码转义表:`\\`→`\`、`\#`→`#`,**其余反斜杠序列原样保留两个字符**(不 ERROR、不吞);④对解码后的描述做 `leadId()` 提取。`\#` 因此绝不是指令分隔符(修 P0-1 假绿)。
+3. **bail-out**:`bail out!` 大小写不敏感、允许前导缩进(嵌套 bail-out 同样终止整个 run——TAP 语义如此)→ 既有 infra ERROR 路径。
+4. **plan 校验强化**:plan 出现在流中间(前后都有 test point)→ infra ERROR;test point 编号超出 plan 范围(如 `1..1` 配 `ok 2`)→ infra ERROR;既有单 plan/计数/重号规则不变。
+5. **stdout/stderr 分离(P1-1,合同精确化 TC-4)**:TAP 只从 **stdout** 解析。`--json` 顶层 `stderr: string` **全结果类恒定存在**(无输出为空串,全文不截断);人类报告仅在 stderr 非空时列 `STDERR DIAGNOSTICS` 组(前 20 行,>120 字符裁到 119+`…`,`… and N more` 尾)。zero-TAP 判定只看 stdout——stdout 无 TAP 而 stderr 有 TAP 形内容时照判 zero-TAP,且提示消息给出 `2>&1` 补救。**行为变更,CHANGELOG 点名**。
+6. **doctor 同步(P2-3a,D5 状态矩阵 TC-6)**:`classifyProbe` 复用同一词法器,D5 判定:
+   - 探针 TAP 含失败(任意形状)→ D5 **ok**,detail 注明"测试有失败(verify 的业务),TAP 通道本身健康";
+   - 不支持的 TAP version → D5 **finding**,detail 点名版本与支持矩阵;
+   - stdout 无 TAP 而 stderr 有 TAP 形输出 → D5 **finding**,fix 给 `2>&1`;
+   - 其余(含真正 not-TAP)沿用既有分类;doctor 总退出码遵循既有 findings 分级不变。
+7. **回归钉子**:P0-1 的三个复现输入(`\#` TODO、`bAiL OuT!`、流中 plan)+ lone-CR 流 + `TAP version 99` + dashless 绑定 + `# SKIPPED:` + stderr 日志误拦,各一条场景。
+8. **不回归**:SR-01..38 全部既有场景;计划外形状(plan-less、skip-all、嵌套)照旧。
+
+## 非目标
+
+- 完整 TAP 14 特性的结构化解析。**忽略白名单收窄(TC-5)**:仅顶层恰为 `pragma [+-]<word>` 形状的行被忽略且不计入 plan 点数;其余任何顶层行——只要形状是 test point/plan/bail-out——一律按普通规则处理,没有其他"14 专属忽略"。
+- YAML 诊断块的内容解析(只做"不参与判定"的跳过)。
+- verify 之外新增表面。
+
+## 约束
+
+- 零依赖;词法器为纯函数可单测;`parseTap` 导出面保持兼容(`untaggedFails` 等,doctor 消费)。
+- CRLF 与既有 fence/CRLF 规则不冲突。
+
+## 开放问题
+
+- 无。
+
+ succeeded in 163ms:
+test/cli.test.js:15:  assert.match(up.stderr, /apriori init/);
+test/cli.test.js:16:  assert.doesNotMatch(up.stderr, /unknown command/);
+test/cli.test.js:20:  assert.match(unknown.stderr, /unknown command/);
+test/cli.test.js:23:  assert.match(init.stderr, /--tools/);
+test/cli.test.js:24:  assert.doesNotMatch(init.stderr, /unknown command/);
+test/cli.test.js:28:  assert.doesNotMatch(st.stderr + st.stdout, /unknown command/);
+test/cli.test.js:32:  assert.match(nw.stderr, /apriori new <change-name>/);
+test/cli.test.js:33:  assert.doesNotMatch(nw.stderr, /unknown command/);
+test/cli.test.js:39:  assert.match(r.stderr, /apriori verify --specs/);
+test/cli.test.js:45:  assert.match(r.stderr, /apriori archive --store/);
+test/cli.test.js:50:  assert.match(r.stdout + r.stderr, /RESULT:/);   // it runs and reports a result
+test/cli.test.js:72:  assert.doesNotMatch(r.stderr, /unknown command/);
+test/cli.test.js:79:  assert.doesNotMatch(r.stderr, /unknown command/);
+test/cli.test.js:86:  assert.doesNotMatch(r.stderr, /unknown command/);
+test/cli.test.js:93:  assert.match(r.stderr, /^apriori: /);
+test/cli.test.js:94:  assert.doesNotMatch(r.stderr, /\n\s+at /);   // no stack frames reach the user
+scripts/golden-path.mjs:23:  const log = opts.log ?? ((m) => console.error(m));        // stderr keeps walk stdout sentinel-clean
+scripts/golden-path.mjs:140:    if (inst.status !== 0) fail(`npm i -g failed: ${inst.stderr}`);
+scripts/golden-path.mjs:154:  process.stderr.write(run.stderr || '');
+scripts/golden-path.mjs:161:    if (r.status !== expect) fail(`final-state ${label}: exit ${r.status}, expected ${expect}\n${r.stdout}${r.stderr}`);
+test/new.test.js:65:  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+test/update.test.js:217:    assert.match(r.stdout + r.stderr, /managed\.json/);
+test/spec-runner-projection.test.js:200:  assert.strictEqual(r.status, 0, r.stdout + r.stderr);           // GREEN despite the warning
+test/spec-runner-projection.test.js:201:  assert.match(r.stderr, /unstamped mutation delta/);
+test/spec-runner-projection.test.js:202:  assert.match(r.stderr, /apriori stamp/);
+test/spec-runner-projection.test.js:213:  assert.doesNotMatch(r2.stderr, /unstamped/);
+test/spec-runner.test.js:157:  // through the CLI: warning lands on stderr, UNBOUND report still prints
+test/spec-runner.test.js:164:  assert.match(r.stderr, /ZERO TAP results were parsed/);
+test/spec-runner.test.js:165:  assert.match(r.stderr, /--test-reporter=tap/);
+test/spec-runner.test.js:178:  assert.match(r1.stderr, /exited with status 7/);
+test/spec-runner.test.js:195:  assert.match(r4.stderr, /no parsed TAP failure explains it/);
+test/spec-runner.test.js:202:  assert.match(miss.stderr, /does not exist/);
+test/spec-runner.test.js:207:  assert.match(zf.stderr, /no spec files found/);
+test/spec-runner.test.js:212:  assert.match(zs.stderr, /zero scenarios/);
+test/spec-runner.test.js:250:  assert.match(bail.stderr, /aborted/);
+test/spec-runner.test.js:291:  assert.match(r.stderr, /declares 2 test point\(s\) but 1/);
+test/spec-runner.test.js:303:  assert.match(r.stderr, /duplicate TAP test-point number\(s\): 1/);
+test/spec-runner.test.js:312:  assert.match(r.stderr, /multiple TAP plans/);
+test/spec-runner.test.js:313:  assert.match(r.stderr, /one TAP stream per verify/);
+test/spec-runner.test.js:336:  assert.doesNotMatch(r2.stderr, /TAP plan declares/);
+test/spec-runner.test.js:350:  assert.match(v.stderr, /declares 3 test point\(s\) but 2/);
+test/spec-runner.test.js:353:  assert.match(g.stdout + g.stderr, /declares 3 test point\(s\) but 2/);
+test/spec-runner.test.js:362:  assert.strictEqual(r.status, 1, r.stdout + r.stderr);
+test/spec-runner.test.js:383:  assert.strictEqual(only.status, 1, only.stdout + only.stderr);
+test/spec-runner.test.js:385:  assert.doesNotMatch(only.stderr, /ZERO TAP results/);
+test/spec-runner.test.js:398:  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+test/spec-runner.test.js:408:  assert.strictEqual(r.status, 2, r.stdout + r.stderr);
+test/spec-runner.test.js:409:  assert.match(r.stderr, /plan declares 5/);
+test/spec-runner.test.js:414:  assert.strictEqual(b.status, 2, b.stdout + b.stderr);
+test/spec-runner.test.js:424:  assert.strictEqual(r.status, 1, r.stdout + r.stderr);
+test/check.test.js:108:  assert.match(miss.stderr, /does not exist/);
+test/check.test.js:109:  assert.match(miss.stderr, /apriori init/);
+test/status.test.js:112:  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+test/status.test.js:122:    assert.strictEqual(r.status, 2, `${bad}: ${r.stdout}${r.stderr}`);
+test/status.test.js:123:    assert.match(r.stderr, /./);
+test/status.test.js:132:  assert.strictEqual(r.status, 2, r.stdout + r.stderr);
+test/status.test.js:133:  assert.match(r.stderr, /flow-state/);
+test/status.test.js:145:    assert.strictEqual(r2.status, 2, r2.stdout + r2.stderr);
+test/status.test.js:146:    assert.match(r2.stderr, /flow-state/);
+test/status.test.js:151:    assert.strictEqual(r3.status, 2, r3.stdout + r3.stderr);
+test/status.test.js:152:    assert.match(r3.stderr, /issues\.md/);
+test/status.test.js:158:  assert.strictEqual(r4.status, 0, r4.stdout + r4.stderr);
+test/archive-change.test.js:61:  assert.match(r.stdout + r.stderr, /NoSuch/);
+test/archive-change.test.js:76:  const text = res.out.concat(res.err).join('\n');
+test/archive-change.test.js:90:  assert.match(r.stdout + r.stderr, /tmp-archive/);
+test/archive-change.test.js:99:  assert.match(r1.stderr, /c/);
+test/archive-change.test.js:103:  assert.match(r2.stderr, /specs/);
+test/archive-change.test.js:154:    assert.match(r.stdout + r.stderr, frag);
+test/archive-change.test.js:187:    assert.match(r.stderr, /evil/);
+test/archive-change.test.js:197:    assert.match(r2.stderr, /specs/);
+test/archive-change.test.js:213:    assert.match(r4.stderr, /archive destination/);
+test/archive-change.test.js:230:    assert.match(r.stdout + r.stderr, /a[\/\\]spec\.md/);
+test/archive-change.test.js:241:  assert.match(r1.stdout + r1.stderr, /sha256:/);
+test/archive-change.test.js:247:  assert.match(r2.stdout + r2.stderr, /sha256:/);
+test/archive-change.test.js:277:  assert.match(r2.stdout + r2.stderr, /new/);
+test/archive-change.test.js:439:  assert.strictEqual(r.status, 1, r.stdout + r.stderr);
+test/archive-change.test.js:440:  assert.match(r.stdout + r.stderr, /unstamped mutation delta/);
+test/archive-change.test.js:441:  assert.match(r.stdout + r.stderr, /apriori stamp/);
+test/archive-change.test.js:448:  assert.match(r2.stdout + r2.stderr, /unstamped mutation delta/);
+test/archive-change.test.js:454:  assert.doesNotMatch(r3.stdout + r3.stderr, /unstamped mutation delta/);
+test/archive-change.test.js:465:  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+test/archive-change.test.js:466:  assert.match(r.stdout + r.stderr, /rerun accepted/);
+test/archive-change.test.js:481:  assert.match(rA.stdout + rA.stderr, /base mismatch/);
+test/archive-change.test.js:493:  assert.strictEqual(rB.status, 0, rB.stdout + rB.stderr);
+test/archive-change.test.js:494:  assert.match(rB.stdout + rB.stderr, /rerun accepted/);
+test/archive-change.test.js:543:  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+test/archive-change.test.js:556:  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+test/archive-change.test.js:558:  assert.doesNotMatch(r.stdout + r.stderr, /staging|staged/);
+test/archive-change.test.js:600:  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+test/archive-change.test.js:601:  assert.match(r.stdout + r.stderr, /unstamped mutation delta/);
+test/archive-change.test.js:602:  assert.match(r.stdout + r.stderr, /waived.*--no-cas|--no-cas.*waiv/i);
+test/archive-change.test.js:610:  assert.strictEqual(r2.status, 0, r2.stdout + r2.stderr);
+test/archive-change.test.js:611:  assert.match(r2.stdout + r2.stderr, /waived.*process-config|process-config.*waiv/i);
+test/archive-change.test.js:619:  assert.match(r3.stdout + r3.stderr, /--no-cas/);
+test/archive-change.test.js:626:  assert.match(v.stderr, /unstamped mutation delta/);
+test/archive-change.test.js:627:  assert.notStrictEqual(v.status, 2, 'projection never fails the run for a missing stamp: ' + v.stderr);
+lib/spec-runner.js:155:function runTestCommand(cmd, cwd) {
+lib/spec-runner.js:158:    out: (r.stdout || '') + '\n' + (r.stderr || ''),
+lib/spec-runner.js:242:  lines.push('\nRESULT: ' + (errs.length ? 'ERROR — run not trustworthy (see stderr)'
+lib/spec-runner.js:284:  const exec = runTestCommand(opts.testCmd, opts.cwd || '.');
+lib/spec-runner.js:285:  const { results, untagged, untaggedFails, unattributedFailures, bailout, plans, points, dupNumbers } = parseTap(exec.out, idRe);
+lib/spec-runner.js:292:    noTap: zeroTapParsed(exec.out, results, untagged, unattributedFailures),
+test/gate.test.js:276:    const git = (...a) => { const r = spawnSync('git', ['-C', root3, ...a], { encoding: 'utf8', env }); assert.strictEqual(r.status, 0, r.stderr); return r; };
+test/gate.test.js:306:    assert.strictEqual(r.status, code, args.join(' ') + ': ' + r.stdout + r.stderr);
+test/args.test.js:38:    assert.strictEqual(r.status, 0, `${sub} ${h}: ${r.stderr}`);
+test/args.test.js:46:    assert.strictEqual(r.status, 2, `${sub}: ${r.stdout}${r.stderr}`);
+test/args.test.js:47:    assert.match(r.stderr, /--no-such-flag/);
+test/args.test.js:57:    assert.strictEqual(r.status, 2, args.join(' ') + r.stderr);
+test/args.test.js:58:    assert.match(r.stderr, /--no-such-flag/);
+test/args.test.js:65:  assert.match(run(['verify', 'extra']).stderr, /extra/);
+test/args.test.js:68:  assert.match(nb.stderr, /'b'/);
+test/args.test.js:74:  assert.match(sf.stderr, /--foo/);
+test/args.test.js:80:  assert.match(r1.stderr, /--test-cmd/);
+test/args.test.js:83:  assert.match(r2.stderr, /--specs/);
+test/args.test.js:94:  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+test/args.test.js:110:  assert.match(r.stderr, /-x/);
+test/args.test.js:116:  assert.match(r.stderr, /--tools/);
+test/args.test.js:117:  assert.doesNotMatch(r.stderr, /unknown flag/);
+test/doctor.test.js:247:    assert.strictEqual(r.status, code, args.join(' ') + r.stdout + r.stderr);
+test/doctor.test.js:266:  assert.match(stray.stderr, /usage/i);
+lib/gate.js:190:    if (g.status !== 0) { notes.push(`${m}: git failed (${(g.stderr || '').split('\n')[0]})`); continue; }
+lib/archive-merge.js:536:      for (const l of r.out) console.log(l);
+lib/args.js:6: * {ok:false, code:2, message} (caller prints message + usage to stderr, exits 2).
+lib/args.js:45:// Uniform wiring: parse; help → usage to stdout, 0; error → message + usage to stderr, 2;
+test/golden-path.test.js:71:  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+lib/doctor.js:121:  else checks.push(classifyProbe(runTestCommand(testCmd, cwd)));
+
+ succeeded in 174ms:
+apriori/changes/tap-contract/tasks.md:5:- [ ] T3. runTestCommand stdout/stderr 分离 + 报告/JSON 合同 + zeroTapParsed。
+apriori/changes/tap-contract/design.md:4:- `runTestCommand`(spec-runner.js:155)把 stdout+stderr 拼接进 `out`——P1-1 病根。
+apriori/changes/tap-contract/design.md:5:- `parseTap` 由独立 regex 拼成:TAP_RE(全形点)、POINT_LINE_RE(plan 计数)、Bail out 大小写敏感 match、无 version 概念、无 YAML 概念;`#` 搜索不识别转义。
+apriori/changes/tap-contract/design.md:9:- **新纯函数 `lexTap(stdout)`**(spec-runner 内部):先做行尾归一(CRLF→LF;lone-CR→LF),逐行分类为 typed token:
+apriori/changes/tap-contract/design.md:10:  `{kind: version|plan|point|bailout|pragma|yaml-open|yaml-close|diagnostic|indented|other, line, n}`;
+apriori/changes/tap-contract/design.md:11:  YAML 状态机(顶层 `---` 开、`...` 闭;未闭合→ lex 级 problem 带起始行号);缩进行一律 kind=indented(nested);version/plan/point/bailout/pragma 只在列 0 识别。
+apriori/changes/tap-contract/design.md:12:- **point 解析**:`^(not )?ok(?:\s+(\d+))?(?:\s+(-\s+)?(.*))?$`;指令切分:左→右找首个未转义 `#`(`\` 转义下一字符);指令 = `#` 后跳空白以 SKIP/TODO 开头(大小写不敏感);描述解码 `\\`→`\`、`\#`→`#`,其余反斜杠对原样;解码后 leadId。dashless 描述参与绑定。
+apriori/changes/tap-contract/design.md:13:- **parseTap 重写为 lexTap 消费者**:输出形状保持 `{results, untagged, untaggedFails, unattributedFailures, bailout, plans, points, dupNumbers}` + 新 `{version, lexProblems, planIndex}`;version 矩阵/多 version/晚 version/坏 attempt、YAML 未闭合、流中 plan(planIndex 之前与之后都有 point)、超 plan 编号 → 全部汇入 infraErrors 新条目。bail-out:`/^\s*bail out!/i`。pragma:`/^pragma [+-]\w+$/` 忽略不计点。
+apriori/changes/tap-contract/design.md:14:- **runTestCommand**:返回 `{out: stdout, stderr, status, signal, error}`——TAP 只吃 stdout;verify run 增 `stderr`;formatReport 尾部非空时列 `STDERR DIAGNOSTICS`(20 行/119+…/and-N-more);verifyJson 顶层 `stderr: string` 恒定;zeroTapParsed 只看 stdout,提示语加 `2>&1` 补救。
+apriori/changes/tap-contract/design.md:15:- **doctor**:classifyProbe 传入新形状;D5 矩阵:失败→ok(注明 verify 业务);不支持版本→finding(点名);stderr-only TAP 形→finding(fix `2>&1`);其余沿用。
+apriori/changes/tap-contract/design.md:19:spec-runner:MODIFIED「the TAP plan is a checked promise」(SR-26..31 保留 + SR-39 流中 plan + SR-40 超 plan 编号)、MODIFIED「unattributed test failures block GREEN」(SR-33..38 保留,归因条款改"含 dashless 的带 ID 描述")、ADDED「TAP is a version-aware protocol」(SR-41..47);doctor:ADDED DR-14(D5 矩阵)。
+apriori/changes/tap-contract/specs/doctor/spec.md:5:`classifyProbe` SHALL consume the shared version-aware lexer and judge by the D5 matrix: probe TAP containing failures (any shape, unattributed included) is D5 **ok** with a detail noting the failures are verify's business and the TAP channel itself is healthy; an unsupported TAP version is D5 **finding** naming the version and the supported matrix; a stdout-empty probe whose stderr carries TAP-shaped output is D5 **finding** with a `2>&1` fix; every other classification and doctor's exit taxonomy stay unchanged.
+apriori/changes/tap-contract/specs/doctor/spec.md:8:- WHEN probes emit: a failing `not ok` with exit 0; a `TAP version 99` stream; TAP on stderr with empty stdout; and a healthy TAP-13 stream
+apriori/changes/tap-contract/specs/doctor/spec.md:9:- THEN D5 reports ok (failures noted as verify's business), finding (version named), finding (`2>&1` fix), and ok respectively — with doctor's exit taxonomy unchanged
+apriori/changes/tap-contract/specs/spec-runner/spec.md:5:When the test command's stdout carries exactly one top-level TAP plan line (`/^1\.\.(\d+)\s*(#.*)?$/` — a trailing `# SKIP`/`# TODO` directive is legal and `N` still parses), the run SHALL be trusted only if the plan total equals the count of top-level TAP result tokens (unnumbered, undescribed, and dashless points count; `ok:`-prefixed diagnostic-like lines, top-level `pragma [+-]<word>` lines, and indented subtest/YAML lines never count) and no top-level test-point number repeats (compared numerically, so `01` duplicates `1`; unnumbered points are exempt). More than one top-level plan SHALL itself be an infra error naming the cure (one TAP stream per verify). A plan appearing MID-STREAM — with top-level test points both before and after it — SHALL be an infra error; a numbered test point OUTSIDE the plan's declared range (e.g. `ok 2` under `1..1`) SHALL be an infra error. Absent plans keep today's behavior — no promise made, none checked. Violations are infra errors (verify exits 2 / RESULT: ERROR; gate exits 2 / ERROR reporting the verify plan error — an untrustworthy run outranks a C1 binding block), never bindings; `verify`, `verify --change`, and `gate` inherit through `infraErrors` with no new wiring.
+apriori/changes/tap-contract/specs/spec-runner/spec.md:40:Any top-level non-SKIP/TODO `not ok` SHALL block GREEN regardless of shape. Classification rides the shared TAP lexer: a column-0 point line whose remainder carries a directive (first UNESCAPED `#`, then a word starting with SKIP/TODO case-insensitively) is not a failure; a failing point whose DECODED description (escape table: `\\`→`\`, `\#`→`#`, other backslash pairs literal) leads with a scenario ID — dash-separated or dashless — stays attributed to its scenario; every other failing top-level point is an **unattributed failure**. Unattributed failures make the verdict GAPS (exit 1) even when the test command exits 0; they never downgrade an infra ERROR — when `run.errors` is non-empty both are reported and the exit is 2. `exec.status !== 0` SHALL never produce exit 0. The human report lists a new group (first 20 lines; a line longer than 120 chars is cut to 119 + `…` for a 120-char total; then `… and N more`); `--json` gains top-level `unattributedFailures: {count, lines[]}` with untruncated lines, present with a stable shape in EVERY outcome class (GREEN carries `{count: 0, lines: []}`); `parseTap`'s exported `untaggedFails` field stays present and compatible (doctor consumes it); untagged `ok` points block nothing and change no report/JSON shape beyond the new group.
+apriori/changes/tap-contract/specs/spec-runner/spec.md:69:The TAP stream SHALL be handled by a version-aware line lexer over **stdout only**. Line endings normalize first (CRLF and lone-CR both end a line). The version matrix is CLOSED: no version line, or `TAP version 12|13|14`, is accepted; any other numeric version (0..11, 15+) is an infra ERROR naming the version and the supported matrix; a column-0, YAML-outside line starting `TAP version ` that does not match exact digits is an infra ERROR; at most ONE version line is legal and it must precede every plan/point/bail-out — later or repeated version lines are infra ERRORs; indented or YAML-embedded version strings are diagnostics. Directive detection splits at the first UNESCAPED `#` (backslash escapes the next character); the description decodes `\\`→`\` and `\#`→`#` (other backslash pairs stay literal) before scenario-ID extraction, so `\#` is never a directive delimiter; directives are words STARTING with SKIP/TODO, case-insensitive (`# SKIPPED: platform` skips). `bail out!` matches case-insensitively at any indentation and aborts the run (infra ERROR). A top-level `---` opens a YAML diagnostic block whose lines never participate in any judgment; an unterminated top-level block is an infra ERROR naming its opening line. The ONLY ignored TAP-14 construct is a top-level line exactly shaped `pragma [+-]<word>` (never counted as a point). stderr is a separate diagnostics channel: `--json` carries top-level `stderr: string` in every outcome class (empty string when none, untruncated); the human report lists an `STDERR DIAGNOSTICS` group only when non-empty (first 20 lines, 119+`…` cap, `… and N more`); zero-TAP is judged on stdout alone and its hint names the `2>&1` remedy.
+apriori/changes/tap-contract/specs/spec-runner/spec.md:72:- WHEN streams declare `TAP version 12`, `13`, `14`, no version, `TAP version 99`, `TAP version 9`, and `TAP version banana` (column 0, outside YAML)
+apriori/changes/tap-contract/specs/spec-runner/spec.md:76:- WHEN a second `TAP version 13` line appears, or a version line appears after the first test point
+apriori/changes/tap-contract/specs/spec-runner/spec.md:79:#### Scenario: SR-43 escaped hashes are description, not directives
+apriori/changes/tap-contract/specs/spec-runner/spec.md:80:- WHEN a TAP-14 stream carries `not ok 2 - XX-01 cleanup \# TODO is literal text` with exit 0 (the reviewer's reproduced false-green)
+apriori/changes/tap-contract/specs/spec-runner/spec.md:81:- THEN the point is a REAL failure (bound red for XX-01), never a TODO skip — and `ok 1 - XX-01 pass \# SKIP nope` stays a pass attributed to XX-01, its decoded description containing a literal `#`
+apriori/changes/tap-contract/specs/spec-runner/spec.md:87:#### Scenario: SR-45 lone-CR streams cannot hide failures
+apriori/changes/tap-contract/specs/spec-runner/spec.md:88:- WHEN the whole TAP stream uses `\r` (lone CR) line endings and carries a failing point
+apriori/changes/tap-contract/specs/spec-runner/spec.md:91:#### Scenario: SR-46 dashless descriptions bind and SKIP-suffixes skip
+apriori/changes/tap-contract/specs/spec-runner/spec.md:92:- WHEN a stream carries `ok 1 XX-01 pass` (legal dashless description) and `not ok 2 - XX-01 cleanup # SKIPPED: platform`
+apriori/changes/tap-contract/specs/spec-runner/spec.md:95:#### Scenario: SR-47 stderr is diagnostics, YAML must close, pragma is the only pass
+apriori/changes/tap-contract/specs/spec-runner/spec.md:96:- WHEN a logger writes `not ok 2 - noise` to STDERR while stdout carries a clean plan-matched stream; a second stream opens a top-level `---` never closed before EOF; a third carries `pragma +bail` between points under a matching plan
+apriori/changes/tap-contract/specs/spec-runner/spec.md:97:- THEN the first run is GREEN with the stderr listed under STDERR DIAGNOSTICS (and `--json` `stderr` carrying it verbatim in every outcome class, empty string otherwise); the second is RESULT: ERROR naming the unterminated block's opening line; the third raises no plan error (pragma lines are not points) — and a stdout-empty, stderr-TAP run stays zero-TAP with a `2>&1` remedy in the hint
+
+context compacted
+codex
+## 问题
+
+### TCSPEC-1 — SR-41 没有完整绑定封闭版本矩阵与 YAML 内版本诊断规则
+
+**描述**：`req-final.md` 要求版本矩阵是封闭的：无版本、12、13、14 合法；任何其他数字版本，包括 `0..11` 和 `15+`，都是 infra ERROR；YAML block 内的 `TAP version ...` 只是诊断文本。当前 SR-41 只覆盖 `12/13/14/no version/99/9/banana`，并覆盖了缩进版本行，但没有覆盖边界值 `0/11/15`，也没有覆盖 YAML 内版本字符串。
+
+**风险**：实现可以只拒绝 `9/99/banana`，却误放行 `0/11/15`，或把 YAML 内的版本文本误判为协议版本，仍可能通过绑定测试。
+
+**建议修复**：扩展 SR-41：明确遍历或列出 `0、11、15、99` 等非法版本；增加 closed YAML block 内 `TAP version 99` 不触发版本错误的子用例。
+
+### TCSPEC-2 — SR-43 未绑定反斜杠转义顺序的关键边界
+
+**描述**：需求规定先找第一个未转义 `#`，其中反斜杠转义下一个字符；然后只在描述段解码 `\\ -> \`、`\# -> #`，其他反斜杠对保持字面量。SR-43 覆盖了 `\#` 不应开启 TODO/SKIP，但没有覆盖 `\\#` 这种顺序敏感边界：第一个反斜杠转义第二个反斜杠，后面的 `#` 应仍是 directive 分隔符。
+
+**风险**：实现可能把 `\\# TODO` 错当作转义后的字面 `# TODO`，导致应跳过的 TAP14 directive 被当成真实失败，或相反破坏 directive 分割语义。
+
+**建议修复**：在 SR-43 增加 `\\# SKIP/TODO` 子用例，明确其 directive 分割结果；必要时补一个 unknown escape 保持字面量的 lexer 单测。
+
+## 其他核对
+
+MODIFIED 块整体卫生良好：SR-26..31 与 SR-33..38 均重新列出，未见会改变既有场景语义的意外漂移；“output” 改为 “stdout” 与新增 stderr 分离合同一致。`spec-runner` 与 `doctor` delta 的 CAS stamp 均匹配 living store。
+
+## Advisories
+
+SR-47 同时覆盖 stderr 分离、未闭合 YAML、pragma 白名单、stderr-only zero-TAP hint。它可以绑定，但建议拆成多个场景或至少多个明确子测例，降低绿色空测/弱测风险。
+
+## LEDGER DELTA
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| TCSPEC-1 | SR-41 does not fully bind the closed TAP version matrix or YAML-embedded version diagnostic rule. | Unsupported versions or YAML diagnostics can be misclassified while tests remain green. | P5 round 1 | open |
+| TCSPEC-2 | SR-43 does not bind the escape-order boundary for `\\#` and the full directive-splitting contract. | TAP14 directive parsing can drift around escaped backslashes and produce false reds/greens. | P5 round 1 | open |
+| TCSPEC-ADV-1 | Advisory batch: SR-47 packs several unrelated behaviors into one scenario; split or structure subtests for stronger binding. | Advisory only. | P5 round 1 | advisory |
+
+VERDICT: 2 issues open
+tokens used
+4,935,405
+## 问题
+
+### TCSPEC-1 — SR-41 没有完整绑定封闭版本矩阵与 YAML 内版本诊断规则
+
+**描述**：`req-final.md` 要求版本矩阵是封闭的：无版本、12、13、14 合法；任何其他数字版本，包括 `0..11` 和 `15+`，都是 infra ERROR；YAML block 内的 `TAP version ...` 只是诊断文本。当前 SR-41 只覆盖 `12/13/14/no version/99/9/banana`，并覆盖了缩进版本行，但没有覆盖边界值 `0/11/15`，也没有覆盖 YAML 内版本字符串。
+
+**风险**：实现可以只拒绝 `9/99/banana`，却误放行 `0/11/15`，或把 YAML 内的版本文本误判为协议版本，仍可能通过绑定测试。
+
+**建议修复**：扩展 SR-41：明确遍历或列出 `0、11、15、99` 等非法版本；增加 closed YAML block 内 `TAP version 99` 不触发版本错误的子用例。
+
+### TCSPEC-2 — SR-43 未绑定反斜杠转义顺序的关键边界
+
+**描述**：需求规定先找第一个未转义 `#`，其中反斜杠转义下一个字符；然后只在描述段解码 `\\ -> \`、`\# -> #`，其他反斜杠对保持字面量。SR-43 覆盖了 `\#` 不应开启 TODO/SKIP，但没有覆盖 `\\#` 这种顺序敏感边界：第一个反斜杠转义第二个反斜杠，后面的 `#` 应仍是 directive 分隔符。
+
+**风险**：实现可能把 `\\# TODO` 错当作转义后的字面 `# TODO`，导致应跳过的 TAP14 directive 被当成真实失败，或相反破坏 directive 分割语义。
+
+**建议修复**：在 SR-43 增加 `\\# SKIP/TODO` 子用例，明确其 directive 分割结果；必要时补一个 unknown escape 保持字面量的 lexer 单测。
+
+## 其他核对
+
+MODIFIED 块整体卫生良好：SR-26..31 与 SR-33..38 均重新列出，未见会改变既有场景语义的意外漂移；“output” 改为 “stdout” 与新增 stderr 分离合同一致。`spec-runner` 与 `doctor` delta 的 CAS stamp 均匹配 living store。
+
+## Advisories
+
+SR-47 同时覆盖 stderr 分离、未闭合 YAML、pragma 白名单、stderr-only zero-TAP hint。它可以绑定，但建议拆成多个场景或至少多个明确子测例，降低绿色空测/弱测风险。
+
+## LEDGER DELTA
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| TCSPEC-1 | SR-41 does not fully bind the closed TAP version matrix or YAML-embedded version diagnostic rule. | Unsupported versions or YAML diagnostics can be misclassified while tests remain green. | P5 round 1 | open |
+| TCSPEC-2 | SR-43 does not bind the escape-order boundary for `\\#` and the full directive-splitting contract. | TAP14 directive parsing can drift around escaped backslashes and produce false reds/greens. | P5 round 1 | open |
+| TCSPEC-ADV-1 | Advisory batch: SR-47 packs several unrelated behaviors into one scenario; split or structure subtests for stronger binding. | Advisory only. | P5 round 1 | advisory |
+
+VERDICT: 2 issues open

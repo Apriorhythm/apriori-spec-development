@@ -1,0 +1,31 @@
+**Issues**
+
+CBIMPL-1 — Gate misses dangling `review/` symlinks before C4/C5.
+
+Description: `reviewDirDefect()` returns early on `!fs.existsSync(rd)` before `lstatSync`. A dangling symlink at `<changeDir>/review` is therefore treated as absent, not as the symlink defect GT-05 requires. C5 can pass, and C4 may report the wrong condition instead of blocking both checks on the review-dir defect.
+
+Risk: C4/C5 are not fail-closed for a malformed bundle evidence root, and the “review/ symlink blocks both checks, never read through” guarantee is not fully implemented.
+
+Suggested fix: In [lib/gate.js](/mnt/d/Workbench/misc/apriori-spec-development/lib/gate.js:150), `lstat` first; only `ENOENT` is absence. A symlink, including a dangling symlink, should block C4 and C5 naming `review/`. Add GT-05 subtests for active and archived dangling `review/` symlinks.
+
+CBIMPL-2 — CK-10 follows or silently skips symlinked discovery roots instead of warn-skipping them.
+
+Description: CK-10 says each discovered change dir and `review/` must be guarded, and escaping or symlinked dirs are warn-skipped. [lib/check.js](/mnt/d/Workbench/misc/apriori-spec-development/lib/check.js:194) uses `statSync(cd).isDirectory()`, which follows a symlinked change dir. A contained symlinked bundle can be scanned instead of warn-skipped. A dangling `review/` symlink is also silently skipped because `existsSync(rd)` runs before `lstatSync`.
+
+Risk: The secret scan can read an unexpected symlinked bundle root, or omit the required visible warning for a symlinked evidence root.
+
+Suggested fix: `lstat` discovered change dirs before `stat`; warn-skip any symlinked change dir regardless of target. For `review/`, use `lstat` first and warn-skip symlinks, including dangling symlinks. Add CK-10 tests for a symlinked change dir with a secret and a dangling `review/` symlink.
+
+**Advisories**
+
+CBIMPL-ADV-1 — AM-37’s test could better lock the “no legacy copy/stage/read” intent by asserting the archived bundle’s requirement file still contains the original bundle content, not the legacy bystander content. Current code has the staging phase deleted, so this is coverage hardening rather than a present code gap.
+
+**Ledger Delta**
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| CBIMPL-1 | Gate treats a dangling bundle `review/` symlink as absent because `existsSync` runs before `lstat`, so C4/C5 do not block on the review-dir defect required by GT-05. | Malformed review roots can avoid the stage-identical C4/C5 fail-closed guard. | 1 | open |
+| CBIMPL-2 | CK-10 discovery follows symlinked change dirs and silently skips dangling `review/` symlinks instead of warn-skipping symlinked dirs. | Secret scanning can read unexpected symlinked bundle roots or lose required user-visible warnings. | 1 | open |
+| CBIMPL-ADV-1 | AM-37 test can more directly assert the legacy bystander is not copied into the archived bundle. | Regression-coverage hardening only; current code path appears aligned. | 1 | advisory |
+
+VERDICT: 2 issues open

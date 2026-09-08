@@ -1,0 +1,207 @@
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f5481-d8ba-7652-b746-642e38e21082
+--------
+user
+P8 round 2 for resolver-trust. Both rows fixed: RTIMPL-1 — validateChangeName checks the date-looking shape FIRST (2026-07-10T1200-x -> kind date-prefixed), and RS-03 now asserts the kind wording on all four surfaces (gate/status/archive both forms; status's date message now carries 'date-prefixed'). RTIMPL-2 — RS-05 adds the escape case: a real file reached through a parent directory symlinked outside the bundle asserts {kind:'escape'}. Suite 247/247 green. Re-read validateChangeName, the RS-03 assertions, and the RS-05 escape addition. End with LEDGER DELTA then exactly one verdict line.
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-12T05:01:40.327414Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-12T05:01:40.480017Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-12T05:01:40.858581Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-12T05:01:41.503399Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-12T05:01:42.479445Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-12T05:01:43.607397Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-12T05:01:46.973388Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: PC8tzxy7ROyv
+codex
+我会复核 `validateChangeName` 的分类顺序，以及 RS-03/RS-05 的断言是否确实绑定了四个表面和 `escape` kind。
+exec
+/usr/bin/zsh -lc "node -e \"const r=require('./lib/resolve'); for (const n of ['2026-07-late','2026-07-10T1200-x','archive','Add']) console.log(n, JSON.stringify(r.validateChangeName(n)));\"" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "nl -ba lib/resolve.js | sed -n '1,45p;128,158p'" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "nl -ba apriori/changes/resolver-trust/review/issues.md | sed -n '15,24p'" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "nl -ba test/resolve.test.js | sed -n '88,150p'" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 141ms:
+     1	'use strict';
+     2	/*
+     3	 * Shared change-resolution helpers — one home so gate, status, and archive-merge
+     4	 * can all use them without a require cycle (this module requires no lib sibling).
+     5	 */
+     6	const fs = require('fs');
+     7	const path = require('path');
+     8	
+     9	const CHANGE_NAME_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;   // bare kebab-case — same rule as `apriori new`
+    10	const RESERVED_NAMES = new Set(['archive']);
+    11	
+    12	// single source of name truth (resolver-trust): shape, date-prefix, reserved — callers
+    13	// keep their own per-kind messages (machine kind, human wording stays theirs)
+    14	function validateChangeName(name) {
+    15	  if (name && /^\d{4}-\d{2}/.test(name)) return { ok: false, kind: 'date-prefixed' };  // date-looking FIRST — `2026-07-10T1200-x` is date-prefixed, not merely mis-shaped
+    16	  if (!name || !CHANGE_NAME_RE.test(name)) return { ok: false, kind: 'invalid-shape' };
+    17	  if (RESERVED_NAMES.has(name)) return { ok: false, kind: 'reserved' };
+    18	  return { ok: true };
+    19	}
+    20	
+    21	// archived stamp semantics: Gregorian round-trip (leap days legal, 2/31 illegal) + clock ranges
+    22	function stampValid(stamp) {
+    23	  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2})(\d{2})$/.exec(stamp);
+    24	  if (!m) return false;
+    25	  const [y, mo, d, h, mi] = m.slice(1).map(Number);
+    26	  if (h > 23 || mi > 59) return false;
+    27	  const dt = new Date(Date.UTC(y, mo - 1, d));
+    28	  return dt.getUTCFullYear() === y && dt.getUTCMonth() === mo - 1 && dt.getUTCDate() === d;
+    29	}
+    30	
+    31	// a trust root must be a real directory reachable without links
+    32	function rootDefect(p, label) {
+    33	  let st;
+    34	  try { st = fs.lstatSync(p); } catch { return null; }      // absent roots are handled by callers
+    35	  if (st.isSymbolicLink()) return `${label} is a symlink: ${p}`;
+    36	  if (!st.isDirectory()) return `${label} is not a directory: ${p}`;
+    37	  return null;
+    38	}
+    39	
+    40	// realpath containment (own copy — importing archive-merge's would create a cycle)
+    41	function containsReal(root, target) {
+    42	  let realRoot;
+    43	  try { realRoot = fs.realpathSync(root); } catch { return false; }
+    44	  let real;
+    45	  try { real = fs.realpathSync(target); } catch { return false; }
+   128	// file-level read guard: a path the tool is about to read must be a REGULAR file
+   129	// contained (realpath) within its bundle. Returns null (safe) or a STRUCTURED defect
+   130	// { kind: 'missing'|'symlink'|'not-file'|'bad-ancestor'|'escape', path } — consumers
+   131	// switch on kind, never on message prefixes (resolver-trust). A missing leaf walks
+   132	// its ancestors up to the bundle root: a symlinked/non-directory ancestor is a
+   133	// bad-ancestor defect; only a cleanly-absent chain is 'missing'.
+   134	function fileReadDefect(bundleDir, p) {
+   135	  let st;
+   136	  try { st = fs.lstatSync(p); } catch {
+   137	    let cur = path.dirname(p);
+   138	    const stop = path.resolve(bundleDir);
+   139	    while (cur.startsWith(stop)) {
+   140	      let ast = null;
+   141	      try { ast = fs.lstatSync(cur); } catch { /* keep walking */ }
+   142	      if (ast) {
+   143	        if (ast.isSymbolicLink() || !ast.isDirectory()) return { kind: 'bad-ancestor', path: cur };
+   144	        break;                                             // nearest existing ancestor is a clean dir
+   145	      }
+   146	      if (cur === stop) break;
+   147	      cur = path.dirname(cur);
+   148	    }
+   149	    return { kind: 'missing', path: p };
+   150	  }
+   151	  if (st.isSymbolicLink()) return { kind: 'symlink', path: p };
+   152	  if (!st.isFile()) return { kind: 'not-file', path: p };
+   153	  if (!containsReal(bundleDir, p)) return { kind: 'escape', path: p };
+   154	  if (!containsReal(bundleDir, p)) return { kind: 'escape', path: p };
+   155	  return null;
+   156	}
+   157	
+   158	module.exports = { CHANGE_NAME_RE, containsReal, resolveChange, configCas, configCasProblem, legacyRoots, fileReadDefect, validateChangeName, stampValid };
+
+ succeeded in 171ms:
+    15	| RTSPEC-1 | doctor delta header 改 22 但 DR-12 场景仍 18。 | store 自相矛盾。 | STEP2·r1 | verified |
+    16	| RTSPEC-2 | changes 根自身与匹配 archived 候选 symlink 无场景。 | 只修一半信任根。 | STEP2·r1 | verified |
+    17	| RTSPEC-3 | RS-03 未列单文件 archive 形式与 date-prefixed 各表面。 | 单文件面漏拒。 | STEP2·r1 | verified |
+    18	| RTSPEC-4 | ST-09 只钉 archived 身份错配,active 未钉。 | active 面漏检。 | STEP2·r1 | verified |
+    19	| RTSPEC-5 | MIGRATING 旧表句无场景绑定。 | 文档漂移修复遗漏。 | STEP2·r1 | verified |
+    20	| RTIMPL-1 | validateChangeName 先 shape 后 date-prefix,日期名被判 invalid-shape;四表面测试未断言 kind。 | 日期语义非单一来源。 | STEP5·r1 | open |
+    21	| RTIMPL-2 | RS-05 测试缺 escape kind 用例。 | escape 语义未被绑定。 | STEP5·r1 | open |
+
+ succeeded in 187ms:
+2026-07-late {"ok":false,"kind":"date-prefixed"}
+2026-07-10T1200-x {"ok":false,"kind":"date-prefixed"}
+archive {"ok":false,"kind":"reserved"}
+Add {"ok":false,"kind":"invalid-shape"}
+
+ succeeded in 181ms:
+    88	});
+    89	
+    90	test('RS-03 the reserved name and date-prefixed names are rejected on every surface', () => {
+    91	  const root = mk({
+    92	    'apriori/specs/kv/spec.md': STORE,
+    93	    'apriori/changes/archive/flow-state.md': FLOW('archive'),
+    94	    'apriori/changes/archive/tasks.md': '- [x] T1\n',
+    95	    'apriori/changes/archive/review/issues.md': LEDGER,
+    96	    'apriori/changes/archive/specs/kv/spec.md': '## ADDED Requirements\n\n### Requirement: B\n\n#### Scenario: XB-01 b\n- t\n',
+    97	    'store.md': STORE, 'delta.md': '## ADDED Requirements\n\n### Requirement: B\n\n#### Scenario: XB-01 b\n- t\n',
+    98	  });
+    99	  for (const [name, kindRe] of [['archive', /reserved/], ['2026-07-10T1200-x', /date.?prefix/i]]) {
+   100	    const g = run(['gate', '--change', name, '--test-cmd', 'node -e "console.log(1)"'], root);
+   101	    assert.strictEqual(g.status, 2, `gate ${name}`);
+   102	    assert.match(g.stdout + g.stderr, kindRe, `gate ${name} names the kind`);
+   103	    const s = run(['status', '--change', name], root);
+   104	    assert.strictEqual(s.status, 2, `status ${name}`);
+   105	    assert.match(s.stdout + s.stderr, kindRe, `status ${name} names the kind`);
+   106	    const a1 = run(['archive', '--change', name, '--write'], root);
+   107	    assert.notStrictEqual(a1.status, 0, `archive ${name}`);
+   108	    assert.match(a1.stdout + a1.stderr, kindRe, `archive ${name} names the kind`);
+   109	    const a2 = run(['archive', '--store', 'store.md', '--delta', 'delta.md', '--change', name, '--write'], root);
+   110	    assert.notStrictEqual(a2.status, 0, `archive single ${name}`);
+   111	    assert.match(a2.stdout + a2.stderr, kindRe, `archive single ${name} names the kind`);
+   112	  }
+   113	});
+   114	
+   115	test('RS-04 pseudo-timestamps neither sort nor resolve', () => {
+   116	  const root = mk({ 'apriori/specs/kv/spec.md': STORE });
+   117	  archivedBundle(root, '2026-07-10T1200', 'c');
+   118	  archivedBundle(root, '9999-99-99T9999', 'c');
+   119	  const r = run(['status', '--change', 'c'], root);
+   120	  assert.strictEqual(r.status, 2, r.stdout + r.stderr);
+   121	  assert.match(r.stderr, /9999/);
+   122	  const root2 = mk({ 'apriori/specs/kv/spec.md': STORE });
+   123	  archivedBundle(root2, '2026-02-31T1200', 'c');
+   124	  assert.strictEqual(run(['status', '--change', 'c'], root2).status, 2);
+   125	  // leap day is legal
+   126	  const root3 = mk({ 'apriori/specs/kv/spec.md': STORE });
+   127	  archivedBundle(root3, '2024-02-29T1200', 'c');
+   128	  assert.strictEqual(run(['status', '--change', 'c'], root3).status, 0);
+   129	});
+   130	
+   131	test('RS-05 read defects speak kinds, not string prefixes', () => {
+   132	  const root = mk({ 'bundle/flow-state.md': 'x', 'outside.md': 'y' });
+   133	  const bundle = path.join(root, 'bundle');
+   134	  assert.strictEqual(resolve.fileReadDefect(bundle, path.join(bundle, 'flow-state.md')), null);
+   135	  assert.strictEqual(resolve.fileReadDefect(bundle, path.join(bundle, 'missing.md')).kind, 'missing');
+   136	  if (canSymlink) {
+   137	    fs.symlinkSync(path.join(root, 'outside.md'), path.join(bundle, 'linked.md'));
+   138	    assert.strictEqual(resolve.fileReadDefect(bundle, path.join(bundle, 'linked.md')).kind, 'symlink');
+   139	    fs.symlinkSync(path.join(root, 'nowhere'), path.join(bundle, 'gone'));
+   140	    const d = resolve.fileReadDefect(bundle, path.join(bundle, 'gone', 'issues.md'));
+   141	    assert.strictEqual(d.kind, 'bad-ancestor');
+   142	    assert.ok(d.path, 'defect carries the offending path');
+   143	    // escaping target: a real file reached through a parent symlinked OUTSIDE the bundle (RTIMPL-2)
+   144	    fs.mkdirSync(path.join(root, 'outdir'), { recursive: true });
+   145	    fs.writeFileSync(path.join(root, 'outdir', 'file.md'), 'x');
+   146	    fs.symlinkSync(path.join(root, 'outdir'), path.join(bundle, 'sub'), 'dir');
+   147	    const e = resolve.fileReadDefect(bundle, path.join(bundle, 'sub', 'file.md'));
+   148	    assert.strictEqual(e.kind, 'escape', JSON.stringify(e));
+   149	  }
+   150	});
+
+codex
+**LEDGER DELTA**
+
+无新增 rows。RTIMPL-1 已修：`validateChangeName` 先判 date-looking，`2026-07-10T1200-x` 现在返回 `date-prefixed`，RS-03 也在 gate/status/archive 两种形式上断言 kind 文案。RTIMPL-2 已修：RS-05 增加 parent symlink 指向 bundle 外真实文件的 escape 用例，并断言 `{kind:'escape'}`。
+
+VERDICT: no spec-vs-code gaps
+tokens used
+390,601
+**LEDGER DELTA**
+
+无新增 rows。RTIMPL-1 已修：`validateChangeName` 先判 date-looking，`2026-07-10T1200-x` 现在返回 `date-prefixed`，RS-03 也在 gate/status/archive 两种形式上断言 kind 文案。RTIMPL-2 已修：RS-05 增加 parent symlink 指向 bundle 外真实文件的 escape 用例，并断言 `{kind:'escape'}`。
+
+VERDICT: no spec-vs-code gaps

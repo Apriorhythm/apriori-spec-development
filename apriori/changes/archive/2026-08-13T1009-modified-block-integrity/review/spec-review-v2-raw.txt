@@ -1,0 +1,811 @@
+<!-- provenance: provider=openai model=gpt-5.6-sol session=019ff7db-6a88-74c1-8d2c-4daa017c81c5 date=2026-08-13 -->
+OpenAI Codex v0.147.0
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.6-sol
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019ff7db-6a88-74c1-8d2c-4daa017c81c5
+--------
+user
+Round 2 (P6 revision landed; spec/design only). All five round-1 findings addressed:
+* SPEC-1: a trim-equal FAST PATH short-circuits before any structure scan or id extraction (archive needs no matcher then); the stamped-rerun repaired path still contributes its equal-text pair — one entry per MODIFIED always; an all-empty result renders NOTHING (no blank line).
+* SPEC-2: 'before write' is ruled an OUTPUT-ORDER guarantee (archive output stays buffered as in state A; physical I/O timing not promised); the report is computed and pushed after ALL preflight guards including pre-existing temp and --changes-dir containment; every failure path prints no section (AM-46 extended).
+* SPEC-3: module-level capture oracles pinned: rename-then-modify oldBlock deep-equals the complete pre-rename block (captured before the key swap), repaired reruns contribute pairs, tests assert buildProjection().modifiedBlocks raw text; SR-66 covers the repaired path.
+* SPEC-4: the seam is pinned — archiveMerge.cli(argv, deps) and archiveChange({..., idMatcherFactory}), factory (cwd)=>matcher|{error}, lazy, MISSING factory degrades exactly like an error (warning+skip); bin composes resolveIdPattern from lib/config with makeIdMatcher from spec-runner; archive-merge gains no dependency.
+* SPEC-5: safe human rendering — every externally-sourced field replaces C0/DEL with the middle dot BEFORE the 120-unit truncation; JSON keeps raw text; ESC-injection oracles required.
+Re-review with the P5 checklist. Ledger delta: fixed -> verified where genuinely closed; reopen with reason; new rows for new formal findings; advisories separately.
+Read-only sandbox: PRINT the review doc body (landed at apriori/changes/modified-block-integrity/review/spec-review-v2.md), Simplified Chinese, machine tokens English. End with the ledger delta and exactly one verdict line: 'VERDICT: no major issues, ready to proceed to execution' or 'VERDICT: <N> issues open'.
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+codex
+我会复核落地后的 spec/design 与五项修订，重点查修订是否在所有消费面、错误路径和 State A 深 oracle 中一致，并仅保留会引发返工或事故的正式问题。
+exec
+/usr/bin/zsh -lc "sed -n '1,240p' apriori/changes/modified-block-integrity/specs/archive-merge/spec.md; sed -n '1,220p' apriori/changes/modified-block-integrity/specs/spec-runner/spec.md; sed -n '1,260p' apriori/changes/modified-block-integrity/design.md; sed -n '1,220p' apriori/changes/modified-block-integrity/proposal.md; sed -n '1,220p' apriori/changes/modified-block-integrity/tasks.md; sed -n '1,180p' apriori/changes/modified-block-integrity/review/issues.md; test -f apriori/changes/modified-block-integrity/review/spec-review-v1.md && sed -n '1,260p' apriori/changes/modified-block-integrity/review/spec-review-v1.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 165ms:
+<!-- apriori-base: sha256:0837f078810c100e318d08354f679afa9da7ccc77ad505f0fd78db37e6af0ce2 -->
+
+## ADDED Requirements
+
+### Requirement: the modified-block integrity engine reports replacement fidelity
+A pure shared helper SHALL compare a MODIFIED operation's old store block against its replacement (both captured at the projection's own parse snapshot — `buildProjection` additionally returns the raw old/new block text pairs per MODIFIED operation; no consumer re-reads files) and report structural fidelity, WITHOUT changing any verdict, exit code or write semantics. Structure scan: the requirement heading line never participates; requirement prose runs from the line after the heading to the first VALID scenario heading (state A's actual regex `/^####\s+Scenario:\s+(.*)$/m`, fence-aware exactly like `stripFences` — only lines inside CLOSED triple-backtick pairs are not delimiters; an unclosed opener is ordinary text and later headings still split); fence delimiter lines and fenced non-empty lines are compared as body lines. Pairing runs per key (scenario ID when present, normalized full title otherwise) through one cardinality truth table — o=0,n=1 added; o=1,n=0 dropped; o=1,n=1 paired (same normalized title → retained, different → titleChanged, mutually exclusive, both body-compared); any side >1 → ambiguous (side old/new/both with counts; the key skips every other class and body comparison). Line comparison is ONE algorithm: order-preserving greedy subsequence over normalized non-empty lines (CRLF/CR→LF, trailing whitespace stripped, leading whitespace stripped; duplicates consumed by count); unmatched OLD lines are `missingLines` (requirement prose misses carry scenario=null; only old-content loss is reported). An idempotent replacement takes a FAST PATH — `oldBlock.trim() === newBlock.trim()` short-circuits before any structure scan or id extraction — yielding an entry whose diff arrays are all empty (the stamped-rerun repair path included: a repaired module still contributes its equal-text pair, one entry per MODIFIED operation always). Capture points are module-level testable: `buildProjection().modifiedBlocks` carries raw text pairs — for rename-then-modify the oldBlock deep-equals the COMPLETE pre-rename block (captured before the rename key swap) and the newBlock deep-equals the delta block. The human formatter renders SAFELY: every externally-sourced field (titles, lines, requirement names, file suffixes, ambiguous keys) has C0/DEL control characters replaced with `·` BEFORE the 120-unit truncation (JSON keeps full raw text; JSON.stringify escapes there); an all-empty result renders as NOTHING (no blank line).
+
+#### Scenario: AM-43 the cardinality truth table classifies every occurrence
+- WHEN an old block carries KV-01/KV-02/KV-03 and the replacement carries KV-01 (same title), KV-03 (changed title), KV-04 — and separately each of the eight o/n cardinality rows is exercised (including a duplicated KV-05 on one side and no-ID title keys)
+- THEN retained=[KV-01], titleChanged=[KV-03 with old/new titles], dropped=[KV-02], added=[KV-04]; each truth-table row lands in its one class; ambiguous entries carry {key, side, oldCount, newCount} and skip every other class; ambiguous ordering is old-present keys by old first occurrence, then new-only keys by new first occurrence
+
+#### Scenario: AM-44 the subsequence comparison reports lost lines faithfully
+- WHEN a retained scenario's replacement drops one AND clause, reorders two lines, repeats a line fewer times, differs only in indentation/trailing whitespace on another, and the requirement prose loses a sentence
+- THEN missingLines lists the dropped AND clause, the reordered-out line and the under-repeated line (by count) with full original text, the whitespace-only difference is NOT reported, and the prose loss carries scenario=null
+
+#### Scenario: AM-45 structure boundaries follow state A exactly
+- WHEN a rename-then-modify replacement preserves prose and scenarios verbatim under the new requirement name, a CLOSED fence contains a scenario-looking heading, an UNCLOSED fence precedes a real scenario heading, and a heading uses multiple spaces after `####`
+- THEN the rename case reports zero missingLines (the heading line is never compared); the fenced fake heading does not split a scenario and its lines are body-compared; the heading after the unclosed opener still splits (stripFences strips only closed pairs); the multi-space heading is a valid delimiter
+
+#### Scenario: AM-46 archive prints the integrity section without changing its semantics
+- WHEN `apriori archive --change <name>` (the high-level form only; the single-file form is out of scope) passes preflight with a MODIFIED delta whose replacement drops a scenario — on dry-run and on `--write`
+- THEN the same human integrity section appears in the output BEFORE the write-result lines (an output-order guarantee — archive's output stays buffered as in state A; physical I/O timing is not promised), the RESULT line, exit code and written bytes are identical to a run without the report, and ANY preflight failure — malformed, CAS, conflict, denial, a pre-existing temp file, an escaping --changes-dir destination — prints NO integrity section
+
+#### Scenario: AM-47 the archive id-pattern channel is resolved, terminable and degradable
+- WHEN archive runs with a custom config `id-pattern` row recognizing letter-suffixed IDs; with no row (default); with an uncompilable row; and with an injected matcher failure
+- THEN the first two produce correct reports through the injected terminable matcher — the pinned seam: `archiveMerge.cli(argv, deps)` and `archiveChange({..., idMatcherFactory})` accept an optional factory `(cwd) => matcher | {error}`; bin builds it lazily from `lib/config`'s resolveIdPattern plus spec-runner's makeIdMatcher; a MISSING factory degrades exactly like a factory error (warning + skip); archive-merge itself never requires spec-runner; the last two print exactly one stderr warning — the WHOLE line `warning: modified-integrity <reason>` passed through sanitizeMsg (control chars replaced with `·`, ≤200 UTF-16 units) — skip the report, and leave every other archive output and exit unchanged
+<!-- apriori-base: sha256:f75919a09d26448173fbfea73e34dddeb051c4d7a7382ae270471840d6efb8e8 -->
+
+## ADDED Requirements
+
+### Requirement: verify --change carries the modified-block integrity report
+On a trustworthy `--change` run, `verify` SHALL attach the integrity engine's report for every MODIFIED operation (rename-then-modify targets included, keyed by the post-rename name with the pre-rename block as baseline). The old blocks' scenario titles ride the EXISTING single title batch as a fourth tag class that never enters binding accumulation, scenario counts or the change scope — the two-batch matcher contract stands. JSON: `modifiedIntegrity` is ALWAYS present on GREEN/GAPS (one entry per MODIFIED operation, empty-diff entries included; `file` = store-relative suffix; element shapes, value choices and orderings per the engine's contract; missingLines carry full untruncated text) and ABSENT on every ERROR class and on every `--specs` run (byte goldens continue to prove the latter). Human: a `— MODIFIED INTEGRITY —` section prints an entry when any of dropped/missingLines/ambiguous/titleChanged is non-empty (`!` prefix on dropped/missingLines/ambiguous lines; a plain one-line note per titleChanged; counts only for retained/added), stays entirely silent when every entry's four classes are empty, and truncates lines the state-A way (`slice(0,119)+'…'`). The report never changes the verdict or the exit code.
+
+#### Scenario: SR-65 the report rides the run without touching the verdict
+- WHEN a `--change` run's MODIFIED replacement drops KV-02 and loses one AND line, while every scoped scenario is bound green (TAP covering the replacement's scenarios, exit 0)
+- THEN the run is still GREEN exit 0; `modifiedIntegrity` carries dropped=[KV-02] and the missing line with full text; the human section prints them with `!`; and removing one scoped test flips the same run to GAPS exit 1 with the identical report attached
+
+#### Scenario: SR-66 presence follows the outcome class
+- WHEN `--change --json` runs end GREEN, GAPS, pre-test ERROR and post-TAP ERROR, and a `--specs --json` run executes
+- THEN GREEN/GAPS carry `modifiedIntegrity` (an ADDED-only delta yields `[]`; an idempotent MODIFIED — the trim-equal path AND the stamped-rerun repaired path alike — yields its empty-diff entry); both ERROR classes and the `--specs` run omit the field entirely (absent, never null)
+
+#### Scenario: SR-67 the old-block titles join the one batch and bind nothing
+- WHEN a config-origin `--change` run with a MODIFIED delta executes with a counting child seam
+- THEN the matcher child still runs EXACTLY twice, the first payload contains the OLD block's titles alongside the projection and sibling titles, and the old titles appear in no binding class, no scenario count, no change scope and no store report
+
+#### Scenario: SR-68 the frozen live-specimen fixture reports exactly as hand-derived
+- WHEN the engine runs over the frozen copy of the verify-change-scope change's real MODIFIED block (the nine-scenario `projected verify` requirement) against its frozen old store block
+- THEN the report deep-equals the hand-derived expectation: retained = the seven untouched scenarios, titleChanged = SR-16 and SR-18 (with their old/new titles), dropped=[], added=[], ambiguous=[], and missingLines exactly as hand-listed from the two rewritten scenario bodies
+# design — modified-block-integrity
+
+## G1 引擎（lib/archive-merge.js，纯共享 helper——r2 advisory 约束）
+
+- `buildProjection` 增量返回 `modifiedBlocks: Map<suffix, [{name, oldBlock, newBlock}]>`——在其 merge 处捕获（MODIFIED 命中 store 时 old=store.get(name) 替换前文本、new=delta 块；rename-then-modify：old=改名前 A 块文本（RENAMED 步骤替换 key 前捕获）、name=G；idempotent unchanged 路径同样捕获（等文本对））。单快照纪律：一切文本来自 buildProjection 已读内容。
+- `compareModifiedBlock(oldBlock, newBlock, idOf)`：`idOf(title) → id|null` 由调用方注入（引擎零 matcher/零 fs）。**快路径（SPEC-1）**：`oldBlock.trim()===newBlock.trim()` → 直接返回全空 diff（不扫结构、不调 idOf——archive 面此时无需 matcher）。内部：
+  1. `scanBlockStructure(text)`：剥标题行；按 state-A 正则 + 闭合 fence 对感知切出 [prose, ...scenarios{title, bodyLines}]；未闭合开栏行按普通文本。
+  2. 基数真值表分类（键 = idOf(title) ?? normalizedTitle；先各侧计数）。
+  3. 保序贪心子序列（normalize：CRLF/CR→LF、去行尾空白、剥行首空白、跳过空行；Map<line, 消费队列> 实现按序消费）。
+  4. 返回 `{retained, titleChanged, dropped, added, ambiguous, missingLines}`（排序按 req B4：旧块序/新块序/ambiguous 两段式）。
+- 导出 `compareModifiedBlock` 与 `formatIntegrityHuman(entries)`（human 段渲染共用；显著性规则在此实现）。**安全渲染（SPEC-5）**：一切外部来源字段先 C0/DEL→`·` 再 119+… 截断；全空结果返回空串且调用方不 push（无空行）。**捕获点模块级 oracle（SPEC-3）**：rename-then-modify 的 oldBlock deep-equal 改名前完整 A 块（在 RENAMED key swap 前捕获）；stamped-rerun repaired 路径同样产出等文本对；测试直接断言 buildProjection().modifiedBlocks 原文。
+
+## G2 verify 面（lib/spec-runner.js）
+
+- collectChangePairs 时从 `b.deltaOps` 已知哪些 suffix 有 MODIFIED；`b.modifiedBlocks`（buildChangeProjection 透传）供旧块——旧块场景标题作为第 4 类 pairs（`kind:'integrity'`）并入同一标题批：makeThenBind 扩展为接受分段（binding pairs / sibling titles / integrity titles），返回各段 ids；binding acc 只由第一段构成（scenarioCount/changeScope/storeReport 不受染——change 2 的全量 deep oracle 是护栏）。
+- applyChangeScope 后（GREEN/GAPS 路径）：以批回的 old-title→id 查表构造 `idOf`，逐 MODIFIED 调引擎 → `run.modifiedIntegrity`；ERROR 路径与 --specs 恒不赋值（Object.hasOwn 护栏沿用）。
+- verifyJson：`if (run.modifiedIntegrity) json.modifiedIntegrity = run.modifiedIntegrity`（GREEN/GAPS 恒在——含 []）。formatReport：`extras.modifiedIntegrity` → `formatIntegrityHuman`。
+- 新块标题已在投影批内（scoped pairs）——其 id 同表可查；无需额外批。
+
+## G3 archive 面（lib/archive-merge.js cli + bin/apriori.js）
+
+- **接口钉死（SPEC-4）**：`archiveMerge.cli(argv, deps = {})` 与 `archiveChange({ ..., idMatcherFactory })`；factory 形状 `(cwd) => matcher|{error}`，惰性构造；**缺席与出错同路**（warning+skip）。bin 组装：`resolveIdPattern` 来自 `lib/config`（其导出处），`makeIdMatcher` 来自 spec-runner；archive-merge 模块自身零新依赖。programmatic 调用不带 factory 时同样走降级路（module 级行为有测试）。
+- **插入点（SPEC-2 终裁）**："写前打印"是**输出文本顺序**保证（archive 输出保持 state A 的整体缓冲；不承诺物理 I/O 时序）。报告计算与 push 位于**全部** preflight 守卫之后——含 `preflightFailures` 检查、`--write` 分支的 pre-existing temp 与 destination containment 检查（dry-run 在 preflightFailures 后即为全部）——任何失败路径零报告。位置：per-module 列表之后、写循环/RESULT 之前：对 `p.modifiedBlocks` 全部条目——工厂缺席/解析失败/matcher.batch failure → stderr 一行 `sanitizeMsg('warning: modified-integrity ' + reason)` 后跳过；成功 → 一次 batch（旧+新块全部标题）→ idOf → 引擎 → `out.push(formatIntegrityHuman(...))`。RESULT 行、exit、写入字节零变化。
+- 注入失败的 reason 类：`id-pattern resolution failed: …` / `matcher failure: …`。
+
+## G4 文档
+
+- docs/cli.md/cli_cn.md：verify 节（modifiedIntegrity 字段+human 段）、archive 节（integrity 段+warning 降级）；RUNBOOK.md/RUNBOOK_cn.md 在"MODIFIED 整块替换"警告句旁加一句"（`verify --change`/`archive` 会打印机械保真报告——丢失的场景与子句逐条列出）"；CHANGELOG 条目。
+
+## 测试布局
+
+- `test/modified-integrity.test.js`（新）：AM-43..47 + SR-65..68。引擎单测直接 require；verify 面走 CLI/模块混合；archive 面 CLI（bin 注入路径）+ 注入失败用 seam。
+- AC7 fixture：`test/fixtures/modified-integrity/`（old-block.md、new-block.md——冻结复制自 change 2 的真实材料）；期望值**人工推导**写死。
+- human golden：一个含全类的 --change 文本输出快照断言（段内）。
+- 基数真值表八行表驱动。
+# proposal — modified-block-integrity
+
+**WHY**：RUNBOOK 明警"MODIFIED 整块替换会静默删除未重述内容"，但保真性今天全靠 LLM 评审注意力（复盘 P0-3：一次替换靠评审员逐行子序列比对才确认 11/13 行未丢——防线表唯一 ⚠ 项"建议做进 CLI"）。本批 change 2 自己就重述过一个 9 场景块。确定性问题不该交给注意力。
+
+**WHAT**：
+1. 纯共享引擎 `compareModifiedBlock`（archive-merge 内，零 matcher 依赖）：结构扫描（fence 感知、state-A 正则、requirement 标题行不比较）→ occurrence 级基数真值表分类（retained/titleChanged/dropped/added/ambiguous）→ 保序贪心子序列行比较（missingLines，含 requirement 散文与 fence 内容）。
+2. `verify --change`：报告并入输出（JSON `modifiedIntegrity` GREEN/GAPS 恒在 + human 显著性段）；旧块标题搭乘既有单一标题批（零新增 matcher 调用）；一切 ERROR 类无报告。
+3. `archive --change`（high-level form 专属）：dry-run 与 --write preflight 打印同一 human 段；matcher 经 bin 层注入（config>default，可终止通道）；失败降级为整行 sanitizeMsg warning + 跳过报告，archive 语义分毫不动。
+4. **informative 定位**：不改任何 verdict/exit/写入语义——机械检查无法区分"有意删"与"手滑丢"，它的职责是把差异摆上台面给人与 P8 评审。
+5. docs/cli + RUNBOOK 双语、CHANGELOG。
+
+**OUT OF SCOPE**：single-file archive form；archive --json；确认/override flag；跨块移动检测；自动补回；三个 change 之外的一切语义。
+
+**验收锚点**：req-final AC1–AC10；AC7 活教材冻结 fixture（change 2 的 9 场景重述，人工推导期望值）。
+# tasks — modified-block-integrity（STEP5 按序执行）
+
+- [ ] T1 冻结 fixture：change 2 的 MODIFIED 块与 store 原块复制入 test/fixtures/modified-integrity/；人工推导 AC7 期望清单（先于任何实现）
+- [ ] T2 红测试：AM-43..AM-45（引擎：真值表八行表驱动、子序列各例、结构边界四例）+ SR-68（fixture 期望）
+- [ ] T3 实现引擎：buildProjection 增 modifiedBlocks、compareModifiedBlock、formatIntegrityHuman；AM-43..45 + SR-68 绿
+- [ ] T4 红测试：SR-65..SR-67（verify 面：verdict 不动、存在性矩阵、单批第 4 类 tag 零污染）
+- [ ] T5 实现 verify 面：pairs 第 4 类、idOf 查表、run.modifiedIntegrity、json/human；SR 全绿 + change 2 全量 oracle 仍绿
+- [ ] T6 红测试：AM-46..AM-47（archive 面五路径 + warning 全串 oracle + 字节不变）
+- [ ] T7 实现 archive 面：archiveChange 可选注入、bin 组装、warning 降级；AM 全绿
+- [ ] T8 docs/cli 双语 + RUNBOOK 双语一句 + CHANGELOG；check --self 绿
+- [ ] T9 全量 npm test 绿（基线 306+新增）；--specs byte golden 复核
+- [ ] T10 ~/terra 新 lab 端到端（真实 CLI 三面演示：verify 报告、archive dry-run 报告、warning 降级）
+- [ ] T11 样本证据 → review/sample-evidence.md（副本 batch3 的 MODIFIED delta 实跑报告 + identity）
+- [ ] T12 `apriori verify --change modified-block-integrity --test-cmd "node scripts/run-tests.mjs --test-reporter=tap"` GREEN
+# Issue ledger — modified-block-integrity
+
+<!-- recorded on behalf of the reviewer (codex read-only sandbox), R2 transcription rule; raws: review/*-raw.txt -->
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| REQ-1 | subsequence 与 unordered preservation 冲突，line normalization/scope 未闭合（维度 1, 2, 4） | med | STEP0·r1 | verified |
+| REQ-2 | scenario identity、titleChanged、duplicate ID、无 ID occurrence 语义未定义（维度 1, 2, 4） | med | STEP0·r1 | verified |
+| REQ-3 | JSON/human schema、排序、截断及 identical entry 存在性不确定（维度 1, 4） | med | STEP0·r1 | verified |
+| REQ-4 | effective id-pattern failure policy 未定义，并可能破坏 state A matcher 调用纪律（维度 2, 3, 5） | med | STEP0·r1 | verified |
+| REQ-5 | archive high-level 与 single-file form 的覆盖范围不明（维度 1, 2, 5） | med | STEP0·r1 | verified |
+| REQ-6 | archive ERROR/preflight failure 的 report 存在性矩阵缺失（维度 2, 4） | med | STEP0·r1 | verified |
+| REQ-7 | AC7 的“missingLines 若干如实”不是确定 oracle，fixture 也未固定（维度 4） | med | STEP0·r1 | verified |
+| REQ-8 | target lineage 未包含两个未归档先行 change，不符合实际 state A（维度 5, 6） | med | STEP0·r1 | verified |
+| REQ-9 | Q2 confirmation flag 未裁定且与既定 informative/write semantics 冲突（维度 1, 3, 5） | med | STEP0·r1 | verified |
+| REQ-10 | requirement/scenario body 结构边界未钉死（标题行入比较=rename 假阳性；fence 内伪标题切分）。 | med | STEP0·r2 | verified |
+| REQ-11 | AC4 无确定 verdict/exit oracle。 | med | STEP0·r2 | verified |
+| REQ-ADV-1 | Advisory batch acknowledged (4 items: 测试数量为本轮基线；AC7 期望人工推导；RUNBOOK 双语补句；analyzer 纯共享 helper——均已吸收)。 | — | STEP0·r2 | advisory-acked |
+| SPEC-1 | identical MODIFIED 的全空 entry 契约与无条件基数分类冲突。 | med | STEP2·r1 | fixed (v2) — trim-equal 快路径（先于结构扫描与 idOf；archive 此时零 matcher）；空结果零输出行 |
+| SPEC-2 | archive 缓冲输出无法满足真实写前打印，且设计插入点早于 temp/destination preflight guards。 | high | STEP2·r1 | fixed (v2) — "写前"终裁为输出文本顺序；报告位于全部守卫（含 temp/containment）之后；失败路径零报告入 AM-46 |
+| SPEC-3 | AM-45/SR-66 无法证明 rename 前 raw capture 与 repaired-rerun entry。 | med | STEP2·r1 | fixed (v2) — 捕获点模块级 oracle：rename 前 A 块 deep-equal、repaired rerun 等文本对、SR-66 补 repaired 路径 |
+| SPEC-4 | bin→cli→archiveChange 的 matcher DI 接口及 missing-factory 行为未定义，且所称 export 在 State A 不存在。 | med | STEP2·r1 | fixed (v2) — cli(argv,deps)/archiveChange({idMatcherFactory}) 钉死；缺席=出错同路降级；resolveIdPattern 取自 lib/config |
+| SPEC-5 | integrity human section 直接输出外部文本，缺少 control-character sanitization。 | high | STEP2·r1 | fixed (v2) — human 安全渲染（C0/DEL→· 先于截断）+ ESC 注入 oracle；JSON 保留原文 |
+# spec-review-v1 — modified-block-integrity
+
+## 正式问题
+
+### SPEC-1：idempotent MODIFIED 的 JSON 契约与引擎算法冲突
+
+`archive-merge/spec.md`、req-final B3/AC5 和 SR-66 要求 identical trimmed replacement 仍产生 entry，但其 diff arrays 全空。design G1 却无 identical fast path，直接执行基数分类；一个包含 `KV-01` 的相同块会自然得到 `retained=[KV-01]`，并非全空。
+
+这还影响 archive 是否需要调用 matcher，以及 literal `out.push(formatIntegrityHuman(...))` 在 formatter 返回空串时是否额外打印空行。
+
+**风险**
+
+实现者只能自行选择两套互斥行为，导致 AC5 deep oracle、SR-66、archive byte compatibility 返工。
+
+**建议**
+
+明确唯一规则。若维持“全空”，在结构扫描和 matcher 前增加：
+
+```text
+oldBlock.trim() === newBlock.trim()
+→ retained/titleChanged/dropped/added/ambiguous/missingLines 全为 []
+```
+
+同时断言 formatter 空结果不会向 archive stdout 增加空行。
+
+### SPEC-2：archive 既不能保证真实“写入前打印”，报告插入点也早于完整 preflight
+
+design G3 把 `out.push(formatIntegrityHuman(...))` 视作打印，但 State A 的 `archiveChange()` 只缓冲 `out[]`；`cli()` 在 `archiveChange()` 完成全部 stage/commit/move 后才执行 `console.log`。因此 `--write` 下报告实际在写入后才对外可见。
+
+此外，design 指定在 `preflightFailures` 为空后生成报告；当前代码随后才检查：
+
+- pre-existing `.tmp-archive`；
+- explicit `--changes-dir` destination containment。
+
+按设计直接实现，这两种 `FAILED PREFLIGHT` 仍会携带 integrity section，违反 B3 的“任一 preflight failure 无报告”。
+
+**风险**
+
+AM-46 的时序保证无法实现；失败运行可能展示一份看似可执行的报告。若用户依赖写前日志进行审计，store 已经提交后才看到报告。
+
+**建议**
+
+先裁定“before write”是实际 I/O 时序还是仅 stdout 文本顺序。若是实际时序，需要 streaming emitter 或 prepare/commit 分层，不能只向 `out[]` 入队。报告必须位于所有 temp/destination guards 之后、第一次 `writeFileSync` 之前。AM-46 增加：
+
+- pre-existing temp；
+- escaping archive destination；
+- emitter 回调中检查 store bytes 尚未变化；
+- stage/commit failure 后报告已先行发出的时序 oracle。
+
+### SPEC-3：测试无法证明两个关键 `modifiedBlocks` 捕获点
+
+design G1 正确要求 rename-then-modify 在 rename key swap 前捕获原始 A block，并覆盖 idempotent unchanged。但现有场景不能证明这些要求：
+
+- AM-45 只断言 `missingLines=[]`；由于 requirement heading 本来就不比较，在 rename 后捕获的 G block 也会通过。
+- SR-66 未指定 State A 的 stamped rerun repair 路径。该路径在 `buildProjection()` 的 `probe` 后直接 `continue`，最容易漏掉 `modifiedBlocks` entry。
+- 没有场景直接检查 `buildProjection.modifiedBlocks` 的 raw text。
+
+**风险**
+
+实现可通过全部报告级场景，却返回错误 baseline 或在 repaired rerun 中漏 entry，破坏“每个 MODIFIED 恰一条”和单快照契约。
+
+**建议**
+
+增加直接 module oracle：
+
+- `RENAMED A->G + MODIFIED G`：`name=G`，`oldBlock` deep-equal rename 前完整 A block，`newBlock` deep-equal delta block；
+- stamped base mismatch 且全部操作已应用：`repaired` 分支仍含一条等文本 pair，verify JSON 含全空 entry；
+- 普通 trim-equal unchanged 路径同样覆盖。
+
+### SPEC-4：bin-seam 没有可实现的唯一接口
+
+design G3 要求 bin 从 `spec-runner` 取得 `resolveIdPattern+makeIdMatcher` 并注入 archive，但 State A 中：
+
+- `spec-runner` 只导出 `makeIdMatcher`，不导出 `resolveIdPattern`；
+- `archive-merge.cli(argv)` 没有 dependency 参数；
+- `bin/apriori.js` 仅调用 `archiveMerge.cli(rest)`；
+- optional factory 缺席时的行为仅存在于 design，没有 SPEC/module API 契约。
+
+**风险**
+
+实现可能改成 `archive-merge` 反向 require `spec-runner`、提前解析 config、遗漏 high-level CLI 的注入，或使 programmatic `archiveChange()` 调用静默降级，破坏依赖方向和 AM-47。
+
+**建议**
+
+在 design/SPEC 钉死接口，例如：
+
+```js
+archiveMerge.cli(argv, { idMatcherFactory })
+archiveChange({ ..., idMatcherFactory })
+```
+
+bin 注入 lazy factory；`resolveIdPattern` 明确从 `lib/config` 导入或明确新增 `spec-runner` export。factory 只在完整 preflight 成功且存在 MODIFIED entries 时调用，并定义 missing factory 的 module-level 行为。
+
+### SPEC-5：新 human 输出允许 terminal/log control injection
+
+B4 只要求 human 行截断；`missingLines.line`、scenario title、requirement name、ambiguous title key、suffix 都可能来自 repository/change 输入，并将被直接插入 stdout。控制字符尤其是 ANSI `ESC`、换行型文件名等可伪造日志、改写终端显示或隐藏后续 `RESULT`。
+
+warning 已要求整行经过 `sanitizeMsg`，但主要 integrity section 没有同等保护。JSON 经 `JSON.stringify` 会转义控制字符，问题集中在 human path。
+
+**风险**
+
+恶意或损坏的 change/store 内容可污染 CI 日志和操作者终端；这是本 change 新增的外部输入输出通道。
+
+**建议**
+
+为 human formatter 定义统一的 safe rendering：所有外部字段先将 C0/DEL 控制字符替换为 `·`，再执行 120 UTF-16 unit 截断；JSON 继续保留完整原文。增加 title、body line、file suffix 分别携带 `ESC`/control character 的 exact oracle。
+
+## 外部共享状态
+
+没有新增持久化 shared state。archive store 的三个时刻仍为：首次 `--write` 创建、temp+rename 全量更新、无 cleanup；verify 仍为只读加 test child spawn。SPEC-2 涉及的是既有 store mutation 前后的输出时序，不是新的持久状态。
+
+## Advisories
+
+### ADV-1（P0）：State A 的两批 matcher 与 deep JSON 护栏可保持
+
+分段方案只要保证 binding accumulation 仅消费 projection pairs、sibling/integrity 各自按精确 slice 取回 IDs，就不会增加第三批。既有 SR-63 应继续断言总计恰好两批；SR-64 的 GREEN/GAPS full oracle需仅新增预期的 `modifiedIntegrity: []`，其余字段保持 deep-equal。
+
+### ADV-2（P0）：human golden 应由规范先给出完整语法
+
+当前 B4 规定了前缀、计数和截断，但没有给出 entry header、titleChanged、ambiguous、missingLines 的完整文本模板。建议先在 SPEC 固定模板，再制作 full-class golden，避免 golden 反向成为事实规范。
+
+## Ledger delta
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| SPEC-1 | identical MODIFIED 的全空 entry 契约与无条件基数分类冲突。 | med | STEP2·r1 | open |
+| SPEC-2 | archive 缓冲输出无法满足真实写前打印，且设计插入点早于 temp/destination preflight guards。 | high | STEP2·r1 | open |
+| SPEC-3 | AM-45/SR-66 无法证明 rename 前 raw capture 与 repaired-rerun entry。 | med | STEP2·r1 | open |
+| SPEC-4 | bin→cli→archiveChange 的 matcher DI 接口及 missing-factory 行为未定义，且所称 export 在 State A 不存在。 | med | STEP2·r1 | open |
+| SPEC-5 | integrity human section 直接输出外部文本，缺少 control-character sanitization。 | high | STEP2·r1 | open |
+
+VERDICT: 5 issues open
+
+codex
+五项修订在主路径上均已落到 SPEC 与 design；我正在做最后一轮对照，特别检查新加入的 missing-factory、fast-path 与安全渲染是否留下未定义的 exact behavior。
+exec
+/usr/bin/zsh -lc 'git diff -- apriori/changes/modified-block-integrity/specs/archive-merge/spec.md apriori/changes/modified-block-integrity/specs/spec-runner/spec.md apriori/changes/modified-block-integrity/design.md apriori/changes/modified-block-integrity/review/issues.md; rg -n "normalizedTitle|规范化全标题|missing factory|MISSING|idMatcherFactory|safe|C0|DEL|119|120|warning: modified-integrity|id-pattern resolution failed|matcher failure" apriori/changes/modified-block-integrity' in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 193ms:
+apriori/changes/modified-block-integrity/design.md:8:  2. 基数真值表分类（键 = idOf(title) ?? normalizedTitle；先各侧计数）。
+apriori/changes/modified-block-integrity/design.md:11:- 导出 `compareModifiedBlock` 与 `formatIntegrityHuman(entries)`（human 段渲染共用；显著性规则在此实现）。**安全渲染（SPEC-5）**：一切外部来源字段先 C0/DEL→`·` 再 119+… 截断；全空结果返回空串且调用方不 push（无空行）。**捕获点模块级 oracle（SPEC-3）**：rename-then-modify 的 oldBlock deep-equal 改名前完整 A 块（在 RENAMED key swap 前捕获）；stamped-rerun repaired 路径同样产出等文本对；测试直接断言 buildProjection().modifiedBlocks 原文。
+apriori/changes/modified-block-integrity/design.md:22:- **接口钉死（SPEC-4）**：`archiveMerge.cli(argv, deps = {})` 与 `archiveChange({ ..., idMatcherFactory })`；factory 形状 `(cwd) => matcher|{error}`，惰性构造；**缺席与出错同路**（warning+skip）。bin 组装：`resolveIdPattern` 来自 `lib/config`（其导出处），`makeIdMatcher` 来自 spec-runner；archive-merge 模块自身零新依赖。programmatic 调用不带 factory 时同样走降级路（module 级行为有测试）。
+apriori/changes/modified-block-integrity/design.md:23:- **插入点（SPEC-2 终裁）**："写前打印"是**输出文本顺序**保证（archive 输出保持 state A 的整体缓冲；不承诺物理 I/O 时序）。报告计算与 push 位于**全部** preflight 守卫之后——含 `preflightFailures` 检查、`--write` 分支的 pre-existing temp 与 destination containment 检查（dry-run 在 preflightFailures 后即为全部）——任何失败路径零报告。位置：per-module 列表之后、写循环/RESULT 之前：对 `p.modifiedBlocks` 全部条目——工厂缺席/解析失败/matcher.batch failure → stderr 一行 `sanitizeMsg('warning: modified-integrity ' + reason)` 后跳过；成功 → 一次 batch（旧+新块全部标题）→ idOf → 引擎 → `out.push(formatIntegrityHuman(...))`。RESULT 行、exit、写入字节零变化。
+apriori/changes/modified-block-integrity/design.md:24:- 注入失败的 reason 类：`id-pattern resolution failed: …` / `matcher failure: …`。
+apriori/changes/modified-block-integrity/review/spec-review-v1.md:88:archiveMerge.cli(argv, { idMatcherFactory })
+apriori/changes/modified-block-integrity/review/spec-review-v1.md:89:archiveChange({ ..., idMatcherFactory })
+apriori/changes/modified-block-integrity/review/spec-review-v1.md:92:bin 注入 lazy factory；`resolveIdPattern` 明确从 `lib/config` 导入或明确新增 `spec-runner` export。factory 只在完整 preflight 成功且存在 MODIFIED entries 时调用，并定义 missing factory 的 module-level 行为。
+apriori/changes/modified-block-integrity/review/spec-review-v1.md:106:为 human formatter 定义统一的 safe rendering：所有外部字段先将 C0/DEL 控制字符替换为 `·`，再执行 120 UTF-16 unit 截断；JSON 继续保留完整原文。增加 title、body line、file suffix 分别携带 `ESC`/control character 的 exact oracle。
+apriori/changes/modified-block-integrity/requirement/req-final.md:15:**occurrence 级场景配对（唯一基数真值表，REQ-2 r2 收口）**：配对键 = 场景 ID（有 ID 时）或规范化全标题（无 ID 时），同一张表对两类键统一适用。对每个键统计旧块出现数 o、新块出现数 n：
+apriori/changes/modified-block-integrity/requirement/req-final.md:36:- **`verify --change`**：旧块标题作为第 4 类 tag 并入**既有的单一标题批**（不新增 matcher 调用——SR-63 的两批契约保持；这些 pairs 不进入绑定 acc，仅供 integrity 配对）；invalid pattern / matcher failure / projection failure 走既有 ERROR 路径，此时**无** integrity 报告。id-pattern 解析与 state A 完全一致（flag > config > default）。
+apriori/changes/modified-block-integrity/requirement/req-final.md:37:- **`archive --change`（high-level form 专属；single-file form 明确 out of scope——一模块手术是专家手动路径）**：dry-run 与 `--write` preflight 输出同一数据语义的 human 段（**不新增 --json**，REQ-3 附带裁定）。id 提取沿用统一解析（config > default，archive 无 flag）与可终止通道——经 **bin 层依赖注入**（bin/apriori.js 同时持有两模块，把 spec-runner 的 matcher 工厂注入 archive cli 的可选参数；archive-merge 模块自身仍零依赖 spec-runner，方向不破）。invalid config pattern 或 matcher failure → 打印一条 bounded warning、**跳过 integrity 报告**，archive 的一切既有语义（exit/写入/输出其余部分）不变。
+apriori/changes/modified-block-integrity/requirement/req-final.md:54:- **human（verify 与 archive 同一段式）**：段标题 `— MODIFIED INTEGRITY —`；**显著性规则（Q1/REQ-3 r2 终裁）**：某 MODIFIED 条目存在 dropped/missingLines/ambiguous/titleChanged 任一非空即打印该条目——dropped/missingLines/ambiguous 行冠 `!` 前缀，titleChanged 一行提示（无 `!`），retained/added 只出计数；**全部条目四类皆空时整段静默**。行截断沿用 state A 惯例：超过 120 时 `slice(0,119)+'…'`（总长恒 ≤120，JS UTF-16 code unit 计）；JSON 保留全文。archive 的 warning（B2 降级路径）：**整行**先拼 `warning: modified-integrity <reason>` 再整串过 state-A `sanitizeMsg`（控制字符替换为 `·`，非删除；整行 ≤200 UTF-16 code units 含省略号），写 stderr。
+apriori/changes/modified-block-integrity/requirement/req-final.md:68:- AC6（执行纪律与 archive id-pattern 全路径，REQ-4 r2 收口）：verify config-origin 下 matcher batch 计数仍恰好 2（旧块标题在第一批 payload 断言）；invalid pattern 0 投影 0 spawn 无报告。archive 面五路径：①自定义 config pattern 正向——报告正确识别 default 认不出的 ID（如 AC-08a）；②无 config 时 default 正向；③invalid config row（matcher 构造前失败）→ warning+无报告段+archive 结果照旧；④matcher timeout/failure 类（注入）→ 同 ③；⑤warning 断言：完整字符串 oracle——stderr 行 = sanitizeMsg('warning: modified-integrity ' + reason)，长度 ≤200，控制字符已替换为 ·。
+apriori/changes/modified-block-integrity/requirement/req-final.md:83:- REQ-3：file=store suffix；retained.title=新块原标题；ambiguous.key 语义；titleChanged 也触发条目打印（终裁）；截断=state A 惯例 119+…；archive warning 通道/前缀/有界钉死。
+apriori/changes/modified-block-integrity/requirement/req-final.md:93:- REQ-3：B4 完整 schema + 存在性 + 排序 + 截断（JSON 全文/human 120）+ archive 无 --json + Q1 显著性裁定 + 空 diff 条目语义。
+apriori/changes/modified-block-integrity/review/req-review-v2-raw.txt:14:Round 2. Revised per your round-1 review: apriori/changes/modified-block-integrity/requirement/req-v2.md ('需求裁定记录（对 r1 评审）' maps every REQ-1..9 to its ruling). Highlights: order-preserving greedy subsequence as the ONE algorithm (count-consuming for duplicate lines; all non-empty body lines incl. fenced content and requirement prose; normalization pinned; Q3 deleted); occurrence-level mutually-exclusive categories plus an 'ambiguous' class; the full B4 output contract (JSON always-present on GREEN/GAPS with empty-diff entries, human significance rule, 120-char human truncation with full-text JSON, no archive --json); old-block titles ride the EXISTING single title batch (zero new matcher calls; ERROR classes carry no report); archive covers the high-level form only (single-file out of scope) with the matcher injected at the bin seam (module dependency direction preserved; failures degrade to a bounded warning + skipped report); the B3 presence matrix; AC7 as a frozen fixture with deepStrictEqual; the state-A declaration in the lineage line; no confirmation flag (Q2 deleted).
+apriori/changes/modified-block-integrity/review/req-review-v2-raw.txt:40:3. 无 ID 场景：按规范化全标题多重集配对；配上的按标题变更不可检测（同标题即 retained）；未配上的分别 dropped/added。
+apriori/changes/modified-block-integrity/review/req-review-v2-raw.txt:46:- **`verify --change`**：旧块标题作为第 4 类 tag 并入**既有的单一标题批**（不新增 matcher 调用——SR-63 的两批契约保持；这些 pairs 不进入绑定 acc，仅供 integrity 配对）；invalid pattern / matcher failure / projection failure 走既有 ERROR 路径，此时**无** integrity 报告。id-pattern 解析与 state A 完全一致（flag > config > default）。
+apriori/changes/modified-block-integrity/review/req-review-v2-raw.txt:47:- **`archive --change`（high-level form 专属；single-file form 明确 out of scope——一模块手术是专家手动路径）**：dry-run 与 `--write` preflight 输出同一数据语义的 human 段（**不新增 --json**，REQ-3 附带裁定）。id 提取沿用统一解析（config > default，archive 无 flag）与可终止通道——经 **bin 层依赖注入**（bin/apriori.js 同时持有两模块，把 spec-runner 的 matcher 工厂注入 archive cli 的可选参数；archive-merge 模块自身仍零依赖 spec-runner，方向不破）。invalid config pattern 或 matcher failure → 打印一条 bounded warning、**跳过 integrity 报告**，archive 的一切既有语义（exit/写入/输出其余部分）不变。
+apriori/changes/modified-block-integrity/review/req-review-v2-raw.txt:64:- **human（verify 与 archive 同一段式）**：段标题 `— MODIFIED INTEGRITY —`；**显著性规则（Q1 裁定）**：仅当存在 dropped / missingLines / ambiguous 时打印该 MODIFIED 的明细（行前缀 `!`），titleChanged 单行提示，retained/added 只出计数行；全部 MODIFIED 无上述三类时整段静默。行截断 120 字符 + `…`（仅 human；JSON 保留全文）。
+apriori/changes/modified-block-integrity/review/req-review-v2-raw.txt:88:- REQ-3：B4 完整 schema + 存在性 + 排序 + 截断（JSON 全文/human 120）+ archive 无 --json + Q1 显著性裁定 + 空 diff 条目语义。
+apriori/changes/modified-block-integrity/review/req-review-v2-raw.txt:261:直接调用 `leadId`/RegExp 可能绕过 catastrophic-pattern 隔离；额外 matcher batch 会与 state A 冲突；若 archive 因 informative report 的 matcher failure 而失败，又违反“不改变 exit/write semantics”。
+apriori/changes/modified-block-integrity/review/req-review-v2-raw.txt:269:- verify 的 invalid-pattern 和 matcher failure 仍走既有 ERROR 路径，ERROR 不带 `modifiedIntegrity`；
+apriori/changes/modified-block-integrity/review/req-review-v2-raw.txt:270:- archive 明确 pattern 来源及 matcher failure 行为；若报告必须保持 informative，建议 bounded warning + skip integrity report，同时 archive 原有结果不变；
+apriori/changes/modified-block-integrity/review/req-review-v2-raw.txt:431:> 无 ID 场景按规范化全标题多重集配对；配上的 retained，未配上的分别 dropped/added。
+apriori/changes/modified-block-integrity/review/req-review-v2-raw.txt:474:- “120 字符 + `…`”没有说明最大输出长度是 120（119+ellipsis，state A 的既有惯例）还是 121（120+ellipsis），也没有明确按 JS UTF-16 code unit、Unicode code point 还是 display width 截断；
+apriori/changes/modified-block-integrity/review/req-review-v2-raw.txt:490:- human 截断沿用 state A：JS `length > 120` 时 `slice(0,119) + "…"`，最终最多 120 UTF-16 code units；
+apriori/changes/modified-block-integrity/review/req-review-v2-raw.txt:556:archive 可能始终使用 default matcher、把 invalid config 当作 matcher failure、执行未受限 regex，或因 warning formatting 泄露无界 repository input，而现有 AC 仍可能通过。
+apriori/changes/modified-block-integrity/review/req-review-v2-raw.txt:577:- matcher failure 只 warning + skip；
+apriori/changes/modified-block-integrity/review/req-review-v2-raw.txt:751:> 无 ID 场景按规范化全标题多重集配对；配上的 retained，未配上的分别 dropped/added。
+apriori/changes/modified-block-integrity/review/req-review-v2-raw.txt:794:- “120 字符 + `…`”没有说明最大输出长度是 120（119+ellipsis，state A 的既有惯例）还是 121（120+ellipsis），也没有明确按 JS UTF-16 code unit、Unicode code point 还是 display width 截断；
+apriori/changes/modified-block-integrity/review/req-review-v2-raw.txt:810:- human 截断沿用 state A：JS `length > 120` 时 `slice(0,119) + "…"`，最终最多 120 UTF-16 code units；
+apriori/changes/modified-block-integrity/review/req-review-v2-raw.txt:876:archive 可能始终使用 default matcher、把 invalid config 当作 matcher failure、执行未受限 regex，或因 warning formatting 泄露无界 repository input，而现有 AC 仍可能通过。
+apriori/changes/modified-block-integrity/review/req-review-v2-raw.txt:897:- matcher failure 只 warning + skip；
+apriori/changes/modified-block-integrity/review/req-review-v3.md:67:- 完整 warning line 先组成 `warning: modified-integrity <reason>`，再将完整字符串传入 state-A `sanitizeMsg()`；
+apriori/changes/modified-block-integrity/review/req-review-v1.md:167:直接调用 `leadId`/RegExp 可能绕过 catastrophic-pattern 隔离；额外 matcher batch 会与 state A 冲突；若 archive 因 informative report 的 matcher failure 而失败，又违反“不改变 exit/write semantics”。
+apriori/changes/modified-block-integrity/review/req-review-v1.md:175:- verify 的 invalid-pattern 和 matcher failure 仍走既有 ERROR 路径，ERROR 不带 `modifiedIntegrity`；
+apriori/changes/modified-block-integrity/review/req-review-v1.md:176:- archive 明确 pattern 来源及 matcher failure 行为；若报告必须保持 informative，建议 bounded warning + skip integrity report，同时 archive 原有结果不变；
+apriori/changes/modified-block-integrity/review/req-review-v1.md:343:需要在修订时把 single-file archive 是否覆盖、confirmation flag 的最终裁定以及 matcher failure policy一并纳入 target/out-of-scope 边界。
+apriori/changes/modified-block-integrity/review/req-review-v4.md:69:- bounded matcher failure；
+apriori/changes/modified-block-integrity/review/req-review-v4.md:88:- config/matcher failure 只产生 bounded stderr warning 并跳过报告；
+apriori/changes/modified-block-integrity/review/req-review-v4.md:169:需求裁定记录已要求完整 human golden。建议 golden 同时包含 `titleChanged`、`dropped`、`ambiguous`、`missingLines`、retained/added counts 和 120-unit truncation，以证明 verify/archive renderer 使用同一数据语义。
+apriori/changes/modified-block-integrity/review/req-review-v4-raw.txt:14:Round 4 (closing). Both round-3 findings landed in apriori/changes/modified-block-integrity/requirement/req-v4.md: REQ-3 — ambiguous ordering pinned (old-present keys by old first occurrence, then new-only keys by new first occurrence), the archive warning is composed as the FULL line 'warning: modified-integrity <reason>' then passed whole through state-A sanitizeMsg (control chars replaced with the middle dot, whole line <=200 UTF-16 units), AC3 gained the mixed-order case plus a table-driven eight-row cardinality test, AC6 a full-string warning oracle. REQ-10 — rule 6 corrected to the ACTUAL state A (stripFences strips only closed pairs; an unclosed opener is ordinary text and later scenario headings still split — my v3 'swallow the tail' claim was wrong and is revoked), rule 4 now cites the real state-A regex (whitespace-flexible), AC8 gained the unclosed-fence and multi-space-heading cases. The three r3 advisories are absorbed (table-driven test, human golden, legacy-lineage annotation).
+apriori/changes/modified-block-integrity/review/req-review-v4-raw.txt:37:**occurrence 级场景配对（唯一基数真值表，REQ-2 r2 收口）**：配对键 = 场景 ID（有 ID 时）或规范化全标题（无 ID 时），同一张表对两类键统一适用。对每个键统计旧块出现数 o、新块出现数 n：
+apriori/changes/modified-block-integrity/review/req-review-v4-raw.txt:58:- **`verify --change`**：旧块标题作为第 4 类 tag 并入**既有的单一标题批**（不新增 matcher 调用——SR-63 的两批契约保持；这些 pairs 不进入绑定 acc，仅供 integrity 配对）；invalid pattern / matcher failure / projection failure 走既有 ERROR 路径，此时**无** integrity 报告。id-pattern 解析与 state A 完全一致（flag > config > default）。
+apriori/changes/modified-block-integrity/review/req-review-v4-raw.txt:59:- **`archive --change`（high-level form 专属；single-file form 明确 out of scope——一模块手术是专家手动路径）**：dry-run 与 `--write` preflight 输出同一数据语义的 human 段（**不新增 --json**，REQ-3 附带裁定）。id 提取沿用统一解析（config > default，archive 无 flag）与可终止通道——经 **bin 层依赖注入**（bin/apriori.js 同时持有两模块，把 spec-runner 的 matcher 工厂注入 archive cli 的可选参数；archive-merge 模块自身仍零依赖 spec-runner，方向不破）。invalid config pattern 或 matcher failure → 打印一条 bounded warning、**跳过 integrity 报告**，archive 的一切既有语义（exit/写入/输出其余部分）不变。
+apriori/changes/modified-block-integrity/review/req-review-v4-raw.txt:76:- **human（verify 与 archive 同一段式）**：段标题 `— MODIFIED INTEGRITY —`；**显著性规则（Q1/REQ-3 r2 终裁）**：某 MODIFIED 条目存在 dropped/missingLines/ambiguous/titleChanged 任一非空即打印该条目——dropped/missingLines/ambiguous 行冠 `!` 前缀，titleChanged 一行提示（无 `!`），retained/added 只出计数；**全部条目四类皆空时整段静默**。行截断沿用 state A 惯例：超过 120 时 `slice(0,119)+'…'`（总长恒 ≤120，JS UTF-16 code unit 计）；JSON 保留全文。archive 的 warning（B2 降级路径）：**整行**先拼 `warning: modified-integrity <reason>` 再整串过 state-A `sanitizeMsg`（控制字符替换为 `·`，非删除；整行 ≤200 UTF-16 code units 含省略号），写 stderr。
+apriori/changes/modified-block-integrity/review/req-review-v4-raw.txt:90:- AC6（执行纪律与 archive id-pattern 全路径，REQ-4 r2 收口）：verify config-origin 下 matcher batch 计数仍恰好 2（旧块标题在第一批 payload 断言）；invalid pattern 0 投影 0 spawn 无报告。archive 面五路径：①自定义 config pattern 正向——报告正确识别 default 认不出的 ID（如 AC-08a）；②无 config 时 default 正向；③invalid config row（matcher 构造前失败）→ warning+无报告段+archive 结果照旧；④matcher timeout/failure 类（注入）→ 同 ③；⑤warning 断言：完整字符串 oracle——stderr 行 = sanitizeMsg('warning: modified-integrity ' + reason)，长度 ≤200，控制字符已替换为 ·。
+apriori/changes/modified-block-integrity/review/req-review-v4-raw.txt:105:- REQ-3：file=store suffix；retained.title=新块原标题；ambiguous.key 语义；titleChanged 也触发条目打印（终裁）；截断=state A 惯例 119+…；archive warning 通道/前缀/有界钉死。
+apriori/changes/modified-block-integrity/review/req-review-v4-raw.txt:115:- REQ-3：B4 完整 schema + 存在性 + 排序 + 截断（JSON 全文/human 120）+ archive 无 --json + Q1 显著性裁定 + 空 diff 条目语义。
+apriori/changes/modified-block-integrity/review/req-review-v4-raw.txt:188:- 完整 warning line 先组成 `warning: modified-integrity <reason>`，再将完整字符串传入 state-A `sanitizeMsg()`；
+apriori/changes/modified-block-integrity/review/req-review-v4-raw.txt:428:    81	// the one sanitized failure text every consumer surfaces for a config-origin matcher failure
+apriori/changes/modified-block-integrity/review/req-review-v4-raw.txt:482:   119	function resolveIdPattern(cwd, flagValue) {
+apriori/changes/modified-block-integrity/review/req-review-v4-raw.txt:483:   120	  if (flagValue !== null && flagValue !== undefined) {
+apriori/changes/modified-block-integrity/review/req-review-v4-raw.txt:568:- bounded matcher failure；
+apriori/changes/modified-block-integrity/review/req-review-v4-raw.txt:587:- config/matcher failure 只产生 bounded stderr warning 并跳过报告；
+apriori/changes/modified-block-integrity/review/req-review-v4-raw.txt:668:需求裁定记录已要求完整 human golden。建议 golden 同时包含 `titleChanged`、`dropped`、`ambiguous`、`missingLines`、retained/added counts 和 120-unit truncation，以证明 verify/archive renderer 使用同一数据语义。
+apriori/changes/modified-block-integrity/review/req-review-v4-raw.txt:757:- bounded matcher failure；
+apriori/changes/modified-block-integrity/review/req-review-v4-raw.txt:776:- config/matcher failure 只产生 bounded stderr warning 并跳过报告；
+apriori/changes/modified-block-integrity/review/req-review-v4-raw.txt:857:需求裁定记录已要求完整 human golden。建议 golden 同时包含 `titleChanged`、`dropped`、`ambiguous`、`missingLines`、retained/added counts 和 120-unit truncation，以证明 verify/archive renderer 使用同一数据语义。
+apriori/changes/modified-block-integrity/requirement/req-v4.md:15:**occurrence 级场景配对（唯一基数真值表，REQ-2 r2 收口）**：配对键 = 场景 ID（有 ID 时）或规范化全标题（无 ID 时），同一张表对两类键统一适用。对每个键统计旧块出现数 o、新块出现数 n：
+apriori/changes/modified-block-integrity/requirement/req-v4.md:36:- **`verify --change`**：旧块标题作为第 4 类 tag 并入**既有的单一标题批**（不新增 matcher 调用——SR-63 的两批契约保持；这些 pairs 不进入绑定 acc，仅供 integrity 配对）；invalid pattern / matcher failure / projection failure 走既有 ERROR 路径，此时**无** integrity 报告。id-pattern 解析与 state A 完全一致（flag > config > default）。
+apriori/changes/modified-block-integrity/requirement/req-v4.md:37:- **`archive --change`（high-level form 专属；single-file form 明确 out of scope——一模块手术是专家手动路径）**：dry-run 与 `--write` preflight 输出同一数据语义的 human 段（**不新增 --json**，REQ-3 附带裁定）。id 提取沿用统一解析（config > default，archive 无 flag）与可终止通道——经 **bin 层依赖注入**（bin/apriori.js 同时持有两模块，把 spec-runner 的 matcher 工厂注入 archive cli 的可选参数；archive-merge 模块自身仍零依赖 spec-runner，方向不破）。invalid config pattern 或 matcher failure → 打印一条 bounded warning、**跳过 integrity 报告**，archive 的一切既有语义（exit/写入/输出其余部分）不变。
+apriori/changes/modified-block-integrity/requirement/req-v4.md:54:- **human（verify 与 archive 同一段式）**：段标题 `— MODIFIED INTEGRITY —`；**显著性规则（Q1/REQ-3 r2 终裁）**：某 MODIFIED 条目存在 dropped/missingLines/ambiguous/titleChanged 任一非空即打印该条目——dropped/missingLines/ambiguous 行冠 `!` 前缀，titleChanged 一行提示（无 `!`），retained/added 只出计数；**全部条目四类皆空时整段静默**。行截断沿用 state A 惯例：超过 120 时 `slice(0,119)+'…'`（总长恒 ≤120，JS UTF-16 code unit 计）；JSON 保留全文。archive 的 warning（B2 降级路径）：**整行**先拼 `warning: modified-integrity <reason>` 再整串过 state-A `sanitizeMsg`（控制字符替换为 `·`，非删除；整行 ≤200 UTF-16 code units 含省略号），写 stderr。
+apriori/changes/modified-block-integrity/requirement/req-v4.md:68:- AC6（执行纪律与 archive id-pattern 全路径，REQ-4 r2 收口）：verify config-origin 下 matcher batch 计数仍恰好 2（旧块标题在第一批 payload 断言）；invalid pattern 0 投影 0 spawn 无报告。archive 面五路径：①自定义 config pattern 正向——报告正确识别 default 认不出的 ID（如 AC-08a）；②无 config 时 default 正向；③invalid config row（matcher 构造前失败）→ warning+无报告段+archive 结果照旧；④matcher timeout/failure 类（注入）→ 同 ③；⑤warning 断言：完整字符串 oracle——stderr 行 = sanitizeMsg('warning: modified-integrity ' + reason)，长度 ≤200，控制字符已替换为 ·。
+apriori/changes/modified-block-integrity/requirement/req-v4.md:83:- REQ-3：file=store suffix；retained.title=新块原标题；ambiguous.key 语义；titleChanged 也触发条目打印（终裁）；截断=state A 惯例 119+…；archive warning 通道/前缀/有界钉死。
+apriori/changes/modified-block-integrity/requirement/req-v4.md:93:- REQ-3：B4 完整 schema + 存在性 + 排序 + 截断（JSON 全文/human 120）+ archive 无 --json + Q1 显著性裁定 + 空 diff 条目语义。
+apriori/changes/modified-block-integrity/requirement/req-v2.md:18:3. 无 ID 场景：按规范化全标题多重集配对；配上的按标题变更不可检测（同标题即 retained）；未配上的分别 dropped/added。
+apriori/changes/modified-block-integrity/requirement/req-v2.md:24:- **`verify --change`**：旧块标题作为第 4 类 tag 并入**既有的单一标题批**（不新增 matcher 调用——SR-63 的两批契约保持；这些 pairs 不进入绑定 acc，仅供 integrity 配对）；invalid pattern / matcher failure / projection failure 走既有 ERROR 路径，此时**无** integrity 报告。id-pattern 解析与 state A 完全一致（flag > config > default）。
+apriori/changes/modified-block-integrity/requirement/req-v2.md:25:- **`archive --change`（high-level form 专属；single-file form 明确 out of scope——一模块手术是专家手动路径）**：dry-run 与 `--write` preflight 输出同一数据语义的 human 段（**不新增 --json**，REQ-3 附带裁定）。id 提取沿用统一解析（config > default，archive 无 flag）与可终止通道——经 **bin 层依赖注入**（bin/apriori.js 同时持有两模块，把 spec-runner 的 matcher 工厂注入 archive cli 的可选参数；archive-merge 模块自身仍零依赖 spec-runner，方向不破）。invalid config pattern 或 matcher failure → 打印一条 bounded warning、**跳过 integrity 报告**，archive 的一切既有语义（exit/写入/输出其余部分）不变。
+apriori/changes/modified-block-integrity/requirement/req-v2.md:42:- **human（verify 与 archive 同一段式）**：段标题 `— MODIFIED INTEGRITY —`；**显著性规则（Q1 裁定）**：仅当存在 dropped / missingLines / ambiguous 时打印该 MODIFIED 的明细（行前缀 `!`），titleChanged 单行提示，retained/added 只出计数行；全部 MODIFIED 无上述三类时整段静默。行截断 120 字符 + `…`（仅 human；JSON 保留全文）。
+apriori/changes/modified-block-integrity/requirement/req-v2.md:66:- REQ-3：B4 完整 schema + 存在性 + 排序 + 截断（JSON 全文/human 120）+ archive 无 --json + Q1 显著性裁定 + 空 diff 条目语义。
+apriori/changes/modified-block-integrity/review/req-review-v3-raw.txt:14:Round 3. Revised per round-2: apriori/changes/modified-block-integrity/requirement/req-v3.md ('需求裁定记录（对 r2 评审）'): REQ-2 — your cardinality truth table adopted verbatim, uniform for ID keys and normalized-title keys; ambiguous keys skip every other class and body comparison, entries carry side+oldCount+newCount. REQ-3 — file=store-relative suffix, retained.title=the NEW block's original title, ambiguous.key semantics pinned, titleChanged DOES trigger entry printing (final ruling), truncation follows state A (slice(0,119)+ellipsis, UTF-16 units), archive warning channel/prefix/boundedness pinned. REQ-10 — six structural-scan rules (requirement heading never compared; fence-aware valid scenario headings; unclosed fence swallows the tail into the current body); AC8 extended with the rename-no-false-missing and fenced-fake-heading cases. REQ-4 — AC6 now covers five archive paths (custom-config positive, default positive, invalid config pre-matcher, injected matcher failure, warning stream/prefix/bounded assertions). REQ-11 — AC4 is a deterministic exit oracle (GREEN 0 / GAPS 1 / dry-run 0 with verbatim RESULT line and byte-identical --write). All four advisories absorbed (test-count as round baseline; AC7 expectations hand-derived; RUNBOOK bilingual sentence added to AC10; pure-shared-helper noted for design).
+apriori/changes/modified-block-integrity/review/req-review-v3-raw.txt:37:**occurrence 级场景配对（唯一基数真值表，REQ-2 r2 收口）**：配对键 = 场景 ID（有 ID 时）或规范化全标题（无 ID 时），同一张表对两类键统一适用。对每个键统计旧块出现数 o、新块出现数 n：
+apriori/changes/modified-block-integrity/review/req-review-v3-raw.txt:58:- **`verify --change`**：旧块标题作为第 4 类 tag 并入**既有的单一标题批**（不新增 matcher 调用——SR-63 的两批契约保持；这些 pairs 不进入绑定 acc，仅供 integrity 配对）；invalid pattern / matcher failure / projection failure 走既有 ERROR 路径，此时**无** integrity 报告。id-pattern 解析与 state A 完全一致（flag > config > default）。
+apriori/changes/modified-block-integrity/review/req-review-v3-raw.txt:59:- **`archive --change`（high-level form 专属；single-file form 明确 out of scope——一模块手术是专家手动路径）**：dry-run 与 `--write` preflight 输出同一数据语义的 human 段（**不新增 --json**，REQ-3 附带裁定）。id 提取沿用统一解析（config > default，archive 无 flag）与可终止通道——经 **bin 层依赖注入**（bin/apriori.js 同时持有两模块，把 spec-runner 的 matcher 工厂注入 archive cli 的可选参数；archive-merge 模块自身仍零依赖 spec-runner，方向不破）。invalid config pattern 或 matcher failure → 打印一条 bounded warning、**跳过 integrity 报告**，archive 的一切既有语义（exit/写入/输出其余部分）不变。
+apriori/changes/modified-block-integrity/review/req-review-v3-raw.txt:76:- **human（verify 与 archive 同一段式）**：段标题 `— MODIFIED INTEGRITY —`；**显著性规则（Q1/REQ-3 r2 终裁）**：某 MODIFIED 条目存在 dropped/missingLines/ambiguous/titleChanged 任一非空即打印该条目——dropped/missingLines/ambiguous 行冠 `!` 前缀，titleChanged 一行提示（无 `!`），retained/added 只出计数；**全部条目四类皆空时整段静默**。行截断沿用 state A 惯例：超过 120 时 `slice(0,119)+'…'`（总长恒 ≤120，JS UTF-16 code unit 计）；JSON 保留全文。archive 的 warning（B2 降级路径）：stderr、固定前缀 `warning: modified-integrity `、经 sanitizeMsg 有界（≤200 含省略号，控制字符剥离）。
+apriori/changes/modified-block-integrity/review/req-review-v3-raw.txt:90:- AC6（执行纪律与 archive id-pattern 全路径，REQ-4 r2 收口）：verify config-origin 下 matcher batch 计数仍恰好 2（旧块标题在第一批 payload 断言）；invalid pattern 0 投影 0 spawn 无报告。archive 面五路径：①自定义 config pattern 正向——报告正确识别 default 认不出的 ID（如 AC-08a）；②无 config 时 default 正向；③invalid config row（matcher 构造前失败）→ warning+无报告段+archive 结果照旧；④matcher timeout/failure 类（注入）→ 同 ③；⑤warning 断言：stderr、`warning: modified-integrity ` 前缀、有界无控制字符。
+apriori/changes/modified-block-integrity/review/req-review-v3-raw.txt:99:- REQ-3：file=store suffix；retained.title=新块原标题；ambiguous.key 语义；titleChanged 也触发条目打印（终裁）；截断=state A 惯例 119+…；archive warning 通道/前缀/有界钉死。
+apriori/changes/modified-block-integrity/review/req-review-v3-raw.txt:109:- REQ-3：B4 完整 schema + 存在性 + 排序 + 截断（JSON 全文/human 120）+ archive 无 --json + Q1 显著性裁定 + 空 diff 条目语义。
+apriori/changes/modified-block-integrity/review/req-review-v3-raw.txt:160:> 无 ID 场景按规范化全标题多重集配对；配上的 retained，未配上的分别 dropped/added。
+apriori/changes/modified-block-integrity/review/req-review-v3-raw.txt:203:- “120 字符 + `…`”没有说明最大输出长度是 120（119+ellipsis，state A 的既有惯例）还是 121（120+ellipsis），也没有明确按 JS UTF-16 code unit、Unicode code point 还是 display width 截断；
+apriori/changes/modified-block-integrity/review/req-review-v3-raw.txt:219:- human 截断沿用 state A：JS `length > 120` 时 `slice(0,119) + "…"`，最终最多 120 UTF-16 code units；
+apriori/changes/modified-block-integrity/review/req-review-v3-raw.txt:285:archive 可能始终使用 default matcher、把 invalid config 当作 matcher failure、执行未受限 regex，或因 warning formatting 泄露无界 repository input，而现有 AC 仍可能通过。
+apriori/changes/modified-block-integrity/review/req-review-v3-raw.txt:306:- matcher failure 只 warning + skip；
+apriori/changes/modified-block-integrity/review/req-review-v3-raw.txt:459:    15	**occurrence 级场景配对（唯一基数真值表，REQ-2 r2 收口）**：配对键 = 场景 ID（有 ID 时）或规范化全标题（无 ID 时），同一张表对两类键统一适用。对每个键统计旧块出现数 o、新块出现数 n：
+apriori/changes/modified-block-integrity/review/req-review-v3-raw.txt:480:    36	- **`verify --change`**：旧块标题作为第 4 类 tag 并入**既有的单一标题批**（不新增 matcher 调用——SR-63 的两批契约保持；这些 pairs 不进入绑定 acc，仅供 integrity 配对）；invalid pattern / matcher failure / projection failure 走既有 ERROR 路径，此时**无** integrity 报告。id-pattern 解析与 state A 完全一致（flag > config > default）。
+apriori/changes/modified-block-integrity/review/req-review-v3-raw.txt:481:    37	- **`archive --change`（high-level form 专属；single-file form 明确 out of scope——一模块手术是专家手动路径）**：dry-run 与 `--write` preflight 输出同一数据语义的 human 段（**不新增 --json**，REQ-3 附带裁定）。id 提取沿用统一解析（config > default，archive 无 flag）与可终止通道——经 **bin 层依赖注入**（bin/apriori.js 同时持有两模块，把 spec-runner 的 matcher 工厂注入 archive cli 的可选参数；archive-merge 模块自身仍零依赖 spec-runner，方向不破）。invalid config pattern 或 matcher failure → 打印一条 bounded warning、**跳过 integrity 报告**，archive 的一切既有语义（exit/写入/输出其余部分）不变。
+apriori/changes/modified-block-integrity/review/req-review-v3-raw.txt:498:    54	- **human（verify 与 archive 同一段式）**：段标题 `— MODIFIED INTEGRITY —`；**显著性规则（Q1/REQ-3 r2 终裁）**：某 MODIFIED 条目存在 dropped/missingLines/ambiguous/titleChanged 任一非空即打印该条目——dropped/missingLines/ambiguous 行冠 `!` 前缀，titleChanged 一行提示（无 `!`），retained/added 只出计数；**全部条目四类皆空时整段静默**。行截断沿用 state A 惯例：超过 120 时 `slice(0,119)+'…'`（总长恒 ≤120，JS UTF-16 code unit 计）；JSON 保留全文。archive 的 warning（B2 降级路径）：stderr、固定前缀 `warning: modified-integrity `、经 sanitizeMsg 有界（≤200 含省略号，控制字符剥离）。
+apriori/changes/modified-block-integrity/review/req-review-v3-raw.txt:512:    68	- AC6（执行纪律与 archive id-pattern 全路径，REQ-4 r2 收口）：verify config-origin 下 matcher batch 计数仍恰好 2（旧块标题在第一批 payload 断言）；invalid pattern 0 投影 0 spawn 无报告。archive 面五路径：①自定义 config pattern 正向——报告正确识别 default 认不出的 ID（如 AC-08a）；②无 config 时 default 正向；③invalid config row（matcher 构造前失败）→ warning+无报告段+archive 结果照旧；④matcher timeout/failure 类（注入）→ 同 ③；⑤warning 断言：stderr、`warning: modified-integrity ` 前缀、有界无控制字符。
+apriori/changes/modified-block-integrity/review/req-review-v3-raw.txt:521:    77	- REQ-3：file=store suffix；retained.title=新块原标题；ambiguous.key 语义；titleChanged 也触发条目打印（终裁）；截断=state A 惯例 119+…；archive warning 通道/前缀/有界钉死。
+apriori/changes/modified-block-integrity/review/req-review-v3-raw.txt:531:    87	- REQ-3：B4 完整 schema + 存在性 + 排序 + 截断（JSON 全文/human 120）+ archive 无 --json + Q1 显著性裁定 + 空 diff 条目语义。
+apriori/changes/modified-block-integrity/review/req-review-v3-raw.txt:604:    81	// the one sanitized failure text every consumer surfaces for a config-origin matcher failure
+apriori/changes/modified-block-integrity/review/req-review-v3-raw.txt:757:   119	function resolveIdPattern(cwd, flagValue) {
+apriori/changes/modified-block-integrity/review/req-review-v3-raw.txt:758:   120	  if (flagValue !== null && flagValue !== undefined) {
+apriori/changes/modified-block-integrity/review/req-review-v3-raw.txt:891:- 完整 warning line 先组成 `warning: modified-integrity <reason>`，再将完整字符串传入 state-A `sanitizeMsg()`；
+apriori/changes/modified-block-integrity/review/req-review-v3-raw.txt:1136:- 完整 warning line 先组成 `warning: modified-integrity <reason>`，再将完整字符串传入 state-A `sanitizeMsg()`；
+apriori/changes/modified-block-integrity/review/issues.md:22:| SPEC-4 | bin→cli→archiveChange 的 matcher DI 接口及 missing-factory 行为未定义，且所称 export 在 State A 不存在。 | med | STEP2·r1 | fixed (v2) — cli(argv,deps)/archiveChange({idMatcherFactory}) 钉死；缺席=出错同路降级；resolveIdPattern 取自 lib/config |
+apriori/changes/modified-block-integrity/review/issues.md:23:| SPEC-5 | integrity human section 直接输出外部文本，缺少 control-character sanitization。 | high | STEP2·r1 | fixed (v2) — human 安全渲染（C0/DEL→· 先于截断）+ ESC 注入 oracle；JSON 保留原文 |
+apriori/changes/modified-block-integrity/review/req-review-v2.md:45:> 无 ID 场景按规范化全标题多重集配对；配上的 retained，未配上的分别 dropped/added。
+apriori/changes/modified-block-integrity/review/req-review-v2.md:88:- “120 字符 + `…`”没有说明最大输出长度是 120（119+ellipsis，state A 的既有惯例）还是 121（120+ellipsis），也没有明确按 JS UTF-16 code unit、Unicode code point 还是 display width 截断；
+apriori/changes/modified-block-integrity/review/req-review-v2.md:104:- human 截断沿用 state A：JS `length > 120` 时 `slice(0,119) + "…"`，最终最多 120 UTF-16 code units；
+apriori/changes/modified-block-integrity/review/req-review-v2.md:170:archive 可能始终使用 default matcher、把 invalid config 当作 matcher failure、执行未受限 regex，或因 warning formatting 泄露无界 repository input，而现有 AC 仍可能通过。
+apriori/changes/modified-block-integrity/review/req-review-v2.md:191:- matcher failure 只 warning + skip；
+apriori/changes/modified-block-integrity/specs/archive-merge/spec.md:6:A pure shared helper SHALL compare a MODIFIED operation's old store block against its replacement (both captured at the projection's own parse snapshot — `buildProjection` additionally returns the raw old/new block text pairs per MODIFIED operation; no consumer re-reads files) and report structural fidelity, WITHOUT changing any verdict, exit code or write semantics. Structure scan: the requirement heading line never participates; requirement prose runs from the line after the heading to the first VALID scenario heading (state A's actual regex `/^####\s+Scenario:\s+(.*)$/m`, fence-aware exactly like `stripFences` — only lines inside CLOSED triple-backtick pairs are not delimiters; an unclosed opener is ordinary text and later headings still split); fence delimiter lines and fenced non-empty lines are compared as body lines. Pairing runs per key (scenario ID when present, normalized full title otherwise) through one cardinality truth table — o=0,n=1 added; o=1,n=0 dropped; o=1,n=1 paired (same normalized title → retained, different → titleChanged, mutually exclusive, both body-compared); any side >1 → ambiguous (side old/new/both with counts; the key skips every other class and body comparison). Line comparison is ONE algorithm: order-preserving greedy subsequence over normalized non-empty lines (CRLF/CR→LF, trailing whitespace stripped, leading whitespace stripped; duplicates consumed by count); unmatched OLD lines are `missingLines` (requirement prose misses carry scenario=null; only old-content loss is reported). An idempotent replacement takes a FAST PATH — `oldBlock.trim() === newBlock.trim()` short-circuits before any structure scan or id extraction — yielding an entry whose diff arrays are all empty (the stamped-rerun repair path included: a repaired module still contributes its equal-text pair, one entry per MODIFIED operation always). Capture points are module-level testable: `buildProjection().modifiedBlocks` carries raw text pairs — for rename-then-modify the oldBlock deep-equals the COMPLETE pre-rename block (captured before the rename key swap) and the newBlock deep-equals the delta block. The human formatter renders SAFELY: every externally-sourced field (titles, lines, requirement names, file suffixes, ambiguous keys) has C0/DEL control characters replaced with `·` BEFORE the 120-unit truncation (JSON keeps full raw text; JSON.stringify escapes there); an all-empty result renders as NOTHING (no blank line).
+apriori/changes/modified-block-integrity/specs/archive-merge/spec.md:25:- WHEN archive runs with a custom config `id-pattern` row recognizing letter-suffixed IDs; with no row (default); with an uncompilable row; and with an injected matcher failure
+apriori/changes/modified-block-integrity/specs/archive-merge/spec.md:26:- THEN the first two produce correct reports through the injected terminable matcher — the pinned seam: `archiveMerge.cli(argv, deps)` and `archiveChange({..., idMatcherFactory})` accept an optional factory `(cwd) => matcher | {error}`; bin builds it lazily from `lib/config`'s resolveIdPattern plus spec-runner's makeIdMatcher; a MISSING factory degrades exactly like a factory error (warning + skip); archive-merge itself never requires spec-runner; the last two print exactly one stderr warning — the WHOLE line `warning: modified-integrity <reason>` passed through sanitizeMsg (control chars replaced with `·`, ≤200 UTF-16 units) — skip the report, and leave every other archive output and exit unchanged
+apriori/changes/modified-block-integrity/specs/spec-runner/spec.md:6:On a trustworthy `--change` run, `verify` SHALL attach the integrity engine's report for every MODIFIED operation (rename-then-modify targets included, keyed by the post-rename name with the pre-rename block as baseline). The old blocks' scenario titles ride the EXISTING single title batch as a fourth tag class that never enters binding accumulation, scenario counts or the change scope — the two-batch matcher contract stands. JSON: `modifiedIntegrity` is ALWAYS present on GREEN/GAPS (one entry per MODIFIED operation, empty-diff entries included; `file` = store-relative suffix; element shapes, value choices and orderings per the engine's contract; missingLines carry full untruncated text) and ABSENT on every ERROR class and on every `--specs` run (byte goldens continue to prove the latter). Human: a `— MODIFIED INTEGRITY —` section prints an entry when any of dropped/missingLines/ambiguous/titleChanged is non-empty (`!` prefix on dropped/missingLines/ambiguous lines; a plain one-line note per titleChanged; counts only for retained/added), stays entirely silent when every entry's four classes are empty, and truncates lines the state-A way (`slice(0,119)+'…'`). The report never changes the verdict or the exit code.
+apriori/changes/modified-block-integrity/requirement/req-v3.md:15:**occurrence 级场景配对（唯一基数真值表，REQ-2 r2 收口）**：配对键 = 场景 ID（有 ID 时）或规范化全标题（无 ID 时），同一张表对两类键统一适用。对每个键统计旧块出现数 o、新块出现数 n：
+apriori/changes/modified-block-integrity/requirement/req-v3.md:36:- **`verify --change`**：旧块标题作为第 4 类 tag 并入**既有的单一标题批**（不新增 matcher 调用——SR-63 的两批契约保持；这些 pairs 不进入绑定 acc，仅供 integrity 配对）；invalid pattern / matcher failure / projection failure 走既有 ERROR 路径，此时**无** integrity 报告。id-pattern 解析与 state A 完全一致（flag > config > default）。
+apriori/changes/modified-block-integrity/requirement/req-v3.md:37:- **`archive --change`（high-level form 专属；single-file form 明确 out of scope——一模块手术是专家手动路径）**：dry-run 与 `--write` preflight 输出同一数据语义的 human 段（**不新增 --json**，REQ-3 附带裁定）。id 提取沿用统一解析（config > default，archive 无 flag）与可终止通道——经 **bin 层依赖注入**（bin/apriori.js 同时持有两模块，把 spec-runner 的 matcher 工厂注入 archive cli 的可选参数；archive-merge 模块自身仍零依赖 spec-runner，方向不破）。invalid config pattern 或 matcher failure → 打印一条 bounded warning、**跳过 integrity 报告**，archive 的一切既有语义（exit/写入/输出其余部分）不变。
+apriori/changes/modified-block-integrity/requirement/req-v3.md:54:- **human（verify 与 archive 同一段式）**：段标题 `— MODIFIED INTEGRITY —`；**显著性规则（Q1/REQ-3 r2 终裁）**：某 MODIFIED 条目存在 dropped/missingLines/ambiguous/titleChanged 任一非空即打印该条目——dropped/missingLines/ambiguous 行冠 `!` 前缀，titleChanged 一行提示（无 `!`），retained/added 只出计数；**全部条目四类皆空时整段静默**。行截断沿用 state A 惯例：超过 120 时 `slice(0,119)+'…'`（总长恒 ≤120，JS UTF-16 code unit 计）；JSON 保留全文。archive 的 warning（B2 降级路径）：stderr、固定前缀 `warning: modified-integrity `、经 sanitizeMsg 有界（≤200 含省略号，控制字符剥离）。
+apriori/changes/modified-block-integrity/requirement/req-v3.md:68:- AC6（执行纪律与 archive id-pattern 全路径，REQ-4 r2 收口）：verify config-origin 下 matcher batch 计数仍恰好 2（旧块标题在第一批 payload 断言）；invalid pattern 0 投影 0 spawn 无报告。archive 面五路径：①自定义 config pattern 正向——报告正确识别 default 认不出的 ID（如 AC-08a）；②无 config 时 default 正向；③invalid config row（matcher 构造前失败）→ warning+无报告段+archive 结果照旧；④matcher timeout/failure 类（注入）→ 同 ③；⑤warning 断言：stderr、`warning: modified-integrity ` 前缀、有界无控制字符。
+apriori/changes/modified-block-integrity/requirement/req-v3.md:77:- REQ-3：file=store suffix；retained.title=新块原标题；ambiguous.key 语义；titleChanged 也触发条目打印（终裁）；截断=state A 惯例 119+…；archive warning 通道/前缀/有界钉死。
+apriori/changes/modified-block-integrity/requirement/req-v3.md:87:- REQ-3：B4 完整 schema + 存在性 + 排序 + 截断（JSON 全文/human 120）+ archive 无 --json + Q1 显著性裁定 + 空 diff 条目语义。
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:126:- WHEN archive runs with a custom config `id-pattern` row recognizing letter-suffixed IDs; with no row (default); with an uncompilable row; and with an injected matcher failure
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:127:- THEN the first two produce correct reports through the injected terminable matcher (bin wires it in; archive-merge itself never requires spec-runner); the last two print exactly one stderr warning — the WHOLE line `warning: modified-integrity <reason>` passed through sanitizeMsg (control chars replaced with `·`, ≤200 UTF-16 units) — skip the report, and leave every other archive output and exit unchanged
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:133:On a trustworthy `--change` run, `verify` SHALL attach the integrity engine's report for every MODIFIED operation (rename-then-modify targets included, keyed by the post-rename name with the pre-rename block as baseline). The old blocks' scenario titles ride the EXISTING single title batch as a fourth tag class that never enters binding accumulation, scenario counts or the change scope — the two-batch matcher contract stands. JSON: `modifiedIntegrity` is ALWAYS present on GREEN/GAPS (one entry per MODIFIED operation, empty-diff entries included; `file` = store-relative suffix; element shapes, value choices and orderings per the engine's contract; missingLines carry full untruncated text) and ABSENT on every ERROR class and on every `--specs` run (byte goldens continue to prove the latter). Human: a `— MODIFIED INTEGRITY —` section prints an entry when any of dropped/missingLines/ambiguous/titleChanged is non-empty (`!` prefix on dropped/missingLines/ambiguous lines; a plain one-line note per titleChanged; counts only for retained/added), stays entirely silent when every entry's four classes are empty, and truncates lines the state-A way (`slice(0,119)+'…'`). The report never changes the verdict or the exit code.
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:157:  2. 基数真值表分类（键 = idOf(title) ?? normalizedTitle；先各侧计数）。
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:160:- 导出 `compareModifiedBlock` 与 `formatIntegrityHuman(entries)`（human 段渲染共用——verify 与 archive 同段式；显著性规则与 119+… 截断在此实现）。
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:171:- `archiveChange(o)` 增可选 `o.idMatcherFactory`：`(cwd) => {batch(titles)→{ids}|{failure}} | {error}`——**bin 层注入**：`case 'archive'` 处组装（require spec-runner 的 resolveIdPattern+makeIdMatcher，config>default，无 flag），archive-merge 模块自身零新依赖。
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:172:- preflight 全过后（`preflightFailures` 为空、打印 per-module 列表之后、写入之前）：对 `p.modifiedBlocks` 全部条目——工厂缺席/解析失败/matcher.batch failure → stderr 一行 `sanitizeMsg('warning: modified-integrity ' + reason)` 后跳过；成功 → 一次 batch（旧+新块全部标题）→ idOf → 引擎 → `out.push(formatIntegrityHuman(...))`。RESULT 行、exit、写入字节零变化。
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:173:- 注入失败的 reason 类：`id-pattern resolution failed: …` / `matcher failure: …`。
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:227:**occurrence 级场景配对（唯一基数真值表，REQ-2 r2 收口）**：配对键 = 场景 ID（有 ID 时）或规范化全标题（无 ID 时），同一张表对两类键统一适用。对每个键统计旧块出现数 o、新块出现数 n：
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:248:- **`verify --change`**：旧块标题作为第 4 类 tag 并入**既有的单一标题批**（不新增 matcher 调用——SR-63 的两批契约保持；这些 pairs 不进入绑定 acc，仅供 integrity 配对）；invalid pattern / matcher failure / projection failure 走既有 ERROR 路径，此时**无** integrity 报告。id-pattern 解析与 state A 完全一致（flag > config > default）。
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:249:- **`archive --change`（high-level form 专属；single-file form 明确 out of scope——一模块手术是专家手动路径）**：dry-run 与 `--write` preflight 输出同一数据语义的 human 段（**不新增 --json**，REQ-3 附带裁定）。id 提取沿用统一解析（config > default，archive 无 flag）与可终止通道——经 **bin 层依赖注入**（bin/apriori.js 同时持有两模块，把 spec-runner 的 matcher 工厂注入 archive cli 的可选参数；archive-merge 模块自身仍零依赖 spec-runner，方向不破）。invalid config pattern 或 matcher failure → 打印一条 bounded warning、**跳过 integrity 报告**，archive 的一切既有语义（exit/写入/输出其余部分）不变。
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:266:- **human（verify 与 archive 同一段式）**：段标题 `— MODIFIED INTEGRITY —`；**显著性规则（Q1/REQ-3 r2 终裁）**：某 MODIFIED 条目存在 dropped/missingLines/ambiguous/titleChanged 任一非空即打印该条目——dropped/missingLines/ambiguous 行冠 `!` 前缀，titleChanged 一行提示（无 `!`），retained/added 只出计数；**全部条目四类皆空时整段静默**。行截断沿用 state A 惯例：超过 120 时 `slice(0,119)+'…'`（总长恒 ≤120，JS UTF-16 code unit 计）；JSON 保留全文。archive 的 warning（B2 降级路径）：**整行**先拼 `warning: modified-integrity <reason>` 再整串过 state-A `sanitizeMsg`（控制字符替换为 `·`，非删除；整行 ≤200 UTF-16 code units 含省略号），写 stderr。
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:280:- AC6（执行纪律与 archive id-pattern 全路径，REQ-4 r2 收口）：verify config-origin 下 matcher batch 计数仍恰好 2（旧块标题在第一批 payload 断言）；invalid pattern 0 投影 0 spawn 无报告。archive 面五路径：①自定义 config pattern 正向——报告正确识别 default 认不出的 ID（如 AC-08a）；②无 config 时 default 正向；③invalid config row（matcher 构造前失败）→ warning+无报告段+archive 结果照旧；④matcher timeout/failure 类（注入）→ 同 ③；⑤warning 断言：完整字符串 oracle——stderr 行 = sanitizeMsg('warning: modified-integrity ' + reason)，长度 ≤200，控制字符已替换为 ·。
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:295:- REQ-3：file=store suffix；retained.title=新块原标题；ambiguous.key 语义；titleChanged 也触发条目打印（终裁）；截断=state A 惯例 119+…；archive warning 通道/前缀/有界钉死。
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:305:- REQ-3：B4 完整 schema + 存在性 + 排序 + 截断（JSON 全文/human 120）+ archive 无 --json + Q1 显著性裁定 + 空 diff 条目语义。
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:430:/usr/bin/zsh -lc "sed -n '1,180p' apriori/changes/modified-block-integrity/requirement/req-final.md; sed -n '1,120p' apriori/changes/modified-block-integrity/review/issues.md" in /mnt/d/Workbench/misc/apriori-spec-development
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:446:**occurrence 级场景配对（唯一基数真值表，REQ-2 r2 收口）**：配对键 = 场景 ID（有 ID 时）或规范化全标题（无 ID 时），同一张表对两类键统一适用。对每个键统计旧块出现数 o、新块出现数 n：
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:467:- **`verify --change`**：旧块标题作为第 4 类 tag 并入**既有的单一标题批**（不新增 matcher 调用——SR-63 的两批契约保持；这些 pairs 不进入绑定 acc，仅供 integrity 配对）；invalid pattern / matcher failure / projection failure 走既有 ERROR 路径，此时**无** integrity 报告。id-pattern 解析与 state A 完全一致（flag > config > default）。
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:468:- **`archive --change`（high-level form 专属；single-file form 明确 out of scope——一模块手术是专家手动路径）**：dry-run 与 `--write` preflight 输出同一数据语义的 human 段（**不新增 --json**，REQ-3 附带裁定）。id 提取沿用统一解析（config > default，archive 无 flag）与可终止通道——经 **bin 层依赖注入**（bin/apriori.js 同时持有两模块，把 spec-runner 的 matcher 工厂注入 archive cli 的可选参数；archive-merge 模块自身仍零依赖 spec-runner，方向不破）。invalid config pattern 或 matcher failure → 打印一条 bounded warning、**跳过 integrity 报告**，archive 的一切既有语义（exit/写入/输出其余部分）不变。
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:485:- **human（verify 与 archive 同一段式）**：段标题 `— MODIFIED INTEGRITY —`；**显著性规则（Q1/REQ-3 r2 终裁）**：某 MODIFIED 条目存在 dropped/missingLines/ambiguous/titleChanged 任一非空即打印该条目——dropped/missingLines/ambiguous 行冠 `!` 前缀，titleChanged 一行提示（无 `!`），retained/added 只出计数；**全部条目四类皆空时整段静默**。行截断沿用 state A 惯例：超过 120 时 `slice(0,119)+'…'`（总长恒 ≤120，JS UTF-16 code unit 计）；JSON 保留全文。archive 的 warning（B2 降级路径）：**整行**先拼 `warning: modified-integrity <reason>` 再整串过 state-A `sanitizeMsg`（控制字符替换为 `·`，非删除；整行 ≤200 UTF-16 code units 含省略号），写 stderr。
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:499:- AC6（执行纪律与 archive id-pattern 全路径，REQ-4 r2 收口）：verify config-origin 下 matcher batch 计数仍恰好 2（旧块标题在第一批 payload 断言）；invalid pattern 0 投影 0 spawn 无报告。archive 面五路径：①自定义 config pattern 正向——报告正确识别 default 认不出的 ID（如 AC-08a）；②无 config 时 default 正向；③invalid config row（matcher 构造前失败）→ warning+无报告段+archive 结果照旧；④matcher timeout/failure 类（注入）→ 同 ③；⑤warning 断言：完整字符串 oracle——stderr 行 = sanitizeMsg('warning: modified-integrity ' + reason)，长度 ≤200，控制字符已替换为 ·。
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:514:- REQ-3：file=store suffix；retained.title=新块原标题；ambiguous.key 语义；titleChanged 也触发条目打印（终裁）；截断=state A 惯例 119+…；archive warning 通道/前缀/有界钉死。
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:524:- REQ-3：B4 完整 schema + 存在性 + 排序 + 截断（JSON 全文/human 120）+ archive 无 --json + Q1 显著性裁定 + 空 diff 条目语义。
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:568:lib/spec-runner.js:119:  pairs.forEach(([label, title], i) => {
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:1189:      console.log('\nRESULT: MALFORMED DELTA — nothing written');
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:1335:// the one sanitized failure text every consumer surfaces for a config-origin matcher failure
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:1395:function safeMdWalk(dir) {
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:1402:      if (e.isDirectory()) out.push(...safeMdWalk(p));
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:1421:    for (const f of safeMdWalk(specsDir)) {
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:1531:      lines.push(`    ${raw.length > 120 ? raw.slice(0, 119) + '…' : raw}`);
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:1545:    for (const raw of sl.slice(0, 20)) lines.push(`    ${raw.length > 120 ? raw.slice(0, 119) + '…' : raw}`);
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:1559:      lines.push(`        ${raw.length > 120 ? raw.slice(0, 119) + '…' : raw}`);
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:2145:      console.log('\nRESULT: MALFORMED DELTA — nothing written');
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:2295:// the one sanitized failure text every consumer surfaces for a config-origin matcher failure
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:2355:function safeMdWalk(dir) {
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:2362:      if (e.isDirectory()) out.push(...safeMdWalk(p));
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:2381:    for (const f of safeMdWalk(specsDir)) {
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:2481:      lines.push(`    ${raw.length > 120 ? raw.slice(0, 119) + '…' : raw}`);
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:2495:    for (const raw of sl.slice(0, 20)) lines.push(`    ${raw.length > 120 ? raw.slice(0, 119) + '…' : raw}`);
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:2509:      lines.push(`        ${raw.length > 120 ? raw.slice(0, 119) + '…' : raw}`);
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:2741:apriori/changes/verify-change-scope/flow-state.md:17:      ② 批准 KB 写回（P9）：truth/spec-runner.md Contract 大幅更新（change-scoped verdict/storeReport/changeScope/兄弟归因严格算法/safeMdWalk/单次执行契约/D-SR-x 的 --change 限定入 Decisions——注意 D-SR-x 原文保留并加 scoped amendment 条目、D-SR-1 全局面保留）；truth/gate.md Contract 更新 C1 in-flight 语义；truth/archive-merge.md Contract 注记 buildProjection 新增 deltaOps 返回字段。source-commit 刷新在你的验收提交后。
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:2747:apriori/changes/verify-change-scope/design.md:22:- **兄弟 change 归因（STEP5 折返修正，P8 复核）**：GT-26 的独立变绿在无此机制时不可能——并行 change 的场景只在各自 delta 里，其失败测试在本 change 投影中是 failing orphan。机械归因（r2 收严后的最终算法）：对每个兄弟活 change，目录/specs/文件三级 lstat+realpath containment+regular-file 守卫（不跟随任何 symlink），枚举经 safeMdWalk（任意层 readdir/lstat 异常 → 该分支零条目，绝不抛出）；每个文件 `parseDeltaStrict` 零 problems 且 >0 ops 才有效，仅其 ADDED/MODIFIED 块体内的场景标题计入（REMOVED 名下排除），并入**同一个标题批**（SR-63 两批契约保持）。failing orphan 的 ID ∈ 兄弟归因集 → 不阻断（仍在 storeReport.orphan 列示）；任何异常兄弟材料零豁免且不独立制造 infra ERROR——未获归因的失败照旧按 GAPS 阻断。
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:2850:apriori/changes/verify-change-scope/specs/spec-runner/spec.md:6:On a `--change` run, `verify` SHALL judge its verdict (exit 0/1) on the CHANGE SCOPE only, while reporting the whole projection informatively. The change scope is defined by requirement-block provenance over the projection: the blocks produced or renamed by the delta's ADDED / MODIFIED / RENAMED operations (idempotent reruns included; blocks whose final projected state is deprecated — including rename-then-remove — are excluded), with their scenario occurrences collected at occurrence level. `RENAMED` keeps its store semantics (requirement name only; scenario IDs preserved). The change verdict is GREEN iff every scoped scenario has ≥1 passing test and none red, no scoped occurrence is unidentified, and no scoped scenario ID occurs more than once ACROSS THE WHOLE PROJECTION (a cross-boundary collision is a binding ambiguity of this change; collisions entirely outside the scope go to the store report only). Out-of-scope PASSING tests are never ORPHAN for the verdict; a passing test whose leading ID exists nowhere in the projection is a true orphan, reported in the store report. FAILURE SIGNALS stay fail-closed: a failure is non-blocking ONLY when it is provably attributable — bound to a projection scenario outside the change scope, OR carrying an ID declared as a scenario inside a SIBLING active change's cleanly-parsed delta (strict parse, zero problems, >0 operations; only ADDED/MODIFIED block bodies count — a parallel change's own red is that change's business; the sibling scan is part of the same single title batch; malformed, escaping, symlinked or unreadable sibling material grants NO exemption — skipping is the fail-closed direction; broken sibling material never INDEPENDENTLY creates an infra ERROR, and any failure left unattributed still blocks as GAPS); every `unattributedFailures` entry (no ID, no provenance — it may be this change's own test missing its ID) and every FAILING orphan whose ID appears in NEITHER the projection NOR any sibling delta blocks the change verdict exactly as today. The store report is a COMPLETE informative evaluation of the whole projection against the same TAP snapshot: `boundRed`, `unbound`, true-`orphan`, `unidentified`, `unattributedFailures`, `duplicates` (each a full list whose length is its count; `boundGreen` as a bare count) — out-of-scope reds, duplicates and unidentified MUST stay visible there. Execution follows a conditional single-run contract: invalid pattern → 0 projection builds / 0 content reads / 0 test spawns / 0 TAP parses (the fail-early order stands); projection or title-batch matcher failure → exactly 1 projection, 0 spawns; the normal and post-TAP-error paths → exactly 1 projection, 1 spawn, 1 parse; both views share the one projection and the one parsed TAP snapshot — the report never re-runs tests. Exit semantics: infra ERROR classes are unchanged; solely for `--change`, a non-zero test-process status that is EXPLAINED by parsed failures (`failCount > 0`) with no infra error no longer forces a non-zero exit — a clean change verdict is GREEN exit 0 (a scoped amendment to the non-zero rule; an unexplained non-zero stays ERROR exit 2). `--specs` runs are byte-identical to before.
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:2888:apriori/changes/verify-change-scope/review/step5-review-v4-raw.txt:28:rg -n \"200|long|120|ellipsis|duplicate IDs|zero counts|bound-green: 0|post-TAP|deepStrictEqual\\(je2|IMPL-3|IMPL-5\" test/change-scope.test.js apriori/changes/verify-change-scope/review/issues.md
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:3329:    'apriori/changes/c/specs/m/spec.md': DELTA_C,
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:3346:    'apriori/changes/c/specs/m/spec.md': DELTA_C,
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:3372:    'apriori/changes/c/specs/m/spec.md': DELTA_C,
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:3449:/usr/bin/zsh -lc "rg -n \"deepStrictEqual\\(["'^'"\\n]*(merge|buildProjection)|deepStrictEqual\\(["'^'"\\n]*p\\b|Object\\.keys\\(["'^'"\\n]*(merge|buildProjection)|buildProjection\\(\" test | head -n 220; rg -n \"assert\\.deepStrictEqual\\(["'^;]+'"\\{\" test/archive-merge.test.js test/archive-change.test.js test/change-scope.test.js | head -n 120" in /mnt/d/Workbench/misc/apriori-spec-development
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:3677:     8	  2. 基数真值表分类（键 = idOf(title) ?? normalizedTitle；先各侧计数）。
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:3680:    11	- 导出 `compareModifiedBlock` 与 `formatIntegrityHuman(entries)`（human 段渲染共用——verify 与 archive 同段式；显著性规则与 119+… 截断在此实现）。
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:3691:    22	- `archiveChange(o)` 增可选 `o.idMatcherFactory`：`(cwd) => {batch(titles)→{ids}|{failure}} | {error}`——**bin 层注入**：`case 'archive'` 处组装（require spec-runner 的 resolveIdPattern+makeIdMatcher，config>default，无 flag），archive-merge 模块自身零新依赖。
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:3692:    23	- preflight 全过后（`preflightFailures` 为空、打印 per-module 列表之后、写入之前）：对 `p.modifiedBlocks` 全部条目——工厂缺席/解析失败/matcher.batch failure → stderr 一行 `sanitizeMsg('warning: modified-integrity ' + reason)` 后跳过；成功 → 一次 batch（旧+新块全部标题）→ idOf → 引擎 → `out.push(formatIntegrityHuman(...))`。RESULT 行、exit、写入字节零变化。
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:3693:    24	- 注入失败的 reason 类：`id-pattern resolution failed: …` / `matcher failure: …`。
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:3729:    25	- WHEN archive runs with a custom config `id-pattern` row recognizing letter-suffixed IDs; with no row (default); with an uncompilable row; and with an injected matcher failure
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:3730:    26	- THEN the first two produce correct reports through the injected terminable matcher (bin wires it in; archive-merge itself never requires spec-runner); the last two print exactly one stderr warning — the WHOLE line `warning: modified-integrity <reason>` passed through sanitizeMsg (control chars replaced with `·`, ≤200 UTF-16 units) — skip the report, and leave every other archive output and exit unchanged
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:3736:     6	On a trustworthy `--change` run, `verify` SHALL attach the integrity engine's report for every MODIFIED operation (rename-then-modify targets included, keyed by the post-rename name with the pre-rename block as baseline). The old blocks' scenario titles ride the EXISTING single title batch as a fourth tag class that never enters binding accumulation, scenario counts or the change scope — the two-batch matcher contract stands. JSON: `modifiedIntegrity` is ALWAYS present on GREEN/GAPS (one entry per MODIFIED operation, empty-diff entries included; `file` = store-relative suffix; element shapes, value choices and orderings per the engine's contract; missingLines carry full untruncated text) and ABSENT on every ERROR class and on every `--specs` run (byte goldens continue to prove the latter). Human: a `— MODIFIED INTEGRITY —` section prints an entry when any of dropped/missingLines/ambiguous/titleChanged is non-empty (`!` prefix on dropped/missingLines/ambiguous lines; a plain one-line note per titleChanged; counts only for retained/added), stays entirely silent when every entry's four classes are empty, and truncates lines the state-A way (`slice(0,119)+'…'`). The report never changes the verdict or the exit code.
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:3995:   119	  pairs.forEach(([label, title], i) => {
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:3996:   120	    const id = res.ids[i];
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:4124:apriori/changes/modified-block-integrity/requirement/req-final.md:54:- **human（verify 与 archive 同一段式）**：段标题 `— MODIFIED INTEGRITY —`；**显著性规则（Q1/REQ-3 r2 终裁）**：某 MODIFIED 条目存在 dropped/missingLines/ambiguous/titleChanged 任一非空即打印该条目——dropped/missingLines/ambiguous 行冠 `!` 前缀，titleChanged 一行提示（无 `!`），retained/added 只出计数；**全部条目四类皆空时整段静默**。行截断沿用 state A 惯例：超过 120 时 `slice(0,119)+'…'`（总长恒 ≤120，JS UTF-16 code unit 计）；JSON 保留全文。archive 的 warning（B2 降级路径）：**整行**先拼 `warning: modified-integrity <reason>` 再整串过 state-A `sanitizeMsg`（控制字符替换为 `·`，非删除；整行 ≤200 UTF-16 code units 含省略号），写 stderr。
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:4128:apriori/changes/modified-block-integrity/requirement/req-final.md:83:- REQ-3：file=store suffix；retained.title=新块原标题；ambiguous.key 语义；titleChanged 也触发条目打印（终裁）；截断=state A 惯例 119+…；archive warning 通道/前缀/有界钉死。
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:4129:apriori/changes/modified-block-integrity/specs/spec-runner/spec.md:6:On a trustworthy `--change` run, `verify` SHALL attach the integrity engine's report for every MODIFIED operation (rename-then-modify targets included, keyed by the post-rename name with the pre-rename block as baseline). The old blocks' scenario titles ride the EXISTING single title batch as a fourth tag class that never enters binding accumulation, scenario counts or the change scope — the two-batch matcher contract stands. JSON: `modifiedIntegrity` is ALWAYS present on GREEN/GAPS (one entry per MODIFIED operation, empty-diff entries included; `file` = store-relative suffix; element shapes, value choices and orderings per the engine's contract; missingLines carry full untruncated text) and ABSENT on every ERROR class and on every `--specs` run (byte goldens continue to prove the latter). Human: a `— MODIFIED INTEGRITY —` section prints an entry when any of dropped/missingLines/ambiguous/titleChanged is non-empty (`!` prefix on dropped/missingLines/ambiguous lines; a plain one-line note per titleChanged; counts only for retained/added), stays entirely silent when every entry's four classes are empty, and truncates lines the state-A way (`slice(0,119)+'…'`). The report never changes the verdict or the exit code.
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:4222:archiveMerge.cli(argv, { idMatcherFactory })
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:4223:archiveChange({ ..., idMatcherFactory })
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:4226:bin 注入 lazy factory；`resolveIdPattern` 明确从 `lib/config` 导入或明确新增 `spec-runner` export。factory 只在完整 preflight 成功且存在 MODIFIED entries 时调用，并定义 missing factory 的 module-level 行为。
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:4240:为 human formatter 定义统一的 safe rendering：所有外部字段先将 C0/DEL 控制字符替换为 `·`，再执行 120 UTF-16 unit 截断；JSON 继续保留完整原文。增加 title、body line、file suffix 分别携带 `ESC`/control character 的 exact oracle。
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:4356:archiveMerge.cli(argv, { idMatcherFactory })
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:4357:archiveChange({ ..., idMatcherFactory })
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:4360:bin 注入 lazy factory；`resolveIdPattern` 明确从 `lib/config` 导入或明确新增 `spec-runner` export。factory 只在完整 preflight 成功且存在 MODIFIED entries 时调用，并定义 missing factory 的 module-level 行为。
+apriori/changes/modified-block-integrity/review/spec-review-v1-raw.txt:4374:为 human formatter 定义统一的 safe rendering：所有外部字段先将 C0/DEL 控制字符替换为 `·`，再执行 120 UTF-16 unit 截断；JSON 继续保留完整原文。增加 title、body line、file suffix 分别携带 `ESC`/control character 的 exact oracle。
+apriori/changes/modified-block-integrity/review/req-review-v1-raw.txt:692:// the one sanitized failure text every consumer surfaces for a config-origin matcher failure
+apriori/changes/modified-block-integrity/review/req-review-v1-raw.txt:752:function safeMdWalk(dir) {
+apriori/changes/modified-block-integrity/review/req-review-v1-raw.txt:759:      if (e.isDirectory()) out.push(...safeMdWalk(p));
+apriori/changes/modified-block-integrity/review/req-review-v1-raw.txt:778:    for (const f of safeMdWalk(specsDir)) {
+apriori/changes/modified-block-integrity/review/req-review-v1-raw.txt:1057:      lines.push(`    ${raw.length > 120 ? raw.slice(0, 119) + '…' : raw}`);
+apriori/changes/modified-block-integrity/review/req-review-v1-raw.txt:1071:    for (const raw of sl.slice(0, 20)) lines.push(`    ${raw.length > 120 ? raw.slice(0, 119) + '…' : raw}`);
+apriori/changes/modified-block-integrity/review/req-review-v1-raw.txt:1103:lib/archive-merge.js:572:      console.log('\nRESULT: MALFORMED DELTA — nothing written');
+apriori/changes/modified-block-integrity/review/req-review-v1-raw.txt:1111:lib/spec-runner.js:81:// the one sanitized failure text every consumer surfaces for a config-origin matcher failure
+apriori/changes/modified-block-integrity/review/req-review-v1-raw.txt:1256:// the one sanitized failure text every consumer surfaces for a config-origin matcher failure
+apriori/changes/modified-block-integrity/review/req-review-v1-raw.txt:1666:      console.log('\nRESULT: MALFORMED DELTA — nothing written');
+apriori/changes/modified-block-integrity/review/req-review-v1-raw.txt:1753:      lines.push(`    ${raw.length > 120 ? raw.slice(0, 119) + '…' : raw}`);
+apriori/changes/modified-block-integrity/review/req-review-v1-raw.txt:1767:    for (const raw of sl.slice(0, 20)) lines.push(`    ${raw.length > 120 ? raw.slice(0, 119) + '…' : raw}`);
+apriori/changes/modified-block-integrity/review/req-review-v1-raw.txt:1781:      lines.push(`        ${raw.length > 120 ? raw.slice(0, 119) + '…' : raw}`);
+apriori/changes/modified-block-integrity/review/req-review-v1-raw.txt:2232:      console.log('\nRESULT: MALFORMED DELTA — nothing written');
+apriori/changes/modified-block-integrity/review/req-review-v1-raw.txt:2336:test/change-scope.test.js:178:  const root = mkChange(STORE_AB, DELTA_C, { 'apriori/process-config.md': '| id-pattern | [A-Z]+-\\d+ |\n' });
+apriori/changes/modified-block-integrity/review/req-review-v1-raw.txt:2337:test/change-scope.test.js:196:  const root2 = mkChange(STORE_AB, DELTA_C, { 'apriori/process-config.md': '| id-pattern | [A-Z]+-\\d+ |\n' });
+apriori/changes/modified-block-integrity/review/req-review-v1-raw.txt:2338:test/change-scope.test.js:205:  const root3 = mkChange(STORE_AB, DELTA_C, { 'apriori/process-config.md': '| id-pattern | [A-Z]+-\\d+ |\n' });
+apriori/changes/modified-block-integrity/review/req-review-v1-raw.txt:2339:test/change-scope.test.js:234:  const pre = mkChange(STORE_AB, DELTA_C, { 'apriori/process-config.md': '| id-pattern | ( |\n' });
+apriori/changes/modified-block-integrity/review/req-review-v1-raw.txt:2429:test/change-scope.test.js:178:  const root = mkChange(STORE_AB, DELTA_C, { 'apriori/process-config.md': '| id-pattern | [A-Z]+-\\d+ |\n' });
+apriori/changes/modified-block-integrity/review/req-review-v1-raw.txt:2430:test/change-scope.test.js:196:  const root2 = mkChange(STORE_AB, DELTA_C, { 'apriori/process-config.md': '| id-pattern | [A-Z]+-\\d+ |\n' });
+apriori/changes/modified-block-integrity/review/req-review-v1-raw.txt:2431:test/change-scope.test.js:205:  const root3 = mkChange(STORE_AB, DELTA_C, { 'apriori/process-config.md': '| id-pattern | [A-Z]+-\\d+ |\n' });
+apriori/changes/modified-block-integrity/review/req-review-v1-raw.txt:2432:test/change-scope.test.js:234:  const pre = mkChange(STORE_AB, DELTA_C, { 'apriori/process-config.md': '| id-pattern | ( |\n' });
+apriori/changes/modified-block-integrity/review/req-review-v1-raw.txt:2530:apriori/changes/verify-change-scope/review/step5-review-v4-raw.txt:28:rg -n \"200|long|120|ellipsis|duplicate IDs|zero counts|bound-green: 0|post-TAP|deepStrictEqual\\(je2|IMPL-3|IMPL-5\" test/change-scope.test.js apriori/changes/verify-change-scope/review/issues.md
+apriori/changes/modified-block-integrity/review/req-review-v1-raw.txt:2533:apriori/changes/verify-change-scope/review/step5-review-v4-raw.txt:65:apriori/changes/verify-change-scope/review/issues.md:25:| IMPL-3 | human store report 未输出六类完整清单 | medium | STEP5·r1 | fixed (r4) — 200 字符对抗行断言 120 截断+省略号；duplicate 行严格正则含文件 token；GREEN 空类 fixture 断言六个零 count 恒印 |
+apriori/changes/modified-block-integrity/review/req-review-v1-raw.txt:2626:On a `--change` run, `verify` SHALL judge its verdict (exit 0/1) on the CHANGE SCOPE only, while reporting the whole projection informatively. The change scope is defined by requirement-block provenance over the projection: the blocks produced or renamed by the delta's ADDED / MODIFIED / RENAMED operations (idempotent reruns included; blocks whose final projected state is deprecated — including rename-then-remove — are excluded), with their scenario occurrences collected at occurrence level. `RENAMED` keeps its store semantics (requirement name only; scenario IDs preserved). The change verdict is GREEN iff every scoped scenario has ≥1 passing test and none red, no scoped occurrence is unidentified, and no scoped scenario ID occurs more than once ACROSS THE WHOLE PROJECTION (a cross-boundary collision is a binding ambiguity of this change; collisions entirely outside the scope go to the store report only). Out-of-scope PASSING tests are never ORPHAN for the verdict; a passing test whose leading ID exists nowhere in the projection is a true orphan, reported in the store report. FAILURE SIGNALS stay fail-closed: a failure is non-blocking ONLY when it is provably attributable — bound to a projection scenario outside the change scope, OR carrying an ID declared as a scenario inside a SIBLING active change's cleanly-parsed delta (strict parse, zero problems, >0 operations; only ADDED/MODIFIED block bodies count — a parallel change's own red is that change's business; the sibling scan is part of the same single title batch; malformed, escaping, symlinked or unreadable sibling material grants NO exemption — skipping is the fail-closed direction; broken sibling material never INDEPENDENTLY creates an infra ERROR, and any failure left unattributed still blocks as GAPS); every `unattributedFailures` entry (no ID, no provenance — it may be this change's own test missing its ID) and every FAILING orphan whose ID appears in NEITHER the projection NOR any sibling delta blocks the change verdict exactly as today. The store report is a COMPLETE informative evaluation of the whole projection against the same TAP snapshot: `boundRed`, `unbound`, true-`orphan`, `unidentified`, `unattributedFailures`, `duplicates` (each a full list whose length is its count; `boundGreen` as a bare count) — out-of-scope reds, duplicates and unidentified MUST stay visible there. Execution follows a conditional single-run contract: invalid pattern → 0 projection builds / 0 content reads / 0 test spawns / 0 TAP parses (the fail-early order stands); projection or title-batch matcher failure → exactly 1 projection, 0 spawns; the normal and post-TAP-error paths → exactly 1 projection, 1 spawn, 1 parse; both views share the one projection and the one parsed TAP snapshot — the report never re-runs tests. Exit semantics: infra ERROR classes are unchanged; solely for `--change`, a non-zero test-process status that is EXPLAINED by parsed failures (`failCount > 0`) with no infra error no longer forces a non-zero exit — a clean change verdict is GREEN exit 0 (a scoped amendment to the non-zero rule; an unexplained non-zero stays ERROR exit 2). `--specs` runs are byte-identical to before.
+apriori/changes/modified-block-integrity/review/req-review-v1-raw.txt:2749:apriori/specs/archive-merge/spec.md:119:`parseDeltaStrict` SHALL be a sequential, fully-consuming parser: every line (outside code fences, which are opaque) belongs to exactly one legal construct — file preamble (stamp/blank/free text without structure markers), a legal `## ADDED|MODIFIED|REMOVED|RENAMED Requirements` heading, section-preamble free text, a `### Requirement:` block (body runs to the next heading or EOF), or a RENAMED `- Old -> New` line — and anything else is a `problems[]` entry carrying its 1-based line number. The exhaustive problem set: unrecognized h2 headings (one problem per heading; its lines are never absorbed into any bucket), requirement/scenario markers before any section, a requirement block inside RENAMED, a scenario marker outside any requirement, duplicate requirement names, and the stamp problems (which also gain line numbers). Both `verify --change` (exit 2) and `archive` (exit 1) inherit the failure.
+apriori/changes/modified-block-integrity/review/req-review-v1-raw.txt:3166:直接调用 `leadId`/RegExp 可能绕过 catastrophic-pattern 隔离；额外 matcher batch 会与 state A 冲突；若 archive 因 informative report 的 matcher failure 而失败，又违反“不改变 exit/write semantics”。
+apriori/changes/modified-block-integrity/review/req-review-v1-raw.txt:3174:- verify 的 invalid-pattern 和 matcher failure 仍走既有 ERROR 路径，ERROR 不带 `modifiedIntegrity`；
+apriori/changes/modified-block-integrity/review/req-review-v1-raw.txt:3175:- archive 明确 pattern 来源及 matcher failure 行为；若报告必须保持 informative，建议 bounded warning + skip integrity report，同时 archive 原有结果不变；
+apriori/changes/modified-block-integrity/review/req-review-v1-raw.txt:3342:需要在修订时把 single-file archive 是否覆盖、confirmation flag 的最终裁定以及 matcher failure policy一并纳入 target/out-of-scope 边界。
+apriori/changes/modified-block-integrity/review/req-review-v1-raw.txt:3556:直接调用 `leadId`/RegExp 可能绕过 catastrophic-pattern 隔离；额外 matcher batch 会与 state A 冲突；若 archive 因 informative report 的 matcher failure 而失败，又违反“不改变 exit/write semantics”。
+apriori/changes/modified-block-integrity/review/req-review-v1-raw.txt:3564:- verify 的 invalid-pattern 和 matcher failure 仍走既有 ERROR 路径，ERROR 不带 `modifiedIntegrity`；
+apriori/changes/modified-block-integrity/review/req-review-v1-raw.txt:3565:- archive 明确 pattern 来源及 matcher failure 行为；若报告必须保持 informative，建议 bounded warning + skip integrity report，同时 archive 原有结果不变；
+apriori/changes/modified-block-integrity/review/req-review-v1-raw.txt:3732:需要在修订时把 single-file archive 是否覆盖、confirmation flag 的最终裁定以及 matcher failure policy一并纳入 target/out-of-scope 边界。
+
+exec
+/usr/bin/zsh -lc "rg -n \"标题规范|normalized title|规范化标题|trim\\(\\).*title|full title\" apriori/changes/modified-block-integrity/requirement apriori/changes/modified-block-integrity/review/req-review-v*.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 148ms:
+apriori/changes/modified-block-integrity/review/req-review-v2.md:41:> 无 ID 场景同规范化标题出现次数不一 → 记入 `ambiguous`，不进其他类。
+apriori/changes/modified-block-integrity/review/req-review-v2.md:84:- `retained[].title` 在 old/new 原始标题只存在 whitespace 差异、规范化后相等时，应取 old title、new title还是 normalized title；
+apriori/changes/modified-block-integrity/review/req-review-v2.md:86:- `idOrTitle` 没有说明有 ID ambiguity 时放 ID，无 ID ambiguity 时放原始标题还是 normalized title；
+apriori/changes/modified-block-integrity/review/req-review-v2.md:101:- `idOrTitle`：有 ID 时为 ID；无 ID 时为 normalized title；
+apriori/changes/modified-block-integrity/review/req-review-v1.md:92:5. 无 ID occurrence 按 normalized full title 做 multiset matching，未配对 occurrence 分别进入 dropped/added；
+apriori/changes/modified-block-integrity/requirement/req-v2.md:16:1. 双方各自内部：同一 ID 出现 >1 次（或无 ID 场景同规范化标题出现次数不一）→ 该 ID/标题记入 `ambiguous`（不可分析，单列；不进其他类）。
+apriori/changes/modified-block-integrity/requirement/req-v2.md:17:2. 有 ID 且双侧唯一：同 ID 同规范化标题 → `retained`；同 ID 异标题 → `titleChanged`（两类互斥；两类都继续做体行比较）。旧有新无 → `dropped`；新有旧无 → `added`。
+apriori/changes/modified-block-integrity/requirement/req-v3.md:21:| 1 | 1 | 正常配对（有 ID 键：同规范化标题→retained，异→titleChanged，两类互斥且都做体行比较；标题键：即 retained） |
+apriori/changes/modified-block-integrity/requirement/req-v3.md:53:- **JSON（verify --change，GREEN/GAPS 恒在）**：`modifiedIntegrity: [ { file, name, retained: [{id, title}], titleChanged: [{id, oldTitle, newTitle}], dropped: [{id, title}], added: [{id, title}], ambiguous: [{key, side: 'old'|'new'|'both', oldCount, newCount}], missingLines: [{scenario: <id|title|null>, line: <完整原文，不截断> }] } ]`。取值裁定（REQ-3 r2）：`file` = store 相对 suffix（与 projection.modules 同制）；`retained.title` 取**新块**原始标题（规范化仅用于配对判定）；`ambiguous.key` = ID 键取 ID，标题键取规范化标题；每个 MODIFIED 操作恒一条（含全空 diff 条目）；排序：条目按 (file,name)，场景类按旧块出现序（added 按新块出现序），missingLines 按旧块行序。无 ID 场景 id=null 以 title 表达。
+apriori/changes/modified-block-integrity/requirement/req-v4.md:21:| 1 | 1 | 正常配对（有 ID 键：同规范化标题→retained，异→titleChanged，两类互斥且都做体行比较；标题键：即 retained） |
+apriori/changes/modified-block-integrity/requirement/req-v4.md:53:- **JSON（verify --change，GREEN/GAPS 恒在）**：`modifiedIntegrity: [ { file, name, retained: [{id, title}], titleChanged: [{id, oldTitle, newTitle}], dropped: [{id, title}], added: [{id, title}], ambiguous: [{key, side: 'old'|'new'|'both', oldCount, newCount}], missingLines: [{scenario: <id|title|null>, line: <完整原文，不截断> }] } ]`。取值裁定（REQ-3 r2）：`file` = store 相对 suffix（与 projection.modules 同制）；`retained.title` 取**新块**原始标题（规范化仅用于配对判定）；`ambiguous.key` = ID 键取 ID，标题键取规范化标题；每个 MODIFIED 操作恒一条（含全空 diff 条目）；排序：条目按 (file,name)；retained/titleChanged/dropped 按旧块出现序，added 按新块出现序；**ambiguous**：o>0 的键按旧块首次出现序在前，o=0 的 new-only 键按新块首次出现序追加其后；missingLines 按旧块行序。无 ID 场景 id=null 以 title 表达。
+apriori/changes/modified-block-integrity/requirement/req-final.md:21:| 1 | 1 | 正常配对（有 ID 键：同规范化标题→retained，异→titleChanged，两类互斥且都做体行比较；标题键：即 retained） |
+apriori/changes/modified-block-integrity/requirement/req-final.md:53:- **JSON（verify --change，GREEN/GAPS 恒在）**：`modifiedIntegrity: [ { file, name, retained: [{id, title}], titleChanged: [{id, oldTitle, newTitle}], dropped: [{id, title}], added: [{id, title}], ambiguous: [{key, side: 'old'|'new'|'both', oldCount, newCount}], missingLines: [{scenario: <id|title|null>, line: <完整原文，不截断> }] } ]`。取值裁定（REQ-3 r2）：`file` = store 相对 suffix（与 projection.modules 同制）；`retained.title` 取**新块**原始标题（规范化仅用于配对判定）；`ambiguous.key` = ID 键取 ID，标题键取规范化标题；每个 MODIFIED 操作恒一条（含全空 diff 条目）；排序：条目按 (file,name)；retained/titleChanged/dropped 按旧块出现序，added 按新块出现序；**ambiguous**：o>0 的键按旧块首次出现序在前，o=0 的 new-only 键按新块首次出现序追加其后；missingLines 按旧块行序。无 ID 场景 id=null 以 title 表达。
+
+codex
+# spec-review-v2 — modified-block-integrity
+
+## 结论
+
+Round 1 的五项正式问题均已闭合。修订后的 SPEC/design 与 State A 的 projection、matcher 两批契约、archive preflight、JSON presence matrix 及 bin seam 一致；未发现会导致返工或生产事故的新缺口。
+
+## Round 1 复核
+
+### SPEC-1：verified
+
+trim-equal FAST PATH 已明确先于结构扫描与 `idOf`：
+
+- 六个 diff arrays 全空；
+- repaired rerun 仍贡献 equal-text pair；
+- 每个 MODIFIED 始终一条 JSON entry；
+- archive 在仅有 fast-path entries 时无需 matcher；
+- 空 formatter 结果不进入 `out[]`，不会产生空行。
+
+算法、JSON presence 与 human 静默规则现已一致。
+
+### SPEC-2：verified
+
+“before write”已唯一裁定为 output-order guarantee，不再暗示物理 stdout 发生于写入前。
+
+报告插入点位于全部 preflight guards 之后，包括：
+
+- hygiene/CAS/conflict/denial；
+- pre-existing `.tmp-archive`；
+- explicit `--changes-dir` containment。
+
+AM-46 已覆盖新增失败路径；成功时 section 位于 RESULT 文本之前。该设计兼容 State A 的 buffered `archiveChange() → {out,err}` 模型。
+
+### SPEC-3：verified
+
+捕获点现有直接 module oracle：
+
+- rename-then-modify 的 `oldBlock` deep-equal 完整 pre-rename block；
+- 捕获发生在 rename key swap 前；
+- `newBlock` deep-equal delta block；
+- ordinary unchanged 与 stamped repaired rerun 均贡献 equal-text pair；
+- `buildProjection().modifiedBlocks` 的 raw text 直接受测。
+
+这足以阻止仅靠最终 `missingLines=[]` 掩盖错误 baseline 的实现。
+
+### SPEC-4：verified
+
+依赖注入接口已闭合：
+
+```js
+archiveMerge.cli(argv, deps = {})
+archiveChange({ ..., idMatcherFactory })
+```
+
+factory 为 `(cwd) => matcher | {error}`，由 bin 使用 `lib/config.resolveIdPattern` 与 `spec-runner.makeIdMatcher` 惰性组装。missing factory 与 factory error 同路降级；programmatic path 也有 module oracle。`archive-merge` 不新增对 `spec-runner` 的反向依赖。
+
+### SPEC-5：verified
+
+共享 human formatter 已规定：
+
+- 所有 externally-sourced fields 均先执行 C0/DEL → `·`；
+- 再按 119 UTF-16 units + `…` 截断；
+- title、body line、file suffix 等均有 ESC/control injection oracle；
+- JSON 保留原始全文，由 `JSON.stringify` 转义。
+
+新增 human 输出路径不再允许 C0/DEL 伪造终端或 CI 日志结构。
+
+## P5 checklist
+
+### 1. 场景覆盖
+
+AM-43..47 与 SR-65..68 已覆盖：
+
+- 八行 cardinality truth table；
+- duplicate/no-ID/ordering；
+- missing/reordered/repeated/whitespace lines；
+- prose、closed/unclosed fence 与多空格 heading；
+- rename-then-modify raw capture；
+- ordinary unchanged 与 repaired rerun；
+- GREEN/GAPS/ERROR/`--specs` presence matrix；
+- matcher 两批与零 binding pollution；
+- archive dry-run/`--write`/全部 preflight guards；
+- config/default/invalid/matcher failure/missing factory；
+- unsafe human fields；
+- frozen live specimen deep oracle。
+
+未发现缺少的事故级 failure/edge scenario。
+
+### 2. 外部共享状态
+
+无新增持久化 shared state。
+
+- archive store：init 为首次 `--write` 创建，update 为 temp+rename 全量替换，cleanup 仍为 none。
+- verify：只读 filesystem，并执行既有 test child。
+- integrity report 只消费 projection snapshot，不增加 filesystem observation。
+
+### 3. State A 与约定兼容性
+
+- `makeThenBind` 扩展为分段返回，不增加第三次 matcher batch。
+- integrity titles 不进入 binding accumulation、scenario count、`changeScope` 或 `storeReport`。
+- `modifiedBlocks` 不进入既有 `projection` JSON shape。
+- GREEN/GAPS 只新增契约要求的 `modifiedIntegrity`；ERROR 与 `--specs` 保持 absent。
+- rename baseline、unchanged、repaired capture points 均已钉死。
+- archive report 位于所有 preflight guards 之后，且不改变 exit/write bytes。
+- bin seam 保持 `archive-merge → spec-runner` 反向依赖不存在。
+
+### 4. SPEC/design 映射
+
+SPEC 中的 engine、verify、archive、failure degradation、安全渲染和 presence rules 均有对应 design 落点；design 未引入超出 SPEC 的事故级行为。
+
+### 5. 新外部输入安全
+
+config-origin regex 继续经过 terminable matcher channel；archive failure warning 继续整行 `sanitizeMsg`；human report 的 repository-derived fields 先清理控制字符再截断；JSON 不执行或解释输入文本。未发现新增 fail-open 路径。
+
+## Advisories（P0）
+
+### SPEC-ADV-2：建议固定完整 human grammar
+
+现有契约已足以实现，但 entry header、`titleChanged`、`ambiguous` 和 `missingLines` 的逐字模板仍主要由 golden 决定。实现红测试时先手写完整 expected output，可避免以实现产物反向生成 golden。
+
+### SPEC-ADV-3：建议固定 missing-factory reason token
+
+missing factory 的 warning+skip 行为已经明确，不影响正确性。建议测试再固定 reason，例如 `id-pattern resolution failed: matcher factory unavailable`，便于 programmatic consumers 稳定诊断。
+
+## Ledger delta
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| SPEC-1 | identical MODIFIED 的全空 entry 契约与无条件基数分类冲突。 | med | STEP2·r1 | verified |
+| SPEC-2 | archive 缓冲输出无法满足原“写前打印”表述，且报告插入点早于部分 preflight guards。 | high | STEP2·r1 | verified |
+| SPEC-3 | 场景无法证明 rename 前 raw capture 与 repaired-rerun entry。 | med | STEP2·r1 | verified |
+| SPEC-4 | bin→cli→archiveChange matcher DI 接口及 missing-factory 行为未定义。 | med | STEP2·r1 | verified |
+| SPEC-5 | integrity human section 缺少 external-field control-character sanitization。 | high | STEP2·r1 | verified |
+| SPEC-ADV-2 | 完整 human line grammar 可在红测试中进一步固定。 | P0 | STEP2·r2 | advisory |
+| SPEC-ADV-3 | missing-factory warning reason token 可进一步固定。 | P0 | STEP2·r2 | advisory |
+
+VERDICT: no major issues, ready to proceed to execution
+tokens used
+216,645
+# spec-review-v2 — modified-block-integrity
+
+## 结论
+
+Round 1 的五项正式问题均已闭合。修订后的 SPEC/design 与 State A 的 projection、matcher 两批契约、archive preflight、JSON presence matrix 及 bin seam 一致；未发现会导致返工或生产事故的新缺口。
+
+## Round 1 复核
+
+### SPEC-1：verified
+
+trim-equal FAST PATH 已明确先于结构扫描与 `idOf`：
+
+- 六个 diff arrays 全空；
+- repaired rerun 仍贡献 equal-text pair；
+- 每个 MODIFIED 始终一条 JSON entry；
+- archive 在仅有 fast-path entries 时无需 matcher；
+- 空 formatter 结果不进入 `out[]`，不会产生空行。
+
+算法、JSON presence 与 human 静默规则现已一致。
+
+### SPEC-2：verified
+
+“before write”已唯一裁定为 output-order guarantee，不再暗示物理 stdout 发生于写入前。
+
+报告插入点位于全部 preflight guards 之后，包括：
+
+- hygiene/CAS/conflict/denial；
+- pre-existing `.tmp-archive`；
+- explicit `--changes-dir` containment。
+
+AM-46 已覆盖新增失败路径；成功时 section 位于 RESULT 文本之前。该设计兼容 State A 的 buffered `archiveChange() → {out,err}` 模型。
+
+### SPEC-3：verified
+
+捕获点现有直接 module oracle：
+
+- rename-then-modify 的 `oldBlock` deep-equal 完整 pre-rename block；
+- 捕获发生在 rename key swap 前；
+- `newBlock` deep-equal delta block；
+- ordinary unchanged 与 stamped repaired rerun 均贡献 equal-text pair；
+- `buildProjection().modifiedBlocks` 的 raw text 直接受测。
+
+这足以阻止仅靠最终 `missingLines=[]` 掩盖错误 baseline 的实现。
+
+### SPEC-4：verified
+
+依赖注入接口已闭合：
+
+```js
+archiveMerge.cli(argv, deps = {})
+archiveChange({ ..., idMatcherFactory })
+```
+
+factory 为 `(cwd) => matcher | {error}`，由 bin 使用 `lib/config.resolveIdPattern` 与 `spec-runner.makeIdMatcher` 惰性组装。missing factory 与 factory error 同路降级；programmatic path 也有 module oracle。`archive-merge` 不新增对 `spec-runner` 的反向依赖。
+
+### SPEC-5：verified
+
+共享 human formatter 已规定：
+
+- 所有 externally-sourced fields 均先执行 C0/DEL → `·`；
+- 再按 119 UTF-16 units + `…` 截断；
+- title、body line、file suffix 等均有 ESC/control injection oracle；
+- JSON 保留原始全文，由 `JSON.stringify` 转义。
+
+新增 human 输出路径不再允许 C0/DEL 伪造终端或 CI 日志结构。
+
+## P5 checklist
+
+### 1. 场景覆盖
+
+AM-43..47 与 SR-65..68 已覆盖：
+
+- 八行 cardinality truth table；
+- duplicate/no-ID/ordering；
+- missing/reordered/repeated/whitespace lines；
+- prose、closed/unclosed fence 与多空格 heading；
+- rename-then-modify raw capture；
+- ordinary unchanged 与 repaired rerun；
+- GREEN/GAPS/ERROR/`--specs` presence matrix；
+- matcher 两批与零 binding pollution；
+- archive dry-run/`--write`/全部 preflight guards；
+- config/default/invalid/matcher failure/missing factory；
+- unsafe human fields；
+- frozen live specimen deep oracle。
+
+未发现缺少的事故级 failure/edge scenario。
+
+### 2. 外部共享状态
+
+无新增持久化 shared state。
+
+- archive store：init 为首次 `--write` 创建，update 为 temp+rename 全量替换，cleanup 仍为 none。
+- verify：只读 filesystem，并执行既有 test child。
+- integrity report 只消费 projection snapshot，不增加 filesystem observation。
+
+### 3. State A 与约定兼容性
+
+- `makeThenBind` 扩展为分段返回，不增加第三次 matcher batch。
+- integrity titles 不进入 binding accumulation、scenario count、`changeScope` 或 `storeReport`。
+- `modifiedBlocks` 不进入既有 `projection` JSON shape。
+- GREEN/GAPS 只新增契约要求的 `modifiedIntegrity`；ERROR 与 `--specs` 保持 absent。
+- rename baseline、unchanged、repaired capture points 均已钉死。
+- archive report 位于所有 preflight guards 之后，且不改变 exit/write bytes。
+- bin seam 保持 `archive-merge → spec-runner` 反向依赖不存在。
+
+### 4. SPEC/design 映射
+
+SPEC 中的 engine、verify、archive、failure degradation、安全渲染和 presence rules 均有对应 design 落点；design 未引入超出 SPEC 的事故级行为。
+
+### 5. 新外部输入安全
+
+config-origin regex 继续经过 terminable matcher channel；archive failure warning 继续整行 `sanitizeMsg`；human report 的 repository-derived fields 先清理控制字符再截断；JSON 不执行或解释输入文本。未发现新增 fail-open 路径。
+
+## Advisories（P0）
+
+### SPEC-ADV-2：建议固定完整 human grammar
+
+现有契约已足以实现，但 entry header、`titleChanged`、`ambiguous` 和 `missingLines` 的逐字模板仍主要由 golden 决定。实现红测试时先手写完整 expected output，可避免以实现产物反向生成 golden。
+
+### SPEC-ADV-3：建议固定 missing-factory reason token
+
+missing factory 的 warning+skip 行为已经明确，不影响正确性。建议测试再固定 reason，例如 `id-pattern resolution failed: matcher factory unavailable`，便于 programmatic consumers 稳定诊断。
+
+## Ledger delta
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| SPEC-1 | identical MODIFIED 的全空 entry 契约与无条件基数分类冲突。 | med | STEP2·r1 | verified |
+| SPEC-2 | archive 缓冲输出无法满足原“写前打印”表述，且报告插入点早于部分 preflight guards。 | high | STEP2·r1 | verified |
+| SPEC-3 | 场景无法证明 rename 前 raw capture 与 repaired-rerun entry。 | med | STEP2·r1 | verified |
+| SPEC-4 | bin→cli→archiveChange matcher DI 接口及 missing-factory 行为未定义。 | med | STEP2·r1 | verified |
+| SPEC-5 | integrity human section 缺少 external-field control-character sanitization。 | high | STEP2·r1 | verified |
+| SPEC-ADV-2 | 完整 human line grammar 可在红测试中进一步固定。 | P0 | STEP2·r2 | advisory |
+| SPEC-ADV-3 | missing-factory warning reason token 可进一步固定。 | P0 | STEP2·r2 | advisory |
+
+VERDICT: no major issues, ready to proceed to execution

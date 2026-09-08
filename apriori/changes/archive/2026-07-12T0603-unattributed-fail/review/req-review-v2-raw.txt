@@ -1,0 +1,267 @@
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f4b30-68f9-7222-9b64-17f52a333b4c
+--------
+user
+P1 round 2 for unattributed-fail. All five round-1 issues addressed in apriori/changes/unattributed-fail/requirement/req-v2.md (v1 kept): UF-1 — exact contracts: human report lists first 20 lines truncated at 120 chars with … and an 'and N more' tail; --json gains unattributedFailures {count, lines[] untruncated}, other fields unchanged. UF-2 — infra ERROR precedence: run.errors non-empty always exits 2, unattributed failures never downgrade an ERROR; both printed, exit takes 2. UF-3 — exact classifier: per-line with at most one trailing CR stripped, column-0 /^not ok\b/ only (indented lines = nested subtests stay excluded); SKIP/TODO directive anywhere in the remainder exempts; strict-shape-with-ID stays attributed; everything else = unattributed failure. UF-4 — constraint now says SR-01..32 no-regression, new scenarios from SR-33. UF-5 — reworded: untagged ok points block nothing and report/JSON shapes change only by the new group. Both advisories absorbed. Ledger rows UF-1..5 open pending your concurrence. Re-read req-v2.md. End with LEDGER DELTA then exactly one verdict line.
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-11T21:27:31.965501Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T21:27:32.206289Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T21:27:32.552890Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-11T21:27:33.058922Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-11T21:27:34.037600Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-11T21:27:35.939726Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-11T21:27:39.156877Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: TAlveZD49xQI
+codex
+我会核对 v2 是否真正把五个开放点都落成可测试合同，同时检查新分类器有没有引入新的歧义或与当前 state A 冲突。
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' apriori/changes/unattributed-fail/requirement/req-v2.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '87,132p' lib/spec-runner.js && sed -n '173,197p' lib/spec-runner.js && sed -n '284,315p' lib/spec-runner.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "find apriori/changes/unattributed-fail -maxdepth 3 -type f -print | sort && sed -n '1,120p' apriori/changes/unattributed-fail/review/issues.md 2>/dev/null || true" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 107ms:
+# 需求:unattributed-fail —— 未归因的测试失败必须阻断 GREEN (v2)
+
+> change: `unattributed-fail` · tier: medium · track: harden
+> lineage: v4 分支;不合并到 main/v1/v3
+> 来源:GPT-5.6 对 4.0.0 的外部评审 P0-1,已本机复现。
+> v2 修订:UF-1..5(JSON/截断合同、infra 优先级、精确分类器、SR 范围、untagged-ok 措辞)+ 两条 advisory。
+
+## 目标
+
+`verify` 是整个体系的发布闸口,它对 GREEN 的承诺是"测试套件就是规格"。当前存在假绿:测试进程明确失败(`not ok` + 退出码 1),verify 仍 GREEN/exit 0。已复现输入:
+
+```text
+ok 1 - XX-01 pass
+not ok 2 - global teardown failed
+1..2
+```
+
+(进程退出 1)→ 当前输出 `RESULT: GREEN`,exit 0。
+
+## 缺陷机制(现状事实)
+
+- `TAP_RE` 只匹配 `(ok|not ok) N - desc` 全形;带描述但无场景 ID 的 `not ok` 进 `untaggedFails` 并计入 `failCount`,于是 infra 规则(非零退出且 failCount===0 才 ERROR)被"解释掉",而 verdict 的 clean 只看有 ID 的结果——两层各自有理,合起来放行。
+- 裸形 `not ok`/`not ok 3`/`not ok - desc` 是合法 TAP,却只被 `POINT_LINE_RE` 计入 plan 点数,既不进 results 也不进 untaggedFails:配合退出码 0(某些 runner 会这样)是完全不可见的假绿。
+
+## 行为需求
+
+1. **任何非 SKIP/TODO 的顶层 `not ok` 都阻断 GREEN**,无论其形状。**精确分类器(UF-3)**:与 plan 预扫描同口径逐行处理(每行剥至多一个尾随 CR);行在**列 0**(无任何前导空白——缩进行是 node 嵌套子测试,照旧不计)匹配 `/^not ok\b/` 时:
+   - 余文含 `/#\s*(SKIP|TODO)\b/i` 指令 → 不是失败(裸形上的指令同样豁免);
+   - 匹配既有严格形 `N - desc` 且描述带场景 ID → 归因失败(既有路径,计入该场景);
+   - 其余一切(带编号带描述但无 ID;无编号/无描述/无 `-` 分隔的裸形半形)→ **未归因失败(unattributed failure)**。
+2. **报告与 JSON 合同(UF-1)**:
+   - 人类报告:新组 `✗ UNATTRIBUTED FAILURES (not ok without a scenario ID): N`,列出前 20 行,每行截断到 120 字符(超出以 `…` 结尾);超过 20 行追加 `… and N more`。
+   - `--json`:新增顶层 `unattributedFailures: { count: <int>, lines: [<原始行全文,不截断>] }`;其余既有字段形状不变。
+   - RESULT 为 GAPS,exit 1——它们是真实测试失败,不是基础设施错误。
+3. **退出码硬规则与优先级(UF-2)**:`exec.status !== 0` 时 verify 绝不返回 0——有失败归因 → exit 1;全绿 TAP 无归因 → 既有 infra ERROR(exit 2)不变。**infra ERROR 优先**:`run.errors` 非空(Bail out!、plan 不符、重号、spawn/signal、zero-TAP 等)一律 exit 2,未归因失败绝不把既有 ERROR 降级为 GAPS;两者并存时报告都打印、退出码取 2。反向不成立:未归因失败即使配合退出码 0 也阻断(见 1)。
+4. **合法 TAP 的宽容面不变(UF-5)**:无 ID 的 `ok` 点照旧不阻断,且报告/JSON 形状除新增 unattributedFailures 外**不因 untagged ok 点发生任何变化**;SKIP/TODO 指令照旧不算失败;plan 校验、Bail out!、重号等既有 infra 规则不变。
+5. **--json** 增加 `unattributedFailures`(计数 + 原始行数组);既有形状字段不破坏。
+6. **gate C1 自动继承**(verify GAPS → blocked),不需要 gate 侧改动——但需一条场景钉住继承。
+7. **回归钉子**:评审复现输入(teardown 失败形)与"裸 `not ok` + 退出码 0"两个病例都必须有绑定场景。
+
+## 非目标
+
+- TAP 子测试/嵌套缩进层的重新设计(node 嵌套 TAP 既有处理不变)。
+- YAML diagnostics 块解析。
+- verify 之外的表面(archive/gate 自身逻辑,除 C1 继承验证)。
+
+## 约束
+
+- 零依赖、纯 Node;既有 SR-01..32 场景与全部现有测试不回归(UF-4);新场景自 SR-33 起编号。
+- CRLF 行尾与 fence 语义照旧。
+
+## 开放问题
+
+- 无。
+
+ succeeded in 142ms:
+// the TAP plan (1..N, optionally with a # SKIP/# TODO directive) and result tokens,
+// matched per top-level line — indented subtest/YAML lines are invisible by the ^ anchor
+const PLAN_LINE_RE = /^1\.\.(\d+)\s*(?:#.*)?$/;
+const POINT_LINE_RE = /^(?:ok|not ok)(?:\s|$)/;
+const POINT_NUM_RE = /^(?:ok|not ok)\s+(\d+)(?:\s|$)/;   // complete numeric token only — `ok 1abc` stays unnumbered
+
+// Parse TAP text → { results: Map<id,{pass,fail,skip}>, untagged: [], bailout: string|null,
+//                    plans: number[], points: number, dupNumbers: number[] }
+// A # SKIP / # TODO directive is neither pass nor fail — a skipped test proves nothing.
+// plans/points/dupNumbers feed the plan-is-a-checked-promise infra guards (SR-26..31).
+function parseTap(out, idRe) {
+  const results = new Map();
+  const untagged = [];
+  let untaggedFails = 0;
+  const bm = out.match(/^Bail out!(.*)$/m);
+  const bailout = bm ? bm[0].trim() : null;
+  const plans = [];
+  let points = 0;
+  const numSeen = new Set(), dupSet = new Set();
+  for (const raw of out.split('\n')) {
+    const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw;
+    const p = PLAN_LINE_RE.exec(line);
+    if (p) { plans.push(Number(p[1])); continue; }
+    if (!POINT_LINE_RE.test(line)) continue;
+    points++;
+    const n = POINT_NUM_RE.exec(line);
+    if (n) {
+      const num = Number(n[1]);
+      if (numSeen.has(num)) dupSet.add(num); else numSeen.add(num);
+    }
+  }
+  const dupNumbers = [...dupSet].sort((a, b) => a - b);
+  let m;
+  TAP_RE.lastIndex = 0;
+  while ((m = TAP_RE.exec(out)) !== null) {
+    const hash = m[2].search(/#\s*(SKIP|TODO)\b/i);
+    const name = hash >= 0 ? m[2].slice(0, hash).trim() : m[2];
+    const directive = hash >= 0;
+    const id = leadId(name, idRe);
+    if (id === null) { untagged.push(name); if (m[1] === 'not ok' && !directive) untaggedFails++; continue; }
+    const cur = results.get(id) || { pass: 0, fail: 0, skip: 0 };
+    if (directive) cur.skip++;
+    else cur[m[1] === 'ok' ? 'pass' : 'fail']++;
+    results.set(id, cur);
+  }
+  return { results, untagged, untaggedFails, bailout, plans, points, dupNumbers };
+function infraErrors(run) {
+  const errs = [];
+  for (const t of run.missingTargets) errs.push(`spec target does not exist: ${t}`);
+  if (!run.missingTargets.length && run.fileCount === 0)
+    errs.push('no spec files found under the given targets — nothing to verify');
+  if (run.fileCount > 0 && run.scenarioCount === 0)
+    errs.push('spec files contain zero scenarios — nothing to verify');
+  if (run.exec.error) errs.push(`test command failed to spawn: ${run.exec.error}`);
+  if (run.exec.signal) errs.push(`test command was killed by signal ${run.exec.signal}`);
+  if (run.bailout) errs.push(`test run aborted: ${run.bailout}`);
+  if (run.noTap)
+    errs.push('test command produced output but ZERO TAP results were parsed — the command is probably not emitting TAP (node test runner: add --test-reporter=tap)');
+  // the TAP plan is a checked promise — defensive defaults keep legacy run shapes
+  // (direct callers of this exported helper) valid; only verify-created runs carry the fields
+  const plans = run.plans || [], points = run.points || 0, dupNumbers = run.dupNumbers || [];
+  if (plans.length > 1)
+    errs.push(`multiple TAP plans in one run (${plans.map((n) => `1..${n}`).join(', ')}) — cannot attribute test points to plans; run one TAP stream per verify (split the test command)`);
+  else if (plans.length === 1 && plans[0] !== points)
+    errs.push(`TAP plan declares ${plans[0]} test point(s) but ${points} were parsed — output truncated or garbled; refusing to trust this run`);
+  else if (plans.length === 1 && dupNumbers.length)
+    errs.push(`duplicate TAP test-point number(s): ${dupNumbers.join(', ')}`);
+  if (run.exec.status !== null && run.exec.status !== 0 && run.failCount === 0)
+    errs.push(`test command exited with status ${run.exec.status} but no parsed TAP failure explains it — the TAP picture is incomplete or truncated; refusing to trust this run`);
+  return errs;
+}
+function verifyJson(run) {
+  const { verdict: v, results } = run;
+  const clean = v.clean && run.duplicates.length === 0 && run.errors.length === 0;
+  const json = projectionless(run, clean);
+  if (run.projection) json.projection = run.projection;   // ONLY --change runs carry this field
+  return json;
+}
+
+function projectionless(run, clean) {
+  const { verdict: v, results } = run;
+  return {
+    clean,
+    result: run.errors.length ? 'ERROR' : (clean ? 'GREEN' : 'GAPS'),
+    errors: run.errors,
+    specFiles: run.fileCount,
+    exec: run.exec,
+    duplicates: run.duplicates,
+    boundGreen: v.boundGreen.map((id) => ({ id, ...results.get(id) })),
+    boundRed: v.boundRed.map((id) => ({ id, ...results.get(id) })),
+    unbound: v.unbound,
+    orphan: v.orphan.map((id) => ({ id, ...results.get(id) })),
+    unidentified: v.unidentified.map(([file, title]) => ({ file, title })),
+  };
+}
+
+// Fallback test command from apriori/process-config.md's `test-cmd` row (written by init --test-cmd)
+function configTestCmd(cwd) {
+  const p = path.join(cwd || '.', 'apriori', 'process-config.md');
+  if (!fs.existsSync(p)) return null;
+  const m = fs.readFileSync(p, 'utf8').match(/^\|\s*test-cmd\s*\|\s*(.+?)\s*\|/m);
+  return m ? m[1] : null;
+}
+
+ succeeded in 186ms:
+apriori/changes/unattributed-fail/flow-state.md
+apriori/changes/unattributed-fail/requirement/req-v1.md
+apriori/changes/unattributed-fail/requirement/req-v2.md
+apriori/changes/unattributed-fail/review/issues.md
+apriori/changes/unattributed-fail/review/req-review-v1.md
+apriori/changes/unattributed-fail/review/req-review-v1-raw.txt
+# Issue ledger — unattributed-fail
+
+Rows recorded on behalf of the reviewer (codex session 019f4b30-68f9-7222-9b64-17f52a333b4c; raws beside their docs in this dir).
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| UF-1 | unattributedFailures 的 JSON 形状与人类报告截断规则未精确定义。 | 实现/测试分叉,P8 无法判定合同。 | STEP0·r1 | open |
+| UF-2 | 未归因失败与 Bail out/plan mismatch/重号等 infra ERROR 并存时的优先级未定。 | 新 GAPS 分支可能遮蔽既有 fail-closed ERROR。 | STEP0·r1 | open |
+| UF-3 | 裸 not ok 的 SKIP/TODO 识别与缩进嵌套排除缺精确分类器。 | 合法 TAP 误伤,或 nested TAP 误计顶层失败。 | STEP0·r1 | open |
+| UF-4 | 需求称既有场景 SR-01..19,仓库现实是 SR-01..32。 | 回归范围被错误缩小。 | STEP0·r1 | open |
+| UF-5 | "untagged ok 点照旧列出"与当前报告/JSON 行为不符。 | 暗含未声明的输出变化。 | STEP0·r1 | open |
+
+codex
+## 复核结论
+
+UF-1 已解决。v2 明确了人类报告组名、前 20 行、120 字符截断、`… and N more` 尾行，以及 JSON 顶层字段 `unattributedFailures: { count, lines[] }`，并声明 JSON 行不截断、既有字段形状不变。可直接转成测试断言。
+
+UF-2 已解决。v2 明确 `run.errors` 非空永远优先为 ERROR/exit 2，未归因失败只作为并存报告，不能把 Bail out、plan mismatch、重号、spawn/signal、zero-TAP 等 infra 错误降级为 GAPS。
+
+UF-3 已解决。v2 给出逐行分类器：至多剥一个尾随 CR、列 0 `not ok`、缩进行不计、SKIP/TODO 指令豁免、严格形带 ID 走归因路径，其余为未归因失败。这个规则覆盖裸点、半形点、复现样例和 node nested TAP 排除。
+
+UF-4 已解决。回归范围已改为 SR-01..32，新场景从 SR-33 起，匹配当前 store reality。
+
+UF-5 已解决。v2 删除了“untagged ok 列出”的错误暗示，改为 untagged ok 不阻断，且报告/JSON 除新增 `unattributedFailures` 外不因 untagged ok 改变。
+
+未发现新的 STEP0 需求缺陷。v2 的目标、边界、异常优先级、JSON/报告合同和回归编号都足够交给实现阶段。
+
+## LEDGER DELTA
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| UF-1 | unattributedFailures 的 JSON 形状与人类报告截断规则未精确定义。 | 实现/测试分叉,P8 无法判定合同。 | STEP0·r1 | verified |
+| UF-2 | 未归因失败与 Bail out/plan mismatch/重号等 infra ERROR 并存时的优先级未定。 | 新 GAPS 分支可能遮蔽既有 fail-closed ERROR。 | STEP0·r1 | verified |
+| UF-3 | 裸 not ok 的 SKIP/TODO 识别与缩进嵌套排除缺精确分类器。 | 合法 TAP 误伤,或 nested TAP 误计顶层失败。 | STEP0·r1 | verified |
+| UF-4 | 需求称既有场景 SR-01..19,仓库现实是 SR-01..32。 | 回归范围被错误缩小。 | STEP0·r1 | verified |
+| UF-5 | “untagged ok 点照旧列出”与当前报告/JSON 行为不符。 | 暗含未声明的输出变化。 | STEP0·r1 | verified |
+
+VERDICT: no major issues
+tokens used
+4,355,352
+## 复核结论
+
+UF-1 已解决。v2 明确了人类报告组名、前 20 行、120 字符截断、`… and N more` 尾行，以及 JSON 顶层字段 `unattributedFailures: { count, lines[] }`，并声明 JSON 行不截断、既有字段形状不变。可直接转成测试断言。
+
+UF-2 已解决。v2 明确 `run.errors` 非空永远优先为 ERROR/exit 2，未归因失败只作为并存报告，不能把 Bail out、plan mismatch、重号、spawn/signal、zero-TAP 等 infra 错误降级为 GAPS。
+
+UF-3 已解决。v2 给出逐行分类器：至多剥一个尾随 CR、列 0 `not ok`、缩进行不计、SKIP/TODO 指令豁免、严格形带 ID 走归因路径，其余为未归因失败。这个规则覆盖裸点、半形点、复现样例和 node nested TAP 排除。
+
+UF-4 已解决。回归范围已改为 SR-01..32，新场景从 SR-33 起，匹配当前 store reality。
+
+UF-5 已解决。v2 删除了“untagged ok 列出”的错误暗示，改为 untagged ok 不阻断，且报告/JSON 除新增 `unattributedFailures` 外不因 untagged ok 改变。
+
+未发现新的 STEP0 需求缺陷。v2 的目标、边界、异常优先级、JSON/报告合同和回归编号都足够交给实现阶段。
+
+## LEDGER DELTA
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| UF-1 | unattributedFailures 的 JSON 形状与人类报告截断规则未精确定义。 | 实现/测试分叉,P8 无法判定合同。 | STEP0·r1 | verified |
+| UF-2 | 未归因失败与 Bail out/plan mismatch/重号等 infra ERROR 并存时的优先级未定。 | 新 GAPS 分支可能遮蔽既有 fail-closed ERROR。 | STEP0·r1 | verified |
+| UF-3 | 裸 not ok 的 SKIP/TODO 识别与缩进嵌套排除缺精确分类器。 | 合法 TAP 误伤,或 nested TAP 误计顶层失败。 | STEP0·r1 | verified |
+| UF-4 | 需求称既有场景 SR-01..19,仓库现实是 SR-01..32。 | 回归范围被错误缩小。 | STEP0·r1 | verified |
+| UF-5 | “untagged ok 点照旧列出”与当前报告/JSON 行为不符。 | 暗含未声明的输出变化。 | STEP0·r1 | verified |
+
+VERDICT: no major issues

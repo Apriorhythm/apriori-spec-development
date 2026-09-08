@@ -1,0 +1,1608 @@
+<!-- provenance: provider=codex model=gpt-5.6-sol session=019fff33-a891-7140-a863-d7a0355df0cc date=2026-08-15 -->
+OpenAI Codex v0.147.0
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.6-sol
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019fff33-a891-7140-a863-d7a0355df0cc
+--------
+user
+STEP2 round 2 (P5). All four round-1 findings were accepted; none was rejected. The three advisories were implemented too.
+
+[What changed]
+* SPEC-1 → `moveBundle = <changes-dir>/<change>` is now an INDEPENDENT object of judgement in the single-file form: whatever the delta's attribution says, the move target goes through full readiness and the namespace checks on its own account; if the delta does attribute to a formal bundle, its directory must EQUAL moveBundle or the call is refused; and the one captured timestamp feeds BOTH move paths (`:753` and `:860`). New scenarios AM-66 / AM-67 / AM-68; design §D3.4 rewritten with your two counterexamples stated verbatim; tasks T17 (both move paths), T22b, T22c.
+* SPEC-2 → attribution is now an IDENTITY of `{root, stage, name, bundleDir}`, not a bare name. Either measure landing in an archived bundle refuses; the two measures must agree on root, stage AND directory. AM-61 rewritten; design gained three more disposition rows; task T24b covers external-symlink→archived, lexical-active→realpath-archived, and same-name-different-root.
+* SPEC-3 → `checkArchiveLedger` now has an explicit step 0: `reviewDirDefect(dir)` BEFORE the ledger leaf guard, with your reasoning (an inside-the-bundle `review/` symlink leaves the leaf normal and contained, so leaf-only guarding lets archive pass while gate C4 blocks). Recorded in design D1.3 and in the readiness delta's RY-03; task T4b builds exactly that fixture.
+* SPEC-4 → AM-19's blanket "single-file behaviour unchanged" is narrowed to "the dispatch is unchanged, and genuinely surgical inputs keep their behaviour; a delta attributing to a formal bundle, or a call that moves one, is governed by the new requirements". Task D4 records that AC-AP-13f must be read as "neither measure attributes to a formal bundle", so no one writes a test contradicting AC-AP-13i.
+* Advisories → the two seams now have a fixed API in design D6 (`_setClock(fn)` called exactly once at capture; `_setAfterReadinessHook(fn)` called once after readiness passes and before the first write); the composite-predicate wording is corrected to "the namespace the resolver will face after the active entry moves — resolver and it share smaller private predicates"; new task D3 asserts `[--force]` appears in both usage strings and `--help`.
+
+[Your job]
+1. Verify SPEC-1..4: flip to `verified` or REOPEN with what is still missing.
+2. Re-run the five P5 checklist dimensions. New issues get new IDs (SPEC-5, ...).
+3. Do not manufacture findings. If it is ready for execution, return the ready verdict.
+
+[Context you should weigh] step2-cap is 4; this is round 2. STEP0 already exited at its cap without converging, so this change has never had a clean requirements verdict. If you believe the remaining risk is not something more spec text can fix — for example if the change is simply too large to execute as one unit and should be split — say so explicitly under Advisories; that is useful signal for the human gate, not a finding.
+
+[Scope] Count toward the verdict only gaps that would cause rework or a production incident. Everything else — advisory. Correctness and security findings can never be advisory.
+
+[Output]
+READ-ONLY, no file writes. Print the COMPLETE review doc body for landing at apriori/changes/archive-preflight/review/spec-review-v2.md, ending with a "Ledger delta" section and exactly one verdict line: "VERDICT: no major issues, ready to proceed to execution" or "VERDICT: <N> issues open".
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+codex
+I’ll verify each accepted repair against the revised deltas, design, and tasks, then re-walk the actual CLI branches for any newly exposed combination. I’ll also assess whether the remaining execution risk is architectural size rather than missing specification.
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' apriori/changes/archive-preflight/specs/archive-merge/spec.md
+sed -n '1,180p' apriori/changes/archive-preflight/specs/readiness/spec.md
+sed -n '1,180p' apriori/changes/archive-preflight/specs/resolve/spec.md
+sed -n '1,330p' apriori/changes/archive-preflight/design.md
+sed -n '1,260p' apriori/changes/archive-preflight/tasks.md
+sed -n '1,240p' apriori/changes/archive-preflight/review/spec-review-v1.md
+sed -n '1,220p' apriori/changes/archive-preflight/review/issues.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 200ms:
+<!-- apriori-base: sha256:606fc080d3f86c6d689983ad3323c42ca95df4fa7a4873371e03e4ba5d9a8721 -->
+
+## MODIFIED Requirements
+
+### Requirement: high-level archive merges a whole change transactionally
+`apriori archive --change <name>` SHALL discover every `.md` delta file under `<changes-dir>/<name>/specs/` (`--changes-dir` defaults to `apriori/changes` and sets both the discovery root and the move root), map each to its store target `apriori/specs/<suffix>` by path suffix, dry-run the whole set by default, and on `--write` commit in four phases — preflight (validate, parse, CAS-check, merge in memory, then READINESS-check the change bundle; any failure anywhere → nothing written), stage (write every `<store>.tmp-archive`), commit (rename each temp in sorted path order), move (only when `--changes-dir` was explicitly passed, only after all stores committed). The guarantee is failure-atomicity up to the commit point; crash durability is not claimed.
+
+#### Scenario: AM-13 a READY change's dry-run reports the whole change and writes nothing
+- WHEN `apriori archive --change <name>` runs without `--write` on a READY change spanning several modules
+- THEN it prints per-module merged/modified/deprecated/renamed/no-op requirement names and a result line, and no file on disk changes
+
+#### Scenario: AM-48 an unready change's dry-run does not claim a merge
+- WHEN the same dry-run runs on a change that fails the readiness preflight
+- THEN the readiness failures are reported, the `RESULT: MERGED (dry-run…)` line is NOT printed, the exit code is 1, and still no file on disk changes — a dry-run's whole purpose is to say what `--write` would do
+
+#### Scenario: AM-14 any preflight failure means nothing is written
+- WHEN any module's merge reports a conflict, any delta file fails a hygiene guard, or any CAS stamp mismatches during `--write`
+- THEN every failure across all modules is reported, no store file changes, and the exit code is 1
+
+#### Scenario: AM-15 a mid-commit failure is reported exactly
+- WHEN a rename in the commit phase fails after earlier renames succeeded
+- THEN archive reports exactly which modules committed, which did not, and which temp files remain for manual completion, and exits 1 — already-committed renames are not rolled back
+
+#### Scenario: AM-16 a pre-existing temp file blocks the run
+- WHEN any target `<store>.tmp-archive` already exists at preflight
+- THEN archive exits 1 naming that file, writes nothing, and leaves the pre-existing file untouched (it may be another run in flight or a manual-recovery artifact)
+
+#### Scenario: AM-17 zero discovered delta files fail closed
+- WHEN `<changes-dir>/<name>/specs/` exists but contains no `.md` delta files, or the change dir itself is missing
+- THEN archive exits 2 naming the searched path
+
+#### Scenario: AM-18 the change-dir move waits for every store commit
+- WHEN `--write --changes-dir <dir>` succeeds
+- THEN the change dir moves to `<dir>/archive/<stamp>-<name>/` only after ALL stores committed; without an explicit `--changes-dir` no move happens; a move failure leaves the committed stores in place and exits 1
+
+#### Scenario: AM-19 high-level and single-file forms are mutually exclusive
+- WHEN `--change` is combined with `--store` or `--delta`
+- THEN archive exits 2 with usage; the single-file DISPATCH itself is unchanged, and a single-file call whose inputs are genuinely surgical keeps its previous behavior — but a call whose `--delta` attributes to a formal bundle, or which moves one, is governed by the attribution and readiness requirements below, so the old blanket "single-file behaviour is unchanged" no longer holds
+
+#### Scenario: AM-20 per-file delta hygiene guards the whole set
+- WHEN any discovered delta file is empty/whitespace-only, parses to zero operations despite content, or carries duplicate requirement names (within a section or across sections)
+- THEN the run refuses naming the file (and requirement, for duplicates), nothing is written, and no partial projection or merge survives
+
+#### Scenario: AM-21 duplicate requirement names in the store are corruption
+- WHEN the store text handed to any merge contains the same requirement name twice
+- THEN the merge reports it as a conflict instead of silently keeping the last block
+
+#### Scenario: AM-22 realpath containment governs every participating path
+- WHEN the change dir, a delta file, a mapped store target, or the move destination (`<changes-dir>/archive/…` — e.g. an `archive/` that is a symlink pointing outside) — each followed through symlinks — resolves outside its root (changes dir / `apriori/specs/`), or a not-yet-existing path's nearest existing ancestor resolves outside its root
+- THEN the command exits 2 naming the offending path, and nothing is read as spec input, written, or moved
+
+## ADDED Requirements
+
+### Requirement: archive refuses the irreversible write when the change is not ready
+Before staging anything, and after every existing preflight guard has passed, `apriori archive` SHALL evaluate the change bundle's READINESS against the SAME predicates the post-archive gate will apply — gate's full C2 (tasks), C3 (flow-state legality) and ARCHIVED-stage C4 (ledger), reused as one shared implementation rather than reimplemented — plus an archive-only narrowing: `current-step` must be exactly `STEP6`, and the three artifacts must be read through a structural safety guard before any content read. A readiness failure SHALL report through the existing `RESULT: FAILED PREFLIGHT — nothing written` path with exit code 1 and SHALL name the specific object (which key, how many unchecked boxes and the first one's text, which ledger rows and their statuses, which path and which defect). Readiness SHALL be evaluated only after the existing guards; when both fail, the existing guards' diagnostics are the ones reported and readiness is not evaluated at all.
+
+#### Scenario: AM-49 unchecked tasks, non-terminal ledger rows and a wrong step each refuse the write
+- WHEN the bundle's `tasks.md` still holds a `- [ ]` box, or its ledger holds a row that is not archive-terminal (`open` / `fixed` / a `rejected` lacking reviewer concurrence), or its flow-state `current-step` is any legal value other than `STEP6`
+- THEN archive exits 1 with `RESULT: FAILED PREFLIGHT — nothing written`, naming the count and the first unchecked task, or each offending row ID with its status, or the current value against the allowed set; the store is byte-identical afterwards and the bundle has not moved
+- AND WHEN `current-step` is `DONE` THEN the diagnostic says an in-flight bundle contradicts a DONE state — it never asserts the bundle is already archived
+
+#### Scenario: AM-50 flow-state is judged first because it decides the tier
+- WHEN the flow-state is missing, structurally unsafe, or illegal (a missing required key, an unfilled placeholder, a value outside the legal vocabulary, or a `change` that does not equal the requested name)
+- THEN ONLY that failure is reported — tasks and ledger draw no conclusion, because their missing-file handling is tier-sensitive and the tier is unknowable; and WHEN the flow-state is legal but tasks AND ledger both fail THEN both are reported in one run, never one-at-a-time
+
+#### Scenario: AM-51 a trivial-tier bundle may legitimately lack tasks and a ledger
+- WHEN the flow-state declares `tier: trivial` and `tasks.md` or the ledger is absent
+- THEN readiness treats that absence as not-applicable exactly as gate C2/C4 do; on medium/large the same absence refuses the write
+
+#### Scenario: AM-52 a structurally unsafe artifact is refused, and is never forcible
+- WHEN `tasks.md`, the ledger, or `review/` is a symlink, is the wrong file type, sits behind a bad ancestor, escapes the bundle, or raises a read error after the guard passed
+- THEN archive refuses naming the path and the defect kind, `--force` does NOT waive it, and no unstructured exception escapes — broken is not the same thing as unfinished
+
+#### Scenario: AM-53 readiness never disturbs the existing preflight
+- WHEN a delta is malformed, a merge conflicts, a CAS stamp has diverged, a temp file pre-exists, or a path escapes containment — with or without a readiness failure also present
+- THEN the reported diagnostics, wording and exit code are exactly what they were before this change, and readiness is not evaluated
+
+### Requirement: the resolution namespace must still lead to the bundle this run archives
+An archive that moves a bundle SHALL capture its archive timestamp ONCE in preflight and pass that same value to the move, and SHALL refuse — never forcibly — any namespace layout under which the following `apriori gate --change <name>` would resolve to something other than the bundle just moved. It SHALL judge that with the resolver's OWN shared predicate rather than a copy of its rules, covering both trust roots (`<changes-dir>` and `<changes-dir>/archive`), the active entry being moved, and every same-name archived candidate. These checks SHALL run only for invocations that will move a bundle — a dry-run carrying `--changes-dir` included, since it predicts that move — and SHALL be skipped otherwise, so that a no-move invocation can never be blocked by a namespace it does not touch.
+
+#### Scenario: AM-54 the timestamp the check used is the timestamp the move uses
+- WHEN the clock advances across a minute boundary, or is rolled back, between the readiness check and the move
+- THEN the archived directory that is actually created carries the SAME basename the check compared against — both consume one captured value
+
+#### Scenario: AM-55 a same-name archived directory that would out-sort this run is refused
+- WHEN `<changes-dir>/archive/` already holds a directory for this change whose basename sorts at or after the one this run would create (a future timestamp, a rollback-induced inversion, or an exact clash)
+- THEN archive exits 1 naming that directory, `--force` does NOT waive it, and nothing is written — otherwise the resolver would answer with the older bundle, or the destination would collide
+
+#### Scenario: AM-56 every structure the resolver would refuse is refused here too
+- WHEN either trust root is a symlink pointing inside the changes tree, is not a directory, or escapes; or the active entry being moved is itself a symlink to a real directory inside the changes root, or is not a directory; or a same-name archived candidate is a legal-stamp symlink (sorting either side) or a stamp-shaped directory whose date is not a real calendar date
+- THEN archive exits 1 naming the object and the defect, not forcibly, judged by the same shared predicate the resolver uses — never a second copy of its rules
+
+#### Scenario: AM-57 a no-move invocation is never blocked by the namespace
+- WHEN `--write` runs without an explicit `--changes-dir`, or a dry-run runs without one
+- THEN the namespace checks are not evaluated at all; WHEN a dry-run carries `--changes-dir` THEN they are, because it predicts the same move
+
+#### Scenario: AM-58 a custom changes root gets no post-archive gate promise
+- WHEN the move targets a `--changes-dir` other than the canonical `<cwd>/apriori/changes`
+- THEN readiness still runs, but the output states that this path carries no post-archive gate guarantee — `apriori gate --change <name>` only ever looks in the canonical root, so the namespace checks cannot promise it will find this bundle
+
+### Requirement: a delta that belongs to a formal bundle is judged as that bundle, and so is the bundle actually moved
+The single-file form SHALL decide whether readiness applies by ATTRIBUTING its `--delta`, never by whether `--changes-dir` was passed — that flag governs the move, not the ownership, and a call without it still writes the living store. Attribution SHALL compute BOTH a lexical claim (the normalized path, symlinks unresolved) and a realpath answer, for EVERY delta, and an attribution SHALL be an IDENTITY of `{root, stage, name, bundle directory}` — a bare change name is not enough, because the same name exists in more than one root and in both stages. Only a delta that belongs to no formal bundle by EITHER measure is surgical input that keeps its previous behavior; a delta whose two measures agree on one ACTIVE bundle directory SHALL be judged by that bundle's readiness; anything else — an escape, an identity that disagrees between the two measures, a mismatch against `--change`, or either measure landing in an ALREADY-ARCHIVED bundle — SHALL be refused.
+
+Independently of the delta, a single-file call carrying `--changes-dir` SHALL also MOVE `<changes-dir>/<change>`. That MOVE TARGET is a formal bundle in its own right: it SHALL pass the full readiness and namespace checks whatever the delta's attribution says, and when the delta does attribute to a formal bundle, the two SHALL be the same directory or the call is refused. The single captured archive timestamp SHALL feed this move exactly as it feeds the high-level one.
+
+#### Scenario: AM-59 a bundle's delta is judged even when nothing moves
+- WHEN `archive --store <store> --delta apriori/changes/X/specs/m/spec.md --change X --write` runs with no `--changes-dir`, and `X` is not ready (for instance `current-step: ABANDONED`)
+- THEN archive refuses with the readiness diagnostic and writes nothing — an ABANDONED change may never reach the store, and `--changes-dir` was never the right discriminator
+
+#### Scenario: AM-60 attribution reads both the lexical claim and the realpath
+- WHEN the `--delta` path lies lexically outside every changes root but its realpath resolves to an active formal bundle's delta (an external symlink), or lies lexically inside a bundle while its realpath escapes it
+- THEN the first is judged by the bundle its realpath names, and the second is refused — a delta that was genuinely COPIED out of a bundle is unattributable and stays caller responsibility, but a symlink's target is not
+
+#### Scenario: AM-61 identity must agree on root, stage and directory — a name is not an identity
+- WHEN the attributed bundle is not the one `--change` names; or the two measures disagree on root, stage, or directory (a lexically-active path whose realpath lands in the ARCHIVED copy of the same name; the same name under two different changes roots); or EITHER measure lands under `<changes-dir>/archive/<stamp>-X/specs/…` — reached directly or through an external symlink
+- THEN archive refuses; every archived case is refused whatever that bundle's flow-state says, so an archived delta can never re-enter the store through an alias
+
+#### Scenario: AM-66 the bundle that gets moved is judged even when the delta is surgical
+- WHEN a single-file call passes a genuinely surgical `--delta` together with `--write --changes-dir <dir>`, so the successful path will still move `<dir>/<change>`
+- THEN that move target is put through the full readiness and namespace checks on its own account, and an unready or `ABANDONED` move target refuses the whole call with nothing written and nothing moved — otherwise a surgical delta would be cover for archiving a bundle nobody checked
+
+#### Scenario: AM-67 the delta's bundle and the moved bundle must be the same bundle
+- WHEN the `--delta` attributes to a formal bundle under one changes root while `--changes-dir` names a DIFFERENT root holding a same-named bundle
+- THEN archive refuses rather than checking one directory and moving another
+
+#### Scenario: AM-68 the single-file move consumes the same captured timestamp
+- WHEN a single-file call moves a bundle and the clock advances across a minute boundary, or rolls back, between the namespace check and that move
+- THEN the directory actually created carries the basename the check compared against — both move paths consume the one captured value, not their own clock reads
+
+### Requirement: --force waives only unfinished work, only with human evidence that already exists
+`--force` SHALL waive ONLY the progress classes — unchecked tasks, and ledger rows that are non-terminal but well-formed — and SHALL never waive a structural or format failure, an `ABANDONED` or `DONE` or otherwise illegal `current-step`, a namespace defect, or any pre-existing preflight guard. It SHALL require evidence that ALREADY EXISTS in that bundle's flow-state `gates:` block: the exact token `archive-preflight-waiver` plus the exact class token(s) being waived (`tasks` / `ledger`), matched on token boundaries and case-insensitively, in one entry that may cover several classes. `--force` SHALL NOT write anything into the flow-state — the tool never signs for the human. A waived run SHALL print what it waived, quote the evidence entry, and name the consequence.
+
+#### Scenario: AM-62 force without pre-existing evidence changes nothing
+- WHEN `--force` is passed but the flow-state carries no such entry, or carries the waiver token without the class token, or the entry lives in a different bundle
+- THEN archive still exits 1 and the diagnostic says which part of the evidence is missing
+
+#### Scenario: AM-63 class tokens match on boundaries, never as substrings
+- WHEN the evidence entry contains `tasks-later` or `myledger` rather than the bare class tokens
+- THEN it does NOT authorize the `tasks` or `ledger` class; the bare tokens in any letter case do
+
+#### Scenario: AM-64 a waived run says what it waived and what it costs
+- WHEN `--force` proceeds on valid evidence
+- THEN stdout carries a `WAIVED (--force):` line naming each waived class and quoting the evidence entry's first line, and a `NOTE:` line naming exactly the checks that will now block afterwards — C2 for a tasks waiver, C4 for a ledger waiver, both only when both were waived
+
+#### Scenario: AM-65 the non-forcible classes stay non-forcible
+- WHEN `--force` is passed with valid-looking evidence against an `ABANDONED` or `DONE` step, an illegal or unsafe flow-state, a structurally unsafe artifact, a malformed ledger row, a namespace defect, or an existing preflight failure
+- THEN each still refuses, and the diagnostic says that class cannot be waived — `ABANDONED` especially, because the runbook forbids that change reaching the store at all
+<!-- apriori-base: new -->
+
+## ADDED Requirements
+
+### Requirement: one shared implementation of the bundle predicates, with an archive-only overlay above it
+The predicates that judge a change bundle — the ledger status vocabulary, the `gates:` waiver evidence, the review-root guard, and the tasks / flow-state / ledger checks — SHALL live in ONE module that both `gate` and `archive` depend on, reachable without a dependency cycle. That module's BASE layer SHALL be the behaviour `gate` had before this change, unchanged down to its file-existence semantics and diagnostic text: moving code must not silently make `gate` stricter. Everything `archive` needs beyond that — the `STEP6` narrowing and the structural safety guard — SHALL live in a separate OVERLAY that only `archive` calls, and the overlay SHALL only ever be stricter than the base, never looser.
+
+#### Scenario: RY-01 the base layer and gate agree, item by item
+- WHEN the same set of change bundles is judged by the base-layer checks and by `gate`'s C2, C3 and archived-stage C4
+- THEN every verdict and detail string agrees — they are one implementation, not two that happen to match today
+
+#### Scenario: RY-02 gate's existing behaviour survives the move
+- WHEN `gate` runs against bundles whose tasks, ledger or `review/` are structurally odd — a symlink, the wrong file type — in the cases that do NOT raise
+- THEN its returned check objects and detail bytes are identical to their pre-change values; and in the cases that DO raise, the stable surface (error class, code, message) is identical, while stack file names and line numbers are explicitly outside the compatibility promise, because moving a function between files must change them
+
+#### Scenario: RY-03 the archive overlay guards before it reads, and guards the evidence ROOT before the ledger leaf
+- WHEN the overlay judges tasks, the ledger or the flow-state
+- THEN it completes the structural safety check on that path BEFORE the base layer performs any content read, so a symlink is never followed and a read error never escapes unstructured; a defect found by the guard is reported as structural and is never forcible
+- AND WHEN it judges the ledger specifically THEN it guards the `review/` ROOT before it looks at `review/issues.md` — a `review/` that is itself a symlink to another directory INSIDE the bundle leaves the leaf file perfectly normal and contained, so guarding only the leaf would let archive pass while gate's C4 blocks on the root, breaking the whole archive-pass-implies-gate-passes promise
+
+#### Scenario: RY-04 the step narrowing belongs to archive alone
+- WHEN the flow-state is legal but its `current-step` is any value other than `STEP6`
+- THEN the archive flow-state check blocks while `gate`'s C3 passes — the two are deliberately different; and for every input, an archive pass implies a gate C3 pass, so the overlay can only tighten
+
+#### Scenario: RY-05 each side calls only its own layer
+- WHEN the source of `gate` and of `archive-merge` is inspected
+- THEN `gate` names only the base-layer checks and never the archive overlay, `archive-merge` reaches the base layer only through the overlay, and neither re-implements the resolver's namespace rules
+<!-- apriori-base: sha256:fd4c32b53a3f7dbc618bd383f8102517bcd1f8e0229c4bcde350d8b661d6ab18 -->
+
+## ADDED Requirements
+
+### Requirement: the archive namespace is diagnosed by one shared predicate, and resolution keeps its active-first shortcut
+`resolve` SHALL export a structured `archiveNamespaceDefect(changesDir, name)` that diagnoses every structure under which `resolveChange(cwd, name)` would refuse or answer with the wrong directory: both trust roots (`<changesDir>` and `<changesDir>/archive`), the active entry `<changesDir>/<name>`, and every same-name archived candidate. Consumers that need this judgement — archive's readiness among them — SHALL call it rather than re-implement the rules, so the two can never drift. `resolveChange()` itself SHALL keep its existing ACTIVE-FIRST shortcut byte-for-byte: when a legal active entry exists it returns immediately and never inspects archived candidates. The composite predicate is therefore never evaluated ahead of that shortcut; the two share smaller private predicates instead.
+
+#### Scenario: RS-06 the predicate names each namespace defect the resolver would trip on
+- WHEN either trust root is a symlink pointing inside the changes tree, is not a directory, or escapes its root; or the active entry is itself a symlink to a real directory inside the changes root, or is not a directory; or a same-name archived candidate is a symlink whose basename carries a legal stamp shape, or is a stamp-shaped directory whose date is not a real calendar date
+- THEN `archiveNamespaceDefect` returns a structured defect naming the object, its kind and its path; a clean namespace returns null
+
+#### Scenario: RS-07 a legal active entry still short-circuits resolution
+- WHEN a legal active `<changesDir>/<name>` directory exists AND a same-name archived candidate is defective (a legal-stamp symlink, or a stamp-shaped directory with an impossible date)
+- THEN `resolveChange` still resolves to the active entry with the same result it produced before this change — the archived defect is reported only by the composite predicate, which resolution never consults on that path
+
+#### Scenario: RS-08 the resolver's own answers are unchanged
+- WHEN any input that resolution already handled is resolved after this change — in-flight found, archived found by lexicographically-last stamp, found nowhere, invalid name, escaping path
+- THEN the returned shape, the chosen directory and the error text are identical to their pre-change values; the new export adds a diagnosis path, never a decision path
+# design — archive-preflight
+
+> 对应 `requirement/req-final.md` 与 `gap-report.md` 的 G1..G12 / R1..R6。行号取自 f415824。
+> 不含实现代码，只含结构决定与其理由。
+
+---
+
+## D0 一句话结构
+
+把 gate 的 C2/C3/C4 判据从 `gate.js` 挪进一个**无环可达**的共享模块，
+archive 在它**之上叠加**（STEP6 收窄 + 安全读取 + 命名空间检查）并挂在 preflight 末尾。
+gate 一行行为不变，archive 变严。
+
+---
+
+## D1 `lib/readiness.js` — 两层
+
+### D1.1 依赖与无环性
+
+```
+readiness → { ./status, ./resolve }        status → { ./args, ./resolve }        resolve → { ./config }
+archive-merge → { ./args, ./config, ./resolve, ./readiness }
+gate          → { …既有…, ./readiness }
+```
+
+`readiness` 够不到 `archive-merge`，故 `archive-merge → readiness` **无环**。
+`containsReal` 从 `./resolve` 取（gap-report §A4 已实测：本 change 的调用点上两份实现行为一致）。
+
+### D1.2 基础层 —— **就是 gate 今天那一份，一字不改**
+
+搬迁（不是重写）以下符号，`gate.js` 改为 `require('./readiness')` 并**继续再导出** `classifyStatus`：
+
+```
+classifyStatus(status)            gatesEntries(flowText)        waiveEvidence(flowText, id)
+reviewDirDefect(dir)              checkTasks(dir, tier)         checkFlowState(state, name)
+checkLedger(tier, stage, dir)
+```
+
+**裸 `existsSync` 的行为一并搬过来**——这是刻意的：换成安全读取会改变 gate 的 C2/C4（REQ-8）。
+
+### D1.3 archive 叠加层 —— 三个 wrapper，**先守卫后读取**
+
+```
+readArchiveFlowState(dir, name)   checkArchiveTasks(dir, tier)   checkArchiveLedger(dir, tier)
+```
+
+每个 wrapper 的**铁律顺序**：
+
+1. **`checkArchiveLedger` 独有的第 0 步（STEP2·r1 / SPEC-3）**：先跑 `reviewDirDefect(dir)`。
+   只守 `review/issues.md` 这个叶子**不等价**——若 `review/` 本身是一个指向 bundle 内另一目录的
+   symlink，叶子可能是正常文件且通过 realpath containment，archive 于是放行；
+   而 gate 会因 **review root 本身是 symlink** 而 C4 阻断。那正好打破
+   「archive 通过 ⇒ gate C4 不 BLOCK」这条核心保证；
+2. `resolve.fileReadDefect(dir, <artifact 路径>)` → 有缺陷即返回结构性失败（**不可 force**）；
+3. 确认安全后，才调用基础层 checker；
+4. 捕获 guard 之后的读取竞态（任何异常归入结构性失败）。
+
+**顺序写反会在 overlay 有机会阻断之前就跟随 symlink 或抛错**——这是本设计最易实现错的一处。
+
+`readArchiveFlowState` 额外叠加 `current-step === 'STEP6'`：
+
+```
+checkArchiveFlowState(state, name) = checkFlowState(state, name) 通过 ⇒ 再判 STEP6
+```
+
+gate 只用 `checkFlowState`，archive 只用 `checkArchiveFlowState`（AC-AP-16f 静态断言两侧各走各的层）。
+
+### D1.4 就绪度的聚合入口
+
+```
+readiness(bundleDir, name, opts) → { ok, failures: [{ class, forcible, detail }] }
+```
+
+- `class ∈ { flow-state, tasks, ledger, namespace }`；`forcible` 由 req-final §四的矩阵决定；
+- **R1（flow-state）先判**：它决定 tier，而 tier 决定 tasks/ledger 对缺失的判定。
+  R1 失败 → **只报 R1**，不对 R2/R3 下结论（编造结论不诚实）；
+- R1 通过 → R2、R3 一并求值，一次报全。
+
+---
+
+## D2 `lib/resolve.js` — 一个新导出，短路语义不动
+
+### D2.1 `archiveNamespaceDefect(changesDir, name) → null | { kind, path, detail }`
+
+一次性覆盖：
+
+| 对象 | 判据 |
+|---|---|
+| 两个 trust root `<changesDir>` / `<changesDir>/archive` | 既有私有 `rootDefect`（symlink / 非目录 / 逃逸） |
+| **active 条目** `<changesDir>/<name>` | resolver 的 active-entry 判据：lstat 优先、**非 symlink**、必须是目录、`containsReal` |
+| 全部同名归档候选 `<changesDir>/archive/*-<name>` | symlink → defect；非目录 → 跳过（与 resolver 一致）；stamp 形状 + `stampValid` 的 Gregorian 往返 |
+
+> **措辞更正（STEP2·r1 / advisory A-2）**：这个 predicate 诊断的是
+> **「active 被移走之后，resolver 将要面对的那个 namespace」**，
+> 而**不是**「resolver 今天会拒绝的一切」——后一种说法会让人以为 resolver 自己会调用它。
+> 实际关系是：**resolver 与它共享更小的私有 predicates**，综合扫描只由 readiness 调用。
+
+### D2.2 `resolveChange()` 的 active-first 短路 **一字不改**
+
+**绝不**在 active 快路径之前调用综合 predicate。
+状态 A 里 active 合法就立即返回、从不看归档条目；若改成先综合扫描，
+「合法 active + 同名归档 symlink」这类**今天能正常解析**的项目会开始报错，
+波及 gate / status 等既有消费者。
+
+实现方式：resolver 与综合 predicate **共享更小的私有 predicates**，
+综合扫描**只在 readiness 侧调用**（AC-AP-17i 守卫）。
+
+---
+
+## D3 `lib/archive-merge.js` — 挂载点与两条绕过口
+
+### D3.1 高层形式：挂在 preflight 末尾
+
+```
+:688  const preflightFailures = [...casDenials, ...hygiene, ...casMismatches, ...conflicts];
+:689  if (preflightFailures.length) { …既有路径，一字不动… }
+      ← 就绪度在此插入
+```
+
+**既有 preflight 与就绪度同时失败时，输出既有那一组并按既有路径返回**——就绪度根本不求值（AC-AP-11）。
+
+### D3.2 N0 —— 时间戳只捕获一次
+
+```
+:753  archiveChangeDir(changesDir, o.change, new Date(), ops)     ← 现状：phase 4 自己取
+   →  preflight 捕获 archiveDate 一次 → 算出 archiveBasename 供 N1 比较
+      → 同一个 archiveDate 传给 phase 4
+```
+
+不这样做，检查用的目录名与实际创建的目录名之间隔一次分钟切换或时钟回拨就会脱钩。
+测试需要一个**时钟 seam** 才能注入这段偏移。
+
+### D3.3 N3 —— 只对会移动的调用求值
+
+带 `--changes-dir` 的调用（**含 dry-run**，它预测同一次移动）跑 N0..N2；
+不带 `--changes-dir` 的调用跳过——它不创建归档目录，跑这组只会造假阻断。
+
+### D3.4 单文件形式：**两个**独立对象要判（STEP2·r1 / SPEC-1 更正）
+
+r1 指出 v1 的设计只按 `--delta` 的归属决定就绪度，**漏了它实际会移动的那个 bundle**：
+`:860` 的 move 目标是 `<changes-dir>/<change>`，与 delta 归属**互不相干**。两个可达反例：
+① 真外科手术 delta + `--changes-dir apriori/changes` → 按 v1 不跑就绪度，却仍会搬走 `apriori/changes/X`；
+② delta 归属默认 root 的 X，而 `--changes-dir` 指向另一个 root 的 X → 检查一个、搬另一个。
+
+因此：
+
+1. **`moveBundle = <changes-dir>/<change>`（仅当带 `--changes-dir`）独立成一个判定对象**，
+   无论 delta 是不是外科手术输入，它都要过**完整就绪度 + N0..N3**；
+2. delta 若归属到某个正式 bundle，其 bundle 目录**必须等于** `moveBundle`，否则拒绝；
+3. N0 捕获的那**一个**时间戳，同时喂给 `:753` 与 `:860` 两条 move 路径。
+
+### D3.4b `--delta` 的归属（身份 = `{root, stage, name, bundleDir}`，STEP2·r1 / SPEC-2 更正）
+
+归属**不能只记 change name**——同名可以同时存在于不同 root、以及 active / archived 两个 stage。
+对每个 `--delta` **两种归属都算**，各自产出一个完整身份：
+
+| 词法归属（规范化，不解 symlink） | realpath 归属 | 处置 |
+|---|---|---|
+| 不属于任何正式 bundle | 不属于任何正式 bundle | 不执行就绪度（真外科手术） |
+| 属于 `X` | 同一个 `X`，且与 `--change` 一致 | 执行 `X` 的就绪度，**与 `--changes-dir` 无关** |
+| 属于 `X` | 出界 | 拒绝 |
+| **不属于**任何 bundle | 属于某 **active** 正式 bundle `X` | 执行 `X` 的就绪度（`X` 与 `--change` 不符则拒绝） |
+| 属于 `X` | 属于 `Y ≠ X` | 拒绝 |
+| 落在 `<changes-dir>/archive/<stamp>-X/specs/…` | — | **一律拒绝** |
+| 词法属于 **active** `X` | realpath 落在 **archived** 的同名 bundle（symlink alias） | **拒绝**——两侧 stage 不同（r1·SPEC-2） |
+| 词法在任何 root 之外 | realpath 落在 **archived** bundle | **拒绝**（r1·SPEC-2） |
+| 两侧都属于名为 `X` 的 bundle，但 **root 或 bundleDir 不同** | — | **拒绝**（名字不是身份） |
+
+---
+
+## D4 `--force`
+
+- 新增 flag `--force`（`withStrict` 的 flags 表加一项）。
+- 放行需要 flow-state `gates:` 里**预先存在**的记录，含：
+  精确 token `archive-preflight-waiver`（大小写不敏感）+ 失败类精确 token `tasks` / `ledger`
+  （边界为非 `[A-Za-z0-9-]`，`tasks-later` / `myledger` 不得命中）。
+- 放行输出：`WAIVED (--force): <类> — 依据: <gates 记录首行>` 与
+  `NOTE: post-archive gate 的 <C2 | C4 | C2/C4> 将 BLOCK`（**按实际豁免类**精确点名）。
+- **绝不**替人类往 flow-state 写任何东西。
+
+---
+
+## D5 dry-run
+
+就绪度失败时 dry-run 报告失败并**不**打印 `RESULT: MERGED (dry-run…)`，退出码 1。
+
+---
+
+## D6 外部共享状态的三个时刻
+
+本 change 不引入进程外共享状态。两个测试 seam（时钟、并发注入点）是**进程内模块级变量**：
+
+| 时刻 | 说明 |
+|---|---|
+| init | 模块加载时 `null`，回落到 `new Date()` / 无注入 |
+| API（advisory A-1 固定下来） | `_setClock(fn)`：`fn() → Date`，preflight 捕获时**恰调用一次**；`_setAfterReadinessHook(fn)`：在就绪度全部通过之后、**首次写入之前**调用一次，测试在其中注入 bundle / namespace 变更 |
+| runtime update | 只有测试通过 `_set*` 改写 |
+| cleanup | 测试**必须**在 `finally` 里复位为 `null`（沿用 change 1 的 T16b 教训：泄漏会造成同进程顺序依赖） |
+
+**并发前置条件**（req-final §六）：从就绪度首次读取到本次调用返回（含移动时到移动完成），
+调用方须保证该 change 的**整个解析命名空间**（两个 trust root + active 条目 + 全部同名归档条目）不被并发改动。
+实现**不声称**检测到违反——AC-AP-19 / 17g 用 seam 注入并断言「不声称」。
+
+---
+
+## D7 测试策略要点
+
+| 面 | 手法 |
+|---|---|
+| 基础层与 gate 同源 | 差分断言：同一批 bundle 喂给基础层与 gate 的 C2/C3/C4（archived），逐项一致（AC-AP-16） |
+| 分层不串味 | 静态断言：`gate.js` 不出现 `checkArchive*`/`readArchive*`；`archive-merge.js` 不直调基础层三个 checker（AC-AP-16f） |
+| 抛错分支 | 只比稳定面（error class/code/message），**明确排除** stack 的文件名行号（AC-AP-16e） |
+| N0 | 时钟 seam 注入「检查后、移动前」的前进/回拨，**高层 `:753` 与单文件 `:860` 两条 move 路径各一**（STEP2·r1 / SPEC-1） |
+| 单文件的 move target | 独立于 delta 归属：`moveBundle = <changes-dir>/<change>` 自己要过完整就绪度 + N 组；delta 若归属到正式 bundle，两者必须是**同一个目录**，否则拒绝 |
+| N2 | 逐类构造 trust root / active 条目 / 归档候选的缺陷 |
+| 归属算法 | 六行处置表逐行；含外部 symlink 指向 active ABANDONED bundle |
+| 充分性命题 | 归档成功后立刻跑 gate，断言 C2/C3/C4 不 BLOCK；force 版本断言会 BLOCK（反向守卫） |
+| 迁移 | 先把 gap-report §A6 的 11 个文件逐条走完，只补 fixture、**不改断言** |
+# tasks — archive-preflight
+
+STEP5 按本表顺序执行；每完成一项立刻打 `[x]`。测试先行：先写失败测试并给出失败运行，再实现。
+
+## M — 迁移清点（**必须最先做完**，req-final §七 / gap-report §A6）
+
+- [ ] M0 跑一次全量测试并记录**全绿基线**
+- [ ] M1 逐文件走完 gap-report §A6 的 **11 个** archive 相关测试文件，列出**每一个**期望 archive 成功（exit 0 / MERGED / 成功移动）的调用点，产出清单落进本文件（**不得以「大概就这两个」收尾**）
+- [ ] M2 按清单给每个 fixture 补**就绪 bundle**：`current-step: STEP6` 的合法 flow-state、全勾 tasks、全终态 ledger。**只补 fixture，断言一字不改**
+- [ ] M3 补完后再跑全量测试，确认仍全绿（此时尚未加就绪度实现，等于验证 fixture 没写坏）
+
+## T — 测试先行
+
+### 共享模块与分层
+- [ ] T1 RY-01 基础层与 gate 的 C2/C3/archived-C4 差分断言（同一批 bundle，逐项一致）
+- [ ] T2 RY-02（不抛错分支）gate 的返回对象与 detail 字节不变
+- [ ] T3 RY-02（抛错分支）只比 error class/code/message，**显式排除** stack 文件名行号
+- [ ] T4 RY-03 overlay 先守卫后读取：构造 symlink / 错类型，断言**未跟随**且诊断为结构性、不可 force
+- [ ] T4b RY-03 第二支（SPEC-3）：`review/` 本身是**指向 bundle 内另一目录**的 symlink、而 `issues.md` 完全正常 → archive 必须 refuse（只守叶子会放行，而 gate C4 会阻断，保证就破了）
+- [ ] T5 RY-04 每一个合法非 STEP6 取值 → archive block 而 gate C3 pass；并断言「archive pass ⇒ gate C3 pass」
+- [ ] T6 RY-05 静态断言：`gate.js` 不出现 `checkArchive*`/`readArchive*`；`archive-merge.js` 不直调基础层三 checker；`readiness.js` 不重实现 resolver 规则
+- [ ] T7 gate 继续再导出 `classifyStatus`（GT-15 语料测试在用）
+
+### resolve
+- [ ] T8 RS-06 `archiveNamespaceDefect` 逐类缺陷：两个 trust root / active 条目（symlink、非目录）/ 归档候选（合法 stamp 的 symlink 排序早晚各一、日期非法目录）
+- [ ] T9 RS-07 **合法 active + 坏归档候选** → `resolveChange` 仍解析到 active（active-first 短路不变）
+- [ ] T10 RS-08 resolver 既有答案全不变（in-flight / archived / 找不到 / 非法名 / 逃逸）
+
+### archive 就绪度
+- [ ] T11 AM-49 三类失败各自 refuse（含 `DONE` 的措辞断言）
+- [ ] T12 AM-50 R1 先判：flow-state 失败只报 R1；R1 通过则 R2+R3 一次报全
+- [ ] T13 AM-51 trivial tier 的 tasks/ledger 缺失 = n/a；medium/large 缺失即 refuse
+- [ ] T14 AM-52 结构性不安全逐类（symlink / 错类型 / 坏祖先 / 逃逸 / guard 后读异常）→ refuse 且**不可 force**
+- [ ] T15 AM-53 既有 preflight 失败时诊断/退出码不变，且就绪度**不被求值**
+- [ ] T16 AM-48 unready 的 dry-run 不打印 `RESULT: MERGED (dry-run…)`，exit 1，零写入
+
+### 命名空间 N0..N3
+- [ ] T17 AM-54 / AM-68 时钟 seam 注入「检查后、移动前」的前进/回拨 → 实际创建的目录名 = 检查所用名。**高层 `:753` 与单文件 `:860` 两条 move 路径各一**（SPEC-1）
+- [ ] T18 AM-55 同名归档目录排序 `>` / `=` / 回拨反转三种 → refuse，不可 force
+- [ ] T19 AM-56 N2 三类对象逐情形 → refuse，判据经**同一个** `archiveNamespaceDefect`
+- [ ] T20 AM-57 不带 `--changes-dir` 的 `--write` 与 dry-run **不求值** N 组；带 `--changes-dir` 的 dry-run **求值**
+- [ ] T21 AM-58 自定义 root 打印「无 post-archive gate 保证」提示
+
+### 归属算法
+- [ ] T22 AM-59 单文件 + 不带 `--changes-dir` + delta 在 ABANDONED bundle 内 → refuse，零写入
+- [ ] T22b AM-66（SPEC-1）**真外科手术 delta + `--changes-dir apriori/changes`，而 `X` 未就绪/ABANDONED** → 整个调用 refuse，零写入零移动
+- [ ] T22c AM-67（SPEC-1）delta 归属默认 root 的 `X`，`--changes-dir` 指向另一 root 的同名 `X` → refuse（不得检查一个、搬另一个）
+- [ ] T23 AM-60 外部 symlink → active bundle delta（判为该 bundle）；词法在内 realpath 出界（refuse）
+- [ ] T24 AM-61 身份不一致 → refuse；delta 在**已归档** bundle 内 → refuse（ABANDONED 与非 ABANDONED 各一）
+- [ ] T24b AM-61（SPEC-2）身份 = `{root, stage, name, bundleDir}` 的三个反例：① 外部 symlink → **archived** bundle delta；② 词法属 active `X`、realpath 经 symlink 落到 **archived** 同名 bundle；③ 两侧都叫 `X` 但 root / bundleDir 不同 —— **全部 refuse**
+- [ ] T25 真外科手术输入（词法与 realpath 都不属于任何 bundle）行为不变
+
+### --force
+- [ ] T26 AM-62 证据缺失三态（无记录 / 有 waiver token 缺类 token / 记录在别的 bundle）→ 仍 refuse，诊断说明缺哪一条
+- [ ] T27 AM-63 类 token 边界：`tasks-later` / `myledger` 不命中；裸 token 任意大小写命中
+- [ ] T28 AM-64 放行输出：`WAIVED (--force):` 含类与证据首行；`NOTE:` **按实际豁免类**点名 C2 / C4 / 两者
+- [ ] T29 AM-65 每一个不可 force 类逐条（ABANDONED 单列）
+- [ ] T30 反向守卫：force 放行 tasks 未勾后跑 gate → C2 **BLOCK**
+
+### 充分性命题
+- [ ] T31 未 force + 规范 root + 就绪度通过并成功归档 → 紧接着 gate 的 C2/C3/C4 **均不 BLOCK**（trivial 与 medium/large 各一）
+- [ ] T32 并发 seam：就绪度通过后、首次写入前注入 bundle 修改 → 归档照常，实现**不声称**检测；**move 与 no-move 两条路径各一**
+- [ ] T33 并发 seam：N 组检查后替换/改名 `<changes-dir>/archive` trust root → 同上
+- [ ] T34 **每一个** seam 使用点 `try/finally` 复位（change 1 的 T16b 教训）
+- [ ] T35 跑全量测试，记录失败清单（应大面积红）
+
+## I — 实现
+
+- [ ] I1 新建 `lib/readiness.js`：从 `gate.js` **搬迁**基础层七个符号（行为一字不改），只 require `./status` + `./resolve`
+- [ ] I2 `lib/gate.js`：改为从 `./readiness` 引入基础层；**继续再导出** `classifyStatus`；其余一字不动
+- [ ] I3 `lib/resolve.js`：新增导出 `archiveNamespaceDefect(changesDir, name)`；`resolveChange` 的 active-first 短路**一字不改**
+- [ ] I4 `lib/readiness.js` 叠加层：`checkArchiveFlowState` / `readArchiveFlowState` / `checkArchiveTasks` / `checkArchiveLedger`（**先守卫后读取**）+ 聚合入口 `readiness()`
+- [ ] I5 `lib/archive-merge.js`：preflight 末尾挂就绪度（既有 guards 优先，同时失败时不求值就绪度）
+- [ ] I6 `lib/archive-merge.js`：N0 时间戳捕获一次并传给 phase 4；N1/N2 经 `archiveNamespaceDefect`；N3 只对会移动的调用求值
+- [ ] I7 `lib/archive-merge.js`：单文件形式的归属算法（词法 + realpath 双算，六行处置表）
+- [ ] I8 `lib/archive-merge.js`：`--force` flag + 豁免矩阵 + gates 证据精确 token + `WAIVED:` / `NOTE:` 输出
+- [ ] I9 dry-run 路径：unready 时不打印 MERGED
+- [ ] I10 时钟 seam 与并发 seam（模块级，默认 null，`try/finally` 复位）
+- [ ] I11 全量测试到绿；`check --self` PASS；`verify --change archive-preflight` GREEN
+
+## D — 文档与 KB
+
+- [ ] D1 `docs/cli.md` + `docs/cli_cn.md` 的 archive 小节：新增就绪度、`--force`、dry-run 语义、自定义 root 无保证
+- [ ] D2 `CHANGELOG.md`：归档准入收紧（行为变更）、dry-run 语义变化、`--force` 的证据要求
+- [ ] D3 `--force` 的可发现性（advisory A-3）：两处 archive usage 字符串与 `--help` 输出都含 `[--force]`
+- [ ] D4 逐条核对 AC-AP-01..20 与 13b..13j / 16b..16f / 17b..17i 全部有证据，对照表进 flow-state。**AC-AP-13f 按 SPEC-4 勘误理解**为「词法与 realpath **均**不属于正式 bundle」，不得按旧字面写出与 AC-AP-13i 相反的测试
+
+## S — STEP5 出口
+
+- [ ] S1 `apriori verify --change archive-preflight` GREEN
+- [ ] S2 P8 异构一致性评审（R2，codex），verdict 落盘 + raw 存证
+- [ ] S3 ledger 全行终态
+
+（STEP6 的 KB 写回在 P9 阶段做。**本 change 自举**：它自己归档时要过自己这一关。）
+# spec-review-v1 — archive-preflight technical review（STEP2 Round 1）
+
+评审基于静态读取；未运行测试，未修改文件。
+
+CAS 基线有效：
+
+- archive-merge delta 的 base hash 与 living spec 一致；
+- resolve delta 的 base hash与 living spec 一致；
+- readiness 正确声明为新 store module。
+
+STEP0 cap 后未经独立评审的三条修复中：
+
+- canonical-root 限定已经写入需求、spec、design 和任务；
+- active-first 已由 RS-07、D2.2、T9 明确守卫；
+- lexical + realpath 双算已经进入 spec/design/tasks，但与单文件 move 路径组合后仍有缺口。
+
+## 1. 场景是否覆盖全部可见行为及失败边界
+
+**结论：未通过。**
+
+### SPEC-1 — 单文件归属只检查 delta bundle，没有检查它实际会移动的 bundle
+
+**描述**
+
+`lib/archive-merge.js:860` 的单文件路径只要带 `--changes-dir`，就会移动：
+
+```text
+<changes-dir>/<change>
+```
+
+这个 move 与 `--delta` 归属到哪个 bundle 相互独立。D3.4 当前却只依据 delta 的 lexical/realpath 归属决定 readiness。
+
+两个可达反例：
+
+1. 真外科手术 delta + 正式 bundle move：
+
+```text
+archive --store S --delta /tmp/surgery.md --change X \
+  --write --changes-dir apriori/changes
+```
+
+D3.4 第一行判为“不执行 readiness”，但成功路径仍会移动 `apriori/changes/X`。若 X 是 ABANDONED，它仍能被搬走，且 store 被写入。
+
+2. Delta bundle 与 move bundle不是同一个目录：
+
+```text
+--delta <cwd>/apriori/changes/X/specs/m/spec.md
+--changes-dir /tmp/other-changes
+--change X
+```
+
+若两处都存在 X，当前设计会检查默认 root 的 X，却在 `:860` 移动 custom root 的 X；被移动者可以完全未就绪。
+
+这与 req-final §四“单文件形式 + `--changes-dir` 同样要过就绪度”及 RUNBOOK 的 ABANDONED 硬规则冲突。现有 T22–T25 没有覆盖这两个组合。
+
+N0 也有同一集成缺口：D3.2 只明确展示高层路径 `:753`，T17 未要求同时覆盖单文件 `:860`。实现者可能让高层 move 使用捕获时间，却让单文件 move 继续自行 `new Date()`。
+
+**风险：high**
+
+可导致未就绪或 ABANDONED bundle 被移动并写入 store；也可能让单文件 N1 检查的 basename 与实际 move 不同。
+
+**建议**
+
+- 单文件调用带 `--changes-dir` 时，首先定义独立的 `moveBundle = <changes-dir>/<change>`。
+- `moveBundle` 必须执行完整 readiness 和 N0..N3，无论 delta 是 surgical 还是归属于其他 bundle。
+- 若 delta 归属于正式 bundle，则其规范 bundle 路径必须与 `moveBundle` 相同；不同即拒绝，不要分别检查一个、移动另一个。
+- N0 捕获值必须同时传给 `:753` 和 `:860` 两条 move 路径。
+- 增加场景和任务：
+  - surgical delta + `--changes-dir` + ABANDONED move bundle；
+  - delta 归属默认 X、move 指向 custom-root X；
+  - 单文件 move 的分钟前进/回拨 seam。
+
+### SPEC-2 — 六行归属表没有覆盖 realpath 落入 archived bundle
+
+**描述**
+
+D3.4 的 archived 行只判断 lexical path：
+
+```text
+<changes-dir>/archive/<stamp>-X/specs/…
+```
+
+没有处理以下输入：
+
+1. 词法在 changes roots 外，realpath 指向 archived bundle：
+
+```text
+/tmp/delta-link.md
+  -> apriori/changes/archive/<stamp>-X/specs/m/spec.md
+```
+
+2. 词法归属 active X，realpath 经 symlink 指向 archived X。
+
+第二种情况下，当前“属于 X / 同一个 X”一行甚至可能误判成可执行 readiness，因为归属结果只记录名字 X，没有把 stage 和 bundle directory 纳入身份。
+
+这与 spec prose“delta inside an already-archived bundle SHALL be refused”冲突。T24 只覆盖直接 archived path，没有覆盖 realpath alias。
+
+**风险：high**
+
+已归档 bundle 可通过 symlink alias 再次成为 store 输入，绕过明确的 archived-bundle 禁令。
+
+**建议**
+
+- Attribution identity 不应只是 change name；至少应为：
+  `{root, stage: active|archived, name, bundleDir}`。
+- 任意一侧归属为 archived 都直接拒绝。
+- 只有 lexical 与 realpath 都指向同一个 active `bundleDir` 时，才进入正常 readiness。
+- 两种归属指向不同 stage、root 或 directory 时一律拒绝。
+- 增加：
+  - external symlink → archived delta；
+  - active lexical path → archived realpath；
+  - 同名但不同 root/stage 的归属冲突。
+
+### SPEC-3 — `checkArchiveLedger` 的设计没有声明必须先执行 review-root guard
+
+**描述**
+
+AM-52 明确要求 `review/` 为 symlink、非目录、逃逸或悬空时拒绝；基础层也搬迁了 gate 的 `reviewDirDefect()`。
+
+但 D1.3 对三个 wrapper 只规定：
+
+1. 对 artifact 跑 `fileReadDefect`；
+2. 调基础 checker；
+3. 捕获读取竞态。
+
+它没有规定 `checkArchiveLedger` 在 ledger 文件守卫之前执行 `reviewDirDefect(dir)`。
+
+仅检查 `review/issues.md` 不等价：如果 `review/` 是指向 bundle 内另一目录的 symlink，leaf 可能是正常文件且仍通过 realpath containment，而 gate 会因 review root 本身是 symlink而阻断。Archive 可能因此通过 readiness，随后 post-archive gate 的 C4 阻断。
+
+**风险：med**
+
+会破坏 archive-pass ⇒ gate-C4-non-block 的核心保证，并使结构性 evidence root 被跟随。
+
+**建议**
+
+将 `checkArchiveLedger` 的顺序明确为：
+
+1. `reviewDirDefect(dir)`；
+2. `fileReadDefect(dir, review/issues.md)`；
+3. 基础 `checkLedger(...)`；
+4. 捕获 guard 后读取异常。
+
+T4/T14 应显式包含一个“`review/` symlink 指向 bundle 内含合法 ledger 的目录”用例；仅测试向外逃逸的 symlink 不足以捕获此差异。
+
+### SPEC-4 — 保留的 AM-19 与新增的单文件行为正面冲突
+
+**描述**
+
+MODIFIED block 的机械比对结果是：
+
+- AM-14..AM-22 九个场景内容保持原样；
+- AM-13 只增加 READY 前提；
+- AM-48 新增；
+- requirement prose 增加 readiness。
+
+没有发生意外移动。
+
+但原样保留的 AM-19 仍声明：
+
+> the single-file form by itself keeps its 3.0.1 behavior unchanged
+
+新增 AM-59..61、`--force` 和 bundle attribution 明确改变了部分单文件行为，因此这条兼容性承诺已不真实。实现者或测试作者无法同时满足其字面含义与新增场景。
+
+同类的冻结需求 AC-AP-13f 仍以“词法在 changes root 外”单独承诺旧行为，而 AC-AP-13i 对其中 external-symlink 子集要求拒绝；spec/design 已正确收窄为 lexical 与 realpath 都在外，但最终 AC 对照任务 D3 仍可能据旧字面写出冲突测试。
+
+**风险：med**
+
+会在实现或 STEP5 evidence mapping 时产生相反测试和返工。
+
+**建议**
+
+- 将 AM-19 收窄为：single-file dispatch 仍存在；其 formal-bundle 输入按 AM-59..61，只有真正 surgical 的输入保留既有行为。
+- 在 AC 对照说明中把 AC-AP-13f 解释/勘误为“lexical 与 realpath 均不属于正式 bundle”。
+- 为兼容性测试使用这个收窄后的条件，不再使用“所有 single-file 行为不变”。
+
+## 2. 外部共享状态的 init / runtime update / cleanup-invalidation
+
+**结论：通过。**
+
+本 change 不引入进程外共享状态。两个模块级测试 seam 的生命周期完整：
+
+- init：模块加载时为 `null`；
+- runtime update：仅测试通过 `_set*` 设置；
+- cleanup：每次使用在 `finally` 中复位为 `null`。
+
+T32/T33 覆盖两个并发注入位置，T34 明确要求所有 seam 使用点复位，I10 负责实现。move/no-move 两条并发路径也已列入任务。
+
+## 3. 是否冲突 state A 或破坏既有约定
+
+**结论：未通过。**
+
+- SPEC-1 直接来自 state A 单文件 `:860` 的无条件 move 行为；设计没有把 move target 纳入 readiness identity。
+- SPEC-2 中 realpath-to-archived alias 是现有任意 delta path 与 symlink 跟随语义下的可达输入。
+- SPEC-4 的 AM-19 保留了已被本 delta 改写的旧兼容性承诺。
+
+其余关键兼容面已正确处理：
+
+- CAS stamps 与 delta 结构有效；
+- D1.2/RY-01/RY-02/T1–T7 足以约束 BASE 层保留 gate 的裸 `existsSync`、返回对象、detail 和稳定异常面；
+- resolve RS-07、D2.2、T9 明确禁止综合 predicate 进入 active-first 快路径；
+- `classifyStatus` 的 gate re-export 已有独立任务。
+
+## 4. 是否存在 spec 未设计或 design 未声明的行为
+
+**结论：未通过。**
+
+- 单文件 move bundle 与 delta attribution 的关系未设计，也没有测试任务，见 SPEC-1。
+- Realpath archived attribution未进入六行表，见 SPEC-2。
+- AM-52 spec 声明了 review-root guard，但 D1.3 没有把它放入 `checkArchiveLedger` 顺序，见 SPEC-3。
+- AM-19 的旧兼容性声明与新增设计冲突，见 SPEC-4。
+
+M0→M1→M2→M3 的迁移顺序正确：先建立绿基线，再穷举成功调用、只补 fixtures、在新增失败测试前确认 fixtures 本身没有破坏基线。11 文件清点位于任何实现之前，符合要求。
+
+## 5. Security review
+
+**结论：未通过。**
+
+本 change 没有新增权限或外部服务，但单文件路径是外部输入边界：
+
+- SPEC-1 允许用 surgical 或不同-root delta 掩护另一个正式 bundle 的 move，包含 ABANDONED 绕过。
+- SPEC-2 允许 archived delta 通过 symlink alias 重新进入 living store。
+- SPEC-3 可能跟随一个 gate 明确拒绝的 review-root symlink。
+
+这三项都是 correctness/security findings，不属于 advisory。
+
+## Advisories
+
+### A-1 — 给两个模块级 seam 固定测试 API
+
+D6 只写 `_set*`。建议在设计中固定 setter 名、参数形态、调用次数和 hook 位置，例如 clock supplier 与 after-readiness callback。生命周期已经完整，因此这是实现清晰度优化，不阻断。
+
+### A-2 — 修正 composite predicate 的措辞
+
+Resolve spec 一处说 composite predicate 诊断“所有会令当前 `resolveChange` 拒绝的结构”，archive AM-56 又称其为“resolver uses”的 predicate；RS-07/D2.2 则正确规定 composite 只由 readiness 调用，resolver 只共享更小的私有 predicates。
+
+建议改成“诊断 active 被移动后 resolver 将面对的完整 namespace；resolver 与它共享 private predicates”，避免架构表述自相矛盾。RS-07 已把实际行为钉死，因此目前不计阻断。
+
+### A-3 — `--force` 的 help/usage 回归测试
+
+I8 要新增 parser flag，但没有任务明确检查两个 archive usage 字符串和 `--help` 输出包含 `[--force]`。建议补一个小断言，避免功能存在但帮助面不可发现。
+# issue ledger — archive-preflight
+
+轮次标签：`STEP0·rN`（P1）/ `STEP2·rN`（P5）/ `STEP5·rN`（P8）。
+状态词汇：`open` / `fixed` / `verified` / `rejected` / `rejected-verified` / `waived` / `advisory-acked`。
+生产方只能 `open → fixed | rejected`；`verified` / `rejected-verified` 属评审方，`waived` 属人类。
+重开（reopen）是**事件**不是状态：复现的问题回到原 ID 的 `open`，绝不新开一行。
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| REQ-1 | AC-AP-15 的充分性承诺不成立：R1/R2/R3 未覆盖 gate 完整 C2/C3/C4 判据 | high | 1 | fixed (final) |
+| REQ-2 | tasks/ledger 缺失及 readiness 文件的 unsafe/unreadable 路径语义未定义 | high | 1 | verified |
+| REQ-3 | `--force` 的证据协议和可豁免范围不明确，并可能 force 掉 ABANDONED 硬禁令 | high | 1 | fixed (final) |
+| REQ-4 | 允许 STEP5 归档与 RUNBOOK 的 STEP5→STEP6 状态机及实际 precedent 冲突 | high | 1 | verified |
+| REQ-5 | 共享分类器归位、完整共享 API 和 readiness 相对既有 preflight guards 的顺序未定 | med | 1 | verified |
+| REQ-6 | readiness 检查到 commit/move 之间的并发修改与 TOCTOU 未覆盖 | high | 1 | verified |
+| REQ-7 | B5 与现有 AM-13/AM-46/AM-47 测试及 living spec 冲突，迁移范围未声明 | med | 1 | verified |
+
+| REQ-8 | 共享安全读取 checker 会改变 gate C2/C4 的现有行为，但该 side effect 未声明、未验收 | med | 2 | verified |
+
+| REQ-9 | advisory batch acknowledged (1 item) | low | 3 | advisory-acked |
+| SPEC-1 | 单文件 `--changes-dir` 的实际 move bundle 未与 delta attribution/readiness 绑定，可移动未就绪或不同 root 的正式 bundle；N0 也未钉死 `:860` | high | STEP2·r1 | fixed (r1) |
+| SPEC-2 | 六行 attribution 表未覆盖 realpath 指向 archived bundle或同名不同 stage 的路径，可经 symlink alias 重用 archived delta | high | STEP2·r1 | fixed (r1) |
+| SPEC-3 | `checkArchiveLedger` 设计未要求先执行 `reviewDirDefect`，内部 review-root symlink 可令 archive 与 gate C4 分歧 | med | STEP2·r1 | fixed (r1) |
+| SPEC-4 | AM-19 与 AC-AP-13f 的旧「行为不变」措辞和新增单文件归属场景冲突，会生成相反验收 | med | STEP2·r1 | fixed (r1) |
+| ADV-STEP2-r1 | advisory batch acknowledged (3 items) | low | STEP2·r1 | advisory-acked |
+
+<!-- 以上 7 行为 STEP0·r1 评审方（codex gpt-5.6-sol, session 019fff33）的 ledger delta，逐字落盘。 -->
+
+<!-- STEP0·r2：REQ-2 / REQ-4 → verified；REQ-1/3/5/6/7 reopened，另新开 REQ-8。六条全部 accept：
+       REQ-1 → resolveChange 取同名归档里字典序最后者，已存在排序更后的同名归档时 gate 会去查**另一个**
+         bundle（无 force、无并发的真反例）。就绪度增加「同名归档排序不得 ≥ 本次目录名」一项，不可 force。
+       REQ-3 → ① 单文件形式带 --changes-dir **会移动正式 bundle**，v2 的「完全不受影响」给 ABANDONED 留了后门；
+         ② v2 的豁免矩阵自相矛盾（无理由 rejected 一处可 force 一处不可）；③ 失败类标识允许子串误配、
+         NOTE 行无条件说 C2/C4 都 BLOCK。三点全改。
+       REQ-5 → C3 一个函数满足不了 gate（全词汇）与 archive（仅 STEP6），拆成 checkFlowState +
+         checkArchiveFlowState。
+       REQ-6 → 前置区间终点按四条合法路径分别定义。
+       REQ-7 → 迁移清单加穷举清点任务。
+       REQ-8 → 共享安全读取会改变 gate 的 C2/C4；改为**组合而非替换**（基础层 = gate 今天那一份、
+         行为逐字节不变；安全读取只叠加在 archive 侧）。
+     另有一处生产方自查更正：v2 计划搬迁 containsReal，本轮实测两份实现只在 target===root 一格分歧，
+     而 reviewDirDefect 的 target 恒为 <dir>/review，**调用形态下行为一致，不必搬迁**（O8 改写、K5 取消）。 -->
+
+<!-- STEP0·r3：REQ-5 / REQ-6 / REQ-7 → verified（共享模块结构、前置区间四路径、迁移穷举清点都过关）；
+     REQ-1 / REQ-3 / REQ-8 第二次 reopened，三条都成立：
+       REQ-1 → 排序检查方向对了，但前提没被机械保证：时间戳没绑定（phase 4 自己 new Date）、no-move 路径
+         未定义是否求值、resolver 的结构性拒绝（archive root symlink / 同名 symlink / 非法 stamp 目录）
+         未覆盖、同名 namespace 的并发未纳入前置条件。→ 归纳为 N0..N3 四项检查 + 命名空间级前置条件。
+       REQ-3 → `--changes-dir` 不是「是否消费正式 bundle」的充分判据：不带它也能用 bundle 内的 delta 写 store。
+         → 改按 --delta 实路径三分。
+       REQ-8 → AC-AP-16d 要求抛错分支「诊断逐字节一致」是**不可能满足**的（搬文件必然改 stack 的文件名行号）。
+         → 拆成不抛错/抛错两条，并补 wrapper 的确切命名与「安全 guard 先于任何读取」的顺序铁律。
+     另：评审方确认不搬迁 containsReal 的论证成立。 -->
+
+<!-- STEP0·r4：REQ-8 → verified；REQ-1 / REQ-3 第三次 reopened，两条都成立：
+       REQ-1 → ① **待移动的 active 条目自己可以是 symlink**（containment 放行、move 后变成 archived symlink、
+         resolver 随即判结构错误）；② 前置条件漏了两个 trust root 本身；③ **「用 resolver 自己的判据」与
+         「resolve.js 不动」不可兼得**——rootDefect 是私有的。→ N2 扩到三类对象，resolve.js 导出
+         archiveNamespaceDefect 并进入触及范围。
+       REQ-3 → ① AC-AP-13 与 13d 自相矛盾；② §9.2 还留着旧 discriminator；③ **只按 realpath 三分不够**
+         （词法在 bundle 内、realpath 被 symlink 带出界时两条规则同时成立）→ 改两步归属；
+         ④ 已归档 bundle 的显式 delta 路径无分类 → 一律拒绝。
+     verdict 序列：7→6→3→2。 -->
+
+<!-- STEP0·r5（cap 轮）：REQ-1 / REQ-3 第四次 reopened，两条仍成立：
+       REQ-1 → ① 自定义 --changes-dir 上归档时，gate 只查规范 root，B2 的机械保证不成立；
+               ② 综合 namespace predicate 若在 resolver 的 active-first 快路径之前求值，
+                  会改变「合法 active + 同名归档 symlink」这类项目今天的解析结果。
+       REQ-3 → 两步归属漏了反方向：词法在 changes root 之外、realpath 指向正式 bundle delta 的
+               外部 symlink 会被当外科手术输入放行，ABANDONED 硬禁令再次被绕过。
+     两条 accept 并落 req-final。
+     **STEP0 在 cap 上退出（未收敛，verdict 序列 7→6→3→2→2）→ gate①**；
+     gate① 非受保护关卡，已被 kickoff 的关卡合并授权覆盖，故不停、并入 gate④。
+     req-final 承载的这三条修复**未经独立评审**——已在 req-final 抬头与 §9.3 显著标注，
+     由 STEP2 的 P5 循环（读的就是 req-final，cap=4）作为复核机会。 -->
+
+<!-- STEP2·r1：SPEC-1..4 open + 3 条 advisory。四条全部 accept：
+       SPEC-1（high）→ 单文件 `:860` 的 move 目标 `<changes-dir>/<change>` 与 delta 归属**互不相干**，
+         v1 的设计只按 delta 归属决定就绪度，于是「真外科手术 delta + --changes-dir」照样能搬走一个
+         ABANDONED bundle。改为把 moveBundle 立成**独立判定对象**（完整就绪度 + N 组），
+         并要求 delta 若归属正式 bundle 必须与它同目录；N0 的捕获值同时喂两条 move 路径。
+       SPEC-2（high）→ 归属身份不能只记 change name：同名可存在于不同 root、以及 active/archived 两个
+         stage。改为 `{root, stage, name, bundleDir}`，任一侧落在 archived 即拒绝。
+       SPEC-3（med）→ `review/` 若是指向 bundle **内部**另一目录的 symlink，叶子完全正常，
+         只守叶子会让 archive 放行而 gate C4 阻断——正好打破核心保证。checkArchiveLedger 增加第 0 步。
+       SPEC-4（med）→ 原样保留的 AM-19 仍写「single-file 行为不变」，与新增场景正面冲突，已收窄。
+     advisory 三条也已实施（seam API 定名、composite predicate 措辞更正、--force 的 usage 可发现性）。 -->
+
+exec
+/usr/bin/zsh -lc "sed -n '30,245p' apriori/changes/archive-preflight/design.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,145p' apriori/changes/archive-preflight/tasks.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,100p' apriori/changes/archive-preflight/specs/readiness/spec.md && sed -n '1,90p' apriori/changes/archive-preflight/specs/resolve/spec.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 106ms:
+
+搬迁（不是重写）以下符号，`gate.js` 改为 `require('./readiness')` 并**继续再导出** `classifyStatus`：
+
+```
+classifyStatus(status)            gatesEntries(flowText)        waiveEvidence(flowText, id)
+reviewDirDefect(dir)              checkTasks(dir, tier)         checkFlowState(state, name)
+checkLedger(tier, stage, dir)
+```
+
+**裸 `existsSync` 的行为一并搬过来**——这是刻意的：换成安全读取会改变 gate 的 C2/C4（REQ-8）。
+
+### D1.3 archive 叠加层 —— 三个 wrapper，**先守卫后读取**
+
+```
+readArchiveFlowState(dir, name)   checkArchiveTasks(dir, tier)   checkArchiveLedger(dir, tier)
+```
+
+每个 wrapper 的**铁律顺序**：
+
+1. **`checkArchiveLedger` 独有的第 0 步（STEP2·r1 / SPEC-3）**：先跑 `reviewDirDefect(dir)`。
+   只守 `review/issues.md` 这个叶子**不等价**——若 `review/` 本身是一个指向 bundle 内另一目录的
+   symlink，叶子可能是正常文件且通过 realpath containment，archive 于是放行；
+   而 gate 会因 **review root 本身是 symlink** 而 C4 阻断。那正好打破
+   「archive 通过 ⇒ gate C4 不 BLOCK」这条核心保证；
+2. `resolve.fileReadDefect(dir, <artifact 路径>)` → 有缺陷即返回结构性失败（**不可 force**）；
+3. 确认安全后，才调用基础层 checker；
+4. 捕获 guard 之后的读取竞态（任何异常归入结构性失败）。
+
+**顺序写反会在 overlay 有机会阻断之前就跟随 symlink 或抛错**——这是本设计最易实现错的一处。
+
+`readArchiveFlowState` 额外叠加 `current-step === 'STEP6'`：
+
+```
+checkArchiveFlowState(state, name) = checkFlowState(state, name) 通过 ⇒ 再判 STEP6
+```
+
+gate 只用 `checkFlowState`，archive 只用 `checkArchiveFlowState`（AC-AP-16f 静态断言两侧各走各的层）。
+
+### D1.4 就绪度的聚合入口
+
+```
+readiness(bundleDir, name, opts) → { ok, failures: [{ class, forcible, detail }] }
+```
+
+- `class ∈ { flow-state, tasks, ledger, namespace }`；`forcible` 由 req-final §四的矩阵决定；
+- **R1（flow-state）先判**：它决定 tier，而 tier 决定 tasks/ledger 对缺失的判定。
+  R1 失败 → **只报 R1**，不对 R2/R3 下结论（编造结论不诚实）；
+- R1 通过 → R2、R3 一并求值，一次报全。
+
+---
+
+## D2 `lib/resolve.js` — 一个新导出，短路语义不动
+
+### D2.1 `archiveNamespaceDefect(changesDir, name) → null | { kind, path, detail }`
+
+一次性覆盖：
+
+| 对象 | 判据 |
+|---|---|
+| 两个 trust root `<changesDir>` / `<changesDir>/archive` | 既有私有 `rootDefect`（symlink / 非目录 / 逃逸） |
+| **active 条目** `<changesDir>/<name>` | resolver 的 active-entry 判据：lstat 优先、**非 symlink**、必须是目录、`containsReal` |
+| 全部同名归档候选 `<changesDir>/archive/*-<name>` | symlink → defect；非目录 → 跳过（与 resolver 一致）；stamp 形状 + `stampValid` 的 Gregorian 往返 |
+
+> **措辞更正（STEP2·r1 / advisory A-2）**：这个 predicate 诊断的是
+> **「active 被移走之后，resolver 将要面对的那个 namespace」**，
+> 而**不是**「resolver 今天会拒绝的一切」——后一种说法会让人以为 resolver 自己会调用它。
+> 实际关系是：**resolver 与它共享更小的私有 predicates**，综合扫描只由 readiness 调用。
+
+### D2.2 `resolveChange()` 的 active-first 短路 **一字不改**
+
+**绝不**在 active 快路径之前调用综合 predicate。
+状态 A 里 active 合法就立即返回、从不看归档条目；若改成先综合扫描，
+「合法 active + 同名归档 symlink」这类**今天能正常解析**的项目会开始报错，
+波及 gate / status 等既有消费者。
+
+实现方式：resolver 与综合 predicate **共享更小的私有 predicates**，
+综合扫描**只在 readiness 侧调用**（AC-AP-17i 守卫）。
+
+---
+
+## D3 `lib/archive-merge.js` — 挂载点与两条绕过口
+
+### D3.1 高层形式：挂在 preflight 末尾
+
+```
+:688  const preflightFailures = [...casDenials, ...hygiene, ...casMismatches, ...conflicts];
+:689  if (preflightFailures.length) { …既有路径，一字不动… }
+      ← 就绪度在此插入
+```
+
+**既有 preflight 与就绪度同时失败时，输出既有那一组并按既有路径返回**——就绪度根本不求值（AC-AP-11）。
+
+### D3.2 N0 —— 时间戳只捕获一次
+
+```
+:753  archiveChangeDir(changesDir, o.change, new Date(), ops)     ← 现状：phase 4 自己取
+   →  preflight 捕获 archiveDate 一次 → 算出 archiveBasename 供 N1 比较
+      → 同一个 archiveDate 传给 phase 4
+```
+
+不这样做，检查用的目录名与实际创建的目录名之间隔一次分钟切换或时钟回拨就会脱钩。
+测试需要一个**时钟 seam** 才能注入这段偏移。
+
+### D3.3 N3 —— 只对会移动的调用求值
+
+带 `--changes-dir` 的调用（**含 dry-run**，它预测同一次移动）跑 N0..N2；
+不带 `--changes-dir` 的调用跳过——它不创建归档目录，跑这组只会造假阻断。
+
+### D3.4 单文件形式：**两个**独立对象要判（STEP2·r1 / SPEC-1 更正）
+
+r1 指出 v1 的设计只按 `--delta` 的归属决定就绪度，**漏了它实际会移动的那个 bundle**：
+`:860` 的 move 目标是 `<changes-dir>/<change>`，与 delta 归属**互不相干**。两个可达反例：
+① 真外科手术 delta + `--changes-dir apriori/changes` → 按 v1 不跑就绪度，却仍会搬走 `apriori/changes/X`；
+② delta 归属默认 root 的 X，而 `--changes-dir` 指向另一个 root 的 X → 检查一个、搬另一个。
+
+因此：
+
+1. **`moveBundle = <changes-dir>/<change>`（仅当带 `--changes-dir`）独立成一个判定对象**，
+   无论 delta 是不是外科手术输入，它都要过**完整就绪度 + N0..N3**；
+2. delta 若归属到某个正式 bundle，其 bundle 目录**必须等于** `moveBundle`，否则拒绝；
+3. N0 捕获的那**一个**时间戳，同时喂给 `:753` 与 `:860` 两条 move 路径。
+
+### D3.4b `--delta` 的归属（身份 = `{root, stage, name, bundleDir}`，STEP2·r1 / SPEC-2 更正）
+
+归属**不能只记 change name**——同名可以同时存在于不同 root、以及 active / archived 两个 stage。
+对每个 `--delta` **两种归属都算**，各自产出一个完整身份：
+
+| 词法归属（规范化，不解 symlink） | realpath 归属 | 处置 |
+|---|---|---|
+| 不属于任何正式 bundle | 不属于任何正式 bundle | 不执行就绪度（真外科手术） |
+| 属于 `X` | 同一个 `X`，且与 `--change` 一致 | 执行 `X` 的就绪度，**与 `--changes-dir` 无关** |
+| 属于 `X` | 出界 | 拒绝 |
+| **不属于**任何 bundle | 属于某 **active** 正式 bundle `X` | 执行 `X` 的就绪度（`X` 与 `--change` 不符则拒绝） |
+| 属于 `X` | 属于 `Y ≠ X` | 拒绝 |
+| 落在 `<changes-dir>/archive/<stamp>-X/specs/…` | — | **一律拒绝** |
+| 词法属于 **active** `X` | realpath 落在 **archived** 的同名 bundle（symlink alias） | **拒绝**——两侧 stage 不同（r1·SPEC-2） |
+| 词法在任何 root 之外 | realpath 落在 **archived** bundle | **拒绝**（r1·SPEC-2） |
+| 两侧都属于名为 `X` 的 bundle，但 **root 或 bundleDir 不同** | — | **拒绝**（名字不是身份） |
+
+---
+
+## D4 `--force`
+
+- 新增 flag `--force`（`withStrict` 的 flags 表加一项）。
+- 放行需要 flow-state `gates:` 里**预先存在**的记录，含：
+  精确 token `archive-preflight-waiver`（大小写不敏感）+ 失败类精确 token `tasks` / `ledger`
+  （边界为非 `[A-Za-z0-9-]`，`tasks-later` / `myledger` 不得命中）。
+- 放行输出：`WAIVED (--force): <类> — 依据: <gates 记录首行>` 与
+  `NOTE: post-archive gate 的 <C2 | C4 | C2/C4> 将 BLOCK`（**按实际豁免类**精确点名）。
+- **绝不**替人类往 flow-state 写任何东西。
+
+---
+
+## D5 dry-run
+
+就绪度失败时 dry-run 报告失败并**不**打印 `RESULT: MERGED (dry-run…)`，退出码 1。
+
+---
+
+## D6 外部共享状态的三个时刻
+
+本 change 不引入进程外共享状态。两个测试 seam（时钟、并发注入点）是**进程内模块级变量**：
+
+| 时刻 | 说明 |
+|---|---|
+| init | 模块加载时 `null`，回落到 `new Date()` / 无注入 |
+| API（advisory A-1 固定下来） | `_setClock(fn)`：`fn() → Date`，preflight 捕获时**恰调用一次**；`_setAfterReadinessHook(fn)`：在就绪度全部通过之后、**首次写入之前**调用一次，测试在其中注入 bundle / namespace 变更 |
+| runtime update | 只有测试通过 `_set*` 改写 |
+| cleanup | 测试**必须**在 `finally` 里复位为 `null`（沿用 change 1 的 T16b 教训：泄漏会造成同进程顺序依赖） |
+
+**并发前置条件**（req-final §六）：从就绪度首次读取到本次调用返回（含移动时到移动完成），
+调用方须保证该 change 的**整个解析命名空间**（两个 trust root + active 条目 + 全部同名归档条目）不被并发改动。
+实现**不声称**检测到违反——AC-AP-19 / 17g 用 seam 注入并断言「不声称」。
+
+---
+
+## D7 测试策略要点
+
+| 面 | 手法 |
+|---|---|
+| 基础层与 gate 同源 | 差分断言：同一批 bundle 喂给基础层与 gate 的 C2/C3/C4（archived），逐项一致（AC-AP-16） |
+| 分层不串味 | 静态断言：`gate.js` 不出现 `checkArchive*`/`readArchive*`；`archive-merge.js` 不直调基础层三个 checker（AC-AP-16f） |
+| 抛错分支 | 只比稳定面（error class/code/message），**明确排除** stack 的文件名行号（AC-AP-16e） |
+| N0 | 时钟 seam 注入「检查后、移动前」的前进/回拨，**高层 `:753` 与单文件 `:860` 两条 move 路径各一**（STEP2·r1 / SPEC-1） |
+| 单文件的 move target | 独立于 delta 归属：`moveBundle = <changes-dir>/<change>` 自己要过完整就绪度 + N 组；delta 若归属到正式 bundle，两者必须是**同一个目录**，否则拒绝 |
+| N2 | 逐类构造 trust root / active 条目 / 归档候选的缺陷 |
+| 归属算法 | 六行处置表逐行；含外部 symlink 指向 active ABANDONED bundle |
+| 充分性命题 | 归档成功后立刻跑 gate，断言 C2/C3/C4 不 BLOCK；force 版本断言会 BLOCK（反向守卫） |
+| 迁移 | 先把 gap-report §A6 的 11 个文件逐条走完，只补 fixture、**不改断言** |
+
+ succeeded in 112ms:
+# tasks — archive-preflight
+
+STEP5 按本表顺序执行；每完成一项立刻打 `[x]`。测试先行：先写失败测试并给出失败运行，再实现。
+
+## M — 迁移清点（**必须最先做完**，req-final §七 / gap-report §A6）
+
+- [ ] M0 跑一次全量测试并记录**全绿基线**
+- [ ] M1 逐文件走完 gap-report §A6 的 **11 个** archive 相关测试文件，列出**每一个**期望 archive 成功（exit 0 / MERGED / 成功移动）的调用点，产出清单落进本文件（**不得以「大概就这两个」收尾**）
+- [ ] M2 按清单给每个 fixture 补**就绪 bundle**：`current-step: STEP6` 的合法 flow-state、全勾 tasks、全终态 ledger。**只补 fixture，断言一字不改**
+- [ ] M3 补完后再跑全量测试，确认仍全绿（此时尚未加就绪度实现，等于验证 fixture 没写坏）
+
+## T — 测试先行
+
+### 共享模块与分层
+- [ ] T1 RY-01 基础层与 gate 的 C2/C3/archived-C4 差分断言（同一批 bundle，逐项一致）
+- [ ] T2 RY-02（不抛错分支）gate 的返回对象与 detail 字节不变
+- [ ] T3 RY-02（抛错分支）只比 error class/code/message，**显式排除** stack 文件名行号
+- [ ] T4 RY-03 overlay 先守卫后读取：构造 symlink / 错类型，断言**未跟随**且诊断为结构性、不可 force
+- [ ] T4b RY-03 第二支（SPEC-3）：`review/` 本身是**指向 bundle 内另一目录**的 symlink、而 `issues.md` 完全正常 → archive 必须 refuse（只守叶子会放行，而 gate C4 会阻断，保证就破了）
+- [ ] T5 RY-04 每一个合法非 STEP6 取值 → archive block 而 gate C3 pass；并断言「archive pass ⇒ gate C3 pass」
+- [ ] T6 RY-05 静态断言：`gate.js` 不出现 `checkArchive*`/`readArchive*`；`archive-merge.js` 不直调基础层三 checker；`readiness.js` 不重实现 resolver 规则
+- [ ] T7 gate 继续再导出 `classifyStatus`（GT-15 语料测试在用）
+
+### resolve
+- [ ] T8 RS-06 `archiveNamespaceDefect` 逐类缺陷：两个 trust root / active 条目（symlink、非目录）/ 归档候选（合法 stamp 的 symlink 排序早晚各一、日期非法目录）
+- [ ] T9 RS-07 **合法 active + 坏归档候选** → `resolveChange` 仍解析到 active（active-first 短路不变）
+- [ ] T10 RS-08 resolver 既有答案全不变（in-flight / archived / 找不到 / 非法名 / 逃逸）
+
+### archive 就绪度
+- [ ] T11 AM-49 三类失败各自 refuse（含 `DONE` 的措辞断言）
+- [ ] T12 AM-50 R1 先判：flow-state 失败只报 R1；R1 通过则 R2+R3 一次报全
+- [ ] T13 AM-51 trivial tier 的 tasks/ledger 缺失 = n/a；medium/large 缺失即 refuse
+- [ ] T14 AM-52 结构性不安全逐类（symlink / 错类型 / 坏祖先 / 逃逸 / guard 后读异常）→ refuse 且**不可 force**
+- [ ] T15 AM-53 既有 preflight 失败时诊断/退出码不变，且就绪度**不被求值**
+- [ ] T16 AM-48 unready 的 dry-run 不打印 `RESULT: MERGED (dry-run…)`，exit 1，零写入
+
+### 命名空间 N0..N3
+- [ ] T17 AM-54 / AM-68 时钟 seam 注入「检查后、移动前」的前进/回拨 → 实际创建的目录名 = 检查所用名。**高层 `:753` 与单文件 `:860` 两条 move 路径各一**（SPEC-1）
+- [ ] T18 AM-55 同名归档目录排序 `>` / `=` / 回拨反转三种 → refuse，不可 force
+- [ ] T19 AM-56 N2 三类对象逐情形 → refuse，判据经**同一个** `archiveNamespaceDefect`
+- [ ] T20 AM-57 不带 `--changes-dir` 的 `--write` 与 dry-run **不求值** N 组；带 `--changes-dir` 的 dry-run **求值**
+- [ ] T21 AM-58 自定义 root 打印「无 post-archive gate 保证」提示
+
+### 归属算法
+- [ ] T22 AM-59 单文件 + 不带 `--changes-dir` + delta 在 ABANDONED bundle 内 → refuse，零写入
+- [ ] T22b AM-66（SPEC-1）**真外科手术 delta + `--changes-dir apriori/changes`，而 `X` 未就绪/ABANDONED** → 整个调用 refuse，零写入零移动
+- [ ] T22c AM-67（SPEC-1）delta 归属默认 root 的 `X`，`--changes-dir` 指向另一 root 的同名 `X` → refuse（不得检查一个、搬另一个）
+- [ ] T23 AM-60 外部 symlink → active bundle delta（判为该 bundle）；词法在内 realpath 出界（refuse）
+- [ ] T24 AM-61 身份不一致 → refuse；delta 在**已归档** bundle 内 → refuse（ABANDONED 与非 ABANDONED 各一）
+- [ ] T24b AM-61（SPEC-2）身份 = `{root, stage, name, bundleDir}` 的三个反例：① 外部 symlink → **archived** bundle delta；② 词法属 active `X`、realpath 经 symlink 落到 **archived** 同名 bundle；③ 两侧都叫 `X` 但 root / bundleDir 不同 —— **全部 refuse**
+- [ ] T25 真外科手术输入（词法与 realpath 都不属于任何 bundle）行为不变
+
+### --force
+- [ ] T26 AM-62 证据缺失三态（无记录 / 有 waiver token 缺类 token / 记录在别的 bundle）→ 仍 refuse，诊断说明缺哪一条
+- [ ] T27 AM-63 类 token 边界：`tasks-later` / `myledger` 不命中；裸 token 任意大小写命中
+- [ ] T28 AM-64 放行输出：`WAIVED (--force):` 含类与证据首行；`NOTE:` **按实际豁免类**点名 C2 / C4 / 两者
+- [ ] T29 AM-65 每一个不可 force 类逐条（ABANDONED 单列）
+- [ ] T30 反向守卫：force 放行 tasks 未勾后跑 gate → C2 **BLOCK**
+
+### 充分性命题
+- [ ] T31 未 force + 规范 root + 就绪度通过并成功归档 → 紧接着 gate 的 C2/C3/C4 **均不 BLOCK**（trivial 与 medium/large 各一）
+- [ ] T32 并发 seam：就绪度通过后、首次写入前注入 bundle 修改 → 归档照常，实现**不声称**检测；**move 与 no-move 两条路径各一**
+- [ ] T33 并发 seam：N 组检查后替换/改名 `<changes-dir>/archive` trust root → 同上
+- [ ] T34 **每一个** seam 使用点 `try/finally` 复位（change 1 的 T16b 教训）
+- [ ] T35 跑全量测试，记录失败清单（应大面积红）
+
+## I — 实现
+
+- [ ] I1 新建 `lib/readiness.js`：从 `gate.js` **搬迁**基础层七个符号（行为一字不改），只 require `./status` + `./resolve`
+- [ ] I2 `lib/gate.js`：改为从 `./readiness` 引入基础层；**继续再导出** `classifyStatus`；其余一字不动
+- [ ] I3 `lib/resolve.js`：新增导出 `archiveNamespaceDefect(changesDir, name)`；`resolveChange` 的 active-first 短路**一字不改**
+- [ ] I4 `lib/readiness.js` 叠加层：`checkArchiveFlowState` / `readArchiveFlowState` / `checkArchiveTasks` / `checkArchiveLedger`（**先守卫后读取**）+ 聚合入口 `readiness()`
+- [ ] I5 `lib/archive-merge.js`：preflight 末尾挂就绪度（既有 guards 优先，同时失败时不求值就绪度）
+- [ ] I6 `lib/archive-merge.js`：N0 时间戳捕获一次并传给 phase 4；N1/N2 经 `archiveNamespaceDefect`；N3 只对会移动的调用求值
+- [ ] I7 `lib/archive-merge.js`：单文件形式的归属算法（词法 + realpath 双算，六行处置表）
+- [ ] I8 `lib/archive-merge.js`：`--force` flag + 豁免矩阵 + gates 证据精确 token + `WAIVED:` / `NOTE:` 输出
+- [ ] I9 dry-run 路径：unready 时不打印 MERGED
+- [ ] I10 时钟 seam 与并发 seam（模块级，默认 null，`try/finally` 复位）
+- [ ] I11 全量测试到绿；`check --self` PASS；`verify --change archive-preflight` GREEN
+
+## D — 文档与 KB
+
+- [ ] D1 `docs/cli.md` + `docs/cli_cn.md` 的 archive 小节：新增就绪度、`--force`、dry-run 语义、自定义 root 无保证
+- [ ] D2 `CHANGELOG.md`：归档准入收紧（行为变更）、dry-run 语义变化、`--force` 的证据要求
+- [ ] D3 `--force` 的可发现性（advisory A-3）：两处 archive usage 字符串与 `--help` 输出都含 `[--force]`
+- [ ] D4 逐条核对 AC-AP-01..20 与 13b..13j / 16b..16f / 17b..17i 全部有证据，对照表进 flow-state。**AC-AP-13f 按 SPEC-4 勘误理解**为「词法与 realpath **均**不属于正式 bundle」，不得按旧字面写出与 AC-AP-13i 相反的测试
+
+## S — STEP5 出口
+
+- [ ] S1 `apriori verify --change archive-preflight` GREEN
+- [ ] S2 P8 异构一致性评审（R2，codex），verdict 落盘 + raw 存证
+- [ ] S3 ledger 全行终态
+
+（STEP6 的 KB 写回在 P9 阶段做。**本 change 自举**：它自己归档时要过自己这一关。）
+
+ succeeded in 133ms:
+<!-- apriori-base: new -->
+
+## ADDED Requirements
+
+### Requirement: one shared implementation of the bundle predicates, with an archive-only overlay above it
+The predicates that judge a change bundle — the ledger status vocabulary, the `gates:` waiver evidence, the review-root guard, and the tasks / flow-state / ledger checks — SHALL live in ONE module that both `gate` and `archive` depend on, reachable without a dependency cycle. That module's BASE layer SHALL be the behaviour `gate` had before this change, unchanged down to its file-existence semantics and diagnostic text: moving code must not silently make `gate` stricter. Everything `archive` needs beyond that — the `STEP6` narrowing and the structural safety guard — SHALL live in a separate OVERLAY that only `archive` calls, and the overlay SHALL only ever be stricter than the base, never looser.
+
+#### Scenario: RY-01 the base layer and gate agree, item by item
+- WHEN the same set of change bundles is judged by the base-layer checks and by `gate`'s C2, C3 and archived-stage C4
+- THEN every verdict and detail string agrees — they are one implementation, not two that happen to match today
+
+#### Scenario: RY-02 gate's existing behaviour survives the move
+- WHEN `gate` runs against bundles whose tasks, ledger or `review/` are structurally odd — a symlink, the wrong file type — in the cases that do NOT raise
+- THEN its returned check objects and detail bytes are identical to their pre-change values; and in the cases that DO raise, the stable surface (error class, code, message) is identical, while stack file names and line numbers are explicitly outside the compatibility promise, because moving a function between files must change them
+
+#### Scenario: RY-03 the archive overlay guards before it reads, and guards the evidence ROOT before the ledger leaf
+- WHEN the overlay judges tasks, the ledger or the flow-state
+- THEN it completes the structural safety check on that path BEFORE the base layer performs any content read, so a symlink is never followed and a read error never escapes unstructured; a defect found by the guard is reported as structural and is never forcible
+- AND WHEN it judges the ledger specifically THEN it guards the `review/` ROOT before it looks at `review/issues.md` — a `review/` that is itself a symlink to another directory INSIDE the bundle leaves the leaf file perfectly normal and contained, so guarding only the leaf would let archive pass while gate's C4 blocks on the root, breaking the whole archive-pass-implies-gate-passes promise
+
+#### Scenario: RY-04 the step narrowing belongs to archive alone
+- WHEN the flow-state is legal but its `current-step` is any value other than `STEP6`
+- THEN the archive flow-state check blocks while `gate`'s C3 passes — the two are deliberately different; and for every input, an archive pass implies a gate C3 pass, so the overlay can only tighten
+
+#### Scenario: RY-05 each side calls only its own layer
+- WHEN the source of `gate` and of `archive-merge` is inspected
+- THEN `gate` names only the base-layer checks and never the archive overlay, `archive-merge` reaches the base layer only through the overlay, and neither re-implements the resolver's namespace rules
+<!-- apriori-base: sha256:fd4c32b53a3f7dbc618bd383f8102517bcd1f8e0229c4bcde350d8b661d6ab18 -->
+
+## ADDED Requirements
+
+### Requirement: the archive namespace is diagnosed by one shared predicate, and resolution keeps its active-first shortcut
+`resolve` SHALL export a structured `archiveNamespaceDefect(changesDir, name)` that diagnoses every structure under which `resolveChange(cwd, name)` would refuse or answer with the wrong directory: both trust roots (`<changesDir>` and `<changesDir>/archive`), the active entry `<changesDir>/<name>`, and every same-name archived candidate. Consumers that need this judgement — archive's readiness among them — SHALL call it rather than re-implement the rules, so the two can never drift. `resolveChange()` itself SHALL keep its existing ACTIVE-FIRST shortcut byte-for-byte: when a legal active entry exists it returns immediately and never inspects archived candidates. The composite predicate is therefore never evaluated ahead of that shortcut; the two share smaller private predicates instead.
+
+#### Scenario: RS-06 the predicate names each namespace defect the resolver would trip on
+- WHEN either trust root is a symlink pointing inside the changes tree, is not a directory, or escapes its root; or the active entry is itself a symlink to a real directory inside the changes root, or is not a directory; or a same-name archived candidate is a symlink whose basename carries a legal stamp shape, or is a stamp-shaped directory whose date is not a real calendar date
+- THEN `archiveNamespaceDefect` returns a structured defect naming the object, its kind and its path; a clean namespace returns null
+
+#### Scenario: RS-07 a legal active entry still short-circuits resolution
+- WHEN a legal active `<changesDir>/<name>` directory exists AND a same-name archived candidate is defective (a legal-stamp symlink, or a stamp-shaped directory with an impossible date)
+- THEN `resolveChange` still resolves to the active entry with the same result it produced before this change — the archived defect is reported only by the composite predicate, which resolution never consults on that path
+
+#### Scenario: RS-08 the resolver's own answers are unchanged
+- WHEN any input that resolution already handled is resolved after this change — in-flight found, archived found by lexicographically-last stamp, found nowhere, invalid name, escaping path
+- THEN the returned shape, the chosen directory and the error text are identical to their pre-change values; the new export adds a diagnosis path, never a decision path
+
+codex
+# spec-review-v2 — archive-preflight technical review（STEP2 Round 2）
+
+评审基于静态读取；未运行测试，未修改文件。
+
+## Round-1 findings verification
+
+### SPEC-1 — VERIFIED
+
+单文件 move 现在有独立的判定对象：
+
+- `moveBundle = <changes-dir>/<change>` 无条件执行完整 readiness 和 N0..N3；
+- formal delta bundle 必须与 moveBundle 为同一目录；
+- surgical delta 不再能掩护未就绪或 ABANDONED bundle 的 move；
+- AM-66/67、T22b/T22c 覆盖两个原始反例；
+- AM-68、D3.4、T17 明确要求同一捕获时间同时进入高层 `:753` 和单文件 `:860`。
+
+原问题已解决。
+
+### SPEC-2 — REOPEN
+
+完整 attribution identity 与 archived alias 修复本身正确：
+
+```text
+{root, stage, name, bundleDir}
+```
+
+AM-61/T24b 已覆盖 external→archived、active→archived 和同名不同 root。
+
+但仍有两个相关缺口。
+
+#### 1. Normative prose 与 AM-60 对 external symlink 给出相反结果
+
+Archive-merge requirement prose 规定：
+
+> a delta whose two measures agree on one ACTIVE bundle directory SHALL be judged … anything else … SHALL be refused
+
+External symlink 的状态是：
+
+- lexical：不属于 bundle；
+- realpath：属于 active X。
+
+两种 measure 并不“agree”，因此上述 prose 要求拒绝；AM-60 与 D3.4b 却要求将它归属到 realpath 对应的 active bundle并执行 readiness。
+
+实现者可以合理地产生两套相反代码和测试。
+
+#### 2. 单个 measure 可能同时匹配多个 changes root
+
+设计假定 lexical attribution 和 realpath attribution 各自产生一个 identity，但 `--changes-dir` 可以是任意路径，并可能嵌套在默认 root 的某个 bundle `specs/` 下。
+
+例如：
+
+```text
+default root:  <cwd>/apriori/changes
+explicit root: <cwd>/apriori/changes/A/specs/nested
+delta:         <explicit-root>/X/specs/m/spec.md
+```
+
+同一 delta 同时是：
+
+- 默认 root 下 active bundle A 的 delta；
+- explicit root 下 active bundle X 的 delta。
+
+如果实现选择 explicit match，它可检查并移动 X，却消费 A 的 formal delta 而不检查 A；A 若为 ABANDONED，硬禁令再次被绕过。现有“两个 measure 的 identity 不一致”规则捕获不了这个情形，因为歧义发生在单个 measure 内部，而不是 lexical 与 realpath 之间。
+
+风险：**high**。
+
+建议：
+
+- 将 prose 改为明确的允许集合：
+  - both none → surgical；
+  - lexical none + realpath one active identity → 归属 realpath bundle；
+  - lexical 与 realpath 各有一个且为同一 active identity → 归属该 bundle；
+  - 其他情况拒绝。
+- 每个 measure 应先产生去重后的 candidate identity 集合，而不是直接产生单值：
+  - 0 个按上述规则处理；
+  - 1 个正常处理；
+  - 大于 1 个一律作为 ambiguous attribution 拒绝。
+- 规范化后指向同一 root 的不同拼写应先去重，避免 false ambiguity。
+- 增加“explicit root 嵌套在 default bundle specs 下、单路径匹配两个 active identities”的拒绝场景和任务。
+
+### SPEC-3 — VERIFIED
+
+D1.3 与 RY-03 现在明确规定 `checkArchiveLedger` 的顺序：
+
+1. `reviewDirDefect(dir)`；
+2. ledger leaf 的 `fileReadDefect`；
+3. 基础 checker；
+4. 捕获读取竞态。
+
+T4b 使用“review symlink 指向 bundle 内、leaf 正常且 contained”的精确反例，足以防止实现退化为只守叶子。原问题已解决。
+
+### SPEC-4 — VERIFIED
+
+AM-19 已收窄为：
+
+- single-file dispatch 保持；
+- genuinely surgical 输入保持原行为；
+- formal delta 或正式 bundle move 受新 attribution/readiness 契约约束。
+
+D4 也明确把冻结需求 AC-AP-13f 解释为 lexical 与 realpath 均不归属 formal bundle，避免与 AC-AP-13i 生成相反测试。原问题已解决。
+
+## 1. 场景是否覆盖全部可见行为及失败边界
+
+**结论：未通过。**
+
+绝大多数场景已经完整，包括：
+
+- 两条 move 路径的单时间戳；
+- moveBundle 与 delta bundle 独立判定及相等约束；
+- archived alias；
+- review-root 内部 symlink；
+- force、read race、custom root、active-first 和 dry-run。
+
+剩余缺口是单个 attribution measure 匹配多个 root 的情形，以及 external symlink 在 prose 与 AM-60 间的相反结论，见 SPEC-2。
+
+## 2. 外部共享状态的 init / runtime update / cleanup-invalidation
+
+**结论：通过。**
+
+两个模块级 seam 现在具有完整、明确的生命周期和 API：
+
+- init：均为 `null`；
+- runtime update：
+  - `_setClock(fn)`，捕获时恰调用一次；
+  - `_setAfterReadinessHook(fn)`，readiness 全部通过后、首次写入前恰调用一次；
+- cleanup：所有测试在 `finally` 中复位为 `null`。
+
+T32/T33/T34 与 I10 覆盖 move、no-move、bundle mutation、namespace mutation 和清理。没有引入进程外共享状态。
+
+## 3. 是否冲突 state A 或破坏既有约定
+
+**结论：未通过。**
+
+BASE 层、gate re-export、resolver active-first、single-file `:860`、CAS 基线和既有 preflight 优先级均已正确保护。
+
+剩余冲突来自 state A 允许任意 `--changes-dir`：显式 root 可以与默认 root 嵌套，使一个路径同时满足两个 formal-bundle 布局。设计目前假定每种归属只有一个 identity，见 SPEC-2。
+
+## 4. 是否存在 spec 未设计或 design 未声明的行为
+
+**结论：未通过。**
+
+AM-60 与 D3.4b 已设计 external-symlink→active 的允许路径，但上层 normative prose 将其落入“anything else → refuse”。
+
+同时，design 未定义一个 measure 得到多个 candidate identities 时的 disposition。两者均见 SPEC-2。
+
+其余 spec/design/task 映射完整。M0→M3 的迁移顺序仍正确，新增 AM-66/67/68、AM-61 分支与 RY-03 分支均有对应测试任务。
+
+## 5. Security review
+
+**结论：未通过。**
+
+权限面与外部服务面没有新增问题。唯一剩余安全问题是 ambiguous attribution：
+
+嵌套 changes roots 可让同一 delta 同时属于两个 formal bundles；若实现任意选择一个 identity，可能消费另一个 ABANDONED bundle 的 delta而不检查其 readiness。
+
+这是 correctness/security finding，不能降为 advisory。
+
+## Advisories
+
+### A-1 — Composite predicate 的 spec wording 仍未完全同步
+
+D2.1 的措辞已经修正，但 resolve delta 的 requirement 首句仍称 composite predicate 诊断“所有会令当前 `resolveChange()` 拒绝或选错的结构”，AM-56 仍称它为“the same shared predicate the resolver uses”。
+
+RS-07/D2.2 已明确真实结构：composite 只由 readiness 调用，resolver 与它共享较小 private predicates。因此不阻断执行设计，但建议同步两处 spec prose。
+
+### A-2 — “六行处置表”已成为九行
+
+D3.4b 现在有九个 disposition rows，但 D7 和 I7 仍称“六行处置表”。T24b 已覆盖新增三行，所以不会漏测；建议改称“完整 disposition table”，避免实现清点误读。
+
+### A-3 — 执行体量建议
+
+该 change 确实较大：行为保持型 gate 抽取、resolver 新诊断面、两条 archive 路径、复杂 attribution、force 协议和大量 fixture migration 同时发生。
+
+目前没有证据表明必须拆成多个正式 changes；这些部分共同维护一个 archive-safety invariant，强拆可能产生不可安全落地的中间状态。建议在同一 change 内按可回滚的实现批次提交：
+
+1. fixture migration；
+2. readiness BASE 抽取且 gate 行为不变；
+3. resolver predicates；
+4. archive overlay/N checks；
+5. single-file attribution与 moveBundle；
+6. force/output/docs。
+
+每批先跑其局部测试和全量回归，再进入下一批。
+
+## Ledger delta
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| SPEC-1 | 单文件 `--changes-dir` 的实际 move bundle 未与 delta attribution/readiness 绑定，可移动未就绪或不同 root 的正式 bundle；N0 也未钉死 `:860` | high | STEP2·r1 | verified |
+| SPEC-2 | 六行 attribution 表未覆盖 realpath 指向 archived bundle或同名不同 stage 的路径，可经 symlink alias 重用 archived delta | high | STEP2·r1 | open |
+| SPEC-3 | `checkArchiveLedger` 设计未要求先执行 `reviewDirDefect`，内部 review-root symlink 可令 archive 与 gate C4 分歧 | med | STEP2·r1 | verified |
+| SPEC-4 | AM-19 与 AC-AP-13f 的旧「行为不变」措辞和新增单文件归属场景冲突，会生成相反验收 | med | STEP2·r1 | verified |
+
+VERDICT: 1 issues open
+tokens used
+899,779
+# spec-review-v2 — archive-preflight technical review（STEP2 Round 2）
+
+评审基于静态读取；未运行测试，未修改文件。
+
+## Round-1 findings verification
+
+### SPEC-1 — VERIFIED
+
+单文件 move 现在有独立的判定对象：
+
+- `moveBundle = <changes-dir>/<change>` 无条件执行完整 readiness 和 N0..N3；
+- formal delta bundle 必须与 moveBundle 为同一目录；
+- surgical delta 不再能掩护未就绪或 ABANDONED bundle 的 move；
+- AM-66/67、T22b/T22c 覆盖两个原始反例；
+- AM-68、D3.4、T17 明确要求同一捕获时间同时进入高层 `:753` 和单文件 `:860`。
+
+原问题已解决。
+
+### SPEC-2 — REOPEN
+
+完整 attribution identity 与 archived alias 修复本身正确：
+
+```text
+{root, stage, name, bundleDir}
+```
+
+AM-61/T24b 已覆盖 external→archived、active→archived 和同名不同 root。
+
+但仍有两个相关缺口。
+
+#### 1. Normative prose 与 AM-60 对 external symlink 给出相反结果
+
+Archive-merge requirement prose 规定：
+
+> a delta whose two measures agree on one ACTIVE bundle directory SHALL be judged … anything else … SHALL be refused
+
+External symlink 的状态是：
+
+- lexical：不属于 bundle；
+- realpath：属于 active X。
+
+两种 measure 并不“agree”，因此上述 prose 要求拒绝；AM-60 与 D3.4b 却要求将它归属到 realpath 对应的 active bundle并执行 readiness。
+
+实现者可以合理地产生两套相反代码和测试。
+
+#### 2. 单个 measure 可能同时匹配多个 changes root
+
+设计假定 lexical attribution 和 realpath attribution 各自产生一个 identity，但 `--changes-dir` 可以是任意路径，并可能嵌套在默认 root 的某个 bundle `specs/` 下。
+
+例如：
+
+```text
+default root:  <cwd>/apriori/changes
+explicit root: <cwd>/apriori/changes/A/specs/nested
+delta:         <explicit-root>/X/specs/m/spec.md
+```
+
+同一 delta 同时是：
+
+- 默认 root 下 active bundle A 的 delta；
+- explicit root 下 active bundle X 的 delta。
+
+如果实现选择 explicit match，它可检查并移动 X，却消费 A 的 formal delta 而不检查 A；A 若为 ABANDONED，硬禁令再次被绕过。现有“两个 measure 的 identity 不一致”规则捕获不了这个情形，因为歧义发生在单个 measure 内部，而不是 lexical 与 realpath 之间。
+
+风险：**high**。
+
+建议：
+
+- 将 prose 改为明确的允许集合：
+  - both none → surgical；
+  - lexical none + realpath one active identity → 归属 realpath bundle；
+  - lexical 与 realpath 各有一个且为同一 active identity → 归属该 bundle；
+  - 其他情况拒绝。
+- 每个 measure 应先产生去重后的 candidate identity 集合，而不是直接产生单值：
+  - 0 个按上述规则处理；
+  - 1 个正常处理；
+  - 大于 1 个一律作为 ambiguous attribution 拒绝。
+- 规范化后指向同一 root 的不同拼写应先去重，避免 false ambiguity。
+- 增加“explicit root 嵌套在 default bundle specs 下、单路径匹配两个 active identities”的拒绝场景和任务。
+
+### SPEC-3 — VERIFIED
+
+D1.3 与 RY-03 现在明确规定 `checkArchiveLedger` 的顺序：
+
+1. `reviewDirDefect(dir)`；
+2. ledger leaf 的 `fileReadDefect`；
+3. 基础 checker；
+4. 捕获读取竞态。
+
+T4b 使用“review symlink 指向 bundle 内、leaf 正常且 contained”的精确反例，足以防止实现退化为只守叶子。原问题已解决。
+
+### SPEC-4 — VERIFIED
+
+AM-19 已收窄为：
+
+- single-file dispatch 保持；
+- genuinely surgical 输入保持原行为；
+- formal delta 或正式 bundle move 受新 attribution/readiness 契约约束。
+
+D4 也明确把冻结需求 AC-AP-13f 解释为 lexical 与 realpath 均不归属 formal bundle，避免与 AC-AP-13i 生成相反测试。原问题已解决。
+
+## 1. 场景是否覆盖全部可见行为及失败边界
+
+**结论：未通过。**
+
+绝大多数场景已经完整，包括：
+
+- 两条 move 路径的单时间戳；
+- moveBundle 与 delta bundle 独立判定及相等约束；
+- archived alias；
+- review-root 内部 symlink；
+- force、read race、custom root、active-first 和 dry-run。
+
+剩余缺口是单个 attribution measure 匹配多个 root 的情形，以及 external symlink 在 prose 与 AM-60 间的相反结论，见 SPEC-2。
+
+## 2. 外部共享状态的 init / runtime update / cleanup-invalidation
+
+**结论：通过。**
+
+两个模块级 seam 现在具有完整、明确的生命周期和 API：
+
+- init：均为 `null`；
+- runtime update：
+  - `_setClock(fn)`，捕获时恰调用一次；
+  - `_setAfterReadinessHook(fn)`，readiness 全部通过后、首次写入前恰调用一次；
+- cleanup：所有测试在 `finally` 中复位为 `null`。
+
+T32/T33/T34 与 I10 覆盖 move、no-move、bundle mutation、namespace mutation 和清理。没有引入进程外共享状态。
+
+## 3. 是否冲突 state A 或破坏既有约定
+
+**结论：未通过。**
+
+BASE 层、gate re-export、resolver active-first、single-file `:860`、CAS 基线和既有 preflight 优先级均已正确保护。
+
+剩余冲突来自 state A 允许任意 `--changes-dir`：显式 root 可以与默认 root 嵌套，使一个路径同时满足两个 formal-bundle 布局。设计目前假定每种归属只有一个 identity，见 SPEC-2。
+
+## 4. 是否存在 spec 未设计或 design 未声明的行为
+
+**结论：未通过。**
+
+AM-60 与 D3.4b 已设计 external-symlink→active 的允许路径，但上层 normative prose 将其落入“anything else → refuse”。
+
+同时，design 未定义一个 measure 得到多个 candidate identities 时的 disposition。两者均见 SPEC-2。
+
+其余 spec/design/task 映射完整。M0→M3 的迁移顺序仍正确，新增 AM-66/67/68、AM-61 分支与 RY-03 分支均有对应测试任务。
+
+## 5. Security review
+
+**结论：未通过。**
+
+权限面与外部服务面没有新增问题。唯一剩余安全问题是 ambiguous attribution：
+
+嵌套 changes roots 可让同一 delta 同时属于两个 formal bundles；若实现任意选择一个 identity，可能消费另一个 ABANDONED bundle 的 delta而不检查其 readiness。
+
+这是 correctness/security finding，不能降为 advisory。
+
+## Advisories
+
+### A-1 — Composite predicate 的 spec wording 仍未完全同步
+
+D2.1 的措辞已经修正，但 resolve delta 的 requirement 首句仍称 composite predicate 诊断“所有会令当前 `resolveChange()` 拒绝或选错的结构”，AM-56 仍称它为“the same shared predicate the resolver uses”。
+
+RS-07/D2.2 已明确真实结构：composite 只由 readiness 调用，resolver 与它共享较小 private predicates。因此不阻断执行设计，但建议同步两处 spec prose。
+
+### A-2 — “六行处置表”已成为九行
+
+D3.4b 现在有九个 disposition rows，但 D7 和 I7 仍称“六行处置表”。T24b 已覆盖新增三行，所以不会漏测；建议改称“完整 disposition table”，避免实现清点误读。
+
+### A-3 — 执行体量建议
+
+该 change 确实较大：行为保持型 gate 抽取、resolver 新诊断面、两条 archive 路径、复杂 attribution、force 协议和大量 fixture migration 同时发生。
+
+目前没有证据表明必须拆成多个正式 changes；这些部分共同维护一个 archive-safety invariant，强拆可能产生不可安全落地的中间状态。建议在同一 change 内按可回滚的实现批次提交：
+
+1. fixture migration；
+2. readiness BASE 抽取且 gate 行为不变；
+3. resolver predicates；
+4. archive overlay/N checks；
+5. single-file attribution与 moveBundle；
+6. force/output/docs。
+
+每批先跑其局部测试和全量回归，再进入下一批。
+
+## Ledger delta
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| SPEC-1 | 单文件 `--changes-dir` 的实际 move bundle 未与 delta attribution/readiness 绑定，可移动未就绪或不同 root 的正式 bundle；N0 也未钉死 `:860` | high | STEP2·r1 | verified |
+| SPEC-2 | 六行 attribution 表未覆盖 realpath 指向 archived bundle或同名不同 stage 的路径，可经 symlink alias 重用 archived delta | high | STEP2·r1 | open |
+| SPEC-3 | `checkArchiveLedger` 设计未要求先执行 `reviewDirDefect`，内部 review-root symlink 可令 archive 与 gate C4 分歧 | med | STEP2·r1 | verified |
+| SPEC-4 | AM-19 与 AC-AP-13f 的旧「行为不变」措辞和新增单文件归属场景冲突，会生成相反验收 | med | STEP2·r1 | verified |
+
+VERDICT: 1 issues open

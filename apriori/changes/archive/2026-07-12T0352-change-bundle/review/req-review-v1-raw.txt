@@ -1,0 +1,1707 @@
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f4b30-68f9-7222-9b64-17f52a333b4c
+--------
+user
+New change, P1 requirement review round 1: change "change-bundle" — the layout major (4.0.0). Read requirement/change-bundle-req-v1.md from disk. This is the largest change since 3.1: the five scattered per-change locations collapse into apriori/changes/<name>/ bundles, single layout, no dual support, owner-decided.
+
+Context you can verify: the current runbook artifact table (~line 160) and every prompt/recipe referencing requirement/, apriori/review/, apriori/design/, apriori/explore/, spike/; lib/gate.js checkLedger (apriori/review/<name>-issues.md) + checkEvidence (scans review/ and design/, stem-raw rule) + waiveEvidence (flow-state, travels with the dir already); lib/status.js ledger reading; lib/archive-merge.js phase 3.5 (req-sweep staging — to be DELETED); lib/new.js scaffold; lib/init.js dir list; test suite (AM-36..39, GT-13..16, NW-05, PR-17..20 anchor sets); this repo's own legacy artifacts (10 archived changes' evidence in flat dirs; the in-flight change-bundle itself born on the old layout, planning to self-migrate mid-flight).
+
+Review as a contract: holes in O1-O8; the DDs (DD-1 plain names — any collision risk inside one bundle, e.g. two review docs from different stages sharing a stem? enumerate the doc-name vocabulary and check stem-raw uniqueness; DD-3 single layout — what breaks for THIS repo's gate runs mid-implementation, i.e. the ordering problem: code flips to bundle-only while some changes are still flat — is the self-migration required to land in the SAME commit/task as the code flip?); the C5 evidence-scan semantics in bundles (what anchors 'every VERDICT doc has a raw' when docs live per-change — does C5 need the changeDir param now, and what about the archived stage); trivial-tier changes (no ledger — gate C4 n/a rule interacts with bundle detection-by-ledger? there IS no detection now, but C4's missing-ledger message should name the bundle path); the ledger-states corpus test GT-15 (reads apriori/review/<name>-issues.md for archived changes — must flip); PR-17's waived-row gates: evidence anchor (gates: in flow-state — unaffected, confirm); the wording rule O5's negative literals (could they false-positive on historical mentions, e.g. CHANGELOG text describing old versions? scope the negative to the runbook/concepts protocol text only); Node-floor blast radius (engines enforcement behavior on npm install; CI file). Rows CB-N with risk. Print the COMPLETE review document body (landed verbatim at apriori/review/change-bundle-req-review-v1.md) with a ledger section, ending with exactly one verdict line: 'VERDICT: no major issues, ready to proceed' or 'VERDICT: <N> issues open'.
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-11T18:56:55.487154Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T18:56:55.651320Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T18:56:55.982934Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-11T18:56:56.524187Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-11T18:56:57.366932Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-11T18:56:59.070311Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-11T18:57:02.784946Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: 8QbwGhjvYyk3
+codex
+I’ll read the bundle requirement and the current flat-layout call sites/tests first, then review the contract for migration ordering, gate evidence semantics, and negative wording scope.
+exec
+/usr/bin/zsh -lc "sed -n '1,240p' lib/gate.js && sed -n '1,190p' lib/status.js && sed -n '1,90p' lib/new.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc 'rg -n "review|design|issues|ledger|evidence|raw|flow-state|changesDir|resolveChange|checkLedger|checkEvidence|waiveEvidence|GT-15|PR-1[7-9]|PR-20|NW-05|AM-3[6-9]" lib test apriori/specs -S' in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "rg -n \"requirement/|apriori/review|apriori/design|apriori/explore|spike/|changes/<change>|intent-card|issues\\.md|raw\" RUNBOOK.md RUNBOOK_cn.md docs/concepts.md docs/concepts_cn.md README.md README_cn.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,320p' requirement/change-bundle-req-v1.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 137ms:
+'use strict';
+/*
+ * apriori gate — aggregate the MECHANICAL exit conditions for one change into one exit code.
+ * 0 = PASS · 1 = BLOCKED · 2 = the evaluation itself is untrustworthy.
+ * Strictly read-only. PASS covers machine checks only — human gates remain human.
+ */
+const fs = require('fs');
+const path = require('path');
+const { spawnSync } = require('child_process');
+const { parseFlowState, parseLedger } = require('./status');
+const { verify, configTestCmd } = require('./spec-runner');
+const { CHANGE_NAME_RE, containsReal } = require('./archive-merge');
+const { withStrict } = require('./args');
+
+const STEP_ENUM = ['STEP0', 'STEP1', 'STEP2', 'STEP3', 'STEP4', 'STEP5', 'STEP6',
+  'INTENT-CARD', 'SPIKE', 'EXTRACTION', 'DONE', 'ABANDONED'];
+const TIER_ENUM = ['trivial', 'medium', 'large'];
+const CAVEAT = 'mechanical checks only; human gates remain human';
+
+function err(res, msg) { res.errors.push(msg); res.result = 'ERROR'; res.code = 2; return res; }
+
+// stage resolution: in-flight first, else newest archived (exact stamp regex, lexicographic last)
+function resolveChange(cwd, name) {
+  const changesDir = path.join(cwd, 'apriori', 'changes');
+  const inflight = path.join(changesDir, name);
+  if (fs.existsSync(inflight)) {
+    if (!containsReal(changesDir, inflight)) return { error: `change path escapes ${changesDir}` };
+    return { stage: 'in-flight', dir: inflight };
+  }
+  const archRoot = path.join(changesDir, 'archive');
+  if (fs.existsSync(archRoot)) {
+    const re = new RegExp(`^\\d{4}-\\d{2}-\\d{2}T\\d{4}-${name}$`);
+    // candidates must be DIRECTORIES (following symlinks) — a stray file with a stamp name is ignored
+    const hits = fs.readdirSync(archRoot).filter((b) => {
+      if (!re.test(b)) return false;
+      try { return fs.statSync(path.join(archRoot, b)).isDirectory(); } catch { return false; }
+    }).sort();
+    if (hits.length) {
+      const dir = path.join(archRoot, hits[hits.length - 1]);
+      // containment against the ARCHIVE root — a symlink pointing elsewhere under changes/ is still an escape
+      if (!containsReal(archRoot, dir)) return { error: `archived change path escapes ${archRoot}` };
+      return { stage: 'archived', dir };
+    }
+  }
+  return { error: `change '${name}' found neither at ${inflight} nor under ${archRoot}` };
+}
+
+// --- individual checks; each returns {id, status: 'pass'|'blocked'|'n/a', detail} ---
+
+function checkFlowState(state, name) {
+  for (const key of ['change', 'tier', 'track', 'lineage', 'current-step']) {
+    const v = state[key];
+    if (v === undefined || v === '') return { id: 'C3', status: 'blocked', detail: `flow-state: required key '${key}' missing` };
+    if (v.includes('<') || v.includes('>')) return { id: 'C3', status: 'blocked', detail: `flow-state: '${key}' is an unfilled placeholder (${v})` };
+  }
+  if (state.change !== name) return { id: 'C3', status: 'blocked', detail: `flow-state: 'change' is '${state.change}', expected '${name}'` };
+  if (!STEP_ENUM.includes(state['current-step'])) return { id: 'C3', status: 'blocked', detail: `flow-state: 'current-step' '${state['current-step']}' not in the legal vocabulary` };
+  if (!TIER_ENUM.includes(state.tier)) return { id: 'C3', status: 'blocked', detail: `flow-state: 'tier' '${state.tier}' not in {trivial, medium, large}` };
+  return { id: 'C3', status: 'pass', detail: `legal (tier ${state.tier}, ${state['current-step']})` };
+}
+
+function checkTasks(dir, tier) {
+  const p = path.join(dir, 'tasks.md');
+  if (!fs.existsSync(p)) {
+    return tier === 'trivial'
+      ? { id: 'C2', status: 'n/a', detail: 'no tasks.md — trivial tier has no STEP2' }
+      : { id: 'C2', status: 'blocked', detail: `tasks.md missing at ${p}` };
+  }
+  const open = (fs.readFileSync(p, 'utf8').match(/^\s*-\s\[\s\]/gm) || []).length;
+  return open
+    ? { id: 'C2', status: 'blocked', detail: `tasks.md has ${open} unchecked box(es)` }
+    : { id: 'C2', status: 'pass', detail: 'all tasks checked' };
+}
+
+// the ledger vocabulary, one classifier shared by C4 and the corpus test (GT-15).
+// leading token, case-insensitive; rejected-verified BEFORE rejected (alternation order).
+const STATUS_RE = /^(open|fixed|verified|rejected-verified|rejected|advisory-acked|waived)\b/i;
+function classifyStatus(status) {
+  const m = STATUS_RE.exec(status);
+  if (!m) return { legal: false, terminal: false, needsReason: false, hasReason: false, isWaived: false };
+  const tok = m[1].toLowerCase();
+  const needsReason = tok === 'rejected' || tok === 'rejected-verified' || tok === 'waived';
+  return {
+    legal: true,
+    terminal: tok === 'verified' || tok === 'rejected-verified' || tok === 'waived' || tok === 'advisory-acked',
+    needsReason,
+    hasReason: !needsReason || /\w/.test(status.slice(m[0].length)),
+    isWaived: tok === 'waived',
+    token: tok,
+  };
+}
+
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// gates: entries from a flow-state text — the block runs from the unindented `gates:` line
+// to the next unindented top-level key; entries start `- `, continuation lines attach.
+function gatesEntries(flowText) {
+  const start = flowText.search(/^gates:/m);
+  if (start < 0) return [];
+  const rest = flowText.slice(start + 'gates:'.length);
+  const end = rest.search(/^[A-Za-z][\w-]*:/m);
+  const block = end < 0 ? rest : rest.slice(0, end);
+  const entries = [];
+  for (const line of block.split('\n')) {
+    if (/^\s*-\s/.test(line)) entries.push(line.trim());
+    else if (entries.length && line.trim()) entries[entries.length - 1] += ' ' + line.trim();
+  }
+  return entries;
+}
+
+// a waive is a HUMAN act: one single gates: entry must carry the row ID as an exact
+// token (LS-1 never matches inside LS-10) AND the word waive/waived.
+function waiveEvidence(flowText, id) {
+  const idRe = new RegExp(`(^|[^A-Za-z0-9-])${escapeRe(id)}([^A-Za-z0-9-]|$)`);
+  return gatesEntries(flowText).some((e) => idRe.test(e) && /waiv/i.test(e));
+}
+
+function checkLedger(cwd, name, tier, stage, dir) {
+  const p = path.join(cwd, 'apriori', 'review', `${name}-issues.md`);
+  if (!fs.existsSync(p)) {
+    return tier === 'trivial'
+      ? { id: 'C4', status: 'n/a', detail: 'no ledger — trivial tier may never open one' }
+      : { id: 'C4', status: 'blocked', detail: `ledger missing at ${p}` };
+  }
+  const rows = parseLedger(fs.readFileSync(p, 'utf8'));
+  const fsPath = dir ? path.join(dir, 'flow-state.md') : null;
+  const flowText = fsPath && fs.existsSync(fsPath) ? fs.readFileSync(fsPath, 'utf8') : '';
+  const bad = [];
+  for (const r of rows) {
+    const c = classifyStatus(r.status);
+    if (!c.legal) { bad.push(`${r.id}: '${r.status}' is not in the ledger vocabulary`); continue; }
+    if (c.needsReason && !c.hasReason) { bad.push(`${r.id} is ${c.token} without a reason`); continue; }
+    if (c.isWaived && !waiveEvidence(flowText, r.id)) {
+      bad.push(`${r.id} is waived without a gates: entry recording the human decision`); continue;
+    }
+    if (c.token === 'open') { bad.push(`${r.id} is open`); continue; }
+    if (stage === 'archived' && !c.terminal) {
+      bad.push(c.token === 'fixed'
+        ? `${r.id} is fixed but never verified — reviewer must verify, or the human waives it`
+        : `${r.id} is rejected without reviewer concurrence — flip to rejected-verified, or the human waives it`);
+    }
+  }
+  return bad.length
+    ? { id: 'C4', status: 'blocked', detail: bad.join('; ') }
+    : { id: 'C4', status: 'pass', detail: `${rows.length} row(s), none blocking` };
+}
+
+function checkEvidence(cwd, name) {
+  const reviewDir = path.join(cwd, 'apriori', 'review');
+  const designDir = path.join(cwd, 'apriori', 'design');
+  const docs = [];
+  const collect = (dir, re) => {
+    if (!fs.existsSync(dir)) return;
+    for (const b of fs.readdirSync(dir)) {
+      if (!re.test(b)) continue;
+      if (b === `${name}-issues.md`) continue;
+      if (/-raw\.[^.]+$/.test(b) || b.replace(/\.md$/, '').endsWith('-raw')) continue;
+      docs.push(path.join(dir, b));
+    }
+  };
+  collect(reviewDir, new RegExp(`^${name}-.*\\.md$`));
+  collect(designDir, new RegExp(`^${name}-review-v.*\\.md$`));
+  const bad = [];
+  for (const doc of docs.sort()) {
+    if (fs.lstatSync(doc).isSymbolicLink()) { bad.push(`${path.basename(doc)} is a symlink — evidence docs must be regular files`); continue; }
+    if (!fs.statSync(doc).isFile()) continue;
+    if (!/^VERDICT:/m.test(fs.readFileSync(doc, 'utf8'))) continue;
+    const stem = path.basename(doc, '.md');
+    const raws = fs.existsSync(reviewDir) ? fs.readdirSync(reviewDir).filter((b) =>
+      b.startsWith(stem + '-raw.') &&
+      fs.lstatSync(path.join(reviewDir, b)).isFile() &&                     // lstat FIRST: symlinked raws are not evidence
+      containsReal(reviewDir, path.join(reviewDir, b))) : [];
+    if (!raws.length) bad.push(`${path.basename(doc)} carries a VERDICT but no ${stem}-raw.* exists`);
+  }
+  return bad.length
+    ? { id: 'C5', status: 'blocked', detail: bad.join('; ') }
+    : { id: 'C5', status: 'pass', detail: `${docs.length} review doc(s), every verdict has raw evidence` };
+}
+
+function checkKb(cwd, dir) {
+  const specsDir = path.join(dir, 'specs');
+  const modules = new Set();
+  const walk = (d, base) => {
+    if (!fs.existsSync(d)) return;
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, e.name);
+      if (e.isDirectory()) walk(p, base);
+      else if (e.name.endsWith('.md')) modules.add(path.relative(base, p).split(path.sep)[0]);
+    }
+  };
+  walk(specsDir, specsDir);
+  if (!modules.size) return { id: 'C6', status: 'n/a', detail: 'no delta specs to map' };
+  const blocked = [], notes = [];
+  let checked = 0;
+  for (const m of [...modules].sort()) {
+    const truth = path.join(cwd, 'apriori', 'truth', `${m}.md`);
+    if (!fs.existsSync(truth)) { notes.push(`${m}: no truth doc`); continue; }
+    const sc = fs.readFileSync(truth, 'utf8').match(/^source-commit:\s*(\S+)/m);
+    if (!sc) { notes.push(`${m}: truth doc has no source-commit`); continue; }
+    if (!fs.existsSync(path.join(cwd, 'lib', `${m}.js`))) { notes.push(`${m}: no lib/${m}.js to compare`); continue; }
+    const g = spawnSync('git', ['-C', cwd, 'log', '--oneline', `${sc[1]}..HEAD`, '--', `lib/${m}.js`], { encoding: 'utf8' });
+    if (g.error) { notes.push(`${m}: git unavailable (${g.error.message})`); continue; }
+    if (g.status !== 0) { notes.push(`${m}: git failed (${(g.stderr || '').split('\n')[0]})`); continue; }
+    const n = g.stdout.trim() ? g.stdout.trim().split('\n').length : 0;
+    if (n > 0) blocked.push(`${m}: ${n} commit(s) since ${sc[1]}`);
+    else checked++;
+  }
+  if (blocked.length) return { id: 'C6', status: 'blocked', detail: blocked.join('; ') };
+  if (checked > 0) return { id: 'C6', status: 'pass', detail: `${checked} module stamp(s) up to date${notes.length ? `; ${notes.join('; ')}` : ''}` };
+  return { id: 'C6', status: 'n/a', detail: notes.join('; ') };
+}
+
+function checkBinding(cwd, name, stage, testCmd) {
+  const run = stage === 'in-flight'
+    ? verify({ change: name, cwd, testCmd })
+    : verify({ specs: [path.join(cwd, 'apriori', 'specs')], cwd, testCmd });
+  if (run.errors.length) return { infra: run.errors };
+  const v = run.verdict;
+  const clean = v.clean && run.duplicates.length === 0;
+  if (clean) return { check: { id: 'C1', status: 'pass', detail: `verify GREEN (${stage})` }, projection: run.projection };
+  const parts = [];
+  for (const [label, arr] of [['red', v.boundRed], ['unbound', v.unbound], ['orphan', v.orphan], ['unidentified', v.unidentified], ['duplicate-IDs', run.duplicates]])
+    if (arr.length) parts.push(`${arr.length} ${label}`);
+  return { check: { id: 'C1', status: 'blocked', detail: `verify GAPS: ${parts.join(', ')}` }, projection: run.projection };
+}
+
+// process-config `| cas | optional |` row — the project-level twin of --no-cas (flag wins)
+function configCas(cwd) {
+  const p = path.join(cwd, 'apriori', 'process-config.md');
+  if (!fs.existsSync(p)) return null;
+  const m = fs.readFileSync(p, 'utf8').match(/^\|\s*cas\s*\|\s*([^|]+?)\s*\|/mi);
+  return m ? m[1].trim().split(/\s+/)[0].toLowerCase() : null;
+}
+
+// C7: unstamped mutation deltas are denied by default — a waiver is always visible (GT-16).
+// Archived stage: the deltas are already merged; there is nothing left to stamp-check.
+function checkCas(projection, stage, noCas, cwd) {
+  if (stage === 'archived') return { id: 'C7', status: 'n/a', detail: 'deltas already merged' };
+  if (noCas) return { id: 'C7', status: 'pass', detail: 'waived (--no-cas)' };
+  if (configCas(cwd) === 'optional') return { id: 'C7', status: 'pass', detail: 'waived (process-config cas: optional)' };
+'use strict';
+/*
+ * apriori status — answer "where am I / what's left" for a change.
+ * Reads the flow-state file + the issue ledger; zero deps, pure Node stdlib.
+ */
+const fs = require('fs');
+const path = require('path');
+const { withStrict } = require('./args');
+
+// parse `key: value` lines from a flow-state file → object; plus the last gate line
+function parseFlowState(text) {
+  const out = {};
+  for (const key of ['change', 'tier', 'track', 'current-step', 'round', 'next-action', 'lineage']) {
+    const m = text.match(new RegExp('^' + key + ':\\s*(.+)$', 'm'));
+    if (m) out[key] = m[1].replace(/\s*#.*$/, '').trim();
+  }
+  const gates = [...text.matchAll(/^\s*-\s*(\d{4}-\d{2}-\d{2}\S*\s+.+)$/gm)].map((m) => m[1].trim());
+  out.lastGate = gates.length ? gates[gates.length - 1] : null;
+  return out;
+}
+
+// parse a P0 ledger markdown table → rows with {id, status}
+function parseLedger(text) {
+  const rows = [];
+  for (const line of text.split('\n')) {
+    const m = line.match(/^\|\s*([^|]+?)\s*\|.*\|\s*([^|]+?)\s*\|\s*$/);
+    if (!m) continue;
+    const id = m[1].trim(), status = m[2].trim();
+    if (id === 'ID' || /^-+$/.test(id)) continue;         // header / separator
+    rows.push({ id, status });
+  }
+  return rows;
+}
+
+function activeChanges(root) {
+  const dir = path.join(root, 'apriori', 'changes');
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir, { withFileTypes: true })
+    .filter((e) => e.isDirectory() && e.name !== 'archive')
+    .map((e) => e.name).sort();
+}
+
+function changeStatus(root, change) {
+  const fsPath = path.join(root, 'apriori', 'changes', change, 'flow-state.md');
+  const state = fs.existsSync(fsPath) ? parseFlowState(fs.readFileSync(fsPath, 'utf8')) : null;
+  const ledgerPath = path.join(root, 'apriori', 'review', `${change}-issues.md`);
+  const rows = fs.existsSync(ledgerPath) ? parseLedger(fs.readFileSync(ledgerPath, 'utf8')) : [];
+  const open = rows.filter((r) => /^open\b/i.test(r.status));
+  return { change, state, open, hasFlowState: !!state };
+}
+
+function formatOne(s) {
+  const lines = [];
+  if (!s.state) { lines.push(`change: ${s.change} (no flow-state file found)`); }
+  else {
+    lines.push(`change:       ${s.state.change || s.change}`);
+    lines.push(`step:         ${s.state['current-step'] || '?'}   (tier ${s.state.tier || '?'}, track ${s.state.track || '?'})`);
+    if (s.state['next-action']) lines.push(`next-action:  ${s.state['next-action']}`);
+    if (s.state.lastGate) lines.push(`last gate:    ${s.state.lastGate}`);
+  }
+  lines.push(`open ledger:  ${s.open.length}` + (s.open.length ? ` — ${s.open.map((r) => r.id).join(', ')}` : ''));
+  return lines.join('\n');
+}
+
+// machine-consumable shape for one change
+function toJson(s) {
+  return {
+    change: s.change,
+    step: s.state ? s.state['current-step'] || null : null,
+    tier: s.state ? s.state.tier || null : null,
+    track: s.state ? s.state.track || null : null,
+    lineage: s.state ? s.state.lineage || null : null,
+    nextAction: s.state ? s.state['next-action'] || null : null,
+    lastGate: s.state ? s.state.lastGate : null,
+    hasFlowState: s.hasFlowState,
+    openLedger: s.open.map((r) => r.id),
+  };
+}
+
+const USAGE = 'usage: apriori status [--change <name>] [--json]';
+
+function cli(argv) {
+  return withStrict(argv, { sub: 'status', usage: USAGE, positionals: 0,
+    flags: { '--change': 'value', '--json': 'flag' } }, (f) => {
+    const root = process.cwd();
+    const change = f['--change'] || null, json = !!f['--json'];
+    if (change) {
+      const s = changeStatus(root, change);
+      console.log(json ? JSON.stringify(toJson(s), null, 2) : formatOne(s));
+      return 0;
+    }
+    const changes = activeChanges(root);
+    if (json) {
+      console.log(JSON.stringify({ changes: changes.map((c) => toJson(changeStatus(root, c))) }, null, 2));
+      return 0;
+    }
+    if (!changes.length) { console.log('No active changes under apriori/changes/.'); return 0; }
+    console.log(`Active changes (${changes.length}):\n`);
+    for (const c of changes) {
+      const s = changeStatus(root, c);
+      const step = s.state ? s.state['current-step'] || '?' : 'no flow-state';
+      console.log(`  ${c}  —  ${step}, ${s.open.length} open`);
+    }
+    console.log('\nRun `apriori status --change <name>` for detail.');
+    return 0;
+  });
+}
+
+module.exports = { parseFlowState, parseLedger, activeChanges, changeStatus, formatOne, toJson, cli };
+'use strict';
+/*
+ * apriori new — scaffold an in-flight change directory with a flow-state skeleton.
+ * Zero deps — pure Node stdlib. In-flight names are BARE (no date prefix, §4);
+ * archive stamps dates at archive time.
+ */
+const fs = require('fs');
+const path = require('path');
+const { withStrict } = require('./args');
+
+const NAME_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;   // bare kebab-case: no empty segments, no trailing hyphen
+
+function flowStateSkeleton(name, now) {
+  const p = (n) => String(n).padStart(2, '0');
+  const stamp = `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}T${p(now.getHours())}:${p(now.getMinutes())}`;
+  return `change: ${name}
+tier: <trivial | medium | large>          # size it per runbook §2
+track: <harden | explore>                 # certainty axis, §2 (unsure: harden)
+track-rationale: <one line — reported at the next human gate>
+lineage: <target branch/line + merge taboo — copy from the requirement>
+current-step: STEP0
+round: 0
+reviewer-session: n/a                     # record the reviewer's resumable session id the moment round 1 prints it (R2)
+next-action: draft requirement/${name}-req-v1.md (or the intent card on the explore track)
+artifact-root: .                          # optional; root for process artifacts (runbook §3) — default project root
+gates:
+  - ${stamp} note: change scaffolded by \`apriori new\`
+`;
+}
+
+// Scaffold apriori/changes/<name>/flow-state.md. Returns {ok, path?|error?}.
+function scaffoldChange(root, name, now) {
+  if (!name || !NAME_RE.test(name)) return { ok: false, error: `invalid change name '${name}' — use bare kebab-case (e.g. add-playback); dates are stamped at archive time, not here` };
+  if (/^\d{4}-\d{2}/.test(name)) return { ok: false, error: `'${name}' looks date-prefixed — in-flight names are bare; dates are stamped at archive time, not here` };
+  if (name === 'archive') return { ok: false, error: `'archive' is reserved for apriori/changes/archive/` };
+  const dir = path.join(root, 'apriori', 'changes', name);
+  if (fs.existsSync(dir)) return { ok: false, error: `change '${name}' already exists at ${path.relative(root, dir)}` };
+  fs.mkdirSync(path.join(dir, 'specs'), { recursive: true });
+  const flow = path.join(dir, 'flow-state.md');
+  fs.writeFileSync(flow, flowStateSkeleton(name, now));
+  return { ok: true, path: path.relative(root, flow) };
+}
+
+const USAGE = 'usage: apriori new <change-name>   (bare kebab-case, e.g. add-playback)';
+
+function cli(argv) {
+  return withStrict(argv, { sub: 'new', usage: USAGE, positionals: 1, flags: {} }, (f, pos) => {
+    const name = pos[0];
+    const r = scaffoldChange(process.cwd(), name, new Date());
+    if (!r.ok) { console.error(`  ✗ ${r.error}`); return 1; }
+    console.log(`  ✓ ${r.path}`);
+    console.log(`\n  Next: fill in tier/track/lineage, then kick off:\n    /apriori ${name}   (or the runbook §0 kickoff prompt)`);
+    return 0;
+  });
+}
+
+module.exports = { NAME_RE, flowStateSkeleton, scaffoldChange, cli };
+
+ succeeded in 163ms:
+RUNBOOK_cn.md:35:2. 读 `apriori/changes/<change>/flow-state.md`。若不存在且你被要求启动一个变更:先定级(§2),创建状态文件(§3),再从该级别的第一步开始。
+RUNBOOK_cn.md:61:**R1 —— 每个人工闸口必停。** 闸口清单:① STEP0 触顶时的定稿裁决 ② gap 报告过目(仅大型)③ STEP3 技术评审 ④ STEP6 知识库 diff 批准 ⑤ 任何触顶或振荡(台账 ID 被重开)。探索轨(§4)另有三个具备闸口地位的**命名决策点**:`intent-card sign-off`(意图卡签核)、`extraction review`(提取评审)、`STEP2 full review`(汇入后全量评审)。到达闸口:更新状态文件,汇报——当前步骤、评审方结论行**原文**、台账中 open/rejected 项、需要人做的决定——然后停下。绝不替人批准闸口;"人还没回复"绝不等于批准。
+RUNBOOK_cn.md:63:**闸口整合(显式授权)。** 默认逐闸必停。人可以显式把中间闸口整合到某个靠后的闸口(如"一路跑到终审");该决定必须记入 `gates:`(范围+撤销方式),且随时可撤销。三个闸口**永远不可**被此类授权覆盖:**收缩决策**(§6)、**知识库签核**(闸口④)、**意图卡签核**(`intent-card sign-off`)。整合只覆盖闸口——外部副作用(见下方 §1 硬规则)永远不在整合的一揽子授权之内。
+RUNBOOK_cn.md:76:**R2 —— 评审必须真实外调。** 生产会话永远不出评审结论。真实调起异构评审方:`codex exec -s read-only "<提示词>"`(第 2 轮起:`codex exec resume -c sandbox_mode="read-only" <session-id> "..."`——codex CLI ≥0.14x 的 resume 子命令不接受 `-s`;旧版本在 session id 之前用 `-s read-only`);没有 Codex 就**新开**一个不同档位的 `claude` 会话,喂给它产物加问题台账(P0)。把评审方的结论行**原文**贴回。评审方通常跑在只读沙箱里、无法自己写台账:由评审方在输出末尾给出**台账增量**(新行+状态翻转),生产方原样落盘并注明"代评审方录入";评审方原始输出全文存档于 `apriori/review/<change>-<stage>-raw.*`,代录增量随时可与其对照;落盘 raw 时在文件头预置单行来源标注 `<!-- provenance: provider=<name> model=<id> session=<id> date=<YYYY-MM-DD> -->`(未知字段写 `unknown`;既有旧 raw 不追溯)。同一代录机制也覆盖**评审文档本体**:只读评审方把文档正文打印到 stdout,生产方原样落到固定路径——这就是设计内的流程,不是权宜之计。非交互/后台调用 codex 时必须关闭 stdin——命令末尾加 `< /dev/null`(PowerShell 没有 /dev/null:改用管道 `$null | codex exec …`)——否则它会打印 "Reading additional input from stdin..." 并挂起。评审方在结论行落盘前死亡(评审中途网络/服务故障)→ **resume 同一会话**让它续完——绝不代填结论行。要让它也扛得住*生产方*侧的中断,第 1 轮一打印评审方的 session id 就记进 flow-state 的 `reviewer-session` 字段——否则崩溃后 resume 无会话可重连。只读评审方的**动态观测不可信**——跑测试、构建、任何需要写入的操作在其沙箱内都可能降级并产生幻影发现;只有它的静态阅读作数,生产方以真实环境的证据拒绝此类沙箱伪象发现。如果无法真实调起评审方,停下来说明——**禁止模拟评审**。
+RUNBOOK_cn.md:80:**强制层级**(举例式,非穷尽;下列强制项在本仓库现状为*可配置而非已生效*)。劝告性文本在压力下会被忽略——按可强制方式给规则分层:①**现在即可确定性强制**——`process-config.md` 只读(hook 拦截写入)、`apriori check` 作 pre-commit/CI 必过、`apriori verify` 作 STEP5 绑定闸口、以及**结论行证据检查**:每个 verdict 行必须有对应 raw 存档文件(命名规则:主干名为 `S` 的评审文档,其原始归档为 `apriori/review/S-raw.*`)——对模拟评审的机械化后盾,由 **`apriori gate --change <name>`** 落地,它同时把 verify/tasks/flow-state/台账/KB 新鲜度合成一个退出码(其 PASS 只覆盖机械面——人工闸口仍归人);②**闸口级**——Stop hooks 与 `/goal` 条件;③**本质劝告性**——评审方的独立判断质量、对 P 提示词的语义遵循。参考实现为 Claude Code hooks;任何 CI 都能强制同样的检查。示例(拦配置写入的 PreToolUse hook——示意伪配置;确切 schema 见 Claude Code hooks 文档):
+RUNBOOK_cn.md:114:`apriori/changes/<change>/flow-state.md`:
+RUNBOOK_cn.md:138:                        # 只作用于过程产物:requirement/、apriori/review/、
+RUNBOOK_cn.md:139:                        # apriori/explore/、apriori/changes/。绝不作用于 apriori/truth/
+RUNBOOK_cn.md:145:                        # intent-card sign-off | extraction review |
+RUNBOOK_cn.md:162:| 需求文档 | `requirement/<change>-req-v{N}.md` → 定稿 `requirement/<change>-req-final.md` |
+RUNBOOK_cn.md:163:| 需求评审 | `apriori/review/<change>-req-review-v{N}.md` |
+RUNBOOK_cn.md:164:| 问题台账 | `apriori/review/<change>-issues.md` |
+RUNBOOK_cn.md:165:| gap 报告 | `apriori/explore/<change>-gap-report.md` |
+RUNBOOK_cn.md:166:| 提案(为什么 / 做什么 / 范围外) | `apriori/changes/<change>/proposal.md`——给人看的一页纸(STEP2) |
+RUNBOOK_cn.md:167:| 规格 / 设计 / 任务 | `apriori/changes/<change>/specs/`、`…/design.md`、`…/tasks.md` |
+RUNBOOK_cn.md:169:| 规格评审 | `apriori/design/<change>-review-v{N}.md` |
+RUNBOOK_cn.md:171:| 流程状态 | `apriori/changes/<change>/flow-state.md` |
+RUNBOOK_cn.md:172:| 意图卡(探索轨) | `requirement/<change>-intent-card.md` |
+RUNBOOK_cn.md:173:| 提取评审(探索轨) | `apriori/review/<change>-extraction-review-v{N}.md` |
+RUNBOOK_cn.md:174:| 原型(探索轨) | `spike/`——archive 时删除或隔离;tasks.md 绝不引用 |
+RUNBOOK_cn.md:175:| 评审方原始输出 | `apriori/review/<change>-<stage>-raw.*` |
+RUNBOOK_cn.md:179:- **布局:**变更在 `apriori/changes/<change>/` 下暂存产物(`specs/`、`design.md`、`tasks.md`);已接受的规格进入规格库 `apriori/specs/`。`artifact-root` 规则(§3)只作用于暂存区。
+RUNBOOK_cn.md:182:- **评审证据保留:**归档变更下的 raw 是**审计证据**——随归档保留、永不清理;`apriori/tmp/` 仍是唯一的临时空间。秘密绝不能进入 raw:落盘**之前**先脱敏(git 历史会留住任何提交过的内容)——`apriori check` 的 CK-10 绊线做机械兜底。
+RUNBOOK_cn.md:199:- **输入:**`requirement/<change>-req-v{N}.md`;知识库(如有)。需求必须声明**目标谱系**(主线/哪条分支线)——多谱系仓库中谱系缺失是第四个访谈触发条件。若需求缺"目标 / 范围外 / 可测验收"三要素之一——**先结构化提问采访人**,再出 <change>-req-v1。
+RUNBOOK_cn.md:201:- **退出:**结论行 = `VERDICT: no major issues`(无重大问题)→ 复制为 `requirement/<change>-req-final.md`,前进。触顶 → **闸口 ①**。发现目标根本说不清 → 提议 harden→explore(经人工闸口确认后切轨)。
+RUNBOOK_cn.md:205:0. **意图卡先行(不可豁免):**≤15 行,路径 `requirement/<change>-intent-card.md`——目标假设 / 成功判据 / spike 要回答的问题。须经**人签核**(`intent-card sign-off`;异构评审可作为签核前的参考,但不能替代)。在这条轨上,意图卡是独立评审基准——提取出的规格绝不只对照原型自证。
+RUNBOOK_cn.md:206:1. **spike(有界):**在 `spike/` 下自由做原型;上限:`spike-cap`(默认 10)轮;退出=意图卡问题逐条有答案。触顶 → **闸口 ⑤**。
+RUNBOOK_cn.md:207:2. **P11 —— 规格提取:**输入=意图卡+原型+spike 结论;输出=spec 草案,置于 `apriori/changes/<change>/specs/`,是意图侧的**唯一权威**;另加 `requirement/<change>-req-final.md` 薄索引(§5 P11——绝不另写第二份验收叙述)。显式声明的提取时决策(`EXT-n`)在 `extraction review` 决策点终裁。
+RUNBOOK_cn.md:210:5. **原型是一次性的,且机器可查:**STEP5 从失败测试重建;tasks.md 不得引用 `spike/`;`spike/` 在 archive 时删除(或隔离归档)。
+RUNBOOK_cn.md:211:6. **轨道转移:**explore→harden(提取通过,或目标已然明确);harden→explore(STEP0 发现目标说不清——经人工闸口);explore→ABANDONED(假设证伪)。每次转移保留意图卡、结论与台账;只丢弃 `spike/`。
+RUNBOOK_cn.md:226:- **调研 spike 变体**(模糊但触绊线的变更,§2):允许在 `spike/` 下写探针代码——探索轨的全部隔离规则适用——上限 `spike-cap`(默认 10);结论作为 gap 报告的"调研结论"附录。P3 带对应变体条款。
+RUNBOOK_cn.md:254:- **动作:**执行 **archive 接口动作**,用 **P9**——按上文接口的 archive 算法合并;更新 `apriori/truth/<module>.md`(契约节按最终实现更新+刷新 `source-commit`;决策节追加本次变更的新决策/不变式);列出改了哪些文件/段落。探索轨变更:在此删除或隔离 `spike/`。 **归档动作自动携带需求史:**带 `--changes-dir` 时,它会在移动之前把每一份 `requirement/<change>-req-*.md` 与 `<change>-intent-card.md`(全部版本、保留原文件名)暂存进变更目录,随原子移动落至 `apriori/changes/archive/<stamp>-<change>/requirement/`——你剩下的唯一职责是收尾提交。
+RUNBOOK_cn.md:275:`apriori/review/<change>-issues.md`:
+RUNBOOK_cn.md:297:* 需求文档: requirement/<change>-req-v{N}.md
+RUNBOOK_cn.md:299:* 问题台账(如有): apriori/review/<change>-issues.md
+RUNBOOK_cn.md:309:生成 apriori/review/<change>-req-review-v{N}.md:按维度列问题清单(描述/风险/修改建议);advisory 单列。
+RUNBOOK_cn.md:317:按 apriori/review/<change>-req-review-v{N}.md 修订需求文档,输出 requirement/<change>-req-v{N+1}.md。
+RUNBOOK_cn.md:327:* 需求文档: requirement/<change>-req-final.md
+RUNBOOK_cn.md:332:apriori/explore/<change>-gap-report.md:当前状态 A、目标状态 B,以及两者之间的差异点与风险。
+RUNBOOK_cn.md:334:允许在 spike/ 下写探针代码(探索轨隔离规则适用),上限 spike-cap;
+RUNBOOK_cn.md:355:* SPEC-DOC: apriori/changes/<change>/specs/   * DESIGN-DOC: apriori/changes/<change>/design.md
+RUNBOOK_cn.md:356:* 知识库: apriori/truth/   * 需求文档: requirement/<change>-req-final.md   * 台账: apriori/review/<change>-issues.md
+RUNBOOK_cn.md:365:apriori/design/<change>-review-v{N}.md:逐条问题(描述/风险/建议),advisory 单列;按台账规则把正式问题同步进台账。
+RUNBOOK_cn.md:372:另一个模型评审了你的规格与设计:apriori/design/<change>-review-v{N}.md。
+RUNBOOK_cn.md:445:【输入】requirement/<change>-intent-card.md;spike/ 下的原型;spike 结论。
+RUNBOOK_cn.md:447:* 带 scenario ID 的 spec 草案,置于 apriori/changes/<change>/specs/——意图侧的唯一权威;
+RUNBOOK_cn.md:448:* requirement/<change>-req-final.md——仅为薄索引:一句目标引意图卡 + 验收=对 spec 场景 ID 清单的引用。绝不在此另写第二份验收叙述——同一意图的两份行文必然互漂。
+RUNBOOK_cn.md:456:【输入】requirement/<change>-intent-card.md;P11 的产出;问题台账。
+RUNBOOK_cn.md:462:【输出】apriori/review/<change>-extraction-review-v{N}.md——问题按 P0 列出,advisory 单列,附 EXT-n 推荐;末尾给出你的台账增量,
+RUNBOOK_cn.md:496:/goal "目标:requirement/<change>-req-final.md 存在,且最新一轮评审报告 'VERDICT: no major issues'。上限:step0-cap 轮(默认 5)。
+RUNBOOK_cn.md:498:1. 若 apriori/review/<change>-req-review-v{N}.md 存在,据其修订 requirement/<change>-req-v{N}.md,升到 v{N+1},逐条注明 采纳/拒绝+理由,并同步更新 apriori/review/<change>-issues.md 里对应问题的状态。
+RUNBOOK_cn.md:499:2. 用一个不同的模型对当前版本跑评审,输出存到 apriori/review/<change>-req-review-v{N}.md,例如:
+RUNBOOK_cn.md:500:   codex exec -s read-only \"<P1 提示词> —— 目标:requirement/<change>-req-v{N}.md\"
+RUNBOOK_cn.md:503:当结论行为 'VERDICT: no major issues' 时停(并复制为 requirement/<change>-req-final.md),或触顶停。"
+RUNBOOK_cn.md:508:/goal "目标:apriori/changes/<change>/有 SPEC-DOC+DESIGN-DOC,且最新评审结论行为 'VERDICT: no major issues, ready to proceed to execution'。上限:step2-cap 轮(默认 4)。
+RUNBOOK_cn.md:510:1. 据最新评审修订 spec/design 文件——绝不动源码——并同步更新 apriori/review/<change>-issues.md 里已处理问题的状态。
+RUNBOOK_cn.md:511:2. 重跑异构评审,用 P5 提示词(第 1 轮:codex exec,记下打印的 session id;之后各轮:codex exec resume -c sandbox_mode=\"read-only\" <session-id>——codex ≥0.14x 的 resume 不接受 -s;旧版在 id 前用 -s read-only),产出 apriori/design/<change>-review-v{N}.md 并更新台账。
+RUNBOOK_cn.md:518:/goal "目标 —— 以下全部成立:`npm test` 退出码 0;lint/静态分析全绿(where configured);apriori/changes/<change>/specs/里每个 scenario ID 至少出现在一个测试名里(列出缺失的 ID);apriori/changes/<change>/tasks.md每项均为 [x];(仅 UI 项目)Playwright E2E 套件通过且截图差异在阈值内;并且由一个不同模型做的一致性评审(P8 提示词)报告 'VERDICT: no spec-vs-code gaps'。上限:step5-cap 轮(默认 25)。
+RUNBOOK_cn.md:531:**闸口清单(由你亲自决定的事):**① STEP0 触顶时的定稿裁决 ② gap 报告过目(大型)③ STEP3 技术评审 ④ 知识库 diff 批准 ⑤ 任何触顶 / 台账 ID 重开——升级处理,绝不悄悄放低标准。探索轨另加:`intent-card sign-off` 与 `extraction review` 的结论裁决。闸口整合(§1)由你授予——但永远不覆盖收缩决策、知识库签核、意图卡签核。
+docs/concepts_cn.md:78:**相对 V1 基线(v1.0)的兼容性,诚实地说:**加固轨的路径、闸口、退出条件、提示词编号不变(默认配置下路径零漂移);退出条件仅对 v1.0 从未定义过的项目类型(纯文档项目)新增了映射变体。探索轨是**新增**路径,其命名决策点——`intent-card sign-off`、`extraction review`、`STEP2 full review`——具有闸口地位。闸口整合(RUNBOOK §1)是显式、留痕、可撤销的人工授权,永远不覆盖收缩决策、知识库签核与意图卡签核——但这三者仍可经"先呈报、后授权"的显式代行来决定(RUNBOOK §1)。
+docs/concepts_cn.md:197:curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+docs/concepts_cn.md:266:    IC[意图卡 ≤15 行<br/>人签核] --> SP[spike/ 下做原型<br/>上限: spike-cap]
+docs/concepts_cn.md:294:| 需求文档 | `requirement/<change>-req-v{N}.md`，定稿为 `requirement/<change>-req-final.md` |
+docs/concepts_cn.md:295:| REQ-REVIEW-DOC | `apriori/review/<change>-req-review-v{N}.md`（带上变更名前缀——并行的变更不能互相覆盖） |
+docs/concepts_cn.md:296:| gap 报告（STEP1 产出） | `apriori/explore/<change>-gap-report.md` |
+docs/concepts_cn.md:297:| 问题台账 | `apriori/review/<change>-issues.md` |
+docs/concepts_cn.md:298:| proposal.md(为什么 / 做什么 / 范围外) | `apriori/changes/<change>/proposal.md` |
+docs/concepts_cn.md:299:| SPEC-DOC / DESIGN-DOC / tasks.md | `apriori/changes/<change>/specs/`、`…/design.md`、`…/tasks.md` |
+docs/concepts_cn.md:300:| SPEC-EVALUATION-DOC | `apriori/design/<change>-review-v{N}.md` |
+docs/concepts_cn.md:301:| 意图卡（探索轨） | `requirement/<change>-intent-card.md` |
+docs/concepts_cn.md:302:| 提取评审（探索轨） | `apriori/review/<change>-extraction-review-v{N}.md` |
+docs/concepts_cn.md:303:| 原型（探索轨） | `spike/`——archive 时删除或隔离;tasks.md 绝不引用 |
+docs/concepts_cn.md:364:- **每一轮同时写入问题台账**（`apriori/review/<change>-issues.md`，[§7.0](#70-问题台账所有评审循环共用)）：新发现领新 ID、修复翻状态；一旦有 ID 被重开，就是循环不收敛的预警。
+docs/concepts_cn.md:373:- **输出**：对齐报告，列出**当前状态 A 与目标状态 B 之间的 gap**，落盘为 `apriori/explore/<change>-gap-report.md`。
+docs/concepts_cn.md:485:先写一份 `requirement/<change>-req-v1.md`（人话需求）：
+docs/concepts_cn.md:496:然后让**评审模型**（与起草不同的模型/工具）按 [§7.1](#71-step0需求文档对抗评审) 的提示词审一轮，补全你没想到的边界（如 `ttlMs<=0` 怎么办、`get` 是否惰性清理还是定时清理、并发写入语义）。定稿为 `requirement/<change>-req-final.md`。
+docs/concepts_cn.md:502:* 需求文档: requirement/<change>-req-final.md
+docs/concepts_cn.md:505:请对齐事实，输出当前状态 A 与目标 B 的 gap 报告到 apriori/explore/<change>-gap-report.md。
+docs/concepts_cn.md:516:codex exec -s read-only "按 RUNBOOK P5 评审清单，对照 requirement/<change>-req-final.md 评审 apriori/changes/<change>/specs/ 与 design.md，末尾给出结论行。"
+docs/concepts_cn.md:540:/goal "目标——以下全部成立:`npm test` 退出码 0;每个 spec scenario ID 至少出现在一个测试名里;apriori/changes/<change>/tasks.md 每项均为 [x];且由另一个模型做的一致性评审(RUNBOOK P8 提示词)报告 'VERDICT: no spec-vs-code gaps'。上限:15 轮。第 1 轮:为每个 spec scenario 生成一条失败测试(以其 ID 命名)并把失败运行结果打印出来。之后每一轮:按顺序实现 tasks.md 下一项,跑 `npm test` 并把输出打印出来。全部成立或满 15 轮则停。"
+docs/concepts_cn.md:597:每个变更一份累积台账 `apriori/review/<change>-issues.md`（格式:RUNBOOK **P0**）。评审执行**范围纪律**(依据 Anthropic 全票验证的警告:被要求找缺口的评审者对健康工作也会报缺口):只有正确性/安全/既定需求类缺口立正式行;其余为 `advisory`——逐条清单留在评审文档,台账每轮只落一行批量行。它存在的理由:跨轮记忆放在文件里而不是会话里,于是每一轮的评审方都可以是**全新**会话而不丢线索（[§1.4](#14-对抗训练)）。谁写什么:评审方追加新行并把 `fixed → verified`;生产方把 `open → fixed/rejected`——拒绝必须给理由,因为人工闸口最先看的就是拒绝项。再次发现的问题**重开旧 ID**而不是另起新行;被重开的 ID 正是 [§4.10](#410-用-goal-自动化整个流程) 盯的振荡警报。
+docs/concepts_cn.md:605:- 评审方只评审、绝不改需求文档;生产方对每条正式问题给出采纳/拒绝+理由(advisory 整批确认即可,RUNBOOK P0)。循环到 "VERDICT: no major issues",定稿为 `requirement/<change>-req-final.md`（最多 5 轮）。
+docs/concepts_cn.md:609:提示词:RUNBOOK **P3**。设计说明:只对齐事实——不写代码。知识库与定稿需求作为输入,输出固定落盘到 `apriori/explore/<change>-gap-report.md`,让 propose 前那道便宜闸口（[§4.4](#44-step1探索对齐)）有实物可读。唯一豁免:**调研 spike 变体**(模糊但触绊线的变更,[§4.0](#40-先给变更定级))允许在 `spike/` 下写探针代码,结论作为 gap 报告附录。
+docs/concepts.md:73:1. **Quality comes from different instruments at different stages.** In a change's requirement/spec **document stages** (STEP0/2), LLM review is the only instrument available — there it is the primary one, and it never drops below one round per stage per change. In the **implementation stage** (STEP5), executable verification is primary (v1.0 already worked this way); LLM review covers what execution can't judge.
+docs/concepts.md:78:**Compatibility with the V1 baseline (v1.0), honestly stated:** the harden track's paths, gates, exit conditions and prompt numbering are unchanged (default config: zero path drift); exit conditions gained mapping variants only for project types v1.0 never defined (docs-only projects). The explore track is an **addition** whose named decision points — `intent-card sign-off`, `extraction review`, `STEP2 full review` — carry gate status. Gate consolidation (RUNBOOK §1) is an explicit, logged, revocable human authorization, never covering the shrink decision, the KB sign-off, or the intent-card sign-off — though each of those may still be decided by presented-first explicit proxy (RUNBOOK §1).
+docs/concepts.md:197:curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+docs/concepts.md:266:    IC[Intent card, ≤15 lines<br/>human sign-off] --> SP[Spike in spike/<br/>cap: spike-cap]
+docs/concepts.md:294:| Requirement doc | `requirement/<change>-req-v{N}.md`, finalized as `requirement/<change>-req-final.md` |
+docs/concepts.md:295:| REQ-REVIEW-DOC | `apriori/review/<change>-req-review-v{N}.md` (prefix with the change name — parallel changes must not overwrite each other) |
+docs/concepts.md:296:| Gap report (STEP1 output) | `apriori/explore/<change>-gap-report.md` |
+docs/concepts.md:297:| Issue ledger | `apriori/review/<change>-issues.md` |
+docs/concepts.md:298:| proposal.md (why / what / scope) | `apriori/changes/<change>/proposal.md` |
+docs/concepts.md:299:| SPEC-DOC / DESIGN-DOC / tasks.md | `apriori/changes/<change>/specs/`, `…/design.md`, `…/tasks.md` |
+docs/concepts.md:300:| SPEC-EVALUATION-DOC | `apriori/design/<change>-review-v{N}.md` |
+docs/concepts.md:301:| Intent card (explore track) | `requirement/<change>-intent-card.md` |
+docs/concepts.md:302:| Extraction review (explore track) | `apriori/review/<change>-extraction-review-v{N}.md` |
+docs/concepts.md:303:| Prototype (explore track) | `spike/` — deleted or quarantined at archive; never referenced by tasks.md |
+docs/concepts.md:308:> The flowchart explicitly draws the **STEP0 requirement-doc adversarial review loop**, as well as the **loop-backs** between phases.
+docs/concepts.md:310:> **This chart is the harden track — the default.** Vague-goal changes run the explore track ([§4.0](#40-size-the-change-first)'s small chart) and merge into this one at STEP2, drawn below as the dashed arrival.
+docs/concepts.md:341:> Every loop drawn here has a machine-checkable exit condition, so each can be **driven automatically by `/goal`** — see [§4.10](#410-automating-the-loop-with-goal-claude-code).
+docs/concepts.md:343:> One loop-back the chart doesn't draw: if implementation reveals the **requirement itself** was wrong, go all the way back to STEP0 — coding around a wrong goal is the most expensive loop in the diagram.
+docs/concepts.md:364:- **Every round also logs to the issue ledger** (`apriori/review/<change>-issues.md`, [§7.0](#70-the-issue-ledger-shared-by-all-review-loops)): new findings get IDs, fixes flip statuses, and a reopened ID is your early warning that the loop isn't converging.
+docs/concepts.md:373:- **Output**: an alignment report listing the **gap between current state A and target state B**, saved to `apriori/explore/<change>-gap-report.md`.
+docs/concepts.md:485:First write a plain-language requirement in `requirement/<change>-req-v1.md`:
+docs/concepts.md:496:Then have a **reviewing model** (a model/tool different from the one that drafted it) review it once per the prompt in [§7.1](#71-step0-requirement-doc-adversarial-review), filling in edge cases you missed (e.g. what `ttlMs<=0` does, whether `get` cleans up lazily or on a timer, concurrent-write semantics). Finalize as `requirement/<change>-req-final.md`.
+docs/concepts.md:502:* Requirement doc: requirement/<change>-req-final.md
+docs/concepts.md:505:Please align the facts and output a gap report between current state A and target B to apriori/explore/<change>-gap-report.md.
+docs/concepts.md:516:codex exec -s read-only "Review apriori/changes/<change>/specs/ and design.md against requirement/<change>-req-final.md, using the RUNBOOK P5 checklist. End with a verdict line."
+docs/concepts.md:540:/goal "All of: `npm test` exits 0; every spec scenario ID appears in at least one test name; every item in apriori/changes/<change>/tasks.md is [x]; and a consistency review by a different model (the RUNBOOK P8 prompt) reports 'VERDICT: no spec-vs-code gaps'. Cap: 15 turns. Turn 1: generate one failing test per spec scenario (named with its ID) and SHOW the failing run. Each later turn: implement the next tasks.md item, run `npm test` and SHOW the output. Stop when all hold or after 15 turns."
+docs/concepts.md:597:One cumulative ledger per change, `apriori/review/<change>-issues.md` (format: RUNBOOK **P0**). Reviews follow a **scope discipline** (per Anthropic's fully-verified warning that gap-hunting reviewers report gaps even in sound work): only correctness/security/stated-requirement gaps become formal rows; the rest are `advisory` — per-item lists stay in the review doc, the ledger takes one batch row per round. Why it exists: cross-round memory lives in a file instead of a session, so every round's reviewer can be a **fresh** session without losing the thread ([§1.4](#14-adversarial-review)). Who writes what: the reviewer appends rows and flips `fixed → verified`; the producer flips `open → fixed/rejected` — a rejection must carry a reason, because human gates read the rejections first. A re-found issue **reopens its old ID** rather than getting a new row; that reopened ID is exactly the oscillation alarm [§4.10](#410-automating-the-loop-with-goal-claude-code) watches for.
+docs/concepts.md:605:- The reviewer only reviews, never edits the requirement doc; the producer answers every formal issue with accept/reject + reason (advisories batch-acknowledge, RUNBOOK P0). Loop until "VERDICT: no major issues", finalize as `requirement/<change>-req-final.md` (max 5 rounds).
+docs/concepts.md:609:Prompt: RUNBOOK **P3**. Design notes: facts only — no code. The KB and the finalized requirement doc go in as inputs, and the output is pinned to `apriori/explore/<change>-gap-report.md` so the cheap pre-propose gate ([§4.4](#44-step1-explore--align)) has something concrete to read. One carve-out: the **research-spike variant** (vague-but-tripwired changes, [§4.0](#40-size-the-change-first)) allows probe code under `spike/`, with findings landing as a gap-report appendix.
+RUNBOOK.md:35:2. Read `apriori/changes/<change>/flow-state.md`. If it doesn't exist and you were asked to start a change: size the change (§2), create the state file (§3), then begin at the tier's first step.
+RUNBOOK.md:61:**R1 — Stop at every human gate.** The gates are: ① STEP0 verdict at round cap ② gap-report sign-off (Large tier only) ③ STEP3 technical review ④ STEP6 KB-diff approval ⑤ any cap hit or oscillation (a reopened ledger ID). The explore track (§4) adds three **named decision points** with gate status: `intent-card sign-off`, `extraction review`, `STEP2 full review`. At a gate: update the state file, report — current step, reviewer verdict lines **verbatim**, open/rejected ledger items, the decision you need — then stop. Never approve a gate yourself; never treat "the human hasn't answered" as approval.
+RUNBOOK.md:63:**Gate consolidation (explicit authorization).** The default is stop-at-every-gate. A human may explicitly consolidate intermediate gates into a later one (e.g. "run to the final merge review"); the decision must be recorded in `gates:` (scope + how to revoke) and is revocable at any time. Three gates can NEVER be covered by such an authorization: the **shrink decision** (§6), the **KB sign-off** (gate ④), and **`intent-card sign-off`**. Consolidation covers gates only — external side effects (§1 hard rule below) are never inside a consolidation blanket.
+RUNBOOK.md:76:**R2 — Reviews must be genuinely external.** The producing session never issues a review verdict. Spawn a heterogeneous reviewer: `codex exec -s read-only "<prompt>"` (rounds 2+: `codex exec resume -c sandbox_mode="read-only" <session-id> "..."` — codex CLIs ≥0.14x reject `-s` on `resume`; on older versions use `-s read-only` before the session id), or — without Codex — a **fresh** `claude` session on a different tier, fed the artifacts plus the issue ledger (P0). Paste the reviewer's verdict line back verbatim. Reviewers usually run in read-only sandboxes and cannot write the ledger: the reviewer ends its output with a **ledger delta** (new rows + status flips), and the producer lands it verbatim, marked "recorded on behalf of the reviewer"; the reviewer's raw output is archived in full at `apriori/review/<change>-<stage>-raw.*` so the recorded delta can always be diffed against its source; when landing a raw, prepend the one-line provenance header `<!-- provenance: provider=<name> model=<id> session=<id> date=<YYYY-MM-DD> -->` (unknown fields written `unknown`; older raws are grandfathered). The same transcription mechanism covers the **review doc itself**: a read-only reviewer prints the doc body to stdout, and the producer lands it verbatim at its fixed path — that is the intended flow, not a workaround. When invoking codex non-interactively (background/scripted), close stdin — append `< /dev/null` (PowerShell has no /dev/null: pipe instead, `$null | codex exec …`) — or it prints "Reading additional input from stdin..." and hangs. If the reviewer dies before its verdict line lands (network/provider failure mid-review), **resume the same session** and have it finish — never fill in the verdict yourself. For this to survive a *producer*-side interruption too, record the reviewer's session id in flow-state's `reviewer-session` field the moment round 1 prints it — otherwise a resume after a crash has no session to reattach to. A read-only reviewer's **dynamic observations are untrustworthy** — test runs, builds, anything needing writes can degrade inside its sandbox and produce phantom findings; only its static reads count, and the producer rejects sandbox-artifact findings with evidence from the real environment. If you cannot actually spawn a reviewer, stop and say so — **do not simulate one**.
+RUNBOOK.md:80:**Enforcement layers** (examples, not exhaustive; the deterministic items below are *available to configure*, not active by default in this repo). Advisory text gets ignored under pressure — classify each rule by how it can be enforced: ① **deterministically enforceable now** — `process-config.md` read-only (a hook blocking agent writes), `apriori check` as a required pre-commit/CI check, `apriori verify` as the STEP5 binding gate, and the **verdict-evidence check**: every verdict line must have a matching raw archive file (naming rule: a review doc with stem `S` archives its raw as `apriori/review/S-raw.*`) — a mechanical backstop against simulated reviews, implemented by **`apriori gate --change <name>`**, which aggregates it with verify/tasks/flow-state/ledger/KB-freshness into one exit code (its PASS covers the mechanical face only — human gates remain human); ② **gate-level** — Stop hooks and `/goal` conditions; ③ **inherently advisory** — a reviewer's independent judgment quality, semantic adherence to the P prompts. Reference implementation is Claude Code hooks; any CI can enforce the same checks. Example (a PreToolUse hook blocking config writes — illustrative sketch; exact schema in the Claude Code hooks docs):
+RUNBOOK.md:114:`apriori/changes/<change>/flow-state.md`:
+RUNBOOK.md:141:                        # Applies ONLY to process artifacts: requirement/, apriori/review/,
+RUNBOOK.md:142:                        # apriori/explore/, apriori/changes/. NEVER to apriori/truth/ or
+RUNBOOK.md:148:                        # intent-card sign-off | extraction review |
+RUNBOOK.md:166:| Requirement doc | `requirement/<change>-req-v{N}.md` → finalized `requirement/<change>-req-final.md` |
+RUNBOOK.md:167:| Requirement review | `apriori/review/<change>-req-review-v{N}.md` |
+RUNBOOK.md:168:| Issue ledger | `apriori/review/<change>-issues.md` |
+RUNBOOK.md:169:| Gap report | `apriori/explore/<change>-gap-report.md` |
+RUNBOOK.md:170:| Proposal (why / what / scope) | `apriori/changes/<change>/proposal.md` — the human-readable one-pager (STEP2) |
+RUNBOOK.md:171:| Spec / design / tasks | `apriori/changes/<change>/specs/`, `…/design.md`, `…/tasks.md` |
+RUNBOOK.md:173:| Spec evaluation | `apriori/design/<change>-review-v{N}.md` |
+RUNBOOK.md:175:| Flow state | `apriori/changes/<change>/flow-state.md` |
+RUNBOOK.md:176:| Intent card (explore track) | `requirement/<change>-intent-card.md` |
+RUNBOOK.md:177:| Extraction review (explore track) | `apriori/review/<change>-extraction-review-v{N}.md` |
+RUNBOOK.md:178:| Prototype (explore track) | `spike/` — deleted or quarantined at archive; never referenced by tasks.md |
+RUNBOOK.md:179:| Reviewer raw output | `apriori/review/<change>-<stage>-raw.*` |
+RUNBOOK.md:183:- **Layout:** a change stages its artifacts under `apriori/changes/<change>/` (`specs/`, `design.md`, `tasks.md`); accepted specs live in the store `apriori/specs/`. The `artifact-root` rule (§3) covers the staging area only.
+RUNBOOK.md:186:- **Review evidence retention:** raws under archived changes are AUDIT EVIDENCE — kept with the archive, never pruned; `apriori/tmp/` remains the only ephemeral space. Secrets must never enter a raw: sanitize BEFORE landing (git history keeps whatever was ever committed) — `apriori check`'s CK-10 tripwire backs this mechanically.
+RUNBOOK.md:203:- **In:** `requirement/<change>-req-v{N}.md`; KB if any. The requirement must state its **target lineage** (mainline / which branch line) — in multi-lineage repos a missing lineage is a fourth interview trigger. If the requirement lacks any of the three essentials — goal / out-of-scope / testable acceptance — **interview the human first** with structured questions, then draft <change>-req-v1.
+RUNBOOK.md:205:- **Exit:** verdict line = `VERDICT: no major issues` → copy to `requirement/<change>-req-final.md`, advance. Cap hit → **gate ①**. Goal turns out unstateable → propose harden→explore (a human gate confirms the switch).
+RUNBOOK.md:209:0. **Intent card first (non-waivable):** ≤15 lines at `requirement/<change>-intent-card.md` — goal hypothesis / success criteria / the questions the spike must answer. Requires **human sign-off** (`intent-card sign-off`; a heterogeneous review may inform it, but cannot replace it). On this track the intent card is the independent review baseline — the extracted spec is never judged against the prototype alone.
+RUNBOOK.md:210:1. **Spike (bounded):** prototype freely under `spike/`; cap: `spike-cap` (default 10) turns; exit = every intent-card question answered. Cap hit → **gate ⑤**.
+RUNBOOK.md:211:2. **P11 — spec extraction:** inputs = intent card + prototype + spike findings; outputs = spec drafts under `apriori/changes/<change>/specs/` as the **sole intent-side authority**, plus `requirement/<change>-req-final.md` as a thin index over them (§5 P11 — never a second acceptance narrative). Declared extraction-time decisions (`EXT-n`) get their final ruling at the `extraction review` decision point.
+RUNBOOK.md:214:5. **The prototype is disposable, machine-checkably:** STEP5 rebuilds from failing tests; tasks.md must not reference `spike/`; `spike/` is deleted (or quarantined) at archive.
+RUNBOOK.md:215:6. **Track transitions:** explore→harden (extraction accepted, or the goal turns out clear); harden→explore (STEP0 finds the goal unstateable — via a human gate); explore→ABANDONED (hypothesis falsified). Each transition keeps the intent card, findings and ledger; only `spike/` is dropped.
+RUNBOOK.md:230:- **Research-spike variant** (vague-but-tripwired changes, §2): probe code is allowed under `spike/` — the explore track's full isolation rules apply — capped by `spike-cap` (default 10); findings land as a "research conclusions" appendix to the gap report. P3 carries the matching variant clause.
+RUNBOOK.md:250:- **The spec-runner gate (`apriori verify`).** Mid-change, the gate is the **projected** form: `apriori verify --change <name> --test-cmd "<your test command>"` applies the change's delta specs to the living store in memory (the same `merge()` archive will run — MODIFIED replaces, REMOVED stops demanding, RENAMED demands the post-rename picture) and binds scenarios against that candidate store; scanning the raw store misses new scenarios, and scanning store+change double-counts MODIFIED. Post-archive (or store-only checks), the plain form `apriori verify --specs apriori/specs --test-cmd "…"` binds against the store as-is. Both report BOUND-GREEN / BOUND-RED / UNBOUND (scenario with no test) / ORPHAN (test with no scenario) / UNIDENTIFIED (scenario with no ID). GREEN (exit 0) means every scenario has a passing test and there are no orphans; exit 1 = gaps, exit 2 = the run itself is untrustworthy (missing spec paths, zero scenarios, non-TAP output, test-command crash/abort, a non-zero exit hiding behind all-green TAP — or, with `--change`: merge conflicts, a diverged base stamp, malformed deltas) — **fail-closed: a broken or vacuous run is never GREEN**. This is what used to be P8's mechanical coverage check, now deterministic.
+RUNBOOK.md:258:- **Do:** the **archive action** with **P9** — merge per the interface's archive algorithm above; update `apriori/truth/<module>.md` (Contract section from the final implementation + refreshed `source-commit`; Decisions section appends this change's new decisions/invariants); list exactly which files/sections changed. Explore-track changes: delete or quarantine `spike/` here. **The archive action carries the requirement history automatically:** with `--changes-dir` it stages every `requirement/<change>-req-*.md` and `<change>-intent-card.md` (all versions, basenames preserved) into the change dir before the move, landing them at `apriori/changes/archive/<stamp>-<change>/requirement/` — your only residual duty is the closeout commit.
+RUNBOOK.md:266:**Verdict-line phrase table.** Every review prompt ends with exactly one `VERDICT:` line drawn from this table — these are the machine-greppable strings that `/goal` conditions and the exit rules in §4 match against. CN documents quote the English strings verbatim (a CN gloss in prose is fine; the verdict line itself is never translated).
+RUNBOOK.md:279:`apriori/review/<change>-issues.md`:
+RUNBOOK.md:301:* Requirement doc: requirement/<change>-req-v{N}.md
+RUNBOOK.md:303:* Issue ledger (if any): apriori/review/<change>-issues.md
+RUNBOOK.md:313:Produce apriori/review/<change>-req-review-v{N}.md: an issue list by dimension (description / risk / suggested fix); advisories listed separately.
+RUNBOOK.md:321:Revise the requirement doc per apriori/review/<change>-req-review-v{N}.md and output requirement/<change>-req-v{N+1}.md.
+RUNBOOK.md:331:* Requirement doc: requirement/<change>-req-final.md
+RUNBOOK.md:336:apriori/explore/<change>-gap-report.md: current state A, target state B, and the gaps and risks between them.
+RUNBOOK.md:338:Probe code is allowed under spike/ (explore-track isolation rules apply), capped by spike-cap;
+RUNBOOK.md:359:* SPEC-DOC: apriori/changes/<change>/specs/   * DESIGN-DOC: apriori/changes/<change>/design.md
+RUNBOOK.md:360:* KB: apriori/truth/   * Requirement doc: requirement/<change>-req-final.md   * Ledger: apriori/review/<change>-issues.md
+RUNBOOK.md:369:apriori/design/<change>-review-v{N}.md: issues (description/risk/suggestion), advisories listed separately; mirror formal issues into the ledger per its rules.
+RUNBOOK.md:376:A different model reviewed your spec and design: apriori/design/<change>-review-v{N}.md.
+RUNBOOK.md:453:[Input] requirement/<change>-intent-card.md; the prototype under spike/; the spike findings.
+RUNBOOK.md:455:* spec drafts with scenario IDs under apriori/changes/<change>/specs/ — the SOLE intent-side authority;
+RUNBOOK.md:456:* requirement/<change>-req-final.md — a THIN INDEX only: one goal line citing the intent card + acceptance = a reference to the spec scenario-ID list. Never write a second acceptance narrative there — two prose versions of the same intent drift apart.
+RUNBOOK.md:464:[Input] requirement/<change>-intent-card.md; P11's outputs; the issue ledger.
+RUNBOOK.md:470:[Output] apriori/review/<change>-extraction-review-v{N}.md — issues per P0, advisories listed separately, EXT-n recommendations; end with your ledger delta,
+RUNBOOK.md:481:write NOTHING durable — no code, no requirement/spec/proposal/design files, no `apriori new`,
+RUNBOOK.md:508:/goal "Goal: requirement/<change>-req-final.md exists and the latest review pass reports 'VERDICT: no major issues'. Cap: step0-cap rounds (default 5).
+RUNBOOK.md:510:1. If apriori/review/<change>-req-review-v{N}.md exists, revise requirement/<change>-req-v{N}.md per it, bump to v{N+1}, note accept/reject+reason per issue, and update those issues' Status in apriori/review/<change>-issues.md.
+RUNBOOK.md:511:2. Run the reviewer with a DIFFERENT model on the current version and save its output to apriori/review/<change>-req-review-v{N}.md, e.g.:
+RUNBOOK.md:512:   codex exec -s read-only \"<the P1 prompt> — target: requirement/<change>-req-v{N}.md\"
+RUNBOOK.md:515:Stop when the verdict line is 'VERDICT: no major issues' (then copy to requirement/<change>-req-final.md) or at the cap."
+RUNBOOK.md:520:/goal "Goal: apriori/changes/<change>/ has SPEC-DOC+DESIGN-DOC and the latest review verdict line is 'VERDICT: no major issues, ready to proceed to execution'. Cap: step2-cap rounds (default 4).
+RUNBOOK.md:522:1. Revise the spec/design files per the latest review — never touch source code — and update the handled issues' Status in apriori/review/<change>-issues.md.
+RUNBOOK.md:523:2. Re-run the heterogeneous reviewer with the P5 prompt (round 1: codex exec, note the printed session id; later rounds: codex exec resume -c sandbox_mode=\"read-only\" <session-id> — codex ≥0.14x rejects -s on resume; older CLIs: -s read-only before the id), producing apriori/design/<change>-review-v{N}.md and updating the ledger.
+RUNBOOK.md:530:/goal "Goal — ALL must hold: `npm test` exits 0; lint/static analysis green (where configured); every scenario ID in apriori/changes/<change>/specs/ appears in at least one test name (list any missing IDs); every item in apriori/changes/<change>/tasks.md is [x]; (UI projects only) the Playwright E2E suite passes and screenshot diffs are within threshold; AND a consistency review by a DIFFERENT model (the P8 prompt) reports 'VERDICT: no spec-vs-code gaps'. Cap: step5-cap turns (default 25).
+RUNBOOK.md:543:**Gate checklist (what you personally decide):** ① STEP0 finalization when the cap is hit ② gap-report skim (Large) ③ STEP3 technical review ④ KB-diff approval ⑤ any cap hit / reopened ledger ID — escalation, never quietly lowering the bar. Explore track adds: `intent-card sign-off` and the `extraction review` outcome. Gate consolidation (§1) is yours to grant — but never over the shrink decision, the KB sign-off, or `intent-card sign-off`.
+
+ succeeded in 164ms:
+# Requirement — change-bundle (v1)
+
+change: change-bundle
+target lineage: **v3 branch**, major **4.0.0**. The bundle layout REPLACES the scattered per-change locations (single layout, no dual support); the Node floor rides along (18→22). Owner decisions (2026-07-12, verbatim): "可以,我决定做B"; "直接切 4.0.0 版本算了"; the 3.0 layout-promise wording does not appear in v4; no migration guide ships; Node floor included; no default-branch switch.
+
+## Background — the problem (current state A)
+
+Per-change artifacts are scattered across FIVE locations: `requirement/` and `spike/` pollute the consumer's project root (outside `apriori/` entirely); `apriori/review/`, `apriori/design/`, `apriori/explore/` are flat dirs where the `<change>-` filename prefix acts as a poor man's directory. Consequences: the P5 doc lives in `design/` while its raw lives in `review/` (split evidence); archival needed a dedicated staging phase (req-sweep) just to carry requirement history; both GPT-5.6 reviews flagged the global-path class. Owner verdict: evidence belongs to its change ("review 感觉单独出来不好,放在具体所属的 changes 文件夹里面比较好,design也是,另外 explore 的文件夹感觉也不太对").
+
+## Goal (target state B)
+
+**The bundle — the ONLY layout:**
+```
+apriori/changes/<name>/
+├── flow-state.md
+├── requirement/            # req-v{N}.md · req-final.md · intent-card.md — PLAIN names (the dir is the identity)
+├── gap-report.md           # was apriori/explore/<name>-gap-report.md
+├── proposal.md · design.md · tasks.md
+├── specs/<module>/spec.md
+├── review/                 # issues.md · req-review-v{N}.md · spec-review-v{N}.md · step5-review-v{N}.md
+│                           #   · extraction-review-v{N}.md · <stem>-raw.* (C5 stem rule unchanged)
+└── spike/                  # explore track; deleted/quarantined at archive as before
+```
+The P5 spec evaluation moves INTO `review/` beside its raw. Top-level `requirement/`, `spike/`, `apriori/review/`, `apriori/design/`, `apriori/explore/` cease to exist as concepts — no protocol text instructs writes there, no CLI code reads them.
+
+**CLI changes (single-path, no layout detection anywhere):**
+- `gate` C4: ledger at `<changeDir>/review/issues.md`. C5: evidence scan over `<changeDir>/review/` only (docs and raws together; the stem→`<stem>-raw.*` rule unchanged). Works identically at both stages because the evidence travels with the dir.
+- `status`: ledger lookup at the bundle path.
+- `archive --change`: the req-sweep staging phase (3.5) is DELETED — the bundle is inside the moved dir by construction; the atomic move carries everything.
+- `apriori new`: scaffolds `flow-state.md` plus empty `requirement/` and `review/` dirs; the next-action line names `apriori/changes/<name>/requirement/req-v1.md`.
+- `init`: stops pre-creating `apriori/review/` (nothing requires an empty dir).
+- `verify --change` / `check` / `doctor`: untouched (they read specs/deltas/flow-state, which never moved).
+- **Node floor**: `engines.node >= 22`; CI matrix drops 18/20 (keep 22 + 24 across both OSes); `scripts/run-tests.mjs` stays as is.
+
+**Docs (both editions + concepts):** the runbook artifact table rewritten to bundle paths; every path mention (P0, P1-P12 prompts, STEP0/1/6, goal recipes, the artifact-root comment) updated; STEP6 carries NO preservation/staging text (the move carries the bundle — full stop); concepts mirrors incl. its §7.0 ledger-path mentions. The 3.0 stability-promise sentence is REWRITTEN wherever it appears (CHANGELOG header, any README/docs echo): the v4 promise covers CLI surface & flags, `--json` shapes, the delta format, and the flow-state schema — the layout clause is dropped (owner decision).
+
+**Self-migration (this repo, part of the change — the script is a session artifact, NOT shipped):**
+- All archived changes' evidence moves from `apriori/review|design/` into `archive/<stamp>-<name>/review/` with the `<name>-` prefix stripped from basenames; existing archived `requirement/` subdirs' files and old hand-copied `requirement-req-*.md` normalize to plain names inside `requirement/`; any `apriori/explore/<name>-gap-report.md` moves to the bundle root as `gap-report.md`.
+- **change-bundle migrates ITSELF mid-flight**: born on the old layout, its own requirement docs and review evidence move into its bundle during implementation, and it finishes + archives on the new layout — the live proof.
+- After migration the legacy dirs are EMPTY and removed; `apriori/.gitignore`'s repo-level ignore rules (this repo's own) adjust if needed.
+
+## Acceptance criteria (testable)
+
+- O1. A bundle change passes the full loop: gate C4/C5 read `<dir>/review/` (ledger, docs, raws) at BOTH stages; missing-ledger and missing-raw failure modes report the bundle paths.
+- O2. `archive --change --write --changes-dir` carries the entire bundle in the atomic move (requirement/, review/, gap-report.md; spike/ deleted first on the explore track) with no staging lines and no post-commit writes; the AM-36..39 staging tests are REWRITTEN to bundle-travel semantics (their intent — history travels — preserved).
+- O3. `apriori new x` creates flow-state + `requirement/` + `review/`, and its next-action names `apriori/changes/x/requirement/req-v1.md`; no legacy-path literal is emitted.
+- O4. `status` reports ledger items from the bundle path.
+- O5. Runbook (both editions) + concepts carry only bundle paths (a scenario binds the table AND asserts the legacy literals — `apriori/review/<change>-`, `apriori/design/<change>-`, `apriori/explore/`, top-level `requirement/`, root `spike/` — appear nowhere as write targets).
+- O6. `init` no longer creates `apriori/review/`; `engines` requires node >=22 and CI runs 22/24 only.
+- O7. This repo's tree post-migration: `apriori/review`, `apriori/design`, `apriori/explore`, top-level `requirement/` no longer exist; every archived change is a complete bundle; GT-15-class corpus checks read bundle paths; suite + verify --change + gate + check --self green; post-archive gate PASS on this change itself.
+- O8. The v4 stability sentence appears without the layout clause wherever the promise is stated.
+
+## Out of scope
+
+- Dual-layout support, layout detection, migration tooling/guides (owner: none needed).
+- specs/ and truth/ (cross-change stores stay top-level by design).
+- The delta format, flow-state schema, managed.json scope, --json shapes (unchanged).
+- Default-branch switch (owner: no).
+
+## Decisions proposed
+
+- DD-1: plain filenames inside the bundle — the directory carries the identity; prefixes were a flat-dir workaround.
+- DD-2: the P5 doc lives in `review/` — evidence and its raw belong together; `design/` ends as a concept.
+- DD-3: single layout with a one-time self-migration — no detection code, no compat debt; the major version IS the disclosure.
+- DD-4: `new` scaffolds the two empty dirs — cheap guidance; no behavior depends on their existence.
+- DD-5: Node floor rides the major (semver economics: majors are expensive; the floor bump is one line + CI simplification).
+
+ succeeded in 208ms:
+test/spec-runner.test.js:274:    'apriori/changes/c/flow-state.md': 'change: c\ntier: medium\ntrack: harden\ntrack-rationale: r\nlineage: v3\ncurrent-step: STEP5\nround: 1\nnext-action: x\ngates:\n  - 2026-07-11T00:00 note: n\n',
+test/spec-runner.test.js:277:    'apriori/review/c-issues.md': '| ID | Issue | Risk | Round found | Status |\n|---|---|---|---|---|\n| Q-1 | a | low | 1 | verified |\n',
+test/new.test.js:12:test('NW-01 scaffolds flow-state skeleton and specs dir', () => {
+test/new.test.js:16:  const flow = fs.readFileSync(path.join(root, 'apriori', 'changes', 'add-playback', 'flow-state.md'), 'utf8');
+test/new.test.js:48:test('NW-04 the skeleton carries every flow-state schema field the runbook defines', () => {
+test/new.test.js:52:                       'current-step:', 'round:', 'reviewer-session:', 'next-action:', 'artifact-root:', 'gates:'])
+test/new.test.js:54:  assert.match(s, /reviewer-session: n\/a/);
+test/new.test.js:58:test('NW-05 the scaffolded next-action carries the change name', () => {
+test/new.test.js:66:  const flow = rpFs.readFileSync(rpPath.join(root, 'apriori', 'changes', 'my-change', 'flow-state.md'), 'utf8');
+test/update.test.js:59:    'apriori/changes/add-x/flow-state.md': '| step | STEP2 |\n',
+test/update.test.js:60:    'apriori/review/add-x-issues.md': '| I1 | open |\n',
+test/update.test.js:83:test('UP-04 --dry-run previews without writing', () => {
+test/status.test.js:11:  for (const [name, { flow, ledger }] of Object.entries(changes)) {
+test/status.test.js:13:    if (flow) fs.writeFileSync(path.join(root, 'apriori', 'changes', name, 'flow-state.md'), flow);
+test/status.test.js:14:    fs.mkdirSync(path.join(root, 'apriori', 'review'), { recursive: true });
+test/status.test.js:15:    if (ledger) fs.writeFileSync(path.join(root, 'apriori', 'review', `${name}-issues.md`), ledger);
+test/status.test.js:24:next-action: spawn P5 reviewer   # 2026-07-07
+test/status.test.js:36:test('ST-01 --change reports step, next-action, and open-ledger count/IDs', () => {
+test/status.test.js:37:  const root = project({ demo: { flow: FLOW, ledger: LEDGER } });
+test/status.test.js:40:  assert.match(s.state['next-action'], /spawn P5 reviewer/);
+test/status.test.js:44:  assert.match(out, /next-action:.*spawn P5 reviewer/);
+test/status.test.js:46:  assert.match(out, /open ledger:  2 — D-1, D-3/);
+test/status.test.js:50:  const root = project({ demo: { flow: FLOW, ledger: LEDGER }, other: { flow: 'change: other\ncurrent-step: STEP0\n' } });
+test/status.test.js:72:  const root = project({ demo: { flow: FLOW, ledger: LEDGER } });
+test/status.test.js:84:    assert.match(single.nextAction, /spawn P5 reviewer/);
+test/archive-merge.test.js:112:  fs.writeFileSync(path.join(changes, 'add-playback', 'flow-state.md'), 'x');
+test/archive-merge.test.js:116:  assert.ok(fs.existsSync(path.join(dest, 'flow-state.md')));
+test/archive-merge.test.js:238:  fs.writeFileSync(path.join(changes, 'my-change', 'flow-state.md'), 'x');
+test/args.test.js:29:    'apriori/changes/c/flow-state.md': 'change: c\ntier: trivial\ntrack: harden\nlineage: v3\ncurrent-step: STEP5\n',
+test/args.test.js:96:  const root2 = mkProject({ 'apriori/changes/b/flow-state.md': 'change: b\ncurrent-step: STEP0\n' });
+test/archive-change.test.js:129:  const res = am.archiveChange({ cwd: root3, change: 'c', changesDir: 'apriori/changes', changesDirExplicit: true, write: true, ops });
+test/archive-change.test.js:515:// ---- req-sweep (AM-36..39): archive stages the requirement history before the move ----
+test/archive-change.test.js:530:test('AM-36 the requirement history travels inside the atomic move', () => {
+test/archive-change.test.js:543:test('AM-37 attribution is exact and near-misses never match', () => {
+test/archive-change.test.js:562:test('AM-38 staging failures stop before the move and reruns complete', () => {
+test/archive-change.test.js:573:  const res = am.archiveChange({ cwd: root, change: 'c', changesDir: 'apriori/changes', changesDirExplicit: true, write: true, ops });
+test/archive-change.test.js:581:  const res2 = am.archiveChange({ cwd: root, change: 'c', changesDir: 'apriori/changes', changesDirExplicit: true, write: true });
+test/archive-change.test.js:626:test('AM-39 non-staging paths are unaffected', () => {
+test/check.test.js:31:  const en = 'codex exec resume -c sandbox_mode="read-only" <id> "review this"';
+test/check.test.js:180:test('CK-10 committed secrets in review evidence fail the check', () => {
+test/check.test.js:195:  // absent review dir → skip (pass)
+test/check.test.js:197:  // clean review dir → pass
+test/check.test.js:198:  assert.strictEqual(run(mk({ 'apriori/review/x-raw.txt': 'clean transcript\nsha256:abcdef' })).status, 0);
+test/check.test.js:201:    ['apriori/review/a-raw.txt', 'line one\nkey=AKIA' + 'ABCDEFGHIJKLMNOP\n', /AWS/i, 'AKIA' + 'ABCDEFGHIJKLMNOP'],
+test/check.test.js:202:    ['apriori/review/deep/b-raw.md', 'ghp_' + 'a'.repeat(36) + ' embedded in output\n', /GitHub/i, 'ghp_' + 'a'.repeat(36)],
+test/check.test.js:203:    ['apriori/review/c.txt', '-----BEGIN RSA ' + 'PRIVATE KEY-----\nMII...\n', /private.key/i, 'MII'],   // assembled at runtime — the source (and raws quoting it) never carries the full literal
+test/check.test.js:217:  fs.mkdirSync(path.join(root, 'apriori/review'), { recursive: true });
+test/check.test.js:219:  try { fs.symlinkSync(path.join(root, 'outside.txt'), path.join(root, 'apriori/review/link-raw.txt')); } catch { can = false; }
+test/check.test.js:223:    assert.match(r.stdout, /link-raw/);
+test/init.test.js:71:test('IN-07 dry-run previews actions without writing any file', () => {
+test/init.test.js:80:  // parseKey maps raw terminal bytes → key names
+test/doctor.test.js:193:test('DR-09 changes overview validates flow-states and surfaces pending gates', () => {
+test/doctor.test.js:197:  fs.writeFileSync(path.join(root, 'apriori/changes/no-key/flow-state.md'), 'tier: medium\n');          // no change:
+test/doctor.test.js:199:  fs.writeFileSync(path.join(root, 'apriori/changes/wrong/flow-state.md'), 'change: other\n');          // mismatch
+test/doctor.test.js:201:  fs.writeFileSync(path.join(root, 'apriori/changes/good/flow-state.md'), 'change: good\ncurrent-step: STEP5\n');
+test/doctor.test.js:203:  fs.writeFileSync(path.join(root, 'apriori/changes/archive/2026-07-10T1200-old/flow-state.md'), 'change: old\ncurrent-step: STEP6\n');
+test/doctor.test.js:218:  fs.writeFileSync(path.join(outside, 'flow-state.md'), 'change: evil\ncurrent-step: STEP0\n');
+test/doctor.test.js:226:    // per-FILE containment: an active change whose flow-state.md symlinks outside is diagnosed, never read
+test/doctor.test.js:230:    fs.symlinkSync(secret, path.join(root, 'apriori/changes/linked/flow-state.md'));
+test/protocol.test.js:78:  assert.match(en, /no flow-state entry|not a tracked step/);
+test/protocol.test.js:103:  assert.match(p13en, /no `apriori new`,\s*\nno flow-state|no `apriori new`, no flow-state/);
+test/protocol.test.js:119:  assert.match(cn, /无 flow-state 条目|不是被追踪的步骤/);
+test/protocol.test.js:143:  assert.match(p13cn, /不建 flow-state/);
+test/protocol.test.js:161:  assert.match(en, /no requirement doc, no spec\/proposal\/design file, no `apriori new`, no flow-state/);
+test/protocol.test.js:191:  assert.match(EN, /assemble the packet — proposal\.md, design doc/);
+test/protocol.test.js:239:  assert.match(block(EN, /^### P8 — STEP5 consistency reviewer.*$/m), /Guarantee claims:/);
+test/protocol.test.js:240:  assert.match(block(EN, /^### P8 — STEP5 consistency reviewer.*$/m), /unexercised hard guarantee is a spec-vs-code gap/);
+test/protocol.test.js:254:test('PR-12 flow-state persists the reviewer resumable session id (schema + R2)', () => {
+test/protocol.test.js:256:  assert.match(EN, /reviewer-session: <id or n\/a>/);
+test/protocol.test.js:259:  assert.match(EN, /record the reviewer's session id in flow-state's `reviewer-session` field/);
+test/protocol.test.js:260:  assert.match(CN, /reviewer-session: <id 或 n\/a>/);
+test/protocol.test.js:261:  assert.match(CN, /记进 flow-state 的 `reviewer-session` 字段/);
+test/protocol.test.js:262:  // ledger round stage-prefix disambiguation
+test/protocol.test.js:268:  assert.match(block(EN, /^### P4 — STEP2 propose.*$/m), /write proposal\.md, all spec docs, the design doc, and tasks\.md/);
+test/protocol.test.js:299:  // the with-arg door is unchanged: flow-state read + advance-only-to-gate survive
+test/protocol.test.js:301:  assert.match(cmd, /apriori\/changes\/<change>\/flow-state\.md/);
+test/protocol.test.js:317:  assert.match(en, /their call alone; never proposed by the agent as a way out of failing reviews/);
+test/protocol.test.js:348:  // R2 transcription covers the review doc itself
+test/protocol.test.js:349:  assert.match(EN, /The same transcription mechanism covers the \*\*review doc itself\*\*/);
+test/protocol.test.js:356:  assert.match(EN, /flow-state lives — and is updated — at its \*\*archived\*\* path/);
+test/protocol.test.js:361:// PR-17 helper: like block(), but bounded by the NEXT ## or ### heading — the
+test/protocol.test.js:371:test('PR-17 external side effects require the principal\'s explicit authorization (both editions)', () => {
+test/protocol.test.js:425:test('PR-18 the ledger vocabulary and the post-archive gate bind in both editions', () => {
+test/protocol.test.js:426:  const p0en = sectionBlock(EN, /^### P0 — issue ledger.*$/m);
+test/protocol.test.js:465:test('PR-19 requirement-stage paths carry the change name in every live doc', () => {
+test/protocol.test.js:496:test('PR-20 the automatic requirement carry binds and the manual instruction is gone', () => {
+test/gate.test.js:35:    [`apriori/changes/${name}/flow-state.md`]: FLOW(name),
+test/gate.test.js:38:    [`apriori/review/${name}-issues.md`]: LEDGER_OK,
+test/gate.test.js:66:test('GT-03 ledger blocks on open rows and reasonless rejections', () => {
+test/gate.test.js:76:    fs.appendFileSync(path.join(root, 'apriori/review/c-issues.md'), row + '\n');
+test/gate.test.js:84:test('GT-04 flow-state legality is enforced', () => {
+test/gate.test.js:93:    fs.writeFileSync(path.join(root, 'apriori/changes/c/flow-state.md'), flow);
+test/gate.test.js:101:test('GT-05 verdict evidence is mechanical (missing raw blocks; raw fixes; symlink blocks)', () => {
+test/gate.test.js:103:  fs.writeFileSync(path.join(root, 'apriori/review/c-req-review-v1.md'), 'body\nVERDICT: no major issues\n');
+test/gate.test.js:107:  assert.match(c5.detail, /c-req-review-v1/);
+test/gate.test.js:108:  fs.writeFileSync(path.join(root, 'apriori/review/c-req-review-v1-raw.txt'), 'raw transcript');
+test/gate.test.js:112:  // design-dir docs participate too
+test/gate.test.js:113:  fs.mkdirSync(path.join(root, 'apriori/design'), { recursive: true });
+test/gate.test.js:114:  fs.writeFileSync(path.join(root, 'apriori/design/c-review-v1.md'), 'VERDICT: 1 issues open\n');
+test/gate.test.js:117:  fs.writeFileSync(path.join(root, 'apriori/review/c-review-v1-raw.txt'), 'raw');
+test/gate.test.js:120:  // a VERDICT-free doc needs no raw
+test/gate.test.js:121:  fs.writeFileSync(path.join(root, 'apriori/review/c-kb-check.md'), 'notes only\n');
+test/gate.test.js:125:  try { fs.symlinkSync(path.join(root, 'apriori/review/c-req-review-v1.md'), path.join(root, 'apriori/review/c-linked.md')); }
+test/gate.test.js:132:    fs.rmSync(path.join(root, 'apriori/review/c-linked.md'));
+test/gate.test.js:133:    // a SYMLINKED raw is not evidence: replace the real raw with a symlink → blocked again
+test/gate.test.js:134:    fs.renameSync(path.join(root, 'apriori/review/c-req-review-v1-raw.txt'), path.join(root, 'apriori/review/elsewhere.txt'));
+test/gate.test.js:135:    fs.symlinkSync(path.join(root, 'apriori/review/elsewhere.txt'), path.join(root, 'apriori/review/c-req-review-v1-raw.txt'));
+test/gate.test.js:154:    'apriori/changes/archive/2026-07-10T1200-c/flow-state.md': FLOW('c'),
+test/gate.test.js:157:    'apriori/review/c-issues.md': LEDGER_OK,
+test/gate.test.js:176:    'apriori/changes/archive/2026-07-10T1200-c/flow-state.md': FLOW('c'),
+test/gate.test.js:179:    'apriori/changes/archive/2026-07-10T1400-c/flow-state.md': FLOW('c'),
+test/gate.test.js:182:    'apriori/review/c-issues.md': LEDGER_OK,
+test/gate.test.js:195:  fs.writeFileSync(path.join(elsewhere, 'flow-state.md'), FLOW('c'));
+test/gate.test.js:205:test('GT-08 a missing or mismatched flow-state fails closed', () => {
+test/gate.test.js:207:  fs.rmSync(path.join(root, 'apriori/changes/c/flow-state.md'));
+test/gate.test.js:213:  fs.writeFileSync(path.join(root2, 'apriori/changes/c/flow-state.md'), FLOW('other'));
+test/gate.test.js:220:    'apriori/changes/c/flow-state.md': FLOW('c', 'trivial'),
+test/gate.test.js:230:    'apriori/changes/c/flow-state.md': FLOW('c'),
+test/gate.test.js:295:  // missing flow-state class: still pure JSON, stage resolved, result ERROR
+test/gate.test.js:296:  fs.rmSync(path.join(root, 'apriori/changes/c/flow-state.md'));
+test/gate.test.js:324:// ---- ledger-states (GT-13..15): C4 speaks the terminal-state vocabulary ----
+test/gate.test.js:327:const ledgerWith = (...rows) => LEDGER_HDR + rows.map((r) => `| ${r[0]} | i | low | 1 | ${r[1]} |\n`).join('');
+test/gate.test.js:331:function archProject(ledger, flowExtra) {
+test/gate.test.js:334:    'apriori/changes/archive/2026-07-10T1200-c/flow-state.md': FLOW_G('c', flowExtra),
+test/gate.test.js:337:    'apriori/review/c-issues.md': ledger,
+test/gate.test.js:342:test('GT-13 archived ledgers must be terminal', () => {
+test/gate.test.js:343:  // fixed at archived stage → blocked with the reviewer-verify cure
+test/gate.test.js:344:  const f = c4Of(archProject(ledgerWith(['Q-1', 'fixed (v2)'])));
+test/gate.test.js:346:  assert.match(f.detail, /reviewer must verify|never verified/);
+test/gate.test.js:348:  const r = c4Of(archProject(ledgerWith(['Q-1', 'rejected — cosmetic, out of scope'])));
+test/gate.test.js:350:  assert.match(r.detail, /rejected-verified|reviewer concurrence/);
+test/gate.test.js:352:  const u = c4Of(archProject(ledgerWith(['Q-1', 'done'])));
+test/gate.test.js:357:    ledgerWith(['Q-1', 'verified'],
+test/gate.test.js:358:               ['Q-2', 'rejected-verified — cosmetic; reviewer concurred (review-v2)'],
+test/gate.test.js:366:  // in-flight: waived without any gates: evidence → blocked
+test/gate.test.js:368:  fs.writeFileSync(path.join(root1, 'apriori/review/c-issues.md'), ledgerWith(['Q-1', 'waived — accepted']));
+test/gate.test.js:374:  fs.writeFileSync(path.join(root2, 'apriori/review/c-issues.md'), ledgerWith(['Q-1', 'waived — accepted']));
+test/gate.test.js:375:  fs.appendFileSync(path.join(root2, 'apriori/changes/c/flow-state.md'),
+test/gate.test.js:380:  fs.writeFileSync(path.join(root3, 'apriori/review/c-issues.md'), ledgerWith(['Q-1', 'waived — accepted']));
+test/gate.test.js:381:  fs.appendFileSync(path.join(root3, 'apriori/changes/c/flow-state.md'),
+test/gate.test.js:386:  fs.writeFileSync(path.join(root4, 'apriori/review/c-issues.md'), ledgerWith(['Q-1', 'waived — accepted']));
+test/gate.test.js:387:  fs.appendFileSync(path.join(root4, 'apriori/changes/c/flow-state.md'),
+test/gate.test.js:392:  fs.writeFileSync(path.join(root5, 'apriori/review/c-issues.md'), ledgerWith(['Q-1', 'verifed']));
+test/gate.test.js:395:  fs.writeFileSync(path.join(root6, 'apriori/review/c-issues.md'), ledgerWith(['Q-1', 'rejected-verified']));
+test/gate.test.js:399:  fs.writeFileSync(path.join(root7, 'apriori/review/c-issues.md'),
+test/gate.test.js:400:    ledgerWith(['Q-1', 'fixed (v2)'], ['Q-2', 'rejected — cosmetic, out of scope']));
+test/gate.test.js:404:test('GT-15 every archived ledger in this repo parses legal and terminal', () => {
+test/gate.test.js:411:    const lp = path.join(__dirname, '..', 'apriori', 'review', `${name}-issues.md`);
+test/gate.test.js:429:    'apriori/changes/c/flow-state.md': FLOW('c'),
+test/gate.test.js:432:    'apriori/review/c-issues.md': LEDGER_OK,
+test/gate.test.js:465:    'apriori/changes/archive/2026-07-10T1200-c/flow-state.md': FLOW('c'),
+test/gate.test.js:468:    'apriori/review/c-issues.md': LEDGER_OK,
+lib/init.js:35:  'session-start rule and `apriori/changes/<change>/flow-state.md`, then continue ' +
+lib/init.js:45:// dryRun computes the action without writing (IN-07 preview).
+lib/init.js:100:  if (!dry) for (const sub of ['specs', 'changes', 'changes/archive', 'review', 'truth', 'tmp'])
+lib/init.js:157:// key names from a raw stdin chunk
+lib/init.js:199:  // footer is ALWAYS present (stable line count for in-place redraw)
+lib/init.js:216:      if (!first) output.write(`\x1b[${lineCount}A\x1b[0J`);   // redraw in place
+lib/init.js:245:function preview(root, tools) {
+lib/init.js:275:      preview(root, tools);                        // IN-07: preview before writing
+lib/update.js:6: * User-owned is NEVER touched: process-config.md, specs/, changes/, review/, truth/,
+lib/check.js:73:  'VERDICT: no major issues, ready to proceed to execution',
+lib/check.js:74:  'VERDICT: no major issues',
+lib/check.js:78:  'VERDICT: <N> issues open',
+lib/check.js:110:      const raw = frag;
+lib/check.js:121:      const checkable = !raw.includes('...') && !raw.includes('…') && !tokens.includes('--last') &&
+lib/check.js:122:        (tokens.some((t) => t.startsWith('-')) || raw.includes('"'));
+lib/check.js:174:// ---- CK-10: review-evidence secret tripwire (consumer mode) -------------------
+lib/check.js:185:  const dir = path.join(root, 'apriori', 'review');
+lib/check.js:190:      if (e.isSymbolicLink()) { warns.push(`review evidence: ${path.relative(root, p)} is a symlink — skipped by the secret scan`); continue; }
+lib/check.js:196:          if (re.test(ln)) fails.push(`${path.relative(root, p)}:${i + 1}: ${label} detected in review evidence — sanitize the raw (see SECURITY.md; rewrite history if already pushed)`);
+lib/check.js:246:    // CK-10: review-evidence secret tripwire (consumer mode; absent dir skips)
+lib/args.js:18:  for (const raw of argv) if ((aliases[raw] || raw) === '--help') return { ok: false, code: 0 };
+lib/args.js:20:    const raw = argv[i];
+lib/args.js:21:    const tok = aliases[raw] || raw;
+lib/args.js:24:      if (!kind) return err(`unknown flag '${raw}' for 'apriori ${spec.sub}'`);
+lib/args.js:37:    } else positionals.push(raw);
+lib/archive-merge.js:303:function discoverDeltas(changesDirAbs, name) {
+lib/archive-merge.js:306:  const changeDir = path.join(changesDirAbs, name);
+lib/archive-merge.js:307:  if (!fs.existsSync(changeDir)) return { files: [], errors: [`change '${name}' not found under ${changesDirAbs}`] };
+lib/archive-merge.js:308:  if (!containsReal(changesDirAbs, changeDir)) return { files: [], errors: [`change path escapes ${changesDirAbs}: ${changeDir}`] };
+lib/archive-merge.js:337:    const raw = fs.readFileSync(abs, 'utf8');
+lib/archive-merge.js:338:    if (!raw.trim()) { hygiene.push(`empty delta file: ${abs}`); continue; }
+lib/archive-merge.js:339:    const { delta, stamp, problems } = parseDeltaStrict(raw);
+lib/archive-merge.js:382:// Fail-closed: source AND destination must resolve (realpath) strictly inside changesDir.
+lib/archive-merge.js:383:function archiveChangeDir(changesDir, name, now, ops) {
+lib/archive-merge.js:386:  const src = path.join(changesDir, name);
+lib/archive-merge.js:388:  if (!containsReal(changesDir, src)) throw new Error(`change path escapes ${changesDir}`);
+lib/archive-merge.js:389:  const dest = path.join(changesDir, 'archive', `${archiveStamp(now)}-${name}`);
+lib/archive-merge.js:390:  if (!containsReal(changesDir, dest)) throw new Error(`archive destination escapes ${changesDir} (symlinked archive/?)`);
+lib/archive-merge.js:405:  const changesDir = path.resolve(cwd, o.changesDir || path.join('apriori', 'changes'));
+lib/archive-merge.js:409:  const d = discoverDeltas(changesDir, o.change);
+lib/archive-merge.js:439:    if (o.changesDirExplicit) {
+lib/archive-merge.js:441:      const probe = path.join(changesDir, 'archive', 'probe');
+lib/archive-merge.js:442:      if (!containsReal(changesDir, probe)) {
+lib/archive-merge.js:443:        err.push(`archive: archive destination escapes ${changesDir} (symlinked archive/?)`);
+lib/archive-merge.js:484:  if (o.changesDirExplicit) {
+lib/archive-merge.js:501:        const stageDest = path.join(changesDir, o.change, 'requirement');
+lib/archive-merge.js:502:        if (!containsReal(changesDir, stageDest)) return stageFail(`staging destination escapes the change tree: ${stageDest}`);
+lib/archive-merge.js:517:  if (o.changesDirExplicit) {
+lib/archive-merge.js:518:    try { moved = archiveChangeDir(changesDir, o.change, new Date(), ops); }
+lib/archive-merge.js:547:      write: !!f['--write'], changesDir: f['--changes-dir'] || null };
+lib/archive-merge.js:551:        changesDir: a.changesDir || undefined, changesDirExplicit: !!a.changesDir });
+lib/archive-merge.js:562:    if (a.changesDir && !fs.existsSync(path.join(a.changesDir, a.change))) {
+lib/archive-merge.js:563:      console.error(`archive: change '${a.change}' not found under ${a.changesDir} — nothing to move`); return 2;
+lib/archive-merge.js:600:      console.log('\nCONFLICTS (stop — open a ledger issue, human resolves):');
+lib/archive-merge.js:613:      if (a.changesDir) {
+lib/archive-merge.js:614:        try { moved = archiveChangeDir(a.changesDir, a.change, new Date()); }
+lib/doctor.js:143:    const fp = path.join(changesRoot, c, 'flow-state.md');
+lib/doctor.js:144:    if (!fs.existsSync(fp)) { checks.push({ id: 'D7', status: 'finding', detail: `${c}: no flow-state.md`, fix: 'apriori new / restore the file' }); d7bad++; continue; }
+lib/doctor.js:145:    // per-file containment: a symlinked flow-state pointing outside the changes tree is
+lib/doctor.js:147:    if (!containsReal(changesRoot, fp)) { checks.push({ id: 'D7', status: 'finding', detail: `${c}: flow-state.md escapes apriori/changes/ (symlink?) — not read`, fix: 'fix the file' }); d7bad++; continue; }
+lib/doctor.js:150:    catch (e) { checks.push({ id: 'D7', status: 'finding', detail: `${c}: flow-state unreadable (${e.message})`, fix: 'fix the file' }); d7bad++; continue; }
+lib/doctor.js:151:    if (!st.change) { checks.push({ id: 'D7', status: 'finding', detail: `${c}: flow-state has no 'change:' key`, fix: 'fix the file' }); d7bad++; }
+lib/doctor.js:152:    else if (st.change !== c) { checks.push({ id: 'D7', status: 'finding', detail: `${c}: flow-state says 'change: ${st.change}' — mismatches the dir`, fix: 'fix the file' }); d7bad++; }
+lib/doctor.js:164:      const fp = path.join(dir, 'flow-state.md');
+lib/doctor.js:166:      if (!containsReal(archRoot, fp)) { notes.push(`${b}: flow-state escapes archive/ (symlink?) — not read`); continue; }
+lib/doctor.js:173:    ? { id: 'D7', status: 'ok', detail: notes.join('; ') || `${actives.length} active change(s), flow-states valid` }
+lib/gate.js:23:function resolveChange(cwd, name) {
+lib/gate.js:24:  const changesDir = path.join(cwd, 'apriori', 'changes');
+lib/gate.js:25:  const inflight = path.join(changesDir, name);
+lib/gate.js:27:    if (!containsReal(changesDir, inflight)) return { error: `change path escapes ${changesDir}` };
+lib/gate.js:30:  const archRoot = path.join(changesDir, 'archive');
+lib/gate.js:53:    if (v === undefined || v === '') return { id: 'C3', status: 'blocked', detail: `flow-state: required key '${key}' missing` };
+lib/gate.js:54:    if (v.includes('<') || v.includes('>')) return { id: 'C3', status: 'blocked', detail: `flow-state: '${key}' is an unfilled placeholder (${v})` };
+lib/gate.js:56:  if (state.change !== name) return { id: 'C3', status: 'blocked', detail: `flow-state: 'change' is '${state.change}', expected '${name}'` };
+lib/gate.js:57:  if (!STEP_ENUM.includes(state['current-step'])) return { id: 'C3', status: 'blocked', detail: `flow-state: 'current-step' '${state['current-step']}' not in the legal vocabulary` };
+lib/gate.js:58:  if (!TIER_ENUM.includes(state.tier)) return { id: 'C3', status: 'blocked', detail: `flow-state: 'tier' '${state.tier}' not in {trivial, medium, large}` };
+lib/gate.js:75:// the ledger vocabulary, one classifier shared by C4 and the corpus test (GT-15).
+lib/gate.js:95:// gates: entries from a flow-state text — the block runs from the unindented `gates:` line
+lib/gate.js:113:function waiveEvidence(flowText, id) {
+lib/gate.js:118:function checkLedger(cwd, name, tier, stage, dir) {
+lib/gate.js:119:  const p = path.join(cwd, 'apriori', 'review', `${name}-issues.md`);
+lib/gate.js:122:      ? { id: 'C4', status: 'n/a', detail: 'no ledger — trivial tier may never open one' }
+lib/gate.js:123:      : { id: 'C4', status: 'blocked', detail: `ledger missing at ${p}` };
+lib/gate.js:126:  const fsPath = dir ? path.join(dir, 'flow-state.md') : null;
+lib/gate.js:131:    if (!c.legal) { bad.push(`${r.id}: '${r.status}' is not in the ledger vocabulary`); continue; }
+lib/gate.js:133:    if (c.isWaived && !waiveEvidence(flowText, r.id)) {
+lib/gate.js:139:        ? `${r.id} is fixed but never verified — reviewer must verify, or the human waives it`
+lib/gate.js:140:        : `${r.id} is rejected without reviewer concurrence — flip to rejected-verified, or the human waives it`);
+lib/gate.js:148:function checkEvidence(cwd, name) {
+lib/gate.js:149:  const reviewDir = path.join(cwd, 'apriori', 'review');
+lib/gate.js:150:  const designDir = path.join(cwd, 'apriori', 'design');
+lib/gate.js:156:      if (b === `${name}-issues.md`) continue;
+lib/gate.js:157:      if (/-raw\.[^.]+$/.test(b) || b.replace(/\.md$/, '').endsWith('-raw')) continue;
+lib/gate.js:161:  collect(reviewDir, new RegExp(`^${name}-.*\\.md$`));
+lib/gate.js:162:  collect(designDir, new RegExp(`^${name}-review-v.*\\.md$`));
+lib/gate.js:165:    if (fs.lstatSync(doc).isSymbolicLink()) { bad.push(`${path.basename(doc)} is a symlink — evidence docs must be regular files`); continue; }
+lib/gate.js:169:    const raws = fs.existsSync(reviewDir) ? fs.readdirSync(reviewDir).filter((b) =>
+lib/gate.js:170:      b.startsWith(stem + '-raw.') &&
+lib/gate.js:171:      fs.lstatSync(path.join(reviewDir, b)).isFile() &&                     // lstat FIRST: symlinked raws are not evidence
+lib/gate.js:172:      containsReal(reviewDir, path.join(reviewDir, b))) : [];
+lib/gate.js:173:    if (!raws.length) bad.push(`${path.basename(doc)} carries a VERDICT but no ${stem}-raw.* exists`);
+lib/gate.js:177:    : { id: 'C5', status: 'pass', detail: `${docs.length} review doc(s), every verdict has raw evidence` };
+lib/gate.js:253:  const loc = resolveChange(cwd, opts.change);
+lib/gate.js:256:  const flowPath = path.join(loc.dir, 'flow-state.md');
+lib/gate.js:257:  if (!fs.existsSync(flowPath)) return err(res, `no readable flow-state.md at ${flowPath} — tier-aware checks are impossible`);
+lib/gate.js:260:  catch (e) { return err(res, `flow-state unreadable: ${e.message}`); }
+lib/gate.js:270:  res.checks.push(checkLedger(cwd, opts.change, tier, loc.stage, loc.dir));
+lib/gate.js:271:  res.checks.push(checkEvidence(cwd, opts.change));
+lib/gate.js:302:module.exports = { runGate, resolveChange, classifyStatus, cli };
+lib/new.js:3: * apriori new — scaffold an in-flight change directory with a flow-state skeleton.
+lib/new.js:23:reviewer-session: n/a                     # record the reviewer's resumable session id the moment round 1 prints it (R2)
+lib/new.js:31:// Scaffold apriori/changes/<name>/flow-state.md. Returns {ok, path?|error?}.
+lib/new.js:39:  const flow = path.join(dir, 'flow-state.md');
+lib/status.js:4: * Reads the flow-state file + the issue ledger; zero deps, pure Node stdlib.
+lib/status.js:10:// parse `key: value` lines from a flow-state file → object; plus the last gate line
+lib/status.js:22:// parse a P0 ledger markdown table → rows with {id, status}
+lib/status.js:44:  const fsPath = path.join(root, 'apriori', 'changes', change, 'flow-state.md');
+lib/status.js:46:  const ledgerPath = path.join(root, 'apriori', 'review', `${change}-issues.md`);
+lib/status.js:47:  const rows = fs.existsSync(ledgerPath) ? parseLedger(fs.readFileSync(ledgerPath, 'utf8')) : [];
+lib/status.js:54:  if (!s.state) { lines.push(`change: ${s.change} (no flow-state file found)`); }
+lib/status.js:61:  lines.push(`open ledger:  ${s.open.length}` + (s.open.length ? ` — ${s.open.map((r) => r.id).join(', ')}` : ''));
+lib/status.js:101:      const step = s.state ? s.state['current-step'] || '?' : 'no flow-state';
+lib/managed.js:39:  let raw;
+lib/managed.js:40:  try { raw = fs.readFileSync(p, 'utf8'); }
+lib/managed.js:43:  try { doc = JSON.parse(raw); }
+apriori/specs/cli/spec.md:30:- THEN the CLI prints a single `apriori: <message>` line on stderr and exits 1 — never a raw stack trace
+apriori/specs/update/spec.md:10:- THEN `apriori/process-config.md`, `specs/`, `changes/`, `review/`, `truth/`, and the tool rules files the init pointer was appended to (CLAUDE.md, AGENTS.md, …) are left byte-identical, and no new per-tool file is created (adding a tool is `apriori init`'s job); the only creation permitted is protocol-required scaffolding (UP-05)
+apriori/specs/update/spec.md:16:#### Scenario: UP-04 --dry-run previews without writing
+apriori/specs/archive-merge/spec.md:18:- THEN the merge reports the conflict, writes nothing, and exits 1 (a human opens a ledger issue)
+apriori/specs/archive-merge/spec.md:159:#### Scenario: AM-36 the requirement history travels inside the atomic move
+apriori/specs/archive-merge/spec.md:163:#### Scenario: AM-37 attribution is exact and near-misses never match
+apriori/specs/archive-merge/spec.md:167:#### Scenario: AM-38 staging failures stop before the move and reruns complete
+apriori/specs/archive-merge/spec.md:169:- THEN archive exits 1 BEFORE the move (stores committed, change dir still in flight, nothing read or written outside the workspace) naming the offender and the cure, and a rerun after the cure completes staging plus the move to the AM-36 end state
+apriori/specs/archive-merge/spec.md:171:#### Scenario: AM-39 non-staging paths are unaffected
+lib/spec-runner.js:8: * its instrument misbehaved, or its evidence is ambiguous. Vacuous success is a bug.
+lib/spec-runner.js:106:  for (const raw of out.split('\n')) {
+lib/spec-runner.js:107:    const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw;
+lib/spec-runner.js:233:  const changesDir = path.resolve(cwd, 'apriori', 'changes');
+lib/spec-runner.js:236:  const d = am.discoverDeltas(changesDir, change);
+apriori/specs/gate/spec.md:2:`apriori gate --change <name>` SHALL evaluate the machine-checkable gate conditions for exactly one change and encode the aggregate in its exit code: 0 = every applicable check passed (`GATE: PASS`), 1 = at least one check blocked (`GATE: BLOCKED (<n> item(s))`), 2 = the evaluation itself is untrustworthy (usage error, invalid or escaping name, change found nowhere, unreadable flow-state, or an untrustworthy C1 verify run). It SHALL be strictly read-only and SHALL state in its output that PASS covers mechanical checks only — human gates remain human.
+apriori/specs/gate/spec.md:12:#### Scenario: GT-03 the ledger blocks on open rows and reasonless rejections
+apriori/specs/gate/spec.md:13:- WHEN the ledger at `apriori/review/<name>-issues.md` contains a row whose status starts `open` (case-insensitive), or a `rejected` row with no reason text beyond the word itself
+apriori/specs/gate/spec.md:16:#### Scenario: GT-04 flow-state legality is enforced
+apriori/specs/gate/spec.md:17:- WHEN a required flow-state key (`change`, `tier`, `track`, `lineage`, `current-step`) is missing, still a `<placeholder>`, has a `current-step` outside the exact vocabulary (STEP0..STEP6, INTENT-CARD, SPIKE, EXTRACTION, DONE, ABANDONED), a `tier` outside {trivial, medium, large}, or a `change` value that does not equal `--change`
+apriori/specs/gate/spec.md:18:- THEN C3 blocks naming the offending key; a fully legal flow-state passes
+apriori/specs/gate/spec.md:20:#### Scenario: GT-05 verdict evidence is mechanical
+apriori/specs/gate/spec.md:21:- WHEN a review doc for the change (files matching `apriori/review/<name>-*.md` or `apriori/design/<name>-review-v*.md`, excluding the ledger and `*-raw` stems, regular files only) contains a `^VERDICT:` line but no file that is REGULAR by lstat (symlinks are not evidence) matches `apriori/review/<stem>-raw.*`
+apriori/specs/gate/spec.md:22:- THEN C5 blocks naming the doc; adding the raw flips it to `✓`; a symlink matching the doc globs blocks naming the symlink (an evidence doc must never silently drop out by file type)
+apriori/specs/gate/spec.md:26:- THEN C1 runs the projected verify (`verify --change` semantics, same code path incl. CAS and hygiene); WHEN the change exists only under `apriori/changes/archive/<stamp>-<name>/` THEN C1 runs plain verify against `apriori/specs/` and flow-state/tasks resolve from the archived dir; verify gaps → C1 blocked with the red/unbound/orphan counts; a verify-untrustworthy run → gate exit 2 carrying verify's errors
+apriori/specs/gate/spec.md:32:#### Scenario: GT-08 a missing or mismatched flow-state fails closed
+apriori/specs/gate/spec.md:33:- WHEN the resolved change dir has no readable flow-state.md
+apriori/specs/gate/spec.md:34:- THEN gate exits 2 (tier-aware checks are impossible); a readable flow-state whose `change` key mismatches `--change` is C3-blocked, not exit 2
+apriori/specs/gate/spec.md:37:- WHEN flow-state declares `tier: trivial` and tasks.md or the ledger file is absent
+apriori/specs/gate/spec.md:45:- WHEN `gate --change <name> --json` runs — PASS, BLOCKED, or any exit-2 class (usage error, invalid name, not found, unreadable flow-state, untrustworthy verify)
+apriori/specs/gate/spec.md:53:Gate C4 SHALL parse every ledger row's status against the legal vocabulary (leading token, case-insensitive): non-terminal `open` / `fixed` / `rejected + reason`; terminal `verified` / `rejected-verified + reason` / `waived + reason` / `advisory-acked`. ANY other status blocks at BOTH stages. `rejected`, `rejected-verified`, and `waived` without a word-character reason block at both stages. A `waived` row additionally requires machine-checked human evidence at both stages: the change's flow-state `gates:` block must contain the row's ID and the text `waiv` (case-insensitive) — a producer-written row alone never passes. At the ARCHIVED stage every row must be terminal: `fixed` and plain `rejected` block with a cure naming the reviewer's verify/concur duty or the human waive. In-flight, `fixed` and reasoned `rejected` pass as today.
+apriori/specs/gate/spec.md:55:#### Scenario: GT-13 archived ledgers must be terminal
+apriori/specs/gate/spec.md:56:- WHEN gate resolves a change at the archived stage whose ledger carries a `fixed` row, a plain reasoned `rejected` row, or an unknown status like `done`
+apriori/specs/gate/spec.md:57:- THEN C4 reports BLOCKED naming each row and a cure, while an all-terminal ledger (verified / rejected-verified + reason / gates:-backed waived + reason / advisory-acked) passes
+apriori/specs/gate/spec.md:60:- WHEN a ledger carries a `waived — reason` row without a matching flow-state gates: entry (the ID plus "waiv"), or any row whose status is outside the vocabulary, at either stage
+apriori/specs/gate/spec.md:63:#### Scenario: GT-15 every archived ledger in this repo parses legal and terminal
+apriori/specs/gate/spec.md:64:- WHEN the corpus of archived changes (apriori/changes/archive/*) is walked and each change's ledger at apriori/review/<name>-issues.md is parsed
+apriori/specs/check/spec.md:33:- THEN only the spec-store checks (CK-04), runbook freshness (CK-06), and the review-evidence secret tripwire (CK-10) run — a consumer legitimately using OpenSpec or shipping its own README is never failed by apriori's handbook self-checks (EN/CN pairs, verdict phrases, codex forms, no-openspec), which run only under `--self`; and a missing spec-store path is an error (exit 2, naming `apriori init` when uninitialized), never a silent PASS
+apriori/specs/check/spec.md:46:### Requirement: review evidence is guarded against committed secrets
+apriori/specs/check/spec.md:47:`apriori check` (consumer mode) SHALL scan `apriori/review/` — recursive, regular files only, symlinked entries skipped with a warn line naming them, the directory absent → the check skips — for exactly three literal secret formats: AWS access keys (`AKIA[0-9A-Z]{16}`), GitHub tokens (`gh[pousr]_[A-Za-z0-9]{36,}`), and PEM private-key headers (`-----BEGIN [A-Z ]*PRIVATE KEY-----`). A hit SHALL fail the check naming the file, line number, and pattern class — never echoing the matched value — with a remedy pointer (sanitize the raw; if already pushed, rewrite history per SECURITY.md).
+apriori/specs/check/spec.md:49:#### Scenario: CK-10 committed secrets in review evidence fail the check
+apriori/specs/check/spec.md:50:- WHEN a file under `apriori/review/` (any depth) contains an AWS key, a GitHub token, or a PEM private-key header
+apriori/specs/check/spec.md:51:- THEN `check` FAILs naming the file, line and pattern class without echoing the secret, and the message points at the remedy; a clean review dir passes; a symlinked entry is skipped with a warn naming it; an absent review dir skips the check entirely
+apriori/specs/protocol/spec.md:2:The V3 runbook SHALL make scenario-to-test binding a deterministic gate, narrow the heterogeneous consistency review to what binding cannot prove, implement archive natively, and remove the OpenSpec adapter so the interface is single-path plain-files.
+apriori/specs/protocol/spec.md:9:- WHEN the consistency review (P8) runs on a change whose spec-runner is already GREEN
+apriori/specs/protocol/spec.md:38:- THEN nothing durable is written before the human approves the exit (no code, no requirement/spec/proposal/design files, no `apriori new`, no flow-state), and that protection is stated to the human in one plain-language sentence, never as protocol internals; the agent may only *propose* exiting after presenting the approaches comparison; "stateable" is the human's judgment, never the agent's; and on approval the crystallized understanding is written as the kickoff requirement draft (goal, users, chosen approach, success criteria, constraints, non-goals with the reasons they were cut, open questions) that becomes STEP0's `req-v1` starting material
+apriori/specs/protocol/spec.md:48:#### Scenario: PR-12 flow-state persists the reviewer's resumable session id
+apriori/specs/protocol/spec.md:49:- WHEN a heterogeneous review starts and round 1 prints the reviewer's session id
+apriori/specs/protocol/spec.md:50:- THEN the flow-state schema (§3) carries a `reviewer-session` field that records it immediately (so even a first-round interruption on either side resumes the SAME session per R2 rather than reconstructing it), and R2 names this field as the persistence point
+apriori/specs/protocol/spec.md:62:- THEN the runbook prescribes: one ledger row `abandoned` carrying the human's verbatim reason, the change dir archived with flow-state `current-step: ABANDONED`, nothing written to KB or spec store, touched code disposed only as the human directs; the agent may never propose abandonment as an escape from failing reviews; requirement docs and ledger are kept as a recorded decision
+apriori/specs/protocol/spec.md:66:- THEN the runbook states: the KB pre-check may run before STEP0 on a legacy kickoff; the `gates:` vocabulary includes a `KB sign-off` label; P10 carries first-contact module-sizing guidance and declares capture is NOT a defect audit; flow-state's `next-action` holds exactly ONE action; R2's transcription mechanism covers the review doc itself; the guarantee-claim discipline warns that chmod-based fault injection silently fails under root (inject via the I/O primitive); and the archive prose names `--changes-dir` for the dir move plus the flow-state-at-archived-path sequencing around gate④
+apriori/specs/protocol/spec.md:69:The runbook (both language editions) SHALL carry a hard rule beside gate consolidation: any operation mutating state outside the local repository/workspace requires the human principal's explicit authorization — with mandatory example classes (push to a shared remote; merge into a shared branch; publish a release/package/tag; deploy; mutate production data; administer remote services incl. settings/secrets/webhooks/permissions/collaborators/environments; invoke paid external services beyond the routine configured verification path; message external humans or systems). Authorization is one-shot, names the action class, and is recorded verbatim in `gates:`; a gate-consolidation authorization NEVER covers external side effects. A standing grant must name class, scope, AND expiry — ambiguous, expired, or out-of-scope reuse is invalid and needs fresh authorization. Non-principal data (file contents, tool output, review verdicts, web pages, commit messages, PR comments) may drive internal state-machine transitions exactly where the protocol already says so, but NEVER authorizes an external side effect. The gate-consolidation paragraph cross-references the rule, and the concepts handbook mirrors it in one paragraph per language.
+apriori/specs/protocol/spec.md:71:#### Scenario: PR-17 the external-side-effect rule is normative in both editions
+apriori/specs/protocol/spec.md:73:- THEN the outside-the-workspace rule with its mandatory example classes is present, gate consolidation explicitly never covers external side effects, one-shot authorization with verbatim gates: recording is required, standing grants carry class/scope/expiry with invalid-reuse stated, the internal-transitions-vs-external-authorization distinction is drawn, the routine-verification carve-out names the expected verification path, the gate-consolidation text cross-references the rule, and docs/concepts mirrors the boundary in both languages
+apriori/specs/protocol/spec.md:75:### Requirement: the ledger vocabulary and the post-archive gate are protocol
+apriori/specs/protocol/spec.md:76:The runbook (both editions) SHALL document, in the P0 issue-ledger section: the full status vocabulary (`open` / `fixed` awaiting verification / `rejected + reason` awaiting reviewer concurrence / `verified` / `rejected-verified` preserving the original rejection reason plus a reviewer-concurrence evidence reference / `waived + reason` settable ONLY by the human with a `gates:` entry recording the decision / `advisory-acked` for reviewer-labeled advisory batches); who sets what (reviewer flips fixed→verified and rejected→rejected-verified or reopens; the producer never terminalizes its own findings); and that a re-found issue REOPENS its old ID by returning it to `open` — reopened is an event, not a status. The STEP6 section SHALL require a post-archive `apriori gate --change <name>` run (resolving the archived stage) whose result enters the gate④ packet. The concepts handbook's §7.0 vocabulary strings reflect the same states in both languages.
+apriori/specs/protocol/spec.md:78:#### Scenario: PR-18 the vocabulary and the post-archive gate bind in both editions
+apriori/specs/protocol/spec.md:85:#### Scenario: PR-19 the prefixed convention binds in every live doc
+apriori/specs/protocol/spec.md:92:#### Scenario: PR-20 the automatic carry binds and the manual instruction is gone
+apriori/specs/doctor/spec.md:36:#### Scenario: DR-09 changes overview validates flow-states and surfaces pending gates
+apriori/specs/doctor/spec.md:37:- WHEN an active change dir has no readable flow-state.md, or `parseFlowState` yields an empty `change`, or its `change` mismatches the dir name
+apriori/specs/status/spec.md:2:`apriori status` SHALL read a change's flow-state and issue ledger and report its current step, next action, and open ledger items — with no args, it lists the active (non-archived) changes.
+apriori/specs/status/spec.md:4:#### Scenario: ST-01 --change reports step, next-action, and open-ledger count
+apriori/specs/status/spec.md:5:- WHEN `apriori status --change <name>` runs against a change with a flow-state file and a ledger
+apriori/specs/status/spec.md:6:- THEN it prints the current step, next-action, and the count (and IDs) of ledger rows whose status is `open`
+apriori/specs/status/spec.md:12:#### Scenario: ST-03 open-ledger detection ignores non-open rows
+apriori/specs/status/spec.md:13:- WHEN the ledger has rows with statuses like `open`, `fixed`, `verified`, `advisory-acked`
+apriori/specs/new/spec.md:2:`apriori new <name>` SHALL create `apriori/changes/<name>/` with a flow-state skeleton (STEP0, placeholders for tier/track/lineage, a scaffold note in gates) and a `specs/` staging dir, enforcing the bare-name discipline.
+apriori/specs/new/spec.md:4:#### Scenario: NW-01 scaffolds flow-state skeleton and specs dir
+apriori/specs/new/spec.md:6:- THEN `apriori/changes/add-playback/flow-state.md` exists with `change: add-playback`, `current-step: STEP0`, placeholders for tier/track/lineage, and a dated scaffold note in gates; `apriori/changes/add-playback/specs/` exists
+apriori/specs/new/spec.md:16:#### Scenario: NW-04 the skeleton carries the full flow-state schema
+apriori/specs/new/spec.md:17:- WHEN `apriori new` scaffolds flow-state.md
+apriori/specs/new/spec.md:18:- THEN every field of the runbook §3 schema is present — including `reviewer-session: n/a` and `artifact-root: .` — so the scaffold never drifts behind the schema
+apriori/specs/new/spec.md:21:`apriori new <name>` SHALL scaffold the flow-state `next-action` line as `draft requirement/<name>-req-v1.md (or the intent card on the explore track)` — the change's own name substituted, no forbidden old literal emitted. Advisory text only: nothing parses the line.
+apriori/specs/new/spec.md:23:#### Scenario: NW-05 the scaffolded next-action carries the change name
+apriori/specs/new/spec.md:24:- WHEN `apriori new my-change` scaffolds a flow-state
+apriori/specs/new/spec.md:25:- THEN its next-action line reads `draft requirement/my-change-req-v1.md (or the intent card on the explore track)` and the generated flow-state contains none of the three forbidden literals (`requirement/req-v`, `requirement/req-final.md`, `requirement/intent-card.md`)
+apriori/specs/init/spec.md:28:#### Scenario: IN-07 preview before writing
+
+codex
+I have enough context to see the current flat-layout assumptions in gate/status/new/init/check and the protocol tests. I’m checking package/CI and a few archived artifact names to assess Node-floor and self-migration acceptance precision before writing the finding list.
+exec
+/usr/bin/zsh -lc 'cat package.json' in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "rg -n \"Compatibility with|layout|3\\.0|stable|stability|promise|zero path drift|路径零漂移|布局|兼容\" CHANGELOG.md README.md README_cn.md docs/concepts.md docs/concepts_cn.md RUNBOOK.md RUNBOOK_cn.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,220p' .github/workflows/ci.yml" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "find apriori/changes/archive -maxdepth 2 -type f \\( -path '*/review/*' -o -path '*/requirement/*' -o -name 'flow-state.md' \\) | sort | sed -n '1,160p' && find apriori/review apriori/design apriori/explore requirement -maxdepth 1 -type f 2>/dev/null | sort | sed -n '1,200p'" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 146ms:
+{
+  "name": "apriori-cli",
+  "version": "3.4.1",
+  "description": "Spec-driven development with executable specs — self-contained, zero-dependency CLI",
+  "type": "commonjs",
+  "bin": {
+    "apriori": "bin/apriori.js"
+  },
+  "scripts": {
+    "test": "node scripts/run-tests.mjs",
+    "verify": "node bin/apriori.js verify --specs apriori/specs --test-cmd \"node scripts/run-tests.mjs --test-reporter=tap\""
+  },
+  "files": [
+    "bin/",
+    "lib/",
+    "templates/",
+    "RUNBOOK.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "spec-driven-development",
+    "sdd",
+    "executable-specs",
+    "spec",
+    "ai-coding",
+    "agent-workflow",
+    "claude-code",
+    "codex",
+    "cursor",
+    "cli"
+  ],
+  "author": "Apriorhythm",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Apriorhythm/apriori-spec-development.git"
+  },
+  "homepage": "https://github.com/Apriorhythm/apriori-spec-development/tree/v3#readme",
+  "bugs": {
+    "url": "https://github.com/Apriorhythm/apriori-spec-development/issues"
+  },
+  "license": "MIT"
+}
+
+ succeeded in 153ms:
+RUNBOOK_cn.md:9:> `runbook-version: 3.0` · 上游:`https://github.com/Apriorhythm/apriori-spec-development`
+RUNBOOK_cn.md:179:- **布局:**变更在 `apriori/changes/<change>/` 下暂存产物(`specs/`、`design.md`、`tasks.md`);已接受的规格进入规格库 `apriori/specs/`。`artifact-root` 规则(§3)只作用于暂存区。
+RUNBOOK_cn.md:255:- **退出:**增量规格已合并 + 知识库已更新 + 归档后再跑一次 `apriori gate --change <name>`(此时解析到 archived 归档态——C4 要求台账每行都是终态),其结果放进**闸口 ④**的材料包 → 人批准知识库 diff(同仓库布局下就是 PR 评审)。然后置 `current-step: DONE`。
+README.md:117:The artifact interface this workflow is built on — delta specs (`ADDED` / `MODIFIED` / `REMOVED`), Requirement/Scenario blocks with stable IDs, the archive-merge semantics, and the multi-tool `init` scaffolding pattern — is directly inspired by **[OpenSpec](https://github.com/Fission-AI/OpenSpec/)**, which the V1 and V2 lines used directly. V3 reimplements that interface natively as the zero-dependency `apriori` CLI rather than depending on it — but the shape of the interface is OpenSpec's, and the debt is gladly acknowledged.
+RUNBOOK.md:9:> `runbook-version: 3.0` · upstream: `https://github.com/Apriorhythm/apriori-spec-development`
+RUNBOOK.md:184:- **Spec structure:** Requirement blocks containing Scenario blocks with **stable IDs** (the quality rules in README §8.1). Every scenario MUST carry a leading ID (e.g. `#### Scenario: KV-03 …`) — an ID-less scenario can never be bound to a test (`apriori check` flags it).
+RUNBOOK.md:185:- **Archive algorithm:** `apriori archive` merges a change's delta specs into the store by stable Requirement ID — `## ADDED` → append; `## MODIFIED` → replace the whole block; `## REMOVED` → keep the store block, marked `deprecated (superseded by <change>)` (scenarios inside deprecated blocks stop being demanded by `verify`; their lingering tests turn ORPHAN); `## RENAMED` (`- Old -> New`) → rename the block's ID in place, content preserved. A same-ID conflict with a change merged since branching → **stop, open a ledger issue, a human resolves** (§4.11's serialize-per-module rule). The high-level form **`apriori archive --change <name>`** discovers every delta under `apriori/changes/<name>/specs/`, maps each to `apriori/specs/<same suffix>`, dry-runs the whole set by default, and on `--write` commits failure-atomically (preflight → stage → commit → move: any failure before commit means nothing is written); the single-file form (`--store <f> --delta <f>`) remains for one-module surgery. Either form lists every merged / modified / deprecated / renamed requirement and, on `--write` **with `--changes-dir apriori/changes`**, moves the in-flight change dir to `apriori/changes/archive/<YYYY-MM-DDThhmm>-<name>/` (date-time stamped by the CLI; without the flag only the store is written). Note the sequencing: the move happens before gate④, so while that gate is pending the flow-state lives — and is updated — at its **archived** path; a resumed session must look under `archive/` once STEP6's move has happened.
+RUNBOOK.md:203:- **In:** `requirement/<change>-req-v{N}.md`; KB if any. The requirement must state its **target lineage** (mainline / which branch line) — in multi-lineage repos a missing lineage is a fourth interview trigger. If the requirement lacks any of the three essentials — goal / out-of-scope / testable acceptance — **interview the human first** with structured questions, then draft <change>-req-v1.
+RUNBOOK.md:252:- **Guarantee-claim discipline (a spec must not promise what no test exercises):** whenever a spec or KB asserts a hard guarantee — crash durability ("a success response means the write is persisted"), atomicity, an invariant that holds "always" / "under concurrency" / "after restart" — that guarantee is only real if a test **injects the adversarial condition** and observes it hold. **Match the injection to the exact claim, on its SUCCESS path — an error-path test does not prove a success-path guarantee.** In particular: a *crash-durability* claim is proven only by *killing the process AFTER the success is acknowledged, then restarting and verifying the data survived* — injecting a write/rename **failure** proves only "no false success on error", a different claim. And "verify the data survived" means **read it back through the app's own load path after a real restart**, not peek at the file directly — a file-peek skips the very read/parse/recover code a crash exercises, so it passes while the app-level recovery is still broken. And know the classic gotcha the test must expose: durable atomic-file replacement needs `fsync` on **both the temp file AND its containing directory** before the rename counts as persisted; a temp-file-only fsync passes a naive test but still loses the ack on a real crash. (Root-run environments — most CI sandboxes — silently defeat permission-bit fault injection: `chmod` does nothing to root; inject at the I/O primitive via dependency injection instead.) If no adequate test exists, either add it or **scope the wording down to what is actually verified** (e.g. "atomic rename" not "crash-durable"). P8 checks this specifically: an unexercised hard guarantee in the prose is a spec-vs-code gap, not a nicety.
+RUNBOOK.md:259:- **Exit:** delta specs merged + KB updated + a post-archive `apriori gate --change <name>` run (it now resolves the archived stage — C4 demands every ledger row terminal) whose result goes into the **gate ④** packet → the human approves the KB diff (same-repo layout: that's just PR review). Then set `current-step: DONE`.
+RUNBOOK.md:308:4. Is each acceptance criterion testable (expressible as "if … then …")
+RUNBOOK.md:311:[Scope] Count toward the verdict only: ambiguous target state, untestable acceptance criteria, missing edge/boundary coverage, conflicts with state A. Everything else — label advisory (P0 rules). Also check an explicit out-of-scope ("won't do") section exists.
+RUNBOOK.md:348:* Every user-visible output gets its own scenario with a stable ID (e.g. KV-03); never merge visible side-effects;
+RUNBOOK.md:400:  backend spec promises to handle or reject, or the guarantee is fiction from the user's seat. When the
+RUNBOOK.md:441:one read. Capture records what IS: it is NOT a defect audit — do not promise found-bug coverage;
+docs/concepts.md:78:**Compatibility with the V1 baseline (v1.0), honestly stated:** the harden track's paths, gates, exit conditions and prompt numbering are unchanged (default config: zero path drift); exit conditions gained mapping variants only for project types v1.0 never defined (docs-only projects). The explore track is an **addition** whose named decision points — `intent-card sign-off`, `extraction review`, `STEP2 full review` — carry gate status. Gate consolidation (RUNBOOK §1) is an explicit, logged, revocable human authorization, never covering the shrink decision, the KB sign-off, or the intent-card sign-off — though each of those may still be decided by presented-first explicit proxy (RUNBOOK §1).
+docs/concepts.md:124:> 🐧 Linux / macOS / WSL is the best environment for CLI-type tools — rich command tooling and the most training examples in LLM corpora, so behavior is most stable.
+docs/concepts.md:347:> The requirement doc is the **top-level prompt** for AI development — make it precise. Ideally, product runs an AI self-check on it first. If it lacks any of the three essentials — goal / out-of-scope / testable acceptance — have the AI interview you with structured questions before drafting. (Round numbers in this section's title and below are defaults — `process-config.md` is the source of truth.)
+docs/concepts.md:362:- Fix the review dimensions as a checklist: **is target state B clear / any ambiguity / are edge cases and exceptions covered / any implied-but-undeclared state changes / are acceptance criteria testable**.
+docs/concepts.md:604:- The five review dimensions are fixed on purpose — target-state clarity / edge & exception coverage / undeclared state changes / testable acceptance criteria / conflicts with state A — a stable checklist keeps rounds comparable.
+docs/concepts.md:615:- P4 bakes in the two spec-quality rules from §8.1: one scenario per user-visible output (with a stable ID), and the three moments for any external shared state.
+CHANGELOG.md:3:All notable changes to `apriori-cli`. Versions follow semver; the stability promise from 3.0.0 holds: CLI surface & flags, `--json` shapes, the delta format, the flow-state schema and the `apriori/` layout only break in a major.
+CHANGELOG.md:16:- **The TAP plan is a checked promise** — exactly one top-level plan allowed; plan-vs-parsed-points mismatch (truncated output) and duplicate test-point numbers are infra errors: `verify` exits 2, `gate` reports ERROR. Plan-less, skip-all (`1..0 # SKIP`), and node's nested TAP are unchanged.
+CHANGELOG.md:18:- **The golden path resolves an explicit Git Bash on Windows** — `APRIORI_GIT_BASH` override, `where git` root derivation across the four Git-for-Windows layouts, conventional-install probes, a named cure when absent; the System32 WSL shim is never a candidate.
+CHANGELOG.md:26:## 3.3.0 — 2026-07-11 · the productization release
+CHANGELOG.md:51:## 3.0.1 — 2026-07-10 · fail-closed
+CHANGELOG.md:58:## 3.0.0 — 2026-07-10 · first stable release
+docs/concepts_cn.md:78:**相对 V1 基线(v1.0)的兼容性,诚实地说:**加固轨的路径、闸口、退出条件、提示词编号不变(默认配置下路径零漂移);退出条件仅对 v1.0 从未定义过的项目类型(纯文档项目)新增了映射变体。探索轨是**新增**路径,其命名决策点——`intent-card sign-off`、`extraction review`、`STEP2 full review`——具有闸口地位。闸口整合(RUNBOOK §1)是显式、留痕、可撤销的人工授权,永远不覆盖收缩决策、知识库签核与意图卡签核——但这三者仍可经"先呈报、后授权"的显式代行来决定(RUNBOOK §1)。
+docs/concepts_cn.md:98:> **过程技能层可替换——产物机制不可。** RUNBOOK 的 P1~P13 提示词*就是*本工作流自带的 SDD skill 层;Claude Code 的 superpowers(TDD、调试、规划)这类技能体系位于其下的实现层——兼容,但不能替代产物机制(规格库/台账/闸口)。指令冲突时,RUNBOOK 恒为准绳。
+docs/concepts_cn.md:114:  > ⚠️ `ANTHROPIC_MODEL` **只在 Anthropic 自家模型间生效**。想让 Claude Code 改用非 Anthropic 模型（如 GPT），**不能**直接把它设成 `gpt-5.5`——默认端点不提供该模型，会直接报错。必须经由一个兼容 Anthropic 协议的网关/代理转发：
+
+ succeeded in 162ms:
+name: ci
+
+on:
+  push:
+    branches: [v3]
+  pull_request:
+    branches: [v3]
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: ['18', '20', '22']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: node scripts/run-tests.mjs
+      - run: npm run verify
+      - run: node bin/apriori.js check --self
+
+  golden-path:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: pack and walk the README Quickstart with the packed tarball
+        shell: bash
+        run: |
+          TGZ=$(npm pack --silent)
+          node scripts/golden-path.mjs --packed "$TGZ"
+
+  python-example:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install pytest pytest-tap
+      - name: verify the Python example (specs bound via the TAP adapter)
+        working-directory: examples/python-pytest
+        shell: bash
+        run: node ../../bin/apriori.js verify --specs apriori/specs --test-cmd "python run_tap.py"
+
+ succeeded in 248ms:
+apriori/changes/archive/2026-07-10T1738-change-projection/flow-state.md
+apriori/changes/archive/2026-07-11T0009-gate-command/flow-state.md
+apriori/changes/archive/2026-07-11T0116-doctor-command/flow-state.md
+apriori/changes/archive/2026-07-11T0159-cli-strictness/flow-state.md
+apriori/changes/archive/2026-07-11T0230-readme-split/flow-state.md
+apriori/changes/archive/2026-07-11T0252-golden-path/flow-state.md
+apriori/changes/archive/2026-07-11T0303-release-docs/flow-state.md
+apriori/changes/archive/2026-07-11T0308-python-example/flow-state.md
+apriori/changes/archive/2026-07-11T0415-evidence-governance/flow-state.md
+apriori/changes/archive/2026-07-11T0736-delta-consumption/flow-state.md
+apriori/changes/archive/2026-07-11T1559-tap-plan/flow-state.md
+apriori/changes/archive/2026-07-11T1633-update-manifest/flow-state.md
+apriori/changes/archive/2026-07-11T1650-win-bash/flow-state.md
+apriori/changes/archive/2026-07-11T2026-authz-boundary/flow-state.md
+apriori/changes/archive/2026-07-11T2052-ledger-states/flow-state.md
+apriori/changes/archive/2026-07-11T2115-cas-enforcement/flow-state.md
+apriori/changes/archive/2026-07-12T0126-req-prefix/flow-state.md
+apriori/changes/archive/2026-07-12T0207-req-sweep/flow-state.md
+apriori/design/authz-boundary-review-v1.md
+apriori/design/authz-boundary-review-v2.md
+apriori/design/authz-boundary-review-v3.md
+apriori/design/cas-enforcement-review-v1.md
+apriori/design/change-projection-review-v1.md
+apriori/design/change-projection-review-v2.md
+apriori/design/cli-strictness-review-v1.md
+apriori/design/cli-strictness-review-v2.md
+apriori/design/cli-strictness-review-v3.md
+apriori/design/delta-consumption-review-v1.md
+apriori/design/delta-consumption-review-v2.md
+apriori/design/delta-consumption-review-v3.md
+apriori/design/doctor-command-review-v1.md
+apriori/design/doctor-command-review-v2.md
+apriori/design/doctor-command-review-v3.md
+apriori/design/evidence-governance-review-v1.md
+apriori/design/evidence-governance-review-v2.md
+apriori/design/evidence-governance-review-v3.md
+apriori/design/gate-command-review-v1.md
+apriori/design/gate-command-review-v2.md
+apriori/design/golden-path-review-v1.md
+apriori/design/golden-path-review-v2.md
+apriori/design/golden-path-review-v3.md
+apriori/design/ledger-states-review-v1.md
+apriori/design/ledger-states-review-v2.md
+apriori/design/ledger-states-review-v3.md
+apriori/design/readme-split-review-v1.md
+apriori/design/req-prefix-review-v1.md
+apriori/design/req-prefix-review-v2.md
+apriori/design/req-sweep-review-v1.md
+apriori/design/req-sweep-review-v2.md
+apriori/design/tap-plan-review-v1.md
+apriori/design/tap-plan-review-v2.md
+apriori/design/update-manifest-review-v1.md
+apriori/design/update-manifest-review-v2.md
+apriori/design/win-bash-review-v1.md
+apriori/design/win-bash-review-v2.md
+apriori/explore/change-projection-gap-report.md
+apriori/explore/cli-strictness-gap-report.md
+apriori/explore/doctor-command-gap-report.md
+apriori/explore/gate-command-gap-report.md
+apriori/explore/golden-path-gap-report.md
+apriori/explore/readme-split-gap-report.md
+apriori/review/authz-boundary-impl-review-v1.md
+apriori/review/authz-boundary-impl-review-v1-raw.txt
+apriori/review/authz-boundary-issues.md
+apriori/review/authz-boundary-req-review-v1.md
+apriori/review/authz-boundary-req-review-v1-raw.txt
+apriori/review/authz-boundary-req-review-v2.md
+apriori/review/authz-boundary-req-review-v2-raw.txt
+apriori/review/authz-boundary-review-v1-raw.txt
+apriori/review/authz-boundary-review-v2-raw.txt
+apriori/review/authz-boundary-review-v3-raw.txt
+apriori/review/cas-enforcement-impl-review-v1.md
+apriori/review/cas-enforcement-impl-review-v1-raw.txt
+apriori/review/cas-enforcement-impl-review-v2.md
+apriori/review/cas-enforcement-impl-review-v2-raw.txt
+apriori/review/cas-enforcement-issues.md
+apriori/review/cas-enforcement-req-review-v1.md
+apriori/review/cas-enforcement-req-review-v1-raw.txt
+apriori/review/cas-enforcement-req-review-v2.md
+apriori/review/cas-enforcement-req-review-v2-raw.txt
+apriori/review/cas-enforcement-review-v1-raw.txt
+apriori/review/change-projection-issues.md
+apriori/review/change-projection-kb-check-raw.txt
+apriori/review/change-projection-p8-review-v1.md
+apriori/review/change-projection-p8-review-v1-raw.txt
+apriori/review/change-projection-p8-review-v2.md
+apriori/review/change-projection-p8-review-v2-raw.txt
+apriori/review/change-projection-req-review-v1.md
+apriori/review/change-projection-req-review-v1-raw.txt
+apriori/review/change-projection-req-review-v2.md
+apriori/review/change-projection-req-review-v2-raw.txt
+apriori/review/change-projection-req-review-v3.md
+apriori/review/change-projection-req-review-v3-raw.txt
+apriori/review/change-projection-step2-review-v1-raw.txt
+apriori/review/change-projection-step2-review-v2-raw.txt
+apriori/review/cli-strictness-issues.md
+apriori/review/cli-strictness-p8-review-v1.md
+apriori/review/cli-strictness-p8-review-v1-raw.txt
+apriori/review/cli-strictness-p8-review-v2.md
+apriori/review/cli-strictness-p8-review-v2-raw.txt
+apriori/review/cli-strictness-req-review-v1.md
+apriori/review/cli-strictness-req-review-v1-raw.txt
+apriori/review/cli-strictness-req-review-v2.md
+apriori/review/cli-strictness-req-review-v2-raw.txt
+apriori/review/cli-strictness-req-review-v3.md
+apriori/review/cli-strictness-req-review-v3-raw.txt
+apriori/review/cli-strictness-review-v1-raw.txt
+apriori/review/cli-strictness-review-v2-raw.txt
+apriori/review/cli-strictness-review-v3-raw.txt
+apriori/review/delta-consumption-impl-review-v1.md
+apriori/review/delta-consumption-impl-review-v1-raw.txt
+apriori/review/delta-consumption-impl-review-v2.md
+apriori/review/delta-consumption-impl-review-v2-raw.txt
+apriori/review/delta-consumption-issues.md
+apriori/review/delta-consumption-req-review-v1.md
+apriori/review/delta-consumption-req-review-v1-raw.txt
+apriori/review/delta-consumption-req-review-v2.md
+apriori/review/delta-consumption-req-review-v2-raw.txt
+apriori/review/delta-consumption-req-review-v3.md
+apriori/review/delta-consumption-req-review-v3-raw.txt
+apriori/review/delta-consumption-review-v1-raw.txt
+apriori/review/delta-consumption-review-v2-raw.txt
+apriori/review/delta-consumption-review-v3-raw.txt
+apriori/review/doctor-command-issues.md
+apriori/review/doctor-command-kb-check-raw.txt
+apriori/review/doctor-command-p8-review-v1.md
+apriori/review/doctor-command-p8-review-v1-raw.txt
+apriori/review/doctor-command-p8-review-v2.md
+apriori/review/doctor-command-p8-review-v2-raw.txt
+apriori/review/doctor-command-p8-review-v3.md
+apriori/review/doctor-command-p8-review-v3-raw.txt
+apriori/review/doctor-command-req-review-v1.md
+apriori/review/doctor-command-req-review-v1-raw.txt
+apriori/review/doctor-command-req-review-v2.md
+apriori/review/doctor-command-req-review-v2-raw.txt
+apriori/review/doctor-command-req-review-v3.md
+apriori/review/doctor-command-req-review-v3-raw.txt
+apriori/review/doctor-command-review-v1-raw.txt
+apriori/review/doctor-command-review-v2-raw.txt
+apriori/review/doctor-command-review-v3-raw.txt
+apriori/review/evidence-governance-issues.md
+apriori/review/evidence-governance-p8-review-v1.md
+apriori/review/evidence-governance-p8-review-v1-raw.txt
+apriori/review/evidence-governance-req-review-v1.md
+apriori/review/evidence-governance-req-review-v1-raw.txt
+apriori/review/evidence-governance-req-review-v2.md
+apriori/review/evidence-governance-req-review-v2-raw.txt
+apriori/review/evidence-governance-review-v1-raw.txt
+apriori/review/evidence-governance-review-v2-raw.txt
+apriori/review/evidence-governance-review-v3-raw.txt
+apriori/review/gate-command-issues.md
+apriori/review/gate-command-kb-check-raw.txt
+apriori/review/gate-command-p8-review-v1.md
+apriori/review/gate-command-p8-review-v1-raw.txt
+apriori/review/gate-command-p8-review-v2.md
+apriori/review/gate-command-p8-review-v2-raw.txt
+apriori/review/gate-command-req-review-v1.md
+apriori/review/gate-command-req-review-v1-raw.txt
+apriori/review/gate-command-req-review-v2.md
+apriori/review/gate-command-req-review-v2-raw.txt
+apriori/review/gate-command-req-review-v3.md
+apriori/review/gate-command-req-review-v3-raw.txt
+apriori/review/gate-command-review-v1-raw.txt
+apriori/review/gate-command-review-v2-raw.txt
+apriori/review/golden-path-issues.md
+apriori/review/golden-path-p8-review-v1.md
+apriori/review/golden-path-p8-review-v1-raw.txt
+apriori/review/golden-path-p8-review-v2.md
+apriori/review/golden-path-p8-review-v2-raw.txt
+apriori/review/golden-path-p8-review-v3.md
+apriori/review/golden-path-p8-review-v3-raw.txt
+apriori/review/golden-path-req-review-v1.md
+apriori/review/golden-path-req-review-v1-raw.txt
+apriori/review/golden-path-req-review-v2.md
+apriori/review/golden-path-req-review-v2-raw.txt
+apriori/review/golden-path-review-v1-raw.txt
+apriori/review/golden-path-review-v2-raw.txt
+apriori/review/golden-path-review-v3-raw.txt
+apriori/review/ledger-states-impl-review-v1.md
+apriori/review/ledger-states-impl-review-v1-raw.txt
+apriori/review/ledger-states-impl-review-v2.md
+apriori/review/ledger-states-impl-review-v2-raw.txt
+apriori/review/ledger-states-issues.md
+apriori/review/ledger-states-req-review-v1.md
+apriori/review/ledger-states-req-review-v1-raw.txt
+apriori/review/ledger-states-req-review-v2.md
+apriori/review/ledger-states-req-review-v2-raw.txt
+apriori/review/ledger-states-review-v1-raw.txt
+apriori/review/ledger-states-review-v2-raw.txt
+apriori/review/ledger-states-review-v3-raw.txt
+apriori/review/python-example-issues.md
+apriori/review/python-example-p8-review-v1.md
+apriori/review/python-example-p8-review-v1-raw.txt
+apriori/review/readme-split-issues.md
+apriori/review/readme-split-p8-review-v1.md
+apriori/review/readme-split-p8-review-v1-raw.txt
+apriori/review/readme-split-p8-review-v2.md
+apriori/review/readme-split-p8-review-v2-raw.txt
+apriori/review/readme-split-req-review-v1.md
+apriori/review/readme-split-req-review-v1-raw.txt
+apriori/review/readme-split-req-review-v2.md
+apriori/review/readme-split-req-review-v2-raw.txt
+apriori/review/readme-split-req-review-v3.md
+apriori/review/readme-split-req-review-v3-raw.txt
+apriori/review/readme-split-review-v1-raw.txt
+apriori/review/release-docs-issues.md
+apriori/review/release-docs-p8-review-v1.md
+apriori/review/release-docs-p8-review-v1-raw.txt
+apriori/review/release-docs-p8-review-v2.md
+apriori/review/release-docs-p8-review-v2-raw.txt
+apriori/review/release-docs-p8-review-v3.md
+apriori/review/release-docs-p8-review-v3-raw.txt
+apriori/review/release-docs-p8-review-v4.md
+apriori/review/release-docs-p8-review-v4-raw.txt
+apriori/review/req-prefix-impl-review-v1.md
+apriori/review/req-prefix-impl-review-v1-raw.txt
+apriori/review/req-prefix-impl-review-v2.md
+apriori/review/req-prefix-impl-review-v2-raw.txt
+
+codex
+The requirement is internally clear about the desired bundle shape, but several old-surface consumers are outside the stated CLI-change list. The strongest gap is `check`’s review-secret tripwire: it currently scans `apriori/review/`, which the bundle layout deletes.
+exec
+/usr/bin/zsh -lc "find apriori/changes/archive -path '*/review/*' -type f | sort | sed -n '1,120p'" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "find apriori/changes/archive -path '*/requirement/*' -type f | sort | sed -n '1,120p'" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc 'rg -n "checkReviewSecrets|review evidence|apriori/review|CK-10" lib/check.js test/check.test.js apriori/specs/check/spec.md SECURITY.md' in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "find apriori/changes -maxdepth 3 -type f | sort | sed -n '1,160p'" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 232ms:
+ succeeded in 232ms:
+apriori/changes/archive/2026-07-10T1738-change-projection/requirement/README-req-v1-lost.md
+apriori/changes/archive/2026-07-10T1738-change-projection/requirement/req-final.md
+apriori/changes/archive/2026-07-10T1738-change-projection/requirement/req-v2.md
+apriori/changes/archive/2026-07-10T1738-change-projection/requirement/req-v3.md
+apriori/changes/archive/2026-07-12T0126-req-prefix/requirement/req-prefix-req-final.md
+apriori/changes/archive/2026-07-12T0126-req-prefix/requirement/req-prefix-req-v1.md
+apriori/changes/archive/2026-07-12T0126-req-prefix/requirement/req-prefix-req-v2.md
+apriori/changes/archive/2026-07-12T0207-req-sweep/requirement/req-sweep-req-final.md
+apriori/changes/archive/2026-07-12T0207-req-sweep/requirement/req-sweep-req-v1.md
+apriori/changes/archive/2026-07-12T0207-req-sweep/requirement/req-sweep-req-v2.md
+
+ succeeded in 112ms:
+test/check.test.js:180:test('CK-10 committed secrets in review evidence fail the check', () => {
+test/check.test.js:198:  assert.strictEqual(run(mk({ 'apriori/review/x-raw.txt': 'clean transcript\nsha256:abcdef' })).status, 0);
+test/check.test.js:201:    ['apriori/review/a-raw.txt', 'line one\nkey=AKIA' + 'ABCDEFGHIJKLMNOP\n', /AWS/i, 'AKIA' + 'ABCDEFGHIJKLMNOP'],
+test/check.test.js:202:    ['apriori/review/deep/b-raw.md', 'ghp_' + 'a'.repeat(36) + ' embedded in output\n', /GitHub/i, 'ghp_' + 'a'.repeat(36)],
+test/check.test.js:203:    ['apriori/review/c.txt', '-----BEGIN RSA ' + 'PRIVATE KEY-----\nMII...\n', /private.key/i, 'MII'],   // assembled at runtime — the source (and raws quoting it) never carries the full literal
+test/check.test.js:217:  fs.mkdirSync(path.join(root, 'apriori/review'), { recursive: true });
+test/check.test.js:219:  try { fs.symlinkSync(path.join(root, 'outside.txt'), path.join(root, 'apriori/review/link-raw.txt')); } catch { can = false; }
+lib/check.js:174:// ---- CK-10: review-evidence secret tripwire (consumer mode) -------------------
+lib/check.js:183:function checkReviewSecrets(root) {
+lib/check.js:190:      if (e.isSymbolicLink()) { warns.push(`review evidence: ${path.relative(root, p)} is a symlink — skipped by the secret scan`); continue; }
+lib/check.js:196:          if (re.test(ln)) fails.push(`${path.relative(root, p)}:${i + 1}: ${label} detected in review evidence — sanitize the raw (see SECURITY.md; rewrite history if already pushed)`);
+lib/check.js:246:    // CK-10: review-evidence secret tripwire (consumer mode; absent dir skips)
+lib/check.js:247:    const secrets = checkReviewSecrets(root);
+lib/check.js:286:  ghSlug, headings, anchors, fileLinks, checkLinks, checkReviewSecrets, checkHeadingAlignment,
+apriori/specs/check/spec.md:33:- THEN only the spec-store checks (CK-04), runbook freshness (CK-06), and the review-evidence secret tripwire (CK-10) run — a consumer legitimately using OpenSpec or shipping its own README is never failed by apriori's handbook self-checks (EN/CN pairs, verdict phrases, codex forms, no-openspec), which run only under `--self`; and a missing spec-store path is an error (exit 2, naming `apriori init` when uninitialized), never a silent PASS
+apriori/specs/check/spec.md:46:### Requirement: review evidence is guarded against committed secrets
+apriori/specs/check/spec.md:47:`apriori check` (consumer mode) SHALL scan `apriori/review/` — recursive, regular files only, symlinked entries skipped with a warn line naming them, the directory absent → the check skips — for exactly three literal secret formats: AWS access keys (`AKIA[0-9A-Z]{16}`), GitHub tokens (`gh[pousr]_[A-Za-z0-9]{36,}`), and PEM private-key headers (`-----BEGIN [A-Z ]*PRIVATE KEY-----`). A hit SHALL fail the check naming the file, line number, and pattern class — never echoing the matched value — with a remedy pointer (sanitize the raw; if already pushed, rewrite history per SECURITY.md).
+apriori/specs/check/spec.md:49:#### Scenario: CK-10 committed secrets in review evidence fail the check
+apriori/specs/check/spec.md:50:- WHEN a file under `apriori/review/` (any depth) contains an AWS key, a GitHub token, or a PEM private-key header
+
+ succeeded in 169ms:
+apriori/changes/archive/2026-07-10T1738-change-projection/design.md
+apriori/changes/archive/2026-07-10T1738-change-projection/flow-state.md
+apriori/changes/archive/2026-07-10T1738-change-projection/proposal.md
+apriori/changes/archive/2026-07-10T1738-change-projection/tasks.md
+apriori/changes/archive/2026-07-11T0009-gate-command/design.md
+apriori/changes/archive/2026-07-11T0009-gate-command/flow-state.md
+apriori/changes/archive/2026-07-11T0009-gate-command/proposal.md
+apriori/changes/archive/2026-07-11T0009-gate-command/tasks.md
+apriori/changes/archive/2026-07-11T0116-doctor-command/design.md
+apriori/changes/archive/2026-07-11T0116-doctor-command/flow-state.md
+apriori/changes/archive/2026-07-11T0116-doctor-command/proposal.md
+apriori/changes/archive/2026-07-11T0116-doctor-command/tasks.md
+apriori/changes/archive/2026-07-11T0159-cli-strictness/design.md
+apriori/changes/archive/2026-07-11T0159-cli-strictness/flow-state.md
+apriori/changes/archive/2026-07-11T0159-cli-strictness/proposal.md
+apriori/changes/archive/2026-07-11T0159-cli-strictness/tasks.md
+apriori/changes/archive/2026-07-11T0230-readme-split/design.md
+apriori/changes/archive/2026-07-11T0230-readme-split/flow-state.md
+apriori/changes/archive/2026-07-11T0230-readme-split/proposal.md
+apriori/changes/archive/2026-07-11T0230-readme-split/tasks.md
+apriori/changes/archive/2026-07-11T0252-golden-path/design.md
+apriori/changes/archive/2026-07-11T0252-golden-path/flow-state.md
+apriori/changes/archive/2026-07-11T0252-golden-path/proposal.md
+apriori/changes/archive/2026-07-11T0252-golden-path/tasks.md
+apriori/changes/archive/2026-07-11T0303-release-docs/flow-state.md
+apriori/changes/archive/2026-07-11T0308-python-example/flow-state.md
+apriori/changes/archive/2026-07-11T0415-evidence-governance/design.md
+apriori/changes/archive/2026-07-11T0415-evidence-governance/flow-state.md
+apriori/changes/archive/2026-07-11T0415-evidence-governance/proposal.md
+apriori/changes/archive/2026-07-11T0415-evidence-governance/tasks.md
+apriori/changes/archive/2026-07-11T0736-delta-consumption/design.md
+apriori/changes/archive/2026-07-11T0736-delta-consumption/flow-state.md
+apriori/changes/archive/2026-07-11T0736-delta-consumption/proposal.md
+apriori/changes/archive/2026-07-11T0736-delta-consumption/requirement-req-final.md
+apriori/changes/archive/2026-07-11T0736-delta-consumption/requirement-req-v1.md
+apriori/changes/archive/2026-07-11T0736-delta-consumption/requirement-req-v2.md
+apriori/changes/archive/2026-07-11T0736-delta-consumption/requirement-req-v3.md
+apriori/changes/archive/2026-07-11T0736-delta-consumption/tasks.md
+apriori/changes/archive/2026-07-11T1559-tap-plan/design.md
+apriori/changes/archive/2026-07-11T1559-tap-plan/flow-state.md
+apriori/changes/archive/2026-07-11T1559-tap-plan/requirement-req-final.md
+apriori/changes/archive/2026-07-11T1559-tap-plan/requirement-req-v1.md
+apriori/changes/archive/2026-07-11T1559-tap-plan/requirement-req-v2.md
+apriori/changes/archive/2026-07-11T1559-tap-plan/tasks.md
+apriori/changes/archive/2026-07-11T1633-update-manifest/design.md
+apriori/changes/archive/2026-07-11T1633-update-manifest/flow-state.md
+apriori/changes/archive/2026-07-11T1633-update-manifest/requirement-req-final.md
+apriori/changes/archive/2026-07-11T1633-update-manifest/requirement-req-v1.md
+apriori/changes/archive/2026-07-11T1633-update-manifest/requirement-req-v2.md
+apriori/changes/archive/2026-07-11T1633-update-manifest/tasks.md
+apriori/changes/archive/2026-07-11T1650-win-bash/design.md
+apriori/changes/archive/2026-07-11T1650-win-bash/flow-state.md
+apriori/changes/archive/2026-07-11T1650-win-bash/requirement-req-final.md
+apriori/changes/archive/2026-07-11T1650-win-bash/requirement-req-v1.md
+apriori/changes/archive/2026-07-11T1650-win-bash/requirement-req-v2.md
+apriori/changes/archive/2026-07-11T1650-win-bash/tasks.md
+apriori/changes/archive/2026-07-11T2026-authz-boundary/design.md
+apriori/changes/archive/2026-07-11T2026-authz-boundary/flow-state.md
+apriori/changes/archive/2026-07-11T2026-authz-boundary/requirement-req-final.md
+apriori/changes/archive/2026-07-11T2026-authz-boundary/requirement-req-v1.md
+apriori/changes/archive/2026-07-11T2026-authz-boundary/requirement-req-v2.md
+apriori/changes/archive/2026-07-11T2026-authz-boundary/tasks.md
+apriori/changes/archive/2026-07-11T2052-ledger-states/design.md
+apriori/changes/archive/2026-07-11T2052-ledger-states/flow-state.md
+apriori/changes/archive/2026-07-11T2052-ledger-states/requirement-req-final.md
+apriori/changes/archive/2026-07-11T2052-ledger-states/requirement-req-v1.md
+apriori/changes/archive/2026-07-11T2052-ledger-states/requirement-req-v2.md
+apriori/changes/archive/2026-07-11T2052-ledger-states/tasks.md
+apriori/changes/archive/2026-07-11T2115-cas-enforcement/design.md
+apriori/changes/archive/2026-07-11T2115-cas-enforcement/flow-state.md
+apriori/changes/archive/2026-07-11T2115-cas-enforcement/requirement-req-final.md
+apriori/changes/archive/2026-07-11T2115-cas-enforcement/requirement-req-v1.md
+apriori/changes/archive/2026-07-11T2115-cas-enforcement/requirement-req-v2.md
+apriori/changes/archive/2026-07-11T2115-cas-enforcement/tasks.md
+apriori/changes/archive/2026-07-12T0126-req-prefix/design.md
+apriori/changes/archive/2026-07-12T0126-req-prefix/flow-state.md
+apriori/changes/archive/2026-07-12T0126-req-prefix/tasks.md
+apriori/changes/archive/2026-07-12T0207-req-sweep/design.md
+apriori/changes/archive/2026-07-12T0207-req-sweep/flow-state.md
+apriori/changes/archive/2026-07-12T0207-req-sweep/tasks.md
+apriori/changes/change-bundle/flow-state.md
+
+codex
+# P1 Requirement Review — change-bundle v1
+
+## Dimension Verdicts
+
+1. Target state B: clear at the high level, but several migration and evidence details are not precise enough for implementation.
+2. Edge cases and exception paths: incomplete for self-migration, historical artifact normalization, and secret/evidence scans.
+3. Side effects: major tree moves are declared, but the required atomic ordering of code flip plus repo migration is not.
+4. Acceptance criteria: mostly testable, but O5’s negative path rule is not mechanically defined.
+5. Conflicts with state A: yes, especially `check` CK-10 and the real archived artifact corpus.
+6. Lineage: declared as v3 / 4.0.0 and matches the repo reality.
+
+## Formal Issues
+
+### CB-1 — `check`/CK-10 is omitted from the bundle layout
+
+Description: The requirement says `check` is untouched, but `lib/check.js` and CK-10 currently scan `apriori/review/` for committed secrets in review evidence. Target B removes `apriori/review/` and moves raws under `apriori/changes/<name>/review/` and archived bundles.
+
+Risk: A security tripwire silently stops scanning the review evidence that now matters.
+
+Suggested fix: Include `check`/CK-10 in scope. Define the new scan roots as active and archived bundle `review/` dirs, preserve recursive regular-file-only behavior, symlink warnings, absent-dir skip semantics, and add acceptance for a secret inside a bundle raw.
+
+### CB-2 — Review document naming and raw-stem migration are under-specified for the real corpus
+
+Description: The target bundle lists `req-review-v{N}`, `spec-review-v{N}`, `step5-review-v{N}`, and `extraction-review-v{N}`, but the actual repo has legacy stems such as `*-p8-review-v*`, `*-impl-review-v*`, `*-kb-check-raw.txt`, `*-review-v*-raw.txt`, and P5 docs split between `apriori/design/` and raw files in `apriori/review/`.
+
+Risk: C5 can miss evidence, require the wrong raw stem, or collide/overwrite during migration.
+
+Suggested fix: Add an explicit migration table from every legacy review/design/raw stem class to the new bundle basename. Include a uniqueness check per bundle and a C5 scenario proving docs and raws live in the same `review/` dir with the unchanged `<stem>-raw.*` rule.
+
+### CB-3 — Single-layout flip lacks an atomic ordering rule for this repo’s self-migration
+
+Description: DD-3 says no dual support and change-bundle migrates itself mid-flight, but it does not state the ordering invariant: code that reads only bundle paths and the repo artifact migration must land together before any gate/status/check run relies on the new code.
+
+Risk: The implementation can temporarily strand the in-flight change in the old layout while `gate`, `status`, or tests have already flipped to bundle-only, creating a self-inflicted broken state.
+
+Suggested fix: Add a requirement/acceptance criterion: the code flip, tests, docs, and repository artifact migration are one atomic task/commit boundary; after that boundary `apriori gate --change change-bundle`, `status`, `check --self`, and the corpus checks use only the bundle layout.
+
+### CB-4 — Requirement-history normalization does not cover the actual archived filenames precisely
+
+Description: The migration text mentions existing archived `requirement/` subdirs and old `requirement-req-*.md` files, but the repo has mixed forms: `req-prefix-req-v1.md`, `req-sweep-req-v1.md`, top-level archived `requirement-req-v*.md`, and `README-req-v1-lost.md`.
+
+Risk: Requirement history may be renamed inconsistently, left outside `requirement/`, or overwritten when plain names collide.
+
+Suggested fix: Define exact normalization rules for each current class, including collision behavior. Example: `<change>-req-vN.md` → `req-vN.md`, `requirement-req-vN.md` → `req-vN.md`, `<change>-req-final.md` → `req-final.md`, and explicitly disposition anomalous files like `README-req-v1-lost.md`.
+
+### CB-5 — O5’s “legacy literals appear nowhere as write targets” is not mechanically testable
+
+Description: O5 scopes negative assertions to “write targets,” but a test only sees text. The literal `requirement/` can appear legitimately inside bundle paths, prose about requirements, historical notes, or “no requirement/spec files” rules.
+
+Risk: Implementers can write either a brittle false-positive test or a weak test that misses old write instructions.
+
+Suggested fix: Define exact document scope and exact forbidden patterns. For example, limit to live protocol docs (`RUNBOOK*`, `docs/concepts*`) and forbid specific old path forms such as `` `requirement/<change>-` ``, `` `apriori/review/<change>-` ``, `` `apriori/design/<change>-` ``, `` `apriori/explore/` ``, and root `` `spike/` `` when used as an artifact path, with explicit allowlisted bundle paths.
+
+### CB-6 — The 4.0.0 release state is declared but not accepted
+
+Description: The requirement says this is major 4.0.0 and Node floor rides along, but acceptance only binds `engines.node >=22` and CI. It does not require `package.json.version` to become `4.0.0`, nor a changelog/release-note entry for the major layout break.
+
+Risk: The CLI can ship the breaking layout under a stale 3.x package version or without a coherent release record.
+
+Suggested fix: Add acceptance for `package.json.version === "4.0.0"` and a CHANGELOG 4.0.0 entry that states the bundle layout break and Node >=22 floor.
+
+## Advisories
+
+- The Node-floor CI rule should explicitly cover all `actions/setup-node` uses, including golden-path and python-example jobs currently pinned to 20.
+- `init`/`update` comments and docs that describe `review/` as a user-owned top-level dir should be updated as part of doc/code truth hygiene.
+
+## Ledger Delta
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| CB-1 | `check`/CK-10 is omitted from the bundle layout. | Review-evidence secret scanning stops covering the new evidence location. | STEP0 r1 | open |
+| CB-2 | Review document naming and raw-stem migration are under-specified for the real corpus. | C5 can miss evidence, require the wrong raw, or collide during migration. | STEP0 r1 | open |
+| CB-3 | Single-layout flip lacks an atomic ordering rule for this repo’s self-migration. | Bundle-only code can run while artifacts are still flat. | STEP0 r1 | open |
+| CB-4 | Requirement-history normalization does not cover the actual archived filenames precisely. | Requirement history can be left behind, misnamed, or overwritten. | STEP0 r1 | open |
+| CB-5 | O5’s “legacy literals appear nowhere as write targets” is not mechanically testable. | Tests may be brittle or too weak to catch old write instructions. | STEP0 r1 | open |
+| CB-6 | The 4.0.0 release state is declared but not accepted. | A breaking layout can ship under stale 3.x release metadata. | STEP0 r1 | open |
+| CB-ADV-1 | Advisory: CI Node-floor wording should cover every setup-node job; comments/docs should drop top-level `review/` ownership language. | Low drift risk. | STEP0 r1 | open |
+
+VERDICT: 6 issues open
+tokens used
+3,893,691
+# P1 Requirement Review — change-bundle v1
+
+## Dimension Verdicts
+
+1. Target state B: clear at the high level, but several migration and evidence details are not precise enough for implementation.
+2. Edge cases and exception paths: incomplete for self-migration, historical artifact normalization, and secret/evidence scans.
+3. Side effects: major tree moves are declared, but the required atomic ordering of code flip plus repo migration is not.
+4. Acceptance criteria: mostly testable, but O5’s negative path rule is not mechanically defined.
+5. Conflicts with state A: yes, especially `check` CK-10 and the real archived artifact corpus.
+6. Lineage: declared as v3 / 4.0.0 and matches the repo reality.
+
+## Formal Issues
+
+### CB-1 — `check`/CK-10 is omitted from the bundle layout
+
+Description: The requirement says `check` is untouched, but `lib/check.js` and CK-10 currently scan `apriori/review/` for committed secrets in review evidence. Target B removes `apriori/review/` and moves raws under `apriori/changes/<name>/review/` and archived bundles.
+
+Risk: A security tripwire silently stops scanning the review evidence that now matters.
+
+Suggested fix: Include `check`/CK-10 in scope. Define the new scan roots as active and archived bundle `review/` dirs, preserve recursive regular-file-only behavior, symlink warnings, absent-dir skip semantics, and add acceptance for a secret inside a bundle raw.
+
+### CB-2 — Review document naming and raw-stem migration are under-specified for the real corpus
+
+Description: The target bundle lists `req-review-v{N}`, `spec-review-v{N}`, `step5-review-v{N}`, and `extraction-review-v{N}`, but the actual repo has legacy stems such as `*-p8-review-v*`, `*-impl-review-v*`, `*-kb-check-raw.txt`, `*-review-v*-raw.txt`, and P5 docs split between `apriori/design/` and raw files in `apriori/review/`.
+
+Risk: C5 can miss evidence, require the wrong raw stem, or collide/overwrite during migration.
+
+Suggested fix: Add an explicit migration table from every legacy review/design/raw stem class to the new bundle basename. Include a uniqueness check per bundle and a C5 scenario proving docs and raws live in the same `review/` dir with the unchanged `<stem>-raw.*` rule.
+
+### CB-3 — Single-layout flip lacks an atomic ordering rule for this repo’s self-migration
+
+Description: DD-3 says no dual support and change-bundle migrates itself mid-flight, but it does not state the ordering invariant: code that reads only bundle paths and the repo artifact migration must land together before any gate/status/check run relies on the new code.
+
+Risk: The implementation can temporarily strand the in-flight change in the old layout while `gate`, `status`, or tests have already flipped to bundle-only, creating a self-inflicted broken state.
+
+Suggested fix: Add a requirement/acceptance criterion: the code flip, tests, docs, and repository artifact migration are one atomic task/commit boundary; after that boundary `apriori gate --change change-bundle`, `status`, `check --self`, and the corpus checks use only the bundle layout.
+
+### CB-4 — Requirement-history normalization does not cover the actual archived filenames precisely
+
+Description: The migration text mentions existing archived `requirement/` subdirs and old `requirement-req-*.md` files, but the repo has mixed forms: `req-prefix-req-v1.md`, `req-sweep-req-v1.md`, top-level archived `requirement-req-v*.md`, and `README-req-v1-lost.md`.
+
+Risk: Requirement history may be renamed inconsistently, left outside `requirement/`, or overwritten when plain names collide.
+
+Suggested fix: Define exact normalization rules for each current class, including collision behavior. Example: `<change>-req-vN.md` → `req-vN.md`, `requirement-req-vN.md` → `req-vN.md`, `<change>-req-final.md` → `req-final.md`, and explicitly disposition anomalous files like `README-req-v1-lost.md`.
+
+### CB-5 — O5’s “legacy literals appear nowhere as write targets” is not mechanically testable
+
+Description: O5 scopes negative assertions to “write targets,” but a test only sees text. The literal `requirement/` can appear legitimately inside bundle paths, prose about requirements, historical notes, or “no requirement/spec files” rules.
+
+Risk: Implementers can write either a brittle false-positive test or a weak test that misses old write instructions.
+
+Suggested fix: Define exact document scope and exact forbidden patterns. For example, limit to live protocol docs (`RUNBOOK*`, `docs/concepts*`) and forbid specific old path forms such as `` `requirement/<change>-` ``, `` `apriori/review/<change>-` ``, `` `apriori/design/<change>-` ``, `` `apriori/explore/` ``, and root `` `spike/` `` when used as an artifact path, with explicit allowlisted bundle paths.
+
+### CB-6 — The 4.0.0 release state is declared but not accepted
+
+Description: The requirement says this is major 4.0.0 and Node floor rides along, but acceptance only binds `engines.node >=22` and CI. It does not require `package.json.version` to become `4.0.0`, nor a changelog/release-note entry for the major layout break.
+
+Risk: The CLI can ship the breaking layout under a stale 3.x package version or without a coherent release record.
+
+Suggested fix: Add acceptance for `package.json.version === "4.0.0"` and a CHANGELOG 4.0.0 entry that states the bundle layout break and Node >=22 floor.
+
+## Advisories
+
+- The Node-floor CI rule should explicitly cover all `actions/setup-node` uses, including golden-path and python-example jobs currently pinned to 20.
+- `init`/`update` comments and docs that describe `review/` as a user-owned top-level dir should be updated as part of doc/code truth hygiene.
+
+## Ledger Delta
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| CB-1 | `check`/CK-10 is omitted from the bundle layout. | Review-evidence secret scanning stops covering the new evidence location. | STEP0 r1 | open |
+| CB-2 | Review document naming and raw-stem migration are under-specified for the real corpus. | C5 can miss evidence, require the wrong raw, or collide during migration. | STEP0 r1 | open |
+| CB-3 | Single-layout flip lacks an atomic ordering rule for this repo’s self-migration. | Bundle-only code can run while artifacts are still flat. | STEP0 r1 | open |
+| CB-4 | Requirement-history normalization does not cover the actual archived filenames precisely. | Requirement history can be left behind, misnamed, or overwritten. | STEP0 r1 | open |
+| CB-5 | O5’s “legacy literals appear nowhere as write targets” is not mechanically testable. | Tests may be brittle or too weak to catch old write instructions. | STEP0 r1 | open |
+| CB-6 | The 4.0.0 release state is declared but not accepted. | A breaking layout can ship under stale 3.x release metadata. | STEP0 r1 | open |
+| CB-ADV-1 | Advisory: CI Node-floor wording should cover every setup-node job; comments/docs should drop top-level `review/` ownership language. | Low drift risk. | STEP0 r1 | open |
+
+VERDICT: 6 issues open

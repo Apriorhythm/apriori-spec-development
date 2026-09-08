@@ -1,0 +1,48 @@
+# P5 design review — req-prefix (round 1)
+
+Reviewer: codex (gpt-5.5), session 019f4b30-68f9-7222-9b64-17f52a333b4c. Raw: req-prefix-review-v1-raw.txt
+
+# P5 Design Review — req-prefix v1
+
+## Coverage Map
+
+- **L1:** Mostly covered by PR-19 for the four live docs and by NW-05 for `apriori new` scaffold output. Gap noted below: the lib side is not bound against all three forbidden literals.
+- **L2:** Covered by PR-19. The design places the preservation clause in the STEP6 “Do” bullet in both editions and binds destination plus before-closeout-commit timing.
+- **L3:** Translation parity is intentionally left to P8. That split is sound: PR-19 gives mechanical anchors in both editions, while semantic EN/CN equivalence is a consistency-review task.
+- **L4:** Covered by NW-05, but only partially: the scenario/test plan names `requirement/req-v` absence, not all forbidden literals.
+- **L5:** Covered by tasks T3/T4.
+
+Scenario numbering is clean: PR-19 follows PR-18; NW-05 follows NW-04. The current docs contain all three forbidden literals in both runbooks and both concepts files, so the per-site replacement/count-assert approach is feasible. The STEP6 insertion point exists in both editions.
+
+## Issues
+
+### RPSPEC-1 — NW-05 only forbids one old literal, but the requirement forbids all three in lib/scaffold text
+
+**Description:** Requirement L1 says the three forbidden literals are absent from `RUNBOOK.md`, `RUNBOOK_cn.md`, `docs/concepts.md`, `docs/concepts_cn.md`, and `lib/`. L4 says `apriori new <name>` emits no forbidden literal. The PR-19 test design covers all three literals, but only over the four live docs. NW-05’s scenario and test plan only assert absence of `requirement/req-v` in the scaffold output.
+
+That leaves the lib/scaffold side unbound for:
+- `requirement/req-final.md`
+- `requirement/intent-card.md`
+
+**Risk:** The implementation can still emit or retain one of the old non-`req-v` literals in `lib/new.js` or scaffold output while PR-19 and NW-05 pass. That misses part of L1/L4 and can leave the explore-track collision partially alive.
+
+**Suggested fix:** Amend NW-05 and the design test plan to assert absence of all three forbidden literals in the generated flow-state text. Since L1 names `lib/`, also add a source-level assertion over `lib/new.js` or make PR-19’s negative loop include `lib/new.js` separately.
+
+## Advisories
+
+- The design’s literal replacement method is appropriate, but record the current per-file counts in the implementation notes or red test comments if using a script. Current counts are:
+  - RUNBOOK.md: `req-v` 6, `req-final.md` 8, `intent-card.md` 4
+  - RUNBOOK_cn.md: 6 / 8 / 4
+  - docs/concepts.md: 2 / 5 / 1
+  - docs/concepts_cn.md: 2 / 5 / 1
+- The grandfathering boundary is consistent with the requirement: old archives keep old names; live docs and `lib/new.js` move forward.
+- P8 should explicitly check the EN/CN STEP6 preservation sentence for semantic parity, because PR-19 can only anchor key tokens.
+
+## Ledger Delta
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| RPSPEC-1 | NW-05 only asserts absence of `requirement/req-v`, while L1/L4 require the scaffold/lib side to avoid all three forbidden literals: `requirement/req-v`, `requirement/req-final.md`, and `requirement/intent-card.md`. | A stale final-path or intent-card path can remain in `lib/new.js` or scaffold output while the binding tests pass. | STEP2 r1 | open |
+| RPSPEC-ADV-1 | Advisory batch: preserve current per-file replacement counts in implementation notes/tests; P8 should review EN/CN preservation-clause parity. | Low | STEP2 r1 | open |
+
+VERDICT: 1 issues open

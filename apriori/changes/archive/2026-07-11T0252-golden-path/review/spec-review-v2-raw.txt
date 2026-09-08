@@ -1,0 +1,174 @@
+Description: The design says to assemble one bash script with `__BLOCK_N_EXIT=$?` sentinels after each block’s last line. Block 2 is expected to exit 1. If the script uses normal CI-style strict bash (`set -e`, `bash -e`, or an inherited strict prologue), the script will stop at block 2 before emitting the sentinel or running blocks 3/4. The spec requires per-block exits `[0,1,0,0]` and continued execution after the expected red verify.
+Description: The design’s CI step calls `node scripts/golden-path.mjs --packed ./apriori-cli-*.tgz`. Shell globbing is not a stable interface if more than one package tarball exists in the workspace, and it differs in failure behavior when no file matches. The requirement’s G4 depends on proving the exact packed file set.
+revised
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f4b30-68f9-7222-9b64-17f52a333b4c
+--------
+user
+P5 round 2 for golden-path. Producer fixed both: GPSPEC-1 → design now states the script runs WITHOUT set -e, per-block sentinel capture, missing sentinel = script death named; GPSPEC-2 → CI uses TGZ=$(npm pack --silent) for the exact filename. Confirm (flip to 'verified') or reopen; new issues? [Read-only sandbox: print the COMPLETE review doc body for verbatim landing at apriori/design/golden-path-review-v2.md] End with the ledger delta and exactly one verdict line: 'VERDICT: no major issues, ready to proceed to execution' or 'VERDICT: <N> issues open'.
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-10T18:37:33.553051Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-10T18:37:33.825857Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-10T18:37:34.130160Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-10T18:37:34.734377Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-10T18:37:35.680762Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-10T18:37:37.630916Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-10T18:37:40.728301Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: 7aFQGwVPQAtC
+codex
+I’ll check the revised design/tasks/spec for the two fixes and then do a narrow pass for any new ambiguity, especially around the `npm pack --silent` filename capture on both shells.
+exec
+/usr/bin/zsh -lc 'rg -n "set -e|sentinel|BLOCK|npm pack|TGZ|--silent|glob|packed|prefix|command -v" apriori/changes/golden-path -S' in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,320p' apriori/changes/golden-path/design.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,220p' apriori/changes/golden-path/tasks.md && sed -n '1,220p' apriori/review/golden-path-issues.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' apriori/changes/golden-path/specs/golden/spec.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 142ms:
+# Design — golden-path
+
+scripts/golden-path.mjs (ESM, stdlib): `export function extractBlocks(text)` — regex over the Quickstart section (## Quickstart → next ##), ```shell fences; `export function buildPlan(blocks, mode, binPath)` — returns {script, expects:[0,1,0,0]} where block 1's `npm i -g apriori-cli` line becomes: local → removed (an `apriori()` bash function aliases the checkout bin); packed → `npm i -g <tgz> --prefix <dir>` + PATH prepend (process.platform==='win32' ? prefix : prefix/bin) + `command -v apriori | grep <prefix>` preflight. Runner: write the assembled bash script to a temp file (heredoc-safe); the script runs WITHOUT `set -e` so a documented non-zero (block 2's red verify) never aborts the walk — after each block's last line an `echo __BLOCK_N_EXIT=$?` sentinel captures the code; the runner parses stdout for ALL sentinels (a missing sentinel = the script itself died = failure naming the last block seen) and compares against expects. main(): parse --local/--packed, tmpdir, run, assert per-block + final state (spawnSync the four assertion commands in the demo dir), exit non-zero naming failures.
+
+ci.yml: add job golden-path {matrix os [ubuntu-latest, windows-latest], node 20, shell bash}: checkout → setup-node → `TGZ=$(npm pack --silent)` → `node scripts/golden-path.mjs --packed "$TGZ"` — npm pack prints the exact filename; no glob ambiguity (GPSPEC-2).
+
+test/golden-path.test.js: GP-01 extractor on real README (4 blocks, order) + pure (no fs); GP-04 doctored text (3 blocks / reordered) → buildPlan/assert fails naming block; GP-02/03 one --local spawn of the script (~10s). GP-05 binds via a test that asserts buildPlan(packed) contains the prefix/PATH/preflight lines (the real packed run lives in CI — its scenario binding is the plan-construction test + the CI job; recorded in tasks as the D-SR-4-style layered exit condition).
+
+ succeeded in 147ms:
+# Tasks — golden-path
+
+- [ ] T1. Failing tests GP-01..05 (test/golden-path.test.js) — red run.
+- [ ] T2. scripts/golden-path.mjs (extractBlocks/buildPlan/runner).
+- [ ] T3. ci.yml golden-path job (existing jobs byte-identical).
+- [ ] T4. Local full run green (--local); suite green; verify --change golden-path GREEN; gate PASS; check --self PASS.
+- [ ] T5. Packed-mode smoke locally (npm pack + --packed) — record result.
+# Issue ledger — golden-path
+
+Rows recorded on behalf of the reviewer (codex session 019f4b30-68f9-7222-9b64-17f52a333b4c; raws: golden-path-req-review-v1-raw.txt).
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| GPREQ-1 | Packed-mode PATH isolation underspecified for Windows bash (npm global layout differs). | CI could silently test the wrong installation. | STEP0·r1 | verified |
+| GPREQ-2 | The doctored-README fixture test lacks an explicit seam. | Tests could mutate the real README or go unwritten. | STEP0·r1 | verified |
+| GPSPEC-1 | Per-block exit capture could abort before later blocks run. | The walk dies at the documented red step. | STEP2·r1 | fixed (r2: no set -e; sentinel per block; missing sentinel = script death, named) |
+| GPSPEC-2 | Packed-mode CI tarball selection ambiguous (glob). | Stale tarballs could be installed. | STEP2·r1 | fixed (r2: TGZ=$(npm pack --silent) — exact filename) |
+
+ succeeded in 195ms:
+apriori/changes/golden-path/proposal.md:5:**WHAT.** scripts/golden-path.mjs (pure extractor seam + runner, --local for tests / --packed for CI), GP-01..05, a CI job npm pack → packed run on ubuntu+windows/node 20. Existing jobs untouched.
+apriori/changes/golden-path/design.md:3:scripts/golden-path.mjs (ESM, stdlib): `export function extractBlocks(text)` — regex over the Quickstart section (## Quickstart → next ##), ```shell fences; `export function buildPlan(blocks, mode, binPath)` — returns {script, expects:[0,1,0,0]} where block 1's `npm i -g apriori-cli` line becomes: local → removed (an `apriori()` bash function aliases the checkout bin); packed → `npm i -g <tgz> --prefix <dir>` + PATH prepend (process.platform==='win32' ? prefix : prefix/bin) + `command -v apriori | grep <prefix>` preflight. Runner: write the assembled bash script to a temp file (heredoc-safe); the script runs WITHOUT `set -e` so a documented non-zero (block 2's red verify) never aborts the walk — after each block's last line an `echo __BLOCK_N_EXIT=$?` sentinel captures the code; the runner parses stdout for ALL sentinels (a missing sentinel = the script itself died = failure naming the last block seen) and compares against expects. main(): parse --local/--packed, tmpdir, run, assert per-block + final state (spawnSync the four assertion commands in the demo dir), exit non-zero naming failures.
+apriori/changes/golden-path/design.md:5:ci.yml: add job golden-path {matrix os [ubuntu-latest, windows-latest], node 20, shell bash}: checkout → setup-node → `TGZ=$(npm pack --silent)` → `node scripts/golden-path.mjs --packed "$TGZ"` — npm pack prints the exact filename; no glob ambiguity (GPSPEC-2).
+apriori/changes/golden-path/design.md:7:test/golden-path.test.js: GP-01 extractor on real README (4 blocks, order) + pure (no fs); GP-04 doctored text (3 blocks / reordered) → buildPlan/assert fails naming block; GP-02/03 one --local spawn of the script (~10s). GP-05 binds via a test that asserts buildPlan(packed) contains the prefix/PATH/preflight lines (the real packed run lives in CI — its scenario binding is the plan-construction test + the CI job; recorded in tasks as the D-SR-4-style layered exit condition).
+apriori/changes/golden-path/tasks.md:7:- [ ] T5. Packed-mode smoke locally (npm pack + --packed) — record result.
+apriori/changes/golden-path/specs/golden/spec.md:7:`scripts/golden-path.mjs` SHALL extract the README Quickstart's shell blocks in document order and run them as one bash script in a fresh temp directory, with `apriori` resolving to the local checkout bin (`--local`) or to a tarball installed into an isolated prefix (`--packed <tgz>`, PATH prepended with the platform bin dir and a preflight asserting `apriori` resolves inside the prefix); it SHALL assert each block's last command against the documented exit sequence `[0, 1, 0, 0]` and the final state (store verify 0, check 0, doctor --no-run 0, archived demo change present), failing loudly with the block index and expected/actual on any mismatch. The CI workflow SHALL run the packed mode on ubuntu and windows.
+apriori/changes/golden-path/specs/golden/spec.md:25:#### Scenario: GP-05 packed mode proves the published file set
+apriori/changes/golden-path/specs/golden/spec.md:26:- WHEN `--packed <tgz>` installs the tarball into an isolated prefix (platform bin dir on PATH, resolve-inside-prefix preflight)
+apriori/changes/golden-path/specs/golden/spec.md:27:- THEN the same walk succeeds using ONLY the packaged files — a package.json `files:` gap surfaces here; the runner aborts if `apriori` resolves outside the prefix
+
+ succeeded in 149ms:
+<!-- apriori-base: new -->
+# Delta — golden (golden-path)
+
+## ADDED Requirements
+
+### Requirement: the golden path proves the packaged CLI end-to-end
+`scripts/golden-path.mjs` SHALL extract the README Quickstart's shell blocks in document order and run them as one bash script in a fresh temp directory, with `apriori` resolving to the local checkout bin (`--local`) or to a tarball installed into an isolated prefix (`--packed <tgz>`, PATH prepended with the platform bin dir and a preflight asserting `apriori` resolves inside the prefix); it SHALL assert each block's last command against the documented exit sequence `[0, 1, 0, 0]` and the final state (store verify 0, check 0, doctor --no-run 0, archived demo change present), failing loudly with the block index and expected/actual on any mismatch. The CI workflow SHALL run the packed mode on ubuntu and windows.
+
+#### Scenario: GP-01 the extractor is a pure text seam
+- WHEN `extractBlocks(readmeText)` runs on the real README (and on doctored variants in tests)
+- THEN it returns the Quickstart's ```shell blocks in document order (four today), never reading or writing the filesystem itself
+
+#### Scenario: GP-02 a --local run walks the whole Quickstart
+- WHEN `node scripts/golden-path.mjs --local` runs in a fresh temp dir
+- THEN every block executes in sequence with the checkout bin aliased over `npm i -g`, per-block last exits match `[0, 1, 0, 0]`, and the run finishes exit 0
+
+#### Scenario: GP-03 final state is asserted, not assumed
+- WHEN the blocks complete
+- THEN the runner re-asserts: `verify --specs apriori/specs` exits 0, `check` exits 0, `doctor --no-run` exits 0, and `apriori/changes/archive/` contains the archived demo change — any miss fails the run naming the assertion
+
+#### Scenario: GP-04 drift between README and contract fails loudly
+- WHEN a doctored README text changes the block count or makes a block's exit diverge from the expected sequence
+- THEN the runner (fed through the text seam) fails naming the block index and expected/actual — the README cannot silently drift from the contract
+
+#### Scenario: GP-05 packed mode proves the published file set
+- WHEN `--packed <tgz>` installs the tarball into an isolated prefix (platform bin dir on PATH, resolve-inside-prefix preflight)
+- THEN the same walk succeeds using ONLY the packaged files — a package.json `files:` gap surfaces here; the runner aborts if `apriori` resolves outside the prefix
+
+codex
+**Resolution Check**
+
+GPSPEC-1 is verified. The design now explicitly runs the assembled script without `set -e`, captures each block’s last exit via sentinels, and treats a missing sentinel as script death with a named failure.
+
+GPSPEC-2 is verified. The CI design now captures the exact tarball filename with `TGZ=$(npm pack --silent)` and passes `"$TGZ"` to the runner, removing glob ambiguity.
+
+**Issues**
+
+GPSPEC-3 — Final-state assertions do not specify reuse of the same `apriori` resolution.
+
+Description: The design aliases `apriori` for the Quickstart walk in `--local` mode via a bash function, and uses isolated PATH for `--packed`. But final-state assertions are described as separate `spawnSync` calls in the demo dir. A bash function will not exist for those calls, and the design does not require the isolated packed PATH to be reused.
+
+Risk: Final assertions may fail locally, use a preexisting global `apriori`, or stop proving the same binary that ran the Quickstart.
+
+Suggested fix: Define one resolver used for both the block walk and final assertions. For example: local mode uses an absolute `node <checkout>/bin/apriori.js` shim or temp PATH entry; packed mode passes the isolated-prefix PATH env to every final assertion. Add a test proving final assertions do not depend on a global install.
+
+GPSPEC-4 — Windows bash PATH handling is still underspecified for packed mode.
+
+Description: The design chooses `<prefix>` as the Windows npm bin dir, then prepends it to PATH inside a bash script. On `windows-latest` with bash, raw Win32 paths such as `C:\...` can be misparsed in colon-separated bash PATH unless converted or injected through the correct environment mechanism.
+
+Risk: The Windows packed job can fail before proving the packaged CLI, or the prefix preflight can compare incompatible path forms.
+
+Suggested fix: Specify Windows path normalization. Either build the child process env in Node using `path.delimiter` and pass it to bash, or convert the prefix/bin dir to a bash path before exporting. Normalize the `command -v apriori` result before checking containment.
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| GPSPEC-1 | Per-block exit capture could abort before later blocks run. | The walk dies at the documented red step. | STEP2·r1 | verified |
+| GPSPEC-2 | Packed-mode CI tarball selection ambiguous. | Stale tarballs could be installed. | STEP2·r1 | verified |
+| GPSPEC-3 | Final-state assertions do not specify reuse of the same `apriori` binary resolution as the block walk. | Runner may assert with the wrong CLI or depend on a global install. | STEP2·r2 | open |
+| GPSPEC-4 | Windows bash PATH handling for the isolated npm prefix remains underspecified. | Windows packed job may fail or prove the wrong path form. | STEP2·r2 | open |
+
+VERDICT: 2 issues open
+tokens used
+1,463,726
+**Resolution Check**
+
+GPSPEC-1 is verified. The design now explicitly runs the assembled script without `set -e`, captures each block’s last exit via sentinels, and treats a missing sentinel as script death with a named failure.
+
+GPSPEC-2 is verified. The CI design now captures the exact tarball filename with `TGZ=$(npm pack --silent)` and passes `"$TGZ"` to the runner, removing glob ambiguity.
+
+**Issues**
+
+GPSPEC-3 — Final-state assertions do not specify reuse of the same `apriori` resolution.
+
+Description: The design aliases `apriori` for the Quickstart walk in `--local` mode via a bash function, and uses isolated PATH for `--packed`. But final-state assertions are described as separate `spawnSync` calls in the demo dir. A bash function will not exist for those calls, and the design does not require the isolated packed PATH to be reused.
+
+Risk: Final assertions may fail locally, use a preexisting global `apriori`, or stop proving the same binary that ran the Quickstart.
+
+Suggested fix: Define one resolver used for both the block walk and final assertions. For example: local mode uses an absolute `node <checkout>/bin/apriori.js` shim or temp PATH entry; packed mode passes the isolated-prefix PATH env to every final assertion. Add a test proving final assertions do not depend on a global install.
+
+GPSPEC-4 — Windows bash PATH handling is still underspecified for packed mode.
+
+Description: The design chooses `<prefix>` as the Windows npm bin dir, then prepends it to PATH inside a bash script. On `windows-latest` with bash, raw Win32 paths such as `C:\...` can be misparsed in colon-separated bash PATH unless converted or injected through the correct environment mechanism.
+
+Risk: The Windows packed job can fail before proving the packaged CLI, or the prefix preflight can compare incompatible path forms.
+
+Suggested fix: Specify Windows path normalization. Either build the child process env in Node using `path.delimiter` and pass it to bash, or convert the prefix/bin dir to a bash path before exporting. Normalize the `command -v apriori` result before checking containment.
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| GPSPEC-1 | Per-block exit capture could abort before later blocks run. | The walk dies at the documented red step. | STEP2·r1 | verified |
+| GPSPEC-2 | Packed-mode CI tarball selection ambiguous. | Stale tarballs could be installed. | STEP2·r1 | verified |
+| GPSPEC-3 | Final-state assertions do not specify reuse of the same `apriori` binary resolution as the block walk. | Runner may assert with the wrong CLI or depend on a global install. | STEP2·r2 | open |
+| GPSPEC-4 | Windows bash PATH handling for the isolated npm prefix remains underspecified. | Windows packed job may fail or prove the wrong path form. | STEP2·r2 | open |
+
+VERDICT: 2 issues open

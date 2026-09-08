@@ -1,0 +1,433 @@
+<!-- provenance: provider=openai model=gpt-5.6-sol session=019ff731-0efe-7b23-becc-f22d4de5429c date=2026-08-13 -->
+OpenAI Codex v0.147.0
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.6-sol
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019ff731-0efe-7b23-becc-f22d4de5429c
+--------
+user
+Round 5. Context: step2-cap (4) was reached at round 4; the human's standing goal authorization lets the agent record a gate-5 report in flow-state and continue with the CONSERVATIVE option — which was chosen as: land the consistency fixes and run one more review round for genuine closure (the flow-state gates: log carries the verbatim record). Your round-4 findings were all consistency-propagation items, now landed:
+* SPEC-2: design now defines the shared matcher abstraction makeIdMatcher(resolved) (config -> child, flag/default -> inline) and threads it through G2 (collect/parseTap split into structure-collection + batch bindIds, exported signatures kept with an optional matcher param), G4 (CK-04 main path through the shared abstraction), G5 (D6 scan through it).
+* SPEC-7: the success shape is unique (single JSON doc, ids.length === texts.length, string|null elements); failure classes enumerated (timeout/spawn-error/signal/non-zero-exit/malformed-output); an injectable child-runner test seam is specified; new scenario SR-55 asserts every class fails closed and the flag/default origins never touch the child.
+* SPEC-8: tasks T4 no longer mentions any cap; it now says matching must not truncate titles/descriptions and leadId's full-input semantics stay.
+Files: specs/spec-runner delta (SR-55 added), design.md ('安全契约' + G2/G4/G5), tasks.md, review/issues.md, flow-state.md (gate-5 entry).
+Re-review with the P5 checklist. Ledger delta: fixed -> verified where genuinely closed; reopen with reason where not; new rows only for new formal findings; advisories separately.
+Read-only sandbox: PRINT the review doc body (landed at apriori/changes/gate-id-pattern/review/spec-review-v5.md), Simplified Chinese, machine tokens English. End with the ledger delta and exactly one verdict line: 'VERDICT: no major issues, ready to proceed to execution' or 'VERDICT: <N> issues open'.
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+codex
+我会聚焦验证三处传播是否真正闭环：shared matcher 的 API/调用链、SR-55 是否覆盖所有 child failure 与非 child origins、T4 是否彻底恢复 full-input 语义；同时核对 gate-5 留痕和 ledger 合法性。
+  → 读取 Round 5 spec-runner delta、design、tasks、ledger 与 flow-state
+  • 验证 SPEC-2/7/8 的 API、场景和执行传播闭环
+  • 复扫新问题并输出 review body、ledger delta、verdict
+exec
+/usr/bin/zsh -lc "for f in apriori/changes/gate-id-pattern/specs/spec-runner/spec.md apriori/changes/gate-id-pattern/design.md apriori/changes/gate-id-pattern/tasks.md apriori/changes/gate-id-pattern/review/issues.md apriori/changes/gate-id-pattern/flow-state.md; do printf '\\n===== %s =====\\n' \""'$f"; sed -n '"'1,420p' \""'$f"; done' in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 130ms:
+
+===== apriori/changes/gate-id-pattern/specs/spec-runner/spec.md =====
+<!-- apriori-base: sha256:f75919a09d26448173fbfea73e34dddeb051c4d7a7382ae270471840d6efb8e8 -->
+
+## ADDED Requirements
+
+### Requirement: the effective id-pattern resolves flag over config over default
+`verify` SHALL resolve its effective id-pattern in this order: the `--id-pattern` flag; else the `id-pattern` row of `apriori/process-config.md` (read through the shared structured reader, inheriting the full config-contract — fenced/commented rows inert, same-value duplicates tolerated, different-value rows a consumption-time CONFLICT); else `DEFAULT_ID`. When the flag is present the config key is NOT consumed — a broken or conflicting config row is invisible to a flagged run. The resolved source SHALL be validated (compiled) BEFORE any spec file is read and BEFORE the test command is spawned; an invalid effective pattern is an infra ERROR (exit 2) whose message names its origin — the flag message contains `--id-pattern`, the config message contains `process-config` — through the existing error contract (text mode `error:` lines + `RESULT: ERROR`; `--json` the existing ERROR shape with the message in `errors[]`). Flag presence is judged by PRESENCE, never truthiness: a present-but-empty `--id-pattern` is a flag-origin validation error (`empty --id-pattern`) and never falls back to the config. Pattern-error messages are sanitized AS A WHOLE — the assembled message (raw engine `e.message` never concatenated verbatim) is control-char-stripped and capped at 200 characters INCLUDING any ellipsis, so the raw source can never re-leak through the engine's own message. The two origins carry DIFFERENT trust contracts. The flag is operator-interactive input: compile validation only, matching runs in-process (documented trust assumption); `leadId`'s public semantics are untouched for every origin. A config-sourced pattern is repository input that CI consumes automatically, so EVERY actual application of it (scenario titles before the test command runs; TAP descriptions after) executes inside a terminable child process: a fixed child script shipped with the CLI (never source-interpolated code), spawned `shell:false` with the pattern and the text batch passed as data on stdin, answering on stdout, under a kill budget (SIGKILL). ANY child failure — timeout, spawn error, signal, non-zero exit, malformed output — fails closed through the config-origin sanitized error channel of the consuming command (verify/gate/check exit 2; doctor per its D6 finding rule); a title-batch failure aborts BEFORE the test command is spawned. On a `--change` run the error path still carries the existing `projection` JSON field (`{change, modules, conflicts, unstampedMutations}` with modules from delta discovery — a directory enumeration only; no spec content is read and no test command is spawned on the error path). The recognition contract itself is `leadId` semantics, shared by every consumer: the match starts at the title's first character, a following `[A-Za-z0-9_]` rejects the match, no `\b` is appended, the source compiles as written.
+
+#### Scenario: SR-50 the config row takes effect without a flag
+- WHEN `apriori/process-config.md` carries `| id-pattern | [A-Z]+(-[A-Z]+)*-\d+[a-z]* |` and `apriori verify --specs <dir>` runs without `--id-pattern` over scenarios `AC-01`, `AC-08a`, `AC-BIS-01`
+- THEN all three are identified (0 UNIDENTIFIED) — whereas the same run without the config row identifies only `AC-01` and reports 2 UNIDENTIFIED
+
+#### Scenario: SR-51 the flag overrides and shields the config
+- WHEN `--id-pattern` is passed while the config carries a different — or even a syntactically invalid — `id-pattern` row
+- THEN the run binds by the flag's pattern and reports no config error (the overridden key was never consumed)
+
+#### Scenario: SR-52 an invalid effective pattern refuses to run
+- WHEN the effective pattern comes from a flag whose source does not compile (or is empty), or from a config row whose source does not compile (no flag given) — including a `--change --json` run
+- THEN the run is an infra ERROR (exit 2), the message names `--id-pattern` (flag origin, empty included) or `process-config` (config origin), the WHOLE message is control-char-free and ≤200 chars including ellipsis (the raw source does not re-leak via the engine message — asserted on both origins), the test command is never spawned, no spec content is read, `--json` output keeps the existing ERROR shape with the message in `errors[]`, and a `--change --json` run still carries the `projection` field with its discovered `modules`
+
+#### Scenario: SR-54 catastrophic config matching is terminated, adversarial titles included
+- WHEN the config row carries a syntactically valid catastrophic pattern AND the spec titles are crafted to trigger its backtracking (both under the same repository's control) and verify runs without a flag
+- THEN the title-matching child is killed within its budget and the run is an infra ERROR (exit 2) whose sanitized message names `process-config` and the termination, with NO test command spawned; the same pattern via `--id-pattern` runs in-process (operator-trusted, documented); the project's real multi-segment pattern over the same store completes normally through the child
+
+#### Scenario: SR-55 every child failure class fails closed
+- WHEN the config-origin child runner (via its injectable test seam) is made to fail in each class — timeout, spawn error, signal, non-zero exit, and malformed output (non-JSON stdout; parseable JSON whose `ids` length differs from the input batch; an `ids` element that is neither string nor null)
+- THEN every class resolves to the same config-origin sanitized failure (verify: infra ERROR exit 2 naming `process-config`; the flag/default origins never touch the child), and a well-formed child response binds normally — the success shape is exactly one JSON document `{ids}` with `ids.length` equal to the batch length and each element `string|null`
+
+#### Scenario: SR-53 absent flag and config the default binds unchanged
+- WHEN neither a flag nor a config row exists
+- THEN the effective pattern is `DEFAULT_ID` and the run behaves exactly as before this change
+
+===== apriori/changes/gate-id-pattern/design.md =====
+# design — gate-id-pattern
+
+## 模块与依赖方向
+
+`config.js`（零依赖）←被 spec-runner / resolve / check / doctor 依赖。为避免环：
+
+- `DEFAULT_ID` 常量**迁至 `lib/config.js`**；`lib/spec-runner.js` 改为 `require('./config').DEFAULT_ID` 并**保持 re-export**（`module.exports` 仍含 `DEFAULT_ID`，公共 API 不变）。
+- 新函数 `resolveIdPattern(cwd, flagValue)` 落在 `lib/config.js`：
+  ```js
+  // → { source, origin: 'flag'|'config'|'default' } | { error }
+  // flag 判定用"存在性"而非 truthiness（SPEC-5）：cli 层用 ('--id-pattern' in f) 传入
+  // flagValue（可为 ''），未给 flag 时传 null/undefined。空串 flag = flag 来源校验错误，
+  // 绝不回退配置。错误文案唯一出口是 sanitizeMsg（见"安全契约"节）：固定类别文案 +
+  // boundedSource(source)，绝不拼接引擎 e.message（SPEC-6）。
+  function resolveIdPattern(cwd, flagValue) {
+    if (flagValue !== null && flagValue !== undefined) {
+      if (flagValue === '') return { error: 'empty --id-pattern' };
+      try { new RegExp(flagValue); } catch { return { error: sanitizeMsg(`invalid --id-pattern '${boundedSource(flagValue)}' (regex does not compile)`) }; }
+      return { source: flagValue, origin: 'flag' };
+    }
+    const { value, problem } = getConfig(cwd, 'id-pattern');
+    if (problem) return { error: problem };                    // CONFLICT/读取失败文本已含 process-config
+    if (value != null) {
+      try { new RegExp(value); } catch { return { error: sanitizeMsg(`process-config id-pattern row is invalid: '${boundedSource(value)}' (regex does not compile)`) }; }
+      return { source: value, origin: 'config' };
+    }
+    return { source: DEFAULT_ID, origin: 'default' };
+  }
+  ```
+
+## G1 config.js：单元格切分与读取兜底
+
+- `splitCells(line)`：逐字符扫描，`\` 后紧跟内容时计数连续反斜杠；遇 `|` 时按奇偶决定"转义入值（去掉转义者）/分隔（反斜杠全保留）"。替换 `parseConfig` 中的 `t.split('|')`。行首判定 `trimStart().startsWith('|')` 不变（行首 `|` 前无反斜杠场景不受影响）。
+- `readConfig`：`readFileSync` 包 try/catch → 返回哨兵 `{ values: new Map(), conflicts: new Set(), unreadable: '<msg>' }`；`getConfig` 见 `unreadable` 即返回 `{ value:null, problem: 'apriori/process-config.md exists but cannot be read (...) — fix the file' }`（文本含 process-config）。
+
+## G2 spec-runner.js：verify 接入
+
+- cli：`idPattern: ('--id-pattern' in f) ? f['--id-pattern'] : null`（存在性判定，SPEC-5；不再预填 DEFAULT_ID）。※需先确认 args.js withStrict 对空值 flag 的返回形态，测试覆盖 `--id-pattern ''`。
+- `verify()` 开头：`const r = resolveIdPattern(opts.cwd || '.', opts.idPattern)`；`matcher = makeIdMatcher(r)`（config→child、flag/default→inline，见安全契约节）；collect 与 parseTap 均走 matcher 批量通道；`r.error` →
+  - 普通 `--specs` 模式：返回 errors-run（`errors:[r.error]`，不 collect、不 spawn）；
+  - `--change` 模式（SPEC-4）：仍构造 `projection` 字段——先 `discoverDeltas`（仅目录枚举，不读内容）填 `projection.modules`，`conflicts:[]`、`unstampedMutations:[]`，再返回 errors-run；`--change --json` 的 SR-23 projection 契约保持（错误类新增但 shape 不变）。校验顺序：resolve pattern（纯内存）→（--change）discoverDeltas 枚举 → 早退；spec 内容零读取、test command 零 spawn。
+  - 否则 `idRe = new RegExp(r.source)`。
+- 直接调用 `verify({idPattern})` 的库调用方（gate）语义不变：传了 flag 即 flag 优先；没传走配置。
+- USAGE 补一句 `(--id-pattern may be omitted when apriori/process-config.md has an id-pattern row)`。
+
+## G3 gate.js
+
+- flags 表 + USAGE 加 `--id-pattern`；`a.idPattern = ('--id-pattern' in f) ? f['--id-pattern'] : null`（存在性判定，SPEC-5）。
+- `checkBinding(cwd, name, stage, testCmd, idPattern)`：两条 verify 调用都传 `idPattern`。resolve 错误经 `run.errors` → 既有 `b.infra` 路径 → `res.errors` + exit 2（JSON 契约自动继承）。
+
+## G4 check.js
+
+- `checkScenarioIds(specText, name, idPattern = DEFAULT_ID)`：保留兼容签名（inline 判定用 `leadId` 语义）；cli 的 CK-04 主路径改走共享 matcher 抽象（config 来源→child 批量；错误/失败→`error:`+`RESULT: ERROR` exit 2），保证与 verify/doctor 同一执行通道。
+- cli：CK-04 前 `const r = resolveIdPattern(root, null)`；`r.error` → `console.error('error: '+r.error)` + `RESULT: ERROR` + return 2（复用 store-missing 通道）；否则传 `r.source`。
+- 依赖新增：check → spec-runner（leadId）。无环（spec-runner 不 require check）。
+
+## G5 doctor.js
+
+- **顺序（SPEC-3）**：`runDoctor` 在 D5 之前先 `const idp = resolveIdPattern(cwd, null)` 并缓存。`idp.error` 时：D5 push `{id:'D5', status:'n/a', detail:'probe skipped (invalid id-pattern config)'}`（test command 不 spawn），D6 push finding（点名 process-config，fix: 修行）且跳过扫描。
+- idp 合法时：D6 扫描经共享 matcher（config 来源→child 批量；child 失败→D6 finding + D5 sentinel 跳过，DR-18）；D5 照旧跑（classifyProbe 内部解析保持 DEFAULT_ID——对计数不敏感，KB 注明）；D6 detail 尾缀 `(id-pattern: config)` / `(id-pattern: default)`，unidentified finding 文本用实际 source（bounded）替代硬编码 DEFAULT_ID。
+
+## 安全契约（SPEC-2 r3 定案：config 来源匹配整体进可杀子进程）
+
+r2 的固定电池探针被驳倒（同仓可同时投毒 pattern 与 titles 绕过电池）；64 字符上限被驳倒（破坏 leadId 公共契约与自家范围声明，且不解 SPEC-2）——两者撤销。定案 = 评审员方案 2 的轻量形态：
+
+- **flag 来源 = 操作者交互输入**：仅编译校验，匹配在进程内（文档声明信任假设）。leadId 公共语义对一切来源不动。
+- **config 来源 = CI 自动消费的仓库输入**：**每次实际应用都在可终止子进程内执行**。
+  - **子进程协议（SPEC-7）**：固定脚本 `lib/id-match-child.js` 随 CLI 发布（绝不 `-e` 插值外部 source）；`spawnSync(process.execPath, [childPath], { input: JSON.stringify({pattern, texts}), timeout: 2000, killSignal: 'SIGKILL', shell: false, encoding: 'utf8', maxBuffer: 8*1024*1024 })`；pattern 与文本批一律走 **stdin 数据通道**（无 argv 长度/前导 dash/注入问题）；子进程对每条 text 执行 leadId 并输出 JSON `{ids:[...]}` 到 stdout。
+  - **失败分类全 fail-closed**：timeout（SIGKILL）、spawn error、signal、非零 exit、stdout 非合法 JSON/形状不符——一律折算为 config 来源净化错误：verify/gate/check exit 2、doctor D6 finding（各命令走既有矩阵；GT-25/CK-16/DR-18/SR-54 断言）。
+  - **两个批次**：场景标题批在 test command **之前**匹配（失败即早退，命令不 spawn）；TAP 描述批在命令产出后匹配（该文本来自项目自己的 test-cmd——能投毒 TAP 者已能执行任意命令，威胁模型注明）。
+  - doctor 执行序：resolve + D6 扫描（子进程）先于 D5；任一失败 → D5 = n/a sentinel 语义（DR-17/18）；报告显示顺序不变。
+- **共享匹配抽象（SPEC-2 r4 贯穿）**：
+  ```text
+  makeIdMatcher(resolved) → matcher
+    resolved.origin === 'config' → child 模式（经 lib/id-match-child.js）
+    'flag' / 'default'           → inline 模式（进程内 leadId）
+  matcher.batch(texts: string[]) → { ids: (string|null)[] } | { failure: '<class>: <detail>' }
+  ```
+  - **成功响应的唯一合法形状**：child stdout 是单个 JSON 文档 `{ids:[...]}`，`ids.length === texts.length`，每项为 `string | null`；任何偏离（多文档、长度不符、元素类型不符）= `malformed-output` failure。失败类枚举：`timeout` / `spawn-error` / `signal` / `non-zero-exit` / `malformed-output`（maxBuffer 超限表现为 spawn error 或截断→malformed，两者均已覆盖）。
+  - **测试 seam**：child 模式的 spawn 封装为可注入函数（`matcher._spawn` 或模块级 `_childRunner`，测试替身可模拟五类失败），SR-55 逐类断言。
+  - **贯穿改造**（导出签名兼容）：`scanText` 拆为"结构收集"（收集 `(label, title)`，不做 ID 提取）+ `bindIds(pairs, matcher)`（批量匹配后重建 byId/idFiles/unidentified/duplicates）；`collectScenarios`/`collectScenariosFromTexts` 保留既有 `(targets, idRe)` 签名作为 inline 包装，新增可选 `matcher` 参数（缺省=由 idRe 构造 inline matcher）。`parseTap` 同理：lex/decode 出 points 后，描述批量匹配再分流 results/untagged/unattributedFailures；保留 `(out, idRe)` 签名 + 可选 matcher。matcher failure 上浮：verify → `run.errors.push(sanitized config-origin msg)`（标题批失败在 test command 前早退；TAP 批失败在命令后同类上浮）；gate 经 verify 继承；check → `error:` + `RESULT: ERROR` exit 2；doctor → D6 finding + D5 sentinel 语义。`leadId` 导出原样不动。
+- **性能**：每次 config 来源 run 增加 1-2 个 node 子进程（~50-100ms）；flag/default 来源零开销。KB Decision 记录取舍。
+- **错误消息整体净化（SPEC-6 r3 定稿，唯一实现路径）**：
+  ```js
+  // sanitizeMsg 是唯一出口：原始 e.message 与原始 source 绝不直接拼接
+  const sanitizeMsg = (msg) => {
+    const clean = msg.replace(/[\x00-\x1f\x7f]/g, '·');
+    return clean.length > 200 ? clean.slice(0, 199) + '…' : clean;   // 200 含省略号
+  };
+  // 组装规则：固定类别文案 + boundedSource(source)，不含 e.message：
+  //   flag:   sanitizeMsg(`invalid --id-pattern '${boundedSource(src)}' (regex does not compile)`)
+  //   empty:  'empty --id-pattern'
+  //   config: sanitizeMsg(`process-config id-pattern row is invalid: '${boundedSource(src)}' (regex does not compile)`)
+  //   terminated: sanitizeMsg(`process-config id-pattern matching terminated (budget exceeded or child failure)`)
+  const boundedSource = (s) => {
+    const clean = s.replace(/[\x00-\x1f\x7f]/g, '·');
+    return clean.length > 80 ? clean.slice(0, 79) + '…' : clean;      // 80 含省略号
+  };
+  ```
+  测试断言：flag/config 两来源的完整输出无控制字符、总长 ≤200、原始 source 不经引擎消息二次泄漏。
+
+## G6–G8 文档
+
+- **模板（SPEC-1 r2 定案）**：表格单元格一律**无 pipe 散文**（解析后的单元格值无法显示单独的 `\|`，任何含 pipe 的示例文字都写不进单元格）；id-pattern 行形如 `| id-pattern | [A-Z]+-\d+ | bare JS regex source; pipe escaping: see comment below | [A-Z]+-\d+ |`；紧邻表格的 **HTML 注释**（parseConfig 非内容，零转义负担）承载完整指南：alternation 的 pipe 在单元格里写 `\|`（解析为正则裸 `|`）；匹配字面 pipe 字符写 `[\|]`（解析为 `[|]`）；禁称 `\|` 为"字面 pipe"。CF-12 对模板整表做端到端解析断言（结构 + id-pattern 值）。
+- docs/cli*.md：verify/gate/check/doctor 四节 + "Configuration keys" 处补 id-pattern（优先级、错误矩阵、`\|`/`[|]` 两层语义）；EN/CN 成对。
+- CHANGELOG：一条，含 `\|` 全键语义变化与 check/doctor 行为变化声明。
+
+## 测试布局（G9/G10）
+
+- `test/config.test.js`：CF-08..CF-12（真值表逐行、回归样本、EISDIR 兜底、模板静态断言含正反两个 grep）。
+- `test/spec-runner.test.js`：SR-50..53（fixture：3 场景 spec + `printf` TAP 桩）。
+- `test/gate.test.js`：GT-22..24（复用既有 gate fixture 工厂；in-flight+archived 两 stage）。
+- `test/check.test.js`：CK-13..15；CK-14 一致性表驱动（两消费点同表断言）。
+- `test/doctor.test.js`：DR-16..17。
+- 测试名一律携带场景 ID（`test('CF-08 …')`）。
+
+## 端到端与样本证据（STEP5 收尾）
+
+- `~/terra/p0-gate-id-pattern-lab/`：新 lab，`apriori init` 出的新项目 + 配置行，四命令全跑一遍。
+- 样本：flag 路径原地只读跑（gate/verify）；配置路径在 `~/tmp/sample-replica` 加配置行跑；输出 + identity 存 `review/sample-evidence.md`。
+
+===== apriori/changes/gate-id-pattern/tasks.md =====
+# tasks — gate-id-pattern（STEP5 按序执行；每项完成即打 [x]）
+
+- [ ] T1 红测试：CF-08..CF-12（config 真值表/回归/不可读兜底/模板断言）——先跑出失败
+- [ ] T2 实现 lib/config.js：splitCells 奇偶算法、readConfig try/catch、DEFAULT_ID 迁入、resolveIdPattern + sanitizeMsg/boundedSource；新增 lib/id-match-child.js（固定子脚本）与 config 来源子进程匹配通道；CF 全绿
+- [ ] T3 红测试：SR-50..SR-54（含空串 flag、--change --json projection、全消息净化两来源、SR-54 pattern+titles 双投毒终止/真实 pattern 放行）
+- [ ] T4 实现 lib/spec-runner.js：cli 存在性传参、verify() 前置 resolve（--change 错误路径保 projection）、共享 matcher 贯穿 collect/parseTap（不得截断 title/TAP description，保持 leadId 完整输入语义）、DEFAULT_ID re-export、USAGE；SR 全绿
+- [ ] T5 红测试：GT-22..GT-25（GT-24 含空 flag 不回退；GT-25 终止匹配 ERROR）
+- [ ] T6 实现 lib/gate.js：--id-pattern flag、checkBinding 传参、USAGE；GT 全绿
+- [ ] T7 红测试：CK-13..CK-16（CK-16 终止匹配 ERROR）
+- [ ] T8 实现 lib/check.js：checkScenarioIds→leadId、CK-04 消费配置、错误通道；CK 全绿
+- [ ] T9 红测试：DR-16..DR-18（DR-17/18 含 sentinel 命令未执行断言）
+- [ ] T10 实现 lib/doctor.js：resolve 提前至 D5 前、坏配置 D5=n/a+D6 finding、D6 来源 detail、unidentified 文本用实际 source（bounded）；DR 全绿
+- [ ] T11 templates/process-config.md 预置行（两层语义文案）
+- [ ] T12 docs/cli.md + docs/cli_cn.md 同步；CHANGELOG 条目；`apriori check --self` 绿
+- [ ] T13 全量 npm test 绿（254+新增）；lint 无（仓库未配 linter——保持现状）
+- [ ] T14 ~/terra 新 lab 端到端：init 新项目 + 配置行，verify/gate/check/doctor 四命令实跑
+- [ ] T15 真实样本双路径对比证据 → review/sample-evidence.md（flag 原地只读；config 副本；identity+确切计数）
+- [ ] T16 `apriori verify --change gate-id-pattern --test-cmd "node scripts/run-tests.mjs --test-reporter=tap"` GREEN（仓库既有 npm run verify 惯例的 --change 形态）
+
+===== apriori/changes/gate-id-pattern/review/issues.md =====
+# Issue ledger — gate-id-pattern
+
+<!-- recorded on behalf of the reviewer (codex read-only sandbox), R2 transcription rule; raw: review/req-review-v1-raw.txt -->
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| REQ-1 | Q1–Q3 未收口，导致 `check` CLI、模板默认内容及 `parseConfig` 的全键语义不唯一。 | AI 可产出多个互不兼容但均看似满足需求的实现。 | STEP0·r1 | verified |
+| REQ-2 | 非法 `id-pattern` 在 `doctor` 上应 exit 2 还是形成 D6 finding/exit 1 未定义，库入口异常形状也未声明。 | 可能破坏 doctor 的 FINDINGS/UNUSABLE 契约或让异常逃逸。 | STEP0·r1 | verified |
+| REQ-3 | 冲突行、同值重复、空值、不可读/错误类型配置及 flag 覆盖坏配置的边界语义缺失。 | 坏配置可能静默回退、跨命令结果不一致或直接崩溃。 | STEP0·r1 | verified |
+| REQ-4 | 四消费点只统一了来源优先级，未统一 pattern 的开头匹配和尾边界语义。 | 同一 `id-pattern` 可能被 verify/doctor 接受而被 check 拒绝。 | STEP0·r1 | verified |
+| REQ-5 | AC1、AC4、AC6 和 AC7 含不稳定、可选或无确定 oracle 的表述。 | 无法据此生成唯一、可重复的验收测试。 | STEP0·r1 | verified |
+| REQ-6 | 新 pattern 错误在既有文本和 `--json` 契约中的输出形状未声明。 | 可能破坏 gate/verify 的机器可解析接口。 | STEP0·r1 | verified |
+| REQ-ADV-1 | Advisory batch acknowledged (3 items: won't-do 已存在确认；并发/超时/回滚不适用注明保持现状；文档清单应含配置格式说明——已吸收进 req-v2)。 | — | STEP0·r1 | advisory-acked |
+| REQ-7 | `\|` 全键解析规则未定义 pipe 前连续反斜杠的奇偶语义，也未说明如何表达最终 regex source 中的 literal pipe。 | 不同实现可能产生不同的 cell 边界和配置值，并影响 regex 与 `test-cmd` 等所有键。 | STEP0·r2 | verified |
+| REQ-ADV-2 | Advisory batch acknowledged (3 items: 样本证据记录不可变身份 hash/CLI 版本/确切计数；doctor 来源 detail 断言进 AC1；非 regex 键回归样本进 AC5——均已吸收进 req-v3)。 | — | STEP0·r2 | advisory-acked |
+| REQ-8 | B6 模板文案「字面 pipe 写 \|」与 B5 语义冲突：`\|` 经解析产出裸 `|`（alternation），非 regex 字面 pipe。 | 用户/AI 照模板得到与文字承诺相反的正则，扩大匹配范围。 | STEP0·r3 | verified |
+| REQ-ADV-3 | Advisory batch acknowledged (2 items: AC7 禁止性断言建议语义化——吸收进 STEP5 测试实现措辞；台账 REQ-1 行多余单元格——已就地修复)。 | — | STEP0·r4 | advisory-acked |
+| SPEC-1 | `[|]` 含未转义的表格分隔符，无法按文档原样写入 process-config；模板与 literal-pipe AC 不可实现。 | high | STEP2·r1 | fixed (v3) — 模板单元格无 pipe 散文，指南移入 HTML 注释；CF-12 端到端断言整表（r2 复燃：design 模板行含未转义 [| verified |
+| SPEC-2 | 合法但灾难性回溯的外部 regex 可阻塞四个命令；设计只有语法校验，没有 ReDoS 边界。 | high | STEP2·r1 | fixed (v5) — makeIdMatcher 共享抽象贯穿 G2/G4/G5（collect/parseTap 拆结构收集+批量绑定，导出签名兼容；四消费点同一执行通道） |
+| SPEC-3 | doctor 在 D6 校验非法 id-pattern 前执行 D5 test command，违反前置校验和无副作用错误路径。 | high | STEP2·r1 | verified |
+| SPEC-4 | verify 的 pattern 早退路径未定义如何保持 `--change --json` 的 projection/modules 既有契约。 | med | STEP2·r1 | verified |
+| SPEC-5 | verify/gate 用 `|| null` 丢失空字符串 flag 的存在性，错误消费被覆盖配置。 | med | STEP2·r1 | verified |
+| SPEC-6 | 错误消息拼接原始 e.message 会二次泄漏未净化 source；boundedSource 实际上限 81 字符。 | med | STEP2·r2 | verified |
+| SPEC-7 | child probe 的输入传递与失败分类未定义（-e 插值=注入面；spawn/signal/非零/malformed 无契约；三消费点缺 probe-failure 场景）。 | high | STEP2·r3 | fixed (v5) — 成功形状唯一化（单 JSON 文档/长度相等/string|null）+ 失败五类枚举 + 可注入 child-runner seam；SR-55 逐类断言 |
+| SPEC-8 | 64-char cap 是未兼容的公共识别语义变更，且违反 req 范围外"不动 leadId"声明。 | high | STEP2·r3 | fixed (v5) — T4 撤销 64 字符上限，改为"不得截断、保持 leadId 完整输入语义" |
+
+===== apriori/changes/gate-id-pattern/flow-state.md =====
+change: gate-id-pattern
+tier: medium
+track: harden
+track-rationale: 目标与验收可直接陈述（gate 缺 id-pattern 通道，真实样本 C1 恒 BLOCKED，改后应只剩真实缺口）——harden
+lineage: main（v4 产品线；不合并 v1/v3）
+current-step: STEP2
+round: 4                # STEP0·r1 01:56-02:14 "6 issues open"；r2 02:20-02:34 "1 issues open"(REQ-1..6 verified,+REQ-7)；r3 02:40-02:52 "1 issues open"(REQ-7 verified,+REQ-8)；r4 02:55-03:05 "VERDICT: no major issues" → req-final 定稿；STEP1 gap-report 03:10 完成（medium 无 gate②，风险 R1-R5 前送）；STEP2 P4 产物 03:25 就绪
+reviewer-session: 019ff731-0efe-7b23-becc-f22d4de5429c   # codex(WSL 0.147.0, proxy 127.0.0.1:7890) gpt-5.6-sol, STEP2 P5（STEP0 会话：019ff71f-0d2f-79f3-8a2b-2c4e43cf2834）
+next-action: 等待 STEP2·r5 P5 verdict（gate⑤ 保守续跑轮；r4 05:11-05:30 "3 issues open"，SPEC-6 verified，SPEC-2/7/8 一致性贯穿已落 v5）  # 2026-08-13T05:50
+artifact-root: .                          # optional; root for process artifacts (runbook §3) — default project root
+gates:
+  - 2026-08-13T01:51 note: change scaffolded by `apriori new`
+  - 2026-08-13T01:52 consolidation (owner, verbatim): 「本 goal 预授权：gate②（gap-report 放行）、gate③（技术评审并入 P8 轮次）可自决通过并留痕；gate⑤（cap 触顶/振荡）按 RUNBOOK 呈报格式写入 flow-state 后可选保守方案继续；gate④（KB 签收/归档批准）不在授权范围——每个 change 走到 STEP6 归档前停下，把 gate④ packet 留在 flow-state 里，继续下一个 change 的 STEP0（归档动作全部留给我回来批）。撤销方式：我任意时刻声明即失效。」另：不 commit、不 push——全部改动留工作区，代码与文档的提交由我验收后执行。分支就在 main 工作区改（不开新分支，因为不 commit）。
+  - 2026-08-13T01:52 note: KB 预检——gate/spec-runner/archive-merge 三份 truth 均新鲜（source-commit 落后 0）；doctor/update 各落后 1 commit，与本 change 无关，留待各自 change 处理。config 模块无 truth doc（历史如此）。
+  - 2026-08-13T05:32 gate⑤（cap 触顶呈报，按 goal 预授权自决）: STEP2 P5 已跑满 step2-cap=4 未收敛。verdict 序列 verbatim："VERDICT: 5 issues open"→"VERDICT: 4 issues open"→"VERDICT: 4 issues open"→"VERDICT: 3 issues open"。账本现状：SPEC-1/3/4/5/6 verified；SPEC-2/7/8 open（均为"子进程匹配方案未贯穿到模块级设计、失败分类场景、任务清单"的一致性收尾，非方向分歧）。无 reopened ID、无振荡。决策（保守方案）：落一致性修订后**追加 r5 复核**取得真收敛——多花一轮评审而非带 open 行进 STEP5；理由：轮次曲线单调收敛（5→4→4→3），r4 三条均是机械贯穿而非设计翻案。撤销方式：人类任意时刻声明即失效。
+  - 2026-08-13T02:05 note: R2 降级留痕——WSL 侧 codex（session 019ff71c-51bf-7143-a9ae-b96b5559a540）因代理断流死于 verdict 前，resume 两次仍网络不可达；按 goal 预案切 Windows 侧 codex 0.145.0 重开全新评审会话（019ff71f-0d2f-79f3-8a2b-2c4e43cf2834），未自行填写任何 verdict。
+  - 2026-08-13T01:52 note: 复盘数据与现实的出入——复盘称默认 id-pattern 下真实样本 12 个 unidentified；实测（2026-08-13，store 现状）为 36 个（字母后缀 12 + AC-BIS-* 多段式 24），store 在复盘取数后继续增长所致。以实测为准，改前证据已存。
+
+codex
+传播路径基本齐全，SR-55 也已把 shared runner 的五类失败统一成可测 seam。最后一项我在核查 `makeIdMatcher` 的模块归属与依赖方向：当前设计顶部仍承诺 `config.js` 零内部依赖，而 tasks 把 child 通道放在 config，若 matcher 还需要唯一的 `leadId`，这里可能形成未声明的迁移或依赖环。
+exec
+/usr/bin/zsh -lc 'rg -n "makeIdMatcher|bindIds|_childRunner|_spawn|id-match-child|leadId.*迁|leadId.*re-export|matcher" apriori/changes/gate-id-pattern/design.md apriori/changes/gate-id-pattern/tasks.md apriori/changes/gate-id-pattern/specs/*.md apriori/changes/gate-id-pattern/specs/*/spec.md 2>/dev/null' in /mnt/d/Workbench/misc/apriori-spec-development
+ exited 1 in 76ms:
+zsh:1: no matches found: apriori/changes/gate-id-pattern/specs/*.md
+
+exec
+/usr/bin/zsh -lc 'rg -n "makeIdMatcher|bindIds|_childRunner|_spawn|id-match-child|leadId.*迁|leadId.*re-export|matcher" apriori/changes/gate-id-pattern/design.md apriori/changes/gate-id-pattern/tasks.md apriori/changes/gate-id-pattern/specs' in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 173ms:
+apriori/changes/gate-id-pattern/tasks.md:4:- [ ] T2 实现 lib/config.js：splitCells 奇偶算法、readConfig try/catch、DEFAULT_ID 迁入、resolveIdPattern + sanitizeMsg/boundedSource；新增 lib/id-match-child.js（固定子脚本）与 config 来源子进程匹配通道；CF 全绿
+apriori/changes/gate-id-pattern/tasks.md:6:- [ ] T4 实现 lib/spec-runner.js：cli 存在性传参、verify() 前置 resolve（--change 错误路径保 projection）、共享 matcher 贯穿 collect/parseTap（不得截断 title/TAP description，保持 leadId 完整输入语义）、DEFAULT_ID re-export、USAGE；SR 全绿
+apriori/changes/gate-id-pattern/design.md:39:- `verify()` 开头：`const r = resolveIdPattern(opts.cwd || '.', opts.idPattern)`；`matcher = makeIdMatcher(r)`（config→child、flag/default→inline，见安全契约节）；collect 与 parseTap 均走 matcher 批量通道；`r.error` →
+apriori/changes/gate-id-pattern/design.md:53:- `checkScenarioIds(specText, name, idPattern = DEFAULT_ID)`：保留兼容签名（inline 判定用 `leadId` 语义）；cli 的 CK-04 主路径改走共享 matcher 抽象（config 来源→child 批量；错误/失败→`error:`+`RESULT: ERROR` exit 2），保证与 verify/doctor 同一执行通道。
+apriori/changes/gate-id-pattern/design.md:60:- idp 合法时：D6 扫描经共享 matcher（config 来源→child 批量；child 失败→D6 finding + D5 sentinel 跳过，DR-18）；D5 照旧跑（classifyProbe 内部解析保持 DEFAULT_ID——对计数不敏感，KB 注明）；D6 detail 尾缀 `(id-pattern: config)` / `(id-pattern: default)`，unidentified finding 文本用实际 source（bounded）替代硬编码 DEFAULT_ID。
+apriori/changes/gate-id-pattern/design.md:68:  - **子进程协议（SPEC-7）**：固定脚本 `lib/id-match-child.js` 随 CLI 发布（绝不 `-e` 插值外部 source）；`spawnSync(process.execPath, [childPath], { input: JSON.stringify({pattern, texts}), timeout: 2000, killSignal: 'SIGKILL', shell: false, encoding: 'utf8', maxBuffer: 8*1024*1024 })`；pattern 与文本批一律走 **stdin 数据通道**（无 argv 长度/前导 dash/注入问题）；子进程对每条 text 执行 leadId 并输出 JSON `{ids:[...]}` 到 stdout。
+apriori/changes/gate-id-pattern/design.md:74:  makeIdMatcher(resolved) → matcher
+apriori/changes/gate-id-pattern/design.md:75:    resolved.origin === 'config' → child 模式（经 lib/id-match-child.js）
+apriori/changes/gate-id-pattern/design.md:77:  matcher.batch(texts: string[]) → { ids: (string|null)[] } | { failure: '<class>: <detail>' }
+apriori/changes/gate-id-pattern/design.md:80:  - **测试 seam**：child 模式的 spawn 封装为可注入函数（`matcher._spawn` 或模块级 `_childRunner`，测试替身可模拟五类失败），SR-55 逐类断言。
+apriori/changes/gate-id-pattern/design.md:81:  - **贯穿改造**（导出签名兼容）：`scanText` 拆为"结构收集"（收集 `(label, title)`，不做 ID 提取）+ `bindIds(pairs, matcher)`（批量匹配后重建 byId/idFiles/unidentified/duplicates）；`collectScenarios`/`collectScenariosFromTexts` 保留既有 `(targets, idRe)` 签名作为 inline 包装，新增可选 `matcher` 参数（缺省=由 idRe 构造 inline matcher）。`parseTap` 同理：lex/decode 出 points 后，描述批量匹配再分流 results/untagged/unattributedFailures；保留 `(out, idRe)` 签名 + 可选 matcher。matcher failure 上浮：verify → `run.errors.push(sanitized config-origin msg)`（标题批失败在 test command 前早退；TAP 批失败在命令后同类上浮）；gate 经 verify 继承；check → `error:` + `RESULT: ERROR` exit 2；doctor → D6 finding + D5 sentinel 语义。`leadId` 导出原样不动。
+
+codex
+闭环判断已确定：shared matcher 的调用链和 SR-55 的失败矩阵本身足以关闭 SPEC-2/7 的设计缺口，但执行清单与 design 测试布局都仍停在 SR-54，明确遗漏刚新增的 SR-55。该遗漏会让五类 fail-closed 测试在 STEP5 被跳过，因此 SPEC-7 仍需重开一次。
+Round 5 复核完成：SPEC-2/8 可验证关闭；SPEC-7 因 SR-55 未传播到 tasks/design 测试清单而仍开放。
+  ✓ 读取 Round 5 spec-runner delta、design、tasks、ledger 与 flow-state
+  ✓ 验证 SPEC-2/7/8 的 API、场景和执行传播闭环
+  ✓ 复扫新问题并输出 review body、ledger delta、verdict
+codex
+# spec-review-v5 — gate-id-pattern
+
+## 复核结论
+
+SPEC-2、SPEC-8 已完整关闭。SPEC-7 的协议与 scenario 已补齐，但新增 SR-55 没有传播到 STEP5 执行清单和 design 测试布局，仍存在一个会导致返工的缺口。
+
+## 正式问题
+
+### SPEC-7：SR-55 未进入测试实施清单
+
+**描述**
+
+spec-runner delta 已新增 SR-55，完整覆盖：
+
+- timeout；
+- spawn error；
+- signal；
+- non-zero exit；
+- malformed output；
+- 合法 success shape；
+- flag/default origin 不调用 child。
+
+但 `tasks.md` T3 仍写“SR-50..SR-54”，design 的测试布局也仍写“SR-50..53”。两处都明确排除了 SR-55。
+
+`tasks.md` 是 STEP5 的有序执行清单。按其实施时，shared child runner 最关键的五类 fail-closed 路径不会获得对应红测试；只有 timeout 路径会由 SR-54、GT-25、CK-16、DR-18 间接覆盖。
+
+**风险**
+
+spawn、signal、non-zero 和 malformed-output 分支可能实现错误或异常逃逸，直到 T16 的机械绑定发现 SR-55 未绑定才返工；若机械验证被误用或绕过，则损坏安装或 child protocol 错误可能进入生产。
+
+**建议**
+
+同步修改：
+
+- T3：`SR-50..SR-55`，明确 SR-55 通过 injectable child-runner seam 表驱动覆盖全部五类失败、success shape 和 inline origins；
+- design 测试布局：列出 SR-50..55、GT-22..25、CK-13..16、DR-16..18。
+
+## 已验证关闭
+
+### SPEC-2：verified
+
+设计已定义 `makeIdMatcher(resolved)`，明确 config → child、flag/default → inline，并将 matcher 贯穿：
+
+- scenario structure collection → `bindIds`；
+- TAP lex/decode → description batch matching；
+- CK-04 CLI 主路径；
+- doctor D6；
+- gate 通过 verify 继承。
+
+旧 exports 保留兼容签名，`leadId` 原样导出。config 来源已不存在未声明的进程内实际匹配路径。
+
+### SPEC-8：verified
+
+64-char cap 已从 spec、design 和 T4 全部撤销；T4 反向明确不得截断 title/TAP description，`leadId` full-input 语义保持。
+
+SPEC-1、SPEC-3、SPEC-4、SPEC-5、SPEC-6 保持 verified。
+
+## 外部共享状态
+
+没有新增持久化外部共享状态。child process 的初始化、运行、终止、输出校验与失败清理均已定义；仅其测试任务传播缺口记录为 SPEC-7。
+
+## Advisories
+
+- `makeIdMatcher` 的具体模块归属和 export 名单未显式写出。依赖方向表明放在 `spec-runner.js` 最自然，因为 `leadId`、collect、`parseTap` 均由该模块持有，且 check/doctor 已依赖它；建议在 design 中直接注明。
+- ledger 的 SPEC-1 行仍因未转义 pipe 而不是标准五列表格；flow-state 的 gate⑤ 记录称“无 reopened ID”，但此前多轮确有 `fixed/rejected → open` 事件。两者不改变本 change 的产品行为，但建议修复审计记录。
+
+## Ledger delta
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| SPEC-2 | 合法但灾难性回溯的外部 regex 可阻塞四个命令；设计只有语法校验，没有 ReDoS 边界。 | high | STEP2·r1 | verified |
+| SPEC-7 | child probe 的输入传递与失败分类未定义（`-e` 插值为注入面；spawn/signal/non-zero/malformed 无契约；三消费点缺 probe-failure 场景）。 | high | STEP2·r3 | open — fixed incomplete：SR-55 已定义协议与完整 oracle，但 tasks T3 和 design 测试布局均未纳入该 scenario |
+| SPEC-8 | 64-char cap 是未兼容的公共识别语义变更，且违反 req 范围外“不动 `leadId`”声明。 | high | STEP2·r3 | verified |
+| SPEC-ADV-1 | Advisory batch acknowledged (2 items: 明确 `makeIdMatcher` 模块归属/export；修复 ledger SPEC-1 表格结构及 gate⑤ reopened 记录)。 | — | STEP2·r5 | advisory-acked |
+
+VERDICT: 1 issues open
+tokens used
+443,429
+# spec-review-v5 — gate-id-pattern
+
+## 复核结论
+
+SPEC-2、SPEC-8 已完整关闭。SPEC-7 的协议与 scenario 已补齐，但新增 SR-55 没有传播到 STEP5 执行清单和 design 测试布局，仍存在一个会导致返工的缺口。
+
+## 正式问题
+
+### SPEC-7：SR-55 未进入测试实施清单
+
+**描述**
+
+spec-runner delta 已新增 SR-55，完整覆盖：
+
+- timeout；
+- spawn error；
+- signal；
+- non-zero exit；
+- malformed output；
+- 合法 success shape；
+- flag/default origin 不调用 child。
+
+但 `tasks.md` T3 仍写“SR-50..SR-54”，design 的测试布局也仍写“SR-50..53”。两处都明确排除了 SR-55。
+
+`tasks.md` 是 STEP5 的有序执行清单。按其实施时，shared child runner 最关键的五类 fail-closed 路径不会获得对应红测试；只有 timeout 路径会由 SR-54、GT-25、CK-16、DR-18 间接覆盖。
+
+**风险**
+
+spawn、signal、non-zero 和 malformed-output 分支可能实现错误或异常逃逸，直到 T16 的机械绑定发现 SR-55 未绑定才返工；若机械验证被误用或绕过，则损坏安装或 child protocol 错误可能进入生产。
+
+**建议**
+
+同步修改：
+
+- T3：`SR-50..SR-55`，明确 SR-55 通过 injectable child-runner seam 表驱动覆盖全部五类失败、success shape 和 inline origins；
+- design 测试布局：列出 SR-50..55、GT-22..25、CK-13..16、DR-16..18。
+
+## 已验证关闭
+
+### SPEC-2：verified
+
+设计已定义 `makeIdMatcher(resolved)`，明确 config → child、flag/default → inline，并将 matcher 贯穿：
+
+- scenario structure collection → `bindIds`；
+- TAP lex/decode → description batch matching；
+- CK-04 CLI 主路径；
+- doctor D6；
+- gate 通过 verify 继承。
+
+旧 exports 保留兼容签名，`leadId` 原样导出。config 来源已不存在未声明的进程内实际匹配路径。
+
+### SPEC-8：verified
+
+64-char cap 已从 spec、design 和 T4 全部撤销；T4 反向明确不得截断 title/TAP description，`leadId` full-input 语义保持。
+
+SPEC-1、SPEC-3、SPEC-4、SPEC-5、SPEC-6 保持 verified。
+
+## 外部共享状态
+
+没有新增持久化外部共享状态。child process 的初始化、运行、终止、输出校验与失败清理均已定义；仅其测试任务传播缺口记录为 SPEC-7。
+
+## Advisories
+
+- `makeIdMatcher` 的具体模块归属和 export 名单未显式写出。依赖方向表明放在 `spec-runner.js` 最自然，因为 `leadId`、collect、`parseTap` 均由该模块持有，且 check/doctor 已依赖它；建议在 design 中直接注明。
+- ledger 的 SPEC-1 行仍因未转义 pipe 而不是标准五列表格；flow-state 的 gate⑤ 记录称“无 reopened ID”，但此前多轮确有 `fixed/rejected → open` 事件。两者不改变本 change 的产品行为，但建议修复审计记录。
+
+## Ledger delta
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| SPEC-2 | 合法但灾难性回溯的外部 regex 可阻塞四个命令；设计只有语法校验，没有 ReDoS 边界。 | high | STEP2·r1 | verified |
+| SPEC-7 | child probe 的输入传递与失败分类未定义（`-e` 插值为注入面；spawn/signal/non-zero/malformed 无契约；三消费点缺 probe-failure 场景）。 | high | STEP2·r3 | open — fixed incomplete：SR-55 已定义协议与完整 oracle，但 tasks T3 和 design 测试布局均未纳入该 scenario |
+| SPEC-8 | 64-char cap 是未兼容的公共识别语义变更，且违反 req 范围外“不动 `leadId`”声明。 | high | STEP2·r3 | verified |
+| SPEC-ADV-1 | Advisory batch acknowledged (2 items: 明确 `makeIdMatcher` 模块归属/export；修复 ledger SPEC-1 表格结构及 gate⑤ reopened 记录)。 | — | STEP2·r5 | advisory-acked |
+
+VERDICT: 1 issues open

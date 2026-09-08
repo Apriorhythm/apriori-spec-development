@@ -1,0 +1,271 @@
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f4b30-68f9-7222-9b64-17f52a333b4c
+--------
+user
+P1 requirement review round 2 for tap-plan. Read requirement/req-v2.md from disk (v1 findings applied):
+
+- TP-1: the sum rule is DROPPED. More than one top-level plan now fails closed with an error telling the user to run one TAP stream per verify. New E3 uses your masking fixture verbatim (totals add up, still ERROR). DD-2 rewritten with the rationale (segment attribution ambiguous across leading/trailing-plan emitters; a guessing rule is a gameable rule).
+- TP-2: point matcher pinned to /^(?:ok|not ok)(?:\s|$)/ top-level result tokens; `ok:` diagnostic-like lines never count; new E4 half proves it.
+- TP-ADV-1: plan regex tolerates a trailing directive (`1..0 # SKIP reason` = zero plan, new E7); dup numbers compared numerically (`ok 01` == `ok 1`, folded into E2); doctor's classifyProbe exclusion declared intentional in Consumers + Out of scope.
+
+Confirm TP-1/TP-2 (and the advisory) resolved (flip to verified) or reopen; any new issues? Print the COMPLETE review document body (landed verbatim at apriori/review/tap-plan-req-review-v2.md) with a ledger-delta section, ending with exactly one verdict line: "VERDICT: no major issues, ready to proceed" or "VERDICT: <N> issues open".
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-11T07:45:23.779172Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T07:45:24.029286Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T07:45:24.407366Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-11T07:45:24.979256Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-11T07:45:26.020025Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-11T07:45:27.889158Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-11T07:45:31.398506Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: fRvIlwBZQ95C
+codex
+I’ll read the revised tap-plan requirement and confirm the two formal fixes plus the advisory edge cases against the current parser context.
+exec
+/usr/bin/zsh -lc "sed -n '1,220p' apriori/review/tap-plan-issues.md 2>/dev/null || true" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,300p' requirement/req-v2.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "rg -n \"parseTap|zeroTapParsed|infraErrors|doctor|classifyProbe|1\\.\\.0|Bail out|TAP_RE\" lib/spec-runner.js lib/doctor.js test/doctor.test.js test/spec-runner.test.js" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 130ms:
+# Issue ledger — tap-plan
+
+Rows recorded on behalf of the reviewer (codex session 019f4b30-68f9-7222-9b64-17f52a333b4c; raws: tap-plan-req-review-v*.txt).
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| TP-1 | Multi-plan sum rule maskable: one stream's truncation offset by another's extra points; dup check skipped exactly there. | Truncated/garbled concatenated TAP still verifies GREEN. | STEP0·r1 | fixed |
+| TP-2 | Point-count regex /^(ok|not ok)\b/ broader than TAP result syntax (counts `ok:` diagnostic-like lines). | False plan mismatches; implementer divergence. | STEP0·r1 | fixed |
+| TP-ADV-1 | Advisory: `1..0 # SKIP` directive case, numeric dup-number comparison, doctor-scope exclusion kept intentional. | Edge precision. | STEP0·r1 | fixed |
+
+ succeeded in 126ms:
+# Requirement — tap-plan (v2)
+
+change: tap-plan
+target lineage: **v3 branch**. Next patch/minor. Fail-closed tightening: previously-trusted truncated/garbled TAP runs now refuse to verify; conforming single-stream runs unchanged.
+
+Revisions vs v1 (P1 r1): TP-1 → multiple plans now FAIL CLOSED (the sum rule is dropped — it was maskable); TP-2 → point matcher pinned to TAP result-token syntax; TP-ADV-1 → skip-all directive, numeric dup comparison, doctor scope declared.
+
+## Background — the problem (current state A, reproduced)
+
+`parseTap` never reads the TAP plan line. `1..N` is used in exactly one place — `zeroTapParsed`, as proof the reporter IS TAP — and is never compared against what was actually parsed. Two mechanical repros (2026-07-11, this repo):
+
+1. **Truncated stream → GREEN.** Spec with one scenario; test-cmd emits `TAP version 13`, `1..2`, `ok 1 - TP-01 a`, exit 0. The plan promises two test points, one arrived, the run verifies GREEN. Any truncation that cuts whole result lines (pipe kill, runner crash after partial flush, `head` in the pipeline) is invisible as long as the surviving lines cover the scenarios and the exit code is 0.
+2. **Duplicate test-point numbers → GREEN.** `1..2` followed by `ok 1 - TP-01 a` and `ok 1 - TP-02 b` (test point 2 never ran; something ran twice as 1) verifies GREEN.
+
+`infraErrors` catches a NONZERO exit with no parsed failure, but a truncated-yet-exit-0 stream sails through. (GPT-5.6 second review, defect #2.)
+
+## Goal (target state B)
+
+The TAP **plan** becomes a checked promise: exactly one plan may be present; when it is, the number of parsed top-level test points must equal the plan total, and top-level test-point numbers must not repeat. Violations are **infra errors** (run untrustworthy → verify RESULT: ERROR exit 2, gate C1 BLOCKED), not bindings.
+
+**Mechanics (parser layer, `lib/spec-runner.js`):**
+- `parseTap` additionally collects:
+  - `plans`: every top-level plan line `/^1\.\.(\d+)\s*(#.*)?$/` (a `# SKIP`/`# TODO` directive after the count is legal; N still parses — `1..0 # SKIP no backend` is a zero plan).
+  - `points`: count of ALL top-level TAP result tokens `/^(?:ok|not ok)(?:\s|$)/` — including legal points today's binding regex skips (no number, no `- ` description, `# SKIP`/`# TODO` directives). `ok:`-prefixed diagnostic-like lines are NOT result tokens and never count. Indented (subtest/YAML) lines stay invisible, as today — node's nested TAP keeps working; the top-level plan counts top-level points.
+  - `dupNumbers`: top-level test-point numbers (compared NUMERICALLY — `ok 01` duplicates `ok 1`) seen more than once. Unnumbered points are legal TAP and exempt.
+- New infra errors in `infraErrors`:
+  - more than one top-level plan → "multiple TAP plans in one run — cannot attribute test points to plans; run one TAP stream per verify (split the test command)". FAIL CLOSED: the v1 sum rule was maskable (one stream's truncation offset by another's extra points) and is dropped.
+  - exactly one plan and `plan !== points` → "TAP plan declares N test point(s) but M were parsed — output truncated or garbled; refusing to trust this run".
+  - exactly one plan and `dupNumbers` non-empty → "duplicate TAP test-point number(s): ...".
+- No plan at all: behavior unchanged (some minimal TAP emitters skip the plan; absence was never a promise). DD-1.
+- Plan position (leading or trailing) is irrelevant — only count and uniqueness are checked.
+
+**Consumers:** `verify`, `verify --change`, `gate` C1 inherit through `infraErrors` — no new wiring. `doctor`'s TAP probe (`classifyProbe`) is NOT in scope: it diagnoses reporter shape, not run trustworthiness; the exclusion is intentional and stays visible in the design (TP-ADV-1).
+
+## Acceptance criteria (testable)
+
+- E1. Repro 1 verbatim: plan `1..2`, one passing result, exit 0 → RESULT: ERROR (exit 2), message names 2 declared vs 1 parsed; nothing verifies GREEN.
+- E2. Repro 2 verbatim: duplicate `ok 1` under one plan → RESULT: ERROR naming the duplicated number; `ok 01` + `ok 1` also duplicates (numeric comparison).
+- E3. Two concatenated TAP streams (two plans, any shape) → RESULT: ERROR naming multiple plans, even when totals happen to add up (the TP-1 masking fixture verbatim: `1..2`, one point, `1..1`, two points).
+- E4. Unnumbered/undescribed top-level points count toward the plan total (plan `1..2`, `ok 1 - X-01 t`, bare `ok` → no plan error); `ok: something` diagnostic lines do NOT count (plan `1..1`, `ok 1 - X-01 t`, `ok: note` → no plan error).
+- E5. Plan-less TAP output behaves exactly as today (no new error).
+- E6. Subtest-indented lines and their nested plans are ignored by the point count, the plan collection, and the dup check (node --test nested TAP verifies as today; the repo's own suite stays green through the full gate chain).
+- E7. `1..0 # SKIP reason` with zero points → consistent (no plan error; existing zero-scenario/zero-TAP handling unchanged).
+- E8. `verify --change` and `gate --change` inherit the failure (one E2E each).
+- E9. All existing tests pass; suite + verify + gate + check --self green.
+
+## Out of scope
+
+- Binding semantics (which lines produce results) — unchanged.
+- `doctor` probe classification (diagnostic, not trust-gating) — intentional exclusion.
+- TAP 14 subtest syntax beyond what node emits today.
+- update.js manifest (P0-3, next change).
+
+## Decisions proposed
+
+- DD-1: absent plan stays legal (no promise made, none checked) — enforcement would break minimal emitters that never lied.
+- DD-2 (replaces v1's): multiple plans fail closed rather than sum or segment-match — segment attribution is ambiguous across leading-vs-trailing-plan emitters, and a rule that guesses is a rule that can be gamed; the error tells the user to split the command.
+
+ succeeded in 146ms:
+lib/doctor.js:3: * apriori doctor — diagnose the project↔apriori seam. Seven checks, one exit code:
+lib/doctor.js:12:const { collectScenarios, parseTap, zeroTapParsed, runTestCommand, configTestCmd, DEFAULT_ID } = require('./spec-runner');
+lib/doctor.js:19:// type-honest probes: doctor's whole job is malformed scaffolds — a file impersonating a
+lib/doctor.js:26:function classifyProbe(run) {
+lib/doctor.js:32:  const { results, untagged, untaggedFails, bailout } = parseTap(out, idRe);
+lib/doctor.js:35:  if (zeroTapParsed(out, results, untagged))
+lib/doctor.js:39:  // an unexplained non-zero exit is classified BEFORE any ok branch — a non-zero `1..0` run lands here
+lib/doctor.js:43:    if (/^1\.\.0\b/m.test(out)) return { id: 'D5', status: 'ok', detail: 'TAP plumbing OK (empty suite, 1..0)' };
+lib/doctor.js:47:  return { id: 'D5', status: 'ok', detail: `TAP plumbing OK (${pass}p/${failCount}f — test failures are verify's business, not doctor's)` };
+lib/doctor.js:120:  else checks.push(classifyProbe(runTestCommand(testCmd, cwd)));
+lib/doctor.js:146:    // diagnosed, never read (doctor must not leak outside content into its report)
+lib/doctor.js:184:const USAGE = 'usage: apriori doctor [--test-cmd "<cmd>"] [--no-run] [--cwd <dir>] [--json]';
+lib/doctor.js:187:  return withStrict(argv, { sub: 'doctor', usage: USAGE, positionals: 0,
+lib/doctor.js:193:    for (const e of res.errors) console.error('doctor: ' + e);
+lib/doctor.js:202:module.exports = { runDoctor, classifyProbe, cli };
+test/doctor.test.js:8:const doctor = require('../lib/doctor');
+test/doctor.test.js:46:  const r = doctor.runDoctor({ cwd: healthy(), testCmd: TAP_OK });
+test/doctor.test.js:55:  const r = run(['doctor', '--json'], root);
+test/doctor.test.js:69:  const r = doctor.runDoctor({ cwd: root, testCmd: TAP_OK });
+test/doctor.test.js:82:  const rs = doctor.runDoctor({ cwd: swapped, testCmd: TAP_OK });
+test/doctor.test.js:87:  const r2 = doctor.runDoctor({ cwd: root2, testCmd: TAP_OK });
+test/doctor.test.js:94:  const r = doctor.runDoctor({ cwd: stale, testCmd: TAP_OK });
+test/doctor.test.js:100:  const r2 = doctor.runDoctor({ cwd: absent, testCmd: TAP_OK });
+test/doctor.test.js:106:  const r3 = doctor.runDoctor({ cwd: dirRb, testCmd: TAP_OK });
+test/doctor.test.js:115:  const r = doctor.runDoctor({ cwd: root, testCmd: TAP_OK });
+test/doctor.test.js:123:  const rd = doctor.runDoctor({ cwd: dirRules, testCmd: TAP_OK });
+test/doctor.test.js:130:  assert.strictEqual(byId(doctor.runDoctor({ cwd: bare, testCmd: TAP_OK }), 'D4')[0].status, 'n/a');
+test/doctor.test.js:135:  const probe = (testCmd) => byId(doctor.runDoctor({ cwd: root, testCmd }), 'D5')[0];
+test/doctor.test.js:139:  const sig = doctor.classifyProbe({ out: '', status: null, signal: 'SIGKILL', error: null });
+test/doctor.test.js:143:  assert.strictEqual(probe(tapCmd('TAP version 13', 'Bail out! oom')).status, 'finding');
+test/doctor.test.js:157:  // 1..0 with exit 0 → ok; 1..0 with non-zero exit → finding (unexplained, classified first)
+test/doctor.test.js:158:  assert.strictEqual(probe(tapCmd('TAP version 13', '1..0')).status, 'ok');
+test/doctor.test.js:159:  assert.strictEqual(probe(`node -e "console.log('1..0');process.exit(3)"`).status, 'finding');
+test/doctor.test.js:170:  const none = byId(doctor.runDoctor({ cwd: root }), 'D5')[0];
+test/doctor.test.js:173:  const skipped = byId(doctor.runDoctor({ cwd: root, testCmd: TAP_OK, noRun: true }), 'D5')[0];
+test/doctor.test.js:183:  const r = doctor.runDoctor({ cwd: root, testCmd: TAP_OK });
+test/doctor.test.js:190:  assert.strictEqual(byId(doctor.runDoctor({ cwd: healthy(), testCmd: TAP_OK }), 'D6')[0].status, 'n/a');
+test/doctor.test.js:204:  const r = doctor.runDoctor({ cwd: root, testCmd: TAP_OK });
+test/doctor.test.js:222:    const r2 = doctor.runDoctor({ cwd: root, testCmd: TAP_OK });
+test/doctor.test.js:231:    const r3 = doctor.runDoctor({ cwd: root, testCmd: TAP_OK });
+test/doctor.test.js:241:    [['doctor', '--test-cmd', TAP_OK, '--json'], healthyRoot, 0, 'HEALTHY'],
+test/doctor.test.js:242:    [['doctor', '--json', '--no-run'], mkProject({ 'apriori/specs': null, 'apriori/changes': null }), 1, 'FINDINGS'],
+test/doctor.test.js:243:    [['doctor', '--json'], mkProject({ 'x.txt': 'x' }), 2, 'UNUSABLE'],
+test/doctor.test.js:244:    [['doctor', 'stray-arg', '--json'], healthyRoot, 2, 'UNUSABLE'],
+test/doctor.test.js:254:test('DR-11 doctor is read-only and rejects stray arguments', () => {
+test/doctor.test.js:262:  doctor.runDoctor({ cwd: root, noRun: true });
+test/doctor.test.js:264:  const stray = run(['doctor', 'oops'], root);
+test/doctor.test.js:271:  const low = doctor.runDoctor({ cwd: root, testCmd: TAP_OK, nodeVersion: '16.20.0' });
+test/doctor.test.js:275:  const ok = doctor.runDoctor({ cwd: root, testCmd: TAP_OK, nodeVersion: '18.0.0' });
+test/spec-runner.test.js:4:const { collectScenarios, parseTap, evaluate, verify, DEFAULT_ID } = require('../lib/spec-runner');
+test/spec-runner.test.js:27:  const { results } = parseTap(tap, idRe);
+test/spec-runner.test.js:86:  const { results: defTap } = parseTap('ok 1 - ab-1 lower\n', idRe);   // default pattern misses it
+test/spec-runner.test.js:88:  const { results: cust } = parseTap('ok 1 - ab-1 lower\n', lowRe);    // custom pattern binds it
+test/spec-runner.test.js:140:  const { zeroTapParsed, parseTap } = require('../lib/spec-runner');
+test/spec-runner.test.js:144:  const p1 = parseTap(human, idRe);
+test/spec-runner.test.js:145:  assert.strictEqual(zeroTapParsed(human, p1.results, p1.untagged), true);
+test/spec-runner.test.js:148:  const p2 = parseTap(tap, idRe);
+test/spec-runner.test.js:149:  assert.strictEqual(zeroTapParsed(tap, p2.results, p2.untagged), false);
+test/spec-runner.test.js:151:  const p3 = parseTap('', idRe);
+test/spec-runner.test.js:152:  assert.strictEqual(zeroTapParsed('', p3.results, p3.untagged), false);
+test/spec-runner.test.js:154:  const emptySuite = 'TAP version 13\n1..0\n';
+test/spec-runner.test.js:155:  const p4 = parseTap(emptySuite, idRe);
+test/spec-runner.test.js:156:  assert.strictEqual(zeroTapParsed(emptySuite, p4.results, p4.untagged), false);
+test/spec-runner.test.js:187:  const { infraErrors } = require('../lib/spec-runner');
+test/spec-runner.test.js:188:  const spawnErr = infraErrors({ missingTargets: [], fileCount: 1, scenarioCount: 1, failCount: 0,
+test/spec-runner.test.js:236:test('SR-14 TAP directives and aborts: SKIP/TODO never count green; Bail out! is an error', () => {
+test/spec-runner.test.js:238:  const { results } = parseTap('ok 1 - XX-01 a # SKIP flaky\n', idRe);
+test/spec-runner.test.js:245:  const { results: todo } = parseTap('not ok 1 - XX-01 a # TODO later\n', idRe);
+test/spec-runner.test.js:247:  // Bail out! → ERROR even if earlier lines were green
+test/spec-runner.test.js:248:  const bail = runCli(['--specs', file, '--test-cmd', `node -e "console.log('ok 1 - XX-01 a');console.log('Bail out! db down')"`]);
+lib/spec-runner.js:21:const TAP_RE = /^(ok|not ok)\s+\d+\s+-\s+(.*)$/gm;
+lib/spec-runner.js:89:function parseTap(out, idRe) {
+lib/spec-runner.js:93:  const bm = out.match(/^Bail out!(.*)$/m);
+lib/spec-runner.js:96:  TAP_RE.lastIndex = 0;
+lib/spec-runner.js:97:  while ((m = TAP_RE.exec(out)) !== null) {
+lib/spec-runner.js:113:function zeroTapParsed(out, results, untagged) {
+lib/spec-runner.js:149:function infraErrors(run) {
+lib/spec-runner.js:233:  const { results, untagged, untaggedFails, bailout } = parseTap(exec.out, idRe);
+lib/spec-runner.js:240:    noTap: zeroTapParsed(exec.out, results, untagged),
+lib/spec-runner.js:244:  run.errors = infraErrors(run);
+lib/spec-runner.js:305:module.exports = { leadId, stripFences, collectScenarios, collectScenariosFromTexts, parseTap,
+lib/spec-runner.js:306:  zeroTapParsed, runTestCommand, evaluate, infraErrors, formatReport, verifyJson, verify,
+
+codex
+The v2 fixes address the round-1 findings: multi-plan output now fails closed, and result-token counting excludes `ok:` diagnostics. I’m doing one more pass for any new ambiguity around plan syntax and zero-plan behavior before closing.
+codex
+**Requirement Review — tap-plan v2**
+
+**Round-1 Confirmations**
+
+TP-1: **verified**. The aggregate multi-plan sum rule is gone. More than one top-level plan now fails closed, and E3 uses the masking class directly, including the case where declared totals still equal parsed points.
+
+TP-2: **verified**. The point matcher is now pinned to top-level TAP result tokens, `/^(?:ok|not ok)(?:\s|$)/`, so `ok:` diagnostic-like lines do not count. E4 covers both legal unnumbered points and the diagnostic false-positive case.
+
+TP-ADV-1: **verified**. The requirement now covers `1..0 # SKIP reason`, numeric duplicate comparison (`ok 01` equals `ok 1`), and the intentional exclusion of `doctor` probe classification.
+
+**Dimension Verdicts**
+
+1. Target state B: **clear**. Exactly one plan may be present; no-plan output remains unchanged; multi-plan output fails closed.
+2. Edge/exception coverage: **covered** for the identified TAP plan risks: truncation, duplicate numbers, unnumbered points, diagnostics, nested TAP, skip-all plans, verify-change, and gate inheritance.
+3. Side effects: **no issue**. The change is parser/infra-error behavior only.
+4. Acceptance criteria: **testable**. E1-E9 can be implemented as direct parser, verify, and gate cases.
+5. State-A conflicts: **no issue**. The requirement accurately tightens current behavior without changing binding semantics.
+6. Lineage: **declared and plausible** for the v3 next patch/minor.
+
+**New Issues**
+
+None.
+
+**Advisories**
+
+None.
+
+**Ledger Delta**
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| TP-1 | Multi-plan sum rule was maskable: one stream’s truncation could be offset by another stream’s extra points while duplicate checks were skipped. | Truncated/garbled concatenated TAP could still verify GREEN. | P1·r1 | verified |
+| TP-2 | Point-count regex `/^(ok|not ok)\b/` was broader than TAP result syntax and counted `ok:` diagnostic-like lines. | False plan mismatches and implementer divergence. | P1·r1 | verified |
+| TP-ADV-1 | Needed explicit `1..0 # SKIP`, numeric duplicate comparison, and intentional doctor-scope exclusion. | Advisory edge precision. | P1·r1 | verified |
+
+VERDICT: no major issues, ready to proceed
+tokens used
+2,376,666
+**Requirement Review — tap-plan v2**
+
+**Round-1 Confirmations**
+
+TP-1: **verified**. The aggregate multi-plan sum rule is gone. More than one top-level plan now fails closed, and E3 uses the masking class directly, including the case where declared totals still equal parsed points.
+
+TP-2: **verified**. The point matcher is now pinned to top-level TAP result tokens, `/^(?:ok|not ok)(?:\s|$)/`, so `ok:` diagnostic-like lines do not count. E4 covers both legal unnumbered points and the diagnostic false-positive case.
+
+TP-ADV-1: **verified**. The requirement now covers `1..0 # SKIP reason`, numeric duplicate comparison (`ok 01` equals `ok 1`), and the intentional exclusion of `doctor` probe classification.
+
+**Dimension Verdicts**
+
+1. Target state B: **clear**. Exactly one plan may be present; no-plan output remains unchanged; multi-plan output fails closed.
+2. Edge/exception coverage: **covered** for the identified TAP plan risks: truncation, duplicate numbers, unnumbered points, diagnostics, nested TAP, skip-all plans, verify-change, and gate inheritance.
+3. Side effects: **no issue**. The change is parser/infra-error behavior only.
+4. Acceptance criteria: **testable**. E1-E9 can be implemented as direct parser, verify, and gate cases.
+5. State-A conflicts: **no issue**. The requirement accurately tightens current behavior without changing binding semantics.
+6. Lineage: **declared and plausible** for the v3 next patch/minor.
+
+**New Issues**
+
+None.
+
+**Advisories**
+
+None.
+
+**Ledger Delta**
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| TP-1 | Multi-plan sum rule was maskable: one stream’s truncation could be offset by another stream’s extra points while duplicate checks were skipped. | Truncated/garbled concatenated TAP could still verify GREEN. | P1·r1 | verified |
+| TP-2 | Point-count regex `/^(ok|not ok)\b/` was broader than TAP result syntax and counted `ok:` diagnostic-like lines. | False plan mismatches and implementer divergence. | P1·r1 | verified |
+| TP-ADV-1 | Needed explicit `1..0 # SKIP`, numeric duplicate comparison, and intentional doctor-scope exclusion. | Advisory edge precision. | P1·r1 | verified |
+
+VERDICT: no major issues, ready to proceed

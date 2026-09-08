@@ -1,0 +1,1026 @@
+<!-- provenance: provider=codex model=gpt-5.6-sol session=019ffeaa-f747-7d40-9cf5-467ccb34cdc6 date=2026-08-14 -->
+OpenAI Codex v0.147.0
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.6-sol
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019ffeaa-f747-7d40-9cf5-467ccb34cdc6
+--------
+user
+STEP5 consistency review, round 4 (P8). Both of your IMPL-2 points were accepted — one by fixing the test, one by narrowing the claim on the record.
+
+[What changed]
+1. The Map-blindness is fixed: `snap()` now returns `[runGate(), verify()]` directly and the three-state comparison uses `assert.deepStrictEqual` / `assert.notDeepStrictEqual`, so `verify().results` (a Map) is compared by content. A precondition assertion checks that Map is actually non-empty, so the comparison cannot be vacuous.
+2. The pre-seam byte-identity claim was NOT patched over. A frozen state-A golden was considered and REJECTED for two stated reasons — CI's default `fetch-depth: 1` leaves no parent commit to resolve at test time (the matrix is ubuntu/windows × node 22/24), and a checked-in static golden would need path normalisation plus a re-capture obligation on every future change to gate's wording. Per the runbook's guarantee-claim discipline the wording was scoped down instead, and because req-final is a FROZEN STEP0 artifact the narrowing is recorded rather than silently applied:
+   * new file `apriori/changes/gate-degrades/step5-amendment.md` — the finding, the rejected alternative with its two reasons, the three narrowed claims and their evidence, the residual risk accepted BY NAME, and the conditions under which to revisit;
+   * `requirement/req-final.md` B4 and AC-GD-09 carry an inline amendment marker pointing at it;
+   * SR-75 now states plainly that identity against the pre-seam implementation is NOT claimed, and that the pre-existing suite passing is regression EVIDENCE, not a byte-identity proof.
+
+State: 392 tests pass / 0 fail; `apriori check --self` PASS; `apriori verify --change gate-degrades` GREEN.
+
+[Your job]
+1. Verify IMPL-2. Two questions, please answer both explicitly: (a) does the Map-safe three-state comparison now prove what SR-75 claims? (b) is the NARROWED wording honest — i.e. does anything in req-final, the delta specs, the KB, the docs or the CHANGELOG still promise a guarantee that no test exercises? Read the CHANGELOG entry too; it is user-facing.
+2. Re-check the P8 dimensions. New gaps get new IDs.
+3. Do not manufacture findings. If there are no spec-vs-code gaps left, return the clean verdict.
+
+[Scope] Count toward the verdict only spec-vs-code gaps. Style and taste — advisory.
+
+[Output]
+READ-ONLY, no file writes. Print the COMPLETE review doc body for landing at apriori/changes/gate-degrades/review/consistency-review-v4.md, ending with a "Ledger delta" section and exactly one verdict line: "VERDICT: no spec-vs-code gaps" or "VERDICT: <N> issues open".
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+codex
+I’ll verify both parts separately: first the deep comparison’s coverage of the complete `verify()` result, then the amendment’s consistency across the frozen requirement, delta spec, KB-facing lifecycle, docs, and CHANGELOG. I’ll treat the recorded narrowing as valid only if no surviving artifact still states the stronger untested guarantee.
+exec
+/usr/bin/zsh -lc "nl -ba test/gate-degrade.test.js | sed -n '355,425p'
+cat apriori/changes/gate-degrades/step5-amendment.md
+nl -ba apriori/changes/gate-degrades/requirement/req-final.md | sed -n '135,155p;265,290p'
+cat apriori/changes/gate-degrades/specs/spec-runner/spec.md
+sed -n '1,55p' CHANGELOG.md
+rg -n -i \"pre-seam|byte-identical|byte identical|byte-identity|identity|unchanged|unmodified|configured path|configured.*same|零变化|完全不变|逐字节|一字不变\" apriori/changes/gate-degrades apriori/truth docs CHANGELOG.md lib test/gate-degrade.test.js" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 222ms:
+   355	
+   356	test('SR-74 the projection-only path spawns no test process', () => {
+   357	  const root = noCmdProject();
+   358	  let runs = 0;
+   359	  try {
+   360	    sr._setTestRunner(() => { runs++; return { out: '', stderr: '', status: 0, signal: null, error: null }; });
+   361	    const r = gate.runGate({ cwd: root, change: 'c' });
+   362	    assert.strictEqual(r.code, 3);
+   363	    assert.strictEqual(runs, 0, 'no test command was configured, so none may be spawned');
+   364	  } finally { sr._setTestRunner(null); }
+   365	});
+   366	
+   367	test('SR-75 a configured run is identical before an override, and after clearing one', () => {
+   368	  // The guarantee is about the CONFIGURED path — the one every existing user is on. It must be
+   369	  // observed IN THIS PROCESS: a spawned CLI gets a fresh module registry and would never see
+   370	  // the override at all, so a subprocess comparison here would be vacuous.
+   371	  const root = noCmdProject('p', { 'apriori/process-config.md': cfg('| test-cmd | node -e "console.log(\'ok 1 - XA-01 a\');console.log(\'ok 2 - XB-01 b\')" |\n') });
+   372	  // Take the two public results WHOLE and compare them structurally: verify()'s `results` is a
+   373	  // Map, which JSON.stringify would silently flatten to {} — a JSON compare here would be blind
+   374	  // to exactly the field a projection seam could disturb.
+   375	  const TAP = 'node -e "console.log(\'ok 1 - XA-01 a\');console.log(\'ok 2 - XB-01 b\')"';
+   376	  const snap = () => [gate.runGate({ cwd: root, change: 'p' }), sr.verify({ change: 'p', cwd: root, testCmd: TAP })];
+   377	  const virgin = snap();
+   378	  assert.strictEqual(virgin[0].result, 'PASS', 'the configured path is genuinely healthy');
+   379	  assert.ok(virgin[1].results instanceof Map && virgin[1].results.size > 0, 'the Map-valued field really is populated');
+   380	
+   381	  try { sr._setProjectionBuilder((...a) => sr.buildChangeProjection(...a)); } finally { sr._setProjectionBuilder(null); }
+   382	  assert.deepStrictEqual(snap(), virgin, 'clearing a projection override restores the configured path exactly');
+   383	
+   384	  try {
+   385	    sr._setTestRunner(() => ({ out: '', stderr: '', status: 7, signal: null, error: null }));
+   386	    // while installed the runner really is diverted — otherwise the next assertion is vacuous
+   387	    assert.notDeepStrictEqual(snap(), virgin, 'the runner seam is real, not decorative');
+   388	  } finally { sr._setTestRunner(null); }
+   389	  assert.deepStrictEqual(snap(), virgin, 'clearing a runner override restores the configured path exactly');
+   390	});
+   391	
+   392	test('SR-75 the seams are inert by default', () => {
+   393	  const root = noCmdProject();
+   394	  assert.strictEqual(sr.currentProjectionBuilder(), sr.buildChangeProjection, 'default resolves to the real builder');
+   395	  const marker = () => ({ projection: {}, errors: ['x'], texts: null });
+   396	  try {
+   397	    sr._setProjectionBuilder(marker);
+   398	    assert.strictEqual(sr.currentProjectionBuilder(), marker);
+   399	  } finally { sr._setProjectionBuilder(null); }
+   400	  assert.strictEqual(sr.currentProjectionBuilder(), sr.buildChangeProjection, 'clearing restores the default exactly');
+   401	  assert.strictEqual(gate.runGate({ cwd: root, change: 'c' }).code, 3, 'behaviour is unchanged after a clear');
+   402	  assert.ok(!('currentTestRunner' in sr), 'the test-runner resolver stays module-private');
+   403	});
+   404	
+   405	// Static half of SR-73: the runtime half proves both paths went through one wrapper; this
+   406	// proves gate has no SECOND path built from the raw primitives. Prefixed with the exact
+   407	// `SR-73` ID so it is mechanically attributable — an earlier `GT-15a` name would have been
+   408	// read as the unrelated GT-15 scenario already in the store.
+   409	test('SR-73 gate never rebuilds the projection itself (static half)', () => {
+   410	  const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'gate.js'), 'utf8');
+   411	  for (const forbidden of ['discoverDeltas', 'buildProjection(']) {
+   412	    assert.ok(!src.includes(forbidden), `lib/gate.js must not assemble a projection itself (found ${forbidden})`);
+   413	  }
+   414	  assert.ok(/currentProjectionBuilder/.test(src), 'gate reaches the projection through the shared resolver');
+   415	  assert.ok(/require\('\.\/spec-runner'\)/.test(src), 'and it comes from spec-runner');
+   416	});
+# STEP5 amendment — 把 B4 / AC-GD-09 / SR-75 的「逐字节不变」缩到实际验证得了的范围
+
+> 触发：STEP5·r2 与 r3 的 P8 一致性评审（IMPL-2，两次 reopen）
+> 依据：RUNBOOK §4 STEP5 的 guarantee-claim discipline——
+> 「若不存在充分的测试，**要么把测试加上，要么把措辞缩到实际验证得了的范围**」
+> 状态：req-final 是 STEP0 的冻结产物，本文件是对它的**记名修正**，不是静默改写。
+
+---
+
+## 一、评审方指出的事实（已复核，属实）
+
+冻结需求的 **B4** 与 **AC-GD-09** 承诺：配置齐备路径上「检查集合、每项 detail 文案、
+`--json` 键集与取值、退出码**与本 change 前完全一致**」。
+新增的 **SR-75** 一度也写着「byte-identical to their pre-seam form」。
+
+**没有任何测试在证明这件事。** 本仓内不存在状态 A 的冻结 golden，
+而「与改动前逐字节相同」这个命题，**在本仓内的测试里根本观察不到**——
+测试跑的永远是当前代码，拿当前输出和当前输出比，恒真。
+
+这正是 P8 维度 5 要抓的形状：**散文里的硬保证，没有对抗性注入去验证它**。
+
+## 二、考虑过并否决的方案：冻结一份状态 A 的 byte golden
+
+做法是把 `235a121` 的 `lib/` + `bin/` 导出到临时树，对同一 fixture 项目跑两份实现比对输出。
+
+**否决理由（两条，任一条都足够）**：
+
+1. **CI 上不可靠**：`actions/checkout` 默认 `fetch-depth: 1`，工作副本里**没有父提交**，
+   测试运行时解析 `235a121` 会直接失败。本仓的 CI 矩阵是 ubuntu/windows × node 22/24 共八个 job。
+2. **改成签入静态 golden 则引入维护税**：输出里含临时目录绝对路径，需要路径归一化；
+   而 gate 的输出文案**本来就会随后续 change 演进**，等于给每一次 gate 相关改动
+   预埋一次重新捕获 golden 的义务——收益是一次性的，成本是持续的。
+
+（本仓已有的 `test/fixtures/specs-golden/` 是**同版本内**的形状 golden，不是跨版本的实现比对，
+两者不是一回事。SR-64 那次 Windows CI 红灯，正是跨平台 golden 假设失效的代价。）
+
+## 三、修正后的措辞（三处）
+
+「与本 change 前完全一致」改为下面这三条**实际成立且各有证据**的断言：
+
+| # | 断言 | 证据 |
+|---|---|---|
+| A | 两个 seam 的解析器在**无 override** 时返回的**就是原函数本身** | SR-75 的 `currentProjectionBuilder() === buildChangeProjection` 恒等断言 |
+| B | 配置齐备路径的**完整公共结果**（`runGate()` 与 `verify()` 两个对象，含 Map 值字段）在**三态**下结构相等：初始 / 装了 projection override 再清空 / 装了 runner override 再清空；且**装上 runner override 时结果确实不同**，保证「清空后相等」不是空转 | SR-75 的同进程三态 `deepStrictEqual` + 一条 `notDeepStrictEqual` 反向守卫 |
+| C | 状态 A 时期写就的**既有测试全部原样通过**（基线 375 条，本 change 一条未改其断言） | T0 记录的全绿基线，与改动后 392 pass / 0 fail |
+
+**这三条合起来是回归证据，不是逐字节同一性证明**——差别必须说清楚：
+若某个改动同时骗过 A、B、C 三条，它仍可能改变配置齐备路径上的某个字节。
+本 change 接受这个残余风险，理由是 §二的两条否决理由，并把它记在这里而不是假装它不存在。
+
+## 四、落到文件的改动
+
+- `requirement/req-final.md`：B4 与 AC-GD-09 就地加**修正标记**，指向本文件；
+- `specs/spec-runner/spec.md`：SR-75 的 THEN 已在 r2/r3 两轮里改写为 A + B 的可观察形式，
+  括号里关于 pre-seam 的表述改为「回归证据」而非「同一性证明」。
+
+## 五、若将来要补强
+
+出现下列任一情形时，重新考虑冻结 golden：
+① CI 改为全历史 checkout（`fetch-depth: 0`），§二-1 消失；
+② gate 的输出文案进入稳定期，§二-2 的维护税降到可忽略。
+届时它是一个独立的小 change，不是本 change 的补丁。
+   135	`blocked` 字段的语义不变：**只数 `blocked`，不数 `skipped`**。
+   136	
+   137	### B3 — doctor：把「未配置」的后果说出来
+   138	
+   139	完全未配置测试命令时，D5 由 `n/a` 升为 `finding`，其 detail 必须点明**后果**
+   140	（`apriori gate` 的 C1 无法执行），`fix` 指向 `process-config.md` 的 `test-cmd` 行。
+   141	
+   142	人类显式要求跳过（`--no-run`）时**仍是 `n/a`**——显式跳过不是缺陷。
+   143	
+   144	### B4 — 有配置时零变化
+   145	
+   146	配置齐备的项目，本 change 后 gate 与 doctor 的检查集合、每项 detail 文案、
+   147	`--json` 的**键集与取值**、退出码**完全不变**。
+   148	
+   149	> **【STEP5 记名修正 · 见 `step5-amendment.md`】** 「完全不变」原文是一条**无人验证的硬保证**——
+   150	> 本仓内的测试观察不到「与改动前逐字节相同」（没有状态 A 的冻结 golden，且 CI 的浅 checkout
+   151	> 使运行期解析父提交不可行）。按 RUNBOOK 的 guarantee-claim discipline 缩为三条各有证据的断言：
+   152	> ① 无 override 时两个 seam 解析器返回的就是原函数本身；② 配置齐备路径的**完整**公共结果在
+   153	> 三态下结构相等，且装上 override 时确实不同（反向守卫）；③ 状态 A 时期写就的 375 条既有测试
+   154	> 原样全绿。三条是**回归证据**，不是逐字节同一性证明；残余风险已具名接受。
+   155	
+   265	`buildChangeProjection` 的失败面不止 merge conflict / delta 畸形 / CAS 偏移——
+   266	`discoverDeltas()` 的 validation 失败（该 change 没有任何 delta 文件、change/specs/delta 路径逃逸等）
+   267	同样可达，且既不属于前三类、也绝不该落进 M1。因此 M4 的判据统一为
+   268	「**builder 返回非空 errors，或未产出可信 texts**」，覆盖其全部失败类别。
+   269	
+   270	---
+   271	
+   272	## 四、验收标准（每条可表达为「若…则…」）
+   273	
+   274	### gate 侧
+   275	
+   276	| ID | 若 | 则 |
+   277	|---|---|---|
+   278	| AC-GD-01 | T7（测试命令缺席），对一个 in-flight change 跑 `apriori gate --change X` | C1 状态为 `skipped`，其 detail 同时含「未执行」的事实与修复指引；C2..C7 各自产出真实状态 |
+   279	| AC-GD-02 | 矩阵 M1 | `result: INCOMPLETE`，退出码 **3**；人类可读输出显式声明「未达成 PASS，因为 C1 未执行」 |
+   280	| AC-GD-03 | 矩阵 M2 | `BLOCKED`，退出码 **1**——已确证的阻断优先于不完整 |
+   281	| AC-GD-04 | 矩阵 M5 | 退出码 **2**，与本 change 前逐字节一致 |
+   282	| AC-GD-05 | 矩阵 M4 | 退出码 **2**；C7 不得基于坏 projection 给出任何结论 |
+   283	| AC-GD-06 | T7 且该 change 有**未打戳的 mutation delta** | C7 仍 `blocked` 并给出 `apriori stamp` 修复指引——证明 C7 消费的是**真实** projection |
+   284	| AC-GD-07 | T2 / T3（`--test-cmd ""` 或仅空白） | ERROR，退出码 **2**；不回落 config、不降级 skipped。CLI 层按**存在性**传参，`runGate({testCmd:''})` 与 `runGate({testCmd:null})` 结果不同（§3.1b） |
+   285	| AC-GD-08 | T4 / T5（config 不可读，或 `test-cmd` 行冲突） | ERROR，退出码 **2** |
+   286	| AC-GD-08b | T7 的子情形：config 有 `test-cmd` 行但值为空/仅空白 | 归入**缺席**（同 AC-GD-01/02），**不是** ERROR——共享 parser 按契约已把它等同于「无该行」（`lib/config.js:67`）；本 change 不触碰 `lib/config.js` |
+   287	| AC-GD-09 | T1 / T6（任一有效来源） | gate 的检查集合、每项 detail 文案、`--json` 键集与取值、退出码**与本 change 前完全一致**（回归护栏）。**【STEP5 记名修正】** 验收面按 `step5-amendment.md` 缩为：解析器恒等 + 三态完整结果结构相等（含反向守卫）+ 既有 375 条测试原样全绿——回归证据，非逐字节同一性证明 |
+   288	| AC-GD-10 | 任一情形加 `--json` | 输出是纯 JSON，键集恒为 `{change, stage, checks, result, blocked, errors}`（**不新增 `code` 字段**）；`result` 可取 `INCOMPLETE`，`checks[].status` 可取 `skipped`；进程退出码按 `PASS→0 / BLOCKED→1 / ERROR→2 / INCOMPLETE→3` 映射 |
+   289	| AC-GD-11 | 矩阵 M8（已归档 change + T7） | C1 `skipped`、C7 `n/a`、C4 按归档态要求全行终态；退出码按 B2 优先级 |
+   290	| AC-GD-12 | 矩阵 M7（hotfix bundle + T7） | 仍以 mapping m1 的拒绝退出（退出码 2 并指向 `apriori hotfix archive`） |
+<!-- apriori-base: sha256:25a0038c11edef9c6135685783551449d4f6dda182e23deb3be0e744f16a4555 -->
+
+## ADDED Requirements
+
+### Requirement: the change projection is one shared implementation, reachable without running tests
+The delta-to-store projection SHALL be built by exactly ONE implementation, reachable by every consumer through a single replaceable reference. `spec-runner` SHALL export that reference resolver alongside the builder, and `verify` SHALL itself go through it — so that a consumer which needs the projection WITHOUT executing a test command (gate's skipped-C1 path) provably shares `verify`'s code, its inputs, and its failure classes. Two test-only injection seams SHALL exist: one over the projection builder and one over the test-command runner. Both default to the real functions, leaving every configured path byte-identical.
+
+#### Scenario: SR-73 both consumers pass through the same replaceable builder
+- WHEN a test wraps the projection builder through its seam and then runs BOTH `verify --change` (with a test command) AND the projection-only path (without one)
+- THEN both calls pass through the SAME wrapper — the reference is read at call time, never captured at module load — and the wrapper observes identical `{projection: {modules, conflicts, unstampedMutations, notes}, errors}` for the same change, across clean, unstamped-mutation, malformed-delta, diverged-CAS-base, merge-conflict, and no-delta-files inputs alike; and no consumer reassembles a projection from the underlying delta-discovery primitives instead of going through the shared reference — statically checkable in the consumer's own source
+
+#### Scenario: SR-74 the projection-only path spawns no test process
+- WHEN the projection is built through the projection-only path
+- THEN the test-command runner seam records ZERO calls — the projection is produced before, and independently of, any test execution; the id-matcher child seam is a different seam and proves nothing about this
+
+#### Scenario: SR-75 the seams are inert by default
+- WHEN no seam override is installed
+- THEN both resolvers return the real functions themselves, and the COMPLETE public results of a configured `verify --change` and a configured `gate` are identical in three states observed in ONE process: before any override exists, after a projection override is installed and cleared, and after a test-runner override is installed and cleared — and while a runner override IS installed the configured result must differ, so the after-clear comparison can never be vacuous. Identity against the PRE-seam implementation is deliberately NOT claimed here: no test inside this repo can observe it, and the pre-existing suite passing unchanged is regression EVIDENCE, not a byte-identity proof.
+# Changelog
+
+All notable changes to `apriori-cli`. Versions follow semver; the stability promise: CLI surface & flags, `--json` shapes, the delta format and the flow-state schema only break in a major.
+
+## Unreleased · gate degrades the check it cannot run — `INCOMPLETE`, exit code 3
+
+**Exit-code semantics extended.** `apriori gate` gains a fourth outcome: `GATE: INCOMPLETE`
+with **exit code 3**, and `checks[].status` gains `skipped`. If your CI treats any non-zero
+exit as failure, an INCOMPLETE gate will now fail the job — that is the intended reading: a
+gate that could not run its binding check has not passed. The `--json` key set is unchanged
+(`{change, stage, checks, result, blocked, errors}` — still no `code` field); only the value
+domains of `result` and `checks[].status` grew, and `blocked` still counts blocked checks
+only, never skipped ones.
+
+**Why.** A project whose `apriori/process-config.md` lacked a `test-cmd` row got exit 2 from
+`apriori gate` before a single check ran — so C2 (tasks all checked) and C4 (ledger terminal)
+never executed either, though neither needs a test command. In a real brownfield project that
+meant the gate ran zero times across an entire change's life, while 45 unchecked tasks and
+zero consistency reviews sailed through. Now a missing test command skips C1 alone: the other
+six checks run and report real conclusions, and the aggregate says so. A *broken* test-command
+source (conflicting or unreadable config, an empty or whitespace-only `--test-cmd`, a
+non-string value through the API) stays exit 2 — broken is not absent. `--test-cmd` is now
+judged by PRESENCE, matching `--id-pattern`: an empty flag is an error, never a config
+fallback. A confirmed block still outranks a skip.
+
+**`apriori doctor` stops calling that project healthy.** D5 reported `n/a` when no test
+command was configured, and `n/a` is not a finding — so doctor printed `DOCTOR: HEALTHY` about
+a project whose gate was dead. It is now a finding naming the consequence, with the
+`process-config.md` fix. An explicit `--no-run` is still `n/a`: a deliberate skip is not a
+defect, and that branch now sorts ahead of the missing-command one.
+
+**Internals.** `lib/spec-runner.js` exports the change-projection builder plus a call-time
+resolver and two test-only seams, so gate's skipped-C1 path provably shares verify's one
+projection implementation rather than growing a second — a divergence there would have
+silently un-blocked C7.
+
+392 tests.
+
+## Unreleased · the SR-64 byte-golden guard becomes platform-correct
+
+The `--specs` byte goldens were captured on POSIX and compared byte-for-byte on every
+platform, but spec file paths in the JSON come from a filesystem walk and are therefore
+platform-native — as they were in state A too, which is what the guard compares against. On
+Windows the run emitted `apriori\\specs\\m\\spec.md` against a golden holding
+`apriori/specs/m/spec.md`, so SR-64 failed there and only there. The replay now folds the path
+separator — and only the separator: a separator appears in the JSON text as two backslashes
+while an escape like `\n` carries one, so folding pairs leaves escapes untouched, and the fold
+itself is asserted in the test. No product behavior changes; the published 4.1.0 tarball ships
+`bin/`, `lib/`, `templates/` and the two docs, so it is unaffected.
+
+Found by CI the first time these commits reached `main` — the branch had never been through
+the Windows matrix.
+
+375 tests.
+
+CHANGELOG.md:10:gate that could not run its binding check has not passed. The `--json` key set is unchanged
+CHANGELOG.md:86:- **Mapping m1 at the gate**: a hotfix bundle is refused with a pointer at `apriori hotfix archive`, and the seven checks are neither run nor reinterpreted — their logic is untouched. `status` lists and labels the lane; `--change` on a bundle reports it instead of erroring about the absent flow-state; `--json` carries `hotfix`. A directory holding both state files is an identity error at every consumption point.
+CHANGELOG.md:111:- `--specs` runs are byte-identical to before (proven by golden captures); `am.buildProjection` additionally returns `deltaOps` (the per-suffix operation buckets from its own parse — single-snapshot provenance).
+CHANGELOG.md:130:Docs only — no CLI, flag, or behavior change; the published files are byte-identical to 4.0.6 apart from `README.md`.
+CHANGELOG.md:138:Docs only — no CLI, flag, or behavior change; `bin/`, `lib/`, `templates/`, and the runbook files are byte-identical to 4.0.5.
+CHANGELOG.md:146:Repository/release plumbing only — no CLI, flag, or behavior change; the published files are byte-identical to 4.0.4.
+CHANGELOG.md:156:- **README Quickstart restructured into two routes** — Route A is how you'll actually use it: drive an agent in Claude Code (`apriori init`'s interactive tool picker, then `/apriori` with no argument to brainstorm, or `/apriori <change>` to run the loop to the next human gate), never hand-writing a spec or state file. Route B keeps the deterministic run-it-by-hand walk (install → red → green → gate → archive) — the same 4-block sequence the golden-path check executes against this file, now labeled as the non-interactive / CI form of Route A's menu. Applied to both `README.md` and `README_cn.md`; the golden-path extractor scopes to Route B's runnable blocks, so the executable-Quickstart guarantee is unchanged.
+CHANGELOG.md:164:- **C6 binds through a truth index, not a filename guess** — gate's KB-freshness check was silently skipping whole classes of real project three ways: the truth doc's filename differed from the store basename (`poll.md` vs `quick-poll`), the `source-commit` sat in a non-bare form, or the code lived outside `lib/`. Now a truth doc may declare `store-module:` and `source-files:` in its header region (defaulting to the basename and `lib/<module>.js`); a covered module with a valid stamp is ALWAYS mechanically checked, never a silent skip; two docs claiming one module conflict-block; a non-canonical `source-commit` yields a format-pointing note instead of a vague "no source-commit"; and an explicit `source-files` is a complete promise — any missing, malformed, symlinked, escaping, or non-file token blocks (a declared directory is valid). Field-less truth docs — this repo's own — keep the byte-identical pre-change verdict, verified by the repo's own gate checking the `gate` module through the new index.
+CHANGELOG.md:175:- **Resolution validates its trust chain** — the four gate-PASS bypasses die: symlinked/non-directory `changes/` or `archive/` roots are structural errors, a broken active entry never falls back to the archive, the reserved name `archive` and date-prefixed names are rejected on every by-name surface (one `validateChangeName`, kind-classified), pseudo-stamps like `9999-99-99T9999` and `2026-02-31` neither sort nor resolve (Gregorian round-trip), `status` checks flow-state identity, and file reads speak structured defect kinds (a dangling `review/` ancestor is a defect, not an empty ledger).
+CHANGELOG.md:210:- **The delta parser consumes its whole input** — `parseDeltaStrict` is a sequential line walker: misspelled section headings (`## ADDDED`), requirements/scenarios outside their legal home, and stray/duplicate/malformed CAS stamps are line-numbered problems instead of being silently re-homed into the wrong bucket; fences stay opaque; CRLF parses identically; well-formed deltas parse byte-identically (corpus-verified against every archived delta).
+CHANGELOG.md:211:- **The TAP plan is a checked promise** — exactly one top-level plan allowed; plan-vs-parsed-points mismatch (truncated output) and duplicate test-point numbers are infra errors: `verify` exits 2, `gate` reports ERROR. Plan-less, skip-all (`1..0 # SKIP`), and node's nested TAP are unchanged.
+CHANGELOG.md:212:- **`update` refreshes only what it can prove it owns** — `init` records what it creates in `apriori/managed.json` (exact-byte sha256); `update` refreshes manifest-listed, unmodified files only; modified/unmanaged/missing files are reported and left byte-identical. Pre-manifest projects are adopted on template-generation proof; manifest hygiene and realpath containment fail closed before any read.
+CHANGELOG.md:216:- **CAS enforcement is graded** — unstamped MODIFIED/REMOVED/RENAMED deltas warn on every surface (`projection.unstampedMutations` in `--json`) and the new **gate C7** denies them by default, with visible waivers (`--no-cas` / a `| cas | optional |` config row). MODIFIED gains the trim-equality `unchanged` signature, so a stamped delta that already committed re-runs cleanly instead of dead-ending on its own stamp. Stamps become mandatory in 4.0.
+test/gate-degrade.test.js:311:    assert.deepStrictEqual(v.errors, [], 'the configured path still works');
+test/gate-degrade.test.js:368:  // The guarantee is about the CONFIGURED path — the one every existing user is on. It must be
+test/gate-degrade.test.js:378:  assert.strictEqual(virgin[0].result, 'PASS', 'the configured path is genuinely healthy');
+test/gate-degrade.test.js:382:  assert.deepStrictEqual(snap(), virgin, 'clearing a projection override restores the configured path exactly');
+test/gate-degrade.test.js:389:  assert.deepStrictEqual(snap(), virgin, 'clearing a runner override restores the configured path exactly');
+test/gate-degrade.test.js:401:  assert.strictEqual(gate.runGate({ cwd: root, change: 'c' }).code, 3, 'behaviour is unchanged after a clear');
+lib/status.js:72:  if (isHotfix) return { error: `'${change}' carries BOTH flow-state.md and hotfix-state.md — a bundle has one identity; delete the one that does not belong` };
+lib/status.js:75:  // identity: the parsed flow-state must speak the queried name (P2-1)
+lib/status.js:77:  if (state.change && state.change !== change) return { error: `identity mismatch for '${change}' — the resolved flow-state declares change: ${state.change}` };
+lib/spec-runner.js:17:// DEFAULT_ID lives in config (the zero-dep resolution home) and is re-exported here unchanged
+lib/spec-runner.js:531:// overrides default to null, so a configured run is byte-identical to its pre-seam form.
+lib/archive-merge.js:93:// Well-formed deltas parse byte-identically to the old split()-based grammar.
+lib/archive-merge.js:209:// Pure merge. Returns { store: Map, merged, modified, deprecated, renamed, conflicts, unchanged }
+lib/archive-merge.js:213:  const merged = [], modified = [], deprecated = [], renamed = [], conflicts = [], unchanged = [];
+lib/archive-merge.js:221:      if (store.has(newName)) { unchanged.push(`${oldName} -> ${newName} (already renamed)`); continue; }
+lib/archive-merge.js:239:      if (!renamedTargets.has(name) && store.get(name).trim() === block.trim()) unchanged.push(name);
+lib/archive-merge.js:246:    else if (store.get(name).trim() === block.trim()) unchanged.push(name);
+lib/archive-merge.js:253:      if (store.has(depByThis)) { unchanged.push(`${name} (already deprecated)`); continue; }
+lib/archive-merge.js:264:  return { store, merged, modified, deprecated, renamed, conflicts, unchanged };
+lib/archive-merge.js:590:// every other archive output/exit/write unchanged.
+lib/archive-merge.js:650:  ['deprecated (REMOVED)', 'deprecated'], ['renamed (RENAMED)', 'renamed'], ['already merged (no-op)', 'unchanged']];
+lib/archive-merge.js:840:    const { store, merged, modified, deprecated, renamed, conflicts, unchanged } = merge(storeText, delta, a.change);
+lib/archive-merge.js:842:    for (const [label, ids] of [['merged (ADDED)', merged], ['modified (MODIFIED)', modified], ['deprecated (REMOVED)', deprecated], ['renamed (RENAMED)', renamed], ['already merged (no-op)', unchanged]])
+lib/hotfix.js:622:  // identity exclusivity: a directory is a formal change or a hotfix, never both
+lib/hotfix.js:624:    problems.push(`apriori/changes/${name} carries BOTH flow-state.md and ${STATE_FILE} — a bundle has one identity; delete the one that does not belong`);
+lib/managed.js:5: * only what the manifest proves is tool-owned AND unmodified. Zero deps.
+lib/gate.js:345:      ? `'${opts.change}' carries BOTH flow-state.md and hotfix-state.md — a bundle has one identity; delete the one that does not belong`
+docs/cli.md:99:`--change` runs are **change-scoped**: the verdict (exit 0/1) judges only this change's requirement blocks (their scenarios bound green, no scoped duplicate/unidentified, no unprovable failure signal — an ID-less failure or a failing ID that no sibling active change declares still blocks, fail-closed); a red bound to an out-of-scope scenario, or one attributed to a sibling change's cleanly-parsed delta (only its ADDED/MODIFIED block scenarios grant the exemption), never blocks. The same run prints an informative **store report** (whole projection, six classes) so parallel changes go green independently while historical gaps stay visible. `--change --json` adds `storeReport`, `changeScope` and `modifiedIntegrity` on GREEN/GAPS (absent on every ERROR); `--specs` output is byte-identical to before. `modifiedIntegrity` reports every MODIFIED block's replacement fidelity (retained/titleChanged/dropped/added/ambiguous scenarios plus lost lines, requirement prose included) — informative only, never a verdict change; the human `— MODIFIED INTEGRITY —` section prints when a risk class is non-empty.
+docs/concepts.md:78:**Compatibility with the V1 baseline (v1.0), honestly stated:** the harden track's paths, gates, exit conditions and prompt numbering are unchanged (default config: zero path drift); exit conditions gained mapping variants only for project types v1.0 never defined (docs-only projects). The explore track is an **addition** whose named decision points — `intent-card sign-off`, `extraction review`, `STEP2 full review` — carry gate status. Gate consolidation (RUNBOOK §1) is an explicit, logged, revocable human authorization, never covering the shrink decision, the KB sign-off, or the intent-card sign-off — though each of those may still be decided by presented-first explicit proxy (RUNBOOK §1).
+apriori/truth/update.md:12:- `run(root, opts {dryRun, runbookSrc, commandSrc, generations})` → `{ actions: [{file, action}] }`; action ∈ `updated | up-to-date | created | modified (skipped…) | unmanaged (skipped…) | missing (skipped…)`. Throws on missing runbook (`run 'apriori init' first`) and on manifest hygiene. Per candidate (runbook + every TOOLS command path, existence NOT pre-checked): listed+hash-match → refresh (+ re-hash the manifest entry on a real write); listed+hash-mismatch → `modified` skip with the delete-and-reinit cure; unlisted-but-present → `unmanaged` skip (the runbook too, if someone hand-pruned it from a valid manifest); listed-but-absent → `missing` skip. Pre-manifest (no managed.json): runbook adopted unconditionally (refreshed as today); command files adopted iff their hash ∈ generations (`opts.generations` is the test seam); unproven → `unmanaged`; the adoption pass ALWAYS materializes the manifest (even all-up-to-date) unless dryRun. Skip-only runs still exit 0. `.gitignore` re-establishment unchanged (only when `.gitignore` itself is missing; the only `created`).
+apriori/truth/gate.md:14:**Hotfix bundles are refused, not adapted (mapping m1).** Before any check runs, a resolved directory carrying `hotfix-state.md` ends the run as an evaluation error (exit 2) naming `apriori hotfix archive <name>` as the surface that judges the lane; a directory carrying BOTH `flow-state.md` and `hotfix-state.md` is an identity error naming both files. The seven checks below are neither run nor reinterpreted for a lane bundle — their logic is untouched.
+apriori/truth/doctor.md:21:**id-pattern (gate-id-pattern, 2026-08-13).** D6 scans the store with the effective id-pattern (config row > DEFAULT_ID; no flag) and its detail names the source (`(id-pattern: config)` / `(id-pattern: default)`); the unidentified finding echoes the actual source bounded. The pattern is resolved and its D6 scan EXECUTED before the D5 probe (execution order; display order unchanged): an uncompilable row — or a config-origin scan whose terminable child fails — makes D6 a finding naming process-config, and D5 becomes `n/a` `probe skipped (invalid id-pattern config)` with the test command never spawned. D5's own TAP parsing keeps DEFAULT_ID (its parsed-count classification is pattern-insensitive).
+apriori/truth/hotfix.md:45:- D-HF-7 (active): a bundle has ONE identity. `flow-state.md` and `hotfix-state.md` in the same directory is an error at every consumption point (preflight, gate, status) rather than a precedence rule — a precedence rule would silently pick a reading. Ratified in hotfix-lane (2026-08-13).
+apriori/truth/archive-merge.md:9:**Delta format.** `## ADDED|MODIFIED|REMOVED|RENAMED Requirements` (h2 sections) containing `### Requirement: <name>` blocks (h3); RENAMED carries `- Old -> New` lines; optionally ONE CAS stamp line `<!-- apriori-base: sha256:<64hex> | new -->` before the first section. Parsing: `parseDeltaStrict(text)` → `{ delta, stamp, problems[] }` — since delta-consumption (3.3.x) a sequential fully-consuming line walker: every line outside opaque ``` fences belongs to exactly one legal construct (file preamble, legal section heading, section-preamble free text, requirement block, RENAMED rename line), and anything else — unrecognized h2 headings (one problem per heading, its lines attributed to NOTHING, stamps included), requirement/scenario markers outside their legal home, duplicate requirement names (within/across sections), and stamp problems (malformed/duplicate/late, matched in every non-skipped state) — is a `problems[]` entry carrying its 1-based line number; CRLF parses identically to LF; well-formed deltas parse byte-identically to the pre-walker grammar; `parseDelta(text)` = its delta only; `parseRequirementsStrict(text)` → `{ map, duplicates[] }` (first block wins, duplicates reported); `parseRequirements` = its map; `deltaOpCount(delta)` → total parsed ops (0 = no recognized section OR recognized sections with no parseable requirement/rename lines). `parseStamp(text)` → `{ stamp, problems }` — any standalone comment line ATTEMPTING apriori-base that fails the strict form is a problem, never silently 'unstamped'. `fingerprint(text)` → `sha256:<64hex>` over CRLF/CR→LF-normalized content.
+apriori/truth/archive-merge.md:12:- `merge(storeText, delta, change)` — PURE. → `{ store:Map, merged, modified, deprecated, renamed, conflicts, unchanged }`. Duplicate requirement names in the STORE text → conflicts (corruption guard). Order of application: RENAMED first (in-place key swap preserving document order), then ADDED, MODIFIED, REMOVED.
+apriori/truth/archive-merge.md:13:  - ADDED on existing name: identical trimmed content → `unchanged` (idempotent rerun no-op) UNLESS the name was created by this run's RENAMED (`renamedTargets`) → conflict.
+apriori/truth/archive-merge.md:14:  - MODIFIED replaces the whole block; missing target → conflict; delta block trim-equal to the store block → `unchanged` (the rerun/idempotence signature, since cas-enforcement).
+apriori/truth/archive-merge.md:16:  - RENAMED with source gone + target present → `unchanged` ("already renamed" rerun signature); source gone + target absent → conflict; target already exists → conflict.
+apriori/truth/archive-merge.md:17:  - REMOVED with target gone but `<name>  _deprecated (superseded by <THIS change>)_` present → `unchanged` ("already deprecated" rerun signature); deprecated by a DIFFERENT change → conflict.
+apriori/truth/archive-merge.md:25:- `buildProjection(storeRoot, deltaFiles, change)` → `{ texts:Map<suffix,text>, modules, perModule, conflicts, casMismatches, hygiene, validation, unstampedMutations, notes, repaired }` — all store files pass through; each delta strict-parsed, CAS-checked (mismatch+all-ops-unchanged → repaired/noted instead of failed), merged in memory; nothing touches disk.
+apriori/truth/archive-merge.md:28:- `cli(argv)`: high-level form `--change <name> [--write] [--changes-dir <dir>]` (no --store/--delta) → archiveChange; single-file form `--store <FILE> --delta <FILE> --change <name> [--write] [--changes-dir <dir>]` unchanged from 3.0.1 EXCEPT it now checks a present CAS stamp (mismatch → exit 1, nothing written) and rejects malformed deltas via parseDeltaStrict problems. Mixing --change with only one of --store/--delta → exit 2. Exit: 0 merged/no-op · 1 conflict/CAS/hygiene/zero-op/stage/commit/move-failure/pre-existing-temp · 2 usage/invalid name/missing change dir/containment.
+apriori/truth/archive-merge.md:30:**Transactional write ordering (`--write`).** store staged to `<store>.tmp-archive` → dir move (atomic rename) → store committed via `renameSync(tmp, store)`. Move failure → tmp discarded, store byte-for-byte untouched. Limits: (a) tmp+rename gives single-file replace atomicity, NOT crash durability (no fsync on file or dir) — do not claim crash-durable; (b) the final `renameSync(tmp, store)` is NOT guarded — if it throws AFTER the change dir moved, the store is unchanged but the change dir is already archived and the tmp file is left behind (the "all or nothing" claim covers move failure, not store-commit failure after the move).
+apriori/truth/archive-merge.md:38:- CAS enforcement is GRADED since cas-enforcement (3.3.x): an unstamped delta STILL MERGES, but mutation-carrying ones (MODIFIED/REMOVED/RENAMED — ADDED-only exempt, the exemption is clobber-focused) warn on every surface (`unstampedWarning(suffix)`, both archive forms + verify --change stderr) and `buildProjection` returns `unstampedMutations: string[]` (suffixes) that gate C7 denies by default (--no-cas / `| cas | optional |` waive it, visibly). Stamps become mandatory in 4.0. Rerun repair: a stamped file whose base mismatches but whose EVERY op is `unchanged` (the already-applied signature; MODIFIED now reports `unchanged` on trim-equality) downgrades to a `rerun accepted` note in `notes[]`/`repaired[]` and contributes no writes — the move phase completes; a mismatch with ANY real pending op still fails the whole preflight.
+apriori/truth/archive-merge.md:58:- D-AM-8 (active): rerun idempotency covers FOUR signatures — the D-AM-7 three plus MODIFIED trim-equality → `unchanged`. This is what makes the CAS rerun repair sound: a stamped delta whose base mismatches but whose every op hits a signature is already fully applied and re-runs cleanly (repaired suffixes contribute no write jobs, so they need no temp-ownership handling). Supersedes D-AM-7. Ratified in cas-enforcement.
+apriori/truth/resolve.md:7:**Responsibility.** The shared path/identity layer: what a legal change name is, where a change directory lives (in-flight or archived), whether a path is safely contained, and the two process-config reads that several commands share. It resolves DIRECTORIES; it never decides what kind of bundle one holds.
+apriori/truth/resolve.md:18:- `resolveChange` answers WHERE, never WHAT: identity (formal change vs hotfix bundle) is decided at each consumption point — status, gate and the hotfix preflight each check for `flow-state.md` / `hotfix-state.md` themselves. Putting identity here would force every caller to accept one precedence rule.
+apriori/truth/resolve.md:25:- D-RS-1 (active): resolve answers WHERE a change lives, never WHAT it is. Identity checks live at the consumption points so each command can refuse an ambiguous bundle in its own vocabulary instead of inheriting a silent precedence rule. Ratified in hotfix-lane (2026-08-13).
+apriori/changes/gate-degrades/step5-amendment.md:1:# STEP5 amendment — 把 B4 / AC-GD-09 / SR-75 的「逐字节不变」缩到实际验证得了的范围
+apriori/changes/gate-degrades/step5-amendment.md:14:新增的 **SR-75** 一度也写着「byte-identical to their pre-seam form」。
+apriori/changes/gate-degrades/step5-amendment.md:17:而「与改动前逐字节相同」这个命题，**在本仓内的测试里根本观察不到**——
+apriori/changes/gate-degrades/step5-amendment.md:47:**这三条合起来是回归证据，不是逐字节同一性证明**——差别必须说清楚：
+apriori/changes/gate-degrades/step5-amendment.md:55:  括号里关于 pre-seam 的表述改为「回归证据」而非「同一性证明」。
+apriori/truth/spec-runner.md:18:- `verify(opts {specs:[], change, testCmd, idPattern, cwd})` — with `change`: builds the projection via archive-merge's discoverDeltas/buildProjection (roots `<cwd>/apriori/{changes,specs}`); ANY projection failure (validation/hygiene/CAS/merge-conflict) → run with `errors` set and NO test executed; success → normal pipeline over projected texts; run gains `projection: {change, modules, conflicts}`. Without `change`: unchanged. → run object `{ verdict, results, fileCount, failCount, scenarioCount, missingTargets, duplicates, bailout, noTap, exec{status,signal,error}, errors }`. `failCount` = tagged fails + `untaggedFails`.
+apriori/truth/spec-runner.md:22:- `verifyJson(run)` → `{ clean, result: GREEN|GAPS|ERROR, errors, specFiles, exec, duplicates, boundGreen[], boundRed[], unbound[], orphan[], unidentified[] }`; `--change` runs add `projection` (never present otherwise); GREEN/GAPS `--change` runs additionally carry `storeReport` (six classes; boundGreen a bare count; array length = count; unattributedFailures {count,lines}), `changeScope` ({requirements:[{file,name,operations[]}] sorted, scenarioIds sorted}) and `modifiedIntegrity` (one entry per MODIFIED operation, empty-diff entries included; old-block titles ride the ONE title batch as a non-binding segment) — all three ABSENT (never null) on every ERROR class and on every `--specs` run (state-A byte goldens in test/fixtures/specs-golden/ prove --specs byte-identity). Since cas-enforcement (3.3.x): `--change` runs carry `projection.unstampedMutations` (suffixes, `[]` when none) + `projection.notes`; the cli prints one stderr warning per unstamped mutation delta — verdict untouched (WARN grade).
+apriori/truth/spec-runner.md:25:- `DEFAULT_ID` = `[A-Z]+-\d+` — DEFINED in `lib/config.js` (the zero-dep resolution home) and re-exported here unchanged. The effective id-pattern resolves flag > config `id-pattern` row > DEFAULT_ID via `config.resolveIdPattern(cwd, flagValue)` (flag by PRESENCE; empty flag = flag-origin error; invalid source = sanitized origin-naming error; a present flag never consults the config).
+apriori/changes/gate-degrades/flow-state.md:36:  - 2026-08-14T16:40 note: STEP5·r1 verdict verbatim: 「VERDICT: 6 issues open」（consistency-review-v1.md + raw）。评审方逐场景审了语义忠实度，并把需求 §3.1 七行 + §3.2 八行**逐行对着实现走了一遍**——两张表全部「Correct」，无不可达/次序错/结果不符的行。六条 IMPL 全部 accept 并已修复；392 pass / 0 fail，`verify --change` 仍 GREEN。其中 IMPL-1 是我写的 delta 越权（整份 config 不可读会先被 id-pattern 拦下，既有 CF-11 已如此断言），IMPL-2 是我把「byte-identical」只写成了散文而没有任何测试去观察它——正是 P8 维度 5 要抓的那类「未被对抗性注入验证的硬保证」。
+apriori/changes/gate-degrades/flow-state.md:37:  - 2026-08-14T17:05 note: STEP5·r2 verdict verbatim: 「VERDICT: 2 issues open」（consistency-review-v2.md + raw）。IMPL-1/3/4/6 → verified；IMPL-2/IMPL-5 reopened，两条都成立且都是我的实质错误：IMPL-2 的三态比较用**子进程**去观察**父进程**的模块级 override（空转），且只比了部分字段；IMPL-5 的「strict-parser 错误」样本 `gate --json` 其实解析成功、走的是 runGate 的 usage 分支，没碰 jsonError 序列化器。已分别改为同进程完整结果三态比较（并按 RUNBOOK「要么加测试要么缩措辞」把 SR-75 中本仓无法观察的 pre-seam 同一性缩到可验证范围）与真正的解析拒绝样本。392 pass / 0 fail。
+apriori/changes/gate-degrades/flow-state.md:38:  - 2026-08-14T17:35 note: STEP5·r3 verdict verbatim: 「VERDICT: 1 issues open」（consistency-review-v3.md + raw）。IMPL-5 → verified。IMPL-2 第三次被打回，两点仍属实：① `JSON.stringify` 把 verify() 的 Map 值字段 `results` 拍成 `{}`——瞎在 projection seam 最可能扰动的字段上，已改 deepStrictEqual；② 「与 pre-seam 逐字节相同」这条硬保证仍无人验证。**否决了冻结状态 A byte golden**（CI 默认 fetch-depth:1 拿不到父提交；签入静态 golden 要路径归一化且给每次 gate 文案改动预埋重捕获义务），改按 RUNBOOK 的 guarantee-claim discipline **缩措辞**，并写成记名修正 `step5-amendment.md`——req-final 的 B4 / AC-GD-09 就地加标记指向它。这是本 change 里第一次**修改冻结需求**，故不静默改写而是留档。
+apriori/changes/gate-degrades/design.md:56:配置齐备路径上 `verify()` 的调用序列、参数、返回值**逐字节不变**（B4，AC-GD-09 守卫）。
+apriori/changes/gate-degrades/gap-report.md:91:4. 有配置的路径逐字节不变；
+apriori/changes/gate-degrades/requirement/req-v2.md:131:### B4 — 有配置时零变化
+apriori/changes/gate-degrades/requirement/req-v2.md:134:`--json` 的**键集与取值**、退出码**完全不变**。
+apriori/changes/gate-degrades/requirement/req-v2.md:197:| AC-GD-04 | 矩阵 M5 | 退出码 **2**，与本 change 前逐字节一致 |
+apriori/changes/gate-degrades/requirement/req-v3.md:137:### B4 — 有配置时零变化
+apriori/changes/gate-degrades/requirement/req-v3.md:140:`--json` 的**键集与取值**、退出码**完全不变**。
+apriori/changes/gate-degrades/requirement/req-v3.md:233:| AC-GD-04 | 矩阵 M5 | 退出码 **2**，与本 change 前逐字节一致 |
+apriori/changes/gate-degrades/requirement/req-v5.md:144:### B4 — 有配置时零变化
+apriori/changes/gate-degrades/requirement/req-v5.md:147:`--json` 的**键集与取值**、退出码**完全不变**。
+apriori/changes/gate-degrades/requirement/req-v5.md:207:**配置齐备路径上的行为一字不变**（B4）。
+apriori/changes/gate-degrades/requirement/req-v5.md:274:| AC-GD-04 | 矩阵 M5 | 退出码 **2**，与本 change 前逐字节一致 |
+apriori/changes/gate-degrades/requirement/req-v5.md:324:| O5 | 让 `apriori verify` 在无 test-cmd 时降级 | verify 的全部职责就是把测试绑到场景上；没有测试命令时它没有任何可降级的产出。**本 change 对 `lib/spec-runner.js` 的改动限于三件事（r3 更正——v3 曾说「仅导出一个入口」，那不足以支撑 AC-GD-14/15b）**：① 导出既有的 projection-only 入口；② 新增两个**仅供测试**的注入 seam `_setProjectionBuilder` / `_setTestRunner`（同族于既有 `_setChildRunner`）；③ 把 `verify()` 自身对这两个函数的调用改为经由同一可替换引用。**默认值不变，配置齐备路径上的行为一字不变**（B4 由 AC-GD-09 守卫） |
+apriori/changes/gate-degrades/review/consistency-review-v3.md:12:- Pre-seam identity was not fully scoped out. The parent requirement still says configured paths are “byte-identical,” frozen B4/AC-GD-09 still require complete pre-change identity, and SR-75’s parenthetical still says that identity is “evidenced” by the old suite passing. The pre-existing tests demonstrate their individual assertions, but they are not a byte-level state-A golden and do not prove that stronger claim.
+apriori/changes/gate-degrades/review/consistency-review-v3.md:14:Risk: med. The test now proves same-process restoration for JSON-representable portions, but it still does not prove its “complete result” wording or the remaining pre-seam guarantee.
+apriori/changes/gate-degrades/review/consistency-review-v3.md:19:- Either add an actual frozen state-A golden for B4/AC-GD-09, or formally narrow the remaining parent requirement, SR-75 parenthetical, and frozen acceptance wording. “The old suite still passes” should be described as regression evidence, not byte-identity proof.
+apriori/changes/gate-degrades/review/consistency-review-v3.md:53:The round-three changes affect tests and specification wording only. Input validation, permission-error handling, process boundaries, containment checks, and diagnostic sanitization remain unchanged.
+apriori/changes/gate-degrades/review/consistency-review-v3.md:59:SR-75’s installed-runner guard and same-process structure are now correct, but its complete-result and remaining pre-seam claims are not yet fully supported, as described under IMPL-2.
+apriori/changes/gate-degrades/review/consistency-review-v3.md:71:- IMPL-2: `fixed (r2) → open` — reopened because JSON serialization omits `verify()`’s Map contents and the artifacts still claim pre-seam byte identity without a state-A golden.
+apriori/changes/gate-degrades/review/req-review-v1.md:27:- 描述：AC-GD-10 写道 `--json` 下“`code` 与进程退出码一致”，容易被解释为 JSON 新增 `code` 字段；但当前 `toJson()` 和 GT-11 的契约都没有 `code` 字段，而 B4/AC-GD-09 又要求有效 test command 下 JSON 形状逐字节不变。这两个要求不能同时成立。
+apriori/changes/gate-degrades/review/req-review-v1.md:89:| REQ-3 | AC-GD-10 implies a JSON code field while B4 and AC-GD-09 require the existing code-free JSON shape to remain byte-identical | med | 1 | open |
+apriori/changes/gate-degrades/review/consistency-review-v2-raw.txt:18:* IMPL-2 → SR-75's scenario was rewritten to a claim a test can observe: a CONFIGURED gate + verify run must be byte-identical (stdout, stderr, exit status, and the in-process result shape) in three states — virgin, after a projection override is installed and cleared, after a runner override is installed and cleared. A new test does exactly that, and asserts the runner override REALLY diverts while installed so the after-clear comparison cannot be vacuous.
+apriori/changes/gate-degrades/review/consistency-review-v2-raw.txt:28:1. Verify IMPL-1..6 — flip each to `verified` or reopen the same ID with what is still missing. For IMPL-2 especially: does the new test actually foreclose seam-induced drift on the configured path, and is the "really diverts" guard sound?
+apriori/changes/gate-degrades/review/consistency-review-v2-raw.txt:60:22:| IMPL-2 | SR-75 and AC-GD-09 promise byte-identical configured behavior, output, and exits, but no test compares configured verify or gate against a state-A golden or exercises the test-runner default after clear | med | STEP5·r1 | fixed (r1) |
+apriori/changes/gate-degrades/review/consistency-review-v2-raw.txt:68:62:       IMPL-2 → SR-75 的「byte-identical」原本只是散文。改为可观察的三态断言（虚拟态 / 清空 projection
+apriori/changes/gate-degrades/review/consistency-review-v2-raw.txt:203:   309	    assert.deepStrictEqual(v.errors, [], 'the configured path still works');
+apriori/changes/gate-degrades/review/consistency-review-v2-raw.txt:259:   365	test('SR-75 a configured run is byte-identical before an override, and after clearing one', () => {
+apriori/changes/gate-degrades/review/consistency-review-v2-raw.txt:260:   366	  // The guarantee is about the CONFIGURED path — the one every existing user is on. Capture
+apriori/changes/gate-degrades/review/consistency-review-v2-raw.txt:280:   386	  assert.strictEqual(snap(), virgin, 'clearing a projection override restores the configured path exactly');
+apriori/changes/gate-degrades/review/consistency-review-v2-raw.txt:290:   395	  assert.strictEqual(snap(), virgin, 'clearing a runner override restores the configured path exactly');
+apriori/changes/gate-degrades/review/consistency-review-v2-raw.txt:303:   408	  assert.strictEqual(gate.runGate({ cwd: root, change: 'c' }).code, 3, 'behaviour is unchanged after a clear');
+apriori/changes/gate-degrades/review/consistency-review-v2-raw.txt:323:The delta-to-store projection SHALL be built by exactly ONE implementation, reachable by every consumer through a single replaceable reference. `spec-runner` SHALL export that reference resolver alongside the builder, and `verify` SHALL itself go through it — so that a consumer which needs the projection WITHOUT executing a test command (gate's skipped-C1 path) provably shares `verify`'s code, its inputs, and its failure classes. Two test-only injection seams SHALL exist: one over the projection builder and one over the test-command runner. Both default to the real functions, leaving every configured path byte-identical.
+apriori/changes/gate-degrades/review/consistency-review-v2-raw.txt:335:- THEN both resolvers return the real functions themselves, and a CONFIGURED run (a `verify --change` with a test command, and a `gate` with one) produces byte-identical stdout, stderr and exit status in three states: before any override exists, after an override is installed and cleared for the projection builder, and again for the test-command runner — the seam is inert in both directions, so no configured path can drift through it
+apriori/changes/gate-degrades/review/consistency-review-v2-raw.txt:348:/usr/bin/zsh -lc "rg -n \"SR-75|byte-identical|in-process|in process|三态|virgin|runner override|result shape|返回形状|形状\" apriori/changes/gate-degrades/design.md apriori/changes/gate-degrades/tasks.md apriori/changes/gate-degrades/requirement/req-final.md apriori/changes/gate-degrades/review/consistency-review-v1.md apriori/changes/gate-degrades/review/issues.md test/gate-degrade.test.js
+apriori/changes/gate-degrades/review/consistency-review-v2-raw.txt:354:test/gate-degrade.test.js:365:test('SR-75 a configured run is byte-identical before an override, and after clearing one', () => {
+apriori/changes/gate-degrades/review/consistency-review-v2-raw.txt:358:test/gate-degrade.test.js:386:  assert.strictEqual(snap(), virgin, 'clearing a projection override restores the configured path exactly');
+apriori/changes/gate-degrades/review/consistency-review-v2-raw.txt:361:test/gate-degrade.test.js:395:  assert.strictEqual(snap(), virgin, 'clearing a runner override restores the configured path exactly');
+apriori/changes/gate-degrades/review/consistency-review-v2-raw.txt:369:apriori/changes/gate-degrades/review/issues.md:12:| REQ-3 | AC-GD-10 implies a JSON code field while B4 and AC-GD-09 require the existing code-free JSON shape to remain byte-identical | med | 1 | verified |
+apriori/changes/gate-degrades/review/consistency-review-v2-raw.txt:370:apriori/changes/gate-degrades/review/issues.md:22:| IMPL-2 | SR-75 and AC-GD-09 promise byte-identical configured behavior, output, and exits, but no test compares configured verify or gate against a state-A golden or exercises the test-runner default after clear | med | STEP5·r1 | fixed (r1) |
+apriori/changes/gate-degrades/review/consistency-review-v2-raw.txt:371:apriori/changes/gate-degrades/review/issues.md:62:       IMPL-2 → SR-75 的「byte-identical」原本只是散文。改为可观察的三态断言（虚拟态 / 清空 projection
+apriori/changes/gate-degrades/review/consistency-review-v2-raw.txt:375:apriori/changes/gate-degrades/review/consistency-review-v1.md:26:- Description: SR-75 promises that configured `verify` behavior, output, and exit codes are byte-identical to their pre-seam form. Its test only checks resolver identity, installs and clears the projection override, and then calls the missing-test-command gate path. It never runs configured `verify`, never observes the test-runner default/clear path, and never compares output or exit status with a state-A golden. Task T18 likewise claims an explicit configured-gate regression assertion, but no such byte-level assertion was added.
+apriori/changes/gate-degrades/review/consistency-review-v2-raw.txt:377:apriori/changes/gate-degrades/review/consistency-review-v1.md:137:| IMPL-2 | SR-75 and AC-GD-09 promise byte-identical configured behavior, output, and exits, but no test compares configured verify or gate against a state-A golden or exercises the test-runner default after clear | med | STEP5·r1 | open |
+apriori/changes/gate-degrades/review/consistency-review-v2-raw.txt:388:       IMPL-2 → SR-75 的「byte-identical」原本只是散文。改为可观察的三态断言（虚拟态 / 清空 projection
+apriori/changes/gate-degrades/review/consistency-review-v2-raw.txt:402:   365	test('SR-75 a configured run is byte-identical before an override, and after clearing one', () => {
+apriori/changes/gate-degrades/review/consistency-review-v2-raw.txt:403:   366	  // The guarantee is about the CONFIGURED path — the one every existing user is on. Capture
+apriori/changes/gate-degrades/review/consistency-review-v2-raw.txt:423:   386	  assert.strictEqual(snap(), virgin, 'clearing a projection override restores the configured path exactly');
+apriori/changes/gate-degrades/review/consistency-review-v2-raw.txt:432:   395	  assert.strictEqual(snap(), virgin, 'clearing a runner override restores the configured path exactly');
+apriori/changes/gate-degrades/review/consistency-review-v2-raw.txt:445:   408	  assert.strictEqual(gate.runGate({ cwd: root, change: 'c' }).code, 3, 'behaviour is unchanged after a clear');
+apriori/changes/gate-degrades/review/consistency-review-v2-raw.txt:609:- Suggested fix: compare configured gate and verify against checked-in state-A goldens. For seam lifecycle comparisons, invoke their CLI functions in the same process while capturing console output and return status, or otherwise inject the override into the process being observed. Also normalize and compare the complete `runGate()` and `verify()` public results. Keep the installed-runner diversion assertion; that part is valid.
+apriori/changes/gate-degrades/review/consistency-review-v2-raw.txt:647:Input validation, config failure handling, id-pattern isolation, projection containment, and diagnostic boundaries are unchanged. The new unreadable-config test uses a deterministic wrong-file-type fixture without relying on ineffective root-level permission changes.
+apriori/changes/gate-degrades/review/consistency-review-v2-raw.txt:661:The configured-path byte-identity guarantee remains incomplete for the reasons under IMPL-2.
+apriori/changes/gate-degrades/review/consistency-review-v2-raw.txt:665:The §3.1 T1–T7 classification and §3.2 M7→M5→M3→M4→M8→M6→M2→M1 ordering are unchanged and still match `lib/gate.js`. No row became unreachable or changed outcome during these fixes.
+apriori/changes/gate-degrades/review/consistency-review-v2-raw.txt:710:- Suggested fix: compare configured gate and verify against checked-in state-A goldens. For seam lifecycle comparisons, invoke their CLI functions in the same process while capturing console output and return status, or otherwise inject the override into the process being observed. Also normalize and compare the complete `runGate()` and `verify()` public results. Keep the installed-runner diversion assertion; that part is valid.
+apriori/changes/gate-degrades/review/consistency-review-v2-raw.txt:748:Input validation, config failure handling, id-pattern isolation, projection containment, and diagnostic boundaries are unchanged. The new unreadable-config test uses a deterministic wrong-file-type fixture without relying on ineffective root-level permission changes.
+apriori/changes/gate-degrades/review/consistency-review-v2-raw.txt:762:The configured-path byte-identity guarantee remains incomplete for the reasons under IMPL-2.
+apriori/changes/gate-degrades/review/consistency-review-v2-raw.txt:766:The §3.1 T1–T7 classification and §3.2 M7→M5→M3→M4→M8→M6→M2→M1 ordering are unchanged and still match `lib/gate.js`. No row became unreachable or changed outcome during these fixes.
+apriori/changes/gate-degrades/review/issues.md:12:| REQ-3 | AC-GD-10 implies a JSON code field while B4 and AC-GD-09 require the existing code-free JSON shape to remain byte-identical | med | 1 | verified |
+apriori/changes/gate-degrades/review/issues.md:22:| IMPL-2 | SR-75 and AC-GD-09 promise byte-identical configured behavior, output, and exits, but no test compares configured verify or gate against a state-A golden or exercises the test-runner default after clear | med | STEP5·r1 | fixed (r3) |
+apriori/changes/gate-degrades/review/issues.md:62:       IMPL-2 → SR-75 的「byte-identical」原本只是散文。改为可观察的三态断言（虚拟态 / 清空 projection
+apriori/changes/gate-degrades/review/issues.md:75:         并且「与 pre-seam 实现逐字节相同」这件事**本仓内的测试根本观察不到**（没有状态 A 的冻结 golden）。
+apriori/changes/gate-degrades/review/issues.md:78:         并注明 pre-seam 同一性由未改动的既有测试基线继续通过来佐证。
+apriori/changes/gate-degrades/review/issues.md:89:       ② 「pre-seam 逐字节相同」这条硬保证仍留在 B4/AC-GD-09/SR-75 里而无人验证。
+apriori/changes/gate-degrades/review/req-review-v3-raw.txt:177:### B4 — 有配置时零变化
+apriori/changes/gate-degrades/review/req-review-v3-raw.txt:180:`--json` 的**键集与取值**、退出码**完全不变**。
+apriori/changes/gate-degrades/review/req-review-v3-raw.txt:273:| AC-GD-04 | 矩阵 M5 | 退出码 **2**，与本 change 前逐字节一致 |
+apriori/changes/gate-degrades/review/req-review-v3-raw.txt:484:| REQ-3 | AC-GD-10 implies a JSON code field while B4 and AC-GD-09 require the existing code-free JSON shape to remain byte-identical | med | 1 | verified |
+apriori/changes/gate-degrades/review/req-review-v3-raw.txt:658:   303	      ? `'${opts.change}' carries BOTH flow-state.md and hotfix-state.md — a bundle has one identity; delete the one that does not belong`
+apriori/changes/gate-degrades/review/req-review-v3-raw.txt:1005:   590	// every other archive output/exit/write unchanged.
+apriori/changes/gate-degrades/requirement/req-v4.md:144:### B4 — 有配置时零变化
+apriori/changes/gate-degrades/requirement/req-v4.md:147:`--json` 的**键集与取值**、退出码**完全不变**。
+apriori/changes/gate-degrades/requirement/req-v4.md:207:**配置齐备路径上的行为一字不变**（B4）。
+apriori/changes/gate-degrades/requirement/req-v4.md:274:| AC-GD-04 | 矩阵 M5 | 退出码 **2**，与本 change 前逐字节一致 |
+apriori/changes/gate-degrades/requirement/req-v4.md:324:| O5 | 让 `apriori verify` 在无 test-cmd 时降级 | verify 的全部职责就是把测试绑到场景上；没有测试命令时它没有任何可降级的产出。**本 change 对 `lib/spec-runner.js` 的改动限于三件事（r3 更正——v3 曾说「仅导出一个入口」，那不足以支撑 AC-GD-14/15b）**：① 导出既有的 projection-only 入口；② 新增两个**仅供测试**的注入 seam `_setProjectionBuilder` / `_setTestRunner`（同族于既有 `_setChildRunner`）；③ 把 `verify()` 自身对这两个函数的调用改为经由同一可替换引用。**默认值不变，配置齐备路径上的行为一字不变**（B4 由 AC-GD-09 守卫） |
+apriori/changes/gate-degrades/requirement/req-v1.md:89:### B4 — 有配置时零变化
+apriori/changes/gate-degrades/requirement/req-v1.md:91:配置齐备的项目，本 change 后 gate 与 doctor 的行为、输出、退出码**逐字节不变**。
+apriori/changes/gate-degrades/review/spec-review-v3-raw.txt:20:* Everything else unchanged: specs delta, design.md, proposal.md, req-final.md.
+apriori/changes/gate-degrades/review/spec-review-v3-raw.txt:36:I’ll inspect the exact T14 wording against SR-73 and D1.3, then confirm the unchanged dimensions and ledger state.
+apriori/changes/gate-degrades/review/spec-review-v3-raw.txt:221:| REQ-3 | AC-GD-10 implies a JSON code field while B4 and AC-GD-09 require the existing code-free JSON shape to remain byte-identical | med | 1 | verified |
+apriori/changes/gate-degrades/review/consistency-review-v3-raw.txt:19:  - "byte-identical to the PRE-seam form" was removed from SR-75, because no test inside this repo can observe it (there is no frozen state-A golden). Per the runbook's guarantee-claim discipline — add the test or scope the wording down to what is actually verified — the scenario now claims three-state identity plus the installed-override divergence guard, and states explicitly that pre-seam identity is evidenced instead by the pre-existing suite passing unchanged.
+apriori/changes/gate-degrades/review/consistency-review-v3-raw.txt:41:rg -n \"SR-75|pre-seam|three states|three-state|三态|virgin|override\" apriori/changes/gate-degrades/design.md apriori/changes/gate-degrades/tasks.md apriori/changes/gate-degrades/requirement/req-final.md apriori/changes/gate-degrades/specs test/gate-degrade.test.js
+apriori/changes/gate-degrades/review/consistency-review-v3-raw.txt:45:22:| IMPL-2 | SR-75 and AC-GD-09 promise byte-identical configured behavior, output, and exits, but no test compares configured verify or gate against a state-A golden or exercises the test-runner default after clear | med | STEP5·r1 | fixed (r2) |
+apriori/changes/gate-degrades/review/consistency-review-v3-raw.txt:52:62:       IMPL-2 → SR-75 的「byte-identical」原本只是散文。改为可观察的三态断言（虚拟态 / 清空 projection
+apriori/changes/gate-degrades/review/consistency-review-v3-raw.txt:121:   311	    assert.deepStrictEqual(v.errors, [], 'the configured path still works');
+apriori/changes/gate-degrades/review/consistency-review-v3-raw.txt:178:   368	  // The guarantee is about the CONFIGURED path — the one every existing user is on. It must be
+apriori/changes/gate-degrades/review/consistency-review-v3-raw.txt:189:   379	  assert.ok(virgin.includes('"PASS"'), `the configured path is genuinely healthy: ${virgin.slice(0, 300)}`);
+apriori/changes/gate-degrades/review/consistency-review-v3-raw.txt:192:   382	  assert.strictEqual(snap(), virgin, 'clearing a projection override restores the configured path exactly');
+apriori/changes/gate-degrades/review/consistency-review-v3-raw.txt:199:   389	  assert.strictEqual(snap(), virgin, 'clearing a runner override restores the configured path exactly');
+apriori/changes/gate-degrades/review/consistency-review-v3-raw.txt:211:   401	  assert.strictEqual(gate.runGate({ cwd: root, change: 'c' }).code, 3, 'behaviour is unchanged after a clear');
+apriori/changes/gate-degrades/review/consistency-review-v3-raw.txt:232:The delta-to-store projection SHALL be built by exactly ONE implementation, reachable by every consumer through a single replaceable reference. `spec-runner` SHALL export that reference resolver alongside the builder, and `verify` SHALL itself go through it — so that a consumer which needs the projection WITHOUT executing a test command (gate's skipped-C1 path) provably shares `verify`'s code, its inputs, and its failure classes. Two test-only injection seams SHALL exist: one over the projection builder and one over the test-command runner. Both default to the real functions, leaving every configured path byte-identical.
+apriori/changes/gate-degrades/review/consistency-review-v3-raw.txt:244:- THEN both resolvers return the real functions themselves, and the COMPLETE public results of a configured `verify --change` and a configured `gate` are identical in three states observed in ONE process: before any override exists, after a projection override is installed and cleared, and after a test-runner override is installed and cleared — and while a runner override IS installed the configured result must differ, so the after-clear comparison can never be vacuous. (Identity against the PRE-seam implementation is not something a test inside this repo can observe; it is evidenced instead by the pre-existing suite, written before the seams existed, passing unchanged.)
+apriori/changes/gate-degrades/review/consistency-review-v3-raw.txt:251:test/gate-degrade.test.js:379:  assert.ok(virgin.includes('"PASS"'), `the configured path is genuinely healthy: ${virgin.slice(0, 300)}`);
+apriori/changes/gate-degrades/review/consistency-review-v3-raw.txt:252:test/gate-degrade.test.js:382:  assert.strictEqual(snap(), virgin, 'clearing a projection override restores the configured path exactly');
+apriori/changes/gate-degrades/review/consistency-review-v3-raw.txt:254:test/gate-degrade.test.js:389:  assert.strictEqual(snap(), virgin, 'clearing a runner override restores the configured path exactly');
+apriori/changes/gate-degrades/review/consistency-review-v3-raw.txt:267:apriori/changes/gate-degrades/specs/spec-runner/spec.md:18:- THEN both resolvers return the real functions themselves, and the COMPLETE public results of a configured `verify --change` and a configured `gate` are identical in three states observed in ONE process: before any override exists, after a projection override is installed and cleared, and after a test-runner override is installed and cleared — and while a runner override IS installed the configured result must differ, so the after-clear comparison can never be vacuous. (Identity against the PRE-seam implementation is not something a test inside this repo can observe; it is evidenced instead by the pre-existing suite, written before the seams existed, passing unchanged.)
+apriori/changes/gate-degrades/review/consistency-review-v3-raw.txt:282:- Pre-seam identity was not fully scoped out. The parent requirement still says configured paths are “byte-identical,” frozen B4/AC-GD-09 still require complete pre-change identity, and SR-75’s parenthetical still says that identity is “evidenced” by the old suite passing. The pre-existing tests demonstrate their individual assertions, but they are not a byte-level state-A golden and do not prove that stronger claim.
+apriori/changes/gate-degrades/review/consistency-review-v3-raw.txt:284:Risk: med. The test now proves same-process restoration for JSON-representable portions, but it still does not prove its “complete result” wording or the remaining pre-seam guarantee.
+apriori/changes/gate-degrades/review/consistency-review-v3-raw.txt:289:- Either add an actual frozen state-A golden for B4/AC-GD-09, or formally narrow the remaining parent requirement, SR-75 parenthetical, and frozen acceptance wording. “The old suite still passes” should be described as regression evidence, not byte-identity proof.
+apriori/changes/gate-degrades/review/consistency-review-v3-raw.txt:323:The round-three changes affect tests and specification wording only. Input validation, permission-error handling, process boundaries, containment checks, and diagnostic sanitization remain unchanged.
+apriori/changes/gate-degrades/review/consistency-review-v3-raw.txt:329:SR-75’s installed-runner guard and same-process structure are now correct, but its complete-result and remaining pre-seam claims are not yet fully supported, as described under IMPL-2.
+apriori/changes/gate-degrades/review/consistency-review-v3-raw.txt:341:- IMPL-2: `fixed (r2) → open` — reopened because JSON serialization omits `verify()`’s Map contents and the artifacts still claim pre-seam byte identity without a state-A golden.
+apriori/changes/gate-degrades/review/consistency-review-v3-raw.txt:362:- Pre-seam identity was not fully scoped out. The parent requirement still says configured paths are “byte-identical,” frozen B4/AC-GD-09 still require complete pre-change identity, and SR-75’s parenthetical still says that identity is “evidenced” by the old suite passing. The pre-existing tests demonstrate their individual assertions, but they are not a byte-level state-A golden and do not prove that stronger claim.
+apriori/changes/gate-degrades/review/consistency-review-v3-raw.txt:364:Risk: med. The test now proves same-process restoration for JSON-representable portions, but it still does not prove its “complete result” wording or the remaining pre-seam guarantee.
+apriori/changes/gate-degrades/review/consistency-review-v3-raw.txt:369:- Either add an actual frozen state-A golden for B4/AC-GD-09, or formally narrow the remaining parent requirement, SR-75 parenthetical, and frozen acceptance wording. “The old suite still passes” should be described as regression evidence, not byte-identity proof.
+apriori/changes/gate-degrades/review/consistency-review-v3-raw.txt:403:The round-three changes affect tests and specification wording only. Input validation, permission-error handling, process boundaries, containment checks, and diagnostic sanitization remain unchanged.
+apriori/changes/gate-degrades/review/consistency-review-v3-raw.txt:409:SR-75’s installed-runner guard and same-process structure are now correct, but its complete-result and remaining pre-seam claims are not yet fully supported, as described under IMPL-2.
+apriori/changes/gate-degrades/review/consistency-review-v3-raw.txt:421:- IMPL-2: `fixed (r2) → open` — reopened because JSON serialization omits `verify()`’s Map contents and the artifacts still claim pre-seam byte identity without a state-A golden.
+apriori/changes/gate-degrades/review/consistency-review-v1.md:26:- Description: SR-75 promises that configured `verify` behavior, output, and exit codes are byte-identical to their pre-seam form. Its test only checks resolver identity, installs and clears the projection override, and then calls the missing-test-command gate path. It never runs configured `verify`, never observes the test-runner default/clear path, and never compares output or exit status with a state-A golden. Task T18 likewise claims an explicit configured-gate regression assertion, but no such byte-level assertion was added.
+apriori/changes/gate-degrades/review/consistency-review-v1.md:27:- Risk: med. A seam implementation could alter the common configured path while all current change tests remain green.
+apriori/changes/gate-degrades/review/consistency-review-v1.md:97:| T1 | Correct: a non-whitespace flag string is returned unchanged and follows configured C1 behavior. |
+apriori/changes/gate-degrades/review/consistency-review-v1.md:137:| IMPL-2 | SR-75 and AC-GD-09 promise byte-identical configured behavior, output, and exits, but no test compares configured verify or gate against a state-A golden or exercises the test-runner default after clear | med | STEP5·r1 | open |
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:30:5. Guarantee claims: every "always / never / zero times / byte-identical / exactly" phrase in the spec, KB or CHANGELOG must have a test that injects the adversarial condition and observes it hold. In particular:
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:31:   * "a configured path is byte-identical to its pre-seam form" — is that actually exercised, or merely asserted in prose?
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:76:+gate that could not run its binding check has not passed. The `--json` key set is unchanged
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:340:+// overrides default to null, so a configured run is byte-identical to its pre-seam form.
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:755:   281	    assert.deepStrictEqual(v.errors, [], 'the configured path still works');
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:819:   345	  assert.strictEqual(gate.runGate({ cwd: root, change: 'c' }).code, 3, 'behaviour is unchanged after a clear');
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:1178:   345	      ? `'${opts.change}' carries BOTH flow-state.md and hotfix-state.md — a bundle has one identity; delete the one that does not belong`
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:1276:   531	// overrides default to null, so a configured run is byte-identical to its pre-seam form.
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:1573:I’m tracing the remaining guarantee-level assertions now—especially SR-73/SR-75’s test bindings, the “byte-identical” claim, and the exact §3.1/§3.2 decision rows. I’ll distinguish real implementation gaps from tests that are merely mislabeled or weaker than their scenarios.
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:1576:rg -n \"SR-73|SR-74|SR-75|byte-identical|byte identical|discoverDeltas|buildChangeProjection|ZERO times|zero times|blocked counts|blocked.*only|exactly\" apriori/changes/gate-degrades/specs apriori/changes/gate-degrades/requirement/req-final.md apriori/changes/gate-degrades/design.md CHANGELOG.md docs test/gate-degrade.test.js lib/gate.js lib/spec-runner.js
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:1625:  assert.strictEqual(gate.runGate({ cwd: root, change: 'c' }).code, 3, 'behaviour is unchanged after a clear');
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:1645:lib/spec-runner.js:531:// overrides default to null, so a configured run is byte-identical to its pre-seam form.
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:1655:CHANGELOG.md:111:- `--specs` runs are byte-identical to before (proven by golden captures); `am.buildProjection` additionally returns `deltaOps` (the per-suffix operation buckets from its own parse — single-snapshot provenance).
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:1656:CHANGELOG.md:130:Docs only — no CLI, flag, or behavior change; the published files are byte-identical to 4.0.6 apart from `README.md`.
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:1657:CHANGELOG.md:138:Docs only — no CLI, flag, or behavior change; `bin/`, `lib/`, `templates/`, and the runbook files are byte-identical to 4.0.5.
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:1658:CHANGELOG.md:146:Repository/release plumbing only — no CLI, flag, or behavior change; the published files are byte-identical to 4.0.4.
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:1659:CHANGELOG.md:164:- **C6 binds through a truth index, not a filename guess** — gate's KB-freshness check was silently skipping whole classes of real project three ways: the truth doc's filename differed from the store basename (`poll.md` vs `quick-poll`), the `source-commit` sat in a non-bare form, or the code lived outside `lib/`. Now a truth doc may declare `store-module:` and `source-files:` in its header region (defaulting to the basename and `lib/<module>.js`); a covered module with a valid stamp is ALWAYS mechanically checked, never a silent skip; two docs claiming one module conflict-block; a non-canonical `source-commit` yields a format-pointing note instead of a vague "no source-commit"; and an explicit `source-files` is a complete promise — any missing, malformed, symlinked, escaping, or non-file token blocks (a declared directory is valid). Field-less truth docs — this repo's own — keep the byte-identical pre-change verdict, verified by the repo's own gate checking the `gate` module through the new index.
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:1661:CHANGELOG.md:210:- **The delta parser consumes its whole input** — `parseDeltaStrict` is a sequential line walker: misspelled section headings (`## ADDDED`), requirements/scenarios outside their legal home, and stray/duplicate/malformed CAS stamps are line-numbered problems instead of being silently re-homed into the wrong bucket; fences stay opaque; CRLF parses identically; well-formed deltas parse byte-identically (corpus-verified against every archived delta).
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:1662:CHANGELOG.md:211:- **The TAP plan is a checked promise** — exactly one top-level plan allowed; plan-vs-parsed-points mismatch (truncated output) and duplicate test-point numbers are infra errors: `verify` exits 2, `gate` reports ERROR. Plan-less, skip-all (`1..0 # SKIP`), and node's nested TAP are unchanged.
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:1663:CHANGELOG.md:212:- **`update` refreshes only what it can prove it owns** — `init` records what it creates in `apriori/managed.json` (exact-byte sha256); `update` refreshes manifest-listed, unmodified files only; modified/unmanaged/missing files are reported and left byte-identical. Pre-manifest projects are adopted on template-generation proof; manifest hygiene and realpath containment fail closed before any read.
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:1707:docs/cli.md:99:`--change` runs are **change-scoped**: the verdict (exit 0/1) judges only this change's requirement blocks (their scenarios bound green, no scoped duplicate/unidentified, no unprovable failure signal — an ID-less failure or a failing ID that no sibling active change declares still blocks, fail-closed); a red bound to an out-of-scope scenario, or one attributed to a sibling change's cleanly-parsed delta (only its ADDED/MODIFIED block scenarios grant the exemption), never blocks. The same run prints an informative **store report** (whole projection, six classes) so parallel changes go green independently while historical gaps stay visible. `--change --json` adds `storeReport`, `changeScope` and `modifiedIntegrity` on GREEN/GAPS (absent on every ERROR); `--specs` output is byte-identical to before. `modifiedIntegrity` reports every MODIFIED block's replacement fidelity (retained/titleChanged/dropped/added/ambiguous scenarios plus lost lines, requirement prose included) — informative only, never a verdict change; the human `— MODIFIED INTEGRITY —` section prints when a risk class is non-empty.
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:1714:apriori/changes/gate-degrades/specs/spec-runner/spec.md:6:The delta-to-store projection SHALL be built by exactly ONE implementation, reachable by every consumer through a single replaceable reference. `spec-runner` SHALL export that reference resolver alongside the builder, and `verify` SHALL itself go through it — so that a consumer which needs the projection WITHOUT executing a test command (gate's skipped-C1 path) provably shares `verify`'s code, its inputs, and its failure classes. Two test-only injection seams SHALL exist: one over the projection builder and one over the test-command runner. Both default to the real functions, leaving every configured path byte-identical.
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:1718:apriori/changes/gate-degrades/specs/spec-runner/spec.md:18:- THEN the builder and the runner resolve to the real functions and `verify`'s behaviour, output, and exit codes are byte-identical to their pre-seam form; installing an override and then clearing it restores that state exactly
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:1722:apriori/changes/gate-degrades/specs/gate/spec.md:62:- THEN C6 falls back to module = basename and source-files = `lib/<module>.js`, producing the byte-identical `{status, detail}` it produced before this change for that module — the index and declarations add coverage for non-default layouts without altering any default-layout result
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:1732:The delta-to-store projection SHALL be built by exactly ONE implementation, reachable by every consumer through a single replaceable reference. `spec-runner` SHALL export that reference resolver alongside the builder, and `verify` SHALL itself go through it — so that a consumer which needs the projection WITHOUT executing a test command (gate's skipped-C1 path) provably shares `verify`'s code, its inputs, and its failure classes. Two test-only injection seams SHALL exist: one over the projection builder and one over the test-command runner. Both default to the real functions, leaving every configured path byte-identical.
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:1744:- THEN the builder and the runner resolve to the real functions and `verify`'s behaviour, output, and exit codes are byte-identical to their pre-seam form; installing an override and then clearing it restores that state exactly
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:1806:- THEN C6 falls back to module = basename and source-files = `lib/<module>.js`, producing the byte-identical `{status, detail}` it produced before this change for that module — the index and declarations add coverage for non-default layouts without altering any default-layout result
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:1851:- THEN gate still exits 2 with the mapping-m1 pointer at `apriori hotfix archive` — the hotfix identity is decided before flow-state and before the test-command source, so a lane bundle (which carries no flow-state by design) is never misreported as a missing flow-state; WHEN the bundle is a formal change with no readable flow-state THEN gate still exits 2 for that reason
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:2145:   281	    assert.deepStrictEqual(v.errors, [], 'the configured path still works');
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:2209:   345	  assert.strictEqual(gate.runGate({ cwd: root, change: 'c' }).code, 3, 'behaviour is unchanged after a clear');
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:2248:   144	### B4 — 有配置时零变化
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:2251:   147	`--json` 的**键集与取值**、退出码**完全不变**。
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:2311:   207	**配置齐备路径上的行为一字不变**（B4）。
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:2378:   274	| AC-GD-04 | 矩阵 M5 | 退出码 **2**，与本 change 前逐字节一致 |
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:2428:   324	| O5 | 让 `apriori verify` 在无 test-cmd 时降级 | verify 的全部职责就是把测试绑到场景上；没有测试命令时它没有任何可降级的产出。**本 change 对 `lib/spec-runner.js` 的改动限于三件事（r3 更正——v3 曾说「仅导出一个入口」，那不足以支撑 AC-GD-14/15b）**：① 导出既有的 projection-only 入口；② 新增两个**仅供测试**的注入 seam `_setProjectionBuilder` / `_setTestRunner`（同族于既有 `_setChildRunner`）；③ 把 `verify()` 自身对这两个函数的调用改为经由同一可替换引用。**默认值不变，配置齐备路径上的行为一字不变**（B4 由 AC-GD-09 守卫） |
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:2789:   345	      ? `'${opts.change}' carries BOTH flow-state.md and hotfix-state.md — a bundle has one identity; delete the one that does not belong`
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:2887:   531	// overrides default to null, so a configured run is byte-identical to its pre-seam form.
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:3555:   144	### B4 — 有配置时零变化
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:3558:   147	`--json` 的**键集与取值**、退出码**完全不变**。
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:3618:   207	**配置齐备路径上的行为一字不变**（B4）。
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:3742:   345	      ? `'${opts.change}' carries BOTH flow-state.md and hotfix-state.md — a bundle has one identity; delete the one that does not belong`
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:3834:   531	// overrides default to null, so a configured run is byte-identical to its pre-seam form.
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:3967:   274	| AC-GD-04 | 矩阵 M5 | 退出码 **2**，与本 change 前逐字节一致 |
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:4197:+gate that could not run its binding check has not passed. The `--json` key set is unchanged
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:4409:+// overrides default to null, so a configured run is byte-identical to its pre-seam form.
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:4446:/usr/bin/zsh -lc "rg -n \"_setProjectionBuilder|_setTestRunner|currentProjectionBuilder|SR-73b|GT-30b|AC-GD-09|byte-identical|pre-seam|configured path|configured.*unchanged|seam.*inert|no test process|matcher child\" test apriori/changes/gate-degrades/tasks.md apriori/changes/gate-degrades/design.md
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:4466:apriori/changes/gate-degrades/design.md:56:配置齐备路径上 `verify()` 的调用序列、参数、返回值**逐字节不变**（B4，AC-GD-09 守卫）。
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:4475:test/change-scope.test.js:249:test('SR-64 --specs outputs stay byte-identical to the state-A goldens', () => {
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:4476:test/hotfix-digest.test.js:40:  assert.strictEqual(digestCore(withGates), base, 'process metadata leaves the digest byte-identical');
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:4487:test/gate-degrade.test.js:281:    assert.deepStrictEqual(v.errors, [], 'the configured path still works');
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:4504:test/archive-change.test.js:327:// test can assert the walker reproduces it byte-identically on well-formed input
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:4505:test/init.test.js:41:  // single source: byte-identical to the package's own RUNBOOK.md (no template copy to drift)
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:4506:test/fixtures/specs-golden/capture.mjs:3:// byte-identically. Spec file paths in the JSON are platform-native, so the replay folds the
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:4538:17:// DEFAULT_ID lives in config (the zero-dep resolution home) and is re-exported here unchanged
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:4560:    17	// DEFAULT_ID lives in config (the zero-dep resolution home) and is re-exported here unchanged
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:4668:rg -n \"AC-GD-09|T18|pre-seam|configured path\" test" in /mnt/d/Workbench/misc/apriori-spec-development
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:5041:test/gate-degrade.test.js:281:    assert.deepStrictEqual(v.errors, [], 'the configured path still works');
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:5491:The implementation’s decision order matches the matrix so far. I’ve found two places where the code appears correct but the promised regression proof is weaker than the spec: the SR-75 “byte-identical configured path” test does not exercise `verify`, and suffixes such as `SR-73b`/`GT-30b` are not bindable IDs under `leadId`. I’m checking whether other tests independently close those assertions before deciding whether they are ledger issues.
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:5889:+gate that could not run its binding check has not passed. The `--json` key set is unchanged
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:6010:**Hotfix bundles are refused, not adapted (mapping m1).** Before any check runs, a resolved directory carrying `hotfix-state.md` ends the run as an evaluation error (exit 2) naming `apriori hotfix archive <name>` as the surface that judges the lane; a directory carrying BOTH `flow-state.md` and `hotfix-state.md` is an identity error naming both files. The seven checks below are neither run nor reinterpreted for a lane bundle — their logic is untouched.
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:6050:**id-pattern (gate-id-pattern, 2026-08-13).** D6 scans the store with the effective id-pattern (config row > DEFAULT_ID; no flag) and its detail names the source (`(id-pattern: config)` / `(id-pattern: default)`); the unidentified finding echoes the actual source bounded. The pattern is resolved and its D6 scan EXECUTED before the D5 probe (execution order; display order unchanged): an uncompilable row — or a config-origin scan whose terminable child fails — makes D6 a finding naming process-config, and D5 becomes `n/a` `probe skipped (invalid id-pattern config)` with the test command never spawned. D5's own TAP parsing keeps DEFAULT_ID (its parsed-count classification is pattern-insensitive).
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:6077:- `verify(opts {specs:[], change, testCmd, idPattern, cwd})` — with `change`: builds the projection via archive-merge's discoverDeltas/buildProjection (roots `<cwd>/apriori/{changes,specs}`); ANY projection failure (validation/hygiene/CAS/merge-conflict) → run with `errors` set and NO test executed; success → normal pipeline over projected texts; run gains `projection: {change, modules, conflicts}`. Without `change`: unchanged. → run object `{ verdict, results, fileCount, failCount, scenarioCount, missingTargets, duplicates, bailout, noTap, exec{status,signal,error}, errors }`. `failCount` = tagged fails + `untaggedFails`.
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:6081:- `verifyJson(run)` → `{ clean, result: GREEN|GAPS|ERROR, errors, specFiles, exec, duplicates, boundGreen[], boundRed[], unbound[], orphan[], unidentified[] }`; `--change` runs add `projection` (never present otherwise); GREEN/GAPS `--change` runs additionally carry `storeReport` (six classes; boundGreen a bare count; array length = count; unattributedFailures {count,lines}), `changeScope` ({requirements:[{file,name,operations[]}] sorted, scenarioIds sorted}) and `modifiedIntegrity` (one entry per MODIFIED operation, empty-diff entries included; old-block titles ride the ONE title batch as a non-binding segment) — all three ABSENT (never null) on every ERROR class and on every `--specs` run (state-A byte goldens in test/fixtures/specs-golden/ prove --specs byte-identity). Since cas-enforcement (3.3.x): `--change` runs carry `projection.unstampedMutations` (suffixes, `[]` when none) + `projection.notes`; the cli prints one stderr warning per unstamped mutation delta — verdict untouched (WARN grade).
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:6084:- `DEFAULT_ID` = `[A-Z]+-\d+` — DEFINED in `lib/config.js` (the zero-dep resolution home) and re-exported here unchanged. The effective id-pattern resolves flag > config `id-pattern` row > DEFAULT_ID via `config.resolveIdPattern(cwd, flagValue)` (flag by PRESENCE; empty flag = flag-origin error; invalid source = sanitized origin-naming error; a present flag never consults the config).
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:6381:`^VERDICT:` prefix are unchanged, so every existing consumer still reads them.
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:6600:| REQ-3 | AC-GD-10 implies a JSON code field while B4 and AC-GD-09 require the existing code-free JSON shape to remain byte-identical | med | 1 | verified |
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:7000:- Description: SR-75 promises that configured `verify` behavior, output, and exit codes are byte-identical to their pre-seam form. Its test only checks resolver identity, installs and clears the projection override, and then calls the missing-test-command gate path. It never runs configured `verify`, never observes the test-runner default/clear path, and never compares output or exit status with a state-A golden. Task T18 likewise claims an explicit configured-gate regression assertion, but no such byte-level assertion was added.
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:7001:- Risk: med. A seam implementation could alter the common configured path while all current change tests remain green.
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:7071:| T1 | Correct: a non-whitespace flag string is returned unchanged and follows configured C1 behavior. |
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:7111:| IMPL-2 | SR-75 and AC-GD-09 promise byte-identical configured behavior, output, and exits, but no test compares configured verify or gate against a state-A golden or exercises the test-runner default after clear | med | STEP5·r1 | open |
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:7145:- Description: SR-75 promises that configured `verify` behavior, output, and exit codes are byte-identical to their pre-seam form. Its test only checks resolver identity, installs and clears the projection override, and then calls the missing-test-command gate path. It never runs configured `verify`, never observes the test-runner default/clear path, and never compares output or exit status with a state-A golden. Task T18 likewise claims an explicit configured-gate regression assertion, but no such byte-level assertion was added.
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:7146:- Risk: med. A seam implementation could alter the common configured path while all current change tests remain green.
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:7216:| T1 | Correct: a non-whitespace flag string is returned unchanged and follows configured C1 behavior. |
+apriori/changes/gate-degrades/review/consistency-review-v1-raw.txt:7256:| IMPL-2 | SR-75 and AC-GD-09 promise byte-identical configured behavior, output, and exits, but no test compares configured verify or gate against a state-A golden or exercises the test-runner default after clear | med | STEP5·r1 | open |
+apriori/changes/gate-degrades/review/consistency-review-v2.md:21:- Suggested fix: compare configured gate and verify against checked-in state-A goldens. For seam lifecycle comparisons, invoke their CLI functions in the same process while capturing console output and return status, or otherwise inject the override into the process being observed. Also normalize and compare the complete `runGate()` and `verify()` public results. Keep the installed-runner diversion assertion; that part is valid.
+apriori/changes/gate-degrades/review/consistency-review-v2.md:59:Input validation, config failure handling, id-pattern isolation, projection containment, and diagnostic boundaries are unchanged. The new unreadable-config test uses a deterministic wrong-file-type fixture without relying on ineffective root-level permission changes.
+apriori/changes/gate-degrades/review/consistency-review-v2.md:73:The configured-path byte-identity guarantee remains incomplete for the reasons under IMPL-2.
+apriori/changes/gate-degrades/review/consistency-review-v2.md:77:The §3.1 T1–T7 classification and §3.2 M7→M5→M3→M4→M8→M6→M2→M1 ordering are unchanged and still match `lib/gate.js`. No row became unreachable or changed outcome during these fixes.
+apriori/changes/gate-degrades/review/req-review-v2-raw.txt:173:### B4 — 有配置时零变化
+apriori/changes/gate-degrades/review/req-review-v2-raw.txt:176:`--json` 的**键集与取值**、退出码**完全不变**。
+apriori/changes/gate-degrades/review/req-review-v2-raw.txt:239:| AC-GD-04 | 矩阵 M5 | 退出码 **2**，与本 change 前逐字节一致 |
+apriori/changes/gate-degrades/review/req-review-v2-raw.txt:351:- 描述：AC-GD-10 写道 `--json` 下“`code` 与进程退出码一致”，容易被解释为 JSON 新增 `code` 字段；但当前 `toJson()` 和 GT-11 的契约都没有 `code` 字段，而 B4/AC-GD-09 又要求有效 test command 下 JSON 形状逐字节不变。这两个要求不能同时成立。
+apriori/changes/gate-degrades/review/req-review-v2-raw.txt:413:| REQ-3 | AC-GD-10 implies a JSON code field while B4 and AC-GD-09 require the existing code-free JSON shape to remain byte-identical | med | 1 | open |
+apriori/changes/gate-degrades/review/req-review-v2-raw.txt:429:| REQ-3 | AC-GD-10 implies a JSON code field while B4 and AC-GD-09 require the existing code-free JSON shape to remain byte-identical | med | 1 | fixed (v2) |
+apriori/changes/gate-degrades/review/req-review-v2-raw.txt:460:CHANGELOG.md-141-- **Resolution validates its trust chain** — the four gate-PASS bypasses die: symlinked/non-directory `changes/` or `archive/` roots are structural errors, a broken active entry never falls back to the archive, the reserved name `archive` and date-prefixed names are rejected on every by-name surface (one `validateChangeName`, kind-classified), pseudo-stamps like `9999-99-99T9999` and `2026-02-31` neither sort nor resolve (Gregorian round-trip), `status` checks flow-state identity, and file reads speak structured defect kinds (a dangling `review/` ancestor is a defect, not an empty ledger).
+apriori/changes/gate-degrades/review/req-review-v2-raw.txt:483:RUNBOOK.md-30-**Language.** Human-facing prose — requirement docs, spec scenario descriptions, gap/design/review docs, ledger descriptions, `flow-state` notes, and every message to the human — uses the `language` field in `apriori/process-config.md`. If it is unset or `auto`, **match the language the human is using** (their kickoff and messages). Machine tokens are ALWAYS English, whatever the language: verdict lines (§5 phrase table), scenario IDs (`KV-03`), the delta keywords `ADDED`/`MODIFIED`/`REMOVED`, file paths, and this runbook. So a Chinese kickoff yields Chinese artifacts with English IDs and verdict lines — `apriori verify`/`check` keep working unchanged.
+apriori/changes/gate-degrades/review/req-review-v2-raw.txt:923:- **Mapping m1 at the gate**: a hotfix bundle is refused with a pointer at `apriori hotfix archive`, and the seven checks are neither run nor reinterpreted — their logic is untouched. `status` lists and labels the lane; `--change` on a bundle reports it instead of erroring about the absent flow-state; `--json` carries `hotfix`. A directory holding both state files is an identity error at every consumption point.
+apriori/changes/gate-degrades/specs/spec-runner/spec.md:6:The delta-to-store projection SHALL be built by exactly ONE implementation, reachable by every consumer through a single replaceable reference. `spec-runner` SHALL export that reference resolver alongside the builder, and `verify` SHALL itself go through it — so that a consumer which needs the projection WITHOUT executing a test command (gate's skipped-C1 path) provably shares `verify`'s code, its inputs, and its failure classes. Two test-only injection seams SHALL exist: one over the projection builder and one over the test-command runner. Both default to the real functions, leaving every configured path byte-identical.
+apriori/changes/gate-degrades/specs/spec-runner/spec.md:18:- THEN both resolvers return the real functions themselves, and the COMPLETE public results of a configured `verify --change` and a configured `gate` are identical in three states observed in ONE process: before any override exists, after a projection override is installed and cleared, and after a test-runner override is installed and cleared — and while a runner override IS installed the configured result must differ, so the after-clear comparison can never be vacuous. Identity against the PRE-seam implementation is deliberately NOT claimed here: no test inside this repo can observe it, and the pre-existing suite passing unchanged is regression EVIDENCE, not a byte-identity proof.
+apriori/changes/gate-degrades/review/req-review-v5-raw.txt:94:324:| O5 | 让 `apriori verify` 在无 test-cmd 时降级 | verify 的全部职责就是把测试绑到场景上；没有测试命令时它没有任何可降级的产出。**本 change 对 `lib/spec-runner.js` 的改动限于三件事（r3 更正——v3 曾说「仅导出一个入口」，那不足以支撑 AC-GD-14/15b）**：① 导出既有的 projection-only 入口；② 新增两个**仅供测试**的注入 seam `_setProjectionBuilder` / `_setTestRunner`（同族于既有 `_setChildRunner`）；③ 把 `verify()` 自身对这两个函数的调用改为经由同一可替换引用。**默认值不变，配置齐备路径上的行为一字不变**（B4 由 AC-GD-09 守卫） |
+apriori/changes/gate-degrades/review/req-review-v5-raw.txt:220:| REQ-3 | AC-GD-10 implies a JSON code field while B4 and AC-GD-09 require the existing code-free JSON shape to remain byte-identical | med | 1 | verified |
+apriori/changes/gate-degrades/specs/gate/spec.md:62:- THEN C6 falls back to module = basename and source-files = `lib/<module>.js`, producing the byte-identical `{status, detail}` it produced before this change for that module — the index and declarations add coverage for non-default layouts without altering any default-layout result
+apriori/changes/gate-degrades/specs/gate/spec.md:107:- THEN gate still exits 2 with the mapping-m1 pointer at `apriori hotfix archive` — the hotfix identity is decided before flow-state and before the test-command source, so a lane bundle (which carries no flow-state by design) is never misreported as a missing flow-state; WHEN the bundle is a formal change with no readable flow-state THEN gate still exits 2 for that reason
+apriori/changes/gate-degrades/requirement/req-final.md:144:### B4 — 有配置时零变化
+apriori/changes/gate-degrades/requirement/req-final.md:147:`--json` 的**键集与取值**、退出码**完全不变**。
+apriori/changes/gate-degrades/requirement/req-final.md:149:> **【STEP5 记名修正 · 见 `step5-amendment.md`】** 「完全不变」原文是一条**无人验证的硬保证**——
+apriori/changes/gate-degrades/requirement/req-final.md:150:> 本仓内的测试观察不到「与改动前逐字节相同」（没有状态 A 的冻结 golden，且 CI 的浅 checkout
+apriori/changes/gate-degrades/requirement/req-final.md:154:> 原样全绿。三条是**回归证据**，不是逐字节同一性证明；残余风险已具名接受。
+apriori/changes/gate-degrades/requirement/req-final.md:214:**配置齐备路径上的行为一字不变**（B4）。
+apriori/changes/gate-degrades/requirement/req-final.md:281:| AC-GD-04 | 矩阵 M5 | 退出码 **2**，与本 change 前逐字节一致 |
+apriori/changes/gate-degrades/requirement/req-final.md:287:| AC-GD-09 | T1 / T6（任一有效来源） | gate 的检查集合、每项 detail 文案、`--json` 键集与取值、退出码**与本 change 前完全一致**（回归护栏）。**【STEP5 记名修正】** 验收面按 `step5-amendment.md` 缩为：解析器恒等 + 三态完整结果结构相等（含反向守卫）+ 既有 375 条测试原样全绿——回归证据，非逐字节同一性证明 |
+apriori/changes/gate-degrades/requirement/req-final.md:331:| O5 | 让 `apriori verify` 在无 test-cmd 时降级 | verify 的全部职责就是把测试绑到场景上；没有测试命令时它没有任何可降级的产出。**本 change 对 `lib/spec-runner.js` 的改动限于三件事（r3 更正——v3 曾说「仅导出一个入口」，那不足以支撑 AC-GD-14/15b）**：① 导出既有的 projection-only 入口；② 新增两个**仅供测试**的注入 seam `_setProjectionBuilder` / `_setTestRunner`（同族于既有 `_setChildRunner`）；③ 把 `verify()` 自身对这两个函数的调用改为经由同一可替换引用。**默认值不变，配置齐备路径上的行为一字不变**（B4 由 AC-GD-09 守卫） |
+apriori/changes/gate-degrades/review/req-review-v1-raw.txt:161:/root/apriori-spec-development/validation/legacy-lab/inherited-poll/test/voter-identity.test.js
+apriori/changes/gate-degrades/review/req-review-v1-raw.txt:168:/root/apriori-spec-development/validation/legacy-lab/inherited-poll/lib/voter-identity.js
+apriori/changes/gate-degrades/review/req-review-v1-raw.txt:328:**Language.** Human-facing prose — requirement docs, spec scenario descriptions, gap/design/review docs, ledger descriptions, `flow-state` notes, and every message to the human — uses the `language` field in `apriori/process-config.md`. If it is unset or `auto`, **match the language the human is using** (their kickoff and messages). Machine tokens are ALWAYS English, whatever the language: verdict lines (§5 phrase table), scenario IDs (`KV-03`), the delta keywords `ADDED`/`MODIFIED`/`REMOVED`, file paths, and this runbook. So a Chinese kickoff yields Chinese artifacts with English IDs and verdict lines — `apriori verify`/`check` keep working unchanged.
+apriori/changes/gate-degrades/review/req-review-v1-raw.txt:450:- **One identity.** A directory is a formal change or a hotfix, never both. `flow-state.md`
+apriori/changes/gate-degrades/review/req-review-v1-raw.txt:645:`^VERDICT:` prefix are unchanged, so every existing consumer still reads them.
+apriori/changes/gate-degrades/review/req-review-v1-raw.txt:911:### B4 — 有配置时零变化
+apriori/changes/gate-degrades/review/req-review-v1-raw.txt:913:配置齐备的项目，本 change 后 gate 与 doctor 的行为、输出、退出码**逐字节不变**。
+apriori/changes/gate-degrades/review/req-review-v1-raw.txt:1009:**Hotfix bundles are refused, not adapted (mapping m1).** Before any check runs, a resolved directory carrying `hotfix-state.md` ends the run as an evaluation error (exit 2) naming `apriori hotfix archive <name>` as the surface that judges the lane; a directory carrying BOTH `flow-state.md` and `hotfix-state.md` is an identity error naming both files. The seven checks below are neither run nor reinterpreted for a lane bundle — their logic is untouched.
+apriori/changes/gate-degrades/review/req-review-v1-raw.txt:1049:**id-pattern (gate-id-pattern, 2026-08-13).** D6 scans the store with the effective id-pattern (config row > DEFAULT_ID; no flag) and its detail names the source (`(id-pattern: config)` / `(id-pattern: default)`); the unidentified finding echoes the actual source bounded. The pattern is resolved and its D6 scan EXECUTED before the D5 probe (execution order; display order unchanged): an uncompilable row — or a config-origin scan whose terminable child fails — makes D6 a finding naming process-config, and D5 becomes `n/a` `probe skipped (invalid id-pattern config)` with the test command never spawned. D5's own TAP parsing keeps DEFAULT_ID (its parsed-count classification is pattern-insensitive).
+apriori/changes/gate-degrades/review/req-review-v1-raw.txt:1135:- `verify(opts {specs:[], change, testCmd, idPattern, cwd})` — with `change`: builds the projection via archive-merge's discoverDeltas/buildProjection (roots `<cwd>/apriori/{changes,specs}`); ANY projection failure (validation/hygiene/CAS/merge-conflict) → run with `errors` set and NO test executed; success → normal pipeline over projected texts; run gains `projection: {change, modules, conflicts}`. Without `change`: unchanged. → run object `{ verdict, results, fileCount, failCount, scenarioCount, missingTargets, duplicates, bailout, noTap, exec{status,signal,error}, errors }`. `failCount` = tagged fails + `untaggedFails`.
+apriori/changes/gate-degrades/review/req-review-v1-raw.txt:1139:- `verifyJson(run)` → `{ clean, result: GREEN|GAPS|ERROR, errors, specFiles, exec, duplicates, boundGreen[], boundRed[], unbound[], orphan[], unidentified[] }`; `--change` runs add `projection` (never present otherwise); GREEN/GAPS `--change` runs additionally carry `storeReport` (six classes; boundGreen a bare count; array length = count; unattributedFailures {count,lines}), `changeScope` ({requirements:[{file,name,operations[]}] sorted, scenarioIds sorted}) and `modifiedIntegrity` (one entry per MODIFIED operation, empty-diff entries included; old-block titles ride the ONE title batch as a non-binding segment) — all three ABSENT (never null) on every ERROR class and on every `--specs` run (state-A byte goldens in test/fixtures/specs-golden/ prove --specs byte-identity). Since cas-enforcement (3.3.x): `--change` runs carry `projection.unstampedMutations` (suffixes, `[]` when none) + `projection.notes`; the cli prints one stderr warning per unstamped mutation delta — verdict untouched (WARN grade).
+apriori/changes/gate-degrades/review/req-review-v1-raw.txt:1142:- `DEFAULT_ID` = `[A-Z]+-\d+` — DEFINED in `lib/config.js` (the zero-dep resolution home) and re-exported here unchanged. The effective id-pattern resolves flag > config `id-pattern` row > DEFAULT_ID via `config.resolveIdPattern(cwd, flagValue)` (flag by PRESENCE; empty flag = flag-origin error; invalid source = sanitized origin-naming error; a present flag never consults the config).
+apriori/changes/gate-degrades/review/req-review-v1-raw.txt:1235:- THEN C6 falls back to module = basename and source-files = `lib/<module>.js`, producing the byte-identical `{status, detail}` it produced before this change for that module — the index and declarations add coverage for non-default layouts without altering any default-layout result
+apriori/changes/gate-degrades/review/req-review-v1-raw.txt:1284:- THEN C1 binds with the configured pattern — same verdict as the flagged run
+apriori/changes/gate-degrades/review/req-review-v1-raw.txt:1291:`gate`'s C1 SHALL consume the change-scoped verdict and change-scoped duplicates on the in-flight stage, so parallel changes go green independently: a red test or gap belonging to another change's scope never blocks this change's C1. The passing detail reads `verify GREEN (in-flight, change-scoped)`; a blocking detail lists the change-scope gap classes; either detail carries an informative store-summary suffix with the six store-report counts (`; store: <boundRed> red, <unbound> unbound, <orphan> orphan, <unidentified> unidentified, <unattributed> unattributed, <duplicates> duplicate(s) outstanding`). The archived stage (whole-store verify) is unchanged.
+apriori/changes/gate-degrades/review/req-review-v1-raw.txt:1302:The gate's object is a formal change. When the resolved directory carries `hotfix-state.md` the gate SHALL refuse the run as an evaluation error and name `apriori hotfix archive <name>` as the surface that judges the lane — the seven checks are neither run nor reinterpreted, and none of their logic changes. A directory carrying BOTH `flow-state.md` and `hotfix-state.md` is refused as an identity error naming both files, since neither reading can be trusted.
+apriori/changes/gate-degrades/review/req-review-v1-raw.txt:1374:`classifyProbe` SHALL consume the shared version-aware lexer and judge by the D5 matrix: probe TAP containing failures (any shape, unattributed included) is D5 **ok** with a detail noting the failures are verify's business and the TAP channel itself is healthy; an unsupported TAP version is D5 **finding** naming the version and the supported matrix; a stdout-empty probe whose stderr carries TAP-shaped output is D5 **finding** with a `2>&1` fix; every other classification and doctor's exit taxonomy stay unchanged.
+apriori/changes/gate-degrades/review/req-review-v1-raw.txt:1378:- THEN D5 reports ok (failures noted as verify's business), finding (version named), finding (`2>&1` fix), and ok respectively — with doctor's exit taxonomy unchanged
+apriori/changes/gate-degrades/review/req-review-v1-raw.txt:1388:`doctor`'s D6 SHALL scan the store with the effective id-pattern (config `id-pattern` row > `DEFAULT_ID`; doctor gains no flag) and its detail SHALL name the source — `config` when the row supplied the pattern, `default` otherwise. The id-pattern is resolved AND its D6 store scan is executed BEFORE the D5 probe runs (execution order; the report keeps its display order): an uncompilable config row — or a config-origin scan whose terminable child fails (timeout/kill/crash/malformed output) — makes D6 a `finding` that names `process-config` (fix: repair the row) WITHOUT throwing, AND D5 becomes `n/a` with the deterministic detail `probe skipped (invalid id-pattern config)` — the test command is never spawned under a broken id-pattern (the validate-before-any-test-command rule covers doctor too). Absent any other unusable condition the overall result stays `FINDINGS`, exit 1 — doctor diagnoses a repairable config, it does not refuse to run. When the pattern is valid, D5's probe parsing keeps `DEFAULT_ID` (its parsed-count classification is pattern-insensitive; unchanged by this change).
+apriori/changes/gate-degrades/review/req-review-v1-raw.txt:1787:   303	      ? `'${opts.change}' carries BOTH flow-state.md and hotfix-state.md — a bundle has one identity; delete the one that does not belong`
+apriori/changes/gate-degrades/review/req-review-v1-raw.txt:2271:    17	// DEFAULT_ID lives in config (the zero-dep resolution home) and is re-exported here unchanged
+apriori/changes/gate-degrades/review/req-review-v1-raw.txt:2695:   303	      ? `'${opts.change}' carries BOTH flow-state.md and hotfix-state.md — a bundle has one identity; delete the one that does not belong`
+apriori/changes/gate-degrades/review/req-review-v1-raw.txt:4320:test/modified-integrity.test.js:311:  assert.strictEqual(r3.status, 0, 'archive result unchanged');
+apriori/changes/gate-degrades/review/req-review-v1-raw.txt:4489:test/protocol.test.js:299:  // the with-arg door is unchanged: flow-state read + advance-only-to-gate survive
+apriori/changes/gate-degrades/review/req-review-v1-raw.txt:4982:test/protocol.test.js:299:  // the with-arg door is unchanged: flow-state read + advance-only-to-gate survive
+apriori/changes/gate-degrades/review/req-review-v1-raw.txt:5141:* 83fd13e fix(v4): c6-truth-binding — gate C6 binds through a truth index, not a filename assumption: truth docs may declare store-module (default basename) and source-files (default lib/<module>.js) in the header region, a covered module with a valid stamp is always checked (never a silent skip), two docs on one module conflict-block, the canonical source-commit is a fence-outside line-start form with a format-pointing note for other forms, and an explicit source-files declaration is a complete promise (missing/malformed/symlink/escaping/non-file token blocks, a directory is valid); field-less docs fall back to the pre-change default byte-identically; runbook EN/CN document the fields (Change: c6-truth-binding; credit: 4.0.2 sub-agent experiments, GPT-5.6 P2)
+apriori/changes/gate-degrades/review/req-review-v1-raw.txt:5145:* bfadb12 fix(v4): resolver-trust — resolution validates its trust roots, entries, and names: changes/ and archive/ roots lstat-checked (symlink/non-dir/file structural, archive root contained), active candidates accept only real directories (any symlink structural, never a fallback), archived candidates reject symlinks and Gregorian-round-trip their stamps (2026-02-31 and 9999-99-99 die, leap days live, never masked); validateChangeName single source (date-prefixed checked first, reserved 'archive' rejected on all four by-name surfaces with kind-named messages); fileReadDefect speaks structured kinds incl. bad-ancestor walks and escape; status gains the flow-state identity check; MIGRATING.md ships in npm with dual-form D8/update pointers; AM-25 narrowed, doctor header D1-D8/Node>=22 (Change: resolver-trust; credit: GPT-5.6 fourth review P0-3/P0-4/P1-3/P1-4/P2-1/P2-2)
+apriori/changes/gate-degrades/review/req-review-v1-raw.txt:6231:    const { store, merged, modified, deprecated, renamed, conflicts, unchanged } = merge(storeText, delta, a.change);
+apriori/changes/gate-degrades/review/req-review-v1-raw.txt:6233:    for (const [label, ids] of [['merged (ADDED)', merged], ['modified (MODIFIED)', modified], ['deprecated (REMOVED)', deprecated], ['renamed (RENAMED)', renamed], ['already merged (no-op)', unchanged]])
+apriori/changes/gate-degrades/review/req-review-v1-raw.txt:6709:58:- THEN C6 falls back to module = basename and source-files = `lib/<module>.js`, producing the byte-identical `{status, detail}` it produced before this change for that module — the index and declarations add coverage for non-default layouts without altering any default-layout result
+apriori/changes/gate-degrades/review/req-review-v1-raw.txt:6804:- THEN C6 falls back to module = basename and source-files = `lib/<module>.js`, producing the byte-identical `{status, detail}` it produced before this change for that module — the index and declarations add coverage for non-default layouts without altering any default-layout result
+apriori/changes/gate-degrades/review/req-review-v1-raw.txt:6853:- THEN C1 binds with the configured pattern — same verdict as the flagged run
+apriori/changes/gate-degrades/review/req-review-v1-raw.txt:6860:`gate`'s C1 SHALL consume the change-scoped verdict and change-scoped duplicates on the in-flight stage, so parallel changes go green independently: a red test or gap belonging to another change's scope never blocks this change's C1. The passing detail reads `verify GREEN (in-flight, change-scoped)`; a blocking detail lists the change-scope gap classes; either detail carries an informative store-summary suffix with the six store-report counts (`; store: <boundRed> red, <unbound> unbound, <orphan> orphan, <unidentified> unidentified, <unattributed> unattributed, <duplicates> duplicate(s) outstanding`). The archived stage (whole-store verify) is unchanged.
+apriori/changes/gate-degrades/review/req-review-v1-raw.txt:6871:The gate's object is a formal change. When the resolved directory carries `hotfix-state.md` the gate SHALL refuse the run as an evaluation error and name `apriori hotfix archive <name>` as the surface that judges the lane — the seven checks are neither run nor reinterpreted, and none of their logic changes. A directory carrying BOTH `flow-state.md` and `hotfix-state.md` is refused as an identity error naming both files, since neither reading can be trusted.
+apriori/changes/gate-degrades/review/req-review-v1-raw.txt:7098:- 描述：AC-GD-10 写道 `--json` 下“`code` 与进程退出码一致”，容易被解释为 JSON 新增 `code` 字段；但当前 `toJson()` 和 GT-11 的契约都没有 `code` 字段，而 B4/AC-GD-09 又要求有效 test command 下 JSON 形状逐字节不变。这两个要求不能同时成立。
+apriori/changes/gate-degrades/review/req-review-v1-raw.txt:7160:| REQ-3 | AC-GD-10 implies a JSON code field while B4 and AC-GD-09 require the existing code-free JSON shape to remain byte-identical | med | 1 | open |
+apriori/changes/gate-degrades/review/req-review-v1-raw.txt:7194:- 描述：AC-GD-10 写道 `--json` 下“`code` 与进程退出码一致”，容易被解释为 JSON 新增 `code` 字段；但当前 `toJson()` 和 GT-11 的契约都没有 `code` 字段，而 B4/AC-GD-09 又要求有效 test command 下 JSON 形状逐字节不变。这两个要求不能同时成立。
+apriori/changes/gate-degrades/review/req-review-v1-raw.txt:7256:| REQ-3 | AC-GD-10 implies a JSON code field while B4 and AC-GD-09 require the existing code-free JSON shape to remain byte-identical | med | 1 | open |
+apriori/changes/gate-degrades/review/req-review-v4-raw.txt:22:REQ-1: §1.4 now corrects the `_setChildRunner` scope and states the CommonJS lexical-binding fact (exporting buildChangeProjection does not let an outsider wrap verify's call). New §3.1c requires TWO distinct test-only seams — `_setProjectionBuilder` and `_setTestRunner` — each a single replaceable reference shared by verify() and gate's T7 path. AC-GD-14 now uses `_setTestRunner`; AC-GD-15b uses `_setProjectionBuilder` and captures the T7 projection through the wrapper; AC-GD-15a gained a positive assertion. O5 was widened from "export one entry point only" to "export the entry + add the two test seams + route verify's own calls through the same references", with defaults unchanged.
+apriori/changes/gate-degrades/review/req-review-v4-raw.txt:185:### B4 — 有配置时零变化
+apriori/changes/gate-degrades/review/req-review-v4-raw.txt:188:`--json` 的**键集与取值**、退出码**完全不变**。
+apriori/changes/gate-degrades/review/req-review-v4-raw.txt:248:**配置齐备路径上的行为一字不变**（B4）。
+apriori/changes/gate-degrades/review/req-review-v4-raw.txt:315:| AC-GD-04 | 矩阵 M5 | 退出码 **2**，与本 change 前逐字节一致 |
+apriori/changes/gate-degrades/review/req-review-v4-raw.txt:365:| O5 | 让 `apriori verify` 在无 test-cmd 时降级 | verify 的全部职责就是把测试绑到场景上；没有测试命令时它没有任何可降级的产出。**本 change 对 `lib/spec-runner.js` 的改动限于三件事（r3 更正——v3 曾说「仅导出一个入口」，那不足以支撑 AC-GD-14/15b）**：① 导出既有的 projection-only 入口；② 新增两个**仅供测试**的注入 seam `_setProjectionBuilder` / `_setTestRunner`（同族于既有 `_setChildRunner`）；③ 把 `verify()` 自身对这两个函数的调用改为经由同一可替换引用。**默认值不变，配置齐备路径上的行为一字不变**（B4 由 AC-GD-09 守卫） |
+apriori/changes/gate-degrades/review/req-review-v4-raw.txt:531:| REQ-3 | AC-GD-10 implies a JSON code field while B4 and AC-GD-09 require the existing code-free JSON shape to remain byte-identical | med | 1 | verified |
+apriori/changes/gate-degrades/review/req-review-v4-raw.txt:696:### B4 — 有配置时零变化
+apriori/changes/gate-degrades/review/req-review-v4-raw.txt:699:`--json` 的**键集与取值**、退出码**完全不变**。
+apriori/changes/gate-degrades/review/req-review-v4-raw.txt:759:**配置齐备路径上的行为一字不变**（B4）。
+apriori/changes/gate-degrades/review/req-review-v4-raw.txt:827:| AC-GD-04 | 矩阵 M5 | 退出码 **2**，与本 change 前逐字节一致 |
+apriori/changes/gate-degrades/review/req-review-v4-raw.txt:877:| O5 | 让 `apriori verify` 在无 test-cmd 时降级 | verify 的全部职责就是把测试绑到场景上；没有测试命令时它没有任何可降级的产出。**本 change 对 `lib/spec-runner.js` 的改动限于三件事（r3 更正——v3 曾说「仅导出一个入口」，那不足以支撑 AC-GD-14/15b）**：① 导出既有的 projection-only 入口；② 新增两个**仅供测试**的注入 seam `_setProjectionBuilder` / `_setTestRunner`（同族于既有 `_setChildRunner`）；③ 把 `verify()` 自身对这两个函数的调用改为经由同一可替换引用。**默认值不变，配置齐备路径上的行为一字不变**（B4 由 AC-GD-09 守卫） |
+apriori/changes/gate-degrades/review/req-review-v4-raw.txt:1043:| REQ-3 | AC-GD-10 implies a JSON code field while B4 and AC-GD-09 require the existing code-free JSON shape to remain byte-identical | med | 1 | verified |
+apriori/changes/gate-degrades/review/req-review-v4-raw.txt:1064:**配置齐备路径上的行为一字不变**（B4）。
+apriori/changes/gate-degrades/review/req-review-v4-raw.txt:1131:| AC-GD-04 | 矩阵 M5 | 退出码 **2**，与本 change 前逐字节一致 |
+apriori/changes/gate-degrades/review/req-review-v4-raw.txt:1181:| O5 | 让 `apriori verify` 在无 test-cmd 时降级 | verify 的全部职责就是把测试绑到场景上；没有测试命令时它没有任何可降级的产出。**本 change 对 `lib/spec-runner.js` 的改动限于三件事（r3 更正——v3 曾说「仅导出一个入口」，那不足以支撑 AC-GD-14/15b）**：① 导出既有的 projection-only 入口；② 新增两个**仅供测试**的注入 seam `_setProjectionBuilder` / `_setTestRunner`（同族于既有 `_setChildRunner`）；③ 把 `verify()` 自身对这两个函数的调用改为经由同一可替换引用。**默认值不变，配置齐备路径上的行为一字不变**（B4 由 AC-GD-09 守卫） |
+apriori/changes/gate-degrades/review/req-review-v4-raw.txt:1274:      ? `'${opts.change}' carries BOTH flow-state.md and hotfix-state.md — a bundle has one identity; delete the one that does not belong`
+apriori/changes/gate-degrades/review/req-review-v4-raw.txt:1353:// DEFAULT_ID lives in config (the zero-dep resolution home) and is re-exported here unchanged
+apriori/changes/gate-degrades/review/req-review-v4-raw.txt:1816:   303	      ? `'${opts.change}' carries BOTH flow-state.md and hotfix-state.md — a bundle has one identity; delete the one that does not belong`
+apriori/changes/gate-degrades/review/req-review-v4-raw.txt:2157:apriori/truth/doctor.md:21:**id-pattern (gate-id-pattern, 2026-08-13).** D6 scans the store with the effective id-pattern (config row > DEFAULT_ID; no flag) and its detail names the source (`(id-pattern: config)` / `(id-pattern: default)`); the unidentified finding echoes the actual source bounded. The pattern is resolved and its D6 scan EXECUTED before the D5 probe (execution order; display order unchanged): an uncompilable row — or a config-origin scan whose terminable child fails — makes D6 a finding naming process-config, and D5 becomes `n/a` `probe skipped (invalid id-pattern config)` with the test command never spawned. D5's own TAP parsing keeps DEFAULT_ID (its parsed-count classification is pattern-insensitive).
+apriori/changes/gate-degrades/review/req-review-v4-raw.txt:2452:324:| O5 | 让 `apriori verify` 在无 test-cmd 时降级 | verify 的全部职责就是把测试绑到场景上；没有测试命令时它没有任何可降级的产出。**本 change 对 `lib/spec-runner.js` 的改动限于三件事（r3 更正——v3 曾说「仅导出一个入口」，那不足以支撑 AC-GD-14/15b）**：① 导出既有的 projection-only 入口；② 新增两个**仅供测试**的注入 seam `_setProjectionBuilder` / `_setTestRunner`（同族于既有 `_setChildRunner`）；③ 把 `verify()` 自身对这两个函数的调用改为经由同一可替换引用。**默认值不变，配置齐备路径上的行为一字不变**（B4 由 AC-GD-09 守卫） |
+apriori/changes/gate-degrades/review/req-review-v4-raw.txt:2486:apriori/specs/archive-merge/spec.md:230:- THEN the first two produce correct reports through the injected terminable matcher — the pinned seam: `archiveMerge.cli(argv, deps)` and `archiveChange({..., idMatcherFactory})` accept an optional factory `(cwd) => matcher | {error}`; bin builds it lazily from `lib/config`'s resolveIdPattern plus spec-runner's makeIdMatcher; a MISSING factory degrades exactly like a factory error (warning + skip); archive-merge itself never requires spec-runner; the last two print exactly one stderr warning — the WHOLE line `warning: modified-integrity <reason>` passed through sanitizeMsg (control chars replaced with `·`, ≤200 UTF-16 units) — skip the report, and leave every other archive output and exit unchanged
+apriori/changes/gate-degrades/review/req-review-v4-raw.txt:2670:324:| O5 | 让 `apriori verify` 在无 test-cmd 时降级 | verify 的全部职责就是把测试绑到场景上；没有测试命令时它没有任何可降级的产出。**本 change 对 `lib/spec-runner.js` 的改动限于三件事（r3 更正——v3 曾说「仅导出一个入口」，那不足以支撑 AC-GD-14/15b）**：① 导出既有的 projection-only 入口；② 新增两个**仅供测试**的注入 seam `_setProjectionBuilder` / `_setTestRunner`（同族于既有 `_setChildRunner`）；③ 把 `verify()` 自身对这两个函数的调用改为经由同一可替换引用。**默认值不变，配置齐备路径上的行为一字不变**（B4 由 AC-GD-09 守卫） |
+apriori/changes/gate-degrades/review/spec-review-v2-raw.txt:108:- THEN C6 falls back to module = basename and source-files = `lib/<module>.js`, producing the byte-identical `{status, detail}` it produced before this change for that module — the index and declarations add coverage for non-default layouts without altering any default-layout result
+apriori/changes/gate-degrades/review/spec-review-v2-raw.txt:153:- THEN gate still exits 2 with the mapping-m1 pointer at `apriori hotfix archive` — the hotfix identity is decided before flow-state and before the test-command source, so a lane bundle (which carries no flow-state by design) is never misreported as a missing flow-state; WHEN the bundle is a formal change with no readable flow-state THEN gate still exits 2 for that reason
+apriori/changes/gate-degrades/review/spec-review-v2-raw.txt:163:The delta-to-store projection SHALL be built by exactly ONE implementation, reachable by every consumer through a single replaceable reference. `spec-runner` SHALL export that reference resolver alongside the builder, and `verify` SHALL itself go through it — so that a consumer which needs the projection WITHOUT executing a test command (gate's skipped-C1 path) provably shares `verify`'s code, its inputs, and its failure classes. Two test-only injection seams SHALL exist: one over the projection builder and one over the test-command runner. Both default to the real functions, leaving every configured path byte-identical.
+apriori/changes/gate-degrades/review/spec-review-v2-raw.txt:175:- THEN the builder and the runner resolve to the real functions and `verify`'s behaviour, output, and exit codes are byte-identical to their pre-seam form; installing an override and then clearing it restores that state exactly
+apriori/changes/gate-degrades/review/spec-review-v2-raw.txt:231:配置齐备路径上 `verify()` 的调用序列、参数、返回值**逐字节不变**（B4，AC-GD-09 守卫）。
+apriori/changes/gate-degrades/review/spec-review-v2-raw.txt:505:| REQ-3 | AC-GD-10 implies a JSON code field while B4 and AC-GD-09 require the existing code-free JSON shape to remain byte-identical | med | 1 | verified |
+apriori/changes/gate-degrades/review/spec-review-v2-raw.txt:552:apriori/changes/gate-degrades/specs/spec-runner/spec.md:18:- THEN the builder and the runner resolve to the real functions and `verify`'s behaviour, output, and exit codes are byte-identical to their pre-seam form; installing an override and then clearing it restores that state exactly
+apriori/changes/gate-degrades/review/spec-review-v2-raw.txt:563: - THEN C6 falls back to module = basename and source-files = `lib/<module>.js`, producing the byte-identical `{status, detail}` it produced before this change for that module — the index and declarations add coverage for non-default layouts without altering any default-layout result
+apriori/changes/gate-degrades/review/spec-review-v1-raw.txt:141:配置齐备路径上 `verify()` 的调用序列、参数、返回值**逐字节不变**（B4，AC-GD-09 守卫）。
+apriori/changes/gate-degrades/review/spec-review-v1-raw.txt:521:4. 有配置的路径逐字节不变；
+apriori/changes/gate-degrades/review/spec-review-v1-raw.txt:639:- THEN C6 falls back to module = basename and source-files = `lib/<module>.js`, producing the byte-identical `{status, detail}` it produced before this change for that module — the index and declarations add coverage for non-default layouts without altering any default-layout result
+apriori/changes/gate-degrades/review/spec-review-v1-raw.txt:684:- THEN gate still exits 2 with the mapping-m1 pointer at `apriori hotfix archive` — the hotfix identity is decided before flow-state and before the test-command source, so a lane bundle (which carries no flow-state by design) is never misreported as a missing flow-state; WHEN the bundle is a formal change with no readable flow-state THEN gate still exits 2 for that reason
+apriori/changes/gate-degrades/review/spec-review-v1-raw.txt:750:The delta-to-store projection SHALL be built by exactly ONE implementation, reachable by every consumer through a single replaceable reference. `spec-runner` SHALL export that reference resolver alongside the builder, and `verify` SHALL itself go through it — so that a consumer which needs the projection WITHOUT executing a test command (gate's skipped-C1 path) provably shares `verify`'s code, its inputs, and its failure classes. Two test-only injection seams SHALL exist: one over the projection builder and one over the test-command runner. Both default to the real functions, leaving every configured path byte-identical.
+apriori/changes/gate-degrades/review/spec-review-v1-raw.txt:762:- THEN the builder and the runner resolve to the real functions and `verify`'s behaviour, output, and exit codes are byte-identical to their pre-seam form; installing an override and then clearing it restores that state exactly
+apriori/changes/gate-degrades/review/spec-review-v1-raw.txt:923:- THEN C6 falls back to module = basename and source-files = `lib/<module>.js`, producing the byte-identical `{status, detail}` it produced before this change for that module — the index and declarations add coverage for non-default layouts without altering any default-layout result
+apriori/changes/gate-degrades/review/spec-review-v1-raw.txt:968:- THEN gate still exits 2 with the mapping-m1 pointer at `apriori hotfix archive` — the hotfix identity is decided before flow-state and before the test-command source, so a lane bundle (which carries no flow-state by design) is never misreported as a missing flow-state; WHEN the bundle is a formal change with no readable flow-state THEN gate still exits 2 for that reason
+apriori/changes/gate-degrades/review/spec-review-v1-raw.txt:1030:- THEN C6 falls back to module = basename and source-files = `lib/<module>.js`, producing the byte-identical `{status, detail}` it produced before this change for that module — the index and declarations add coverage for non-default layouts without altering any default-layout result
+apriori/changes/gate-degrades/review/spec-review-v1-raw.txt:1079:- THEN C1 binds with the configured pattern — same verdict as the flagged run
+apriori/changes/gate-degrades/review/spec-review-v1-raw.txt:1086:`gate`'s C1 SHALL consume the change-scoped verdict and change-scoped duplicates on the in-flight stage, so parallel changes go green independently: a red test or gap belonging to another change's scope never blocks this change's C1. The passing detail reads `verify GREEN (in-flight, change-scoped)`; a blocking detail lists the change-scope gap classes; either detail carries an informative store-summary suffix with the six store-report counts (`; store: <boundRed> red, <unbound> unbound, <orphan> orphan, <unidentified> unidentified, <unattributed> unattributed, <duplicates> duplicate(s) outstanding`). The archived stage (whole-store verify) is unchanged.
+apriori/changes/gate-degrades/review/spec-review-v1-raw.txt:1097:The gate's object is a formal change. When the resolved directory carries `hotfix-state.md` the gate SHALL refuse the run as an evaluation error and name `apriori hotfix archive <name>` as the surface that judges the lane — the seven checks are neither run nor reinterpreted, and none of their logic changes. A directory carrying BOTH `flow-state.md` and `hotfix-state.md` is refused as an identity error naming both files, since neither reading can be trusted.
+apriori/changes/gate-degrades/review/spec-review-v1-raw.txt:1186:- THEN verification demands exactly the projected picture — the block's scenarios under their unchanged IDs, with no demand arising from the pre-rename block
+apriori/changes/gate-degrades/review/spec-review-v1-raw.txt:1285:`classifyProbe` SHALL consume the shared version-aware lexer and judge by the D5 matrix: probe TAP containing failures (any shape, unattributed included) is D5 **ok** with a detail noting the failures are verify's business and the TAP channel itself is healthy; an unsupported TAP version is D5 **finding** naming the version and the supported matrix; a stdout-empty probe whose stderr carries TAP-shaped output is D5 **finding** with a `2>&1` fix; every other classification and doctor's exit taxonomy stay unchanged.
+apriori/changes/gate-degrades/review/spec-review-v1-raw.txt:1289:- THEN D5 reports ok (failures noted as verify's business), finding (version named), finding (`2>&1` fix), and ok respectively — with doctor's exit taxonomy unchanged
+apriori/changes/gate-degrades/review/spec-review-v1-raw.txt:1299:`doctor`'s D6 SHALL scan the store with the effective id-pattern (config `id-pattern` row > `DEFAULT_ID`; doctor gains no flag) and its detail SHALL name the source — `config` when the row supplied the pattern, `default` otherwise. The id-pattern is resolved AND its D6 store scan is executed BEFORE the D5 probe runs (execution order; the report keeps its display order): an uncompilable config row — or a config-origin scan whose terminable child fails (timeout/kill/crash/malformed output) — makes D6 a `finding` that names `process-config` (fix: repair the row) WITHOUT throwing, AND D5 becomes `n/a` with the deterministic detail `probe skipped (invalid id-pattern config)` — the test command is never spawned under a broken id-pattern (the validate-before-any-test-command rule covers doctor too). Absent any other unusable condition the overall result stays `FINDINGS`, exit 1 — doctor diagnoses a repairable config, it does not refuse to run. When the pattern is valid, D5's probe parsing keeps `DEFAULT_ID` (its parsed-count classification is pattern-insensitive; unchanged by this change).
+apriori/changes/gate-degrades/review/spec-review-v1-raw.txt:1457:test/id-pattern.test.js:133:test('SR-53 absent flag and config the default binds unchanged', () => {
+apriori/changes/gate-degrades/review/spec-review-v1-raw.txt:1504:test/change-scope.test.js:249:test('SR-64 --specs outputs stay byte-identical to the state-A goldens', () => {
+apriori/changes/gate-degrades/review/spec-review-v1-raw.txt:1639:    55	配置齐备路径上 `verify()` 的调用序列、参数、返回值**逐字节不变**（B4，AC-GD-09 守卫）。
+apriori/changes/gate-degrades/review/spec-review-v1-raw.txt:1824:     6	The delta-to-store projection SHALL be built by exactly ONE implementation, reachable by every consumer through a single replaceable reference. `spec-runner` SHALL export that reference resolver alongside the builder, and `verify` SHALL itself go through it — so that a consumer which needs the projection WITHOUT executing a test command (gate's skipped-C1 path) provably shares `verify`'s code, its inputs, and its failure classes. Two test-only injection seams SHALL exist: one over the projection builder and one over the test-command runner. Both default to the real functions, leaving every configured path byte-identical.
+apriori/changes/gate-degrades/review/spec-review-v1-raw.txt:1836:    18	- THEN the builder and the runner resolve to the real functions and `verify`'s behaviour, output, and exit codes are byte-identical to their pre-seam form; installing an override and then clearing it restores that state exactly
+apriori/changes/gate-degrades/review/spec-review-v1-raw.txt:1952:    62	- THEN C6 falls back to module = basename and source-files = `lib/<module>.js`, producing the byte-identical `{status, detail}` it produced before this change for that module — the index and declarations add coverage for non-default layouts without altering any default-layout result
+apriori/changes/gate-degrades/review/spec-review-v1-raw.txt:1997:   107	- THEN gate still exits 2 with the mapping-m1 pointer at `apriori hotfix archive` — the hotfix identity is decided before flow-state and before the test-command source, so a lane bundle (which carries no flow-state by design) is never misreported as a missing flow-state; WHEN the bundle is a formal change with no readable flow-state THEN gate still exits 2 for that reason
+apriori/changes/gate-degrades/review/spec-review-v1-raw.txt:2035:apriori/changes/gate-degrades/requirement/req-final.md:324:| O5 | 让 `apriori verify` 在无 test-cmd 时降级 | verify 的全部职责就是把测试绑到场景上；没有测试命令时它没有任何可降级的产出。**本 change 对 `lib/spec-runner.js` 的改动限于三件事（r3 更正——v3 曾说「仅导出一个入口」，那不足以支撑 AC-GD-14/15b）**：① 导出既有的 projection-only 入口；② 新增两个**仅供测试**的注入 seam `_setProjectionBuilder` / `_setTestRunner`（同族于既有 `_setChildRunner`）；③ 把 `verify()` 自身对这两个函数的调用改为经由同一可替换引用。**默认值不变，配置齐备路径上的行为一字不变**（B4 由 AC-GD-09 守卫） |
+apriori/changes/gate-degrades/review/spec-review-v1-raw.txt:2157:    91	4. 有配置的路径逐字节不变；
+apriori/changes/gate-degrades/review/spec-review-v1-raw.txt:2440:apriori/changes/gate-degrades/requirement/req-final.md:324:| O5 | 让 `apriori verify` 在无 test-cmd 时降级 | verify 的全部职责就是把测试绑到场景上；没有测试命令时它没有任何可降级的产出。**本 change 对 `lib/spec-runner.js` 的改动限于三件事（r3 更正——v3 曾说「仅导出一个入口」，那不足以支撑 AC-GD-14/15b）**：① 导出既有的 projection-only 入口；② 新增两个**仅供测试**的注入 seam `_setProjectionBuilder` / `_setTestRunner`（同族于既有 `_setChildRunner`）；③ 把 `verify()` 自身对这两个函数的调用改为经由同一可替换引用。**默认值不变，配置齐备路径上的行为一字不变**（B4 由 AC-GD-09 守卫） |
+apriori/changes/gate-degrades/review/spec-review-v1-raw.txt:2448:apriori/changes/gate-degrades/requirement/req-v5.md:324:| O5 | 让 `apriori verify` 在无 test-cmd 时降级 | verify 的全部职责就是把测试绑到场景上；没有测试命令时它没有任何可降级的产出。**本 change 对 `lib/spec-runner.js` 的改动限于三件事（r3 更正——v3 曾说「仅导出一个入口」，那不足以支撑 AC-GD-14/15b）**：① 导出既有的 projection-only 入口；② 新增两个**仅供测试**的注入 seam `_setProjectionBuilder` / `_setTestRunner`（同族于既有 `_setChildRunner`）；③ 把 `verify()` 自身对这两个函数的调用改为经由同一可替换引用。**默认值不变，配置齐备路径上的行为一字不变**（B4 由 AC-GD-09 守卫） |
+apriori/changes/gate-degrades/review/spec-review-v1-raw.txt:2456:apriori/changes/gate-degrades/requirement/req-v4.md:324:| O5 | 让 `apriori verify` 在无 test-cmd 时降级 | verify 的全部职责就是把测试绑到场景上；没有测试命令时它没有任何可降级的产出。**本 change 对 `lib/spec-runner.js` 的改动限于三件事（r3 更正——v3 曾说「仅导出一个入口」，那不足以支撑 AC-GD-14/15b）**：① 导出既有的 projection-only 入口；② 新增两个**仅供测试**的注入 seam `_setProjectionBuilder` / `_setTestRunner`（同族于既有 `_setChildRunner`）；③ 把 `verify()` 自身对这两个函数的调用改为经由同一可替换引用。**默认值不变，配置齐备路径上的行为一字不变**（B4 由 AC-GD-09 守卫） |
+apriori/changes/gate-degrades/review/spec-review-v1-raw.txt:2567:apriori/truth/spec-runner.md:22:- `verifyJson(run)` → `{ clean, result: GREEN|GAPS|ERROR, errors, specFiles, exec, duplicates, boundGreen[], boundRed[], unbound[], orphan[], unidentified[] }`; `--change` runs add `projection` (never present otherwise); GREEN/GAPS `--change` runs additionally carry `storeReport` (six classes; boundGreen a bare count; array length = count; unattributedFailures {count,lines}), `changeScope` ({requirements:[{file,name,operations[]}] sorted, scenarioIds sorted}) and `modifiedIntegrity` (one entry per MODIFIED operation, empty-diff entries included; old-block titles ride the ONE title batch as a non-binding segment) — all three ABSENT (never null) on every ERROR class and on every `--specs` run (state-A byte goldens in test/fixtures/specs-golden/ prove --specs byte-identity). Since cas-enforcement (3.3.x): `--change` runs carry `projection.unstampedMutations` (suffixes, `[]` when none) + `projection.notes`; the cli prints one stderr warning per unstamped mutation delta — verdict untouched (WARN grade).
+apriori/changes/gate-degrades/review/spec-review-v1-raw.txt:2844:| REQ-3 | AC-GD-10 implies a JSON code field while B4 and AC-GD-09 require the existing code-free JSON shape to remain byte-identical | med | 1 | verified |
+apriori/changes/gate-degrades/review/spec-review-v1-raw.txt:2873:apriori/truth/doctor.md:21:**id-pattern (gate-id-pattern, 2026-08-13).** D6 scans the store with the effective id-pattern (config row > DEFAULT_ID; no flag) and its detail names the source (`(id-pattern: config)` / `(id-pattern: default)`); the unidentified finding echoes the actual source bounded. The pattern is resolved and its D6 scan EXECUTED before the D5 probe (execution order; display order unchanged): an uncompilable row — or a config-origin scan whose terminable child fails — makes D6 a finding naming process-config, and D5 becomes `n/a` `probe skipped (invalid id-pattern config)` with the test command never spawned. D5's own TAP parsing keeps DEFAULT_ID (its parsed-count classification is pattern-insensitive).
+
+codex
+The Map-safe comparison itself now reaches the `Map` contents and is non-vacuous. I’m checking the second question more closely because the narrowed SR-75 scenario is not the only normative sentence: the parent delta requirement and other current requirement/design clauses may still retain “byte-identical/unchanged” wording outside the amendment marker.
+exec
+/usr/bin/zsh -lc "rg -n -i \"byte-identical|byte identical|byte-identity|pre-seam|逐字节|一字不变|完全不变|与本 change 前|unchanged\" apriori/changes/gate-degrades/requirement/req-final.md apriori/changes/gate-degrades/specs apriori/changes/gate-degrades/design.md apriori/changes/gate-degrades/proposal.md apriori/changes/gate-degrades/tasks.md apriori/changes/gate-degrades/step5-amendment.md apriori/truth/gate.md apriori/truth/doctor.md apriori/truth/spec-runner.md docs/ci.md docs/ci_cn.md docs/cli.md docs/cli_cn.md docs/troubleshooting.md docs/troubleshooting_cn.md CHANGELOG.md
+nl -ba apriori/changes/gate-degrades/requirement/req-final.md | sed -n '312,345p'
+nl -ba apriori/changes/gate-degrades/design.md | sed -n '45,62p;210,245p'
+rg -n \"AC-GD-04|M5|flow-state.*byte|flow-state.*逐字节\" test/gate-degrade.test.js test/gate.test.js" in /mnt/d/Workbench/misc/apriori-spec-development
+ exited 1 in 181ms:
+docs/cli.md:99:`--change` runs are **change-scoped**: the verdict (exit 0/1) judges only this change's requirement blocks (their scenarios bound green, no scoped duplicate/unidentified, no unprovable failure signal — an ID-less failure or a failing ID that no sibling active change declares still blocks, fail-closed); a red bound to an out-of-scope scenario, or one attributed to a sibling change's cleanly-parsed delta (only its ADDED/MODIFIED block scenarios grant the exemption), never blocks. The same run prints an informative **store report** (whole projection, six classes) so parallel changes go green independently while historical gaps stay visible. `--change --json` adds `storeReport`, `changeScope` and `modifiedIntegrity` on GREEN/GAPS (absent on every ERROR); `--specs` output is byte-identical to before. `modifiedIntegrity` reports every MODIFIED block's replacement fidelity (retained/titleChanged/dropped/added/ambiguous scenarios plus lost lines, requirement prose included) — informative only, never a verdict change; the human `— MODIFIED INTEGRITY —` section prints when a risk class is non-empty.
+apriori/truth/spec-runner.md:18:- `verify(opts {specs:[], change, testCmd, idPattern, cwd})` — with `change`: builds the projection via archive-merge's discoverDeltas/buildProjection (roots `<cwd>/apriori/{changes,specs}`); ANY projection failure (validation/hygiene/CAS/merge-conflict) → run with `errors` set and NO test executed; success → normal pipeline over projected texts; run gains `projection: {change, modules, conflicts}`. Without `change`: unchanged. → run object `{ verdict, results, fileCount, failCount, scenarioCount, missingTargets, duplicates, bailout, noTap, exec{status,signal,error}, errors }`. `failCount` = tagged fails + `untaggedFails`.
+apriori/truth/spec-runner.md:22:- `verifyJson(run)` → `{ clean, result: GREEN|GAPS|ERROR, errors, specFiles, exec, duplicates, boundGreen[], boundRed[], unbound[], orphan[], unidentified[] }`; `--change` runs add `projection` (never present otherwise); GREEN/GAPS `--change` runs additionally carry `storeReport` (six classes; boundGreen a bare count; array length = count; unattributedFailures {count,lines}), `changeScope` ({requirements:[{file,name,operations[]}] sorted, scenarioIds sorted}) and `modifiedIntegrity` (one entry per MODIFIED operation, empty-diff entries included; old-block titles ride the ONE title batch as a non-binding segment) — all three ABSENT (never null) on every ERROR class and on every `--specs` run (state-A byte goldens in test/fixtures/specs-golden/ prove --specs byte-identity). Since cas-enforcement (3.3.x): `--change` runs carry `projection.unstampedMutations` (suffixes, `[]` when none) + `projection.notes`; the cli prints one stderr warning per unstamped mutation delta — verdict untouched (WARN grade).
+apriori/truth/spec-runner.md:25:- `DEFAULT_ID` = `[A-Z]+-\d+` — DEFINED in `lib/config.js` (the zero-dep resolution home) and re-exported here unchanged. The effective id-pattern resolves flag > config `id-pattern` row > DEFAULT_ID via `config.resolveIdPattern(cwd, flagValue)` (flag by PRESENCE; empty flag = flag-origin error; invalid source = sanitized origin-naming error; a present flag never consults the config).
+apriori/truth/doctor.md:21:**id-pattern (gate-id-pattern, 2026-08-13).** D6 scans the store with the effective id-pattern (config row > DEFAULT_ID; no flag) and its detail names the source (`(id-pattern: config)` / `(id-pattern: default)`); the unidentified finding echoes the actual source bounded. The pattern is resolved and its D6 scan EXECUTED before the D5 probe (execution order; display order unchanged): an uncompilable row — or a config-origin scan whose terminable child fails — makes D6 a finding naming process-config, and D5 becomes `n/a` `probe skipped (invalid id-pattern config)` with the test command never spawned. D5's own TAP parsing keeps DEFAULT_ID (its parsed-count classification is pattern-insensitive).
+apriori/changes/gate-degrades/design.md:56:配置齐备路径上 `verify()` 的调用序列、参数、返回值**逐字节不变**（B4，AC-GD-09 守卫）。
+apriori/changes/gate-degrades/step5-amendment.md:1:# STEP5 amendment — 把 B4 / AC-GD-09 / SR-75 的「逐字节不变」缩到实际验证得了的范围
+apriori/changes/gate-degrades/step5-amendment.md:13:`--json` 键集与取值、退出码**与本 change 前完全一致**」。
+apriori/changes/gate-degrades/step5-amendment.md:14:新增的 **SR-75** 一度也写着「byte-identical to their pre-seam form」。
+apriori/changes/gate-degrades/step5-amendment.md:17:而「与改动前逐字节相同」这个命题，**在本仓内的测试里根本观察不到**——
+apriori/changes/gate-degrades/step5-amendment.md:39:「与本 change 前完全一致」改为下面这三条**实际成立且各有证据**的断言：
+apriori/changes/gate-degrades/step5-amendment.md:47:**这三条合起来是回归证据，不是逐字节同一性证明**——差别必须说清楚：
+apriori/changes/gate-degrades/step5-amendment.md:55:  括号里关于 pre-seam 的表述改为「回归证据」而非「同一性证明」。
+apriori/changes/gate-degrades/requirement/req-final.md:114:按现状整体退出，不产出逐检查结论——这与本 change 前的行为一致，B1 不覆盖它们。
+apriori/changes/gate-degrades/requirement/req-final.md:147:`--json` 的**键集与取值**、退出码**完全不变**。
+apriori/changes/gate-degrades/requirement/req-final.md:149:> **【STEP5 记名修正 · 见 `step5-amendment.md`】** 「完全不变」原文是一条**无人验证的硬保证**——
+apriori/changes/gate-degrades/requirement/req-final.md:150:> 本仓内的测试观察不到「与改动前逐字节相同」（没有状态 A 的冻结 golden，且 CI 的浅 checkout
+apriori/changes/gate-degrades/requirement/req-final.md:154:> 原样全绿。三条是**回归证据**，不是逐字节同一性证明；残余风险已具名接受。
+apriori/changes/gate-degrades/requirement/req-final.md:166:| T1 | `--test-cmd` **存在**，且值含**至少一个非空白字符** | 有效（flag） | 照常执行，与本 change 前一致 |
+apriori/changes/gate-degrades/requirement/req-final.md:171:| T6 | 无 flag，config 有合法 `test-cmd` 行（值含至少一个非空白字符） | 有效（config） | 照常执行，与本 change 前一致 |
+apriori/changes/gate-degrades/requirement/req-final.md:214:**配置齐备路径上的行为一字不变**（B4）。
+apriori/changes/gate-degrades/requirement/req-final.md:281:| AC-GD-04 | 矩阵 M5 | 退出码 **2**，与本 change 前逐字节一致 |
+apriori/changes/gate-degrades/requirement/req-final.md:287:| AC-GD-09 | T1 / T6（任一有效来源） | gate 的检查集合、每项 detail 文案、`--json` 键集与取值、退出码**与本 change 前完全一致**（回归护栏）。**【STEP5 记名修正】** 验收面按 `step5-amendment.md` 缩为：解析器恒等 + 三态完整结果结构相等（含反向守卫）+ 既有 375 条测试原样全绿——回归证据，非逐字节同一性证明 |
+apriori/changes/gate-degrades/requirement/req-final.md:291:| AC-GD-13 | 矩阵 M3 的**每一个**子情形（空 flag / 不可编译 flag / 不可编译的 `id-pattern` config 值 / `id-pattern` 行冲突），各自叠加 T7 | 退出码 **2**，与本 change 前一致；对**已归档** change 亦然（M3 优先于 M8）。「config 文件不可读」**不在**本条，它归 AC-GD-08（T4） |
+apriori/changes/gate-degrades/requirement/req-final.md:331:| O5 | 让 `apriori verify` 在无 test-cmd 时降级 | verify 的全部职责就是把测试绑到场景上；没有测试命令时它没有任何可降级的产出。**本 change 对 `lib/spec-runner.js` 的改动限于三件事（r3 更正——v3 曾说「仅导出一个入口」，那不足以支撑 AC-GD-14/15b）**：① 导出既有的 projection-only 入口；② 新增两个**仅供测试**的注入 seam `_setProjectionBuilder` / `_setTestRunner`（同族于既有 `_setChildRunner`）；③ 把 `verify()` 自身对这两个函数的调用改为经由同一可替换引用。**默认值不变，配置齐备路径上的行为一字不变**（B4 由 AC-GD-09 守卫） |
+CHANGELOG.md:10:gate that could not run its binding check has not passed. The `--json` key set is unchanged
+CHANGELOG.md:111:- `--specs` runs are byte-identical to before (proven by golden captures); `am.buildProjection` additionally returns `deltaOps` (the per-suffix operation buckets from its own parse — single-snapshot provenance).
+CHANGELOG.md:130:Docs only — no CLI, flag, or behavior change; the published files are byte-identical to 4.0.6 apart from `README.md`.
+CHANGELOG.md:138:Docs only — no CLI, flag, or behavior change; `bin/`, `lib/`, `templates/`, and the runbook files are byte-identical to 4.0.5.
+CHANGELOG.md:146:Repository/release plumbing only — no CLI, flag, or behavior change; the published files are byte-identical to 4.0.4.
+CHANGELOG.md:156:- **README Quickstart restructured into two routes** — Route A is how you'll actually use it: drive an agent in Claude Code (`apriori init`'s interactive tool picker, then `/apriori` with no argument to brainstorm, or `/apriori <change>` to run the loop to the next human gate), never hand-writing a spec or state file. Route B keeps the deterministic run-it-by-hand walk (install → red → green → gate → archive) — the same 4-block sequence the golden-path check executes against this file, now labeled as the non-interactive / CI form of Route A's menu. Applied to both `README.md` and `README_cn.md`; the golden-path extractor scopes to Route B's runnable blocks, so the executable-Quickstart guarantee is unchanged.
+CHANGELOG.md:164:- **C6 binds through a truth index, not a filename guess** — gate's KB-freshness check was silently skipping whole classes of real project three ways: the truth doc's filename differed from the store basename (`poll.md` vs `quick-poll`), the `source-commit` sat in a non-bare form, or the code lived outside `lib/`. Now a truth doc may declare `store-module:` and `source-files:` in its header region (defaulting to the basename and `lib/<module>.js`); a covered module with a valid stamp is ALWAYS mechanically checked, never a silent skip; two docs claiming one module conflict-block; a non-canonical `source-commit` yields a format-pointing note instead of a vague "no source-commit"; and an explicit `source-files` is a complete promise — any missing, malformed, symlinked, escaping, or non-file token blocks (a declared directory is valid). Field-less truth docs — this repo's own — keep the byte-identical pre-change verdict, verified by the repo's own gate checking the `gate` module through the new index.
+CHANGELOG.md:210:- **The delta parser consumes its whole input** — `parseDeltaStrict` is a sequential line walker: misspelled section headings (`## ADDDED`), requirements/scenarios outside their legal home, and stray/duplicate/malformed CAS stamps are line-numbered problems instead of being silently re-homed into the wrong bucket; fences stay opaque; CRLF parses identically; well-formed deltas parse byte-identically (corpus-verified against every archived delta).
+CHANGELOG.md:211:- **The TAP plan is a checked promise** — exactly one top-level plan allowed; plan-vs-parsed-points mismatch (truncated output) and duplicate test-point numbers are infra errors: `verify` exits 2, `gate` reports ERROR. Plan-less, skip-all (`1..0 # SKIP`), and node's nested TAP are unchanged.
+CHANGELOG.md:212:- **`update` refreshes only what it can prove it owns** — `init` records what it creates in `apriori/managed.json` (exact-byte sha256); `update` refreshes manifest-listed, unmodified files only; modified/unmanaged/missing files are reported and left byte-identical. Pre-manifest projects are adopted on template-generation proof; manifest hygiene and realpath containment fail closed before any read.
+CHANGELOG.md:216:- **CAS enforcement is graded** — unstamped MODIFIED/REMOVED/RENAMED deltas warn on every surface (`projection.unstampedMutations` in `--json`) and the new **gate C7** denies them by default, with visible waivers (`--no-cas` / a `| cas | optional |` config row). MODIFIED gains the trim-equality `unchanged` signature, so a stamped delta that already committed re-runs cleanly instead of dead-ending on its own stamp. Stamps become mandatory in 4.0.
+apriori/changes/gate-degrades/specs/spec-runner/spec.md:6:The delta-to-store projection SHALL be built by exactly ONE implementation, reachable by every consumer through a single replaceable reference. `spec-runner` SHALL export that reference resolver alongside the builder, and `verify` SHALL itself go through it — so that a consumer which needs the projection WITHOUT executing a test command (gate's skipped-C1 path) provably shares `verify`'s code, its inputs, and its failure classes. Two test-only injection seams SHALL exist: one over the projection builder and one over the test-command runner. Both default to the real functions, leaving every configured path byte-identical.
+apriori/changes/gate-degrades/specs/spec-runner/spec.md:18:- THEN both resolvers return the real functions themselves, and the COMPLETE public results of a configured `verify --change` and a configured `gate` are identical in three states observed in ONE process: before any override exists, after a projection override is installed and cleared, and after a test-runner override is installed and cleared — and while a runner override IS installed the configured result must differ, so the after-clear comparison can never be vacuous. Identity against the PRE-seam implementation is deliberately NOT claimed here: no test inside this repo can observe it, and the pre-existing suite passing unchanged is regression EVIDENCE, not a byte-identity proof.
+apriori/changes/gate-degrades/specs/gate/spec.md:62:- THEN C6 falls back to module = basename and source-files = `lib/<module>.js`, producing the byte-identical `{status, detail}` it produced before this change for that module — the index and declarations add coverage for non-default layouts without altering any default-layout result
+   312	| AC-GD-21 | 读 `docs/ci.md` 与 `docs/ci_cn.md` 的 exit-code cheat table | 表中存在一行，其 `code` 列为 `3`，`gate` 列含 `INCOMPLETE` |
+   313	| AC-GD-22 | 读 `docs/cli.md` 与 `docs/cli_cn.md` 的 `apriori gate` 小节 | 其 Exit 行含 `3` 与 `INCOMPLETE` |
+   314	| AC-GD-23 | 读 `docs/troubleshooting.md` 与 `docs/troubleshooting_cn.md` 的 D5 小节 | 含「未配置 test-cmd → D5 finding」的说明，且点明 `apriori gate` 的 C1 会 `skipped`，并给出修复行 |
+   315	| AC-GD-24 | 读 `apriori/truth/doctor.md` 的 Contract 段 | 不再出现 `seven checks`；正确描述 D1..D8（含 D8 legacy 布局检测），且 `source-commit` 刷新到本 change 的实现 commit |
+   316	| AC-GD-25 | 读 `CHANGELOG.md` 的本次条目 | 含字面串 `INCOMPLETE` 与 `exit code 3`，并声明这是**退出码语义扩展**（仓外 CI 受影响） |
+   317	
+   318	> AC-GD-19（原 v1 的 RUNBOOK 一致性条）已**删除**：实测 `RUNBOOK.md` 只写「aggregates … into one exit code」，
+   319	> 从不枚举 gate 的退出码取值，因此没有需要同步的断言面。留着会是一条永远无法机械判定的验收。
+   320	
+   321	---
+   322	
+   323	## 五、明确不做（out of scope）
+   324	
+   325	| # | 不做的事 | 理由 |
+   326	|---|---|---|
+   327	| O1 | 自动探测项目的测试命令（按语言/框架内置猜测） | 脆弱且不可预测；复盘 P0-1 亦明确列为「不建议的过度方案」 |
+   328	| O2 | 让 agent 自动把 `test-cmd` 写进 `process-config.md` | 违反 R3（该文件人类持有，agent 只读） |
+   329	| O3 | 新增 `test-cmd: none` 一类的「本项目声明没有测试命令」取值 | 见 §六 K1；它是独立的一件事，需要自己的验收面 |
+   330	| O4 | 改动 C1..C7 **各自的判定逻辑** | 本 change 只改「哪些能跑」与「跑不成怎么说」，七项检查的内部判据一字不动 |
+   331	| O5 | 让 `apriori verify` 在无 test-cmd 时降级 | verify 的全部职责就是把测试绑到场景上；没有测试命令时它没有任何可降级的产出。**本 change 对 `lib/spec-runner.js` 的改动限于三件事（r3 更正——v3 曾说「仅导出一个入口」，那不足以支撑 AC-GD-14/15b）**：① 导出既有的 projection-only 入口；② 新增两个**仅供测试**的注入 seam `_setProjectionBuilder` / `_setTestRunner`（同族于既有 `_setChildRunner`）；③ 把 `verify()` 自身对这两个函数的调用改为经由同一可替换引用。**默认值不变，配置齐备路径上的行为一字不变**（B4 由 AC-GD-09 守卫） |
+   332	| O6 | 改动 hotfix bundle 的拒绝路径（mapping m1） | 该拒绝发生在测试命令解析**之前**，不受影响；保持原样 |
+   333	| O7 | 修复「新鲜度检查看不见内容陈旧」这一机制局限（由 §1.4 的 truth/doctor.md 暴露） | 本 change 只把这一份文档改对；机制本身是独立议题，需要自己的证据与设计 |
+   334	
+   335	**触及范围（源码）**：`lib/gate.js`、`lib/doctor.js`、`lib/spec-runner.js`——对 `spec-runner` 的改动**严格限于 O5 声明的三项**（导出 projection-only 入口、新增 `_setProjectionBuilder` / `_setTestRunner` 两个测试 seam、`verify()` 自身改走同一可替换引用），**O5 是范围的唯一定义**，此处不另设更窄的限制（r4·REQ-1 勘误：v4 此处写「仅导出 projection-only 入口」，与 O5 直接矛盾，实现者服从任一方都会违反另一方）。
+   336	
+   337	---
+   338	
+   339	## 六、已知后果与风险
+   340	
+   341	| # | 事项 | 处置 |
+   342	|---|---|---|
+   343	| K1 | 真正 docs-only 的项目（RUNBOOK §4 允许其以 `apriori check` 代替 `npm test`）本就没有测试命令，本 change 后其 doctor 会**长期显示一条 D5 finding** | 接受。这条 finding 陈述的是事实（该项目的 gate C1 确实不可执行），不是误报。若将来出现真实的 docs-only 使用者抱怨，走 O3 的声明式取值，作为独立 change |
+   344	| K2 | 退出码 3 是**仓外可见**的契约扩展；按 `exit != 0` 判定的 CI 会把 INCOMPLETE 当失败 | 这是**期望行为**——不完整的 gate 本就不该被当作通过。必须在 CHANGELOG 与 docs 显著说明（AC-GD-21/22/25） |
+   345	| K3 | 新增 `skipped` 进入 `--json` 的 `checks[].status` 枚举，是机器消费面的扩展 | 同 K2 一并说明；键集不变（AC-GD-10），只有取值域扩大 |
+    45	
+    46	gate 若直接 `require('./spec-runner').buildChangeProjection`，它拿到的是**原函数**，
+    47	测试包裹 seam 时 gate 那一路不会被包住——AC-GD-15b 的「同一个 wrapper」立刻失效。
+    48	gate 必须调 `currentProjectionBuilder()`，即**每次调用时**去读那个可替换引用。
+    49	
+    50	> 这是本设计里最容易实现错的一处：`const b = sr.currentProjectionBuilder()` 提到模块顶层
+    51	> 就等于把引用冻结了。必须在调用点内取。
+    52	
+    53	### D1.4 行为不变的保证
+    54	
+    55	两个 override 默认 `null`，`current*()` 回落到原函数。
+    56	配置齐备路径上 `verify()` 的调用序列、参数、返回值**逐字节不变**（B4，AC-GD-09 守卫）。
+    57	
+    58	---
+    59	
+    60	## D2 `lib/gate.js` — 测试命令分类（G1/G4/G5）
+    61	
+    62	### D2.1 CLI 层：真值判定 → 存在性判定
+   210	### D6.3 副作用面
+   211	
+   212	`findings` 计数与 `result` 的计算（`:232-234`）**不动**——
+   213	第 4 档变成 finding 后，整体自然从 HEALTHY 变 FINDINGS / exit 1。
+   214	D8（`:206-210`）一行不动（AC-GD-20 的回归护栏）。
+   215	
+   216	---
+   217	
+   218	## D7 测试策略（AC-GD-14 / 15a / 15b / 15c）
+   219	
+   220	| AC | 手法 |
+   221	|---|---|
+   222	| 15a | 读 `lib/gate.js` 源文本：断言不含 `discoverDeltas` / `buildProjection`；断言含 `currentProjectionBuilder` 且来自 `require('./spec-runner')` |
+   223	| 15b | `sr._setProjectionBuilder(wrap)` + `sr._setTestRunner(count)` → 跑 T7 的 `runGate` → 断言 wrap 调用 1 次、count 调用 0 次；再跑有命令的 `verify --change` → 断言经过**同一个** wrap |
+   224	| 15c | 6 个 fixture 各跑两条路，比较 wrap 捕获到的**完整** `{projection:{modules,conflicts,unstampedMutations,notes}, errors}` |
+   225	| 14 | 即 15b 里 `_setTestRunner` 的计数断言（**不是** `_setChildRunner`——它只拦 id-match 子进程） |
+   226	
+   227	**三个零调用保证互不替代（STEP2·r1 / SPEC-2）**——必须各用各的 seam：
+   228	
+   229	| 保证 | seam | 场景 |
+   230	|---|---|---|
+   231	| T7 路径不起**测试进程** | `_setTestRunner` | SR-74 / AC-GD-14 |
+   232	| T7 + 合法 config 来源 pattern 时不起 **matcher 子进程** | `_setChildRunner` | GT-36 |
+   233	| 归档态 T7 不建 **projection** | `_setProjectionBuilder` | GT-38 |
+   234	
+   235	**每一处 override 都必须在 `finally` 里 `_set*(null)` 复位（STEP2·r1 / SPEC-3）**——
+   236	模块级变量泄漏会造成同进程内后续测试的顺序依赖与假阳性。这是**每个使用点**的义务，
+   237	不是靠 SR-75 那一条「装了再清空能复原」的测试代劳。
+   238	
+   239	**`currentTestRunner` 保持模块私有（STEP2·r1 / SPEC-4）**：新增公共导出恰为四个——
+   240	`buildChangeProjection`、`currentProjectionBuilder`、`_setProjectionBuilder`、`_setTestRunner`。
+   241	`currentTestRunner` 只被 `verify()` 内部读取，导出它会无端扩大公共面并逼 STEP6 记录一个没人消费的符号。
+   242	
+   243	其余 AC 走常规的 `runGate` / `runDoctor` 单元断言 + CLI 退出码断言。
+   244	
+   245	---
+
+exec
+/usr/bin/zsh -lc "sed -n '18,30p' apriori/changes/gate-degrades/review/issues.md
+tail -35 apriori/changes/gate-degrades/review/issues.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 85ms:
+| SPEC-4 | Task I1 exports currentTestRunner in addition to the exact public symbols declared by the spec and design, expanding the API beyond the frozen scope | med | STEP2·r1 | verified |
+| ADV-STEP2-r1 | advisory batch acknowledged (3 items) | low | STEP2·r1 | advisory-acked |
+| SPEC-5 | T14 simultaneously requires gate and verify to use the same wrapper and requires changing or clearing that wrapper between those two calls, making the task internally unsatisfiable | med | STEP2·r2 | verified |
+| IMPL-1 | DR-07 says an unreadable process-config produces a D5 config finding, but doctor classifies it first as an id-pattern problem and returns D5 n/a, as the existing CF-11 test confirms | med | STEP5·r1 | verified |
+| IMPL-2 | SR-75 and AC-GD-09 promise byte-identical configured behavior, output, and exits, but no test compares configured verify or gate against a state-A golden or exercises the test-runner default after clear | med | STEP5·r1 | fixed (r3) |
+| IMPL-3 | SR-73 compares only errors for the no-delta-files fixture, omitting the required full projection-object equivalence for the sixth fixture | low | STEP5·r1 | verified |
+| IMPL-4 | GT-33 has no no-flag unreadable-config fixture, leaving §3.1 T4's ERROR-versus-absent boundary untested | low | STEP5·r1 | verified |
+| IMPL-5 | GT-11's exact six-key JSON contract is asserted only for INCOMPLETE, not for every outcome class and the separate strict-parser error serializer | low | STEP5·r1 | verified |
+| IMPL-6 | The troubleshooting docs incorrectly claim missing test-cmd yields INCOMPLETE/3 for every change, contradicting BLOCKED and ERROR precedence | med | STEP5·r1 | verified |
+| ADV-STEP5-r1 | advisory batch acknowledged (4 items) | low | STEP5·r1 | advisory-acked |
+
+<!-- 状态轨迹（recorded on behalf of the reviewer，逐字落盘其 ledger delta）：
+     STEP0·r1（codex gpt-5.6-sol, session 019ffeaa）：REQ-1..5 五行 open。
+       IMPL-1 → DR-07 delta 越权了：整份 process-config 不可读会先被 id-pattern 解析拦下（D5 = n/a，
+         既有 CF-11 已如此断言），只有 `test-cmd` 行**冲突**才走 config-finding 分支。delta 文本改正。
+       IMPL-2 → SR-75 的「byte-identical」原本只是散文。改为可观察的三态断言（虚拟态 / 清空 projection
+         override 后 / 清空 runner override 后），并加一条「装上时确实被改道」的断言防止后一条空转。
+       IMPL-3 → 第 6 个 fixture 补 projection 全对象比较。
+       IMPL-4 → 补「无 flag + config 不可读」fixture（用目录占位，root 环境下 chmod 无效）。
+       IMPL-5 → 六键契约扩到 PASS / BLOCKED / INCOMPLETE / resolved-ERROR / strict-parser-ERROR 五类。
+       IMPL-6 → 两份 troubleshooting 的「对任何 change 都返回 INCOMPLETE」是错的，改为「其余检查全过时」。
+     advisory 四条：GT-30b/SR-73b 其实不绑定任何场景（leadId 拒绝紧跟数字的字母），已按建议改名为精确
+       前缀使补充覆盖可机械归属；truth 文档仍是状态 A 属 P9 职责；12 ORPHAN 是在途正常态；沙箱 EPERM
+       不算 finding。 -->
+
+<!-- STEP5·r2：IMPL-1/3/4/6 → verified；IMPL-2 与 IMPL-5 **reopened**，两条都对：
+       IMPL-2 → 我的三态比较有两个洞：① `snap()` 起的是**子进程**，子进程有全新的模块注册表，
+         根本看不到父进程装/清的 override，那段比较是空转的；② 只比了 gate 的部分字段，没有 verify。
+         并且「与 pre-seam 实现逐字节相同」这件事**本仓内的测试根本观察不到**（没有状态 A 的冻结 golden）。
+         改法两手：测试改为**同进程**比较 `runGate()` 与 `verify()` 的**完整**公共结果三态；
+         场景措辞按 RUNBOOK「要么加测试、要么把话缩到实际验证得了的范围」缩为「三态一致 + 装上时确实改道」，
+         并注明 pre-seam 同一性由未改动的既有测试基线继续通过来佐证。
+       IMPL-5 → `gate --json` 解析是**成功**的，走的是 runGate 的 usage 错误，压根没碰 withStrict 的
+         jsonError 序列化器。改用真正的解析拒绝（多余位置参数 `gate stray --change c --json`），
+         实测输出确为 jsonError 的「unexpected argument」形状。
+     advisory 两条（静态测试注释仍写 SR-73b、CHANGELOG 的 391 与实际 392 不符）也已修。 -->
+
+<!-- STEP5·r3：IMPL-5 → verified（`gate stray --change c --json` 确实走 withStrict 的 jsonError）。
+     IMPL-2 第二次 reopened，两点又都对：
+       ① `JSON.stringify([g, v])` 会把 verify() 的 Map 值字段 `results` 悄悄拍成 `{}`——
+          恰好瞎在 projection seam 最可能扰动的那个字段上。已改为整体 deepStrictEqual /
+          notDeepStrictEqual（Map 按内容比），并加一条「Map 字段确实非空」的前置断言防空转。
+       ② 「pre-seam 逐字节相同」这条硬保证仍留在 B4/AC-GD-09/SR-75 里而无人验证。
+          考虑过冻结状态 A 的 byte golden，**否决**（CI 默认 fetch-depth:1 拿不到父提交；
+          签入静态 golden 需路径归一化且给每次 gate 文案改动预埋重捕获义务）。
+          按 RUNBOOK 的 guarantee-claim discipline **缩措辞**，并写成记名修正
+          `step5-amendment.md`（含否决理由、缩后的三条证据、具名接受的残余风险、将来补强的触发条件），
+          req-final 的 B4 与 AC-GD-09 就地加修正标记指向它。 -->
+
+codex
+# consistency-review-v4 — gate-degrades
+
+## 1. IMPL-2 verification
+
+### (a) Does the Map-safe comparison prove SR-75’s three-state equality claim?
+
+Yes, for the complete-result structural equality portion.
+
+- `snap()` returns the actual `[runGate(), verify()]` objects from the same process.
+- `assert.deepStrictEqual` compares `Map` contents rather than collapsing them.
+- The non-empty `verify().results` precondition prevents the Map comparison from being vacuous.
+- The installed runner override makes the combined result differ, so the runner clear-and-restore assertion is non-vacuous.
+- Projection-seam installation and call-time routing remain independently proven by SR-73.
+
+### (b) Is every surviving guarantee honestly scoped?
+
+No. The amended B4/AC-GD-09 text and SR-75 scenario are honest: they distinguish regression evidence from pre-seam identity and name the residual risk. The rejected-golden rationale is also explicit and technically coherent.
+
+However, stronger untested wording remains in current authoritative artifacts:
+
+- The parent requirement in `specs/spec-runner/spec.md` still says the seams leave “every configured path byte-identical.”
+- Design D1.4 still says configured `verify()` calls, parameters, and results remain byte-identical.
+- `req-final.md` §3.1c and O5 still say configured behavior is unchanged “character for character.” They cite B4, but carry no amendment marker themselves.
+- AC-GD-04 separately promises M5 behavior is byte-identical to state A and is outside the recorded B4/AC-GD-09/SR-75 narrowing.
+- SR-75 still says both resolvers return the original functions themselves. Projection identity is asserted directly, but the private test-runner resolver’s exact function identity is not tested; only its behavior and restoration are observed.
+
+The CHANGELOG entry is clean: it does not claim configured paths are pre-seam byte-identical. The touched user docs likewise make no such claim. Existing KB byte-identity statements concern separately tested historical guarantees such as `--specs` goldens, not this seam.
+
+### IMPL-2 — reopened
+
+- Risk: med. The actual three-state test is now sound, but normative prose still promises stronger compatibility than the accepted amendment and evidence provide.
+- Suggested fix:
+  - Replace the delta parent sentence with the tested three-state structural-equality claim.
+  - Update D1.4 and the remaining `req-final` compatibility phrases with explicit amendment markers or narrowed wording.
+  - Narrow AC-GD-04 to its exercised outcome and diagnostic contract, or provide state-A evidence.
+  - Change “both resolvers return the real functions themselves” to an observable behavioral-default claim, or add a static assertion for the private runner resolver.
+
+## 2. Semantic faithfulness
+
+Apart from IMPL-2’s remaining prose/test mismatch, scenario tests remain faithful:
+
+- GT-30..GT-38 cover classification, continuation, precedence, projection failures, archived behavior, and the three independent zero-call guarantees.
+- GT-11 covers every result class and the genuine strict-parser JSON serializer.
+- DR-07 matches doctor’s actual branch order.
+- SR-73 and SR-74 fully exercise shared projection routing and the no-test-process path.
+
+## 3. Required behavior versus implementation
+
+No new implementation defect found. Gate, doctor, and spec-runner behavior continues to match the narrowed executable contract.
+
+## 4. Continue, skip, and user visibility
+
+No gap found. Skips, blocks, evaluation errors, projection failures, and doctor findings remain visible with the required precedence and diagnostics.
+
+## 5. External input and security
+
+No security gap found. The round-four changes affect tests and specification records, not input validation, permissions, process execution, containment, or logging.
+
+## 6. Shared-state and guarantee audit
+
+The module-level seams have complete initialization, runtime replacement, and cleanup behavior. Every use remains protected by `finally`. Map-safe three-state restoration, call-time projection lookup, and the three distinct zero-call guarantees are exercised.
+
+Only the surviving stronger wording listed under IMPL-2 remains inconsistent with the tested guarantee.
+
+## Advisories
+
+None.
+
+The named amendment is a useful and transparent way to revise a frozen STEP0 artifact; the problem is limited to propagation of that narrowing into all still-authoritative claims.
+
+## Ledger delta
+
+Apply this exact status change:
+
+- IMPL-2: `fixed (r3) → open` — reopened because the Map-safe three-state test is now sound, but the delta parent requirement, design D1.4, several requirement clauses, and the private-runner identity wording still retain guarantees stronger than the recorded narrowing and available evidence.
+
+IMPL-1, IMPL-3, IMPL-4, IMPL-5, and IMPL-6 remain `verified`. ADV-STEP5-r1 remains `advisory-acked`.
+
+No new ledger rows.
+
+VERDICT: 1 issues open
+tokens used
+743,673
+# consistency-review-v4 — gate-degrades
+
+## 1. IMPL-2 verification
+
+### (a) Does the Map-safe comparison prove SR-75’s three-state equality claim?
+
+Yes, for the complete-result structural equality portion.
+
+- `snap()` returns the actual `[runGate(), verify()]` objects from the same process.
+- `assert.deepStrictEqual` compares `Map` contents rather than collapsing them.
+- The non-empty `verify().results` precondition prevents the Map comparison from being vacuous.
+- The installed runner override makes the combined result differ, so the runner clear-and-restore assertion is non-vacuous.
+- Projection-seam installation and call-time routing remain independently proven by SR-73.
+
+### (b) Is every surviving guarantee honestly scoped?
+
+No. The amended B4/AC-GD-09 text and SR-75 scenario are honest: they distinguish regression evidence from pre-seam identity and name the residual risk. The rejected-golden rationale is also explicit and technically coherent.
+
+However, stronger untested wording remains in current authoritative artifacts:
+
+- The parent requirement in `specs/spec-runner/spec.md` still says the seams leave “every configured path byte-identical.”
+- Design D1.4 still says configured `verify()` calls, parameters, and results remain byte-identical.
+- `req-final.md` §3.1c and O5 still say configured behavior is unchanged “character for character.” They cite B4, but carry no amendment marker themselves.
+- AC-GD-04 separately promises M5 behavior is byte-identical to state A and is outside the recorded B4/AC-GD-09/SR-75 narrowing.
+- SR-75 still says both resolvers return the original functions themselves. Projection identity is asserted directly, but the private test-runner resolver’s exact function identity is not tested; only its behavior and restoration are observed.
+
+The CHANGELOG entry is clean: it does not claim configured paths are pre-seam byte-identical. The touched user docs likewise make no such claim. Existing KB byte-identity statements concern separately tested historical guarantees such as `--specs` goldens, not this seam.
+
+### IMPL-2 — reopened
+
+- Risk: med. The actual three-state test is now sound, but normative prose still promises stronger compatibility than the accepted amendment and evidence provide.
+- Suggested fix:
+  - Replace the delta parent sentence with the tested three-state structural-equality claim.
+  - Update D1.4 and the remaining `req-final` compatibility phrases with explicit amendment markers or narrowed wording.
+  - Narrow AC-GD-04 to its exercised outcome and diagnostic contract, or provide state-A evidence.
+  - Change “both resolvers return the real functions themselves” to an observable behavioral-default claim, or add a static assertion for the private runner resolver.
+
+## 2. Semantic faithfulness
+
+Apart from IMPL-2’s remaining prose/test mismatch, scenario tests remain faithful:
+
+- GT-30..GT-38 cover classification, continuation, precedence, projection failures, archived behavior, and the three independent zero-call guarantees.
+- GT-11 covers every result class and the genuine strict-parser JSON serializer.
+- DR-07 matches doctor’s actual branch order.
+- SR-73 and SR-74 fully exercise shared projection routing and the no-test-process path.
+
+## 3. Required behavior versus implementation
+
+No new implementation defect found. Gate, doctor, and spec-runner behavior continues to match the narrowed executable contract.
+
+## 4. Continue, skip, and user visibility
+
+No gap found. Skips, blocks, evaluation errors, projection failures, and doctor findings remain visible with the required precedence and diagnostics.
+
+## 5. External input and security
+
+No security gap found. The round-four changes affect tests and specification records, not input validation, permissions, process execution, containment, or logging.
+
+## 6. Shared-state and guarantee audit
+
+The module-level seams have complete initialization, runtime replacement, and cleanup behavior. Every use remains protected by `finally`. Map-safe three-state restoration, call-time projection lookup, and the three distinct zero-call guarantees are exercised.
+
+Only the surviving stronger wording listed under IMPL-2 remains inconsistent with the tested guarantee.
+
+## Advisories
+
+None.
+
+The named amendment is a useful and transparent way to revise a frozen STEP0 artifact; the problem is limited to propagation of that narrowing into all still-authoritative claims.
+
+## Ledger delta
+
+Apply this exact status change:
+
+- IMPL-2: `fixed (r3) → open` — reopened because the Map-safe three-state test is now sound, but the delta parent requirement, design D1.4, several requirement clauses, and the private-runner identity wording still retain guarantees stronger than the recorded narrowing and available evidence.
+
+IMPL-1, IMPL-3, IMPL-4, IMPL-5, and IMPL-6 remain `verified`. ADV-STEP5-r1 remains `advisory-acked`.
+
+No new ledger rows.
+
+VERDICT: 1 issues open

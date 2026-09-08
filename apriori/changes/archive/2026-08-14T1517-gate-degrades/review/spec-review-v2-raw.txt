@@ -1,0 +1,762 @@
+<!-- provenance: provider=codex model=gpt-5.6-sol session=019ffeaa-f747-7d40-9cf5-467ccb34cdc6 date=2026-08-14 -->
+OpenAI Codex v0.147.0
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.6-sol
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019ffeaa-f747-7d40-9cf5-467ccb34cdc6
+--------
+user
+STEP2 round 2 (P5). The producer revised the spec delta, design.md and tasks.md per your round-1 review.
+
+[Input]
+* SPEC-DOC: apriori/changes/gate-degrades/specs/   * DESIGN-DOC: apriori/changes/gate-degrades/design.md
+* TASKS: apriori/changes/gate-degrades/tasks.md    * PROPOSAL: apriori/changes/gate-degrades/proposal.md
+* Requirement (frozen): apriori/changes/gate-degrades/requirement/req-final.md
+* Your round-1 review: apriori/changes/gate-degrades/review/spec-review-v1.md
+* Ledger: apriori/changes/gate-degrades/review/issues.md (SPEC-1..4 now `fixed (r1)`; the 3 advisories were also implemented, batch row `advisory-acked`)
+
+[What changed]
+* SPEC-1 → GT-35 gained an explicit "no trustworthy texts while errors is empty" branch requiring gate to synthesise a deterministic diagnostic so `errors` is never empty on an ERROR; design D3 item 3 spells that out; new task T6b injects `{projection, errors:[], texts:null}` through the seam.
+* SPEC-2 → GT-36 gained "with a VALID config-origin id-pattern the matcher child is spawned ZERO times, observably"; GT-38 gained "the shared projection builder is invoked ZERO times on this path, observably"; new tasks T7b and T9b; design D7 gained a table showing the three zero-call guarantees need three DIFFERENT seams.
+* SPEC-3 → new task T16b requires every `_setProjectionBuilder` / `_setTestRunner` / `_setChildRunner` use site to reset in try/finally; design D7 states it is a per-use-site obligation that T16 cannot discharge.
+* SPEC-4 → design D1.2/D7 and task I1 now state the new export set is EXACTLY four symbols and that `currentTestRunner` stays module-private.
+* Advisories → GT-11's WHEN now lists INCOMPLETE; T14 requires requiring the gate module BEFORE installing the override and swapping/clearing between calls (to defeat a module-load-time hoist); new T0 records an all-green baseline before any new test is added.
+
+[Your job]
+1. Verify SPEC-1..4: flip to `verified` or REOPEN the same ID with what is still missing.
+2. Re-run the five P5 checklist dimensions on the revised artifacts; new issues get new IDs (SPEC-5, ...).
+3. Do not manufacture findings. If it is ready for execution, return the ready verdict.
+
+[Note] step2-cap is 4; this is round 2. Be precise about BLOCKING versus advisory polish.
+
+[Scope] Count toward the verdict only gaps that would cause rework or a production incident. Everything else — advisory. Correctness and security findings can never be advisory.
+
+[Output]
+READ-ONLY, no file writes. Print the COMPLETE review doc body to stdout for landing at apriori/changes/gate-degrades/review/spec-review-v2.md, ending with a "Ledger delta" section and exactly one verdict line: "VERDICT: no major issues, ready to proceed to execution" or "VERDICT: <N> issues open".
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+codex
+I’ll verify each fixed item against the revised scenario, design, and executable task—not just the producer’s summary—then run a fresh consistency pass over the five P5 dimensions.
+exec
+/usr/bin/zsh -lc "sed -n '1,220p' apriori/changes/gate-degrades/specs/gate/spec.md; sed -n '1,120p' apriori/changes/gate-degrades/specs/spec-runner/spec.md; sed -n '1,280p' apriori/changes/gate-degrades/design.md; nl -ba apriori/changes/gate-degrades/tasks.md; sed -n '1,150p' apriori/changes/gate-degrades/review/issues.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 139ms:
+<!-- apriori-base: sha256:9ea204f7585f5ba9a0c78d4f123f38e4e02c79597b95ebd77c76c13a9cc56bc9 -->
+
+## MODIFIED Requirements
+
+### Requirement: gate aggregates the mechanical exit conditions for one change
+`apriori gate --change <name>` SHALL evaluate the machine-checkable gate conditions for exactly one change and encode the aggregate in its exit code: 0 = every applicable check passed (`GATE: PASS`), 1 = at least one check blocked (`GATE: BLOCKED (<n> item(s))`), 2 = the evaluation itself is untrustworthy (usage error, invalid or escaping name, change found nowhere, unreadable flow-state, an unusable test-command source, or an untrustworthy C1 verify run), 3 = every check that COULD run passed but at least one was skipped (`GATE: INCOMPLETE`). The aggregate is a strict total order: ERROR(2) outranks BLOCKED(1) outranks INCOMPLETE(3) outranks PASS(0) — a confirmed block is never softened by an unrun check, and `blocked` counts `blocked` statuses only, never `skipped`. It SHALL be strictly read-only and SHALL state in its output that PASS covers mechanical checks only — human gates remain human. C6 (KB freshness) SHALL bind each touched store module to its truth doc through an index rather than a filename assumption: a truth doc MAY declare, in its header region (before the first `##`), `store-module: <name>...` (the store modules it covers; default = the doc's basename) and `source-files: <path>...` (space-separated repo-relative code paths; default = `lib/<module>.js`); a covered module with a valid `source-commit` stamp is always mechanically checked, never silently skipped.
+
+#### Scenario: GT-01 a clean in-flight change passes
+- WHEN every applicable check passes for an in-flight change
+- THEN each check reports `✓`, the final line is `GATE: PASS` (with the mechanical-only caveat), and the exit code is 0
+
+#### Scenario: GT-02 an unchecked task blocks
+- WHEN the resolved change dir's tasks.md contains an unchecked `- [ ]` box (while `- [x]` and `- [X]` count as checked)
+- THEN C2 reports `✗` naming the file, the final line is `GATE: BLOCKED` with the count, and the exit code is 1
+
+#### Scenario: GT-03 the ledger blocks on open rows and reasonless rejections
+- WHEN the bundle ledger at `<changeDir>/review/issues.md` contains a row whose status starts `open` (case-insensitive), or a `rejected` row with no reason text beyond the word itself
+- THEN C4 blocks naming the row ID; a `rejected` row passes only when, after stripping the leading word `rejected`, the remaining text contains at least one word character (`rejected: duplicate` passes; `rejected`, `rejected:`, `rejected -` block); `advisory*`/`fixed`/`verified` rows never block
+
+#### Scenario: GT-04 flow-state legality is enforced
+- WHEN a required flow-state key (`change`, `tier`, `track`, `lineage`, `current-step`) is missing, still a `<placeholder>`, has a `current-step` outside the exact vocabulary (STEP0..STEP6, INTENT-CARD, SPIKE, EXTRACTION, DONE, ABANDONED), a `tier` outside {trivial, medium, large}, or a `change` value that does not equal `--change`
+- THEN C3 blocks naming the offending key; a fully legal flow-state passes
+
+#### Scenario: GT-05 verdict evidence is mechanical
+- WHEN a review doc in the bundle (files matching `<changeDir>/review/*.md`, excluding `issues.md` and `*-raw` stems, regular files only) contains a `^VERDICT:` line but no file that is REGULAR by lstat (symlinks are not evidence) matches `<changeDir>/review/<stem>-raw.*`
+- THEN C5 blocks naming the doc; adding the raw beside it flips it to `✓`; a symlink matching the doc glob blocks naming the symlink (an evidence doc must never silently drop out by file type); a `review` entry that is a symlink, escapes the change dir (realpath), or is not a directory at all blocks C4 and C5 naming the path and the defect — never read through, never crashed on — and the check works identically at both stages because the evidence travels with the dir
+
+#### Scenario: GT-06 the binding gate is stage-aware
+- WHEN the change is in-flight
+- THEN C1 runs the projected verify (`verify --change` semantics, same code path incl. CAS and hygiene); WHEN the change exists only under `apriori/changes/archive/<stamp>-<name>/` THEN C1 runs plain verify against `apriori/specs/` and flow-state/tasks resolve from the archived dir; verify gaps → C1 blocked with the red/unbound/orphan counts; a verify-untrustworthy run → gate exit 2 carrying verify's errors
+
+#### Scenario: GT-07 resolution is validated and deterministic
+- WHEN `--change` fails bare-kebab-case validation or the resolved dir escapes its root (realpath containment)
+- THEN gate exits 2 before reading anything; WHEN the change is found in neither location THEN gate exits 2 naming both searched paths; WHEN several archived dirs match `/^\d{4}-\d{2}-\d{2}T\d{4}-<name>$/ THEN the lexicographically last basename is used
+
+#### Scenario: GT-08 a missing or mismatched flow-state fails closed
+- WHEN the resolved change dir has no readable flow-state.md
+- THEN gate exits 2 (tier-aware checks are impossible); a readable flow-state whose `change` key mismatches `--change` is C3-blocked, not exit 2
+
+#### Scenario: GT-09 trivial tier is not asked for artifacts it never produces
+- WHEN flow-state declares `tier: trivial` and tasks.md or the bundle ledger `<changeDir>/review/issues.md` is absent
+- THEN C2/C4 report `–` (not applicable) instead of blocking; on medium/large the same absences block naming the exact bundle path
+
+#### Scenario: GT-10 KB freshness degrades honestly through the truth index
+- WHEN a touched module `<m>` (first path segment of the change's delta-spec suffixes) resolves through the truth index to a truth doc carrying a canonical `source-commit` stamp (a fence-outside line-start `source-commit: <ref>`), whose resolved `source-files` are all verifiable, and git reports commits in `<ref>..HEAD -- <source-files...>`
+- THEN C6 blocks with the commit count; an up-to-date stamp passes; a module with no truth doc at all yields `–` (KB is optional — a genuine absence, not a silent skip); a missing git or a non-zero git exit yields `–` with the reason — an infra failure never fabricates a block
+
+#### Scenario: GT-18 the truth index binds by declaration, not filename
+- WHEN a store module's truth doc lives under a DIFFERENT basename (e.g. `apriori/truth/poll.md` covering store module `quick-poll`) and declares `store-module: quick-poll`
+- THEN C6 finds it through the index and mechanically checks it (blocking when its `source-commit` is stale) — never reporting "no truth doc" for a module that a declaration covers; and two truth docs declaring the same module is a C6 block naming both files
+
+#### Scenario: GT-19 an explicit source-files declaration is a complete promise
+- WHEN a truth doc declares `source-files: src/server.js src/model.js` (code outside `lib/`) with a stale stamp
+- THEN C6 runs git over exactly those paths (a declared DIRECTORY path is valid — git logs the whole tree) and blocks on commits since the stamp; and if an EXPLICIT `source-files` carries any token that is missing, malformed, a dangling or resolving symlink, or escapes the repo (realpath), C6 BLOCKS naming that token — partial-missing, partial-symlink, all-symlink, and one bad token beside good ones alike — because a declaration is a complete promise, while a field-less truth doc whose default `lib/<module>.js` is absent stays a `–` note (existing-layout compatibility)
+
+#### Scenario: GT-20 malformed source-commit stamps are diagnosed, not silently skipped
+- WHEN a truth doc's `source-commit` appears only in a non-canonical form — a blockquote `> \`source-commit: …\``, an HTML comment `<!-- source-commit: … -->`, an indented line, or backtick-wrapped — with no fence-outside bare line-start form
+- THEN C6 reports a `–` note pointing at the required format (a fence-outside line-start `source-commit: <ref>`) rather than a vague "has no source-commit"; a `source-commit:` occurring only inside a code fence is a documentation example and raises no diagnostic
+
+#### Scenario: GT-21 field-less truth docs behave exactly as before
+- WHEN a truth doc carries neither `store-module` nor `source-files` (this repo's own docs)
+- THEN C6 falls back to module = basename and source-files = `lib/<module>.js`, producing the byte-identical `{status, detail}` it produced before this change for that module — the index and declarations add coverage for non-default layouts without altering any default-layout result
+
+#### Scenario: GT-11 --json is pure JSON in every outcome class
+- WHEN `gate --change <name> --json` runs — PASS, BLOCKED, INCOMPLETE, or any exit-2 class (usage error, invalid name, not found, unreadable flow-state, unusable test-command source, untrustworthy verify)
+- THEN stdout parses as JSON shaped `{ change, stage: "in-flight"|"archived"|null, checks:[{id,status,detail}], result: "PASS"|"BLOCKED"|"INCOMPLETE"|"ERROR", blocked, errors }` — the key set is EXACTLY those six and never grows a `code` field (the process exit code is the mapping PASS→0, BLOCKED→1, ERROR→2, INCOMPLETE→3); `checks[].status` ranges over `pass`/`blocked`/`n/a`/`skipped`; `stage: null` when resolution never happened, `change: null` when `--change` was missing
+
+#### Scenario: GT-12 gate is read-only
+- WHEN gate runs to any outcome against a project tree
+- THEN no file in the tree is created, modified, or deleted (only the C1 test command's own side effects, which gate does not add to)
+
+## ADDED Requirements
+
+### Requirement: gate degrades the checks it cannot run instead of refusing to run at all
+A missing test command SHALL disable C1 alone, never the whole evaluation. When no usable test-command source exists (no `--test-cmd` flag and no live `test-cmd` row in `apriori/process-config.md`), `apriori gate` SHALL report C1 with status `skipped`, SHALL still execute C2..C7 and report their real conclusions, and SHALL exit 3 (`GATE: INCOMPLETE`) when nothing blocked. A BROKEN test-command source is a different thing from an ABSENT one and SHALL remain an exit-2 evaluation error. The effective id-pattern SHALL still be resolved and compile-checked even when C1 is skipped — a broken pattern is a broken config, not an absent one.
+
+#### Scenario: GT-30 an absent test command skips C1 and runs the rest
+- WHEN `apriori gate --change <name>` runs with no `--test-cmd` flag and no live `test-cmd` config row, against an in-flight change whose other checks all pass
+- THEN C1 reports status `skipped` with a detail carrying BOTH the fact it did not run AND the cure (`--test-cmd` or a `test-cmd` row), C2..C7 each report their real status, the final line is `GATE: INCOMPLETE`, and the exit code is 3
+
+#### Scenario: GT-31 a confirmed block outranks an unrun check
+- WHEN the test command is absent AND at least one of C2..C7 blocks
+- THEN the result is `BLOCKED` with exit code 1 and `blocked` counts only the blocked checks — the skipped C1 never softens a confirmed block, and never inflates the count
+
+#### Scenario: GT-32 an empty, whitespace-only, or non-string test command is an error, not an absence
+- WHEN `--test-cmd ""` or `--test-cmd "   "` is passed (the flag's PRESENCE is judged, never its truthiness), or `runGate` is called with a `testCmd` that is neither a string nor null/undefined
+- THEN gate exits 2 naming the flag-origin problem (the type is named for a non-string) — it never falls back to the config row and never degrades to `skipped`
+
+#### Scenario: GT-33 a broken config is an error while an empty config value is an absence
+- WHEN `apriori/process-config.md` is unreadable, or carries conflicting `test-cmd` rows
+- THEN gate exits 2 as today; WHEN the file instead carries a `test-cmd` row whose value is empty or whitespace-only THEN the shared config reader has already normalised it to "no such row" and gate treats it as ABSENT (C1 `skipped`, exit 3) — gate never re-litigates the reader's contract
+
+#### Scenario: GT-34 a skipped C1 still produces a real C7
+- WHEN the test command is absent and the change carries an unstamped mutation delta
+- THEN C7 still blocks naming the delta suffix and the `apriori stamp` cure — the projection C7 consumes is built by the SAME shared builder `verify` uses, on a path that spawns no test process
+
+#### Scenario: GT-35 an untrustworthy projection still fails closed with no test command
+- WHEN the test command is absent and the change's projection fails for ANY reason the shared builder reports — merge conflict, malformed delta, diverged CAS base, or a delta-discovery validation failure such as no delta files at all
+- THEN gate exits 2 carrying the builder's errors and C7 draws no conclusion from an untrustworthy projection; AND WHEN the builder returns no trustworthy `texts` while its `errors` are empty THEN gate STILL exits 2, synthesising a deterministic diagnostic of its own so `errors` is never empty on an ERROR — an untrustworthy projection fails closed even when nothing explained why
+
+#### Scenario: GT-36 a broken id-pattern is an error even when C1 is skipped
+- WHEN the test command is absent AND the effective id-pattern fails to resolve — an empty `--id-pattern` flag, an uncompilable flag value, an uncompilable config value, or conflicting `id-pattern` config rows
+- THEN gate exits 2 exactly as it does today, at both stages; AND WHEN the test command is absent while a VALID config-origin id-pattern is in force THEN the pattern is compile-checked but no scenario matching is performed — the matcher child process is spawned ZERO times, observably
+
+#### Scenario: GT-37 the earlier refusals still win over the degradation
+- WHEN the test command is absent AND the resolved bundle is a hotfix bundle
+- THEN gate still exits 2 with the mapping-m1 pointer at `apriori hotfix archive` — the hotfix identity is decided before flow-state and before the test-command source, so a lane bundle (which carries no flow-state by design) is never misreported as a missing flow-state; WHEN the bundle is a formal change with no readable flow-state THEN gate still exits 2 for that reason
+
+#### Scenario: GT-38 the degradation reaches the archived stage too
+- WHEN the test command is absent and the change resolves only under `apriori/changes/archive/<stamp>-<name>/`
+- THEN C1 is `skipped`, C7 is `–` (deltas already merged), C4 still demands every ledger row be terminal, and the exit code follows the same total order; the shared projection builder is invoked ZERO times on this path, observably — an archived bundle's deltas are already in the store, so building a projection could only manufacture a false block
+<!-- apriori-base: sha256:25a0038c11edef9c6135685783551449d4f6dda182e23deb3be0e744f16a4555 -->
+
+## ADDED Requirements
+
+### Requirement: the change projection is one shared implementation, reachable without running tests
+The delta-to-store projection SHALL be built by exactly ONE implementation, reachable by every consumer through a single replaceable reference. `spec-runner` SHALL export that reference resolver alongside the builder, and `verify` SHALL itself go through it — so that a consumer which needs the projection WITHOUT executing a test command (gate's skipped-C1 path) provably shares `verify`'s code, its inputs, and its failure classes. Two test-only injection seams SHALL exist: one over the projection builder and one over the test-command runner. Both default to the real functions, leaving every configured path byte-identical.
+
+#### Scenario: SR-73 both consumers pass through the same replaceable builder
+- WHEN a test wraps the projection builder through its seam and then runs BOTH `verify --change` (with a test command) AND the projection-only path (without one)
+- THEN both calls pass through the SAME wrapper — the reference is read at call time, never captured at module load — and the wrapper observes identical `{projection: {modules, conflicts, unstampedMutations, notes}, errors}` for the same change, across clean, unstamped-mutation, malformed-delta, diverged-CAS-base, merge-conflict, and no-delta-files inputs alike
+
+#### Scenario: SR-74 the projection-only path spawns no test process
+- WHEN the projection is built through the projection-only path
+- THEN the test-command runner seam records ZERO calls — the projection is produced before, and independently of, any test execution; the id-matcher child seam is a different seam and proves nothing about this
+
+#### Scenario: SR-75 the seams are inert by default
+- WHEN no seam override is installed
+- THEN the builder and the runner resolve to the real functions and `verify`'s behaviour, output, and exit codes are byte-identical to their pre-seam form; installing an override and then clearing it restores that state exactly
+# design — gate-degrades
+
+> 对应 `requirement/req-final.md` 与 `gap-report.md` 的 G1..G10 / R1..R6。
+> 行号取自 235a121。本文件不含实现代码，只含结构决定与其理由。
+
+---
+
+## D0 一句话结构
+
+把「测试命令」从 **gate 的前置条件**降级为 **C1 的前置条件**，
+并让 gate 的结果类型从三值扩到四值以承载「C1 没跑」这个事实。
+其余六项检查的代码一行不动。
+
+---
+
+## D1 `lib/spec-runner.js` — 一个导出、两个 seam（G6/G7/G8）
+
+### D1.1 为什么必须是 seam 而不是导出
+
+`verify()` 与 `buildChangeProjection` 在同一文件里，前者调用后者用的是**词法绑定**。
+把后者加进 `module.exports` **不会**让外部替换 `module.exports.buildChangeProjection` 生效——
+被替换的只是导出对象的一个属性。所以「两条路径经过同一个函数」这件事，
+**导出证明不了**，必须靠一个双方都读的可替换引用。
+
+### D1.2 形状
+
+```
+let projectionBuilderOverride = null;
+function _setProjectionBuilder(fn) { projectionBuilderOverride = fn; }
+function currentProjectionBuilder() { return projectionBuilderOverride || buildChangeProjection; }
+
+let testRunnerOverride = null;
+function _setTestRunner(fn) { testRunnerOverride = fn; }
+function currentTestRunner() { return testRunnerOverride || runTestCommand; }
+```
+
+- `verify()` 内 `:615` 的调用改为 `currentProjectionBuilder()(opts.change, cwd)`；
+- `verify()` 内 `:642` 的调用改为 `currentTestRunner()(opts.testCmd, cwd)`；
+- 新导出**恰为四个**：`buildChangeProjection`、`currentProjectionBuilder`、`_setProjectionBuilder`、`_setTestRunner`。
+  `currentTestRunner` **不导出**——它只被 `verify()` 内部读取（STEP2·r1 / SPEC-4）。
+
+**命名与既有 `_setChildRunner`（`:44`）同族**；下划线前缀是本仓既定的「测试 seam」标记。
+
+### D1.3 为什么导出 `currentProjectionBuilder` 而不只导出 `buildChangeProjection`
+
+gate 若直接 `require('./spec-runner').buildChangeProjection`，它拿到的是**原函数**，
+测试包裹 seam 时 gate 那一路不会被包住——AC-GD-15b 的「同一个 wrapper」立刻失效。
+gate 必须调 `currentProjectionBuilder()`，即**每次调用时**去读那个可替换引用。
+
+> 这是本设计里最容易实现错的一处：`const b = sr.currentProjectionBuilder()` 提到模块顶层
+> 就等于把引用冻结了。必须在调用点内取。
+
+### D1.4 行为不变的保证
+
+两个 override 默认 `null`，`current*()` 回落到原函数。
+配置齐备路径上 `verify()` 的调用序列、参数、返回值**逐字节不变**（B4，AC-GD-09 守卫）。
+
+---
+
+## D2 `lib/gate.js` — 测试命令分类（G1/G4/G5）
+
+### D2.1 CLI 层：真值判定 → 存在性判定
+
+```
+:353  testCmd: f['--test-cmd'] || null
+   →  testCmd: ('--test-cmd' in f) ? f['--test-cmd'] : null
+```
+
+与紧邻的 `:354`（`--id-pattern`）写法完全一致。这一行是 T2/T3 得以与 T7 区分的**唯一**入口。
+
+### D2.2 `runGate` 层：`resolveTestCmd(opts, cwd)` → 三态
+
+单一函数，返回 `{ kind, value?, error? }`，`kind ∈ {'ok','error','absent'}`：
+
+| 判定顺序 | 条件 | 返回 |
+|---|---|---|
+| 1 | `opts.testCmd` 既非 `undefined` / `null`，**又不是 string** | `{kind:'error', error:"--test-cmd must be a string (got <type>)"}` → T?（AC-GD-13b） |
+| 2 | `opts.testCmd` 是 string 且 `.trim() === ''` | `{kind:'error', error:'empty --test-cmd'}` → T2 / T3 |
+| 3 | `opts.testCmd` 是 string（含非空白） | `{kind:'ok', value: opts.testCmd}` → T1 |
+| 4 | 否则查 config：`configTestCmd(cwd)` 返回 `{error}` | `{kind:'error', error: 'verify: ' + error}` → T4 / T5 |
+| 5 | config 返回真值 | `{kind:'ok', value}` → T6 |
+| 6 | 其余 | `{kind:'absent'}` → T7 |
+
+> 第 6 行**自然**吞掉「config 有 `test-cmd` 行但值为空」——`lib/config.js:67` 早已把它跳过，
+> gate 在消费点看到的就是 `undefined`。AC-GD-08b 断言的正是这个「什么都不做」的结果。
+
+`kind==='error'` → 走既有的 `err(res, ...)`，exit 2，与今日同形。
+
+### D2.3 插入位置
+
+`runGate` 的次序**只在一处改变**：`:310-316` 的三行换成
+`const tc = resolveTestCmd(opts, cwd); if (tc.kind==='error') return err(res, tc.error);`
+`:293-306`（`--change` → 名字 → resolve → **hotfix** → **flow-state**）一行不动，
+这自动保证矩阵的 **M7 先于 M5**（`:301` 早于 `:306`），无需额外代码。
+
+---
+
+## D3 `lib/gate.js` — 绑定阶段的两条路（G6）
+
+```
+if (tc.kind === 'ok')  → 现状：checkBinding(cwd, change, stage, tc.value, idPattern)
+if (tc.kind === 'absent') → 新增：checkBindingSkipped(cwd, change, stage, idPattern)
+```
+
+`checkBindingSkipped` 做且只做四件事：
+
+1. **解析 id-pattern**（M3）。C1 不跑也要解析：坏 pattern 是**坏配置**不是**缺配置**，
+   容忍它会造出第二个 false-negative，且会让 GT-24 的既有断言不再普遍成立。
+   失败 → 返回 `{infra:[...]}`，沿用 `:318-320` 的既有 ERROR 出口。
+   —— 只做**编译期**校验（进程内、廉价）；**不**收集场景、**不**起匹配子进程，
+   故 GT-25（matcher 被终止）的运行期前提不可达，其判定原样保留。
+2. **archived 阶段：不建 projection**（M8）。`checkCas(:275)` 在 archived 直接返回 `n/a`，
+   根本不读 projection——「不建」是已经成立的事实，实现只要不主动去建。
+3. **in-flight 阶段：调 `sr.currentProjectionBuilder()(change, cwd)`**（M4）。
+   判据是「返回**任何**非空 `errors`，或未产出可信 `texts`」——
+   而不是枚举 merge conflict / 畸形 / CAS 偏移三类，因为 `discoverDeltas()` 的
+   validation 失败（无 delta 文件、路径逃逸）同样可达且不属于那三类。
+   非空 → `{infra: errors}` → exit 2。
+   **补充（STEP2·r1 / SPEC-1）**：还存在 `errors` 为空但 `texts` 不可信的一格。
+   此时不能直接 `{infra: []}`——那会产出一个 `errors` 为空的 ERROR，等于「报错但说不出原因」。
+   实现必须**合成一条确定的诊断**，例如
+   `projection produced no trustworthy texts and reported no error — refusing to judge`，
+   使 ERROR 类别下 `errors` **恒非空**。
+4. 成功 → 返回 `{check:{id:'C1', status:'skipped', detail:<见 D5>}, projection}`。
+
+**gate 绝不引入 `discoverDeltas` / `buildProjection` 这两个符号**（AC-GD-15a 否定面）。
+gate 对 `archive-merge` 的既有依赖只有 `CHANGE_NAME_RE` / `containsReal`（`:12`），不受影响。
+
+---
+
+## D4 `lib/gate.js` — 四值结果（G2）
+
+```
+:336  res.blocked = res.checks.filter((c) => c.status === 'blocked').length;   // 不变
+:337  const skipped = res.checks.some((c) => c.status === 'skipped');          // 新增
+      res.result = res.blocked ? 'BLOCKED' : skipped ? 'INCOMPLETE' : 'PASS';
+      res.code   = res.blocked ? 1        : skipped ? 3            : 0;
+```
+
+`errors` 非空的路径**从不到达这里**（每条都提前 `return`），所以判定式的第一档
+（`errors → ERROR/2`）由既有控制流天然满足，不需要在这里再写一次。
+
+`blocked` 字段语义**不变**：只数 `blocked`，不数 `skipped`——
+否则 GT-02 等既有断言里的计数会漂（R? 见 gap-report G2）。
+
+`toJson` 不动：键集恒为 `{change, stage, checks, result, blocked, errors}`，
+**不新增 `code` 字段**（AC-GD-10）；扩大的只有 `result` 与 `checks[].status` 的**取值域**。
+
+---
+
+## D5 `lib/gate.js` — 输出（G3）
+
+```
+:359  const mark = { pass:'✓', blocked:'✗', 'n/a':'–', skipped:'○' };      // 补键
+:361  三分支：
+      code 0 → `GATE: PASS — ${CAVEAT}`
+      code 1 → `GATE: BLOCKED (${res.blocked} item(s))`
+      code 3 → `GATE: INCOMPLETE — C1 did not run; PASS was not reached`
+      code 2 → 不打印总结行（现状）
+```
+
+C1 的 detail（AC-GD-01 要求同时含「未执行的事实」与「修复指引」）：
+
+```
+C1 skipped — no test command (pass --test-cmd or add a test-cmd row to
+apriori/process-config.md); the binding check did not run
+```
+
+> `mark` 少一个键就会打印 `undefined C1 …`，且**不会有任何既有测试自然失败**。
+> tasks.md 为此单列一条断言输出行的任务。
+
+---
+
+## D6 `lib/doctor.js` — D5 分支次序（R1 / G9，本设计的关键点）
+
+### D6.1 现状次序（`:157-161`）与它为什么会咬人
+
+```
+1. idPatternBroken        → n/a  'probe skipped (invalid id-pattern config)'
+2. cfgCmd.error           → finding 'config: …'
+3. !testCmd               → n/a  'no test command configured …'     ← 要升为 finding
+4. opts.noRun             → n/a  'probe skipped (--no-run)'
+5. else                   → classifyProbe(runTestCommand(...))
+```
+
+「无配置 + `--no-run`」今天在第 3 档就被 `n/a` 接住。
+若原地把第 3 档改成 `finding`，这个组合会变成 finding，**直接违反 AC-GD-17**。
+
+### D6.2 目标次序
+
+```
+1. idPatternBroken        → n/a   （AC-GD-19，最高优先级不变）
+2. cfgCmd.error           → finding（AC-GD-18，文案与第 4 档必须可区分）
+3. opts.noRun             → n/a   'probe skipped (--no-run)'        ← 上提一档
+4. !testCmd               → finding                                 ← 由 n/a 升级
+5. else                   → classifyProbe(...)
+```
+
+**只把 `--no-run` 分支上提一档**，是满足 AC-GD-16 + AC-GD-17 的最小改动。
+
+第 4 档的文案（AC-GD-16 要求点明后果 + fix 指向 process-config）：
+
+```
+detail: 'no test command configured — `apriori gate` cannot run C1 (the binding check) at all'
+fix:    "add a test-cmd row to apriori/process-config.md (or pass --test-cmd)"
+```
+
+与第 2 档的 `config: <problem>` / `keep one live test-cmd row` 明显可区分（AC-GD-18）。
+
+### D6.3 副作用面
+
+`findings` 计数与 `result` 的计算（`:232-234`）**不动**——
+第 4 档变成 finding 后，整体自然从 HEALTHY 变 FINDINGS / exit 1。
+D8（`:206-210`）一行不动（AC-GD-20 的回归护栏）。
+
+---
+
+## D7 测试策略（AC-GD-14 / 15a / 15b / 15c）
+
+| AC | 手法 |
+|---|---|
+| 15a | 读 `lib/gate.js` 源文本：断言不含 `discoverDeltas` / `buildProjection`；断言含 `currentProjectionBuilder` 且来自 `require('./spec-runner')` |
+| 15b | `sr._setProjectionBuilder(wrap)` + `sr._setTestRunner(count)` → 跑 T7 的 `runGate` → 断言 wrap 调用 1 次、count 调用 0 次；再跑有命令的 `verify --change` → 断言经过**同一个** wrap |
+| 15c | 6 个 fixture 各跑两条路，比较 wrap 捕获到的**完整** `{projection:{modules,conflicts,unstampedMutations,notes}, errors}` |
+| 14 | 即 15b 里 `_setTestRunner` 的计数断言（**不是** `_setChildRunner`——它只拦 id-match 子进程） |
+
+**三个零调用保证互不替代（STEP2·r1 / SPEC-2）**——必须各用各的 seam：
+
+| 保证 | seam | 场景 |
+|---|---|---|
+| T7 路径不起**测试进程** | `_setTestRunner` | SR-74 / AC-GD-14 |
+| T7 + 合法 config 来源 pattern 时不起 **matcher 子进程** | `_setChildRunner` | GT-36 |
+| 归档态 T7 不建 **projection** | `_setProjectionBuilder` | GT-38 |
+
+**每一处 override 都必须在 `finally` 里 `_set*(null)` 复位（STEP2·r1 / SPEC-3）**——
+模块级变量泄漏会造成同进程内后续测试的顺序依赖与假阳性。这是**每个使用点**的义务，
+不是靠 SR-75 那一条「装了再清空能复原」的测试代劳。
+
+**`currentTestRunner` 保持模块私有（STEP2·r1 / SPEC-4）**：新增公共导出恰为四个——
+`buildChangeProjection`、`currentProjectionBuilder`、`_setProjectionBuilder`、`_setTestRunner`。
+`currentTestRunner` 只被 `verify()` 内部读取，导出它会无端扩大公共面并逼 STEP6 记录一个没人消费的符号。
+
+其余 AC 走常规的 `runGate` / `runDoctor` 单元断言 + CLI 退出码断言。
+
+---
+
+## D8 外部共享状态的三个时刻
+
+本 change **不引入**任何外部共享状态：gate 与 doctor 都是同步只读命令，
+两个新 seam 是**进程内模块级变量**，默认 `null`：
+
+| 时刻 | 说明 |
+|---|---|
+| init | 模块加载时 `null`；`current*()` 回落到原函数 |
+| runtime update | 只有测试通过 `_set*` 改写 |
+| cleanup / invalidation | 测试**必须**在 `finally` 里 `_set*(null)` 复位——与既有 `_setChildRunner` 的用法一致（`test/change-scope.test.js:189/201/215`）。tasks.md 单列一条任务确保每处都有 `finally` 复位 |
+     1	# tasks — gate-degrades
+     2	
+     3	STEP5 按本表顺序执行；每完成一项立刻打 `[x]`。
+     4	测试先行：先按 §T 写出**失败**的测试并给出失败运行，再按 §I 实现。
+     5	
+     6	## T — 测试先行（一场景一失败测试，测试名带场景 ID）
+     7	
+     8	- [ ] T0 **先跑一次全量测试并记录全绿基线**（STEP2·r1 advisory）——之后才加新测试，红灯才分得清是 TDD 预期红还是既有回归
+     9	- [ ] T1 `test/gate-degrade.test.js` 新建；GT-30 一条失败测试（无 test-cmd → C1 `skipped`、C2..C7 出结论、`GATE: INCOMPLETE`、exit 3）
+    10	- [ ] T2 GT-31（缺席 + 至少一项 blocked → BLOCKED / exit 1，且 `blocked` 计数不含 skipped）
+    11	- [ ] T3 GT-32（`--test-cmd ""` / `"   "` / 非字符串 `runGate({testCmd:1})` → exit 2，各自消息可区分；**不**回落 config）
+    12	- [ ] T4 GT-33（config 不可读 / `test-cmd` 行冲突 → exit 2；`test-cmd` 行值为空 → 视为缺席，exit 3）
+    13	- [ ] T5 GT-34（缺席 + 未打戳 mutation delta → C7 仍 blocked 并给 `apriori stamp` 指引）
+    14	- [ ] T6 GT-35（缺席 + projection 失败的**五类**：merge conflict / delta 畸形 / CAS 偏移 / 无 delta 文件 / 路径逃逸 → exit 2，C7 不出结论）
+    15	- [ ] T6b GT-35 第二支（SPEC-1）：用 `_setProjectionBuilder` 注入 `{projection, errors: [], texts: null}` → 断言仍 exit 2、`errors` **非空**（合成的确定诊断）、C7 不出结论
+    16	- [ ] T7 GT-36（缺席 + id-pattern 解析失败的四个子情形 → exit 2；in-flight 与 archived 各一次）
+    17	- [ ] T7b GT-36 第二支（SPEC-2）：缺席 + **合法的 config 来源** id-pattern → 用 `_setChildRunner` 断言 matcher 子进程调用数为 **0**
+    18	- [ ] T8 GT-37（缺席 + hotfix bundle → exit 2 且指向 `apriori hotfix archive`，**不是**「flow-state 缺失」文案；缺席 + 无 flow-state 的正式 change → exit 2 的 flow-state 文案）
+    19	- [ ] T9 GT-38（缺席 + 已归档 change → C1 skipped / C7 `–` / C4 要求全行终态 / 退出码按全序）
+    20	- [ ] T9b GT-38 第二支（SPEC-2）：同一路径下用 `_setProjectionBuilder` 断言 projection builder 调用数为 **0**
+    21	- [ ] T10 GT-11 扩展（`--json` 在 INCOMPLETE 类别下键集仍恰为六键、无 `code` 字段、`result` 与 `checks[].status` 取新值）
+    22	- [ ] T11 **输出行断言**（易漏项）：`skipped` 状态在人类可读输出里有自己的符号，绝不出现 `undefined`；`GATE: INCOMPLETE` 总结行存在
+    23	- [ ] T12 `test/doctor.test.js` 的 `DR-07` 改写为两条：`--no-run` → `n/a`（AC-GD-17）；完全未配置 → `finding` + 后果文案 + fix（AC-GD-16）
+    24	- [ ] T13 DR-07 的分支优先级四例：id-pattern 坏 → `n/a`（AC-GD-19）；config 冲突 → `finding` 且文案与「未配置」可区分（AC-GD-18）；**无配置 + `--no-run` → `n/a`**（本 change 最易踩的回归）；有命令 → 行为不变
+    25	- [ ] T14 SR-73（两条路径经同一 wrapper；6 个 fixture 的**完整** projection 与 errors 逐项相等）。**并且**（STEP2·r1 advisory）：在安装 override **之前**先 `require` gate 模块，且在两次调用之间更换/清空 override——确定性地打穿「把 builder 提到模块加载时冻结」的错误实现
+    26	- [ ] T15 SR-74（缺席路径下 test-runner seam 计数为 0）
+    27	- [ ] T16 SR-75（seam 默认惰性；装了再清空后行为复原）
+    28	- [ ] T16b **每一个** `_setProjectionBuilder` / `_setTestRunner` / `_setChildRunner` 使用点都包在 `try/finally` 里复位为 `null`（SPEC-3）——模块级 override 泄漏会让同进程后续测试产生顺序依赖与假阳性；T16 只测「能复原」，不能代替每个使用点的义务
+    29	- [ ] T17 AC-GD-15a 结构断言：读 `lib/gate.js` 源文本——不含 `discoverDeltas` / `buildProjection`；含 `currentProjectionBuilder` 且经 `require('./spec-runner')`
+    30	- [ ] T18 AC-GD-09 回归护栏：有测试命令时，gate 的检查集合 / 每项 detail / `--json` / 退出码与改动前一致（用现有 `test/gate.test.js` 全绿即为证据，另加一条显式断言）
+    31	- [ ] T19 AC-GD-20 回归护栏：D8 行为不变
+    32	- [ ] T20 跑一次全量测试，**记录失败清单**（此时应大面积红）
+    33	
+    34	## I — 实现（按依赖顺序）
+    35	
+    36	- [ ] I1 `lib/spec-runner.js`：新增 `_setProjectionBuilder` / `currentProjectionBuilder` / `_setTestRunner` / `currentTestRunner`；`verify()` 内 `:615` 与 `:642` 两处调用改走 `current*()`；**新增导出恰为四个**：`buildChangeProjection`、`currentProjectionBuilder`、`_setProjectionBuilder`、`_setTestRunner`——`currentTestRunner` **保持模块私有**，导出它会无端扩大公共面（SPEC-4）
+    37	- [ ] I2 `lib/gate.js`：CLI 层 `--test-cmd` 改存在性判定（`('--test-cmd' in f)`）
+    38	- [ ] I3 `lib/gate.js`：新增 `resolveTestCmd(opts, cwd)` 三态函数（非字符串 → error / 空白 → error / 有值 → ok / config error → error / config 有值 → ok / 否则 absent）
+    39	- [ ] I4 `lib/gate.js`：用 `resolveTestCmd` 替换 `:310-316`；`kind==='error'` 走既有 `err()`
+    40	- [ ] I5 `lib/gate.js`：新增 `checkBindingSkipped(cwd, change, stage, idPattern)`——解析并编译校验 id-pattern（失败 → `{infra}`）；archived 不建 projection；in-flight 调 `sr.currentProjectionBuilder()(change, cwd)`，`errors` 非空或无可信 `texts` → `{infra}`；成功 → C1 `skipped` + projection
+    41	- [ ] I6 `lib/gate.js`：结果计算改四值（`blocked` 语义不变，只数 blocked）
+    42	- [ ] I7 `lib/gate.js`：`mark` 表补 `skipped` 键；总结行改三分支（加 `GATE: INCOMPLETE`）
+    43	- [ ] I8 `lib/doctor.js`：D5 分支**把 `--no-run` 上提一档**，缺席分支升为 `finding` 并写后果文案 + fix
+    44	- [ ] I9 跑全量测试到绿；`node bin/apriori.js check --self` PASS
+    45	- [ ] I10 `apriori verify --change gate-degrades` GREEN
+    46	
+    47	## D — 文档与 KB（可 grep 的断言）
+    48	
+    49	- [ ] D1 `docs/ci.md` + `docs/ci_cn.md` 的 exit-code cheat table 加 `3` 行，gate 列含 `INCOMPLETE`（AC-GD-21）
+    50	- [ ] D2 `docs/cli.md` + `docs/cli_cn.md` 的 gate 小节 Exit 行加 `3` 与 `INCOMPLETE`（AC-GD-22）
+    51	- [ ] D3 `docs/troubleshooting.md` + `_cn.md` 的 D5 小节补「未配置 test-cmd → D5 finding，且 gate 的 C1 会 skipped」与修复行（AC-GD-23）
+    52	- [ ] D4 `CHANGELOG.md` Unreleased 条目含字面串 `INCOMPLETE` 与 `exit code 3`，并声明退出码语义扩展（AC-GD-25）
+    53	- [ ] D5 逐条核对 AC-GD-01..25 全部有对应证据（列一张对照表进 flow-state）
+    54	
+    55	## S — STEP5 出口
+    56	
+    57	- [ ] S1 `apriori verify --change gate-degrades` GREEN（机械绑定门）
+    58	- [ ] S2 P8 异构一致性评审（R2，codex），verdict 落盘 + raw 存证
+    59	- [ ] S3 ledger 全行进入可归档终态
+    60	
+    61	（STEP6 的 KB 写回——含 `truth/doctor.md` 的 seven→eight checks 修正（AC-GD-24）——
+    62	在 P9 阶段做，不列在 STEP5 的 tasks 里。）
+# issue ledger — gate-degrades
+
+轮次标签：`STEP0·rN`（P1 需求评审）/ `STEP2·rN`（P5 规格设计评审）/ `STEP5·rN`（P8 一致性评审）。
+状态词汇：`open` / `fixed` / `verified` / `rejected` / `rejected-verified` / `waived` / `advisory-acked`。
+生产方只能 `open → fixed | rejected`；`verified` / `rejected-verified` 属评审方，`waived` 属人类。
+重开（reopen）是**事件**不是状态：复现的问题回到原 ID 的 `open`，绝不新开一行。
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| REQ-1 | C7 currently consumes projection produced through C1 verify, but the requirement claims only C1 depends on that path and limits source scope without declaring a projection-only seam | high | 1 | verified |
+| REQ-2 | Reachable missing-test-command combinations do not define validation order, per-check statuses, continuation behavior, blocked count, and errors completely | high | 1 | verified |
+| REQ-3 | AC-GD-10 implies a JSON code field while B4 and AC-GD-09 require the existing code-free JSON shape to remain byte-identical | med | 1 | verified |
+| REQ-4 | The requirement claims the doctor KB Contract is fresh although it omits the implemented and living-spec D8 check | med | 1 | verified |
+| REQ-5 | Documentation impact is incomplete and AC-GD-19/20 use non-mechanical consistency and prominence predicates | med | 1 | verified |
+| SPEC-1 | GT-35 and tasks omit the frozen M4 branch where the builder returns no trustworthy texts with empty errors, while D3 would produce an opaque empty-errors ERROR | med | STEP2·r1 | fixed (r1) |
+| SPEC-2 | Tasks do not observe GT-36's zero matcher-child call or GT-38's zero projection-build guarantee, leaving two negative side effects unbound | med | STEP2·r1 | fixed (r1) |
+| SPEC-3 | Design requires every module-level seam override to be reset in finally, but tasks only test manual clear/restore and do not enforce cleanup at each use site | low | STEP2·r1 | fixed (r1) |
+| SPEC-4 | Task I1 exports currentTestRunner in addition to the exact public symbols declared by the spec and design, expanding the API beyond the frozen scope | med | STEP2·r1 | fixed (r1) |
+| ADV-STEP2-r1 | advisory batch acknowledged (3 items) | low | STEP2·r1 | advisory-acked |
+
+<!-- 状态轨迹（recorded on behalf of the reviewer，逐字落盘其 ledger delta）：
+     STEP0·r1（codex gpt-5.6-sol, session 019ffeaa）：REQ-1..5 五行 open。
+     生产方 req-v2：五行 → fixed (v2)。
+     STEP0·r2：REQ-3/4/5 → verified；REQ-1「AC-GD-15 仅比较部分样例输出，不能证明 gate 与 verify
+       复用同一个 projection 实现」、REQ-2「T6 与共享 config parser 冲突，且不可读配置、id-pattern
+       config problem、分类交集及直接 API presence 语义仍未覆盖」→ **reopened 回 open**。
+     生产方 req-v3：REQ-1/2 → fixed (v3)。
+     STEP0·r3：REQ-3/4/5 保持 verified；REQ-1「_setChildRunner 不是测试 runner seam，且当前不存在能同时
+       拦截 verify 与 T7 gate 的 projection-builder seam」、REQ-2「M5/M7 优先级与源码相反，T7 + unreadable
+       config 不可达，projection 错误未穷举，直接 API 非字符串输入未定义」→ **再次 reopened**。
+     生产方 req-v4：REQ-1/2 → fixed (v4)。
+     STEP0·r4：REQ-2 → **verified**（T 分类与 M 矩阵互斥穷举可构造，与源码控制流一致）；REQ-1 第三次
+       reopened——§五「触及范围」括号仍写「仅导出 projection-only 入口」，与同节 O5 的三项改动直接矛盾。
+     生产方 req-v5：REQ-1 → fixed (v5)。
+     STEP0·r5：REQ-1 → **verified**；五行全 verified，「VERDICT: no major issues」，STEP0 收敛。
+     verdict 序列 5→2→2→1→0（r1..r5）。req-v5 冻结为 req-final.md。 -->
+
+<!-- STEP2·r1（同一 codex session）：SPEC-1..4 open + 3 条 advisory。
+     生产方全部 accept 并落 STEP2·r1 修订：
+       SPEC-1 → GT-35 加 `errors 空但 texts 不可信` 一支；design D3 要求合成确定诊断使 ERROR 下 errors 恒非空；tasks T6b。
+       SPEC-2 → GT-36 加「合法 config pattern 时 matcher 子进程 0 次」；GT-38 加「projection builder 0 次」；tasks T7b/T9b；design D7 补三个零调用保证互不替代的表。
+       SPEC-3 → tasks T16b：每个 seam 使用点必须 try/finally 复位。
+       SPEC-4 → design D1.2/D7 与 tasks I1 都改为「新增导出恰四个，currentTestRunner 不导出」。
+     advisory 三条也已实施（GT-11 的 WHEN 列出 INCOMPLETE；T14 加「先 require 再装 override」以打穿模块加载期冻结；新增 T0 全绿基线）。 -->
+
+codex
+All four formal fixes landed correctly. One revised advisory appears to have made T14 internally impossible as written: it simultaneously requires both consumer calls to hit the same wrapper and requires changing/clearing that wrapper between those calls. I’m checking whether any separate call is specified that resolves the conflict.
+exec
+/usr/bin/zsh -lc "rg -n \"T14|wrapper|override|调用之间|module load|模块加载\" apriori/changes/gate-degrades/design.md apriori/changes/gate-degrades/tasks.md apriori/changes/gate-degrades/specs -g '*.md'; diff -u <(awk 'BEGIN{p=0} /"'^### Requirement: gate aggregates/{p=1} p && /''^### Requirement:/ && $0 !~ /gate aggregates/ {exit} p{print}'"' apriori/specs/gate/spec.md) <(awk 'BEGIN{p=0} /"'^### Requirement: gate aggregates/{p=1} p && /''^## ADDED Requirements/{exit} p{print}'"' apriori/changes/gate-degrades/specs/gate/spec.md) || true; node bin/apriori.js check --self" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 4986ms:
+apriori/changes/gate-degrades/tasks.md:25:- [ ] T14 SR-73（两条路径经同一 wrapper；6 个 fixture 的**完整** projection 与 errors 逐项相等）。**并且**（STEP2·r1 advisory）：在安装 override **之前**先 `require` gate 模块，且在两次调用之间更换/清空 override——确定性地打穿「把 builder 提到模块加载时冻结」的错误实现
+apriori/changes/gate-degrades/tasks.md:28:- [ ] T16b **每一个** `_setProjectionBuilder` / `_setTestRunner` / `_setChildRunner` 使用点都包在 `try/finally` 里复位为 `null`（SPEC-3）——模块级 override 泄漏会让同进程后续测试产生顺序依赖与假阳性；T16 只测「能复原」，不能代替每个使用点的义务
+apriori/changes/gate-degrades/design.md:47:测试包裹 seam 时 gate 那一路不会被包住——AC-GD-15b 的「同一个 wrapper」立刻失效。
+apriori/changes/gate-degrades/design.md:55:两个 override 默认 `null`，`current*()` 回落到原函数。
+apriori/changes/gate-degrades/design.md:235:**每一处 override 都必须在 `finally` 里 `_set*(null)` 复位（STEP2·r1 / SPEC-3）**——
+apriori/changes/gate-degrades/design.md:254:| init | 模块加载时 `null`；`current*()` 回落到原函数 |
+apriori/changes/gate-degrades/specs/spec-runner/spec.md:10:- THEN both calls pass through the SAME wrapper — the reference is read at call time, never captured at module load — and the wrapper observes identical `{projection: {modules, conflicts, unstampedMutations, notes}, errors}` for the same change, across clean, unstamped-mutation, malformed-delta, diverged-CAS-base, merge-conflict, and no-delta-files inputs alike
+apriori/changes/gate-degrades/specs/spec-runner/spec.md:17:- WHEN no seam override is installed
+apriori/changes/gate-degrades/specs/spec-runner/spec.md:18:- THEN the builder and the runner resolve to the real functions and `verify`'s behaviour, output, and exit codes are byte-identical to their pre-seam form; installing an override and then clearing it restores that state exactly
+--- /proc/self/fd/11	2026-08-14 13:57:48.382109815 +0800
++++ /proc/self/fd/12	2026-08-14 13:57:48.382109815 +0800
+@@ -1,5 +1,5 @@
+ ### Requirement: gate aggregates the mechanical exit conditions for one change
+-`apriori gate --change <name>` SHALL evaluate the machine-checkable gate conditions for exactly one change and encode the aggregate in its exit code: 0 = every applicable check passed (`GATE: PASS`), 1 = at least one check blocked (`GATE: BLOCKED (<n> item(s))`), 2 = the evaluation itself is untrustworthy (usage error, invalid or escaping name, change found nowhere, unreadable flow-state, or an untrustworthy C1 verify run). It SHALL be strictly read-only and SHALL state in its output that PASS covers mechanical checks only — human gates remain human. C6 (KB freshness) SHALL bind each touched store module to its truth doc through an index rather than a filename assumption: a truth doc MAY declare, in its header region (before the first `##`), `store-module: <name>...` (the store modules it covers; default = the doc's basename) and `source-files: <path>...` (space-separated repo-relative code paths; default = `lib/<module>.js`); a covered module with a valid `source-commit` stamp is always mechanically checked, never silently skipped.
++`apriori gate --change <name>` SHALL evaluate the machine-checkable gate conditions for exactly one change and encode the aggregate in its exit code: 0 = every applicable check passed (`GATE: PASS`), 1 = at least one check blocked (`GATE: BLOCKED (<n> item(s))`), 2 = the evaluation itself is untrustworthy (usage error, invalid or escaping name, change found nowhere, unreadable flow-state, an unusable test-command source, or an untrustworthy C1 verify run), 3 = every check that COULD run passed but at least one was skipped (`GATE: INCOMPLETE`). The aggregate is a strict total order: ERROR(2) outranks BLOCKED(1) outranks INCOMPLETE(3) outranks PASS(0) — a confirmed block is never softened by an unrun check, and `blocked` counts `blocked` statuses only, never `skipped`. It SHALL be strictly read-only and SHALL state in its output that PASS covers mechanical checks only — human gates remain human. C6 (KB freshness) SHALL bind each touched store module to its truth doc through an index rather than a filename assumption: a truth doc MAY declare, in its header region (before the first `##`), `store-module: <name>...` (the store modules it covers; default = the doc's basename) and `source-files: <path>...` (space-separated repo-relative code paths; default = `lib/<module>.js`); a covered module with a valid `source-commit` stamp is always mechanically checked, never silently skipped.
+ 
+ #### Scenario: GT-01 a clean in-flight change passes
+ - WHEN every applicable check passes for an in-flight change
+@@ -58,8 +58,8 @@
+ - THEN C6 falls back to module = basename and source-files = `lib/<module>.js`, producing the byte-identical `{status, detail}` it produced before this change for that module — the index and declarations add coverage for non-default layouts without altering any default-layout result
+ 
+ #### Scenario: GT-11 --json is pure JSON in every outcome class
+-- WHEN `gate --change <name> --json` runs — PASS, BLOCKED, or any exit-2 class (usage error, invalid name, not found, unreadable flow-state, untrustworthy verify)
+-- THEN stdout parses as JSON shaped `{ change, stage: "in-flight"|"archived"|null, checks:[{id,status,detail}], result: "PASS"|"BLOCKED"|"ERROR", blocked, errors }` — `stage: null` when resolution never happened, `change: null` when `--change` was missing
++- WHEN `gate --change <name> --json` runs — PASS, BLOCKED, INCOMPLETE, or any exit-2 class (usage error, invalid name, not found, unreadable flow-state, unusable test-command source, untrustworthy verify)
++- THEN stdout parses as JSON shaped `{ change, stage: "in-flight"|"archived"|null, checks:[{id,status,detail}], result: "PASS"|"BLOCKED"|"INCOMPLETE"|"ERROR", blocked, errors }` — the key set is EXACTLY those six and never grows a `code` field (the process exit code is the mapping PASS→0, BLOCKED→1, ERROR→2, INCOMPLETE→3); `checks[].status` ranges over `pass`/`blocked`/`n/a`/`skipped`; `stage: null` when resolution never happened, `change: null` when `--change` was missing
+ 
+ #### Scenario: GT-12 gate is read-only
+ - WHEN gate runs to any outcome against a project tree
+
+RESULT: PASS
+
+codex
+# spec-review-v2 — gate-degrades
+
+## 维度 1：场景是否覆盖所有可见行为与失败边界
+
+结论：通过。
+
+- GT-35 现在覆盖 `errors: []` 且无可信 `texts` 的防御分支，并要求合成确定诊断。
+- GT-36 现在用有效 config-origin pattern 明确要求 matcher child 零调用。
+- GT-38 现在明确要求 archived T7 路径 projection builder 零调用。
+- GT-11 的 WHEN 已包含 INCOMPLETE。
+- 其余来源分类、优先级、projection 失败、C7、hotfix、flow-state、doctor 和输出场景保持完整。
+
+## 维度 2：共享状态的 init / runtime update / cleanup-invalidation
+
+结论：通过。
+
+SPEC-3 已正确修复。D7/D8 和 T16b 明确规定：
+
+- init：override 为 `null`，回落到真实函数；
+- runtime update：测试通过对应 `_set*` 安装 override；
+- cleanup：每个使用点都必须在 `finally` 中恢复为 `null`。
+
+T16 只验证恢复语义，T16b 单独约束每个使用点，职责划分正确。
+
+## 维度 3：与状态 A 或既有约定的冲突
+
+结论：通过。
+
+- 三份 delta 的 CAS 基线仍匹配当前 living spec，`check --self` 通过。
+- gate 的 MODIFIED block 保留全部既有场景，只改变目标 prose 与 GT-11。
+- doctor 分支顺序仍为 invalid id-pattern → config problem → `--no-run` → missing command → probe，与源码和冻结需求一致。
+- `resolveTestCmd` 六条规则仍完整覆盖冻结输入域。
+- projection、path containment、config reader 和 matcher 的既有实现边界均未被复制或绕过。
+
+## 维度 4：spec、design 与 tasks 是否闭合
+
+结论：存在一个新的任务矛盾。
+
+### SPEC-5
+
+- 描述：T14 同时要求：
+  1. gate 与 verify 两次调用经过同一个 wrapper；
+  2. 在这两次调用之间更换或清空 override。
+
+  两项无法同时成立。如果 gate 使用 wrapper A 后清空或换成 wrapper B，verify 就不可能再经过“同一个 wrapper”。spec SR-73 和 design D1.3 本身没有矛盾；矛盾只存在于修订后的执行任务。
+- 风险：med。T14 无法按字面完成，实施者必须现场猜测测试结构；错误取舍可能放弃共享-wrapper断言，或放弃 call-time lookup 断言，造成 STEP5 返工并让模块加载时冻结引用的实现漏过。
+- 建议：拆成两个可同时满足的阶段：
+  - 先在安装 override 前加载 gate，安装 wrapper A，然后让 gate 与 verify 都调用并断言二者经过同一个 A；
+  - 完成上述两次调用后，再清空或换成 wrapper B，执行第三次调用，断言读取到 default/B，以独立证明引用按调用时解析；
+  - 全部 override 在 `finally` 中清理。
+
+SPEC-1、SPEC-2 和 SPEC-4 对应的 spec/design/tasks 映射均已闭合：
+
+- T6b 绑定无 texts、空 errors 分支；
+- T7b/T9b 分别绑定 matcher-child 与 archived builder 零调用；
+- I1 的公共导出集合现在精确为四个，`currentTestRunner` 保持私有。
+
+## 维度 5：安全性
+
+结论：通过。
+
+外部输入在进入 `spawnSync` 前完成类型和空白校验；缺席路径不执行测试或 matcher child；projection 继续使用共享的 containment 和 validation 实现。没有新增命令注入、路径逃逸、权限绕过或敏感信息泄漏面。
+
+## Prior issue verification
+
+- SPEC-1：`fixed (r1) → verified`。GT-35、D3 和 T6b 已完整覆盖无可信 texts 且 errors 为空的分支。
+- SPEC-2：`fixed (r1) → verified`。GT-36/GT-38、D7、T7b/T9b 已分别绑定两个遗漏的零调用保证。
+- SPEC-3：`fixed (r1) → verified`。每个模块级 override 使用点现在都有明确 cleanup 任务。
+- SPEC-4：`fixed (r1) → verified`。公共导出集合已精确限定，`currentTestRunner` 不导出。
+- ADV-STEP2-r1：保持 `advisory-acked`；其中 T14 的修订引入的新矛盾另记为 SPEC-5。
+
+## Advisories
+
+无。
+
+## Ledger delta
+
+精确状态翻转：
+
+- SPEC-1：`fixed (r1) → verified`
+- SPEC-2：`fixed (r1) → verified`
+- SPEC-3：`fixed (r1) → verified`
+- SPEC-4：`fixed (r1) → verified`
+- ADV-STEP2-r1：保持 `advisory-acked`
+
+追加以下行：
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| SPEC-5 | T14 simultaneously requires gate and verify to use the same wrapper and requires changing or clearing that wrapper between those two calls, making the task internally unsatisfiable | med | STEP2·r2 | open |
+
+VERDICT: 1 issues open
+tokens used
+480,766
+# spec-review-v2 — gate-degrades
+
+## 维度 1：场景是否覆盖所有可见行为与失败边界
+
+结论：通过。
+
+- GT-35 现在覆盖 `errors: []` 且无可信 `texts` 的防御分支，并要求合成确定诊断。
+- GT-36 现在用有效 config-origin pattern 明确要求 matcher child 零调用。
+- GT-38 现在明确要求 archived T7 路径 projection builder 零调用。
+- GT-11 的 WHEN 已包含 INCOMPLETE。
+- 其余来源分类、优先级、projection 失败、C7、hotfix、flow-state、doctor 和输出场景保持完整。
+
+## 维度 2：共享状态的 init / runtime update / cleanup-invalidation
+
+结论：通过。
+
+SPEC-3 已正确修复。D7/D8 和 T16b 明确规定：
+
+- init：override 为 `null`，回落到真实函数；
+- runtime update：测试通过对应 `_set*` 安装 override；
+- cleanup：每个使用点都必须在 `finally` 中恢复为 `null`。
+
+T16 只验证恢复语义，T16b 单独约束每个使用点，职责划分正确。
+
+## 维度 3：与状态 A 或既有约定的冲突
+
+结论：通过。
+
+- 三份 delta 的 CAS 基线仍匹配当前 living spec，`check --self` 通过。
+- gate 的 MODIFIED block 保留全部既有场景，只改变目标 prose 与 GT-11。
+- doctor 分支顺序仍为 invalid id-pattern → config problem → `--no-run` → missing command → probe，与源码和冻结需求一致。
+- `resolveTestCmd` 六条规则仍完整覆盖冻结输入域。
+- projection、path containment、config reader 和 matcher 的既有实现边界均未被复制或绕过。
+
+## 维度 4：spec、design 与 tasks 是否闭合
+
+结论：存在一个新的任务矛盾。
+
+### SPEC-5
+
+- 描述：T14 同时要求：
+  1. gate 与 verify 两次调用经过同一个 wrapper；
+  2. 在这两次调用之间更换或清空 override。
+
+  两项无法同时成立。如果 gate 使用 wrapper A 后清空或换成 wrapper B，verify 就不可能再经过“同一个 wrapper”。spec SR-73 和 design D1.3 本身没有矛盾；矛盾只存在于修订后的执行任务。
+- 风险：med。T14 无法按字面完成，实施者必须现场猜测测试结构；错误取舍可能放弃共享-wrapper断言，或放弃 call-time lookup 断言，造成 STEP5 返工并让模块加载时冻结引用的实现漏过。
+- 建议：拆成两个可同时满足的阶段：
+  - 先在安装 override 前加载 gate，安装 wrapper A，然后让 gate 与 verify 都调用并断言二者经过同一个 A；
+  - 完成上述两次调用后，再清空或换成 wrapper B，执行第三次调用，断言读取到 default/B，以独立证明引用按调用时解析；
+  - 全部 override 在 `finally` 中清理。
+
+SPEC-1、SPEC-2 和 SPEC-4 对应的 spec/design/tasks 映射均已闭合：
+
+- T6b 绑定无 texts、空 errors 分支；
+- T7b/T9b 分别绑定 matcher-child 与 archived builder 零调用；
+- I1 的公共导出集合现在精确为四个，`currentTestRunner` 保持私有。
+
+## 维度 5：安全性
+
+结论：通过。
+
+外部输入在进入 `spawnSync` 前完成类型和空白校验；缺席路径不执行测试或 matcher child；projection 继续使用共享的 containment 和 validation 实现。没有新增命令注入、路径逃逸、权限绕过或敏感信息泄漏面。
+
+## Prior issue verification
+
+- SPEC-1：`fixed (r1) → verified`。GT-35、D3 和 T6b 已完整覆盖无可信 texts 且 errors 为空的分支。
+- SPEC-2：`fixed (r1) → verified`。GT-36/GT-38、D7、T7b/T9b 已分别绑定两个遗漏的零调用保证。
+- SPEC-3：`fixed (r1) → verified`。每个模块级 override 使用点现在都有明确 cleanup 任务。
+- SPEC-4：`fixed (r1) → verified`。公共导出集合已精确限定，`currentTestRunner` 不导出。
+- ADV-STEP2-r1：保持 `advisory-acked`；其中 T14 的修订引入的新矛盾另记为 SPEC-5。
+
+## Advisories
+
+无。
+
+## Ledger delta
+
+精确状态翻转：
+
+- SPEC-1：`fixed (r1) → verified`
+- SPEC-2：`fixed (r1) → verified`
+- SPEC-3：`fixed (r1) → verified`
+- SPEC-4：`fixed (r1) → verified`
+- ADV-STEP2-r1：保持 `advisory-acked`
+
+追加以下行：
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| SPEC-5 | T14 simultaneously requires gate and verify to use the same wrapper and requires changing or clearing that wrapper between those two calls, making the task internally unsatisfiable | med | STEP2·r2 | open |
+
+VERDICT: 1 issues open

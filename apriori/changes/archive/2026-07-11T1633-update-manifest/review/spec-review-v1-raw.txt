@@ -1,0 +1,267 @@
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f4b30-68f9-7222-9b64-17f52a333b4c
+--------
+user
+P5 design review round 1 for update-manifest (STEP0 converged at r2; requirement/req-final.md = v2). Read from disk:
+- apriori/changes/update-manifest/specs/update/spec.md (ADDED "update refreshes only manifest-proven tool-owned files", UP-06..11, stamped)
+- apriori/changes/update-manifest/specs/init/spec.md (ADDED "init records what it creates in the managed manifest", IN-13..17, stamped)
+- apriori/changes/update-manifest/design.md (new lib/managed.js with readManifest hygiene on read / writeManifest / hashBytes / TEMPLATE_GENERATIONS / allowedTargets(tools) parameter form; update.js managed/adoption/skip flow incl. the runbook-unlisted-under-valid-manifest = unmanaged decision; init.js manifest-FIRST hygiene check, create-only recording, merge, dry-run guard; containsReal reuse from archive-merge)
+- apriori/changes/update-manifest/tasks.md
+
+Check: (1) do UP-06..11 + IN-13..17 cover req-final F1-F12 completely (map them; name any acceptance criterion without a scenario); (2) design soundness — the runbook-unlisted decision, hygiene-on-read placement (does init's read-first ordering actually precede ALL writes incl. .gitignore/config creation?), adoption recording the POST-refresh runbook bytes, manifest written only when something changed (is a fresh adoption with zero refreshes still written?), circularity of managed.js/init.js (parameter form adequate?), containsReal applicability to files whose parent dirs may not exist yet (.claude/commands/ on a bare project); (3) existing-test blast radius (UP-01..05, IN-01..12) — is the T1 audit instruction sufficient; (4) scenario-range hygiene (UP-06.. after UP-05, IN-13.. after IN-12, tasks.md ranges match). Rows UMSPEC-N. Print the COMPLETE review document body (landed verbatim at apriori/design/update-manifest-review-v1.md) with a ledger-delta section, ending with exactly one verdict line: "VERDICT: no major issues, ready to proceed to execution" or "VERDICT: <N> issues open".
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-11T08:18:35.441603Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T08:18:35.601448Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T08:18:35.936084Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-11T08:18:36.571689Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-11T08:18:37.527655Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-11T08:18:39.249127Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-11T08:18:42.746510Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: QY5RQSGitdpe
+codex
+I’ll read the update/init delta specs, design, and tasks, then map each requirement F1-F12 to scenarios and inspect the manifest/read/write ordering for implementation risk.
+exec
+/usr/bin/zsh -lc "sed -n '1,320p' apriori/changes/update-manifest/design.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' apriori/changes/update-manifest/specs/init/spec.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' apriori/changes/update-manifest/specs/update/spec.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 111ms:
+# Design — update-manifest
+
+New shared helper `lib/managed.js` (zero-dep; init and update both require it):
+- `MANIFEST_REL = 'apriori/managed.json'`; `TEMPLATE_GENERATIONS = ['sha256:4ada03a2…a9c8a0', 'sha256:1dfa5eec…eab046']` (full 64-hex literals; DD-3 membership test lives in the test suite hashing the live template).
+- `hashBytes(buf)` → `sha256:<64hex>` over exact bytes (fs.readFileSync without encoding; no normalization).
+- `allowedTargets()` → Set of `apriori/runbook.md` + every `TOOLS[k].command` (require('./init').TOOLS — init already exports it; managed.js requiring init is acyclic because init will require managed lazily inside functions if needed, or managed takes TOOLS as a parameter — pick the parameter form to keep the graph clean: `allowedTargets(tools)`).
+- `readManifest(root, tools)` → `{ files: {rel: hash} } | null` (null = absent). Throws `Error('managed.json: <defect>')` on: unreadable-but-present, JSON.parse failure, `version !== 1`, `files` not a plain object, any value not `/^sha256:[0-9a-f]{64}$/`, any key that `path.isAbsolute`, contains a `..` segment (split on `/`), backslashes normalized first, or is not in `allowedTargets(tools)`. All hygiene checks run on read — BOTH consumers get fail-closed for free.
+- `writeManifest(root, files)` → writes `{ version: 1, files }` (sorted keys, 2-space JSON + trailing newline).
+- Realpath containment on write reuses `containsReal` from archive-merge (already exported) — target's parent dir realpath must sit under root's realpath.
+
+`lib/update.js` rewrite of `run(root, opts)`:
+1. `let manifest; try { manifest = readManifest(root, TOOLS) } catch → rethrow` (cli catches → prints message → exit 1, same path as the existing no-runbook error).
+2. Runbook: if manifest lists it → managed semantics (hash-compare → refresh|`modified` skip). If manifest is null → adopt: refresh as today, record hash of what's now on disk (post-refresh bytes). If manifest exists but runbook unlisted → treat as unmanaged? NO — the runbook is the init precondition and every manifest-writing path records it; an unlisted runbook under a valid manifest means someone hand-edited the manifest: treat as `unmanaged` skip (consistent, fail-closed).
+3. Command files loop (every TOOLS path that exists on disk): manifest present → managed/modified/unmanaged semantics per spec; manifest null → adoption by `TEMPLATE_GENERATIONS` membership (match current → `up-to-date` + adopt; match ancestor → refresh + adopt; else `unmanaged`).
+4. `missing`: manifest lists a path with no file on disk → action row `missing`, no write.
+5. Writes: file writes guarded by containment; manifest written once at the end iff any adoption/refresh happened and !dryRun (a pure skip run on an existing valid manifest rewrites nothing).
+6. Action vocabulary: `updated | up-to-date | modified (skipped) | unmanaged (skipped) | missing (skipped) | created` (gitignore row unchanged). Exit stays 0 for skips; the closing line keeps its promise text.
+7. `--dry-run`: same report; `refresh(…, dryRun)` already no-ops; manifest write skipped.
+
+`lib/init.js`:
+- `writeCommand` already returns `created|exists`-style signals via `act` — extend the run to collect `(rel, bytes)` for every file it CREATES (runbook copy included; check the current copy path — init copies RUNBOOK.md → apriori/runbook.md on fresh init).
+- After scaffolding (not dryRun): `readManifest` (hygiene errors → abort BEFORE scaffolding — so actually read the manifest FIRST, at the top of init's run, before any write; IN-17), merge `{created entries}` over existing `files`, `writeManifest`.
+- dry-run: report would-be entries in the summary, touch nothing (IN-16).
+
+Tests: UP-06..11 + IN-13..17 in test/update.test.js / test/init.test.js (fixture projects in tmpdirs; opts.runbookSrc/commandSrc seams already exist for injecting fake sources; generation-membership test hashes templates/command.md and asserts membership of TEMPLATE_GENERATIONS). Existing UP-01..05 / IN-01..12 must stay green — note UP-old tests that relied on existence-only refresh may need fixtures updated to carry manifests (their INTENT is preserved: tool-owned refresh still works).
+Rider: none (README unchanged — update's own output is the surface).
+
+ succeeded in 122ms:
+<!-- apriori-base: sha256:d92c4f73af6dda00037a2dd18aa28eca48995c90462bed8e967eb63c3b9dc088 -->
+# Delta — init (update-manifest)
+
+## ADDED Requirements
+
+### Requirement: init records what it creates in the managed manifest
+`apriori init` SHALL maintain `apriori/managed.json` entries ONLY for files it actually creates in a run: a fresh init records the runbook and each command file it wrote; init for an additional tool merges into a valid existing manifest preserving entries it didn't touch; a command file that already existed on disk is skipped as today and gains NO entry (existing content is never blind-adopted). When init creates a file that is absent on disk — including a manifest-listed file the user deleted as the prescribed cure — the entry is written/replaced with the hash of the bytes just written, so the next update sees `up-to-date`, not `modified`. `init --dry-run` never writes or modifies the manifest (it reports would-be entries). A hygiene-invalid manifest (per the update module's rules) makes init exit nonzero before scaffolding or merging anything.
+
+#### Scenario: IN-13 fresh init writes the manifest for exactly what it created
+- WHEN `apriori init --tools <t>` scaffolds a new project
+- THEN `apriori/managed.json` lists the runbook and the created command file(s) with hashes of the written bytes, and nothing else
+
+#### Scenario: IN-14 add-tool init merges without adopting bystanders
+- WHEN init runs for an additional tool in a project where another tool's command path already carries a user file
+- THEN the new tool's created file gains an entry, existing entries are preserved, and the pre-existing user file gains no entry (a later update reports it `unmanaged`)
+
+#### Scenario: IN-15 the delete-and-reinit cure closes cleanly
+- WHEN a managed file was locally modified, deleted, and `apriori init --tools <t>` recreates it
+- THEN the manifest entry is refreshed to the recreated bytes and the next update reports `up-to-date`
+
+#### Scenario: IN-16 init dry-run leaves the manifest alone
+- WHEN `apriori init --dry-run` runs fresh or for an additional tool
+- THEN the manifest is not created or changed, while the report shows the would-be entries
+
+#### Scenario: IN-17 a hygiene-invalid manifest blocks init
+- WHEN `apriori/managed.json` exists but is invalid per the hygiene rules
+- THEN init exits nonzero naming the defect and writes nothing
+
+ succeeded in 135ms:
+<!-- apriori-base: sha256:e838f80ad87684327c1d23839e971a6c2b2b462ec8cacf719b12aa6e5c1bf764 -->
+# Delta — update (update-manifest)
+
+## ADDED Requirements
+
+### Requirement: update refreshes only manifest-proven tool-owned files
+`apriori update` SHALL consult `apriori/managed.json` (`{ "version": 1, "files": { "<relative path>": "sha256:<64hex>" } }`, hashes over the exact bytes the tool last wrote, never line-ending-normalized) and refresh a candidate file only when the manifest lists it AND its current content hash equals the recorded hash; after a real write the entry is updated to the new content's hash. A listed file with a differing hash is `modified` — skipped with a warning naming the file and the cure (delete it and rerun `apriori init --tools <t>`). An existing file with no entry is `unmanaged` — skipped, never written. A listed file absent on disk is `missing` — skipped (recreating is init's job). Skip-only runs still exit 0 and name every skip. When no manifest exists (pre-manifest project), update adopts what it can prove: the runbook unconditionally (refreshed as today), and each command file only if its content hash equals the current template or a known shipped generation (the package embeds every generation's sha256; a membership test over the live `templates/command.md` keeps the list honest); unproven content is `unmanaged`. The adoption pass writes the manifest. A manifest that exists but is unreadable, unparseable, missing `files`, hash-malformed, `version !== 1`, or carrying a key that is absolute, contains `..`, or is outside the allowed refresh-target set (`apriori/runbook.md`, `TOOLS[*].command`) SHALL make update exit nonzero naming the defect before touching any target; every write additionally requires realpath containment under the project root. `--dry-run` produces the identical report and writes nothing — the manifest included.
+
+#### Scenario: UP-06 a foreign file at a tool path survives update
+- WHEN a file exists at an unselected tool's command path with no manifest entry
+- THEN update leaves it byte-identical, reports `unmanaged` with the cure hint, and exits 0
+
+#### Scenario: UP-07 an unmodified managed file refreshes and re-hashes
+- WHEN a manifest-listed command file matches its recorded hash but the package template has changed
+- THEN update rewrites it from the template and the manifest entry becomes the new content's hash
+
+#### Scenario: UP-08 a locally modified managed file is protected
+- WHEN a manifest-listed file (the runbook included) differs from its recorded hash
+- THEN update reports `modified` with the cure hint and leaves the file byte-identical, and `--dry-run` gives the same report while writing nothing at all
+
+#### Scenario: UP-09 pre-manifest projects are adopted only on proof
+- WHEN no manifest exists and command files variously match the current template, match a known shipped generation, or carry arbitrary content
+- THEN the matching files are adopted (up-to-date / refreshed respectively), the arbitrary one is `unmanaged` and untouched, the runbook refreshes as before, and the manifest is written (except under `--dry-run`)
+
+#### Scenario: UP-10 manifest hygiene fails closed
+- WHEN `apriori/managed.json` is invalid JSON, lacks `files`, carries a malformed hash or `version: 2`, or lists an absolute, `..`-containing, or non-refresh-target path
+- THEN update exits nonzero naming the manifest defect and no managed target is touched, identically under `--dry-run`
+
+#### Scenario: UP-11 the shipped-generation list stays honest
+- WHEN the live `templates/command.md` is hashed
+- THEN the digest is a member of the package's embedded generation list (changing the template without appending fails the suite)
+
+codex
+The scenario coverage looks broad; I’m checking the existing store specs and tasks next for range hygiene and whether the design’s manifest-write trigger covers the runbook adoption case even when no bytes changed.
+exec
+/usr/bin/zsh -lc "node -e \"const fs=require('fs'),crypto=require('crypto'); for (const p of ['apriori/specs/update/spec.md','apriori/specs/init/spec.md']) { const text=fs.readFileSync(p,'utf8').replace(/\\r\\n/g,'\\n').replace(/\\r/g,'\\n'); console.log(p, 'sha256:'+crypto.createHash('sha256').update(text,'utf8').digest('hex')); }\"" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,220p' apriori/changes/update-manifest/tasks.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc 'rg -n "Scenario: UP-|Scenario: IN-" apriori/specs/update/spec.md apriori/specs/init/spec.md apriori/changes/update-manifest/specs/update/spec.md apriori/changes/update-manifest/specs/init/spec.md' in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 134ms:
+# Tasks — update-manifest
+
+- [ ] T1. Failing tests UP-06..11 + IN-13..17 (incl. the generation-membership guard and dry-run no-write assertions) — red run; audit which existing UP/IN tests assumed existence-only refresh and adapt their fixtures without weakening their intent.
+- [ ] T2. lib/managed.js (readManifest hygiene, writeManifest, hashBytes, TEMPLATE_GENERATIONS, allowedTargets(tools)).
+- [ ] T3. lib/update.js managed/adoption/skip semantics + action vocabulary; lib/init.js manifest-first hygiene check, create-only recording, merge, dry-run guard.
+- [ ] T4. Suite green; verify --change GREEN; gate PASS; check --self PASS.
+
+ succeeded in 169ms:
+apriori/specs/update/spec.md sha256:e838f80ad87684327c1d23839e971a6c2b2b462ec8cacf719b12aa6e5c1bf764
+apriori/specs/init/spec.md sha256:d92c4f73af6dda00037a2dd18aa28eca48995c90462bed8e967eb63c3b9dc088
+
+ succeeded in 178ms:
+apriori/specs/init/spec.md:4:#### Scenario: IN-01 detects present tools and pre-selects them
+apriori/specs/init/spec.md:8:#### Scenario: IN-02 interactive arrow-key multi-select of tools
+apriori/specs/init/spec.md:12:#### Scenario: IN-03 non-interactive via flags
+apriori/specs/init/spec.md:16:#### Scenario: IN-04 the protocol is written once; tools get pointers
+apriori/specs/init/spec.md:20:#### Scenario: IN-05 per-tool native location and format
+apriori/specs/init/spec.md:24:#### Scenario: IN-06 additive and non-clobbering
+apriori/specs/init/spec.md:28:#### Scenario: IN-07 preview before writing
+apriori/specs/init/spec.md:32:#### Scenario: IN-08 reports command-level vs rule-level entry honestly
+apriori/specs/init/spec.md:36:#### Scenario: IN-09 --language pins a language in the scaffolded config
+apriori/specs/init/spec.md:40:#### Scenario: IN-10 the multi-select is arrow-key driven (no numbered input)
+apriori/specs/init/spec.md:44:#### Scenario: IN-11 a gitignored scratch dir for ephemeral instruments
+apriori/specs/init/spec.md:48:#### Scenario: IN-12 --test-cmd is persisted, not parsed-and-dropped
+apriori/specs/update/spec.md:4:#### Scenario: UP-01 refreshes the runbook copy and existing command files
+apriori/specs/update/spec.md:8:#### Scenario: UP-02 user-owned files are never touched
+apriori/specs/update/spec.md:12:#### Scenario: UP-03 uninitialized project errors
+apriori/specs/update/spec.md:16:#### Scenario: UP-04 --dry-run previews without writing
+apriori/specs/update/spec.md:20:#### Scenario: UP-05 protocol-required scaffolding is re-established
+apriori/changes/update-manifest/specs/update/spec.md:9:#### Scenario: UP-06 a foreign file at a tool path survives update
+apriori/changes/update-manifest/specs/update/spec.md:13:#### Scenario: UP-07 an unmodified managed file refreshes and re-hashes
+apriori/changes/update-manifest/specs/update/spec.md:17:#### Scenario: UP-08 a locally modified managed file is protected
+apriori/changes/update-manifest/specs/update/spec.md:21:#### Scenario: UP-09 pre-manifest projects are adopted only on proof
+apriori/changes/update-manifest/specs/update/spec.md:25:#### Scenario: UP-10 manifest hygiene fails closed
+apriori/changes/update-manifest/specs/update/spec.md:29:#### Scenario: UP-11 the shipped-generation list stays honest
+apriori/changes/update-manifest/specs/init/spec.md:9:#### Scenario: IN-13 fresh init writes the manifest for exactly what it created
+apriori/changes/update-manifest/specs/init/spec.md:13:#### Scenario: IN-14 add-tool init merges without adopting bystanders
+apriori/changes/update-manifest/specs/init/spec.md:17:#### Scenario: IN-15 the delete-and-reinit cure closes cleanly
+apriori/changes/update-manifest/specs/init/spec.md:21:#### Scenario: IN-16 init dry-run leaves the manifest alone
+apriori/changes/update-manifest/specs/init/spec.md:25:#### Scenario: IN-17 a hygiene-invalid manifest blocks init
+
+codex
+The stamps and ranges are clean. I found one design-level gap: `readManifest` validates path keys syntactically, but the requirement also says symlink escapes in manifest targets are hygiene errors; the design only mentions containment on write, leaving read/hash paths exposed.
+codex
+**Coverage Map**
+
+- F1: covered by UP-06.
+- F2: covered by UP-07.
+- F3: covered by UP-08.
+- F4: covered by UP-09.
+- F5: covered by IN-13 and IN-14.
+- F6: covered by UP-08 and UP-09.
+- F7: covered by the update requirement prose and UP-06/UP-08/UP-09 skip cases.
+- F8: covered by UP-10 and IN-17.
+- F9: covered by IN-15.
+- F10: covered by IN-16.
+- F11: covered by UP-11.
+- F12: covered by tasks T4.
+
+Scenario ranges are clean: existing update scenarios end at UP-05 and new ones are UP-06..11; existing init scenarios end at IN-12 and new ones are IN-13..17. CAS stamps match the current store files. Tasks reference the correct ranges.
+
+**Issues**
+
+**UMSPEC-1 — Containment is only specified before writes, not before managed reads/hashes**
+
+Description: The requirement says symlink escape targets are hygiene errors, and update must refresh only safe in-project targets. The design says realpath containment is checked “on write,” but managed semantics require reading/hashing existing manifest-listed files before deciding whether to write, skip as modified, or report up-to-date. A manifest-listed path can be syntactically allowed, e.g. `.claude/commands/apriori.md`, while the actual file is a symlink escaping the project.
+
+Risk: `update` may read/hash outside-project content before the containment guard runs, and may classify it as modified/up-to-date instead of hygiene-invalid. That weakens the security boundary and violates the fail-closed manifest hygiene rule.
+
+Suggestion: Specify containment before any read or write of a manifest-listed target or candidate refresh target. For existing files, follow symlinks and require the resolved file to be inside the project root before hashing. For not-yet-existing files created by init/update, validate the nearest existing parent with the existing `containsReal` behavior before writing.
+
+**Advisories**
+
+- The design says “manifest written once at the end iff any adoption/refresh happened.” In the pre-manifest path, runbook adoption should count as adoption even when the runbook is already byte-identical and reports `up-to-date`, so the first update still writes `managed.json`.
+- `writeManifest` should ensure `apriori/` exists before writing, although current init/update preconditions normally make that true.
+- The T1 audit instruction for existing UP/IN tests is sufficient; keep it explicit because UP-01’s old “existing command files refresh” fixture will now need a manifest or a pre-manifest known-generation setup.
+
+**Ledger Delta**
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| UMSPEC-1 | Design only requires realpath containment before writes, not before reads/hashes of manifest-listed or candidate targets. | Symlinked allowed paths can cause update to read/hash outside-project content and avoid the required hygiene error. | STEP2·r1 | open |
+| UMSPEC-ADV-1 | Pre-manifest runbook adoption must count as a manifest-write trigger even when byte-identical; minor writeManifest/test-audit notes. | Advisory implementation precision. | STEP2·r1 | open |
+
+VERDICT: 1 issues open
+tokens used
+2,460,219
+**Coverage Map**
+
+- F1: covered by UP-06.
+- F2: covered by UP-07.
+- F3: covered by UP-08.
+- F4: covered by UP-09.
+- F5: covered by IN-13 and IN-14.
+- F6: covered by UP-08 and UP-09.
+- F7: covered by the update requirement prose and UP-06/UP-08/UP-09 skip cases.
+- F8: covered by UP-10 and IN-17.
+- F9: covered by IN-15.
+- F10: covered by IN-16.
+- F11: covered by UP-11.
+- F12: covered by tasks T4.
+
+Scenario ranges are clean: existing update scenarios end at UP-05 and new ones are UP-06..11; existing init scenarios end at IN-12 and new ones are IN-13..17. CAS stamps match the current store files. Tasks reference the correct ranges.
+
+**Issues**
+
+**UMSPEC-1 — Containment is only specified before writes, not before managed reads/hashes**
+
+Description: The requirement says symlink escape targets are hygiene errors, and update must refresh only safe in-project targets. The design says realpath containment is checked “on write,” but managed semantics require reading/hashing existing manifest-listed files before deciding whether to write, skip as modified, or report up-to-date. A manifest-listed path can be syntactically allowed, e.g. `.claude/commands/apriori.md`, while the actual file is a symlink escaping the project.
+
+Risk: `update` may read/hash outside-project content before the containment guard runs, and may classify it as modified/up-to-date instead of hygiene-invalid. That weakens the security boundary and violates the fail-closed manifest hygiene rule.
+
+Suggestion: Specify containment before any read or write of a manifest-listed target or candidate refresh target. For existing files, follow symlinks and require the resolved file to be inside the project root before hashing. For not-yet-existing files created by init/update, validate the nearest existing parent with the existing `containsReal` behavior before writing.
+
+**Advisories**
+
+- The design says “manifest written once at the end iff any adoption/refresh happened.” In the pre-manifest path, runbook adoption should count as adoption even when the runbook is already byte-identical and reports `up-to-date`, so the first update still writes `managed.json`.
+- `writeManifest` should ensure `apriori/` exists before writing, although current init/update preconditions normally make that true.
+- The T1 audit instruction for existing UP/IN tests is sufficient; keep it explicit because UP-01’s old “existing command files refresh” fixture will now need a manifest or a pre-manifest known-generation setup.
+
+**Ledger Delta**
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| UMSPEC-1 | Design only requires realpath containment before writes, not before reads/hashes of manifest-listed or candidate targets. | Symlinked allowed paths can cause update to read/hash outside-project content and avoid the required hygiene error. | STEP2·r1 | open |
+| UMSPEC-ADV-1 | Pre-manifest runbook adoption must count as a manifest-write trigger even when byte-identical; minor writeManifest/test-audit notes. | Advisory implementation precision. | STEP2·r1 | open |
+
+VERDICT: 1 issues open

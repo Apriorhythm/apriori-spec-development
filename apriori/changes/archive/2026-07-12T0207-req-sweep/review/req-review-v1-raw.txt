@@ -1,0 +1,742 @@
+OpenAI Codex v0.144.1
+--------
+workdir: /mnt/d/Workbench/misc/apriori-spec-development
+model: gpt-5.5
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 019f4b30-68f9-7222-9b64-17f52a333b4c
+--------
+user
+New change, P1 requirement review round 1: change "req-sweep" (owner verdict: the STEP6 preservation step must be command-executed, not executor discipline — 3.4.1's clause becomes archive behavior). Read requirement/req-sweep-req-v1.md from disk.
+
+Context you can verify: lib/archive-merge.js archiveChange phase 4 (move, changesDirExplicit-gated, ops seam for DI); the 3.4.1 runbook STEP6 preservation clause (both editions) currently instructs the EXECUTOR to copy requirement/<change>-req-*.md into the archived dir; PR-19 anchors the clause's destination + timing; requirement files live at <cwd>/requirement/ by the artifact-root convention (the CLI has never parsed artifact-root).
+
+Review as a contract: holes in M1-M6, the DD tradeoffs (DD-1 move-vs-copy — git-status implications for the closeout commit, what if requirement/ is untracked in some repos like this one?; DD-2 sweep-failure-never-fails — is exit 0 with a leftover really right, or should it be a distinct nonzero that still confirms the durable parts?; DD-3 the fixed-suffix matcher — enumerate the exact three patterns and check the a/a-b trap claim). Also: containment (should swept destinations pass containsReal like every other archive path?), the intent-card-on-explore-track case (intent card may be the ONLY req file), interaction with the rerun-repair path (a rerun whose dir already moved — does the sweep re-run harmlessly?), Windows path handling, and whether the runbook rewrite keeps PR-19 satisfiable without weakening it. Rows RS-N. Print the COMPLETE review document body (landed verbatim at apriori/review/req-sweep-req-review-v1.md) with a ledger section, ending with exactly one verdict line: 'VERDICT: no major issues, ready to proceed' or 'VERDICT: <N> issues open'.
+warning: Codex could not find bubblewrap on PATH. Install bubblewrap with your OS package manager. See the sandbox prerequisites: https://developers.openai.com/codex/concepts/sandboxing#prerequisites. Codex will use the bundled bubblewrap in the meantime.
+2026-07-11T17:48:09.982021Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T17:48:10.114273Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+2026-07-11T17:48:10.445996Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 2/5
+2026-07-11T17:48:10.969477Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 3/5
+2026-07-11T17:48:11.881967Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 4/5
+2026-07-11T17:48:13.689945Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+ERROR: Reconnecting... 5/5
+2026-07-11T17:48:17.149366Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: HTTP error: 404 Not Found, url: wss://www.komiai.cn/api/codex/v1/responses
+warning: Falling back from WebSockets to HTTPS transport. unexpected status 404 Not Found: {"code":404000,"message":"Not Found"}, url: wss://www.komiai.cn/api/codex/v1/responses, request id: L9qgSLlDsD2z
+codex
+I’ll read the new requirement plus the archive/runbook context, then check the exact filename and move semantics against the current implementation before writing the review body.
+exec
+/usr/bin/zsh -lc 'rg -n "PR-19|requirement-stage paths|STEP6 clause|<change>-req|intent-card" test/protocol.test.js apriori/changes/req-prefix/specs/protocol/spec.md apriori/changes/req-prefix/design.md' in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "rg -n \"function archiveChange|async function archiveChange|archiveChange|phase|changesDirExplicit|containsReal|ops\\.rename|ops\\.cp|copy|requirement\" lib/archive-merge.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "rg -n \"STEP6|requirement/<change>|req-\\*|intent-card|archive\" RUNBOOK.md RUNBOOK_cn.md" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '1,260p' requirement/req-sweep-req-v1.md" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 136ms:
+RUNBOOK_cn.md:28:`apriori/process-config.md` **人类持有;agent 视其为只读**(R3)。缺失时,§4 打印的默认值生效。三个确定性闸口以 CLI 命令运行:`apriori verify`(STEP5)、`apriori archive`(STEP6)、`apriori check`(CI)——均为零依赖 Node,详见 §4/§6。
+RUNBOOK_cn.md:54:- **续跑最小集**(本清单为单源——§0 会话启动规则引用它):§1 铁律;§3 状态文件规则;§5 的 P0 台账规则;flow-state 指向的当前步骤提示词;以及该步骤在 §4 的状态机条目(含其退出条件;STEP6 时含归档算法)。
+RUNBOOK_cn.md:61:**R1 —— 每个人工闸口必停。** 闸口清单:① STEP0 触顶时的定稿裁决 ② gap 报告过目(仅大型)③ STEP3 技术评审 ④ STEP6 知识库 diff 批准 ⑤ 任何触顶或振荡(台账 ID 被重开)。探索轨(§4)另有三个具备闸口地位的**命名决策点**:`intent-card sign-off`(意图卡签核)、`extraction review`(提取评审)、`STEP2 full review`(汇入后全量评审)。到达闸口:更新状态文件,汇报——当前步骤、评审方结论行**原文**、台账中 open/rejected 项、需要人做的决定——然后停下。绝不替人批准闸口;"人还没回复"绝不等于批准。
+RUNBOOK_cn.md:63:**闸口整合(显式授权)。** 默认逐闸必停。人可以显式把中间闸口整合到某个靠后的闸口(如"一路跑到终审");该决定必须记入 `gates:`(范围+撤销方式),且随时可撤销。三个闸口**永远不可**被此类授权覆盖:**收缩决策**(§6)、**知识库签核**(闸口④)、**意图卡签核**(`intent-card sign-off`)。整合只覆盖闸口——外部副作用(见下方 §1 硬规则)永远不在整合的一揽子授权之内。
+RUNBOOK_cn.md:93:| **小型** | bugfix / 单文件;无新的用户可见行为;不动共享状态 | 轻量 explore(只对齐事实)→ STEP5 带测试 + 一轮一致性评审 → 有事实变化则 STEP6 回写 |
+RUNBOOK_cn.md:94:| **中型** | 单模块;有新的用户可见行为 | STEP0(1–2 轮)→ STEP1 → STEP2(1–2 轮)→ STEP5 → STEP6;STEP3 缩为异步设计过目 |
+RUNBOOK_cn.md:95:| **大型** | 跨模块 / 外部共享状态 / 数据迁移 / 新子系统 | 完整 STEP0–STEP6,所有闸口都过 |
+RUNBOOK_cn.md:124:current-step: STEP0 | STEP1 | STEP2 | STEP3 | STEP4 | STEP5 | STEP6 |
+RUNBOOK_cn.md:145:                        # intent-card sign-off | extraction review |
+RUNBOOK_cn.md:162:| 需求文档 | `requirement/<change>-req-v{N}.md` → 定稿 `requirement/<change>-req-final.md` |
+RUNBOOK_cn.md:172:| 意图卡(探索轨) | `requirement/<change>-intent-card.md` |
+RUNBOOK_cn.md:174:| 原型(探索轨) | `spike/`——archive 时删除或隔离;tasks.md 绝不引用 |
+RUNBOOK_cn.md:181:- **archive 算法:**`apriori archive` 按稳定 Requirement ID 把变更的增量规格并入规格库——`## ADDED` → 追加;`## MODIFIED` → 整块替换;`## REMOVED` → 规格库保留原块并标 `deprecated (superseded by <change>)`(弃用块内的 scenario 不再被 `verify` 要求;残留的测试转为 ORPHAN);`## RENAMED`(`- Old -> New`)→ 就地把块的 ID 改名、内容保留。与分叉后已合并的并行变更发生同 ID 冲突 → **停止、开台账、人工裁决**(§4.11 按模块串行)。高层形式 **`apriori archive --change <name>`** 自动发现 `apriori/changes/<name>/specs/` 下的全部增量文件,按路径后缀映射到 `apriori/specs/<同后缀>`,默认整组 dry-run,`--write` 时按"预检 → 暂存 → 提交 → 移动"四阶段失败原子地提交(提交点之前任何失败都不落一个字节);单文件形式(`--store <f> --delta <f>`)保留用于单模块手术。两种形式都列出每条 merged / modified / deprecated / renamed 的 Requirement,并在 `--write` **且带 `--changes-dir apriori/changes`** 时把在途变更目录挪到 `apriori/changes/archive/<YYYY-MM-DDThhmm>-<name>/`(日期时间由 CLI 盖;不带该 flag 只写规格库)。注意时序:移动发生在 gate④ 之前,该闸口悬决期间 flow-state 位于——且更新于——它的**归档**路径;STEP6 移动之后,续跑会话要去 `archive/` 下找它。
+RUNBOOK_cn.md:183:- **CAS 基线章(串行规则的工具化):**写增量规格时,先跑 `apriori stamp apriori/specs/<module>/spec.md`,把打印出的 `<!-- apriori-base: … -->` 行贴在增量文件顶部(第一个 `## … Requirements` 小节之前;规格库文件尚不存在时用 `new`)。此后 `verify --change` 和 `archive` 都会在规格库自增量作成以来已发生变化时拒绝执行——§4.11 的串行规则由此机械化。强制是分级的:不盖章的**变更类**增量(MODIFIED/REMOVED/RENAMED)仍会合并,但在所有表面都告警,且 gate C7 默认拒绝(`--no-cas` 或配置行 `| cas | optional |` 可见地豁免)——4.0 起基线章为强制;已完全落地的盖章增量可以干净重跑(不匹配降级为 rerun-accepted 提示)。
+RUNBOOK_cn.md:199:- **输入:**`requirement/<change>-req-v{N}.md`;知识库(如有)。需求必须声明**目标谱系**(主线/哪条分支线)——多谱系仓库中谱系缺失是第四个访谈触发条件。若需求缺"目标 / 范围外 / 可测验收"三要素之一——**先结构化提问采访人**,再出 <change>-req-v1。
+RUNBOOK_cn.md:201:- **退出:**结论行 = `VERDICT: no major issues`(无重大问题)→ 复制为 `requirement/<change>-req-final.md`,前进。触顶 → **闸口 ①**。发现目标根本说不清 → 提议 harden→explore(经人工闸口确认后切轨)。
+RUNBOOK_cn.md:205:0. **意图卡先行(不可豁免):**≤15 行,路径 `requirement/<change>-intent-card.md`——目标假设 / 成功判据 / spike 要回答的问题。须经**人签核**(`intent-card sign-off`;异构评审可作为签核前的参考,但不能替代)。在这条轨上,意图卡是独立评审基准——提取出的规格绝不只对照原型自证。
+RUNBOOK_cn.md:207:2. **P11 —— 规格提取:**输入=意图卡+原型+spike 结论;输出=spec 草案,置于 `apriori/changes/<change>/specs/`,是意图侧的**唯一权威**;另加 `requirement/<change>-req-final.md` 薄索引(§5 P11——绝不另写第二份验收叙述)。显式声明的提取时决策(`EXT-n`)在 `extraction review` 决策点终裁。
+RUNBOOK_cn.md:210:5. **原型是一次性的,且机器可查:**STEP5 从失败测试重建;tasks.md 不得引用 `spike/`;`spike/` 在 archive 时删除(或隔离归档)。
+RUNBOOK_cn.md:212:7. **harden 变更的弃案(人改主意了,任何步骤都可以):**ABANDONED 在 harden 轨同样是合法出口——但只凭人的一句话(这是人的独享决定;agent 绝不许把它当作躲避评审不过关的出路来提议):台账落一行 `abandoned —— <人的原话理由>`,变更目录移入 `apriori/changes/archive/<戳>-<名>/`(flow-state 置 `current-step: ABANDONED`),KB 与规格库一概不写,变更已动过的代码听人的指挥处置(回滚/留分支——要问,不许自作主张)。需求文档和台账保留:弃案是一个被记录的决定,不是被抹掉的决定。
+RUNBOOK_cn.md:246:- **spec-runner 闸口(`apriori verify`)。** 变更进行中,闸口用**投影**形式:`apriori verify --change <name> --test-cmd "<你的测试命令>"` 把变更的增量规格在内存中套到规格库上(跑的正是 archive 将来要跑的同一个 `merge()`——MODIFIED 整块替换、REMOVED 不再要求、RENAMED 按改名后的图景要求),再对这个候选规格库做绑定;只扫原始规格库会看不见新 scenario,库+变更两个目录一起扫则会把 MODIFIED 算重。归档之后(或纯库检查)用普通形式 `apriori verify --specs apriori/specs --test-cmd "…"` 按库现状绑定。两种形式都报告 BOUND-GREEN / BOUND-RED / UNBOUND(scenario 无测试)/ ORPHAN(测试无 scenario)/ UNIDENTIFIED(scenario 无 ID)。GREEN(exit 0)= 每条 scenario 有绿测试且无孤儿;exit 1 = 有缺口,exit 2 = 这次运行本身不可信(spec 路径缺失、零场景、非 TAP 输出、测试命令崩溃/中止、全绿 TAP 背后藏着非零退出码——`--change` 下还包括:合并冲突、基线章不匹配、增量文件格式坏)——**fail-closed:坏掉或空洞的运行绝不算 GREEN**。这就是过去 P8 的机械覆盖检查,现在确定性化了。
+RUNBOOK_cn.md:251:### STEP6 —— 归档 + 知识库回写
+RUNBOOK_cn.md:254:- **动作:**执行 **archive 接口动作**,用 **P9**——按上文接口的 archive 算法合并;更新 `apriori/truth/<module>.md`(契约节按最终实现更新+刷新 `source-commit`;决策节追加本次变更的新决策/不变式);列出改了哪些文件/段落。探索轨变更:在此删除或隔离 `spike/`。 **保全需求史:**归档移动(`--changes-dir`)之后、STEP6 收尾提交之前,把每一份 `requirement/<change>-req-*.md` 和 `requirement/<change>-intent-card.md`(如有)拷入 `apriori/changes/archive/<stamp>-<change>/requirement/`——保留原文件名、全部版本都带上;需求史随变更同行。
+RUNBOOK_cn.md:255:- **退出:**增量规格已合并 + 知识库已更新 + 归档后再跑一次 `apriori gate --change <name>`(此时解析到 archived 归档态——C4 要求台账每行都是终态),其结果放进**闸口 ④**的材料包 → 人批准知识库 diff(同仓库布局下就是 PR 评审)。然后置 `current-step: DONE`。
+RUNBOOK_cn.md:297:* 需求文档: requirement/<change>-req-v{N}.md
+RUNBOOK_cn.md:317:按 apriori/review/<change>-req-review-v{N}.md 修订需求文档,输出 requirement/<change>-req-v{N+1}.md。
+RUNBOOK_cn.md:327:* 需求文档: requirement/<change>-req-final.md
+RUNBOOK_cn.md:356:* 知识库: apriori/truth/   * 需求文档: requirement/<change>-req-final.md   * 台账: apriori/review/<change>-issues.md
+RUNBOOK_cn.md:398:跑测试到全绿;停下等待 archive。
+RUNBOOK_cn.md:418:### P9 —— STEP6 archive(生产方)
+RUNBOOK_cn.md:421:按接口的 archive 算法(§4)归档本次变更——列出每条 merged/modified/deprecated/renamed 的 ID;同 ID 冲突即停并开台账。然后同步更新知识库。知识库文档有两个真相方向相反的小节:
+RUNBOOK_cn.md:445:【输入】requirement/<change>-intent-card.md;spike/ 下的原型;spike 结论。
+RUNBOOK_cn.md:448:* requirement/<change>-req-final.md——仅为薄索引:一句目标引意图卡 + 验收=对 spec 场景 ID 清单的引用。绝不在此另写第二份验收叙述——同一意图的两份行文必然互漂。
+RUNBOOK_cn.md:456:【输入】requirement/<change>-intent-card.md;P11 的产出;问题台账。
+RUNBOOK_cn.md:496:/goal "目标:requirement/<change>-req-final.md 存在,且最新一轮评审报告 'VERDICT: no major issues'。上限:step0-cap 轮(默认 5)。
+RUNBOOK_cn.md:498:1. 若 apriori/review/<change>-req-review-v{N}.md 存在,据其修订 requirement/<change>-req-v{N}.md,升到 v{N+1},逐条注明 采纳/拒绝+理由,并同步更新 apriori/review/<change>-issues.md 里对应问题的状态。
+RUNBOOK_cn.md:500:   codex exec -s read-only \"<P1 提示词> —— 目标:requirement/<change>-req-v{N}.md\"
+RUNBOOK_cn.md:503:当结论行为 'VERDICT: no major issues' 时停(并复制为 requirement/<change>-req-final.md),或触顶停。"
+RUNBOOK_cn.md:524:**STEP6:**
+RUNBOOK_cn.md:526:/goal "目标:本次变更已归档(`apriori archive` 把增量规格合并进 living 规格库 apriori/specs/),且模块 <module> 的知识库文件已反映本次新增/变更的事实、并刷新了 source-commit 标记。上限:step6-cap 轮(默认 4)。
+RUNBOOK_cn.md:527:执行 archive 接口动作,然后更新 apriori/truth/<module>.md,并列出究竟改了哪些文件/段落。
+RUNBOOK_cn.md:531:**闸口清单(由你亲自决定的事):**① STEP0 触顶时的定稿裁决 ② gap 报告过目(大型)③ STEP3 技术评审 ④ 知识库 diff 批准 ⑤ 任何触顶 / 台账 ID 重开——升级处理,绝不悄悄放低标准。探索轨另加:`intent-card sign-off` 与 `extraction review` 的结论裁决。闸口整合(§1)由你授予——但永远不覆盖收缩决策、知识库签核、意图卡签核。
+RUNBOOK.md:28:`apriori/process-config.md` is **human-held; the agent treats it as read-only** (R3). Without it, the defaults printed in §4 apply. The three deterministic gates run as CLI commands: `apriori verify` (STEP5), `apriori archive` (STEP6), `apriori check` (CI) — all zero-dependency Node, detailed in §4/§6.
+RUNBOOK.md:54:- **Resume minimal set** (the single source of this list — §0's session-start rule references it): §1 hard rules; §3 state-file rules; §5's P0 ledger rules; the prompt(s) of the step `flow-state` points at; and that step's §4 state-machine entry (including its exit conditions; for STEP6, the archive algorithm).
+RUNBOOK.md:61:**R1 — Stop at every human gate.** The gates are: ① STEP0 verdict at round cap ② gap-report sign-off (Large tier only) ③ STEP3 technical review ④ STEP6 KB-diff approval ⑤ any cap hit or oscillation (a reopened ledger ID). The explore track (§4) adds three **named decision points** with gate status: `intent-card sign-off`, `extraction review`, `STEP2 full review`. At a gate: update the state file, report — current step, reviewer verdict lines **verbatim**, open/rejected ledger items, the decision you need — then stop. Never approve a gate yourself; never treat "the human hasn't answered" as approval.
+RUNBOOK.md:63:**Gate consolidation (explicit authorization).** The default is stop-at-every-gate. A human may explicitly consolidate intermediate gates into a later one (e.g. "run to the final merge review"); the decision must be recorded in `gates:` (scope + how to revoke) and is revocable at any time. Three gates can NEVER be covered by such an authorization: the **shrink decision** (§6), the **KB sign-off** (gate ④), and **`intent-card sign-off`**. Consolidation covers gates only — external side effects (§1 hard rule below) are never inside a consolidation blanket.
+RUNBOOK.md:72:2. **Scoped standing authorization.** The human may authorize a NAMED action class for a NAMED scope with a NAMED expiry boundary (e.g. "push after each change of this batch" — expires when the batch's last change archives). The record carries all three: class, scope, and expiry. An ambiguous, expired, or out-of-scope invocation of a standing grant is invalid — fresh authorization required; silence, precedent, or a generic "continue" never extends a grant to a new class, scope, or period.
+RUNBOOK.md:76:**R2 — Reviews must be genuinely external.** The producing session never issues a review verdict. Spawn a heterogeneous reviewer: `codex exec -s read-only "<prompt>"` (rounds 2+: `codex exec resume -c sandbox_mode="read-only" <session-id> "..."` — codex CLIs ≥0.14x reject `-s` on `resume`; on older versions use `-s read-only` before the session id), or — without Codex — a **fresh** `claude` session on a different tier, fed the artifacts plus the issue ledger (P0). Paste the reviewer's verdict line back verbatim. Reviewers usually run in read-only sandboxes and cannot write the ledger: the reviewer ends its output with a **ledger delta** (new rows + status flips), and the producer lands it verbatim, marked "recorded on behalf of the reviewer"; the reviewer's raw output is archived in full at `apriori/review/<change>-<stage>-raw.*` so the recorded delta can always be diffed against its source; when landing a raw, prepend the one-line provenance header `<!-- provenance: provider=<name> model=<id> session=<id> date=<YYYY-MM-DD> -->` (unknown fields written `unknown`; older raws are grandfathered). The same transcription mechanism covers the **review doc itself**: a read-only reviewer prints the doc body to stdout, and the producer lands it verbatim at its fixed path — that is the intended flow, not a workaround. When invoking codex non-interactively (background/scripted), close stdin — append `< /dev/null` (PowerShell has no /dev/null: pipe instead, `$null | codex exec …`) — or it prints "Reading additional input from stdin..." and hangs. If the reviewer dies before its verdict line lands (network/provider failure mid-review), **resume the same session** and have it finish — never fill in the verdict yourself. For this to survive a *producer*-side interruption too, record the reviewer's session id in flow-state's `reviewer-session` field the moment round 1 prints it — otherwise a resume after a crash has no session to reattach to. A read-only reviewer's **dynamic observations are untrustworthy** — test runs, builds, anything needing writes can degrade inside its sandbox and produce phantom findings; only its static reads count, and the producer rejects sandbox-artifact findings with evidence from the real environment. If you cannot actually spawn a reviewer, stop and say so — **do not simulate one**.
+RUNBOOK.md:80:**Enforcement layers** (examples, not exhaustive; the deterministic items below are *available to configure*, not active by default in this repo). Advisory text gets ignored under pressure — classify each rule by how it can be enforced: ① **deterministically enforceable now** — `process-config.md` read-only (a hook blocking agent writes), `apriori check` as a required pre-commit/CI check, `apriori verify` as the STEP5 binding gate, and the **verdict-evidence check**: every verdict line must have a matching raw archive file (naming rule: a review doc with stem `S` archives its raw as `apriori/review/S-raw.*`) — a mechanical backstop against simulated reviews, implemented by **`apriori gate --change <name>`**, which aggregates it with verify/tasks/flow-state/ledger/KB-freshness into one exit code (its PASS covers the mechanical face only — human gates remain human); ② **gate-level** — Stop hooks and `/goal` conditions; ③ **inherently advisory** — a reviewer's independent judgment quality, semantic adherence to the P prompts. Reference implementation is Claude Code hooks; any CI can enforce the same checks. Example (a PreToolUse hook blocking config writes — illustrative sketch; exact schema in the Claude Code hooks docs):
+RUNBOOK.md:93:| **Trivial** | Bugfix / single file; no new user-visible behavior; no shared-state change | Light explore (facts only) → STEP5 with tests + one consistency review → STEP6 writeback if any KB fact changed |
+RUNBOOK.md:94:| **Medium** | One module; new user-visible behavior | STEP0 (1–2 rounds) → STEP1 → STEP2 (1–2 rounds) → STEP5 → STEP6; STEP3 shrinks to an async design look-over |
+RUNBOOK.md:95:| **Large** | Cross-module / external shared state / data migration / new subsystem | Full STEP0–STEP6, every gate included |
+RUNBOOK.md:124:current-step: STEP0 | STEP1 | STEP2 | STEP3 | STEP4 | STEP5 | STEP6 |
+RUNBOOK.md:148:                        # intent-card sign-off | extraction review |
+RUNBOOK.md:166:| Requirement doc | `requirement/<change>-req-v{N}.md` → finalized `requirement/<change>-req-final.md` |
+RUNBOOK.md:176:| Intent card (explore track) | `requirement/<change>-intent-card.md` |
+RUNBOOK.md:178:| Prototype (explore track) | `spike/` — deleted or quarantined at archive; never referenced by tasks.md |
+RUNBOOK.md:185:- **Archive algorithm:** `apriori archive` merges a change's delta specs into the store by stable Requirement ID — `## ADDED` → append; `## MODIFIED` → replace the whole block; `## REMOVED` → keep the store block, marked `deprecated (superseded by <change>)` (scenarios inside deprecated blocks stop being demanded by `verify`; their lingering tests turn ORPHAN); `## RENAMED` (`- Old -> New`) → rename the block's ID in place, content preserved. A same-ID conflict with a change merged since branching → **stop, open a ledger issue, a human resolves** (§4.11's serialize-per-module rule). The high-level form **`apriori archive --change <name>`** discovers every delta under `apriori/changes/<name>/specs/`, maps each to `apriori/specs/<same suffix>`, dry-runs the whole set by default, and on `--write` commits failure-atomically (preflight → stage → commit → move: any failure before commit means nothing is written); the single-file form (`--store <f> --delta <f>`) remains for one-module surgery. Either form lists every merged / modified / deprecated / renamed requirement and, on `--write` **with `--changes-dir apriori/changes`**, moves the in-flight change dir to `apriori/changes/archive/<YYYY-MM-DDThhmm>-<name>/` (date-time stamped by the CLI; without the flag only the store is written). Note the sequencing: the move happens before gate④, so while that gate is pending the flow-state lives — and is updated — at its **archived** path; a resumed session must look under `archive/` once STEP6's move has happened.
+RUNBOOK.md:186:- **Review evidence retention:** raws under archived changes are AUDIT EVIDENCE — kept with the archive, never pruned; `apriori/tmp/` remains the only ephemeral space. Secrets must never enter a raw: sanitize BEFORE landing (git history keeps whatever was ever committed) — `apriori check`'s CK-10 tripwire backs this mechanically.
+RUNBOOK.md:187:- **CAS base stamps (serialize-rule tooling):** when authoring a delta, run `apriori stamp apriori/specs/<module>/spec.md` and paste the printed `<!-- apriori-base: … -->` line at the top of the delta file (before the first `## … Requirements` section; `new` for a not-yet-existing store). Both `verify --change` and `archive` then refuse if the store has diverged since the delta was authored — §4.11's serialize rule made mechanical. Enforcement is graded: unstamped MUTATION deltas (MODIFIED/REMOVED/RENAMED) still merge but WARN on every surface and gate C7 denies them by default (`--no-cas` or a `| cas | optional |` config row waives it, visibly) — stamps become mandatory in 4.0; a stamped delta already fully applied re-runs cleanly (the mismatch downgrades to a rerun-accepted note).
+RUNBOOK.md:203:- **In:** `requirement/<change>-req-v{N}.md`; KB if any. The requirement must state its **target lineage** (mainline / which branch line) — in multi-lineage repos a missing lineage is a fourth interview trigger. If the requirement lacks any of the three essentials — goal / out-of-scope / testable acceptance — **interview the human first** with structured questions, then draft <change>-req-v1.
+RUNBOOK.md:205:- **Exit:** verdict line = `VERDICT: no major issues` → copy to `requirement/<change>-req-final.md`, advance. Cap hit → **gate ①**. Goal turns out unstateable → propose harden→explore (a human gate confirms the switch).
+RUNBOOK.md:209:0. **Intent card first (non-waivable):** ≤15 lines at `requirement/<change>-intent-card.md` — goal hypothesis / success criteria / the questions the spike must answer. Requires **human sign-off** (`intent-card sign-off`; a heterogeneous review may inform it, but cannot replace it). On this track the intent card is the independent review baseline — the extracted spec is never judged against the prototype alone.
+RUNBOOK.md:210:1. **Spike (bounded):** prototype freely under `spike/`; cap: `spike-cap` (default 10) turns; exit = every intent-card question answered. Cap hit → **gate ⑤**.
+RUNBOOK.md:211:2. **P11 — spec extraction:** inputs = intent card + prototype + spike findings; outputs = spec drafts under `apriori/changes/<change>/specs/` as the **sole intent-side authority**, plus `requirement/<change>-req-final.md` as a thin index over them (§5 P11 — never a second acceptance narrative). Declared extraction-time decisions (`EXT-n`) get their final ruling at the `extraction review` decision point.
+RUNBOOK.md:212:3. **P12 — extraction review (heterogeneous, R2):** cap: `extraction-review-cap` (default 2). Verdict line `VERDICT: extraction accepted` → step 4. `VERDICT: extraction rejected` + unfaithful extraction → redo P11; `VERDICT: extraction rejected` + intent hypothesis falsified → back to SPIKE, or `ABANDONED` (archive the intent card + findings; log in the ledger).
+RUNBOOK.md:214:5. **The prototype is disposable, machine-checkably:** STEP5 rebuilds from failing tests; tasks.md must not reference `spike/`; `spike/` is deleted (or quarantined) at archive.
+RUNBOOK.md:216:7. **Abandoning a harden change (the human changes their mind, any step):** ABANDONED is a legal exit on the harden track too — on the human's word (their call alone; never proposed by the agent as a way out of failing reviews): land one ledger row `abandoned — <the human's reason, verbatim>`, move the change dir to `apriori/changes/archive/<stamp>-<name>/` (flow-state `current-step: ABANDONED`), write nothing to the KB or spec store, and leave any code the change already touched exactly where the human directs (revert / keep on a branch — ask, don't assume). The requirement docs and ledger are kept: an abandoned change is a recorded decision, not an erased one.
+RUNBOOK.md:250:- **The spec-runner gate (`apriori verify`).** Mid-change, the gate is the **projected** form: `apriori verify --change <name> --test-cmd "<your test command>"` applies the change's delta specs to the living store in memory (the same `merge()` archive will run — MODIFIED replaces, REMOVED stops demanding, RENAMED demands the post-rename picture) and binds scenarios against that candidate store; scanning the raw store misses new scenarios, and scanning store+change double-counts MODIFIED. Post-archive (or store-only checks), the plain form `apriori verify --specs apriori/specs --test-cmd "…"` binds against the store as-is. Both report BOUND-GREEN / BOUND-RED / UNBOUND (scenario with no test) / ORPHAN (test with no scenario) / UNIDENTIFIED (scenario with no ID). GREEN (exit 0) means every scenario has a passing test and there are no orphans; exit 1 = gaps, exit 2 = the run itself is untrustworthy (missing spec paths, zero scenarios, non-TAP output, test-command crash/abort, a non-zero exit hiding behind all-green TAP — or, with `--change`: merge conflicts, a diverged base stamp, malformed deltas) — **fail-closed: a broken or vacuous run is never GREEN**. This is what used to be P8's mechanical coverage check, now deterministic.
+RUNBOOK.md:255:### STEP6 — archive + KB writeback
+RUNBOOK.md:258:- **Do:** the **archive action** with **P9** — merge per the interface's archive algorithm above; update `apriori/truth/<module>.md` (Contract section from the final implementation + refreshed `source-commit`; Decisions section appends this change's new decisions/invariants); list exactly which files/sections changed. Explore-track changes: delete or quarantine `spike/` here. **Preserve the requirement history:** after the archive move (`--changes-dir`), and before the STEP6 closeout commit, copy every `requirement/<change>-req-*.md` and `requirement/<change>-intent-card.md` (if present) into `apriori/changes/archive/<stamp>-<change>/requirement/` — basenames preserved, all versions included; the requirement history travels with its change.
+RUNBOOK.md:259:- **Exit:** delta specs merged + KB updated + a post-archive `apriori gate --change <name>` run (it now resolves the archived stage — C4 demands every ledger row terminal) whose result goes into the **gate ④** packet → the human approves the KB diff (same-repo layout: that's just PR review). Then set `current-step: DONE`.
+RUNBOOK.md:293:- **Terminal set for archival**: `verified` · `rejected-verified` · `waived` · `advisory-acked`. The archived-stage gate blocks anything else — `fixed` is a claim awaiting verification, plain `rejected` awaits concurrence, and unknown statuses are illegal at every stage.
+RUNBOOK.md:301:* Requirement doc: requirement/<change>-req-v{N}.md
+RUNBOOK.md:321:Revise the requirement doc per apriori/review/<change>-req-review-v{N}.md and output requirement/<change>-req-v{N+1}.md.
+RUNBOOK.md:331:* Requirement doc: requirement/<change>-req-final.md
+RUNBOOK.md:360:* KB: apriori/truth/   * Requirement doc: requirement/<change>-req-final.md   * Ledger: apriori/review/<change>-issues.md
+RUNBOOK.md:404:Run the tests until green; stop and wait for archive.
+RUNBOOK.md:425:### P9 — STEP6 archive (producer)
+RUNBOOK.md:428:Archive this change per the interface's archive algorithm (§4) — list every merged/modified/deprecated/renamed ID; on a same-ID conflict, stop and open a ledger issue. Then update the knowledge base in lockstep. KB docs have two sections with opposite truth directions:
+RUNBOOK.md:453:[Input] requirement/<change>-intent-card.md; the prototype under spike/; the spike findings.
+RUNBOOK.md:456:* requirement/<change>-req-final.md — a THIN INDEX only: one goal line citing the intent card + acceptance = a reference to the spec scenario-ID list. Never write a second acceptance narrative there — two prose versions of the same intent drift apart.
+RUNBOOK.md:464:[Input] requirement/<change>-intent-card.md; P11's outputs; the issue ledger.
+RUNBOOK.md:508:/goal "Goal: requirement/<change>-req-final.md exists and the latest review pass reports 'VERDICT: no major issues'. Cap: step0-cap rounds (default 5).
+RUNBOOK.md:510:1. If apriori/review/<change>-req-review-v{N}.md exists, revise requirement/<change>-req-v{N}.md per it, bump to v{N+1}, note accept/reject+reason per issue, and update those issues' Status in apriori/review/<change>-issues.md.
+RUNBOOK.md:512:   codex exec -s read-only \"<the P1 prompt> — target: requirement/<change>-req-v{N}.md\"
+RUNBOOK.md:515:Stop when the verdict line is 'VERDICT: no major issues' (then copy to requirement/<change>-req-final.md) or at the cap."
+RUNBOOK.md:536:**STEP6:**
+RUNBOOK.md:538:/goal "Goal: the change is archived (`apriori archive` merges the delta specs into the living store apriori/specs/) AND the KB file for module <module> reflects this change's new/changed facts with a refreshed source-commit stamp. Cap: step6-cap turns (default 4).
+RUNBOOK.md:539:Run the archive action, then update apriori/truth/<module>.md and list exactly which files/sections changed.
+RUNBOOK.md:543:**Gate checklist (what you personally decide):** ① STEP0 finalization when the cap is hit ② gap-report skim (Large) ③ STEP3 technical review ④ KB-diff approval ⑤ any cap hit / reopened ledger ID — escalation, never quietly lowering the bar. Explore track adds: `intent-card sign-off` and the `extraction review` outcome. Gate consolidation (§1) is yours to grant — but never over the shrink decision, the KB sign-off, or `intent-card sign-off`.
+
+ exited 2 in 139ms:
+rg: apriori/changes/req-prefix/specs/protocol/spec.md: No such file or directory (os error 2)
+rg: apriori/changes/req-prefix/design.md: No such file or directory (os error 2)
+test/protocol.test.js:114:  assert.match(p13en, /`<change>-req-v1` starting\s*\nmaterial|`<change>-req-v1` starting material/);
+test/protocol.test.js:154:  assert.match(p13cn, /`<change>-req-v1` 起始材料/);
+test/protocol.test.js:170:  assert.match(en, /`<change>-req-v1` starting material/);
+test/protocol.test.js:180:  assert.match(cn, /`<change>-req-v1` 起始材料/);
+test/protocol.test.js:335:  assert.match(EN, /before STEP0 even drafts <change>-req-v1/);
+test/protocol.test.js:336:  assert.match(CN, /提前到 STEP0 起草 <change>-req-v1 之前/);
+test/protocol.test.js:465:test('PR-19 requirement-stage paths carry the change name in every live doc', () => {
+test/protocol.test.js:470:    for (const lit of ['requirement/req-v', 'requirement/req-final.md', 'requirement/intent-card.md'])
+test/protocol.test.js:474:    assert.match(doc, /requirement\/<change>-req-v\{N\}\.md/);
+test/protocol.test.js:475:    assert.match(doc, /requirement\/<change>-req-final\.md/);
+test/protocol.test.js:476:    assert.match(doc, /requirement\/<change>-intent-card\.md/);
+test/protocol.test.js:478:  assert.match(CONCEPTS, /requirement\/<change>-req-/);
+test/protocol.test.js:479:  assert.match(CONCEPTS_CN, /requirement\/<change>-req-/);
+test/protocol.test.js:483:    assert.ok(!doc.replaceAll('<change>-req-v', '').replaceAll('<name>-req-v', '').replaceAll('my-change-req-v', '').includes('req-v'),
+
+ succeeded in 138ms:
+19:// a whole deprecated block (heading line + body up to the next requirement)
+146:      if (state === 'FILE_PREAMBLE') { problems.push(`line ${n}: requirement block before any section heading`); continue; }
+149:        problems.push(`line ${n}: requirement block inside the RENAMED section`);
+158:        problems.push(`line ${n}: duplicate requirement '${blockName}' in the ${kind} section`);
+161:        problems.push(`line ${n}: duplicate requirement '${blockName}' appears in both ${seen.get(blockName)} and ${kind}`);
+166:    if (SCENARIO_LINE_RE.test(line)) { problems.push(`line ${n}: scenario outside any requirement block`); continue; }
+202:  // a corrupt store (same requirement name twice) must never be silently collapsed
+203:  for (const d of parsed.duplicates) conflicts.push(`duplicate requirement '${d}' in the store (corrupt store)`);
+265:function containsReal(root, target) {
+308:  if (!containsReal(changesDirAbs, changeDir)) return { files: [], errors: [`change path escapes ${changesDirAbs}: ${changeDir}`] };
+312:  if (fs.existsSync(specsDir) && !containsReal(changeDir, specsDir))
+318:    if (!containsReal(specsDir, abs)) { errors.push(`delta path escapes the change root: ${abs}`); continue; }
+336:    if (!containsReal(storeRoot, target)) { validation.push(`store target escapes ${storeRoot}: ${target}`); continue; }
+381:function archiveChangeDir(changesDir, name, now, ops) {
+382:  const rename = (ops && ops.renameSync) || fs.renameSync;
+386:  if (!containsReal(changesDir, src)) throw new Error(`change path escapes ${changesDir}`);
+388:  if (!containsReal(changesDir, dest)) throw new Error(`archive destination escapes ${changesDir} (symlinked archive/?)`);
+397:// High-level archive: the whole change, four phases (preflight → stage → commit → move).
+399:function archiveChange(o) {
+406:  // --- phase 1: preflight (no writes) ---
+437:    if (o.changesDirExplicit) {
+440:      if (!containsReal(changesDir, probe)) {
+451:  // --- phase 2: stage (this run's temps only — preflight proved none pre-existed) ---
+465:  // --- phase 3: commit (per-file atomic renames, sorted order; no rollback on mid-commit failure) ---
+468:    try { ops.renameSync(j.tmp, j.store); committed.push(j); }
+479:  // --- phase 4: move (only with explicit --changes-dir) ---
+481:  if (o.changesDirExplicit) {
+482:    try { moved = archiveChangeDir(changesDir, o.change, new Date(), ops); }
+514:      const r = archiveChange({ cwd: process.cwd(), change: a.change, write: a.write,
+515:        changesDir: a.changesDir || undefined, changesDirExplicit: !!a.changesDir });
+578:        try { moved = archiveChangeDir(a.changesDir, a.change, new Date()); }
+585:      console.log(`\nRESULT: MERGED (dry-run; ${store.size} requirements in result) — pass --write to apply`);
+591:  merge, renderStore, archiveStamp, archiveChangeDir, archiveChange, CHANGE_NAME_RE,
+592:  fingerprint, parseStamp, containsReal, discoverDeltas, buildProjection,
+
+ succeeded in 136ms:
+# Requirement — req-sweep (v1)
+
+change: req-sweep
+target lineage: **v3 branch**. Patch (3.4.2): `archive --change` itself sweeps the change's requirement-stage files into the archived dir — the STEP6 preservation clause stops being executor discipline and becomes command behavior. Additive only; no frozen surface moves.
+
+## Background — the problem (current state A)
+
+3.4.1's STEP6 preservation clause is protocol TEXT: the executor (the agent) must remember to copy `requirement/<change>-req-*.md` into the archived change dir before the closeout commit. Owner verdict (2026-07-12, verbatim): the whole flow must be AI- or command-executed — "归档这种事情,在 OpenSpec 里面都是 opsx:archive 执行的,我们总不能退回手工". A remember-to-do-it step is the weakest form even with an AI executor. The 3.4.1 prefix is exactly what makes automation safe: `requirement/<change>-*.md` is machine-attributable to its change with zero ambiguity (the pre-3.4.1 global names were not).
+
+## Goal (target state B)
+
+**`archiveChange` phase 4 (the move phase, `changesDirExplicit` only):** after the change dir moves, the command MOVES every file matching `requirement/<change>-req-*.md` plus `requirement/<change>-intent-card.md` from the artifact root's `requirement/` dir into `<archived-dir>/requirement/` (dir created on demand, basenames preserved). Move, not copy — archival clears the live dir; the requirement history has exactly one home. Rules:
+- Matching is EXACT-prefix on the change name (`<change>-req-v*.md`, `<change>-req-final.md`, `<change>-intent-card.md`) — never a loose prefix that could swallow another change's files (change `a` must not sweep `a-b`'s files; the fixed suffixes prevent it).
+- Zero matches → silent no-op (trivial-tier changes may have no formal req docs). Missing `requirement/` dir → no-op.
+- The sweep happens AFTER the store commits and the dir move succeed; a sweep failure (e.g. a locked file) is reported per file but NEVER fails the archive (exit stays 0; the report names what was left behind and where it belongs) — the stores and the move are already durable, and a copyable leftover is strictly better than a failed archive.
+- The single-file form (`--store/--delta`) has no change dir and does not sweep. Without `--changes-dir` (no move), no sweep — same gating as the move itself.
+- Where is `requirement/`? Resolved against cwd (`<cwd>/requirement/`), matching how the runbook's artifact-root convention places it beside `apriori/` (same resolution the change dir uses). `artifact-root` overrides are out of scope (the CLI has never parsed that flow-state field; the sweep uses cwd like every other archive path).
+- Sweep results appear in the report (`swept: <n> requirement file(s) → <dest>` or per-file leftover warnings).
+
+**Runbook STEP6 (both editions):** the preservation clause is REWRITTEN — the archive action performs the sweep automatically; the executor's only residual duty is to include the swept files in the closeout commit. PR-19's STEP6 anchors updated accordingly (destination stays; "before the closeout commit" timing language becomes the automatic-sweep statement).
+
+## Acceptance criteria (testable)
+
+- M1. A change with `requirement/<change>-req-v1.md`, `-req-v2.md`, `-req-final.md`, `-intent-card.md` archives with `--changes-dir`: all four land in `<archived>/requirement/`, the live `requirement/` no longer has them, exit 0, report names the sweep.
+- M2. Exact attribution: with changes `a` and `a-b` both having req files, archiving `a` sweeps only `a-req-*`/`a-intent-card.md` — `a-b-*` untouched.
+- M3. Zero req files → archive behaves exactly as today (no sweep line, exit 0). No `--changes-dir` → no sweep. Single-file form → no sweep.
+- M4. Injected sweep failure (DI ops seam): archive still exits 0, stores committed, dir moved, and the report names the left-behind file and its intended destination.
+- M5. Runbook STEP6 EN/CN states the automatic sweep (PR-19 anchors updated and green); the executor-copy instruction is gone.
+- M6. All existing tests pass; suite + verify --change + gate + check --self green; post-archive gate PASS; THIS change's own archive demonstrates the sweep (its req docs arrive automatically).
+
+## Out of scope
+
+- Change Bundle (4.0 candidate — this change removes its last standing rationale; agenda cleanup is the owner's call).
+- Sweeping review/design/raw evidence (they are change-prefixed too but live in apriori/review|design/ which gate C5 consumes in place — moving them would break C5's archived-stage checks).
+- `artifact-root` flow-state overrides (never parsed by the CLI; unchanged).
+
+## Decisions proposed
+
+- DD-1: MOVE not copy — one home for history, live dir stays clean; the executor's closeout commit picks up both sides of the move atomically in git terms.
+- DD-2: sweep failure never fails the archive — durability of stores/move outranks tidiness; the report keeps the human/agent informed.
+- DD-3: fixed-suffix exact matching (`-req-v*`, `-req-final`, `-intent-card`) — immune to the `a` vs `a-b` prefix trap by construction.
+
+codex
+I have the v1 requirement and the current STEP6/runbook text. I’m drilling into `archiveChange` now because the key risks are around phase ordering, failure reporting, and whether the existing move/containment seams can safely host a post-move sweep.
+exec
+/usr/bin/zsh -lc "sed -n '360,530p' lib/archive-merge.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '540,590p' lib/archive-merge.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '250,345p' lib/archive-merge.js" in /mnt/d/Workbench/misc/apriori-spec-development
+exec
+/usr/bin/zsh -lc "sed -n '450,505p' test/protocol.test.js" in /mnt/d/Workbench/misc/apriori-spec-development
+ succeeded in 141ms:
+    const r = merge(storeText, delta, change);
+    perModule.set(suffix, r);
+    if (r.conflicts.length) { conflicts.push(...r.conflicts.map((c) => `${suffix}: ${c}`)); continue; }
+    texts.set(suffix, renderStore(storeText, r.store));
+  }
+  modules.sort();
+  return { texts, modules, perModule, conflicts, casMismatches, hygiene, validation, unstampedMutations, notes, repaired };
+}
+
+// ---- archive commit machinery ----------------------------------------------
+
+// colon-free date-time stamp YYYY-MM-DDThhmm (CLI's own clock; never an agent guess)
+function archiveStamp(d) {
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}${p(d.getMinutes())}`;
+}
+
+const CHANGE_NAME_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;   // bare kebab-case — same rule as `apriori new`
+
+// Move an in-flight change dir (bare name) → changes/archive/<stamp>-<name>/
+// Fail-closed: source AND destination must resolve (realpath) strictly inside changesDir.
+function archiveChangeDir(changesDir, name, now, ops) {
+  const rename = (ops && ops.renameSync) || fs.renameSync;
+  if (!CHANGE_NAME_RE.test(name)) throw new Error(`invalid change name '${name}' — bare kebab-case only`);
+  const src = path.join(changesDir, name);
+  if (!fs.existsSync(src)) return null;
+  if (!containsReal(changesDir, src)) throw new Error(`change path escapes ${changesDir}`);
+  const dest = path.join(changesDir, 'archive', `${archiveStamp(now)}-${name}`);
+  if (!containsReal(changesDir, dest)) throw new Error(`archive destination escapes ${changesDir} (symlinked archive/?)`);
+  fs.mkdirSync(path.dirname(dest), { recursive: true });
+  rename(src, dest);
+  return dest;
+}
+
+const CATEGORY_LABELS = [['merged (ADDED)', 'merged'], ['modified (MODIFIED)', 'modified'],
+  ['deprecated (REMOVED)', 'deprecated'], ['renamed (RENAMED)', 'renamed'], ['already merged (no-op)', 'unchanged']];
+
+// High-level archive: the whole change, four phases (preflight → stage → commit → move).
+// → { code, out: [], err: [] } — pure return; cli() prints. ops is the fault-injection seam.
+function archiveChange(o) {
+  const out = [], err = [];
+  const ops = o.ops || { writeFileSync: fs.writeFileSync.bind(fs), renameSync: fs.renameSync.bind(fs), rmSync: fs.rmSync.bind(fs) };
+  const cwd = o.cwd || process.cwd();
+  const changesDir = path.resolve(cwd, o.changesDir || path.join('apriori', 'changes'));
+  const storeRoot = path.resolve(cwd, 'apriori', 'specs');
+
+  // --- phase 1: preflight (no writes) ---
+  const d = discoverDeltas(changesDir, o.change);
+  if (d.errors.length) { err.push(...d.errors.map((e) => `archive: ${e}`)); return { code: 2, out, err }; }
+  const p = buildProjection(storeRoot, d.files, o.change);
+  if (p.validation.length) { err.push(...p.validation.map((e) => `archive: ${e}`)); return { code: 2, out, err }; }
+  // per-module report for whatever merged cleanly (dry-run info comes first, then failures)
+  for (const suffix of p.modules) {
+    const r = p.perModule.get(suffix);
+    if (!r || r.conflicts.length) continue;
+    out.push(`--- ${suffix}`);
+    for (const [label, key] of CATEGORY_LABELS) if (r[key].length) out.push(`${label}: ${r[key].join(', ')}`);
+  }
+  for (const sfx of p.unstampedMutations) out.push(`warning: ${unstampedWarning(sfx)}`);
+  for (const n of p.notes) out.push(`note: ${n}`);
+  const preflightFailures = [...p.hygiene, ...p.casMismatches, ...p.conflicts];
+  if (preflightFailures.length) {
+    for (const f of preflightFailures) err.push(`archive: ${f}`);
+    out.push('\nRESULT: FAILED PREFLIGHT — nothing written');
+    return { code: 1, out, err };
+  }
+  const repaired = new Set(p.repaired);                     // already applied — no writes for these
+  const jobs = d.files.filter(({ suffix }) => !repaired.has(suffix)).map(({ suffix }) => {
+    const store = path.join(storeRoot, ...suffix.split('/'));
+    return { suffix, store, tmp: store + '.tmp-archive', text: p.texts.get(suffix) };
+  }).sort((a, b) => (a.store < b.store ? -1 : 1));
+  if (o.write) {
+    for (const j of jobs) if (fs.existsSync(j.tmp)) {
+      err.push(`archive: temp file already exists: ${j.tmp} — another run in flight or a manual-recovery artifact; not touching it`);
+      out.push('\nRESULT: FAILED PREFLIGHT — nothing written');
+      return { code: 1, out, err };
+    }
+    if (o.changesDirExplicit) {
+      // destination containment is checked before any write, not at move time
+      const probe = path.join(changesDir, 'archive', 'probe');
+      if (!containsReal(changesDir, probe)) {
+        err.push(`archive: archive destination escapes ${changesDir} (symlinked archive/?)`);
+        return { code: 2, out, err };
+      }
+    }
+  }
+  if (!o.write) {
+    out.push(`\nRESULT: MERGED (dry-run; ${jobs.length} module(s)) — pass --write to apply`);
+    return { code: 0, out, err };
+  }
+
+  // --- phase 2: stage (this run's temps only — preflight proved none pre-existed) ---
+  const staged = [];
+  try {
+    for (const j of jobs) {
+      fs.mkdirSync(path.dirname(j.store), { recursive: true });
+      ops.writeFileSync(j.tmp, j.text);
+      staged.push(j.tmp);
+    }
+  } catch (e) {
+    for (const t of staged) { try { ops.rmSync(t, { force: true }); } catch { /* best effort */ } }
+    err.push(`archive: staging failed (${e.message}) — stores untouched, this run's temp files removed`);
+    return { code: 1, out, err };
+  }
+
+  // --- phase 3: commit (per-file atomic renames, sorted order; no rollback on mid-commit failure) ---
+  const committed = [];
+  for (const j of jobs) {
+    try { ops.renameSync(j.tmp, j.store); committed.push(j); }
+    catch (e) {
+      err.push(`archive: COMMIT FAILED at ${j.suffix} (${e.message})`);
+      err.push(`  committed:     ${committed.map((c) => c.suffix).join(', ') || '(none)'}`);
+      const remaining = jobs.filter((x) => !committed.includes(x));
+      err.push(`  NOT committed: ${remaining.map((x) => x.suffix).join(', ')}`);
+      err.push(`  temp files remaining for manual completion: ${remaining.map((x) => x.tmp).join(', ')}`);
+      return { code: 1, out, err };
+    }
+  }
+
+  // --- phase 4: move (only with explicit --changes-dir) ---
+  let moved = null;
+  if (o.changesDirExplicit) {
+    try { moved = archiveChangeDir(changesDir, o.change, new Date(), ops); }
+    catch (e) { err.push(`archive: stores committed but the change-dir move failed: ${e.message} — rerun to complete`); return { code: 1, out, err }; }
+    if (moved === null) { err.push('archive: stores committed but the change dir vanished before the move'); return { code: 1, out, err }; }
+  }
+  out.push(`\nRESULT: MERGED — ${jobs.length} module store(s) rewritten${moved ? `; change archived → ${moved}` : ''}`);
+  return { code: 0, out, err };
+}
+
+// print the CAS stamp line for a store file's current content
+const STAMP_USAGE = 'usage: apriori stamp <store-file>';
+function stampCli(argv) {
+  return withStrict(argv, { sub: 'stamp', usage: STAMP_USAGE, positionals: 1, flags: {} }, (f, pos) => {
+    const p = pos[0];
+    if (!fs.existsSync(p)) { console.log('<!-- apriori-base: new -->'); return 0; }
+    if (fs.statSync(p).isDirectory()) { console.error(`stamp: ${p} is a directory, not a store file`); return 2; }
+    let text;
+    try { text = fs.readFileSync(p, 'utf8'); }
+    catch (e) { console.error(`stamp: cannot read ${p}: ${e.message}`); return 2; }
+    console.log(`<!-- apriori-base: ${fingerprint(text)} -->`);
+    return 0;
+  });
+}
+
+const USAGE = 'usage: apriori archive --store <f> --delta <f> --change <name> [--write] [--changes-dir <dir>]\n   or: apriori archive --change <name> [--write] [--changes-dir <dir>]';
+
+function cli(argv) {
+  return withStrict(argv, { sub: 'archive', usage: USAGE, positionals: 0,
+    flags: { '--store': 'value', '--delta': 'value', '--change': 'value', '--write': 'flag', '--changes-dir': 'value' } }, (f) => {
+    const a = { store: f['--store'] || null, delta: f['--delta'] || null, change: f['--change'] || null,
+      write: !!f['--write'], changesDir: f['--changes-dir'] || null };
+  // high-level form: --change alone (no --store/--delta) drives the whole change
+    if (a.change && !a.store && !a.delta) {
+      const r = archiveChange({ cwd: process.cwd(), change: a.change, write: a.write,
+        changesDir: a.changesDir || undefined, changesDirExplicit: !!a.changesDir });
+      for (const l of r.out) console.log(l);
+      for (const l of r.err) console.error(l);
+      return r.code;
+    }
+    if (a.change && (a.store || a.delta) && !(a.store && a.delta)) {
+      console.error('usage: apriori archive --change <name> [--write] [--changes-dir <dir>]  (high-level form)\n   or: apriori archive --store <f> --delta <f> --change <name> [--write] [--changes-dir <dir>]  (single-file form)\n(--change cannot be combined with only one of --store/--delta)');
+      return 2;
+    }
+    if (!a.store || !a.delta || !a.change) { console.error(USAGE); return 2; }
+    if (!CHANGE_NAME_RE.test(a.change)) { console.error(`archive: invalid change name '${a.change}' — bare kebab-case only (path segments are not allowed)`); return 2; }
+    if (a.changesDir && !fs.existsSync(path.join(a.changesDir, a.change))) {
+      console.error(`archive: change '${a.change}' not found under ${a.changesDir} — nothing to move`); return 2;
+    }
+    // first archive in a repo: the store file may not exist yet — start from an empty store
+    const storeExists = fs.existsSync(a.store);
+
+ succeeded in 158ms:
+    // Guard against a silent no-op: a delta with real content that parsed to zero operations
+    // is almost always a format mismatch (wrong heading level/keyword), not an empty change.
+    if (deltaText.trim() && deltaOpCount(delta) === 0) {
+      console.error(`archive: parsed 0 delta operations from ${a.delta} — it has content but no recognized operations.`);
+      console.error('  expected `## ADDED|MODIFIED|REMOVED Requirements` (h2) with `### Requirement: <name>` (h3) blocks,');
+      console.error('  or `## RENAMED Requirements` with `- Old -> New` lines. Nothing written.');
+      return 1;
+    }
+    // WARN grade (AM-32): mutation ops without a stamp merge, but never silently
+    if (!stamp && mutationOpCount(delta) > 0) console.log(`warning: ${unstampedWarning(a.delta)}`);
+    // CAS: a present base stamp must match the store the delta is about to merge into (AM-24/AM-26)
+    if (stamp) {
+      const actual = storeExists ? fingerprint(storeText) : 'new';
+      if (stamp !== actual) {
+        console.error(`archive: base mismatch for ${a.store}: delta expects ${stamp}, store is ${actual} — nothing written (serialize per §4.11)`);
+        return 1;
+      }
+    }
+    const { store, merged, modified, deprecated, renamed, conflicts, unchanged } = merge(storeText, delta, a.change);
+
+    for (const [label, ids] of [['merged (ADDED)', merged], ['modified (MODIFIED)', modified], ['deprecated (REMOVED)', deprecated], ['renamed (RENAMED)', renamed], ['already merged (no-op)', unchanged]])
+      if (ids.length) console.log(`${label}: ${ids.join(', ')}`);
+
+    if (conflicts.length) {
+      console.log('\nCONFLICTS (stop — open a ledger issue, human resolves):');
+      for (const c of conflicts) console.log(`  ✗ ${c}`);
+      console.log('\nRESULT: CONFLICT — nothing written');
+      return 1;
+    }
+    if (a.write) {
+      // Transactional ordering: stage the store to a temp file, do the (atomic) dir move, then
+      // commit the store via rename. If the move fails, the temp is discarded and the store on
+      // disk stays byte-for-byte untouched — never a half-completed archive.
+      fs.mkdirSync(path.dirname(a.store), { recursive: true });
+      const tmp = a.store + '.tmp-archive';
+      fs.writeFileSync(tmp, renderStore(storeText, store));
+      let moved = null;
+      if (a.changesDir) {
+        try { moved = archiveChangeDir(a.changesDir, a.change, new Date()); }
+        catch (e) { fs.rmSync(tmp, { force: true }); console.error(`archive: ${e.message} — store left untouched`); return 1; }
+        if (moved === null) { fs.rmSync(tmp, { force: true }); console.error(`archive: change dir vanished mid-run — store left untouched`); return 1; }
+      }
+      fs.renameSync(tmp, a.store);
+      console.log(`\nRESULT: MERGED — ${a.store} rewritten${moved ? `; change archived → ${moved}` : ''}`);
+    } else {
+      console.log(`\nRESULT: MERGED (dry-run; ${store.size} requirements in result) — pass --write to apply`);
+    }
+    return 0;
+  });
+}
+module.exports = { parseRequirements, parseRequirementsStrict, parseDelta, parseDeltaStrict, deltaOpCount, mutationOpCount, unstampedWarning,
+
+ succeeded in 165ms:
+    }
+  }
+  return { store, merged, modified, deprecated, renamed, conflicts, unchanged };
+}
+
+function renderStore(storeText, store) {
+  const idx = storeText.indexOf('### Requirement:');
+  const header = idx >= 0 ? storeText.slice(0, idx) : '';
+  return header + [...store.values()].join('\n');
+}
+
+// ---- paths and discovery ---------------------------------------------------
+
+// Realpath containment: target (followed through symlinks; not-yet-existing targets judged
+// by their nearest existing ancestor) must resolve STRICTLY inside root. Fail-closed.
+function containsReal(root, target) {
+  let realRoot;
+  try { realRoot = fs.realpathSync(root); } catch { return false; }
+  let cur = path.resolve(target);
+  const rest = [];
+  while (!fs.existsSync(cur)) {
+    const parent = path.dirname(cur);
+    if (parent === cur) return false;
+    rest.unshift(path.basename(cur));
+    cur = parent;
+  }
+  let realCur;
+  try { realCur = fs.realpathSync(cur); } catch { return false; }
+  const full = rest.length ? path.join(realCur, ...rest) : realCur;
+  return full !== realRoot && (full + path.sep).startsWith(realRoot + path.sep);
+}
+
+function mdFilesUnder(dir) {
+  const out = [];
+  const walk = (d) => {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, e.name);
+      // Dirents reflect lstat: a symlink is neither file nor directory. Follow it explicitly —
+      // silently skipping a symlinked dir would hide deltas (fail-open); containment judges the target.
+      let isDir = e.isDirectory();
+      if (e.isSymbolicLink()) {
+        try { isDir = fs.statSync(p).isDirectory(); } catch { isDir = false; /* broken link: fall through, read fails loudly */ }
+      }
+      if (isDir) walk(p);
+      else if (e.name.endsWith('.md')) out.push(p);
+    }
+  };
+  if (fs.existsSync(dir)) walk(dir);
+  return out.sort();
+}
+
+// Discover a change's delta files. → { files: [{abs, suffix}], errors: [] } — errors are
+// VALIDATION class (exit 2 on both surfaces): bad name, missing dir, escape, zero files.
+function discoverDeltas(changesDirAbs, name) {
+  const errors = [];
+  if (!name || !CHANGE_NAME_RE.test(name)) return { files: [], errors: [`invalid change name '${name}' — bare kebab-case only`] };
+  const changeDir = path.join(changesDirAbs, name);
+  if (!fs.existsSync(changeDir)) return { files: [], errors: [`change '${name}' not found under ${changesDirAbs}`] };
+  if (!containsReal(changesDirAbs, changeDir)) return { files: [], errors: [`change path escapes ${changesDirAbs}: ${changeDir}`] };
+  const specsDir = path.join(changeDir, 'specs');
+  // a symlinked specs/ pointing outside would smuggle its target in as the containment ROOT —
+  // require specs/ itself to really live inside the change dir before trusting it as a root
+  if (fs.existsSync(specsDir) && !containsReal(changeDir, specsDir))
+    return { files: [], errors: [`specs dir escapes the change dir (symlink?): ${specsDir}`] };
+  const all = mdFilesUnder(specsDir);
+  if (!all.length) return { files: [], errors: [`no delta spec files (*.md) found under ${specsDir}`] };
+  const files = [];
+  for (const abs of all) {
+    if (!containsReal(specsDir, abs)) { errors.push(`delta path escapes the change root: ${abs}`); continue; }
+    files.push({ abs, suffix: path.relative(specsDir, abs).split(path.sep).join('/') });
+  }
+  return { files, errors };
+}
+
+// Build the projection: apply every delta to its mapped store file IN MEMORY.
+// → { texts: Map<suffix, projectedText>, modules, perModule, conflicts, casMismatches,
+//     hygiene, validation } — texts covers ALL store files (pass-through + projected).
+function buildProjection(storeRoot, deltaFiles, change) {
+  const texts = new Map(), perModule = new Map(), modules = [];
+  const conflicts = [], casMismatches = [], hygiene = [], validation = [];
+  const unstampedMutations = [], notes = [], repaired = [];
+  for (const abs of mdFilesUnder(storeRoot))
+    texts.set(path.relative(storeRoot, abs).split(path.sep).join('/'), fs.readFileSync(abs, 'utf8'));
+  for (const { abs, suffix } of deltaFiles) {
+    modules.push(suffix);
+    const target = path.join(storeRoot, ...suffix.split('/'));
+    if (!containsReal(storeRoot, target)) { validation.push(`store target escapes ${storeRoot}: ${target}`); continue; }
+    const raw = fs.readFileSync(abs, 'utf8');
+    if (!raw.trim()) { hygiene.push(`empty delta file: ${abs}`); continue; }
+    const { delta, stamp, problems } = parseDeltaStrict(raw);
+    if (problems.length) { hygiene.push(...problems.map((p) => `${abs}: ${p}`)); continue; }
+    if (deltaOpCount(delta) === 0) { hygiene.push(`parsed 0 delta operations from ${abs} — it has content but no recognized operations`); continue; }
+    if (!stamp && mutationOpCount(delta) > 0) unstampedMutations.push(suffix);   // WARN grade (callers print)
+    const storeText = texts.get(suffix) || '';
+    if (stamp) {
+      const actual = texts.has(suffix) ? fingerprint(storeText) : 'new';
+
+ succeeded in 181ms:
+  assert.match(p0cn, /重开旧 ID|重开旧ID/);
+  assert.match(p0cn, /事件.*不是.*状态|事件而非状态/);
+  assert.match(p0cn, /原始拒绝理由|原始理由/);
+  const s6cn = sectionBlock(CN, /^### STEP6 —— 归档.*$/m);
+  assert.ok(s6cn.length > 0, 'CN STEP6 block missing');
+  assert.match(s6cn, /gate --change/);
+  assert.match(s6cn, /归档后|archived/);
+  assert.match(s6cn, /④/);
+  // concepts §7.0 vocabulary strings updated in both languages
+  assert.match(CONCEPTS, /rejected-verified/);
+  assert.match(CONCEPTS, /waived/);
+  assert.match(CONCEPTS_CN, /rejected-verified/);
+  assert.match(CONCEPTS_CN, /waived/);
+});
+
+test('PR-19 requirement-stage paths carry the change name in every live doc', () => {
+  const fsMod = require('node:fs');
+  const NEWJS = fsMod.readFileSync(path.join(ROOT, 'lib', 'new.js'), 'utf8');
+  // negative: the three forbidden global literals appear nowhere in the live docs or the scaffold source
+  for (const [label, doc] of [['RUNBOOK', EN], ['RUNBOOK_cn', CN], ['concepts', CONCEPTS], ['concepts_cn', CONCEPTS_CN], ['lib/new.js', NEWJS]])
+    for (const lit of ['requirement/req-v', 'requirement/req-final.md', 'requirement/intent-card.md'])
+      assert.ok(!doc.includes(lit), `${label} still carries the forbidden literal '${lit}'`);
+  // positive: the prefixed convention is written where it matters
+  for (const doc of [EN, CN]) {
+    assert.match(doc, /requirement\/<change>-req-v\{N\}\.md/);
+    assert.match(doc, /requirement\/<change>-req-final\.md/);
+    assert.match(doc, /requirement\/<change>-intent-card\.md/);
+  }
+  assert.match(CONCEPTS, /requirement\/<change>-req-/);
+  assert.match(CONCEPTS_CN, /requirement\/<change>-req-/);
+  // the RPIMPL-1 class, airtight: strip every prefixed form, then NO 'req-v' may remain —
+  // per-occurrence, so a line carrying both forms can't hide a bare one (the grep -v lesson)
+  for (const doc of [EN, CN, CONCEPTS, CONCEPTS_CN])
+    assert.ok(!doc.replaceAll('<change>-req-v', '').replaceAll('<name>-req-v', '').replaceAll('my-change-req-v', '').includes('req-v'),
+      'a bare req-v basename survives outside the prefixed forms');
+  // the STEP6 preservation clause binds in both runbook editions: destination + timing
+  const s6en = sectionBlock(EN, /^### STEP6 — archive.*$/m);
+  assert.match(s6en, /archive\/<stamp>-<change>\/requirement\//);
+  assert.match(s6en, /before the STEP6 closeout commit|before the closeout commit/);
+  assert.match(s6en, /all versions/);
+  const s6cn = sectionBlock(CN, /^### STEP6 —— 归档.*$/m);
+  assert.match(s6cn, /archive\/<stamp>-<change>\/requirement\//);
+  assert.match(s6cn, /收尾提交之前|收尾提交前/);
+  assert.match(s6cn, /全部版本|所有版本/);
+});
+
+codex
+# P1 Requirement Review — req-sweep v1
+
+## Dimension Verdicts
+
+1. Target state B: mostly clear, but incomplete around containment, sweep failure recovery, and exact filename matching.
+2. Edge cases and exception paths: not sufficient. Symlinks/escape paths, intent-card-only changes, and failed-sweep reruns are not covered.
+3. Implied side effects: the move side effect is declared, but the failure behavior leaves an undeclared manual cleanup obligation.
+4. Acceptance criteria testability: mostly testable, but key edge cases are missing.
+5. Conflicts with state A: no direct conflict with current archive phase ordering, but the requirement needs sharper rules to fit the existing fail-closed containment model.
+6. Target lineage: declared as v3 branch and matches repo reality.
+
+## Formal Issues
+
+### RS-1 — Sweep containment and symlink behavior are unspecified
+
+Description: The requirement says to move files from `<cwd>/requirement/` into `<archived-dir>/requirement/`, but does not say whether source files, the source `requirement/` directory, the archived destination, or an existing destination `requirement/` entry must pass realpath containment. Current archive paths already use `containsReal` for change dirs and archive destinations; the new sweep touches external input paths too.
+
+Risk: A symlinked `requirement/` source or a preexisting symlinked `<change>/requirement` directory could cause archive to read/move files outside the workspace or write swept files outside the archived change. This is a correctness/security issue.
+
+Suggested fix: Specify fail-closed containment before any sweep read/write. Require source candidates to be contained under `<cwd>/requirement/` and destination candidates under the moved archived dir; require candidates to be regular files, not symlinks. Add acceptance cases for symlinked source/destination escapes.
+
+### RS-2 — Sweep failure exits 0 but has no command recovery path
+
+Description: DD-2 and M4 require sweep failures to keep archive exit 0. That preserves the store commit and change-dir move, but it also means the command reports success while requirement history remains in the live `requirement/` directory. After the change dir has moved, rerunning the high-level archive against the in-flight change path is not obviously able to retry the sweep.
+
+Risk: This reintroduces executor discipline: the command can succeed while the preservation step is incomplete, and automation/gate flows may proceed without the archived requirement history. If the command exits nonzero, the requirement still needs to define how a rerun completes the sweep after the dir has already moved.
+
+Suggested fix: Define a durable incomplete-sweep state. Prefer a nonzero archive result after successful store/move but incomplete sweep, with a clear rerun or repair surface that locates the archived dir and retries only the sweep. Alternatively, stage requirement files into the change dir before the archive move so the move carries them atomically. Add an acceptance case for retrying after an injected sweep failure.
+
+### RS-3 — Filename matcher is still ambiguous
+
+Description: The requirement uses both `requirement/<change>-req-*.md` and “exact-prefix” examples like `<change>-req-v*.md`, `<change>-req-final.md`, and `<change>-intent-card.md`. It does not define exact basename regexes.
+
+Risk: Implementers may sweep too much or too little, such as `<change>-req-vdraft.md`, `<change>-req-v1-notes.md`, or omit `.md` handling inconsistently. The `a` vs `a-b` trap is addressed directionally, but the matcher is not precise enough to hand to an implementer.
+
+Suggested fix: Enumerate exact escaped basename patterns, for example:
+`^<change>-req-v[0-9]+\.md$`, `^<change>-req-final\.md$`, `^<change>-intent-card\.md$`.
+Add negative cases for same-change near misses and `a-b` files.
+
+### RS-4 — Intent-card-only changes are not bound by acceptance
+
+Description: The target includes `requirement/<change>-intent-card.md`, but M1 tests it only alongside req docs. Explore-track or abandoned changes can have an intent card as the only requirement-stage artifact.
+
+Risk: An implementation could accidentally sweep the intent card only when req files are also present, leaving the intent-card-only case broken while passing the current acceptance set.
+
+Suggested fix: Add an acceptance criterion where `requirement/<change>-intent-card.md` is the only matching file and must be moved into `<archived>/requirement/` with exit 0 and a sweep report.
+
+## Advisories
+
+- M1 should explicitly say `apriori archive --change <change> --write --changes-dir <dir>` so dry-run behavior is not confused with the move/sweep path.
+- The report contract should define stable wording or fields for sweep success and leftovers if tests will assert it.
+- Runbook/PR-19 updates should assert both the new automatic-sweep wording and the absence of the old executor-copy instruction.
+
+## Ledger Delta
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| RS-1 | Sweep containment and symlink behavior are unspecified. | Source or destination symlinks could move/read/write outside the workspace. | STEP0 r1 | open |
+| RS-2 | Sweep failure exits 0 but has no command recovery path. | Archive can appear successful while requirement history is not preserved, reintroducing manual discipline. | STEP0 r1 | open |
+| RS-3 | Filename matcher is ambiguous. | Implementers may over-sweep or under-sweep requirement-stage files. | STEP0 r1 | open |
+| RS-4 | Intent-card-only changes are not bound by acceptance. | Explore-track requirement history can be left behind despite green tests. | STEP0 r1 | open |
+| RS-ADV-1 | Advisory clarifications for `--write`, stable report wording, and PR-19 negative anchors. | Minor implementation/test drift risk. | STEP0 r1 | open |
+
+VERDICT: 4 issues open
+tokens used
+3,667,944
+# P1 Requirement Review — req-sweep v1
+
+## Dimension Verdicts
+
+1. Target state B: mostly clear, but incomplete around containment, sweep failure recovery, and exact filename matching.
+2. Edge cases and exception paths: not sufficient. Symlinks/escape paths, intent-card-only changes, and failed-sweep reruns are not covered.
+3. Implied side effects: the move side effect is declared, but the failure behavior leaves an undeclared manual cleanup obligation.
+4. Acceptance criteria testability: mostly testable, but key edge cases are missing.
+5. Conflicts with state A: no direct conflict with current archive phase ordering, but the requirement needs sharper rules to fit the existing fail-closed containment model.
+6. Target lineage: declared as v3 branch and matches repo reality.
+
+## Formal Issues
+
+### RS-1 — Sweep containment and symlink behavior are unspecified
+
+Description: The requirement says to move files from `<cwd>/requirement/` into `<archived-dir>/requirement/`, but does not say whether source files, the source `requirement/` directory, the archived destination, or an existing destination `requirement/` entry must pass realpath containment. Current archive paths already use `containsReal` for change dirs and archive destinations; the new sweep touches external input paths too.
+
+Risk: A symlinked `requirement/` source or a preexisting symlinked `<change>/requirement` directory could cause archive to read/move files outside the workspace or write swept files outside the archived change. This is a correctness/security issue.
+
+Suggested fix: Specify fail-closed containment before any sweep read/write. Require source candidates to be contained under `<cwd>/requirement/` and destination candidates under the moved archived dir; require candidates to be regular files, not symlinks. Add acceptance cases for symlinked source/destination escapes.
+
+### RS-2 — Sweep failure exits 0 but has no command recovery path
+
+Description: DD-2 and M4 require sweep failures to keep archive exit 0. That preserves the store commit and change-dir move, but it also means the command reports success while requirement history remains in the live `requirement/` directory. After the change dir has moved, rerunning the high-level archive against the in-flight change path is not obviously able to retry the sweep.
+
+Risk: This reintroduces executor discipline: the command can succeed while the preservation step is incomplete, and automation/gate flows may proceed without the archived requirement history. If the command exits nonzero, the requirement still needs to define how a rerun completes the sweep after the dir has already moved.
+
+Suggested fix: Define a durable incomplete-sweep state. Prefer a nonzero archive result after successful store/move but incomplete sweep, with a clear rerun or repair surface that locates the archived dir and retries only the sweep. Alternatively, stage requirement files into the change dir before the archive move so the move carries them atomically. Add an acceptance case for retrying after an injected sweep failure.
+
+### RS-3 — Filename matcher is still ambiguous
+
+Description: The requirement uses both `requirement/<change>-req-*.md` and “exact-prefix” examples like `<change>-req-v*.md`, `<change>-req-final.md`, and `<change>-intent-card.md`. It does not define exact basename regexes.
+
+Risk: Implementers may sweep too much or too little, such as `<change>-req-vdraft.md`, `<change>-req-v1-notes.md`, or omit `.md` handling inconsistently. The `a` vs `a-b` trap is addressed directionally, but the matcher is not precise enough to hand to an implementer.
+
+Suggested fix: Enumerate exact escaped basename patterns, for example:
+`^<change>-req-v[0-9]+\.md$`, `^<change>-req-final\.md$`, `^<change>-intent-card\.md$`.
+Add negative cases for same-change near misses and `a-b` files.
+
+### RS-4 — Intent-card-only changes are not bound by acceptance
+
+Description: The target includes `requirement/<change>-intent-card.md`, but M1 tests it only alongside req docs. Explore-track or abandoned changes can have an intent card as the only requirement-stage artifact.
+
+Risk: An implementation could accidentally sweep the intent card only when req files are also present, leaving the intent-card-only case broken while passing the current acceptance set.
+
+Suggested fix: Add an acceptance criterion where `requirement/<change>-intent-card.md` is the only matching file and must be moved into `<archived>/requirement/` with exit 0 and a sweep report.
+
+## Advisories
+
+- M1 should explicitly say `apriori archive --change <change> --write --changes-dir <dir>` so dry-run behavior is not confused with the move/sweep path.
+- The report contract should define stable wording or fields for sweep success and leftovers if tests will assert it.
+- Runbook/PR-19 updates should assert both the new automatic-sweep wording and the absence of the old executor-copy instruction.
+
+## Ledger Delta
+
+| ID | Issue | Risk | Round found | Status |
+|---|---|---|---|---|
+| RS-1 | Sweep containment and symlink behavior are unspecified. | Source or destination symlinks could move/read/write outside the workspace. | STEP0 r1 | open |
+| RS-2 | Sweep failure exits 0 but has no command recovery path. | Archive can appear successful while requirement history is not preserved, reintroducing manual discipline. | STEP0 r1 | open |
+| RS-3 | Filename matcher is ambiguous. | Implementers may over-sweep or under-sweep requirement-stage files. | STEP0 r1 | open |
+| RS-4 | Intent-card-only changes are not bound by acceptance. | Explore-track requirement history can be left behind despite green tests. | STEP0 r1 | open |
+| RS-ADV-1 | Advisory clarifications for `--write`, stable report wording, and PR-19 negative anchors. | Minor implementation/test drift risk. | STEP0 r1 | open |
+
+VERDICT: 4 issues open

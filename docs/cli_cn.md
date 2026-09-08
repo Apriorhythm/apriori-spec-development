@@ -202,7 +202,9 @@ usage: apriori update [--dry-run]
 
 ## 八、配置参考
 
-### 8.0 process-config 配置键：id-pattern
+### 8.0 process-config 配置键：id-pattern 与 cas
+
+脚手架生成的 `apriori/process-config.md` 不带这两行：缺行**就是**默认值（`id-pattern` → 下述内置模式，`cas` → `required`），只有要改默认时才写。`| cas | optional |` 把 archive/gate 对未打戳**变更类**增量（MODIFIED/REMOVED/RENAMED）的拒绝改为可见警告——豁免信息指明配置来源；默认 `required` 即拒绝（gate C7 阻断，`archive` 在 preflight 拒绝；单次豁免是 `--no-cas` flag，它对任何配置状态保持显式至上）。
 
 在 `apriori/process-config.md` 写一行 `| id-pattern | <裸 JS 正则源串> |`，一处声明项目的场景 ID 形状，处处生效。解析优先级：`--id-pattern` flag（仅 verify 与 gate；按存在性判定——空 flag 是错误，绝不回退）> 配置行 > 内置默认 `[A-Z]+(?:-[A-Z]+){0,}-\d+[a-z]{0,}`——它本身就认得多段（`AC-BIS-01`）与带小写后缀（`AC-30f`）的 ID，所以多数项目根本不需要写那一行。其量词写作 `{0,}` 而非等价的 `*`，是为了让脚手架写入的表格行能扛住 markdown 格式化器（表格单元格里成对的裸 `*` 会被当成强调，被改写成 `_`）。`check`（CK-04）与 `doctor`（D6）只吃配置行、无 flag。四个消费点用同一识别契约：从标题第一个字符开始匹配，后继为字母/数字/下划线则拒绝，不额外拼接 `\b`，源串按原样编译。
 

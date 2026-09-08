@@ -20,7 +20,10 @@ const REPO = path.join(__dirname, '..');
 
 const CLI_KEYS = ['id-pattern', 'cas', 'test-cmd'];
 const AGENT_KEYS = ['language'];
-const SCAFFOLD_KEYS = ['language', 'id-pattern', 'cas'];
+// batch C row 4: the default scaffold carries ONLY what a user actually decides — the
+// id-pattern and cas rows restated built-in defaults and are gone (a missing row IS the
+// default; the optional keys are documented in docs/cli.md §8.0)
+const SCAFFOLD_KEYS = ['language'];
 
 // Removed in 6.0 slice 2b: read by nobody — not the CLI, not the agent's protocol.
 // `verification-profile` joined them in slice 5: it had a reader and no consumer, and it scaled

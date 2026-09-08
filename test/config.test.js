@@ -93,9 +93,13 @@ test('CF-06 the waiver is discoverable', () => {
   assert.match(g.stderr + g.stdout, /--no-cas/);
 });
 
-test('CF-07 the template names the cas row', () => {
+test('CF-07 the template ships no cas row — the default and its waiver live in the CLI reference', () => {
   const tpl = fs.readFileSync(path.join(__dirname, '..', 'templates', 'process-config.md'), 'utf8');
-  assert.match(tpl, /\|\s*cas\s*\|/);
+  assert.doesNotMatch(tpl, /\|\s*cas\s*\|/, 'batch C row 4: the cas default row restated the built-in default');
+  for (const doc of ['docs/cli.md', 'docs/cli_cn.md']) {
+    const d = fs.readFileSync(path.join(__dirname, '..', doc), 'utf8');
+    assert.ok(d.includes('| cas | optional |'), `${doc}: the cas row reference is gone`);
+  }
 });
 
 // ---- gate-id-pattern: CF-08..CF-12 — cell escaping, unreadable config, template row ----
@@ -136,19 +140,18 @@ test('CF-11 an unreadable config is a consumption-time problem', () => {
   assert.match(String(problem), /process-config/);
 });
 
-test('CF-12 the template names the id-pattern row with two-layer pipe wording', () => {
+test('CF-12 the template ships no id-pattern row; the two-layer pipe wording lives in the CLI reference', () => {
   const tplPath = path.join(__dirname, '..', 'templates', 'process-config.md');
   const tpl = fs.readFileSync(tplPath, 'utf8');
-  const { values } = parseConfig(tpl);
-  assert.strictEqual(values.get('id-pattern'), require('../lib/config').DEFAULT_ID);  // parsed value = built-in default, whatever it currently is
-  assert.strictEqual(values.get('cas'), 'required');                     // table structure survives end-to-end
-  assert.match(tpl, /\\\|/);                                             // guidance shows the \| spelling
-  assert.match(tpl, /\[\\\|\]/);                                         // and the [\|] literal-pipe spelling
-  assert.doesNotMatch(tpl, /literal pipe[^.\n]*written\s*`?\\\|`?(?!\])/i); // no "literal pipe is \|" phrasing
-  const rowLine = tpl.split('\n').find((l) => /^\|\s*id-pattern\s*\|/.test(l));
-  assert.ok(rowLine, 'id-pattern row exists');
-  const { splitCells } = require('../lib/config');
-  const cells = splitCells(rowLine);
-  assert.strictEqual(cells.length, 6, 'row splits into exactly 4 cells + 2 edges (no in-cell pipes)');
-  for (const c of cells) assert.doesNotMatch(c, /\|/, 'cells stay pipe-free');
+  const { values, conflicts } = parseConfig(tpl);
+  assert.ok(!values.has('id-pattern'), 'batch C row 4: the id-pattern default row restated the built-in default');
+  assert.ok(!values.has('cas'));
+  assert.strictEqual(values.get('language'), 'auto');                    // the one row a user decides
+  assert.strictEqual(conflicts.size, 0);                                 // the table survives end-to-end
+  // the escaping guidance moved to docs/cli.md §8.0 (both editions), both layers stated
+  for (const doc of ['docs/cli.md', 'docs/cli_cn.md']) {
+    const d = fs.readFileSync(path.join(__dirname, '..', doc), 'utf8');
+    assert.ok(d.includes('\\|'), `${doc}: the \\| spelling is not taught`);
+    assert.ok(d.includes('[\\|]'), `${doc}: the [\\|] literal-pipe spelling is not taught`);
+  }
 });

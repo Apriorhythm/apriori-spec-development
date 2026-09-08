@@ -386,36 +386,23 @@ test('SR-08 the {0,} spelling is the same language as the `*` spelling it replac
 
 // ---------------------------------------------------------------- template
 
-test('CF-12 the template carries one pattern in all three places, each pinned separately', () => {
+test('CF-12 the pattern lives in ONE place — the built-in default; the template ships no copy', () => {
   const t = fs.readFileSync(path.join(__dirname, '..', 'templates', 'process-config.md'), 'utf8');
   const want = DEFAULT_ID;                    // the source string as the parser will see it
-  // (1) the VALUE cell — what `init` writes and `resolveIdPattern` consumes FIRST
+  // batch C row 4: the template restated the default in a VALUE cell, a DEFAULT cell and a
+  // comment — three copies of one constant, each a drift surface (the stale-VALUE-cell hazard
+  // this test used to police). Now no copy ships: a fresh project resolves through the default
+  // channel and lib/config.DEFAULT_ID is the single source.
   const { parseConfig } = require('../lib/config');
-  assert.strictEqual(parseConfig(t).values.get('id-pattern'), want, 'VALUE cell');
-  // (2) the DEFAULT cell — the fourth column of that same row
-  const row = t.split('\n').find((l) => /^\|\s*id-pattern\s*\|/.test(l));
-  assert.ok(row, 'the id-pattern row exists');
-  const cells = row.split('|').map((c) => c.trim());
-  assert.strictEqual(cells[cells.length - 2], want, `DEFAULT cell: ${row}`);
-  // (3) the built-in-default wording in the adjacent comment
-  const comment = t.split('\n').find((l) => /built-in default/.test(l));
-  assert.ok(comment && comment.includes(want), `comment: ${comment}`);
-  // and nothing stale anywhere
-  for (const line of t.split('\n'))
-    assert.ok(!(line.includes('[A-Z]+-\\d+') && !line.includes(want)), `stale pattern: ${line}`);
-  // (4) formatter stability: a bare `*` pair in a table cell is markdown emphasis, and a
-  // formatter / lint --fix rewrites it to `_`, corrupting the scaffolded row. The VALUE cell
-  // must therefore carry no `*` at all — the equivalent `{0,}` spelling instead.
-  const valueCell = cells[2];
-  assert.strictEqual(valueCell, want, `VALUE cell text: ${row}`);
-  assert.ok(!valueCell.includes('*'), `VALUE cell must contain no bare *: ${valueCell}`);
-  assert.ok(!cells[cells.length - 2].includes('*'), `DEFAULT cell must contain no bare *: ${row}`);
-  // simulate the corruption the old spelling invited: emphasis-pair `*`→`_` over the row
-  const corrupt = (text) => text.replace(/\*([^*|]*)\*/g, '_$1_');
-  assert.strictEqual(corrupt(row), row, `the row is a fixed point of the formatter rewrite: ${row}`);
-  // the same rewrite applied to the `*`-spelled ancestor is what R08 hit in the field
-  const legacyRow = row.replace(want, STAR_ID);
-  assert.notStrictEqual(corrupt(legacyRow), legacyRow, 'the ancestor spelling was genuinely at risk');
+  assert.ok(!parseConfig(t).values.has('id-pattern'), 'the template ships an id-pattern row again');
+  assert.ok(!t.includes(want) && !t.includes(STAR_ID) && !t.includes('[A-Z]+-\\d+'), 'a pattern copy is back in the template');
+  // the reference documentation states the CURRENT default verbatim, both editions — and in the
+  // formatter-stable `{0,}` spelling (a bare `*` pair in running text is markdown emphasis too)
+  for (const doc of ['docs/cli.md', 'docs/cli_cn.md']) {
+    const d = fs.readFileSync(path.join(__dirname, '..', doc), 'utf8');
+    assert.ok(d.includes(want), `${doc}: does not state the built-in default verbatim`);
+    assert.ok(!d.includes(STAR_ID), `${doc}: carries the formatter-fragile * spelling`);
+  }
 });
 
 test('CF-18 a freshly initialised project inherits the current pattern end to end', () => {
@@ -423,16 +410,18 @@ test('CF-18 a freshly initialised project inherits the current pattern end to en
   // (6.2 A-7: an unknown tool key is refused before anything is written — `none` never was one)
   const init = run(root, ['init', '--tools', 'claude']);
   assert.strictEqual(init.status, 0, init.stdout + init.stderr);
+  // batch C row 4: the scaffolded config ships NO id-pattern row — resolution reaches the
+  // built-in default channel, and that default recognises the same shapes the row used to pin
   const resolved = resolveIdPattern(root, null);
-  assert.strictEqual(resolved.origin, 'config', 'the template row is live, not decorative');
-  // the CONFIG origin runs its matching in a child process — exercise that path, not a plain RegExp
+  assert.strictEqual(resolved.origin, 'default', 'the slim scaffold must resolve through the default channel');
+  assert.strictEqual(resolved.source, DEFAULT_ID);
   const { makeIdMatcher, parseTap } = require('../lib/spec-runner');
   const matcher = makeIdMatcher(resolved);
   const titles = ['AC-BIS-01 a', 'LIFE-DWS-01 b', 'AC-30f c'];
   const batch = matcher.batch(titles);
-  assert.ok(!batch.failure, `the config-origin child answered: ${JSON.stringify(batch.failure)}`);
-  assert.deepStrictEqual(batch.ids, ['AC-BIS-01', 'LIFE-DWS-01', 'AC-30f'], 'titles, through the child');
-  // and the TAP side of the binding, through the same child
+  assert.ok(!batch.failure, `the matcher answered: ${JSON.stringify(batch.failure)}`);
+  assert.deepStrictEqual(batch.ids, ['AC-BIS-01', 'LIFE-DWS-01', 'AC-30f'], 'titles bind');
+  // and the TAP side of the binding, through the same matcher
   const tapBatch = matcher.batch(titles.map((t) => t));
   assert.deepStrictEqual(tapBatch.ids, ['AC-BIS-01', 'LIFE-DWS-01', 'AC-30f'], 'TAP descriptions too');
   assert.ok(parseTap, 'the TAP side shares this matcher in the real pipeline');

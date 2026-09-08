@@ -203,6 +203,15 @@ already stopped teaching are retired, and risk acceptance is unified on ONE mech
   are unchanged. Every TTY/non-TTY × zero/single/multi cell has an explicit outlet — explicit
   `--tools` installs completely, everything else errors non-zero; no silent partial install
   (P8). Tests: IN-20 (full matrix); IN-10 retired with the menu.
+- **Batch C row 4 — the default template keeps only what a user decides.** The scaffolded
+  `process-config.md` carries the `language` row alone: the `id-pattern` and `cas` rows
+  restated built-in defaults (a missing row IS the default — proven byte-for-byte: omitted vs
+  explicit-default configs give identical verify/gate/archive output), and the ~10-line
+  pipe-escaping comment moves to the CLI reference — docs/cli.md §8.0 (both editions) now also
+  documents the `cas` key and states the built-in id-pattern verbatim as the single shipped
+  copy. A custom row on the slim template works exactly as before: `\|` alternation, `[\|]`
+  literal pipe, `| cas | optional |`. Tests: CT-01..04; CF-07/CF-12/CF-18 re-pinned to the slim
+  surface, config-surface SCAFFOLD_KEYS = language.
 
 ## Unreleased — 6.2-sub-doc · the document layer loses weight (text only; tool behavior unchanged)
 

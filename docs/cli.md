@@ -202,7 +202,9 @@ Exit: 0 done · 1 uninitialized.
 
 ## 8. Configuration Reference
 
-### 8.0 process-config keys: id-pattern
+### 8.0 process-config keys: id-pattern, cas
+
+The scaffolded `apriori/process-config.md` ships neither of these rows: a missing row IS the default (`id-pattern` → the built-in pattern below, `cas` → `required`), so write a row only to change it. `| cas | optional |` turns the archive/gate denial of unstamped MUTATION deltas (MODIFIED/REMOVED/RENAMED) into a visible warning — the waiver names the config; the default `required` denies (gate C7 blocks, `archive` refuses at preflight; the per-run waiver is the `--no-cas` flag, which keeps supremacy over any config state).
 
 `| id-pattern | <bare JS regex source> |` in `apriori/process-config.md` declares the project's scenario-ID shape once, for every consumer. Resolution order: the `--id-pattern` flag (verify and gate only; judged by presence — an empty flag is an error, never a fallback) > the config row > the built-in default `[A-Z]+(?:-[A-Z]+){0,}-\d+[a-z]{0,}` — which already recognises multi-segment (`AC-BIS-01`) and lowercase-suffixed (`AC-30f`) IDs, so most projects never need the row at all. Its quantifiers are written `{0,}` rather than the equivalent `*` so that the scaffolded table row survives a markdown formatter (a bare `*` pair in a table cell reads as emphasis and gets rewritten to `_`). `check` (CK-04) and `doctor` (D6) consume the row with no flag. All four consumers recognize IDs through the same contract: the match starts at the title's first character, a following letter/digit/underscore rejects it, no `\b` is appended, the source compiles as written.
 

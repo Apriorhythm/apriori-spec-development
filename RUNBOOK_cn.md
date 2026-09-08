@@ -58,11 +58,10 @@ cd your-project && apriori init  # 交互式:勾选要接入的 AI 工具
 ```text
 按 apriori runbook(apriori/runbook.md)推进变更 <change-name>。
 先跑 `apriori status --change <change-name>`,读 apriori/changes/<change-name>/flow-state.md,从它第一条 `## Next` 继续。只有当 status、Next、一个被阻塞的命令、或一个不确定的事实指向某节 runbook 时才去读它——绝不预载完整 runbook。
-(产物根若外置:artifact-root=<路径>。否则省略——即项目根。)
 只推进到下一个需要我做决定的地方(§1 R1),然后停下来汇报。
 ```
 
-> 这句 kickoff(或需求文档的签核)*就是*人对意图的认可。产物根外置时,kickoff 必须写明它,因为 flow-state 文件本身就在它下面。
+> 这句 kickoff(或需求文档的签核)*就是*人对意图的认可。
 
 **上下文经济。** 上下文窗口是 agent 最稀缺的资源,须刻意管理:
 
@@ -152,9 +151,6 @@ delivery: pending-external-acceptance | released
                         # `apriori status --change <name> --escalation` 对仍然 pending 的
                         # 内容以 3 退出。遗留的、带内容的字段是迁移拒绝(C3/R1):
                         # 移到 ## Open,然后删掉该字段。
-artifact-root: .        # 可选;默认=项目根。只作用于 apriori/changes/ 下的
-                        # 各变更 bundle,绝不作用于 apriori/truth/ 或 apriori/specs/。
-                        # 外置时 kickoff 提示词必须写明——本文件自己就在它下面。
 
 ## Reality Check         # §4 Ground 写这一段:会影响后续动作的事实与决定
 - observed: <读到或跑出来的事实> — <路径 / 命令 / 响应 / 截图位置>
@@ -225,7 +221,7 @@ change 需要的其他任何东西——一张草稿、一幅图、给人看的�
 
 **产物接口(规范性)。** 上面的路径都是纯文件;`apriori` CLI 直接作用于它们。
 
-- **布局:** change 把增量 spec 暂存在 `apriori/changes/<change>/specs/`;被接受的 spec 进入存储 `apriori/specs/`。`artifact-root` 规则(§3)只覆盖暂存区。
+- **布局:** change 把增量 spec 暂存在 `apriori/changes/<change>/specs/`;被接受的 spec 进入存储 `apriori/specs/`。
 - **spec 结构:** Requirement 块内含 Scenario 块,每个场景**必须**带前置稳定 ID(如 `#### Scenario: KV-03 …`)——无 ID 的场景永远绑不上测试(`apriori check` 会标出)。
 - **增量语法与归档:** `## ADDED` → 追加;`## MODIFIED` → 整块替换;`## REMOVED` → 存储块标记 `deprecated (superseded by <change>)`;`## RENAMED`(`- Old -> New`)→ 就地改 ID;`## Notes` → 合并完全忽略的注释,解释某块**为什么**改写在这里(requirement 块内其他非 `Requirement` 的 `###` 会被拒绝)。与分支后已合入的 change 发生同 ID 冲突 → **停下、记为一条开放问题、由人解决**。`apriori archive --change <name>` 发现 change 下的每个增量,默认整批 dry-run,`--write` 时按失败原子提交;`--write` **配合 `--changes-dir apriori/changes`** 时,把在制的 change 目录移到 `apriori/changes/archive/<YYYY-MM-DDThhmm>-<name>/`——移动发生后,恢复的会话必须去 `archive/` 下找。**它拒绝没做完的 change**(flow-state 合法且处于 `phase: review`、保留的台账里没有 `open` 行、评审循环已收敛、没有关键证据仍是 `blocked` 而所有者未接受),打印 `RESULT: NOT READY — nothing written`(退出 1),判据与 `gate` 的 C3/C4/C8/C9 相同。`--force` **只**覆盖进度类阻断,且仅当 `gates:` 里已有 `archive-force ledger <理由>` 记录时才生效——永不覆盖 `abandoned`、结构性缺陷或缺失的现实证据。合并报告、单文件形式 `--store/--delta` 与冲突细节见 CLI 参考(`docs/cli_cn.md` 的 archive 节)。
 - **评审证据留存:** 已归档 change 下的 raw 属于**审计证据**——随归档保留,永不清理;`apriori/tmp/` 是唯一的临时空间。密钥绝不可进入 raw:落盘**之前**先脱敏——`apriori check` 的 CK-10 机械兜底。

@@ -274,7 +274,7 @@ The signals that call for real evidence are facts, not estimates: UI / prototype
 | mode | An optional, inert field | `fast` or `standard` may still be written in the state file; since 6.2 nothing decides anything by it ([§4.0](#40-four-phases)) |
 | phase | Where the change is | `ground` / `specify` / `build` / `review`, plus `done` / `abandoned` |
 
-**Where each artifact lives** (these paths are the conventions used throughout the RUNBOOK's prompts — adjust to your repo; process artifacts can also be relocated wholesale via the state file's `artifact-root` field, whose semantics live in RUNBOOK §3):
+**Where each artifact lives** (these paths are the conventions used throughout the RUNBOOK's prompts — adjust to your repo):
 
 | Artifact | Default location |
 |---|---|

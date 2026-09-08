@@ -15,7 +15,7 @@
 
 #### Scenario: NW-04 the skeleton carries the full flow-state schema
 - WHEN `apriori new` scaffolds flow-state.md
-- THEN every field of the runbook §3 schema is present — the keys `lineage`/`phase`/`reviewer-session`/`delivery`/`escalation`/`artifact-root`, and the three short sections `## Reality Check`, `## Open` (its comment showing `- <ID>: <text>`), `## Next` — and neither `mode:` nor `## Evidence`, so the scaffold never drifts behind the schema
+- THEN every field of the runbook §3 schema is present — the keys `lineage`/`phase`/`reviewer-session`/`delivery`, and the three short sections `## Reality Check`, `## Open` (its comment showing `- <ID>: <text>`), `## Next` — and neither `mode:`, `## Evidence` nor the retired `artifact-root:` (legacy files carrying it stay readable), so the scaffold never drifts behind the schema
 
 ### Requirement: the scaffold builds the bundle skeleton and no document family
 `apriori new <name>` SHALL scaffold exactly `flow-state.md` plus empty `specs/` and `review/` directories under `apriori/changes/<name>/`. It SHALL NOT create `requirement/`, and it SHALL NOT write or name any fixed per-change document — no requirement doc, proposal, design, gap report, task list or issue ledger — because 6.0 produces material on demand rather than by obligation. The state's `## Next` line is advisory text; no behavior depends on the empty dirs existing.

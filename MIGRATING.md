@@ -139,6 +139,13 @@ and `tasks.md` are never opened. Archive readiness has no R2 and no R3; an `arch
 record is parsed and reported as `note: archive-force has nothing left to force in 6.2`, and
 `--force` still opens exactly one thing — an answered round-5 escalation.
 
+**`artifact-root:` is retired (batch C).** The field was a never-implemented promise: no command
+ever consumed it (status/gate/new/verify all hard-code `apriori/changes`). `apriori new` no longer
+writes the line and the runbooks no longer teach it. Old bundles — including any scaffolded by the
+published v5.0.0 — keep parsing unchanged: the key is read and ignored, is never a structural
+defect, and still ends a section like any state key. Nothing to migrate; delete the line whenever
+you touch the file, or leave it.
+
 ## 6.0 slice 4 → slice 5 (Unreleased) — the artifact family is gone
 
 > **Read with the 6.2 section above:** the `## Evidence` rows, the ledger rule (R3 / C4) and the

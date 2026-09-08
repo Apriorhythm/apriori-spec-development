@@ -58,11 +58,10 @@ cd your-project && apriori init  # interactive: pick the AI tools to configure
 ```text
 Follow the apriori runbook (apriori/runbook.md) for change <change-name>.
 Run `apriori status --change <change-name>`, read apriori/changes/<change-name>/flow-state.md, and continue from its first `## Next` entry. Read a runbook section only when status, Next, a blocked command, or an uncertain fact points there — never preload the full runbook.
-(If the artifact root is externalized: artifact-root=<path>. Otherwise omit — project root.)
 Advance ONLY to the next point where I have to decide (§1 R1), then stop and report.
 ```
 
-> This kickoff *is* the human intent acknowledgment. When the artifact root is externalized, the kickoff prompt must state it, because the flow-state file itself lives under it.
+> This kickoff *is* the human intent acknowledgment.
 
 **Context economy.** The context window is the agent's scarcest resource — manage it deliberately:
 
@@ -154,10 +153,6 @@ delivery: pending-external-acceptance | released
                         # evidence — `apriori status --change <name> --escalation` exits 3 on
                         # what is still pending. A leftover field with content is a migration
                         # refusal (C3/R1): move it to ## Open, then delete the field.
-artifact-root: .        # optional; default = project root. Applies ONLY to the change
-                        # bundles under apriori/changes/, NEVER to apriori/truth/ or
-                        # apriori/specs/. When externalized, the kickoff prompt must
-                        # state it — this file itself lives under it.
 
 ## Reality Check         # §4 Ground writes this: the facts and decisions later actions depend on
 - observed: <a fact you read or ran> — <path / command / response / screenshot>
@@ -233,7 +228,7 @@ Anything else a change needs — a scratch note, a diagram, a one-pager for a hu
 
 **The artifact interface (normative).** The paths above are plain files; the `apriori` CLI acts on them directly.
 
-- **Layout:** a change stages its delta specs under `apriori/changes/<change>/specs/`; accepted specs live in the store `apriori/specs/`. The `artifact-root` rule (§3) covers the staging area only.
+- **Layout:** a change stages its delta specs under `apriori/changes/<change>/specs/`; accepted specs live in the store `apriori/specs/`.
 - **Spec structure:** Requirement blocks containing Scenario blocks, every scenario carrying a leading stable ID (e.g. `#### Scenario: KV-03 …`) — an ID-less scenario can never be bound to a test (`apriori check` flags it).
 - **Delta grammar and archive:** `## ADDED` → append; `## MODIFIED` → replace the whole block; `## REMOVED` → the store block is marked `deprecated (superseded by <change>)`; `## RENAMED` (`- Old -> New`) → rename the ID in place; `## Notes` → commentary the merge ignores entirely — write WHY a block changed there (any other non-`Requirement` `###` inside a requirement block is refused). A same-ID conflict with a change merged since branching → **stop, record it as an open issue, a human resolves**. `apriori archive --change <name>` discovers every delta under the change, dry-runs by default, and on `--write` commits failure-atomically; `--write` **with `--changes-dir apriori/changes`**, moves the in-flight change dir to `apriori/changes/archive/<YYYY-MM-DDThhmm>-<name>/` — a resumed session must look under `archive/` once the move has happened. **It refuses a change that is not finished** (flow-state legal and at `phase: review`; no `open` row in a kept ledger; the review loop converged; no critical evidence still `blocked` without the owner's acceptance), printing `RESULT: NOT READY — nothing written` (exit 1) on the same predicates `gate` runs for C3/C4/C8/C9. `--force` overrides **progress only** and only when `gates:` already carries `archive-force ledger <reason>` — never `abandoned`, a structural defect, or a missing piece of reality. The merge report, the single-file `--store/--delta` form and conflict details are in the CLI reference (`docs/cli.md`, archive).
 - **Review evidence retention:** raws under archived changes are AUDIT EVIDENCE — kept with the archive, never pruned; `apriori/tmp/` is the only ephemeral space. Secrets must never enter a raw: sanitize BEFORE landing — `apriori check`'s CK-10 tripwire backs this mechanically.

@@ -274,7 +274,7 @@ npm -v    # 例如 10.x.x
 | mode | 可选且不起作用的字段 | 状态文件里仍可以写 `fast` 或 `standard`;6.2 起没有任何判定依据它([§4.0](#40-四个阶段)) |
 | phase | change 走到哪了 | `ground` / `specify` / `build` / `review`,加 `done` / `abandoned` |
 
-**各类产物放哪**（下列路径就是 RUNBOOK 各提示词里通用的约定——按你的仓库调整；过程产物也可经状态文件的 `artifact-root` 字段整体外置，语义以 RUNBOOK §3 为准）：
+**各类产物放哪**（下列路径就是 RUNBOOK 各提示词里通用的约定——按你的仓库调整）：
 
 | 产物 | 默认位置 |
 |---|---|

@@ -180,6 +180,13 @@ already stopped teaching are retired, and risk acceptance is unified on ONE mech
   carries none of them ("CAS": zero hits); the pointer now names the CLI reference
   (`docs/cli.md` / `docs/cli_cn.md`) and troubleshooting, and the two body pointers of the same
   class ("… are in concepts") follow. Test: ID-05.
+- **Batch C row 1 — `artifact-root:` retired, legacy-tolerated.** The field was a
+  never-implemented promise (no runtime consumer; every command hard-codes `apriori/changes`).
+  `apriori new` stops writing the line; the kickoff prompt, the §3 schema and the §5 layout rule
+  drop it in both editions and in concepts. The KEY stays in the reader's state-key set as legacy
+  tolerance — v5.0.0's published template wrote it, so an old bundle carrying `artifact-root:`
+  parses with zero new defects, the line still ends a section, and nothing consumes it.
+  Tests: ARR-01..04; NW-04 updated.
 
 ## Unreleased — 6.2-sub-doc · the document layer loses weight (text only; tool behavior unchanged)
 

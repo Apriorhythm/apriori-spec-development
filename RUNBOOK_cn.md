@@ -378,7 +378,7 @@ change 需要的其他任何东西——一张草稿、一幅图、给人看的�
 
 ---
 
-> 人类操作员附录——由人执行的 `/goal` 配方与五项所有者决定——在 apriori-cli 仓库的 `docs/operator_cn.md`(英文版 `docs/operator.md`)。
+> 人类操作员附录——由人执行的 `/goal` 配方与五项所有者决定——在 `docs/operator_cn.md`(中文版,仅仓库内);英文版 `docs/operator.md` 随 npm 包分发,可直接从安装副本读取:本地安装 `./node_modules/apriori-cli/docs/operator.md`,全局安装 `$(npm root -g)/apriori-cli/docs/operator.md`。
 
 ---
 

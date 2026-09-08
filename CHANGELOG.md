@@ -187,8 +187,15 @@ already stopped teaching are retired, and risk acceptance is unified on ONE mech
   order untouched — the only edits are the migration pointers and the heading level). The old §6
   position keeps a one-line pointer, and every internal §6 reference (runbook audience line, §1
   R3, `docs/concepts` §4.7 both editions) re-points; `lib/` carries no user-visible runbook-§6
-  string, so no code changed and gate/check/verify behavior is byte-identical. Tests:
-  OPM-01…OPM-06 (`operator-move.test.js`).
+  string, so no code changed and gate/check/verify behavior is byte-identical. The moved
+  appendix STAYS DELIVERED: `docs/operator.md` ships in the npm package (`package.json`
+  files whitelist — owner ruling: the published package is English-only; `docs/operator_cn.md`
+  stays in-repo), and both runbook editions name the executable install-side read paths
+  (`./node_modules/apriori-cli/docs/operator.md`, `$(npm root -g)/apriori-cli/docs/operator.md`),
+  so an installed user keeps the launch / revise-reentry / bound-recovery recipes after
+  init/update — proven by a real pack→unpack→install→init→read replay. Tests: OPM-01…OPM-07
+  (`operator-move.test.js`; OPM-01's success condition is REVERSED from "docs/ not packaged"
+  to "the operator doc ships", OPM-07 is the delivery proof).
 
 ## Unreleased — 6.2-sub-doc · the document layer loses weight (text only; tool behavior unchanged)
 

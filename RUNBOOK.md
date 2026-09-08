@@ -386,7 +386,7 @@ On my approval, run `apriori new <change>` and write the crystallized understand
 
 ---
 
-> The Human Operator Appendix — the `/goal` recipes the human runs, and the five owner decisions — lives in `docs/operator.md` in the apriori-cli repository.
+> The Human Operator Appendix — the `/goal` recipes the human runs, and the five owner decisions — lives in `docs/operator.md`, which ships inside the npm package. Read it from your install: `./node_modules/apriori-cli/docs/operator.md` (local install) or `$(npm root -g)/apriori-cli/docs/operator.md` (global install); in a checkout of the apriori-cli repository it is `docs/operator.md` (Chinese edition `docs/operator_cn.md`, repository-only).
 
 ---
 

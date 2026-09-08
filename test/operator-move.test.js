@@ -28,15 +28,62 @@ const ESCALATION_LINE = 'Escalate the bar, never quietly lower it.';
 const EN_HEADING = '## 6. Human Operator Appendix';
 const CN_HEADING = '## 6. 人类操作员附录';
 
-test('OPM-01 install view: npm pack ships a runbook without §6 body but with the pointer, and no docs/', () => {
+test('OPM-01 install view: npm pack ships the runbook without the appendix body AND the EN operator doc that carries it', () => {
+  // P3 acceptance reversal: the old success condition ("docs/ is not packaged") certified the
+  // installed user's LOSS of the launch / revise-reentry / bound-recovery recipes. The package
+  // must ship the appendix it points at. Owner ruling: the published package is English-only;
+  // the CN edition stays in-repo.
   const out = execFileSync('npm', ['pack', '--dry-run', '--json'], { cwd: ROOT, encoding: 'utf8' });
   const files = JSON.parse(out)[0].files.map((f) => f.path);
   assert.ok(files.includes('RUNBOOK.md'), 'RUNBOOK.md must be packaged');
-  assert.ok(!files.some((f) => f.startsWith('docs/')), 'docs/ is not packaged — the pointer must say where the appendix went');
+  assert.ok(files.includes('docs/operator.md'),
+    'docs/operator.md must ship with the package — a repository pointer alone strands the installed user');
+  assert.ok(!files.includes('docs/operator_cn.md'),
+    'owner ruling: the published package is English-only; docs/operator_cn.md stays in-repo');
+  assert.deepStrictEqual(files.filter((f) => f.startsWith('docs/')), ['docs/operator.md'],
+    'only the operator appendix ships from docs/ — not the whole docs tree');
   const rb = read('RUNBOOK.md');
-  assert.ok(!rb.includes(EN_HEADING), 'packaged RUNBOOK.md still carries the §6 heading');
-  assert.ok(!rb.includes('Safety bound: 25 turns'), 'packaged RUNBOOK.md still carries the §6 recipe body');
+  assert.ok(!rb.includes(EN_HEADING), 'packaged RUNBOOK.md still carries the moved appendix heading');
+  assert.ok(!rb.includes('Safety bound: 25 turns'), 'packaged RUNBOOK.md still carries the recipe body');
   assert.ok(rb.includes('docs/operator.md'), 'packaged RUNBOOK.md lacks the docs/operator.md pointer');
+  assert.ok(rb.includes('node_modules/apriori-cli/docs/operator.md'),
+    'the runbook pointer gives no executable local read path for an installed user');
+});
+
+test('OPM-07 delivery proof: pack → unpack → install → init — all three recipes readable from the installed copy', () => {
+  // The predicate the P3 audit ran by hand, frozen as a test: a REAL tarball (no dry-run), the
+  // package unpacked as a local install, a project initialized from the INSTALLED bin, and the
+  // launch / revise-reentry / bound-recovery paths read IN FULL from the installed copy at the
+  // path the delivered runbook names.
+  const tmpd = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-opm7-'));
+  try {
+    const out = execFileSync('npm', ['pack', '--json', '--pack-destination', tmpd],
+      { cwd: ROOT, encoding: 'utf8' });
+    const tarball = path.join(tmpd, JSON.parse(out)[0].filename);
+    execFileSync('tar', ['-xzf', tarball, '-C', tmpd]);
+    const pkg = path.join(tmpd, 'package');
+    // the packaged operator doc is the repo's, byte for byte
+    assert.strictEqual(fs.readFileSync(path.join(pkg, 'docs', 'operator.md'), 'utf8'),
+      read('docs/operator.md'), 'the packaged operator.md drifted from the repository copy');
+    // simulate the local install and run init FROM the installed copy
+    const proj = path.join(tmpd, 'proj');
+    const installed = path.join(proj, 'node_modules', 'apriori-cli');
+    fs.mkdirSync(path.dirname(installed), { recursive: true });
+    fs.cpSync(pkg, installed, { recursive: true });
+    execFileSync('node', [path.join(installed, 'bin', 'apriori.js'), 'init', '--tools', 'claude', '--yes'],
+      { cwd: proj, encoding: 'utf8' });
+    const rb = fs.readFileSync(path.join(proj, 'apriori', 'runbook.md'), 'utf8');
+    assert.ok(rb.includes('node_modules/apriori-cli/docs/operator.md'),
+      'the delivered project runbook names no executable local path to the operator doc');
+    // follow the named path: the three recipes must be there in full
+    const op = fs.readFileSync(path.join(proj, 'node_modules', 'apriori-cli', 'docs', 'operator.md'), 'utf8');
+    for (const [name, line] of [['launch', LAUNCH_LINE], ['revise re-entry', REVISE_LINE],
+      ['bound recovery', RECOVERY_LINE], ['escalation policy', ESCALATION_LINE]])
+      assert.ok(op.includes(line), `the ${name} recipe is not readable from the installed copy`);
+    assert.strictEqual(op, read('docs/operator.md'), 'the installed operator.md drifted from the repository copy');
+  } finally {
+    fs.rmSync(tmpd, { recursive: true, force: true });
+  }
 });
 
 test('OPM-02 update-copied runbook syncs: the refreshed apriori/runbook.md carries pointer, not §6', () => {
@@ -68,6 +115,13 @@ test('OPM-03 docs/operator.md keeps the launch / revise / recovery sentences byt
   assert.ok(op.includes(REVISE_LINE), 'revise-path line not verbatim in docs/operator.md');
   assert.ok(op.includes(RECOVERY_LINE), 'recovery-path line not verbatim in docs/operator.md');
   assert.ok(op.includes(ESCALATION_LINE), 'escalation policy sentence not verbatim in docs/operator.md');
+  // full-text strength (P3): not just sentences — the doc carries exactly the three complete
+  // fenced recipe blocks (Specify / Build & Test / Review & Deliver), each with its /goal body
+  const blocks = op.match(/```text\n[\s\S]*?```/g) || [];
+  assert.strictEqual(blocks.length, 3, `docs/operator.md must carry exactly the three recipe blocks, found ${blocks.length}`);
+  for (const b of blocks) assert.ok(b.includes('/goal "Goal'), 'a recipe block lost its /goal body');
+  assert.ok(blocks[1].includes(LAUNCH_LINE) && blocks[1].includes(RECOVERY_LINE),
+    'the Build & Test block no longer carries launch + recovery in one recipe');
 });
 
 test('OPM-04 docs/operator_cn.md keeps the same frozen recipe text (recipes stay English verbatim)', () => {
@@ -76,6 +130,13 @@ test('OPM-04 docs/operator_cn.md keeps the same frozen recipe text (recipes stay
   assert.ok(op.includes(REVISE_LINE), 'revise-path line not verbatim in docs/operator_cn.md');
   assert.ok(op.includes(RECOVERY_LINE), 'recovery-path line not verbatim in docs/operator_cn.md');
   assert.ok(op.includes('人类操作员附录'), 'CN operator doc lost its CN title');
+  // two-edition full-text oracle (P3): every complete EN recipe block appears byte-identically
+  // in the CN edition — the editions cannot drift a recipe apart
+  const en = read('docs/operator.md');
+  const blocks = en.match(/```text\n[\s\S]*?```/g) || [];
+  assert.strictEqual(blocks.length, 3);
+  for (const b of blocks)
+    assert.ok(op.includes(b), `a full EN recipe block is not verbatim in the CN edition: ${b.slice(0, 60)}…`);
 });
 
 test('OPM-05 both runbooks: §6 body gone, pointer present, §0-§5 untouched anchors stay', () => {
@@ -91,6 +152,11 @@ test('OPM-05 both runbooks: §6 body gone, pointer present, §0-§5 untouched an
   }
   assert.ok(en.includes('docs/operator.md'), 'RUNBOOK.md lacks the operator pointer');
   assert.ok(cn.includes('docs/operator_cn.md'), 'RUNBOOK_cn.md lacks the operator pointer');
+  // both editions name an executable install-side read path, not just a repository location
+  assert.ok(en.includes('node_modules/apriori-cli/docs/operator.md'),
+    'RUNBOOK.md gives no executable local read path for the shipped operator doc');
+  assert.ok(cn.includes('node_modules/apriori-cli/docs/operator.md'),
+    'RUNBOOK_cn.md gives no executable local read path for the shipped operator doc');
 });
 
 test('OPM-06 outside references re-point: concepts EN/CN name operator.md, not runbook §6', () => {

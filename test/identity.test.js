@@ -98,3 +98,25 @@ test('ID-04 CHANGELOG "Unreleased — 6.2" records batch A, item by item', () =>
   for (const id of ['A-1', 'A-2', 'A-3', 'A-4', 'A-5', 'A-6', 'A-7', 'A-8', 'A-9'])
     assert.match(section, new RegExp(`Batch ${id} —`), id);
 });
+
+test('ID-05 the runbook finer-behavior pointer names files that actually carry the keywords (SUB-18)', () => {
+  // the header claimed verdict parsing / the CAS algorithm / verify's diagnostic classes live in
+  // docs/concepts.md — none of those keywords exist there ("CAS" has zero hits). The real home
+  // is the CLI reference. Pin the pointer on files that carry what they are pointed at for.
+  const en = fs.readFileSync(path.join(ROOT, 'RUNBOOK.md'), 'utf8');
+  const cn = fs.readFileSync(path.join(ROOT, 'RUNBOOK_cn.md'), 'utf8');
+  const enHead = en.slice(0, en.search(/^## /m)), cnHead = cn.slice(0, cn.search(/^## /m));
+  assert.match(enHead, /the tool's finer behavior \(verdict parsing, the CAS algorithm, verify's diagnostic classes\) is in that repository's `docs\/cli\.md` \(the CLI reference\) and `docs\/troubleshooting\.md`/);
+  assert.doesNotMatch(enHead, /is in that `docs\/concepts\.md`/);
+  assert.match(cnHead, /工具行为的细节\(结论词汇解析、CAS 算法、verify 的诊断分类\)在该仓库的 `docs\/cli_cn\.md`\(CLI 参考\)与 `docs\/troubleshooting_cn\.md` 里/);
+  // the two body pointers of the same class follow the same fix
+  assert.match(en, /The merge report, the single-file `--store\/--delta` form and conflict details are in the CLI reference \(`docs\/cli\.md`, archive\)\./);
+  assert.match(en, /The diagnostic classes are detailed in the CLI reference \(`docs\/cli\.md`, verify\)\./);
+  assert.match(cn, /合并报告、单文件形式 `--store\/--delta` 与冲突细节见 CLI 参考\(`docs\/cli_cn\.md` 的 archive 节\)。/);
+  assert.match(cn, /诊断分类的细节见 CLI 参考\(`docs\/cli_cn\.md` 的 verify 节\)。/);
+  // and the pointed-at files really carry the keywords the pointer promises
+  const cli = fs.readFileSync(path.join(ROOT, 'docs', 'cli.md'), 'utf8');
+  for (const kw of [/CAS/, /verdict/i, /UNBOUND/, /ORPHAN/]) assert.match(cli, kw);
+  const concepts = fs.readFileSync(path.join(ROOT, 'docs', 'concepts.md'), 'utf8');
+  assert.doesNotMatch(concepts, /\bCAS\b/, 'concepts still has no CAS content — the old pointer must not return');
+});

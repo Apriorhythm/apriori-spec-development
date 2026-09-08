@@ -10,7 +10,7 @@
 > 项目本地状态只存在于 `apriori/process-config.md` 与 flow-state 文件——本文件无状态,因此**升级=用上游新版整文件覆盖**。
 
 > **读者:AI Agent**(§6 除外,那节给操作它的人)。本文件自包含:Agent 运行时需要的一切都在这里——铁律、状态机、产物路径、提示词。
-> **Why**——理念、工具搭建、实例教学——在人类手册里:apriori-cli 仓库中的 `README_cn.md` 与 `docs/concepts_cn.md`(不一定就在本副本旁边);工具行为的细节(结论词汇解析、CAS 算法、verify 的诊断分类)在那份 `docs/concepts_cn.md` 里,被某条命令的输出指到时再读。两者在操作细节上不一致时,**以本 RUNBOOK 为准**。
+> **Why**——理念、工具搭建、实例教学——在人类手册里:apriori-cli 仓库中的 `README_cn.md` 与 `docs/concepts_cn.md`(不一定就在本副本旁边);工具行为的细节(结论词汇解析、CAS 算法、verify 的诊断分类)在该仓库的 `docs/cli_cn.md`(CLI 参考)与 `docs/troubleshooting_cn.md` 里,需要解读某条命令的输出时再读。两者在操作细节上不一致时,**以本 RUNBOOK 为准**。
 
 **运行原则(十二句;下面各节只是它们的操作细节):**
 
@@ -227,7 +227,7 @@ change 需要的其他任何东西——一张草稿、一幅图、给人看的�
 
 - **布局:** change 把增量 spec 暂存在 `apriori/changes/<change>/specs/`;被接受的 spec 进入存储 `apriori/specs/`。`artifact-root` 规则(§3)只覆盖暂存区。
 - **spec 结构:** Requirement 块内含 Scenario 块,每个场景**必须**带前置稳定 ID(如 `#### Scenario: KV-03 …`)——无 ID 的场景永远绑不上测试(`apriori check` 会标出)。
-- **增量语法与归档:** `## ADDED` → 追加;`## MODIFIED` → 整块替换;`## REMOVED` → 存储块标记 `deprecated (superseded by <change>)`;`## RENAMED`(`- Old -> New`)→ 就地改 ID;`## Notes` → 合并完全忽略的注释,解释某块**为什么**改写在这里(requirement 块内其他非 `Requirement` 的 `###` 会被拒绝)。与分支后已合入的 change 发生同 ID 冲突 → **停下、记为一条开放问题、由人解决**。`apriori archive --change <name>` 发现 change 下的每个增量,默认整批 dry-run,`--write` 时按失败原子提交;`--write` **配合 `--changes-dir apriori/changes`** 时,把在制的 change 目录移到 `apriori/changes/archive/<YYYY-MM-DDThhmm>-<name>/`——移动发生后,恢复的会话必须去 `archive/` 下找。**它拒绝没做完的 change**(flow-state 合法且处于 `phase: review`、保留的台账里没有 `open` 行、评审循环已收敛、没有关键证据仍是 `blocked` 而所有者未接受),打印 `RESULT: NOT READY — nothing written`(退出 1),判据与 `gate` 的 C3/C4/C8/C9 相同。`--force` **只**覆盖进度类阻断,且仅当 `gates:` 里已有 `archive-force ledger <理由>` 记录时才生效——永不覆盖 `abandoned`、结构性缺陷或缺失的现实证据。合并报告、单文件形式 `--store/--delta` 与冲突细节见 concepts。
+- **增量语法与归档:** `## ADDED` → 追加;`## MODIFIED` → 整块替换;`## REMOVED` → 存储块标记 `deprecated (superseded by <change>)`;`## RENAMED`(`- Old -> New`)→ 就地改 ID;`## Notes` → 合并完全忽略的注释,解释某块**为什么**改写在这里(requirement 块内其他非 `Requirement` 的 `###` 会被拒绝)。与分支后已合入的 change 发生同 ID 冲突 → **停下、记为一条开放问题、由人解决**。`apriori archive --change <name>` 发现 change 下的每个增量,默认整批 dry-run,`--write` 时按失败原子提交;`--write` **配合 `--changes-dir apriori/changes`** 时,把在制的 change 目录移到 `apriori/changes/archive/<YYYY-MM-DDThhmm>-<name>/`——移动发生后,恢复的会话必须去 `archive/` 下找。**它拒绝没做完的 change**(flow-state 合法且处于 `phase: review`、保留的台账里没有 `open` 行、评审循环已收敛、没有关键证据仍是 `blocked` 而所有者未接受),打印 `RESULT: NOT READY — nothing written`(退出 1),判据与 `gate` 的 C3/C4/C8/C9 相同。`--force` **只**覆盖进度类阻断,且仅当 `gates:` 里已有 `archive-force ledger <理由>` 记录时才生效——永不覆盖 `abandoned`、结构性缺陷或缺失的现实证据。合并报告、单文件形式 `--store/--delta` 与冲突细节见 CLI 参考(`docs/cli_cn.md` 的 archive 节)。
 - **评审证据留存:** 已归档 change 下的 raw 属于**审计证据**——随归档保留,永不清理;`apriori/tmp/` 是唯一的临时空间。密钥绝不可进入 raw:落盘**之前**先脱敏——`apriori check` 的 CK-10 机械兜底。
 - **CAS 基线戳:** 编写增量时先跑 `apriori stamp apriori/specs/<module>/spec.md`,把打印出的 `<!-- apriori-base: … -->` 行贴到增量文件顶部(第一个 `## … Requirements` 段之前;存储尚不存在时为 `new`)。此后 `verify --change` 与 `archive` 都会在存储自增量编写以来发生分叉时拒绝。未打戳的**变更类**增量(MODIFIED/REMOVED/RENAMED)**默认被拒**——gate C7 阻断,`archive` 在 preflight 拒绝;豁免是 `--no-cas` flag 或 `| cas | optional |` 配置行。
 
@@ -262,7 +262,7 @@ change 需要的其他任何东西——一张草稿、一幅图、给人看的�
 ### Build & Test —— 先失败证据,再真实测试
 
 - **按顺序做:**(1)一条能用真实证据证明每个 scenario 行为的失败测试——一个 Scenario 的示例表可以共用**一条**参数化测试,标准是"每个 scenario 都覆盖到",不是"一个 ID 一条测试";用 scenario ID 给测试命名是建议,不是强制——展示失败运行;(2)用 **P2** 实现;(3)跑到全绿;(4)`apriori verify` GREEN;(5)更新 `## Open`:删掉已解决的,为本 change 命中且尚未解决的每条风险各写一行,带稳定 id(`- <ID>: <文字>`)。
-- **spec-runner 闸口(`apriori verify`)。** 变更进行中用投影形式:`apriori verify --change <name> --test-cmd "<你的测试命令>"`——在内存里把增量应用到存储上再绑定场景。归档后用朴素形式 `apriori verify --specs apriori/specs --test-cmd "…"`。两者都报告 BOUND-GREEN / BOUND-RED / UNBOUND / ORPHAN / UNIDENTIFIED。**GREEN(退出 0)= 本 change 范围内没有已绑定场景的测试失败、没有无法归因的失败、没有跨边界的重复 ID;UNBOUND、不失败的 ORPHAN 与 UNIDENTIFIED 只作提示,从不阻断**——不要为它们去写 TAP 合并器或 ID 提升器。退出 1 = 有缺口;退出 2 = 这次运行本身不可信(spec 路径缺失、零场景、非 TAP 输出、测试命令崩溃、合并冲突、基线戳分叉、增量格式错误)——**损坏或空洞的运行永远不是 GREEN**。`apriori gate` 的 C1 读同一份结果。诊断分类的细节见 concepts。
+- **spec-runner 闸口(`apriori verify`)。** 变更进行中用投影形式:`apriori verify --change <name> --test-cmd "<你的测试命令>"`——在内存里把增量应用到存储上再绑定场景。归档后用朴素形式 `apriori verify --specs apriori/specs --test-cmd "…"`。两者都报告 BOUND-GREEN / BOUND-RED / UNBOUND / ORPHAN / UNIDENTIFIED。**GREEN(退出 0)= 本 change 范围内没有已绑定场景的测试失败、没有无法归因的失败、没有跨边界的重复 ID;UNBOUND、不失败的 ORPHAN 与 UNIDENTIFIED 只作提示,从不阻断**——不要为它们去写 TAP 合并器或 ID 提升器。退出 1 = 有缺口;退出 2 = 这次运行本身不可信(spec 路径缺失、零场景、非 TAP 输出、测试命令崩溃、合并冲突、基线戳分叉、增量格式错误)——**损坏或空洞的运行永远不是 GREEN**。`apriori gate` 的 C1 读同一份结果。诊断分类的细节见 CLI 参考(`docs/cli_cn.md` 的 verify 节)。
 - **跑风险要求的测试,而不是一张矩阵。** 没有按项目类型划分的证据表:一个 change 欠下的,是它实际命中的风险真正要求的证据,而尚未验证的,就是一条 `## Open` 条目。scenario ID 经单测/组件测绑定给 `apriori verify`——verify 的闸口只认 TAP,而 Playwright 不输出 TAP,所以 E2E/视觉层**叠在**绑定闸口之上作为额外退出条件,其视觉检查必须输出文本化 pass/fail。实现期的截图写到被 gitignore 的 `apriori/tmp/`;视觉回归基线图属于项目自己的测试套件。某条风险不存在可执行仪器时,独立评审就是那里的仪器。
 - **自加承诺纪律。** 无既定需求、有效决定或实际安全责任依据的自加承诺——"始终 / 并发下 / 崩溃持久 / 原子"之类的硬保证,以及需求之外的机制——默认撤回或收窄到实际验证到的程度。既定的保证要有在其**成功路径**上注入对抗条件的测试;凡 continue/skip/静默忽略分支,回查 spec 确认失败状态是否需要对用户可见。
 - **退出:** 测试全绿;`apriori verify` GREEN;lint/静态分析全绿(已配置时);`## Open` 只剩真正未解决的条目,每行带稳定 id。方案不可行或需求本身有错 → 退回 Specify 或 Ground(更新状态文件并告知人)。 不存在纯文档替代品:没有可执行测试证据的 change 就没有 C1 证据;想走这套流程的文档项目必须提供一个真正会输出 TAP 的检查。

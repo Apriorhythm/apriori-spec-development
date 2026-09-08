@@ -175,6 +175,11 @@ already stopped teaching are retired, and risk acceptance is unified on ONE mech
   not re-judged)`), never a finding. A 5.x bundle still in flight keeps the finding (MD-12
   unchanged). Test: DR-16. This makes `doctor` pass its own repository, whose superseded
   `archive-preflight` / `hotfix-channel` bundles are owner-ruled to stay in place unmigrated.
+- **SUB-18 — the finer-behavior pointer stops dangling.** Both runbook headers sent verdict
+  parsing, the CAS algorithm and verify's diagnostic classes to `docs/concepts.md`, which
+  carries none of them ("CAS": zero hits); the pointer now names the CLI reference
+  (`docs/cli.md` / `docs/cli_cn.md`) and troubleshooting, and the two body pointers of the same
+  class ("… are in concepts") follow. Test: ID-05.
 
 ## Unreleased — 6.2-sub-doc · the document layer loses weight (text only; tool behavior unchanged)
 

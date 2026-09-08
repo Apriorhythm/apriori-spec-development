@@ -267,7 +267,8 @@ test('IN-20 real PTY: an empty-parsed selection refuses with the full diagnostic
   const root = tmp();
   fs.mkdirSync(path.join(root, '.cursor'));
   for (const argv of ['--tools ,', '']) {   // empty-parsed list AND missing flag: one refusal
-    const r = spawnSync('script', ['-qe', '-c', `node ${BIN} init ${argv}`.trim(), '/dev/null'],
+    // BIN must be shell-quoted: a checkout path with a space is a normal path (N1, accept r2)
+    const r = spawnSync('script', ['-qe', '-c', `node ${JSON.stringify(BIN)} init ${argv}`.trim(), '/dev/null'],
       { cwd: root, encoding: 'utf8' });
     // under script(1) the pty merges stderr into stdout
     const out = r.stdout + r.stderr;

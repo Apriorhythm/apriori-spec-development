@@ -9,7 +9,7 @@ const init = require('../lib/init');
 function tmp() { return fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-in-')); }
 function read(root, rel) { return fs.readFileSync(path.join(root, rel), 'utf8'); }
 
-test('IN-01 detects present tools and would pre-select them', () => {
+test('IN-01 detects present tools (they feed the missing --tools guidance and doctor D4)', () => {
   const root = tmp();
   fs.writeFileSync(path.join(root, 'CLAUDE.md'), 'x');
   fs.mkdirSync(path.join(root, '.cursor'));
@@ -18,7 +18,7 @@ test('IN-01 detects present tools and would pre-select them', () => {
   assert.ok(!d.includes('windsurf'));
 });
 
-test('IN-02 the multi-select universe is the six supported tools', () => {
+test('IN-02 the tool universe is the six supported tools', () => {
   assert.deepStrictEqual(Object.keys(init.TOOLS).sort(),
     ['claude', 'codex', 'copilot', 'cursor', 'opencode', 'windsurf'].sort());
 });
@@ -74,48 +74,6 @@ test('IN-07 dry-run previews actions without writing any file', () => {
   assert.ok(!fs.existsSync(path.join(root, 'CLAUDE.md')));
 });
 
-test('IN-10 arrow-key multiselect: parseKey, reducer, render (no numbers), end-to-end', async () => {
-  // parseKey maps raw terminal bytes → key names
-  assert.strictEqual(init.parseKey(Buffer.from('\x1b[A')), 'up');
-  assert.strictEqual(init.parseKey(Buffer.from('\x1b[B')), 'down');
-  assert.strictEqual(init.parseKey(Buffer.from(' ')), 'space');
-  assert.strictEqual(init.parseKey(Buffer.from('\r')), 'enter');
-  assert.strictEqual(init.parseKey(Buffer.from('a')), 'all');
-  assert.strictEqual(init.parseKey(Buffer.from('\x03')), 'cancel');
-
-  const items = [{ key: 'a', name: 'A' }, { key: 'b', name: 'B' }, { key: 'c', name: 'C' }];
-  let st = { items, cursor: 0, selected: new Set() };
-  st = init.reduceKey(st, 'up');    assert.strictEqual(st.cursor, 2);   // wraps to bottom
-  st = init.reduceKey(st, 'down');  assert.strictEqual(st.cursor, 0);   // wraps to top
-  st = init.reduceKey(st, 'space'); assert.ok(st.selected.has('a'));    // toggle current on
-  st = init.reduceKey(st, 'space'); assert.ok(!st.selected.has('a'));   // toggle off
-  st = init.reduceKey(st, 'all');   assert.strictEqual(st.selected.size, 3);  // all on
-  st = init.reduceKey(st, 'all');   assert.strictEqual(st.selected.size, 0);  // all off
-
-  // render shows a cursor + checkbox, a selected-footer, and NO numeric "1." "2." selection
-  const menu = init.renderMenu({ items, cursor: 1, selected: new Set(['a', 'c']) });
-  assert.match(menu, /❯ ◯ B/);      // cursor on row 1
-  assert.match(menu, /◉ A/);        // 'a' selected
-  assert.doesNotMatch(menu, /\d\.\s/);   // no "1. 2. 3."
-  assert.match(menu, /space toggle · a all · enter confirm/);
-  assert.match(menu, /selected: A, C/);                     // footer lists selected names in order
-  assert.match(init.renderMenu({ items, cursor: 0, selected: new Set() }), /selected: \(none\)/);
-  assert.doesNotMatch(menu, /\x1b\[/);                      // no ANSI when color off (default)
-  // green when on — assert the FOOTER names specifically are green (not just the ◉ boxes)
-  assert.match(init.renderMenu({ items, cursor: 0, selected: new Set(['a']) }, { color: true }), /selected: \x1b\[32mA\x1b\[0m/);
-
-  // end-to-end driver with injected streams: down, space, down, space, enter → picks b, c
-  const { PassThrough } = require('node:stream');
-  const input = new PassThrough();
-  const output = { write() {} };
-  const p = init.multiselect({ items, preselected: [], input, output });
-  for (const seq of ['\x1b[B', ' ', '\x1b[B', ' ', '\r']) {
-    input.write(Buffer.from(seq));
-    await new Promise((r) => setImmediate(r));
-  }
-  assert.deepStrictEqual(await p, ['b', 'c']);
-});
-
 test('IN-18 low-confidence markers detect nothing: .github alone and AGENTS.md alone attribute no tool', () => {
   // fixture 1: a .github/ dir WITHOUT copilot-instructions.md is not Copilot — no mis-add
   const r1 = tmp();
@@ -157,6 +115,90 @@ test('IN-19 explicit --tools and the default path are unchanged by detection rem
   assert.ok(!fs.existsSync(path.join(withMarkers, '.codex')));
   // the user's AGENTS.md is untouched when neither codex nor opencode is selected
   assert.strictEqual(read(withMarkers, 'AGENTS.md'), '# mine\n');
+});
+
+test('IN-20 no interactive menu: every TTY/non-TTY × zero/single/multi cell has an explicit outlet', async () => {
+  // the menu machinery is gone from the module surface
+  for (const gone of ['multiselect', 'parseKey', 'reduceKey', 'renderMenu'])
+    assert.ok(!(gone in init), `menu machinery still exported: ${gone}`);
+
+  const { spawnSync } = require('node:child_process');
+  const BIN = path.join(__dirname, '..', 'bin', 'apriori.js');
+  const run = (args, cwd) => spawnSync('node', [BIN, 'init', ...args], { encoding: 'utf8', cwd });
+  const COMPLETE = {
+    claude: ['CLAUDE.md', '.claude/commands/apriori.md'],
+    cursor: ['.cursor/rules/apriori.mdc'],
+  };
+  const assertComplete = (root, tools) => {
+    for (const f of ['apriori/runbook.md', 'apriori/managed.json', 'apriori/.gitignore']
+      .concat(...tools.map((t) => COMPLETE[t])))
+      assert.ok(fs.existsSync(path.join(root, f)), `partial install: ${f} missing`);
+  };
+
+  // ---- non-TTY (spawned child, stdin is a pipe) ----
+  // zero selection, no flag → refusal naming the flag, the known tools AND the detected ones:
+  // a genuinely present tool is never silently left unconfigured
+  const r0root = tmp();
+  fs.mkdirSync(path.join(r0root, '.cursor'));
+  const r0 = run([], r0root);
+  assert.strictEqual(r0.status, 2, r0.stdout + r0.stderr);
+  assert.match(r0.stderr, /--tools/);
+  assert.match(r0.stderr, /claude, codex, cursor, copilot, opencode, windsurf/);
+  assert.match(r0.stderr, /detected[^\n]*cursor/, 'the detected tool is not named — silent unconfiguration');
+  // zero selection, empty flag value → refusal, exit non-zero
+  const rE = run(['--tools', ''], tmp());
+  assert.strictEqual(rE.status, 2);
+  assert.match(rE.stderr, /--tools/);
+  // zero selection via a list that collapses to nothing → refusal, exit non-zero
+  const rC = run(['--tools', ','], tmp());
+  assert.strictEqual(rC.status, 1);
+  assert.match(rC.stderr, /no tools selected/);
+  // single tool → complete install
+  const r1root = tmp();
+  const r1 = run(['--tools', 'claude', '--yes'], r1root);
+  assert.strictEqual(r1.status, 0, r1.stdout + r1.stderr);
+  assertComplete(r1root, ['claude']);
+  // multi tool → complete install for every selected tool
+  const r2root = tmp();
+  const r2 = run(['--tools', 'claude,cursor', '--yes'], r2root);
+  assert.strictEqual(r2.status, 0, r2.stdout + r2.stderr);
+  assertComplete(r2root, ['claude', 'cursor']);
+
+  // ---- TTY (isTTY forced true in-process): the same outlets, no menu, no hang ----
+  const prevTTY = process.stdin.isTTY;
+  const prevCwd = process.cwd();
+  const origErr = console.error, origLog = console.log;
+  const errs = [];
+  console.error = (...a) => errs.push(a.join(' '));
+  console.log = () => {};
+  try {
+    process.stdin.isTTY = true;
+    // zero selection → same refusal (would previously open the arrow-key menu and wait)
+    const t0 = tmp();
+    fs.mkdirSync(path.join(t0, '.codex'));
+    process.chdir(t0);
+    const code0 = await Promise.race([
+      init.cli([]),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('menu still present: init without --tools did not return')), 2000).unref()),
+    ]);
+    assert.strictEqual(code0, 2);
+    assert.match(errs.join('\n'), /--tools/);
+    assert.match(errs.join('\n'), /codex/, 'the detected tool is not named on a TTY');
+    // single and multi with --yes → complete install
+    const t1 = tmp();
+    process.chdir(t1);
+    assert.strictEqual(await init.cli(['--tools', 'claude', '--yes']), 0);
+    assertComplete(t1, ['claude']);
+    const t2 = tmp();
+    process.chdir(t2);
+    assert.strictEqual(await init.cli(['--tools', 'claude,cursor', '--yes']), 0);
+    assertComplete(t2, ['claude', 'cursor']);
+  } finally {
+    console.error = origErr;
+    console.log = origLog;
+    process.stdin.isTTY = prevTTY;
+    process.chdir(prevCwd);
+  }
 });
 
 test('IN-08 reports command-level vs rule-level entry per tool', () => {

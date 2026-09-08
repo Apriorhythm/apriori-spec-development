@@ -4,7 +4,7 @@
 
 ## apriori init
 
-搭建 apriori/ + 各工具的 runbook 指针(不带 --tools 时交互多选)
+搭建 apriori/ + 各工具的 runbook 指针(`--tools` 必填——没有交互菜单)
 
 ```text
 usage: apriori init [--tools <a,b,...>] [--test-cmd "<cmd>"] [--language <lang>] [--yes]
@@ -12,7 +12,7 @@ usage: apriori init [--tools <a,b,...>] [--test-cmd "<cmd>"] [--language <lang>]
 
 示例:`apriori init --tools claude,cursor --test-cmd "npm test" --yes`
 
-退出码:0 完成/你主动放弃 · 1 空选择 · 2 非交互且未给 --tools,或 `--test-cmd` / `--language` 的值是配置表格装不下的。
+退出码:0 完成/你主动放弃 · 1 空选择 · 2 未给 `--tools`(拒绝信息会列出已知工具与项目里检测到的工具),或 `--test-cmd` / `--language` 的值是配置表格装不下的。
 
 **`--tools` 在写入任何东西之前整体校验(6.2)。** 只要有一个未知键——`claud`、`Claude`、`claude,claud` 都一样——就以 2 退出并打印 `unknown tool '…' — known tools: claude, codex, cursor, copilot, opencode, windsurf`,什么都不创建,连 `apriori/` 根目录也不。规则文件里若已有工具写的**旧**指针段落(与某个历史版本逐字相同),该段落会原地升级(`pointer updated`);当前版本或手改过的指针保持原样(`skipped`)。
 

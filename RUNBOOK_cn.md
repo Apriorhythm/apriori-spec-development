@@ -35,7 +35,7 @@
 
 ```shell
 npm i -g apriori-cli     # 或用 `npx apriori-cli …` 跑下面任一命令
-cd your-project && apriori init  # 交互式:勾选要接入的 AI 工具
+cd your-project && apriori init --tools claude  # 点名要接入的 AI 工具(逗号分隔)
 ```
 
 `apriori init` 搭建单一 `apriori/` 根(本 runbook 落在 `apriori/runbook.md`、`apriori/process-config.md`,以及 `specs/ changes/ truth/` 工作目录),并把一行指向 runbook 的指针写进你勾选的每个工具的原生位置。协议只存一份;工具都指向它。`apriori doctor` 体检整个接缝,每个发现都指名修复它的命令;CLI 升级后 `apriori update` 只刷新工具所有的文件,绝不碰属于用户的文件。

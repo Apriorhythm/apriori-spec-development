@@ -1,9 +1,9 @@
 ### Requirement: apriori init scaffolds the workflow and per-tool pointers
-`apriori init` SHALL scaffold the single `apriori/` root and write a thin pointer to the self-contained runbook in each selected AI tool's native location and format, interactively by default and non-interactively via flags, without ever overwriting existing files silently.
+`apriori init` SHALL scaffold the single `apriori/` root and write a thin pointer to the self-contained runbook in each selected AI tool's native location and format, selected explicitly via `--tools` (there is no interactive menu), without ever overwriting existing files silently.
 
-#### Scenario: IN-01 detects present tools and pre-selects them
+#### Scenario: IN-01 detects present tools and names them in the guidance
 - WHEN the project already contains a tool's own high-confidence marker (CLAUDE.md, .cursor/, .github/copilot-instructions.md, …)
-- THEN init pre-checks that tool in the multi-select
+- THEN detection finds that tool — the missing `--tools` refusal names it (IN-20) and `doctor` D4 watches its pointers
 
 #### Scenario: IN-18 low-confidence markers attribute no tool
 - WHEN the project carries only an ambiguous marker — a `.github/` dir without `copilot-instructions.md`, or an `AGENTS.md` that any of several tools could have written
@@ -13,13 +13,17 @@
 - WHEN the same `--tools` selection runs in a project with misleading markers and in one without
 - THEN the scaffold actions are identical, no file is written for an unselected tool, and a user-owned `AGENTS.md` is untouched unless codex or opencode was selected
 
-#### Scenario: IN-02 interactive arrow-key multi-select of tools
-- WHEN run with no flags in a TTY
-- THEN it presents an **arrow-key** multi-select (↑/↓ move, space toggle, a all, enter confirm — no numbered input) over {Claude Code, Codex, Cursor, GitHub Copilot, OpenCode, Windsurf}, detected tools pre-checked
+#### Scenario: IN-02 the tool universe is the six supported tools
+- WHEN any selection is validated
+- THEN the known-tool universe is exactly {Claude Code, Codex, Cursor, GitHub Copilot, OpenCode, Windsurf}
 
 #### Scenario: IN-03 non-interactive via flags
 - WHEN run with `--tools a,b --test-cmd "…" --yes`
 - THEN it scaffolds without prompting (CI-friendly)
+
+#### Scenario: IN-20 no interactive menu — every selection cell has an explicit outlet
+- WHEN `init` runs on a TTY or off one, with no `--tools`, an empty `--tools`, a single tool or several
+- THEN missing/empty `--tools` is a refusal (exit non-zero) whose message names the flag, the known tools and the DETECTED tools (a genuinely present tool is never silently left unconfigured); a valid selection installs completely for every selected tool — no cell ever produces a silent partial install
 
 #### Scenario: IN-04 the protocol is written once; tools get pointers
 - WHEN any set of tools is selected
@@ -44,10 +48,6 @@
 #### Scenario: IN-09 --language pins a language in the scaffolded config
 - WHEN init runs with `--language 中文` on a project without an existing config
 - THEN the scaffolded `apriori/process-config.md` has its `language` field set to `中文` (default is `auto` = match the human); an existing config is never overwritten
-
-#### Scenario: IN-10 the multi-select is arrow-key driven (no numbered input)
-- WHEN the interactive selector runs
-- THEN keys map as ↑/↓ = move (wrapping), space = toggle current, `a` = toggle all, enter = confirm, Ctrl-C/Esc = cancel; the rendered menu shows a cursor + `◉`/`◯` checkboxes, a `selected: <names>` footer (`(none)` when empty; names colored on a TTY), and never a numbered list; selection returns the chosen tool keys in order
 
 #### Scenario: IN-11 a gitignored scratch dir for ephemeral instruments
 - WHEN init scaffolds the `apriori/` root

@@ -195,6 +195,14 @@ already stopped teaching are retired, and risk acceptance is unified on ONE mech
   `--tools` and the default path are byte-identical. `doctor` D4 stops flagging Copilot on
   repos that merely have a `.github/` dir. Tests: IN-18, IN-19; IN-01 spec names the
   high-confidence list.
+- **Batch C row 3 — the interactive multi-select menu is gone.** `init` without `--tools` is
+  now a refusal on a TTY and off one alike (exit 2), and the message names the flag, the six
+  known tools and any tools detected in the project — a genuinely present tool is never
+  silently left unconfigured. The arrow-key state machine (`parseKey`/`reduceKey`/`renderMenu`/
+  `multiselect`/`askTools`) is deleted; the preview + `Proceed? (Y/n)` confirmation and `--yes`
+  are unchanged. Every TTY/non-TTY × zero/single/multi cell has an explicit outlet — explicit
+  `--tools` installs completely, everything else errors non-zero; no silent partial install
+  (P8). Tests: IN-20 (full matrix); IN-10 retired with the menu.
 
 ## Unreleased — 6.2-sub-doc · the document layer loses weight (text only; tool behavior unchanged)
 

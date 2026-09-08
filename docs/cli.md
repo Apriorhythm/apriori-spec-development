@@ -4,7 +4,7 @@ Every subcommand answers `--help` (exit 0); unknown flags and stray arguments ex
 
 ## apriori init
 
-scaffold apriori/ + per-tool runbook pointers (interactive multiselect without --tools)
+scaffold apriori/ + per-tool runbook pointers (`--tools` is required — there is no interactive menu)
 
 ```text
 usage: apriori init [--tools <a,b,...>] [--test-cmd "<cmd>"] [--language <lang>] [--yes]
@@ -12,7 +12,7 @@ usage: apriori init [--tools <a,b,...>] [--test-cmd "<cmd>"] [--language <lang>]
 
 Example: `apriori init --tools claude,cursor --test-cmd "npm test" --yes`
 
-Exit: 0 done/aborted-by-you · 1 empty selection · 2 non-interactive without --tools, or a `--test-cmd` / `--language` value the config table cannot carry.
+Exit: 0 done/aborted-by-you · 1 empty selection · 2 missing `--tools` (the refusal names the known tools and any detected in the project), or a `--test-cmd` / `--language` value the config table cannot carry.
 
 **`--tools` is validated as a whole before anything is written (6.2).** One unknown key — `claud`, `Claude`, `claude,claud` alike — is exit 2 with `unknown tool '…' — known tools: claude, codex, cursor, copilot, opencode, windsurf`, and nothing is created, not the `apriori/` root either. A rules file that already carries an OLD tool-written pointer paragraph (an exact previous generation) gets that paragraph upgraded in place (`pointer updated`); a current or hand-edited pointer is left as it is (`skipped`).
 

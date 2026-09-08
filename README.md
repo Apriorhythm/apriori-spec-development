@@ -28,18 +28,13 @@ apriori is built to be **driven by an AI agent** — you talk, it runs the loop,
   <br><sub>Real, unedited run (waits cut): <code>npm i</code> → <code>apriori init</code> → <code>/apriori</code> a tiny change → <code>/goal</code> drives spec → review → implement → verify → gate → archive on its own, stops at the one human gate for your OK, then you run the tool it built. You say what you want and nod once.</sub>
 </p>
 
-Install once (`npm i -g apriori-cli`), then in your project run `apriori init`. It asks which AI tools to wire up — pick **Claude Code** with the arrow keys (↑/↓ move, space to toggle, enter to confirm):
+Install once (`npm i -g apriori-cli`), then in your project name the AI tools to wire up:
 
 ```text
-  Select AI tools  (↑/↓ move · space toggle · a all · enter confirm):
-❯ ◉ Claude Code
-  ◯ Codex
-  ◯ Cursor
-  ◯ GitHub Copilot
-  ◯ OpenCode
-  ◯ Windsurf
-  selected: Claude Code
+apriori init --tools claude
 ```
+
+(The known tools are `claude, codex, cursor, copilot, opencode, windsurf` — run `apriori init` bare and the message lists them, plus any it detects in your project.)
 
 It previews what it'll write, asks `Proceed? (Y/n)`, then scaffolds `apriori/` and gives Claude Code its two pointers: a `CLAUDE.md` rule and a `/apriori` slash command. Now launch Claude Code (`claude`) and drive it in plain language:
 
@@ -59,7 +54,7 @@ apriori init --tools claude --test-cmd "node --test --test-reporter=tap" --yes
 apriori doctor --no-run
 ```
 
-`init` here uses `--tools claude --yes` — the non-interactive form of Route A's menu (handy for scripts and CI); `doctor` confirms the seam is healthy (expect `DOCTOR: HEALTHY`; exit 0).
+`init` here adds `--yes` to skip the confirmation prompt (handy for scripts and CI); `doctor` confirms the seam is healthy (expect `DOCTOR: HEALTHY`; exit 0).
 
 ```shell
 apriori new hello

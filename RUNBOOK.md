@@ -35,7 +35,7 @@
 
 ```shell
 npm i -g apriori-cli     # or run any command below via `npx apriori-cli …`
-cd your-project && apriori init  # interactive: pick the AI tools to configure
+cd your-project && apriori init --tools claude  # name the AI tools to configure (comma-separated)
 ```
 
 `apriori init` scaffolds the single `apriori/` root (this runbook at `apriori/runbook.md`, `apriori/process-config.md`, and the `specs/ changes/ truth/` working dirs) and writes a thin pointer to the runbook in each selected tool's native location. The protocol lives once; tools just point at it. `apriori doctor` diagnoses the whole seam, each finding naming the command that fixes it; after a CLI upgrade, `apriori update` refreshes only the tool-owned files and never touches user-owned ones.

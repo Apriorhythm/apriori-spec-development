@@ -28,18 +28,13 @@ apriori 天生就是**让 AI agent 来驱动**的——你说话,它跑循环,�
   <br><sub>真实录制(等待已剪):<code>npm i</code> → <code>apriori init</code>(选 Claude Code)→ <code>/apriori</code> 提一个小需求 → <code>/goal</code> 自动跑完 规格→评审→实现→verify→gate→归档,只在唯一的人工闸口停下等你点头,最后你亲手运行它造出来的工具。你只需说要什么、点一次头。</sub>
 </p>
 
-先装一次(`npm i -g apriori-cli`),然后在你的项目里跑 `apriori init`。它会问你要接哪些 AI 工具——用方向键选 **Claude Code**(↑/↓ 移动,空格勾选,enter 确认):
+先装一次(`npm i -g apriori-cli`),然后在你的项目里点名要接的 AI 工具:
 
 ```text
-  Select AI tools  (↑/↓ move · space toggle · a all · enter confirm):
-❯ ◉ Claude Code
-  ◯ Codex
-  ◯ Cursor
-  ◯ GitHub Copilot
-  ◯ OpenCode
-  ◯ Windsurf
-  selected: Claude Code
+apriori init --tools claude
 ```
+
+(已知工具是 `claude, codex, cursor, copilot, opencode, windsurf`——裸跑 `apriori init` 时,提示信息会列出全部,并附上它在你项目里检测到的那些。)
 
 它会预览要写哪些文件,问 `Proceed? (Y/n)`,然后搭好 `apriori/`,并给 Claude Code 写两个指针:一份 `CLAUDE.md` 规则和一个 `/apriori` 斜杠命令。现在启动 Claude Code(`claude`),用大白话驱动它:
 
@@ -59,7 +54,7 @@ apriori init --tools claude --test-cmd "node --test --test-reporter=tap" --yes
 apriori doctor --no-run
 ```
 
-这里的 `init` 用了 `--tools claude --yes`——就是路线 A 那个菜单的非交互形式(方便脚本和 CI);`doctor` 确认接缝健康(预期 `DOCTOR: HEALTHY`,退出码 0)。
+这里的 `init` 加了 `--yes` 跳过确认提问(方便脚本和 CI);`doctor` 确认接缝健康(预期 `DOCTOR: HEALTHY`,退出码 0)。
 
 ```shell
 apriori new hello

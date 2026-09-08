@@ -9,7 +9,7 @@
 > `runbook-version: 6.2` · 上游:`https://github.com/Apriorhythm/apriori-spec-development`
 > 项目本地状态只存在于 `apriori/process-config.md` 与 flow-state 文件——本文件无状态,因此**升级=用上游新版整文件覆盖**。
 
-> **读者:AI Agent**(§6 除外,那节给操作它的人)。本文件自包含:Agent 运行时需要的一切都在这里——铁律、状态机、产物路径、提示词。
+> **读者:AI Agent**(操作它的人另见 apriori-cli 仓库里的 `docs/operator_cn.md`)。本文件自包含:Agent 运行时需要的一切都在这里——铁律、状态机、产物路径、提示词。
 > **Why**——理念、工具搭建、实例教学——在人类手册里:apriori-cli 仓库中的 `README_cn.md` 与 `docs/concepts_cn.md`(不一定就在本副本旁边);工具行为的细节(结论词汇解析、CAS 算法、verify 的诊断分类)在该仓库的 `docs/cli_cn.md`(CLI 参考)与 `docs/troubleshooting_cn.md` 里,需要解读某条命令的输出时再读。两者在操作细节上不一致时,**以本 RUNBOOK 为准**。
 
 **运行原则(十二句;下面各节只是它们的操作细节):**
@@ -98,7 +98,7 @@ cd your-project && apriori init --tools claude  # 点名要接入的 AI 工具(�
 
 **R2 —— 评审必须真实外调。** 生产会话永远不出评审结论。真实调起异构评审方——`codex exec -s read-only "<提示词>" < /dev/null`(第 2 轮起 `codex exec resume -c sandbox_mode="read-only" <session-id> "..."`;非交互调用必须关闭 stdin,否则 codex 会挂起);没有 Codex 就**新开**一个不同档位的 `claude` 会话——喂给它 P3 的默认上下文,把结论行**原文**贴回。评审方通常跑在只读沙箱、无法自己写 bundle:评审方在输出末尾给出自己的发现,生产方原样落盘并注明"代评审方录入";同一代录机制也覆盖**评审文档本体**——评审方把文档正文打印到 stdout,生产方原样落到固定路径。落盘形态二选一:文档第一个非空行是四字段齐全的来源标注 `<!-- provenance: provider=<name> model=<id> session=<id> date=<YYYY-MM-DD> -->`(字段未知写 `unknown`)且文档自带结论行——这份文档本身就是原始证据;否则评审方原始输出全文另存为 `review/<stem>-raw.*`(stem=对应评审文档)。第 1 轮一打印评审方的 session id 就记进 flow-state 的 `reviewer-session` 字段。评审方在结论行落盘前死亡 → resume 同一会话让它续完,**只重试一次**,再失败就换一个新开的独立 `claude` 会话续完;绝不代填结论行,没产出结论行的失败不计入轮次。只读评审方的**动态观测不可信**——它在沙箱里跑测试/构建可能产生幻影发现;只有静态阅读作数。如果无法真实调起评审方,停下来说明——**禁止模拟评审**。
 
-**R3 —— 一切落盘;`/goal` 属于人;配置也属于人。** 产物写到 §4 表格的确切路径;每完成一步、每轮评审后都更新状态文件。`process-config.md` **人类持有,agent 绝不写它**;没有任何配置数字决定任何循环能跑多久——评审轮次由 R4 逐 family 治理,实现/测试循环的安全上限写死在 §6 配方里。`/goal` 是人执行的命令(§6)——绝不声称自己在跑 `/goal`,也不模仿它的评估器。
+**R3 —— 一切落盘;`/goal` 属于人;配置也属于人。** 产物写到 §4 表格的确切路径;每完成一步、每轮评审后都更新状态文件。`process-config.md` **人类持有,agent 绝不写它**;没有任何配置数字决定任何循环能跑多久——评审轮次由 R4 逐 family 治理,实现/测试循环的安全上限写死在操作配方正文里(apriori-cli 仓库的 `docs/operator_cn.md`)。`/goal` 是人执行的命令(`docs/operator_cn.md`)——绝不声称自己在跑 `/goal`,也不模仿它的评估器。
 
 **R4 —— 评审轮次由评审证据派生,不手写,且逐 family 单独计数。** 一个 *family* 就是一条评审轨——文件名主干所声明的那个词(`spec-review`、`code-review`)。每个 family 拥有自己的轮次号;各 family 的轮次绝不相加。`round:` 字段被拒绝。
 
@@ -374,45 +374,7 @@ change 需要的其他任何东西——一张草稿、一幅图、给人看的�
 
 ---
 
-## 6. 人类操作员附录
-
-> 本节的一切都**由人执行**。agent 绝不可执行或模拟 `/goal`(R3)。架构与注意事项见 apriori-cli 仓库里的 `docs/concepts_cn.md` §4.7(用 /goal 自动化整个流程)。
-> **两个循环、两个上界。** *评审轮次*由派生循环按 family 治理(§1 R4 / `gate` C8);*实现与测试循环*的最坏情况是固定的 **25 轮**,写在下面的配方文本里。`process-config.md` 两个都不配置。
-
-**Specify 循环(只在所有者要求提前判断某个具体方案、或需求仍有实质不确定性时才跑——默认直接进入 Build & Test):**
-```text
-/goal "Goal: apriori/changes/<change>/specs/ holds the behavior contract and the latest review verdict line is 'VERDICT: no major issues, ready to proceed to execution'. No round cap — §1 R4's derived loop governs: still revising after round 2, stop and report instead of opening round 3.
-Each round:
-1. Revise the delta specs per the latest review — never touch source code — and update the state's ## Open section.
-2. Re-run the heterogeneous reviewer with the P3 prompt (round 1: codex exec, note the printed session id; later rounds: codex exec resume -c sandbox_mode=\"read-only\" <session-id>), producing apriori/changes/<change>/review/spec-review-v{N}.md.
-3. Surface the reviewer's verdict line here.
-Stop on 'VERDICT: no major issues, ready to proceed to execution', on 'VERDICT: escalate', or when §1 R4 stops the loop."
-```
-
-**Build & Test 循环:**
-```text
-/goal "Goal — ALL must hold: `npm test` exits 0 (naming a test with its scenario ID is a suggestion, never mandatory); lint/static analysis green (where configured); (UI projects only) the Playwright E2E suite passes and screenshot diffs are within threshold; every ## Open item in the flow-state carries a stable id (`- <ID>: <text>`) and says what is still unverified; AND `apriori gate --change <change> --review-ready --test-cmd \"npm test\"` exits 0. Safety bound: 25 turns.
-Turn 1: derive a failing test that proves every scenario's behavior with real evidence (one parametrized test may cover a scenario's whole examples table; naming it with the scenario ID is a suggestion, never mandatory), and SHOW the failing run. Each later turn: implement the next scenario, then run `npm test` (and the Playwright run for UI projects) and SHOW the output so the result is in the transcript. When the code is complete, update ## Open and run the review-ready check.
-Stop when every condition holds. If turn 25 ends with any condition still unmet, STOP anyway and report the failing evidence — which conditions failed, plus the last test output. Reaching the bound is a stopped loop for the human to judge, NEVER a pass."
-```
-> 文档项目没有替身:没有可执行测试证据的 change 就没有 C1 证据;想走这套流程的文档项目必须提供一个真正会输出 TAP 的检查(`apriori check` 不输出 TAP,当不了这个检查)。没有 UI 的项目去掉 Playwright 那一条。
-
-**Review & Deliver:**
-```text
-/goal "Goal: IF this change owes a KB update (§4 Review & Deliver: an existing truth doc for the touched module, or an explicit decision to persist one), apriori/truth/<module>.md already reflects this change's new/changed facts with a refreshed source-commit stamp — a precondition of review-ready, never a step after archive; THEN an independent review by a DIFFERENT model (the P3 prompt) reports 'VERDICT: no spec-vs-code gaps'; THEN the change is archived (`apriori archive` merges the delta specs into the living store apriori/specs/ and never touches apriori/truth/).
-If a KB update is owed, land it first and list exactly which files/sections changed. Then run the review-ready check; if it does not exit 0, go back to Build & Test — that is not a review round. Then run the consistency reviewer (codex exec / fresh claude) and paste its verdict. Then run the archive action.
-Stop when all of it holds, or immediately if the verdict is 'VERDICT: escalate'."
-```
-
-**你亲自决定的事(只有五件,再没有别的):**
-
-1. **一次 escalation** —— 一条 `VERDICT: escalate`,或某个 family 到了第 5 轮。`apriori status --change <name> --escalation` 打印它并以 3 退出。用 `gates:` 里的 `reframe <family> round <n> <split|tests|redo|accept-risk> — <理由>` 回答。要升级标准,绝不悄悄降低它。
-2. **无法解决的 `## Open` 条目**(关键证据被挡住)—— 把证据做便宜、拆小 change、或在 `gates:` 里接受风险(`evidence-accept <ID>`)。接受它只结清那一条条目,别无其他。
-3. **某个评审 family 在它的第 2 轮后停滞** —— 用 `gates:` 里的 `reframe <family> round <n> <split|tests|redo> — <理由>` 回答;只重开那个 family 的循环,别无其他。
-4. **每一次外部副作用**(§1)—— 一次性、点名、原文记录。任何一揽子授权都永不覆盖它。
-5. **放弃** —— 只凭你的一句话。
-
-其余的事要么由 CLI 机械判定,要么根本不需要谁来判定:`apriori gate --change <name>` 是机器那一面,而 `apriori status --change <name> --escalation`(退出 3)是本仓库提供的唯一硬停。
+> 人类操作员附录——由人执行的 `/goal` 配方与五项所有者决定——在 `docs/operator_cn.md`(中文版,仅仓库内);英文版 `docs/operator.md` 随 npm 包分发,可直接从安装副本读取:本地安装 `./node_modules/apriori-cli/docs/operator.md`,全局安装 `$(npm root -g)/apriori-cli/docs/operator.md`。
 
 ---
 

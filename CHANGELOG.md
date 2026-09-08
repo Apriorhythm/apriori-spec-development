@@ -215,6 +215,26 @@ already stopped teaching are retired, and risk acceptance is unified on ONE mech
   copy. A custom row on the slim template works exactly as before: `\|` alternation, `[\|]`
   literal pipe, `| cas | optional |`. Tests: CT-01..04; CF-07/CF-12/CF-18 re-pinned to the slim
   surface, config-surface SCAFFOLD_KEYS = language.
+- **batch-c-r5 — the Human Operator Appendix moves out of the runbook, verbatim.** Both runbook
+  editions' §6 (the three `/goal` recipes and the five owner decisions — audience: the human,
+  never the agent) now live in `docs/operator.md` / `docs/operator_cn.md`; the recipe text moved
+  byte-for-byte (Fix Packet rule, the 25-turn bound, the escalation policy and every command
+  order untouched — the only edits are the migration pointers and the heading level). The old §6
+  position keeps a one-line pointer, and every internal §6 reference (runbook audience line, §1
+  R3, `docs/concepts` §4.7 both editions) re-points; `lib/` carries no user-visible runbook-§6
+  string, so no code changed and gate/check/verify behavior is byte-identical. The moved
+  appendix STAYS DELIVERED: `docs/operator.md` ships in the npm package (`package.json`
+  files whitelist — owner ruling: the published package is English-only; `docs/operator_cn.md`
+  stays in-repo), and both runbook editions name the executable install-side read paths
+  (`./node_modules/apriori-cli/docs/operator.md`, `$(npm root -g)/apriori-cli/docs/operator.md`),
+  so an installed user keeps the launch / revise-reentry / bound-recovery recipes after
+  init/update — proven by a real pack→unpack→install→init→read replay. Tests: OPM-01…OPM-07
+  (`operator-move.test.js`; OPM-01's success condition is REVERSED from "docs/ not packaged"
+  to "the operator doc ships", OPM-07 is the delivery proof).
+  *Claims discipline (pre-registered mediating metric):* the token direction of this move is
+  **untested** — green tests and a shorter runbook are NOT benefit evidence; the runbook
+  read-event count will be delivered from the validation arm's session jsonl after that arm
+  closes, and until then this entry claims relocation + preserved delivery only.
 
 ## Unreleased — 6.2-sub-doc · the document layer loses weight (text only; tool behavior unchanged)
 

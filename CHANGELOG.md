@@ -187,6 +187,14 @@ already stopped teaching are retired, and risk acceptance is unified on ONE mech
   tolerance — v5.0.0's published template wrote it, so an old bundle carrying `artifact-root:`
   parses with zero new defects, the line still ends a section, and nothing consumes it.
   Tests: ARR-01..04; NW-04 updated.
+- **Batch C row 2 — low-confidence tool auto-detection is gone.** `.github/` alone no longer
+  reads as GitHub Copilot (every GitHub repo has that dir) and `AGENTS.md` alone no longer
+  attributes codex-and-opencode at once; detection keeps only markers that name their tool —
+  `.github/copilot-instructions.md`, `.codex/`, `.opencode/`, and the unambiguous ones as
+  before. Rules-file LOCATIONS are untouched (codex/opencode still write `AGENTS.md`); explicit
+  `--tools` and the default path are byte-identical. `doctor` D4 stops flagging Copilot on
+  repos that merely have a `.github/` dir. Tests: IN-18, IN-19; IN-01 spec names the
+  high-confidence list.
 
 ## Unreleased — 6.2-sub-doc · the document layer loses weight (text only; tool behavior unchanged)
 

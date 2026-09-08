@@ -2,8 +2,16 @@
 `apriori init` SHALL scaffold the single `apriori/` root and write a thin pointer to the self-contained runbook in each selected AI tool's native location and format, interactively by default and non-interactively via flags, without ever overwriting existing files silently.
 
 #### Scenario: IN-01 detects present tools and pre-selects them
-- WHEN the project already contains a tool's marker (CLAUDE.md, .cursor/, .github/, …)
+- WHEN the project already contains a tool's own high-confidence marker (CLAUDE.md, .cursor/, .github/copilot-instructions.md, …)
 - THEN init pre-checks that tool in the multi-select
+
+#### Scenario: IN-18 low-confidence markers attribute no tool
+- WHEN the project carries only an ambiguous marker — a `.github/` dir without `copilot-instructions.md`, or an `AGENTS.md` that any of several tools could have written
+- THEN detection attributes NO tool to it (no mis-add), while a genuinely present tool is still found by its own marker (`.github/copilot-instructions.md`, `.codex/`, `.opencode/`)
+
+#### Scenario: IN-19 explicit --tools is unchanged by detection
+- WHEN the same `--tools` selection runs in a project with misleading markers and in one without
+- THEN the scaffold actions are identical, no file is written for an unselected tool, and a user-owned `AGENTS.md` is untouched unless codex or opencode was selected
 
 #### Scenario: IN-02 interactive arrow-key multi-select of tools
 - WHEN run with no flags in a TTY

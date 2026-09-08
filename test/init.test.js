@@ -116,6 +116,49 @@ test('IN-10 arrow-key multiselect: parseKey, reducer, render (no numbers), end-t
   assert.deepStrictEqual(await p, ['b', 'c']);
 });
 
+test('IN-18 low-confidence markers detect nothing: .github alone and AGENTS.md alone attribute no tool', () => {
+  // fixture 1: a .github/ dir WITHOUT copilot-instructions.md is not Copilot — no mis-add
+  const r1 = tmp();
+  fs.mkdirSync(path.join(r1, '.github'));
+  assert.ok(!init.detectTools(r1).includes('copilot'), '.github alone still reads as Copilot');
+  // fixture 2: AGENTS.md alone attributes nothing (it was double-attributed to codex AND opencode)
+  const r2 = tmp();
+  fs.writeFileSync(path.join(r2, 'AGENTS.md'), '# conventions\n');
+  assert.deepStrictEqual(init.detectTools(r2), [], 'AGENTS.md alone still attributes a tool');
+  // fixture 2b: AGENTS.md beside another tool's own marker — only THAT tool is detected
+  const r3 = tmp();
+  fs.writeFileSync(path.join(r3, 'AGENTS.md'), '# conventions\n');
+  fs.mkdirSync(path.join(r3, '.opencode'));
+  const d3 = init.detectTools(r3);
+  assert.ok(d3.includes('opencode') && !d3.includes('codex'), `AGENTS.md still drags codex in: ${d3}`);
+  // fixture 3: a GENUINELY present tool keeps being detected via its high-confidence marker
+  const r4 = tmp();
+  fs.mkdirSync(path.join(r4, '.github'));
+  fs.writeFileSync(path.join(r4, '.github', 'copilot-instructions.md'), 'x');
+  fs.mkdirSync(path.join(r4, '.codex'));
+  const d4 = init.detectTools(r4);
+  assert.ok(d4.includes('copilot'), 'a real Copilot project (.github/copilot-instructions.md) went undetected');
+  assert.ok(d4.includes('codex'), 'a real Codex project (.codex/) went undetected');
+});
+
+test('IN-19 explicit --tools and the default path are unchanged by detection removal', () => {
+  // the same explicit selection produces the same actions whether misleading markers exist or not
+  const withMarkers = tmp();
+  fs.mkdirSync(path.join(withMarkers, '.github'));
+  fs.writeFileSync(path.join(withMarkers, 'AGENTS.md'), '# mine\n');
+  const clean = tmp();
+  fs.writeFileSync(path.join(clean, 'AGENTS.md'), '# mine\n');
+  const a = init.scaffold(withMarkers, ['claude']);
+  const b = init.scaffold(clean, ['claude']);
+  assert.deepStrictEqual(a.actions, b.actions);
+  assert.deepStrictEqual(a.levels, b.levels);
+  // zero mis-add: no Copilot or Codex artifact was written for the unselected tools
+  assert.ok(!fs.existsSync(path.join(withMarkers, '.github', 'copilot-instructions.md')));
+  assert.ok(!fs.existsSync(path.join(withMarkers, '.codex')));
+  // the user's AGENTS.md is untouched when neither codex nor opencode is selected
+  assert.strictEqual(read(withMarkers, 'AGENTS.md'), '# mine\n');
+});
+
 test('IN-08 reports command-level vs rule-level entry per tool', () => {
   const root = tmp();
   const { levels } = init.scaffold(root, ['claude', 'cursor', 'copilot']);

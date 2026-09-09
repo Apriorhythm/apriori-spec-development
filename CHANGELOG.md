@@ -237,6 +237,21 @@ already stopped teaching are retired, and risk acceptance is unified on ONE mech
   stage, commit, move) against the printed report; AM-18/AM-39 re-pinned to the aligned
   default. A migration note (MIGRATING, 6.2 section) records the retired keep-in-place habit
   and the recovery paths.
+- **Batch C row 9 — the single-file `--store/--delta` entry is NOT removed (pre-registered
+  exit taken): deprecated in the docs, behaviour untouched.** The registered criterion demands
+  a bundle-form replay with byte-identical stores for every legal single-file operation, judged
+  PER CASE. The evidence (corrected by P3 acceptance r1): a store outside `apriori/specs` is
+  not categorically out of reach — SFD-05 replays the AM-24/25 corpus shapes through a
+  root-mapped workspace (`apriori/specs` symlinked to the store's own directory) byte-identically
+  at the same absolute path, and pins the replay's two necessary preconditions (symlink support;
+  the loose delta migrated into the bundle — beside the store it is refused as a duplicate store
+  module). What still has no bundle route, and keeps the entry alive: a non-`*.md` store target
+  (SFD-06 — bundle delta discovery reads `*.md` only, exit 2), and callers that cannot adopt a
+  mapped workspace plus a ready change bundle. SFD-01 pins the DEFAULT route only (a default
+  bundle run never reaches a root `store.md`) and is not a sentinel for the blocking conditions;
+  SFD-02/03 prove byte-identical equivalence for the migratable subclass across all three
+  registered classes (normal / conflict / CAS, `--no-cas` meaning preserved in the high-level
+  form); SFD-04 pins the narrowed deprecation annotation in both doc editions.
 - **Batch C row 1 — `artifact-root:` retired, legacy-tolerated.** The field was a
   never-implemented promise (no runtime consumer; every command hard-codes `apriori/changes`).
   `apriori new` stops writing the line; the kickoff prompt, the §3 schema and the §5 layout rule

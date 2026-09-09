@@ -48,10 +48,10 @@ test('LC-04 action 2 — one verification action: check, then a full (non-review
 });
 
 test('LC-05 action 3 — archive runs --write directly, no dry-run first, and only merges specs + moves the bundle', () => {
-  assert.match(enRD, /run `apriori archive --change <name> --write --changes-dir apriori\/changes` directly/);
+  assert.match(enRD, /run `apriori archive --change <name> --write` directly/);
   assert.match(enRD, /dry-running first re-checks nothing/);
   assert.match(enRD, /archive merges the delta specs into `apriori\/specs` and moves the bundle, and nothing else/);
-  assert.match(cnRD, /直接跑 `apriori archive --change <name> --write --changes-dir apriori\/changes`/);
+  assert.match(cnRD, /直接跑 `apriori archive --change <name> --write`/);
   assert.match(cnRD, /先跑一次 dry-run 不会多核实出任何东西/);
   assert.match(cnRD, /归档把增量 spec 合并进 `apriori\/specs` 并搬移 bundle,仅此而已/);
 });

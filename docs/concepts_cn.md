@@ -499,7 +499,7 @@ node -e "const KV=require('./src/mini-kv'); const k=new KV(); k.set('a',1,50); c
 ```
 然后跑一致性评审(RUNBOOK **P3**,换一个模型),把它的结论行与原始记录一起落盘。满意后归档。注意形式:变更 bundle 是**整个**按名字归档的——`archive` 会拒绝一个还没做完的变更(`phase: review`、评审循环已收敛、若保留了台账则没有 open 行、没有关键证据仍 blocked),而单文件形式 `--store/--delta` 只保留给 `apriori/changes/` **之外**的单模块手术。
 ```shell
-apriori archive --change add-mini-kv --changes-dir apriori/changes --write
+apriori archive --change add-mini-kv --write
 # merged (ADDED): <你的 requirement ID> · 变更目录 → apriori/changes/archive/<戳>-add-mini-kv/
 # ARCHIVE DECLARES: implementation complete · critical evidence complete · an archive is not a release
 ```

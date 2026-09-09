@@ -186,11 +186,21 @@ already stopped teaching are retired, and risk acceptance is unified on ONE mech
   in ONE predicate — `review.completenessFindings(facts)` (a symlinked summary aborts, a
   verdict doc with no usable raw archive refuses, zero verdict docs attests nothing) — and
   gate C5 and archive R4 only render its findings in their own words. Per the §四 R6 oracle:
-  every surface's detail strings are byte-identical to before (PU-02 pins them), the surfaces
-  agree on the shared facts for every review/ shape (PU-03), the RY-03/04 one-way implication
-  holds (archivable ⇒ gate-legal, never the reverse — the archive phase overlay and frozen
-  semantics are kept stage differences), and archive never calls back into gate (PU-04).
-  Tests: PU-01..04. No behavioural change.
+  PU-02 pins the complete pre-unification detail strings byte for byte — clean, missing raw,
+  MULTIPLE missing (full list, sorted order), empty raw and the symlink abort, on C5 and R4
+  both, with no prefix or wildcard matches left (an appended-drift mutation on either
+  surface's symlink diagnostic turns it red — mutation-verified); PU-01 pins the predicate's
+  own classification including symlink-priority termination; PU-03 runs every shape through
+  ALL the renders — gate C5, archive R4, the status view (same facts, reported and never
+  judged) and archive's own dry-run return (the R4 findings verbatim, exit codes pinned) —
+  while the RY-03/04 one-way implication holds (archivable ⇒ gate-legal, never the reverse —
+  the archive phase overlay and frozen semantics are kept stage differences). PU-04 keeps the
+  limited static no-`require('./gate')` guard and adds a RUNTIME dependency probe: a fresh
+  process exercises facts → predicate → readiness → archive dry-run and then asserts
+  `lib/gate.js` is absent from the module cache, so an aliased or computed require is caught
+  too (mutation-verified with a concatenated-string require). What is NOT claimed: coverage
+  of review/ shapes beyond those enumerated, or process-level isolation beyond the probed
+  paths. Tests: PU-01..04. No behavioural change.
 - **Batch C row 1 — `artifact-root:` retired, legacy-tolerated.** The field was a
   never-implemented promise (no runtime consumer; every command hard-codes `apriori/changes`).
   `apriori new` stops writing the line; the kickoff prompt, the §3 schema and the §5 layout rule

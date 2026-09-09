@@ -263,7 +263,7 @@ test('AM-80 abandoned and done carry their own wording and are not forceable', (
 });
 
 test('AM-81 a broken flow-state reports the C3 diagnosis, not the phase wording', () => {
-  const broken = FLOW('c').replace('phase: review', 'phase: abandoned').replace(/^lineage: .*$/m, 'lineage: <fill me>');
+  const broken = FLOW('c').replace('phase: review', 'phase: abandoned').replace(/^change: c$/m, 'change: <fill me>');
   const root = proj({ 'apriori/changes/c/flow-state.md': broken });
   const r = run(['archive', '--change', 'c'], root);
   assert.strictEqual(r.status, 1);

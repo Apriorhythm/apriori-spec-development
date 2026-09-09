@@ -406,14 +406,15 @@ test('OI-07 `apriori new` scaffolds no mode line and no Evidence section; Open s
   assert.deepStrictEqual(status.sectionItems(flow, 'Open'), [], 'the comment is not an item');
   assert.deepStrictEqual(rd.evidenceFindings(flow).blockers, []);
   assert.doesNotMatch(r.stdout, /mode/, 'the epilogue no longer asks for a mode');
-  assert.match(r.stdout, /fill in lineage, then Ground/);
+  assert.match(r.stdout, /first decision line is the lineage/);
   // the scaffold path runs end to end without ever writing a mode
   w(path.join(root, 'apriori', 'specs', 'kv', 'spec.md'), STORE);
   w(path.join(root, 'apriori', 'changes', 'hello', 'specs', 'kv', 'spec.md'), ADDED);
   const g = (extra = []) => run(['gate', '--change', 'hello', '--test-cmd', TAP2, '--no-cas', ...extra], root);
-  assert.strictEqual(g().status, 1, 'the unfilled lineage placeholder still blocks C3');
+  // batch C row 7: the fresh scaffold is C3-legal out of the box — no lineage placeholder is
+  // left to fill; the lineage rides the Reality Check decision line (its sample is inert)
+  assert.match(line(g().stdout, 'C3'), /legal \(ground\)/);
   fs.writeFileSync(path.join(root, 'apriori', 'changes', 'hello', 'flow-state.md'), flow
-    .replace('lineage: <target branch/line + merge taboo>', 'lineage: main')
     .replace('phase: ground', 'phase: review'));
   const rev = path.join(root, 'apriori', 'changes', 'hello', 'review');
   w(path.join(rev, 'code-review-v1.md'), '# code review, round 1\n\nVERDICT: no major issues\n');

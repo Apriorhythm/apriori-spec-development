@@ -104,7 +104,7 @@ test('GT-04 flow-state legality is enforced', () => {
     [FLOW('c').replace('mode: standard', 'mode: huge'), /mode/],
     [FLOW('c').replace('mode: standard', 'tier: medium\ntrack: harden'), /5\.x identity/],
     [FLOW('wrong-name'), /change/],
-    [FLOW('c').replace('lineage: v3\n', ''), /lineage/],
+    [FLOW('c').replace(/^change: c\n/m, ''), /required key 'change' missing/],
     [FLOW('c').replace('phase: build', ''), /required key 'phase' missing/],
   ]) {
     const root = healthy();

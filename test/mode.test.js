@@ -195,10 +195,10 @@ test('MD-08 a legacy key rejects even when a legal mode sits beside it', () => {
 test('MD-09 an empty mode: never swallows the next line', () => {
   const { parseFlowState } = require('../lib/status');
   // the parser first: `\s*` matched the newline, so `mode:` took `lineage: main` as its value
-  const text = 'change: c\nmode:\nlineage: main\nphase: build\n';
+  const text = 'change: c\nmode:\nphase: build\n';
   const st = parseFlowState(text);
   assert.strictEqual(st.mode, undefined, `an empty key has no value, got ${JSON.stringify(st.mode)}`);
-  assert.strictEqual(st.lineage, 'main', 'and the next line is still itself');
+  assert.strictEqual(st.phase, 'build', 'and the next line is still itself');
 
   // and the consumers agree: gate reads an empty mode as ABSENT (legal since 6.2), never as
   // 'lineage: main'
@@ -210,7 +210,7 @@ test('MD-09 an empty mode: never swallows the next line', () => {
 
   const j = JSON.parse(run(['status', '--change', 'c', '--json'], root).stdout);
   assert.strictEqual(j.mode, null);
-  assert.strictEqual(j.lineage, 'fixture');
+  assert.strictEqual(j.lineage, null, 'batch C row 7: the retired key reads null');
 });
 
 test('MD-10 a mode value is trimmed, and only the two spellings pass', () => {

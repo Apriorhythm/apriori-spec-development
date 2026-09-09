@@ -180,6 +180,16 @@ already stopped teaching are retired, and risk acceptance is unified on ONE mech
   carries none of them ("CAS": zero hits); the pointer now names the CLI reference
   (`docs/cli.md` / `docs/cli_cn.md`) and troubleshooting, and the two body pointers of the same
   class ("… are in concepts") follow. Test: ID-05.
+- **Batch C row 7 — `lineage:` moves into the Reality Check decision line, legacy-tolerated.**
+  The target branch/line + merge taboo is a Ground decision, so it is recorded as the bundle's
+  first `- decision: lineage — <…>` line. `apriori new` stops writing the field and carries
+  the sample as an inert comment; C3's required-key table is now `change` and `phase`; the KEY
+  stays in the reader's state-key set as legacy tolerance — an old bundle carrying `lineage:`
+  (the unfilled scaffold placeholder included) parses with zero new defects and zero new C3
+  refusals, and the line still ends a section. `status --json` keeps the `lineage` key for one
+  version, always `null` (MIGRATING). The 20-case flow corpus and the shipped self-repo bundles
+  replay unchanged. Tests: LNG-01..05; NW-01/04, OI-07, GT-04, RY-03, AM-81, MD-09 and the gate
+  corpus re-pinned to the keys that stay required.
 - **Batch C row 1 — `artifact-root:` retired, legacy-tolerated.** The field was a
   never-implemented promise (no runtime consumer; every command hard-codes `apriori/changes`).
   `apriori new` stops writing the line; the kickoff prompt, the §3 schema and the §5 layout rule

@@ -137,8 +137,9 @@ cd your-project && apriori init --tools claude  # 点名要接入的 AI 工具(�
 
 ```markdown
 change: <change-name>
-lineage: <目标分支/线 + 合并禁忌,如 "v2(永不合入 main)">
-                        # 变更中途发现谱系冲突=立即停下
+                        # 没有 `lineage:` 字段(已退役):目标分支/线与合并禁忌写成本 bundle
+                        # Reality Check 的**第一条** decision 行——见下。遗留的行照常读入并
+                        # 忽略,绝不是缺陷。
 phase: ground | specify | build | review | done | abandoned
                         # §4 的四个阶段,加两个出口。正常归档在 `review` 搬移 bundle,
                         # 归档态即终态——`done` 仍是合法可读值,但没有东西会回写它。
@@ -153,6 +154,8 @@ delivery: pending-external-acceptance | released
                         # 移到 ## Open,然后删掉该字段。
 
 ## Reality Check         # §4 Ground 写这一段:会影响后续动作的事实与决定
+- decision: lineage — <目标分支/线 + 合并禁忌,如 "v2(永不合入 main)">
+                        # 第一条 decision 行:变更中途发现谱系冲突=立即停下
 - observed: <读到或跑出来的事实> — <路径 / 命令 / 响应 / 截图位置>
 - decision: <需求或所有者定下的决定>
 

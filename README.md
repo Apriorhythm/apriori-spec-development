@@ -60,7 +60,6 @@ apriori doctor --no-run
 apriori new hello
 cat > apriori/changes/hello/flow-state.md <<'EOF'
 change: hello
-lineage: main
 phase: review
 delivery: released
 

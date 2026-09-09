@@ -139,6 +139,24 @@ and `tasks.md` are never opened. Archive readiness has no R2 and no R3; an `arch
 record is parsed and reported as `note: archive-force has nothing left to force in 6.2`, and
 `--force` still opens exactly one thing — an answered round-5 escalation.
 
+**`lineage:` moves into the Reality Check (batch C row 7).** The field's content — the target
+branch/line and its merge taboo — was always a Ground-phase decision; it now rides the bundle's
+FIRST `decision:` line:
+
+```markdown
+## Reality Check
+- decision: lineage — v2 (never merge to main)
+```
+
+`apriori new` no longer writes the field (the scaffold carries the sample above as an inert
+comment), and C3 no longer requires the key — `change` and `phase` are the required table now.
+Old bundles keep parsing unchanged: a `lineage:` line — the unfilled scaffold placeholder
+included — is read and ignored, never a structural defect, never a C3 refusal, and still ends
+a section like any state key. `status --json` keeps the `lineage` key for one more version,
+always `null`, for envelope shape compatibility. To migrate an in-flight bundle, copy the value
+into a `- decision: lineage — <value>` line and delete the field — or leave it; nothing forces
+the move.
+
 **`artifact-root:` is retired (batch C).** The field was a never-implemented promise: no command
 ever consumed it (status/gate/new/verify all hard-code `apriori/changes`). `apriori new` no longer
 writes the line and the runbooks no longer teach it. Old bundles — including any scaffolded by the

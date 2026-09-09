@@ -41,8 +41,10 @@ const TAP_OK = `node -e "${['ok 1 - XA-01 a', 'ok 2 - XB-01 b'].map((l) => `cons
 const CASES = [
   { id: 'healthy-standard', change: 'c', mode: 'standard' },
   { id: 'fast', change: 'c', mode: 'fast' },
-  { id: 'flow-missing-key', change: 'c', over: { lineage: null } },
-  { id: 'flow-placeholder', change: 'c', over: { lineage: '<fill me>' } },
+  // batch C row 7: `lineage` is retired and tolerated — the C3 branches these two cases
+  // cover live on the keys that STAY required
+  { id: 'flow-missing-key', change: 'c', over: { change: null } },
+  { id: 'flow-placeholder', change: 'c', over: { phase: '<fill me>' } },
   { id: 'flow-name-mismatch', change: 'c', over: { change: 'other' } },
   { id: 'flow-illegal-phase', change: 'c', over: { phase: 'STEP6' } },
   { id: 'flow-illegal-mode', change: 'c', over: { mode: 'huge' } },

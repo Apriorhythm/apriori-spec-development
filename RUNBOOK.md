@@ -137,8 +137,9 @@ The default shape is the same for every change: reproduce or specify → build �
 
 ```markdown
 change: <change-name>
-lineage: <target branch/line + its merge taboo, e.g. "v2 (never merge to main)">
-                        # a lineage conflict discovered mid-change is an immediate stop
+                        # there is no `lineage:` field (retired): the target branch/line and
+                        # its merge taboo are the bundle's FIRST Reality Check decision line —
+                        # see below. A legacy line is read and ignored, never a defect.
 phase: ground | specify | build | review | done | abandoned
                         # §4's four phases, plus the two exits. A normal archive moves
                         # the bundle at `review`, and the archived stage is terminal —
@@ -155,6 +156,9 @@ delivery: pending-external-acceptance | released
                         # refusal (C3/R1): move it to ## Open, then delete the field.
 
 ## Reality Check         # §4 Ground writes this: the facts and decisions later actions depend on
+- decision: lineage — <target branch/line + its merge taboo, e.g. "v2 (never merge to main)">
+                        # the FIRST decision line: a lineage conflict discovered mid-change
+                        # is an immediate stop
 - observed: <a fact you read or ran> — <path / command / response / screenshot>
 - decision: <what the requirement or the owner decided>
 

@@ -25,8 +25,8 @@ test('RY-03 the archiving phase is an overlay on C3, not a replacement', () => {
   const st = (over) => ({ change: 'c', mode: 'standard', lineage: 'v4', phase: 'review', ...over });
   // a C3 failure surfaces the C3 diagnosis, never the phase wording
   for (const [over, needle] of [
-    [{ lineage: undefined }, /required key 'lineage' missing/],
-    [{ lineage: '<fill me>' }, /unfilled placeholder/],
+    [{ change: undefined }, /required key 'change' missing/],
+    [{ phase: '<fill me>' }, /unfilled placeholder/],
     [{ change: 'other' }, /'change' is 'other'/],
     [{ phase: 'STEP6' }, /not in the legal vocabulary/],
     [{ mode: 'huge' }, /'mode' 'huge' not in/],

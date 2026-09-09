@@ -19,7 +19,8 @@ test('NW-01 scaffolds flow-state skeleton and specs dir', () => {
   assert.doesNotMatch(flow, /^mode:/m);                             // 6.2: optional and inert — not scaffolded
   for (const gone of ['tier', 'track', 'track-rationale', 'round', 'current-step'])
     assert.doesNotMatch(flow, new RegExp(`^${gone}:`, 'm'), `5.x '${gone}:' must not be scaffolded`);
-  assert.match(flow, /lineage: <target branch\/line/);
+  assert.doesNotMatch(flow, /^lineage:/m, 'batch C row 7: the retired lineage field must not be scaffolded');
+  assert.match(flow, /decision: lineage — <target branch\/line/, 'the lineage-as-decision sample must ride the template');
   assert.match(flow, /2026-07-07T03:05 note: change scaffolded by `apriori new`/);
   assert.ok(fs.existsSync(path.join(root, 'apriori', 'changes', 'add-playback', 'specs')));
 });
@@ -49,12 +50,14 @@ test('NW-03 enforces bare kebab-case names (dates stamped at archive time, not h
 test('NW-04 the skeleton carries every flow-state schema field the runbook defines', () => {
   const { flowStateSkeleton } = require('../lib/new');
   const s = flowStateSkeleton('my-change', new Date(2026, 0, 2, 3, 4));
-  for (const field of ['change:', 'lineage:', 'phase:', 'reviewer-session:',
+  for (const field of ['change:', 'phase:', 'reviewer-session:',
                        'delivery:', 'gates:'])
     assert.ok(s.includes(field), `skeleton missing ${field}`);
   assert.ok(!s.includes('mode:'), '6.2: mode is optional and inert, so the skeleton does not ask for it');
   assert.ok(!s.includes('escalation:'), '6.2: the hand-written escalation field is retired — a pending decision is an ## Open item');
   assert.ok(!s.includes('artifact-root:'), 'batch C: the never-implemented artifact-root promise is retired — legacy files keep reading (ARR-02)');
+  assert.ok(!/^lineage:/m.test(s), 'batch C row 7: lineage is retired — legacy files keep reading (LNG-02)');
+  assert.match(s, /decision: lineage — <target branch\/line/, 'the lineage-as-decision sample must ride the template');
   // and the three short sections the ONE state carries — the Evidence table went with its readers
   for (const section of ['## Reality Check', '## Open', '## Next'])
     assert.ok(s.includes(section), `skeleton missing ${section}`);

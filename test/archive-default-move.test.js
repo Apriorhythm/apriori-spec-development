@@ -55,7 +55,9 @@ test('ADM-01 normal path: --write moves the bundle by default — frozen declara
   assert.strictEqual(r.status, 0, r.stdout + r.stderr);
   // the printed declaration…
   assert.match(r.stdout, /ARCHIVE DECLARES \(frozen; a later defect becomes an outcome note or a new change\):/);
-  const m = /change archived → (\S+)/.exec(r.stdout);
+  // the destination is a PATH, and a temp root with a space in it is a normal temp root
+  // (the c5dafbf precedent): capture the whole printed line, never up to the first blank
+  const m = /change archived → ([^\r\n]+)/.exec(r.stdout);
   assert.ok(m, `MERGED must declare the move without an explicit --changes-dir: ${r.stdout}`);
   // …matches the actual positions: active gone, archive dir holds the stamped bundle, whole
   assert.ok(!fs.existsSync(active(root)), 'declared frozen but not moved — the active dir is still there');

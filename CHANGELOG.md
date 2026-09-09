@@ -252,6 +252,27 @@ already stopped teaching are retired, and risk acceptance is unified on ONE mech
   SFD-02/03 prove byte-identical equivalence for the migratable subclass across all three
   registered classes (normal / conflict / CAS, `--no-cas` meaning preserved in the high-level
   form); SFD-04 pins the narrowed deprecation annotation in both doc editions.
+- **Batch C row 10 — C5/R4 predicate unification, finished.** The C3/R1 common base had
+  already landed (one trust root, one parser, gate C3 = `readiness.checkFlowState`); what
+  remained were two judgment layers over the same completeness facts. The judgment now lives
+  in ONE predicate — `review.completenessFindings(facts)` (a symlinked summary aborts, a
+  verdict doc with no usable raw archive refuses, zero verdict docs attests nothing) — and
+  gate C5 and archive R4 only render its findings in their own words. Per the §四 R6 oracle:
+  PU-02 pins the complete pre-unification detail strings byte for byte — clean, missing raw,
+  MULTIPLE missing (full list, sorted order), empty raw and the symlink abort, on C5 and R4
+  both, with no prefix or wildcard matches left (an appended-drift mutation on either
+  surface's symlink diagnostic turns it red — mutation-verified); PU-01 pins the predicate's
+  own classification including symlink-priority termination; PU-03 runs every shape through
+  ALL the renders — gate C5, archive R4, the status view (same facts, reported and never
+  judged) and archive's own dry-run return (the R4 findings verbatim, exit codes pinned) —
+  while the RY-03/04 one-way implication holds (archivable ⇒ gate-legal, never the reverse —
+  the archive phase overlay and frozen semantics are kept stage differences). PU-04 keeps the
+  limited static no-`require('./gate')` guard and adds a RUNTIME dependency probe: a fresh
+  process exercises facts → predicate → readiness → archive dry-run and then asserts
+  `lib/gate.js` is absent from the module cache, so an aliased or computed require is caught
+  too (mutation-verified with a concatenated-string require). What is NOT claimed: coverage
+  of review/ shapes beyond those enumerated, or process-level isolation beyond the probed
+  paths. Tests: PU-01..04. No behavioural change.
 - **Batch C row 1 — `artifact-root:` retired, legacy-tolerated.** The field was a
   never-implemented promise (no runtime consumer; every command hard-codes `apriori/changes`).
   `apriori new` stops writing the line; the kickoff prompt, the §3 schema and the §5 layout rule

@@ -195,6 +195,21 @@ already stopped teaching are retired, and risk acceptance is unified on ONE mech
   self-ruling it an artifact, and never folds it into the verdict line. Fixed conditions: no
   recipe or session-policy change rides along. Tests: `sandbox-evidence-triage.test.js`
   (SE-01..06).
+- **Batch C row 13 — the Fix Packet fresh-session mandate becomes a recommendation.**
+  Battery E2 = 0/4 (work/results/exist/RESULTS.md + RESULTS-mac.md) with plan/22 RC1-14 as the
+  physical evidence: every collected arm holds exactly one producer jsonl — REVISE was on
+  record, the runbook said "cuts the session", and all four producers fixed in the original
+  session with acceptable quality. Per the pre-registered E2 = 0 branch this row ratifies the
+  status quo: a discipline-text subtraction with zero behavior change. Both runbook editions now
+  read: after REVISE the fix round may continue in the producing session; when context has
+  grown long, or the same family is not converging across rounds, the recommended move is a
+  Fix Packet handoff to a fresh or cleared session. ONLY the mandate is downgraded — the Fix
+  Packet mechanism, its content definition (blocking P0/P1, minimal repro, files, verification
+  commands, non-goals, advisory exclusion) and the context-hygiene rationale stay verbatim
+  (the evidence shows nobody obeyed the mandate, not that the mechanism is useless; plan/09:33
+  lab data still credits it with lowering fix unit cost). The §4 re-verify tail follows suit;
+  the re-verify path itself and the session-hygiene bullet are untouched. Tests:
+  `fix-packet-optional.test.js` (FP-01..06).
 - **Batch C row 6 — `delivery:` retired, legacy-tolerated; the archive's third state is one
   fixed sentence.** The field's only consumer was the archive declaration echoing it back.
   `apriori new` stops writing the line; the declaration's third line is now verbatim

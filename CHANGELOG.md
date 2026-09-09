@@ -195,7 +195,13 @@ already stopped teaching are retired, and risk acceptance is unified on ONE mech
   without the legacy line, requiring identical defect sets and C3 verdicts (line numbers
   normalized), zero lineage-attributable wording anywhere, and lineage-free readiness blocker
   sets on the active self bundles (re-adding `lineage` to C3's required table turns it red —
-  mutation-verified). Tests: LNG-01..06; JC-04 extended; NW-01/04, OI-07, GT-04, RY-03, AM-81,
+  mutation-verified). LNG-05 is a SELF-comparison, so LNG-07 adds the foreign oracle: the
+  frozen 6.1 baseline's (v6-dev@2853684) complete verdicts over the same corpus — defect sets,
+  C3 verdicts, full gate blocked sets, active readiness blocker sets — pinned as golden data
+  (test/fixtures/lineage-baseline-golden.json, generated via test/helpers/verdict-corpus.js)
+  that the shipped code must reproduce literally; a name-keyed C3 refusal that breaks both
+  sides of LNG-05's replay alike turns LNG-07 red at the drifted bundle (mutation-verified).
+  Tests: LNG-01..07; JC-04 extended; NW-01/04, OI-07, GT-04, RY-03, AM-81,
   MD-09 and the gate corpus re-pinned to the keys that stay required.
 - **Batch C row 1 — `artifact-root:` retired, legacy-tolerated.** The field was a
   never-implemented promise (no runtime consumer; every command hard-codes `apriori/changes`).

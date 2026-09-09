@@ -144,13 +144,13 @@ phase: ground | specify | build | review | done | abandoned
                         # 归档态即终态——`done` 仍是合法可读值,但没有东西会回写它。
 reviewer-session: <id 或 n/a>   # 异构评审方可 resume 的会话 id,第 1 轮一打印就记下——
                         # 这样中途中断能 resume 同一会话(R2)
-delivery: pending-external-acceptance | released
-                        # archive 声明的交付状态。默认:待外部验收。
                         # (6.2)没有 `escalation:` 字段:需要人决定的事是一条 `## Open`
                         # 条目,评审 family 的 escalation 从证据**派生**——
                         # `apriori status --change <name> --escalation` 对仍然 pending 的
                         # 内容以 3 退出。遗留的、带内容的字段是迁移拒绝(C3/R1):
                         # 移到 ## Open,然后删掉该字段。
+                        # 也没有 `delivery:` 字段(已退役):归档声明的第三行是固定一句——
+                        # 归档不是发布。遗留的 delivery 行照常读入并忽略,绝不是缺陷。
 
 ## Reality Check         # §4 Ground 写这一段:会影响后续动作的事实与决定
 - observed: <读到或跑出来的事实> — <路径 / 命令 / 响应 / 截图位置>
@@ -269,7 +269,7 @@ change 需要的其他任何东西——一张草稿、一幅图、给人看的�
 - **然后一次独立评审**(**P3**,R2)。评审方的默认输入恰好是四样:**行为契约**、**diff**、**`## Open` 条目**、**仍未覆盖的边界**;它可以自行查全仓、调用者、配置和原型。原始评审输出、已关闭问题、其他 change 的文档不是默认输入。评审方的输出只保留三样:新发现的实质问题;已查与未查的风险面;以及 `ACCEPT | REVISE | ESCALATE` 之一。**评审方不做生产方的活**——它不是来编译、补测试或重写方案的;如果它必须那么做,说明这个 change 没到 review-ready。
 - **知识库更新是前置条件,不是收尾步骤——而且只在欠着的时候才做。** 只有当 `apriori/truth/<module>.md` 已经覆盖被触达的模块,或所有者/change 明确决定沉淀一份新的持久契约时才欠;绝不为了收官时有一份而凭空造一份。欠着时,review-ready 之前:提交实现,让 `source-commit` 指向它;更新 `apriori/truth/<module>.md`——Contract 段按最终实现写,Decisions 段追加本次的新决定。评审方看到的 diff 里已经带着这份 KB diff;`apriori archive` 从不碰 `apriori/truth/`。
 - **然后归档——直接执行,不 dry-run。** ACCEPT 落地、且产品代码与测试自 review-ready 起未再变化时,正常收尾恰好四个逻辑动作,不多不少:(1)把评审方的输出落成一个 self-contained 评审文件,外加一次简短的 flow-state 更新;(2)跑一次 `apriori check`,再跑一次完整的 `apriori gate --change <name>`(不带 `--review-ready`),在这些仍未变化的输入上绑定 C1;(3)直接跑 `apriori archive --change <name> --write --changes-dir apriori/changes`——`--write` 执行与 dry-run 完全相同的前置检查,先跑一次 dry-run 不会多核实出任何东西;归档把增量 spec 合并进 `apriori/specs` 并搬移 bundle,仅此而已;(4)本地提交收尾,然后停止。那一次原子移动携带整个 bundle 到 `apriori/changes/archive/<stamp>-<change>/`。
-- **归档不是发布。** `apriori archive` 只声明它刚判定过的状态(实现与关键证据是否完成、`delivery:` 是已发布还是仍待外部验收),不冒充发布或外部验收。**归档后的 bundle 是冻结的:任何东西,包括 `phase:`,都不再回写。** 之后发现的缺陷记为一条简短的 outcome 或一个新 change。
+- **归档不是发布。** `apriori archive` 只声明它刚判定过的状态(实现与关键证据是否完成);第三行逐字就是这句话——`delivery: an archive is not a release`——它不冒充发布或外部验收。(flow-state 的 `delivery:` 字段已退役;遗留的行照常读入并忽略。)**归档后的 bundle 是冻结的:任何东西,包括 `phase:`,都不再回写。** 之后发现的缺陷记为一条简短的 outcome 或一个新 change。
 - **退出(正常路径)。** 不在动作二的 gate 之前单独重跑一次测试命令——`--test-cmd` 已经跑过;归档之后不重跑 `apriori verify`、`check`、`gate` 或 `status`——动作二已经在这些输入上绑定过 C1,动作三已经复核过归档自身的就绪度和 CAS,两者之间什么都没变,谁也学不到新东西;也不把完整的评审、flow-state 和命令输出向人复述一遍。退出即:增量 spec 已合并 + 前置条件里的知识库 diff 已经人批准(同仓布局下,这就是普通的 PR review)。
 - **以下情况改为重新验证:** 评审结论为 REVISE 且产品代码或测试发生了变化;归档报告冲突、CAS、就绪度或结构问题;gate(动作二)与归档(动作三)之间业务文件发生了变化;或 `apriori check` 失败——任一种都把 change 送回 Build & Test 重新走一次 gate;绝不带着半通过状态归档。**REVISE 时,这一轮在新会话里、带着 Fix Packet 开始**(§0)。
 

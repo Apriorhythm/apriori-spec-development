@@ -315,7 +315,7 @@ test('AM-118 the archive declaration carries exactly the three states', () => {
   assert.match(r.stdout, /ARCHIVE DECLARES \(frozen; a later defect becomes an outcome note or a new change\):/);
   assert.match(decl(r.stdout), /implementation:    complete/);
   assert.match(decl(r.stdout), /critical evidence: complete/);
-  assert.match(decl(r.stdout), /delivery:          pending external acceptance/);
+  assert.match(decl(r.stdout), /delivery:          an archive is not a release/);
   // and exactly three states — no fourth line
   assert.strictEqual(decl(r.stdout).split('\n').filter((l) => /^ {2}\w/.test(l)).length, 3);
 
@@ -340,9 +340,10 @@ test('AM-118 the archive declaration carries exactly the three states', () => {
   assert.match(decl(run(['archive', '--change', 'c', '--no-cas'], acc.root).stdout),
     /critical evidence: complete, 1 risk\(s\) accepted by the owner \(data-schema\), still present/);
 
-  // `delivery: released` is the third state's other value
+  // a legacy `delivery: released` line is tolerated and CHANGES NOTHING: the third state is
+  // one fixed sentence (batch C row 6 — an archive is not a release)
   const rel = project({ sections: 'delivery: released\n' });
-  assert.match(decl(run(['archive', '--change', 'c', '--no-cas'], rel.root).stdout), /delivery:          released/);
+  assert.match(decl(run(['archive', '--change', 'c', '--no-cas'], rel.root).stdout), /delivery:          an archive is not a release/);
 
   // dry-run declares what --write will declare, and creates nothing
   const dry = project();

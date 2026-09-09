@@ -139,6 +139,16 @@ and `tasks.md` are never opened. Archive readiness has no R2 and no R3; an `arch
 record is parsed and reported as `note: archive-force has nothing left to force in 6.2`, and
 `--force` still opens exactly one thing — an answered round-5 escalation.
 
+**`delivery:` is retired (batch C row 6).** The field never carried a decision any command
+acted on: its only consumer was the archive declaration's third line, which echoed it back.
+`apriori new` no longer writes the line, and the declaration's third state is now ONE fixed
+sentence — `delivery:          an archive is not a release` — regardless of what any legacy line
+says (the 09-08 ruling: archives never pose as releases). Old bundles keep parsing unchanged:
+the key is read and ignored, never a structural defect, and still ends a section like any state
+key. `status --json` keeps the `delivery` key for one more version, always `null`, for envelope
+shape compatibility; consumers reading it should stop — external acceptance is tracked outside
+this tool. Nothing to migrate; delete the line whenever you touch the file, or leave it.
+
 **`artifact-root:` is retired (batch C).** The field was a never-implemented promise: no command
 ever consumed it (status/gate/new/verify all hard-code `apriori/changes`). `apriori new` no longer
 writes the line and the runbooks no longer teach it. Old bundles — including any scaffolded by the

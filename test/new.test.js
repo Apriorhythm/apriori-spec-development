@@ -49,18 +49,17 @@ test('NW-03 enforces bare kebab-case names (dates stamped at archive time, not h
 test('NW-04 the skeleton carries every flow-state schema field the runbook defines', () => {
   const { flowStateSkeleton } = require('../lib/new');
   const s = flowStateSkeleton('my-change', new Date(2026, 0, 2, 3, 4));
-  for (const field of ['change:', 'lineage:', 'phase:', 'reviewer-session:',
-                       'delivery:', 'gates:'])
+  for (const field of ['change:', 'lineage:', 'phase:', 'reviewer-session:', 'gates:'])
     assert.ok(s.includes(field), `skeleton missing ${field}`);
   assert.ok(!s.includes('mode:'), '6.2: mode is optional and inert, so the skeleton does not ask for it');
   assert.ok(!s.includes('escalation:'), '6.2: the hand-written escalation field is retired — a pending decision is an ## Open item');
   assert.ok(!s.includes('artifact-root:'), 'batch C: the never-implemented artifact-root promise is retired — legacy files keep reading (ARR-02)');
+  assert.ok(!s.includes('delivery:'), 'batch C row 6: delivery is retired — legacy files keep reading (DLV-02)');
   // and the three short sections the ONE state carries — the Evidence table went with its readers
   for (const section of ['## Reality Check', '## Open', '## Next'])
     assert.ok(s.includes(section), `skeleton missing ${section}`);
   assert.ok(!s.includes('## Evidence'), 'the retired Evidence section must not be scaffolded');
   assert.match(s, /reviewer-session: n\/a/);
-  assert.match(s, /delivery: pending-external-acceptance/);
 });
 
 test('NW-05 the scaffold is a two-directory bundle with no artifact obligations', () => {

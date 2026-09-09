@@ -105,7 +105,7 @@ test('AR-F2 a bare `word:` line inside a judged section is a located structural 
   // the terminators that DO end a section: a heading, `gates:`, and a known state key
   const s = flow.parseFlowState('## Open\n- R-1: x\n\ndelivery: released\n\n## Next\n- n\n\ngates:\n  - 2026-08-23T00:00 note: n\n');
   assert.deepStrictEqual(s.openIssues, ['R-1: x']);
-  assert.strictEqual(s.delivery, 'released');
+  assert.ok(!('delivery' in s), 'delivery is retired (batch C row 6) — legacy-tolerated, never tracked');
   assert.deepStrictEqual(s.defects, []);
   // a legacy identity key at column 0 inside a section is still a live key (C3's business, F6)
   assert.deepStrictEqual(rd.legacyIdentity('## Open\n- R-1: x\nround: 2\n'), ['round']);

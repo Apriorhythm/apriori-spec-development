@@ -113,7 +113,7 @@ cat > apriori/changes/hello/review/step5-review-v1-raw.txt <<'EOF'
 the reviewer's own output, landed verbatim
 EOF
 apriori gate --change hello --json
-apriori archive --change hello --write --changes-dir apriori/changes
+apriori archive --change hello --write
 apriori verify --specs apriori/specs
 apriori check
 ```

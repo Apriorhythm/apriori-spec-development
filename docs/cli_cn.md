@@ -96,7 +96,9 @@ usage: apriori archive --store <f> --delta <f> --change <name> [--write] [--no-c
    or: apriori archive --change <name> [--write] [--changes-dir <dir>] [--no-cas] [--force]
 ```
 
-示例:`apriori archive --change add-playback --write --changes-dir apriori/changes`
+示例:`apriori archive --change add-playback --write`
+
+**`--write` 会搬移 bundle。** 高层形态的 `--write` 合并 store **并**把整个 bundle 搬到 `<changes-dir>/archive/<stamp>-<change>/`——默认如此,与声明一致(MERGED 行打印 `change archived → …`)。`--changes-dir` 只是非默认 changes 根的位置覆盖,绝不是搬移开关;dry-run 什么也不搬,声明只作预览打印。被拒绝的运行(preflight、CAS、就绪度)什么也不搬、什么也不合并,且绝不打印冻结声明。
 
 **结构预检(6.2)。** 在写入任何东西之前——dry-run 与 `--write` 一视同仁,单文件形式也一样——增量**新增或修改**的每个场景(change scope;REMOVED 或已弃用的块不在其中)都必须带一个别处不重复的稳定 id,判定走受控的 id matcher(`--id-pattern` / 配置行 / 默认值,批量经可终止通道——绝不对配置正则在进程内 `new RegExp`)。以下情形按**增量**文件:行号逐条列出并拒绝,打印 `RESULT: FAILED PREFLIGHT — nothing written`(退出码 1):场景没有可绑定 id(`kv/spec.md:8: scenario without a bindable id: '…' — this change adds or modifies it; give it a leading id`)、本次引入了两次的 id(每一行都点名)、与本次未替换的 store 块冲突的 id(点名 store 文件)。matcher 跑不了(配置正则无效或被终止)同样是拒绝——`the structural check could not run — …`——绝不是跳过检查。范围之外的历史债务(store 里没有 id 的旧场景、store 已经重复携带的 id)只是注记(`note: store debt outside this change (reported, not a block): …`),绝不阻断本次变更——它仍归 `apriori check` 管。已识别场景与测试的绑定仍是劝告性的:没有以场景命名测试的原生测试命令仍然合法。`verify --change` 对同一投影以同样方式拒绝(`structural: …` 错误,退出码 2),且在任何测试命令运行之前,因此 `check → verify → gate → archive` 再也归档不出一个随后被 `check` 判失败的 store。
 

@@ -291,10 +291,10 @@ test('PR-16 legacy-project clarity clauses (both languages)', () => {
   // R2 transcription covers the review doc itself
   assert.match(EN, /The same transcription mechanism covers the \*\*review doc itself\*\*/);
   assert.match(CN, /同一代录机制也覆盖\*\*评审文档本体\*\*/);
-  // archive prose: --changes-dir + the resumed-session rule
-  assert.match(EN, /with `--changes-dir apriori\/changes`\*\*, moves the in-flight change dir/);
+  // archive prose: the default move (batch C row 8) + the resumed-session rule
+  assert.match(EN, /`--write` moves the in-flight change dir to `apriori\/changes\/archive\/<YYYY-MM-DDThhmm>-<name>\/` by default/);
   assert.match(EN, /must look under `archive\/` once the move has happened/);
-  assert.match(CN, /配合 `--changes-dir apriori\/changes`\*\*/);
+  assert.match(CN, /`--write` 默认就把在制的 change 目录移到/);
   assert.match(CN, /恢复的会话必须去 `archive\/` 下找/);
 });
 

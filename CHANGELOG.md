@@ -180,6 +180,15 @@ already stopped teaching are retired, and risk acceptance is unified on ONE mech
   carries none of them ("CAS": zero hits); the pointer now names the CLI reference
   (`docs/cli.md` / `docs/cli_cn.md`) and troubleshooting, and the two body pointers of the same
   class ("… are in concepts") follow. Test: ID-05.
+- **Batch C row 8 — bundle `--write` moves the change dir by default.** The declaration always
+  said archive "merges the delta specs and moves the bundle", but the move happened only under
+  an explicit `--changes-dir` (P6: declaration-behaviour mismatch). The behaviour is aligned to
+  the declaration: `--write` merges AND moves to `<changes-dir>/archive/<stamp>-<change>/`;
+  `--changes-dir` is only a location override; the destination containment probe now runs on
+  every `--write`. Dry-run still moves nothing (the declaration prints as a preview); a refused
+  run (preflight / CAS / readiness) still moves nothing, merges nothing, and never prints the
+  frozen declaration. Tests: ADM-01..04 enumerate the three registered path classes with
+  before/after position oracles; AM-18/AM-39 re-pinned to the aligned default.
 - **Batch C row 1 — `artifact-root:` retired, legacy-tolerated.** The field was a
   never-implemented promise (no runtime consumer; every command hard-codes `apriori/changes`).
   `apriori new` stops writing the line; the kickoff prompt, the §3 schema and the §5 layout rule

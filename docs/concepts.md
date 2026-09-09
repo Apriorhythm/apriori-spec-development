@@ -503,7 +503,7 @@ open ledger row if the change kept a ledger, no critical evidence still blocked)
 single-file `--store/--delta` form is reserved for one-module surgery on a store file that lives
 outside `apriori/changes/`.
 ```shell
-apriori archive --change add-mini-kv --changes-dir apriori/changes --write
+apriori archive --change add-mini-kv --write
 # merged (ADDED): <your requirement IDs> · change dir → apriori/changes/archive/<stamp>-add-mini-kv/
 # ARCHIVE DECLARES: implementation complete · critical evidence complete · pending external acceptance
 ```

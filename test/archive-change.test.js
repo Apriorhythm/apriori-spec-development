@@ -105,14 +105,15 @@ test('AM-17 zero discovered delta files fail closed (exit 2 naming the path)', (
   assert.match(r2.stderr, /specs/);
 });
 
-test('AM-18 the change-dir move waits for every store commit and needs explicit --changes-dir', () => {
-  // without --changes-dir: stores written, no move
+test('AM-18 the change-dir move waits for every store commit — by default, --changes-dir only relocates', () => {
+  // batch C row 8: without --changes-dir the move happens too (default aligned to the
+  // declared behaviour); ADM-01..04 pin the three path classes
   const root1 = twoModuleProject();
   const r1 = run(['archive', '--change', 'c', '--write'], root1);
   assert.strictEqual(r1.status, 0);
   assert.match(fs.readFileSync(path.join(root1, 'apriori/specs/a/spec.md'), 'utf8'), /Alpha2/);
-  assert.ok(fs.existsSync(path.join(root1, 'apriori/changes/c')));                    // NOT moved
-  // with explicit --changes-dir: moved to archive/<stamp>-c after commit
+  assert.ok(!fs.existsSync(path.join(root1, 'apriori/changes/c')));                   // moved by default
+  // with explicit --changes-dir: same — moved to archive/<stamp>-c after commit
   const root2 = twoModuleProject();
   const r2 = run(['archive', '--change', 'c', '--write', '--changes-dir', 'apriori/changes'], root2);
   assert.strictEqual(r2.status, 0);
@@ -593,14 +594,17 @@ test('AM-38 move failure keeps the bundle intact and rerunnable', () => {
   assert.ok(fs.existsSync(path.join(bundleArchived(root), 'requirement', 'req-v1.md')));
 });
 
-test('AM-39 non-move paths are unaffected', () => {
+test('AM-39 dry-run and the single-file form still move nothing', () => {
   const root = bundleProject();
   const rDry = run(['archive', '--change', 'c'], root);
   assert.strictEqual(rDry.status, 0);
   assert.ok(fs.existsSync(path.join(root, 'apriori/changes/c/requirement/req-v1.md')));
-  const rNoMove = run(['archive', '--change', 'c', '--write'], root);
-  assert.strictEqual(rNoMove.status, 0);
-  assert.ok(fs.existsSync(path.join(root, 'apriori/changes/c/requirement/req-v1.md')), 'no move without --changes-dir');
+  const rMove = run(['archive', '--change', 'c', '--write'], root);
+  assert.strictEqual(rMove.status, 0);
+  // batch C row 8: --write moves by default now; the bundle travels whole
+  const archived = fs.readdirSync(path.join(root, 'apriori/changes/archive'));
+  assert.strictEqual(archived.length, 1);
+  assert.ok(fs.existsSync(path.join(root, 'apriori/changes/archive', archived[0], 'requirement', 'req-v1.md')), 'the bundle moved whole');
   const root2 = mkProject({ 'store.md': STORE_A, 'delta.md': ADD_A });
   assert.strictEqual(run(['archive', '--store', 'store.md', '--delta', 'delta.md', '--change', 'c', '--write'], root2).status, 0);
 });

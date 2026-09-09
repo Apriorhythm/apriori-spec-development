@@ -169,10 +169,12 @@ test('JC-04 status: the single view, the list view and --escalation each carry e
   assert.deepStrictEqual(single.errors, []);
   for (const [k, t] of Object.entries({ change: 'string', phase: 'string|null', reality: 'object', openIssues: 'array', openItems: 'array', next: 'array',
     evidence: 'object', lastGate: 'string|null', hasFlowState: 'boolean', hotfix: 'boolean', openLedger: 'array', review: 'object|null',
+    lineage: 'null',                                     // retired (batch C row 7): the key stays, STRICTLY null
     escalation: 'array|null', escalations: 'array', acknowledged: 'array', historical: 'array', migrations: 'array', stage: 'string', path: 'string', risk: 'array', errors: 'array' }))
     assert.ok(t.split('|').includes(typeOf(single[k])), `single.${k} is ${typeOf(single[k])}, want ${t}`);
   const list = parse(run(['status', '--json'], root), 'list');
   expectShape(list, { changes: 'array', errors: 'array' }, 'list');
+  for (const c of list.changes) assert.strictEqual(c.lineage, null, `list element ${c.change}: lineage strictly null`);
   const esc = parse(run(['status', '--change', 'c', '--escalation', '--json'], root), 'escalation');
   expectShape(esc, { change: 'string', escalations: 'array', acknowledged: 'array', historical: 'array', errors: 'array' }, 'escalation');
   // errors keep the REQUESTED view's envelope (F5): the change view on a resolve/name error, the
@@ -193,7 +195,12 @@ test('JC-04 status: the single view, the list view and --escalation each carry e
     assert.deepStrictEqual(Object.keys(j).sort(), keys, `${label}: the view's own envelope`);
     strings(j.errors, `${label}.errors`);
     assert.strictEqual(j.errors.length, 1, label);
-    if (keys === CHANGE_VIEW) { assert.strictEqual(j.hasFlowState, false, label); assert.strictEqual(j.stage, null, label); }
+    if (keys === CHANGE_VIEW) {
+      assert.strictEqual(j.hasFlowState, false, label); assert.strictEqual(j.stage, null, label);
+      // the error envelope keeps the TYPES too, not just the key set — the retired key must be
+      // strictly null here as well (a `{}` slipped into emptyChangeView turns this red)
+      assert.strictEqual(j.lineage, null, `${label}: lineage strictly null in the error envelope`);
+    }
   }
 });
 

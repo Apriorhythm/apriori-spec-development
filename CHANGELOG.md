@@ -187,9 +187,16 @@ already stopped teaching are retired, and risk acceptance is unified on ONE mech
   stays in the reader's state-key set as legacy tolerance — an old bundle carrying `lineage:`
   (the unfilled scaffold placeholder included) parses with zero new defects and zero new C3
   refusals, and the line still ends a section. `status --json` keeps the `lineage` key for one
-  version, always `null` (MIGRATING). The 20-case flow corpus and the shipped self-repo bundles
-  replay unchanged. Tests: LNG-01..05; NW-01/04, OI-07, GT-04, RY-03, AM-81, MD-09 and the gate
-  corpus re-pinned to the keys that stay required.
+  version, always `null`, on EVERY path that carries a change view — the success single object,
+  each list element, and the resolve/name/strict-parser error envelopes alike; the contract
+  pins the type, not just the key (a `{}` in `toJson` or `emptyChangeView` turns LNG-06/JC-04
+  red — mutation-verified). The compatibility replay is the test's own work, not a file count:
+  LNG-05 replays every flow-corpus fixture AND every shipped self-repo flow-state with and
+  without the legacy line, requiring identical defect sets and C3 verdicts (line numbers
+  normalized), zero lineage-attributable wording anywhere, and lineage-free readiness blocker
+  sets on the active self bundles (re-adding `lineage` to C3's required table turns it red —
+  mutation-verified). Tests: LNG-01..06; JC-04 extended; NW-01/04, OI-07, GT-04, RY-03, AM-81,
+  MD-09 and the gate corpus re-pinned to the keys that stay required.
 - **Batch C row 1 — `artifact-root:` retired, legacy-tolerated.** The field was a
   never-implemented promise (no runtime consumer; every command hard-codes `apriori/changes`).
   `apriori new` stops writing the line; the kickoff prompt, the §3 schema and the §5 layout rule

@@ -114,7 +114,7 @@ usage: apriori archive --store <f> --delta <f> --change <name> [--write] [--no-c
 
 这与接受出口、以及循环的 `reframe` 决定是**同一条**规范所有者条目,由**同一个**解析器读取:真实时间戳、actor 正好是 `owner`、小写动词打头、目标整体匹配、破折号、以及理由。`producer:`、`note:`、`agent:` 和 `gate⑤ (owner):` 前缀在这三种文法里一律不构成授权。但文法里唯一的类别 `ledger` 已经没有消费者:一条在案的 `archive-force` 记录只报告为 `note: archive-force has nothing left to force in 6.2`,不改变任何裁决,带不带 `--force` 都一样。撤销是**追加**一条 `archive-force-revoke ledger — <理由>`,以最后一条为准——只影响这条注记,别无其他。每一条被越过的 R4 阻断项都会连同记录的原始首行一起打印。
 
-**单文件形式。** `--store/--delta` 是对某个规格库文件的单模块手术。它**不再接受** `--changes-dir`(因此永不移动变更目录),也不接受 `--force`,并且会拒绝任何解析到 `apriori/changes` 之内的 `--delta`——词法拼写与 realpath 两种量度、按路径段边界判定。变更 bundle 一律整个按名字归档。
+**单文件形式(deprecated,保留)。** `--store/--delta` 是对某个规格库文件的单模块手术。自批 C 第 9 行起标注 deprecated——凡 delta 属于某个 change bundle 的场合请一律用高层形态——但**保留**,因为有一类合法操作没有 bundle 形态的等价路径:store 文件在 `apriori/specs` 之外(高层形态把 store 根硬编码为 `apriori/specs`,只发现 changes root 之内的 delta,且要求一个就绪的 change bundle)。等价路径出现之前该入口不删;行为面无任何变化。它**不再接受** `--changes-dir`(因此永不移动变更目录),也不接受 `--force`,并且会拒绝任何解析到 `apriori/changes` 之内的 `--delta`——词法拼写与 realpath 两种量度、按路径段边界判定。变更 bundle 一律整个按名字归档。
 
 退出码:0 已合并/幂等空转 · 1 冲突/CAS/格式坏/未就绪/delta 越界/暂存-提交-移动失败 · 2 用法/未找到/路径越界。
 

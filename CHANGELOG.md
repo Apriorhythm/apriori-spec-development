@@ -180,6 +180,17 @@ already stopped teaching are retired, and risk acceptance is unified on ONE mech
   carries none of them ("CAS": zero hits); the pointer now names the CLI reference
   (`docs/cli.md` / `docs/cli_cn.md`) and troubleshooting, and the two body pointers of the same
   class ("… are in concepts") follow. Test: ID-05.
+- **Batch C row 9 — the single-file `--store/--delta` entry is NOT removed (pre-registered
+  exit taken): deprecated in the docs, behaviour untouched.** The registered criterion demanded
+  a bundle-form replay with byte-identical stores for every legal single-file operation; the
+  investigation found a whole class that cannot migrate — a store file outside `apriori/specs`
+  (15 of the existing corpus's ~20 calls merge into `./store.md` at the project root), which
+  the high-level form cannot reach: it hard-codes its store root, discovers deltas only inside
+  the changes root, and demands a ready change bundle. Recorded evidence: SFD-01 pins the
+  blocker (and fails the day the blocker stops holding, forcing a re-judgement); SFD-02/03
+  prove byte-identical equivalence for the migratable subclass across all three registered
+  classes (normal / conflict / CAS, `--no-cas` meaning preserved in the high-level form);
+  SFD-04 pins the deprecation annotation in both doc editions.
 - **Batch C row 1 — `artifact-root:` retired, legacy-tolerated.** The field was a
   never-implemented promise (no runtime consumer; every command hard-codes `apriori/changes`).
   `apriori new` stops writing the line; the kickoff prompt, the §3 schema and the §5 layout rule

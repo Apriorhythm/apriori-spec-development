@@ -192,9 +192,13 @@ already stopped teaching are retired, and risk acceptance is unified on ONE mech
   excludes the product inference; the pre-existing "dismissing a sandbox artifact requires
   real-environment evidence" semantics is folded into ①②. The P3 prompt's scope line follows:
   the reviewer records degraded sandbox output as an observation for the disposition instead of
-  self-ruling it an artifact, and never folds it into the verdict line. Fixed conditions: no
-  recipe or session-policy change rides along. Tests: `sandbox-evidence-triage.test.js`
-  (SE-01..06).
+  self-ruling it an artifact, and keeps it out of the verdict line only until it is ruled — a
+  confirmed ① product failure re-enters the substantive findings and counts toward the verdict,
+  ② excludes only once its positive control and ruling are on record, and a disputed or
+  under-evidenced observation stays ③ through Open/owner, never closed by a single
+  non-reproduction (wording narrowed per the batch-c policy acceptance r1 P1). Fixed
+  conditions: no recipe or session-policy change rides along. Tests:
+  `sandbox-evidence-triage.test.js` (SE-01..08).
 - **Batch C row 6 — `delivery:` retired, legacy-tolerated; the archive's third state is one
   fixed sentence.** The field's only consumer was the archive declaration echoing it back.
   `apriori new` stops writing the line; the declaration's third line is now verbatim

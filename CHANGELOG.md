@@ -180,6 +180,21 @@ already stopped teaching are retired, and risk acceptance is unified on ONE mech
   carries none of them ("CAS": zero hits); the pointer now names the CLI reference
   (`docs/cli.md` / `docs/cli_cn.md`) and troubleshooting, and the two body pointers of the same
   class ("… are in concepts") follow. Test: ID-05.
+- **Batch C row 11 — sandbox evidence gets a three-way disposition (rewrite, not removal).**
+  Battery E3 = 3/4 (work/results/exist/RESULTS.md + RESULTS-mac.md) proved the blocked-evidence
+  chain is a live mechanism, so R2's blanket rule — "dynamic observations are untrustworthy …
+  only its static reads count" — is rewritten per the §四 R2 ruling, in both runbook editions:
+  every dynamic observation lands in exactly one of ① a located product failure (producer
+  confirms with real-environment evidence), ② an environment limitation with a positive control
+  (the same operation succeeding in the real environment is on record), or ③ cause undetermined
+  — the observation is KEPT and routed through the Open/owner mechanism; "not reproduced" is
+  never "disproved", and the evidence ruling never goes back to the party under review. Only ②
+  excludes the product inference; the pre-existing "dismissing a sandbox artifact requires
+  real-environment evidence" semantics is folded into ①②. The P3 prompt's scope line follows:
+  the reviewer records degraded sandbox output as an observation for the disposition instead of
+  self-ruling it an artifact, and never folds it into the verdict line. Fixed conditions: no
+  recipe or session-policy change rides along. Tests: `sandbox-evidence-triage.test.js`
+  (SE-01..06).
 - **Batch C row 6 — `delivery:` retired, legacy-tolerated; the archive's third state is one
   fixed sentence.** The field's only consumer was the archive declaration echoing it back.
   `apriori new` stops writing the line; the declaration's third line is now verbatim

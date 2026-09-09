@@ -132,3 +132,55 @@ test('DLV-05 the shipped corpus replays with zero new refusals — every flow-st
   const r = spawnSync('node', [BIN, 'status', '--change', 'state-switch-completeness-principle', '--json'], { cwd: ROOT, encoding: 'utf8' });
   assert.strictEqual(r.status, 0, `status newly refuses the self bundle: ${r.stdout}${r.stderr}`);
 });
+
+test('DLV-06 the retired key\'s FULL contract: present and strictly null on every path that carries a change view', () => {
+  // success single object · list element · resolve error · invalid-name error · strict-parser
+  // error — the envelope promise (MIGRATING: "kept one version, always null") covers them all,
+  // and a `{}` (or any non-null) slipped into toJson OR emptyChangeView must turn this red.
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-dlv6-'));
+  const dir = path.join(root, 'apriori', 'changes', 'c');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'flow-state.md'),
+    'change: c\nlineage: main\nphase: build\ndelivery: released\n\n## Open\n\ngates:\n  - 2026-01-02T03:04 note: s\n');
+  const run = (args) => spawnSync('node', [BIN, 'status', ...args, '--json'], { cwd: root, encoding: 'utf8' });
+  const pin = (j, label) => {
+    assert.ok('delivery' in j, `${label}: the delivery key must be present`);
+    assert.strictEqual(j.delivery, null, `${label}: the retired key must be STRICTLY null (got ${JSON.stringify(j.delivery)})`);
+  };
+  // success, single object
+  const single = run(['--change', 'c']);
+  assert.strictEqual(single.status, 0, single.stdout + single.stderr);
+  pin(JSON.parse(single.stdout), 'single');
+  // success, every list element
+  const list = run([]);
+  assert.strictEqual(list.status, 0, list.stdout + list.stderr);
+  const lj = JSON.parse(list.stdout);
+  assert.ok(lj.changes.length >= 1, 'the list view must carry the fixture change');
+  for (const c of lj.changes) pin(c, `list element ${c.change}`);
+  // the three error envelopes that still promise the change view's shape
+  for (const [label, args] of [
+    ['resolve error', ['--change', 'nope']],
+    ['invalid-name error', ['--change', '../evil']],
+    ['strict-parser error', ['--change', 'c', '--bogus']],
+  ]) {
+    const r = run(args);
+    assert.strictEqual(r.status, 2, `${label}: ${r.stdout}${r.stderr}`);
+    const j = JSON.parse(r.stdout);
+    assert.strictEqual(j.errors.length, 1, label);
+    pin(j, label);
+  }
+});
+
+test('DLV-07 both concepts editions describe the fixed third state — no released-or-pending residue', () => {
+  const en = fs.readFileSync(path.join(ROOT, 'docs', 'concepts.md'), 'utf8');
+  const cn = fs.readFileSync(path.join(ROOT, 'docs', 'concepts_cn.md'), 'utf8');
+  for (const [label, text] of [['docs/concepts.md', en], ['docs/concepts_cn.md', cn]]) {
+    assert.match(text, /an archive is not a release/, `${label}: the fixed sentence must be taught`);
+    assert.doesNotMatch(text, /released or still pending external acceptance/,
+      `${label}: the retired third-state wording survives`);
+    assert.doesNotMatch(text, /released-or-pending/, `${label}: the retired third-state wording survives`);
+    assert.doesNotMatch(text, /ARCHIVE DECLARES:.*pending external acceptance/,
+      `${label}: the output example still prints the retired value`);
+    assert.doesNotMatch(text, /已发布还是仍待外部验收|已发布或待验收/, `${label}: the retired third-state wording survives (CN)`);
+  }
+});

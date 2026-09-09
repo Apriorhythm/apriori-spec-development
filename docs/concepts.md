@@ -374,7 +374,7 @@ The **Build & Test action** (RUNBOOK **P2**). Write code per the contract — **
 
 > ⚠️ Note the distinction: the archive action **does NOT automatically update your own TRUTH-DOC** (`apriori/truth/` or a separate KB repo — §6). Writing this change's new/changed facts **back into the KB is a separate step** (use the prompt in [§7.4](#74-review--deliver-consistency-review-and-archive) to have the AI do it explicitly, or write it manually).
 
-**The archive declares three states and freezes.** Whether the implementation is complete, whether the critical evidence is complete, and whether the change is released or still pending external acceptance. That is the whole claim an archive makes. **A defect found afterwards becomes a short outcome note or a new change — never a rewrite of the archived bundle.** Back-writing an old archive manufactures a timeline in which the work was already finished, which is exactly what the practices kept producing.
+**The archive declares three states and freezes.** Whether the implementation is complete, whether the critical evidence is complete, and — one fixed sentence since batch C row 6 — that **an archive is not a release**: delivery is not a claim the archive makes, whatever any legacy `delivery:` line says. That is the whole claim an archive makes. **A defect found afterwards becomes a short outcome note or a new change — never a rewrite of the archived bundle.** Back-writing an old archive manufactures a timeline in which the work was already finished, which is exactly what the practices kept producing.
 
 **This step is the lifeline of long-term maintainability for legacy projects** — every change deposits new facts back into the KB, so the next Ground has no holes. With the KB in the same repo (§6), the writeback rides in the same PR as the code, where a reviewer can actually see it — the enforcement mapping is in [§4.8](#48-mapping-the-workflow-onto-git--pr--ci).
 
@@ -505,7 +505,7 @@ outside `apriori/changes/`.
 ```shell
 apriori archive --change add-mini-kv --changes-dir apriori/changes --write
 # merged (ADDED): <your requirement IDs> · change dir → apriori/changes/archive/<stamp>-add-mini-kv/
-# ARCHIVE DECLARES: implementation complete · critical evidence complete · pending external acceptance
+# ARCHIVE DECLARES: implementation complete · critical evidence complete · an archive is not a release
 ```
 Those three lines are the whole claim the archive makes, and the bundle is frozen afterwards: a defect you find next week becomes a new change, not an edit to this record.
 
@@ -576,7 +576,7 @@ Prompt: RUNBOOK **P3** (independent review); the archive itself needs none. Desi
 
 - Before P3 runs at all, `apriori gate --review-ready` must exit 0. That check is a **transient view** over the run's own facts — no receipt document, nothing persisted — and its whole purpose is that the reviewer is never the first person to compile the code or run the suite.
 - `apriori verify` has already confirmed tests actually ran with no real failure (UNBOUND is advisory, not proof of coverage), so P3's **semantic faithfulness** check also covers genuine coverage — whether each test actually exercises its scenario's intent, not just shares its ID. Its default context is four things: contract, diff, evidence summary, uncovered boundaries. Its scope clause keeps style findings advisory. Like every review, it runs on a heterogeneous model ([§2.3](#23-driving-codex-non-interactively-multi-round-adversarial-review)).
-- The archive action merges delta specs into the living spec store per RUNBOOK §4's algorithm (`apriori/specs/`, [§4.6](#46-review--deliver-review-ready-one-review-archive)) — and nothing else: archive never touches `apriori/truth/` (§4). The KB writeback to `apriori/truth/<module>.md`, with its `source-commit` refresh and an explicit list of what changed, is the separate, human-reviewed step that happens BEFORE review-ready when the change owes one. The archive then declares three states — implementation, critical evidence, released-or-pending — and freezes: a defect found later becomes an outcome note or a new change, never an edit to the archived bundle.
+- The archive action merges delta specs into the living spec store per RUNBOOK §4's algorithm (`apriori/specs/`, [§4.6](#46-review--deliver-review-ready-one-review-archive)) — and nothing else: archive never touches `apriori/truth/` (§4). The KB writeback to `apriori/truth/<module>.md`, with its `source-commit` refresh and an explicit list of what changed, is the separate, human-reviewed step that happens BEFORE review-ready when the change owes one. The archive then declares three states — implementation, critical evidence, and the fixed sentence that an archive is not a release — and freezes: a defect found later becomes an outcome note or a new change, never an edit to the archived bundle.
 
 ### 7.5 Reverse Knowledge Capture for Legacy Projects
 

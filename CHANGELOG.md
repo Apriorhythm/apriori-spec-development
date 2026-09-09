@@ -187,8 +187,12 @@ already stopped teaching are retired, and risk acceptance is unified on ONE mech
   no-release ruling). The KEY stays in the reader's state-key set as legacy tolerance — every
   6.x scaffold up to 6.2 wrote it, so an old bundle carrying `delivery:` parses with zero new
   defects, the line still ends a section, and nothing consumes it. `status --json` keeps the
-  `delivery` key for one version, always `null` (MIGRATING). Tests: DLV-01..05; NW-04, ST-04,
-  OI-08, AM-118, AR-F2 re-pinned.
+  `delivery` key for one version, always `null`, on EVERY path that carries a change view —
+  the success single object, each list element, and the resolve/name/strict-parser error
+  envelopes alike; the contract pins the type, not just the key (a `{}` in `toJson` or
+  `emptyChangeView` turns DLV-06/JC-04 red — mutation-verified). Both concepts editions teach
+  the fixed third state and their output examples print it (DLV-07). Tests: DLV-01..07;
+  NW-04, ST-04, OI-08, AM-118, AR-F2 re-pinned; JC-04 extended.
 - **Batch C row 1 — `artifact-root:` retired, legacy-tolerated.** The field was a
   never-implemented promise (no runtime consumer; every command hard-codes `apriori/changes`).
   `apriori new` stops writing the line; the kickoff prompt, the §3 schema and the §5 layout rule

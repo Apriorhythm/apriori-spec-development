@@ -185,10 +185,19 @@ already stopped teaching are retired, and risk acceptance is unified on ONE mech
   an explicit `--changes-dir` (P6: declaration-behaviour mismatch). The behaviour is aligned to
   the declaration: `--write` merges AND moves to `<changes-dir>/archive/<stamp>-<change>/`;
   `--changes-dir` is only a location override; the destination containment probe now runs on
-  every `--write`. Dry-run still moves nothing (the declaration prints as a preview); a refused
-  run (preflight / CAS / readiness) still moves nothing, merges nothing, and never prints the
-  frozen declaration. Tests: ADM-01..04 enumerate the three registered path classes with
-  before/after position oracles; AM-18/AM-39 re-pinned to the aligned default.
+  every `--write`, and so does a destination SHAPE check (a plain file, a symlink to one, or a
+  broken link squatting on `<changes-dir>/archive` is refused in preflight, exit 2, before
+  anything is written). The frozen `ARCHIVE DECLARES` block is computed early (the INCOMPLETE
+  backstop needs it) but PUBLISHED only where it is true: in the dry-run report as the
+  documented preview, or after the move actually succeeded — a run that fails in
+  stage/commit/move exits 1 without it, and a move failure after committed stores says
+  `stores committed …` rather than claiming nothing was written. Dry-run still moves nothing;
+  a refused run (preflight / CAS / readiness) still moves nothing and merges nothing.
+  Tests: ADM-01..04 enumerate the three registered path classes with before/after position
+  oracles; ADM-05..08 pin the four post-declaration failure shapes (occupied archive path,
+  stage, commit, move) against the printed report; AM-18/AM-39 re-pinned to the aligned
+  default. A migration note (MIGRATING, 6.2 section) records the retired keep-in-place habit
+  and the recovery paths.
 - **Batch C row 1 — `artifact-root:` retired, legacy-tolerated.** The field was a
   never-implemented promise (no runtime consumer; every command hard-codes `apriori/changes`).
   `apriori new` stops writing the line; the kickoff prompt, the §3 schema and the §5 layout rule

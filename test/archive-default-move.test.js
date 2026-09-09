@@ -18,6 +18,7 @@ const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { readyFiles } = require('./helpers/ready-bundle');
+const am = require('../lib/archive-merge');
 
 const BIN = path.join(__dirname, '..', 'bin', 'apriori.js');
 const run = (args, cwd) => spawnSync('node', [BIN, ...args], { encoding: 'utf8', cwd });
@@ -112,4 +113,90 @@ test('ADM-04 CAS refusal: an unstamped mutation is denied — positions unchange
   assert.ok(fs.existsSync(active(root)), 'the active bundle must stay in place');
   assert.deepStrictEqual(archiveDirs(root), [], 'no archive entry may appear');
   assert.strictEqual(store(root), before, 'the store must be untouched');
+});
+
+// ---------------------------------------------------------------------------
+// ADM-05..08 — a failed run NEVER carries the frozen success declaration (P3 acceptance r1).
+// The declaration is computed early (the INCOMPLETE backstop needs it) but PUBLISHED only
+// after the move actually succeeded; dry-run keeps printing it as a documented preview.
+// Each case asserts the real store/active/archive positions AND that the printed report
+// agrees with them — including the failures AFTER the old declaration point:
+// occupied archive path, stage failure, commit failure, move failure.
+// ---------------------------------------------------------------------------
+
+test('ADM-05 archive path occupied by a plain file: refused before any write, no frozen declaration', () => {
+  const root = project(ADD_A);
+  const before = store(root);
+  const occupied = path.join(root, 'apriori', 'changes', 'archive');
+  fs.writeFileSync(occupied, 'NOT A DIRECTORY');
+  const r = run(['archive', '--change', 'c', '--write', '--no-cas'], root);
+  assert.strictEqual(r.status, 2, r.stdout + r.stderr);
+  assert.match(r.stderr, /archive.*not a directory/i);
+  assert.doesNotMatch(r.stdout, /ARCHIVE DECLARES/, 'a failed run printed the frozen declaration');
+  assert.doesNotMatch(r.stdout, /change archived → /);
+  assert.strictEqual(store(root), before, 'the store must be untouched — refusal comes before any write');
+  assert.ok(fs.existsSync(active(root)), 'the active bundle must stay in place');
+  assert.strictEqual(fs.readFileSync(occupied, 'utf8'), 'NOT A DIRECTORY', 'the occupying file stays untouched');
+});
+
+test('ADM-06 stage failure: stores untouched, temps removed, no frozen declaration', () => {
+  const root = project(ADD_A);
+  const before = store(root);
+  const ops = {
+    writeFileSync: () => { throw new Error('injected stage failure'); },
+    renameSync: fs.renameSync.bind(fs), rmSync: fs.rmSync.bind(fs),
+  };
+  const r = am.archiveChange({ cwd: root, change: 'c', write: true, noCas: true, ops });
+  const out = r.out.join('\n'), err = r.err.join('\n');
+  assert.strictEqual(r.code, 1, out + err);
+  assert.match(err, /staging failed \(injected stage failure\)/);
+  assert.doesNotMatch(out, /ARCHIVE DECLARES/, 'a failed run carried the frozen declaration');
+  assert.doesNotMatch(out, /RESULT: MERGED/);
+  assert.strictEqual(store(root), before, 'the store must be untouched');
+  assert.ok(fs.existsSync(active(root)), 'the active bundle must stay in place');
+  assert.deepStrictEqual(archiveDirs(root), [], 'no archive entry may appear');
+  assert.ok(!fs.existsSync(path.join(root, 'apriori', 'specs', 'a', 'spec.md.tmp-archive')),
+    'this run\'s temp files are removed on stage failure');
+});
+
+test('ADM-07 commit failure: diagnosis names the temp for recovery, no frozen declaration', () => {
+  const root = project(ADD_A);
+  const before = store(root);
+  const ops = {
+    writeFileSync: fs.writeFileSync.bind(fs), rmSync: fs.rmSync.bind(fs),
+    renameSync: () => { throw new Error('injected commit failure'); },
+  };
+  const r = am.archiveChange({ cwd: root, change: 'c', write: true, noCas: true, ops });
+  const out = r.out.join('\n'), err = r.err.join('\n');
+  assert.strictEqual(r.code, 1, out + err);
+  assert.match(err, /COMMIT FAILED at a\/spec\.md \(injected commit failure\)/);
+  assert.match(err, /temp files remaining for manual completion/);
+  assert.doesNotMatch(out, /ARCHIVE DECLARES/, 'a failed run carried the frozen declaration');
+  assert.doesNotMatch(out, /RESULT: MERGED/);
+  assert.strictEqual(store(root), before, 'the store must be untouched');
+  assert.ok(fs.existsSync(path.join(root, 'apriori', 'specs', 'a', 'spec.md.tmp-archive')),
+    'the staged temp stays for manual completion, exactly as the diagnosis says');
+  assert.ok(fs.existsSync(active(root)), 'the active bundle must stay in place');
+  assert.deepStrictEqual(archiveDirs(root), [], 'no archive entry may appear');
+});
+
+test('ADM-08 move failure: committed stores stay and are SAID to stay — no frozen declaration, no nothing-written claim', () => {
+  const root = project(ADD_A);
+  let renames = 0;
+  const ops = {
+    writeFileSync: fs.writeFileSync.bind(fs), rmSync: fs.rmSync.bind(fs),
+    // one module: rename #1 commits the store, rename #2 is the move — fail the move
+    renameSync: (a, b) => { renames++; if (renames === 2) throw new Error('injected move failure'); fs.renameSync(a, b); },
+  };
+  const r = am.archiveChange({ cwd: root, change: 'c', write: true, noCas: true, ops });
+  const out = r.out.join('\n'), err = r.err.join('\n');
+  assert.strictEqual(r.code, 1, out + err);
+  assert.match(err, /stores committed but the change-dir move failed: injected move failure — rerun to complete/);
+  assert.doesNotMatch(err, /nothing written/, 'the store IS committed — the report must not claim otherwise');
+  assert.doesNotMatch(out, /ARCHIVE DECLARES/, 'a failed run carried the frozen declaration');
+  assert.doesNotMatch(out, /change archived → /);
+  assert.doesNotMatch(out, /RESULT: MERGED/);
+  assert.match(store(root), /Alpha2/, 'committed stores stay committed, exactly as the diagnosis says');
+  assert.ok(fs.existsSync(active(root)), 'the move failed — the active bundle is still in place');
+  assert.deepStrictEqual(archiveDirs(root), [], 'no archive entry may appear');
 });

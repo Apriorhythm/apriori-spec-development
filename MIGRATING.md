@@ -146,6 +146,23 @@ published v5.0.0 — keep parsing unchanged: the key is read and ignored, is nev
 defect, and still ends a section like any state key. Nothing to migrate; delete the line whenever
 you touch the file, or leave it.
 
+**Bundle `archive --write` moves the change dir by default (batch C row 8).** Before this change
+the bundle was moved to `<changes-dir>/archive/<stamp>-<change>/` only under an explicit
+`--changes-dir`; omitting the flag merged the stores and LEFT the bundle in
+`apriori/changes/<name>/`. That habit no longer holds: **every successful `--write` merges AND
+moves** — `--changes-dir` is only a location override, and there is no keep-in-place switch. If a
+script or workflow relied on reading the bundle at its in-flight path after archiving, point it at
+the archived location instead: the MERGED line prints the destination (`change archived → …`), and
+`apriori status --change <name>` / `apriori gate --change <name>` still resolve the name to the
+newest archived bundle once the in-flight dir is gone. Dry-run (no `--write`) still moves nothing.
+On failure nothing pretends otherwise: a preflight/CAS/readiness refusal, an occupied
+`archive/` path (a plain file there is now refused before any write) and a staging failure leave
+stores and bundle in place; a mid-commit failure names the remaining `*.tmp-archive` files for
+manual completion; a failed MOVE after the stores were committed says exactly that (`stores
+committed but the change-dir move failed … — rerun to complete`) — rerunning the same archive
+command completes the move. The frozen `ARCHIVE DECLARES` block prints only in a dry-run preview
+or after the move actually succeeded, so its presence always matches the on-disk outcome.
+
 ## 6.0 slice 4 → slice 5 (Unreleased) — the artifact family is gone
 
 > **Read with the 6.2 section above:** the `## Evidence` rows, the ledger rule (R3 / C4) and the

@@ -133,6 +133,7 @@ test('AM-18 the change-dir move waits for every store commit — by default, --c
   assert.strictEqual(res.code, 1);
   assert.match(fs.readFileSync(path.join(root3, 'apriori/specs/a/spec.md'), 'utf8'), /Alpha2/);   // committed stays
   assert.ok(fs.existsSync(path.join(root3, 'apriori/changes/c')));                                // move failed → still in place
+  assert.doesNotMatch(res.out.join('\n'), /ARCHIVE DECLARES/, 'a failed run must not carry the frozen declaration');  // ADM-08 pins the rest
 });
 
 test('AM-19 high-level and single-file forms are mutually exclusive', () => {

@@ -1,5 +1,5 @@
 'use strict';
-// LNG-01..06 — the `lineage:` field moves into the Reality Check `decision:` line (batch C row 7).
+// LNG-01..07 — the `lineage:` field moves into the Reality Check `decision:` line (batch C row 7).
 //
 // The scaffold stops writing the field and instead carries an INERT sample (an HTML comment —
 // documentation, never an item) showing the migration target: the target branch/line + merge
@@ -7,11 +7,13 @@
 // its required-key table; the reader keeps the KEY as LEGACY TOLERANCE (flow.js STATE_KEYS):
 // an old bundle carrying `lineage: main` — or even the unfilled scaffold placeholder — must
 // parse with ZERO new defects and ZERO new C3 refusals. `status --json` keeps the `lineage`
-// key for ONE version, always null on every change-view path (MIGRATING). Rollback criterion:
-// the compatibility corpus + the shipped self-repo bundles replay IDENTICALLY with and without
-// the legacy line (LNG-05 runs that replay itself — defect sets, C3 verdicts and the active
-// bundles' readiness blockers); any new C3 refusal on a legacy bundle without a named
-// migration message rolls the row back.
+// key for ONE version, always null on every change-view path (MIGRATING). Rollback criterion,
+// held by TWO tests with different powers: LNG-05 replays the corpus with and without the
+// legacy line (defect sets and C3 verdicts identical; readiness blockers merely free of
+// lineage wording — a SELF-comparison, blind to a drift that hits both sides alike), and
+// LNG-07 pins the frozen 6.1 baseline's complete verdicts as golden data the shipped code
+// must reproduce literally. Any new C3 refusal on a legacy bundle without a named migration
+// message rolls the row back.
 
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -212,5 +214,39 @@ test('LNG-06 the retired key\'s FULL contract: present and strictly null on ever
     const j = JSON.parse(r.stdout);
     assert.strictEqual(j.errors.length, 1, label);
     pin(j, label);
+  }
+});
+
+test('LNG-07 baseline verdict oracle: the shipped code reproduces the frozen 6.1 baseline literally over the whole corpus', () => {
+  // LNG-05 judges BOTH sides of its replay with the code under test, so a regression that
+  // breaks the two sides identically — say a C3 refusal keyed on a bundle NAME, worded
+  // without the string "lineage" — sails through it (P3 acceptance r2, item 3). This test
+  // holds the FOREIGN expectation instead: the complete verdict record of the frozen
+  // baseline (v6-dev@2853684) over this same corpus — structural-defect sets, C3 verdicts,
+  // full gate blocked sets and the active bundles' readiness blocker sets, line numbers
+  // normalized — pinned as golden data (test/fixtures/lineage-baseline-golden.json, built
+  // by running test/helpers/verdict-corpus.js against the baseline's own lib). The shipped
+  // implementation must reproduce EVERY pinned record literally: a drift shared by both
+  // sides of a self-comparison is still a diff against the baseline.
+  const { judgeCorpus } = require('./helpers/verdict-corpus');
+  const golden = JSON.parse(fs.readFileSync(
+    path.join(__dirname, 'fixtures', 'lineage-baseline-golden.json'), 'utf8'));
+  delete golden._meta;
+  // the golden itself must still cover the full acceptance corpus — a truncated pin must
+  // not pass by expecting less
+  assert.strictEqual(Object.keys(golden.fixtures).length, 24, 'the pinned fixture corpus shrank');
+  assert.strictEqual(Object.keys(golden.states).length, 36, 'the pinned self-repo corpus shrank');
+  assert.strictEqual(Object.keys(golden.gate).length, 36, 'the pinned gate corpus shrank');
+  assert.strictEqual(Object.keys(golden.readiness).length, 3, 'the pinned active-readiness corpus shrank');
+  const actual = judgeCorpus(ROOT, { flow, readiness: rd, gate: require('../lib/gate') });
+  // compared on the golden's keys: a LATER change may add bundles (they join the oracle
+  // when the baseline is deliberately re-pinned), but no pinned verdict may drift — and no
+  // pinned corpus entry may disappear
+  for (const section of ['fixtures', 'states', 'gate', 'readiness']) {
+    for (const key of Object.keys(golden[section])) {
+      assert.ok(key in actual[section], `${section}/${key}: a pinned corpus entry disappeared`);
+      assert.deepStrictEqual(actual[section][key], golden[section][key],
+        `${section}/${key}: the verdict drifted from the 6.1 baseline`);
+    }
   }
 });

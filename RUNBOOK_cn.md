@@ -66,7 +66,7 @@ cd your-project && apriori init --tools claude  # 点名要接入的 AI 工具(�
 **上下文经济。** 上下文窗口是 agent 最稀缺的资源,须刻意管理:
 
 - **会话卫生:**每个阶段都可以换新会话——状态文件(§3)保证无损续跑。handoff 只带状态本身的内容:阶段、决定、开放问题、证据引用;绝不携带原始评审输出或别的 change 的文档。
-- **REVISE 切断会话(Fix Packet)。** 独立评审返回 REVISE 时,修复轮换一个全新或已清空的会话跑,带过去的只有一份简短的 **Fix Packet**(一条交接消息,不是文件):阻塞性的 P0/P1、最小复现、相关文件、必须跑通的验证命令、明确的非目标。advisory 默认不进入,除非所有者明确升级,或修它是修某个 P0/P1 的直接前置。这是上下文卫生,不是降低标准:每个 P0/P1 照样要修,§4 的重新验证路径照样完整跑一遍。
+- **REVISE:可原会话续修,长会话或不收敛时建议 Fix Packet 交接(建议,非强制)。** 独立评审返回 REVISE 后,修复轮可以在原会话继续;当上下文已长,或同族多轮仍不收敛时,建议把修复轮交给一个全新或已清空的会话,带过去一份简短的 **Fix Packet**(一条交接消息,不是文件):阻塞性的 P0/P1、最小复现、相关文件、必须跑通的验证命令、明确的非目标。advisory 默认不进入,除非所有者明确升级,或修它是修某个 P0/P1 的直接前置。这是上下文卫生,不是降低标准:每个 P0/P1 照样要修,§4 的重新验证路径照样完整跑一遍。
 - **没有默认阅读清单;不逛别的 change 找格式。** 绝不为了学一种格式惯例去翻另一个 active 或 archive 的 change。`apriori new` 已经把这个 change 的文件脚手架成正确的形状;这份脚手架加上这个 change 自己的产物,就是唯一默认的范例。
 - **不自我计量。** 绝不读 Claude/会话记录或日志去算耗时或 token 花费——那由外部编排器统计。
 - **知识按需加载:**KB 按所涉模块加载——绝不整库预载。
@@ -274,7 +274,7 @@ change 需要的其他任何东西——一张草稿、一幅图、给人看的�
 - **然后归档——直接执行,不 dry-run。** ACCEPT 落地、且产品代码与测试自 review-ready 起未再变化时,正常收尾恰好四个逻辑动作,不多不少:(1)把评审方的输出落成一个 self-contained 评审文件,外加一次简短的 flow-state 更新;(2)跑一次 `apriori check`,再跑一次完整的 `apriori gate --change <name>`(不带 `--review-ready`),在这些仍未变化的输入上绑定 C1;(3)直接跑 `apriori archive --change <name> --write`——`--write` 执行与 dry-run 完全相同的前置检查,先跑一次 dry-run 不会多核实出任何东西;归档把增量 spec 合并进 `apriori/specs` 并搬移 bundle,仅此而已(`--changes-dir` 只是非默认 changes 根的位置覆盖);(4)本地提交收尾,然后停止。那一次原子移动携带整个 bundle 到 `apriori/changes/archive/<stamp>-<change>/`。
 - **归档不是发布。** `apriori archive` 只声明它刚判定过的状态(实现与关键证据是否完成);第三行逐字就是这句话——`delivery: an archive is not a release`——它不冒充发布或外部验收。(flow-state 的 `delivery:` 字段已退役;遗留的行照常读入并忽略。)**归档后的 bundle 是冻结的:任何东西,包括 `phase:`,都不再回写。** 之后发现的缺陷记为一条简短的 outcome 或一个新 change。
 - **退出(正常路径)。** 不在动作二的 gate 之前单独重跑一次测试命令——`--test-cmd` 已经跑过;归档之后不重跑 `apriori verify`、`check`、`gate` 或 `status`——动作二已经在这些输入上绑定过 C1,动作三已经复核过归档自身的就绪度和 CAS,两者之间什么都没变,谁也学不到新东西;也不把完整的评审、flow-state 和命令输出向人复述一遍。退出即:增量 spec 已合并 + 前置条件里的知识库 diff 已经人批准(同仓布局下,这就是普通的 PR review)。
-- **以下情况改为重新验证:** 评审结论为 REVISE 且产品代码或测试发生了变化;归档报告冲突、CAS、就绪度或结构问题;gate(动作二)与归档(动作三)之间业务文件发生了变化;或 `apriori check` 失败——任一种都把 change 送回 Build & Test 重新走一次 gate;绝不带着半通过状态归档。**REVISE 时,这一轮在新会话里、带着 Fix Packet 开始**(§0)。
+- **以下情况改为重新验证:** 评审结论为 REVISE 且产品代码或测试发生了变化;归档报告冲突、CAS、就绪度或结构问题;gate(动作二)与归档(动作三)之间业务文件发生了变化;或 `apriori check` 失败——任一种都把 change 送回 Build & Test 重新走一次 gate;绝不带着半通过状态归档。**REVISE 后可在原会话继续修复;上下文已长或同族多轮不收敛时,建议带 Fix Packet 交接新会话**(§0)。
 
 ### ABANDONED —— 任何时候都合法的退出
 

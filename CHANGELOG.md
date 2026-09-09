@@ -180,6 +180,17 @@ already stopped teaching are retired, and risk acceptance is unified on ONE mech
   carries none of them ("CAS": zero hits); the pointer now names the CLI reference
   (`docs/cli.md` / `docs/cli_cn.md`) and troubleshooting, and the two body pointers of the same
   class ("… are in concepts") follow. Test: ID-05.
+- **Batch C row 10 — C5/R4 predicate unification, finished.** The C3/R1 common base had
+  already landed (one trust root, one parser, gate C3 = `readiness.checkFlowState`); what
+  remained were two judgment layers over the same completeness facts. The judgment now lives
+  in ONE predicate — `review.completenessFindings(facts)` (a symlinked summary aborts, a
+  verdict doc with no usable raw archive refuses, zero verdict docs attests nothing) — and
+  gate C5 and archive R4 only render its findings in their own words. Per the §四 R6 oracle:
+  every surface's detail strings are byte-identical to before (PU-02 pins them), the surfaces
+  agree on the shared facts for every review/ shape (PU-03), the RY-03/04 one-way implication
+  holds (archivable ⇒ gate-legal, never the reverse — the archive phase overlay and frozen
+  semantics are kept stage differences), and archive never calls back into gate (PU-04).
+  Tests: PU-01..04. No behavioural change.
 - **Batch C row 1 — `artifact-root:` retired, legacy-tolerated.** The field was a
   never-implemented promise (no runtime consumer; every command hard-codes `apriori/changes`).
   `apriori new` stops writing the line; the kickoff prompt, the §3 schema and the §5 layout rule

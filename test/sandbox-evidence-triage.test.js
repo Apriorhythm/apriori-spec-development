@@ -72,9 +72,32 @@ test('SE-05 the P3 prompt scope line records the observation instead of self-rul
     'the P3 prompt still tells the reviewer to self-adjudicate');
   not(CN, '降级的输出按沙箱伪象处理,不作为发现',
     'the CN P3 prompt still tells the reviewer to self-adjudicate');
-  // new wording: record for R2's three-way disposition; no self-ruling, no verdict leak
-  ok(EN, "record degraded output as an observation — inputs, environment difference, rerun result — for R2's three-way disposition; do not rule it a sandbox artifact yourself and do not fold it into the verdict line (R2)");
-  ok(CN, '降级的输出作为观察记录下来——输入、环境差异、复跑结果——交 R2 的三类处置;不得自行裁定它是沙箱伪象,也不把它折进结论行(R2)');
+  // the r1-acceptance P1 wording gone too: the unconditional exclusion read as permanent
+  // quarantine even for a CONFIRMED ① product failure (Astra batch-c policy r1)
+  not(EN, 'do not fold it into the verdict line',
+    'the P3 prompt still excludes ruled observations from the verdict unconditionally');
+  not(CN, '也不把它折进结论行(R2)',
+    'the CN P3 prompt still excludes ruled observations from the verdict unconditionally');
+  // new wording: record for R2's three-way disposition; no self-ruling; the exclusion from
+  // the verdict line holds only PRE-RULING, with the per-category exits spelled out
+  ok(EN, "record degraded output as an observation — inputs, environment difference, rerun result — for R2's three-way disposition; do not rule it a sandbox artifact yourself, and keep it out of the verdict line only until it is ruled: an observation confirmed as ① a located product failure enters the substantive findings and counts toward the verdict like any other; ② excludes the product inference only once its positive control and ruling are on record; a disputed or under-evidenced observation stays ③ — kept, never closed by a single non-reproduction — and goes through the existing Open/owner mechanism (R2)");
+  ok(CN, '降级的输出作为观察记录下来——输入、环境差异、复跑结果——交 R2 的三类处置;不得自行裁定它是沙箱伪象,裁定前也不把它折进结论行:观察一经裁定确认为 ① 已定位的产品失败,即进入实质发现、照常计入结论;② 仅在正面对照与裁决在案后方可排除产品推断;归类有争议或证据不足一律按 ③ 保留——绝不因一次未复现而关闭——走既有 Open/owner 机制裁决(R2)');
+});
+
+test('SE-07 a confirmed ① product failure re-enters the verdict path — no permanent quarantine', () => {
+  // rejects the degeneration "confirmed ① still barred from the verdict line forever"
+  ok(EN, 'an observation confirmed as ① a located product failure enters the substantive findings and counts toward the verdict',
+    'EN P3 lacks the post-ruling exit for a confirmed product failure');
+  ok(CN, '一经裁定确认为 ① 已定位的产品失败,即进入实质发现、照常计入结论',
+    'CN P3 lacks the post-ruling exit for a confirmed product failure');
+});
+
+test('SE-08 an undetermined ③ observation is never closed by one non-reproduction', () => {
+  // rejects the degeneration "③ closed because a single rerun did not reproduce it"
+  ok(EN, 'stays ③ — kept, never closed by a single non-reproduction — and goes through the existing Open/owner mechanism',
+    'EN P3 lets a single non-reproduction close an undetermined observation');
+  ok(CN, '一律按 ③ 保留——绝不因一次未复现而关闭——走既有 Open/owner 机制裁决',
+    'CN P3 lets a single non-reproduction close an undetermined observation');
 });
 
 test('SE-06 fixed conditions: the rewrite touches neither the recipe nor the session policy', () => {

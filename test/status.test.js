@@ -107,7 +107,8 @@ test('ST-04 --json emits a machine-consumable report (single + list), pure JSON'
       { id: null, text: 'D-2 is a line without an id', accepted: false, acceptedAt: null }]);
     assert.strictEqual(single.effectiveMode, single.mode, '6.2: the two are equal');
     assert.deepStrictEqual(single.reality.assumption, ['get cleans up lazily']);
-    assert.strictEqual(single.delivery, 'pending-external-acceptance');
+    // the fixture's legacy delivery: line is tolerated; the retired key reads null (one version, MIGRATING)
+    assert.strictEqual(single.delivery, null);
     // the legacy Evidence row is carried under the compat key, and nothing else is
     assert.deepStrictEqual(single.evidence, { rows: [{ name: 'producer-diff', status: 'n/a', detail: 'not built yet' }], blocked: [], recorded: [] });
     // `escalations` is the field a Stop hook reads, and it carries what gate C9 / archive R5

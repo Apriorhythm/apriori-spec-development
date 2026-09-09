@@ -433,7 +433,7 @@ test('OI-07 `apriori new` scaffolds no mode line and no Evidence section; Open s
 test('OI-08 the archive declaration derives its three lines from the open items', () => {
   const decl = (opts) => am.archiveDeclaration(project(opts).dir);
   const lines = (d) => d.lines.filter((l) => /^ {2}\w/.test(l)).map((l) => l.trim());
-  assert.deepStrictEqual(lines(decl({})), ['implementation:    complete', 'critical evidence: complete', 'delivery:          pending external acceptance']);
+  assert.deepStrictEqual(lines(decl({})), ['implementation:    complete', 'critical evidence: complete', 'delivery:          an archive is not a release']);
   const pend = decl({ open: '- R-01: a\n- no id\n', sections: '## Reality Check\n- assumption: x\n\n' });
   assert.strictEqual(pend.incomplete, true);
   assert.deepStrictEqual(lines(pend).slice(0, 2), [
@@ -441,8 +441,9 @@ test('OI-08 the archive declaration derives its three lines from the open items'
     'critical evidence: 2 open item(s) still pending']);
   const acc = decl({ open: '- R-01: a\n- R-02: b\n', gates: ACCEPT('R-01') + ACCEPT('R-02'), sections: 'delivery: released\n' });
   assert.strictEqual(acc.incomplete, false);
+  // a legacy `delivery: released` line no longer changes the third state: it is one fixed sentence
   assert.deepStrictEqual(lines(acc), ['implementation:    complete',
-    'critical evidence: complete, 2 risk(s) accepted by the owner (R-01, R-02), still present', 'delivery:          released']);
+    'critical evidence: complete, 2 risk(s) accepted by the owner (R-01, R-02), still present', 'delivery:          an archive is not a release']);
   const half = decl({ open: '- R-01: a\n- R-02: b\n', gates: ACCEPT('R-01') });
   assert.strictEqual(half.incomplete, true);
   assert.match(half.lines.join('\n'), /INCOMPLETE — 1 pending open item\(s\), 0 unverified assumption\(s\)/);

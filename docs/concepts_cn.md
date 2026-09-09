@@ -374,7 +374,7 @@ graph TD
 
 > ⚠️ 注意区别:归档动作**不会自动更新你自己的 TRUTH-DOC**(`apriori/truth/` 或独立知识库仓库——见第六节)。把本次 change 的新增/变化事实**回写进知识库是单独的一步**(用 [§7.4](#74-review--deliver一致性评审与归档) 的提示词让 AI 显式做,或手写)。
 
-**归档声明三个状态然后冻结。** 实现是否完成、关键证据是否完成、以及已发布还是仍待外部验收。这就是一次归档所做的全部声明。**之后发现的缺陷记为一条简短 outcome 或一个新 change——绝不回写已归档的 bundle。** 回写旧归档会制造"当时就已经完成"的假时间线,而那正是实践反复产出的东西。
+**归档声明三个状态然后冻结。** 实现是否完成、关键证据是否完成、以及自批 C 第 6 行起固定的一句——**归档不是发布**(an archive is not a release):交付与否不是归档所做的声明,无论遗留的 `delivery:` 行写着什么。这就是一次归档所做的全部声明。**之后发现的缺陷记为一条简短 outcome 或一个新 change——绝不回写已归档的 bundle。** 回写旧归档会制造"当时就已经完成"的假时间线,而那正是实践反复产出的东西。
 
 **这一步是旧项目长期可维护性的生命线**——每个 change 都把新事实存回知识库,于是下一次 Ground 不再带洞。知识库与代码同仓(第六节)时,回写与代码走同一个 PR,评审者真的看得见——强制映射见 [§4.8](#48-把流程落到-git--pr--ci)。
 
@@ -501,7 +501,7 @@ node -e "const KV=require('./src/mini-kv'); const k=new KV(); k.set('a',1,50); c
 ```shell
 apriori archive --change add-mini-kv --changes-dir apriori/changes --write
 # merged (ADDED): <你的 requirement ID> · 变更目录 → apriori/changes/archive/<戳>-add-mini-kv/
-# ARCHIVE DECLARES: implementation complete · critical evidence complete · pending external acceptance
+# ARCHIVE DECLARES: implementation complete · critical evidence complete · an archive is not a release
 ```
 那三行就是这次归档所做的全部声明,之后这个 bundle 就冻结了:下周你发现的缺陷会变成一个新 change,而不是对这条记录的一次编辑。
 
@@ -572,7 +572,7 @@ source-commit: <归档时的 commit sha>   # 只覆盖契约节
 
 - P3 跑起来之前,`apriori gate --review-ready` 必须先退出 0。那道检查是对本次运行自身事实的**临时视图**——没有 receipt 文档,什么也不持久化——它存在的全部意义,是评审方永远不是第一个编译代码或跑测试的人。
 - `apriori verify` 已确认测试确实跑过且没有真实失败(UNBOUND 只是建议性提示,不证明覆盖到位),所以 P3 的**语义忠实**检查也覆盖真正的覆盖情况——每条测试是否真的检验了 scenario 的意图,而不只是共享 ID。它的默认上下文是四样:契约、diff、证据摘要、未覆盖边界。其范围条款把风格类发现留在 advisory;和所有评审一样跑在异构模型上([§2.3](#23-用命令行驱动-codex多轮对抗评审))。
-- 归档动作按 RUNBOOK §4 的算法把增量规格并入 living 规格库(`apriori/specs/`,[§4.6](#46-review--deliver先-review-ready一次评审然后归档)),——仅此而已:归档绝不碰 `apriori/truth/`(§4)。回写知识库到 `apriori/truth/<module>.md`、刷新 `source-commit` 标记并列出改了什么,是另一个由人评审的步骤,在 change 欠它时于 review-ready **之前**完成。归档随后声明三个状态——实现、关键证据、已发布或待验收——然后冻结:之后发现的缺陷记为一条 outcome 或一个新 change,绝不是对已归档 bundle 的一次编辑。
+- 归档动作按 RUNBOOK §4 的算法把增量规格并入 living 规格库(`apriori/specs/`,[§4.6](#46-review--deliver先-review-ready一次评审然后归档)),——仅此而已:归档绝不碰 `apriori/truth/`(§4)。回写知识库到 `apriori/truth/<module>.md`、刷新 `source-commit` 标记并列出改了什么,是另一个由人评审的步骤,在 change 欠它时于 review-ready **之前**完成。归档随后声明三个状态——实现、关键证据、以及"归档不是发布"这句固定声明——然后冻结:之后发现的缺陷记为一条 outcome 或一个新 change,绝不是对已归档 bundle 的一次编辑。
 
 ### 7.5 旧项目反向知识沉淀 / 知识库校对
 

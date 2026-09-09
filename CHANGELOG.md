@@ -180,6 +180,19 @@ already stopped teaching are retired, and risk acceptance is unified on ONE mech
   carries none of them ("CAS": zero hits); the pointer now names the CLI reference
   (`docs/cli.md` / `docs/cli_cn.md`) and troubleshooting, and the two body pointers of the same
   class ("… are in concepts") follow. Test: ID-05.
+- **Batch C row 6 — `delivery:` retired, legacy-tolerated; the archive's third state is one
+  fixed sentence.** The field's only consumer was the archive declaration echoing it back.
+  `apriori new` stops writing the line; the declaration's third line is now verbatim
+  `delivery:          an archive is not a release`, whatever any legacy line says (the 09-08
+  no-release ruling). The KEY stays in the reader's state-key set as legacy tolerance — every
+  6.x scaffold up to 6.2 wrote it, so an old bundle carrying `delivery:` parses with zero new
+  defects, the line still ends a section, and nothing consumes it. `status --json` keeps the
+  `delivery` key for one version, always `null`, on EVERY path that carries a change view —
+  the success single object, each list element, and the resolve/name/strict-parser error
+  envelopes alike; the contract pins the type, not just the key (a `{}` in `toJson` or
+  `emptyChangeView` turns DLV-06/JC-04 red — mutation-verified). Both concepts editions teach
+  the fixed third state and their output examples print it (DLV-07). Tests: DLV-01..07;
+  NW-04, ST-04, OI-08, AM-118, AR-F2 re-pinned; JC-04 extended.
 - **Batch C row 1 — `artifact-root:` retired, legacy-tolerated.** The field was a
   never-implemented promise (no runtime consumer; every command hard-codes `apriori/changes`).
   `apriori new` stops writing the line; the kickoff prompt, the §3 schema and the §5 layout rule

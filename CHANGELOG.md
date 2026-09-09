@@ -187,10 +187,13 @@ already stopped teaching are retired, and risk acceptance is unified on ONE mech
   `--changes-dir` is only a location override; the destination containment probe now runs on
   every `--write`, and so does a destination SHAPE check (a plain file, a symlink to one, or a
   broken link squatting on `<changes-dir>/archive` is refused in preflight, exit 2, before
-  anything is written). The frozen `ARCHIVE DECLARES` block is computed early (the INCOMPLETE
-  backstop needs it) but PUBLISHED only where it is true: in the dry-run report as the
-  documented preview, or after the move actually succeeded — a run that fails in
-  stage/commit/move exits 1 without it, and a move failure after committed stores says
+  anything is written). The `ARCHIVE DECLARES` block is computed early (the INCOMPLETE
+  backstop needs it); a frozen SUCCESS declaration (`implementation: complete`) is published
+  only in the dry-run report as the documented preview, or after the move actually succeeded.
+  The INCOMPLETE backstop is the one refusal that also prints the block — exit 1, nothing
+  written, and the declaration it prints is a NON-success one (`implementation: INCOMPLETE …`
+  plus `RESULT: NOT READY — nothing written`). A run that fails in stage/commit/move exits 1
+  with no declaration at all, and a move failure after committed stores says
   `stores committed …` rather than claiming nothing was written. Dry-run still moves nothing;
   a refused run (preflight / CAS / readiness) still moves nothing and merges nothing.
   Tests: ADM-01..04 enumerate the three registered path classes with before/after position

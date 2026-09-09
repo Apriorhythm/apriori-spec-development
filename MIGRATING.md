@@ -160,8 +160,12 @@ On failure nothing pretends otherwise: a preflight/CAS/readiness refusal, an occ
 stores and bundle in place; a mid-commit failure names the remaining `*.tmp-archive` files for
 manual completion; a failed MOVE after the stores were committed says exactly that (`stores
 committed but the change-dir move failed … — rerun to complete`) — rerunning the same archive
-command completes the move. The frozen `ARCHIVE DECLARES` block prints only in a dry-run preview
-or after the move actually succeeded, so its presence always matches the on-disk outcome.
+command completes the move. The frozen SUCCESS declaration (an `ARCHIVE DECLARES` block saying
+`implementation: complete`) appears only in a dry-run preview or after the move actually
+succeeded. One refusal also prints the block: the INCOMPLETE backstop (a state that slipped past
+readiness while still recording pending items/assumptions) exits 1, writes and moves nothing, and
+what it prints is a NON-success declaration — `implementation: INCOMPLETE …` followed by
+`RESULT: NOT READY — nothing written` — never a claim that anything completed or was archived.
 
 ## 6.0 slice 4 → slice 5 (Unreleased) — the artifact family is gone
 

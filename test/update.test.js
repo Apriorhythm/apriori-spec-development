@@ -247,12 +247,15 @@ test('UP-11 the shipped-generation list stays honest', () => {
 test('UP-12 updating a legacy-layout project is loud', () => {
   const root = agedProject();
   fs.mkdirSync(path.join(root, 'apriori', 'review'), { recursive: true });
+  fs.mkdirSync(path.join(root, 'apriori', 'design'), { recursive: true });
+  // a user-owned generic dir must NOT make update loud (same narrowing as D8, 2026-09-12)
   fs.mkdirSync(path.join(root, 'requirement'), { recursive: true });
   const r = update.run(root);
   assert.ok(Array.isArray(r.warnings), 'run() exposes warnings');
   const w = r.warnings.join('\n');
   assert.match(w, /apriori[\/\\]review/);
-  assert.match(w, /requirement/);
+  assert.match(w, /apriori[\/\\]design/);
+  assert.doesNotMatch(w, /(^|[^\/])requirement/m);
   assert.match(w, /MIGRATING/i);
   // the update itself still proceeded
   assert.strictEqual(fs.readFileSync(path.join(root, 'apriori', 'runbook.md'), 'utf8'), PKG_RUNBOOK);

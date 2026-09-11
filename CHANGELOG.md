@@ -2,6 +2,22 @@
 
 All notable changes to `apriori-cli`. Versions follow semver; the stability promise: CLI surface & flags, `--json` shapes, the delta format and the flow-state schema only break in a major.
 
+## Unreleased — D8 false positive: `requirement/` and `spike/` are not 3.x leftovers
+
+**Branch `feature/d8-narrow-legacy-roots`, cut from `v6-dev`.** Reported from real trial use
+(2026-09-10): a user's own `requirement/` directory — their product notes — made `apriori doctor`
+say *"legacy 3.x layout root(s) present … migrate the artifacts into their change bundles"*.
+
+- **`LEGACY_ROOTS` narrowed to apriori-owned paths**: `apriori/review`, `apriori/design`,
+  `apriori/explore`. Dropped `requirement` and `spike` — ordinary directory names any project may
+  own, while the check tests existence alone and never reads the contents, so the only possible
+  outcome for a non-3.x user was a false accusation. A 3.x leftover that matters always sits
+  under `apriori/`.
+- Affects `doctor` D8 and the `apriori update` legacy warning (same list, both narrowed).
+- D8 never gated anything (`doctor diagnoses, it never gates` — MD-12); this only removes noise.
+- Tests: `DR-13` re-anchored on two apriori-owned paths; **`DR-13b` new** — a user-owned
+  `requirement/` + `spike/` must keep D8 `ok`; `UP-12` asserts the same for `update`'s warnings.
+
 ## Unreleased — 6.2 code layer · one mechanism of risk acceptance
 
 **Branch `v6.2-code`, cut from `v6.2-sub-doc`.** The runtime consumers the 6.2 document layer had

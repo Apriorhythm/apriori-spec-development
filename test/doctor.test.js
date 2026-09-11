@@ -314,21 +314,34 @@ test('DR-12 the Node floor is enforced testably', () => {
 test('DR-13 mixed 3.x layouts are named, clean ones pass', () => {
   const root = healthy();
   fs.mkdirSync(path.join(root, 'apriori', 'review'), { recursive: true });
-  fs.mkdirSync(path.join(root, 'requirement'), { recursive: true });
-  fs.mkdirSync(path.join(root, 'spike'), { recursive: true });
+  fs.mkdirSync(path.join(root, 'apriori', 'design'), { recursive: true });
   const r = doctor.runDoctor({ cwd: root, testCmd: TAP_OK });
   const d8 = r.checks.filter((c) => c.id === 'D8');
   assert.strictEqual(d8.length, 1);
   assert.strictEqual(d8[0].status, 'finding');
   assert.match(d8[0].detail, /apriori[\/\\]review/);
-  assert.match(d8[0].detail, /requirement/);
-  assert.match(d8[0].detail, /spike/);
-  assert.doesNotMatch(d8[0].detail, /design|explore/);
+  assert.match(d8[0].detail, /apriori[\/\\]design/);
+  assert.doesNotMatch(d8[0].detail, /explore/);
   assert.match(d8[0].fix, /MIGRATING/i);
   // clean project: D8 ok
   const clean = healthy();
   const r2 = doctor.runDoctor({ cwd: clean, testCmd: TAP_OK });
   assert.strictEqual(r2.checks.find((c) => c.id === 'D8').status, 'ok');
+});
+
+test('DR-13b generic top-level dir names are NOT 3.x legacy (D8 false-positive guard)', () => {
+  // A user's own `requirement/` or `spike/` — common names in any project — must not be
+  // flagged as apriori 3.x leftovers. D8 only recognises apriori-owned 3.x paths.
+  // Real-world report 2026-09-10: a trial workspace's own requirement/ (product notes)
+  // was told to "migrate the artifacts into their change bundles".
+  const root = healthy();
+  fs.mkdirSync(path.join(root, 'requirement'), { recursive: true });
+  fs.mkdirSync(path.join(root, 'spike'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'requirement', 'product-notes.md'), 'my own notes');
+  const r = doctor.runDoctor({ cwd: root, testCmd: TAP_OK });
+  const d8 = r.checks.find((c) => c.id === 'D8');
+  assert.strictEqual(d8.status, 'ok', 'user-owned requirement//spike/ must not trigger D8');
+  assert.doesNotMatch(d8.detail, /requirement|spike/);
 });
 
 test('DR-14 the D5 matrix follows the lexer', () => {

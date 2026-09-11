@@ -248,14 +248,18 @@ test('UP-12 updating a legacy-layout project is loud', () => {
   const root = agedProject();
   fs.mkdirSync(path.join(root, 'apriori', 'review'), { recursive: true });
   fs.mkdirSync(path.join(root, 'apriori', 'design'), { recursive: true });
-  // a user-owned generic dir must NOT make update loud (same narrowing as D8, 2026-09-12)
+  // user-owned generic dirs must NOT make update loud (same narrowing as D8, 2026-09-12).
+  // Both names are covered: they were 3.x paths, but an existence probe cannot tell a 3.x
+  // artifact from the project's own material.
   fs.mkdirSync(path.join(root, 'requirement'), { recursive: true });
+  fs.mkdirSync(path.join(root, 'spike'), { recursive: true });
   const r = update.run(root);
   assert.ok(Array.isArray(r.warnings), 'run() exposes warnings');
   const w = r.warnings.join('\n');
   assert.match(w, /apriori[\/\\]review/);
   assert.match(w, /apriori[\/\\]design/);
   assert.doesNotMatch(w, /(^|[^\/])requirement/m);
+  assert.doesNotMatch(w, /spike/);
   assert.match(w, /MIGRATING/i);
   // the update itself still proceeded
   assert.strictEqual(fs.readFileSync(path.join(root, 'apriori', 'runbook.md'), 'utf8'), PKG_RUNBOOK);

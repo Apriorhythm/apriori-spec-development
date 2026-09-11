@@ -329,7 +329,7 @@ test('DR-13 mixed 3.x layouts are named, clean ones pass', () => {
   assert.strictEqual(r2.checks.find((c) => c.id === 'D8').status, 'ok');
 });
 
-test('DR-13b generic top-level dir names are NOT 3.x legacy (D8 false-positive guard)', () => {
+test('DR-21 generic top-level dir names are NOT 3.x legacy (D8 false-positive guard)', () => {
   // A user's own `requirement/` or `spike/` — common names in any project — must not be
   // flagged as apriori 3.x leftovers. D8 only recognises apriori-owned 3.x paths.
   // Real-world report 2026-09-10: a trial workspace's own requirement/ (product notes)

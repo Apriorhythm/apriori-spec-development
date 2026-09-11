@@ -531,7 +531,15 @@ four lines out.
 
 Everything a change produces now lives in ONE directory: `apriori/changes/<name>/`. The five pre-4.0 scattered roots cease to exist: `requirement/`, `spike/`, `apriori/review/`, `apriori/design/`, `apriori/explore/`.
 
-**Detection.** `apriori doctor` (D8) and `apriori update` name any legacy root they find. A project that still carries them after a CLI upgrade is in a MIXED layout — the protocol files speak 4.0 while the artifacts sit in 3.x paths; migrate before starting the next change.
+**Detection.** `apriori doctor` (D8) and `apriori update` name the legacy roots they probe. A project that still carries them after a CLI upgrade is in a MIXED layout — the protocol files speak 4.0 while the artifacts sit in 3.x paths; migrate before starting the next change.
+
+> **Probe scope since 6.2 (2026-09-12).** D8 and update probe the three **apriori-owned** roots only:
+> `apriori/review/`, `apriori/design/`, `apriori/explore/`. Top-level `requirement/` and `spike/` were
+> dropped from the probe: both are ordinary directory names any project may own, the probe is
+> existence-level (it never reads contents), and so the only possible outcome for a project that
+> owns them for its own reasons was a false accusation of migration debt. **The mapping table below
+> is unchanged and still applies** — if your 3.x artifacts live in `requirement/` or `spike/`,
+> migrate them by hand; the tool will no longer remind you.
 
 **Manual migration mapping** (per change; `<name>-` prefixes are stripped, collisions mean stop and resolve by hand):
 

@@ -246,7 +246,7 @@ When the human asks to discuss an idea that is not yet stateable (via **P6**), o
 **Two approvals, not one.** *Saving what was concluded* and *starting development* are separate permissions; neither implies the other, and agreeing with your suggestion grants neither. Ask for the one you need, and do not re-ask for one you already hold.
 
 - **Save only.** — run `apriori new <change>` and write the conclusions into `## Reality Check` as the same three kinds Ground already uses (§ Ground): `decision` for what they approved — goal, chosen approach, success criteria, constraints, non-goals; `observed` for what you actually read, with its source; `assumption` for what this slice leans on but nobody has confirmed. Open questions become `## Open` items with stable IDs. Then stop — do not start **Ground**.
-- **Start development.** The same write, then continue into **Ground**.
+- **Start development.** Approval to develop carries the write it depends on — do that same write, then continue into **Ground**. It is the only direction that carries the other: approval to save never implies approval to develop.
 - **Neither.** Report the conclusion and stop. Without approval to save, nothing is written and you do not promise the thread will survive into another session — say so plainly rather than implying continuity you cannot deliver.
 
 ### Ground — check the real facts before proposing anything
@@ -387,7 +387,7 @@ Contract: only facts present in the code. Decisions: only explicitly confirmed i
 Discuss first (§4 "Discuss first") for: <the idea, however vague>.
 Until I explicitly approve, write NOTHING durable — no code, no spec or design files, no `apriori new`, no flow-state; tell me that protection in one plain sentence.
 Read the actual codebase; surface risks and unknowns; present candidate approaches with tradeoffs and your recommendation. I decide when it is stateable.
-On my approval, run `apriori new <change>` and write the crystallized understanding (goal, chosen approach, success criteria, constraints, non-goals, open questions) as decision entries in the state's ## Reality Check, and start Ground with it.
+Saving what we concluded and starting development are two approvals; ask for the one you need and do not re-ask for one you already hold. On approval to save, run `apriori new <change>` and write it into the state's ## Reality Check as the three kinds Ground uses — decision for what I approved, observed for what you actually read with its source, assumption for what this leans on unconfirmed — with open questions as ## Open items. On approval to develop, do that same write and carry on into Ground. With neither, tell me the conclusion, write nothing, and say plainly that it will not survive into another session.
 ```
 
 ---

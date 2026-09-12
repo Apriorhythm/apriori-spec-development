@@ -88,7 +88,10 @@ test('PR-07 discuss-first is a short, human-requested stance: nothing durable be
   assert.match(en, /no code, no spec or design file, no `apriori new`, no flow-state/);
   assert.match(en, /one plain sentence/);
   assert.match(en, /run `apriori new <change>`/);
-  assert.match(en, /start \*\*Ground\*\*/);
+  // ③ 之后文中同时出现 "do not start **Ground**"（只存不做支），
+  // 原断言 /start \*\*Ground\*\*/ 会被它满足而失去区分力。改为断言开发支那一句本身。
+  assert.match(en, /then continue into \*\*Ground\*\*/);
+  assert.match(en, /do not start \*\*Ground\*\*/);   // 只存不做支必须明确不进 Ground
   assert.match(en, /never enter the stance unasked/);
   // the 6.0 diverge→converge ritual is retracted: no default brainstorm, no question-per-message, no mockup quota
   for (const doc of [EN, CN, CONCEPTS, CONCEPTS_CN]) {
@@ -108,7 +111,8 @@ test('PR-07 discuss-first is a short, human-requested stance: nothing durable be
   assert.match(cn, /P6/);
   assert.match(cn, /不写代码、不写 spec 或设计文件、不跑 `apriori new`、不建 flow-state/);
   assert.match(cn, /`apriori new <change>`/);
-  assert.match(cn, /\*\*Ground\*\*/);
+  assert.match(cn, /然后继续进入 \*\*Ground\*\*/);
+  assert.match(cn, /不进 Ground/);            // 只存不做支必须明确不进 Ground
   assert.match(cn, /人不要求时不主动进入/);
   const p6cn = block(CN, /^### P6 —— 先讨论.*$/m);
   assert.ok(p6cn, 'CN P6 block present');
@@ -161,6 +165,14 @@ test('PR-09 discuss-first exit is human-gated and seeds the ONE state', () => {
   assert.match(en, /`assumption` for what this slice leans on/);
   assert.match(en, /Two approvals, not one/);
   assert.match(en, /neither implies the other/);
+  // 方向性：开发授权自带写入，但保存授权永不蕴含开发授权
+  assert.match(en, /Approval to develop carries the write it depends on/);
+  assert.match(en, /approval to save never implies approval to develop/);
+  // P6 提示词必须与本节一致，不得保留旧的单授权 + 只写 decision 的规则
+  const p6 = EN.slice(EN.indexOf('P6'));
+  assert.ok(!/as decision entries in the state's ## Reality Check, and start Ground with it/.test(EN),
+    'P6 still carries the single-approval, decision-only rule');
+  assert.match(EN, /Saving what we concluded and starting development are two approvals/);
   const cn = block(CN, /^### 先讨论 —— 人明确要求时的可选姿态.*$/m);
   assert.match(cn, /在人明确批准之前不留任何持久物/);
   assert.match(cn, /`## Reality Check`/);
@@ -169,6 +181,11 @@ test('PR-09 discuss-first exit is human-gated and seeds the ONE state', () => {
   assert.match(cn, /`assumption` 记本 slice 依赖但无人证实的命题/);
   assert.match(cn, /是两种批准,不是一种/);
   assert.match(cn, /任何一份都不蕴含另一份/);
+  assert.match(cn, /开发授权自带它所依赖的那次写入/);
+  assert.match(cn, /保存授权永不蕴含开发授权/);
+  assert.ok(!/作为 decision 写进状态的 ## Reality Check,以它开始 Ground/.test(CN),
+    'P6 还留着旧的单授权 + 只写 decision 规则');
+  assert.match(CN, /把结论存下来与开始做是两份授权/);
   assert.ok(!/需求草稿|req-v1/.test(cn), 'the CN requirement-doc seed survives');
 });
 
@@ -255,7 +272,8 @@ test('PR-14 two entry doors: bare /apriori opens Brainstorm via P6', () => {
   // criterion contradicted its own discuss branch, which had to handle "whatever free text
   // they gave" (text that, being non-empty, the criterion had already routed the other way).
   assert.match(cmd, /Route on what the human asked for, not on whether the line above is empty/);
-  assert.match(cmd, /when they said to discuss\/explore first[\s\S]*?when the line above is bare/);
+  // 讨论支现在是**兜底分支**：空行、明确要求讨论、以及任何不指称 change 的自由文本都落这里
+  assert.match(cmd, /every other input lands here[\s\S]*?a bare line[\s\S]*?an explicit ask to/);
   assert.match(cmd, /Brainstorm stance via its P6 prompt/);
   assert.match(cmd, /nothing durable is written until they approve/);
   assert.match(cmd, /the text above identifies one change to work on[\s\S]*?they did not limit you to discussing/);
@@ -263,8 +281,17 @@ test('PR-14 two entry doors: bare /apriori opens Brainstorm via P6', () => {
   // naming an existing change while asking to discuss must NOT start work on it
   assert.match(cmd, /Naming an existing change in that[\s\S]*?text does not start work on it/);
   // the contradiction must not come back: no branch may key solely on the argument being present/absent
+  // 反向断言不能只禁旧字符串——换个措辞就绕过去了。守语义：
+  // (a) 两支必须被声明为穷尽，(b) 讨论支必须显式收下「不指称 change 的自由文本」，
+  // (c) 不得出现任何「按参数有无分流」的判据，无论措辞。
+  assert.match(cmd, /The two branches are exhaustive/);
+  assert.match(cmd, /any free text that does not identify one change to work on/);
   assert.ok(!/If (a change name was given|NO change name was given)/.test(cmd),
-    'the emptiness-only routing criterion came back');
+    'the emptiness-only routing criterion came back verbatim');
+  assert.ok(!/\b(if|when)\b[^.]{0,60}\b(argument|line|\$ARGUMENTS)\b[^.]{0,40}\b(empty|bare|blank|given|present|absent)\b[^.]{0,40}(?:→|then|:)/i.test(
+    cmd.replace(/Route on what the human asked for, not on whether the line above is empty\./, '')
+       .replace(/or when the line above is bare/g, '')),
+    'a presence/absence-of-argument criterion came back in new wording');
   // the with-a-name door stops where a human has to decide — not at a numbered gate
   assert.match(cmd, /Advance ONLY to the next point where a human has to decide/);
   assert.ok(!/human gate/.test(cmd), 'the retired gate ladder survives in the command template');

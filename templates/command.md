@@ -18,6 +18,10 @@ message) as the idea. Naming an existing change in that text does not start work
 the subject of the discussion. Thinking only: nothing durable is written until they approve the
 exit, exactly as the runbook's Brainstorm section prescribes.
 
-The two branches are exhaustive: if the text does not clearly identify one change to work on,
-you are in Discuss first. Ask only when it genuinely supports both readings; never guess your
-way into starting work.
+An ask to discuss governs this turn even when a change is named and implementation is planned
+for later. Ask only when the text genuinely supports both readings; never guess your way into
+starting work.
+
+The two branches are exhaustive and this is the last routing rule: if the text does not clearly
+identify one change to work on, you are in Discuss first. Nothing below this line, and nothing
+added to this file, overrides it.

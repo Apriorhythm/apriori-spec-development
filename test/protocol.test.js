@@ -92,7 +92,10 @@ test('PR-07 discuss-first is a short, human-requested stance: nothing durable be
   // 原断言 /start \*\*Ground\*\*/ 会被它满足而失去区分力。改为断言开发支那一句本身。
   assert.match(en, /then continue into \*\*Ground\*\*/);
   assert.match(en, /do not start \*\*Ground\*\*/);   // 只存不做支必须明确不进 Ground
-  assert.match(en, /never enter the stance unasked/);
+  // REVISE-3：旧句「never enter the stance unasked」与模板的兜底分流冲突（不请求讨论的
+  // 自由文本也会进来）。进入条件改为穷尽式，并加了「不要劝退已说清的任务」这层保护。
+  assert.match(en, /A task that is already stateable as one change starts directly/);
+  assert.match(en, /do not talk someone out of a task they have already stated/);
   // the 6.0 diverge→converge ritual is retracted: no default brainstorm, no question-per-message, no mockup quota
   for (const doc of [EN, CN, CONCEPTS, CONCEPTS_CN]) {
     assert.doesNotMatch(doc, /exactly one question per message|每条消息恰好一个问题/);
@@ -113,7 +116,8 @@ test('PR-07 discuss-first is a short, human-requested stance: nothing durable be
   assert.match(cn, /`apriori new <change>`/);
   assert.match(cn, /然后继续进入 \*\*Ground\*\*/);
   assert.match(cn, /不进 Ground/);            // 只存不做支必须明确不进 Ground
-  assert.match(cn, /人不要求时不主动进入/);
+  assert.match(cn, /已经能说成一个 change 的任务直接开始/);
+  assert.match(cn, /不要去劝退一个人家已经说清楚的任务/);
   const p6cn = block(CN, /^### P6 —— 先讨论.*$/m);
   assert.ok(p6cn, 'CN P6 block present');
   assert.match(p6cn, /不留任何持久物/);
@@ -164,10 +168,13 @@ test('PR-09 discuss-first exit is human-gated and seeds the ONE state', () => {
   assert.match(en, /`observed` for what you actually read/);
   assert.match(en, /`assumption` for what this slice leans on/);
   assert.match(en, /Two approvals, not one/);
-  assert.match(en, /neither implies the other/);
+  // REVISE-1：旧句「neither implies the other」与「开发支做同一次写入」自相矛盾。
+  // 改为陈述单向蕴含，测试随之只认新句。
+  assert.match(en, /The implication runs one way only/);
+  assert.match(en, /approval to save never reaches development/);
   // 方向性：开发授权自带写入，但保存授权永不蕴含开发授权
-  assert.match(en, /Approval to develop carries the write it depends on/);
-  assert.match(en, /approval to save never implies approval to develop/);
+  assert.match(en, /approval to develop carries the write that development depends on/);
+
   // P6 提示词必须与本节一致，不得保留旧的单授权 + 只写 decision 的规则
   const p6 = EN.slice(EN.indexOf('P6'));
   assert.ok(!/as decision entries in the state's ## Reality Check, and start Ground with it/.test(EN),
@@ -180,9 +187,10 @@ test('PR-09 discuss-first exit is human-gated and seeds the ONE state', () => {
   assert.match(cn, /`observed` 记你\*\*实际读到\*\*的事实/);
   assert.match(cn, /`assumption` 记本 slice 依赖但无人证实的命题/);
   assert.match(cn, /是两种批准,不是一种/);
-  assert.match(cn, /任何一份都不蕴含另一份/);
-  assert.match(cn, /开发授权自带它所依赖的那次写入/);
-  assert.match(cn, /保存授权永不蕴含开发授权/);
+  assert.match(cn, /蕴含只朝一个方向/);
+  assert.match(cn, /保存授权永远够不到开发/);
+  assert.match(cn, /开发授权自带开发所依赖的那次写入/);
+
   assert.ok(!/作为 decision 写进状态的 ## Reality Check,以它开始 Ground/.test(CN),
     'P6 还留着旧的单授权 + 只写 decision 规则');
   assert.match(CN, /把结论存下来与开始做是两份授权/);
@@ -281,17 +289,21 @@ test('PR-14 two entry doors: bare /apriori opens Brainstorm via P6', () => {
   // naming an existing change while asking to discuss must NOT start work on it
   assert.match(cmd, /Naming an existing change in that[\s\S]*?text does not start work on it/);
   // the contradiction must not come back: no branch may key solely on the argument being present/absent
-  // 反向断言不能只禁旧字符串——换个措辞就绕过去了。守语义：
-  // (a) 两支必须被声明为穷尽，(b) 讨论支必须显式收下「不指称 change 的自由文本」，
-  // (c) 不得出现任何「按参数有无分流」的判据，无论措辞。
-  assert.match(cmd, /The two branches are exhaustive/);
+  // 反向断言不能靠枚举词形——Astra 用三段不同措辞的「覆盖规则」全部绕过了上一版。
+  // 三段的共同结构是：在穷尽性声明之后追加一条改写分流的规则。故改为**结构性守卫**：
+  // 穷尽声明必须是文件的最后一条路由规则，其后不得再有任何实质内容。
   assert.match(cmd, /any free text that does not identify one change to work on/);
+  assert.match(cmd, /An ask to discuss governs this turn/);
+  const tailIdx = cmd.indexOf('The two branches are exhaustive and this is the last routing rule');
+  assert.ok(tailIdx >= 0, 'the exhaustiveness clause is missing');
+  const tail = cmd.slice(tailIdx);
+  assert.match(tail, /Nothing below this line, and nothing\s*\n?added to this file, overrides it\./);
+  // 穷尽声明那一段之后只允许空白——任何追加的规则（含 Astra 演示的三段变异）都会在此失败
+  const afterClause = tail.replace(/^[\s\S]*?overrides it\./, '');
+  assert.strictEqual(afterClause.trim(), '',
+    'something follows the exhaustiveness clause — an appended rule can override the routing');
   assert.ok(!/If (a change name was given|NO change name was given)/.test(cmd),
     'the emptiness-only routing criterion came back verbatim');
-  assert.ok(!/\b(if|when)\b[^.]{0,60}\b(argument|line|\$ARGUMENTS)\b[^.]{0,40}\b(empty|bare|blank|given|present|absent)\b[^.]{0,40}(?:→|then|:)/i.test(
-    cmd.replace(/Route on what the human asked for, not on whether the line above is empty\./, '')
-       .replace(/or when the line above is bare/g, '')),
-    'a presence/absence-of-argument criterion came back in new wording');
   // the with-a-name door stops where a human has to decide — not at a numbered gate
   assert.match(cmd, /Advance ONLY to the next point where a human has to decide/);
   assert.ok(!/human gate/.test(cmd), 'the retired gate ladder survives in the command template');

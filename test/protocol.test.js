@@ -239,11 +239,20 @@ test('PR-13 the reviewer default context is fixed, and it does not do the produc
 
 test('PR-14 two entry doors: bare /apriori opens Brainstorm via P6', () => {
   const cmd = fs.readFileSync(path.join(ROOT, 'templates', 'command.md'), 'utf8');
-  assert.match(cmd, /If NO change name was given/);
+  // routing is INTENT-first, not "is the argument line empty" — the old emptiness-only
+  // criterion contradicted its own discuss branch, which had to handle "whatever free text
+  // they gave" (text that, being non-empty, the criterion had already routed the other way).
+  assert.match(cmd, /Route on what the human asked for, not on whether the line above is empty/);
+  assert.match(cmd, /when they said to discuss\/explore first[\s\S]*?when the line above is bare/);
   assert.match(cmd, /Brainstorm stance via its P6 prompt/);
   assert.match(cmd, /nothing durable is written until they approve/);
-  assert.match(cmd, /If a change name was given above/);
+  assert.match(cmd, /the text above identifies one change to work on[\s\S]*?they did not limit you to discussing/);
   assert.match(cmd, /apriori\/changes\/<change>\/flow-state\.md/);
+  // naming an existing change while asking to discuss must NOT start work on it
+  assert.match(cmd, /Naming an existing change in that[\s\S]*?text does not start work on it/);
+  // the contradiction must not come back: no branch may key solely on the argument being present/absent
+  assert.ok(!/If (a change name was given|NO change name was given)/.test(cmd),
+    'the emptiness-only routing criterion came back');
   // the with-a-name door stops where a human has to decide — not at a numbered gate
   assert.match(cmd, /Advance ONLY to the next point where a human has to decide/);
   assert.ok(!/human gate/.test(cmd), 'the retired gate ladder survives in the command template');

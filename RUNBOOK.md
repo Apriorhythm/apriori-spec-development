@@ -241,7 +241,13 @@ Anything else a change needs — a scratch note, a diagram, a one-pager for a hu
 
 ### Discuss first — an optional stance when the human explicitly asks for it (Brainstorm)
 
-When the human asks to discuss an idea that is not yet stateable (via **P6**), only discuss: read the actual codebase, surface risks and unknowns, present candidate approaches with their tradeoffs. **Nothing durable before the human's explicit approval** — no code, no spec or design file, no `apriori new`, no flow-state; state that protection in one plain sentence. On approval of a stateable goal, run `apriori new <change>`, write the shared understanding (goal, chosen approach, success criteria, constraints, non-goals, open questions) as `decision` entries in the `## Reality Check`, and start **Ground**. A task that is already stateable starts directly and needs none of this; never enter the stance unasked.
+When the human asks to discuss an idea that is not yet stateable (via **P6**), only discuss: read the actual codebase, surface risks and unknowns, present candidate approaches with their tradeoffs. **Nothing durable before the human's explicit approval** — no code, no spec or design file, no `apriori new`, no flow-state; state that protection in one plain sentence. A task that is already stateable starts directly and needs none of this; never enter the stance unasked. When it is clear enough to state is the human's call, not yours.
+
+**Two approvals, not one.** *Saving what was concluded* and *starting development* are separate permissions; neither implies the other, and agreeing with your suggestion grants neither. Ask for the one you need, and do not re-ask for one you already hold.
+
+- **Save only.** — run `apriori new <change>` and write the conclusions into `## Reality Check` as the same three kinds Ground already uses (§ Ground): `decision` for what they approved — goal, chosen approach, success criteria, constraints, non-goals; `observed` for what you actually read, with its source; `assumption` for what this slice leans on but nobody has confirmed. Open questions become `## Open` items with stable IDs. Then stop — do not start **Ground**.
+- **Start development.** The same write, then continue into **Ground**.
+- **Neither.** Report the conclusion and stop. Without approval to save, nothing is written and you do not promise the thread will survive into another session — say so plainly rather than implying continuity you cannot deliver.
 
 ### Ground — check the real facts before proposing anything
 

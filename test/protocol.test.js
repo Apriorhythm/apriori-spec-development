@@ -153,10 +153,22 @@ test('PR-08 the four phases and the four decision points bind in both editions',
 test('PR-09 discuss-first exit is human-gated and seeds the ONE state', () => {
   const en = block(EN, /^### Discuss first — an optional stance.*$/m);
   assert.match(en, /Nothing durable before the human's explicit approval/);
-  assert.match(en, /as `decision` entries in the `## Reality Check`/);
+  // ③ split one approval into two and the conclusion now lands as all THREE Ground kinds,
+  // not as `decision` alone — assert the three kinds and the target section.
+  assert.match(en, /`## Reality Check`/);
+  assert.match(en, /`decision` for what they approved/);
+  assert.match(en, /`observed` for what you actually read/);
+  assert.match(en, /`assumption` for what this slice leans on/);
+  assert.match(en, /Two approvals, not one/);
+  assert.match(en, /neither implies the other/);
   const cn = block(CN, /^### 先讨论 —— 人明确要求时的可选姿态.*$/m);
   assert.match(cn, /在人明确批准之前不留任何持久物/);
-  assert.match(cn, /作为 `decision` 写进 `## Reality Check`/);
+  assert.match(cn, /`## Reality Check`/);
+  assert.match(cn, /`decision` 记人批准了什么/);
+  assert.match(cn, /`observed` 记你\*\*实际读到\*\*的事实/);
+  assert.match(cn, /`assumption` 记本 slice 依赖但无人证实的命题/);
+  assert.match(cn, /是两种批准,不是一种/);
+  assert.match(cn, /任何一份都不蕴含另一份/);
   assert.ok(!/需求草稿|req-v1/.test(cn), 'the CN requirement-doc seed survives');
 });
 

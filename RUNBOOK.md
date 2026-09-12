@@ -51,7 +51,7 @@ cd your-project && apriori init --tools claude  # name the AI tools to configure
 3. Continue from the state's first `## Next` entry. The state file is authoritative — never reconstruct progress from memory or guesswork.
 4. Read a runbook section only when `status`, `## Next`, a blocked command, or an uncertain fact points you there. There is no default reading list — never preload the full runbook, and never read a section "just in case".
 
-**Two doors in.** A change that is already stateable enters through the kickoff prompt below. When the human explicitly asks to discuss first, the discuss-first stance (§4, via P6) is the other door — the `/apriori` command with no arguments opens that door directly; nothing durable is written until the human approves.
+**Two doors in.** A change that is already stateable enters through the kickoff prompt below. Everything else — an ask to discuss, or an idea not yet stateable as one change — enters through the discuss-first stance (§4, via P6) — the `/apriori` command with no arguments opens that door directly; nothing durable is written until the human approves.
 
 **Kickoff prompt (human — copy and fill in):**
 
@@ -239,9 +239,15 @@ Anything else a change needs — a scratch note, a diagram, a one-pager for a hu
 - **Review evidence retention:** raws under archived changes are AUDIT EVIDENCE — kept with the archive, never pruned; `apriori/tmp/` is the only ephemeral space. Secrets must never enter a raw: sanitize BEFORE landing — `apriori check`'s CK-10 tripwire backs this mechanically.
 - **CAS base stamps:** when authoring a delta, run `apriori stamp apriori/specs/<module>/spec.md` and paste the printed `<!-- apriori-base: … -->` line at the top of the delta file (before the first `## … Requirements` section; `new` for a not-yet-existing store). Both `verify --change` and `archive` then refuse if the store has diverged since the delta was authored. Unstamped MUTATION deltas (MODIFIED/REMOVED/RENAMED) are **denied by default** — gate C7 blocks and `archive` refuses at preflight; the waivers are the `--no-cas` flag or a `| cas | optional |` config row.
 
-### Discuss first — an optional stance when the human explicitly asks for it (Brainstorm)
+### Discuss first — where anything not yet stateable as one change belongs (Brainstorm)
 
-When the human asks to discuss an idea that is not yet stateable (via **P6**), only discuss: read the actual codebase, surface risks and unknowns, present candidate approaches with their tradeoffs. **Nothing durable before the human's explicit approval** — no code, no spec or design file, no `apriori new`, no flow-state; state that protection in one plain sentence. On approval of a stateable goal, run `apriori new <change>`, write the shared understanding (goal, chosen approach, success criteria, constraints, non-goals, open questions) as `decision` entries in the `## Reality Check`, and start **Ground**. A task that is already stateable starts directly and needs none of this; never enter the stance unasked.
+In this stance (via **P6**), only discuss: read the actual codebase, surface risks and unknowns, present candidate approaches with their tradeoffs. **Nothing durable before the human's explicit approval** — no code, no spec or design file, no `apriori new`, no flow-state; state that protection in one plain sentence. A task that is already stateable as one change starts directly and needs none of this. Anything else — an ask to discuss, or an idea not yet stateable as one change — belongs here; do not talk someone out of a task they have already stated. When it is clear enough to state is the human's call, not yours, and an ask to discuss governs this turn even when a change is named and implementation is planned for later.
+
+**Two approvals, not one.** *Saving what was concluded* and *starting development* are separate permissions, and agreeing with your suggestion grants neither. The implication runs one way only: approval to develop carries the write that development depends on, while approval to save never reaches development. Ask for the one you need, and do not re-ask for one you already hold.
+
+- **Save only.** — run `apriori new <change>` **only if that change does not already exist**; if it does (you discussed an existing one, or you already saved once), read its state and update the same one in place, keeping the facts and progress already there. Write the conclusions into `## Reality Check` as the same three kinds Ground already uses (§ Ground): `decision` for what they approved — goal, chosen approach, success criteria, constraints, non-goals; `observed` for what you actually read, with its source; `assumption` for what this slice leans on but nobody has confirmed. Open questions become `## Open` items with stable IDs. Then stop — do not start **Ground**.
+- **Start development.** Do that same write — it is the write development depends on — then continue into **Ground**. If you already made it under a save-only approval, it is done: do not re-run `apriori new`, read the existing state and carry on from there.
+- **Neither.** Report the conclusion and stop. Without approval to save, nothing is written and you do not promise the thread will survive into another session — say so plainly rather than implying continuity you cannot deliver.
 
 ### Ground — check the real facts before proposing anything
 
@@ -375,13 +381,13 @@ Two fixed sections with OPPOSITE truth directions:
 Contract: only facts present in the code. Decisions: only explicitly confirmed intent. Mark uncertainties "needs human confirmation"; never invent abstract intent.
 ```
 
-### P6 — discuss first (when the human explicitly asks)
+### P6 — discuss first (anything not yet stateable as one change)
 
 ```text
 Discuss first (§4 "Discuss first") for: <the idea, however vague>.
 Until I explicitly approve, write NOTHING durable — no code, no spec or design files, no `apriori new`, no flow-state; tell me that protection in one plain sentence.
 Read the actual codebase; surface risks and unknowns; present candidate approaches with tradeoffs and your recommendation. I decide when it is stateable.
-On my approval, run `apriori new <change>` and write the crystallized understanding (goal, chosen approach, success criteria, constraints, non-goals, open questions) as decision entries in the state's ## Reality Check, and start Ground with it.
+Saving what we concluded and starting development are two approvals; ask for the one you need and do not re-ask for one you already hold. On approval to save, run `apriori new <change>` only if that change does not already exist — if it does, update that same state in place, keeping what is already there — and write it into the state's ## Reality Check as the three kinds Ground uses — decision for what I approved, observed for what you actually read with its source, assumption for what this leans on unconfirmed — with open questions as ## Open items. On approval to develop, do that same write — or, if a save already made it, just read the existing state — and carry on into Ground. With neither, tell me the conclusion, write nothing, and say plainly that it will not survive into another session.
 ```
 
 ---

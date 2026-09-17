@@ -2,6 +2,33 @@
 
 All notable changes to `apriori-cli`. Versions follow semver; the stability promise: CLI surface & flags, `--json` shapes, the delta format and the flow-state schema only break in a major.
 
+## Unreleased — cost record for the v6-dev line: measured once, unfavourable, unattributed
+
+*Not a code change.* This entry exists so that the next person to reach for "6.x is leaner"
+finds the measurement instead of the intention. The v6 line was cut to make the document layer
+lighter; whether that makes a run cheaper has now been measured once, and the answer is not yes.
+
+- **What was measured.** One bugfix slice, replayed by two arms differing only in the apriori
+  version: `v6-dev@59e5c15` against `v6.0.0-rc1@5dcbf04`, same task, same model, same machine.
+  Producer token (deduplicated by message id) came out **+20.1%** on the v6-dev arm
+  (118,894,140 vs 98,970,684). Execution time was flat on the bound ruler and up on the
+  alternative one — the two rulers disagree, and that disagreement is itself unresolved.
+- **What the number does NOT establish.** A third arm ran the *same* `v6-dev@59e5c15` with the
+  *same* task; it used **fewer** turns than the rc1 arm, and the two mechanisms the first analysis
+  had attributed to the version (more turns, more state-file writes) did not reappear on it.
+  Within-version spread is the same order as the gap being attributed to the version, and there
+  is only one rc1 run, so its own spread is unknown. **The version effect is not identifiable
+  from this data** — which is not the same as absent.
+- **What DID replicate.** All three v6-dev arms produced flat per-topic delta specs where the
+  rc1 arm produced one nested monolithic spec. The version changes the shape of the artifact.
+  Cost does not track that shape.
+
+*Claims discipline:* until a design exists that measures cost and quality in the same run with
+repeats per arm, **this line does not claim to save time or tokens against 5.x or against rc1**.
+Green tests, a shorter runbook, and fewer words in the document layer are not benefit evidence.
+The one direction that has been measured points the wrong way, and it is not yet attributable to
+anything we could fix.
+
 ## Unreleased — D8 stops probing two generic directory names
 
 **Branch `feature/d8-narrow-legacy-roots`, cut from `v6-dev`.** Reported from real trial use

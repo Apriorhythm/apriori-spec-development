@@ -59,8 +59,19 @@ test('MC-01 K=1 install is byte-identical to the P1 baseline behaviour', () => {
 test('MC-02 the eight shipped generations survive the array→map change, in order', () => {
   const g = managed.TEMPLATE_GENERATIONS;
   assert.ok(!Array.isArray(g), 'generations must be indexed by template id');
-  assert.strictEqual(g.apriori.length, 8);
-  assert.strictEqual(g.apriori[0], shaFile(FIRST_SRC), 'current template must head its own table');
+  const historical = [
+    'sha256:b4c8398b0f75fa8c954fc3df06775f9ad5152e400c68d9c9bc37b1e94cb2c3d2',
+    'sha256:b3306395331a075448d0715f8904354436cec2f91af393a1ea0da0e2bc43423d',
+    'sha256:26a0aa9eef6681288c8ddda55d5261761591d3627af1f58216ce82ac556be406',
+    'sha256:26ede9b6f095e03b58b88e83bff1ec706aa5d1ca362ead1dec8bb336518fe04f',
+    'sha256:ce21ebe7635eccf468614b2e0dfe6196bc390383f76322a46ad4554dcf12b9a2',
+    'sha256:f4555198e6a1f3d5054f8b976fd317293e20d6bed519f6737b5cea4aea8b704d',
+    'sha256:4ada03a2b8a9d6b86fd610e0f4363c31dcea2ba2460d6e96e1231004e4a9c8a0',
+    'sha256:1dfa5eece0f3c109aae765aa52ffb89f59c0f0f3b494f9430148ac6baeeab046',
+  ];
+  assert.deepStrictEqual(g.apriori.slice(0, historical.length), historical, 'historical values and order must survive');
+  assert.strictEqual(g.apriori.length, historical.length + 1, 'one new generation only');
+  assert.strictEqual(g.apriori[historical.length], shaFile(FIRST_SRC), 'appended generation must match current template');
   for (const h of g.apriori) assert.match(h, /^sha256:[0-9a-f]{64}$/);
 });
 

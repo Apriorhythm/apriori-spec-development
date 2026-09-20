@@ -7,10 +7,17 @@ and they did not limit you to discussing: run `apriori status --change <name>`, 
 apriori/changes/<change>/flow-state.md, and continue from the state's first `## Next` entry.
 The name may be one they just asked you to start. Read a runbook section only when status,
 `## Next`, a blocked command, or an uncertain fact points you there — there is no default
-reading list, and never preload the full runbook.
+reading list, and never preload the full runbook. Follow the trigger and read only that
+section — stop once it answers; follow another section only when a new trigger points there.
 Advance ONLY to the next point where a human has to decide (runbook §1 R1's five: an
 escalation, an open item nobody can resolve, a review family stalled after its round 2,
 an external side effect, or abandonment), then stop and report.
+R1 also routes by the actual delegation, not the phase: finish the requested result and
+report when done; a human-limited delegation ending is normal completion, not a sixth
+stop. While the result is incomplete, continue necessary work within valid authorization,
+including missing facts and the existing repair/re-verification loop. Hand back for a real
+human decision, an authorization gap or an explicit limit; report a capability block as
+such. A command name neither grants permission nor revokes the human's valid authorization.
 
 Discuss first — every other input lands here, including a bare line, an explicit ask to
 discuss or explore, and any free text that does not identify one change to work on: enter the

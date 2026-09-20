@@ -173,7 +173,8 @@ test('UP-09 pre-manifest projects are adopted only on proof', () => {
   fs.mkdirSync(path.dirname(oc), { recursive: true });
   fs.writeFileSync(oc, 'user-owned free text\n');
   const gens = [shaFile(path.join(__dirname, '..', 'templates', 'command.md')), sha('generation zero body\n')];
-  const { actions } = update.run(root, { generations: gens });
+  // P2: generations are indexed by template id now — injection structure only, same behaviour
+  const { actions } = update.run(root, { generations: { apriori: gens } });
   const byFile = Object.fromEntries(actions.map((a) => [a.file, a.action]));
   assert.strictEqual(byFile['.claude/commands/apriori.md'], 'up-to-date');
   assert.strictEqual(byFile['.codex/prompts/apriori.md'], 'updated');
@@ -238,10 +239,25 @@ test('UP-10 a manifest-listed file that vanished is reported missing; escaping s
 
 test('UP-11 the shipped-generation list stays honest', () => {
   const managed = require('../lib/managed');
-  assert.ok(Array.isArray(managed.TEMPLATE_GENERATIONS) && managed.TEMPLATE_GENERATIONS.length >= 2);
-  for (const g of managed.TEMPLATE_GENERATIONS) assert.match(g, /^sha256:[0-9a-f]{64}$/);
-  assert.ok(managed.TEMPLATE_GENERATIONS.includes(shaFile(path.join(__dirname, '..', 'templates', 'command.md'))),
-    'templates/command.md changed without appending its hash to TEMPLATE_GENERATIONS');
+  const { TOOLS, TEMPLATE_SRC } = require('../lib/init');
+  const gens = managed.TEMPLATE_GENERATIONS;
+  assert.ok(gens && !Array.isArray(gens) && typeof gens === 'object',
+    'generations must be indexed by template id');
+  // every template a tool maps to has its own table, and the live bytes head that table
+  const mapped = new Set();
+  for (const k of Object.keys(TOOLS)) for (const id of Object.keys(TOOLS[k].commands || {})) mapped.add(id);
+  assert.ok(mapped.size >= 1);
+  for (const id of mapped) {
+    assert.ok(Array.isArray(gens[id]) && gens[id].length >= 2, `template '${id}' has no generation table`);
+    for (const g of gens[id]) assert.match(g, /^sha256:[0-9a-f]{64}$/);
+    assert.ok(gens[id].includes(shaFile(TEMPLATE_SRC[id])),
+      `templates for '${id}' changed without appending the hash to its own table`);
+    assert.ok(TEMPLATE_SRC[id], `template '${id}' is mapped but has no shipped source`);
+  }
+  // the coverage check must BITE: a mapped template whose table is absent is a hole
+  const holed = Object.fromEntries(Object.entries(gens).filter(([id]) => id !== [...mapped][0]));
+  const holes = [...mapped].filter((id) => !Array.isArray(holed[id]) || !holed[id].length);
+  assert.deepStrictEqual(holes, [[...mapped][0]], 'the missing-table check did not bite');
 });
 
 test('UP-12 updating a legacy-layout project is loud', () => {

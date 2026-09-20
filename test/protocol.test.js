@@ -373,16 +373,74 @@ function checkCommandTemplate(cmd) {
   assert.ok(!/human gate/.test(cmd), 'the retired gate ladder survives in the command template');
 }
 
-test('PR-14 two entry doors: bare /apriori opens Brainstorm via P6', () => {
+// ── P1: the five entry-explanation positions carry the finalized routing text ────────
+// Six meanings, per WORKCARDS.md card P1 (upstream: astra-r10-reply.md §3). Anchored on
+// CONTENT, never on line numbers — P0 already moved this test once.
+const P1_MEANINGS_EN = {
+  '1 routes by intent':        /routes by intent/,
+  '2 bare call discusses':     /with no arguments/,
+  '3 named object may still be discussion': /discuss[^.]*\bwithout starting development\b/,
+  '4 free text discusses':     /[Ff]ree text that does not identify a change to work on/,
+  '5 mention grants nothing':  /does not authorize development/,
+  '6 work example + dual approval': /implement add-reopen/,
+};
+const P1_MEANINGS_CN = {
+  '1 按意图分流':     /按意图分流/,
+  '2 无参进讨论':     /无参调用|不带参数/,
+  '3 带对象也可讨论': /只讨论[^。]*不开始开发/,
+  '4 自由文本进讨论': /尚未指明要推进哪个变更的自由文本/,
+  '5 点名不授权':     /不授予开发权限/,
+  '6 工作示例 + 双授权': /实施 add-reopen/,
+};
+
+// the init entry hint, read from the ACTUAL CLI OUTPUT — not from the source string
+function initReportOutput() {
+  const { spawnSync } = require('node:child_process');
+  const root = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'apriori-p1-'));
+  const r = spawnSync('node', [path.join(ROOT, 'bin', 'apriori.js'), 'init', '--tools', 'claude'],
+                      { encoding: 'utf8', cwd: root });
+  assert.strictEqual(r.status, 0, `init exited ${r.status}: ${r.stderr}`);
+  return r.stdout;
+}
+
+// The meanings must live in the ENTRY-EXPLANATION BLOCK itself. Scanning the whole file
+// lets the two-surface table mask a deletion in the bullets — the first degradation sample
+// stayed green that way, the same weak-assertion trap PR-33 fell into.
+function entryBlock(doc, startRe, endRe) {
+  const i = doc.search(startRe);
+  assert.ok(i >= 0, `entry block not found by ${startRe}`);
+  const rest = doc.slice(i);
+  const j = rest.search(endRe);
+  return j > 0 ? rest.slice(0, j) : rest;
+}
+const TABLE_EN = /\| In the terminal \|/;
+const TABLE_CN = /\| 在终端输入 \|/;
+
+test('PR-14 the five entry positions all carry the six routing meanings', () => {
   const cmd = fs.readFileSync(path.join(ROOT, 'templates', 'command.md'), 'utf8');
-  checkCommandTemplate(cmd);
-  assert.match(EN, /\*\*Two doors in\.\*\*/);
-  assert.match(EN, /`\/apriori` command with no arguments opens that door directly/);
-  assert.match(CN, /\*\*两扇门。\*\*/);
-  assert.match(CN, /`\/apriori` 命令不带参数就直接打开这扇门/);
-  const initSrc = fs.readFileSync(path.join(ROOT, 'lib', 'init.js'), 'utf8');
-  assert.match(initSrc, /idea still fuzzy\?\s+\/apriori/);
-  assert.match(initSrc, /change is clear\?\s+\/apriori <change>/);
+  checkCommandTemplate(cmd);                       // template golden stays the gate it was
+  const positions = [
+    ['README.md', entryBlock(README, /^`\/apriori` routes by intent:/m, TABLE_EN), P1_MEANINGS_EN],
+    ['RUNBOOK.md', entryBlock(EN, /\*\*Two doors in/, /\n\n/), P1_MEANINGS_EN],
+    ['init CLI output', initReportOutput(), P1_MEANINGS_EN],
+    ['README_cn.md', entryBlock(README_CN, /^`\/apriori` 按意图分流:/m, TABLE_CN), P1_MEANINGS_CN],
+    ['RUNBOOK_cn.md', entryBlock(CN, /\*\*两扇门/, /\n\n/), P1_MEANINGS_CN],
+  ];
+  for (const [name, text, meanings] of positions)
+    for (const [label, re] of Object.entries(meanings))
+      assert.match(text, re, `${name} lost meaning ${label}`);
+  // the dual-approval boundary, stated once per language wherever the routing text lands
+  assert.match(EN, /approval to save or develop/);
+  assert.match(CN, /未经保存或开发授权/);
+});
+
+test('PR-14c the two surfaces are told apart in both READMEs', () => {
+  for (const [name, doc] of [['README.md', README], ['README_cn.md', README_CN]]) {
+    assert.match(doc, /apriori status --change foo/, `${name}: terminal column missing`);
+    // CN docs in this repo use halfwidth commas; accept either form (layout, not meaning)
+    assert.match(doc, /\/apriori (只讨论 foo[,，]不开始开发|discuss foo without starting development)/,
+      `${name}: chat-box column missing`);
+  }
 });
 
 test('PR-14b the routing template resists the five rewrite classes Astra demonstrated', () => {

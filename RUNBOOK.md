@@ -51,7 +51,7 @@ cd your-project && apriori init --tools claude  # name the AI tools to configure
 3. Continue from the state's first `## Next` entry. The state file is authoritative — never reconstruct progress from memory or guesswork.
 4. Read a runbook section only when `status`, `## Next`, a blocked command, or an uncertain fact points you there. There is no default reading list — never preload the full runbook, and never read a section "just in case".
 
-**Two doors in.** A change that is already stateable enters through the kickoff prompt below. Everything else — an ask to discuss, or an idea not yet stateable as one change — enters through the discuss-first stance (§4, via P6) — the `/apriori` command with no arguments opens that door directly; nothing durable is written until the human approves.
+**Two doors in — `/apriori` routes by intent.** Use it with no arguments, or `/apriori discuss foo without starting development`, to discuss first (§4, via P6). Free text that does not identify a change to work on also enters discussion. Mentioning an existing change while discussing it does not authorize development. Work starts or resumes only when the human identifies a change to work on and has not limited the request to discussion — `/apriori implement add-reopen`, or the kickoff prompt below. Nothing durable is written during discussion without approval to save or develop.
 
 **Kickoff prompt (human — copy and fill in):**
 

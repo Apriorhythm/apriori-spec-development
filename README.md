@@ -38,8 +38,16 @@ apriori init --tools claude
 
 It previews what it'll write, asks `Proceed? (Y/n)`, then scaffolds `apriori/` and gives Claude Code its two pointers: a `CLAUDE.md` rule and a `/apriori` slash command. Now launch Claude Code (`claude`) and drive it in plain language:
 
-- **Idea still fuzzy** → type `/apriori` with no arguments. It brainstorms with you first — asking the edge questions you didn't think of — and **writes nothing durable until you approve**.
-- **Change already clear** → type `/apriori add-reopen` (any change name). The agent reads the runbook, runs `apriori new` / `verify` / `gate` / `archive` in the background, pulls a *different* model for the adversarial review, and **stops at each human gate** to report and wait for your nod.
+`/apriori` routes by intent:
+
+- **Discuss first** → call it with no arguments, or say `/apriori discuss foo without starting development`. Free text that does not identify a change to work on also enters discussion. Mentioning an existing change while discussing it **does not authorize development**, and nothing durable is written during discussion without approval to save or develop.
+- **Start the work** → work starts or resumes only when you identify a change to work on and have not limited the request to discussion — `/apriori implement add-reopen`. The agent reads the runbook, runs `apriori new` / `verify` / `gate` / `archive` in the background, pulls a *different* model for the adversarial review, and **stops at each human gate** to report and wait for your nod.
+
+Two surfaces, one protocol — the CLI runs the checks, the chat entry delegates to the agent:
+
+| In the terminal | In the AI chat box |
+|---|---|
+| `apriori status --change foo` | `/apriori discuss foo without starting development` |
 
 You do two things: **say what you want, and approve at the gates** — you never hand-write a spec or a state file. (The same protocol runs in Codex / Cursor / Windsurf / Copilot; `init --tools <tool>` just writes each one its own pointer.)
 

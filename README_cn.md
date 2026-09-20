@@ -38,8 +38,16 @@ apriori init --tools claude
 
 它会预览要写哪些文件,问 `Proceed? (Y/n)`,然后搭好 `apriori/`,并给 Claude Code 写两个指针:一份 `CLAUDE.md` 规则和一个 `/apriori` 斜杠命令。现在启动 Claude Code(`claude`),用大白话驱动它:
 
-- **想法还模糊** → 直接敲 `/apriori`(不带参数)。它先和你脑暴——追问你没想到的边界问题——**在你点头前什么都不落盘**。
-- **变更已清楚** → 敲 `/apriori add-reopen`(任意变更名)。agent 读 runbook,在后台跑 `apriori new` / `verify` / `gate` / `archive`,拉一个*不同的*模型做对抗评审,并**在每个人工闸口停下来**汇报、等你点头。
+`/apriori` 按意图分流:
+
+- **先讨论** → 无参调用,或说 `/apriori 只讨论 foo,不开始开发`。尚未指明要推进哪个变更的自由文本也进入讨论。讨论中提到已有变更**不授予开发权限**;讨论期间未经保存或开发授权,不写持久文件。
+- **开始干活** → 只有明确指明要推进的变更、且未限制为讨论时才开始或继续,例如 `/apriori 实施 add-reopen`。agent 读 runbook,在后台跑 `apriori new` / `verify` / `gate` / `archive`,拉一个*不同的*模型做对抗评审,并**在每个人工闸口停下来**汇报、等你点头。
+
+两个表面,同一套协议——CLI 执行检查,对话入口委托 agent:
+
+| 在终端输入 | 在 AI 对话框输入 |
+|---|---|
+| `apriori status --change foo` | `/apriori 只讨论 foo,不开始开发` |
 
 你只做两件事:**说出你要什么,在闸口点头**——你从不手写规格文件或状态文件。(同一套协议在 Codex / Cursor / Windsurf / Copilot 里一样跑;`init --tools <工具>` 只是给每个工具写各自的指针。)
 

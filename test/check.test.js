@@ -68,6 +68,18 @@ test('CK-05 no residual OpenSpec adapter references remain', () => {
   assert.strictEqual(c.checkNoOpenspec('RUNBOOK.md', 'plain-files at apriori/specs/ only').length, 0);
 });
 
+test('CK-05 also catches the bare four-step fossil, and does not ban the legit `archive` word', () => {
+  // the fossil: v1's four step actions, false against the current §4 four phases
+  assert.ok(c.checkNoOpenspec('docs/concepts.md',
+    'The four step actions (explore/propose/apply/archive, RUNBOOK §4) are universal.')
+    .some((f) => /residual OpenSpec/.test(f)));
+  // `archive` on its own is a legitimate CLI verb — CK-05 must not flag it
+  assert.strictEqual(c.checkNoOpenspec('RUNBOOK.md',
+    'run `apriori archive --change foo --write` to close out').length, 0);
+  assert.strictEqual(c.checkNoOpenspec('docs/cli.md',
+    'explore the repo, then propose a change').length, 0);
+});
+
 test('CK-06 stale scaffolded runbook warns via check, never fails', () => {
   const fs = require('node:fs');
   const os = require('node:os');

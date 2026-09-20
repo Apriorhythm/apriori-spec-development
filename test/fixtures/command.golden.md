@@ -8,8 +8,9 @@ apriori/changes/<change>/flow-state.md, and continue from the state's first `## 
 The name may be one they just asked you to start. Read a runbook section only when status,
 `## Next`, a blocked command, or an uncertain fact points you there — there is no default
 reading list, and never preload the full runbook.
-Advance ONLY to the next point where a human has to decide (runbook §1 R1: an escalation,
-an open item nobody can resolve, an external side effect, or abandonment), then stop and report.
+Advance ONLY to the next point where a human has to decide (runbook §1 R1's five: an
+escalation, an open item nobody can resolve, a review family stalled after its round 2,
+an external side effect, or abandonment), then stop and report.
 
 Discuss first — every other input lands here, including a bare line, an explicit ask to
 discuss or explore, and any free text that does not identify one change to work on: enter the

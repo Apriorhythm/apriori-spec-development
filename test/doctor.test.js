@@ -130,6 +130,19 @@ test('DR-05 detected tools must keep their pointers', () => {
   assert.strictEqual(byId(doctor.runDoctor({ cwd: bare, testCmd: TAP_OK }), 'D4')[0].status, 'n/a');
 });
 
+test('DR-05b the D4 fix string runs as printed and actually repairs the pointer', () => {
+  const root = healthy();
+  fs.writeFileSync(path.join(root, 'CLAUDE.md'), 'no pointer anymore\n');
+  const finding = byId(doctor.runDoctor({ cwd: root, testCmd: TAP_OK }), 'D4')
+    .find((c) => c.status === 'finding');
+  assert.ok(finding, 'a broken pointer must be a D4 finding');
+  const argv = finding.fix.trim().split(/\s+/);
+  assert.strictEqual(argv[0], 'apriori');
+  const r = run(argv.slice(1), root);          // copy-paste the printed fix, verbatim
+  assert.strictEqual(r.status, 0, `fix exited ${r.status}: ${r.stderr}`);
+  assert.strictEqual(byId(doctor.runDoctor({ cwd: root, testCmd: TAP_OK }), 'D4')[0].status, 'ok');
+});
+
 test('DR-06 the TAP probe classifies every plumbing edge', () => {
   const root = healthy();
   const probe = (testCmd) => byId(doctor.runDoctor({ cwd: root, testCmd }), 'D5')[0];

@@ -17,7 +17,7 @@ The problem with vibe coding is that the prompt is too vague and the requirement
 | **System Knowledge Base / TRUTH-DOC** (source of all facts) | An abstracted summary of all existing code; the set of black-box intents; maintained long-term | "What is it now (state A)?" |
 | **Code** (real data flow) | The concrete landing of the knowledge base; how data actually flows internally | "How does it actually run, in detail?" |
 
-> Once the Agent reads the **contract** it knows the target state B; the **System Knowledge Base** lets it reconstruct most of the current state A; **Code** fills in the rest of the detail, and it now grasps most of the system's truth. (6.0 asks for no separate requirement doc: the goal, the observed facts and the contract carry it — [§4.4](#44-specify-the-minimal-behavior-contract-adversarial-review-target-2-rounds).)
+> Once the Agent reads the **contract** it knows the target state B; the **System Knowledge Base** lets it reconstruct most of the current state A; **Code** fills in the rest of the detail, and it now grasps most of the system's truth. (6.0 asks for no separate requirement doc: the goal, the observed facts and the contract carry it — [§4.4](#44-specify-the-minimal-behavior-contract).)
 > **Without the system knowledge base, the Agent can only reverse-engineer abstract intent from the code — slow, and easy to guess wrong.** This is exactly the core tension Section 6 ("Legacy Project Development") is meant to resolve.
 
 **North star:** this workflow is **Spec-Anchored** (specs persist as living documents); the endgame it paves toward — executable scenarios, "the spec *is* the test suite", trending toward the Spec-as-Source tier — lives in [VISION.md](../VISION.md). It is non-blocking guidance: no gate reads it; a change that conflicts with it merely records why. The scenario-ID ↔ test-name mapping in §4.5 is the first paving stone.
@@ -33,7 +33,7 @@ Then redirect to /login, carrying a redirect parameter
 
 After the AI writes the code and the tests, it **runs the tests itself**, keeping the code self-consistent and eliminating low-level mistakes (compile errors, missing fields, malformed data).
 
-> Each scenario in the SPEC-DOC ([§4.5](#44-specify-the-minimal-behavior-contract-adversarial-review-target-2-rounds)) is one such `if … then …`, so **the spec's scenarios *are* the test cases** the implementation must satisfy in Build & Test — "test-driven" here means letting the spec's scenarios drive the tests.
+> Each scenario in the SPEC-DOC ([§4.5](#44-specify-the-minimal-behavior-contract)) is one such `if … then …`, so **the spec's scenarios *are* the test cases** the implementation must satisfy in Build & Test — "test-driven" here means letting the spec's scenarios drive the tests.
 
 ### 1.4 Adversarial Review
 
@@ -60,7 +60,7 @@ Claude Code (Opus/Claude)  ──produces──►  SPEC-DOC + DESIGN-DOC
 
 **Fresh context vs. cross-round memory — the issue ledger.** Multi-round review has a built-in tension: each round's reviewer should be *fresh* (the second lever), yet it must remember earlier rounds to verify "was issue #3 actually fixed?" Keeping one long-lived reviewer session buys memory at the cost of freshness — after round 1, the reviewer is anchored to *its own* past findings too. The fix is to move the memory out of the session and into a file: a cumulative **issue ledger** per change ([§7.0](#70-the-issue-ledger-optional-shared-by-review-loops)), where every issue carries an ID and a status. (Since 6.2 this is the reviewer's own notebook: the CLI never reads it — what blocks a delivery is an `## Open` item in the state, §7.0.) Each round's reviewer can then be a brand-new session: it reads the ledger to verify fixes and appends new findings, staying unanchored. The ledger doubles as the audit trail for human gates — rejections stay visible with their reasons, and a resurfacing issue reopens its old ID instead of masquerading as a new finding.
 
-Adversarial review runs at two points: **① the behavior-contract review (Specify) ② the code-implementation review (Review & Deliver)** — and every round of each one records its findings in the same one state file.
+Adversarial review has one standing point: **the code-implementation review (Review & Deliver)**. A behavior-contract review (Specify) is **not run by default** — it is added only when the owner asks for an early judgment on a specific approach, or the requirement is still substantially uncertain after Ground (RUNBOOK §2). Every round of either records its findings in the same one state file.
 
 **An honest caveat on LLM judges.** Heterogeneity reduces bias but does not eliminate it: self-preference in LLM judges is driven by *familiarity* (perplexity), not authorship — a different model only partially escapes it; code defects are partly **shared, systemic weaknesses across models**, so a cross-model reviewer inherits some of the producer's blind spots; and in one four-tool review comparison, 93.4% of distinct findings were caught by exactly one tool — review coverage is inherently incomplete. The implication: deterministic verification stays the primary instrument, always.
 
@@ -70,8 +70,8 @@ LLM adversarial review is one instrument in a larger verification portfolio — 
 
 Four principles every mechanism in this handbook (and the RUNBOOK) instantiates:
 
-1. **Quality comes from different instruments at different stages.** In a change's **contract stage** (Specify), LLM review is the only instrument available — there it is the primary one, and it never drops below one round per change. In the **implementation stage** (Build & Test), executable verification is primary (v1.0 already worked this way); LLM review covers what execution can't judge.
-2. **Intent comes first; the spec's form may come later.** On any track, a human-acknowledged statement of intent precedes code; the tracks (§4.0) differ only in when the full spec crystallizes — **the spec is a conserved quantity at merge time**.
+1. **Quality comes from different instruments at different stages.** In a change's **contract stage** (Specify), LLM review is the only instrument available — **when that review is run** it is the primary one there; it is not run by default (RUNBOOK §2). In the **implementation stage** (Build & Test), executable verification is primary (v1.0 already worked this way); LLM review covers what execution can't judge.
+2. **Intent comes first; the spec's form may come later.** A human-acknowledged statement of intent precedes code; what varies is when the full spec crystallizes (§4.0 retired the second track) — **the spec is a conserved quantity at merge time**.
 3. **Supervision parameters are never written by the supervised.** What the CLI reads lives in a human-held config; the decisions live at human gates. The agent reports data, never adjusts its own oversight.
 4. **Extracted descriptions are drafts until reviewed.** Anything reverse-derived from code (P5) must pass review before anything downstream consumes it.
 
@@ -93,7 +93,7 @@ This methodology is **decoupled from any specific tool** — any "LLM + Tool use
 | **Windsurf** | IDE | Multiple models (Cascade) | `.windsurf/rules` + workflow | Produce or review |
 | **Copilot** | IDE plugin | Multiple models | `.github/copilot-instructions.md` | Produce or review, inline completion |
 
-> ⚠️ `apriori init` writes each tool a thin **pointer** to the one self-contained `apriori/runbook.md` in that tool's native location — a slash command where the tool supports one (Claude Code, Codex, Windsurf), a rule-level entry otherwise (Cursor, Copilot). **The protocol lives once; only the entry point differs per tool.** The four step actions (explore/propose/apply/archive, RUNBOOK §4) are universal.
+> ⚠️ `apriori init` writes each tool a thin **pointer** to the one self-contained `apriori/runbook.md` in that tool's native location — a slash command where the tool supports one (Claude Code, Codex, Windsurf), a rule-level entry otherwise (Cursor, Copilot). **The protocol lives once; only the entry point differs per tool.** The four phases (RUNBOOK §4) are universal.
 
 > **Process-skill layers are swappable — artifact machinery is not.** The RUNBOOK's P1–P6 prompts *are* this workflow's own SDD skill layer; skill systems such as Claude Code's superpowers (TDD, debugging, planning) sit below it at the implementation layer — compatible, but no replacement for the artifact machinery (spec store, ledger, gates). On any conflict of instructions, the RUNBOOK stays canonical.
 
@@ -332,9 +332,9 @@ The **Ground action** (RUNBOOK **P1**). Read the real code, schema, interfaces, 
 - **When a fact will not yield to reading**, probe code is allowed — thrown away afterwards, never a deliverable, and never referenced later. What it produces is an `observed` line.
 - **Exit:** nothing the work depends on is still an `assumption`.
 
-> Legacy projects depend on this especially: see Section 6 — make sure the KB covers the relevant modules first, or Ground will surface facts with holes in them.
+> Legacy projects lean on this: see Section 6 — where the KB already covers the touched modules, read it first; where it does not, read the code directly. **A missing KB doc is a legitimate state, not a gap to fill by default** (RUNBOOK §4).
 
-### 4.4 Specify: The Minimal Behavior Contract (Adversarial Review, Target 2 Rounds)
+### 4.4 Specify: The Minimal Behavior Contract
 
 The **Specify action** (RUNBOOK **P2**). Write the delta specs — the minimal behavior contract, each scenario with a stable ID and testable acceptance — then enter adversarial review:
 
@@ -372,11 +372,11 @@ The **Build & Test action** (RUNBOOK **P2**). Write code per the contract — **
 
 **Then archive.** `apriori archive` **merges this change's delta specs into the living spec store** (`apriori/specs/`) per the interface's archive algorithm (RUNBOOK §4), keeping the store consistent with the final implementation.
 
-> ⚠️ Note the distinction: the archive action **does NOT automatically update your own TRUTH-DOC** (`apriori/truth/` or a separate KB repo — §6). Writing this change's new/changed facts **back into the KB is a separate step** (use the prompt in [§7.4](#74-review--deliver-consistency-review-and-archive) to have the AI do it explicitly, or write it manually).
+> ⚠️ Note the distinction: the archive action **does NOT automatically update your own TRUTH-DOC** (`apriori/truth/` or a separate KB repo — §6). Writing this change's new/changed facts **back into the KB is a separate step, and it is owed only when** `apriori/truth/<module>.md` already covers the module, or the owner/change explicitly decided to persist a durable contract (RUNBOOK §4) (use the prompt in [§7.4](#74-review--deliver-consistency-review-and-archive) to have the AI do it explicitly, or write it manually).
 
 **The archive declares three states and freezes.** Whether the implementation is complete, whether the critical evidence is complete, and — one fixed sentence since batch C row 6 — that **an archive is not a release**: delivery is not a claim the archive makes, whatever any legacy `delivery:` line says. That is the whole claim an archive makes. **A defect found afterwards becomes a short outcome note or a new change — never a rewrite of the archived bundle.** Back-writing an old archive manufactures a timeline in which the work was already finished, which is exactly what the practices kept producing.
 
-**This step is the lifeline of long-term maintainability for legacy projects** — every change deposits new facts back into the KB, so the next Ground has no holes. With the KB in the same repo (§6), the writeback rides in the same PR as the code, where a reviewer can actually see it — the enforcement mapping is in [§4.8](#48-mapping-the-workflow-onto-git--pr--ci).
+**Where a KB is kept, this step is the lifeline of long-term maintainability for legacy projects** — each change that owes a writeback deposits its new facts there, so the next Ground has no holes. With the KB in the same repo (§6), the writeback rides in the same PR as the code, where a reviewer can actually see it — the enforcement mapping is in [§4.8](#48-mapping-the-workflow-onto-git--pr--ci).
 
 ### 4.7 Automating the Loop with `/goal` (Claude Code)
 
@@ -394,10 +394,10 @@ That layering is what lets you automate **even adversarial review** without viol
 
 | Phase | A sound `/goal` condition (transcript-checkable) | Backed inside the loop by |
 |---|---|---|
-| Specify | the review doc is written and its verdict line = `VERDICT: no major issues, ready to proceed to execution`, or the derived review loop stops (RUNBOOK §1 R4) | a heterogeneous reviewer call each round |
+| Specify | the delta specs state the behavior, each scenario carrying a stable ID. **Only if a contract review was asked for**: its verdict line = `VERDICT: no major issues, ready to proceed to execution`, or the derived review loop stops (RUNBOOK §1 R4) | — (a heterogeneous reviewer call each round, when that review runs) |
 | Build & Test | `npm test` exits 0 **and** lint/static analysis green (where configured) **and** every `## Open` item carries a stable id **and** the E2E/Playwright run is green **and** `apriori gate --review-ready` exits 0 | a real test + E2E run |
-| Review & Deliver | the consistency review reports no gaps **and** the delta specs are merged **and** the module's KB file is updated | reviewer call + archive action + writeback |
-| **an escalation · an open item nobody can resolve · an external side effect · abandonment** | — **do not wrap these in a goal** | a human decides (RUNBOOK §1 R1) |
+| Review & Deliver | the consistency review reports no gaps **and** the delta specs are merged **and**, *where a KB writeback is owed* (RUNBOOK §4), that module file is updated | reviewer call + archive action (+ writeback when owed) |
+| **an escalation · an open item nobody can resolve · a review family stalled after its round 2 · an external side effect · abandonment** | — **do not wrap these in a goal** | a human decides (RUNBOOK §1 R1) |
 
 > Scope each goal to a stretch that ends — an open-ended one can run very expensive. **`process-config.md` budgets nothing**: it holds no turn or round number. Review rounds stop where the runbook's derived loop stops them (§1 R4); the implement-and-test loop — which that loop does not govern — carries a fixed 25-turn safety bound in its recipe text. If a loop **oscillates** (the verdict flip-flops, or the same open issue keeps coming back) or stalls without progress, **escalate to a human** — never quietly lower the bar. Run **one `/goal` per machine-checkable stretch, stop wherever a human has to decide**, then start the next. The ready-to-paste recipes ship in [operator.md](./operator.md); The three ready-to-paste recipes (Specify / Build & Test / Review & Deliver) live in **[operator.md](./operator.md), the human operator appendix** — run by *you*, never by the agent, and kept in the apriori-cli repository's docs rather than inside the protocol file your project carries. Three things stay true of every recipe: the real check runs **inside** each turn and must land its result in the transcript; a stopped loop, a `VERDICT: escalate` or blocked critical evidence escalates to a human (`apriori status --escalation` exits 3 on exactly those) and is never license to lower the bar; and visual checks must emit a **textual** pass/fail or the evaluator cannot see them — a pure library like §5's mini-kv drops the Playwright clause entirely. The KB writeback is never self-approved ([§6.5](./legacy.md#65-closing-the-loop-write-back-after-every-change)).
 
@@ -460,7 +460,7 @@ One scenario per user-visible behavior, each with a stable ID and testable accep
 
 Pay attention to whether the resulting `spec.md` **gives each user-visible behavior its own scenario**, and whether the **external shared state (here, that in-memory map) describes the three moments: init / update-at-runtime / cleanup-and-invalidation**. Edge cases a reviewer should catch: what `ttlMs<=0` does, whether `get` cleans up lazily or on a timer, overwrite semantics.
 
-Then switch to your reviewing tool/model and review → revise per [§7.2](#72-specify-contract-adversarial-review-and-revision), looping until `VERDICT: no major issues, ready to proceed to execution`. Concretely, drive the review with Codex ([§2.3](#23-driving-codex-non-interactively-multi-round-adversarial-review)):
+If you asked for a contract review (it is **not** the default — RUNBOOK §2), then switch to your reviewing tool/model and review → revise per [§7.2](#72-specify-contract-adversarial-review-and-revision), looping until `VERDICT: no major issues, ready to proceed to execution`. Concretely, drive the review with Codex ([§2.3](#23-driving-codex-non-interactively-multi-round-adversarial-review)):
 ```shell
 # round 1 — open the review session (note the printed session id)
 codex exec -s read-only "Review apriori/changes/<change>/specs/ against the goal and the Reality Check in apriori/changes/<change>/flow-state.md, using the RUNBOOK P3 checklist. End with a verdict line."

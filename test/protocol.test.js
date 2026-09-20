@@ -56,6 +56,42 @@ test('PR-04 the interface is single-path plain-files (runbook AND handbook)', ()
   }
 });
 
+test('PR-30 the handbook must not demand a Specify-stage review the protocol does not require', () => {
+  // RUNBOOK:128 is the rule: a separate Specify-phase spec-review loop is NOT run by default.
+  assert.match(EN, /A separate Specify-phase spec-review loop is not run by default/);
+  assert.doesNotMatch(CONCEPTS, /never drops below one round/);
+  assert.doesNotMatch(CONCEPTS_CN, /绝不低于一轮/);
+  // and the Specify exit must not be gated UNCONDITIONALLY on a spec-review verdict line
+  for (const [doc, cond] of [[CONCEPTS, /Only if/], [CONCEPTS_CN, /仅当/]]) {
+    const row = doc.split('\n').find((l) => l.startsWith('| Specify |'));
+    assert.ok(row, 'the phase table must have a Specify row');
+    if (/VERDICT: no major issues/.test(row)) {
+      assert.match(row, cond, 'a contract-review verdict may gate Specify only conditionally');
+    }
+  }
+});
+
+test('PR-31 the handbook must not make the KB writeback a default obligation', () => {
+  // RUNBOOK:265 is the rule: a missing KB doc is a legitimate state, not a gap to fill by default.
+  assert.match(EN, /not a gap to fill by default/);
+  assert.doesNotMatch(CONCEPTS, /\| Review & Deliver \|[^|]*KB file is updated/);
+  assert.doesNotMatch(CONCEPTS_CN, /\| Review & Deliver \|[^|]*知识库文件已更新/);
+  assert.doesNotMatch(CONCEPTS, /every change deposits new facts back into the KB/);
+  assert.doesNotMatch(CONCEPTS_CN, /每个 change 都把新事实存回知识库/);
+});
+
+test('PR-32 the handbook does not speak of tracks — §4.0 retired them', () => {
+  for (const doc of [CONCEPTS, CONCEPTS_CN]) assert.doesNotMatch(doc, /§4\.0\) differ|轨道\(§4\.0\)/);
+  assert.match(CONCEPTS, /There is no second track/);
+  assert.match(CONCEPTS_CN, /没有第二条轨道/);
+});
+
+test('PR-33 the command template lists all five R1 stop classes — the stalled review family included', () => {
+  const tpl = fs.readFileSync(path.join(ROOT, 'templates', 'command.md'), 'utf8');
+  assert.match(EN, /A review family stalled after its round 2/);          // RUNBOOK:82, the source
+  assert.match(tpl, /stalled|round 2/);
+});
+
 test('PR-05 probe code is disposable and never becomes an artifact', () => {
   // 6.0 removed the explore track (and its `spike/` dir); slice 5 removed the task list the old
   // clause pointed at. What survives is the artifact-free rule: a probe is thrown away and is

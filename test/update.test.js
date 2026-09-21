@@ -48,10 +48,17 @@ test('UP-01 refreshes the runbook copy and existing command files', () => {
     `an un-registered entry must not be silently adopted: ${byFile['.claude/commands/apriori-discuss.md']}`);
   assert.strictEqual(fs.readFileSync(path.join(root, 'apriori', 'runbook.md'), 'utf8'), PKG_RUNBOOK);
   assert.strictEqual(fs.readFileSync(path.join(root, '.claude', 'commands', 'apriori.md'), 'utf8'), PKG_COMMAND);
-  // second run is idempotent: nothing gets updated again. A file the manifest never registered
-  // stays `unmanaged` — that is a settled state too, not a pending change (S2 P3, 卡 P3 ④).
-  for (const a of update.run(root).actions)
-    assert.notStrictEqual(a.action, 'updated', `second run re-updated ${a.file}`);
+  // second run is idempotent. Every file the manifest registered settles back at `up-to-date`;
+  // only the entry it never registered stays `unmanaged` — a settled state too, not a pending
+  // change (S2 P3, 卡 P3 ④). The registered files keep the original strict check: `skipped` or
+  // any other action on them is a regression, not an accepted outcome.
+  const DISCUSS = '.claude/commands/apriori-discuss.md';
+  const second = Object.fromEntries(update.run(root).actions.map((a) => [a.file, a.action]));
+  assert.match(String(second[DISCUSS]), /unmanaged/,
+    `an un-registered entry must stay unmanaged on re-run: ${second[DISCUSS]}`);
+  for (const [file, action] of Object.entries(second))
+    if (file !== DISCUSS)
+      assert.strictEqual(action, 'up-to-date', `second run left ${file} at ${action}`);
 });
 
 test('UP-02 user-owned files are never touched, nothing new is created', () => {

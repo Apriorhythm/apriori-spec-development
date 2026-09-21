@@ -57,8 +57,8 @@ You do two things: **say what you want, and approve at the gates** — you never
 
 | Client | Entry paths | Status |
 |---|---|---|
-| Claude Code | `.claude/commands/apriori.md`, `apriori-discuss.md` | verified on this machine |
-| Codex CLI | `.codex/prompts/apriori.md`, `apriori-discuss.md` | verified on this machine |
+| Claude Code | `.claude/commands/apriori.md`, `apriori-discuss.md` | verified on this machine (Claude Code 2.1.278, claude-opus-5) |
+| Codex CLI | `.codex/prompts/apriori.md`, `apriori-discuss.md` | **not yet supported** — the entry is installed, but this round never drove it from codex CLI |
 | OpenCode | `.opencode/command/…` | **not yet supported** — the singular `command/` path is unverified |
 | Windsurf | `.windsurf/workflows/…` | **not yet supported** — unverified |
 | Cursor · GitHub Copilot | rule-level only, no command entry | **not yet supported** — cannot be driven from here |

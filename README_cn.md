@@ -57,8 +57,8 @@ apriori init --tools claude
 
 | 客户端 | 入口路径 | 状态 |
 |---|---|---|
-| Claude Code | `.claude/commands/apriori.md`、`apriori-discuss.md` | 本机实测通过 |
-| Codex CLI | `.codex/prompts/apriori.md`、`apriori-discuss.md` | 本机实测通过 |
+| Claude Code | `.claude/commands/apriori.md`、`apriori-discuss.md` | 本机实测通过(Claude Code 2.1.278、claude-opus-5) |
+| Codex CLI | `.codex/prompts/apriori.md`、`apriori-discuss.md` | **尚未支持** —— 入口已安装,但本轮未以 codex CLI 驱动过 |
 | OpenCode | `.opencode/command/…` | **尚未支持** —— 单数 `command/` 路径未实测 |
 | Windsurf | `.windsurf/workflows/…` | **尚未支持** —— 未实测 |
 | Cursor · GitHub Copilot | 只有规则层,无命令入口 | **尚未支持** —— 本机驱动不了 |

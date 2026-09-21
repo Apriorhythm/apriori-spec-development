@@ -37,6 +37,7 @@ function twoTemplateTools() {
 }
 const TWO_SRC = { apriori: FIRST_SRC, second: SECOND_SRC };
 const TWO_GENS = { apriori: managed.TEMPLATE_GENERATIONS.apriori,
+                   discuss: managed.TEMPLATE_GENERATIONS.discuss,   // S2 P3: shipped entry, see 卡 P3 ④
                    second: [shaFile(SECOND_SRC)] };
 
 // ── 面 1 · K=1 兼容 ────────────────────────────────────────────────────────
@@ -45,6 +46,10 @@ test('MC-01 K=1 install is byte-identical to the P1 baseline behaviour', () => {
   const r = init.scaffold(root, ['claude', 'codex']);
   assert.strictEqual(read(root, '.claude/commands/apriori.md'), fs.readFileSync(FIRST_SRC, 'utf8'));
   assert.strictEqual(read(root, '.codex/prompts/apriori.md'), fs.readFileSync(FIRST_SRC, 'utf8'));
+  // S2 P3 (卡 P3 ④): shipped config is now K=2 — the discuss shell installs beside it, byte-for-byte
+  const DISCUSS_SRC = path.join(ROOT, 'templates', 'discuss.md');
+  assert.strictEqual(read(root, '.claude/commands/apriori-discuss.md'), fs.readFileSync(DISCUSS_SRC, 'utf8'));
+  assert.strictEqual(read(root, '.codex/prompts/apriori-discuss.md'), fs.readFileSync(DISCUSS_SRC, 'utf8'));
   // the second template is NOT part of the shipped configuration
   assert.ok(!fs.existsSync(path.join(root, '.claude/commands/second.md')));
   for (const k of Object.keys(init.TOOLS))
@@ -52,7 +57,8 @@ test('MC-01 K=1 install is byte-identical to the P1 baseline behaviour', () => {
   // manifest lists exactly the K=1 targets, and the action order is unchanged
   const mf = JSON.parse(read(root, 'apriori/managed.json'));
   assert.deepStrictEqual(Object.keys(mf.files).sort(),
-    ['.claude/commands/apriori.md', '.codex/prompts/apriori.md', 'apriori/runbook.md'].sort());
+    ['.claude/commands/apriori.md', '.claude/commands/apriori-discuss.md',
+     '.codex/prompts/apriori.md', '.codex/prompts/apriori-discuss.md', 'apriori/runbook.md'].sort());
   assert.ok(r.actions.length > 0);
 });
 
@@ -123,7 +129,7 @@ test('MC-05 every mapped template must have its own generation table', () => {
   const missing = [...ids].filter((id) => !Array.isArray((TWO_GENS)[id]) || !TWO_GENS[id].length);
   assert.deepStrictEqual(missing, [], 'a mapped template without a generation table');
   // and the coverage check itself must bite when a table is removed
-  const holed = { apriori: TWO_GENS.apriori };                    // `second` deliberately absent
+  const holed = { apriori: TWO_GENS.apriori, discuss: TWO_GENS.discuss };   // `second` deliberately absent
   const holes = [...ids].filter((id) => !Array.isArray(holed[id]) || !holed[id].length);
   assert.deepStrictEqual(holes, ['second'], 'the coverage check failed to notice the hole');
 });

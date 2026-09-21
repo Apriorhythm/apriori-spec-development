@@ -41,10 +41,17 @@ test('UP-01 refreshes the runbook copy and existing command files', () => {
   const byFile = Object.fromEntries(actions.map((a) => [a.file, a.action]));
   assert.strictEqual(byFile['apriori/runbook.md'], 'updated');
   assert.strictEqual(byFile['.claude/commands/apriori.md'], 'updated');
+  // S2 P3 (卡 P3 ④): agedProject models a project from an older CLI — its manifest predates the
+  // discuss entry, so update correctly treats that file as UNMANAGED rather than adopting it.
+  // This is the compatibility boundary, not a regression: adoption needs proof of provenance.
+  assert.match(String(byFile['.claude/commands/apriori-discuss.md']), /unmanaged/,
+    `an un-registered entry must not be silently adopted: ${byFile['.claude/commands/apriori-discuss.md']}`);
   assert.strictEqual(fs.readFileSync(path.join(root, 'apriori', 'runbook.md'), 'utf8'), PKG_RUNBOOK);
   assert.strictEqual(fs.readFileSync(path.join(root, '.claude', 'commands', 'apriori.md'), 'utf8'), PKG_COMMAND);
-  // second run: everything up-to-date
-  for (const a of update.run(root).actions) assert.strictEqual(a.action, 'up-to-date');
+  // second run is idempotent: nothing gets updated again. A file the manifest never registered
+  // stays `unmanaged` — that is a settled state too, not a pending change (S2 P3, 卡 P3 ④).
+  for (const a of update.run(root).actions)
+    assert.notStrictEqual(a.action, 'updated', `second run re-updated ${a.file}`);
 });
 
 test('UP-02 user-owned files are never touched, nothing new is created', () => {
@@ -70,8 +77,12 @@ test('UP-02 user-owned files are never touched, nothing new is created', () => {
   assert.strictEqual(fs.readFileSync(rulesPath, 'utf8'), rulesBefore);
   for (const [rel, body] of Object.entries(owned))
     assert.strictEqual(fs.readFileSync(path.join(root, ...rel.split('/')), 'utf8'), body);
-  // only the runbook copy + the one existing command file appear; no other tool's command was created
-  assert.deepStrictEqual(actions.map((a) => a.file).sort(), ['.claude/commands/apriori.md', 'apriori/runbook.md']);
+  // S2 P3 (卡 P3 ④): the shipped config for this tool is now K=2 — both its entries appear.
+  // The behaviour under test is unchanged, and now stated explicitly: no OTHER tool's command was created.
+  assert.deepStrictEqual(actions.map((a) => a.file).sort(),
+    ['.claude/commands/apriori-discuss.md', '.claude/commands/apriori.md', 'apriori/runbook.md']);
+  assert.ok(!actions.some((a) => /^\.(codex|opencode|windsurf|cursor)\//.test(a.file)),
+    "another tool's command was created");
   assert.ok(!fs.existsSync(path.join(root, '.codex')));
 });
 
@@ -248,7 +259,9 @@ test('UP-11 the shipped-generation list stays honest', () => {
   for (const k of Object.keys(TOOLS)) for (const id of Object.keys(TOOLS[k].commands || {})) mapped.add(id);
   assert.ok(mapped.size >= 1);
   for (const id of mapped) {
-    assert.ok(Array.isArray(gens[id]) && gens[id].length >= 2, `template '${id}' has no generation table`);
+    // S2 P3 (卡 P3 ④): a newly shipped template has exactly one generation; the historical
+    // depth of `apriori` stays pinned by MC-02, so this check only demands a real table.
+    assert.ok(Array.isArray(gens[id]) && gens[id].length >= 1, `template '${id}' has no generation table`);
     for (const g of gens[id]) assert.match(g, /^sha256:[0-9a-f]{64}$/);
     assert.ok(gens[id].includes(shaFile(TEMPLATE_SRC[id])),
       `templates for '${id}' changed without appending the hash to its own table`);

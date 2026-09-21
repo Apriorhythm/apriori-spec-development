@@ -2,6 +2,29 @@
 
 All notable changes to `apriori-cli`. Versions follow semver; the stability promise: CLI surface & flags, `--json` shapes, the delta format and the flow-state schema only break in a major.
 
+## Unreleased — S2 P3: a dedicated `/apriori-discuss` entry, and what its manifest does not do
+
+`init` now installs **two** command entries per command-level tool: the existing `apriori`
+entry and a thin `apriori-discuss` shell. The shell points at the runbook by **section**
+(§4 Discuss first, §1 R1, §0) and carries no second copy of the rules.
+
+**Compatibility boundary — read this before upgrading an existing project.**
+
+`apriori update` will **not** adopt the new entry into a project whose `apriori/managed.json`
+predates it. A file the manifest never registered is reported `unmanaged (skipped)`, not
+silently taken over — adoption requires proof of provenance, and that rule is unchanged.
+This is deliberate: on an upgrade the file at that path may be something you wrote.
+
+To hand the entry to the tool, run `apriori init --tools <tool>` — it registers the entry and
+writes the shipped bytes. `doctor`'s D4 reports the gap and prints exactly that command.
+Hand-edited entries are protected either way: `update` leaves them alone, and re-running
+`init` does not clobber a sibling entry you edited.
+
+**Client support is claimed per verified client, not per shipped file.** The README support
+matrix marks OpenCode, Windsurf, Cursor and Copilot **not yet supported**: those paths were
+not exercised for discovery, invocation and argument passing. They predate this round and are
+tracked separately.
+
 ## Unreleased — cost record for the v6-dev line: measured once, unfavourable, unattributed
 
 *Not a code change.* This entry exists so that the next person to reach for "6.x is leaner"

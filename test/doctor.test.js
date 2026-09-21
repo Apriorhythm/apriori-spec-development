@@ -36,6 +36,8 @@ function healthy() {
     'apriori/process-config.md': '| language | auto |\n',
     'CLAUDE.md': 'Development follows `apriori/runbook.md`.\n',
     '.claude/commands/apriori.md': 'cmd\n',
+    // S2 P3 (卡 P3 ④): shipped config is K=2 — a healthy project carries both entries
+    '.claude/commands/apriori-discuss.md': 'discuss cmd\n',
   });
 }
 const TAP_OK = tapCmd('TAP version 13', '1..1', 'ok 1 - fine');

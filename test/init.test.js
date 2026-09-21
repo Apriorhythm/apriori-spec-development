@@ -349,9 +349,11 @@ test('IN-13 fresh init writes the manifest for exactly what it created', () => {
   umInit.scaffold(root, ['claude']);
   const m = umManifest(root);
   assert.strictEqual(m.version, 1);
-  assert.deepStrictEqual(Object.keys(m.files).sort(), ['.claude/commands/apriori.md', 'apriori/runbook.md']);
+  assert.deepStrictEqual(Object.keys(m.files).sort(),
+    ['.claude/commands/apriori-discuss.md', '.claude/commands/apriori.md', 'apriori/runbook.md']);   // S2 P3: K=2
   assert.strictEqual(m.files['apriori/runbook.md'], umSha(umPath.join(root, 'apriori', 'runbook.md')));
   assert.strictEqual(m.files['.claude/commands/apriori.md'], umSha(umPath.join(root, '.claude', 'commands', 'apriori.md')));
+  assert.strictEqual(m.files['.claude/commands/apriori-discuss.md'], umSha(umPath.join(root, '.claude', 'commands', 'apriori-discuss.md')));
 });
 
 test('IN-14 add-tool init merges without adopting bystanders', () => {

@@ -47,9 +47,23 @@ Two surfaces, one protocol — the CLI runs the checks, the chat entry delegates
 
 | In the terminal | In the AI chat box |
 |---|---|
-| `apriori status --change foo` | `/apriori discuss foo without starting development` |
+| `apriori status --change foo` | `/apriori-discuss foo` — discuss first, nothing durable without approval |
+| `apriori gate --change foo` | `/apriori implement foo` — work the change |
+| the CLI runs a specific check or state operation | the entry delegates to the agent, which works to the protocol |
 
-You do two things: **say what you want, and approve at the gates** — you never hand-write a spec or a state file. (The same protocol runs in Codex / Cursor / Windsurf / Copilot; `init --tools <tool>` just writes each one its own pointer.)
+You do two things: **say what you want, and approve at the gates** — you never hand-write a spec or a state file.
+
+**Client support.** `init --tools <tool>` writes each tool its own pointer, but **a file in a directory is not support** — an entry counts as supported only where discovery, invocation and argument passing were actually exercised:
+
+| Client | Entry paths | Status |
+|---|---|---|
+| Claude Code | `.claude/commands/apriori.md`, `apriori-discuss.md` | verified on this machine |
+| Codex CLI | `.codex/prompts/apriori.md`, `apriori-discuss.md` | verified on this machine |
+| OpenCode | `.opencode/command/…` | **not yet supported** — the singular `command/` path is unverified |
+| Windsurf | `.windsurf/workflows/…` | **not yet supported** — unverified |
+| Cursor · GitHub Copilot | rule-level only, no command entry | **not yet supported** — cannot be driven from here |
+
+The unverified paths predate this round; they are tracked and fixed separately, and until each is exercised the entry is not claimed for that client.
 
 ### Route B — see the engine (run the loop by hand once)
 

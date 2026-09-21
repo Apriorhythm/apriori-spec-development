@@ -47,9 +47,23 @@ apriori init --tools claude
 
 | 在终端输入 | 在 AI 对话框输入 |
 |---|---|
-| `apriori status --change foo` | `/apriori 只讨论 foo,不开始开发` |
+| `apriori status --change foo` | `/apriori-discuss foo` —— 先讨论,未经批准不写任何持久文件 |
+| `apriori gate --change foo` | `/apriori 实施 foo` —— 推进这个变更 |
+| CLI 执行具体检查或状态操作 | 入口委托 agent 按协议工作 |
 
-你只做两件事:**说出你要什么,在闸口点头**——你从不手写规格文件或状态文件。(同一套协议在 Codex / Cursor / Windsurf / Copilot 里一样跑;`init --tools <工具>` 只是给每个工具写各自的指针。)
+你只做两件事:**说出你要什么,在闸口点头**——你从不手写规格文件或状态文件。
+
+**客户端支持。** `init --tools <工具>` 会给每个工具写各自的指针,但**目录里有文件不等于该端支持** —— 只有**实际验过**发现、调用与参数传入的入口才算支持:
+
+| 客户端 | 入口路径 | 状态 |
+|---|---|---|
+| Claude Code | `.claude/commands/apriori.md`、`apriori-discuss.md` | 本机实测通过 |
+| Codex CLI | `.codex/prompts/apriori.md`、`apriori-discuss.md` | 本机实测通过 |
+| OpenCode | `.opencode/command/…` | **尚未支持** —— 单数 `command/` 路径未实测 |
+| Windsurf | `.windsurf/workflows/…` | **尚未支持** —— 未实测 |
+| Cursor · GitHub Copilot | 只有规则层,无命令入口 | **尚未支持** —— 本机驱动不了 |
+
+未实测的路径**非本轮引入**,单独归因、单独修;在逐一验过之前,不为该客户端宣称可用。
 
 ### 路线 B —— 看看引擎(手敲一遍这个循环)
 

@@ -19,6 +19,10 @@ Two approvals, not one, and agreeing with your suggestion grants neither:
 
 Approval to develop carries the write development depends on; approval to save never
 reaches development. Ask for the one you need; do not re-ask for one you already hold.
+A scope already stated in this request — "save it, don't start development", or "save it
+and build" — is an approval you already hold: apply it once the conclusion is settled. If
+a decision is still theirs (which approach, an open question), ask only for that decision;
+do not offer the save-or-develop choice again.
 
 The binding rules live in the runbook, not here — read the section you need:
 

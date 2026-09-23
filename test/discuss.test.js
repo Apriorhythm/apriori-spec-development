@@ -170,3 +170,16 @@ test('DS-12 the shell does not become a second copy of the rules it points at', 
   assert.ok(stance, 'runbook lost the two-approvals paragraph');
   assert.ok(!shell.includes(stance[0]), 'the shell copied the runbook paragraph verbatim — it must point, not duplicate');
 });
+
+// S2 A≥1 修复（人类 2026-09-24 批准，方案 ①）：FC3 中用户已在请求里写明「保存，别开始开发」，
+// agent 仍把「只保存 / 保存并开始开发」抛回去重选。薄壳须明示：请求里已声明的范围就是已持有的批准；
+// 尚待所有者拍板的只问那个决定，不再重开保存与开发之间的选择。
+test('DS-13 a scope already stated in the request counts as held; the save-or-develop choice is not re-offered', () => {
+  const s = fs.readFileSync(DISCUSS_SRC, 'utf8');
+  assert.match(s, /already stated in (this|the) request[^.]*is an approval you already hold/i,
+    'shell must say a scope the human already stated counts as an approval already held');
+  assert.match(s, /ask only for that decision/i,
+    'shell must limit the question to the decision still owed');
+  assert.match(s, /do not offer the save-or-develop choice again/i,
+    'shell must forbid re-offering the save-or-develop choice');
+});

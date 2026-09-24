@@ -3,11 +3,11 @@
 > 自 `RUNBOOK_cn.md`(原 §6)原文迁出;下文的 § 引用(§1、§4、§5)指向 `RUNBOOK_cn.md`。
 
 > 本节的一切都**由人执行**。agent 绝不可执行或模拟 `/goal`(R3)。架构与注意事项见 apriori-cli 仓库里的 `docs/concepts_cn.md` §4.7(用 /goal 自动化整个流程)。
-> **两个循环、两个上界。** *评审轮次*由派生循环按 family 治理(§1 R4 / `gate` C8);*实现与测试循环*的最坏情况是固定的 **25 轮**,写在下面的配方文本里。`process-config.md` 两个都不配置。
+> **两个循环、两个上界。** *评审轮次*由派生循环按 family、对照所有者在 `process-config.md` 里的 `review-round-limit`(默认 7)治理(§1 R4 / `gate` C8);*实现与测试循环*的最坏情况是固定的 **25 轮**,写在下面的配方文本里——`process-config.md` 不为它配任何数字。
 
 **Specify 循环(只在所有者要求提前判断某个具体方案、或需求仍有实质不确定性时才跑——默认直接进入 Build & Test):**
 ```text
-/goal "Goal: apriori/changes/<change>/specs/ holds the behavior contract and the latest review verdict line is 'VERDICT: no major issues, ready to proceed to execution'. No round cap — §1 R4's derived loop governs: still revising after round 2, stop and report instead of opening round 3.
+/goal "Goal: apriori/changes/<change>/specs/ holds the behavior contract and the latest review verdict line is 'VERDICT: no major issues, ready to proceed to execution'. No round number here — §1 R4's derived loop governs: below the owner's review-round-limit (process-config.md, default 7) keep revising, logging the review-progress note in gates: before round 3 and every later round; stop and report when the reviewer escalates or the limit is reached while still revising.
 Each round:
 1. Revise the delta specs per the latest review — never touch source code — and update the state's ## Open section.
 2. Re-run the heterogeneous reviewer with the P3 prompt (round 1: codex exec, note the printed session id; later rounds: codex exec resume -c sandbox_mode=\"read-only\" <session-id>), producing apriori/changes/<change>/review/spec-review-v{N}.md.
@@ -32,9 +32,9 @@ Stop when all of it holds, or immediately if the verdict is 'VERDICT: escalate'.
 
 **你亲自决定的事(只有五件,再没有别的):**
 
-1. **一次 escalation** —— 一条 `VERDICT: escalate`,或某个 family 到了第 5 轮。`apriori status --change <name> --escalation` 打印它并以 3 退出。用 `gates:` 里的 `reframe <family> round <n> <split|tests|redo|accept-risk> — <理由>` 回答。要升级标准,绝不悄悄降低它。
+1. **一次 escalation** —— 一条 `VERDICT: escalate`,或某个 family 在所有者的评审轮次上限(`process-config.md` 的 `review-round-limit`,未配置为 7)仍是 `revise`。`apriori status --change <name> --escalation` 打印它并以 3 退出。用 `gates:` 里的 `reframe <family> round <n> <split|tests|redo|accept-risk> — <理由>` 回答。要升级标准,绝不悄悄降低它。
 2. **无法解决的 `## Open` 条目**(关键证据被挡住)—— 把证据做便宜、拆小 change、或在 `gates:` 里接受风险(`evidence-accept <ID>`)。接受它只结清那一条条目,别无其他。
-3. **某个评审 family 在它的第 2 轮后停滞** —— 用 `gates:` 里的 `reframe <family> round <n> <split|tests|redo> — <理由>` 回答;只重开那个 family 的循环,别无其他。
+3. **某个评审 family 到了它的轮次上限** —— 用 `gates:` 里的 `reframe <family> round <n> <split|tests|redo|accept-risk> — <理由>` 回答;只重开那个 family 该轮的循环,别无其他。之后到达或超过上限的 `revise` 会再次停下——若希望它不必每轮问你就继续跑,在 `process-config.md` 里提高 `review-round-limit`;上限处的 `accept` 自行继续。上限之下的 `revise` 不会为你停下——agent 从第 3 轮起记 `review-progress` 并继续。
 4. **每一次外部副作用**(§1)—— 一次性、点名、原文记录。任何一揽子授权都永不覆盖它。
 5. **放弃** —— 只凭你的一句话。
 

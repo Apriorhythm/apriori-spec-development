@@ -88,8 +88,8 @@ test('PR-32 the handbook does not speak of tracks — §4.0 retired them', () =>
 
 test('PR-33 the command template lists all five R1 stop classes — the stalled review family included', () => {
   const tpl = fs.readFileSync(path.join(ROOT, 'templates', 'command.md'), 'utf8');
-  assert.match(EN, /A review family stalled after its round 2/);          // RUNBOOK:82, the source
-  assert.match(tpl, /stalled|round 2/);
+  assert.match(EN, /A review family at its round limit \(reframe\)/);   // RUNBOOK:82, the source
+  assert.match(tpl, /round limit/);
 });
 
 test('PR-05 probe code is disposable and never becomes an artifact', () => {
@@ -180,7 +180,7 @@ test('PR-08 the four phases and the four decision points bind in both editions',
   const r1en = EN.slice(EN.indexOf('**R1 —'), EN.indexOf('### External side effects'));
   assert.match(r1en, /An escalation/);
   assert.match(r1en, /An `## Open` item that cannot be resolved/);
-  assert.match(r1en, /A review family stalled after its round 2 \(reframe\)/);
+  assert.match(r1en, /A review family at its round limit \(reframe\)/);
   assert.match(r1en, /There are exactly five:/);
   assert.match(r1en, /An external side effect/);
   assert.match(r1en, /Abandonment/);
@@ -188,7 +188,7 @@ test('PR-08 the four phases and the four decision points bind in both editions',
   const r1cn = CN.slice(CN.indexOf('**R1 ——'), CN.indexOf('### 外部副作用'));
   assert.match(r1cn, /升级\(escalation\)/);
   assert.match(r1cn, /无法解决的 `## Open` 条目/);
-  assert.match(r1cn, /评审 family 在它的第 2 轮后停滞\(reframe\)/);
+  assert.match(r1cn, /评审 family 到了它的轮次上限\(reframe\)/);
   assert.match(r1cn, /只有五种:/);
   assert.match(r1cn, /外部副作用/);
   assert.match(r1cn, /放弃\(abandon\)/);

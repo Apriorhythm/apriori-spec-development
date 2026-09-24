@@ -10,7 +10,7 @@ The name may be one they just asked you to start. Read a runbook section only wh
 reading list, and never preload the full runbook. Follow the trigger and read only that
 section — stop once it answers; follow another section only when a new trigger points there.
 Advance ONLY to the next point where a human has to decide (runbook §1 R1's five: an
-escalation, an open item nobody can resolve, a review family stalled after its round 2,
+escalation, an open item nobody can resolve, a review family still revising at its round limit,
 an external side effect, or abandonment), then stop and report.
 R1 also routes by the actual delegation, not the phase: finish the requested result and
 report when done; a human-limited delegation ending is normal completion, not a sixth

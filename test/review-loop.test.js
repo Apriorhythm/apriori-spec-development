@@ -43,7 +43,7 @@ const EVIDENCE = '\n## Open\n\n';
 const ACCEPT = 'VERDICT: no major issues';
 const REVISE = 'VERDICT: 3 issues open';
 
-function project(gates = '  - 2026-08-23T00:00 note: n\n', phase = 'build') {
+function project(gates = '  - 2026-08-23T00:00 note: n\n', phase = 'build', limit = 5) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-rl-'));
   const w = (rel, body) => {
     const p = path.join(root, rel);
@@ -54,19 +54,35 @@ function project(gates = '  - 2026-08-23T00:00 note: n\n', phase = 'build') {
   w('apriori/changes/c/flow-state.md',
     `change: c\nmode: standard\nlineage: v6\nphase: ${phase}\n${EVIDENCE}gates:\n${gates}`);
   w('apriori/changes/c/specs/kv/spec.md', DELTA);
+  // review-round-limit: these fixtures were written against the 6.0 round-5 stop-loss; the owner's
+  // row pins that number so the loop semantics under test stay what the assertions describe
+  if (limit !== null) w('apriori/process-config.md', `| Field | Value |\n|---|---|\n| review-round-limit | ${limit} |\n`);
   fs.mkdirSync(path.join(root, 'apriori', 'changes', 'c', 'review'), { recursive: true });
   return { root, bundle: path.join(root, 'apriori', 'changes', 'c'), w };
 }
 
 const doc = (bundle, stem, body) => fs.writeFileSync(path.join(bundle, 'review', `${stem}.md`), body);
 const raw = (bundle, stem) => fs.writeFileSync(path.join(bundle, 'review', `${stem}-raw.txt`), 'raw transcript\n');
-const landRound = (bundle, stem, verdict) => { doc(bundle, stem, `# review\n\nfindings…\n\n${verdict}\n`); raw(bundle, stem); };
+// from round 3 on the producer owes a review-progress note (review-round-limit); the fixture
+// records a minimal complete one so the tests keep exercising the loop, not the record check
+const progressNote = (bundle, stem) => {
+  const m = /^(.*)-v(\d+)$/.exec(stem);
+  if (!m || Number(m[2]) < 3) return;
+  const fp = path.join(bundle, 'flow-state.md');
+  if (!fs.existsSync(fp)) return;
+  const line = `  - 2026-08-23T0${Math.min(Number(m[2]), 9)}:00 note: review-progress ${m[1]} round ${m[2]} — issues: none; actions: fixed the findings; evidence: suite; approach: kept — same plan\n`;
+  const cur = fs.readFileSync(fp, 'utf8');
+  if (!cur.includes(`review-progress ${m[1]} round ${m[2]}`)) fs.writeFileSync(fp, cur + (cur.endsWith('\n') ? '' : '\n') + line);
+};
+const landRound = (bundle, stem, verdict) => { doc(bundle, stem, `# review\n\nfindings…\n\n${verdict}\n`); raw(bundle, stem); progressNote(bundle, stem); };
 const landFamily = (bundle, family, verdicts) =>
   verdicts.forEach((v, i) => landRound(bundle, `${family}-v${i + 1}`, v));
 
 const facts = (bundle) => review.reviewFacts(bundle);
 const flowOf = (bundle) => fs.readFileSync(path.join(bundle, 'flow-state.md'), 'utf8');
-const loopOf = (bundle) => review.reviewLoop(review.reviewFacts(bundle), flowOf(bundle));
+const rootOf = (bundle) => path.resolve(bundle, '..', '..', '..');
+const loopOf = (bundle) => review.reviewLoop(review.reviewFacts(bundle), flowOf(bundle), 'in-flight',
+  { limit: require('../lib/config').resolveReviewRoundLimit(rootOf(bundle)), cwd: rootOf(bundle) });
 const famOf = (o, name) => o.families.find((f) => f.family === name);
 const kinds = (o) => o.problems.map((p) => p.kind).sort();
 const advKinds = (o) => o.advisories.map((a) => a.kind).sort();
@@ -354,7 +370,7 @@ test('RL-19 three families each keep their own round; nothing is summed', () => 
 });
 
 test('RL-20 one family stalling never stops another family', () => {
-  const { root, bundle } = project();
+  const { root, bundle } = project(undefined, 'build', 2);     // the limit at 2: the old round-2 stall
   landFamily(bundle, 'spec-review', [REVISE, REVISE]);
   landFamily(bundle, 'code-review', [ACCEPT]);
   const l = loopOf(bundle);
@@ -368,12 +384,13 @@ test('RL-20 one family stalling never stops another family', () => {
 
 test('RL-21 the reframe names the family it answers', () => {
   const { root, bundle } = project(
-    '  - 2026-08-23T10:00 owner: reframe spec-review round 2 split — this is two changes\n');
+    '  - 2026-08-23T10:00 owner: reframe spec-review round 2 split — this is two changes\n', 'build', 2);   // limit 2: both stop
   landFamily(bundle, 'spec-review', [REVISE, REVISE]);
   landFamily(bundle, 'req-review', [REVISE, REVISE]);
   const c = c8(root);
   assert.strictEqual(c.status, 'blocked', 'req-review is still unanswered');
-  assert.match(c.detail, /req-review round 2/);
+  assert.match(c.detail, /ESCALATION req-review round 2 .*a human decides/);
+  assert.match(c.detail, /ESCALATION spec-review round 2 .*owner decision on record: split/);
   assert.doesNotMatch(c.detail, /reframe spec-review round 2 <split/);
 
   fs.appendFileSync(path.join(bundle, 'flow-state.md'),
@@ -404,24 +421,26 @@ test('RL-23 a reframe that does not answer THIS family and round releases nothin
     'reframe req-review round 2 split — wrong family',
     'reframe spec-review round 1 split — wrong round',
     'reframe spec-review round 2 continue — not a legal decision',
-    'reframe spec-review round 2 accept-risk — accept-risk is the round-5 exit',
     'reframe spec-review round 2 redo —',
     'reframe spec-review round 2 redo',
     'reframe round 2 split — the old family-less grammar',
   ]) {
-    const { root, bundle } = project(`  - 2026-08-23T10:00 owner: ${entry}\n`);
+    const { root, bundle } = project(`  - 2026-08-23T10:00 owner: ${entry}\n`, 'build', 2);   // limit 2: round 2 stops
     landFamily(bundle, 'spec-review', [REVISE, REVISE]);
-    assert.strictEqual(c8(root).status, 'blocked', entry);
+    const c = c8(root);
+    assert.strictEqual(c.status, 'blocked', entry);
+    assert.match(c.detail, /ESCALATION spec-review round 2 .*a human decides/, entry);   // still stopped: nothing answered it
   }
 });
 
 test('RL-24 split, tests and redo are equal exits at round 2', () => {
   for (const d of ['split', 'tests', 'redo']) {
-    const { root, bundle } = project(`  - 2026-08-23T10:00 owner: reframe spec-review round 2 ${d} — reason\n`);
+    const { root, bundle } = project(`  - 2026-08-23T10:00 owner: reframe spec-review round 2 ${d} — reason\n`, 'build', 2);
     landFamily(bundle, 'spec-review', [REVISE, REVISE]);
     // each releases the STOP identically; none of them closes the review
     const c = c8(root);
-    assert.doesNotMatch(c.detail, /this review loop stops here/, d);
+    assert.match(c.detail, new RegExp(`ESCALATION spec-review round 2 .*owner decision on record: ${d}`), d);   // acknowledged, not stopped
+    assert.doesNotMatch(c.detail, /a human decides/, d);
     assert.match(c.detail, /the independent review has not resolved/, d);
     // and a later accepting round is what actually converges it
     landFamily(bundle, 'spec-review', [REVISE, REVISE, ACCEPT]);
@@ -429,9 +448,9 @@ test('RL-24 split, tests and redo are equal exits at round 2', () => {
   }
 });
 
-test('RL-25 a family reaching its own round 5 escalates, whatever the verdict', () => {
+test('RL-25 a family still revising at its own limit escalates (accept at the limit proceeds)', () => {
   const { root, bundle } = project();
-  landFamily(bundle, 'spec-review', [REVISE, REVISE, REVISE, REVISE, ACCEPT]);
+  landFamily(bundle, 'spec-review', [REVISE, REVISE, REVISE, REVISE, REVISE]);
   const l = loopOf(bundle);
   assert.strictEqual(famOf(l, 'spec-review').round, 5);
   assert.ok(Array.isArray(l.escalation) && l.escalation.length === 1);
@@ -584,8 +603,8 @@ test('RL-33 gate prints C8 and exits 1 on a stopped loop', () => {
 // archive — the same loop, through readiness R4
 // ===========================================================================
 
-function archiveProject(gates, verdicts, extra) {
-  const { root, bundle } = project(gates, 'review');
+function archiveProject(gates, verdicts, extra, limit = 5) {
+  const { root, bundle } = project(gates, 'review', limit);
   for (const [family, list] of Object.entries(verdicts)) landFamily(bundle, family, list);
   if (extra) extra(bundle);
   return { root, bundle };
@@ -607,14 +626,20 @@ test('RL-34 a blocked loop refuses archive --write: nothing merged, nothing move
 });
 
 test('RL-35 readinessOf reports R4 through the same loop, not a second parser', () => {
-  const { bundle } = archiveProject(NOTE, { 'spec-review': [REVISE, REVISE] });
+  const { bundle } = archiveProject(NOTE, { 'spec-review': [REVISE, REVISE] }, undefined, 2);   // limit 2: the old round-2 stall
   const rdy = rd.readinessOf({ bundleDir: bundle, name: 'c' });
   assert.strictEqual(rdy.ready, false);
   const r4 = rdy.blockers.filter((b) => b.rule === 'R4');
   // two findings, one per claim: the loop stalled at ITS round 2, and the review never resolved.
   // Neither is forceable — `--force` overrides progress, and neither of these is progress.
-  assert.deepStrictEqual(r4.map((b) => b.class).sort(), ['loop', 'review']);
-  assert.ok(r4.every((b) => b.forceable === false), 'a stalled round-2 loop is never forceable');
+  assert.deepStrictEqual(r4.map((b) => b.class).sort(), ['escalation', 'review']);
+  // the limit stop is an escalation with NO owner decision on record: not forceable, cure named, nothing forced
+  const stop = r4.find((b) => b.class === 'escalation');
+  assert.ok(stop, 'the limit stop is reported as R4 escalation');
+  assert.strictEqual(stop.forceable, false);
+  assert.match(stop.cure, /owner: reframe spec-review round 2/);
+  assert.ok(r4.every((b) => b.forceable === false), 'nothing here is forceable');
+  assert.deepStrictEqual(rdy.forced, []);
   assert.ok(r4.every((b) => /spec-review/.test(b.detail)));
   const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'readiness.js'), 'utf8');
   const body = src.slice(src.indexOf('function readinessOf'), src.indexOf('module.exports'));
@@ -766,7 +791,7 @@ test('RL-42 the docs state the two phases, the cure line and the boundary', () =
   const EN = readRoot('RUNBOOK.md'), CN = readRoot('RUNBOOK_cn.md');
   for (const d of [EN, CN]) {
     assert.match(d, /apriori gate/);
-    assert.match(d, /reframe <family> round <n> <split\|tests\|redo>/);
+    assert.match(d, /reframe <family> round <n> <split\|tests\|redo(?:\|accept-risk)?>/);
     assert.match(d, /C8/);
     assert.match(d, /R4/);
   }
@@ -809,6 +834,7 @@ function archivedFixture(verdicts, extra) {
   };
   // the store already carries the merged delta — an archived change verifies against it
   w('apriori/specs/kv/spec.md', STORE + '\n### Requirement: Beta\n\n#### Scenario: XB-01 new\n- t\n');
+  w('apriori/process-config.md', '| Field | Value |\n|---|---|\n| review-round-limit | 5 |\n');   // the 6.0 stop-loss number, pinned
   w(`${base}/flow-state.md`,
     'change: c\nmode: standard\nlineage: v6\nphase: done\nnext-action: none\n'
     + 'gates:\n  - 2026-07-10T00:00 note: archived\n');

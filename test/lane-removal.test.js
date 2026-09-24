@@ -240,17 +240,18 @@ test('LN-08 no live doc sells rounds as a continuous patching budget', () => {
 test('LN-09 both languages carry the same round semantics', () => {
   const en = LIVE['RUNBOOK.md'] + LIVE['docs/concepts.md'];
   const cn = LIVE['RUNBOOK_cn.md'] + LIVE['docs/concepts_cn.md'];
-  // target 2 / the control point is round 2
-  assert.match(en, /converge within 2 rounds|target(?:s)? 2 rounds/i, 'EN: the 2-round target is missing');
-  assert.match(cn, /2 轮内收敛|目标.{0,4}2 轮/, 'CN: the 2-round target is missing');
-  assert.match(en, /control point/i, 'EN: the round-2 control point is missing');
-  assert.match(cn, /控制点/, 'CN: the round-2 control point is missing');
-  // rounds 3-5 only verify a CHANGED approach
+  // the 2-round target survives as ADVISORY wording only
+  assert.match(en, /convergence within 2 rounds is advisory/i, 'EN: the advisory 2-round target is missing');
+  assert.match(cn, /2 轮内收敛」只是建议/, 'CN: the advisory 2-round target is missing');
+  // the one configured number, in both
+  assert.match(en, /review-round-limit/, 'EN: the limit key is missing');
+  assert.match(cn, /review-round-limit/, 'CN: the limit key is missing');
+  // the reframes
   assert.match(en, /split|add tests|redo the approach/i, 'EN: the three reframes are missing');
   assert.match(cn, /拆分.{0,4}补测试.{0,4}重做/, 'CN: the three reframes are missing');
-  // round 5 is a human decision, not an automatic cap
-  assert.match(en, /round 5[\s\S]{0,200}(owner|human)/i, 'EN: round 5 does not end at a person');
-  assert.match(cn, /第 ?5 ?轮[\s\S]{0,200}(人|owner|Owner)/, 'CN: round 5 does not end at a person');
+  // the limit is a human decision, not an automatic cap
+  assert.match(en, /at the effective limit[\s\S]{0,200}(owner|human)/i, 'EN: the limit does not end at a person');
+  assert.match(cn, /在有效上限[\s\S]{0,200}(所有者|人|owner)/, 'CN: the limit does not end at a person');
 });
 
 test('LN-10 the packaged templates carry neither lane', () => {

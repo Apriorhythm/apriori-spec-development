@@ -3,11 +3,11 @@
 > Moved verbatim from `RUNBOOK.md` (formerly its §6); the § references below (§1, §4, §5) point into `RUNBOOK.md`.
 
 > Everything in this section is **run by the human**. The agent must never execute or simulate `/goal` (R3). Architecture and caveats: `docs/concepts.md` §4.7 (automating the loop with `/goal`) in the apriori-cli repository.
-> **Two loops, two bounds.** *Review rounds* are governed per family by the derived loop (§1 R4 / `gate` C8); *the implement-and-test loop* is bounded by a fixed worst-case **25 turns**, written into its recipe text below. `process-config.md` configures neither.
+> **Two loops, two bounds.** *Review rounds* are governed per family by the derived loop (§1 R4 / `gate` C8) against the owner's `review-round-limit` row of `process-config.md` (default 7); *the implement-and-test loop* is bounded by a fixed worst-case **25 turns**, written into its recipe text below — `process-config.md` holds no number for it.
 
 **Specify loop (run only when the owner asks for an early judgment on a specific approach, or the requirement is still substantially uncertain — the default is to skip straight to Build & Test):**
 ```text
-/goal "Goal: apriori/changes/<change>/specs/ holds the behavior contract and the latest review verdict line is 'VERDICT: no major issues, ready to proceed to execution'. No round cap — §1 R4's derived loop governs: still revising after round 2, stop and report instead of opening round 3.
+/goal "Goal: apriori/changes/<change>/specs/ holds the behavior contract and the latest review verdict line is 'VERDICT: no major issues, ready to proceed to execution'. No round number here — §1 R4's derived loop governs: below the owner's review-round-limit (process-config.md, default 7) keep revising, logging the review-progress note in gates: before round 3 and every later round; stop and report when the reviewer escalates or the limit is reached while still revising.
 Each round:
 1. Revise the delta specs per the latest review — never touch source code — and update the state's ## Open section.
 2. Re-run the heterogeneous reviewer with the P3 prompt (round 1: codex exec, note the printed session id; later rounds: codex exec resume -c sandbox_mode=\"read-only\" <session-id>), producing apriori/changes/<change>/review/spec-review-v{N}.md.
@@ -32,9 +32,9 @@ Stop when all of it holds, or immediately if the verdict is 'VERDICT: escalate'.
 
 **What you personally decide (there are five, and no others):**
 
-1. **An escalation** — a `VERDICT: escalate`, or a family at round 5. `apriori status --change <name> --escalation` prints it and exits 3. Answer with `reframe <family> round <n> <split|tests|redo|accept-risk> — <reason>` in `gates:`. Escalate the bar, never quietly lower it.
+1. **An escalation** — a `VERDICT: escalate`, or a family still `revise` at the owner's review-round limit (`review-round-limit` in `process-config.md`, 7 when unset). `apriori status --change <name> --escalation` prints it and exits 3. Answer with `reframe <family> round <n> <split|tests|redo|accept-risk> — <reason>` in `gates:`. Escalate the bar, never quietly lower it.
 2. **An `## Open` item that cannot be resolved** (critical evidence blocked) — make the evidence cheaper, split the change, or accept the risk in `gates:` (`evidence-accept <ID>`). Accepting it settles that one item, and nothing else.
-3. **A review family stalled after its round 2** — answer with `reframe <family> round <n> <split|tests|redo> — <reason>` in `gates:`; that family's loop reopens, nothing else does.
+3. **A review family at its round limit** — answer with `reframe <family> round <n> <split|tests|redo|accept-risk> — <reason>` in `gates:`; that family's loop reopens for that round, nothing else does. A later `revise` at or past the limit stops again — raise `review-round-limit` in `process-config.md` if the family should run on without asking you each round; an `accept` there proceeds on its own. A `revise` below the limit never stops for you — the agent logs `review-progress` from round 3 on and continues.
 4. **Every external side effect** (§1) — one-shot, named, recorded verbatim. No blanket ever covers one.
 5. **Abandonment** — your word alone.
 

@@ -9,3 +9,4 @@
 | Field | Value | Legal range | Default |
 |---|---|---|---|
 | language | auto | auto (match the human) / any language name, e.g. `中文`, `English` | auto |
+| review-round-limit | 7 | an integer >= 1 — the round at which a still-revising review family stops for the owner (RUNBOOK §1 R4); the agent never edits this row | 7 |

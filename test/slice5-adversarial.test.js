@@ -57,6 +57,7 @@ function project({ mode = null, open = [], sections = '', gates = '', delta = AD
   w(path.join(dir, 'review', 'code-review-v1.md'), `# review r1\n\nVERDICT: ${verdict}\n`);
   w(path.join(dir, 'review', 'code-review-v1-raw.txt'), 'raw\n');
   if (ledger) w(path.join(dir, 'review', 'issues.md'), ledger);
+  w(path.join(root, 'apriori', 'process-config.md'), '| Field | Value |\n|---|---|\n| review-round-limit | 5 |\n');   // the 6.0 stop-loss number, pinned
   return { root, dir, delta };
 }
 const gate = (p, extra = []) => run(['gate', '--change', 'c', '--test-cmd', tapFor(p.delta), '--no-cas', ...extra], p.root);
@@ -516,6 +517,7 @@ test('AM-121 the owner exit keeps its double action, and the printed cure is cop
     for (let i = 1; i <= 5; i++) {
       w(path.join(p.dir, 'review', `code-review-v${i}.md`), `# r${i}\n\nVERDICT: 3 issues open\n`);
       w(path.join(p.dir, 'review', `code-review-v${i}-raw.txt`), 'raw\n');
+      if (i >= 3) fs.appendFileSync(path.join(p.dir, 'flow-state.md'), `  - 2026-08-23T0${i}:00 note: review-progress code-review round ${i} — issues: none; actions: fixed; evidence: suite; approach: kept — same plan\n`);
     }
     fs.rmSync(path.join(p.dir, 'review', 'code-review-v1.md'));
     w(path.join(p.dir, 'review', 'code-review-v1.md'), '# r1\n\nVERDICT: 3 issues open\n');

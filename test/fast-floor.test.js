@@ -56,6 +56,10 @@ const tapFor = (ids) => 'console.log("TAP version 13");console.log("1..' + ids.l
 // One complete, attributable review round: a summary carrying a classifiable verdict, and
 // the raw transcript that makes it attributable.
 function reviewRound(dir, family, n, verdict) {
+  // review-round-limit: rounds >= 3 owe a progress note; the fixture records a minimal complete one
+  if (n >= 3 && fs.existsSync(path.join(dir, 'flow-state.md'))) {
+    fs.appendFileSync(path.join(dir, 'flow-state.md'), `  - 2026-07-11T0${Math.min(n, 9)}:00 note: review-progress ${family} round ${n} — issues: none; actions: fixed; evidence: suite; approach: kept — same plan\n`);
+  }
   w(path.join(dir, 'review', `${family}-v${n}.md`), `# ${family} r${n}\n\nVERDICT: ${verdict}\n`);
   w(path.join(dir, 'review', `${family}-v${n}-raw.txt`), '<!-- provenance: provider=codex model=x session=y date=2026-08-23 -->\nraw transcript\n');
 }
@@ -68,7 +72,7 @@ const OPEN = '\n## Open\n\n';
 // A gate-able project. `archived` places the bundle under changes/archive/<stamp>-<name>.
 function project(opts = {}) {
   const { mode = 'fast', delta = ADDED, deltaPath = 'kv/spec.md', phase = 'build',
-    tasks = null, ledger = null, review = null, archived = false, gates = '' } = opts;
+    tasks = null, ledger = null, review = null, archived = false, gates = '', limit = 5 } = opts;
   const root = mk();
   const dir = archived
     ? path.join(root, 'apriori', 'changes', 'archive', '2026-01-01T0000-c')
@@ -79,6 +83,7 @@ function project(opts = {}) {
   if (delta !== null) w(path.join(dir, 'specs', ...deltaPath.split('/')), delta);
   // an archived bundle's deltas are already merged: C1 verifies the STORE, not a projection
   w(path.join(root, 'tap.js'), tapFor(archived || delta === null ? BASE_IDS : IDS.get(delta) || BASE_IDS));
+  w(path.join(root, 'apriori', 'process-config.md'), `| Field | Value |\n|---|---|\n| review-round-limit | ${limit} |\n`);   // the 6.0 stop-loss number by default, pinned
   w(path.join(dir, 'flow-state.md'),
     `change: c\nmode: ${mode}\nlineage: fixture\nphase: ${phase}\n${OPEN}`
     + `gates:\n  - 2026-07-11T00:00 note: fixture\n${gates}`);
@@ -461,7 +466,7 @@ test('FF-14 a delta the scan cannot read is fail-closed: a refusal, never "no ri
 
 test('FF-15 status and gate speak the same stage — a frozen loop is frozen in both', () => {
   const { root, dir } = project({ archived: true, mode: 'standard', step: 'DONE',
-    tasks: '- [x] T1\n', ledger: LEDGER, delta: ADDED });
+    tasks: '- [x] T1\n', ledger: LEDGER, delta: ADDED, limit: 2 });   // limit 2: a frozen loop that WOULD stop
   for (const n of [1, 2]) reviewRound(dir, 'spec-review', n, 'gaps found');
   const g = gate(root);
   assert.match(line(g.stdout, 'C8'), /do not apply retroactively/, line(g.stdout, 'C8'));

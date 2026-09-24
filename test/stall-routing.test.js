@@ -21,18 +21,18 @@ function upto(text, startRe, endRe, label) {
 const BLOCKS = {
   'EN §0 fix packet': (d) => upto(d.EN, /- \*\*REVISE cuts the session/, /\n- \*\*/, 'EN fix packet'),
   'CN §0 fix packet': (d) => upto(d.CN, /- \*\*REVISE 切断会话/, /\n- \*\*/, 'CN fix packet'),
-  'EN §1 R1 stall':   (d) => upto(d.EN, /^3\. \*\*A review family stalled/m, /^4\. \*\*/m, 'EN R1.3'),
+  'EN §1 R1 stall':   (d) => upto(d.EN, /^3\. \*\*A review family at its round limit/m, /^4\. \*\*/m, 'EN R1.3'),
   'CN §1 R1 stall':   (d) => upto(d.CN, /^3\. \*\*某个评审 family/m, /^4\. \*\*/m, 'CN R1.3'),
 };
 
 const MEANINGS = [
   // Fix Packet 入口就地展开停滞判别
   ['SR2-01-EN-stall-check-first', 'EN §0 fix packet',
-    /already stalled after its own round 2[\s\S]{0,200}do not enter this section's fix loop/],
+    /already stopped at the owner's review-round limit[\s\S]{0,200}do not enter this section's fix loop/],
   ['SR2-01-CN-stall-check-first', 'CN §0 fix packet',
-    /已在它自己的第 2 轮后停滞[\s\S]{0,200}不进入本节的修复回路/],
+    /已在所有者的评审轮次上限[\s\S]{0,200}不进入本节的修复回路/],
   // 必须带「尚未有效重开」限定 —— 否则会挡死合法恢复
-  ['SR2-02-EN-not-yet-reopened', 'EN §0 fix packet', /no valid owner reframe has reopened it/],
+  ['SR2-02-EN-not-yet-reopened', 'EN §0 fix packet', /no valid owner reframe has released it/],
   ['SR2-02-CN-not-yet-reopened', 'CN §0 fix packet', /尚无有效的 owner reframe 重开它/],
   // R1 第3类互指
   ['SR2-03-EN-r1-points-back', 'EN §1 R1 stall',
@@ -67,11 +67,11 @@ test('SR2-05 三条正反例：普通 REVISE 仍走修复 · 停滞则停 · 有
     assert.match(fp, lang === 'EN' ? /the fix round runs in a fresh or cleared session/
                                    : /修复轮换一个全新或已清空的会话跑/, `${lang}: 普通 REVISE 修复回路被删`);
     // 正例2：停滞分支必须以「尚未有效重开」为条件，而非无条件封堵
-    assert.match(fp, lang === 'EN' ? /no valid owner reframe has reopened it/
+    assert.match(fp, lang === 'EN' ? /no valid owner reframe has released it/
                                    : /尚无有效的 owner reframe 重开它/, `${lang}: 停滞分支缺"尚未重开"限定`);
     // 正例3：R1 第3类保留 owner reframe 的重开出口（有效重开后可恢复）
-    assert.match(r1, lang === 'EN' ? /reframe <family> round <n> <split\|tests\|redo>/
-                                   : /reframe <family> round <n> <split\|tests\|redo>/, `${lang}: reframe 重开出口被删`);
+    assert.match(r1, lang === 'EN' ? /reframe <family> round <n> <split\|tests\|redo\|accept-risk>/
+                                   : /reframe <family> round <n> <split\|tests\|redo\|accept-risk>/, `${lang}: reframe 重开出口被删`);
   }
 });
 

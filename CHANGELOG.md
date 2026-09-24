@@ -2,6 +2,23 @@
 
 All notable changes to `apriori-cli`. Versions follow semver; the stability promise: CLI surface & flags, `--json` shapes, the delta format and the flow-state schema only break in a major.
 
+## Unreleased — review-round-limit: the review loop's limit belongs to the owner
+
+The fixed round-2 stop and round-5 stop-loss of 6.0 are retired. One human-held number —
+`| review-round-limit | <n> |` in `apriori/process-config.md` (missing row = 7, integers >= 1,
+shipped visibly in the scaffolded template; the agent never writes it) — governs every review
+family. A `revise` below the limit never stops the loop by itself; the loop stops for the owner
+only on an `escalate` verdict or a `revise` AT the limit (`accept` at the limit proceeds), both
+reported as the derived escalation the owner answers with `reframe … <split|tests|redo|accept-risk>`.
+From round 3 on the producer logs a `note: review-progress <family> round <n> — issues; actions;
+evidence; approach` entry that C8 checks structurally (family/round, four parts, coverage of the
+ids that open list items or table rows of the previous round's summary, existing evidence paths)
+— never an owner gate. An invalid or conflicting limit row blocks C8 and archive R4 naming the
+key, the value and the legal range; no default is substituted silently. Cumulative counts never
+reset. Why: across 37 real review families, 24% were still revising at round 2 and every one of
+them converged by round 4 once allowed to continue; none reached round 5 — the round-2 stop was a
+standing blocker only a human could release, not a rare escape hatch.
+
 ## Unreleased — S2 P3: a dedicated `/apriori-discuss` entry, and what its manifest does not do
 
 `init` now installs **two** command entries per command-level tool: the existing `apriori`

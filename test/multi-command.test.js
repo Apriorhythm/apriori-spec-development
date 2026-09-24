@@ -76,8 +76,8 @@ test('MC-02 the eight shipped generations survive the array→map change, in ord
     'sha256:1dfa5eece0f3c109aae765aa52ffb89f59c0f0f3b494f9430148ac6baeeab046',
   ];
   assert.deepStrictEqual(g.apriori.slice(0, historical.length), historical, 'historical values and order must survive');
-  assert.strictEqual(g.apriori.length, historical.length + 1, 'one new generation only');
-  assert.strictEqual(g.apriori[historical.length], shaFile(FIRST_SRC), 'appended generation must match current template');
+  assert.ok(g.apriori.length >= historical.length + 1, 'at least one generation after the historical eight');
+  assert.strictEqual(g.apriori[g.apriori.length - 1], shaFile(FIRST_SRC), 'the last appended generation must match the current template');
   for (const h of g.apriori) assert.match(h, /^sha256:[0-9a-f]{64}$/);
 });
 

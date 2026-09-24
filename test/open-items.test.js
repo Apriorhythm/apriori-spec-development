@@ -60,6 +60,7 @@ function project({ open = '', sections = '', gates = '', head = '', evidence = n
     + `gates:\n  - 2026-08-23T00:00 note: scaffolded\n${gates}`);
   w(path.join(dir, 'review', 'code-review-v1.md'), `# review r1\n\nVERDICT: ${verdict}\n`);
   w(path.join(dir, 'review', 'code-review-v1-raw.txt'), 'raw\n');
+  w(path.join(root, 'apriori', 'process-config.md'), '| Field | Value |\n|---|---|\n| review-round-limit | 5 |\n');   // the 6.0 stop-loss number, pinned
   return { root, dir, delta };
 }
 const flowOf = (p) => fs.readFileSync(path.join(p.dir, 'flow-state.md'), 'utf8');
@@ -509,6 +510,7 @@ test('OI-10 an unaccepted open item is never forceable, with or without an archi
   for (let i = 1; i <= 5; i++) {
     w(path.join(five.dir, 'review', `code-review-v${i}.md`), `# r${i}\n\nVERDICT: 3 issues open\n`);
     w(path.join(five.dir, 'review', `code-review-v${i}-raw.txt`), 'raw\n');
+    if (i >= 3) fs.appendFileSync(path.join(five.dir, 'flow-state.md'), `  - 2026-08-23T0${i}:00 note: review-progress code-review round ${i} — issues: none; actions: fixed; evidence: suite; approach: kept — same plan\n`);
   }
   assert.strictEqual(archive(five).status, 1, 'the record alone is not a --force');
   const forced = archive(five, ['--force']);

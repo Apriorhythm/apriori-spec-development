@@ -580,7 +580,7 @@ test('PR-18 there is no ledger: ## Open is the only home of open issues, and one
   assert.match(en, /MOVED/);
   assert.match(en, /reopens its old id/i);
   assert.match(en, /reopened is an event, not a new line/);
-  assert.match(en, /Exactly one thing blocks: an item nobody has accepted/);
+  assert.match(en, /Exactly one thing blocks: a pending item — one nobody has accepted and that is not a registered follow-up/);
   assert.match(en, /never deleted by a tool/);
   // the retired vocabulary and its setters are gone with the reader
   for (const dead of [/rejected-verified/, /advisory-acked/, /only a human sets `waived`/, /a row still reading `open`/])
@@ -592,7 +592,7 @@ test('PR-18 there is no ledger: ## Open is the only home of open issues, and one
   assert.match(cn, /一次性迁移/);
   assert.match(cn, /重开旧 id/);
   assert.match(cn, /重开是事件,不是新的一行/);
-  assert.match(cn, /只有一件事阻断:没有人接受的条目/);
+  assert.match(cn, /只有一件事阻断:pending 的条目——没有人接受、且不是已登记 follow-up 的条目/);
   for (const dead of [/rejected-verified/, /advisory-acked/, /只有人能置 `waived`/, /仍是 `open` 的行/])
     assert.doesNotMatch(cn, dead, String(dead));
   // neither runbook lists the ledger file as an artifact any more

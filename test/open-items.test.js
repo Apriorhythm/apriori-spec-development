@@ -142,7 +142,7 @@ test('OI-02 evidence-accept <id> settles one item; revoke, near misses and unkno
 
   // the ONE form that authorizes: the item is accepted, still present, and no longer blocks
   const ok = with_(ACCEPT('R-01', 'the staging DB is offline until Q4'));
-  assert.deepStrictEqual(ok.items, [{ id: 'R-01', text: 'restart recovery is unverified in the target runtime', accepted: true, acceptedAt: '2026-08-23T11:00' }]);
+  assert.deepStrictEqual(ok.items, [{ id: 'R-01', text: 'restart recovery is unverified in the target runtime', accepted: true, acceptedAt: '2026-08-23T11:00', followUp: null }]);
   assert.deepStrictEqual(ok.blockers, []);
   assert.deepStrictEqual(ok.notes, []);
   // the archive-stamp timestamp form is a timestamp too
@@ -202,7 +202,7 @@ test('OI-02 evidence-accept <id> settles one item; revoke, near misses and unkno
   const s = run(['status', '--change', 'c'], p.root).stdout;
   assert.match(s, /^open: {9}\[accepted\] R-01: restart recovery is unverified in the target runtime$/m);
   assert.doesNotMatch(s, /BLOCKED/);
-  assert.deepStrictEqual(statusJson(p).openItems, [{ id: 'R-01', text: 'restart recovery is unverified in the target runtime', accepted: true, acceptedAt: '2026-08-23T11:00' }]);
+  assert.deepStrictEqual(statusJson(p).openItems, [{ id: 'R-01', text: 'restart recovery is unverified in the target runtime', accepted: true, acceptedAt: '2026-08-23T11:00', followUp: null }]);
   assert.strictEqual(run(['status', '--change', 'c', '--escalation'], p.root).status, 0, 'an accepted item is not a reason to wait on a human');
   // nothing deletes the accepted line: the archived bundle still carries it
   const wr = run(['archive', '--change', 'c', '--no-cas', '--write', '--changes-dir', 'apriori/changes'], p.root);

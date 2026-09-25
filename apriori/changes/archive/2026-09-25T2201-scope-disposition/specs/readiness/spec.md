@@ -1,61 +1,7 @@
-### Requirement: one implementation of the readiness predicates, two layers of responsibility
-`lib/readiness.js` SHALL hold the single implementation of the flow-state and open-item predicates. Its BASE layer is what `gate` consumes rather than keeping its own copy. Its ARCHIVE layer is a SEPARATE set of functions written for a caller that performs an irreversible write: they classify `lstat`/`realpath` failures by `e.code` in a single pass and never call a helper that swallows exceptions. The two layers exist because `fileReadDefect`, `reviewDirDefect` and `containsReal` all swallow errors into a default — correct for callers that only report (gate, status, resolve), unsound for a caller that writes. The module SHALL NOT depend on `archive-merge`.
+<!-- apriori-base: sha256:144f61120e657805477b58d93f11153127d141747be9c13d367eabda4323ca4c -->
+# Delta — readiness (scope-disposition)
 
-#### Scenario: RY-01 the base predicates are what the gate reports
-- WHEN a bundle is fed to the base layer and to the gate
-- THEN the gate's C3 and C9 rows are the base layer's own return values and its C2 and C4 rows are the fixed 6.2 placeholders, asserted differentially rather than restated in prose
-
-#### Scenario: RY-03 the archiving phase is an overlay on C3, not a replacement
-- WHEN a flow-state fails a C3 check
-- THEN the C3 diagnosis is what surfaces; the phase wording appears only once the rest of C3 has passed
-
-#### Scenario: RY-04 archive readiness is strictly stronger than the gate's C3
-- WHEN a bundle sits at any legal phase other than `review`
-- THEN archive is not ready while the gate's C3 still passes — `archive ready` implies `gate C3 pass`, never the converse
-
-#### Scenario: RY-05 no layer reaches back into its caller
-- WHEN the modules are inspected statically
-- THEN `archive-merge.js` contains no `require('./gate')`, `gate.js` does not reimplement the three predicates, and `gate.js` still exports `classifyStatus` for the corpus test that depends on it
-
-#### Scenario: RY-06 the base layer stays bare
-- WHEN the base layer is inspected
-- THEN it contains no `fileReadDefect` call — adding a guard there would change what the gate reports without changing what the archive layer decides
-
-#### Scenario: RY-07 the base layer takes its containment check from resolve
-- WHEN `reviewDirDefect` runs against a normal directory, a symlink, a non-directory, an escaping path and an absent path
-- THEN the results match state A even though the containment helper now comes from `resolve` rather than `archive-merge` — the two differ only when target equals root, and this call site's target is always `<dir>/review`
-
-#### Scenario: RY-08 the archive artifact check matches state A everywhere state A has an answer
-- WHEN `artifactDefect` is compared against `resolve.fileReadDefect` on a clean file, a symlink, a non-file, an escaping path, a bad ancestor and a genuine absence
-- THEN all six agree; `io-error` is the seventh outcome, one state A cannot produce
-
-#### Scenario: RY-09 the archive review-root check matches the gate's, absence included
-- WHEN `reviewRootDefect` is compared against the gate's `reviewDirDefect` on a clean directory, an ABSENT directory, a symlink, a non-directory and an escaping path
-- THEN all five agree — the absent case returning nothing is the one that keeps a missing `review/` flowing to R4's review floor instead of becoming a new failure class
-
-#### Scenario: RY-10 the archive layer owns its error semantics end to end
-- WHEN `artifactDefect`, `reviewRootDefect` and `containDefect` are inspected statically
-- THEN none of them mentions `fileReadDefect`, the base `reviewDirDefect`, or `containsReal` — a second call into a swallowing helper would reopen the very window this layer exists to close
-
-#### Scenario: RY-11 the readiness entry point reuses the overlay rather than restating it
-- WHEN `readinessOf` is inspected statically
-- THEN its R1 stage calls `phaseOverlay` and does not restate the `phase === 'review'` comparison — a restated copy would let the phase acceptance pass a batch before the production path that enforces it exists
-
-#### Scenario: RY-12 a non-ENOENT beats a co-occurring ENOENT
-- WHEN the containment check's two realpath calls fail with different codes — one absent, one denied
-- THEN both calls are still attempted and the answer is the io-error, because letting the absence win would hand a permission failure to the leaf rule and archive an unread bundle
-
-#### Scenario: RY-13 the ancestor walk classifies its own failures
-- WHEN a non-ENOENT error is raised while walking up from an absent artifact toward the bundle root
-- THEN it surfaces as io-error with its code rather than being swallowed as "keep walking", which is what state A does and why state A ends at `missing` here
-
-#### Scenario: RY-14 the review root's own guard failures are classified, and ENOENT stays benign
-- WHEN the review root's lstat or realpath fails
-- THEN a non-ENOENT is io-error while an unresolvable path answers exactly as an absent directory does — R4 still decides, and no new failure class is introduced
-
-#### Scenario: RY-15 the structural set is closed and gate is untouched by it
-- WHEN the kinds the archive layer can return are enumerated
-- THEN every one except `missing` is structural and therefore never forceable, and none of this reaches the gate
+## MODIFIED Requirements
 
 ### Requirement: the readiness rules ask for facts, not for a document family
 Readiness SHALL NOT demand `tasks.md`, `requirement/`, a proposal, a design doc, a gap report or an issue ledger. Rule R2 (the task list) and rule R3 (the ledger) SHALL NOT exist: neither `tasks.md` nor `review/issues.md` is opened, and nothing in them blocks or is reported. The review ROOT is still guarded — a symlinked, escaping or non-directory `review/` is a structural R4 refusal, never forceable — and an absent `review/` is not a defect. No ledger state SHALL soften the review floor: the reviewer's latest verdict is what must close. Rule R5 SHALL be the ONE substantive state predicate, evaluated on the same input gate's C9 receives (the delta scan) and never forceable — and since scope-disposition its pending set excludes a registered FOLLOW-UP item (`- <ID>: follow-up → <new-change-name> — <text>`, a valid other change name), which R5 reports as a note, never a blocker; the predicate's notes (the open-item summary, an unmatched acceptance, the `contract-mutation` signal, an ignored legacy section) SHALL be printed as archive notes. `mode:` SHALL be optional and inert: readiness neither decides nor reports anything by it.
@@ -126,6 +72,8 @@ EVERY owner decision in the `gates:` log — the open-item acceptance, the (iner
 #### Scenario: OI-06 mode is optional and inert
 - WHEN the flow-state carries no `mode:` line, an empty one, `fast`, `standard`, the unfilled `<fast | standard>` placeholder, and a value outside the vocabulary — each beside a mutating delta
 - THEN C3 passes the first four (`legal (<phase>)` / `legal (mode <m>, <phase>)`) and blocks the last two; no surface announces an upgrade; the mutation is the `contract-mutation` signal; and `status --json` reports `effectiveMode` equal to `mode` (or `null`)
+
+## ADDED Requirements
 
 ### Requirement: a follow-up item is registered with its landing spot and never blocks
 The state predicate (`evidenceFindings`, read by gate C9, archive R5, the archive declaration and `status`) SHALL recognise an `## Open` item of the exact form `- <ID>: follow-up → <new-change-name> — <text>` (arrow `→` or `->`; the landing spot a bare kebab-case change name that passes `validateChangeName` — no date prefix, not a reserved name — and is not this change's own name as the canonical flow-state parser reads it (a `change:` inside a fence or an HTML comment is inert); an em dash; a text carrying a letter or digit) as a FOLLOW-UP: a new ask this delivery does not depend on, registered with the change that will carry it. A follow-up SHALL be reported as a note `follow-up <ID> → <name>: <text> (registered, not a blocker; moving it out is not closing it)` and SHALL raise no blocker; the archive declaration SHALL count it as `follow-up(s) registered` under critical evidence and not as pending, so the implementation reads `complete`; `status` SHALL mark it `[follow-up → <name>]` in text and carry `followUp: <name>` (`null` on every other item) in `--json`. Anything that does not match the grammar exactly — no landing spot, a landing spot that is not a valid other change name (`bad--name`, a reserved name such as `archive`, a date-prefixed `2026-09-next`, the change itself), no text — SHALL remain an ordinary pending item that blocks, and the pending cure SHALL name the follow-up form beside the two existing exits. Owner acceptance (`evidence-accept <ID>`) of a follow-up item keeps working and is reported as accepted.

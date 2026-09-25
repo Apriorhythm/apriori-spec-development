@@ -2,6 +2,10 @@
 
 All notable changes to `apriori-cli`. Versions follow semver; the stability promise: CLI surface & flags, `--json` shapes, the delta format and the flow-state schema only break in a major.
 
+## Unreleased — scope-disposition
+
+- Review findings get a per-finding disposition with its basis (contract / existing constraint / new ask) and a necessary-fix criterion (RUNBOOK §4 Review & Deliver, both editions; P3 untouched). A new ask the delivery does not depend on is registered as `- <ID>: follow-up → <new-change-name> — <text>` in `## Open`: C9 / R5 / the archive declaration / `status` report it as a note, never a blocker (`followUp` in `status --json`, `null` elsewhere); the grammar is exact and anything else stays a pending item. No closed vocabulary, no C8 marker check (S6, plan consensus 序 3).
+
 ## Unreleased — archive-drop-guard
 
 - `apriori archive` never drops a store scenario silently: a MODIFIED replacement whose `dropped` class is non-empty is refused (`RESULT: REFUSED — nothing written`) with a `— DROPPED SCENARIOS —` block and a manifest fingerprint; release = the owner's fingerprint-bound `archive-drop <change> sha256:<fp> — <reason>` entry **and** `--force`. Ambiguous keys are never forceable; `missingLines` stays report-only; the single-file form refuses drops outright. `buildProjection` exposes `sources` (the store/delta texts of its own parse) for the manifest.

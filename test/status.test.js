@@ -103,8 +103,8 @@ test('ST-04 --json emits a machine-consumable report (single + list), pure JSON'
     assert.deepStrictEqual(single.next, ['spawn the P3 reviewer']);
     assert.deepStrictEqual(single.openIssues, ['D-1: the TTL path is still open', 'D-2 is a line without an id'], 'compat: the raw lines');
     assert.deepStrictEqual(single.openItems, [
-      { id: 'D-1', text: 'the TTL path is still open', accepted: false, acceptedAt: null },
-      { id: null, text: 'D-2 is a line without an id', accepted: false, acceptedAt: null }]);
+      { id: 'D-1', text: 'the TTL path is still open', accepted: false, acceptedAt: null, followUp: null },
+      { id: null, text: 'D-2 is a line without an id', accepted: false, acceptedAt: null, followUp: null }]);
     assert.strictEqual(single.effectiveMode, single.mode, '6.2: the two are equal');
     assert.deepStrictEqual(single.reality.assumption, ['get cleans up lazily']);
     // the fixture's legacy delivery: line is tolerated; the retired key reads null (one version, MIGRATING)

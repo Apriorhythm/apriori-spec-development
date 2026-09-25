@@ -1,0 +1,1211 @@
+OpenAI Codex v0.155.1
+--------
+workdir: /root/terra/asd-v62-code
+model: gpt-6-astra
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: medium
+reasoning summaries: none
+session id: 01a0d8ce-a062-7073-b070-8100b2404a58
+--------
+user
+Round 2 (change `scope-disposition`, read-only, uncommitted; the revised diff is in the working tree now). Round-1 doc landed at apriori/changes/scope-disposition/review/code-review-v1.md (SDP-01, SDP-02; ADV-01..05).
+Changes since round 1 (verify in the files): SDP-01 — lib/readiness.js: a landing spot counts only if `require('./resolve').validateChangeName(name).ok` AND it is not this change's own `change:` name; RY-33 now covers `bad--name`, `archive`, `2026-09-next` and the self-name (all stay pending, cure printed). SDP-02 — RUNBOOK.md/RUNBOOK_cn.md §5: "Exactly one thing blocks: a pending item — one nobody has accepted and that is not a registered follow-up" + "a new ask with no delivery dependency is a follow-up item, not a pending one" + "R1's unresolved delivery obligations and R4's review stops keep their authority: a follow-up registration releases neither"; docs/cli.md open-item paragraph and docs/concepts{,_cn}.md mirror it; the readiness store requirement ("the readiness rules ask for facts…"), the gate store requirement (C9) and the protocol store requirement ("there is no ledger… one thing blocks", PR-18 wording) are each MODIFIED in the deltas with one carve-out sentence and all their scenarios retained; test PR-18's pins follow the new sentence. ADV-02 — lib/gate.js review-ready counts pending as unaccepted AND not follow-up; RY-32 asserts the `open` item has no "pending items are what the review is for" suffix and shows `1 follow-up(s) registered`. ADV-03 — §4 bullet (both editions): the landing is a valid change name that is not this change; when that change is later opened under its own authorization its Reality Check carries the original id and text as an `observed:` line; PR-44 pins these. ADV-04 — P3 untouched, hashes verified by PR-42. ADV-05 — the external runner (outside this repo) will assert exactly what you listed. State: 826 pass / 0 fail; verify --change GREEN; check --self PASS.
+Judge SDP-01 and SDP-02 resolved or not; report anything new. OUTPUT: review body only; provenance header first (`<!-- provenance: provider=codex model=gpt-6-astra session=<id or unknown> date=2026-09-26 -->`), `# code-review — scope-disposition (round 2)`, `- SDP-0n — resolved | not resolved: <why>`, new findings `- SDP-1n …`, advisories, and exactly one final `VERDICT:` line from the closed vocabulary (`VERDICT: no spec-vs-code gaps` / `VERDICT: <N> issues open` / `VERDICT: escalate` — never a bare REVISE).
+2026-09-25T13:54:06.696239Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: URL error: Proxy URL scheme not supported, url: wss://chatgpt.com/backend-api/codex/responses
+2026-09-25T13:54:08.879612Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: URL error: Proxy URL scheme not supported, url: wss://chatgpt.com/backend-api/codex/responses
+2026-09-25T13:54:09.111811Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: URL error: Proxy URL scheme not supported, url: wss://chatgpt.com/backend-api/codex/responses
+ERROR: Reconnecting... 2/5
+2026-09-25T13:54:09.524745Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: URL error: Proxy URL scheme not supported, url: wss://chatgpt.com/backend-api/codex/responses
+ERROR: Reconnecting... 3/5
+2026-09-25T13:54:10.386165Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: URL error: Proxy URL scheme not supported, url: wss://chatgpt.com/backend-api/codex/responses
+ERROR: Reconnecting... 4/5
+2026-09-25T13:54:12.016341Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: URL error: Proxy URL scheme not supported, url: wss://chatgpt.com/backend-api/codex/responses
+ERROR: Reconnecting... 5/5
+2026-09-25T13:54:15.510782Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: URL error: Proxy URL scheme not supported, url: wss://chatgpt.com/backend-api/codex/responses
+warning: Falling back from WebSockets to HTTPS transport. stream disconnected before completion: URL error: Proxy URL scheme not supported
+codex
+I’ll verify both fixes in the working tree, check the revised contracts for consistency, and trace the remaining refusal paths. I’ll keep the review read-only and avoid credentials and human-note files.
+exec
+/usr/bin/zsh -lc 'git status --short; git diff --stat; git diff -- lib/readiness.js lib/gate.js lib/archive-merge.js lib/status.js' in /root/terra/asd-v62-code
+ succeeded in 0ms:
+ M CHANGELOG.md
+ M RUNBOOK.md
+ M RUNBOOK_cn.md
+ M docs/cli.md
+ M docs/cli_cn.md
+ M docs/concepts.md
+ M docs/concepts_cn.md
+ M lib/archive-merge.js
+ M lib/gate.js
+ M lib/readiness.js
+ M lib/status.js
+ M test/open-items.test.js
+ M test/protocol.test.js
+ M test/status.test.js
+?? apriori/changes/scope-disposition/
+?? test/scope-disposition.test.js
+ CHANGELOG.md            |  4 ++++
+ RUNBOOK.md              |  3 ++-
+ RUNBOOK_cn.md           |  3 ++-
+ docs/cli.md             |  4 ++--
+ docs/cli_cn.md          |  2 +-
+ docs/concepts.md        |  2 +-
+ docs/concepts_cn.md     |  2 +-
+ lib/archive-merge.js    |  7 +++++--
+ lib/gate.js             |  2 +-
+ lib/readiness.js        | 26 ++++++++++++++++++++++----
+ lib/status.js           |  4 ++--
+ test/open-items.test.js |  4 ++--
+ test/protocol.test.js   |  4 ++--
+ test/status.test.js     |  4 ++--
+ 14 files changed, 49 insertions(+), 22 deletions(-)
+diff --git a/lib/archive-merge.js b/lib/archive-merge.js
+index 49db7d2..afd0229 100644
+--- a/lib/archive-merge.js
++++ b/lib/archive-merge.js
+@@ -880,7 +880,8 @@ function archiveDeclaration(bundleDir) {
+   // means no unaccepted open item: a pending item — or one no acceptance can name — is the
+   // implementation not being finished; an accepted one is named, and stays present.
+   const ev = rd2.evidenceFindings(text);
+-  const pending = ev.items.filter((i) => !i.accepted).length;
++  const followUps = ev.items.filter((i) => i.followUp && !i.accepted);
++  const pending = ev.items.filter((i) => !i.accepted && !i.followUp).length;
+   const accepted = ev.items.filter((i) => i.accepted);
+   const assumptions = ev.claims.assumption.length;
+   const impl = pending || assumptions
+@@ -889,7 +890,9 @@ function archiveDeclaration(bundleDir) {
+   const incomplete = impl !== 'complete';
+   const evidence = pending ? `${pending} open item(s) still pending`
+     : ev.legacy.blockers.length ? `${ev.legacy.blockers.length} legacy Evidence row(s) still blocked — move them to ## Open`
+-      : accepted.length ? `complete, ${accepted.length} risk(s) accepted by the owner (${accepted.map((i) => i.id).join(', ')}), still present`
++      : accepted.length || followUps.length
++        ? 'complete' + (accepted.length ? `, ${accepted.length} risk(s) accepted by the owner (${accepted.map((i) => i.id).join(', ')}), still present` : '')
++          + (followUps.length ? `, ${followUps.length} follow-up(s) registered (${followUps.map((i) => `${i.id} → ${i.followUp}`).join(', ')})` : '')
+         : 'complete';
+   return { incomplete, lines: ['', 'ARCHIVE DECLARES (frozen; a later defect becomes an outcome note or a new change):',
+     `  implementation:    ${impl}`,
+diff --git a/lib/gate.js b/lib/gate.js
+index 7a86ba4..f32891e 100644
+--- a/lib/gate.js
++++ b/lib/gate.js
+@@ -379,7 +379,7 @@ function reviewReadyView(res, flowText, opts = {}) {
+     detail: c1.status === 'skipped'
+       ? 'no test command — the reviewer must not be the first to run the suite (pass --test-cmd or add a test-cmd config row)'
+       : c1.detail });
+-  const pending = ev.items.filter((i) => !i.accepted).length;
++  const pending = ev.items.filter((i) => !i.accepted && !i.followUp).length;   // a registered follow-up is not pending
+   // the 6.2 migrations the run found (a hand-written `escalation:` with content, a legacy ledger
+   // with open rows) are pending decisions the section cannot show — the same refusal C3/R1 make
+   const defects = [...(res.migration || []), ...ev.openDefects];
+diff --git a/lib/readiness.js b/lib/readiness.js
+index 4f1c88a..7b088ff 100644
+--- a/lib/readiness.js
++++ b/lib/readiness.js
+@@ -225,6 +225,14 @@ function phaseOverlay(state, name, flowText) {
+ // sectionItems has already stripped the `- ` marker, so an item starts at its id: ONE token —
+ // no whitespace, no colon — followed by the colon. That is the shape `evidence-accept` targets.
+ const OPEN_ITEM_RE = /^([^\s:]+)\s*:\s*(.*)$/;
++// A FOLLOW-UP item (S6 scope disposition): `- <ID>: follow-up → <new-change-name> — <text>`. It
++// registers a new ask this delivery does not depend on, with a stable landing spot (the bare
++// kebab-case name of the change that will carry it — creating and implementing that change still
++// follows the delegation). It is reported by C9 / R5 / status as a NOTE, never a blocker; moving
++// the ask out is not closing it. Anything that does not match the grammar exactly (no landing, a
++// non-kebab landing, no text) stays an ordinary pending item and blocks — fail-closed.
++const FOLLOW_UP_RE = /^follow-up[ \t]*(?:→|->)[ \t]*([a-z0-9](?:[a-z0-9-]*[a-z0-9])?)[ \t]+—[ \t]*([\s\S]+)$/;
++const FOLLOW_UP_TEMPLATE = (id) => `  - ${id}: follow-up → <new-change-name> — <the ask, in one line>`;
+ // the legacy row, read only to migrate it: `- <name>: <status> — <detail>`
+ const LEGACY_EVIDENCE_ROW = /^([^:]+?)\s*:\s*([a-z][a-z/-]*)\s*(?:[—–-]\s*)?(.*)$/;
+ 
+@@ -327,8 +335,16 @@ function evidenceFindings(flowText, opts = {}) {
+     } else seen.set(id, line);
+     named.add(id);
+     const ok = accepted(id);
+-    items.push({ id, text: textOf, accepted: ok, acceptedAt: ok ? grants.get(id).at : null });
+-    if (!ok) blockers.push(`open item ${id} is pending: ${textOf.slice(0, 90)} — close it (delete the line), move it to a new change, or record the owner's decision: ${ACCEPT_TEMPLATE(id)}`);
++    const fu = FOLLOW_UP_RE.exec(textOf);
++    // the landing spot must be a change that CAN exist (validateChangeName: shape, no date prefix,
++    // not reserved) and must not be this change itself — otherwise the line is an ordinary pending item
++    const own = (/^change:[ \t]*(\S+)/m.exec(text) || [])[1] || null;
++    const landingOk = (n) => n && n !== own && require('./resolve').validateChangeName(n).ok;
++    const followUp = fu && HAS_REASON.test(fu[2]) && landingOk(fu[1]) ? fu[1] : null;
++    items.push({ id, text: textOf, accepted: ok, acceptedAt: ok ? grants.get(id).at : null, followUp });
++    if (ok) { /* accepted wins the report */ }
++    else if (followUp) notes.push(`follow-up ${id} → ${followUp}: ${fu[2].trim().slice(0, 90)} (registered, not a blocker; moving it out is not closing it)`);
++    else blockers.push(`open item ${id} is pending: ${textOf.slice(0, 90)} — close it (delete the line), register it as a follow-up with its landing spot (${FOLLOW_UP_TEMPLATE(id).trim()}), or record the owner's decision: ${ACCEPT_TEMPLATE(id)}`);
+   }
+ 
+   // --- the legacy `## Evidence` section, migrated by rule (in-flight; archived is recorded) ---
+@@ -387,9 +403,11 @@ function evidenceFindings(flowText, opts = {}) {
+ function openSummary(e) {
+   if (!e.items.length) return 'no open items';
+   const acc = e.items.filter((i) => i.accepted);
+-  const pending = e.items.length - acc.length;
++  const fus = e.items.filter((i) => i.followUp && !i.accepted);
++  const pending = e.items.length - acc.length - fus.length;
+   const shown = acc.length ? `${acc.length} accepted, still present (${acc.map((i) => i.id).join(', ')})` : '0 accepted';
+-  return `${e.items.length} open item(s): ${shown}, ${pending} pending`;
++  const fuShown = fus.length ? `, ${fus.length} follow-up(s) registered (${fus.map((i) => `${i.id} → ${i.followUp}`).join(', ')})` : '';
++  return `${e.items.length} open item(s): ${shown}${fuShown}, ${pending} pending`;
+ }
+ 
+ // The gate face of the same predicate. `stage` is the resolver's: an ARCHIVED bundle is frozen
+diff --git a/lib/status.js b/lib/status.js
+index 7d9bddb..e041034 100644
+--- a/lib/status.js
++++ b/lib/status.js
+@@ -150,7 +150,7 @@ function formatOne(s) {
+     for (const m of rc.malformed) lines.push(`reality:      unreadable entry (want observed/decision/assumption): ${m}`);
+     // every open item, with the one word that matters: accepted (still present) or pending
+     for (const i of s.items)
+-      lines.push(`open:         [${i.accepted ? 'accepted' : 'pending'}] ${i.id ? `${i.id}: ` : ''}${i.text}`);
++      lines.push(`open:         [${i.accepted ? 'accepted' : (i.followUp ? `follow-up → ${i.followUp}` : 'pending')}] ${i.id ? `${i.id}: ` : ''}${i.text}`);
+     const next = s.state.next || [];
+     next.slice(0, MAX_NEXT).forEach((n, i) => lines.push(`next ${i + 1}:       ${n}`));
+     if (next.length > MAX_NEXT) lines.push(`next:         ${next.length} actions listed — the state carries at most ${MAX_NEXT}`);
+@@ -242,7 +242,7 @@ function toJson(s) {
+     reality: s.state ? s.state.reality : null,
+     openIssues: s.state ? s.state.openIssues || [] : [],      // the raw lines (compat)
+     // the same lines, parsed: id (null when the line carries none), text, and the acceptance
+-    openItems: s.items.map((i) => ({ id: i.id, text: i.text, accepted: i.accepted, acceptedAt: i.acceptedAt })),
++    openItems: s.items.map((i) => ({ id: i.id, text: i.text, accepted: i.accepted, acceptedAt: i.acceptedAt, followUp: i.followUp || null })),
+     next: s.state ? s.state.next || [] : [],
+     // `delivery:` is retired (batch C row 6): the key stays for ONE version, always null —
+     // shape compatibility only, see MIGRATING. A legacy line in the state is read and ignored.
+
+exec
+/usr/bin/zsh -lc 'cat apriori/changes/scope-disposition/specs/readiness/spec.md apriori/changes/scope-disposition/specs/gate/spec.md apriori/changes/scope-disposition/specs/protocol/spec.md' in /root/terra/asd-v62-code
+ succeeded in 0ms:
+<!-- apriori-base: sha256:144f61120e657805477b58d93f11153127d141747be9c13d367eabda4323ca4c -->
+# Delta — readiness (scope-disposition)
+
+## MODIFIED Requirements
+
+### Requirement: the readiness rules ask for facts, not for a document family
+Readiness SHALL NOT demand `tasks.md`, `requirement/`, a proposal, a design doc, a gap report or an issue ledger. Rule R2 (the task list) and rule R3 (the ledger) SHALL NOT exist: neither `tasks.md` nor `review/issues.md` is opened, and nothing in them blocks or is reported. The review ROOT is still guarded — a symlinked, escaping or non-directory `review/` is a structural R4 refusal, never forceable — and an absent `review/` is not a defect. No ledger state SHALL soften the review floor: the reviewer's latest verdict is what must close. Rule R5 SHALL be the ONE substantive state predicate, evaluated on the same input gate's C9 receives (the delta scan) and never forceable — and since scope-disposition its pending set excludes a registered FOLLOW-UP item (`- <ID>: follow-up → <new-change-name> — <text>`, a valid other change name), which R5 reports as a note, never a blocker; the predicate's notes (the open-item summary, an unmatched acceptance, the `contract-mutation` signal, an ignored legacy section) SHALL be printed as archive notes. `mode:` SHALL be optional and inert: readiness neither decides nor reports anything by it.
+
+#### Scenario: RY-16 no rule reads a task list, present or absent
+- WHEN a bundle carries no `tasks.md`, or carries one with unchecked boxes
+- THEN readiness returns no R2 rule at all and the archive proceeds on its other rules; the gate's C2 is the 6.2 placeholder and says nothing about the file
+
+#### Scenario: RY-17 the ledger is never read: an open row neither blocks nor is reported
+- WHEN a bundle's ledger holds an `open` row, or any other status word
+- THEN readiness is ready with no R3 rule, no note and nothing `n/a`; the archive merges without naming the row; gate C4 is the 6.2 placeholder; and `status --json`'s `openLedger` stays `[]`
+
+#### Scenario: RY-18 a pending open item refuses, and only the owner opens it
+- WHEN the state carries a pending `- <ID>: <text>` item with no owner decision, then the same item with a `producer:` entry, then with the canonical `gates:` entry accepting it
+- THEN the first two refuse as R5 (and gate C9) and the third passes, with `--force` unable to substitute for the owner's decision in any of them
+
+#### Scenario: RY-19 owner acceptance settles one item and never touches the inert mode
+- WHEN a change records an accepted open item, with no `mode:` line, with `fast` and with `standard`
+- THEN `status --json` reports `mode` as declared (or `null`) and `effectiveMode` equal to it in every case — acceptance settles one item, and `risk.effectiveMode` no longer exists
+
+#### Scenario: RY-20 a change with no document family passes, archives and declares
+- WHEN a change carries only `flow-state.md`, `specs/` and `review/` — no task list, no ledger, no `mode:` line, an empty `## Open` — with one attributable review round
+- THEN `gate` reports PASS, `--review-ready` exits 0, and `archive --write` merges and prints its three-state declaration
+
+#### Scenario: RY-21 legacy residue is inert, and a 5.x identity key still refuses
+- WHEN a bundle carries a 5.x `tasks.md` with unchecked boxes and a ledger with an open row, and then additionally spells `current-step:`
+- THEN the first gates green with C2/C4 as placeholders and nothing from the unread files in the report, while the second is refused at C3 with the key named and a MIGRATING.md pointer — residue is inert, identity is refused
+
+## ADDED Requirements
+
+### Requirement: a follow-up item is registered with its landing spot and never blocks
+The state predicate (`evidenceFindings`, read by gate C9, archive R5, the archive declaration and `status`) SHALL recognise an `## Open` item of the exact form `- <ID>: follow-up → <new-change-name> — <text>` (arrow `→` or `->`; the landing spot a bare kebab-case change name that passes `validateChangeName` — no date prefix, not a reserved name — and is not this change's own name; an em dash; a text carrying a letter or digit) as a FOLLOW-UP: a new ask this delivery does not depend on, registered with the change that will carry it. A follow-up SHALL be reported as a note `follow-up <ID> → <name>: <text> (registered, not a blocker; moving it out is not closing it)` and SHALL raise no blocker; the archive declaration SHALL count it as `follow-up(s) registered` under critical evidence and not as pending, so the implementation reads `complete`; `status` SHALL mark it `[follow-up → <name>]` in text and carry `followUp: <name>` (`null` on every other item) in `--json`. Anything that does not match the grammar exactly — no landing spot, a landing spot that is not a valid other change name (`bad--name`, a reserved name such as `archive`, a date-prefixed `2026-09-next`, the change itself), no text — SHALL remain an ordinary pending item that blocks, and the pending cure SHALL name the follow-up form beside the two existing exits. Owner acceptance (`evidence-accept <ID>`) of a follow-up item keeps working and is reported as accepted.
+
+#### Scenario: RY-32 a follow-up item is a note for C9, R5, the declaration and status
+- WHEN a ready change carries `- F-01: follow-up → punctuation-policy — a pluggable punctuation policy object` in `## Open`
+- THEN `readinessOf` reports no R5 blocker and a note naming `F-01 → punctuation-policy`; gate C9 passes with `1 follow-up(s) registered (F-01 → punctuation-policy)` in its detail; `apriori archive` merges and declares `implementation: complete` with `critical evidence: complete, 1 follow-up(s) registered (F-01 → punctuation-policy)`; `status` prints `open: [follow-up → punctuation-policy] F-01: …` and `--json` carries `followUp: 'punctuation-policy'`
+
+#### Scenario: RY-33 the grammar is exact — a malformed follow-up stays pending and blocks
+- WHEN the item reads `- F-02: follow-up → — no landing`, `- F-03: follow-up → Bad_Name — x`, `- F-04: follow-up → later —` (no text), `- F-05: follow up → later — x` (no hyphen), `- F-06: later as a follow-up — x`, `- F-07: follow-up → bad--name — x`, `- F-08: follow-up → archive — x`, `- F-09: follow-up → 2026-09-next — x`, or `- F-10: follow-up → c — x` (the change's own name)
+- THEN each is an ordinary pending item: R5 blocks it, the cure names the exact follow-up form (`- F-0n: follow-up → <new-change-name> — <the ask, in one line>`) beside closing the line and the owner's decision, C9 is blocked, `archive` refuses `NOT READY`; and an owner `evidence-accept F-01` over a well-formed follow-up reports it accepted, not as a follow-up note
+<!-- apriori-base: sha256:7c4fcfb68ad4f3d63018ad93513d14c08c96b00d209fd4d7303ec26e48cab9d3 -->
+# Delta — gate (scope-disposition)
+
+## MODIFIED Requirements
+
+### Requirement: C9 is the one substantive state predicate, and it reads the open items
+Gate SHALL run a ninth check over the flow-state's `## Open` section, and it SHALL be the only place a missing piece of REALITY blocks. Gate C9, archive R5, the archive declaration and `status` SHALL call ONE shared function on the same inputs (the state text and the delta scan); there SHALL be no second state. An open item is `- <ID>: <text>`, the id being one token in front of the colon (the former evidence-row id shape — `producer-diff`-style names are legal ids). An item is PENDING, and blocks, until the owner's decision is recorded — with ONE carve-out since scope-disposition: an item of the exact follow-up form `- <ID>: follow-up → <new-change-name> — <text>` (the landing a valid change name other than this change) is a registered new ask, reported as a note and counted as `follow-up(s) registered`, never pending; any other spelling stays pending. Otherwise an item blocks until the owner's decision is recorded in the append-only `gates:` log in the CLOSED grammar `- <YYYY-MM-DDTHH:MM> owner: evidence-accept <ID> — <reason>` (revoke by appending `evidence-accept-revoke <ID> — <reason>`; last decision wins; the actor must be exactly `owner`; the timestamp must be real). An ACCEPTED item SHALL NOT block but SHALL be reported as `accepted, still present` — in C9's detail, as an archive note and in `status` — and nothing SHALL delete it. A line without an id SHALL still be an open item: it blocks and cannot be accepted (`give it a stable id to accept it, or close it`). Duplicate ids SHALL fail closed, naming both lines. An acceptance whose id matches no item SHALL be a note, not a block. An empty or absent section owes nothing. C9 SHALL ALSO refuse a delta the scan could not read (fail-closed; no item or acceptance cures it), a standing Reality Check `assumption` and a Reality Check line naming no kind; a mutating delta SHALL be reported as the `contract-mutation` signal — information, demanding nothing. A legacy `## Evidence` section in an in-flight bundle SHALL migrate by rule: a `blocked` row, and an `owner-accepted` row with no valid acceptance for its name, block with a migration message (a self-signed claim may not make a risk disappear); a row whose name carries a valid acceptance is an accepted item; every other row is ignored with one note. C9 SHALL read no mode. An ARCHIVED bundle SHALL be reported, never re-judged.
+
+#### Scenario: OI-01 an open item is `- <ID>: <text>`; no id still blocks and cannot be accepted; duplicates fail closed
+- WHEN `## Open` carries id'd items, then a line without an id (prose, a token then prose, a generic like `Map<Key>`, a scaffold-looking `<…>` line), then two lines sharing an id, then nothing at all
+- THEN the id'd items are parsed `{id, text, accepted: false, acceptedAt: null}` and each blocks as `open item <ID> is pending … record the owner's decision: <template>`; the id-less line blocks as `open item has no id … give it a stable id to accept it, or close it` and no acceptance reaches it; the duplicate blocks naming both lines; an empty or absent section owes nothing and never swallows the heading that follows it; and gate C9, archive R5 (non-forceable) and `status` (`openItems`, `[pending]` lines) all agree
+
+#### Scenario: OI-02 evidence-accept <id> settles one item; revoke, near misses and unknown ids do not
+- WHEN the canonical `evidence-accept <ID> — <reason>` entry is recorded for a pending item, then each near miss (a `producer:` / `note:` / `agent:` / `gate⑤ (owner):` actor, no timestamp, a timestamp-shaped non-timestamp, no em dash, a hyphen, an empty or punctuation-only reason, the keyword preceded by prose or negated, an uppercase keyword, a superstring or differently-cased id, generic accept prose), then a revoke and a re-grant, then an acceptance naming no item
+- THEN only the canonical entry accepts (the item carries `acceptedAt`, stops blocking, and is reported `accepted, still present` by gate, archive and status — and the archived bundle still carries the line); every near miss leaves the item pending; the last decision wins; and the stray acceptance is the note `acceptance <ID> matches no open item`
+
+#### Scenario: OI-03 gate, archive and status judge the open items on the same inputs — the state and the delta scan
+- WHEN a mutating delta sits beside a pending item, an accepted item, an id-less item and a standing assumption
+- THEN gate hands C9 `{stage, riskSignals}` only, C9's detail, archive R5's findings and `status --json`'s `escalations` are the identical blockers (the pending item, the id-less item, the assumption), the mutation is the note `risk: contract-mutation: …` and `status`'s `risk[]`, and `evidence` is `{rows: [], blocked: [], recorded: []}`
+
+#### Scenario: OI-04 legacy Evidence rows migrate by rule
+- WHEN an in-flight bundle carries a legacy `## Evidence` section with a `blocked` row, then rows whose names carry valid acceptances, then a self-declared `owner-accepted` row beside a `producer:` entry, then rows reading `done` / `n/a` / `fixed` / an unfilled scaffold row / an unreadable line
+- THEN the blocked row blocks at gate, archive and status with `legacy Evidence row '<name>' is blocked — move it to ## Open as an item (or accept it via evidence-accept <name>)`; the accepted rows are accepted items (named in the declaration, nothing ignored); the self-declared row blocks with `… claims owner acceptance with no canonical gates: entry — move it to ## Open, or record: <template>`, non-forceably; the rest are ignored with the one note `legacy ## Evidence section ignored (6.2: risks live in ## Open)`; and the retired vocabulary (`EVIDENCE_STATUS`, its alias table, `PRODUCER_DIFF_ROW`) no longer exists
+
+#### Scenario: GT-39 a pending open item refuses, and owner acceptance is a recorded human act
+- WHEN the state carries a pending item, then the same item with a `producer:` entry, then with the owner's canonical entry, then an id-less item beside an acceptance naming its first word, then no section at all
+- THEN C9 is BLOCKED for the first, second and fourth (`--force` never substituting for the decision), `pass` with `1 accepted, still present (<ID>)` for the third, and `pass` with `no open items` for the fifth
+
+#### Scenario: GT-41 gate, archive and status all judge the state on the same input — the delta scan
+- WHEN a change carries a mutating delta and a pending item, and then when the same bundle is archived
+- THEN gate passes C9 the SCAN's signals and no mode, archive's R5 and `status` report the identical findings, and the archived bundle is passed no signals at all, reported `n/a` by gate and RECORDED rather than blocking by `status`, which raises no escalation against frozen history
+
+#### Scenario: OI-09 an archived bundle keeps today's behavior: recorded, not re-judged
+- WHEN an archived bundle carries pending items, a legacy blocked row, a `mode:` line and a mutating (already merged) delta
+- THEN gate C9 is `n/a` with the findings under `recorded:`, `status` lists them under `recorded:` / `evidence.recorded`, raises no escalation, derives no signal, and reports `mode` and `effectiveMode` as declared
+<!-- apriori-base: sha256:e95a5c77d98d0303def5c7b4cf5fec45aab7c5bbfa64ee0cf7c5d90faf227545 -->
+# Delta — protocol (scope-disposition)
+
+## MODIFIED Requirements
+
+### Requirement: there is no ledger — `## Open` is the only home of open issues, and one thing blocks
+The runbook (both editions) SHALL document that there is no issue ledger: the state's `## Open` section is where a change's open substantive issues live, one `- <ID>: <text>` line each, and it is the only place `gate`, `archive` and `status` read them (`review/issues.md` is never opened, and nothing in it blocks or is reported). A re-found issue REOPENS its old id — reopened is an event, not a new line. EXACTLY ONE thing blocks a delivery: a pending item — one nobody has accepted and that is not a registered follow-up (`- <ID>: follow-up → <new-change-name> — <text>`, a new ask the delivery does not depend on, reported as a note and never closed by being moved out); an accepted item is reported as still present and never deleted by a tool. The retired ledger vocabulary and its setters SHALL NOT be documented. Only correctness, security and stated-requirement gaps become pending items at all — a new ask with no delivery dependency is a follow-up item, not a pending one; everything else is `advisory`, and the label is the reviewer's exclusive call; R1's unresolved delivery obligations and R4's review stops keep their authority. The concepts handbook mirrors the same rules in both languages, and neither runbook lists the ledger file as an artifact.
+
+#### Scenario: PR-18 there is no ledger: ## Open is the only home of open issues, and one thing blocks — in both editions
+- WHEN the §5 prompts section is read in either language
+- THEN `## Open` is named as the only home of open issues, `review/issues.md` is stated to be never opened, the reopen-is-an-event rule is stated, exactly one blocking thing (a pending item: unaccepted and not a registered follow-up) is named, the retired vocabulary is absent, the artifact table carries no ledger row, and the concepts handbook says the CLI reads no ledger in both languages
+
+## ADDED Requirements
+
+### Requirement: the runbook states the per-finding disposition rule
+Both runbook editions SHALL carry, in §4 Review & Deliver, a disposition rule for review findings: scope is judged per finding, never by volume; each substantive finding gets a disposition with its basis (current contract / existing constraint / new ask); the necessary-fix criterion — left alone, the delivered product would violate a locatable accepted acceptance condition, a valid owner decision or an applicable existing constraint, cited with the evidence of the violation; a necessary fix is never moved out for its size (split the implementation, keep the dependency); changing a commitment is the owner's decision and its blocking stands until recorded; a new ask the delivery does not depend on is registered as a follow-up with the stable landing grammar `- <ID>: follow-up → <new-change-name> — <text>`, reported as a note and never closed by being moved out; `fixed` / `contract` / `follow-up` / `invalid` / `duplicate` are recommended words, not a closed vocabulary, and an unresolved finding keeps its id, impact and next action; `approach:` in `review-progress` is not a second ledger. §5's rule on what blocks SHALL distinguish a pending item from a registered follow-up in both editions, and the CLI reference SHALL say a registered follow-up is a note; the landing spot SHALL be a valid change name other than the change itself, and the runbook SHALL say how a later authorized session carries the original id into that change. The P3 prompt is NOT changed (RIB-10 pins it verbatim by a recorded human ruling): the disposition is the producer's duty. Evidence: plan/01 S6 (review-driven scope creep with no gate, ≥5 cases across 5.1/5.2) and the Claude × Astra plan consensus (序 3), which rejected a closed vocabulary and a C8 marker check in favour of this minimal protocol.
+
+#### Scenario: PR-42 the disposition rule lands in both editions of §4
+- WHEN `RUNBOOK.md` and `RUNBOOK_cn.md` are read
+- THEN each §4 Review & Deliver carries, pinned on its own: judged per finding never by volume; the three bases; the necessary-fix criterion sentence; never moved out for size; commitment change is the owner's; the follow-up grammar with its landing spot reported as a note; moving out is not closing; the recommended words are not a closed vocabulary; `approach:` is not a second ledger — and the P3 block of both editions is byte-identical to its frozen form (RIB-10)
+
+#### Scenario: PR-44 §5 and the CLI reference distinguish a pending item from a registered follow-up
+- WHEN `RUNBOOK.md` §5, `RUNBOOK_cn.md` §5 and `docs/cli.md`'s open-item paragraph are read
+- THEN §5 says exactly one thing blocks — a pending item, one nobody has accepted and that is not a registered follow-up — and that a new ask with no delivery dependency is a follow-up item, not a pending one, while R1 obligations and R4 stops keep their authority; §4's bullet says the landing spot is a valid change name other than this change and that the later change's Reality Check carries the original id as an `observed:` line; `docs/cli.md` says a registered follow-up is a note, not a blocker
+
+exec
+/usr/bin/zsh -lc "git diff -- RUNBOOK.md RUNBOOK_cn.md docs/cli.md docs/cli_cn.md docs/concepts.md docs/concepts_cn.md test/protocol.test.js; sed -n '1,255p' lib/flow.js" in /root/terra/asd-v62-code
+ succeeded in 0ms:
+diff --git a/RUNBOOK.md b/RUNBOOK.md
+index 53c26d4..bb0b9c8 100644
+--- a/RUNBOOK.md
++++ b/RUNBOOK.md
+@@ -308,6 +308,7 @@ KB docs have two sections with **opposite truth directions** (§5 P5): `Contract
+ 
+ - **Review-ready comes first.** Run `apriori gate --change <name> --review-ready --test-cmd "…"`. It writes nothing and answers TWO items from facts the run already produced: compilation and tests really executed (never `BUILD SUCCESS` with zero tests); and the state claims nothing unresolved of its own — every `## Open` item carries a stable id, no id is duplicated, and no Reality Check `assumption` is still standing. A pending item does not stop review-ready: it is what the review is for. **Not ready is not a review round.** Go back to Build & Test.
+ - **Then one independent review** (**P3**, R2). The reviewer's default input is exactly four things: the **behavior contract**, the **diff**, the **`## Open` items** and the **boundaries still uncovered**; it may read the whole repo, callers, config and prototypes on its own. Raw review output, closed issues and other changes' documents are not default inputs. The reviewer's output keeps three things: newly found substantive issues; which risk surfaces it did and did not examine; and one of `ACCEPT | REVISE | ESCALATE`. **The reviewer does not do the producer's job** — it is not there to compile, add tests or rewrite the approach; if it has to, the change was not review-ready. A REVISE round does not widen that default input to the producer's full history. This input boundary does not revoke R2's reviewer resume mechanism or the reviewer's permission to inspect sources; the producer's description is not a substitute for that independent judgment. Carrying that boundary: **do not repackage a prior review's conclusions into the next reviewer's default input** — dropping the source name, rewording it, or re-labelling it as your own `observed`/`decision` changes nothing, and writing it in and deleting it later does not undo the round it was carried through. What you **re-established yourself**, against real code, a command or its output, is your own finding: record it, even if a prior review reached the same conclusion. The diff is not trimmed by path — completeness, maintainability and a checkable line of responsibility all argue against that, and a deletion carrying old content is mechanical, not propagation. This leaves the review archive and the Fix Packet untouched: both are required elsewhere and neither is a default input to the next review.
++- **Disposition of findings — scope is judged per finding, never by volume.** For every substantive finding the producer records a disposition with its basis: the *current contract* (the delta specs and the owner's recorded decisions), an *existing constraint* (a hard rule, a safety responsibility, an established guarantee), or a *new ask*. **A finding is a necessary fix for THIS delivery when, left alone, the product as it would be delivered violates a locatable accepted acceptance condition, a valid owner decision or an applicable existing constraint** — the disposition cites that basis and the evidence of the violation. A necessary fix is never moved out because it is large: split the implementation if you must, the delivery keeps its dependency on it. Changing a commitment is the owner's decision (R1); until it is recorded, the commitment and its blocking stand. A new ask this delivery does not depend on is registered as a **follow-up with a stable landing spot** — `- <ID>: follow-up → <new-change-name> — <text>` in `## Open`, which gate C9 / archive R5 / `status` report as a note, not a blocker (creating and implementing that change still follows the delegation) — and moving it out is not closing it. The landing spot is a valid change name that is not this change; when that change is later opened under its own authorization, its Reality Check carries the original id and text as an `observed:` line, so the ask is traceable from the archived bundle to where it is picked up. `fixed` (with its evidence) / `contract` (pending the owner) / `follow-up` / `invalid` (with the reason) / `duplicate` (with the original id) are the recommended words, not a closed vocabulary: an unresolved finding keeps its id, its current impact and its next action. `review-progress`'s `approach:` says why the approach was kept or changed — it is not a second ledger of findings.
+ - **KB update is a precondition, not a closeout step — and it is owed only when** `apriori/truth/<module>.md` already covers the touched module, or the owner/change explicitly decided to persist a new durable contract. Never fabricate one just to have one at closeout. When owed, before review-ready: commit the implementation and point `source-commit` at it; update `apriori/truth/<module>.md` — Contract section from the final implementation, Decisions section appending this change's new decisions. The reviewer's diff already carries this KB diff; `apriori archive` never touches `apriori/truth/`.
+ - **Then archive — directly, not a dry-run.** (A MODIFIED delta that would drop a store scenario is refused: the owner must name that exact deletion with an `archive-drop <change> sha256:<fingerprint>` entry in `gates:` and the run must add `--force` — retitling under the same ID or rewriting a scenario is not dropping.) ACCEPT, plus no product-code or test change since review-ready, means the normal close is four logical actions, no more: (1) land the reviewer's output as one self-contained review file, plus a short flow-state update; (2) run `apriori check`, then a full `apriori gate --change <name>` (not `--review-ready`), which binds C1 on these still-unchanged inputs; (3) run `apriori archive --change <name> --write` directly — `--write` runs the same preflight a dry-run would, so dry-running first re-checks nothing; archive merges the delta specs into `apriori/specs` and moves the bundle, and nothing else (`--changes-dir` is only a location override for a non-default changes root); (4) commit the closeout locally, and stop. The atomic move carries the whole bundle to `apriori/changes/archive/<stamp>-<change>/`. Count logical actions, not commands: action 2 already contains both check and gate. The one exception is the re-verify path below when its stated triggers occur; the four-action rule is not permission to skip recovery or an applicable report.
+ - **An archive is not a release.** `apriori archive` declares only the state it just judged (whether the implementation and the critical evidence are complete); its third line says exactly that, verbatim — `delivery: an archive is not a release` — and it never poses as a release or external acceptance. (The flow-state `delivery:` field is retired; a legacy line is read and ignored.) **The archived bundle is frozen: nothing, including `phase:`, is written back to it.** A defect found afterwards becomes a short outcome note or a new change.
+@@ -333,7 +334,7 @@ The human changes their mind: abandonment is a legal exit from any phase — on
+ 
+ **Single-file evidence's own vocabulary.** A self-contained doc (§1 R2) closes with one of three canonical full-line forms, matched whole and case-insensitively: `VERDICT: ACCEPT`, `VERDICT: REVISE`, `VERDICT: ESCALATE`. The phrasings in the table above stay legal on either format. The line must match whole: an ACCEPT followed by a qualifying clause, or a REVISE whose reason rides the machine line, is refused — the reason belongs in the document body, never on the machine line.
+ 
+-**There is no issue ledger.** The state's `## Open` section is where a change's open substantive issues live — one line each, a stable id first — and it is the only place `gate`, `archive` and `status` read them (6.2: `review/issues.md` is never read to judge a change). **Migration, once:** an ACTIVE bundle whose legacy `review/issues.md` still carries `open` rows (old table contract, `open` as the leading status token) is refused at gate C3 / archive R1 / review-ready until each row is MOVED — `- <ID>: <text>` into `## Open`, the row deleted from the ledger (or the file deleted); a copied row is still an open row, and a ledger that cannot be read is a structural error. Frozen archives are never scanned. **IDs:** an Open id is one token, no spaces (`[^\s:]+` — re-key `data schema` as `data-schema`); a re-found issue reopens its old id — reopened is an event, not a new line; a closed id is never reused for a different risk within the same bundle. The CLI cannot prove that last rule (it has no memory of what an id once named), so an `evidence-accept` whose id later names a different item is a documentation violation, not something the tool detects. **Exactly one thing blocks: an item nobody has accepted.** An accepted item is reported as still present and never deleted by a tool; the producer deletes the line when the risk is actually resolved. Only correctness, security and stated-requirement gaps become items at all; everything else is `advisory`, and that label is the reviewer's exclusive call.
++**There is no issue ledger.** The state's `## Open` section is where a change's open substantive issues live — one line each, a stable id first — and it is the only place `gate`, `archive` and `status` read them (6.2: `review/issues.md` is never read to judge a change). **Migration, once:** an ACTIVE bundle whose legacy `review/issues.md` still carries `open` rows (old table contract, `open` as the leading status token) is refused at gate C3 / archive R1 / review-ready until each row is MOVED — `- <ID>: <text>` into `## Open`, the row deleted from the ledger (or the file deleted); a copied row is still an open row, and a ledger that cannot be read is a structural error. Frozen archives are never scanned. **IDs:** an Open id is one token, no spaces (`[^\s:]+` — re-key `data schema` as `data-schema`); a re-found issue reopens its old id — reopened is an event, not a new line; a closed id is never reused for a different risk within the same bundle. The CLI cannot prove that last rule (it has no memory of what an id once named), so an `evidence-accept` whose id later names a different item is a documentation violation, not something the tool detects. **Exactly one thing blocks: a pending item — one nobody has accepted and that is not a registered follow-up.** An accepted item is reported as still present and never deleted by a tool; the producer deletes the line when the risk is actually resolved. A registered follow-up (`- <ID>: follow-up → <new-change-name> — <text>`, §4 Review & Deliver) is a new ask this delivery does not depend on: reported as a note, never a blocker, never closed by being moved out. Only correctness, security and stated-requirement gaps become pending items at all — a new ask with no delivery dependency is a follow-up item, not a pending one; everything else is `advisory`, and that label is the reviewer's exclusive call. R1's unresolved delivery obligations and R4's review stops keep their authority: a follow-up registration releases neither.
+ 
+ ### P1 — Ground (optional kickoff)
+ 
+diff --git a/RUNBOOK_cn.md b/RUNBOOK_cn.md
+index 7408afc..1a88def 100644
+--- a/RUNBOOK_cn.md
++++ b/RUNBOOK_cn.md
+@@ -299,6 +299,7 @@ change 需要的其他任何东西——一张草稿、一幅图、给人看的
+ 
+ - **先过 review-ready。** 跑 `apriori gate --change <name> --review-ready --test-cmd "…"`。它什么也不写,只从这次运行已经产生的事实答**两项**:编译和测试**真的**执行过(绝不是零测试的 `BUILD SUCCESS`);以及状态自己没有声明任何未了结的东西——每条 `## Open` 条目都带稳定 id、没有重复 id、没有仍悬着的 Reality Check `assumption`。pending 的条目不挡 review-ready:那正是评审要看的东西。**没准备好不算一轮评审。** 回到 Build & Test。
+ - **然后一次独立评审**(**P3**,R2)。评审方的默认输入恰好是四样:**行为契约**、**diff**、**`## Open` 条目**、**仍未覆盖的边界**;它可以自行查全仓、调用者、配置和原型。原始评审输出、已关闭问题、其他 change 的文档不是默认输入。评审方的输出只保留三样:新发现的实质问题;已查与未查的风险面;以及 `ACCEPT | REVISE | ESCALATE` 之一。**评审方不做生产方的活**——它不是来编译、补测试或重写方案的;如果它必须那么做,说明这个 change 没到 review-ready。 REVISE 的这一轮不扩大那份默认输入到生产方全量历史。这条输入边界不撤销 R2 评审会话的 resume,也不撤销评审方自行查源码的权限;生产方转述不能代替独立判断。 这条边界怎么落实:**不得把此前评审的结论重新包装进下一位评审方的默认输入** —— 去掉来源名、换个说法、或改标成别的字段(`observed`/`decision`)都不改变它的性质,**先写进去再删掉**也**不能抵消**它已经随那一轮带过去的事实。凡是你**自己重新核验过**的 —— 对着真实代码、命令或其输出 —— 那就是你自己的发现,**照常记录**,哪怕此前评审得出过同样结论。**diff 不按路径裁剪**:完整性、可维护性、以及责任可核查,三条都反对裁剪;删除行携带旧内容是机械后果,不是传播。这条边界让**评审存档与 Fix Packet 照旧** —— 两者本就由别处要求,也都不是下一轮评审的默认输入。
++- **发现的处置——范围按每条发现判断,从不按体量。** 生产方对每条实质发现都记一条处置并写明依据:*当前契约*(增量 spec 与所有者已记录的决定)、*既有约束*(铁律、安全责任、既定保证),还是*新增诉求*。**若不处理该发现,拟交付的产物将违反一条可定位的已承诺验收条件、有效的所有者决定或适用的既有约束,那它就是本次交付的必要修复**——处置须同时引用该依据和违背它的证据。必要修复绝不因体量大而移出:实现可以拆,交付对它的依赖保留。改变承诺是所有者的决定(R1);记录之前,承诺与它的阻断继续有效。本次交付不依赖的新增诉求登记为**带稳定落点的 follow-up**——`## Open` 里写 `- <ID>: follow-up → <新 change 名> — <内容>`,gate C9 / archive R5 / `status` 把它当 note 报告而非阻断(建 change 与实施仍服从既有授权)——移出不等于关闭。落点必须是一个合法且不是本 change 的 change 名;日后在其自身授权下开启那个 change 时,其 Reality Check 以一行 `observed:` 带上原 ID 与原文,使这条诉求可从归档 bundle 追到接手处。`fixed`(附证据)/ `contract`(待所有者)/ `follow-up` / `invalid`(附理由)/ `duplicate`(附原 ID)是推荐写法,不是封闭词表:未解决的发现保留其 ID、当前影响与下一动作。`review-progress` 的 `approach:` 只说为什么保留或改变方案——它不是第二份问题账本。
+ - **知识库更新是前置条件,不是收尾步骤——而且只在欠着的时候才做。** 只有当 `apriori/truth/<module>.md` 已经覆盖被触达的模块,或所有者/change 明确决定沉淀一份新的持久契约时才欠;绝不为了收官时有一份而凭空造一份。欠着时,review-ready 之前:提交实现,让 `source-commit` 指向它;更新 `apriori/truth/<module>.md`——Contract 段按最终实现写,Decisions 段追加本次的新决定。评审方看到的 diff 里已经带着这份 KB diff;`apriori archive` 从不碰 `apriori/truth/`。
+ - **然后归档——直接执行,不 dry-run。**(会丢掉 store 场景的 MODIFIED delta 会被拒绝:所有者须在 `gates:` 用 `archive-drop <change> sha256:<指纹>` 点名这一次删除,且运行时加 `--force`——同 ID 改标题或改写正文不算丢。) ACCEPT 落地、且产品代码与测试自 review-ready 起未再变化时,正常收尾恰好四个逻辑动作,不多不少:(1)把评审方的输出落成一个 self-contained 评审文件,外加一次简短的 flow-state 更新;(2)跑一次 `apriori check`,再跑一次完整的 `apriori gate --change <name>`(不带 `--review-ready`),在这些仍未变化的输入上绑定 C1;(3)直接跑 `apriori archive --change <name> --write`——`--write` 执行与 dry-run 完全相同的前置检查,先跑一次 dry-run 不会多核实出任何东西;归档把增量 spec 合并进 `apriori/specs` 并搬移 bundle,仅此而已(`--changes-dir` 只是非默认 changes 根的位置覆盖);(4)本地提交收尾,然后停止。那一次原子移动携带整个 bundle 到 `apriori/changes/archive/<stamp>-<change>/`。 这里数的是动作,不是命令:动作二本来就包含 check 与 gate。唯一的例外是下面的重新验证路径,在其已列触发发生时适用;四动作规则不是跳过恢复或适用报告义务的许可。
+ - **归档不是发布。** `apriori archive` 只声明它刚判定过的状态(实现与关键证据是否完成);第三行逐字就是这句话——`delivery: an archive is not a release`——它不冒充发布或外部验收。(flow-state 的 `delivery:` 字段已退役;遗留的行照常读入并忽略。)**归档后的 bundle 是冻结的:任何东西,包括 `phase:`,都不再回写。** 之后发现的缺陷记为一条简短的 outcome 或一个新 change。
+@@ -324,7 +325,7 @@ change 需要的其他任何东西——一张草稿、一幅图、给人看的
+ 
+ **单文件证据自己的词汇表。** 自包含文档(§1 R2)以三种规范整行之一收尾,整行匹配、大小写不敏感:`VERDICT: ACCEPT`、`VERDICT: REVISE`、`VERDICT: ESCALATE`。上表里的措辞在两种形态下都继续合法。这行必须整句匹配:ACCEPT 后面跟着限定从句,或 REVISE 把理由写进了机器行本身,都会被拒绝——理由属于文档正文,永远不属于机器行。
+ 
+-**没有问题台账。** 状态里的 `## Open` 段就是一个 change 开放实质问题的所在——一行一条,稳定 id 在前——也是 `gate`、`archive` 与 `status` 读取它们的唯一位置(6.2:`review/issues.md` 不再用来判定 change)。**一次性迁移:** 活动 bundle 的遗留 `review/issues.md` 若仍有 `open` 行(旧表格契约,`open` 为状态首 token),gate C3 / archive R1 / review-ready 一律拒绝,直到每一行被**移走**——以 `- <ID>: <文字>` 进入 `## Open`,并从台账里删掉该行(或删掉整个文件);复制过去的行仍是 open 行,读不出来的台账是结构错误。冻结的归档永不扫描。**ID:** Open 的 id 是一个 token、不含空格(`[^\s:]+`——把 `data schema` 改键为 `data-schema`);同一问题被再次发现时**重开旧 id**——重开是事件,不是新的一行;同一 bundle 内,关闭的 id 不复用给另一个风险。CLI 无法证明最后这条规则(它不记得某个 id 曾经指什么),所以一条 `evidence-accept` 的 id 后来指向另一条条目,是文档层面的违规,不是工具能检测的东西。**只有一件事阻断:没有人接受的条目。** 已接受的条目报告为仍然在场,工具绝不删除它;风险真正解决时由生产方删掉那一行。只有正确性、安全与既定需求的缺口才立为条目;其余一律 `advisory`,而这个标注权由评审方独占。
++**没有问题台账。** 状态里的 `## Open` 段就是一个 change 开放实质问题的所在——一行一条,稳定 id 在前——也是 `gate`、`archive` 与 `status` 读取它们的唯一位置(6.2:`review/issues.md` 不再用来判定 change)。**一次性迁移:** 活动 bundle 的遗留 `review/issues.md` 若仍有 `open` 行(旧表格契约,`open` 为状态首 token),gate C3 / archive R1 / review-ready 一律拒绝,直到每一行被**移走**——以 `- <ID>: <文字>` 进入 `## Open`,并从台账里删掉该行(或删掉整个文件);复制过去的行仍是 open 行,读不出来的台账是结构错误。冻结的归档永不扫描。**ID:** Open 的 id 是一个 token、不含空格(`[^\s:]+`——把 `data schema` 改键为 `data-schema`);同一问题被再次发现时**重开旧 id**——重开是事件,不是新的一行;同一 bundle 内,关闭的 id 不复用给另一个风险。CLI 无法证明最后这条规则(它不记得某个 id 曾经指什么),所以一条 `evidence-accept` 的 id 后来指向另一条条目,是文档层面的违规,不是工具能检测的东西。**只有一件事阻断:pending 的条目——没有人接受、且不是已登记 follow-up 的条目。** 已接受的条目报告为仍然在场,工具绝不删除它;风险真正解决时由生产方删掉那一行。已登记的 follow-up(`- <ID>: follow-up → <新 change 名> — <内容>`,§4 Review & Deliver)是本次交付不依赖的新增诉求:作为 note 报告、永不阻断、也不因移出而关闭。只有正确性、安全与既定需求的缺口才立为 pending 条目——本次交付不依赖的新增诉求是 follow-up 条目,不是 pending;其余一律 `advisory`,而这个标注权由评审方独占。R1 未了结的交付义务与 R4 的评审停止保持其效力:登记 follow-up 放行不了任何一个。
+ 
+ ### P1 —— Ground(可选的启动提示词)
+ 
+diff --git a/docs/cli.md b/docs/cli.md
+index 8bd8113..db51e8e 100644
+--- a/docs/cli.md
++++ b/docs/cli.md
+@@ -152,9 +152,9 @@ Exit: 0 PASS · 1 BLOCKED · 2 untrustworthy evaluation · 3 INCOMPLETE.
+ 
+ **C3 — flow-state legality, plus the two 6.2 migrations.** The flow-state is resolved through the SAME trust root archive's R1 uses: a symlinked, escaping or non-regular `flow-state.md` is `C3 BLOCKED — flow-state.md: symlink at …`, never read through, and C8/C9 then report `flow-state not read — see C3` rather than a second opinion (`status` refuses it the same way). An ACTIVE bundle's legacy `review/issues.md` with `open` rows (old table contract: first cell id, last cell status, `open` as the leading token, case-insensitive) is refused — `legacy ledger has N open row(s) — move each into ## Open as \`- <ID>: <text>\` and delete it from review/issues.md (or delete the file): line 3: Q-1 (…)` — at C3, archive R1 and review-ready, and the same message is a `status --escalation` stop; a spaced legacy id is told to re-key (`data schema` → `data-schema`). Closed-only or missing is nothing; unreadable, or content with no readable row, is a structural error (a ledger that cannot be read cannot be proven closed). The gate is one-shot: it never fires again once no open row remains — MOVE the rows, never copy. Frozen archives are never scanned, and the tool never rewrites the file. The other migration is the retired `escalation:` field (see `status`). **ID rules the docs state and the CLI cannot prove:** a closed id is never reused for a different risk within the same bundle; an `evidence-accept` whose id later names a different item is therefore a documentation violation, not something the tool detects. `change` and `phase` are required (`lineage` is retired — the lineage rides a Reality Check `decision:` line; a legacy `lineage:` key is read and ignored, and `status --json` keeps the key one version, always `null`); `mode:` is OPTIONAL and INERT since 6.2 — absent or empty is fine, `fast` / `standard` are accepted and echoed (`legal (mode fast, build)`), anything else, the unfilled `<fast | standard>` placeholder included, blocks as before. Nothing derives a decision from the word: there is no upgrade, no quota, no lane.
+ 
+-**C9 — the one substantive state predicate.** One check, one question: does this change's own state still owe something real? Gate C9, archive R5, the archive declaration and `status` all call ONE function on the same input, and there is no second state.
++**C9 — the one substantive state predicate.** One check, one question: does this change's own state still owe something real? Gate C9, archive R5, the archive declaration and `status` all call ONE function on the same input, and there is no second state. A **follow-up item** — `- <ID>: follow-up → <new-change-name> — <text>` — is a new ask this delivery does not depend on, registered with its landing spot: the predicate reports it as a note (`follow-up <ID> → <name>: …`), never as a blocker, the declaration counts it as registered rather than pending, and `status` marks it `[follow-up → <name>]`. The grammar is exact (a bare kebab-case landing, an em dash, a text); anything else is an ordinary pending item and blocks. Moving an ask out is not closing it, and a finding the current contract or an existing constraint requires is never a follow-up (RUNBOOK §4 Review & Deliver, disposition of findings).
+ 
+-*The `## Open` items* (`- <ID>: <text>`, the id being one token in front of the colon). An item is PENDING until the owner's decision is on record in the append-only `gates:` log, in a CLOSED grammar: `- <YYYY-MM-DDTHH:MM> owner: evidence-accept <ID> — <reason>` (revoke by APPENDING `evidence-accept-revoke <ID> — <reason>`; the last decision wins). A pending item blocks. An ACCEPTED item does not block, but it is reported as `accepted, still present` — in C9's detail, as an archive note and in `status` — and nothing deletes the line; the producer removes it when the risk is actually resolved. A line WITHOUT an id is still an open item: it blocks, and it cannot be accepted (`give it a stable id to accept it, or close it`). A duplicated id is refused, both lines named. An empty or absent section owes nothing. Every part of the acceptance line is load-bearing — a timestamp (RANGE-checked: month 01-12, day 01-31, hour 00-23, minute 00-59, `T11:00` or `T1100`; NOT calendar-checked — a 31st of February is a typo, not a forgery, and this tool ships no calendar), the actor spelled exactly `owner`, the lowercase keyword OPENING the payload, the id whole and case-sensitive, the em dash, and a reason carrying a letter or digit in any script. `producer:`, `note:`, a `gate⑤ (owner):` prefix, an undated line, a missing dash or reason, a superstring id (`R-011` for `R-01`) and generic accept prose authorize **nothing**: a producer may not grant itself the owner's exit. An acceptance whose id matches no item is a note (`acceptance R-09 matches no open item`), not a block.
++*The `## Open` items* (`- <ID>: <text>`, the id being one token in front of the colon). An item is PENDING until the owner's decision is on record in the append-only `gates:` log, in a CLOSED grammar: `- <YYYY-MM-DDTHH:MM> owner: evidence-accept <ID> — <reason>` (revoke by APPENDING `evidence-accept-revoke <ID> — <reason>`; the last decision wins). A pending item blocks; a registered follow-up item (`- <ID>: follow-up → <new-change-name> — <text>`, see C9) is a note, not a blocker. An ACCEPTED item does not block, but it is reported as `accepted, still present` — in C9's detail, as an archive note and in `status` — and nothing deletes the line; the producer removes it when the risk is actually resolved. A line WITHOUT an id is still an open item: it blocks, and it cannot be accepted (`give it a stable id to accept it, or close it`). A duplicated id is refused, both lines named. An empty or absent section owes nothing. Every part of the acceptance line is load-bearing — a timestamp (RANGE-checked: month 01-12, day 01-31, hour 00-23, minute 00-59, `T11:00` or `T1100`; NOT calendar-checked — a 31st of February is a typo, not a forgery, and this tool ships no calendar), the actor spelled exactly `owner`, the lowercase keyword OPENING the payload, the id whole and case-sensitive, the em dash, and a reason carrying a letter or digit in any script. `producer:`, `note:`, a `gate⑤ (owner):` prefix, an undated line, a missing dash or reason, a superstring id (`R-011` for `R-01`) and generic accept prose authorize **nothing**: a producer may not grant itself the owner's exit. An acceptance whose id matches no item is a note (`acceptance R-09 matches no open item`), not a block.
+ 
+ *The state's structure (6.2).* One reader, `lib/flow.js`, reads the whole file for every surface, and it accepts ONE Markdown subset: `key: value` scalars at column 0 (lowercase kebab keys, optional `# comment`), `## Title` sections (any level, optional trailing `# annotation`, title matched whole and case-insensitively), `- `/`* ` items with INDENTED continuation lines, CRLF or LF. Fenced code and HTML comments are inert anywhere — never an item, never a fact, never an authorization. What it cannot read is a STRUCTURAL DEFECT naming its line, and it blocks C9/R5 and review-ready `open` on an active bundle: a numbered or bare line under `## Open` / `## Reality Check` (`line 6: open section line is not a list item — write \`- R-1: …\``), a section written twice (both lines named), a scalar set twice with different values (both lines named; C3/R1 refuse it too), an unclosed fence or comment (the rest of the file is unreadable — it never reads GREEN). An archived bundle's defects are recorded, never a refusal and never migrated; the reader rewrites nothing.
+ 
+diff --git a/docs/cli_cn.md b/docs/cli_cn.md
+index c15811c..3d94c7b 100644
+--- a/docs/cli_cn.md
++++ b/docs/cli_cn.md
+@@ -154,7 +154,7 @@ usage: apriori gate --change <name> [--test-cmd "<cmd>"] [--id-pattern <re>] [--
+ 
+ **C3 —— flow-state 合法性,外加两项 6.2 迁移。** flow-state 经由与 archive R1 **同一个**信任根解析:软链接、越界或非常规文件的 `flow-state.md` 是 `C3 BLOCKED — flow-state.md: symlink at …`,绝不透过它读,随后 C8/C9 报 `flow-state not read — see C3` 而不是第二种意见(`status` 也以同样方式拒绝)。 活动 bundle 的遗留 `review/issues.md` 若有 `open` 行(旧表格契约:首格 id、末格状态,`open` 为首 token,不分大小写),在 C3、archive R1 与 review-ready 一律拒绝——`legacy ledger has N open row(s) — move each into ## Open as \`- <ID>: <text>\` and delete it from review/issues.md (or delete the file): line 3: Q-1 (…)`——同一句话也是 `status --escalation` 的停;带空格的旧 id 会被要求改键(`data schema` → `data-schema`)。只有关闭行或文件缺失则什么也没有;读不出来、或有内容却没有可读的行,是结构错误(读不出的台账无法证明已关闭)。这道门是一次性的:没有 open 行剩下时永不再触发——把行**移走**,绝不复制。冻结的归档永不扫描,工具也永不改写该文件。另一项迁移是已退役的 `escalation:` 字段(见 `status`)。**文档陈述、CLI 无法证明的 ID 规则:** 同一 bundle 内,关闭的 id 不复用给另一个风险;因此一条 `evidence-accept` 的 id 后来指向另一条条目,是文档层面的违规,不是工具能检测的东西。`change`、`phase` 必填(`lineage` 已退役——谱系写成 Reality Check 的 `decision:` 行;遗留的 `lineage:` 键照常读入并忽略,`status --json` 保留该键一版、恒为 `null`);`mode:` 自 6.2 起**可选且不起作用**——缺失或为空都合法,`fast` / `standard` 被接受并回显(`legal (mode fast, build)`),其他任何值(包括未填的 `<fast | standard>` 占位)照旧阻断。没有任何判定依据这个词:没有升级、没有配额、没有车道。
+ 
+-**C9 —— 唯一的实质状态判定。** 一次检查,一个问题:这个 change 自己的状态是否还欠着真东西?gate C9、archive R5、归档声明与 `status` 调用**同一个**函数、读同一个输入;不存在第二份状态。
++**C9 —— 唯一的实质状态判定。** **follow-up 条目**——`- <ID>: follow-up → <新 change 名> — <内容>`——是本次交付不依赖的新增诉求,带稳定落点登记:判定把它作为 note 报告(`follow-up <ID> → <名>: …`)而不是阻断,归档声明把它计为「已登记」而非 pending,`status` 标为 `[follow-up → <名>]`。语法必须精确(裸 kebab-case 落点、破折号、内容);其余仍是普通 pending 条目并阻断。移出不等于关闭;当前契约或既有约束要求的发现绝不能记为 follow-up(RUNBOOK §4 Review & Deliver 发现的处置)。 一次检查,一个问题:这个 change 自己的状态是否还欠着真东西?gate C9、archive R5、归档声明与 `status` 调用**同一个**函数、读同一个输入;不存在第二份状态。
+ 
+ *`## Open` 条目*(`- <ID>: <文字>`,id 是冒号前的那个 token)。条目在所有者的决定以**封闭**文法记入只追加的 `gates:` 日志之前处于 PENDING:`- <YYYY-MM-DDTHH:MM> owner: evidence-accept <ID> — <理由>`(撤销靠**追加** `evidence-accept-revoke <ID> — <理由>`;最后一条决定生效)。pending 的条目阻断。已**接受**的条目不阻断,但会报告为 `accepted, still present`——在 C9 的 detail 里、作为归档注记、以及在 `status` 里——而且没有任何东西会删掉那一行;风险真正解决时由生产方删除。**没有 id** 的行仍是 open 条目:它阻断,且无法被接受(`give it a stable id to accept it, or close it`)。重复的 id 会被拒绝并点名两行。空段或缺失的段不欠任何东西。接受那一行里每一部分都承重——时间戳(只做**范围**校验:月 01-12、日 01-31、时 00-23、分 00-59,`T11:00` 或 `T1100`;**不做**历法校验——2 月 31 日是笔误,不是伪造,本工具不带历法)、actor 必须正好是 `owner`、小写关键词必须**打头**、id 整体且大小写敏感匹配、破折号、以及带任意文字或数字的理由。`producer:`、`note:`、`gate⑤ (owner):` 前缀、没有时间戳的行、缺破折号或理由、超串 id(`R-011` 顶不了 `R-01`)、以及泛泛的接受措辞,一律**不构成授权**:生产方不能自己发给自己所有者的出口。匹配不到任何条目的接受记录是一条注记(`acceptance R-09 matches no open item`),不阻断。
+ 
+diff --git a/docs/concepts.md b/docs/concepts.md
+index d60032d..a369509 100644
+--- a/docs/concepts.md
++++ b/docs/concepts.md
+@@ -551,7 +551,7 @@ Notice the two fixed sections and their **opposite truth directions**: the Contr
+ **The CLI reads no ledger** (6.2) — the state's `## Open` section holds a change's open substantive issues, one `- <ID>: <text>` line each, and `gate`/`archive`/`status` read them there and nowhere else; `review/issues.md` is never opened. Whether a reviewer still keeps such a table for its own cross-round memory is a human practice with no protocol weight. Two design notes are all that belong here:
+ 
+ - **Why the form exists at all:** cross-round memory lives in a file instead of a session, so every round's reviewer can be a **fresh** session without losing the thread ([§1.4](#14-adversarial-review)). A re-found issue reopens its old ID — that reopened ID is the oscillation alarm [§4.7](#47-automating-the-loop-with-goal-claude-code) watches for.
+-- **Why exactly one thing blocks:** an `## Open` item nobody has accepted. 5.x refused archives over ledger bookkeeping — unknown status tokens, reasonless rejections, unrecorded waives — on changes whose product tests were already green; 6.2 reads none of it, and an accepted item is reported as still present rather than deleted, because the record should be true. Reviews also follow a **scope discipline** (per Anthropic's fully-verified warning that gap-hunting reviewers report gaps even in sound work): only correctness/security/stated-requirement gaps become rows; the rest are `advisory`.
++- **Why exactly one thing blocks:** an `## Open` item nobody has accepted — a pending item; a registered follow-up (`- <ID>: follow-up → <new-change-name> — <text>`, a new ask the delivery does not depend on) is a note, not a blocker, and is not closed by being moved out. 5.x refused archives over ledger bookkeeping — unknown status tokens, reasonless rejections, unrecorded waives — on changes whose product tests were already green; 6.2 reads none of it, and an accepted item is reported as still present rather than deleted, because the record should be true. Reviews also follow a **scope discipline** (per Anthropic's fully-verified warning that gap-hunting reviewers report gaps even in sound work): only correctness/security/stated-requirement gaps become rows; the rest are `advisory`.
+ 
+ ### 7.1 Ground: Reality Check
+ 
+diff --git a/docs/concepts_cn.md b/docs/concepts_cn.md
+index 67ea7c4..722e1b7 100644
+--- a/docs/concepts_cn.md
++++ b/docs/concepts_cn.md
+@@ -547,7 +547,7 @@ source-commit: <归档时的 commit sha>   # 只覆盖契约节
+ **CLI 不读任何台账**(6.2)——状态的 `## Open` 段承载一个 change 的开放实质问题,一行一条 `- <ID>: <文字>`,`gate`/`archive`/`status` 只在那里读它们;`review/issues.md` 从不被打开。评审方是否为自己的跨轮记忆保留这样一张表,是人的习惯,不带流程分量。这里只留两条设计说明:
+ 
+ - **这个形式为什么存在:**跨轮记忆存在文件里而不是会话里,于是每一轮的评审方都可以是**全新**会话而不丢线索([§1.4](#14-对抗训练))。同一问题被再次发现时重开旧 ID——那个被重开的 ID 正是 [§4.7](#47-用-goal-自动化整个流程) 盯的振荡告警。
+-- **为什么只有一件事阻断:**没有人接受的 `## Open` 条目。5.x 会为台账记账——未知状态词、无理由的驳回、没有记录的 waive——拒绝归档,在产品测试已经全绿的 change 上;6.2 一个都不读,而已接受的条目报告为仍然在场而不是被删掉,因为记录应当为真。评审同时遵循**范围纪律**(依据 Anthropic 已充分验证的警告:找缺口的评审方在健全的工作上也会报缺口):只有正确性/安全/已声明需求的缺口才进正式行,其余标 `advisory`。
++- **为什么只有一件事阻断:**没有人接受的 `## Open` 条目——即 pending 的条目;已登记的 follow-up(`- <ID>: follow-up → <新 change 名> — <内容>`,本次交付不依赖的新增诉求)是 note 而非阻断,也不因移出而关闭。5.x 会为台账记账——未知状态词、无理由的驳回、没有记录的 waive——拒绝归档,在产品测试已经全绿的 change 上;6.2 一个都不读,而已接受的条目报告为仍然在场而不是被删掉,因为记录应当为真。评审同时遵循**范围纪律**(依据 Anthropic 已充分验证的警告:找缺口的评审方在健全的工作上也会报缺口):只有正确性/安全/已声明需求的缺口才进正式行,其余标 `advisory`。
+ 
+ ### 7.1 Ground｜Reality Check
+ 
+diff --git a/test/protocol.test.js b/test/protocol.test.js
+index bf5f7d2..0508f49 100644
+--- a/test/protocol.test.js
++++ b/test/protocol.test.js
+@@ -580,7 +580,7 @@ test('PR-18 there is no ledger: ## Open is the only home of open issues, and one
+   assert.match(en, /MOVED/);
+   assert.match(en, /reopens its old id/i);
+   assert.match(en, /reopened is an event, not a new line/);
+-  assert.match(en, /Exactly one thing blocks: an item nobody has accepted/);
++  assert.match(en, /Exactly one thing blocks: a pending item — one nobody has accepted and that is not a registered follow-up/);
+   assert.match(en, /never deleted by a tool/);
+   // the retired vocabulary and its setters are gone with the reader
+   for (const dead of [/rejected-verified/, /advisory-acked/, /only a human sets `waived`/, /a row still reading `open`/])
+@@ -592,7 +592,7 @@ test('PR-18 there is no ledger: ## Open is the only home of open issues, and one
+   assert.match(cn, /一次性迁移/);
+   assert.match(cn, /重开旧 id/);
+   assert.match(cn, /重开是事件,不是新的一行/);
+-  assert.match(cn, /只有一件事阻断:没有人接受的条目/);
++  assert.match(cn, /只有一件事阻断:pending 的条目——没有人接受、且不是已登记 follow-up 的条目/);
+   for (const dead of [/rejected-verified/, /advisory-acked/, /只有人能置 `waived`/, /仍是 `open` 的行/])
+     assert.doesNotMatch(cn, dead, String(dead));
+   // neither runbook lists the ledger file as an artifact any more
+'use strict';
+/*
+ * apriori flow — the ONE reader of a change's flow-state.md (6.2).
+ *
+ * A LEAF module: it requires nothing, so status, readiness, review, gate, doctor and archive
+ * can all read the state through it without opening a cycle. Read-only: nothing here writes.
+ *
+ * The grammar is one explicit Markdown subset, and the reader is FAIL-CLOSED on what it cannot
+ * read — an unreadable section is a structural defect naming its line, never an empty section:
+ *
+ *   scalars      `key: value` at column 0; key = lowercase kebab; optional trailing `# comment`;
+ *                an empty value reads as absent; the same key twice with the SAME value is
+ *                tolerated, with DIFFERENT values it is a defect naming both lines
+ *   sections     `## Title` (any level >= 2, `#` levels end the previous section too), optional
+ *                trailing `# annotation` (the RUNBOOK template's own form), title matched whole
+ *                and case-insensitively; a title written twice is a defect naming both lines,
+ *                and nothing under either is hidden
+ *   items        `- ` or `* ` lines; an INDENTED follow-on line continues the item. Under a
+ *                JUDGED section (Open, Reality Check, the legacy Evidence) anything else that is
+ *                not blank — a numbered line, a bare line — is a defect naming the line: it could
+ *                be the item the reader would otherwise merge or drop. `## Next` is human prose
+ *                and stays lenient (list items read, the rest is ignored — nothing judges it).
+ *   gates:       the append-only log: `- <entry>` lines, continuation lines joined, until the
+ *                next heading or key. `lastGate` is the last dated entry OF THE BLOCK.
+ *   inert        fenced code (```…```) and HTML comments (<!-- … -->) ANYWHERE — an item, a fact
+ *                or a gates: entry inside one is documentation: never an item, never a fact,
+ *                never an authorization. An UNCLOSED fence or comment is a defect: the rest of
+ *                the file is unreadable, and unreadable never reads as "nothing owed".
+ *
+ * Line numbers survive the pre-pass (inert lines become blank lines), so every defect names the
+ * line a human has to look at. CRLF is normalized first.
+ */
+
+const KEY_RE = /^([a-z][a-z-]*):(.*)$/;
+const HEADING_RE = /^(#{1,6})[ \t]+(.*?)[ \t]*$/;
+const ITEM_RE = /^\s*[-*]\s+(.*)$/;
+const NUMBERED_RE = /^\s*\d+[.)]\s/;
+const DATED_RE = /^\d{4}-\d{2}-\d{2}\S*\s+.+$/;
+const JUDGED = { open: 'open', 'reality check': 'reality check', evidence: 'evidence' };
+const TRACKED_KEYS = ['change', 'mode', 'phase', 'escalation'];
+// The 5.x identity keys — spelled here (the leaf) so the reader and C3 see the same live keys;
+// readiness re-exports them and diagnoses, never decides, by them.
+const LEGACY_IDENTITY = ['tier', 'track', 'track-rationale', 'round', 'current-step'];
+// The keys that END a section when they appear at column 0 inside one: the state's own fields
+// and the legacy ones. Any OTHER `word:` line inside a section is section content — under a
+// judged section a located structural defect — never a scalar that quietly empties the section.
+// `artifact-root`, `delivery` and `lineage` are RETIRED (batch C) but stay in this set as
+// LEGACY TOLERANCE: published/prior templates wrote the lines (v5.0.0 for artifact-root,
+// every 6.x scaffold up to 6.2 for delivery and lineage), so an old bundle carrying them must
+// keep parsing — read and ignored, never a defect, and no consumer anywhere (they are not
+// TRACKED_KEYS; the archive declaration's third state is a fixed sentence now, not the
+// delivery field's echo, and lineage lives in the Reality Check as a `decision:` line — see
+// MIGRATING).
+const STATE_KEYS = new Set([...TRACKED_KEYS, 'reviewer-session', 'artifact-root', 'delivery', 'lineage', ...LEGACY_IDENTITY]);
+// a fence OPENS with three or more backticks or tildes (an info string may follow); it CLOSES
+// only on a line of the SAME marker, at least as long, carrying nothing else — a shorter line,
+// the other marker, or a tagged line is content of the fence (that is how a ```` block quotes
+// a ``` block). Up to three spaces of indentation, as Markdown has it.
+const FENCE_OPEN_RE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+const FACT_KINDS = ['observed', 'decision', 'assumption'];
+
+// THE CANONICAL OWNER ENTRY — the one shape every authorization in this tool reads through:
+//   - <YYYY-MM-DDTHH:MM> owner: <verb payload>
+// The TIMESTAMP is RANGE-checked, not calendar-checked: month 01-12, day 01-31, hour 00-23,
+// minute 00-59. A 31st of February is a typo, not an authorization forgery, and this tool
+// ships no calendar. `9999-99-99T99:99` is refused; `T1100` and `T11:00` are both legal.
+const OWNER_ENTRY_RE = /^-[ \t]+(\d{4}-\d{2}-\d{2}T\d{2}:?\d{2})[ \t]+owner:[ \t]+([\s\S]*)$/;
+// the ONE range check every dated gates: entry goes through — the owner decision here, the
+// producer's review-progress record in lib/review.js
+function stampInRange(stamp) {
+  const m = /^\d{4}-(\d{2})-(\d{2})T(\d{2}):?(\d{2})$/.exec(String(stamp || ''));
+  if (!m) return false;
+  const [, mo, d, h, mi] = m;
+  return !(+mo < 1 || +mo > 12 || +d < 1 || +d > 31 || +h > 23 || +mi > 59);
+}
+function ownerEntry(entry) {
+  const m = OWNER_ENTRY_RE.exec(entry);
+  if (!m) return null;
+  const [, stamp, payload] = m;
+  if (!stampInRange(stamp)) return null;
+  return { stamp, payload };
+}
+
+// The pre-pass: CRLF → LF, fenced and commented regions blanked (line count preserved), the two
+// unclosed cases reported. -> { lines: string[], defects: string[] }
+function scan(text) {
+  const raw = String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+  const lines = [], defects = [];
+  let fence = null, comment = null;            // the open region: {line, char, len} / 1-based line
+  for (let i = 0; i < raw.length; i++) {
+    const n = i + 1;
+    let t = raw[i];
+    if (comment !== null) {
+      const close = t.indexOf('-->');
+      if (close < 0) { lines.push(''); continue; }
+      comment = null;
+      t = t.slice(close + 3);
+    }
+    if (fence !== null) {
+      const c = new RegExp(`^ {0,3}\\${fence.char}{${fence.len},}[ \\t]*$`).exec(t);
+      if (c) fence = null;
+      lines.push('');
+      continue;
+    }
+    const o = FENCE_OPEN_RE.exec(t);
+    if (o) { fence = { line: n, char: o[1][0], len: o[1].length }; lines.push(''); continue; }
+    while (t.includes('<!--')) {                 // inline spans: what is outside them stays live
+      const open = t.indexOf('<!--');
+      const close = t.indexOf('-->', open + 4);
+      if (close < 0) { t = t.slice(0, open); comment = n; break; }
+      t = t.slice(0, open) + t.slice(close + 3);
+    }
+    lines.push(t);
+  }
+  if (fence !== null) defects.push(`line ${fence.line}: unclosed code fence — everything after it is unreadable; close it with ${fence.char.repeat(fence.len)}`);
+  if (comment !== null) defects.push(`line ${comment}: unclosed HTML comment — everything after it is unreadable; close it with -->`);
+  return { lines, defects };
+}
+
+const clip = (s) => (s.length > 60 ? s.slice(0, 59) + '…' : s);
+
+// The structure pass over the scanned lines.
+// -> { scalars: Map<key,[{value,line}]>, sections: [{title, key, line, body:[{n,text}]}],
+//      gates: [{line, body}], defects: string[] }
+function structure(text) {
+  const { lines, defects } = scan(text);
+  const scalars = new Map(), sections = [], gates = [];
+  let cur = null;
+  for (let i = 0; i < lines.length; i++) {
+    const n = i + 1, t = lines[i];
+    const h = HEADING_RE.exec(t);
+    if (h) {
+      const title = h[2].replace(/[ \t]+#.*$/, '').trim();
+      cur = h[1].length >= 2 ? { title, key: title.toLowerCase(), line: n, body: [] } : null;
+      if (cur) sections.push(cur);
+      continue;
+    }
+    const k = KEY_RE.exec(t);
+    // inside a SECTION only a heading, `gates:` or a known state key ends it (F2): a stray
+    // `risk: …` under ## Open is the item that forgot its `- `, not a scalar
+    if (k && (!cur || cur.key === undefined || k[1] === 'gates' || STATE_KEYS.has(k[1]))) {
+      if (k[1] === 'gates') { cur = { line: n, body: [] }; gates.push(cur); continue; }
+      const value = k[2].replace(/\s*#.*$/, '').trim();
+      if (!scalars.has(k[1])) scalars.set(k[1], []);
+      scalars.get(k[1]).push({ value, line: n });
+      cur = null;
+      continue;
+    }
+    if (cur) cur.body.push({ n, text: t });
+  }
+  for (const [key, occ] of scalars) {
+    const first = occ.find((o) => o.value !== '');
+    if (!first) continue;
+    for (const o of occ) if (o.value !== '' && o.value !== first.value)
+      defects.push(`line ${o.line}: \`${key}:\` is set twice with different values (line ${first.line}: ${first.value}, line ${o.line}: ${o.value}) — one value per key`);
+  }
+  const seen = new Map();
+  for (const s of sections) {
+    if (seen.has(s.key)) defects.push(`line ${s.line}: section \`## ${seen.get(s.key).title}\` is written twice (lines ${seen.get(s.key).line} and ${s.line}) — one section per title`);
+    else seen.set(s.key, s);
+  }
+  if (gates.length > 1) defects.push(`line ${gates[1].line}: \`gates:\` is written twice (lines ${gates[0].line} and ${gates[1].line}) — one append-only log`);
+  return { scalars, sections, gates, defects };
+}
+
+// The items of every section carrying `title`. `strict` sections turn every non-blank,
+// non-list, non-continuation line into a defect. -> { items: string[], defects: string[] }
+function itemsOf(st, title, strict) {
+  const key = title.toLowerCase();
+  const label = JUDGED[key] || key;
+  const items = [], defects = [];
+  for (const s of st.sections) {
+    if (s.key !== key) continue;
+    let last = null;
+    for (const { n, text } of s.body) {
+      if (!text.trim()) continue;
+      const it = ITEM_RE.exec(text);
+      if (it) { last = { text: it[1].trim() }; items.push(last); continue; }
+      if (last && /^\s/.test(text) && !NUMBERED_RE.test(text)) { last.text += ' ' + text.trim(); continue; }
+      if (strict) defects.push(`line ${n}: ${label} section line is not a list item — write \`- ${clip(text.trim().replace(/^\s*\d+[.)]\s+/, ''))}\``);
+    }
+  }
+  return { items: items.map((i) => i.text), defects };
+}
+
+// -> [string] — each item's text, continuation joined, marker stripped (compat signature)
+function sectionItems(text, title) {
+  return itemsOf(structure(text), title, !!JUDGED[title.toLowerCase()]).items;
+}
+
+// gates: entries with their RAW first line beside the continuation-joined form, plus the
+// owner-decision payload (null for a `note:` line and every near miss). Every consumer of this
+// function is asking whether a human authorized something.
+function gatesEntries(text) {
+  const st = typeof text === 'string' ? structure(text) : text;
+  const out = [];
+  for (const g of st.gates) {
+    for (const { n, text: line } of g.body) {
+      if (/^\s*-\s/.test(line)) out.push({ firstLine: line.replace(/\s+$/, ''), joined: line.trim(), line: n });
+      else if (out.length && line.trim()) out[out.length - 1].joined += ' ' + line.trim();
+    }
+  }
+  for (const e of out) { const o = ownerEntry(e.joined); e.payload = o ? o.payload : null; e.stamp = o ? o.stamp : null; }
+  return out;
+}
+
+// The Reality Check — the three kinds a Ground fact can be, and nothing else. A line naming no
+// kind is `malformed` (structural, never acceptable).
+function realityOf(st) {
+  const out = { observed: [], decision: [], assumption: [], malformed: [] };
+  for (const item of itemsOf(st, 'Reality Check', true).items) {
+    const m = /^([a-z]+)\s*:\s*(.*)$/i.exec(item);
+    const kind = m && m[1].toLowerCase();
+    if (!m || !FACT_KINDS.includes(kind)) { out.malformed.push(item); continue; }
+    out[kind].push(m[2].trim());
+  }
+  return out;
+}
+function realityCheck(text) { return realityOf(structure(text)); }
+
+// The parsed state: the tracked scalars, the last gate, the sections, and every structural
+// defect the file carries (each naming its line). Never throws on content.
+function parseFlowState(text) {
+  const st = structure(text);
+  const out = {};
+  for (const key of TRACKED_KEYS) {
+    const occ = (st.scalars.get(key) || []).find((o) => o.value !== '');
+    if (occ) out[key] = occ.value;
+  }
+  const dated = gatesEntries(st).map((e) => e.firstLine.replace(/^\s*-\s*/, '').trim()).filter((s) => DATED_RE.test(s));
+  out.lastGate = dated.length ? dated[dated.length - 1] : null;
+  out.next = itemsOf(st, 'Next', false).items;
+  const open = itemsOf(st, 'Open', true);
+  out.openIssues = open.items;
+  out.reality = realityOf(st);
+  const evidence = itemsOf(st, 'Evidence', true);
+  out.defects = [...st.defects, ...open.defects, ...itemsOf(st, 'Reality Check', true).defects, ...evidence.defects];
+  return out;
+}
+
+// every structural defect of a state text, each naming its line — [] for a legal file
+function structuralDefects(text) { return parseFlowState(text).defects; }
+
+// the 5.x identity keys a state still carries LIVE — read off the same structured, fence- and
+// comment-stripped pass as everything else (F6): a `round: 1` inside an example is inert
+function legacyKeys(text) {
+  const st = structure(text);
+  return LEGACY_IDENTITY.filter((k) => st.scalars.has(k));
+}
+
+module.exports = { scan, structure, sectionItems, gatesEntries, ownerEntry, stampInRange, realityCheck, parseFlowState, structuralDefects, legacyKeys, FACT_KINDS, LEGACY_IDENTITY };
+
+exec
+/usr/bin/zsh -lc "cat test/scope-disposition.test.js; sed -n '82,90p' apriori/specs/readiness/spec.md; cat apriori/changes/scope-disposition/flow-state.md" in /root/terra/asd-v62-code
+ succeeded in 0ms:
+'use strict';
+// scope-disposition — RY-32/RY-33 (the follow-up item), PR-42/PR-43 (the disposition rule in both runbooks and P3).
+const { test } = require('node:test');
+const assert = require('node:assert');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { spawnSync } = require('node:child_process');
+const BIN = path.join(__dirname, '..', 'bin', 'apriori.js');
+const ROOT = path.join(__dirname, '..');
+const rd = require('../lib/readiness');
+const gate = require('../lib/gate');
+const { readyFiles, withOpen } = require('./helpers/ready-bundle');
+
+const STORE = '### Requirement: Alpha\n\n#### Scenario: XA-01 base\n- t\n';
+const DELTA = '## ADDED Requirements\n\n### Requirement: Beta\n\n#### Scenario: XB-01 new\n- t\n';
+const TAP_OK = `node -e "${['ok 1 - XA-01 a', 'ok 2 - XB-01 b'].map((l) => `console.log('${l}')`).join(';')}"`;
+function proj(openItems, gates = '') {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-sd-'));
+  const files = { ...readyFiles('c'), 'apriori/specs/kv/spec.md': STORE, 'apriori/changes/c/specs/kv/spec.md': DELTA };
+  for (const [rel, c] of Object.entries(files)) {
+    fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
+    fs.writeFileSync(path.join(root, rel), c);
+  }
+  const fs_ = path.join(root, 'apriori/changes/c/flow-state.md');
+  fs.writeFileSync(fs_, withOpen(fs.readFileSync(fs_, 'utf8'), openItems) + gates);
+  return root;
+}
+const run = (root, args) => spawnSync('node', [BIN, ...args], { encoding: 'utf8', cwd: root });
+const bundle = (root) => path.join(root, 'apriori/changes/c');
+
+test('RY-32 a follow-up item is a note for C9, R5, the declaration and status', () => {
+  const root = proj(['F-01: follow-up → punctuation-policy — a pluggable punctuation policy object']);
+  const rdy = rd.readinessOf({ bundleDir: bundle(root), name: 'c', cwd: root });
+  assert.deepStrictEqual(rdy.blockers.filter((b) => b.rule === 'R5'), [], 'no R5 blocker');
+  assert.ok(rdy.notes.some((n) => /follow-up F-01 → punctuation-policy: a pluggable punctuation policy object \(registered, not a blocker; moving it out is not closing it\)/.test(n)), rdy.notes.join('|'));
+  const c9 = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK }).checks.find((x) => x.id === 'C9');
+  assert.strictEqual(c9.status, 'pass', c9.detail);
+  assert.match(c9.detail, /1 follow-up\(s\) registered \(F-01 → punctuation-policy\)/);
+  assert.match(c9.detail, /0 pending/);
+  const a = run(root, ['archive', '--change', 'c', '--write']);
+  assert.strictEqual(a.status, 0, a.stdout + a.stderr);
+  assert.match(a.stdout, /implementation:    complete\n  critical evidence: complete, 1 follow-up\(s\) registered \(F-01 → punctuation-policy\)/);
+  // status, on a fresh copy (the archived one is frozen)
+  const root2 = proj(['F-01: follow-up → punctuation-policy — a pluggable punctuation policy object']);
+  const st = run(root2, ['status', '--change', 'c']);
+  assert.match(st.stdout, /open:\s+\[follow-up → punctuation-policy\] F-01: follow-up → punctuation-policy — a pluggable/);
+  const j = JSON.parse(run(root2, ['status', '--change', 'c', '--json']).stdout);
+  assert.strictEqual(j.openItems[0].followUp, 'punctuation-policy');
+  assert.strictEqual(j.openItems[0].accepted, false);
+  assert.deepStrictEqual(j.escalations.filter((e) => /F-01/.test(JSON.stringify(e))), [], 'a follow-up is not an escalation');
+  // review-ready: a follow-up is not pending there either
+  const rr = JSON.parse(run(root2, ['gate', '--change', 'c', '--review-ready', '--test-cmd', TAP_OK, '--json']).stdout);
+  const openItem = (rr.items || rr.checks || []).find((x) => x.id === 'open');
+  assert.ok(openItem && openItem.ok, JSON.stringify(rr).slice(0, 300));
+  assert.doesNotMatch(openItem.detail, /pending items are what the review is for/);
+  assert.match(openItem.detail, /1 follow-up\(s\) registered/);
+});
+
+test('RY-33 the grammar is exact — a malformed follow-up stays pending and blocks', () => {
+  for (const item of ['F-02: follow-up → — no landing', 'F-03: follow-up → Bad_Name — x', 'F-04: follow-up → later —', 'F-05: follow up → later — x', 'F-06: later as a follow-up — x',
+    'F-07: follow-up → bad--name — x', 'F-08: follow-up → archive — x', 'F-09: follow-up → 2026-09-next — x', 'F-10: follow-up → c — x']) {
+    const root = proj([item]);
+    const rdy = rd.readinessOf({ bundleDir: bundle(root), name: 'c', cwd: root });
+    const r5 = rdy.blockers.filter((b) => b.rule === 'R5');
+    assert.strictEqual(r5.length, 1, item);
+    const id = item.split(':')[0];
+    assert.match(r5[0].detail, new RegExp(`open item ${id} is pending`), item);
+    assert.match(r5[0].detail, new RegExp(`register it as a follow-up with its landing spot \\(- ${id}: follow-up → <new-change-name> — <the ask, in one line>\\)`), item);
+    assert.match(r5[0].detail, /record the owner's decision: .*evidence-accept/, item);
+    assert.strictEqual(gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK }).checks.find((x) => x.id === 'C9').status, 'blocked', item);
+    const a = run(root, ['archive', '--change', 'c']);
+    assert.strictEqual(a.status, 1, item);
+    assert.match(a.stdout, /RESULT: NOT READY — nothing written/, item);
+  }
+  // owner acceptance over a well-formed follow-up: accepted wins the report
+  const root = proj(['F-01: follow-up → punctuation-policy — a pluggable policy'], '  - 2026-09-26T00:00 owner: evidence-accept F-01 — accepted as is\n');
+  const rdy = rd.readinessOf({ bundleDir: bundle(root), name: 'c', cwd: root });
+  assert.deepStrictEqual(rdy.blockers.filter((b) => b.rule === 'R5'), []);
+  assert.ok(rdy.notes.some((n) => /1 accepted, still present \(F-01\)/.test(n)), rdy.notes.join('|'));
+  assert.ok(!rdy.notes.some((n) => /registered, not a blocker/.test(n)), 'accepted is not reported as a follow-up note');
+});
+
+test('PR-42 the disposition rule lands in both editions of §4', () => {
+  const sec = (t, h, next) => t.slice(t.indexOf(h), t.indexOf(next, t.indexOf(h)));
+  const en = sec(fs.readFileSync(path.join(ROOT, 'RUNBOOK.md'), 'utf8'), '### Review & Deliver', '\n## ');
+  for (const [label, re] of Object.entries({
+    'per finding, never by volume': /scope is judged per finding, never by volume/,
+    'three bases': /the \*current contract\*[^\n]*an \*existing constraint\*[^\n]*a \*new ask\*/,
+    'necessary-fix criterion': /A finding is a necessary fix for THIS delivery when, left alone, the product as it would be delivered violates a locatable accepted acceptance condition, a valid owner decision or an applicable existing constraint/,
+    'cites basis and evidence': /the disposition cites that basis and the evidence of the violation/,
+    'never moved out for size': /never moved out because it is large: split the implementation if you must, the delivery keeps its dependency on it/,
+    'commitment change is the owner\'s': /Changing a commitment is the owner's decision \(R1\); until it is recorded, the commitment and its blocking stand/,
+    'follow-up grammar + note': /`- <ID>: follow-up → <new-change-name> — <text>` in `## Open`, which gate C9 \/ archive R5 \/ `status` report as a note, not a blocker/,
+    'moving out is not closing': /moving it out is not closing it/,
+    'recommended words, not closed': /are the recommended words, not a closed vocabulary: an unresolved finding keeps its id, its current impact and its next action/,
+    'approach is not a ledger': /`review-progress`'s `approach:`[^\n]*not a second ledger of findings/,
+  })) assert.match(en, re, `RUNBOOK.md §4 lacks: ${label}`);
+  const cn = sec(fs.readFileSync(path.join(ROOT, 'RUNBOOK_cn.md'), 'utf8'), '### Review & Deliver', '\n## ');
+  for (const [label, re] of Object.entries({
+    '按每条发现': /范围按每条发现判断,从不按体量/,
+    '三种依据': /\*当前契约\*[^\n]*\*既有约束\*[^\n]*\*新增诉求\*/,
+    '必要修复判据': /若不处理该发现,拟交付的产物将违反一条可定位的已承诺验收条件、有效的所有者决定或适用的既有约束,那它就是本次交付的必要修复/,
+    '引用依据与证据': /处置须同时引用该依据和违背它的证据/,
+    '不因体量移出': /绝不因体量大而移出:实现可以拆,交付对它的依赖保留/,
+    '改承诺是所有者的': /改变承诺是所有者的决定\(R1\);记录之前,承诺与它的阻断继续有效/,
+    'follow-up 语法 + note': /`- <ID>: follow-up → <新 change 名> — <内容>`,gate C9 \/ archive R5 \/ `status` 把它当 note 报告而非阻断/,
+    '移出不等于关闭': /移出不等于关闭/,
+    '推荐写法非封闭': /是推荐写法,不是封闭词表:未解决的发现保留其 ID、当前影响与下一动作/,
+    'approach 不是账本': /`approach:` 只说为什么保留或改变方案——它不是第二份问题账本/,
+  })) assert.match(cn, re, `RUNBOOK_cn.md §4 lacks: ${label}`);
+  // the P3 block is not touched (RIB-10 pins it verbatim by a recorded human ruling): the disposition is the producer's duty
+  const crypto = require('crypto');
+  for (const [file, want] of Object.entries({ 'RUNBOOK.md': '97a85ca560d41c70', 'RUNBOOK_cn.md': 'd3c2c74d8aa3f3b6' })) {
+    const m = fs.readFileSync(path.join(ROOT, file), 'utf8').match(/### P3 [\s\S]*?(?=### P4 )/);
+    assert.strictEqual(crypto.createHash('sha256').update(m[0]).digest('hex').slice(0, 16), want, `${file}: P3 must stay verbatim`);
+  }
+});
+
+test('PR-44 §5 and the CLI reference distinguish a pending item from a registered follow-up', () => {
+  const en = fs.readFileSync(path.join(ROOT, 'RUNBOOK.md'), 'utf8');
+  assert.match(en, /\*\*Exactly one thing blocks: a pending item — one nobody has accepted and that is not a registered follow-up\.\*\*/);
+  assert.match(en, /a new ask with no delivery dependency is a follow-up item, not a pending one/);
+  assert.match(en, /R1's unresolved delivery obligations and R4's review stops keep their authority: a follow-up registration releases neither/);
+  assert.match(en, /The landing spot is a valid change name that is not this change; when that change is later opened under its own authorization, its Reality Check carries the original id and text as an `observed:` line/);
+  const cn = fs.readFileSync(path.join(ROOT, 'RUNBOOK_cn.md'), 'utf8');
+  assert.match(cn, /\*\*只有一件事阻断:pending 的条目——没有人接受、且不是已登记 follow-up 的条目。\*\*/);
+  assert.match(cn, /本次交付不依赖的新增诉求是 follow-up 条目,不是 pending/);
+  assert.match(cn, /R1 未了结的交付义务与 R4 的评审停止保持其效力:登记 follow-up 放行不了任何一个/);
+  assert.match(cn, /落点必须是一个合法且不是本 change 的 change 名;日后在其自身授权下开启那个 change 时,其 Reality Check 以一行 `observed:` 带上原 ID 与原文/);
+  assert.match(fs.readFileSync(path.join(ROOT, 'docs', 'cli.md'), 'utf8'), /a registered follow-up item \(`- <ID>: follow-up → <new-change-name> — <text>`, see C9\) is a note, not a blocker/);
+});
+
+#### Scenario: RY-21 legacy residue is inert, and a 5.x identity key still refuses
+- WHEN a bundle carries a 5.x `tasks.md` with unchecked boxes and a ledger with an open row, and then additionally spells `current-step:`
+- THEN the first gates green with C2/C4 as placeholders and nothing from the unread files in the report, while the second is refused at C3 with the key named and a MIGRATING.md pointer — residue is inert, identity is refused
+
+### Requirement: the acceptance exit is closed, and a check that could not be made never reads as no risk
+EVERY owner decision in the `gates:` log — the open-item acceptance, the (inert) `archive-force` record, and the loop's `reframe` — SHALL be recognised through ONE canonical-entry parser, so no verb can be more forgiving than its neighbours: a real, range-checked `YYYY-MM-DDTHH:MM` timestamp, the actor spelled exactly `owner`, the lowercase verb OPENING the decision payload, the target matched whole (`ledger`; an item id, case-sensitively; a family AND its round together), an em dash, and a reason carrying a letter or digit in any script. `producer:`, `note:`, `agent:` and the retired `gate⑤ (owner):` prefix SHALL authorize none of them. The last decision for a target SHALL win, `gates:` being append-only. A delta the scan could not read SHALL be fail-closed and incurable by any item or acceptance; a mutating delta SHALL be reported as the `contract-mutation` signal and demand nothing. The state's own claims — an open item, a standing `assumption`, a Reality Check line naming no kind — SHALL block the gate and the archive (and, except for a pending id'd item, `--review-ready`), read VERBATIM: no text heuristic SHALL decide which of them are real, because prose carries angle brackets (`Map<Key>`, `List<T>`). There SHALL be no scaffold exemption: `apriori new` writes bare headings, so there is no unfilled row to skip. A `## Next` list longer than three SHALL only be reported.
+
+#### Scenario: RY-22 the owner acceptance exit has one grammar and every near miss is refused
+change: scope-disposition
+phase: review                             # ground | specify | build | review | done | abandoned
+reviewer-session: 01a0d8ce-a062-7073-b070-8100b2404a58   # codex exec, round 1 (2026-09-26)
+
+## Reality Check         # observed / decision / assumption — one line each, as you find them
+- decision: lineage — branch `v6-dev-s2`（主线）；本地提交、不推送、不合入 v6-dev@46bb329
+- decision: requirement — `work/astra-discuss/next-plan/NEXT-PLAN-CONSENSUS.md` 序 3（S6 范围判定最小协议）：处置写依据类别；必要修复判据一句；不因体量移出；改承诺走 owner；follow-up 登记稳定落点、移出 ≠ 关闭、不永久阻断；推荐写法非封闭词表；保留未解决状态；approach 不承载账本；**不加 C8 标记检查**
+- decision: P3 模板不动 —— `test/review-input-boundary.test.js` RIB-10 按人类裁定（09-20「P3 默认输入措辞 → 不改」）逐字钉住两版 P3；本 change 曾拟在 P3 加一句「说明每条发现的依据」，撤回；处置是生产方的义务
+- observed: 落点冲突 —— 现行 R5/C9 把任何未接受的 `## Open` 条目当阻断（cure 已写「move it to a new change」），与「follow-up 不因在 Open 而永久阻断」直接冲突；最小解法是给 `## Open` 一条精确语法 `- <ID>: follow-up → <新 change 名> — <内容>`，由同一状态判定当 note 报告（非 C8、非新闸门，语法不匹配即仍阻断）
+- observed: 处置文本落点 —— `RUNBOOK.md` §4 Review & Deliver「Then one independent review」之后；`docs/cli.md` C9 段
+- observed: Build 完成 —— readiness FOLLOW_UP_RE + note + cure 补 follow-up 形式；openSummary / archiveDeclaration 把 follow-up 计为 registered；status 标记与 JSON `followUp` 字段（既有钉形测试 OI-02/ST-04 加该字段）；RUNBOOK 双语 §4 处置条；docs/cli 双语；delta readiness RY-32/33、protocol PR-42；test/scope-disposition.test.js
+
+- observed: Review 第 1 轮（`review/code-review-v1.md`，结论行经会话重发为词表形式）= 2 issues：SDP-01 落点名未经 validateChangeName（bad--name / archive / 日期前缀混过）；SDP-02 §5「只有未接受条目阻断」、条目分类句、docs/cli 157 与 store 需求均未区分 pending 与 follow-up。修：landing 须通过 validateChangeName 且 ≠ 本 change；§5 双语改准 + R1/R4 效力句；cli 157；readiness / gate / protocol 三个 MODIFIED 块各加一句（PR-18 措辞随之更新）；review-ready pending 排除 follow-up（ADV-02）；§4 加落点合法性与后续 change 承接方式（ADV-03）；RY-33 加 4 个坏落点、PR-44 新增
+
+## Open                  # substantive unresolved items — one line each, stable id first: - <ID>: <text>
+
+## Next                  # at most three concrete actions; the first is the resume point
+- Review：codex 独立评审 → gate → archive --write → 本地提交；随后层 2：假评审者双向场景 ×2 账号（work/benefit-stage1/pilot-s2/scope_gate.py）
+
+gates:
+  - 2026-09-25T21:33 note: change scaffolded by `apriori new`
+  - 2026-09-26T01:20 note: Review 第 1 轮落盘（2 issues）；SDP-01/02 与 ADV-02/03 已修；开第 2 轮
+
+exec
+/usr/bin/zsh -lc "sed -n '1,165p' lib/flow.js; git diff -- docs/cli.md docs/cli_cn.md docs/concepts.md docs/concepts_cn.md test/protocol.test.js; rg -n 'F[0-9]|fence|comment|scalar' apriori/specs/flow/spec.md" in /root/terra/asd-v62-code
+ exited 2 in 0ms:
+'use strict';
+/*
+ * apriori flow — the ONE reader of a change's flow-state.md (6.2).
+ *
+ * A LEAF module: it requires nothing, so status, readiness, review, gate, doctor and archive
+ * can all read the state through it without opening a cycle. Read-only: nothing here writes.
+ *
+ * The grammar is one explicit Markdown subset, and the reader is FAIL-CLOSED on what it cannot
+ * read — an unreadable section is a structural defect naming its line, never an empty section:
+ *
+ *   scalars      `key: value` at column 0; key = lowercase kebab; optional trailing `# comment`;
+ *                an empty value reads as absent; the same key twice with the SAME value is
+ *                tolerated, with DIFFERENT values it is a defect naming both lines
+ *   sections     `## Title` (any level >= 2, `#` levels end the previous section too), optional
+ *                trailing `# annotation` (the RUNBOOK template's own form), title matched whole
+ *                and case-insensitively; a title written twice is a defect naming both lines,
+ *                and nothing under either is hidden
+ *   items        `- ` or `* ` lines; an INDENTED follow-on line continues the item. Under a
+ *                JUDGED section (Open, Reality Check, the legacy Evidence) anything else that is
+ *                not blank — a numbered line, a bare line — is a defect naming the line: it could
+ *                be the item the reader would otherwise merge or drop. `## Next` is human prose
+ *                and stays lenient (list items read, the rest is ignored — nothing judges it).
+ *   gates:       the append-only log: `- <entry>` lines, continuation lines joined, until the
+ *                next heading or key. `lastGate` is the last dated entry OF THE BLOCK.
+ *   inert        fenced code (```…```) and HTML comments (<!-- … -->) ANYWHERE — an item, a fact
+ *                or a gates: entry inside one is documentation: never an item, never a fact,
+ *                never an authorization. An UNCLOSED fence or comment is a defect: the rest of
+ *                the file is unreadable, and unreadable never reads as "nothing owed".
+ *
+ * Line numbers survive the pre-pass (inert lines become blank lines), so every defect names the
+ * line a human has to look at. CRLF is normalized first.
+ */
+
+const KEY_RE = /^([a-z][a-z-]*):(.*)$/;
+const HEADING_RE = /^(#{1,6})[ \t]+(.*?)[ \t]*$/;
+const ITEM_RE = /^\s*[-*]\s+(.*)$/;
+const NUMBERED_RE = /^\s*\d+[.)]\s/;
+const DATED_RE = /^\d{4}-\d{2}-\d{2}\S*\s+.+$/;
+const JUDGED = { open: 'open', 'reality check': 'reality check', evidence: 'evidence' };
+const TRACKED_KEYS = ['change', 'mode', 'phase', 'escalation'];
+// The 5.x identity keys — spelled here (the leaf) so the reader and C3 see the same live keys;
+// readiness re-exports them and diagnoses, never decides, by them.
+const LEGACY_IDENTITY = ['tier', 'track', 'track-rationale', 'round', 'current-step'];
+// The keys that END a section when they appear at column 0 inside one: the state's own fields
+// and the legacy ones. Any OTHER `word:` line inside a section is section content — under a
+// judged section a located structural defect — never a scalar that quietly empties the section.
+// `artifact-root`, `delivery` and `lineage` are RETIRED (batch C) but stay in this set as
+// LEGACY TOLERANCE: published/prior templates wrote the lines (v5.0.0 for artifact-root,
+// every 6.x scaffold up to 6.2 for delivery and lineage), so an old bundle carrying them must
+// keep parsing — read and ignored, never a defect, and no consumer anywhere (they are not
+// TRACKED_KEYS; the archive declaration's third state is a fixed sentence now, not the
+// delivery field's echo, and lineage lives in the Reality Check as a `decision:` line — see
+// MIGRATING).
+const STATE_KEYS = new Set([...TRACKED_KEYS, 'reviewer-session', 'artifact-root', 'delivery', 'lineage', ...LEGACY_IDENTITY]);
+// a fence OPENS with three or more backticks or tildes (an info string may follow); it CLOSES
+// only on a line of the SAME marker, at least as long, carrying nothing else — a shorter line,
+// the other marker, or a tagged line is content of the fence (that is how a ```` block quotes
+// a ``` block). Up to three spaces of indentation, as Markdown has it.
+const FENCE_OPEN_RE = /^ {0,3}(`{3,}|~{3,})(.*)$/;
+const FACT_KINDS = ['observed', 'decision', 'assumption'];
+
+// THE CANONICAL OWNER ENTRY — the one shape every authorization in this tool reads through:
+//   - <YYYY-MM-DDTHH:MM> owner: <verb payload>
+// The TIMESTAMP is RANGE-checked, not calendar-checked: month 01-12, day 01-31, hour 00-23,
+// minute 00-59. A 31st of February is a typo, not an authorization forgery, and this tool
+// ships no calendar. `9999-99-99T99:99` is refused; `T1100` and `T11:00` are both legal.
+const OWNER_ENTRY_RE = /^-[ \t]+(\d{4}-\d{2}-\d{2}T\d{2}:?\d{2})[ \t]+owner:[ \t]+([\s\S]*)$/;
+// the ONE range check every dated gates: entry goes through — the owner decision here, the
+// producer's review-progress record in lib/review.js
+function stampInRange(stamp) {
+  const m = /^\d{4}-(\d{2})-(\d{2})T(\d{2}):?(\d{2})$/.exec(String(stamp || ''));
+  if (!m) return false;
+  const [, mo, d, h, mi] = m;
+  return !(+mo < 1 || +mo > 12 || +d < 1 || +d > 31 || +h > 23 || +mi > 59);
+}
+function ownerEntry(entry) {
+  const m = OWNER_ENTRY_RE.exec(entry);
+  if (!m) return null;
+  const [, stamp, payload] = m;
+  if (!stampInRange(stamp)) return null;
+  return { stamp, payload };
+}
+
+// The pre-pass: CRLF → LF, fenced and commented regions blanked (line count preserved), the two
+// unclosed cases reported. -> { lines: string[], defects: string[] }
+function scan(text) {
+  const raw = String(text || '').replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n');
+  const lines = [], defects = [];
+  let fence = null, comment = null;            // the open region: {line, char, len} / 1-based line
+  for (let i = 0; i < raw.length; i++) {
+    const n = i + 1;
+    let t = raw[i];
+    if (comment !== null) {
+      const close = t.indexOf('-->');
+      if (close < 0) { lines.push(''); continue; }
+      comment = null;
+      t = t.slice(close + 3);
+    }
+    if (fence !== null) {
+      const c = new RegExp(`^ {0,3}\\${fence.char}{${fence.len},}[ \\t]*$`).exec(t);
+      if (c) fence = null;
+      lines.push('');
+      continue;
+    }
+    const o = FENCE_OPEN_RE.exec(t);
+    if (o) { fence = { line: n, char: o[1][0], len: o[1].length }; lines.push(''); continue; }
+    while (t.includes('<!--')) {                 // inline spans: what is outside them stays live
+      const open = t.indexOf('<!--');
+      const close = t.indexOf('-->', open + 4);
+      if (close < 0) { t = t.slice(0, open); comment = n; break; }
+      t = t.slice(0, open) + t.slice(close + 3);
+    }
+    lines.push(t);
+  }
+  if (fence !== null) defects.push(`line ${fence.line}: unclosed code fence — everything after it is unreadable; close it with ${fence.char.repeat(fence.len)}`);
+  if (comment !== null) defects.push(`line ${comment}: unclosed HTML comment — everything after it is unreadable; close it with -->`);
+  return { lines, defects };
+}
+
+const clip = (s) => (s.length > 60 ? s.slice(0, 59) + '…' : s);
+
+// The structure pass over the scanned lines.
+// -> { scalars: Map<key,[{value,line}]>, sections: [{title, key, line, body:[{n,text}]}],
+//      gates: [{line, body}], defects: string[] }
+function structure(text) {
+  const { lines, defects } = scan(text);
+  const scalars = new Map(), sections = [], gates = [];
+  let cur = null;
+  for (let i = 0; i < lines.length; i++) {
+    const n = i + 1, t = lines[i];
+    const h = HEADING_RE.exec(t);
+    if (h) {
+      const title = h[2].replace(/[ \t]+#.*$/, '').trim();
+      cur = h[1].length >= 2 ? { title, key: title.toLowerCase(), line: n, body: [] } : null;
+      if (cur) sections.push(cur);
+      continue;
+    }
+    const k = KEY_RE.exec(t);
+    // inside a SECTION only a heading, `gates:` or a known state key ends it (F2): a stray
+    // `risk: …` under ## Open is the item that forgot its `- `, not a scalar
+    if (k && (!cur || cur.key === undefined || k[1] === 'gates' || STATE_KEYS.has(k[1]))) {
+      if (k[1] === 'gates') { cur = { line: n, body: [] }; gates.push(cur); continue; }
+      const value = k[2].replace(/\s*#.*$/, '').trim();
+      if (!scalars.has(k[1])) scalars.set(k[1], []);
+      scalars.get(k[1]).push({ value, line: n });
+      cur = null;
+      continue;
+    }
+    if (cur) cur.body.push({ n, text: t });
+  }
+  for (const [key, occ] of scalars) {
+    const first = occ.find((o) => o.value !== '');
+    if (!first) continue;
+    for (const o of occ) if (o.value !== '' && o.value !== first.value)
+      defects.push(`line ${o.line}: \`${key}:\` is set twice with different values (line ${first.line}: ${first.value}, line ${o.line}: ${o.value}) — one value per key`);
+  }
+  const seen = new Map();
+  for (const s of sections) {
+    if (seen.has(s.key)) defects.push(`line ${s.line}: section \`## ${seen.get(s.key).title}\` is written twice (lines ${seen.get(s.key).line} and ${s.line}) — one section per title`);
+    else seen.set(s.key, s);
+  }
+  if (gates.length > 1) defects.push(`line ${gates[1].line}: \`gates:\` is written twice (lines ${gates[0].line} and ${gates[1].line}) — one append-only log`);
+  return { scalars, sections, gates, defects };
+}
+
+diff --git a/docs/cli.md b/docs/cli.md
+index 8bd8113..db51e8e 100644
+--- a/docs/cli.md
++++ b/docs/cli.md
+@@ -152,9 +152,9 @@ Exit: 0 PASS · 1 BLOCKED · 2 untrustworthy evaluation · 3 INCOMPLETE.
+ 
+ **C3 — flow-state legality, plus the two 6.2 migrations.** The flow-state is resolved through the SAME trust root archive's R1 uses: a symlinked, escaping or non-regular `flow-state.md` is `C3 BLOCKED — flow-state.md: symlink at …`, never read through, and C8/C9 then report `flow-state not read — see C3` rather than a second opinion (`status` refuses it the same way). An ACTIVE bundle's legacy `review/issues.md` with `open` rows (old table contract: first cell id, last cell status, `open` as the leading token, case-insensitive) is refused — `legacy ledger has N open row(s) — move each into ## Open as \`- <ID>: <text>\` and delete it from review/issues.md (or delete the file): line 3: Q-1 (…)` — at C3, archive R1 and review-ready, and the same message is a `status --escalation` stop; a spaced legacy id is told to re-key (`data schema` → `data-schema`). Closed-only or missing is nothing; unreadable, or content with no readable row, is a structural error (a ledger that cannot be read cannot be proven closed). The gate is one-shot: it never fires again once no open row remains — MOVE the rows, never copy. Frozen archives are never scanned, and the tool never rewrites the file. The other migration is the retired `escalation:` field (see `status`). **ID rules the docs state and the CLI cannot prove:** a closed id is never reused for a different risk within the same bundle; an `evidence-accept` whose id later names a different item is therefore a documentation violation, not something the tool detects. `change` and `phase` are required (`lineage` is retired — the lineage rides a Reality Check `decision:` line; a legacy `lineage:` key is read and ignored, and `status --json` keeps the key one version, always `null`); `mode:` is OPTIONAL and INERT since 6.2 — absent or empty is fine, `fast` / `standard` are accepted and echoed (`legal (mode fast, build)`), anything else, the unfilled `<fast | standard>` placeholder included, blocks as before. Nothing derives a decision from the word: there is no upgrade, no quota, no lane.
+ 
+-**C9 — the one substantive state predicate.** One check, one question: does this change's own state still owe something real? Gate C9, archive R5, the archive declaration and `status` all call ONE function on the same input, and there is no second state.
++**C9 — the one substantive state predicate.** One check, one question: does this change's own state still owe something real? Gate C9, archive R5, the archive declaration and `status` all call ONE function on the same input, and there is no second state. A **follow-up item** — `- <ID>: follow-up → <new-change-name> — <text>` — is a new ask this delivery does not depend on, registered with its landing spot: the predicate reports it as a note (`follow-up <ID> → <name>: …`), never as a blocker, the declaration counts it as registered rather than pending, and `status` marks it `[follow-up → <name>]`. The grammar is exact (a bare kebab-case landing, an em dash, a text); anything else is an ordinary pending item and blocks. Moving an ask out is not closing it, and a finding the current contract or an existing constraint requires is never a follow-up (RUNBOOK §4 Review & Deliver, disposition of findings).
+ 
+-*The `## Open` items* (`- <ID>: <text>`, the id being one token in front of the colon). An item is PENDING until the owner's decision is on record in the append-only `gates:` log, in a CLOSED grammar: `- <YYYY-MM-DDTHH:MM> owner: evidence-accept <ID> — <reason>` (revoke by APPENDING `evidence-accept-revoke <ID> — <reason>`; the last decision wins). A pending item blocks. An ACCEPTED item does not block, but it is reported as `accepted, still present` — in C9's detail, as an archive note and in `status` — and nothing deletes the line; the producer removes it when the risk is actually resolved. A line WITHOUT an id is still an open item: it blocks, and it cannot be accepted (`give it a stable id to accept it, or close it`). A duplicated id is refused, both lines named. An empty or absent section owes nothing. Every part of the acceptance line is load-bearing — a timestamp (RANGE-checked: month 01-12, day 01-31, hour 00-23, minute 00-59, `T11:00` or `T1100`; NOT calendar-checked — a 31st of February is a typo, not a forgery, and this tool ships no calendar), the actor spelled exactly `owner`, the lowercase keyword OPENING the payload, the id whole and case-sensitive, the em dash, and a reason carrying a letter or digit in any script. `producer:`, `note:`, a `gate⑤ (owner):` prefix, an undated line, a missing dash or reason, a superstring id (`R-011` for `R-01`) and generic accept prose authorize **nothing**: a producer may not grant itself the owner's exit. An acceptance whose id matches no item is a note (`acceptance R-09 matches no open item`), not a block.
++*The `## Open` items* (`- <ID>: <text>`, the id being one token in front of the colon). An item is PENDING until the owner's decision is on record in the append-only `gates:` log, in a CLOSED grammar: `- <YYYY-MM-DDTHH:MM> owner: evidence-accept <ID> — <reason>` (revoke by APPENDING `evidence-accept-revoke <ID> — <reason>`; the last decision wins). A pending item blocks; a registered follow-up item (`- <ID>: follow-up → <new-change-name> — <text>`, see C9) is a note, not a blocker. An ACCEPTED item does not block, but it is reported as `accepted, still present` — in C9's detail, as an archive note and in `status` — and nothing deletes the line; the producer removes it when the risk is actually resolved. A line WITHOUT an id is still an open item: it blocks, and it cannot be accepted (`give it a stable id to accept it, or close it`). A duplicated id is refused, both lines named. An empty or absent section owes nothing. Every part of the acceptance line is load-bearing — a timestamp (RANGE-checked: month 01-12, day 01-31, hour 00-23, minute 00-59, `T11:00` or `T1100`; NOT calendar-checked — a 31st of February is a typo, not a forgery, and this tool ships no calendar), the actor spelled exactly `owner`, the lowercase keyword OPENING the payload, the id whole and case-sensitive, the em dash, and a reason carrying a letter or digit in any script. `producer:`, `note:`, a `gate⑤ (owner):` prefix, an undated line, a missing dash or reason, a superstring id (`R-011` for `R-01`) and generic accept prose authorize **nothing**: a producer may not grant itself the owner's exit. An acceptance whose id matches no item is a note (`acceptance R-09 matches no open item`), not a block.
+ 
+ *The state's structure (6.2).* One reader, `lib/flow.js`, reads the whole file for every surface, and it accepts ONE Markdown subset: `key: value` scalars at column 0 (lowercase kebab keys, optional `# comment`), `## Title` sections (any level, optional trailing `# annotation`, title matched whole and case-insensitively), `- `/`* ` items with INDENTED continuation lines, CRLF or LF. Fenced code and HTML comments are inert anywhere — never an item, never a fact, never an authorization. What it cannot read is a STRUCTURAL DEFECT naming its line, and it blocks C9/R5 and review-ready `open` on an active bundle: a numbered or bare line under `## Open` / `## Reality Check` (`line 6: open section line is not a list item — write \`- R-1: …\``), a section written twice (both lines named), a scalar set twice with different values (both lines named; C3/R1 refuse it too), an unclosed fence or comment (the rest of the file is unreadable — it never reads GREEN). An archived bundle's defects are recorded, never a refusal and never migrated; the reader rewrites nothing.
+ 
+diff --git a/docs/cli_cn.md b/docs/cli_cn.md
+index c15811c..3d94c7b 100644
+--- a/docs/cli_cn.md
++++ b/docs/cli_cn.md
+@@ -154,7 +154,7 @@ usage: apriori gate --change <name> [--test-cmd "<cmd>"] [--id-pattern <re>] [--
+ 
+ **C3 —— flow-state 合法性,外加两项 6.2 迁移。** flow-state 经由与 archive R1 **同一个**信任根解析:软链接、越界或非常规文件的 `flow-state.md` 是 `C3 BLOCKED — flow-state.md: symlink at …`,绝不透过它读,随后 C8/C9 报 `flow-state not read — see C3` 而不是第二种意见(`status` 也以同样方式拒绝)。 活动 bundle 的遗留 `review/issues.md` 若有 `open` 行(旧表格契约:首格 id、末格状态,`open` 为首 token,不分大小写),在 C3、archive R1 与 review-ready 一律拒绝——`legacy ledger has N open row(s) — move each into ## Open as \`- <ID>: <text>\` and delete it from review/issues.md (or delete the file): line 3: Q-1 (…)`——同一句话也是 `status --escalation` 的停;带空格的旧 id 会被要求改键(`data schema` → `data-schema`)。只有关闭行或文件缺失则什么也没有;读不出来、或有内容却没有可读的行,是结构错误(读不出的台账无法证明已关闭)。这道门是一次性的:没有 open 行剩下时永不再触发——把行**移走**,绝不复制。冻结的归档永不扫描,工具也永不改写该文件。另一项迁移是已退役的 `escalation:` 字段(见 `status`)。**文档陈述、CLI 无法证明的 ID 规则:** 同一 bundle 内,关闭的 id 不复用给另一个风险;因此一条 `evidence-accept` 的 id 后来指向另一条条目,是文档层面的违规,不是工具能检测的东西。`change`、`phase` 必填(`lineage` 已退役——谱系写成 Reality Check 的 `decision:` 行;遗留的 `lineage:` 键照常读入并忽略,`status --json` 保留该键一版、恒为 `null`);`mode:` 自 6.2 起**可选且不起作用**——缺失或为空都合法,`fast` / `standard` 被接受并回显(`legal (mode fast, build)`),其他任何值(包括未填的 `<fast | standard>` 占位)照旧阻断。没有任何判定依据这个词:没有升级、没有配额、没有车道。
+ 
+-**C9 —— 唯一的实质状态判定。** 一次检查,一个问题:这个 change 自己的状态是否还欠着真东西?gate C9、archive R5、归档声明与 `status` 调用**同一个**函数、读同一个输入;不存在第二份状态。
++**C9 —— 唯一的实质状态判定。** **follow-up 条目**——`- <ID>: follow-up → <新 change 名> — <内容>`——是本次交付不依赖的新增诉求,带稳定落点登记:判定把它作为 note 报告(`follow-up <ID> → <名>: …`)而不是阻断,归档声明把它计为「已登记」而非 pending,`status` 标为 `[follow-up → <名>]`。语法必须精确(裸 kebab-case 落点、破折号、内容);其余仍是普通 pending 条目并阻断。移出不等于关闭;当前契约或既有约束要求的发现绝不能记为 follow-up(RUNBOOK §4 Review & Deliver 发现的处置)。 一次检查,一个问题:这个 change 自己的状态是否还欠着真东西?gate C9、archive R5、归档声明与 `status` 调用**同一个**函数、读同一个输入;不存在第二份状态。
+ 
+ *`## Open` 条目*(`- <ID>: <文字>`,id 是冒号前的那个 token)。条目在所有者的决定以**封闭**文法记入只追加的 `gates:` 日志之前处于 PENDING:`- <YYYY-MM-DDTHH:MM> owner: evidence-accept <ID> — <理由>`(撤销靠**追加** `evidence-accept-revoke <ID> — <理由>`;最后一条决定生效)。pending 的条目阻断。已**接受**的条目不阻断,但会报告为 `accepted, still present`——在 C9 的 detail 里、作为归档注记、以及在 `status` 里——而且没有任何东西会删掉那一行;风险真正解决时由生产方删除。**没有 id** 的行仍是 open 条目:它阻断,且无法被接受(`give it a stable id to accept it, or close it`)。重复的 id 会被拒绝并点名两行。空段或缺失的段不欠任何东西。接受那一行里每一部分都承重——时间戳(只做**范围**校验:月 01-12、日 01-31、时 00-23、分 00-59,`T11:00` 或 `T1100`;**不做**历法校验——2 月 31 日是笔误,不是伪造,本工具不带历法)、actor 必须正好是 `owner`、小写关键词必须**打头**、id 整体且大小写敏感匹配、破折号、以及带任意文字或数字的理由。`producer:`、`note:`、`gate⑤ (owner):` 前缀、没有时间戳的行、缺破折号或理由、超串 id(`R-011` 顶不了 `R-01`)、以及泛泛的接受措辞,一律**不构成授权**:生产方不能自己发给自己所有者的出口。匹配不到任何条目的接受记录是一条注记(`acceptance R-09 matches no open item`),不阻断。
+ 
+diff --git a/docs/concepts.md b/docs/concepts.md
+index d60032d..a369509 100644
+--- a/docs/concepts.md
++++ b/docs/concepts.md
+@@ -551,7 +551,7 @@ Notice the two fixed sections and their **opposite truth directions**: the Contr
+ **The CLI reads no ledger** (6.2) — the state's `## Open` section holds a change's open substantive issues, one `- <ID>: <text>` line each, and `gate`/`archive`/`status` read them there and nowhere else; `review/issues.md` is never opened. Whether a reviewer still keeps such a table for its own cross-round memory is a human practice with no protocol weight. Two design notes are all that belong here:
+ 
+ - **Why the form exists at all:** cross-round memory lives in a file instead of a session, so every round's reviewer can be a **fresh** session without losing the thread ([§1.4](#14-adversarial-review)). A re-found issue reopens its old ID — that reopened ID is the oscillation alarm [§4.7](#47-automating-the-loop-with-goal-claude-code) watches for.
+-- **Why exactly one thing blocks:** an `## Open` item nobody has accepted. 5.x refused archives over ledger bookkeeping — unknown status tokens, reasonless rejections, unrecorded waives — on changes whose product tests were already green; 6.2 reads none of it, and an accepted item is reported as still present rather than deleted, because the record should be true. Reviews also follow a **scope discipline** (per Anthropic's fully-verified warning that gap-hunting reviewers report gaps even in sound work): only correctness/security/stated-requirement gaps become rows; the rest are `advisory`.
++- **Why exactly one thing blocks:** an `## Open` item nobody has accepted — a pending item; a registered follow-up (`- <ID>: follow-up → <new-change-name> — <text>`, a new ask the delivery does not depend on) is a note, not a blocker, and is not closed by being moved out. 5.x refused archives over ledger bookkeeping — unknown status tokens, reasonless rejections, unrecorded waives — on changes whose product tests were already green; 6.2 reads none of it, and an accepted item is reported as still present rather than deleted, because the record should be true. Reviews also follow a **scope discipline** (per Anthropic's fully-verified warning that gap-hunting reviewers report gaps even in sound work): only correctness/security/stated-requirement gaps become rows; the rest are `advisory`.
+ 
+ ### 7.1 Ground: Reality Check
+ 
+diff --git a/docs/concepts_cn.md b/docs/concepts_cn.md
+index 67ea7c4..722e1b7 100644
+--- a/docs/concepts_cn.md
++++ b/docs/concepts_cn.md
+@@ -547,7 +547,7 @@ source-commit: <归档时的 commit sha>   # 只覆盖契约节
+ **CLI 不读任何台账**(6.2)——状态的 `## Open` 段承载一个 change 的开放实质问题,一行一条 `- <ID>: <文字>`,`gate`/`archive`/`status` 只在那里读它们;`review/issues.md` 从不被打开。评审方是否为自己的跨轮记忆保留这样一张表,是人的习惯,不带流程分量。这里只留两条设计说明:
+ 
+ - **这个形式为什么存在:**跨轮记忆存在文件里而不是会话里,于是每一轮的评审方都可以是**全新**会话而不丢线索([§1.4](#14-对抗训练))。同一问题被再次发现时重开旧 ID——那个被重开的 ID 正是 [§4.7](#47-用-goal-自动化整个流程) 盯的振荡告警。
+-- **为什么只有一件事阻断:**没有人接受的 `## Open` 条目。5.x 会为台账记账——未知状态词、无理由的驳回、没有记录的 waive——拒绝归档,在产品测试已经全绿的 change 上;6.2 一个都不读,而已接受的条目报告为仍然在场而不是被删掉,因为记录应当为真。评审同时遵循**范围纪律**(依据 Anthropic 已充分验证的警告:找缺口的评审方在健全的工作上也会报缺口):只有正确性/安全/已声明需求的缺口才进正式行,其余标 `advisory`。
++- **为什么只有一件事阻断:**没有人接受的 `## Open` 条目——即 pending 的条目;已登记的 follow-up(`- <ID>: follow-up → <新 change 名> — <内容>`,本次交付不依赖的新增诉求)是 note 而非阻断,也不因移出而关闭。5.x 会为台账记账——未知状态词、无理由的驳回、没有记录的 waive——拒绝归档,在产品测试已经全绿的 change 上;6.2 一个都不读,而已接受的条目报告为仍然在场而不是被删掉,因为记录应当为真。评审同时遵循**范围纪律**(依据 Anthropic 已充分验证的警告:找缺口的评审方在健全的工作上也会报缺口):只有正确性/安全/已声明需求的缺口才进正式行,其余标 `advisory`。
+ 
+ ### 7.1 Ground｜Reality Check
+ 
+diff --git a/test/protocol.test.js b/test/protocol.test.js
+index bf5f7d2..0508f49 100644
+--- a/test/protocol.test.js
++++ b/test/protocol.test.js
+@@ -580,7 +580,7 @@ test('PR-18 there is no ledger: ## Open is the only home of open issues, and one
+   assert.match(en, /MOVED/);
+   assert.match(en, /reopens its old id/i);
+   assert.match(en, /reopened is an event, not a new line/);
+-  assert.match(en, /Exactly one thing blocks: an item nobody has accepted/);
++  assert.match(en, /Exactly one thing blocks: a pending item — one nobody has accepted and that is not a registered follow-up/);
+   assert.match(en, /never deleted by a tool/);
+   // the retired vocabulary and its setters are gone with the reader
+   for (const dead of [/rejected-verified/, /advisory-acked/, /only a human sets `waived`/, /a row still reading `open`/])
+@@ -592,7 +592,7 @@ test('PR-18 there is no ledger: ## Open is the only home of open issues, and one
+   assert.match(cn, /一次性迁移/);
+   assert.match(cn, /重开旧 id/);
+   assert.match(cn, /重开是事件,不是新的一行/);
+-  assert.match(cn, /只有一件事阻断:没有人接受的条目/);
++  assert.match(cn, /只有一件事阻断:pending 的条目——没有人接受、且不是已登记 follow-up 的条目/);
+   for (const dead of [/rejected-verified/, /advisory-acked/, /只有人能置 `waived`/, /仍是 `open` 的行/])
+     assert.doesNotMatch(cn, dead, String(dead));
+   // neither runbook lists the ledger file as an artifact any more
+rg: apriori/specs/flow/spec.md: IO error for operation on apriori/specs/flow/spec.md: No such file or directory (os error 2)
+
+exec
+/usr/bin/zsh -lc "node -e '
+const rd=require('\\''./lib/readiness'\\''), flow=require('\\''./lib/flow'\\''), gate=require('\\''./lib/gate'\\''), fs=require('\\''fs'\\''), crypto=require('\\''crypto'\\'');
+const item=(n)=>'\\''\\n## Open\\n- F-1: follow-up → '\\''+n+'\\'' — platform ask\\n'\\'';
+for(const name of ['\\''bad--name'\\'','\\''archive'\\'','\\''2026-09-next'\\'','\\''c'\\'','\\''valid-next'\\'']){
+ const t='\\''change: c\\nphase: review\\n'\\''+item(name),e=rd.evidenceFindings(t);
+ console.log(JSON.stringify({case:name,followUp:e.items[0].followUp,blockers:e.blockers.length}));
+}
+for(const [label,prefix,dest] of [
+ ['\\''fenced-self'\\'','\\''~~~text\\nchange: example\\n~~~\\nchange: c\\nphase: review\\n'\\'','\\''c'\\''],
+ ['\\''commented-self'\\'','\\''<"'!--'"\\nchange: example\\n-->\\nchange: c\\nphase: review\\n'\\'','\\''c'\\''],
+ ['\\''inline-comment-self'\\'','\\''change: c# comment\\nphase: review\\n'\\'','\\''c'\\''],
+ ['\\''fenced-valid'\\'','\\''~~~text\\nchange: valid-next\\n~~~\\nchange: c\\nphase: review\\n'\\'','\\''valid-next'\\'']
+]){
+const t=prefix+item(dest),s=flow.parseFlowState(t),e=rd.evidenceFindings(t);
+console.log(JSON.stringify({label,parsedChange:s.change,defects:s.defects,c3:rd.checkFlowState(s,'\\''c'\\'',t),c9:rd.checkEvidenceStatus(t),followUp:e.items[0].followUp,blockers:e.blockers}));
+}
+const t='\\''change: c\\nphase: review\\n'\\''+item('\\''valid-next'\\'');
+console.log(JSON.stringify({reviewReady:gate.reviewReadyView({checks:[{id:'\\''C1'\\'',status:'\\''pass'\\'',detail:'\\''tests passed'\\''}]},t)}));
+for(const file of ['\\''RUNBOOK.md'\\'','\\''RUNBOOK_cn.md'\\'']) console.log(file,crypto.createHash('\\''sha256'\\'').update(fs.readFileSync(file,'\\''utf8'\\'').match(/### P3 [\\s\\S]*?(?=### P4 )/)[0]).digest('\\''hex'\\'').slice(0,16));
+'" in /root/terra/asd-v62-code
+ succeeded in 0ms:
+{"case":"bad--name","followUp":null,"blockers":1}
+{"case":"archive","followUp":null,"blockers":1}
+{"case":"2026-09-next","followUp":null,"blockers":1}
+{"case":"c","followUp":null,"blockers":1}
+{"case":"valid-next","followUp":"valid-next","blockers":0}
+{"label":"fenced-self","parsedChange":"c","defects":[],"c3":{"id":"C3","status":"pass","detail":"legal (review)"},"c9":{"id":"C9","status":"pass","detail":"1 open item(s): 0 accepted, 1 follow-up(s) registered (F-1 → c), 0 pending; follow-up F-1 → c: platform ask (registered, not a blocker; moving it out is not closing it)"},"followUp":"c","blockers":[]}
+{"label":"commented-self","parsedChange":"c","defects":[],"c3":{"id":"C3","status":"pass","detail":"legal (review)"},"c9":{"id":"C9","status":"pass","detail":"1 open item(s): 0 accepted, 1 follow-up(s) registered (F-1 → c), 0 pending; follow-up F-1 → c: platform ask (registered, not a blocker; moving it out is not closing it)"},"followUp":"c","blockers":[]}
+{"label":"inline-comment-self","parsedChange":"c","defects":[],"c3":{"id":"C3","status":"pass","detail":"legal (review)"},"c9":{"id":"C9","status":"pass","detail":"1 open item(s): 0 accepted, 1 follow-up(s) registered (F-1 → c), 0 pending; follow-up F-1 → c: platform ask (registered, not a blocker; moving it out is not closing it)"},"followUp":"c","blockers":[]}
+{"label":"fenced-valid","parsedChange":"c","defects":[],"c3":{"id":"C3","status":"pass","detail":"legal (review)"},"c9":{"id":"C9","status":"blocked","detail":"open item F-1 is pending: follow-up → valid-next — platform ask — close it (delete the line), register it as a follow-up with its landing spot (- F-1: follow-up → <new-change-name> — <the ask, in one line>), or record the owner's decision:   - <YYYY-MM-DDTHH:MM> owner: evidence-accept F-1 — <the human's reason, verbatim>"},"followUp":null,"blockers":["open item F-1 is pending: follow-up → valid-next — platform ask — close it (delete the line), register it as a follow-up with its landing spot (- F-1: follow-up → <new-change-name> — <the ask, in one line>), or record the owner's decision:   - <YYYY-MM-DDTHH:MM> owner: evidence-accept F-1 — <the human's reason, verbatim>"]}
+{"reviewReady":[{"id":"tests","ok":true,"detail":"tests passed"},{"id":"open","ok":true,"detail":"1 open item(s): 0 accepted, 1 follow-up(s) registered (F-1 → valid-next), 0 pending"}]}
+RUNBOOK.md 97a85ca560d41c70
+RUNBOOK_cn.md d3c2c74d8aa3f3b6
+
+exec
+/usr/bin/zsh -lc "rg --files apriori/specs | rg 'flow|state'; rg -n 'fenced|HTML comments|one reader' apriori/specs/gate/spec.md apriori/specs/readiness/spec.md; git diff --check" in /root/terra/asd-v62-code
+ succeeded in 0ms:
+apriori/specs/gate/spec.md:121:- WHEN the process-config carries a cas CONFLICT (two live rows, different values) or a fenced-only `optional` row, and gate runs on an unstamped-mutation change
+apriori/specs/gate/spec.md:122:- THEN C7 reports BLOCKED — naming the config conflict in the first case, and the missing waiver in the second (fenced rows grant nothing); adding `--no-cas` waives either way
+
+codex
+The invalid names now stay pending, and the runbook’s main contradiction is corrected. I found a new parsing mismatch: the self-name check reads raw text, so a `change:` example inside a fence or HTML comment can let a self-referencing follow-up pass. The readiness delta also leaves the specific unconditional blocking requirement cited in round 1 unchanged.
+exec
+/usr/bin/zsh -lc "node -e '
+const fs=require('\\''fs'\\''),rd=require('\\''./lib/readiness'\\'');
+for(const mod of ['\\''readiness'\\'','\\''gate'\\'','\\''protocol'\\'']){
+ const old=fs.readFileSync('\\''apriori/specs/'\\''+mod+'\\''/spec.md'\\'','\\''utf8'\\'');
+ const delta=fs.readFileSync('\\''apriori/changes/scope-disposition/specs/'\\''+mod+'\\''/spec.md'\\'','\\''utf8'\\'');
+ const modified=(delta.split('\\''## MODIFIED Requirements'\\'')[1]||'\\'''\\'').split('\\''## ADDED Requirements'\\'')[0];
+ const blocks=s=>[...s.matchAll(/"'^### Requirement: (.+)'"\\n([\\s\\S]*?)(?="'^### Requirement: |''^## |$(?!['"\\s\\S]))/gm)];
+ for(const b of blocks(modified)){
+ const orig=blocks(old).find(x=>x[1]===b[1]);const ids=s=>[...s.matchAll(/"'^#### Scenario: ('"\\S+)/gm)].map(x=>x[1]);
+ console.log(JSON.stringify({module:mod,requirement:b[1],oldIds:orig?ids(orig[2]):null,newIds:ids(b[2])}));
+ }
+}
+const base='\\''change: c\\nphase: review\\n\\n## Open\\n- F-1: follow-up → valid-next — platform ask\\n'\\'';
+for(const [label,t,opts] of [
+ ['\\''mixed'\\'',base+'\\''- D-1: contract defect\\n'\\'',{}],
+ ['\\''duplicate'\\'',base+'\\''- F-1: follow-up → valid-next — another ask\\n'\\'',{}],
+ ['\\''assumption'\\'',base+'\\''\\n## Reality Check\\n- assumption: untested\\n'\\'',{}],
+ ['\\''unreadable-delta'\\'',base,{riskSignals:[{signal:'\\''unreadable-delta'\\'',detail:'\\''fixture'\\''}]}],
+ ['\\''accepted'\\'',base+'\\''\\ngates:\\n  - 2026-09-26T00:00 owner: evidence-accept F-1 — accept ask\\n'\\'',{}]
+]){
+ const e=rd.evidenceFindings(t,opts);console.log(JSON.stringify({label,blockers:e.blockers,summary:rd.openSummary(e)}));
+}
+'" in /root/terra/asd-v62-code
+ succeeded in 0ms:
+{"module":"readiness","requirement":"the readiness rules ask for facts, not for a document family","oldIds":["RY-16","RY-17","RY-18","RY-19","RY-20","RY-21"],"newIds":["RY-16","RY-17","RY-18","RY-19","RY-20","RY-21"]}
+{"module":"gate","requirement":"C9 is the one substantive state predicate, and it reads the open items","oldIds":["OI-01","OI-02","OI-03","OI-04","GT-39","GT-41","OI-09"],"newIds":["OI-01","OI-02","OI-03","OI-04","GT-39","GT-41","OI-09"]}
+{"module":"protocol","requirement":"there is no ledger — `## Open` is the only home of open issues, and one thing blocks","oldIds":["PR-18"],"newIds":["PR-18"]}
+{"label":"mixed","blockers":["open item D-1 is pending: contract defect — close it (delete the line), register it as a follow-up with its landing spot (- D-1: follow-up → <new-change-name> — <the ask, in one line>), or record the owner's decision:   - <YYYY-MM-DDTHH:MM> owner: evidence-accept D-1 — <the human's reason, verbatim>"],"summary":"2 open item(s): 0 accepted, 1 follow-up(s) registered (F-1 → valid-next), 1 pending"}
+{"label":"duplicate","blockers":["open item id 'F-1' is duplicated: 'F-1: follow-up → valid-next — platform ask' and 'F-1: follow-up → valid-next — another ask' — one line per id"],"summary":"2 open item(s): 0 accepted, 2 follow-up(s) registered (F-1 → valid-next, F-1 → valid-next), 0 pending"}
+{"label":"assumption","blockers":["unverified assumption: untested — verified? rewrite it as `- observed: …`; carried forward unverified? move it to ## Open as `- <ID>: untested` and delete this line (an accepted item and a standing assumption for the same fact must not coexist)"],"summary":"1 open item(s): 0 accepted, 1 follow-up(s) registered (F-1 → valid-next), 0 pending"}
+{"label":"unreadable-delta","blockers":["the delta scan could not rule out a contract risk (fixture) — an unreadable delta is fail-closed and no open item or acceptance cures it; fix the file"],"summary":"1 open item(s): 0 accepted, 1 follow-up(s) registered (F-1 → valid-next), 0 pending"}
+{"label":"accepted","blockers":[],"summary":"1 open item(s): 1 accepted, still present (F-1), 0 pending"}
+
+exec
+/usr/bin/zsh -lc "nl -ba lib/readiness.js | sed -n '335,350p'; rg -n '"'^### Requirement:|state.s own claims'"' apriori/changes/scope-disposition/specs/readiness/spec.md apriori/specs/readiness/spec.md; rg -n '"'^'"\\*"'`## Open`'"' docs/cli_cn.md" in /root/terra/asd-v62-code
+ succeeded in 0ms:
+   335	    } else seen.set(id, line);
+   336	    named.add(id);
+   337	    const ok = accepted(id);
+   338	    const fu = FOLLOW_UP_RE.exec(textOf);
+   339	    // the landing spot must be a change that CAN exist (validateChangeName: shape, no date prefix,
+   340	    // not reserved) and must not be this change itself — otherwise the line is an ordinary pending item
+   341	    const own = (/^change:[ \t]*(\S+)/m.exec(text) || [])[1] || null;
+   342	    const landingOk = (n) => n && n !== own && require('./resolve').validateChangeName(n).ok;
+   343	    const followUp = fu && HAS_REASON.test(fu[2]) && landingOk(fu[1]) ? fu[1] : null;
+   344	    items.push({ id, text: textOf, accepted: ok, acceptedAt: ok ? grants.get(id).at : null, followUp });
+   345	    if (ok) { /* accepted wins the report */ }
+   346	    else if (followUp) notes.push(`follow-up ${id} → ${followUp}: ${fu[2].trim().slice(0, 90)} (registered, not a blocker; moving it out is not closing it)`);
+   347	    else blockers.push(`open item ${id} is pending: ${textOf.slice(0, 90)} — close it (delete the line), register it as a follow-up with its landing spot (${FOLLOW_UP_TEMPLATE(id).trim()}), or record the owner's decision: ${ACCEPT_TEMPLATE(id)}`);
+   348	  }
+   349	
+   350	  // --- the legacy `## Evidence` section, migrated by rule (in-flight; archived is recorded) ---
+apriori/specs/readiness/spec.md:1:### Requirement: one implementation of the readiness predicates, two layers of responsibility
+apriori/specs/readiness/spec.md:60:### Requirement: the readiness rules ask for facts, not for a document family
+apriori/specs/readiness/spec.md:87:### Requirement: the acceptance exit is closed, and a check that could not be made never reads as no risk
+apriori/specs/readiness/spec.md:88:EVERY owner decision in the `gates:` log — the open-item acceptance, the (inert) `archive-force` record, and the loop's `reframe` — SHALL be recognised through ONE canonical-entry parser, so no verb can be more forgiving than its neighbours: a real, range-checked `YYYY-MM-DDTHH:MM` timestamp, the actor spelled exactly `owner`, the lowercase verb OPENING the decision payload, the target matched whole (`ledger`; an item id, case-sensitively; a family AND its round together), an em dash, and a reason carrying a letter or digit in any script. `producer:`, `note:`, `agent:` and the retired `gate⑤ (owner):` prefix SHALL authorize none of them. The last decision for a target SHALL win, `gates:` being append-only. A delta the scan could not read SHALL be fail-closed and incurable by any item or acceptance; a mutating delta SHALL be reported as the `contract-mutation` signal and demand nothing. The state's own claims — an open item, a standing `assumption`, a Reality Check line naming no kind — SHALL block the gate and the archive (and, except for a pending id'd item, `--review-ready`), read VERBATIM: no text heuristic SHALL decide which of them are real, because prose carries angle brackets (`Map<Key>`, `List<T>`). There SHALL be no scaffold exemption: `apriori new` writes bare headings, so there is no unfilled row to skip. A `## Next` list longer than three SHALL only be reported.
+apriori/specs/readiness/spec.md:106:#### Scenario: RY-27 the state's own claims block, and the Next cap only reports
+apriori/changes/scope-disposition/specs/readiness/spec.md:6:### Requirement: the readiness rules ask for facts, not for a document family
+apriori/changes/scope-disposition/specs/readiness/spec.md:35:### Requirement: a follow-up item is registered with its landing spot and never blocks
+159:*`## Open` 条目*(`- <ID>: <文字>`,id 是冒号前的那个 token)。条目在所有者的决定以**封闭**文法记入只追加的 `gates:` 日志之前处于 PENDING:`- <YYYY-MM-DDTHH:MM> owner: evidence-accept <ID> — <理由>`(撤销靠**追加** `evidence-accept-revoke <ID> — <理由>`;最后一条决定生效)。pending 的条目阻断。已**接受**的条目不阻断,但会报告为 `accepted, still present`——在 C9 的 detail 里、作为归档注记、以及在 `status` 里——而且没有任何东西会删掉那一行;风险真正解决时由生产方删除。**没有 id** 的行仍是 open 条目:它阻断,且无法被接受(`give it a stable id to accept it, or close it`)。重复的 id 会被拒绝并点名两行。空段或缺失的段不欠任何东西。接受那一行里每一部分都承重——时间戳(只做**范围**校验:月 01-12、日 01-31、时 00-23、分 00-59,`T11:00` 或 `T1100`;**不做**历法校验——2 月 31 日是笔误,不是伪造,本工具不带历法)、actor 必须正好是 `owner`、小写关键词必须**打头**、id 整体且大小写敏感匹配、破折号、以及带任意文字或数字的理由。`producer:`、`note:`、`gate⑤ (owner):` 前缀、没有时间戳的行、缺破折号或理由、超串 id(`R-011` 顶不了 `R-01`)、以及泛泛的接受措辞,一律**不构成授权**:生产方不能自己发给自己所有者的出口。匹配不到任何条目的接受记录是一条注记(`acceptance R-09 matches no open item`),不阻断。
+
+codex
+<!-- provenance: provider=codex model=gpt-6-astra session=unknown date=2026-09-26 -->
+# code-review — scope-disposition (round 2)
+
+- SDP-01 — resolved: `lib/readiness.js:342` now uses `validateChangeName`. Independent in-memory probes confirm that `bad--name`, `archive` and `2026-09-next` remain pending with blockers, while `valid-next` registers successfully. RY-33 covers the original counterexamples. The newly added self-name restriction has a separate parsing defect, SDP-11 below.
+
+- SDP-02 — not resolved: the main bilingual runbook contradiction is corrected, including the preservation of R1 obligations and R4 stops. However, `apriori/changes/scope-disposition/specs/readiness/spec.md:6` modifies **“the readiness rules ask for facts…”**, leaving the requirement specifically cited in round 1—**“the acceptance exit is closed…”**, `apriori/specs/readiness/spec.md:88`—unchanged. That requirement still says an open item SHALL block gate/archive without the follow-up exception. The merged contract would retain both instructions. `docs/cli_cn.md:159` also retains the unconditional pending-until-acceptance paragraph, unlike the revised English paragraph. **Basis:** the accepted nonblocking-follow-up requirement and SDP-02’s contract-consistency correction. **Fix:** add the explicit exception to the affected readiness requirement through a MODIFIED block, retaining its scenarios, and qualify the Chinese Open-item paragraph.
+
+- SDP-11 — **Necessary fix: the self-name check bypasses the canonical flow reader.** **File:** `lib/readiness.js:341`. **Contract:** revised RY-33 requires a self-targeting follow-up to stay pending; the existing flow grammar makes fenced code and HTML comments inert (`lib/flow.js:24`, `docs/cli.md:159`). **Code/evidence:** `own` comes from the first raw-text `change:` match. Prepending a closed fenced example containing `change: example` before the live `change: c`, then declaring `- F-1: follow-up → c — platform ask`, produces parsed change `c`, no structural defects, C3 PASS and C9 PASS with a registered follow-up. A closed HTML comment produces the same bypass. Conversely, an inert example naming `valid-next` causes a legitimate follow-up to that destination to block. **Fix:** obtain the current change name through `flow.parseFlowState(text).change`, outside the item loop, rather than a separate regex. Cover fenced/commented examples in both directions and scalar comment handling.
+
+- ADV-06 — The review-ready reporting correction works: a follow-up-only probe reports `1 follow-up(s) registered` and `0 pending` without the misleading pending-item suffix. Mixed pending items, duplicate IDs, standing assumptions and unreadable-delta signals still block in independent predicate probes. Accepted follow-ups remain counted as accepted without double-counting.
+
+- ADV-07 — The revised MODIFIED blocks retain all scenario IDs from their corresponding store requirements. Both P3 hashes still match RIB-10. The authorized later-change handoff now explicitly preserves the original ID and text, addressing the earlier traceability advisory without requiring premature change creation.
+
+Reviewed the revised code, bilingual documentation, delta requirements and relevant tests. Verification used read-only inspection and in-memory probes; no files were changed. The reported 826-test suite, archive integration runs and external layer-2 scenarios were not independently rerun.
+
+VERDICT: 2 issues open
+tokens used
+97,758
+<!-- provenance: provider=codex model=gpt-6-astra session=unknown date=2026-09-26 -->
+# code-review — scope-disposition (round 2)
+
+- SDP-01 — resolved: `lib/readiness.js:342` now uses `validateChangeName`. Independent in-memory probes confirm that `bad--name`, `archive` and `2026-09-next` remain pending with blockers, while `valid-next` registers successfully. RY-33 covers the original counterexamples. The newly added self-name restriction has a separate parsing defect, SDP-11 below.
+
+- SDP-02 — not resolved: the main bilingual runbook contradiction is corrected, including the preservation of R1 obligations and R4 stops. However, `apriori/changes/scope-disposition/specs/readiness/spec.md:6` modifies **“the readiness rules ask for facts…”**, leaving the requirement specifically cited in round 1—**“the acceptance exit is closed…”**, `apriori/specs/readiness/spec.md:88`—unchanged. That requirement still says an open item SHALL block gate/archive without the follow-up exception. The merged contract would retain both instructions. `docs/cli_cn.md:159` also retains the unconditional pending-until-acceptance paragraph, unlike the revised English paragraph. **Basis:** the accepted nonblocking-follow-up requirement and SDP-02’s contract-consistency correction. **Fix:** add the explicit exception to the affected readiness requirement through a MODIFIED block, retaining its scenarios, and qualify the Chinese Open-item paragraph.
+
+- SDP-11 — **Necessary fix: the self-name check bypasses the canonical flow reader.** **File:** `lib/readiness.js:341`. **Contract:** revised RY-33 requires a self-targeting follow-up to stay pending; the existing flow grammar makes fenced code and HTML comments inert (`lib/flow.js:24`, `docs/cli.md:159`). **Code/evidence:** `own` comes from the first raw-text `change:` match. Prepending a closed fenced example containing `change: example` before the live `change: c`, then declaring `- F-1: follow-up → c — platform ask`, produces parsed change `c`, no structural defects, C3 PASS and C9 PASS with a registered follow-up. A closed HTML comment produces the same bypass. Conversely, an inert example naming `valid-next` causes a legitimate follow-up to that destination to block. **Fix:** obtain the current change name through `flow.parseFlowState(text).change`, outside the item loop, rather than a separate regex. Cover fenced/commented examples in both directions and scalar comment handling.
+
+- ADV-06 — The review-ready reporting correction works: a follow-up-only probe reports `1 follow-up(s) registered` and `0 pending` without the misleading pending-item suffix. Mixed pending items, duplicate IDs, standing assumptions and unreadable-delta signals still block in independent predicate probes. Accepted follow-ups remain counted as accepted without double-counting.
+
+- ADV-07 — The revised MODIFIED blocks retain all scenario IDs from their corresponding store requirements. Both P3 hashes still match RIB-10. The authorized later-change handoff now explicitly preserves the original ID and text, addressing the earlier traceability advisory without requiring premature change creation.
+
+Reviewed the revised code, bilingual documentation, delta requirements and relevant tests. Verification used read-only inspection and in-memory probes; no files were changed. The reported 826-test suite, archive integration runs and external layer-2 scenarios were not independently rerun.
+
+VERDICT: 2 issues open

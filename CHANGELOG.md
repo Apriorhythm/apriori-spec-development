@@ -2,6 +2,10 @@
 
 All notable changes to `apriori-cli`. Versions follow semver; the stability promise: CLI surface & flags, `--json` shapes, the delta format and the flow-state schema only break in a major.
 
+## Unreleased — archive-drop-guard
+
+- `apriori archive` never drops a store scenario silently: a MODIFIED replacement whose `dropped` class is non-empty is refused (`RESULT: REFUSED — nothing written`) with a `— DROPPED SCENARIOS —` block and a manifest fingerprint; release = the owner's fingerprint-bound `archive-drop <change> sha256:<fp> — <reason>` entry **and** `--force`. Ambiguous keys are never forceable; `missingLines` stays report-only; the single-file form refuses drops outright. `buildProjection` exposes `sources` (the store/delta texts of its own parse) for the manifest.
+
 ## Unreleased — review-round-limit: the review loop's limit belongs to the owner
 
 The fixed round-2 stop and round-5 stop-loss of 6.0 are retired. One human-held number —

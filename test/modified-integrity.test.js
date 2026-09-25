@@ -260,23 +260,33 @@ function stamped(delta, storeText = STORE_KV) {
   return `<!-- apriori-base: ${fp} -->\n\n` + delta;
 }
 
-test('AM-46 archive prints the integrity section without changing its semantics', () => {
+test('AM-46 archive prints the integrity section; a dropped scenario is refused until the owner names it (archive-drop-guard)', () => {
   const root = archiveProj(stamped(MOD_DROP));
   const dry = run(root, ['archive', '--change', 'c']);
-  assert.strictEqual(dry.status, 0, dry.stdout + dry.stderr);
+  assert.strictEqual(dry.status, 1, dry.stdout + dry.stderr);
   assert.match(dry.stdout, /— MODIFIED INTEGRITY —/);
   assert.match(dry.stdout, /! .*KV-02/);
+  assert.match(dry.stdout, /— DROPPED SCENARIOS —\n  m\/spec\.md · R-K · KV-02\n  manifest sha256:[0-9a-f]{64}/);
   const iIdx = dry.stdout.indexOf('MODIFIED INTEGRITY');
   const rIdx = dry.stdout.indexOf('RESULT:');
   assert.ok(iIdx < rIdx, 'report before the result line');
-  assert.match(dry.stdout, /RESULT: MERGED \(dry-run; 1 module\(s\)\) — pass --write to apply/);
-  // --write: report appears before write-result lines; bytes identical to a reportless write
+  assert.match(dry.stdout, /RESULT: REFUSED — nothing written/);
+  assert.match(dry.stderr, /1 store scenario\(s\) would be DROPPED and no owner decision names this exact input/);
+  // --write without the decision: same refusal, store untouched
   const rootW = archiveProj(stamped(MOD_DROP));
+  const before = fs.readFileSync(path.join(rootW, 'apriori/specs/m/spec.md'), 'utf8');
   const w = run(rootW, ['archive', '--change', 'c', '--write']);
-  assert.strictEqual(w.status, 0, w.stdout + w.stderr);
+  assert.strictEqual(w.status, 1, w.stdout + w.stderr);
   assert.match(w.stdout, /— MODIFIED INTEGRITY —/);
-  const written = fs.readFileSync(path.join(rootW, 'apriori/specs/m/spec.md'), 'utf8');
-  assert.ok(written.includes('#### Scenario: KV-01 one') && !written.includes('KV-02'), 'write semantics unchanged');
+  assert.strictEqual(fs.readFileSync(path.join(rootW, 'apriori/specs/m/spec.md'), 'utf8'), before, 'nothing written');
+  // a missingLines-only rewrite (no scenario dropped) still merges exactly as before: the report is informative there
+  const MOD_KEEP = '## MODIFIED Requirements\n\n### Requirement: R-K\nkeep me\n\n#### Scenario: KV-01 one\n- WHEN w\n- THEN t\n\n#### Scenario: KV-02 two\n- b2\n';
+  const rootK = archiveProj(stamped(MOD_KEEP));
+  const k = run(rootK, ['archive', '--change', 'c', '--write']);
+  assert.strictEqual(k.status, 0, k.stdout + k.stderr);
+  assert.match(k.stdout, /! missing \(KV-01\): - AND a/);
+  assert.doesNotMatch(k.stdout, /DROPPED SCENARIOS/);
+  assert.ok(fs.readFileSync(path.join(rootK, 'apriori/specs/m/spec.md'), 'utf8').includes('- b2'));
   // preflight failure classes print NO section
   const bad = archiveProj('## MODIFIED Requirements\n\n### Requirement: R-K\n\n#### Scenario: KV-01 one\n- t\n'); // unstamped mutation → CAS denial
   const rb = run(bad, ['archive', '--change', 'c']);
@@ -344,8 +354,9 @@ test('AM-47 the archive id-pattern channel is resolved, terminable and degradabl
   // itself (lazily — the graph stays acyclic), so the preflight AND the integrity section run
   const root4 = archiveProj(stamped(MOD_DROP));
   const res = am.archiveChange({ change: 'c', cwd: root4, write: false });
-  assert.strictEqual(res.code, 0, res.err.join('\n'));
+  assert.strictEqual(res.code, 1, res.err.join('\n'));                       // MOD_DROP drops KV-02: the guard refuses
   assert.ok(res.out.join('\n').includes('MODIFIED INTEGRITY'), 'no factory = the module\'s own controlled matcher');
+  assert.ok(res.out.join('\n').includes('DROPPED SCENARIOS'), 'the guard read the same comparison');
   assert.ok(!res.err.some((l) => l.includes('modified-integrity')), 'nothing to warn about');
 });
 

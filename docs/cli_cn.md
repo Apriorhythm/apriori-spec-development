@@ -108,7 +108,9 @@ usage: apriori archive --store <f> --delta <f> --change <name> [--write] [--no-c
 
 **归档声明。** 它同时是一道**兜底**:一次运行如果自己的声明会写成 `implementation: INCOMPLETE`,即使就绪度放行了也会被拒(`RESULT: NOT READY — nothing written`)——成功的归档永远不可能声明活儿没干完。就绪的一次运行只打印三个状态,别无其他——实现是否完成(计入 pending 的 open 条目与未证实的 assumption)、关键证据是否完成(没有未接受的 open 条目;已接受的逐个点名并报告为仍然在场)、以及逐字固定的一句——归档不是发布(flow-state 的 `delivery:` 字段已退役;遗留的行照常读入并忽略)。这次运行还会打印判定的注记——open 条目摘要、匹配不到条目的接受记录、`contract-mutation` 信号、被忽略的遗留段。已归档的 bundle 是**冻结**的:之后发现的缺陷记为一条简短 outcome 或一个新 change,绝不回改归档。
 
-**`--force`** 只属于高层形式,且**只解进度类**——自 6.2 起恰好只有一件:所有者已回答的 escalation(它的 `reframe` 记录加上这个 flag)——自 review-round-limit 起,即在所有者上限处的 `revise` 或 `escalate` 结论。它绝不解 R1(尤其 `abandoned`)、结构性缺陷、非法的 `review-round-limit` 行、没有所有者决定在案的停摆循环、未满足的评审底线、或任何 R5 拒绝——没人接受的 open 条目不是"进度"。`archive-force` 文法仍然会被解析并以 note 报告,不解任何东西。
+**丢场景护栏(archive-drop-guard)。** MODIFIED 替换若丢掉 store 里的场景(按 ID 配对——同 ID 改标题不算丢),dry-run 与 `--write` 一律拒绝:`RESULT: REFUSED — nothing written`,打印 `— DROPPED SCENARIOS —` 块(逐条 `<文件> · <需求> · <ID>`)与 **manifest 指纹**,stderr 给出可复制的授权行。指纹是本次归档输入(目标、涉及的每个 store 与 delta 的摘要、排序后的删除清单)的 SHA-256,所以所有者的决定只对*这份*内容的*这次*删除有效——改了 delta 或 store 它就失效。放行要两半都有:`gates:` 里的 `- <YYYY-MM-DDTHH:MM> owner: archive-drop <change> sha256:<指纹> — <理由>` **加** `--force`。歧义键(同一场景在任一侧出现两次)永不可 force——先消歧;需求正文与场景正文的行丢失仍只报告。单文件形式没有 bundle 可放决定,一律拒绝丢场景的替换。
+
+**`--force`** 只属于高层形式,且**只解进度类**——恰好两件:所有者已回答的评审 family 升级,以及所有者已通过上面那条指纹绑定的 `archive-drop` 记录点名的场景删除。第一件是所有者已回答的 escalation(它的 `reframe` 记录加上这个 flag)——自 review-round-limit 起,即在所有者上限处的 `revise` 或 `escalate` 结论。它绝不解 R1(尤其 `abandoned`)、结构性缺陷、非法的 `review-round-limit` 行、没有所有者决定在案的停摆循环、未满足的评审底线、或任何 R5 拒绝——没人接受的 open 条目不是"进度"。`archive-force` 文法仍然会被解析并以 note 报告,不解任何东西。
 
 ```text
   - <YYYY-MM-DDTHH:MM> owner: archive-force ledger — <人类的理由,逐字>

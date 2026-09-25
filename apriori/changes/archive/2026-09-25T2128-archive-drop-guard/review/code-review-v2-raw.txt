@@ -1,0 +1,869 @@
+OpenAI Codex v0.155.1
+--------
+workdir: /root/terra/asd-v62-code
+model: gpt-6-astra
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: medium
+reasoning summaries: none
+session id: 01a0d8b4-a8b1-71e0-b030-78ae80d44ab4
+--------
+user
+Round 2 (change `archive-drop-guard`, read-only, uncommitted; the revised diff IS in the working tree now — review it now). Round-1 doc landed at apriori/changes/archive-drop-guard/review/code-review-v1.md (ADG-01..03; ADV-01..04).
+Changes since round 1 (verify in the files): ADG-01 — lib/archive-merge.js dropManifest JSON-encodes every field (target, suffix, requirement, scenario key) and hashes the manifest byte-for-byte via rawDigest (no CR/LF normalization); store/delta content digests keep fingerprint()'s normalization; test AM-127 proves CR-vs-LF path locators differ and a CRLF delta is content-equivalent. ADG-02 — buildProjection `sources` carry storeExists (texts.has); the manifest writes `new` only for an absent store, an existing empty store hashes as content (AM-127). ADG-03 — spec: the MODIFIED AM-47 sentence keeps "leave every other archive output and exit unchanged" and describes the blind-integrity refusal as applying only after the structural preflight passed (a batch failure at the integrity stage), never weakening the preflight; the ADDED requirement says the same. ADV-02 — the single-file ambiguous diagnostic points at the high-level form. ADV-03 — tests: zero `.tmp-archive` artifacts on refusal (AM-123); a valid decision + --force is still refused by R5 with a pending ## Open item (AM-124); the last matching decision wins and the `forced:` line carries the full trimmed entry (AM-127). ADV-04 — docs/runbook say "retitling under the same ID"; report-only covers requirement-prose and scenario-body losses. State: 822 pass / 0 fail; verify --change GREEN; check --self PASS.
+Judge each of ADG-01..03 resolved or not; report anything new. OUTPUT: review body only; provenance header first (`<!-- provenance: provider=codex model=gpt-6-astra session=<id or unknown> date=2026-09-25 -->`), then `# code-review — archive-drop-guard (round 2)`, then `- ADG-0n — resolved | not resolved: <why>` lines, new findings `- ADG-1n …`, advisories `- ADV-nn …`, and exactly one final `VERDICT:` line from the closed vocabulary (`VERDICT: no spec-vs-code gaps` / `VERDICT: <N> issues open` / `VERDICT: escalate`).
+2026-09-25T13:22:58.622432Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: URL error: Proxy URL scheme not supported, url: wss://chatgpt.com/backend-api/codex/responses
+2026-09-25T13:23:00.703798Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: URL error: Proxy URL scheme not supported, url: wss://chatgpt.com/backend-api/codex/responses
+2026-09-25T13:23:00.923723Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: URL error: Proxy URL scheme not supported, url: wss://chatgpt.com/backend-api/codex/responses
+ERROR: Reconnecting... 2/5
+2026-09-25T13:23:01.375215Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: URL error: Proxy URL scheme not supported, url: wss://chatgpt.com/backend-api/codex/responses
+ERROR: Reconnecting... 3/5
+2026-09-25T13:23:02.207675Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: URL error: Proxy URL scheme not supported, url: wss://chatgpt.com/backend-api/codex/responses
+ERROR: Reconnecting... 4/5
+2026-09-25T13:23:03.688758Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: URL error: Proxy URL scheme not supported, url: wss://chatgpt.com/backend-api/codex/responses
+ERROR: Reconnecting... 5/5
+2026-09-25T13:23:06.658347Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: URL error: Proxy URL scheme not supported, url: wss://chatgpt.com/backend-api/codex/responses
+warning: Falling back from WebSockets to HTTPS transport. stream disconnected before completion: URL error: Proxy URL scheme not supported
+codex
+I’ll inspect the revised files now, check each finding against the changes, and review the affected paths for new gaps.
+
+exec
+/usr/bin/zsh -lc 'git status --short; git diff -- lib/archive-merge.js lib/readiness.js; cat apriori/changes/archive-drop-guard/specs/archive-merge/spec.md' in /root/terra/asd-v62-code
+ succeeded in 0ms:
+ M CHANGELOG.md
+ M RUNBOOK.md
+ M RUNBOOK_cn.md
+ M docs/cli.md
+ M docs/cli_cn.md
+ M lib/archive-merge.js
+ M lib/readiness.js
+ M test/archive-merge.test.js
+ M test/modified-integrity.test.js
+?? apriori/changes/archive-drop-guard/
+?? test/archive-drop-guard.test.js
+diff --git a/lib/archive-merge.js b/lib/archive-merge.js
+index 93f1827..5116d4a 100644
+--- a/lib/archive-merge.js
++++ b/lib/archive-merge.js
+@@ -360,6 +360,8 @@ function buildProjection(storeRoot, deltaFiles, change) {
+   // per-suffix raw old/new block text pairs for every MODIFIED operation (rename-then-modify
+   // baselines the COMPLETE pre-rename block) — the integrity engine's single-snapshot input
+   const modifiedBlocks = new Map();
++  // per-suffix raw store/delta text at THIS parse — the drop guard's fingerprint input (never re-read)
++  const sources = new Map();
+   const captureModified = (suffix, storeText, delta) => {
+     if (!delta.MODIFIED.size) return;
+     const storeBlocks = parseRequirementsStrict(storeText).map;
+@@ -385,6 +387,7 @@ function buildProjection(storeRoot, deltaFiles, change) {
+     const target = path.join(storeRoot, ...suffix.split('/'));
+     if (!containsFuturePath(storeRoot, target)) { validation.push(`store target escapes ${storeRoot}: ${target}`); continue; }
+     const raw = fs.readFileSync(abs, 'utf8');
++    sources.set(suffix, { storeText: texts.get(suffix) || '', storeExists: texts.has(suffix), deltaText: raw });
+     if (!raw.trim()) { hygiene.push(`empty delta file: ${abs}`); continue; }
+     const { delta, stamp, problems, scenarios } = parseDeltaStrict(raw);
+     if (problems.length) { hygiene.push(...problems.map((p) => `${abs}: ${p}`)); continue; }
+@@ -420,7 +423,7 @@ function buildProjection(storeRoot, deltaFiles, change) {
+     texts.set(suffix, renderStore(storeText, r.store));
+   }
+   modules.sort();
+-  return { texts, modules, perModule, deltaOps, deltaScenarios, modifiedBlocks, conflicts, casMismatches, hygiene, validation, unstampedMutations, notes, repaired };
++  return { texts, modules, perModule, deltaOps, deltaScenarios, modifiedBlocks, sources, conflicts, casMismatches, hygiene, validation, unstampedMutations, notes, repaired };
+ }
+ 
+ 
+@@ -547,8 +550,9 @@ function matcherFor(factory, cwd) {
+ 
+ // ---- modified-block integrity engine (pure; zero fs, zero matcher) ---------------------
+ // Compares a MODIFIED operation's old store block against its replacement and reports
+-// structural fidelity. INFORMATIVE by contract: callers never let it change a verdict,
+-// an exit code or write semantics.
++// structural fidelity. Informative for retained / titleChanged / added / missingLines; since
++// archive-drop-guard the `dropped` and `ambiguous` classes feed the archive's drop guard, which
++// refuses the run — the engine itself still computes, never decides.
+ 
+ const norml = (l) => l.replace(/\s+$/, '').replace(/^\s+/, '');
+ 
+@@ -726,14 +730,13 @@ function formatIntegrityHuman(entries) {
+ // ((cwd) => matcher | {error}) so this module never requires spec-runner; a missing factory
+ // degrades exactly like a factory error — one bounded stderr warning, report skipped,
+ // every other archive output/exit/write unchanged.
+-function pushIntegritySection(out, err, modifiedBlocks, idMatcherFactory, cwd) {
+-  if (!modifiedBlocks || modifiedBlocks.size === 0) return;
+-  const sanitizeMsg = require('./config').sanitizeMsg;
+-  const warn = (reason) => err.push(sanitizeMsg('warning: modified-integrity ' + reason));
+-  if (!idMatcherFactory) { warn('id matcher unavailable (no factory injected)'); return; }
++// → { entries } | { warning } — the entries of every MODIFIED pair, or the one reason none could be built
++function integrityEntries(modifiedBlocks, idMatcherFactory, cwd) {
++  if (!modifiedBlocks || modifiedBlocks.size === 0) return { entries: [] };
++  if (!idMatcherFactory) return { warning: 'id matcher unavailable (no factory injected)' };
+   let matcher;
+-  try { matcher = idMatcherFactory(cwd); } catch (e) { warn('id-pattern resolution failed: ' + String(e.message || e)); return; }
+-  if (!matcher || matcher.error) { warn('id-pattern resolution failed: ' + String(matcher && matcher.error)); return; }
++  try { matcher = idMatcherFactory(cwd); } catch (e) { return { warning: 'id-pattern resolution failed: ' + String(e.message || e) }; }
++  if (!matcher || matcher.error) return { warning: 'id-pattern resolution failed: ' + String(matcher && matcher.error) };
+   // one batch over every old+new block scenario title — discovered the SAME state-A way
+   // the engine does (fence-STRIPPED view: an inline closed fence can expose a heading)
+   const titles = [];
+@@ -745,7 +748,7 @@ function pushIntegritySection(out, err, modifiedBlocks, idMatcherFactory, cwd) {
+   };
+   for (const list of modifiedBlocks.values()) for (const { oldBlock, newBlock } of list) { collect(oldBlock); collect(newBlock); }
+   const res = matcher.batch(titles);
+-  if (res.failure) { warn('matcher failure: ' + res.failure); return; }
++  if (res.failure) return { warning: 'matcher failure: ' + res.failure };
+   const titleId = new Map();
+   titles.forEach((t, i) => { if (!titleId.has(t)) titleId.set(t, res.ids[i]); });
+   const idOf = (t) => { const v = titleId.get(t); return v === undefined ? null : v; };
+@@ -754,8 +757,81 @@ function pushIntegritySection(out, err, modifiedBlocks, idMatcherFactory, cwd) {
+     for (const { name, oldBlock, newBlock } of list)
+       entries.push({ file, name, ...compareModifiedBlock(oldBlock, newBlock, idOf) });
+   entries.sort((a, b) => (a.file === b.file ? (a.name < b.name ? -1 : 1) : (a.file < b.file ? -1 : 1)));
+-  const seg = formatIntegrityHuman(entries);
++  return { entries };
++}
++
++// the printed section (informative), from entries already computed — returns the entries so the
++// drop guard consumes the SAME comparison the human just read
++function pushIntegritySection(out, err, modifiedBlocks, idMatcherFactory, cwd) {
++  const r = integrityEntries(modifiedBlocks, idMatcherFactory, cwd);
++  if (r.warning) { err.push(require('./config').sanitizeMsg('warning: modified-integrity ' + r.warning)); return null; }
++  const seg = formatIntegrityHuman(r.entries);
+   if (seg) out.push('\n' + seg);
++  return r.entries;
++}
++
++// ---- the drop guard (S4): a store scenario is never dropped without a fingerprint-bound owner decision ----
++// The manifest is the exact archive input: the target, every touched store's digest, every delta's
++// digest, and the sorted deletion locators (file · requirement · scenario id or title). Its SHA-256
++// is what the owner's `archive-drop` entry must name — so the decision authorizes THIS deletion of
++// THIS content and nothing else; any later edit of a delta or a store voids it.
++// Every externally-sourced field (target, file suffix, requirement name, scenario id/title) is
++// JSON-encoded, so a path or a name carrying a newline, a CR or a quote cannot collide with
++// another; the manifest itself is hashed byte-for-byte (NO line-ending normalization — that
++// belongs to the CONTENT digests, where `fingerprint()` keeps LF/CRLF stores equivalent).
++const enc = (s) => JSON.stringify(String(s));
++const rawDigest = (text) => 'sha256:' + crypto.createHash('sha256').update(text, 'utf8').digest('hex');
++function dropManifest(target, sources, entries) {
++  const drops = [];
++  for (const e of entries) for (const d of e.dropped) drops.push({ file: e.file, name: e.name, key: d.id !== null ? d.id : d.title });
++  drops.sort((a, b) => (a.file + '\0' + a.name + '\0' + a.key < b.file + '\0' + b.name + '\0' + b.key ? -1 : 1));
++  const lines = ['apriori archive-drop manifest v1', `target: ${enc(target)}`];
++  for (const suffix of [...sources.keys()].sort()) {
++    const s = sources.get(suffix);
++    lines.push(`store ${enc(suffix)}: ${s.storeExists ? fingerprint(s.storeText) : 'new'}`);
++    lines.push(`delta ${enc(suffix)}: ${fingerprint(s.deltaText)}`);
++  }
++  for (const d of drops) lines.push(`drop ${enc(d.file)} ${enc(d.name)} ${enc(d.key)}`);
++  const text = lines.join('\n') + '\n';
++  return { text, drops: drops.map((d) => `${d.file} · ${d.name} · ${d.key}`), fingerprint: rawDigest(text) };
++}
++
++// does any MODIFIED pair's OLD block carry a scenario heading? (found the state-A way)
++function oldBlocksWithScenarios(modifiedBlocks) {
++  if (!modifiedBlocks) return false;
++  for (const list of modifiedBlocks.values())
++    for (const { oldBlock } of list) if (scanBlockStructure(oldBlock).scenarios.length) return true;
++  return false;
++}
++
++// → { refuse: [stderr lines], out: [stdout lines], forced: string|null } for the high-level form
++function dropGuard(target, sources, entries, flowText, force) {
++  const rd = require('./readiness');
++  const out = [], refuse = [];
++  const ambiguous = entries.filter((e) => e.ambiguous.length);
++  if (ambiguous.length) {
++    // a key that occurs more than once on either side cannot be judged dropped or kept — the
++    // delta (or the store) must be disambiguated first; no decision and no flag stands in for that
++    for (const e of ambiguous) for (const a of e.ambiguous)
++      refuse.push(`archive: ${e.file} · ${e.name}: scenario key '${sanField(a.key)}' is ambiguous (${a.side}; old ${a.oldCount}/new ${a.newCount}) — disambiguate the delta before archiving; not forceable`);
++    return { refuse, out, forced: null };
++  }
++  if (!entries.some((e) => e.dropped.length)) return { refuse, out, forced: null };
++  const man = dropManifest(target, sources, entries);
++  out.push('\n— DROPPED SCENARIOS —');
++  for (const d of man.drops) out.push(`  ${sanField(d)}`);
++  out.push(`  manifest ${man.fingerprint}`);
++  const grant = rd.dropGrant(flowText, target, man.fingerprint);
++  if (grant && force) {
++    return { refuse, out, forced: `forced: dropped ${man.drops.length} scenario(s) — owner decision on record: ${grant.firstLine.trim()}` };
++  }
++  if (grant) refuse.push(`archive: the owner decision for this exact deletion is on record but --force was not given — pass --force to apply it (the decision alone writes nothing)`);
++  else {
++    refuse.push(`archive: ${man.drops.length} store scenario(s) would be DROPPED and no owner decision names this exact input — record one, then rerun with --force:`);
++    refuse.push(rd.dropLine(target, man.fingerprint));
++    refuse.push('archive: (the fingerprint binds the target, every store and delta of this change, and the dropped scenarios; editing any of them changes it)');
++  }
++  return { refuse, out, forced: null };
+ }
+ 
+ // ---- archive commit machinery ----------------------------------------------
+@@ -966,7 +1042,24 @@ function archiveChange(o) {
+ 
+   // the modified-block integrity section: AFTER every preflight guard (incl. the --write
+   // temp/containment checks above), BEFORE any write-result line — informative only
+-  pushIntegritySection(out, err, p.modifiedBlocks, factory, cwd);
++  const entries = pushIntegritySection(out, err, p.modifiedBlocks, factory, cwd);
++  // The drop guard consumes the comparison just printed. When the report could not be built
++  // (no matcher) and some old block carries scenarios, none can be ruled dropped — the run is
++  // refused outright: a guard that cannot see must not wave anything through. Old blocks with
++  // no scenario at all have nothing to drop and need no matcher.
++  if (entries === null && oldBlocksWithScenarios(p.modifiedBlocks)) {
++    err.push('archive: the modified-block comparison could not run, so dropped scenarios cannot be ruled out — fix the id-pattern channel first; nothing written');
++    out.push('\nRESULT: REFUSED — nothing written');
++    return { code: 1, out, err };
++  }
++  const guard = dropGuard(o.change, p.sources, entries || [], rdy.flowText, !!o.force);
++  out.push(...guard.out);
++  if (guard.refuse.length) {
++    err.push(...guard.refuse);
++    out.push('\nRESULT: REFUSED — nothing written');
++    return { code: 1, out, err };
++  }
++  if (guard.forced) out.push(guard.forced);
+   if (!o.write) {
+     out.push(...decl.lines);                    // the preview of what --write will declare
+     out.push(`\nRESULT: MERGED (dry-run; ${jobs.length} module(s)) — pass --write to apply`);
+@@ -1136,6 +1229,31 @@ function cli(argv, deps = {}) {
+       console.log('\nRESULT: CONFLICT — nothing written');
+       return 1;
+     }
++    // the drop guard on the single-file form: this form has no bundle, so no `gates:` can hold
++    // the owner's fingerprint-bound decision — a delta that would drop a store scenario is
++    // refused here and pointed at the high-level form (never forceable, --force is not even a flag)
++    if (delta.MODIFIED.size) {
++      const storeBlocks = parseRequirementsStrict(storeText).map;
++      const renamedTo = new Map(delta.RENAMED.map(([o, n]) => [n, o]));
++      const pairs = [];
++      for (const [name, newBlock] of delta.MODIFIED) {
++        const oldName = renamedTo.get(name) || name;
++        const oldBlock = storeBlocks.get(oldName) !== undefined ? storeBlocks.get(oldName) : storeBlocks.get(name);
++        if (oldBlock !== undefined) pairs.push({ name, oldBlock, newBlock });
++      }
++      const r = integrityEntries(new Map([[a.delta, pairs]]), deps.idMatcherFactory || defaultIdMatcherFactory, process.cwd());
++      const blind = !!r.warning && oldBlocksWithScenarios(new Map([[a.delta, pairs]]));
++      const bad = r.warning ? [] : r.entries.filter((e) => e.dropped.length || e.ambiguous.length);
++      if (blind || bad.length) {
++        if (blind) console.error(`archive: the modified-block comparison could not run (${r.warning}), so dropped scenarios cannot be ruled out — nothing written`);
++        for (const e of (bad || [])) {
++          for (const d of e.dropped) console.error(`archive: ${e.name}: scenario ${sanField(d.id !== null ? d.id : d.title)} would be DROPPED — the single-file form never drops a store scenario; use the high-level form with an owner archive-drop decision`);
++          for (const x of e.ambiguous) console.error(`archive: ${e.name}: scenario key '${sanField(x.key)}' is ambiguous (${x.side}; old ${x.oldCount}/new ${x.newCount}) — disambiguate the delta (the single-file form never resolves this; the high-level form refuses it too)`);
++        }
++        console.log('\nRESULT: REFUSED — nothing written');
++        return 1;
++      }
++    }
+     // the structural preflight, on the one-module projection this form is about to write
+     {
+       const parsed = parseDeltaStrict(deltaText);
+@@ -1170,7 +1288,7 @@ function cli(argv, deps = {}) {
+ }
+ module.exports = {
+   deltaScope, parseRequirementsStrict, parseDelta, parseDeltaStrict, deltaOpCount, mutationOpCount, unstampedWarning,
+-  compareModifiedBlock, formatIntegrityHuman,
++  compareModifiedBlock, formatIntegrityHuman, integrityEntries, dropManifest, dropGuard,
+   merge, renderStore, archiveStamp, archiveChangeDir, archiveChange, archiveDeclaration,
+   fingerprint, containsFuturePath, mdFilesUnder, discoverDeltas, buildProjection,
+   stripDeprecatedBlocks, scanScenarioTitles, collectChangePairs, scopedIdRefusals, structuralPreflight,
+diff --git a/lib/readiness.js b/lib/readiness.js
+index 48f62c6..4f1c88a 100644
+--- a/lib/readiness.js
++++ b/lib/readiness.js
+@@ -532,6 +532,23 @@ function forceGrant(flowText) {
+   return out;
+ }
+ 
++// The drop decision (S4 guard): `- <ts> owner: archive-drop <target> sha256:<fingerprint> — <reason>`.
++// It authorizes ONE thing — archiving the exact input whose manifest hashes to that fingerprint
++// (target + store digests + delta digests + the sorted list of dropped scenarios). Edit a delta or
++// a store and the fingerprint moves, so an old decision never authorizes a new deletion. Same
++// canonical owner entry, same parser, same strictness as the other verbs; last matching entry wins.
++const DROP_RE = /^archive-drop[ \t]+(\S+)[ \t]+(sha256:[0-9a-f]{64})[ \t]+—[ \t]*([\s\S]*)$/;
++function dropGrant(flowText, target, fingerprint) {
++  let out = null;
++  for (const e of gatesEntriesRaw(flowText || '')) {
++    if (e.payload === null) continue;                       // not an owner decision at all
++    const m = DROP_RE.exec(e.payload);
++    if (m && m[1] === target && m[2] === fingerprint && HAS_REASON.test(m[3])) out = { granted: true, firstLine: e.firstLine };
++  }
++  return out;
++}
++const dropLine = (target, fingerprint) => `  - <YYYY-MM-DDTHH:MM> owner: archive-drop ${target} ${fingerprint} — <the human's reason, verbatim>`;
++
+ // one wording for a structural defect, wherever it is reported (R1, C3, the ledger probe)
+ const defectDetail = (artifact, d) => `${artifact}: ${d.code ? `${d.kind} (${d.code})` : d.kind} at ${d.path}`;
+ function structural(rule, artifact, d) {
+@@ -679,7 +696,9 @@ function readinessOf({ bundleDir, name, force = false, ops = DEFAULT_OPS, fsImpl
+   if (found.items.length) notes.push(openSummary(found));
+   notes.push(...found.notes);
+ 
+-  return { ready: blockers.length === 0, blockers, forced, na, notes, grant };
++  // flowText travels with the verdict so the archive's later guards read the SAME snapshot
++  // (one look at the bundle, never a second read)
++  return { ready: blockers.length === 0, blockers, forced, na, notes, grant, flowText };
+ }
+ 
+ module.exports = {
+@@ -688,5 +707,5 @@ module.exports = {
+   evidenceFindings, checkEvidenceStatus, openSummary,
+   phaseOverlay,
+   containDefect, artifactDefect, reviewRootDefect, STRUCTURAL, defectDetail,
+-  gatesEntriesRaw, forceGrant, readinessOf,
++  gatesEntriesRaw, forceGrant, dropGrant, dropLine, readinessOf,
+ };
+<!-- apriori-base: sha256:e7cfb3c1bbb97c3239efb3a58be706854057c78db327c9afee982d0ed0c26292 -->
+# Delta — archive-merge (archive-drop-guard)
+
+## MODIFIED Requirements
+
+### Requirement: the modified-block integrity engine reports replacement fidelity
+A pure shared helper SHALL compare a MODIFIED operation's old store block against its replacement (both captured at the projection's own parse snapshot — `buildProjection` additionally returns the raw old/new block text pairs per MODIFIED operation; no consumer re-reads files) and report structural fidelity. The report is informative for `retained`, `titleChanged`, `added` and `missingLines`; since archive-drop-guard the `dropped` and `ambiguous` classes are CONSUMED by the archive's drop guard (see "archive never drops a store scenario without a fingerprint-bound owner decision"), so a MODIFIED replacement that drops or cannot pair a scenario is refused instead of merged. Structure scan: the requirement heading line never participates; requirement prose runs from the line after the heading to the first VALID scenario heading (state A's actual regex `/^####\s+Scenario:\s+(.*)$/m`, fence-aware exactly like `stripFences` — only lines inside CLOSED triple-backtick pairs are not delimiters; an unclosed opener is ordinary text and later headings still split); fence delimiter lines and fenced non-empty lines are compared as body lines. Pairing runs per key (scenario ID when present, normalized full title otherwise) through one cardinality truth table — o=0,n=1 added; o=1,n=0 dropped; o=1,n=1 paired (same normalized title → retained, different → titleChanged, mutually exclusive, both body-compared); any side >1 → ambiguous (side old/new/both with counts; the key skips every other class and body comparison). Line comparison is ONE algorithm: order-preserving greedy subsequence over normalized non-empty lines (CRLF/CR→LF, trailing whitespace stripped, leading whitespace stripped; duplicates consumed by count); unmatched OLD lines are `missingLines` (requirement prose misses carry scenario=null; only old-content loss is reported). An idempotent replacement takes a FAST PATH — `oldBlock.trim() === newBlock.trim()` short-circuits before any structure scan or id extraction — yielding an entry whose diff arrays are all empty (the stamped-rerun repair path included: a repaired module still contributes its equal-text pair, one entry per MODIFIED operation always). Capture points are module-level testable: `buildProjection().modifiedBlocks` carries raw text pairs — for rename-then-modify the oldBlock deep-equals the COMPLETE pre-rename block (captured before the rename key swap) and the newBlock deep-equals the delta block. The human formatter renders SAFELY: every externally-sourced field (titles, lines, requirement names, file suffixes, ambiguous keys) has C0/DEL control characters replaced with `·` BEFORE the 120-unit truncation (JSON keeps full raw text; JSON.stringify escapes there); an all-empty result renders as NOTHING (no blank line).
+
+#### Scenario: AM-43 the cardinality truth table classifies every occurrence
+- WHEN an old block carries KV-01/KV-02/KV-03 and the replacement carries KV-01 (same title), KV-03 (changed title), KV-04 — and separately each of the eight o/n cardinality rows is exercised (including a duplicated KV-05 on one side and no-ID title keys)
+- THEN retained=[KV-01], titleChanged=[KV-03 with old/new titles], dropped=[KV-02], added=[KV-04]; each truth-table row lands in its one class; ambiguous entries carry {key, side, oldCount, newCount} and skip every other class; ambiguous ordering is old-present keys by old first occurrence, then new-only keys by new first occurrence
+
+#### Scenario: AM-44 the subsequence comparison reports lost lines faithfully
+- WHEN a retained scenario's replacement drops one AND clause, reorders two lines, repeats a line fewer times, differs only in indentation/trailing whitespace on another, and the requirement prose loses a sentence
+- THEN missingLines lists the dropped AND clause, the reordered-out line and the under-repeated line (by count) with full original text, the whitespace-only difference is NOT reported, and the prose loss carries scenario=null
+
+#### Scenario: AM-45 structure boundaries follow state A exactly
+- WHEN a rename-then-modify replacement preserves prose and scenarios verbatim under the new requirement name, a CLOSED fence contains a scenario-looking heading, an UNCLOSED fence precedes a real scenario heading, and a heading uses multiple spaces after `####`
+- THEN the rename case reports zero missingLines (the heading line is never compared); the fenced fake heading does not split a scenario and its lines are body-compared; the heading after the unclosed opener still splits (stripFences strips only closed pairs); the multi-space heading is a valid delimiter
+
+#### Scenario: AM-46 archive prints the integrity section; a dropped scenario is refused until the owner names it
+- WHEN `apriori archive --change <name>` passes preflight with a MODIFIED delta whose replacement drops a scenario — on dry-run and on `--write` — and separately with a replacement that only rewrites a body line
+- THEN the human integrity section appears BEFORE the result line in both cases; the dropping run is REFUSED (`RESULT: REFUSED — nothing written`, exit 1) with the `— DROPPED SCENARIOS —` block and its manifest fingerprint, the store untouched; the body-rewrite run merges exactly as before with its `! missing` line and no dropped block; and ANY preflight failure — malformed, CAS, conflict, denial, a pre-existing temp file, an escaping --changes-dir destination — prints NO integrity section
+
+#### Scenario: AM-47 the archive id-pattern channel is resolved, terminable and degradable
+- WHEN archive runs with a custom config `id-pattern` row recognizing letter-suffixed IDs; with no row (default); with an uncompilable row; and with an injected matcher failure
+- THEN the first two produce correct reports through the injected terminable matcher — the pinned seam: `archiveMerge.cli(argv, deps)` and `archiveChange({..., idMatcherFactory})` accept an optional factory `(cwd) => matcher | {error}`; bin builds it lazily from `lib/config`'s resolveIdPattern plus spec-runner's makeIdMatcher; a MISSING factory degrades exactly like a factory error (warning + skip); archive-merge itself never requires spec-runner; the last two print exactly one stderr warning — the WHOLE line `warning: modified-integrity <reason>` passed through sanitizeMsg (control chars replaced with `·`, ≤200 UTF-16 units) — skip the report, and leave every other archive output and exit unchanged — with one addition since archive-drop-guard: the drop guard runs AFTER the structural preflight (which already refuses a broken id-pattern channel before any integrity report), so a comparison that fails only at the integrity stage (a matcher whose batch fails) is refused when some MODIFIED old block carries a scenario, because a guard that cannot see must not wave a deletion through; old blocks without scenarios need no matcher and merge as before; the preflight's own refusal is not weakened
+
+### Requirement: --force overrides progress only, on pre-recorded human authority
+`--force` SHALL belong to the high-level form alone and SHALL override ONLY progress blockers, which are exactly two things: a review family's escalation the owner already answered (its `reframe` record), and — since archive-drop-guard — the dropping of store scenarios the owner already named through a fingerprint-bound `archive-drop` record. Everything else is non-forceable: an ambiguous MODIFIED replacement, a drop with no decision or with a decision whose fingerprint no longer matches the input, every R1 outcome (`abandoned` above all), every structural defect (`io-error`, `symlink`, `not-file`, `not-dir`, `escape`, `bad-ancestor`), a review family stopped at its round limit (or by an `escalate` verdict) with no owner decision on record (readiness reports it `forceable: false` while still naming the reframe cure; it turns forceable only once the decision is recorded), an invalid `review-round-limit` configuration, a `review-progress` record that is missing or fails its structural check, an unmet review floor, and every R5 refusal — an open item nobody accepted is not progress, and owner acceptance for it is spent in the state, not at the command line. There is no `tasks` force class and no live `ledger` class: the `archive-force ledger` grammar is still PARSED — the SAME entry, and the same parser, the item acceptance and the `reframe` decision use — but a grant is reported as `note: archive-force has nothing left to force in 6.2` and overrides nothing. Revocation is by APPENDING `archive-force-revoke ledger <reason>` and the last decision wins, for that note alone. The limit-stop DOUBLE action is preserved: the recorded `reframe` alone is not a `--force`, and `--force` alone is not a decision.
+
+#### Scenario: AM-89 an archive-force record is inert: nothing is forced, and the note says so
+- WHEN a bundle records the canonical `archive-force ledger — <reason>` beside an open ledger row, with and without `--force`, and then a revoked grant, an `archive-force tasks` record, a `note:` near miss and no record at all
+- THEN the first archives either way with `note: archive-force has nothing left to force in 6.2` and no `forced:` line, the unread row never reaches the report, and the other four print nothing about `archive-force`
+
+#### Scenario: AM-87 nothing but the answered limit escalation and the named drop is forceable
+- WHEN the blocker is any R1 outcome, a structural flow-state defect, or a pending open item — each beside a standing `archive-force ledger` record
+- THEN `--force` does not change the refusal, no force advice is printed for the item, and readiness reports it `forceable: false` with nothing forced
+
+#### Scenario: AM-110 the kept parser is anchored: only the canonical entry is a grant
+- WHEN the entry reads `archive-force ledger — cleanup deferred`, or `archive-force ledger2 …`, or `archive-force-2 ledger …`, or `do not archive-force ledger — 还没做完`, or the canonical payload under a `note:` / `producer:` / `agent:` / `gate⑤ (owner):` actor, or with no timestamp, or with no em dash, or with no reason
+- THEN `forceGrant` answers a grant for the first only — the class word inside a reason never authorizes, a keyword preceded by free text never authorizes, and the entry's PREFIX is as binding as its payload; a Chinese reason is a reason
+
+#### Scenario: AM-111 revocation appends and the last decision wins — in the parser and in the note
+- WHEN `archive-force ledger <reason>` is followed by `archive-force-revoke ledger <reason>` and later by another `archive-force ledger <reason>`, each carrying a reason
+- THEN the parser answers granted, then not, then granted again, in the order the entries appear, and the archive prints the nothing-left-to-force note exactly when the parser answers granted; a revoke with no grant before it grants nothing, and a revoke carrying no reason is ignored exactly as a reasonless grant is
+
+#### Scenario: AM-91 the single-file form does not take --force
+- WHEN `--force` accompanies `--store`/`--delta`
+- THEN archive exits 2 with usage
+
+#### Scenario: AM-116 one canonical owner entry supplies the payload for every decision verb
+- WHEN `ownerPayload` is applied to the canonical entry for each of the three verbs, and then to the same payloads under a `note:` / `producer:` / `agent:` / `gate⑤ (owner):` / `ownership:` actor, with no timestamp, and with a timestamp-shaped non-timestamp (a 13th month, a 24th hour, a 60th minute)
+- THEN the canonical forms yield their payload and every other form yields `null`, so the verb patterns below never see a non-owner entry; a NEGATED verb still yields a payload, because refusing it is the verb pattern's job — the keyword has to open the payload
+
+#### Scenario: AM-117 the usage lines say which flags belong to which form
+- WHEN `apriori archive` is run with no arguments
+- THEN the single-file line carries neither `--changes-dir` nor `--force`, and the high-level line carries both — the two forms are no longer symmetric and the usage must not pretend otherwise
+
+## ADDED Requirements
+
+### Requirement: archive never drops a store scenario without a fingerprint-bound owner decision
+When any MODIFIED replacement of the change drops a store scenario (the integrity engine's `dropped` class, paired by scenario ID — a title change under the same ID is not a drop), `apriori archive --change <name>` SHALL refuse in dry-run and `--write` alike with `RESULT: REFUSED — nothing written` (exit 1), nothing staged, nothing moved. It SHALL print a `— DROPPED SCENARIOS —` block listing every deletion as `<file> · <requirement> · <scenario id or title>` (sorted) and the manifest fingerprint, and on stderr the copyable cure `- <YYYY-MM-DDTHH:MM> owner: archive-drop <change> sha256:<fingerprint> — <reason>`. The fingerprint is the SHA-256 of a canonical manifest built from the projection's own parse snapshot (never a second read): `apriori archive-drop manifest v1`, the target change name, every touched module's store digest and delta digest (`fingerprint()` of the raw text, `new` for an absent store), and the sorted deletion locators — so editing any delta or store of the change, or dropping a different set, moves the fingerprint and voids the decision. Release requires BOTH a canonical owner entry whose target and fingerprint match exactly (same parser and strictness as the other decision verbs: real timestamp, actor `owner`, em dash, a reason; last matching entry wins) AND explicit `--force`; the decision alone refuses naming the missing flag, the flag alone refuses naming the missing decision, and a forced run prints `forced: dropped <n> scenario(s) — owner decision on record: <entry>`. An `ambiguous` key (a scenario key occurring more than once on either side) SHALL be refused as not forceable — disambiguate first; `missingLines` stays report-only (requirement-prose loss and scenario-body loss are S4's remaining, still-open gap). When the modified-block comparison cannot run at the integrity stage (after the structural preflight passed) and some MODIFIED old block carries a scenario, the run SHALL be refused (a guard that cannot see must not wave a deletion through); old blocks with no scenario need no matcher. Manifest fields SHALL be JSON-encoded and the manifest hashed byte-for-byte (no line-ending normalization of the manifest itself), while the store and delta content digests keep `fingerprint()`'s LF/CRLF normalization; an existing but empty store contributes its content digest, `new` marks only an absent store. The single-file form (`--store/--delta`) has no bundle to hold a decision: it SHALL refuse any dropping or ambiguous replacement outright and point at the high-level form, while merging title changes and body rewrites as before. `--force` remains a high-level-form flag; no ratio or threshold configuration key is introduced.
+
+#### Scenario: AM-123 a delta that drops a store scenario is refused with zero writes, and the report names the deletion, its fingerprint and the cure
+- WHEN a MODIFIED replacement omits scenario KV-02 of the store block, on dry-run and on `--write`
+- THEN both runs exit 1 with `RESULT: REFUSED — nothing written`, print `— DROPPED SCENARIOS —` with `m/spec.md · R-K · KV-02` and `manifest sha256:…`, put the `archive-drop` cure line on stderr, leave the store byte-identical, no `.tmp-archive` artifact anywhere under the store root, and the bundle in place; `dropManifest` over the projection's `sources` and integrity entries reproduces the printed fingerprint from a text of exactly `apriori archive-drop manifest v1` / `target: "c"` / `store "…": …` / `delta "…": …` / `drop "…" "…" "…"` lines (JSON-encoded fields)
+
+#### Scenario: AM-127 the manifest binds fields unambiguously and the content digests normalize line endings
+- WHEN two changes are identical except that one file suffix or requirement name differs only by an embedded control character; when the same delta is stored with CRLF instead of LF; when a touched store exists but is empty versus absent; and when two `archive-drop` decisions for the same target are on record with only the last one matching
+- THEN the control-character variants yield different fingerprints (fields are JSON-encoded, the manifest is hashed unnormalized); the CRLF delta yields the same fingerprint as the LF delta (content digests normalize); the empty store hashes as content while the absent one reads `new`, so the two fingerprints differ; and the last matching decision wins — its full entry appears in the `forced:` line
+
+#### Scenario: AM-124 the double action: a fingerprint-bound owner decision AND --force merge; either alone, a stale fingerprint, or a non-owner actor refuse
+- WHEN the canonical `archive-drop c sha256:<printed fingerprint> — <reason>` entry is on record and `--write --force` is passed; then the entry without `--force`; then `--force` without the entry; then the same entry after the delta drops a second scenario; then after the store gained a scenario; then the payload under `note:` / `agent:`, for another target, and with no reason
+- THEN the first merges (KV-02 gone, `forced: dropped 1 scenario(s) — owner decision on record: …`), the second refuses naming the missing flag, the third refuses naming the missing decision, the stale-fingerprint cases refuse (the decision no longer names this input), and none of the non-canonical entries authorizes; `dropGrant` answers a grant for the exact target+fingerprint only and `null` for a mismatching fingerprint or a reasonless entry; a valid decision plus `--force` still refuses when another rule refuses (a pending `## Open` item ⇒ R5 `NOT READY`, store untouched) — the authorization bypasses nothing but the drop
+
+#### Scenario: AM-125 a title change or a body rewrite is not a drop; an ambiguous key is refused and never forceable
+- WHEN a replacement retitles KV-01 (same ID) and rewrites KV-02's body; and separately the store block carries KV-01 twice and the replacement carries it once
+- THEN the first merges with no decision, reporting `titleChanged` and no dropped block; the second is refused as `scenario key 'KV-01' is ambiguous (old; old 2/new 1) — … not forceable` in dry-run and `--write`, with or without a decision and `--force`, the store untouched
+
+#### Scenario: AM-126 the single-file form never drops a store scenario and points at the high-level form
+- WHEN `apriori archive --store <f> --delta <f> --change c` is run with a replacement that drops KV-02, dry-run and `--write`; then with a retitling replacement
+- THEN the dropping runs exit 1 with `RESULT: REFUSED — nothing written` and a stderr line naming the scenario and the high-level form, the store byte-identical; the retitling run merges as before
+
+exec
+/usr/bin/zsh -lc "cat test/archive-drop-guard.test.js; git diff -- docs/cli.md docs/cli_cn.md RUNBOOK.md RUNBOOK_cn.md; sed -n '529,550p' lib/archive-merge.js; sed -n '927,956p' lib/archive-merge.js; sed -n '327,365p' test/modified-integrity.test.js; cat apriori/changes/archive-drop-guard/flow-state.md; git diff --check" in /root/terra/asd-v62-code
+ succeeded in 0ms:
+'use strict';
+// archive-drop-guard — AM-123..AM-126 (S4): a store scenario is never dropped by an archive without a
+// fingerprint-bound owner decision AND --force; ambiguous keys are never forceable; title changes and
+// body rewrites are not drops; the single-file form never drops at all.
+const { test } = require('node:test');
+const assert = require('node:assert');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { spawnSync } = require('node:child_process');
+const BIN = path.join(__dirname, '..', 'bin', 'apriori.js');
+const am = require('../lib/archive-merge');
+const rd = require('../lib/readiness');
+const { readyFiles } = require('./helpers/ready-bundle');
+
+const STORE = '### Requirement: R-K\nkeep me\n\n#### Scenario: KV-01 one\n- WHEN w\n- THEN t\n\n#### Scenario: KV-02 two\n- b\n';
+const DROP = '## MODIFIED Requirements\n\n### Requirement: R-K\nkeep me\n\n#### Scenario: KV-01 one\n- WHEN w\n- THEN t\n';
+const RETITLE = '## MODIFIED Requirements\n\n### Requirement: R-K\nkeep me\n\n#### Scenario: KV-01 one renamed\n- WHEN w\n- THEN t\n\n#### Scenario: KV-02 two\n- b changed\n';
+const STORE_DUP = '### Requirement: R-K\nkeep me\n\n#### Scenario: KV-01 one\n- a\n\n#### Scenario: KV-01 one again\n- a2\n\n#### Scenario: KV-02 two\n- b\n';
+const AMBIG = '## MODIFIED Requirements\n\n### Requirement: R-K\nkeep me\n\n#### Scenario: KV-01 one\n- a\n\n#### Scenario: KV-02 two\n- b\n';
+const stamped = (delta, store = STORE) => `<!-- apriori-base: ${am.fingerprint(store)} -->\n\n` + delta;
+
+function proj(delta, { gates = '', store = STORE } = {}) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-adg-'));
+  const files = { ...readyFiles('c'), 'apriori/specs/m/spec.md': store, 'apriori/changes/c/specs/m/spec.md': stamped(delta, store) };
+  for (const [rel, c] of Object.entries(files)) {
+    fs.mkdirSync(path.dirname(path.join(root, rel)), { recursive: true });
+    fs.writeFileSync(path.join(root, rel), c);
+  }
+  if (gates) fs.appendFileSync(path.join(root, 'apriori/changes/c/flow-state.md'), gates);
+  return root;
+}
+const run = (root, args) => spawnSync('node', [BIN, ...args], { encoding: 'utf8', cwd: root });
+const storeOf = (root) => fs.readFileSync(path.join(root, 'apriori/specs/m/spec.md'), 'utf8');
+const fpOf = (root) => (run(root, ['archive', '--change', 'c']).stdout.match(/manifest (sha256:[0-9a-f]{64})/) || [])[1];
+const entry = (fp, actor = 'owner', target = 'c', reason = 'the second scenario is retired with the owner\'s consent') =>
+  `  - 2026-09-25T10:00 ${actor}: archive-drop ${target} ${fp} — ${reason}\n`;
+
+test('AM-123 a delta that drops a store scenario is refused with zero writes, and the report names the deletion, its fingerprint and the cure', () => {
+  for (const write of [false, true]) {
+    const root = proj(DROP);
+    const before = storeOf(root);
+    const r = run(root, ['archive', '--change', 'c', ...(write ? ['--write'] : [])]);
+    assert.strictEqual(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stdout, /— DROPPED SCENARIOS —\n  m\/spec\.md · R-K · KV-02\n  manifest sha256:[0-9a-f]{64}/);
+    assert.match(r.stdout, /RESULT: REFUSED — nothing written/);
+    assert.match(r.stderr, /1 store scenario\(s\) would be DROPPED and no owner decision names this exact input/);
+    assert.match(r.stderr, /- <YYYY-MM-DDTHH:MM> owner: archive-drop c sha256:[0-9a-f]{64} — <the human's reason, verbatim>/);
+    assert.strictEqual(storeOf(root), before, 'zero writes');
+    assert.ok(fs.existsSync(path.join(root, 'apriori/changes/c')), 'the bundle was not moved');
+  }
+  // the manifest is deterministic and binds target, stores, deltas and the sorted drop list
+  const root = proj(DROP);
+  const d = am.discoverDeltas(path.join(root, 'apriori/changes'), 'c');
+  const p = am.buildProjection(path.join(root, 'apriori/specs'), d.files, 'c');
+  const entries = am.integrityEntries(p.modifiedBlocks, () => require('../lib/spec-runner').makeIdMatcher(/[A-Z]+-\d+/), root).entries;
+  const man = am.dropManifest('c', p.sources, entries);
+  assert.strictEqual(man.fingerprint, fpOf(root));
+  assert.match(man.text, /^apriori archive-drop manifest v1\ntarget: "c"\nstore "m\/spec\.md": sha256:[0-9a-f]{64}\ndelta "m\/spec\.md": sha256:[0-9a-f]{64}\ndrop "m\/spec\.md" "R-K" "KV-02"\n$/);
+  // zero writes means zero staging too: no temp artifact anywhere under the store root
+  const rootT = proj(DROP);
+  run(rootT, ['archive', '--change', 'c', '--write']);
+  const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]));
+  assert.deepStrictEqual(walk(path.join(rootT, 'apriori/specs')).filter((f) => f.includes('.tmp-archive')), []);
+});
+
+test('AM-127 the manifest binds fields unambiguously and the content digests normalize line endings', () => {
+  const S = require('../lib/spec-runner');
+  const factory = () => S.makeIdMatcher(/[A-Z]+-\d+/);
+  const manifestOf = (root) => {
+    const d = am.discoverDeltas(path.join(root, 'apriori/changes'), 'c');
+    const p = am.buildProjection(path.join(root, 'apriori/specs'), d.files, 'c');
+    return am.dropManifest('c', p.sources, am.integrityEntries(p.modifiedBlocks, factory, root).entries);
+  };
+  const base = manifestOf(proj(DROP));
+  // control characters in a field cannot collide with a sibling (fields are JSON-encoded; the manifest is hashed raw)
+  const a = am.dropManifest('c', new Map([['m\ra/spec.md', { storeText: STORE, storeExists: true, deltaText: DROP }]]), [{ file: 'm\ra/spec.md', name: 'R-K', dropped: [{ id: 'KV-02', title: 'KV-02 two' }], ambiguous: [] }]);
+  const b = am.dropManifest('c', new Map([['m\na/spec.md', { storeText: STORE, storeExists: true, deltaText: DROP }]]), [{ file: 'm\na/spec.md', name: 'R-K', dropped: [{ id: 'KV-02', title: 'KV-02 two' }], ambiguous: [] }]);
+  assert.notStrictEqual(a.fingerprint, b.fingerprint, 'a CR and an LF inside a path are different locators');
+  assert.match(a.text, /store "m\\ra\/spec\.md":/);
+  // the same delta written with CRLF fingerprints identically (content digests normalize)
+  const crlf = proj(DROP.replace(/\n/g, '\r\n'));
+  assert.strictEqual(manifestOf(crlf).fingerprint, base.fingerprint);
+  // an existing empty store is content; an absent store is `new`
+  const empty = am.dropManifest('c', new Map([['x/spec.md', { storeText: '', storeExists: true, deltaText: 'd' }]]), []);
+  const absent = am.dropManifest('c', new Map([['x/spec.md', { storeText: '', storeExists: false, deltaText: 'd' }]]), []);
+  assert.match(empty.text, /store "x\/spec\.md": sha256:[0-9a-f]{64}/);
+  assert.match(absent.text, /store "x\/spec\.md": new/);
+  assert.notStrictEqual(empty.fingerprint, absent.fingerprint);
+  // the last matching decision wins, and the forced line carries that full entry
+  const fp = fpOf(proj(DROP));
+  const root = proj(DROP, { gates: entry('sha256:' + 'b'.repeat(64), 'owner', 'c', 'an earlier decision for other content') + entry(fp, 'owner', 'c', 'the one that names this deletion') });
+  const r = run(root, ['archive', '--change', 'c', '--write', '--force']);
+  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, new RegExp(`forced: dropped 1 scenario\\(s\\) — owner decision on record: - 2026-09-25T10:00 owner: archive-drop c ${fp} — the one that names this deletion`));
+});
+
+test('AM-124 the double action: a fingerprint-bound owner decision AND --force merge; either alone, a stale fingerprint, or a non-owner actor refuse', () => {
+  const fp = fpOf(proj(DROP));
+  // decision + --force: merged, the dropped scenario is gone, the forced line names the entry
+  let root = proj(DROP, { gates: entry(fp) });
+  let r = run(root, ['archive', '--change', 'c', '--write', '--force']);
+  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /forced: dropped 1 scenario\(s\) — owner decision on record: .*archive-drop c sha256:/);
+  assert.ok(!storeOf(root).includes('KV-02') && storeOf(root).includes('KV-01'));
+  // decision without --force: refused, and the message says the flag is what is missing
+  root = proj(DROP, { gates: entry(fp) });
+  r = run(root, ['archive', '--change', 'c', '--write']);
+  assert.strictEqual(r.status, 1);
+  assert.match(r.stderr, /on record but --force was not given/);
+  assert.ok(storeOf(root).includes('KV-02'));
+  // --force without a decision: refused
+  root = proj(DROP);
+  r = run(root, ['archive', '--change', 'c', '--write', '--force']);
+  assert.strictEqual(r.status, 1);
+  assert.match(r.stderr, /no owner decision names this exact input/);
+  // the fingerprint is stale after the delta changes (a second scenario now dropped) — refused
+  root = proj('## MODIFIED Requirements\n\n### Requirement: R-K\nkeep me\n', { gates: entry(fp) });
+  r = run(root, ['archive', '--change', 'c', '--write', '--force']);
+  assert.strictEqual(r.status, 1, r.stdout + r.stderr);
+  assert.match(r.stderr, /no owner decision names this exact input/);
+  // ... and after the STORE changes under the same delta (a different base — the CAS stamp is re-issued, the drop fingerprint moves too)
+  const store2 = STORE + '\n#### Scenario: KV-03 three\n- c\n';
+  root = proj(DROP, { gates: entry(fp), store: store2 });
+  r = run(root, ['archive', '--change', 'c', '--write', '--force']);
+  assert.strictEqual(r.status, 1, r.stdout + r.stderr);
+  assert.match(r.stderr, /no owner decision names this exact input/);
+  // the canonical entry only: another actor, another target, no reason
+  for (const g of [entry(fp, 'note'), entry(fp, 'agent'), entry(fp, 'owner', 'other-change'), entry(fp, 'owner', 'c', '')]) {
+    root = proj(DROP, { gates: g });
+    r = run(root, ['archive', '--change', 'c', '--write', '--force']);
+    assert.strictEqual(r.status, 1, g);
+    assert.ok(storeOf(root).includes('KV-02'), g);
+  }
+  // a valid decision + --force bypasses nothing else: a pending ## Open item still refuses under R5, store untouched
+  root = proj(DROP, { gates: entry(fp) });
+  const fsPath = path.join(root, 'apriori/changes/c/flow-state.md');
+  fs.writeFileSync(fsPath, fs.readFileSync(fsPath, 'utf8').replace('\n## Open\n\n', '\n## Open\n- OP-1: still unverified\n\n'));
+  r = run(root, ['archive', '--change', 'c', '--write', '--force']);
+  assert.strictEqual(r.status, 1, r.stdout + r.stderr);
+  assert.match(r.stdout, /RESULT: NOT READY — nothing written/);
+  assert.ok(storeOf(root).includes('KV-02'));
+  // the parser, directly
+  assert.strictEqual(rd.dropGrant(`gates:\n${entry(fp)}`, 'c', fp).granted, true);
+  assert.strictEqual(rd.dropGrant(`gates:\n${entry(fp)}`, 'c', 'sha256:' + '0'.repeat(64)), null);
+  assert.strictEqual(rd.dropGrant(`gates:\n${entry(fp, 'owner', 'c', '——')}`, 'c', fp), null, 'no reason is no grant');
+});
+
+test('AM-125 a title change or a body rewrite is not a drop; an ambiguous key is refused and never forceable', () => {
+  // retitle + body change: merged without any decision, the report shows titleChanged / missing lines only
+  let root = proj(RETITLE);
+  let r = run(root, ['archive', '--change', 'c', '--write']);
+  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /titleChanged: KV-01 one -> KV-01 one renamed/);
+  assert.doesNotMatch(r.stdout, /DROPPED SCENARIOS/);
+  assert.ok(storeOf(root).includes('KV-01 one renamed') && storeOf(root).includes('- b changed'));
+  // ambiguous: KV-01 occurs twice in the STORE block (a delta-side duplicate is already refused by the
+  // structural preflight) — the guard cannot tell kept from dropped and refuses; a decision + --force does not change that
+  root = proj(AMBIG, { store: STORE_DUP });
+  r = run(root, ['archive', '--change', 'c', '--write']);
+  assert.strictEqual(r.status, 1, r.stdout + r.stderr);
+  assert.match(r.stderr, /scenario key 'KV-01' is ambiguous \(old; old 2\/new 1\) — disambiguate the delta before archiving; not forceable/);
+  assert.doesNotMatch(r.stdout, /DROPPED SCENARIOS/);
+  const anyFp = 'sha256:' + 'a'.repeat(64);
+  root = proj(AMBIG, { store: STORE_DUP, gates: entry(anyFp) });
+  r = run(root, ['archive', '--change', 'c', '--write', '--force']);
+  assert.strictEqual(r.status, 1);
+  assert.match(r.stderr, /ambiguous/);
+  assert.ok(storeOf(root).includes('one again'));
+});
+
+test('AM-126 the single-file form never drops a store scenario and points at the high-level form', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-adg-sf-'));
+  const store = path.join(root, 'store.md'), delta = path.join(root, 'delta.md');
+  fs.writeFileSync(store, STORE);
+  fs.writeFileSync(delta, stamped(DROP));
+  for (const args of [[], ['--write']]) {
+    const r = spawnSync('node', [BIN, 'archive', '--store', store, '--delta', delta, '--change', 'c', ...args], { encoding: 'utf8', cwd: root });
+    assert.strictEqual(r.status, 1, r.stdout + r.stderr);
+    assert.match(r.stderr, /scenario KV-02 would be DROPPED — the single-file form never drops a store scenario; use the high-level form with an owner archive-drop decision/);
+    assert.match(r.stdout, /RESULT: REFUSED — nothing written/);
+    assert.strictEqual(fs.readFileSync(store, 'utf8'), STORE);
+  }
+  // a retitle passes the single-file form as before
+  fs.writeFileSync(delta, stamped(RETITLE));
+  const ok = spawnSync('node', [BIN, 'archive', '--store', store, '--delta', delta, '--change', 'c', '--write'], { encoding: 'utf8', cwd: root });
+  assert.strictEqual(ok.status, 0, ok.stdout + ok.stderr);
+  assert.ok(fs.readFileSync(store, 'utf8').includes('KV-01 one renamed'));
+});
+diff --git a/RUNBOOK.md b/RUNBOOK.md
+index 99edc8e..53c26d4 100644
+--- a/RUNBOOK.md
++++ b/RUNBOOK.md
+@@ -309,7 +309,7 @@ KB docs have two sections with **opposite truth directions** (§5 P5): `Contract
+ - **Review-ready comes first.** Run `apriori gate --change <name> --review-ready --test-cmd "…"`. It writes nothing and answers TWO items from facts the run already produced: compilation and tests really executed (never `BUILD SUCCESS` with zero tests); and the state claims nothing unresolved of its own — every `## Open` item carries a stable id, no id is duplicated, and no Reality Check `assumption` is still standing. A pending item does not stop review-ready: it is what the review is for. **Not ready is not a review round.** Go back to Build & Test.
+ - **Then one independent review** (**P3**, R2). The reviewer's default input is exactly four things: the **behavior contract**, the **diff**, the **`## Open` items** and the **boundaries still uncovered**; it may read the whole repo, callers, config and prototypes on its own. Raw review output, closed issues and other changes' documents are not default inputs. The reviewer's output keeps three things: newly found substantive issues; which risk surfaces it did and did not examine; and one of `ACCEPT | REVISE | ESCALATE`. **The reviewer does not do the producer's job** — it is not there to compile, add tests or rewrite the approach; if it has to, the change was not review-ready. A REVISE round does not widen that default input to the producer's full history. This input boundary does not revoke R2's reviewer resume mechanism or the reviewer's permission to inspect sources; the producer's description is not a substitute for that independent judgment. Carrying that boundary: **do not repackage a prior review's conclusions into the next reviewer's default input** — dropping the source name, rewording it, or re-labelling it as your own `observed`/`decision` changes nothing, and writing it in and deleting it later does not undo the round it was carried through. What you **re-established yourself**, against real code, a command or its output, is your own finding: record it, even if a prior review reached the same conclusion. The diff is not trimmed by path — completeness, maintainability and a checkable line of responsibility all argue against that, and a deletion carrying old content is mechanical, not propagation. This leaves the review archive and the Fix Packet untouched: both are required elsewhere and neither is a default input to the next review.
+ - **KB update is a precondition, not a closeout step — and it is owed only when** `apriori/truth/<module>.md` already covers the touched module, or the owner/change explicitly decided to persist a new durable contract. Never fabricate one just to have one at closeout. When owed, before review-ready: commit the implementation and point `source-commit` at it; update `apriori/truth/<module>.md` — Contract section from the final implementation, Decisions section appending this change's new decisions. The reviewer's diff already carries this KB diff; `apriori archive` never touches `apriori/truth/`.
+-- **Then archive — directly, not a dry-run.** ACCEPT, plus no product-code or test change since review-ready, means the normal close is four logical actions, no more: (1) land the reviewer's output as one self-contained review file, plus a short flow-state update; (2) run `apriori check`, then a full `apriori gate --change <name>` (not `--review-ready`), which binds C1 on these still-unchanged inputs; (3) run `apriori archive --change <name> --write` directly — `--write` runs the same preflight a dry-run would, so dry-running first re-checks nothing; archive merges the delta specs into `apriori/specs` and moves the bundle, and nothing else (`--changes-dir` is only a location override for a non-default changes root); (4) commit the closeout locally, and stop. The atomic move carries the whole bundle to `apriori/changes/archive/<stamp>-<change>/`. Count logical actions, not commands: action 2 already contains both check and gate. The one exception is the re-verify path below when its stated triggers occur; the four-action rule is not permission to skip recovery or an applicable report.
++- **Then archive — directly, not a dry-run.** (A MODIFIED delta that would drop a store scenario is refused: the owner must name that exact deletion with an `archive-drop <change> sha256:<fingerprint>` entry in `gates:` and the run must add `--force` — retitling under the same ID or rewriting a scenario is not dropping.) ACCEPT, plus no product-code or test change since review-ready, means the normal close is four logical actions, no more: (1) land the reviewer's output as one self-contained review file, plus a short flow-state update; (2) run `apriori check`, then a full `apriori gate --change <name>` (not `--review-ready`), which binds C1 on these still-unchanged inputs; (3) run `apriori archive --change <name> --write` directly — `--write` runs the same preflight a dry-run would, so dry-running first re-checks nothing; archive merges the delta specs into `apriori/specs` and moves the bundle, and nothing else (`--changes-dir` is only a location override for a non-default changes root); (4) commit the closeout locally, and stop. The atomic move carries the whole bundle to `apriori/changes/archive/<stamp>-<change>/`. Count logical actions, not commands: action 2 already contains both check and gate. The one exception is the re-verify path below when its stated triggers occur; the four-action rule is not permission to skip recovery or an applicable report.
+ - **An archive is not a release.** `apriori archive` declares only the state it just judged (whether the implementation and the critical evidence are complete); its third line says exactly that, verbatim — `delivery: an archive is not a release` — and it never poses as a release or external acceptance. (The flow-state `delivery:` field is retired; a legacy line is read and ignored.) **The archived bundle is frozen: nothing, including `phase:`, is written back to it.** A defect found afterwards becomes a short outcome note or a new change.
+ - **Exit (normal path).** By default: do not rerun the test command separately before step 2's gate — `--test-cmd` already ran it; do not rerun `apriori verify`, `check`, `gate`, or `status` after archive — step 2 already bound C1 on these inputs, step 3 already re-checked archive's own readiness and CAS, nothing changed between them, so none of the four learns anything new; and do not narrate the full review, flow-state, or command output back to the human. Exit is: delta specs merged + the precondition KB diff, human-approved (same-repo layout: that's just PR review).
+ - **Re-verify instead, whenever:** review returns REVISE and product code or tests changed; archive reports a conflict, CAS, readiness, or structural problem; a business file changes between gate (action 2) and archive (action 3); or `apriori check` fails — any of these returns the change to Build & Test and a fresh gate; nothing archives on a partial pass. **On REVISE, start that round in a fresh session with a Fix Packet** (§0).
+diff --git a/RUNBOOK_cn.md b/RUNBOOK_cn.md
+index 2f30e6f..7408afc 100644
+--- a/RUNBOOK_cn.md
++++ b/RUNBOOK_cn.md
+@@ -300,7 +300,7 @@ change 需要的其他任何东西——一张草稿、一幅图、给人看的
+ - **先过 review-ready。** 跑 `apriori gate --change <name> --review-ready --test-cmd "…"`。它什么也不写,只从这次运行已经产生的事实答**两项**:编译和测试**真的**执行过(绝不是零测试的 `BUILD SUCCESS`);以及状态自己没有声明任何未了结的东西——每条 `## Open` 条目都带稳定 id、没有重复 id、没有仍悬着的 Reality Check `assumption`。pending 的条目不挡 review-ready:那正是评审要看的东西。**没准备好不算一轮评审。** 回到 Build & Test。
+ - **然后一次独立评审**(**P3**,R2)。评审方的默认输入恰好是四样:**行为契约**、**diff**、**`## Open` 条目**、**仍未覆盖的边界**;它可以自行查全仓、调用者、配置和原型。原始评审输出、已关闭问题、其他 change 的文档不是默认输入。评审方的输出只保留三样:新发现的实质问题;已查与未查的风险面;以及 `ACCEPT | REVISE | ESCALATE` 之一。**评审方不做生产方的活**——它不是来编译、补测试或重写方案的;如果它必须那么做,说明这个 change 没到 review-ready。 REVISE 的这一轮不扩大那份默认输入到生产方全量历史。这条输入边界不撤销 R2 评审会话的 resume,也不撤销评审方自行查源码的权限;生产方转述不能代替独立判断。 这条边界怎么落实:**不得把此前评审的结论重新包装进下一位评审方的默认输入** —— 去掉来源名、换个说法、或改标成别的字段(`observed`/`decision`)都不改变它的性质,**先写进去再删掉**也**不能抵消**它已经随那一轮带过去的事实。凡是你**自己重新核验过**的 —— 对着真实代码、命令或其输出 —— 那就是你自己的发现,**照常记录**,哪怕此前评审得出过同样结论。**diff 不按路径裁剪**:完整性、可维护性、以及责任可核查,三条都反对裁剪;删除行携带旧内容是机械后果,不是传播。这条边界让**评审存档与 Fix Packet 照旧** —— 两者本就由别处要求,也都不是下一轮评审的默认输入。
+ - **知识库更新是前置条件,不是收尾步骤——而且只在欠着的时候才做。** 只有当 `apriori/truth/<module>.md` 已经覆盖被触达的模块,或所有者/change 明确决定沉淀一份新的持久契约时才欠;绝不为了收官时有一份而凭空造一份。欠着时,review-ready 之前:提交实现,让 `source-commit` 指向它;更新 `apriori/truth/<module>.md`——Contract 段按最终实现写,Decisions 段追加本次的新决定。评审方看到的 diff 里已经带着这份 KB diff;`apriori archive` 从不碰 `apriori/truth/`。
+-- **然后归档——直接执行,不 dry-run。** ACCEPT 落地、且产品代码与测试自 review-ready 起未再变化时,正常收尾恰好四个逻辑动作,不多不少:(1)把评审方的输出落成一个 self-contained 评审文件,外加一次简短的 flow-state 更新;(2)跑一次 `apriori check`,再跑一次完整的 `apriori gate --change <name>`(不带 `--review-ready`),在这些仍未变化的输入上绑定 C1;(3)直接跑 `apriori archive --change <name> --write`——`--write` 执行与 dry-run 完全相同的前置检查,先跑一次 dry-run 不会多核实出任何东西;归档把增量 spec 合并进 `apriori/specs` 并搬移 bundle,仅此而已(`--changes-dir` 只是非默认 changes 根的位置覆盖);(4)本地提交收尾,然后停止。那一次原子移动携带整个 bundle 到 `apriori/changes/archive/<stamp>-<change>/`。 这里数的是动作,不是命令:动作二本来就包含 check 与 gate。唯一的例外是下面的重新验证路径,在其已列触发发生时适用;四动作规则不是跳过恢复或适用报告义务的许可。
++- **然后归档——直接执行,不 dry-run。**(会丢掉 store 场景的 MODIFIED delta 会被拒绝:所有者须在 `gates:` 用 `archive-drop <change> sha256:<指纹>` 点名这一次删除,且运行时加 `--force`——同 ID 改标题或改写正文不算丢。) ACCEPT 落地、且产品代码与测试自 review-ready 起未再变化时,正常收尾恰好四个逻辑动作,不多不少:(1)把评审方的输出落成一个 self-contained 评审文件,外加一次简短的 flow-state 更新;(2)跑一次 `apriori check`,再跑一次完整的 `apriori gate --change <name>`(不带 `--review-ready`),在这些仍未变化的输入上绑定 C1;(3)直接跑 `apriori archive --change <name> --write`——`--write` 执行与 dry-run 完全相同的前置检查,先跑一次 dry-run 不会多核实出任何东西;归档把增量 spec 合并进 `apriori/specs` 并搬移 bundle,仅此而已(`--changes-dir` 只是非默认 changes 根的位置覆盖);(4)本地提交收尾,然后停止。那一次原子移动携带整个 bundle 到 `apriori/changes/archive/<stamp>-<change>/`。 这里数的是动作,不是命令:动作二本来就包含 check 与 gate。唯一的例外是下面的重新验证路径,在其已列触发发生时适用;四动作规则不是跳过恢复或适用报告义务的许可。
+ - **归档不是发布。** `apriori archive` 只声明它刚判定过的状态(实现与关键证据是否完成);第三行逐字就是这句话——`delivery: an archive is not a release`——它不冒充发布或外部验收。(flow-state 的 `delivery:` 字段已退役;遗留的行照常读入并忽略。)**归档后的 bundle 是冻结的:任何东西,包括 `phase:`,都不再回写。** 之后发现的缺陷记为一条简短的 outcome 或一个新 change。
+ - **退出(正常路径)。** 不在动作二的 gate 之前单独重跑一次测试命令——`--test-cmd` 已经跑过;归档之后不重跑 `apriori verify`、`check`、`gate` 或 `status`——动作二已经在这些输入上绑定过 C1,动作三已经复核过归档自身的就绪度和 CAS,两者之间什么都没变,谁也学不到新东西;也不把完整的评审、flow-state 和命令输出向人复述一遍。退出即:增量 spec 已合并 + 前置条件里的知识库 diff 已经人批准(同仓布局下,这就是普通的 PR review)。
+ - **以下情况改为重新验证:** 评审结论为 REVISE 且产品代码或测试发生了变化;归档报告冲突、CAS、就绪度或结构问题;gate(动作二)与归档(动作三)之间业务文件发生了变化;或 `apriori check` 失败——任一种都把 change 送回 Build & Test 重新走一次 gate;绝不带着半通过状态归档。**REVISE 时,这一轮在新会话里、带着 Fix Packet 开始**(§0)。
+diff --git a/docs/cli.md b/docs/cli.md
+index 5b4f3d6..8bd8113 100644
+--- a/docs/cli.md
++++ b/docs/cli.md
+@@ -108,7 +108,9 @@ Example: `apriori archive --change add-playback --write`
+ 
+ **The archive declaration.** It is also a BACKSTOP: a run whose own declaration would read `implementation: INCOMPLETE` is refused (`RESULT: NOT READY — nothing written`) even if readiness let it through, so a successful archive can never declare the work unfinished. A ready run prints three states and nothing else — whether the implementation is complete (pending open items and unverified assumptions counted), whether the critical evidence is complete (no unaccepted open item; the accepted ones are named and reported as still present), and — verbatim, one fixed sentence — that an archive is not a release (the flow-state `delivery:` field is retired; a legacy line is read and ignored). The run also prints the predicate's notes — the open-item summary, an acceptance that matches no item, the `contract-mutation` signal, an ignored legacy section. An archived bundle is FROZEN: a defect found later becomes a short outcome note or a new change, never an edit to the archive.
+ 
+-**`--force`** belongs to the high-level form and overrides **progress only**, which since 6.2 is exactly one thing: a review family's escalation the owner already answered (its `reframe` record plus the flag) — since review-round-limit, that is a `revise` at the owner's limit or an `escalate` verdict. It never overrides R1 (`abandoned` above all), a structural defect, an invalid `review-round-limit` row, a loop stopped with no owner decision on record, an unmet review floor, or an R5 refusal — an open item nobody accepted is not progress. The `archive-force` grammar is still parsed and reported as a note; it forces nothing.
++**Dropped scenarios (archive-drop-guard).** A MODIFIED replacement that drops a store scenario (paired by ID — retitling under the same ID is not dropping) is refused in dry-run and `--write` alike: `RESULT: REFUSED — nothing written`, a `— DROPPED SCENARIOS —` block listing each `<file> · <requirement> · <id>` with the **manifest fingerprint**, and the cure on stderr. The fingerprint is the SHA-256 of the exact archive input (target, every touched store's and delta's digest, the sorted drop list), so the owner's decision names *this* deletion of *this* content and nothing else — edit a delta or a store and it no longer applies. Releasing takes both halves: `- <YYYY-MM-DDTHH:MM> owner: archive-drop <change> sha256:<fingerprint> — <reason>` in `gates:` **and** `--force`. An ambiguous key (a scenario occurring twice on either side) is never forceable — disambiguate first; requirement-prose and scenario-body line losses stay report-only. The single-file form has no bundle to hold a decision and refuses any dropping replacement outright.
++
++**`--force`** belongs to the high-level form and overrides **progress only**, which is exactly two things: a review family's escalation the owner already answered, and a scenario drop the owner already named through the fingerprint-bound `archive-drop` record above. The first is (its `reframe` record plus the flag) — since review-round-limit, that is a `revise` at the owner's limit or an `escalate` verdict. It never overrides R1 (`abandoned` above all), a structural defect, an invalid `review-round-limit` row, a loop stopped with no owner decision on record, an unmet review floor, or an R5 refusal — an open item nobody accepted is not progress. The `archive-force` grammar is still parsed and reported as a note; it forces nothing.
+ 
+ ```text
+   - <YYYY-MM-DDTHH:MM> owner: archive-force ledger — <the human's reason, verbatim>
+diff --git a/docs/cli_cn.md b/docs/cli_cn.md
+index a5d14ea..c15811c 100644
+--- a/docs/cli_cn.md
++++ b/docs/cli_cn.md
+@@ -108,7 +108,9 @@ usage: apriori archive --store <f> --delta <f> --change <name> [--write] [--no-c
+ 
+ **归档声明。** 它同时是一道**兜底**:一次运行如果自己的声明会写成 `implementation: INCOMPLETE`,即使就绪度放行了也会被拒(`RESULT: NOT READY — nothing written`)——成功的归档永远不可能声明活儿没干完。就绪的一次运行只打印三个状态,别无其他——实现是否完成(计入 pending 的 open 条目与未证实的 assumption)、关键证据是否完成(没有未接受的 open 条目;已接受的逐个点名并报告为仍然在场)、以及逐字固定的一句——归档不是发布(flow-state 的 `delivery:` 字段已退役;遗留的行照常读入并忽略)。这次运行还会打印判定的注记——open 条目摘要、匹配不到条目的接受记录、`contract-mutation` 信号、被忽略的遗留段。已归档的 bundle 是**冻结**的:之后发现的缺陷记为一条简短 outcome 或一个新 change,绝不回改归档。
+ 
+-**`--force`** 只属于高层形式,且**只解进度类**——自 6.2 起恰好只有一件:所有者已回答的 escalation(它的 `reframe` 记录加上这个 flag)——自 review-round-limit 起,即在所有者上限处的 `revise` 或 `escalate` 结论。它绝不解 R1(尤其 `abandoned`)、结构性缺陷、非法的 `review-round-limit` 行、没有所有者决定在案的停摆循环、未满足的评审底线、或任何 R5 拒绝——没人接受的 open 条目不是"进度"。`archive-force` 文法仍然会被解析并以 note 报告,不解任何东西。
++**丢场景护栏(archive-drop-guard)。** MODIFIED 替换若丢掉 store 里的场景(按 ID 配对——同 ID 改标题不算丢),dry-run 与 `--write` 一律拒绝:`RESULT: REFUSED — nothing written`,打印 `— DROPPED SCENARIOS —` 块(逐条 `<文件> · <需求> · <ID>`)与 **manifest 指纹**,stderr 给出可复制的授权行。指纹是本次归档输入(目标、涉及的每个 store 与 delta 的摘要、排序后的删除清单)的 SHA-256,所以所有者的决定只对*这份*内容的*这次*删除有效——改了 delta 或 store 它就失效。放行要两半都有:`gates:` 里的 `- <YYYY-MM-DDTHH:MM> owner: archive-drop <change> sha256:<指纹> — <理由>` **加** `--force`。歧义键(同一场景在任一侧出现两次)永不可 force——先消歧;需求正文与场景正文的行丢失仍只报告。单文件形式没有 bundle 可放决定,一律拒绝丢场景的替换。
++
++**`--force`** 只属于高层形式,且**只解进度类**——恰好两件:所有者已回答的评审 family 升级,以及所有者已通过上面那条指纹绑定的 `archive-drop` 记录点名的场景删除。第一件是所有者已回答的 escalation(它的 `reframe` 记录加上这个 flag)——自 review-round-limit 起,即在所有者上限处的 `revise` 或 `escalate` 结论。它绝不解 R1(尤其 `abandoned`)、结构性缺陷、非法的 `review-round-limit` 行、没有所有者决定在案的停摆循环、未满足的评审底线、或任何 R5 拒绝——没人接受的 open 条目不是"进度"。`archive-force` 文法仍然会被解析并以 note 报告,不解任何东西。
+ 
+ ```text
+   - <YYYY-MM-DDTHH:MM> owner: archive-force ledger — <人类的理由,逐字>
+  const res = matcher.batch(pairs.map((p) => p[1]));
+  if (res.failure) return { failure: res.failure };
+  return scopedIdRefusals(pairs, res.ids, deltaScenarios);
+}
+
+// The default matcher factory for a caller that did not inject one (the bin seam does). The
+// controlled matcher lives in spec-runner, which requires THIS module at load time — so it is
+// resolved lazily, at call time, never at load: the module graph stays acyclic. Nothing here
+// compiles a config pattern in-process.
+function defaultIdMatcherFactory(cwd) {
+  const r = require('./config').resolveIdPattern(cwd, null);
+  if (r.error) return { error: r.error };
+  return require('./spec-runner').makeIdMatcher(r);
+}
+function matcherFor(factory, cwd) {
+  let m;
+  try { m = (factory || defaultIdMatcherFactory)(cwd); } catch (e) { return { error: String(e.message || e) }; }
+  if (!m) return { error: 'no id matcher' };
+  return m;
+}
+
+
+      for (const sfx of p.unstampedMutations) out.push(`warning: ${unstampedWarning(sfx)}`);
+      out.push(`note: cas waived by ${w.waiver}`);
+    }
+  }
+  for (const n of p.notes) out.push(`note: ${n}`);
+  // CAS denial joins the preflight failure set — every diagnosis stays visible in one report
+  const preflightFailures = [...casDenials, ...p.hygiene, ...p.casMismatches, ...p.conflicts];
+  // the STRUCTURAL preflight (6.2): once the projection itself is sound, every scenario this
+  // change adds or modifies must carry one stable id that nothing else carries — refused here,
+  // before anything is written. A matcher that cannot run is a refusal too (fail-closed), never
+  // a skipped check. Debt outside the scope is a note.
+  // ONE matcher factory for the preflight and the integrity section: the injected one (bin
+  // seam) or the module's own lazily composed controlled matcher — never two recognitions
+  const factory = o.idMatcherFactory || defaultIdMatcherFactory;
+  if (!preflightFailures.length) {
+    const matcher = matcherFor(factory, cwd);
+    if (matcher.error) preflightFailures.push(`the structural check could not run — ${matcher.error}`);
+    else {
+      const sp = structuralPreflight(p.texts, p.deltaOps, p.deltaScenarios, matcher);
+      if (sp.failure) preflightFailures.push(`the structural check could not run — ${require('./config').sanitizeMsg(`process-config id-pattern matching failed (${sp.failure})`)}`);
+      else {
+        preflightFailures.push(...sp.refusals);
+        if (sp.debt.length) out.push(`note: store debt outside this change (reported, not a block): ${sp.debt.join('; ')}`);
+      }
+    }
+  }
+  if (preflightFailures.length) {
+    for (const f of preflightFailures) err.push(`archive: ${f}`);
+    out.push('\nRESULT: FAILED PREFLIGHT — nothing written');
+    return { code: 1, out, err };
+  const root2 = archiveProj(stamped(MOD_DROP));
+  assert.match(run(root2, ['archive', '--change', 'c']).stdout, /! .*KV-02/);
+  // invalid config row: since 6.2 (A-1) the structural preflight cannot run, and a check that
+  // cannot run is a refusal (fail-closed), never a warning-and-skip — sanitized, bounded
+  const root3 = archiveProj(stamped(MOD_DROP), { 'apriori/process-config.md': '| id-pattern | ( |\n' });
+  const r3 = run(root3, ['archive', '--change', 'c']);
+  assert.strictEqual(r3.status, 1, r3.stdout + r3.stderr);
+  assert.doesNotMatch(r3.stdout, /MODIFIED INTEGRITY/);
+  const wline = r3.stderr.split('\n').find((l) => l.includes('structural check could not run'));
+  assert.ok(wline && wline.startsWith('archive: the structural check could not run — process-config id-pattern row is invalid'), wline);
+  assert.ok(wline.length <= 260);
+  assert.doesNotMatch(wline, /[\x00-\x1f\x7f]/);
+  assert.match(r3.stdout, /RESULT: FAILED PREFLIGHT — nothing written/);
+  // inline-fence heading pairs by ID through the archive matcher channel too (IMPL-5)
+  const storeI = '### Requirement: R-I\n```x```#### Scenario: KV-01 old title\n- a\n';
+  const rootI = proj({
+    ...require('./helpers/ready-bundle').readyFiles('c'),
+    'apriori/specs/m/spec.md': storeI,
+        'apriori/changes/c/specs/m/spec.md': `<!-- apriori-base: ${am.fingerprint(storeI)} -->\n\n` +
+      '## MODIFIED Requirements\n\n### Requirement: R-I\n```x```#### Scenario: KV-01 new title\n- a\n',
+  });
+  const factory = () => ({ batch: (ts) => ({ ids: ts.map((t) => sr.leadId(t, /[A-Z]+-\d+/)) }) });
+  const resI = am.archiveChange({ change: 'c', cwd: rootI, write: false, idMatcherFactory: factory });
+  assert.strictEqual(resI.code, 0, resI.err.join('\n'));
+  const outI = resI.out.join('\n');
+  assert.match(outI, /titleChanged: .*old title.*->.*new title/, 'inline-fence titles pair by ID: ' + outI);
+  // programmatic call without a factory: since 6.2 the module composes the controlled matcher
+  // itself (lazily — the graph stays acyclic), so the preflight AND the integrity section run
+  const root4 = archiveProj(stamped(MOD_DROP));
+  const res = am.archiveChange({ change: 'c', cwd: root4, write: false });
+  assert.strictEqual(res.code, 1, res.err.join('\n'));                       // MOD_DROP drops KV-02: the guard refuses
+  assert.ok(res.out.join('\n').includes('MODIFIED INTEGRITY'), 'no factory = the module\'s own controlled matcher');
+  assert.ok(res.out.join('\n').includes('DROPPED SCENARIOS'), 'the guard read the same comparison');
+  assert.ok(!res.err.some((l) => l.includes('modified-integrity')), 'nothing to warn about');
+});
+
+test('AM-45 buildProjection captures old blocks at the right points', () => {
+  // rename-then-modify: oldBlock is the COMPLETE pre-rename block
+  const store = '### Requirement: A\nprose\n\n#### Scenario: KV-01 one\n- a\n';
+change: archive-drop-guard
+phase: review                             # ground | specify | build | review | done | abandoned
+reviewer-session: 01a0d8b4-a8b1-71e0-b030-78ae80d44ab4   # codex exec, round 1 (2026-09-25)
+
+## Reality Check         # observed / decision / assumption — one line each, as you find them
+- decision: lineage — branch `v6-dev-s2`（主线）；本地提交、不推送、不合入 v6-dev@46bb329
+- decision: requirement — `work/astra-discuss/next-plan/NEXT-PLAN-CONSENSUS.md` 序 2（S4 归档防丢旧场景）：dropped 非空默认拒绝、零写入；放行 = owner `archive-drop <target> sha256:<归档输入指纹>` + `--force`；指纹 = 目标 + 各 store/delta 摘要 + 排序删除清单；改标题不算删；ambiguous 先消歧、不可 force；missingLines 只报告（S4 剩余缺口）；单文件入口一致护栏；不加比例配置键。完成后只称「场景丢失护栏完成」
+- observed: 现状 —— `lib/archive-merge.js:548-760` 完整性引擎（compareModifiedBlock：retained/titleChanged/dropped/added/ambiguous/missingLines），`pushIntegritySection` 在 readiness 之后、写入之前只打印（AM-46 明写「不改变结果」）；`buildProjection` 只返回 modifiedBlocks，不带原始 store/delta 文本；单文件入口无完整性报告；owner 条目解析在 `lib/readiness.js`（gatesEntriesRaw + ownerPayload，forceGrant 样式）
+- observed: 既有夹具 AM-05（archive-merge.test）与 AM-46/AM-47（modified-integrity.test）的 MODIFIED 替换本身就丢场景，须按新语义改写；delta 侧重复 ID 早被结构预检拦下，ambiguous 的可达用例是 store 侧重复
+- observed: Build 完成 —— readiness `dropGrant/dropLine` + readinessOf 返回 flowText（同一快照）；archive-merge `integrityEntries/dropManifest/dropGuard/oldBlocksWithScenarios`，buildProjection 返回 `sources`；高层与单文件两处护栏；AM-123..126 新测试；AM-05/46/47 改写；docs/cli 双语、RUNBOOK 双语归档条目一句、CHANGELOG
+
+- observed: Review 第 1 轮（`review/code-review-v1.md`）= 3 issues：ADG-01 manifest 字段未编码且整体做了 CR/LF 归一化（路径含 CR/LF 可复用授权）；ADG-02 空 store 与不存在的 store 同记为 new；ADG-03 AM-47 改写与结构预检顺序矛盾。修：字段 JSON 编码 + manifest 原始字节哈希、内容摘要仍归一化；sources 记 storeExists；AM-47/新需求措辞按「预检先拒、盲区只在完整性阶段」改准；新增 AM-127；AM-123 加零暂存断言、AM-124 加授权不绕过 R5
+
+## Open                  # substantive unresolved items — one line each, stable id first: - <ID>: <text>
+
+## Next                  # at most three concrete actions; the first is the resume point
+- Review：codex 独立评审 → 修复 → gate → archive --write → 本地提交
+
+gates:
+  - 2026-09-25T21:06 note: change scaffolded by `apriori new`
+  - 2026-09-25T23:20 note: Review 第 1 轮落盘（3 issues），ADG-01..03 与 ADV-02/04 已修；开第 2 轮
+
+exec
+/usr/bin/zsh -lc "nl -ba lib/archive-merge.js | sed -n '775,805p'; nl -ba test/archive-drop-guard.test.js | sed -n '80,103p'; nl -ba apriori/changes/archive-drop-guard/specs/archive-merge/spec.md | sed -n '25,28p'; rg -n 'batch.*fail|failure:|afterReadiness|storeExists' test/archive-drop-guard.test.js test/modified-integrity.test.js; git diff --stat" in /root/terra/asd-v62-code
+ succeeded in 0ms:
+   775	// digest, and the sorted deletion locators (file · requirement · scenario id or title). Its SHA-256
+   776	// is what the owner's `archive-drop` entry must name — so the decision authorizes THIS deletion of
+   777	// THIS content and nothing else; any later edit of a delta or a store voids it.
+   778	// Every externally-sourced field (target, file suffix, requirement name, scenario id/title) is
+   779	// JSON-encoded, so a path or a name carrying a newline, a CR or a quote cannot collide with
+   780	// another; the manifest itself is hashed byte-for-byte (NO line-ending normalization — that
+   781	// belongs to the CONTENT digests, where `fingerprint()` keeps LF/CRLF stores equivalent).
+   782	const enc = (s) => JSON.stringify(String(s));
+   783	const rawDigest = (text) => 'sha256:' + crypto.createHash('sha256').update(text, 'utf8').digest('hex');
+   784	function dropManifest(target, sources, entries) {
+   785	  const drops = [];
+   786	  for (const e of entries) for (const d of e.dropped) drops.push({ file: e.file, name: e.name, key: d.id !== null ? d.id : d.title });
+   787	  drops.sort((a, b) => (a.file + '\0' + a.name + '\0' + a.key < b.file + '\0' + b.name + '\0' + b.key ? -1 : 1));
+   788	  const lines = ['apriori archive-drop manifest v1', `target: ${enc(target)}`];
+   789	  for (const suffix of [...sources.keys()].sort()) {
+   790	    const s = sources.get(suffix);
+   791	    lines.push(`store ${enc(suffix)}: ${s.storeExists ? fingerprint(s.storeText) : 'new'}`);
+   792	    lines.push(`delta ${enc(suffix)}: ${fingerprint(s.deltaText)}`);
+   793	  }
+   794	  for (const d of drops) lines.push(`drop ${enc(d.file)} ${enc(d.name)} ${enc(d.key)}`);
+   795	  const text = lines.join('\n') + '\n';
+   796	  return { text, drops: drops.map((d) => `${d.file} · ${d.name} · ${d.key}`), fingerprint: rawDigest(text) };
+   797	}
+   798	
+   799	// does any MODIFIED pair's OLD block carry a scenario heading? (found the state-A way)
+   800	function oldBlocksWithScenarios(modifiedBlocks) {
+   801	  if (!modifiedBlocks) return false;
+   802	  for (const list of modifiedBlocks.values())
+   803	    for (const { oldBlock } of list) if (scanBlockStructure(oldBlock).scenarios.length) return true;
+   804	  return false;
+   805	}
+    80	  assert.match(a.text, /store "m\\ra\/spec\.md":/);
+    81	  // the same delta written with CRLF fingerprints identically (content digests normalize)
+    82	  const crlf = proj(DROP.replace(/\n/g, '\r\n'));
+    83	  assert.strictEqual(manifestOf(crlf).fingerprint, base.fingerprint);
+    84	  // an existing empty store is content; an absent store is `new`
+    85	  const empty = am.dropManifest('c', new Map([['x/spec.md', { storeText: '', storeExists: true, deltaText: 'd' }]]), []);
+    86	  const absent = am.dropManifest('c', new Map([['x/spec.md', { storeText: '', storeExists: false, deltaText: 'd' }]]), []);
+    87	  assert.match(empty.text, /store "x\/spec\.md": sha256:[0-9a-f]{64}/);
+    88	  assert.match(absent.text, /store "x\/spec\.md": new/);
+    89	  assert.notStrictEqual(empty.fingerprint, absent.fingerprint);
+    90	  // the last matching decision wins, and the forced line carries that full entry
+    91	  const fp = fpOf(proj(DROP));
+    92	  const root = proj(DROP, { gates: entry('sha256:' + 'b'.repeat(64), 'owner', 'c', 'an earlier decision for other content') + entry(fp, 'owner', 'c', 'the one that names this deletion') });
+    93	  const r = run(root, ['archive', '--change', 'c', '--write', '--force']);
+    94	  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+    95	  assert.match(r.stdout, new RegExp(`forced: dropped 1 scenario\\(s\\) — owner decision on record: - 2026-09-25T10:00 owner: archive-drop c ${fp} — the one that names this deletion`));
+    96	});
+    97	
+    98	test('AM-124 the double action: a fingerprint-bound owner decision AND --force merge; either alone, a stale fingerprint, or a non-owner actor refuse', () => {
+    99	  const fp = fpOf(proj(DROP));
+   100	  // decision + --force: merged, the dropped scenario is gone, the forced line names the entry
+   101	  let root = proj(DROP, { gates: entry(fp) });
+   102	  let r = run(root, ['archive', '--change', 'c', '--write', '--force']);
+   103	  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+    25	#### Scenario: AM-47 the archive id-pattern channel is resolved, terminable and degradable
+    26	- WHEN archive runs with a custom config `id-pattern` row recognizing letter-suffixed IDs; with no row (default); with an uncompilable row; and with an injected matcher failure
+    27	- THEN the first two produce correct reports through the injected terminable matcher — the pinned seam: `archiveMerge.cli(argv, deps)` and `archiveChange({..., idMatcherFactory})` accept an optional factory `(cwd) => matcher | {error}`; bin builds it lazily from `lib/config`'s resolveIdPattern plus spec-runner's makeIdMatcher; a MISSING factory degrades exactly like a factory error (warning + skip); archive-merge itself never requires spec-runner; the last two print exactly one stderr warning — the WHOLE line `warning: modified-integrity <reason>` passed through sanitizeMsg (control chars replaced with `·`, ≤200 UTF-16 units) — skip the report, and leave every other archive output and exit unchanged — with one addition since archive-drop-guard: the drop guard runs AFTER the structural preflight (which already refuses a broken id-pattern channel before any integrity report), so a comparison that fails only at the integrity stage (a matcher whose batch fails) is refused when some MODIFIED old block carries a scenario, because a guard that cannot see must not wave a deletion through; old blocks without scenarios need no matcher and merge as before; the preflight's own refusal is not weakened
+    28	
+test/archive-drop-guard.test.js:77:  const a = am.dropManifest('c', new Map([['m\ra/spec.md', { storeText: STORE, storeExists: true, deltaText: DROP }]]), [{ file: 'm\ra/spec.md', name: 'R-K', dropped: [{ id: 'KV-02', title: 'KV-02 two' }], ambiguous: [] }]);
+test/archive-drop-guard.test.js:78:  const b = am.dropManifest('c', new Map([['m\na/spec.md', { storeText: STORE, storeExists: true, deltaText: DROP }]]), [{ file: 'm\na/spec.md', name: 'R-K', dropped: [{ id: 'KV-02', title: 'KV-02 two' }], ambiguous: [] }]);
+test/archive-drop-guard.test.js:85:  const empty = am.dropManifest('c', new Map([['x/spec.md', { storeText: '', storeExists: true, deltaText: 'd' }]]), []);
+test/archive-drop-guard.test.js:86:  const absent = am.dropManifest('c', new Map([['x/spec.md', { storeText: '', storeExists: false, deltaText: 'd' }]]), []);
+ CHANGELOG.md                    |   4 ++
+ RUNBOOK.md                      |   2 +-
+ RUNBOOK_cn.md                   |   2 +-
+ docs/cli.md                     |   4 +-
+ docs/cli_cn.md                  |   4 +-
+ lib/archive-merge.js            | 146 ++++++++++++++++++++++++++++++++++++----
+ lib/readiness.js                |  23 ++++++-
+ test/archive-merge.test.js      |   2 +-
+ test/modified-integrity.test.js |  27 +++++---
+ 9 files changed, 185 insertions(+), 29 deletions(-)
+
+codex
+<!-- provenance: provider=codex model=gpt-6-astra session=unknown date=2026-09-25 -->
+# code-review — archive-drop-guard (round 2)
+
+- ADG-01 — resolved: [lib/archive-merge.js:782](/root/terra/asd-v62-code/lib/archive-merge.js:782) JSON-encodes the manifest fields and hashes the resulting manifest without newline normalization. Distinct CR/LF path locators remain distinct; content digests retain their intended normalization. AM-127 covers the original collision.
+
+- ADG-02 — resolved: [lib/archive-merge.js:390](/root/terra/asd-v62-code/lib/archive-merge.js:390) captures `storeExists` from the projection snapshot, and manifest generation uses that flag. Existing empty stores contribute their content digest; only absent stores contribute `new`.
+
+- ADG-03 — not resolved: **P2, contradictory AM-47 contract remains.** [spec.md:27](/root/terra/asd-v62-code/apriori/changes/archive-drop-guard/specs/archive-merge/spec.md:27) now correctly explains the preflight/integrity distinction, but still explicitly claims that a missing factory produces “warning + skip,” that archive-merge “never requires spec-runner,” and that an uncompilable pattern produces a `warning: modified-integrity` line. The implementation supplies a default factory, lazily requires spec-runner ([lib/archive-merge.js:538](/root/terra/asd-v62-code/lib/archive-merge.js:538)), and refuses invalid patterns during structural preflight. Existing AM-47 tests assert this implemented behavior. **Fix:** replace those stale clauses, rather than appending an exception: document default factory resolution, preflight failure, and the separate integrity-stage warning/refusal behavior.
+
+- ADV-05 — The “last matching decision wins” test has only one matching decision ([test/archive-drop-guard.test.js:92](/root/terra/asd-v62-code/test/archive-drop-guard.test.js:92)). It verifies fingerprint selection and full entry output, but would also pass an implementation selecting the first matching entry. Use two matching entries with different reasons, followed by a nonmatching entry, and assert the second matching entry is printed.
+
+- ADV-06 — The revised single-file diagnostic and bilingual documentation address ADV-02/04. The added R5 refusal and temp-artifact checks improve coverage. No new substantive implementation gap was found in the revised manifest, snapshot handling, or refusal ordering.
+
+Static review only under RUNBOOK R2; the reported 822 passing tests were not independently rerun.
+
+VERDICT: 1 issues open
+tokens used
+83,236
+<!-- provenance: provider=codex model=gpt-6-astra session=unknown date=2026-09-25 -->
+# code-review — archive-drop-guard (round 2)
+
+- ADG-01 — resolved: [lib/archive-merge.js:782](/root/terra/asd-v62-code/lib/archive-merge.js:782) JSON-encodes the manifest fields and hashes the resulting manifest without newline normalization. Distinct CR/LF path locators remain distinct; content digests retain their intended normalization. AM-127 covers the original collision.
+
+- ADG-02 — resolved: [lib/archive-merge.js:390](/root/terra/asd-v62-code/lib/archive-merge.js:390) captures `storeExists` from the projection snapshot, and manifest generation uses that flag. Existing empty stores contribute their content digest; only absent stores contribute `new`.
+
+- ADG-03 — not resolved: **P2, contradictory AM-47 contract remains.** [spec.md:27](/root/terra/asd-v62-code/apriori/changes/archive-drop-guard/specs/archive-merge/spec.md:27) now correctly explains the preflight/integrity distinction, but still explicitly claims that a missing factory produces “warning + skip,” that archive-merge “never requires spec-runner,” and that an uncompilable pattern produces a `warning: modified-integrity` line. The implementation supplies a default factory, lazily requires spec-runner ([lib/archive-merge.js:538](/root/terra/asd-v62-code/lib/archive-merge.js:538)), and refuses invalid patterns during structural preflight. Existing AM-47 tests assert this implemented behavior. **Fix:** replace those stale clauses, rather than appending an exception: document default factory resolution, preflight failure, and the separate integrity-stage warning/refusal behavior.
+
+- ADV-05 — The “last matching decision wins” test has only one matching decision ([test/archive-drop-guard.test.js:92](/root/terra/asd-v62-code/test/archive-drop-guard.test.js:92)). It verifies fingerprint selection and full entry output, but would also pass an implementation selecting the first matching entry. Use two matching entries with different reasons, followed by a nonmatching entry, and assert the second matching entry is printed.
+
+- ADV-06 — The revised single-file diagnostic and bilingual documentation address ADV-02/04. The added R5 refusal and temp-artifact checks improve coverage. No new substantive implementation gap was found in the revised manifest, snapshot handling, or refusal ordering.
+
+Static review only under RUNBOOK R2; the reported 822 passing tests were not independently rerun.
+
+VERDICT: 1 issues open

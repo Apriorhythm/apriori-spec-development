@@ -70,7 +70,7 @@ test('AM-05 the action lists every merged/modified/deprecated ID', () => {
   const store = tmpFile(STORE);
   const dfile = tmpFile(`<!-- apriori-base: ${fingerprint(STORE)} -->\n` +
     '## ADDED Requirements\n### Requirement: Gamma\nG.\n' +
-    '## MODIFIED Requirements\n### Requirement: Beta\nB2.\n' +
+    '## MODIFIED Requirements\n### Requirement: Beta\nB2.\n\n#### Scenario: BE-01 beta\n- THEN ok\n' +   // archive-drop-guard: a replacement that dropped BE-01 would now be refused
     '## REMOVED Requirements\n### Requirement: Alpha\nA.\n');
   const before = fs.readFileSync(store, 'utf8');
   const orig = console.log; const out = [];

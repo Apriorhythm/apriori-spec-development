@@ -177,12 +177,13 @@ test('DS-14 the discuss shell carries the save-fidelity rule and stays thin', ()
   const s = fs.readFileSync(DISCUSS_SRC, 'utf8');
   const MEANINGS = {
     'a save is a faithful record': /[Aa] save is a faithful record, nothing more/,
-    'decision in their words': /`decision` in their words/,
-    'four kinds, nothing the discussion did not raise': /`observed` with\s+source, `assumption` labeled, open questions in `## Open`; nothing the discussion did not\s+raise/,
-    'no added reason / risk acceptance / requirement / blocker': /no added reason, risk acceptance, requirement or blocker/,
-    'no promotion of assumption or advice': /no assumption or\s+advice promoted/,
-    'open stays open': /left open stays open/,
-    'idempotent re-save, of substance': /re-saving with nothing new changes\s+nothing of substance/,
+    'decision in their words, only as far as they said it': /`decision` only as far as they said it, in\s+their words/,
+    'four kinds': /`observed` with source; `assumption` labeled; open questions in `## Open`/,
+    'nothing the discussion did not raise: no added reason / risk acceptance / requirement / blocker': /Nothing the discussion did not raise — no added reason, risk acceptance, requirement or\s+blocker/,
+    'no assumption / advice / inference promoted to decision or fact': /no assumption, advice or inference of yours promoted to their decision or to fact/,
+    'unanswered stays open, silence is not a decision': /unanswered stays open — silence is not a decision/,
+    'write only once settled': /write only once the conclusion is\s+settled/,
+    'idempotent re-save, of substance': /re-saving with nothing new changes nothing of substance/,
     'points at the runbook section for the full rule': /\(§4 "Discuss first"\)/,
   };
   for (const [label, re] of Object.entries(MEANINGS)) assert.match(s, re, `discuss shell lost meaning: ${label}`);
@@ -251,6 +252,47 @@ test('DS-15 both runbook editions state the rule in §4 and mirror it in P6', ()
     '幂等（实质）': /没有新内容再保存一次不改变任何实质/,
   };
   for (const [label, re] of Object.entries(CN_P6)) assert.match(cnP6, re, `RUNBOOK_cn.md P6 lacks: ${label}`);
+});
+
+// discuss-save-inference（层 2 第 1 批：006 把建模推论记成所有者决定；007 由「任意字符串」推出空串语义并关闭未答的 OPEN-1；001/007 拍板前先写）
+test('DS-16 the shell states the three refinements and stays thin', () => {
+  const s = fs.readFileSync(DISCUSS_SRC, 'utf8');
+  for (const [label, re] of Object.entries({
+    'only as far as they said it': /`decision` only as far as they said it/,
+    'no assumption / advice / inference promoted to decision or fact': /no assumption, advice or inference of yours promoted to their decision or to fact/,
+    'silence is not a decision': /unanswered stays open — silence is not a decision/,
+    'write only once settled': /write only once the conclusion is\s+settled/,
+  })) assert.match(s, re, `discuss shell lacks: ${label}`);
+  assert.ok(s.length < 2600, `shell is ${s.length} chars`);
+});
+
+test('DS-17 both runbook editions carry the refinements in §4 and mirror them in P6', () => {
+  const en = fs.readFileSync(path.join(ROOT, 'RUNBOOK.md'), 'utf8');
+  const cn = fs.readFileSync(path.join(ROOT, 'RUNBOOK_cn.md'), 'utf8');
+  const sec = (t, h) => t.slice(t.indexOf(h), t.indexOf('### ', t.indexOf(h) + 10));
+  const p6 = (t) => t.slice(t.indexOf('### P6'), t.indexOf('---', t.indexOf('### P6')));
+  for (const [label, re] of Object.entries({
+    'only as far as stated': /A decision is recorded only as far as the human stated it/,
+    'inference examples → assumption / Open, never their decision': /an implied answer to another open question, a modelling or spec-structure consequence — is the agent's inference and is written as `assumption` or stays in `## Open`, never as their decision/,
+    'silence is not a decision, even when argued as one': /silence is not a decision, even when the agent argued that two questions are one/,
+    'write only once settled, approval held': /With approval to save already held, the write still happens only once the conclusion is settled, not during the discussion/,
+  })) assert.match(sec(en, '### Discuss first'), re, `RUNBOOK.md §4 lacks: ${label}`);
+  for (const [label, re] of Object.entries({
+    'your inference is not my decision': /what follows from my decision by your reasoning is your inference, not my decision/,
+    'unanswered stays open': /a question I did not answer stays open/,
+    'write only once settled': /write only once the conclusion is settled/,
+  })) assert.match(p6(en), re, `RUNBOOK.md P6 lacks: ${label}`);
+  for (const [label, re] of Object.entries({
+    '只记到说到为止': /决定只记到人说到的地方为止/,
+    '推论 → assumption / Open': /另一个未决问题的隐含答案、建模或规格结构上的后果——是你的推论,记成 `assumption` 或留在 `## Open`,绝不记成人的决定/,
+    '沉默不是决定': /沉默不是决定,哪怕你论证过两个问题其实是一个/,
+    '已拿到授权也只在结论定下之后才写': /已经拿到保存授权,也只在结论定下之后才写,不在讨论进行中写/,
+  })) assert.match(sec(cn, '### 先讨论'), re, `RUNBOOK_cn.md §4 lacks: ${label}`);
+  for (const [label, re] of Object.entries({
+    '推论不是决定': /由我的决定经你推理得出的东西是你的推论,不是我的决定/,
+    '没回答的保持开放': /我没回答的问题保持开放/,
+    '结论定了才写': /结论定了才写/,
+  })) assert.match(p6(cn), re, `RUNBOOK_cn.md P6 lacks: ${label}`);
 });
 
 // S2 A≥1 修复（人类 2026-09-24 批准，方案 ①）：FC3 中用户已在请求里写明「保存，别开始开发」，

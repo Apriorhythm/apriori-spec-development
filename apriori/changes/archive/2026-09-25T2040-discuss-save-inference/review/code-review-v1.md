@@ -1,0 +1,18 @@
+<!-- provenance: provider=codex model=gpt-6-astra session=01a0d88f-ee83-78e2-9b28-db075538470c date=2026-09-25 -->
+# code-review — discuss-save-inference (round 1)
+
+- DSI-01 — `templates/discuss.md:22`, `test/discuss.test.js:182` — **Contract: existing DS-14 permits saving what the discussion produced, including discussed assumptions and sourced observations.** “Nothing they did not say” replaces “nothing the discussion did not raise,” extending the human-statement restriction beyond decisions. An agent-raised assumption or observed fact can legitimately belong in the record without the human having said it. The refreshed assertion now requires this over-broad wording. **Fix:** restore the discussion-level boundary for the record as a whole; apply “only as far as they said it” specifically to decisions. Update the assertion, golden and digest together.
+
+- DSI-02 — `templates/discuss.md:23`, `test/discuss.test.js:183` — **Contract: DS-14 prohibits promoting assumptions or advice into either decisions or observed facts.** “No inference of yours written as their decision” covers only one destination and does not preserve the prohibition against recording an assumption or recommendation as an observed fact. The existing assertion was replaced rather than retained alongside the refinement. The runbooks still carry the complete safeguard, but DS-14 explicitly requires its compact shell counterpart. **Fix:** retain the general no-promotion safeguard and its assertion alongside the new inference restriction.
+
+- DSI-03 — `test/discuss.test.js:289` — **Contract: DS-17 independently pins “write only once settled even with approval held” in both editions.** The Chinese assertion checks only the timing suffix. Deleting “已经拿到保存授权,也” from `RUNBOOK_cn.md:260` would leave it passing, although the explicitly required held-approval qualification would disappear. **Fix:** include that qualification in the Chinese timing assertion, matching the coverage of the English assertion at line 278.
+
+The runbook refinements themselves address both inference failures and premature saving without conflicting with faithful paraphrase or saving discussed assumptions. “A question the human did not answer” limits the silence rule to unanswered questions; it does not prohibit closing an answered item. A settled conclusion can retain explicitly unresolved questions. The timing rule agrees with DS-13: approval remains held, while execution waits for the conclusion.
+
+- ADV-01 — `templates/discuss.md:9`, `templates/discuss.md:40`, `templates/discuss.md:42` — The shortened prose preserves protection-before-discussion, triggered reading without preloading, and routing an already-stateable development request to `/apriori`. “Plain” and the explicit reading-trigger examples are lost, but their binding runbook guidance remains. No substantive regression identified there.
+
+- ADV-02 — Behavioral acceptance remains outstanding. Static wording addresses the reported failures, but regex checks cannot establish real-client compliance; the planned reruns of slots 001/006/007 remain relevant.
+
+Reviewed the complete tracked diff, supplied flow-state and delta, existing fidelity contract, tests and generation handling. The shell is 2,576 characters; golden bytes and newest discuss digest agree; generation tables remain disjoint; the command digest remains registered. No additional static regression identified for DS-01..13, DS-15, DS-06 or UP-11. Tests and external-client acceptance were not rerun; credentials and human-note files were not read.
+
+VERDICT: 3 issues open

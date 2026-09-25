@@ -171,6 +171,88 @@ test('DS-12 the shell does not become a second copy of the rules it points at', 
   assert.ok(!shell.includes(stance[0]), 'the shell copied the runbook paragraph verbatim — it must point, not duplicate');
 });
 
+// discuss-save-fidelity（FC3Y：一次保存附加了所有者没说过的风险接受解释，一次新增了未讨论的阻塞项）：
+// 保存只是忠实记录——四类内容、不新增、不升格、开放保持开放、重复保存无实质变化、不启动开发。
+test('DS-14 the discuss shell carries the save-fidelity rule and stays thin', () => {
+  const s = fs.readFileSync(DISCUSS_SRC, 'utf8');
+  const MEANINGS = {
+    'a save is a faithful record': /[Aa] save is a faithful record, nothing more/,
+    'decision in their words': /`decision` in their words/,
+    'four kinds, nothing the discussion did not raise': /`observed` with\s+source, `assumption` labeled, open questions in `## Open`; nothing the discussion did not\s+raise/,
+    'no added reason / risk acceptance / requirement / blocker': /no added reason, risk acceptance, requirement or blocker/,
+    'no promotion of assumption or advice': /no assumption or\s+advice promoted/,
+    'open stays open': /left open stays open/,
+    'idempotent re-save, of substance': /re-saving with nothing new changes\s+nothing of substance/,
+    'points at the runbook section for the full rule': /\(§4 "Discuss first"\)/,
+  };
+  for (const [label, re] of Object.entries(MEANINGS)) assert.match(s, re, `discuss shell lost meaning: ${label}`);
+  assert.strictEqual(s, fs.readFileSync(path.join(ROOT, 'test', 'fixtures', 'discuss.golden.md'), 'utf8'), 'golden must follow the template');
+  const digest = 'sha256:' + crypto.createHash('sha256').update(fs.readFileSync(DISCUSS_SRC)).digest('hex');
+  assert.ok(managed.TEMPLATE_GENERATIONS.discuss.includes(digest), 'the discuss generation table must carry the shipped body');
+  const runbook = fs.readFileSync(path.join(ROOT, 'RUNBOOK.md'), 'utf8');
+  const para = runbook.match(/\*\*A save is a faithful record, nothing more\.\*\*[^\n]*/);
+  assert.ok(para, 'runbook lost the faithful-record paragraph');
+  assert.ok(!s.includes(para[0]), 'the shell copied the runbook paragraph verbatim — it must point, not duplicate');
+});
+
+test('DS-15 both runbook editions state the rule in §4 and mirror it in P6', () => {
+  const en = fs.readFileSync(path.join(ROOT, 'RUNBOOK.md'), 'utf8');
+  const cn = fs.readFileSync(path.join(ROOT, 'RUNBOOK_cn.md'), 'utf8');
+  // every safeguard is pinned on its own, per edition and per section — deleting any one of them fails
+  const enDiscuss = en.slice(en.indexOf('### Discuss first'), en.indexOf('### ', en.indexOf('### Discuss first') + 10));
+  const EN_S4 = {
+    'faithful record': /\*\*A save is a faithful record, nothing more\.\*\*/,
+    'four kinds and no others': /four kinds and no others/,
+    'decision in the human\'s words': /`decision` — what the human decided, in their words/,
+    'no unstated reasons, conditions or risk acceptances (provenance)': /reasons, conditions or risk acceptances they did not state are not/,
+    'observed with source': /`observed` — facts actually read, each with its source/,
+    'assumption labelled': /`assumption` — what the discussion leaned on unconfirmed, labelled as such/,
+    'open = questions left open': /`## Open` — the questions the discussion left open/,
+    'no added commitment / risk acceptance / requirement / blocking item': /never adds a commitment, a risk acceptance, a requirement or a blocking item that was not raised in the discussion/,
+    'no promotion': /never promotes an assumption or the agent's own recommendation into a decision or an observed fact/,
+    'open stays open, not decided for them': /explicitly left open stays open — the agent does not decide it for them/,
+    'idempotent, of substance': /Saving again with nothing new changes nothing of substance: no duplicated lines, no new items/,
+    'never starts development': /never starts development/,
+  };
+  for (const [label, re] of Object.entries(EN_S4)) assert.match(enDiscuss, re, `RUNBOOK.md §4 Discuss first lacks: ${label}`);
+  const enP6 = en.slice(en.indexOf('### P6'), en.indexOf('---', en.indexOf('### P6')));
+  const EN_P6 = {
+    'save only what we concluded, in my words': /Save only what we concluded, in my words/,
+    'no added reasons/conditions/risk acceptances/requirements/blocking items I did not state': /no added reasons, conditions, risk acceptances, requirements or blocking items I did not state/,
+    'assumption stays assumption': /an assumption stays an assumption/,
+    'recommendation is not my decision': /your recommendation is not my decision/,
+    'left open stays open': /a question I left open stays open/,
+    'idempotent, of substance': /saving again with nothing new changes nothing of substance/,
+  };
+  for (const [label, re] of Object.entries(EN_P6)) assert.match(enP6, re, `RUNBOOK.md P6 lacks: ${label}`);
+  const cnDiscuss = cn.slice(cn.indexOf('### 先讨论'), cn.indexOf('### ', cn.indexOf('### 先讨论') + 10));
+  const CN_S4 = {
+    '忠实记录': /\*\*保存只是忠实记录,不多一个字。\*\*/,
+    '四类没有第五类': /分四类、没有第五类/,
+    'decision 用人自己的话': /`decision`——人决定了什么,用人自己的话/,
+    '没说过的理由/条件/风险接受不行': /人没说过的理由、条件或风险接受不行/,
+    'observed 附来源': /`observed`——你实际读到的事实,各附来源/,
+    'assumption 标明': /`assumption`——讨论所依赖、尚未证实的命题,并标明是假设/,
+    'Open = 未决问题': /`## Open`——讨论留下的未决问题/,
+    '不新增承诺/风险接受/需求/阻塞项': /绝不新增讨论里没出现过的承诺、风险接受、需求或阻塞项/,
+    '不升格': /绝不把假设或你自己的建议升格成决定或事实/,
+    '开放保持开放不替人决定': /保持开放——不替人决定/,
+    '幂等（实质）': /再次保存不改变任何实质:不重复行、不新增条目/,
+    '不启动开发': /永不启动开发/,
+  };
+  for (const [label, re] of Object.entries(CN_S4)) assert.match(cnDiscuss, re, `RUNBOOK_cn.md §4 先讨论 lacks: ${label}`);
+  const cnP6 = cn.slice(cn.indexOf('### P6'), cn.indexOf('---', cn.indexOf('### P6')));
+  const CN_P6 = {
+    '只存结论用我的话': /只存我们得出的结论,用我的话/,
+    '不加我没说过的理由/条件/风险接受/需求/阻塞项': /不加我没说过的理由、条件、风险接受、需求或阻塞项/,
+    '假设仍是假设': /假设仍是假设/,
+    '建议不是决定': /你的建议不是我的决定/,
+    '留着的问题保持开放': /我留着的问题保持开放/,
+    '幂等（实质）': /没有新内容再保存一次不改变任何实质/,
+  };
+  for (const [label, re] of Object.entries(CN_P6)) assert.match(cnP6, re, `RUNBOOK_cn.md P6 lacks: ${label}`);
+});
+
 // S2 A≥1 修复（人类 2026-09-24 批准，方案 ①）：FC3 中用户已在请求里写明「保存，别开始开发」，
 // agent 仍把「只保存 / 保存并开始开发」抛回去重选。薄壳须明示：请求里已声明的范围就是已持有的批准；
 // 尚待所有者拍板的只问那个决定，不再重开保存与开发之间的选择。

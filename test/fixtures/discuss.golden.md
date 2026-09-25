@@ -17,6 +17,12 @@ Two approvals, not one, and agreeing with your suggestion grants neither:
   place**, keeping the facts and progress already there — **do not re-run `apriori new`**.
 - **Start development** — do that same write, then continue into Ground.
 
+**A save is a faithful record, nothing more**: `decision` in their words, `observed` with
+source, `assumption` labeled, open questions in `## Open`; nothing the discussion did not
+raise (no added reason, risk acceptance, requirement or blocker), no assumption or
+advice promoted, what they left open stays open, re-saving with nothing new changes
+nothing of substance (§4 "Discuss first").
+
 Approval to develop carries the write development depends on; approval to save never
 reaches development. Ask for the one you need; do not re-ask for one you already hold.
 A scope already stated in this request — "save it, don't start development", or "save it

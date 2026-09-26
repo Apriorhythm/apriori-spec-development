@@ -1,5 +1,30 @@
 # Changelog
 
+## Preview snapshot — `preview/v6-20260926` (limited-use preview line `release/v6`)
+
+This tag fixes the v6 line at de304fc (plus this note) as a **limited-use preview**: two real
+projects have run the v6 line since 2026-09-10 (on 59e5c15) and the line is now offered for
+installation from this snapshot. It is **not a release**: the package version stays
+`6.2.0-rc.0`, nothing is published to npm, `main` still points at 5.0.0, and the entries below
+remain "Unreleased".
+
+Known limitations, stated as they stand:
+
+- **Cost is not endorsed.** The one direct measurement against rc1 was unfavourable and could
+  not be attributed (see the cost-record entry below); a later paired run of a reconstructed
+  slice showed no repeatable advantage. Nothing here claims to save time or tokens.
+- **Only Claude Code is verified** as a client (README support matrix). The Codex CLI,
+  OpenCode, Windsurf, Cursor and Copilot entries are installed but not exercised.
+- **Behavioural acceptance gaps are on record** for the shared-rule routing (G) and the stall
+  routing (W2) that entered v6-dev with the S2 merge; the human accepted that scope knowingly
+  (`work/astra-discuss/fast-plan/V6DEV-MERGE-SCOPE.md` in the lab, not in this repository).
+- The review loop's round-2 stop of 6.0 was retired in favour of the owner-held
+  `review-round-limit`; real-project data from the 59e5c15 period shows the old stop was
+  routinely bypassed, which is consistent with the change but does not validate the new limit.
+
+Later preview snapshots are cut from `release/v6` after v6-dev work merges back; fixes in flight
+(authorization-scope, archive-manifest) are not part of this snapshot.
+
 ## Unreleased — protocol-text-consistency: the descriptions catch up with the code
 
 No obligation is added or removed. Sentences that still described retired mechanisms are

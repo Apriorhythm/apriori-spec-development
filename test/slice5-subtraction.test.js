@@ -361,7 +361,8 @@ test('AM-119 an archived bundle is frozen: the merge writes one unit and nothing
   const [stamp] = fs.readdirSync(archived);
   const dir = path.join(archived, stamp);
   // the whole bundle travelled, and nothing was left behind to write back into
-  assert.deepStrictEqual(fs.readdirSync(dir).sort(), ['flow-state.md', 'review', 'specs']);
+  // the bundle plus the content manifest archive --write records into it (archive-manifest)
+  assert.deepStrictEqual(fs.readdirSync(dir).sort(), ['archive-manifest.json', 'flow-state.md', 'review', 'specs']);
   assert.ok(!fs.existsSync(path.join(root, 'apriori', 'changes', 'c')));
   // re-running against the frozen record is a read, never an edit
   const before = fs.readFileSync(path.join(dir, 'flow-state.md'), 'utf8');

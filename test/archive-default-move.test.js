@@ -145,7 +145,12 @@ test('ADM-06 stage failure: stores untouched, temps removed, no frozen declarati
   const root = project(ADD_A);
   const before = store(root);
   const ops = {
-    writeFileSync: () => { throw new Error('injected stage failure'); },
+    // the STAGE step is what fails here: the store temps. The manifest (archive-manifest,
+    // written before staging through the same seam) must succeed for this scenario to be reached.
+    writeFileSync: (p, ...rest) => {
+      if (String(p).endsWith('.tmp-archive')) throw new Error('injected stage failure');
+      return fs.writeFileSync(p, ...rest);
+    },
     renameSync: fs.renameSync.bind(fs), rmSync: fs.rmSync.bind(fs),
   };
   const r = am.archiveChange({ cwd: root, change: 'c', write: true, noCas: true, ops });

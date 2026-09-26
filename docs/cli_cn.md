@@ -89,7 +89,7 @@ usage: apriori verify --specs <dir...> --test-cmd "<cmd>" [--id-pattern <re>] [-
 
 ## apriori archive
 
-把变更的增量规格并入 living 规格库;`--change` 自动发现整个变更,默认 dry-run,`--write` 失败原子地提交
+把变更的增量规格并入 living 规格库;`--change` 自动发现整个变更,默认 dry-run,`--write` 失败原子地提交。`--write` 时 bundle 内会写入 `archive-manifest.json`(每个文件的 sha256;符号链接只记录不跟随),写在事务内、store 第一个字节之前,失败则 store 不动;`apriori check` 会读它并把之后的漂移作为 note 报告。
 
 ```text
 usage: apriori archive --store <f> --delta <f> --change <name> [--write] [--no-cas]
@@ -178,7 +178,7 @@ in-flight 的 C1 消费变更收窄 verdict(detail 为 `verify GREEN (in-flight,
 
 ## apriori check
 
-结构一致性(scenario ID 可绑定;`--self` 另跑 apriori 仓库自己的手册检查)
+结构一致性(scenario ID 可绑定;`--self` 另跑 apriori 仓库自己的手册检查)。另以 `!` note(永不使运行失败)报告内容与其 `archive-manifest.json` 不符的归档 bundle(`archive drift: <dir> +a −r ~m`),以及无清单 bundle 的一行汇总。
 
 ```text
 usage: apriori check [--specs <dir>] [--self]

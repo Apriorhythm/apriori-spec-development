@@ -25,6 +25,29 @@ Known limitations, stated as they stand:
 Later preview snapshots are cut from `release/v6` after v6-dev work merges back; fixes in flight
 (authorization-scope, archive-manifest) are not part of this snapshot.
 
+## Unreleased — archive-manifest: an archive records what it contained, and check reports drift
+
+`apriori archive --write` now writes `archive-manifest.json` into the bundle — one sha256 per
+regular file (streamed; review raws included), symbolic links recorded as `link:<target>` and
+never followed, the manifest itself excluded — **inside the transaction, before the first store
+byte is staged**: if the manifest cannot be produced or written the run stops with nothing
+written, so no state exists in which stores were rewritten but the archive lacks its baseline.
+The move reuses the stamp the manifest recorded; a rerun after a failed move recomputes it.
+Dry-run counts the entries and writes nothing.
+
+`apriori check` (both modes) re-lists every archived bundle that carries a manifest and reports
+differences as `! archive drift: <dir> +added −removed ~modified` with one line per path —
+a **note, never a failure**: appending material to an archive is not always wrong, but it must be
+visible. Bundles without a manifest are summarised in one `no baseline` line (archived before
+manifests were written, or the manifest is gone — check cannot tell which and says so); an
+unparseable manifest is named. Content hashes, not mtimes, so a touched-but-identical file is
+not drift. Nothing repairs, rewrites or deletes a manifest; `status` is unchanged.
+
+Why: the archive is documented as a frozen snapshot, but a real project wrote eight review
+files into an archived bundle seven days after archiving with no trace (Claude × Astra
+consensus 2026-09-26, `DN-CONSENSUS` / `TT-CONSENSUS` in the lab). Scenarios AM-128..131,
+CK-19..21.
+
 ## Unreleased — protocol-text-consistency: the descriptions catch up with the code
 
 No obligation is added or removed. Sentences that still described retired mechanisms are

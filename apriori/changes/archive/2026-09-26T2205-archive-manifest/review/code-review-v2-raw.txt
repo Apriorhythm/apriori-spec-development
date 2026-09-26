@@ -1,0 +1,1089 @@
+OpenAI Codex v0.155.1
+--------
+workdir: /root/terra/asd-v62-code
+model: gpt-6-astra
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: medium
+reasoning summaries: none
+session id: 01a0ddfe-4624-7760-8605-5beb0bb0a6f2
+--------
+user
+Round 2 (same change `archive-manifest`, still uncommitted on feature/archive-manifest; re-run `git diff` / `git status`; deltas under apriori/changes/archive-manifest/specs/). The producer answered round 1 — verify each against the code, the deltas and the tests, not against this summary:
+1 (P1 temp path): lib/manifest.js now creates a run-owned unique temp (`archive-manifest.json.<pid>.<random>.tmp`) with openSync(...,"wx") — an existing entry, symlink included, fails instead of being followed/truncated — writes through the fd, then fs.renameSync onto the final name (replaces any occupant entry incl. a stale symlink with THIS regular file, never writes through it); only the temp this run created is removed on failure; listBundle excludes only the manifest name and this run's temp name (exclude param), every other occupant is inventoried. Spec text updated. AM-132 covers a symlink occupant pointing at a store file (store byte-identical, published manifest is a regular file) and a directory occupant (run fails naming the manifest, store untouched, no temp left, rerun succeeds after removal).
+2 (P1 symlinked bundle root): archive-merge lstat()s changes/<name> before the manifest step; a symlink or non-directory is REFUSED with nothing written. check names a symlinked entry under archive/ as "not compared". AM-133: alias at changes/c → archived bundle: refused, archived manifest byte-for-byte unchanged, no temp. Spec text updated.
+3 (P2 prototype keys): listBundle builds a null-prototype map; diff uses own-property membership on both sides; read() rejects an array `files`. AM-134 lists __proto__/constructor/toString; CK-22 reports removal of `constructor`.
+4 (P2 AM-130 evidence): the retry now changes an inventoried file between attempts and asserts the new hash (and inequality with the first manifest). Publication-rename failure is exercised through the directory-occupant case in AM-132 rather than the ops seam — the rename stays fs's own because the swap is internal to the bundle; the seams (openSync for hashing and exclusive create; writeFileSync/renameSync for store temps and the move) are unchanged, so existing tests AM-38/ADM-07 that inject rename failures still target the move/commit only.
+Evidence: tests 841/841 (11 in test/archive-manifest.test.js), `verify --change archive-manifest` GREEN, `check --self` PASS, review-ready YES. Judge P3's three questions again on the current state; list anything still open with file:line; end with one verdict line from §5.
+codex
+I’ll compare the current diff, specs, and tests against all four findings, then check for regressions in the fixes. I’ll keep the review read-only and avoid raw transcripts and human-note files.
+exec
+/usr/bin/zsh -lc 'git status --short; git diff --stat; git diff -- lib/archive-merge.js lib/check.js test/archive-default-move.test.js test/slice5-subtraction.test.js; nl -ba lib/manifest.js' in /root/terra/asd-v62-code
+ succeeded in 0ms:
+ M CHANGELOG.md
+ M docs/cli.md
+ M docs/cli_cn.md
+ M lib/archive-merge.js
+ M lib/check.js
+ M test/archive-default-move.test.js
+ M test/slice5-subtraction.test.js
+?? apriori/changes/archive-manifest/
+?? lib/manifest.js
+?? test/archive-manifest.test.js
+ CHANGELOG.md                      | 23 +++++++++++++++++++++++
+ docs/cli.md                       |  4 +++-
+ docs/cli_cn.md                    |  4 ++--
+ lib/archive-merge.js              | 39 ++++++++++++++++++++++++++++++++++++++-
+ lib/check.js                      | 38 ++++++++++++++++++++++++++++++++++++++
+ test/archive-default-move.test.js |  7 ++++++-
+ test/slice5-subtraction.test.js   |  3 ++-
+ 7 files changed, 112 insertions(+), 6 deletions(-)
+diff --git a/lib/archive-merge.js b/lib/archive-merge.js
+index afd0229..53cc469 100644
+--- a/lib/archive-merge.js
++++ b/lib/archive-merge.js
+@@ -15,6 +15,7 @@ const { configCas, configCasProblem, CHANGE_NAME_RE } = require('./resolve');
+ const { stripFences } = require('./text');
+ // archive's precondition: a change that is not finished never reaches the store
+ const readiness = require('./readiness');
++const manifest = require('./manifest');
+ 
+ const REQ_RE = /^###\s+Requirement:\s+(.+?)\s*$([\s\S]*?)(?=^###\s+Requirement:|$(?![\s\S]))/gm;
+ // a whole deprecated block (heading line + body up to the next requirement)
+@@ -1066,12 +1067,48 @@ function archiveChange(o) {
+     return { code: 1, out, err };
+   }
+   if (guard.forced) out.push(guard.forced);
++  const bundleDir = path.join(changesDir, o.change);
+   if (!o.write) {
++    // the manifest is only counted here — dry-run writes nothing into the bundle either
++    try { out.push(`manifest: would list ${Object.keys(manifest.listBundle(bundleDir, { hash: false })).length} entries in ${manifest.MANIFEST_NAME}`); }
++    catch (e) { out.push(`note: manifest could not be counted (${e.message})`); }
+     out.push(...decl.lines);                    // the preview of what --write will declare
+     out.push(`\nRESULT: MERGED (dry-run; ${jobs.length} module(s)) — pass --write to apply`);
+     return { code: 0, out, err };
+   }
+ 
++  // --- phase 1b: the content manifest, INSIDE the transaction and BEFORE the first store byte.
++  // What the archive contained at archive time is recorded in the bundle itself, so it travels
++  // with the move; `apriori check` reads it back to report drift. Written here — not after the
++  // move — so a failure can never leave the stores rewritten and the archive unbaselined: if the
++  // manifest cannot be produced (a file vanished between listing and hashing, an unreadable
++  // entry, a write failure) the run stops with nothing written. The stamp is fixed now and the
++  // move below reuses it, so the manifest names the directory it ends up in. A rerun after a
++  // failed move recomputes and replaces it (the manifest never lists itself).
++  // The bundle root itself must be a real directory: written through a symlinked
++  // `changes/<name>` the manifest would land in — and rewrite the baseline of — whatever the
++  // link points at (an already archived bundle included), and the move would move the link.
++  let rootStat = null;
++  try { rootStat = fs.lstatSync(bundleDir); } catch (e) { rootStat = null; }
++  if (!rootStat || rootStat.isSymbolicLink() || !rootStat.isDirectory()) {
++    err.push(`archive: ${bundleDir} is ${rootStat ? (rootStat.isSymbolicLink() ? 'a symbolic link' : 'not a directory') : 'not readable'} — an in-flight bundle must be a real directory; nothing written`);
++    out.push('\nRESULT: REFUSED — nothing written');
++    return { code: 1, out, err };
++  }
++  const now = new Date();
++  let manifestEntries = 0;
++  try {
++    const tmpName = manifest.ownTempName();
++    const m = manifest.build(bundleDir, { change: o.change, stamp: archiveStamp(now), ops, exclude: [tmpName] });
++    manifestEntries = Object.keys(m.files).length;
++    manifest.writeInto(bundleDir, m, ops, tmpName);
++  } catch (e) {
++    err.push(`archive: the content manifest (${manifest.MANIFEST_NAME}) could not be written: ${e.message} — nothing written to the store`);
++    out.push('\nRESULT: FAILED — nothing written');
++    return { code: 1, out, err };
++  }
++  out.push(`manifest: ${manifest.MANIFEST_NAME} (${manifestEntries} entries)`);
++
+   // --- phase 2: stage (this run's temps only — preflight proved none pre-existed) ---
+   const staged = [];
+   try {
+@@ -1105,7 +1142,7 @@ function archiveChange(o) {
+   // used to happen only under an explicit --changes-dir (P6). The behaviour is aligned to
+   // the declaration; --changes-dir stays an optional location override, nothing more.
+   let moved = null;
+-  try { moved = archiveChangeDir(changesDir, o.change, new Date(), ops); }
++  try { moved = archiveChangeDir(changesDir, o.change, now, ops); }   // the stamp the manifest recorded
+   catch (e) { err.push(`archive: stores committed but the change-dir move failed: ${e.message} — rerun to complete`); return { code: 1, out, err }; }
+   if (moved === null) { err.push('archive: stores committed but the change dir vanished before the move'); return { code: 1, out, err }; }
+   out.push(...decl.lines);                      // published now: merged AND moved — it is true
+diff --git a/lib/check.js b/lib/check.js
+index 9abe71c..da68f53 100644
+--- a/lib/check.js
++++ b/lib/check.js
+@@ -14,6 +14,7 @@ const { containsFuturePath } = require('./archive-merge');
+ const { withStrict } = require('./args');
+ const { stripFences } = require('./text');
+ const { resolveIdPattern } = require('./config');
++const manifest = require('./manifest');
+ const { makeIdMatcher, matcherFailureMsg } = require('./spec-runner');   // one recognition contract for all consumers
+ 
+ // ---- helpers (ported from gh_slug / parse / num_prefix) ---------------------
+@@ -269,6 +270,42 @@ function checkRunbookFreshness(root, packagedPath = PACKAGED_RUNBOOK) {
+ }
+ 
+ // ---- cli --------------------------------------------------------------------
++// ---- CK-19..21: archive drift — a report, never a failure -------------------
++// Every archived bundle that carries a manifest is re-listed and compared; a difference is
++// printed as a `!` note (content changed since archive time — not a verdict that the change
++// was wrong). Bundles without a manifest are counted into ONE summary line: archived before
++// manifests were written, or the manifest is gone — the check cannot tell which and says so.
++// Nothing here repairs, rewrites or deletes a manifest.
++function checkArchiveDrift(root) {
++  const notes = [];
++  const archRoot = path.join(root, 'apriori', 'changes', 'archive');
++  let entries;
++  try { entries = fs.readdirSync(archRoot, { withFileTypes: true }); } catch { return notes; }   // no archive root: nothing to report
++  let noBaseline = 0;
++  for (const e of entries.sort((a, b) => (a.name < b.name ? -1 : 1))) {
++    const dir = path.join(archRoot, e.name), rel = path.relative(root, dir).split(path.sep).join('/');
++    if (e.isSymbolicLink()) { notes.push(`archive entry is a symbolic link, not compared: ${rel}`); continue; }
++    if (!e.isDirectory()) continue;
++    const m = manifest.read(dir);
++    if (!m.ok) {
++      if (m.missing) noBaseline++;
++      else notes.push(`archive manifest unreadable: ${rel} (${m.error})`);
++      continue;
++    }
++    let actual;
++    try { actual = manifest.listBundle(dir); }
++    catch (err) { notes.push(`archive manifest could not be compared: ${rel} (${err.message})`); continue; }
++    const d = manifest.diff(m.manifest.files, actual);
++    if (!d.added.length && !d.removed.length && !d.modified.length) continue;
++    notes.push(`archive drift: ${rel} +${d.added.length} −${d.removed.length} ~${d.modified.length}`);
++    for (const f of d.added) notes.push(`  + ${f}`);
++    for (const f of d.removed) notes.push(`  − ${f}`);
++    for (const f of d.modified) notes.push(`  ~ ${f}`);
++  }
++  if (noBaseline) notes.push(`no baseline: ${noBaseline} archived bundle(s) carry no manifest — archived before manifests were written, or the manifest is gone`);
++  return notes;
++}
++
+ // Two modes. CONSUMER (default): checks the project's own spec store (CK-04) and
+ // scaffolded-runbook freshness (CK-06) — nothing else, so a consumer legitimately using
+ // OpenSpec or shipping its own README is never failed by apriori's self-checks.
+@@ -358,6 +395,7 @@ function cli(argv) {
+ 
+     for (const f of fails) console.log('✗ ' + f);
+     for (const w of checkRunbookFreshness(root)) console.log('! ' + w);   // CK-06: warn-only
++    for (const n of checkArchiveDrift(root)) console.log('! ' + n);       // CK-19..21: report-only
+     console.log('\nRESULT:', fails.length ? `FAIL (${fails.length})` : 'PASS');
+     return fails.length ? 1 : 0;
+   });
+diff --git a/test/archive-default-move.test.js b/test/archive-default-move.test.js
+index 381237d..8083194 100644
+--- a/test/archive-default-move.test.js
++++ b/test/archive-default-move.test.js
+@@ -145,7 +145,12 @@ test('ADM-06 stage failure: stores untouched, temps removed, no frozen declarati
+   const root = project(ADD_A);
+   const before = store(root);
+   const ops = {
+-    writeFileSync: () => { throw new Error('injected stage failure'); },
++    // the STAGE step is what fails here: the store temps. The manifest (archive-manifest,
++    // written before staging through the same seam) must succeed for this scenario to be reached.
++    writeFileSync: (p, ...rest) => {
++      if (String(p).endsWith('.tmp-archive')) throw new Error('injected stage failure');
++      return fs.writeFileSync(p, ...rest);
++    },
+     renameSync: fs.renameSync.bind(fs), rmSync: fs.rmSync.bind(fs),
+   };
+   const r = am.archiveChange({ cwd: root, change: 'c', write: true, noCas: true, ops });
+diff --git a/test/slice5-subtraction.test.js b/test/slice5-subtraction.test.js
+index 7d90819..4a27278 100644
+--- a/test/slice5-subtraction.test.js
++++ b/test/slice5-subtraction.test.js
+@@ -361,7 +361,8 @@ test('AM-119 an archived bundle is frozen: the merge writes one unit and nothing
+   const [stamp] = fs.readdirSync(archived);
+   const dir = path.join(archived, stamp);
+   // the whole bundle travelled, and nothing was left behind to write back into
+-  assert.deepStrictEqual(fs.readdirSync(dir).sort(), ['flow-state.md', 'review', 'specs']);
++  // the bundle plus the content manifest archive --write records into it (archive-manifest)
++  assert.deepStrictEqual(fs.readdirSync(dir).sort(), ['archive-manifest.json', 'flow-state.md', 'review', 'specs']);
+   assert.ok(!fs.existsSync(path.join(root, 'apriori', 'changes', 'c')));
+   // re-running against the frozen record is a read, never an edit
+   const before = fs.readFileSync(path.join(dir, 'flow-state.md'), 'utf8');
+     1	'use strict';
+     2	/**
+     3	 * archive-manifest.json — what an archived bundle contained at archive time.
+     4	 *
+     5	 * One reading for the writer (archive --write) and the reader (check): the same walk, the
+     6	 * same hashing, the same exclusion. Regular files are hashed as a stream of chunks (review
+     7	 * raws run to megabytes); a symbolic link is recorded as `link:<target>` and never followed;
+     8	 * directories are traversed; anything else is skipped. The manifest never lists itself, nor
+     9	 * the one temporary file the current run owns — every other occupant of the bundle, whatever
+    10	 * its name, is inventoried.
+    11	 */
+    12	const fs = require('fs');
+    13	const path = require('path');
+    14	const crypto = require('crypto');
+    15	
+    16	const MANIFEST_NAME = 'archive-manifest.json';
+    17	const hasOwn = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+    18	
+    19	// chunked, synchronous — archive-merge is a synchronous transaction, and the file may be large
+    20	function hashFileSync(p, ops) {
+    21	  const open = (ops && ops.openSync) || fs.openSync;
+    22	  const fd = open(p, 'r');
+    23	  try {
+    24	    const h = crypto.createHash('sha256');
+    25	    const buf = Buffer.allocUnsafe(1 << 16);
+    26	    for (;;) {
+    27	      const n = fs.readSync(fd, buf, 0, buf.length, null);
+    28	      if (n === 0) break;
+    29	      h.update(n === buf.length ? buf : buf.subarray(0, n));
+    30	    }
+    31	    return 'sha256:' + h.digest('hex');
+    32	  } finally { fs.closeSync(fd); }
+    33	}
+    34	
+    35	// -> null-prototype map { <relative path with '/' separators>: 'sha256:<hex>' | 'link:<target>' },
+    36	// keys sorted. A file named `__proto__` or `constructor` is a file like any other.
+    37	// `hash: false` lists the entries without reading contents (dry-run counting);
+    38	// `exclude` names root-level entries the current run owns and must not inventory.
+    39	function listBundle(bundleDir, { ops, hash = true, exclude = [] } = {}) {
+    40	  const files = Object.create(null);
+    41	  const skip = new Set([MANIFEST_NAME, ...exclude]);
+    42	  (function walk(dir, rel) {
+    43	    const entries = fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+    44	    for (const e of entries) {
+    45	      const p = path.join(dir, e.name);
+    46	      const r = rel ? `${rel}/${e.name}` : e.name;
+    47	      if (!rel && skip.has(e.name)) continue;                     // never lists itself or its own temp
+    48	      if (e.isSymbolicLink()) files[r] = 'link:' + fs.readlinkSync(p);
+    49	      else if (e.isDirectory()) walk(p, r);
+    50	      else if (e.isFile()) files[r] = hash ? hashFileSync(p, ops) : 'sha256:?';
+    51	      // sockets, fifos, devices: skipped — a bundle has no business carrying them
+    52	    }
+    53	  })(bundleDir, '');
+    54	  return files;
+    55	}
+    56	
+    57	// A run-owned temporary name: unique, so no pre-existing occupant is ever opened or removed
+    58	function ownTempName() {
+    59	  return `${MANIFEST_NAME}.${process.pid}.${crypto.randomBytes(6).toString('hex')}.tmp`;
+    60	}
+    61	
+    62	function build(bundleDir, { change, stamp, ops, exclude } = {}) {
+    63	  return { manifest: 1, change, stamp, files: listBundle(bundleDir, { ops, hash: true, exclude }) };
+    64	}
+    65	
+    66	// Publish into the bundle: EXCLUSIVE create of the run-owned temp (`wx` — an existing entry at
+    67	// that name, symlink included, fails instead of being followed or truncated), write through
+    68	// the descriptor, then rename onto the final name. rename() replaces whatever entry sits at the
+    69	// final path — a stale symlink included — with THIS regular file, and never writes through it.
+    70	// Only the temp this run created is ever removed. `ops.openSync` is the injectable seam
+    71	// (shared with the hashing side); the rename is fs's own because the swap is internal to the
+    72	// bundle, not part of the store commit or the move.
+    73	function writeInto(bundleDir, manifest, ops, tmpName) {
+    74	  const open = (ops && ops.openSync) || fs.openSync;
+    75	  const final = path.join(bundleDir, MANIFEST_NAME), tmp = path.join(bundleDir, tmpName || ownTempName());
+    76	  let fd = null, created = false;
+    77	  try {
+    78	    fd = open(tmp, 'wx');
+    79	    created = true;
+    80	    fs.writeSync(fd, JSON.stringify(manifest, null, 2) + '\n');
+    81	    fs.closeSync(fd); fd = null;
+    82	    fs.renameSync(tmp, final);
+    83	  } catch (e) {
+    84	    if (fd !== null) { try { fs.closeSync(fd); } catch { /* best effort */ } }
+    85	    if (created) { try { fs.rmSync(tmp, { force: true }); } catch { /* best effort */ } }
+    86	    throw e;
+    87	  }
+    88	  return final;
+    89	}
+    90	
+    91	// -> { ok, manifest?, error? } — a missing manifest is `{ok:false, missing:true}`
+    92	function read(bundleDir) {
+    93	  const p = path.join(bundleDir, MANIFEST_NAME);
+    94	  if (!fs.existsSync(p)) return { ok: false, missing: true };
+    95	  try {
+    96	    const m = JSON.parse(fs.readFileSync(p, 'utf8'));
+    97	    if (!m || typeof m !== 'object' || typeof m.files !== 'object' || m.files === null || Array.isArray(m.files)) return { ok: false, error: 'no files object' };
+    98	    return { ok: true, manifest: m };
+    99	  } catch (e) { return { ok: false, error: e.message }; }
+   100	}
+   101	
+   102	// -> { added: [], removed: [], modified: [] } comparing recorded vs actual listings; own
+   103	// properties only on both sides, so inherited names never masquerade as entries
+   104	function diff(recorded, actual) {
+   105	  const added = [], removed = [], modified = [];
+   106	  for (const k of Object.keys(actual)) {
+   107	    if (!hasOwn(recorded, k)) added.push(k);
+   108	    else if (recorded[k] !== actual[k]) modified.push(k);
+   109	  }
+   110	  for (const k of Object.keys(recorded)) if (!hasOwn(actual, k)) removed.push(k);
+   111	  return { added: added.sort(), removed: removed.sort(), modified: modified.sort() };
+   112	}
+   113	
+   114	module.exports = { MANIFEST_NAME, hashFileSync, listBundle, build, writeInto, read, diff, ownTempName };
+
+exec
+/usr/bin/zsh -lc 'cat apriori/changes/archive-manifest/specs/archive-merge/spec.md apriori/changes/archive-manifest/specs/check/spec.md; cat apriori/changes/archive-manifest/flow-state.md; node bin/apriori.js gate --change archive-manifest --json' in /root/terra/asd-v62-code
+ exited 1 in 0ms:
+<!-- apriori-base: sha256:cc5a80149136be6907070e083a2fcdb1aa0143aaef363b408659036c0cba7cf2 -->
+# Delta — archive-merge (archive-manifest)
+
+## MODIFIED Requirements
+
+### Requirement: an archive declares three states and nothing else
+A ready `apriori archive --change <name>` SHALL print an `ARCHIVE DECLARES` block — in dry-run and with `--write` alike — carrying exactly three states derived from the bundle's own state THROUGH THE SAME readiness predicate the gate and review-ready use — never a second walk over the state, which is how the declaration and R5 came to disagree about one bundle: whether the IMPLEMENTATION is complete (the predicate's pending open items — an id-less item included — and standing assumptions make it incomplete, and are counted); whether the CRITICAL EVIDENCE is complete, which since 6.2 means no unaccepted open item — pending items counted, accepted ones named and reported as still present, a legacy `blocked` row named; and whether the change is RELEASED or still pending external acceptance (the state's `delivery:` key, defaulting to pending). It SHALL NOT introduce a new document or a fourth state, and the only file the archive adds to the bundle is its content manifest (`archive-manifest.json`, the manifest requirement) — never a declaration file. The declaration SHALL ALSO be a BACKSTOP: a run whose declaration would read `implementation: INCOMPLETE` SHALL be refused with `RESULT: NOT READY — nothing written`, whatever readiness concluded — a successful archive can never declare its own work unfinished. The block SHALL say that the bundle is frozen and that a defect found later becomes a short outcome note or a NEW change — an archive is never rewritten to claim a completeness that did not exist at the time.
+
+#### Scenario: AM-118 the archive declaration carries exactly the three states
+- WHEN a ready change is archived, first with a clean state and then with a pending open item, an unverified assumption, an accepted open item and `delivery: released` in turn
+- THEN the report carries an `ARCHIVE DECLARES` block with exactly the implementation / critical-evidence / delivery lines, each reflecting the state it was given, the frozen-snapshot sentence is present, and the declaration creates no file anywhere in the tree (the bundle's `archive-manifest.json` is written by the manifest requirement, not by the declaration; a dry-run creates nothing at all)
+
+#### Scenario: AM-119 the archived bundle is frozen
+- WHEN a change is archived with `--write --changes-dir`, and the archived record is then gated again
+- THEN the whole bundle travelled as one unit (flow-state, `specs/`, `review/` and its `archive-manifest.json`) with nothing left at the in-flight path, and the later run reads the frozen record without modifying a byte of it
+
+## ADDED Requirements
+
+### Requirement: an archive carries a content manifest, written inside the transaction
+On `--write`, after every preflight, readiness, declaration and drop-guard step has passed and BEFORE the first store byte is staged, `apriori archive --change <name>` SHALL write `archive-manifest.json` into the in-flight bundle: `{ "manifest": 1, "change": <name>, "stamp": <the archive stamp the move will use>, "files": { <relative path>: "sha256:<hex>" | "link:<target>" } }`, one entry per regular file under the bundle (the manifest itself excluded; content hashed as a stream, so review raws of any size are covered) and one `link:` entry per symbolic link (never followed, never hashed); directories are traversed, anything else is skipped. The write is exclusive and atomic within the bundle: the run creates a temporary file it alone owns (`wx`, so an existing entry at that name — a symlink included — fails instead of being followed or truncated), writes through the descriptor and renames it onto `archive-manifest.json`; the rename replaces any occupant of the final name (a stale symlink included) with this regular file and never writes through it, and only the run's own temporary file is ever removed — every other occupant of the bundle is inventoried. The bundle root itself must be a real directory: a symbolic link at `changes/<name>` is refused before anything is written, so no alias can rewrite the baseline of an already archived bundle. If the manifest cannot be produced or written — a file vanishes between listing and hashing, an unreadable entry, a write failure — the run fails with exit 1 and NOTHING has been written to the store, so no state exists in which stores were rewritten but the archive lacks its manifest. The manifest then travels with the bundle in the existing move; a rerun after a failed move recomputes and overwrites it. Dry-run writes no manifest and prints how many entries it would list. The manifest is never rebuilt, rewritten or deleted for a bundle that is already under `archive/`; the existing destination-conflict behaviour is unchanged. `status` is untouched.
+
+#### Scenario: AM-128 the manifest lists the bundle and travels with it
+- WHEN a ready bundle with nested review, requirement and spec files (including an empty file and a path with spaces and unicode) is archived with `--write`
+- THEN `archive/<stamp>-<name>/archive-manifest.json` exists, its `stamp` equals the directory's stamp and its `change` the name, `files` carries every regular file's relative path with the sha256 of its content, excludes `archive-manifest.json` itself, and the report carries one line naming the manifest and its entry count; a dry-run of the same bundle writes no manifest and only reports the count
+
+#### Scenario: AM-129 a manifest failure leaves the store untouched
+- WHEN producing the manifest fails — the injected hash reader throws for one file, and separately the injected write of the manifest fails
+- THEN the run exits 1 naming the manifest, no store file is rewritten, no temp store file remains, the bundle stays in flight and intact, and a rerun with the fault removed archives normally
+
+#### Scenario: AM-130 a rerun after a failed move recomputes the manifest
+- WHEN the store commit succeeds but the move is made to fail, an inventoried file is then changed, and the run is repeated without the fault
+- THEN the archived bundle carries exactly one manifest whose entries match the bundle's final content — the changed file's new hash included, so the second run demonstrably recomputed rather than reused the first manifest (which is never listed in itself)
+
+#### Scenario: AM-132 publication is exclusive and replaces, never follows, an occupant
+- WHEN a symbolic link named `archive-manifest.json` pointing at a store file sits in the bundle, and separately a directory occupies that name
+- THEN the first archives with the store file byte-identical and the archived manifest a regular file; the second fails the run naming the manifest with the store untouched, no temp left behind and the bundle intact, and archives normally once the occupant is removed
+
+#### Scenario: AM-133 a symlinked bundle root is refused and an archived baseline stays intact
+- WHEN `changes/<name>` is a symbolic link to an already archived bundle that carries a manifest
+- THEN `archive --write` refuses before writing anything, naming the link, and the archived manifest is byte-for-byte unchanged
+
+#### Scenario: AM-134 prototype-named files are files
+- WHEN the bundle holds regular files named `__proto__`, `constructor` and `toString`
+- THEN all three are listed in the manifest with their hashes
+
+#### Scenario: AM-131 links are recorded, never followed
+- WHEN the bundle contains a symbolic link (to a file inside and, separately, to a file outside the bundle) beside regular files
+- THEN the manifest records the link as `link:<target>` without hashing or following it, the regular files are hashed as usual, and the run succeeds
+
+## Notes
+
+Why: the archive is documented as a frozen snapshot, but nothing records what the snapshot contained — a real project wrote eight review files into an archived bundle seven days after archiving, with no trace. The manifest records the content at archive time; `apriori check` (see the check delta) reports later drift. It is written before the store is touched so a failure can never leave stores rewritten and the archive unbaselined (Claude × Astra consensus, 2026-09-26).
+<!-- apriori-base: sha256:735aa5d3b463935c8410ef942d6421f9645b8bb0224b6c084e7dec049fc88b69 -->
+# Delta — check (archive-manifest)
+
+## ADDED Requirements
+
+### Requirement: check reports archive drift and never fails on it
+In both modes `apriori check` SHALL look at every directory under `apriori/changes/archive/` (an absent archive root is nothing to report). For a bundle that carries a readable `archive-manifest.json` it SHALL recompute the same listing and report, as a `!` note that does not affect the exit code, `archive drift: <dir> +<added> −<removed> ~<modified>` followed by one indented line per differing path; an unchanged bundle prints nothing. Bundles without a manifest are counted and reported in ONE summary note (`no baseline: N archived bundle(s) carry no manifest — archived before manifests were written, or the manifest is gone`), never one line per bundle; a manifest that exists but cannot be parsed is reported as unreadable, also as a note; an entry under `archive/` that is a symbolic link is named as not compared. Membership is judged on own properties, so a file named `constructor` or `__proto__` is inventoried and its removal reported like any other. The check compares content hashes, so a changed mtime with identical bytes is not drift. Drift is a report of a changed snapshot, not a verdict that the change was wrong, and check never repairs, rewrites or deletes a manifest.
+
+#### Scenario: CK-19 drift is reported per bundle and does not change the exit code
+- WHEN an archived bundle with a manifest is left unchanged, and then a file is added, one removed and one modified
+- THEN the unchanged bundle produces no line, the changed one produces `! archive drift: <dir> +1 −1 ~1` with the three paths beneath, and `RESULT: PASS` with exit 0 in both cases when nothing else fails; an unrelated failing check still fails as before
+
+#### Scenario: CK-20 bundles without a baseline are summarised once, and a broken manifest is named
+- WHEN the archive root holds three bundles without a manifest and one whose manifest is not valid JSON
+- THEN check prints exactly one `no baseline` note naming the count 3, one `archive manifest unreadable` note naming the fourth bundle, and the exit code is unaffected
+
+#### Scenario: CK-21 identical content is not drift
+- WHEN every file of an archived bundle is rewritten with identical bytes (new mtimes) and a file listed as `link:` still points at the same target
+- THEN check prints no drift line for it
+
+#### Scenario: CK-22 prototype-named files diff like any other, and a symlinked archive entry is named
+- WHEN an archived bundle's manifest lists root files named `__proto__` and `constructor`, one of which is then removed, and separately a symbolic link is placed directly under `archive/`
+- THEN the removal is reported under `archive drift` and the link is reported as not compared, with the exit code unaffected
+
+## Notes
+
+Why: the manifest (archive-merge delta) is only useful if something reads it; `check` is the structural checker projects already run in CI and pre-commit. Reporting without failing is deliberate — appending material to an archive is not always wrong, but it must be visible (Claude × Astra consensus, 2026-09-26).
+change: archive-manifest
+phase: review                             # ground | specify | build | review | done | abandoned
+reviewer-session: 01a0ddfe-4624-7760-8605-5beb0bb0a6f2   # codex exec, round 1 (2026-09-26)
+
+## Reality Check         # observed / decision / assumption — one line each, as you find them
+- decision: lineage — branch `feature/archive-manifest`（从 v6-dev@8aa98fb 开出）；本地提交；评审通过后合回 v6-dev；不进 preview/v6-20260926 快照
+- decision: requirement — `work/astra-discuss/diag-next/DN-CONSENSUS.md` §一 E + `work/astra-discuss/three-topics/TT-CONSENSUS.md` 议题 2（Claude × Astra，人类 09-26 批准）：archive --write 在既有归档事务内、最终成功前写 `archive-manifest.json`（排除自身；流式 sha256 全部普通文件含 raw；符号链接不跟随、记录不哈希）；写失败 = 归档整体不成功，不留「store 已改而清单缺失」半状态；`apriori check` 对有清单的归档比对，报告增/删/改，**仅 note、不改退出码**；无清单归档汇总一行 no baseline，措辞不断言早于 manifest；不因漂移新增拒绝门、不覆盖已有归档、不重建清单洗差异；不动 status；层 1 + codex，不做层 2；原子性未闭合不合入
+- observed: archiveChange 事务顺序（lib/archive-merge.js:905-1116）：preflight（无写）→ readiness → declaration 回退 → integrity/drop-guard → dry-run 返回 →【phase 2 stage temps】→【phase 3 commit renames，中途失败不回滚】→【phase 4 move `archiveChangeDir`，失败提示 rerun】。「store 已改而清单缺失」只能靠把清单写在 phase 2 之前避免：在 dry-run 返回之后、staging 之前把清单写进在制 bundle，随 move 整体搬走（AM-36 bundle travels whole）；写失败即 code 1、store 未动；move 失败后 rerun 会重算并覆盖 bundle 内旧清单（自身被排除）
+- observed: 归档 stamp 由 `archiveChangeDir(changesDir, name, new Date(), ops)` 在 move 时取；要让清单里的 stamp 与目录名一致，须提前取 `now` 并传入
+- observed: 目标冲突保护已有：destination 已存在时 `renameSync` 抛错 → 「stores committed but the change-dir move failed … rerun」；本 change 不改该路径，也从不向已存在的 archive 目录写清单
+- observed: `apriori check`（lib/check.js:279-362）消费者模式只跑 CK-04 与 CK-10、CK-06 warn；输出约定：失败 `✗ …` 计入 fails 决定退出码，警告 `! …` 不计入。漂移报告应走 `!` 通道且不入 fails；`--specs` 与 archive 目录无关，archive 根固定为 `<cwd>/apriori/changes/archive`
+- observed: 现有测试语料（AM-30 只扫 specs/*.md；verdict-corpus 只读 flow-state.md；CK-10 只扫 review/）都不受 bundle 内新增 json 影响
+- observed: 场景 id 空位：archive-merge 最大 AM-127，check 最大 CK-18
+- observed: 人类语境——归档目录事后写入的实证：merchant-bill（公司电脑 git 9bbaf41，归档 7 天后 8 个评审文件）；D-59「回改 10 处」是业务代码非归档目录（已更正）
+- observed: Build 完成 —— 新增 lib/manifest.js（listBundle 流式 sha256 / link: 记录 / writeInto 原子 / read / diff，写读一套代码）；lib/archive-merge.js 在 dry-run 返回后、phase 2 之前写清单（失败 code 1 nothing written），move 复用同一 now；lib/check.js checkArchiveDrift 两模式 `!` 通道只报不入 fails；docs/cli 两版各两句；CHANGELOG 条目；test/archive-manifest.test.js 绑 AM-128..131、CK-19..21（先红后绿）
+- observed: 两处既有测试随契约调整（供评审核对）：AM-119 归档目录列表加入 `archive-manifest.json`（对应 delta 的 MODIFIED 块把「不引入新强制文件」改为「唯一新增文件是内容清单」）；ADM-06 的注入 writeFileSync 从「全部写失败」收窄为「只在 `.tmp-archive` 失败」，因为清单经同一 seam 写在 staging 之前——断言未改
+- observed: Review 第 1 轮（`review/code-review-v1.md`）= 4 issues：①P1 固定名临时文件以截断语义打开、会跟随占位符号链接写穿 store，且排除该名字使其后续改动逃出漂移报告；②P1 `changes/<name>` 为符号链接指向已归档 bundle 时会重写其清单基线、move 只搬链接、check 又跳过符号链接项；③P2 `{}` 字典让 `__proto__` 文件消失、`in` 让 `constructor` 的删除不报；④P2 AM-130 两次尝试间内容未变、不能证明重算，且发布 rename 绕过注入 seam。修：①run 独占临时名（pid+随机）以 `wx` 独占创建、经 fd 写、rename 覆盖占位（不跟随）、只删自己的临时文件、只排除自身与本次临时名；②清单前 lstat bundle 根，符号链接/非目录即 REFUSED nothing written；check 对 archive/ 下符号链接项报「not compared」；③`Object.create(null)` + hasOwn；④AM-130 在两次尝试间改文件并断言新哈希；新增 AM-132（符号链接占位 → store 字节不变、清单为普通文件；目录占位 → 失败、store 不动、无临时残留、移除后成功）、AM-133（符号链接 bundle 根被拒、归档清单字节不变）、AM-134/CK-22（原型名文件）。发布 rename 仍用 fs 自身（bundle 内部交换），失败路径以目录占位实测覆盖而非 seam
+
+## Open                  # substantive unresolved items — one line each, stable id first: - <ID>: <text>
+
+## Next                  # at most three concrete actions; the first is the resume point
+- Review 第 2 轮：`codex exec resume` 复核 4 条
+- gate → archive --write → 合回 v6-dev
+
+gates:
+  - 2026-09-26T21:58 note: Review 第 1 轮落盘（4 issues）；四条已修并加 AM-132/133/134、CK-22；开第 2 轮
+  - 2026-09-26T21:50 note: Build 完成（7 场景先红后绿）；进入 Review
+  - 2026-09-26T21:46 note: Ground 完成；进入 Specify
+  - 2026-09-26T21:44 note: change scaffolded by `apriori new`
+{
+  "change": "archive-manifest",
+  "stage": "in-flight",
+  "checks": [
+    {
+      "id": "C1",
+      "status": "skipped",
+      "detail": "skipped — no test command (pass --test-cmd or add a test-cmd row to apriori/process-config.md); the binding check did not run"
+    },
+    {
+      "id": "C2",
+      "status": "n/a",
+      "detail": "retired in 6.2 — nothing is read"
+    },
+    {
+      "id": "C3",
+      "status": "pass",
+      "detail": "legal (review)"
+    },
+    {
+      "id": "C4",
+      "status": "n/a",
+      "detail": "ledger retired in 6.2 — open items live in ## Open"
+    },
+    {
+      "id": "C5",
+      "status": "pass",
+      "detail": "1 review doc(s), every verdict has raw evidence"
+    },
+    {
+      "id": "C6",
+      "status": "n/a",
+      "detail": "archive-merge: no truth doc; check: no truth doc"
+    },
+    {
+      "id": "C7",
+      "status": "pass",
+      "detail": "every mutation delta is stamped"
+    },
+    {
+      "id": "C8",
+      "status": "blocked",
+      "detail": "code-review round 1 (revise, 4 open); review-round-limit 7 (default); the independent review has not resolved (code-review round 1, 4 open) — the reviewer's latest verdict is what must close before the change ships; no ledger state can stand in for it; transcript 'code-review-v2-raw.txt' names a review round whose summary 'code-review-v2.md' is missing"
+    },
+    {
+      "id": "C9",
+      "status": "pass",
+      "detail": "no open items; risk: contract-mutation: archive-merge/spec.md MODIFIED 'an archive declares three states and nothing else'"
+    }
+  ],
+  "result": "BLOCKED",
+  "blocked": 1,
+  "errors": []
+}
+
+exec
+/usr/bin/zsh -lc "nl -ba test/archive-manifest.test.js | sed -n '1,360p'; git diff -- CHANGELOG.md docs/cli.md docs/cli_cn.md" in /root/terra/asd-v62-code
+ succeeded in 0ms:
+     1	'use strict';
+     2	// archive-manifest — AM-128..131 (the archive carries a content manifest written inside the
+     3	// transaction) and CK-19..21 (check reports drift, never fails on it).
+     4	const { test } = require('node:test');
+     5	const assert = require('node:assert');
+     6	const fs = require('fs');
+     7	const os = require('os');
+     8	const path = require('path');
+     9	const crypto = require('crypto');
+    10	const { spawnSync } = require('node:child_process');
+    11	const { readyFiles } = require('./helpers/ready-bundle');
+    12	const { canSymlink } = require('./helpers/can-symlink');
+    13	const am = require('../lib/archive-merge');
+    14	
+    15	const BIN = path.join(__dirname, '..', 'bin', 'apriori.js');
+    16	const run = (args, cwd) => spawnSync('node', [BIN, ...args], { encoding: 'utf8', cwd });
+    17	const sha = (p) => 'sha256:' + crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
+    18	
+    19	const STORE_A = '### Requirement: Alpha\n\n#### Scenario: XA-01 a\n- t\n';
+    20	const ADD_A = '## ADDED Requirements\n\n### Requirement: Alpha2\n\n#### Scenario: XA-09 n\n- t\n';
+    21	
+    22	function mkProject(files) {
+    23	  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-manifest-'));
+    24	  for (const [rel, content] of Object.entries(files)) {
+    25	    const p = path.join(root, rel);
+    26	    fs.mkdirSync(path.dirname(p), { recursive: true });
+    27	    fs.writeFileSync(p, content);
+    28	  }
+    29	  return root;
+    30	}
+    31	function bundleProject(extra = {}) {
+    32	  return mkProject({
+    33	    ...readyFiles('c'),
+    34	    'apriori/specs/a/spec.md': STORE_A,
+    35	    'apriori/changes/c/specs/a/spec.md': ADD_A,
+    36	    'apriori/changes/c/requirement/req-v1.md': 'v1',
+    37	    'apriori/changes/c/requirement/empty.md': '',
+    38	    'apriori/changes/c/review/深 层/with space.txt': 'unicode and spaces',
+    39	    'apriori/changes/c/review/code-review-v1-raw.txt': 'raw '.repeat(50_000),   // 200 KB, streamed
+    40	    ...extra,
+    41	  });
+    42	}
+    43	const archivedDir = (root) => {
+    44	  const a = path.join(root, 'apriori/changes/archive');
+    45	  const d = fs.readdirSync(a).find((n) => n.endsWith('-c'));
+    46	  return d ? path.join(a, d) : null;
+    47	};
+    48	const readManifest = (dir) => JSON.parse(fs.readFileSync(path.join(dir, 'archive-manifest.json'), 'utf8'));
+    49	
+    50	// walk a bundle the way the manifest should see it
+    51	function expectedFiles(dir) {
+    52	  const out = {};
+    53	  (function walk(d, rel) {
+    54	    for (const e of fs.readdirSync(d, { withFileTypes: true }).sort((x, y) => x.name.localeCompare(y.name))) {
+    55	      const p = path.join(d, e.name), r = rel ? `${rel}/${e.name}` : e.name;
+    56	      if (e.isSymbolicLink()) out[r] = 'link:' + fs.readlinkSync(p);
+    57	      else if (e.isDirectory()) walk(p, r);
+    58	      else if (e.isFile() && r !== 'archive-manifest.json') out[r] = sha(p);
+    59	    }
+    60	  })(dir, '');
+    61	  return out;
+    62	}
+    63	
+    64	test('AM-128 the manifest lists the bundle and travels with it', () => {
+    65	  const root = bundleProject();
+    66	  const dry = run(['archive', '--change', 'c'], root);
+    67	  assert.strictEqual(dry.status, 0, dry.stdout + dry.stderr);
+    68	  assert.match(dry.stdout, /manifest: would list \d+ entr/);
+    69	  assert.ok(!fs.existsSync(path.join(root, 'apriori/changes/c/archive-manifest.json')), 'dry-run writes no manifest');
+    70	  const r = run(['archive', '--change', 'c', '--write'], root);
+    71	  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+    72	  const A = archivedDir(root);
+    73	  assert.ok(A, 'bundle archived');
+    74	  const m = readManifest(A);
+    75	  assert.strictEqual(m.manifest, 1);
+    76	  assert.strictEqual(m.change, 'c');
+    77	  assert.strictEqual(m.stamp, path.basename(A).replace(/-c$/, ''), 'stamp equals the directory stamp');
+    78	  assert.deepStrictEqual(m.files, expectedFiles(A));
+    79	  assert.ok(!('archive-manifest.json' in m.files), 'the manifest does not list itself');
+    80	  assert.ok('review/深 层/with space.txt' in m.files && 'requirement/empty.md' in m.files);
+    81	  assert.strictEqual(m.files['requirement/empty.md'], 'sha256:' + crypto.createHash('sha256').update('').digest('hex'));
+    82	  assert.match(r.stdout, new RegExp(`manifest: archive-manifest\\.json \\(${Object.keys(m.files).length} entr`));
+    83	});
+    84	
+    85	test('AM-129 a manifest failure leaves the store untouched', () => {
+    86	  // (a) the hash reader throws for one file
+    87	  const root = bundleProject();
+    88	  const before = fs.readFileSync(path.join(root, 'apriori/specs/a/spec.md'), 'utf8');
+    89	  const failing = {
+    90	    writeFileSync: fs.writeFileSync.bind(fs), renameSync: fs.renameSync.bind(fs), rmSync: fs.rmSync.bind(fs),
+    91	    openSync: (p, ...rest) => {
+    92	      if (String(p).endsWith('req-v1.md')) throw new Error('injected read failure');
+    93	      return fs.openSync(p, ...rest);
+    94	    },
+    95	  };
+    96	  const res = am.archiveChange({ cwd: root, change: 'c', write: true, ops: failing });
+    97	  assert.strictEqual(res.code, 1);
+    98	  assert.match(res.err.join('\n'), /manifest/);
+    99	  assert.match(res.err.join('\n'), /injected read failure/);
+   100	  assert.strictEqual(fs.readFileSync(path.join(root, 'apriori/specs/a/spec.md'), 'utf8'), before, 'store untouched');
+   101	  assert.ok(!fs.existsSync(path.join(root, 'apriori/specs/a/spec.md.tmp-archive')), 'no temp store file');
+   102	  assert.ok(fs.existsSync(path.join(root, 'apriori/changes/c/requirement/req-v1.md')), 'bundle in flight');
+   103	  assert.ok(!fs.existsSync(path.join(root, 'apriori/changes/c/archive-manifest.json')), 'no half manifest');
+   104	  // (b) the manifest write itself fails
+   105	  const failWrite = {
+   106	    ...failing,
+   107	    openSync: (p, flags, ...rest) => {
+   108	      if (String(p).includes('archive-manifest.json') && flags === 'wx') throw new Error('injected write failure');
+   109	      return fs.openSync(p, flags, ...rest);
+   110	    },
+   111	  };
+   112	  const res2 = am.archiveChange({ cwd: root, change: 'c', write: true, ops: failWrite });
+   113	  assert.strictEqual(res2.code, 1);
+   114	  assert.match(res2.err.join('\n'), /manifest.*injected write failure|injected write failure.*manifest/);
+   115	  assert.strictEqual(fs.readFileSync(path.join(root, 'apriori/specs/a/spec.md'), 'utf8'), before, 'store still untouched');
+   116	  // (c) with the fault removed the archive proceeds
+   117	  const ok = am.archiveChange({ cwd: root, change: 'c', write: true });
+   118	  assert.strictEqual(ok.code, 0, ok.err.join('\n'));
+   119	  assert.ok(fs.existsSync(path.join(archivedDir(root), 'archive-manifest.json')));
+   120	});
+   121	
+   122	test('AM-130 a rerun after a failed move recomputes the manifest', () => {
+   123	  const root = bundleProject();
+   124	  const ops = {
+   125	    writeFileSync: fs.writeFileSync.bind(fs), rmSync: fs.rmSync.bind(fs),
+   126	    renameSync: (a, b) => {
+   127	      if (String(b).includes(`${path.sep}archive${path.sep}`)) throw new Error('injected move failure');
+   128	      fs.renameSync(a, b);
+   129	    },
+   130	  };
+   131	  const r1 = am.archiveChange({ cwd: root, change: 'c', write: true, ops });
+   132	  assert.strictEqual(r1.code, 1);
+   133	  assert.match(r1.err.join('\n'), /rerun to complete/);
+   134	  assert.ok(fs.existsSync(path.join(root, 'apriori/changes/c/archive-manifest.json')), 'first manifest sits in the in-flight bundle');
+   135	  const first = readManifest(path.join(root, 'apriori/changes/c'));
+   136	  // an inventoried file changes between the attempts: a reused manifest would keep the old hash
+   137	  fs.writeFileSync(path.join(root, 'apriori/changes/c/requirement/req-v1.md'), 'v1 — amended before the retry');
+   138	  const r2 = am.archiveChange({ cwd: root, change: 'c', write: true });
+   139	  assert.strictEqual(r2.code, 0, r2.err.join('\n'));
+   140	  const A = archivedDir(root);
+   141	  const m = readManifest(A);
+   142	  assert.deepStrictEqual(m.files, expectedFiles(A), 'the second run\'s manifest matches the final content');
+   143	  assert.notStrictEqual(m.files['requirement/req-v1.md'], first.files['requirement/req-v1.md'], 'the retry recomputed the changed file');
+   144	  assert.strictEqual(m.files['requirement/req-v1.md'], 'sha256:' + crypto.createHash('sha256').update('v1 — amended before the retry').digest('hex'));
+   145	  assert.ok(!('archive-manifest.json' in m.files));
+   146	  assert.strictEqual(fs.readdirSync(A).filter((n) => n.startsWith('archive-manifest')).length, 1, 'exactly one manifest, no temp left');
+   147	});
+   148	
+   149	test('AM-131 links are recorded, never followed', { skip: !canSymlink() && 'symlinks unavailable' }, () => {
+   150	  const root = bundleProject();
+   151	  const outside = path.join(root, 'outside.txt'); fs.writeFileSync(outside, 'outside');
+   152	  fs.symlinkSync(path.join(root, 'apriori/changes/c/requirement/req-v1.md'), path.join(root, 'apriori/changes/c/inside-link.md'));
+   153	  fs.symlinkSync(outside, path.join(root, 'apriori/changes/c/outside-link.md'));
+   154	  const r = run(['archive', '--change', 'c', '--write'], root);
+   155	  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+   156	  const m = readManifest(archivedDir(root));
+   157	  assert.match(m.files['inside-link.md'], /^link:/);
+   158	  assert.match(m.files['outside-link.md'], /^link:/);
+   159	  assert.strictEqual(m.files['requirement/req-v1.md'], 'sha256:' + crypto.createHash('sha256').update('v1').digest('hex'));
+   160	});
+   161	
+   162	test('AM-132 publication is exclusive and replaces, never follows, an occupant', { skip: !canSymlink() && 'symlinks unavailable' }, () => {
+   163	  // (a) a symlink squatting on the manifest name points at a store file
+   164	  const root = bundleProject();
+   165	  const storeFile = path.join(root, 'apriori/specs/a/spec.md');
+   166	  fs.symlinkSync(storeFile, path.join(root, 'apriori/changes/c/archive-manifest.json'));
+   167	  const r = run(['archive', '--change', 'c', '--write'], root);
+   168	  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+   169	  assert.match(fs.readFileSync(storeFile, 'utf8'), /Alpha2/, 'the store file holds the merged store, nothing else was written through the link');
+   170	  assert.doesNotMatch(fs.readFileSync(storeFile, 'utf8'), /"manifest"/, 'the manifest never went through the symlink');
+   171	  const A = archivedDir(root);
+   172	  assert.ok(fs.lstatSync(path.join(A, 'archive-manifest.json')).isFile(), 'the published manifest is a regular file');
+   173	  assert.deepStrictEqual(readManifest(A).files, expectedFiles(A));
+   174	  // (b) a directory occupies the manifest name: publication fails, nothing else moves
+   175	  const root2 = bundleProject();
+   176	  const before = fs.readFileSync(path.join(root2, 'apriori/specs/a/spec.md'), 'utf8');
+   177	  fs.mkdirSync(path.join(root2, 'apriori/changes/c/archive-manifest.json'));
+   178	  const r2 = run(['archive', '--change', 'c', '--write'], root2);
+   179	  assert.strictEqual(r2.status, 1, r2.stdout + r2.stderr);
+   180	  assert.match(r2.stderr, /archive-manifest\.json/);
+   181	  assert.strictEqual(fs.readFileSync(path.join(root2, 'apriori/specs/a/spec.md'), 'utf8'), before, 'store untouched');
+   182	  assert.ok(fs.existsSync(path.join(root2, 'apriori/changes/c/requirement/req-v1.md')), 'bundle intact');
+   183	  assert.deepStrictEqual(fs.readdirSync(path.join(root2, 'apriori/changes/c')).filter((n) => n.includes('.tmp')), [], 'no temp left behind');
+   184	  fs.rmdirSync(path.join(root2, 'apriori/changes/c/archive-manifest.json'));
+   185	  const r3 = run(['archive', '--change', 'c', '--write'], root2);
+   186	  assert.strictEqual(r3.status, 0, r3.stdout + r3.stderr);
+   187	});
+   188	
+   189	test('AM-133 a symlinked bundle root is refused and an archived baseline stays intact', { skip: !canSymlink() && 'symlinks unavailable' }, () => {
+   190	  const root = archivedProject();
+   191	  const A = archivedDir(root);
+   192	  const manifestBefore = fs.readFileSync(path.join(A, 'archive-manifest.json'));
+   193	  // an alias at the in-flight path pointing at the archived bundle
+   194	  fs.symlinkSync(A, path.join(root, 'apriori/changes/c'));
+   195	  const r = run(['archive', '--change', 'c', '--write'], root);
+   196	  assert.notStrictEqual(r.status, 0);
+   197	  assert.match(r.stderr, /symbolic link|escapes|not a directory/i);
+   198	  assert.ok(fs.readFileSync(path.join(A, 'archive-manifest.json')).equals(manifestBefore), 'the archived manifest is byte-for-byte unchanged');
+   199	  assert.strictEqual(fs.readdirSync(A).filter((n) => n.includes('.tmp')).length, 0);
+   200	});
+   201	
+   202	test('AM-134 prototype-named files are files', () => {
+   203	  const root = bundleProject({
+   204	    'apriori/changes/c/__proto__': 'p', 'apriori/changes/c/constructor': 'c', 'apriori/changes/c/toString': 't',
+   205	  });
+   206	  const r = run(['archive', '--change', 'c', '--write'], root);
+   207	  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+   208	  const m = readManifest(archivedDir(root));
+   209	  for (const [n, c] of [['__proto__', 'p'], ['constructor', 'c'], ['toString', 't']]) {
+   210	    assert.ok(Object.prototype.hasOwnProperty.call(m.files, n), `${n} is listed`);
+   211	    assert.strictEqual(m.files[n], 'sha256:' + crypto.createHash('sha256').update(c).digest('hex'));
+   212	  }
+   213	});
+   214	
+   215	// ---- check: drift report ----
+   216	function archivedProject() {
+   217	  const root = bundleProject();
+   218	  const r = run(['archive', '--change', 'c', '--write'], root);
+   219	  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+   220	  return root;
+   221	}
+   222	
+   223	test('CK-19 drift is reported per bundle and does not change the exit code', () => {
+   224	  const root = archivedProject();
+   225	  const A = archivedDir(root);
+   226	  const clean = run(['check'], root);
+   227	  assert.strictEqual(clean.status, 0, clean.stdout + clean.stderr);
+   228	  assert.doesNotMatch(clean.stdout, /archive drift/);
+   229	  fs.writeFileSync(path.join(A, 'review', 'late-review-v9.md'), 'added later\n');
+   230	  fs.rmSync(path.join(A, 'requirement', 'req-v1.md'));
+   231	  fs.appendFileSync(path.join(A, 'requirement', 'empty.md'), 'not empty any more');
+   232	  const r = run(['check'], root);
+   233	  assert.strictEqual(r.status, 0, 'drift never fails check: ' + r.stdout + r.stderr);
+   234	  assert.match(r.stdout, new RegExp(`! archive drift: .*${path.basename(A)} \\+1 −1 ~1`));
+   235	  assert.match(r.stdout, /\+ review\/late-review-v9\.md/);
+   236	  assert.match(r.stdout, /− requirement\/req-v1\.md/);
+   237	  assert.match(r.stdout, /~ requirement\/empty\.md/);
+   238	  assert.match(r.stdout, /RESULT: PASS/);
+   239	  // an unrelated failure still fails as before, with the drift note beside it
+   240	  fs.writeFileSync(path.join(root, 'apriori/specs/a/spec.md'), STORE_A + '\n#### Scenario: no id here\n- t\n');
+   241	  const bad = run(['check'], root);
+   242	  assert.strictEqual(bad.status, 1);
+   243	  assert.match(bad.stdout, /archive drift/);
+   244	  assert.match(bad.stdout, /RESULT: FAIL/);
+   245	});
+   246	
+   247	test('CK-20 bundles without a baseline are summarised once, and a broken manifest is named', () => {
+   248	  const root = mkProject({ 'apriori/specs/a/spec.md': STORE_A });
+   249	  const arch = path.join(root, 'apriori/changes/archive');
+   250	  for (const n of ['2026-01-01T0000-old1', '2026-01-02T0000-old2', '2026-01-03T0000-old3']) {
+   251	    fs.mkdirSync(path.join(arch, n), { recursive: true }); fs.writeFileSync(path.join(arch, n, 'flow-state.md'), 'change: x\n');
+   252	  }
+   253	  fs.mkdirSync(path.join(arch, '2026-01-04T0000-broken'), { recursive: true });
+   254	  fs.writeFileSync(path.join(arch, '2026-01-04T0000-broken', 'archive-manifest.json'), '{ not json');
+   255	  const r = run(['check'], root);
+   256	  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+   257	  assert.strictEqual((r.stdout.match(/no baseline/g) || []).length, 1, 'exactly one no-baseline line');
+   258	  assert.match(r.stdout, /no baseline: 3 archived bundle\(s\) carry no manifest/);
+   259	  assert.match(r.stdout, /archive manifest unreadable: .*2026-01-04T0000-broken/);
+   260	  assert.match(r.stdout, /RESULT: PASS/);
+   261	  // no archive root at all → nothing to report
+   262	  const root2 = mkProject({ 'apriori/specs/a/spec.md': STORE_A });
+   263	  const r2 = run(['check'], root2);
+   264	  assert.strictEqual(r2.status, 0);
+   265	  assert.doesNotMatch(r2.stdout, /baseline|drift/);
+   266	});
+   267	
+   268	test('CK-21 identical content is not drift', () => {
+   269	  const root = archivedProject();
+   270	  const A = archivedDir(root);
+   271	  for (const [rel] of Object.entries(readManifest(A).files)) {
+   272	    const p = path.join(A, rel);
+   273	    if (fs.lstatSync(p).isSymbolicLink()) continue;
+   274	    const c = fs.readFileSync(p); fs.writeFileSync(p, c);                // new mtime, same bytes
+   275	    const t = new Date(Date.now() + 60_000); fs.utimesSync(p, t, t);
+   276	  }
+   277	  const r = run(['check'], root);
+   278	  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+   279	  assert.doesNotMatch(r.stdout, /archive drift/);
+   280	});
+   281	
+   282	test('CK-22 prototype-named files diff like any other, and a symlinked archive entry is named', () => {
+   283	  const root = bundleProject({ 'apriori/changes/c/__proto__': 'p', 'apriori/changes/c/constructor': 'c' });
+   284	  const r0 = run(['archive', '--change', 'c', '--write'], root);
+   285	  assert.strictEqual(r0.status, 0, r0.stdout + r0.stderr);
+   286	  const A = archivedDir(root);
+   287	  fs.rmSync(path.join(A, 'constructor'));
+   288	  if (canSymlink()) fs.symlinkSync(A, path.join(root, 'apriori/changes/archive/2026-01-01T0000-alias'));
+   289	  const r = run(['check'], root);
+   290	  assert.strictEqual(r.status, 0, r.stdout + r.stderr);
+   291	  assert.match(r.stdout, /archive drift: .* \+0 −1 ~0/);
+   292	  assert.match(r.stdout, /− constructor/);
+   293	  if (canSymlink()) assert.match(r.stdout, /archive entry is a symbolic link, not compared: .*2026-01-01T0000-alias/);
+   294	  assert.match(r.stdout, /RESULT: PASS/);
+   295	});
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 2f37cb3..1db0b4c 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -25,6 +25,29 @@ Known limitations, stated as they stand:
+ Later preview snapshots are cut from `release/v6` after v6-dev work merges back; fixes in flight
+ (authorization-scope, archive-manifest) are not part of this snapshot.
+ 
++## Unreleased — archive-manifest: an archive records what it contained, and check reports drift
++
++`apriori archive --write` now writes `archive-manifest.json` into the bundle — one sha256 per
++regular file (streamed; review raws included), symbolic links recorded as `link:<target>` and
++never followed, the manifest itself excluded — **inside the transaction, before the first store
++byte is staged**: if the manifest cannot be produced or written the run stops with nothing
++written, so no state exists in which stores were rewritten but the archive lacks its baseline.
++The move reuses the stamp the manifest recorded; a rerun after a failed move recomputes it.
++Dry-run counts the entries and writes nothing.
++
++`apriori check` (both modes) re-lists every archived bundle that carries a manifest and reports
++differences as `! archive drift: <dir> +added −removed ~modified` with one line per path —
++a **note, never a failure**: appending material to an archive is not always wrong, but it must be
++visible. Bundles without a manifest are summarised in one `no baseline` line (archived before
++manifests were written, or the manifest is gone — check cannot tell which and says so); an
++unparseable manifest is named. Content hashes, not mtimes, so a touched-but-identical file is
++not drift. Nothing repairs, rewrites or deletes a manifest; `status` is unchanged.
++
++Why: the archive is documented as a frozen snapshot, but a real project wrote eight review
++files into an archived bundle seven days after archiving with no trace (Claude × Astra
++consensus 2026-09-26, `DN-CONSENSUS` / `TT-CONSENSUS` in the lab). Scenarios AM-128..131,
++CK-19..21.
++
+ ## Unreleased — protocol-text-consistency: the descriptions catch up with the code
+ 
+ No obligation is added or removed. Sentences that still described retired mechanisms are
+diff --git a/docs/cli.md b/docs/cli.md
+index ffa0948..fd832f6 100644
+--- a/docs/cli.md
++++ b/docs/cli.md
+@@ -98,6 +98,8 @@ usage: apriori archive --store <f> --delta <f> --change <name> [--write] [--no-c
+ 
+ Example: `apriori archive --change add-playback --write`
+ 
++On `--write` the bundle gains `archive-manifest.json` — every file's sha256 (links recorded, not followed), written inside the transaction before the first store byte, so a failure leaves the store untouched. `apriori check` reads it back and reports later drift as a note.
++
+ **`--write` moves the bundle.** The high-level form's `--write` merges the stores AND moves the whole bundle to `<changes-dir>/archive/<stamp>-<change>/` — by default, exactly as declared (`change archived → …` on the MERGED line). `--changes-dir` is only a location override for a non-default changes root, never the move switch; a dry-run moves nothing and prints the declaration as a preview. A refused run (preflight, CAS, readiness) moves nothing, merges nothing and never prints the frozen declaration.
+ 
+ **The structural preflight (6.2).** Before anything is written — in dry-run and `--write` alike, in the single-file form too — every scenario the delta ADDS or MODIFIES (the change scope; a REMOVED or deprecated block is out of it) must carry one stable id that nothing else carries, under the controlled id matcher (`--id-pattern` / the config row / the default, batched through the terminable channel — never an in-process RegExp over a config pattern). Refused, listed per DELTA file:line, with `RESULT: FAILED PREFLIGHT — nothing written` (exit 1): a scenario with no bindable id (`kv/spec.md:8: scenario without a bindable id: '…' — this change adds or modifies it; give it a leading id`), an id introduced twice by this change (every line named), an id that collides with the store outside the blocks this change replaces (the store file named). A matcher that cannot run (an invalid or terminated config pattern) is a refusal too — `the structural check could not run — …` — never a skipped check. Historical debt outside the scope (an old store scenario with no id, an id the store already carries twice) is a note (`note: store debt outside this change (reported, not a block): …`), never a block on this change — `apriori check` still owns it. The binding of an identified scenario to a test stays advisory: a native test command with no scenario-named tests is legal. `verify --change` refuses the same projection the same way (`structural: …` errors, exit 2) before any test command runs, so `check → verify → gate → archive` can no longer archive a store that `check` then fails.
+@@ -178,7 +180,7 @@ In-flight C1 consumes the change-scoped verdict (detail `verify GREEN (in-flight
+ 
+ ## apriori check
+ 
+-structural consistency (scenario IDs bindable; `--self` adds the apriori repo's own handbook checks)
++structural consistency (scenario IDs bindable; `--self` adds the apriori repo's own handbook checks). Also reports, as `!` notes that never fail the run, any archived bundle whose content differs from its `archive-manifest.json` (`archive drift: <dir> +a −r ~m`), and one summary line for bundles that carry no manifest.
+ 
+ ```text
+ usage: apriori check [--specs <dir>] [--self]
+diff --git a/docs/cli_cn.md b/docs/cli_cn.md
+index 2e4eaf3..ee07c09 100644
+--- a/docs/cli_cn.md
++++ b/docs/cli_cn.md
+@@ -89,7 +89,7 @@ usage: apriori verify --specs <dir...> --test-cmd "<cmd>" [--id-pattern <re>] [-
+ 
+ ## apriori archive
+ 
+-把变更的增量规格并入 living 规格库;`--change` 自动发现整个变更,默认 dry-run,`--write` 失败原子地提交
++把变更的增量规格并入 living 规格库;`--change` 自动发现整个变更,默认 dry-run,`--write` 失败原子地提交。`--write` 时 bundle 内会写入 `archive-manifest.json`(每个文件的 sha256;符号链接只记录不跟随),写在事务内、store 第一个字节之前,失败则 store 不动;`apriori check` 会读它并把之后的漂移作为 note 报告。
+ 
+ ```text
+ usage: apriori archive --store <f> --delta <f> --change <name> [--write] [--no-cas]
+@@ -178,7 +178,7 @@ in-flight 的 C1 消费变更收窄 verdict(detail 为 `verify GREEN (in-flight,
+ 
+ ## apriori check
+ 
+-结构一致性(scenario ID 可绑定;`--self` 另跑 apriori 仓库自己的手册检查)
++结构一致性(scenario ID 可绑定;`--self` 另跑 apriori 仓库自己的手册检查)。另以 `!` note(永不使运行失败)报告内容与其 `archive-manifest.json` 不符的归档 bundle(`archive drift: <dir> +a −r ~m`),以及无清单 bundle 的一行汇总。
+ 
+ ```text
+ usage: apriori check [--specs <dir>] [--self]
+
+codex
+The bundle-root, prototype-key, retry, and rename-failure fixes are supported by the code and tests. I found a new publication risk: the fd writer calls `fs.writeSync` once and ignores its returned byte count, so a short write could publish truncated JSON before stores commit. AM-132 also checks the store only after the normal merge, which could conceal an earlier write through the symlink.
+exec
+/usr/bin/zsh -lc "node -e 'const s=process.binding(\"natives\").fs; for (const name of [\"function writeSync(\", \"function writeFileSync(\"]) { const start=s.indexOf(name); console.log(s.slice(start, s.indexOf(\"\\n}\", start)+2)); }'; nl -ba apriori/changes/archive-manifest/specs/archive-merge/spec.md | sed -n '24,47p'; sed -n '145,180p' test/archive-default-move.test.js; rg -n 'AM-38|ADM-07' test/archive*.test.js" in /root/terra/asd-v62-code
+ succeeded in 0ms:
+function writeSync(fd, buffer, offsetOrOptions, length, position) {
+  fd = getValidatedFd(fd);
+  const ctx = {};
+  let result;
+
+  let offset = offsetOrOptions;
+  if (isArrayBufferView(buffer)) {
+    if (typeof offset === 'object') {
+      ({
+        offset = 0,
+        length = buffer.byteLength - offset,
+        position = null,
+      } = offsetOrOptions ?? kEmptyObject);
+    }
+    if (position === undefined)
+      position = null;
+    if (offset == null) {
+      offset = 0;
+    } else {
+      validateInteger(offset, 'offset', 0);
+    }
+    if (typeof length !== 'number')
+      length = buffer.byteLength - offset;
+    validateOffsetLengthWrite(offset, length, buffer.byteLength);
+    result = binding.writeBuffer(fd, buffer, offset, length, position,
+                                 undefined, ctx);
+  } else {
+    validateStringAfterArrayBufferView(buffer, 'buffer');
+    validateEncoding(buffer, length);
+
+    if (offset === undefined)
+      offset = null;
+    result = binding.writeString(fd, buffer, offset, length,
+                                 undefined, ctx);
+  }
+  handleErrorFromBinding(ctx);
+  return result;
+}
+function writeFileSync(path, data, options) {
+  options = getOptions(options, {
+    encoding: 'utf8',
+    mode: 0o666,
+    flag: 'w',
+    flush: false,
+  });
+
+  const flush = options.flush ?? false;
+
+  validateBoolean(flush, 'options.flush');
+
+  const flag = options.flag || 'w';
+
+  // C++ fast path for string data and UTF8 encoding
+  if (typeof data === 'string' && (options.encoding === 'utf8' || options.encoding === 'utf-8')) {
+    if (!isInt32(path)) {
+      path = getValidatedPath(path);
+    }
+
+    return binding.writeFileUtf8(
+      path,
+      data,
+      stringToFlags(flag),
+      parseFileMode(options.mode, 'mode', 0o666),
+    );
+  }
+
+  if (!isArrayBufferView(data)) {
+    validateStringAfterArrayBufferView(data, 'data');
+    data = Buffer.from(data, options.encoding || 'utf8');
+  }
+
+  const isUserFd = isFd(path); // File descriptor ownership
+  const fd = isUserFd ? path : fs.openSync(path, flag, options.mode);
+
+  let offset = 0;
+  let length = data.byteLength;
+  try {
+    while (length > 0) {
+      const written = fs.writeSync(fd, data, offset, length);
+      offset += written;
+      length -= written;
+    }
+
+    if (flush) {
+      fs.fsyncSync(fd);
+    }
+  } finally {
+    if (!isUserFd) fs.closeSync(fd);
+  }
+}
+    24	- THEN `archive/<stamp>-<name>/archive-manifest.json` exists, its `stamp` equals the directory's stamp and its `change` the name, `files` carries every regular file's relative path with the sha256 of its content, excludes `archive-manifest.json` itself, and the report carries one line naming the manifest and its entry count; a dry-run of the same bundle writes no manifest and only reports the count
+    25	
+    26	#### Scenario: AM-129 a manifest failure leaves the store untouched
+    27	- WHEN producing the manifest fails — the injected hash reader throws for one file, and separately the injected write of the manifest fails
+    28	- THEN the run exits 1 naming the manifest, no store file is rewritten, no temp store file remains, the bundle stays in flight and intact, and a rerun with the fault removed archives normally
+    29	
+    30	#### Scenario: AM-130 a rerun after a failed move recomputes the manifest
+    31	- WHEN the store commit succeeds but the move is made to fail, an inventoried file is then changed, and the run is repeated without the fault
+    32	- THEN the archived bundle carries exactly one manifest whose entries match the bundle's final content — the changed file's new hash included, so the second run demonstrably recomputed rather than reused the first manifest (which is never listed in itself)
+    33	
+    34	#### Scenario: AM-132 publication is exclusive and replaces, never follows, an occupant
+    35	- WHEN a symbolic link named `archive-manifest.json` pointing at a store file sits in the bundle, and separately a directory occupies that name
+    36	- THEN the first archives with the store file byte-identical and the archived manifest a regular file; the second fails the run naming the manifest with the store untouched, no temp left behind and the bundle intact, and archives normally once the occupant is removed
+    37	
+    38	#### Scenario: AM-133 a symlinked bundle root is refused and an archived baseline stays intact
+    39	- WHEN `changes/<name>` is a symbolic link to an already archived bundle that carries a manifest
+    40	- THEN `archive --write` refuses before writing anything, naming the link, and the archived manifest is byte-for-byte unchanged
+    41	
+    42	#### Scenario: AM-134 prototype-named files are files
+    43	- WHEN the bundle holds regular files named `__proto__`, `constructor` and `toString`
+    44	- THEN all three are listed in the manifest with their hashes
+    45	
+    46	#### Scenario: AM-131 links are recorded, never followed
+    47	- WHEN the bundle contains a symbolic link (to a file inside and, separately, to a file outside the bundle) beside regular files
+  const root = project(ADD_A);
+  const before = store(root);
+  const ops = {
+    // the STAGE step is what fails here: the store temps. The manifest (archive-manifest,
+    // written before staging through the same seam) must succeed for this scenario to be reached.
+    writeFileSync: (p, ...rest) => {
+      if (String(p).endsWith('.tmp-archive')) throw new Error('injected stage failure');
+      return fs.writeFileSync(p, ...rest);
+    },
+    renameSync: fs.renameSync.bind(fs), rmSync: fs.rmSync.bind(fs),
+  };
+  const r = am.archiveChange({ cwd: root, change: 'c', write: true, noCas: true, ops });
+  const out = r.out.join('\n'), err = r.err.join('\n');
+  assert.strictEqual(r.code, 1, out + err);
+  assert.match(err, /staging failed \(injected stage failure\)/);
+  assert.doesNotMatch(out, /ARCHIVE DECLARES/, 'a failed run carried the frozen declaration');
+  assert.doesNotMatch(out, /RESULT: MERGED/);
+  assert.strictEqual(store(root), before, 'the store must be untouched');
+  assert.ok(fs.existsSync(active(root)), 'the active bundle must stay in place');
+  assert.deepStrictEqual(archiveDirs(root), [], 'no archive entry may appear');
+  assert.ok(!fs.existsSync(path.join(root, 'apriori', 'specs', 'a', 'spec.md.tmp-archive')),
+    'this run\'s temp files are removed on stage failure');
+});
+
+test('ADM-07 commit failure: diagnosis names the temp for recovery, no frozen declaration', () => {
+  const root = project(ADD_A);
+  const before = store(root);
+  const ops = {
+    writeFileSync: fs.writeFileSync.bind(fs), rmSync: fs.rmSync.bind(fs),
+    renameSync: () => { throw new Error('injected commit failure'); },
+  };
+  const r = am.archiveChange({ cwd: root, change: 'c', write: true, noCas: true, ops });
+  const out = r.out.join('\n'), err = r.err.join('\n');
+  assert.strictEqual(r.code, 1, out + err);
+  assert.match(err, /COMMIT FAILED at a\/spec\.md \(injected commit failure\)/);
+  assert.match(err, /temp files remaining for manual completion/);
+test/archive-change.test.js:581:test('AM-38 move failure keeps the bundle intact and rerunnable', () => {
+test/archive-default-move.test.js:169:test('ADM-07 commit failure: diagnosis names the temp for recovery, no frozen declaration', () => {
+
+codex
+<!-- provenance: provider=openai model=gpt-6 session=unknown date=2026-09-26 -->
+
+Round 2 independent review. Intended path: `apriori/changes/archive-manifest/review/code-review-v2.md`. Read-only sandbox: supplied for verbatim landing.
+
+Two substantive issues remain.
+
+1. **P1 — Short writes can publish an incomplete manifest and allow store commits.**  
+   [lib/manifest.js:80](/root/terra/asd-v62-code/lib/manifest.js:80) calls `fs.writeSync` once and ignores its returned byte count. A successful short write—for example when storage fills partway through—therefore proceeds to close and rename the truncated JSON, after which `archiveChange` commits stores.
+
+   This violates the requirement that manifest-production failure prevent store writes. The installed Node implementation confirms that `writeSync` returns the underlying write count; it does not implement the complete-write loop.
+
+   **Suggested fix:** write all serialized bytes through the owned descriptor, handling partial writes and failing on incomplete progress before publication. Add archive-entry-point evidence for a short write followed by failure: stores unchanged, no partial manifest published, and owned temp cleaned up. AM-129 currently injects failure at exclusive creation, before any bytes are written, so it cannot catch this regression.
+
+2. **P2 — AM-132 does not prove its claimed store-preservation behavior.**  
+   [test/archive-manifest.test.js:169](/root/terra/asd-v62-code/test/archive-manifest.test.js:169) checks only that the final store contains `Alpha2` and lacks `"manifest"`. The normal store commit occurs after manifest publication and could overwrite evidence of an earlier write through the link. These assertions therefore do not establish that publication never touched the target.
+
+   The [AM-132 contract:36](/root/terra/asd-v62-code/apriori/changes/archive-manifest/specs/archive-merge/spec.md:36) explicitly requires a byte-identical target, but this fixture intentionally merges changes into that same store. The directory-occupant branch correctly tests rename failure, but cannot establish the separate symlink-target guarantee.
+
+   **Suggested fix:** point the occupant symlink at a store file outside the merge jobs and assert exact before/after bytes, or inspect the target before staging begins. Retain the regular-file publication assertion. This closes the remaining evidence gap from round 1; the current exclusive-create/rename implementation itself addresses the original write-through defect.
+
+The other round-1 findings are resolved in the inspected code and assertions:
+
+- Unique exclusive creation and owned cleanup replace the unsafe fixed temp; unrelated temp-like names are no longer globally excluded.
+- The bundle-root `lstat` guard prevents the archived-bundle alias case; AM-133 checks refusal and unchanged archived manifest bytes.
+- Null-prototype inventories and own-property comparisons fix special filenames; AM-134 and CK-22 exercise them.
+- AM-130 now changes content between attempts and asserts both the new hash and its difference from the original. AM-132’s directory occupant supplies real publication-rename failure coverage without changing the existing store/move injection seams.
+
+Examined: current status/diff, deltas, flow-state, requested gate output, manifest publication and cleanup, symlink boundaries, retry behavior, filename handling, drift exit-code separation, retained declaration scenarios, and affected test assertions. No scope expansion or approach-level reason to split was found.
+
+Not dynamically examined: filesystem faults, concurrent replacement races, Windows behavior, or crash durability. No tests or builds were run; the supplied 841/841 result was not independently reproduced. Gate remains blocked on the unresolved review round, as expected. No prohibited files or raw transcripts were read. No separate advisories.
+
+VERDICT: 2 issues open
+tokens used
+74,326
+<!-- provenance: provider=openai model=gpt-6 session=unknown date=2026-09-26 -->
+
+Round 2 independent review. Intended path: `apriori/changes/archive-manifest/review/code-review-v2.md`. Read-only sandbox: supplied for verbatim landing.
+
+Two substantive issues remain.
+
+1. **P1 — Short writes can publish an incomplete manifest and allow store commits.**  
+   [lib/manifest.js:80](/root/terra/asd-v62-code/lib/manifest.js:80) calls `fs.writeSync` once and ignores its returned byte count. A successful short write—for example when storage fills partway through—therefore proceeds to close and rename the truncated JSON, after which `archiveChange` commits stores.
+
+   This violates the requirement that manifest-production failure prevent store writes. The installed Node implementation confirms that `writeSync` returns the underlying write count; it does not implement the complete-write loop.
+
+   **Suggested fix:** write all serialized bytes through the owned descriptor, handling partial writes and failing on incomplete progress before publication. Add archive-entry-point evidence for a short write followed by failure: stores unchanged, no partial manifest published, and owned temp cleaned up. AM-129 currently injects failure at exclusive creation, before any bytes are written, so it cannot catch this regression.
+
+2. **P2 — AM-132 does not prove its claimed store-preservation behavior.**  
+   [test/archive-manifest.test.js:169](/root/terra/asd-v62-code/test/archive-manifest.test.js:169) checks only that the final store contains `Alpha2` and lacks `"manifest"`. The normal store commit occurs after manifest publication and could overwrite evidence of an earlier write through the link. These assertions therefore do not establish that publication never touched the target.
+
+   The [AM-132 contract:36](/root/terra/asd-v62-code/apriori/changes/archive-manifest/specs/archive-merge/spec.md:36) explicitly requires a byte-identical target, but this fixture intentionally merges changes into that same store. The directory-occupant branch correctly tests rename failure, but cannot establish the separate symlink-target guarantee.
+
+   **Suggested fix:** point the occupant symlink at a store file outside the merge jobs and assert exact before/after bytes, or inspect the target before staging begins. Retain the regular-file publication assertion. This closes the remaining evidence gap from round 1; the current exclusive-create/rename implementation itself addresses the original write-through defect.
+
+The other round-1 findings are resolved in the inspected code and assertions:
+
+- Unique exclusive creation and owned cleanup replace the unsafe fixed temp; unrelated temp-like names are no longer globally excluded.
+- The bundle-root `lstat` guard prevents the archived-bundle alias case; AM-133 checks refusal and unchanged archived manifest bytes.
+- Null-prototype inventories and own-property comparisons fix special filenames; AM-134 and CK-22 exercise them.
+- AM-130 now changes content between attempts and asserts both the new hash and its difference from the original. AM-132’s directory occupant supplies real publication-rename failure coverage without changing the existing store/move injection seams.
+
+Examined: current status/diff, deltas, flow-state, requested gate output, manifest publication and cleanup, symlink boundaries, retry behavior, filename handling, drift exit-code separation, retained declaration scenarios, and affected test assertions. No scope expansion or approach-level reason to split was found.
+
+Not dynamically examined: filesystem faults, concurrent replacement races, Windows behavior, or crash durability. No tests or builds were run; the supplied 841/841 result was not independently reproduced. Gate remains blocked on the unresolved review round, as expected. No prohibited files or raw transcripts were read. No separate advisories.
+
+VERDICT: 2 issues open

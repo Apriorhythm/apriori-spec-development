@@ -1,0 +1,648 @@
+OpenAI Codex v0.155.1
+--------
+workdir: /root/terra/wt-e
+model: gpt-6-astra
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: medium
+reasoning summaries: none
+session id: 01a0dff1-8b1b-7a72-9784-a019b75c5c5d
+--------
+user
+Round 2 (change status-last-recorded, still on feature/status-last-recorded; re-run `git diff v6-dev...HEAD` and `git diff`). Scope of this round (RUNBOOK §4 Review & Deliver, "A later round is scoped to what changed"): judge each finding still open from round 1 as ADDRESSED or NOT ADDRESSED, and review the fix diff together with what it affects (callers, shared state, tests; not trimmed to the edited lines); a new finding outside that diff still counts when it violates the current contract or a safety constraint; anything else is advisory.
+Producer answers. Finding 1: lib/flow.js lastRecorded no longer applies DATED_RE; it reads only the first token of the entry's first line against RECORDED_RE, so `- 2026-09-27T11:00` followed by `owner: evidence-accept X — reason` on the continuation line counts (the test also asserts the owner reader joins that entry), and a bare `- 2026-09-28` counts; lastGate / DATED_RE are untouched. Finding 2: lib/status.js formatOne builds the last-recorded line once and prints it on every successful detail path — the in-flight leftover-lane view and the archived hotfix-lane record (both `unknown (no flow-state)`, beside their own migration / history messages) and the no-flow-state branch — as well as the normal view. New test "ST-42 a leftover lane bundle's detail view …" covers both lane shapes plus the JSON object. Delta requirement + ST-42 THEN and both docs editions say the same. Round-1 review landed as review/code-review-v1.md. Tests 857/857, verify GREEN, check --self PASS. End with one verdict line from §5.
+codex
+I’ll check both round-1 findings against the current diff, then review the affected parser, detail-view paths, and tests. I’ll provide the round-2 report for landing through the same read-only handoff.
+
+exec
+/usr/bin/zsh -lc 'git status --short; git diff --stat v6-dev...HEAD; git diff v6-dev...HEAD -- lib/flow.js lib/status.js test/status-last-recorded.test.js; git diff -- lib/flow.js lib/status.js test/status-last-recorded.test.js apriori/changes/status-last-recorded/specs/status/spec.md docs/cli.md docs/cli_cn.md' in /root/terra/wt-e
+ succeeded in 0ms:
+ M CHANGELOG.md
+ M docs/cli.md
+ M docs/cli_cn.md
+ M lib/flow.js
+ M lib/status.js
+ M test/accept-r1-contracts.test.js
+ M test/accept-r2.test.js
+ M test/json-contracts.test.js
+?? apriori/changes/status-last-recorded/
+?? test/status-last-recorded.test.js
+diff --git a/docs/cli.md b/docs/cli.md
+index fd832f6..caaa843 100644
+--- a/docs/cli.md
++++ b/docs/cli.md
+@@ -62,6 +62,8 @@ Exit: 0 on success paths (status reports, never gates) — except `--escalation`
+ 
+ **The one state, read back.** `--change` reports what the flow-state carries: `phase`; `reality` — the `## Reality Check` split into `observed` / `decision` / `assumption` plus any entry naming no kind (reported as unreadable, never dropped); `openIssues` — the `## Open` lines, raw; `openItems` — the same lines parsed as `{id, text, accepted, acceptedAt}` (6.2: `id` is the token before the colon, `null` when the line carries none; `accepted` is true when the owner's `evidence-accept <id>` is on record, and `acceptedAt` is that entry's stamp as written — verbatim, never normalized); `evidence` — legacy `## Evidence` rows only (`{rows, blocked, recorded}`, all empty when the section is gone); `next` — the `## Next` actions, of which the state carries at most three (a longer list prints the first three and says how many there were). (`delivery` stays in the JSON for one version, always `null` — the field is retired, see MIGRATING.) Every unverified `assumption` gets its own line: it is the one Reality Check kind that still owes something.
+ 
++**When the change last recorded something.** Every change view carries `lastRecorded: {at, source: 'gates', reason}`. `at` is the latest date the change's own `gates:` log carries, whatever order the entries were written in: an entry counts when its first token opens with a range-checked `YYYY-MM-DD` (month 01-12, day 01-31, no calendar), a readable `THH:MM` or `THHMM` right after it (hour 00-23, minute 00-59) adds the minute (`at` is then `YYYY-MM-DDTHH:MM`), and any other suffix leaves the day; fenced or commented entries are inert, and a date anywhere else in the file never counts. With no counting entry `at` is `null` and `reason` says why — `no dated entry` or `no flow-state`; the error view carries `lastRecorded: null`. The list prints it on every line (`last recorded in gates: …`, followed by one line naming the source) and every successful `--change` view on its own `last recorded:` line (a leftover hotfix-lane bundle reads `unknown (no flow-state)`). Only an entry's first token is read, so an entry whose payload sits on its continuation line still counts. It is what the log's writers recorded, not proof of activity: status computes no age, compares nothing with the clock and labels nothing stale. `lastGate` (the `last decision:` line) keeps its meaning — the textually last dated entry.
++
+ **`--escalation` is the hard stop, and escalation is DERIVED (6.2): stage × decision status.** Every escalation of a change is in one of three states. **`pending`** — the bundle is active and nobody answered: a review family still revising at its review-round limit (`review-round-limit`, default 7) or with a `VERDICT: escalate` and no `reframe` on record, everything gate C9 / archive R5 refuse on (a pending open item, an item without an id, a standing assumption, a legacy blocked row, an unreadable delta, a structural defect), a legacy ledger still carrying open rows (its migration refusal, see C3), and a leftover hand-written `escalation:` field still carrying content (its migration refusal — see below). These print as `ESCALATION: …` and the command exits **3**; a pending open item IS the owner's control point — R1's "critical evidence blocked, a pending item" — so it belongs here until the owner accepts it or the producer closes it. **`acknowledged`** — the owner's `reframe` is on record: printed as `acknowledged: … — owner decision on record: <exit>`, never removed from the report, and not a reason to wait on a human by itself (gate C8 / archive R4 still judge convergence on their own terms — only `accept-risk` closes the floor, and archive still wants `--force`). **`historical`** — the bundle is ARCHIVED: its escalations and its declared field print as `historical: … (archived history)`, its state findings as `recorded, not re-judged`, its deltas are not re-scanned — a frozen record is reported, never turned into a debt somebody is asked to pay; evidence corruption in an archive is still an error at C5/C8. Exit **0** when nothing is pending (`ESCALATION: none`). `--json` gives `{change, escalations: [pending…], acknowledged: […], historical: […]}` — `escalations` is the list a Stop hook reads. That exit code is the whole mechanism: wire it into a Stop hook or a CI step if you want one. This repository ships no hook of its own.
+ 
+ **The `escalation:` field is retired.** Absent, `none` or `n/a` is fine. Any other content in an ACTIVE bundle is a pending decision the machine has no reading for, and it may neither be echoed as decoration nor dropped: gate C3, archive R1 and `--review-ready` refuse with `escalation: carries a pending decision ('…') — move it to ## Open as \`- <ID>: …\` (or record the owner's reframe if it answers a review round), then delete the field`, and `--escalation` exits 3 on the same words until the migration is done. In an archived bundle the field is history. `apriori new` no longer writes it.
+diff --git a/docs/cli_cn.md b/docs/cli_cn.md
+index ee07c09..64fc70b 100644
+--- a/docs/cli_cn.md
++++ b/docs/cli_cn.md
+@@ -62,6 +62,8 @@ usage: apriori status [--change <name>] [--json] [--escalation]
+ 
+ **唯一状态,原样读回。** `--change` 汇报 flow-state 承载的内容:`phase`;`reality` —— `## Reality Check` 按 `observed` / `decision` / `assumption` 拆开,外加任何没有点明类别的条目(报为不可读,绝不静默丢弃);`openIssues` —— `## Open` 各行原文;`openItems` —— 同样的行解析成 `{id, text, accepted, acceptedAt}`(6.2:`id` 是冒号前的那个 token,行里没有时为 `null`;所有者的 `evidence-accept <id>` 在案时 `accepted` 为 true,`acceptedAt` 是那条记录的时间戳,按原文照抄、绝不规范化);`evidence` —— 只承载遗留的 `## Evidence` 行(`{rows, blocked, recorded}`,该段不存在时全空);`next` —— `## Next` 动作,状态最多承载三条(超出时打印前三条并说明原本有几条)。(`delivery` 键在 JSON 里保留一版、恒为 `null`——该字段已退役,见 MIGRATING。)每条未证实的 `assumption` 单独占一行:它是 Reality Check 里唯一还欠着东西的那一类。
+ 
++**这个 change 最后一次记录是什么时候。** 每个 change 视图都带 `lastRecorded: {at, source: 'gates', reason}`。`at` 是这个 change 自己的 `gates:` 日志里最晚的日期,不管条目按什么顺序写:条目的第一个词以范围校验过的 `YYYY-MM-DD` 开头才计入(月 01–12、日 01–31,不查日历),紧跟其后的 `THH:MM` 或 `THHMM` 可读(时 00–23、分 00–59)就精确到分钟(此时 `at` 为 `YYYY-MM-DDTHH:MM`),其他后缀只保留到日;围栏代码或注释里的条目不计入,文件里别处出现的日期也从不计入。没有可计入的条目时 `at` 为 `null`,`reason` 说明原因——`no dated entry` 或 `no flow-state`;错误视图带 `lastRecorded: null`。列表每行都打印它(`last recorded in gates: …`,列表后再加一行说明来源),每个成功的 `--change` 视图单独打印一行 `last recorded:`(遗留的 hotfix 通道 bundle 显示 `unknown (no flow-state)`)。只读条目的第一个词,所以正文写在续行上的条目照样计入。它是写日志的人记下的时间,不是活动证明:status 不算天数、不与当前时钟比较、不给任何 change 标停滞。`lastGate`(即 `last decision:` 行)含义不变——文本上最后一条带日期的条目。
++
+ **`--escalation` 就是硬停,而 escalation 是**派生**的(6.2):阶段 × 决定状态。** 一个 change 的每条 escalation 处于三种状态之一。**`pending`**——bundle 活动且无人作答:到了评审轮次上限(`review-round-limit`,默认 7)仍在修订、或给出 `VERDICT: escalate`,而 `gates:` 里没有 `reframe` 的评审 family、gate C9 / archive R5 拒绝的一切(pending 的 open 条目、没有 id 的条目、悬着的 assumption、遗留的 blocked 行、读不出的增量、结构缺陷)、仍有 open 行的遗留台账(它的迁移拒绝,见 C3)、以及仍带内容的遗留手写 `escalation:` 字段(它的迁移拒绝,见下)。这些打印为 `ESCALATION: …`,命令以 **3** 退出;pending 的 open 条目**就是**所有者的控制点——R1 的"关键证据仍为 blocked"——所以它属于这个通道,直到所有者接受它或生产方关闭它。**`acknowledged`**——所有者的 `reframe` 已在案:打印为 `acknowledged: … — owner decision on record: <出口>`,永远不会从报告里消失,但它本身不是等人的理由(gate C8 / archive R4 仍各自判定收敛——只有 `accept-risk` 关闭底线,archive 仍要 `--force`)。**`historical`**——bundle 已**归档**:它的 escalation 与声明的字段打印为 `historical: … (archived history)`,状态结论打印为 `recorded, not re-judged`,增量不再重新扫描——冻结的记录只作汇报,绝不变成一笔要人去还的债;归档里的证据损坏仍在 C5/C8 报错。无 pending 时打印 `ESCALATION: none` 并以 **0** 退出。`--json` 给出 `{change, escalations: [pending…], acknowledged: […], historical: […]}`——`escalations` 是 Stop hook 读的那个列表。这个退出码就是全部机制:想要 Stop hook 或 CI 就接它。本仓库不自带任何 hook。
+ 
+ **`escalation:` 字段已退役。** 缺失、`none` 或 `n/a` 都可以。活动 bundle 里的任何其他内容都是机器读不出的待决事项,既不能当装饰回显,也不能丢掉:gate C3、archive R1 与 `--review-ready` 以 `escalation: carries a pending decision ('…') — move it to ## Open as \`- <ID>: …\` (or record the owner's reframe if it answers a review round), then delete the field` 拒绝,`--escalation` 在迁移完成前以同样的话以 3 退出。归档 bundle 里的该字段只是历史。`apriori new` 不再写它。
+diff --git a/lib/flow.js b/lib/flow.js
+index 7babf23..12ca02e 100644
+--- a/lib/flow.js
++++ b/lib/flow.js
+@@ -238,6 +238,35 @@ function parseFlowState(text) {
+   return out;
+ }
+ 
++// THE LAST RECORDED TIME of a state — the latest date its own `gates:` log carries, read through
++// the same structured pass as every other gates reader (fenced code and HTML comments are inert).
++// An entry counts when its FIRST token opens with a range-checked `YYYY-MM-DD` (month 01-12, day
++// 01-31 — the owner-entry rule: no calendar); a readable `THH:MM` / `THHMM` right after it (hour
++// 00-23, minute 00-59) adds the minute, any other suffix (`T22:0x`, `T夜`) leaves the day. The
++// latest by that normalized text wins (a day-only entry sorts before a timed one of the same day)
++// WHATEVER ORDER the entries were written in: the log is append-only by rule, real logs are not
++// always appended in order, and `lastGate` above keeps its own meaning (the textually last entry).
++// The producer writes these stamps: this is a record, never proof of activity, and nothing here
++// compares it with the clock. Only the first token is read: an entry whose payload sits on its
++// continuation line (`- 2026-09-27T11:00` then `owner: …`) is still an entry of that time — the
++// same line gatesEntries joins for the owner-decision reader (review round 1, finding 1).
++// -> 'YYYY-MM-DDTHH:MM' | 'YYYY-MM-DD' | null
++const RECORDED_RE = /^(\d{4})-(\d{2})-(\d{2})(\S*)$/;
++function lastRecorded(text) {
++  let latest = null;
++  for (const e of gatesEntries(text)) {
++    const m = RECORDED_RE.exec(e.firstLine.replace(/^\s*-\s*/, '').trim().split(/\s+/)[0]);
++    if (!m) continue;
++    const [, y, mo, d, rest] = m;
++    if (+mo < 1 || +mo > 12 || +d < 1 || +d > 31) continue;
++    let at = `${y}-${mo}-${d}`;
++    const t = /^T(\d{2}):?(\d{2})$/.exec(rest);
++    if (t && +t[1] <= 23 && +t[2] <= 59) at += `T${t[1]}:${t[2]}`;
++    if (latest === null || at > latest) latest = at;
++  }
++  return latest;
++}
++
+ // every structural defect of a state text, each naming its line — [] for a legal file
+ function structuralDefects(text) { return parseFlowState(text).defects; }
+ 
+@@ -248,4 +277,4 @@ function legacyKeys(text) {
+   return LEGACY_IDENTITY.filter((k) => st.scalars.has(k));
+ }
+ 
+-module.exports = { scan, structure, sectionItems, gatesEntries, ownerEntry, stampInRange, realityCheck, parseFlowState, structuralDefects, legacyKeys, FACT_KINDS, LEGACY_IDENTITY };
++module.exports = { scan, structure, sectionItems, gatesEntries, ownerEntry, stampInRange, lastRecorded, realityCheck, parseFlowState, structuralDefects, legacyKeys, FACT_KINDS, LEGACY_IDENTITY };
+diff --git a/lib/status.js b/lib/status.js
+index e041034..2119f19 100644
+--- a/lib/status.js
++++ b/lib/status.js
+@@ -14,7 +14,7 @@ const { resolveChange, fileReadDefect, validateChangeName } = require('./resolve
+ // gates block and the structural defects all come from it, so the Reality Check, the open items
+ // and the next actions can never be parsed three slightly different ways. Re-exported here for
+ // every consumer that has always read them off `status`.
+-const { parseFlowState, sectionItems, realityCheck } = require('./flow');
++const { parseFlowState, sectionItems, realityCheck, lastRecorded } = require('./flow');
+ 
+ const MAX_NEXT = 3;                 // blueprint §8: the state carries at most three next steps
+ 
+@@ -85,7 +85,11 @@ function changeStatus(root, change, dir, stage) {
+   // `evidence` carries only the LEGACY-row information (6.2): the rows, and the blockers they raise
+   const evidence = !found ? { rows: [], blockers: [], recorded: [] }
+     : { rows: found.legacy.rows, blockers: archived ? [] : found.legacy.blockers, recorded: archived ? found.legacy.blockers : [] };
+-  return { change, state, hasFlowState: !!state, hotfix, legacy, loop, reviewDefect, signals, migrations,
++  // when this change's own gates: log last recorded something — the latest date it carries
++  // (lib/flow.js lastRecorded), self-recorded, never an activity proof or a staleness verdict
++  const at = flowText !== null ? lastRecorded(flowText) : null;
++  const recorded = { at, source: 'gates', reason: at ? null : (flowText !== null ? 'no dated entry' : 'no flow-state') };
++  return { change, state, hasFlowState: !!state, hotfix, legacy, loop, reviewDefect, signals, migrations, lastRecorded: recorded,
+     items: found ? found.items : [], notes: found ? found.notes : [],
+     blockers: found && !archived ? found.blockers : [], recorded: found && archived ? found.blockers : [],
+     evidence, stage: st, path: path.relative(root, bundle) };
+@@ -117,22 +121,32 @@ function guardedResolve(root, change) {
+   return loc;
+ }
+ 
++// the last-recorded line — on EVERY successful detail path, the leftover-lane and no-flow-state
++// ones included (there it reads unknown (no flow-state)), so the time and its source are never
++// silently missing from one view while the list and the JSON carry them (review round 1, finding 2)
++const lastRecordedLine = (lr) => lr
++  ? `last recorded: ${lr.at || `unknown (${lr.reason})`}   (the latest date in this change's gates: log — self-recorded, not proof of activity)`
++  : null;
++
+ function formatOne(s) {
+   const lines = [];
++  const lrLine = lastRecordedLine(s.lastRecorded);
+   if (s.hotfix && !s.state) {
+     // same stage rule as gate: an archived record is frozen history and is never handed a
+     // write-back instruction; only an in-flight leftover has anything left to migrate.
+     if (s.stage === 'archived') {
+       lines.push(`change:       ${s.change}   (archived hotfix-lane record)`);
+       lines.push('note:         frozen history from the lane retired in 6.0 — read-only, nothing to migrate');
++      if (lrLine) lines.push(lrLine);
+       return lines.join('\n');
+     }
+     lines.push(`change:       ${s.change}   (leftover hotfix-state.md, no flow-state)`);
+     lines.push('migration:    the hotfix lane was removed in 6.0 — convert this to a change');
+     lines.push(`              (\`apriori new ${s.change}\`) or finish it with apriori-cli 5.x`);
++    if (lrLine) lines.push(lrLine);
+     return lines.join('\n');
+   }
+-  if (!s.state) { lines.push(`change: ${s.change} (no flow-state file found)`); }
++  if (!s.state) { lines.push(`change: ${s.change} (no flow-state file found)`); if (lrLine) lines.push(lrLine); }
+   else {
+     lines.push(`change:       ${s.state.change || s.change}` + (s.stage === 'archived' ? '   (archived)' : ''));
+     // `mode:` is optional and inert (6.2): echoed when present, nothing derived from it
+@@ -154,6 +168,7 @@ function formatOne(s) {
+     const next = s.state.next || [];
+     next.slice(0, MAX_NEXT).forEach((n, i) => lines.push(`next ${i + 1}:       ${n}`));
+     if (next.length > MAX_NEXT) lines.push(`next:         ${next.length} actions listed — the state carries at most ${MAX_NEXT}`);
++    if (lrLine) lines.push(lrLine);
+     if (s.state.lastGate) lines.push(`last decision: ${s.state.lastGate}`);
+   }
+   for (const r of s.evidence.rows) lines.push(`evidence:     ${r.name}: ${r.status}${r.detail ? ` — ${r.detail}` : ''}   (legacy ## Evidence, ignored)`);
+@@ -251,6 +266,9 @@ function toJson(s) {
+     // and the same recorded on an archived bundle — `{rows:[], blocked:[], recorded:[]}` when none
+     evidence: { rows: s.evidence.rows, blocked: s.evidence.blockers, recorded: s.evidence.recorded },
+     lastGate: s.state ? s.state.lastGate : null,
++    // {at, source: 'gates', reason}: the latest date this change's own gates: log carries, or null
++    // with the reason — self-recorded, never an activity proof; no age is computed anywhere
++    lastRecorded: s.lastRecorded,
+     hasFlowState: s.hasFlowState,
+     hotfix: !!s.hotfix,
+     openLedger: [],                       // 6.2: the ledger is never read; the key stays for shape compatibility
+@@ -290,7 +308,7 @@ const USAGE = 'usage: apriori status [--change <name>] [--json] [--escalation]';
+ const emptyChangeView = (change, errors) => ({
+   change, phase: null, mode: null, effectiveMode: null, risk: [], legacyIdentity: null, migrations: [], lineage: null,
+   reality: null, openIssues: [], openItems: [], next: [], delivery: null,
+-  evidence: { rows: [], blocked: [], recorded: [] }, lastGate: null, hasFlowState: false, hotfix: false, openLedger: [],
++  evidence: { rows: [], blocked: [], recorded: [] }, lastGate: null, lastRecorded: null, hasFlowState: false, hotfix: false, openLedger: [],
+   review: null, escalation: null, escalations: [], acknowledged: [], historical: [], stage: null, path: null, errors });
+ const escalationView = (change, st, errors) => ({ change, escalations: st.pending, acknowledged: st.acknowledged, historical: st.historical, errors });
+ const listView = (changes, errors) => ({ changes, errors });
+@@ -347,9 +365,11 @@ function cli(argv) {
+     for (const c of changes) {
+       const s = changeStatus(root, c);
+       const phase = s.hotfix && !s.state ? 'leftover lane bundle — migrate' : s.state ? s.state.phase || '?' : 'no flow-state';
+-      console.log(`  ${c}  —  ${phase}, ${s.items.length} open`);
++      const lr = s.lastRecorded;
++      console.log(`  ${c}  —  ${phase}, ${s.items.length} open, last recorded in gates: ${lr.at || `unknown (${lr.reason})`}`);
+     }
+-    console.log('\nRun `apriori status --change <name>` for detail.');
++    console.log('\n"last recorded" is the latest date in each change\'s own gates: log — written by whoever works on the change, not proof of activity.');
++    console.log('Run `apriori status --change <name>` for detail.');
+     return 0;
+   });
+ }
+
+exec
+/usr/bin/zsh -lc "cat test/status-last-recorded.test.js; cat apriori/changes/status-last-recorded/specs/status/spec.md; cat apriori/changes/status-last-recorded/flow-state.md; git diff -- CHANGELOG.md test/accept-r1-contracts.test.js test/accept-r2.test.js test/json-contracts.test.js; sed -n '185,240p' lib/flow.js; sed -n '94,122p' lib/status.js; sed -n '325,363p' lib/status.js" in /root/terra/wt-e
+ succeeded in 0ms:
+'use strict';
+// status-last-recorded — ST-41 (the list shows each change's last recorded time: the latest date
+// its own gates: log carries, whatever order the entries were written in; unknown says why; the
+// source is named and nothing judges staleness), ST-42 (--change prints the same time on its own
+// line; lastGate / `last decision:` keep their meaning), ST-43 (--json carries lastRecorded in
+// every change view; the error view carries null; no age or staleness field).
+const { test } = require('node:test');
+const assert = require('node:assert');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
+const flow = require('../lib/flow');
+
+const BIN = path.join(__dirname, '..', 'bin', 'apriori.js');
+const run = (args, cwd) => spawnSync('node', [BIN, ...args], { encoding: 'utf8', cwd });
+
+const state = (name, gates, extra = '') => `change: ${name}
+phase: build
+
+## Reality Check
+- observed: a fact read 2026-12-01T00:00 — a date outside gates: never counts
+
+## Open
+
+## Next
+- by 2026-12-02 do the next thing
+${extra}
+gates:
+${gates}`;
+
+const CHANGES = {
+  inorder: state('inorder', '  - 2026-09-01T10:00 note: scaffolded\n  - 2026-09-02T11:30 note: specify done\n'),
+  // real logs are not always appended in order: the latest date wins, not the last line
+  outoforder: state('outoforder', '  - 2026-09-15T10:00 note: collect r3 escalate\n  - 2026-09-11T20:40 note: r2\n  - 2026-09-09T11:35 owner: approved the plan\n'),
+  dayonly: state('dayonly', '  - 2026-09-20T08:00 note: a\n  - 2026-09-22 owner: go ahead\n  - 2026-09-21T23:00 note: b\n'),
+  sameday: state('sameday', '  - 2026-09-22 note: day only\n  - 2026-09-22T09:15 note: timed, same day\n'),
+  badtime: state('badtime', '  - 2026-09-24T22:0x note: minute unreadable\n  - 2026-09-23T10:00 note: earlier\n'),
+  compact: state('compact', '  - 2026-09-03T1100 note: compact form\n  - 2026-09-02T09:00 note: earlier\n'),
+  outofrange: state('outofrange', '  - 9999-99-99T99:99 note: forged\n  - 2026-13-01T10:00 note: month 13\n  - 2026-09-10T10:00 note: real\n'),
+  inert: state('inert', '  - 2026-09-05T10:00 note: real\n  <!-- - 2026-12-30T10:00 note: commented out -->\n  ```\n  - 2026-12-31T23:59 note: an example in a fence\n  ```\n'),
+  nodated: state('nodated', '  - note: an undated line\n'),
+  nogates: `change: nogates\nphase: ground\n\n## Open\n`,
+};
+
+function project() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-slr-'));
+  for (const [name, text] of Object.entries(CHANGES)) {
+    const dir = path.join(root, 'apriori', 'changes', name);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'flow-state.md'), text);
+  }
+  fs.mkdirSync(path.join(root, 'apriori', 'changes', 'noflow'), { recursive: true });   // no flow-state at all
+  return root;
+}
+
+const WANT = {
+  inorder: '2026-09-02T11:30', outoforder: '2026-09-15T10:00', dayonly: '2026-09-22', sameday: '2026-09-22T09:15',
+  badtime: '2026-09-24', compact: '2026-09-03T11:00', outofrange: '2026-09-10T10:00', inert: '2026-09-05T10:00',
+};
+const UNKNOWN = { nodated: 'no dated entry', nogates: 'no dated entry', noflow: 'no flow-state' };
+
+test('ST-41 the list shows each change\'s last recorded time — latest wins, unknown says why, the source is named', () => {
+  const root = project();
+  const r = run(['status'], root);
+  assert.strictEqual(r.status, 0, r.stderr);
+  const out = r.stdout;
+  for (const [name, at] of Object.entries(WANT)) {
+    const esc = at.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    assert.match(out, new RegExp(`^  ${name}  —  .*, last recorded in gates: ${esc}$`, 'm'), `${name}: want ${at}`);
+  }
+  for (const [name, why] of Object.entries(UNKNOWN))
+    assert.match(out, new RegExp(`^  ${name}  —  .*, last recorded in gates: unknown \\(${why}\\)$`, 'm'), `${name}: unknown (${why})`);
+  // the existing columns stay where they were
+  assert.match(out, /^ {2}inorder {2}— {2}build, 0 open, /m);
+  // one line says where the time comes from, and what it is not
+  assert.match(out, /"last recorded" is the latest date in each change's own gates: log — written by whoever works on the change, not proof of activity\./);
+  // nothing judges staleness or computes an age
+  assert.doesNotMatch(out, /stale|idle|inactive|\bdays?\b|\bago\b|\bage\b/i);
+});
+
+test('ST-42 --change prints the same time on its own line; last decision keeps its meaning', () => {
+  const root = project();
+  const r = run(['status', '--change', 'outoforder'], root);
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.match(r.stdout, /^last recorded: 2026-09-15T10:00 {3}\(the latest date in this change's gates: log — self-recorded, not proof of activity\)$/m);
+  // lastGate is still the textually last dated entry — unchanged by this change
+  assert.match(r.stdout, /^last decision: 2026-09-09T11:35 owner: approved the plan$/m);
+  const u = run(['status', '--change', 'nodated'], root);
+  assert.match(u.stdout, /^last recorded: unknown \(no dated entry\) {3}\(the latest date in this change's gates: log — self-recorded, not proof of activity\)$/m);
+  assert.doesNotMatch(r.stdout + u.stdout, /stale|idle|inactive|\bdays?\b|\bago\b/i);
+});
+
+test('ST-43 --json carries lastRecorded in every change view; the error view carries null; no age field', () => {
+  const root = project();
+  const single = JSON.parse(run(['status', '--change', 'outoforder', '--json'], root).stdout);
+  assert.deepStrictEqual(single.lastRecorded, { at: '2026-09-15T10:00', source: 'gates', reason: null });
+  assert.match(single.lastGate, /^2026-09-09T11:35 owner: approved the plan$/, 'lastGate unchanged');
+  const list = JSON.parse(run(['status', '--json'], root).stdout);
+  const by = Object.fromEntries(list.changes.map((c) => [c.change, c.lastRecorded]));
+  for (const [name, at] of Object.entries(WANT)) assert.deepStrictEqual(by[name], { at, source: 'gates', reason: null }, name);
+  for (const [name, why] of Object.entries(UNKNOWN)) assert.deepStrictEqual(by[name], { at: null, source: 'gates', reason: why }, name);
+  for (const c of list.changes)
+    for (const k of Object.keys(c)) {
+      assert.doesNotMatch(k, /stale|idle|since|days/i, `${c.change}: no staleness field (${k})`);
+      assert.doesNotMatch(k, /^age|[a-z]Age/, `${c.change}: no age field (${k})`);     // camelCase ...Age, never lineage
+    }
+  const err = run(['status', '--change', 'missing-one', '--json'], root);
+  assert.strictEqual(err.status, 2);
+  const ev = JSON.parse(err.stdout);
+  assert.ok(ev.errors.length > 0);
+  assert.strictEqual(ev.lastRecorded, null, 'the error view carries the key, null');
+});
+
+test('ST-41 the reader itself: dates from gates: only, range-checked, normalized, fences and comments inert', () => {
+  for (const [name, at] of Object.entries(WANT)) assert.strictEqual(flow.lastRecorded(CHANGES[name]), at, name);
+  assert.strictEqual(flow.lastRecorded(CHANGES.nodated), null);
+  assert.strictEqual(flow.lastRecorded(CHANGES.nogates), null);
+  assert.strictEqual(flow.lastRecorded(''), null);
+  // an undated gates line and a date later in the entry text do not count; only the first token does
+  assert.strictEqual(flow.lastRecorded(state('x', '  - note: shipped on 2026-12-01\n  - 2026-09-01T00:00 note: a\n')), '2026-09-01T00:00');
+  // hour 24 / minute 60 are not readable times: the day still counts
+  assert.strictEqual(flow.lastRecorded(state('x', '  - 2026-09-01T24:00 note: a\n')), '2026-09-01');
+  assert.strictEqual(flow.lastRecorded(state('x', '  - 2026-09-01T10:60 note: a\n')), '2026-09-01');
+  // day 00 / 32 is not a date: nothing counts
+  assert.strictEqual(flow.lastRecorded(state('x', '  - 2026-09-32T10:00 note: a\n  - 2026-09-00 note: b\n')), null);
+  // review round 1, finding 1: an entry whose payload sits on its continuation line is still an
+  // entry of that time — the same entry the owner-decision reader joins and recognizes
+  const cont = state('x', '  - 2026-09-01T09:00 note: older\n  - 2026-09-27T11:00\n    owner: evidence-accept X — reason\n');
+  assert.strictEqual(flow.gatesEntries(cont)[1].payload, 'evidence-accept X — reason', 'the owner reader joins it');
+  assert.strictEqual(flow.lastRecorded(cont), '2026-09-27T11:00');
+  assert.strictEqual(flow.lastRecorded(state('x', '  - 2026-09-28\n')), '2026-09-28', 'a bare stamp is still a dated entry');
+});
+
+// review round 1, finding 2: the leftover-lane bundle's detail views (in flight and archived) are
+// successful views, so they carry the line too — unknown (no flow-state) — beside their own messages
+test('ST-42 a leftover lane bundle\'s detail view carries last recorded: unknown (no flow-state)', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-slr-lane-'));
+  const lane = (dir, name) => { fs.mkdirSync(dir, { recursive: true }); fs.writeFileSync(path.join(dir, 'hotfix-state.md'), `hotfix: ${name}\ndate: 2026-08-01\nkinds: doc-fix\n`); };
+  lane(path.join(root, 'apriori', 'changes', 'leftover'), 'leftover');
+  lane(path.join(root, 'apriori', 'changes', 'archive', '2026-08-01T0000-oldlane'), 'oldlane');
+  const LINE = /^last recorded: unknown \(no flow-state\) {3}\(the latest date in this change's gates: log — self-recorded, not proof of activity\)$/m;
+  const one = run(['status', '--change', 'leftover'], root);
+  assert.strictEqual(one.status, 0, one.stderr);
+  assert.match(one.stdout, /leftover hotfix-state\.md, no flow-state/, 'its own migration message stays');
+  assert.match(one.stdout, LINE);
+  const arch = run(['status', '--change', 'oldlane'], root);
+  assert.strictEqual(arch.status, 0, arch.stderr);
+  assert.match(arch.stdout, /archived hotfix-lane record/, 'its own history message stays');
+  assert.match(arch.stdout, LINE);
+  const j = JSON.parse(run(['status', '--change', 'leftover', '--json'], root).stdout);
+  assert.deepStrictEqual(j.lastRecorded, { at: null, source: 'gates', reason: 'no flow-state' });
+});
+<!-- apriori-base: sha256:e919cc44c1aa1c0e4e3c3eb89071dfbc82aab0519b54b9110a1fb10c89984bd1 -->
+# Delta — status (status-last-recorded)
+
+## ADDED Requirements
+
+### Requirement: status shows when each change last recorded something, and says where that time comes from
+`apriori status` SHALL report, for each change it shows, the latest date its own flow-state `gates:` log carries — read through the same structured pass as every other gates reader (fenced code and HTML comments are inert). An entry counts when its first token opens with a range-checked `YYYY-MM-DD` (month 01-12, day 01-31, no calendar); a readable `THH:MM` or `THHMM` right after it (hour 00-23, minute 00-59) adds the minute, and any other suffix leaves the day; only that first token is read, so an entry whose payload sits on its continuation line still counts. The latest by that normalized text wins, whatever order the entries were written in; an entry with an out-of-range date does not count. With no counting entry, or no readable flow-state, the time is `unknown` with the reason. Every surface names the source (the change's own `gates:` log) and that the time is self-recorded, never proof of activity; nothing computes an age, compares with the clock or labels a change stale. `lastGate` and the `last decision:` line keep their meaning.
+
+#### Scenario: ST-41 the list shows each change's last recorded time, latest wins, unknown says why
+- WHEN `apriori status` runs with no `--change` over changes whose `gates:` logs are written in order, out of order, with day-only and unreadable-time entries, with an out-of-range date, with an entry inside a fenced block, with no dated entry, and with no flow-state
+- THEN each line carries `last recorded in gates: <time>` — the latest counted date, to the minute when that entry's time is readable and to the day otherwise — or `unknown` with its reason (`no dated entry` / `no flow-state`); a line after the list says the time is the latest date the change's own gates: log carries, self-recorded and not proof of activity; and nothing prints an age or a stale label
+
+#### Scenario: ST-42 --change shows the same time on its own line, and lastGate keeps its meaning
+- WHEN `apriori status --change <name>` runs on a change whose gates: log is written out of order
+- THEN it prints `last recorded: <latest time>` naming the gates: log as the self-recorded source, while `last decision:` still shows the textually last dated entry, unchanged; and every other successful detail view — a leftover hotfix-lane bundle, in flight or archived, included — prints the same line, reading `unknown (no flow-state)` there, beside its own messages
+
+#### Scenario: ST-43 --json carries lastRecorded in every change view
+- WHEN `apriori status --json` or `apriori status --change <name> --json` runs
+- THEN each change view carries `lastRecorded: {at, source, reason}` — `at` the normalized latest time or `null`, `source` the string `gates`, `reason` `null` or why `at` is unknown — the error view carries `lastRecorded: null`, and no age or staleness field exists
+
+## Notes
+
+Why: the list showed a phase and an open count but not when anyone last wrote to the change, and in the 2026-09-26 diagnosis of real projects that time had to be dug out by hand. The rule that it is not a staleness judgment and not proof of activity comes from the Claude × Astra consensus (NI-CONSENSUS §一 E). The latest date wins over the textually last entry because five of fifteen real in-flight logs with more than one dated entry were written out of order.
+change: status-last-recorded
+phase: review                             # ground | specify | build | review | done | abandoned
+reviewer-session: 01a0dff1-8b1b-7a72-9784-a019b75c5c5d   # codex exec, round 1 (2026-09-27)
+
+## Reality Check         # observed / decision / assumption — one line each, as you find them
+- decision: lineage — branch `feature/status-last-recorded`（从 v6-dev@d934b99 开出）；本地提交；评审通过后合回 v6-dev 并推 judge 与 GitHub；不进 release/v6 / preview 快照
+- decision: requirement — 人类 09-27 /goal 第 2 条 E 项 + `work/astra-discuss/next-improve/NI-CONSENSUS.md` §一 E（Claude × Astra）：status 列表显示每个在途 change 的最后记录时间，取 flow-state 的 gates 时间戳；缺失报 unknown；标明来源；不作停滞判定；自填时间不当活动证明
+- decision: producer — 「最后」取 gates 块里**日期最晚**的一条，而不是文本上最后一条：RUNBOOK 把 gates 定为 append-only 日志，但真实日志并不总按序追加（见下一条 observed）
+- decision: producer — 时间戳按条目首个词读：`YYYY-MM-DD` 范围校验（月 01–12、日 01–31，不查日历，与 owner 条目同一口径）；其后可读的 `THH:MM` / `THHMM`（时 00–23、分 00–59）精确到分钟，其他后缀（`T22:0x`、`T夜`）退为只到日；按规范化文本取最大（同日只到日的一条排在带时刻的一条之前）；日期越界的条目不计入；围栏代码与 HTML 注释里的条目是文档、不计入（flow.js 同一读法）
+- decision: producer — 显示面：列表视图每行追加最后记录时间并在列表后加一行来源说明；`--change` 详情视图加一行；`--json` 每个 change 视图加 `lastRecorded: {at, source, reason}`（错误视图为 null）。不算天数、不标 stale、不与当前时钟比较
+- decision: 边界 — 不改 `lastGate` / 「last decision:」的既有语义（文本上最后一条带日期的条目）；不改任何 gate / archive / 授权判定；RUNBOOK 与模板不动
+- observed: lib/status.js 列表视图只打印 phase 与 open 数；`--change` 视图打印 `last decision: <lastGate>`；lib/flow.js:230 `lastGate` = gates 块文本顺序的最后一条带日期条目（CHANGELOG 记为「lastGate reads the gates block only」）
+- observed: 真实语料（/srv/diag 快照，只读）20 个在途 change：5 个无带日期的 gates 条目、10 个按时间升序、5 个顺序混杂；混杂的 5 个里 4 个文本末条早于最晚一条——2 个差数天（winshang-selectdb-sync 文本末条 09-09T10:05、最晚 09-11T20:45；winshang-collect-direct-push 09-09T11:35 对 09-15T10:00），2 个同日差几分钟到几十分钟（points-service-fee-coupon-price-caliber 12:08 对 12:12；skill-usage-selectdb-sync 00:30 对 01:12）。本仓 A/B/C 的 flow-state 也把新条目插在顶部（本会话的书写偏差，归档不回改）
+- observed: gates 条目首词形态（/srv/diag 快照 + 本仓归档）：`YYYY-MM-DDTHH:MM` 778、只到日 `YYYY-MM-DD` 74、`T22:0x` 10、`T夜` 3
+- observed: Build 完成 —— lib/flow.js `lastRecorded`（与 gatesEntries 同一结构化读法）；lib/status.js 列表行 + 列表后来源说明行、`--change` 一行、JSON `lastRecorded` 与错误视图 null；docs/cli.md 与 cli_cn.md 各加一段；CHANGELOG Unreleased 一条；三个 JSON 契约测试的键集合 / 键数随之加一（accept-r1 STATUS_VIEW_KEYS、json-contracts JC-04、accept-r2 STATUS_CHANGE_VIEW 26→27）；全套 856/856；verify --change GREEN；check --self PASS
+- observed: 真实语料复核 —— /srv/diag 两个项目 20 个在途 change，新 status 的 lastRecorded 与独立 Python 实现 20/20 一致；5 个 `unknown (no dated entry)`；4 个 lastRecorded 与 lastGate 不同（即上一条的 4 个乱序日志）；运行前后快照内无文件变动（find -newer 为 0）
+- observed: 复核时发现既有缺陷（与本 change 无关，v6-dev@d934b99 同样存在）：`status --json` 经管道输出超过 64KB 即被截断（agent-work 146KB → 65536 字节，JSON 解析失败），重定向到文件则完整；bin/apriori.js 在 console.log 之后立即 `process.exit(code)`。登记为 follow-up JP-1，本 change 不修
+- observed: Review 第 1 轮（`review/code-review-v1.md`）= `VERDICT: 2 issues open`。发现 1：lastRecorded 沿用了 lastGate 的 DATED_RE，要求首行在时间戳后还有正文，正文写在续行上的条目（owner 读法照样认）被漏算。修：只读首个词，不再套 DATED_RE；lastGate 不变；测试加续行条目与裸时间戳。发现 2：遗留 hotfix 通道 bundle 的 `--change` 详情视图（在途与已归档）提前返回，列表与 JSON 有 unknown (no flow-state)，详情视图却没有。修：所有成功的详情路径都打印这一行；测试加两种遗留 bundle。delta 需求、ST-42 THEN 与 docs 两版同步
+
+## Open                  # substantive unresolved items — one line each, stable id first: - <ID>: <text>
+- LG-1: follow-up → status-last-gate-order — `lastGate` / 「last decision:」取 gates 块文本上最后一条带日期的条目，并把 `note:` 条目也标为 decision；在真实语料 20 个在途 change 里有 4 个它不是最晚一条（2 个早数天）。本 change 不依赖它（lastRecorded 另算），也不改它的既有语义
+- JP-1: follow-up → cli-json-pipe-flush — `apriori <cmd> --json` 经管道输出超过 64KB 时被截断：bin/apriori.js 在 console.log 之后立即 process.exit(code)，管道上的异步写未刷完；真实语料 agent-work 的 status --json 146KB 经管道只剩 65536 字节、解析失败；与本 change 无关，v6-dev@d934b99 同样存在
+
+## Next                  # at most three concrete actions; the first is the resume point
+- Review 第 2 轮（resume 同一会话）
+
+gates:
+  - 2026-09-27T06:52 note: change scaffolded by `apriori new`
+  - 2026-09-27T06:52 note: Ground 完成；Specify 与测试已写（ST-41..43）
+  - 2026-09-27T06:58 note: Build、真实语料复核完成；review-ready；开 Review 第 1 轮
+  - 2026-09-27T07:02 note: Review 第 1 轮落盘（2 issues open）；已修；开第 2 轮
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 4eb6fed..6fd16cb 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -25,6 +25,10 @@ Known limitations, stated as they stand:
+ Later preview snapshots are cut from `release/v6` after v6-dev work merges back; fixes in flight
+ (authorization-scope, archive-manifest) are not part of this snapshot.
+ 
++## Unreleased — status-last-recorded: status shows when each change last recorded something
++
++- `apriori status` lists each active change with `last recorded in gates: <time>` — the latest date the change's own `gates:` log carries, to the minute when that entry's time is readable and to the day otherwise — or `unknown (no dated entry | no flow-state)`, followed by one line saying the time is self-recorded and not proof of activity. `--change` prints the same time on its own `last recorded:` line, and every JSON change view carries `lastRecorded: {at, source: 'gates', reason}` (`null` in the error view). The latest date wins whatever order the entries were written in: five of fifteen real in-flight logs with more than one dated entry were written out of order, and in four of them the last line is not the latest entry (two by several days). Status computes no age and labels nothing stale. `lastGate` / `last decision:` keep their meaning (the textually last dated entry). Scenarios ST-41..43.
++
+ ## Unreleased — review-round-scope: a later review round is scoped to what changed
+ 
+ - RUNBOOK §4 Review & Deliver (both editions) gains one bullet: from round 2 on, the producer's resume message (R2) asks the reviewer to judge each finding still open from the previous round ADDRESSED / NOT ADDRESSED and to review the fix diff together with what it affects (callers, shared state, tests — never trimmed to the edited lines). A new finding outside that diff still counts when it violates the current contract or a safety constraint; anything else is advisory and does not extend the loop. A finding is wording only when fixing it changes neither the contract nor how anyone would execute it. The scope rides on a resumed reviewer session: a later round in a fresh session (the non-Codex path when not resumed, or after failed transport recovery) gets only the default input and reviews the whole change as round 1 does. R2's resume clause points at the bullet. P3 is byte-identical (RIB-10); R4 limits, stop points and the verdict vocabulary are unchanged. Scenarios PR-59/60. Nothing here claims fewer rounds.
+diff --git a/test/accept-r1-contracts.test.js b/test/accept-r1-contracts.test.js
+index 1df67d4..4a0cce1 100644
+--- a/test/accept-r1-contracts.test.js
++++ b/test/accept-r1-contracts.test.js
+@@ -79,7 +79,7 @@ test('AR-F4 init --test-cmd validates the RAW argument through the full encode 
+ });
+ 
+ // one envelope per view — the SAME constructor on success, on a strict-parser error and on an uncaught exception
+-const STATUS_VIEW_KEYS = ['acknowledged', 'change', 'delivery', 'effectiveMode', 'errors', 'escalation', 'escalations', 'evidence', 'hasFlowState', 'historical', 'hotfix', 'lastGate', 'legacyIdentity', 'lineage', 'migrations', 'mode', 'next', 'openIssues', 'openItems', 'openLedger', 'path', 'phase', 'reality', 'review', 'risk', 'stage'];
++const STATUS_VIEW_KEYS = ['acknowledged', 'change', 'delivery', 'effectiveMode', 'errors', 'escalation', 'escalations', 'evidence', 'hasFlowState', 'historical', 'hotfix', 'lastGate', 'lastRecorded', 'legacyIdentity', 'lineage', 'migrations', 'mode', 'next', 'openIssues', 'openItems', 'openLedger', 'path', 'phase', 'reality', 'review', 'risk', 'stage'];
+ const parse = (r, label) => { try { return JSON.parse(r.stdout); } catch { assert.fail(`${label}: not JSON:\n${r.stdout}\n${r.stderr}`); } };
+ 
+ test('AR-F5 status keeps the requested view\'s envelope on every error path; verify/gate/doctor keep theirs on a real I/O exception', { skip: canSymlink() ? false : 'platform refuses symlinks' }, () => {
+diff --git a/test/accept-r2.test.js b/test/accept-r2.test.js
+index b7e28f8..1d1794f 100644
+--- a/test/accept-r2.test.js
++++ b/test/accept-r2.test.js
+@@ -37,7 +37,7 @@ function breakC6(root) {
+   fs.mkdirSync(path.join(root, 'apriori', 'truth', 'realdir'), { recursive: true });
+   fs.symlinkSync(path.join(root, 'apriori', 'truth', 'realdir'), path.join(root, 'apriori', 'truth', 'kv.md'));
+ }
+-const STATUS_CHANGE_VIEW = 26;   // the change view's key count (JC-04 pins the set)
++const STATUS_CHANGE_VIEW = 27;   // the change view's key count (JC-04 pins the set; + lastRecorded)
+ 
+ test('AR2-00 the request context is recovered by the parser\'s own consumption rules, not by scanning for flag-looking strings', () => {
+   const spec = { sub: 'x', flags: { '--change': 'value', '--test-cmd': 'value', '--json': 'flag', '--review-ready': 'flag', '--escalation': 'flag' } };
+diff --git a/test/json-contracts.test.js b/test/json-contracts.test.js
+index b65a81b..190c033 100644
+--- a/test/json-contracts.test.js
++++ b/test/json-contracts.test.js
+@@ -168,7 +168,7 @@ test('JC-04 status: the single view, the list view and --escalation each carry e
+   const single = parse(run(['status', '--change', 'c', '--json'], root), 'single');
+   assert.deepStrictEqual(single.errors, []);
+   for (const [k, t] of Object.entries({ change: 'string', phase: 'string|null', reality: 'object', openIssues: 'array', openItems: 'array', next: 'array',
+-    evidence: 'object', lastGate: 'string|null', hasFlowState: 'boolean', hotfix: 'boolean', openLedger: 'array', review: 'object|null',
++    evidence: 'object', lastGate: 'string|null', lastRecorded: 'object', hasFlowState: 'boolean', hotfix: 'boolean', openLedger: 'array', review: 'object|null',
+     delivery: 'null',                                    // retired (batch C row 6): the key stays, STRICTLY null
+     lineage: 'null',                                     // retired (batch C row 7): the key stays, STRICTLY null
+     escalation: 'array|null', escalations: 'array', acknowledged: 'array', historical: 'array', migrations: 'array', stage: 'string', path: 'string', risk: 'array', errors: 'array' }))
+
+// -> [string] — each item's text, continuation joined, marker stripped (compat signature)
+function sectionItems(text, title) {
+  return itemsOf(structure(text), title, !!JUDGED[title.toLowerCase()]).items;
+}
+
+// gates: entries with their RAW first line beside the continuation-joined form, plus the
+// owner-decision payload (null for a `note:` line and every near miss). Every consumer of this
+// function is asking whether a human authorized something.
+function gatesEntries(text) {
+  const st = typeof text === 'string' ? structure(text) : text;
+  const out = [];
+  for (const g of st.gates) {
+    for (const { n, text: line } of g.body) {
+      if (/^\s*-\s/.test(line)) out.push({ firstLine: line.replace(/\s+$/, ''), joined: line.trim(), line: n });
+      else if (out.length && line.trim()) out[out.length - 1].joined += ' ' + line.trim();
+    }
+  }
+  for (const e of out) { const o = ownerEntry(e.joined); e.payload = o ? o.payload : null; e.stamp = o ? o.stamp : null; }
+  return out;
+}
+
+// The Reality Check — the three kinds a Ground fact can be, and nothing else. A line naming no
+// kind is `malformed` (structural, never acceptable).
+function realityOf(st) {
+  const out = { observed: [], decision: [], assumption: [], malformed: [] };
+  for (const item of itemsOf(st, 'Reality Check', true).items) {
+    const m = /^([a-z]+)\s*:\s*(.*)$/i.exec(item);
+    const kind = m && m[1].toLowerCase();
+    if (!m || !FACT_KINDS.includes(kind)) { out.malformed.push(item); continue; }
+    out[kind].push(m[2].trim());
+  }
+  return out;
+}
+function realityCheck(text) { return realityOf(structure(text)); }
+
+// The parsed state: the tracked scalars, the last gate, the sections, and every structural
+// defect the file carries (each naming its line). Never throws on content.
+function parseFlowState(text) {
+  const st = structure(text);
+  const out = {};
+  for (const key of TRACKED_KEYS) {
+    const occ = (st.scalars.get(key) || []).find((o) => o.value !== '');
+    if (occ) out[key] = occ.value;
+  }
+  const dated = gatesEntries(st).map((e) => e.firstLine.replace(/^\s*-\s*/, '').trim()).filter((s) => DATED_RE.test(s));
+  out.lastGate = dated.length ? dated[dated.length - 1] : null;
+  out.next = itemsOf(st, 'Next', false).items;
+  const open = itemsOf(st, 'Open', true);
+  out.openIssues = open.items;
+  out.reality = realityOf(st);
+  const evidence = itemsOf(st, 'Evidence', true);
+  out.defects = [...st.defects, ...open.defects, ...itemsOf(st, 'Reality Check', true).defects, ...evidence.defects];
+  return out;
+}
+
+    blockers: found && !archived ? found.blockers : [], recorded: found && archived ? found.blockers : [],
+    evidence, stage: st, path: path.relative(root, bundle) };
+}
+
+// cli --change guards: name validation + resolver + structured file-level defects (kinds,
+// never message prefixes). The review ROOT is guarded with the same rule gate uses — a
+// symlinked, escaping or non-directory review/ is named, never read through — while nothing
+// under it is opened for a ledger (6.2 reads none).
+function guardedResolve(root, change) {
+  const v = validateChangeName(change);
+  if (!v.ok) {
+    const why = { 'invalid-shape': 'bare kebab-case only', 'date-prefixed': 'date-prefixed — in-flight names are bare; dates are stamped at archive time', reserved: `'${change}' is reserved` }[v.kind];
+    return { error: `invalid change name '${change}' — ${why}` };
+  }
+  const loc = resolveChange(root, change);
+  if (loc.error) return { error: loc.error };
+  const flowDefect = fileReadDefect(loc.dir, path.join(loc.dir, 'flow-state.md'));
+  // a leftover lane bundle still resolves — formatOne diagnoses it. Residue sitting beside a
+  // readable flow-state is just residue: the change is gated and reported as the change it is.
+  const leftoverLane = fs.existsSync(path.join(loc.dir, 'hotfix-state.md'));
+  if (leftoverLane && flowDefect && flowDefect.kind === 'missing') return loc;
+  if (flowDefect) return { error: `flow-state.md unreadable for '${change}' — ${flowDefect.kind}: ${flowDefect.path}` };
+  const reviewDefect = require('./readiness').reviewDirDefect(loc.dir);
+  if (reviewDefect) return { error: `review/ unsafe for '${change}' — ${reviewDefect}` };
+  // identity: the parsed flow-state must speak the queried name (P2-1)
+  const state = parseFlowState(fs.readFileSync(path.join(loc.dir, 'flow-state.md'), 'utf8'));
+  if (state.change && state.change !== change) return { error: `identity mismatch for '${change}' — the resolved flow-state declares change: ${state.change}` };
+  return loc;
+}
+  const { change, json, esc } = requestOf(recover(argv, SPEC));
+  if (!json) return null;
+  const view = esc ? escalationView(change, { pending: [], acknowledged: [], historical: [] }, [msg])
+    : (change !== null ? emptyChangeView(change, [msg]) : listView([], [msg]));
+  return JSON.stringify(view, null, 2);
+}
+
+function cli(argv) {
+  return withStrict(argv, { ...SPEC, jsonError }, (f) => {
+    const root = process.cwd();
+    const { change, json, esc } = requestOf(f);
+    const refuse = (msg) => { if (json) console.log(jsonError(msg, argv)); else console.error(`status: ${msg}`); return 2; };
+    if (esc && !change) return refuse('--escalation needs --change <name>');
+    if (change) {
+      const loc = guardedResolve(root, change);
+      if (loc.error) return refuse(loc.error);
+      const s = changeStatus(root, change, loc.dir, loc.stage);
+      if (esc) {
+        // the hard stop, and nothing else: exit 3 means a human owes this change a decision.
+        // The answered and the frozen escalations print too — never a stop, never hidden.
+        const st = escalationStates(s);
+        if (json) console.log(JSON.stringify(escalationView(change, st, []), null, 2));
+        else {
+          if (!st.pending.length) console.log('ESCALATION: none');
+          else for (const e of st.pending) console.log(`ESCALATION: ${e}`);
+          for (const e of st.acknowledged) console.log(`acknowledged: ${e}`);
+          for (const e of st.historical) console.log(`historical: ${e}`);
+        }
+        return st.pending.length ? 3 : 0;
+      }
+      console.log(json ? JSON.stringify(toJson(s), null, 2) : formatOne(s));
+      return 0;
+    }
+    const changes = activeChanges(root);
+    if (json) {
+      console.log(JSON.stringify(listView(changes.map((c) => toJson(changeStatus(root, c))), []), null, 2));
+      return 0;
+    }
+    if (!changes.length) { console.log('No active changes under apriori/changes/.'); return 0; }
+
+codex
+<!-- provenance: provider=openai model=unknown session=01a0dff1-8b1b-7a72-9784-a019b75c5c5d date=2026-09-27 -->
+
+Round 2 review of `status-last-recorded`. Intended path: `apriori/changes/status-last-recorded/review/code-review-v2.md`.
+
+Read-only handoff: the producer should land this report verbatim, recorded on behalf of the reviewer.
+
+**Round-1 findings**
+
+1. **ADDRESSED — timestamp-only first lines.**  
+   `lastRecorded` now validates the first token directly, without `DATED_RE`. The continuation-payload regression asserts both owner-reader recognition and the correct latest timestamp, with an older entry present. A separate assertion covers a bare day-only stamp. These assertions would fail against the round-1 implementation. `lastGate` and its existing filter remain unchanged.
+
+2. **ADDRESSED — missing time on legacy detail paths.**  
+   `formatOne` now includes the shared last-recorded line before both legacy-path early returns, and on the ordinary no-state and normal-state paths. The new entry-point test checks successful active and archived legacy detail views, their existing messages, the unknown-time/source line, and the active legacy JSON object.
+
+**Affected scope reviewed**
+
+Re-read the committed comparison and working-tree changes, including the untracked test and delta spec. Traced the fixes through shared gates parsing, status construction, resolution, formatting, and JSON output. Date/time bounds and ordering remain intact; continuation text cannot supply a replacement timestamp. No gate, archive, authorization, or clock-comparison behavior changed.
+
+The delta and EN/CN documentation agree with the fixes. LG-1 and JP-1 remain independent follow-ups; neither is needed to complete this delivery.
+
+**New substantive findings:** none.  
+**Advisories:** none.
+
+This verdict rests on static inspection of implementation and test assertions. I did not rerun the reported 857-test suite, verify/check commands, or corpus comparison; those results remain producer-reported. No credentials, human-note files, or raw review transcripts were read.
+
+VERDICT: no spec-vs-code gaps
+tokens used
+74,137
+<!-- provenance: provider=openai model=unknown session=01a0dff1-8b1b-7a72-9784-a019b75c5c5d date=2026-09-27 -->
+
+Round 2 review of `status-last-recorded`. Intended path: `apriori/changes/status-last-recorded/review/code-review-v2.md`.
+
+Read-only handoff: the producer should land this report verbatim, recorded on behalf of the reviewer.
+
+**Round-1 findings**
+
+1. **ADDRESSED — timestamp-only first lines.**  
+   `lastRecorded` now validates the first token directly, without `DATED_RE`. The continuation-payload regression asserts both owner-reader recognition and the correct latest timestamp, with an older entry present. A separate assertion covers a bare day-only stamp. These assertions would fail against the round-1 implementation. `lastGate` and its existing filter remain unchanged.
+
+2. **ADDRESSED — missing time on legacy detail paths.**  
+   `formatOne` now includes the shared last-recorded line before both legacy-path early returns, and on the ordinary no-state and normal-state paths. The new entry-point test checks successful active and archived legacy detail views, their existing messages, the unknown-time/source line, and the active legacy JSON object.
+
+**Affected scope reviewed**
+
+Re-read the committed comparison and working-tree changes, including the untracked test and delta spec. Traced the fixes through shared gates parsing, status construction, resolution, formatting, and JSON output. Date/time bounds and ordering remain intact; continuation text cannot supply a replacement timestamp. No gate, archive, authorization, or clock-comparison behavior changed.
+
+The delta and EN/CN documentation agree with the fixes. LG-1 and JP-1 remain independent follow-ups; neither is needed to complete this delivery.
+
+**New substantive findings:** none.  
+**Advisories:** none.
+
+This verdict rests on static inspection of implementation and test assertions. I did not rerun the reported 857-test suite, verify/check commands, or corpus comparison; those results remain producer-reported. No credentials, human-note files, or raw review transcripts were read.
+
+VERDICT: no spec-vs-code gaps

@@ -37,7 +37,7 @@ function breakC6(root) {
   fs.mkdirSync(path.join(root, 'apriori', 'truth', 'realdir'), { recursive: true });
   fs.symlinkSync(path.join(root, 'apriori', 'truth', 'realdir'), path.join(root, 'apriori', 'truth', 'kv.md'));
 }
-const STATUS_CHANGE_VIEW = 26;   // the change view's key count (JC-04 pins the set)
+const STATUS_CHANGE_VIEW = 27;   // the change view's key count (JC-04 pins the set; + lastRecorded)
 
 test('AR2-00 the request context is recovered by the parser\'s own consumption rules, not by scanning for flag-looking strings', () => {
   const spec = { sub: 'x', flags: { '--change': 'value', '--test-cmd': 'value', '--json': 'flag', '--review-ready': 'flag', '--escalation': 'flag' } };

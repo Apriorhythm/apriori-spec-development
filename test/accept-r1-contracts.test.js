@@ -79,7 +79,7 @@ test('AR-F4 init --test-cmd validates the RAW argument through the full encode â
 });
 
 // one envelope per view â€” the SAME constructor on success, on a strict-parser error and on an uncaught exception
-const STATUS_VIEW_KEYS = ['acknowledged', 'change', 'delivery', 'effectiveMode', 'errors', 'escalation', 'escalations', 'evidence', 'hasFlowState', 'historical', 'hotfix', 'lastGate', 'legacyIdentity', 'lineage', 'migrations', 'mode', 'next', 'openIssues', 'openItems', 'openLedger', 'path', 'phase', 'reality', 'review', 'risk', 'stage'];
+const STATUS_VIEW_KEYS = ['acknowledged', 'change', 'delivery', 'effectiveMode', 'errors', 'escalation', 'escalations', 'evidence', 'hasFlowState', 'historical', 'hotfix', 'lastGate', 'lastRecorded', 'legacyIdentity', 'lineage', 'migrations', 'mode', 'next', 'openIssues', 'openItems', 'openLedger', 'path', 'phase', 'reality', 'review', 'risk', 'stage'];
 const parse = (r, label) => { try { return JSON.parse(r.stdout); } catch { assert.fail(`${label}: not JSON:\n${r.stdout}\n${r.stderr}`); } };
 
 test('AR-F5 status keeps the requested view\'s envelope on every error path; verify/gate/doctor keep theirs on a real I/O exception', { skip: canSymlink() ? false : 'platform refuses symlinks' }, () => {

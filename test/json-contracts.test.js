@@ -168,7 +168,7 @@ test('JC-04 status: the single view, the list view and --escalation each carry e
   const single = parse(run(['status', '--change', 'c', '--json'], root), 'single');
   assert.deepStrictEqual(single.errors, []);
   for (const [k, t] of Object.entries({ change: 'string', phase: 'string|null', reality: 'object', openIssues: 'array', openItems: 'array', next: 'array',
-    evidence: 'object', lastGate: 'string|null', hasFlowState: 'boolean', hotfix: 'boolean', openLedger: 'array', review: 'object|null',
+    evidence: 'object', lastGate: 'string|null', lastRecorded: 'object', hasFlowState: 'boolean', hotfix: 'boolean', openLedger: 'array', review: 'object|null',
     delivery: 'null',                                    // retired (batch C row 6): the key stays, STRICTLY null
     lineage: 'null',                                     // retired (batch C row 7): the key stays, STRICTLY null
     escalation: 'array|null', escalations: 'array', acknowledged: 'array', historical: 'array', migrations: 'array', stage: 'string', path: 'string', risk: 'array', errors: 'array' }))

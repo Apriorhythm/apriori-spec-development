@@ -32,7 +32,8 @@ do not offer the save-or-develop choice again.
 
 The binding rules live in the runbook, not here — read the section you need:
 
-- **§4 The Flow → "Discuss first"** — this stance in full, including the two approvals.
+- **§4 The Flow → "Discuss first"** — this stance in full, including the two approvals
+  and saving from a document discussed elsewhere.
 - **§1 Hard Rules → R1** — when a human has to decide, and the delegation routing table.
 - **§0 Install & Session Start** — triggered reading, and the two doors into `/apriori`.
 

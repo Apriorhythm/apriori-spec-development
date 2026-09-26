@@ -5,7 +5,10 @@ Route on what the human asked for, not on whether the line above is empty.
 Work a change — take this branch only when the text above identifies one change to work on
 and they did not limit you to discussing: run `apriori status --change <name>`, read
 apriori/changes/<change>/flow-state.md, and continue from the state's first `## Next` entry.
-The name may be one they just asked you to start. Read a runbook section only when status,
+The name may be one they just asked you to start. A design they concluded elsewhere and now
+ask you to build — they point at the document — identifies the work even without a change
+name: name the change for it, and register the document in Ground as source material.
+Read a runbook section only when status,
 `## Next`, a blocked command, or an uncertain fact points you there — there is no default
 reading list, and never preload the full runbook. Follow the trigger and read only that
 section — stop once it answers; follow another section only when a new trigger points there.

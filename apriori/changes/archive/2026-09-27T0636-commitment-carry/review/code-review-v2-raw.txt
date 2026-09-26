@@ -1,0 +1,587 @@
+OpenAI Codex v0.155.1
+--------
+workdir: /root/terra/wt-b
+model: gpt-6-astra
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: medium
+reasoning summaries: none
+session id: 01a0dfd9-241b-7a73-ac57-7942d22e3a1d
+--------
+user
+Round 2 (change commitment-carry, still on feature/commitment-carry; re-run `git diff v6-dev...HEAD` and `git diff`). Scope of this round (RUNBOOK §4 Review & Deliver as this repo now frames later rounds): judge each finding still open from round 1 as ADDRESSED or NOT ADDRESSED, and review the fix diff together with what it affects; a new finding outside that diff still counts when it violates the current contract or a safety constraint; anything else is advisory.
+Producer answer to CC-01: both editions' Split first now add "The carried line never keeps the follow-up prefix: turning a registered follow-up into a dependency means rewriting the line without `follow-up →` — a carry pointer appended to a follow-up line leaves it a non-blocking follow-up." (CN mirror); the delta requirement and PR-57 THEN say the same; test/commitment-carry.test.js PR-57 now asserts both sentences and adds a C9 check that the mixed form `follow-up → x — … — carried by x` is still a note (status pass), pinning the machine fact the rule leans on; the flow-state observed line is corrected. C9/R5 and FOLLOW_UP_RE unchanged. Tests 848/848, verify GREEN, check --self PASS. End with one verdict line from §5.
+codex
+I’ll check whether the fix addresses CC-01, review the updated diffs, and check the affected contract and tests. I’ll remain read-only and return the review body for the producer to save.
+exec
+/usr/bin/zsh -lc 'git status --short; git diff --stat v6-dev...HEAD; git diff v6-dev...HEAD -- RUNBOOK.md RUNBOOK_cn.md test/commitment-carry.test.js test/scope-disposition.test.js; git diff' in /root/terra/wt-b
+ succeeded in 0ms:
+ M RUNBOOK.md
+ M RUNBOOK_cn.md
+ M apriori/changes/commitment-carry/flow-state.md
+ M apriori/changes/commitment-carry/specs/protocol/spec.md
+ M test/commitment-carry.test.js
+?? apriori/changes/commitment-carry/review/
+ RUNBOOK.md                                         |  8 ++--
+ RUNBOOK_cn.md                                      |  8 ++--
+ apriori/changes/commitment-carry/flow-state.md     | 21 ++++++++++
+ .../commitment-carry/specs/protocol/spec.md        | 32 +++++++++++++++
+ test/commitment-carry.test.js                      | 45 ++++++++++++++++++++++
+ test/scope-disposition.test.js                     |  5 ++-
+ 6 files changed, 109 insertions(+), 10 deletions(-)
+diff --git a/RUNBOOK.md b/RUNBOOK.md
+index 54c4395..400792d 100644
+--- a/RUNBOOK.md
++++ b/RUNBOOK.md
+@@ -294,7 +294,7 @@ KB docs have two sections with **opposite truth directions** (§5 P5): `Contract
+ ### Specify — the minimal behavior contract, and the split test
+ 
+ - **Do:** the **Specify action** with **P2** — the delta specs under `apriori/changes/<change>/specs/<module>/`, each scenario with a stable ID and testable acceptance. When implementation remains within the delegation, the default is to go straight to Build & Test — the single final review at Review & Deliver judges spec, code and tests together; a separate spec-review loop (reviewer P3; the producer's revisions touch the contract only — never source) runs only in the two situations §2 names.
+-- **Split first.** One change carries **one main result and one main evidence chain**. Split by default when any of these holds: it crosses several boundaries that need different real environments to verify; a reviewer must switch between unrelated contexts; fixing one area keeps enlarging the review surface of another. The whole question is one sentence: **can one clear, repeatable evidence chain prove this change is done?** Record the split judgement as a `decision` in the `## Reality Check`.
++- **Split first.** One change carries **one main result and one main evidence chain**. Split by default when any of these holds: it crosses several boundaries that need different real environments to verify; a reviewer must switch between unrelated contexts; fixing one area keeps enlarging the review surface of another. The whole question is one sentence: **can one clear, repeatable evidence chain prove this change is done?** Record the split judgement as a `decision` in the `## Reality Check`. When the split hands a commitment to another change — part of what the sources ask for, now to be delivered there — it keeps its id and cannot disappear: if THIS delivery depends on it, it stays a pending `## Open` item naming the change that carries it (`- <ID>: <text> — carried by <change>`), blocking until that change's exit evidence lands or the owner accepts it; if this delivery does not depend on it, it is a follow-up (§4 Review & Deliver) — never both for the same id.
+ - **Minimal means minimal.** State the behavior, the boundaries, and what is out of scope. Every user-visible output gets its own scenario; any external shared state (Redis / DB field / global singleton / in-memory cache) describes three moments: init / runtime update / cleanup-invalidation. Describe behavior, not implementation: a spec never names an internal function, handler, or payload field as if it were the contract.
+ - **Model by observable outcome, not by input example.** A Scenario is one observable-outcome category, not one test case; inputs that produce the SAME observable outcome are examples of that one Scenario, listed in its own table, never split into a new Scenario ID.
+ - **Exit (default):** the delta specs state the behavior, each scenario carrying a stable ID — that is the phase condition; §1 R1 routes what follows. In particular, a delegation limited to the spec ends here; otherwise continue to Build & Test when authorized. **Exit (when a spec-review loop ran):** verdict line = `VERDICT: no major issues, ready to proceed to execution` → the reviewed phase condition is met; advance only as §1 R1 routes the delegation; still `revise` below the owner's `review-round-limit` → the next round opens (logging `review-progress` in `gates:` from round 3 on); still `revise` at the effective limit, or `VERDICT: escalate` at any round → the loop stops (§1 R4), an escalation a human decides.
+@@ -311,7 +311,7 @@ KB docs have two sections with **opposite truth directions** (§5 P5): `Contract
+ 
+ - **Review-ready comes first.** Run `apriori gate --change <name> --review-ready --test-cmd "…"`. It writes nothing and answers TWO items from facts the run already produced: compilation and tests really executed (never `BUILD SUCCESS` with zero tests); and the state claims nothing unresolved of its own — every `## Open` item carries a stable id, no id is duplicated, and no Reality Check `assumption` is still standing. A pending item does not stop review-ready: it is what the review is for. **Not ready is not a review round.** Go back to Build & Test.
+ - **Then one independent review** (**P3**, R2). The reviewer's default input is exactly four things: the **behavior contract**, the **diff**, the **`## Open` items** and the **boundaries still uncovered**; it may read the whole repo, callers, config and prototypes on its own. Raw review output, closed issues and other changes' documents are not default inputs. The reviewer's output keeps three things: newly found substantive issues; which risk surfaces it did and did not examine; and one of `ACCEPT | REVISE | ESCALATE`. **The reviewer does not do the producer's job** — it is not there to compile, add tests or rewrite the approach; if it has to, the change was not review-ready. A REVISE round does not widen that default input to the producer's full history. This input boundary does not revoke R2's reviewer resume mechanism or the reviewer's permission to inspect sources; the producer's description is not a substitute for that independent judgment. Carrying that boundary: **do not repackage a prior review's conclusions into the next reviewer's default input** — dropping the source name, rewording it, or re-labelling it as your own `observed`/`decision` changes nothing, and writing it in and deleting it later does not undo the round it was carried through. What you **re-established yourself**, against real code, a command or its output, is your own finding: record it, even if a prior review reached the same conclusion. The diff is not trimmed by path — completeness, maintainability and a checkable line of responsibility all argue against that, and a deletion carrying old content is mechanical, not propagation. This leaves the review archive and the Fix Packet untouched: both are required elsewhere and neither is a default input to the next review.
+-- **Disposition of findings — scope is judged per finding, never by volume.** For every substantive finding the producer records a disposition with its basis: the *current contract* (the delta specs and the owner's recorded decisions), an *existing constraint* (a hard rule, a safety responsibility, an established guarantee), or a *new ask*. **A finding is a necessary fix for THIS delivery when, left alone, the product as it would be delivered violates a locatable accepted acceptance condition, a valid owner decision or an applicable existing constraint** — the disposition cites that basis and the evidence of the violation. A necessary fix is never moved out because it is large: split the implementation if you must, the delivery keeps its dependency on it. Changing a commitment is the owner's decision (R1); until it is recorded, the commitment and its blocking stand. A new ask this delivery does not depend on is registered as a **follow-up with a stable landing spot** — `- <ID>: follow-up → <new-change-name> — <text>` in `## Open`, which gate C9 / archive R5 / `status` report as a note, not a blocker (creating and implementing that change still follows the delegation) — and moving it out is not closing it. The landing spot is a valid change name that is not this change; when that change is later opened under its own authorization, its Reality Check carries the original id and text as an `observed:` line, so the ask is traceable from the archived bundle to where it is picked up. `fixed` (with its evidence) / `contract` (pending the owner) / `follow-up` / `invalid` (with the reason) / `duplicate` (with the original id) are the recommended words, not a closed vocabulary: an unresolved finding keeps its id, its current impact and its next action. `review-progress`'s `approach:` says why the approach was kept or changed — it is not a second ledger of findings.
++- **Disposition of findings — scope is judged per finding, never by volume.** For every substantive finding the producer records a disposition with its basis: the *current contract* (the delta specs and the owner's recorded decisions), an *existing constraint* (a hard rule, a safety responsibility, an established guarantee), or a *new ask*. **A finding is a necessary fix for THIS delivery when, left alone, the product as it would be delivered violates a locatable accepted acceptance condition, a valid owner decision or an applicable existing constraint** — the disposition cites that basis and the evidence of the violation. A necessary fix is never moved out because it is large: split the implementation if you must, the delivery keeps its dependency on it. Changing a commitment is the owner's decision (R1); until it is recorded, the commitment and its blocking stand. A new ask this delivery does not depend on is registered as a **follow-up with a stable landing spot** — `- <ID>: follow-up → <new-change-name> — <text>` in `## Open`, which gate C9 / archive R5 / `status` report as a note, not a blocker (creating and implementing that change still follows the delegation) — and moving it out is not closing it. The landing spot is a valid change name that is not this change; when that change is later opened under its own authorization, it carries the original id and text as a pending `## Open` item (with an `observed:` line in its Reality Check naming the bundle it came from) and closes it only on its own exit evidence, so the ask is traceable from the archived bundle to where it is picked up and is never closed by being picked up. `fixed` (with its evidence) / `contract` (pending the owner) / `follow-up` / `invalid` (with the reason) / `duplicate` (with the original id) are the recommended words, not a closed vocabulary: an unresolved finding keeps its id, its current impact and its next action. `review-progress`'s `approach:` says why the approach was kept or changed — it is not a second ledger of findings.
+ - **KB update is a precondition, not a closeout step — and it is owed only when** `apriori/truth/<module>.md` already covers the touched module, or the owner/change explicitly decided to persist a new durable contract. Never fabricate one just to have one at closeout. When owed, before review-ready: commit the implementation and point `source-commit` at it; update `apriori/truth/<module>.md` — Contract section from the final implementation, Decisions section appending this change's new decisions. The reviewer's diff already carries this KB diff; `apriori archive` never touches `apriori/truth/`.
+ - **Then archive — directly, not a dry-run.** (A MODIFIED delta that would drop a store scenario is refused: the owner must name that exact deletion with an `archive-drop <change> sha256:<fingerprint>` entry in `gates:` and the run must add `--force` — retitling under the same ID or rewriting a scenario is not dropping.) ACCEPT, plus no product-code or test change since review-ready, means the normal close is four logical actions, no more: (1) land the reviewer's output as one self-contained review file, plus a short flow-state update; (2) run `apriori check`, then a full `apriori gate --change <name>` (not `--review-ready`), which binds C1 on these still-unchanged inputs; (3) run `apriori archive --change <name> --write` directly — `--write` runs the same preflight a dry-run would, so dry-running first re-checks nothing; archive merges the delta specs into `apriori/specs` and moves the bundle, and nothing else (`--changes-dir` is only a location override for a non-default changes root); (4) commit the closeout locally, and stop. The atomic move carries the whole bundle to `apriori/changes/archive/<stamp>-<change>/`. Count logical actions, not commands: action 2 already contains both check and gate. The one exception is the re-verify path below when its stated triggers occur; the four-action rule is not permission to skip recovery or an applicable report.
+ - **An archive is not a release.** `apriori archive` declares only the state it just judged (whether the implementation and the critical evidence are complete); its third line says exactly that, verbatim — `delivery: an archive is not a release` — and it never poses as a release or external acceptance. (The flow-state `delivery:` field is retired; a legacy line is read and ignored.) **The archived bundle is frozen: nothing, including `phase:`, is written back to it.** A defect found afterwards becomes a short outcome note or a new change.
+@@ -337,7 +337,7 @@ The human changes their mind: abandonment is a legal exit from any phase — on
+ 
+ **Single-file evidence's own vocabulary.** A self-contained doc (§1 R2) closes with one of three canonical full-line forms, matched whole and case-insensitively: `VERDICT: ACCEPT`, `VERDICT: REVISE`, `VERDICT: ESCALATE`. The phrasings in the table above stay legal on either format. The line must match whole: an ACCEPT followed by a qualifying clause, or a REVISE whose reason rides the machine line, is refused — the reason belongs in the document body, never on the machine line.
+ 
+-**There is no issue ledger.** The state's `## Open` section is where a change's open substantive issues live — one line each, a stable id first — and it is the only place `gate`, `archive` and `status` read them (6.2: `review/issues.md` is never read to judge a change). **Migration, once:** an ACTIVE bundle whose legacy `review/issues.md` still carries `open` rows (old table contract, `open` as the leading status token) is refused at gate C3 / archive R1 / review-ready until each row is MOVED — `- <ID>: <text>` into `## Open`, the row deleted from the ledger (or the file deleted); a copied row is still an open row, and a ledger that cannot be read is a structural error. Frozen archives are never scanned. **IDs:** an Open id is one token, no spaces (`[^\s:]+` — re-key `data schema` as `data-schema`); a re-found issue reopens its old id — reopened is an event, not a new line; a closed id is never reused for a different risk within the same bundle. The CLI cannot prove that last rule (it has no memory of what an id once named), so an `evidence-accept` whose id later names a different item is a documentation violation, not something the tool detects. **Exactly one thing blocks: a pending item — one nobody has accepted and that is not a registered follow-up.** An accepted item is reported as still present and never deleted by a tool; the producer deletes the line when the risk is actually resolved. A registered follow-up (`- <ID>: follow-up → <new-change-name> — <text>`, §4 Review & Deliver) is a new ask this delivery does not depend on: reported as a note, never a blocker, never closed by being moved out. Only correctness, security and stated-requirement gaps become pending items at all — a new ask with no delivery dependency is a follow-up item, not a pending one; everything else is `advisory`, and that label is the reviewer's exclusive call. R1's unresolved delivery obligations and R4's review stops keep their authority: a follow-up registration releases neither.
++**There is no issue ledger.** The state's `## Open` section is where a change's open substantive issues live — one line each, a stable id first — and it is the only place `gate`, `archive` and `status` read them (6.2: `review/issues.md` is never read to judge a change). **Migration, once:** an ACTIVE bundle whose legacy `review/issues.md` still carries `open` rows (old table contract, `open` as the leading status token) is refused at gate C3 / archive R1 / review-ready until each row is MOVED — `- <ID>: <text>` into `## Open`, the row deleted from the ledger (or the file deleted); a copied row is still an open row, and a ledger that cannot be read is a structural error. Frozen archives are never scanned. **IDs:** an Open id is one token, no spaces (`[^\s:]+` — re-key `data schema` as `data-schema`); a re-found issue reopens its old id — reopened is an event, not a new line; a closed id is never reused for a different risk within the same bundle. The CLI cannot prove that last rule (it has no memory of what an id once named), so an `evidence-accept` whose id later names a different item is a documentation violation, not something the tool detects. **Exactly one thing blocks: a pending item — one nobody has accepted and that is not a registered follow-up.** An accepted item is reported as still present and never deleted by a tool; the producer deletes the line when the risk is actually resolved. A registered follow-up (`- <ID>: follow-up → <new-change-name> — <text>`, §4 Review & Deliver) is a new ask this delivery does not depend on: reported as a note, never a blocker, never closed by being moved out. A commitment carried into another change keeps its original id there as a pending item until that change's own exit evidence closes it — picking it up, archiving the change it came from, or renaming either change never closes it. Only correctness, security and stated-requirement gaps become pending items at all — a new ask with no delivery dependency is a follow-up item, not a pending one; everything else is `advisory`, and that label is the reviewer's exclusive call. R1's unresolved delivery obligations and R4's review stops keep their authority: a follow-up registration releases neither.
+ 
+ ### P1 — Ground (optional kickoff)
+ 
+@@ -357,7 +357,7 @@ Stop when nothing the work depends on is still an assumption. Anything you could
+ 
+ ```text
+ [Specify] Write the MINIMAL behavior contract as delta specs under apriori/changes/<change>/specs/<module>/. Write no other document unless a document is genuinely the cheapest way to be right.
+-* Split first: this change carries ONE main result and ONE main evidence chain. If it spans boundaries needing different real environments, forces a reviewer between unrelated contexts, or keeps enlarging another area's review surface — split now and record that decision in ## Reality Check.
++* Split first: this change carries ONE main result and ONE main evidence chain. If it spans boundaries needing different real environments, forces a reviewer between unrelated contexts, or keeps enlarging another area's review surface — split now and record that decision in ## Reality Check. A commitment the split hands to another change keeps its id: a pending item carried by that change if this delivery depends on it, a follow-up if not.
+ * One scenario per user-visible output, each with a stable ID (e.g. KV-03) and testable acceptance; state what is out of scope.
+ * Before you stop, check the contract against its sources — four questions: does every requirement in the sources you are delivering land somewhere (a scenario, an explicit out-of-scope line, or an ## Open item)? does every scenario trace to a source (a requirement section, a prototype, an owner decision)? is every condition clear enough to test? do two sources disagree anywhere, and is that settled by a recorded decision or left open? A choice the sources leave to you is `decision: producer — <choice>`; a user-visible behavior no source settles is the owner's question — an ## Open item, not your choice; only an unproven fact is an assumption.
+ * Any external shared state (Redis / DB field / global singleton / in-memory cache) describes three moments: init / runtime update / cleanup-invalidation.
+diff --git a/RUNBOOK_cn.md b/RUNBOOK_cn.md
+index c6aee27..6b4bde4 100644
+--- a/RUNBOOK_cn.md
++++ b/RUNBOOK_cn.md
+@@ -285,7 +285,7 @@ change 需要的其他任何东西——一张草稿、一幅图、给人看的
+ ### Specify —— 最小行为契约,以及拆分判定
+ 
+ - **做:** 用 **P2** 执行 **Specify 动作**——把增量 spec 写在 `apriori/changes/<change>/specs/<module>/`,每个场景带稳定 ID 与可测验收。实现仍在委托范围内时,默认直接进入 Build & Test——Review & Deliver 那一次最终评审会同时评判 spec、代码和测试;单独的 spec-review 循环(评审方 P3;生产方的修订只改契约、绝不碰源码)只在 §2 所述的两种情形下才跑。
+-- **先拆。** 一个 change 只承载**一个主要结果和一条主要证据闭环**。出现下列任一事实,默认拆分:同时跨越多个需要不同真实环境才能验证的边界;评审方必须在互不相关的上下文之间切换;修一个区域会持续扩大另一个区域的审查面。核心问题只有一句:**这个 change 能否通过一条清晰、可重复的证据链证明完成?** 把拆分判定作为一条 `decision` 记入 `## Reality Check`。
++- **先拆。** 一个 change 只承载**一个主要结果和一条主要证据闭环**。出现下列任一事实,默认拆分:同时跨越多个需要不同真实环境才能验证的边界;评审方必须在互不相关的上下文之间切换;修一个区域会持续扩大另一个区域的审查面。核心问题只有一句:**这个 change 能否通过一条清晰、可重复的证据链证明完成?** 把拆分判定作为一条 `decision` 记入 `## Reality Check`。拆分把一项承诺交给另一个 change 时——来源要求的一部分,改由那里交付——它保留原 ID、不能凭空消失:本次交付依赖它,就留作一条 pending 的 `## Open` 条目并写明承接的 change(`- <ID>: <内容> — carried by <change>`),在那个 change 的退出证据落地或所有者接受之前一直阻断;本次交付不依赖它,就登记为 follow-up(§4 Review & Deliver)——同一个 id 绝不两样都记。
+ - **最小就是最小。** 说清行为、边界、以及什么不在范围内。每个用户可见输出各自成一个场景;任何外部共享状态(Redis / DB 字段 / 全局单例 / 内存缓存)都要描述三个时刻:初始化 / 运行期更新 / 清理失效。描述行为,不描述实现:spec 不把内部函数名、handler 名或 payload 字段当契约来写。
+ - **按可观察结果类别建模,不按输入样例。** 一个 Scenario 是一个可观察结果类别,不是一个测试用例;产生同一个可观察结果的不同输入是它的示例,列进它自己的表格,绝不拆成新的 Scenario ID。
+ - **退出(默认):** 增量 spec 已说清行为,每个场景带稳定 ID——这是阶段条件;§1 R1 分流决定接下来做什么。只限定到规格的委托在此结束;否则在授权内前进到 Build & Test。**退出(跑了 spec-review 循环时):** 结论行 = `VERDICT: no major issues, ready to proceed to execution` → 受评审阶段条件满足,仅按 §1 R1 对本次委托的分流前进;在所有者的 `review-round-limit` 之下仍是 `revise` → 开下一轮(第 3 轮起先在 `gates:` 记 `review-progress`);在有效上限仍是 `revise`,或任一轮 `VERDICT: escalate` → 该循环停止(§1 R4),成为由人决定的 escalation。
+@@ -302,7 +302,7 @@ change 需要的其他任何东西——一张草稿、一幅图、给人看的
+ 
+ - **先过 review-ready。** 跑 `apriori gate --change <name> --review-ready --test-cmd "…"`。它什么也不写,只从这次运行已经产生的事实答**两项**:编译和测试**真的**执行过(绝不是零测试的 `BUILD SUCCESS`);以及状态自己没有声明任何未了结的东西——每条 `## Open` 条目都带稳定 id、没有重复 id、没有仍悬着的 Reality Check `assumption`。pending 的条目不挡 review-ready:那正是评审要看的东西。**没准备好不算一轮评审。** 回到 Build & Test。
+ - **然后一次独立评审**(**P3**,R2)。评审方的默认输入恰好是四样:**行为契约**、**diff**、**`## Open` 条目**、**仍未覆盖的边界**;它可以自行查全仓、调用者、配置和原型。原始评审输出、已关闭问题、其他 change 的文档不是默认输入。评审方的输出只保留三样:新发现的实质问题;已查与未查的风险面;以及 `ACCEPT | REVISE | ESCALATE` 之一。**评审方不做生产方的活**——它不是来编译、补测试或重写方案的;如果它必须那么做,说明这个 change 没到 review-ready。 REVISE 的这一轮不扩大那份默认输入到生产方全量历史。这条输入边界不撤销 R2 评审会话的 resume,也不撤销评审方自行查源码的权限;生产方转述不能代替独立判断。 这条边界怎么落实:**不得把此前评审的结论重新包装进下一位评审方的默认输入** —— 去掉来源名、换个说法、或改标成别的字段(`observed`/`decision`)都不改变它的性质,**先写进去再删掉**也**不能抵消**它已经随那一轮带过去的事实。凡是你**自己重新核验过**的 —— 对着真实代码、命令或其输出 —— 那就是你自己的发现,**照常记录**,哪怕此前评审得出过同样结论。**diff 不按路径裁剪**:完整性、可维护性、以及责任可核查,三条都反对裁剪;删除行携带旧内容是机械后果,不是传播。这条边界让**评审存档与 Fix Packet 照旧** —— 两者本就由别处要求,也都不是下一轮评审的默认输入。
+-- **发现的处置——范围按每条发现判断,从不按体量。** 生产方对每条实质发现都记一条处置并写明依据:*当前契约*(增量 spec 与所有者已记录的决定)、*既有约束*(铁律、安全责任、既定保证),还是*新增诉求*。**若不处理该发现,拟交付的产物将违反一条可定位的已承诺验收条件、有效的所有者决定或适用的既有约束,那它就是本次交付的必要修复**——处置须同时引用该依据和违背它的证据。必要修复绝不因体量大而移出:实现可以拆,交付对它的依赖保留。改变承诺是所有者的决定(R1);记录之前,承诺与它的阻断继续有效。本次交付不依赖的新增诉求登记为**带稳定落点的 follow-up**——`## Open` 里写 `- <ID>: follow-up → <新 change 名> — <内容>`,gate C9 / archive R5 / `status` 把它当 note 报告而非阻断(建 change 与实施仍服从委托)——移出不等于关闭。落点必须是一个合法且不是本 change 的 change 名;日后在其自身授权下开启那个 change 时,其 Reality Check 以一行 `observed:` 带上原 ID 与原文,使这条诉求可从归档 bundle 追到接手处。`fixed`(附证据)/ `contract`(待所有者)/ `follow-up` / `invalid`(附理由)/ `duplicate`(附原 ID)是推荐写法,不是封闭词表:未解决的发现保留其 ID、当前影响与下一动作。`review-progress` 的 `approach:` 只说为什么保留或改变方案——它不是第二份问题账本。
++- **发现的处置——范围按每条发现判断,从不按体量。** 生产方对每条实质发现都记一条处置并写明依据:*当前契约*(增量 spec 与所有者已记录的决定)、*既有约束*(铁律、安全责任、既定保证),还是*新增诉求*。**若不处理该发现,拟交付的产物将违反一条可定位的已承诺验收条件、有效的所有者决定或适用的既有约束,那它就是本次交付的必要修复**——处置须同时引用该依据和违背它的证据。必要修复绝不因体量大而移出:实现可以拆,交付对它的依赖保留。改变承诺是所有者的决定(R1);记录之前,承诺与它的阻断继续有效。本次交付不依赖的新增诉求登记为**带稳定落点的 follow-up**——`## Open` 里写 `- <ID>: follow-up → <新 change 名> — <内容>`,gate C9 / archive R5 / `status` 把它当 note 报告而非阻断(建 change 与实施仍服从委托)——移出不等于关闭。落点必须是一个合法且不是本 change 的 change 名;日后在其自身授权下开启那个 change 时,它以原 ID 与原文记一条 pending 的 `## Open` 条目(其 Reality Check 以一行 `observed:` 注明它来自哪个 bundle),只凭自己的退出证据关闭,使这条诉求可从归档 bundle 追到接手处,且不因被接手而关闭。`fixed`(附证据)/ `contract`(待所有者)/ `follow-up` / `invalid`(附理由)/ `duplicate`(附原 ID)是推荐写法,不是封闭词表:未解决的发现保留其 ID、当前影响与下一动作。`review-progress` 的 `approach:` 只说为什么保留或改变方案——它不是第二份问题账本。
+ - **知识库更新是前置条件,不是收尾步骤——而且只在欠着的时候才做。** 只有当 `apriori/truth/<module>.md` 已经覆盖被触达的模块,或所有者/change 明确决定沉淀一份新的持久契约时才欠;绝不为了收官时有一份而凭空造一份。欠着时,review-ready 之前:提交实现,让 `source-commit` 指向它;更新 `apriori/truth/<module>.md`——Contract 段按最终实现写,Decisions 段追加本次的新决定。评审方看到的 diff 里已经带着这份 KB diff;`apriori archive` 从不碰 `apriori/truth/`。
+ - **然后归档——直接执行,不 dry-run。**(会丢掉 store 场景的 MODIFIED delta 会被拒绝:所有者须在 `gates:` 用 `archive-drop <change> sha256:<指纹>` 点名这一次删除,且运行时加 `--force`——同 ID 改标题或改写正文不算丢。) ACCEPT 落地、且产品代码与测试自 review-ready 起未再变化时,正常收尾恰好四个逻辑动作,不多不少:(1)把评审方的输出落成一个 self-contained 评审文件,外加一次简短的 flow-state 更新;(2)跑一次 `apriori check`,再跑一次完整的 `apriori gate --change <name>`(不带 `--review-ready`),在这些仍未变化的输入上绑定 C1;(3)直接跑 `apriori archive --change <name> --write`——`--write` 执行与 dry-run 完全相同的前置检查,先跑一次 dry-run 不会多核实出任何东西;归档把增量 spec 合并进 `apriori/specs` 并搬移 bundle,仅此而已(`--changes-dir` 只是非默认 changes 根的位置覆盖);(4)本地提交收尾,然后停止。那一次原子移动携带整个 bundle 到 `apriori/changes/archive/<stamp>-<change>/`。 这里数的是动作,不是命令:动作二本来就包含 check 与 gate。唯一的例外是下面的重新验证路径,在其已列触发发生时适用;四动作规则不是跳过恢复或适用报告义务的许可。
+ - **归档不是发布。** `apriori archive` 只声明它刚判定过的状态(实现与关键证据是否完成);第三行逐字就是这句话——`delivery: an archive is not a release`——它不冒充发布或外部验收。(flow-state 的 `delivery:` 字段已退役;遗留的行照常读入并忽略。)**归档后的 bundle 是冻结的:任何东西,包括 `phase:`,都不再回写。** 之后发现的缺陷记为一条简短的 outcome 或一个新 change。
+@@ -328,7 +328,7 @@ change 需要的其他任何东西——一张草稿、一幅图、给人看的
+ 
+ **单文件证据自己的词汇表。** 自包含文档(§1 R2)以三种规范整行之一收尾,整行匹配、大小写不敏感:`VERDICT: ACCEPT`、`VERDICT: REVISE`、`VERDICT: ESCALATE`。上表里的措辞在两种形态下都继续合法。这行必须整句匹配:ACCEPT 后面跟着限定从句,或 REVISE 把理由写进了机器行本身,都会被拒绝——理由属于文档正文,永远不属于机器行。
+ 
+-**没有问题台账。** 状态里的 `## Open` 段就是一个 change 开放实质问题的所在——一行一条,稳定 id 在前——也是 `gate`、`archive` 与 `status` 读取它们的唯一位置(6.2:`review/issues.md` 不再用来判定 change)。**一次性迁移:** 活动 bundle 的遗留 `review/issues.md` 若仍有 `open` 行(旧表格契约,`open` 为状态首 token),gate C3 / archive R1 / review-ready 一律拒绝,直到每一行被**移走**——以 `- <ID>: <文字>` 进入 `## Open`,并从台账里删掉该行(或删掉整个文件);复制过去的行仍是 open 行,读不出来的台账是结构错误。冻结的归档永不扫描。**ID:** Open 的 id 是一个 token、不含空格(`[^\s:]+`——把 `data schema` 改键为 `data-schema`);同一问题被再次发现时**重开旧 id**——重开是事件,不是新的一行;同一 bundle 内,关闭的 id 不复用给另一个风险。CLI 无法证明最后这条规则(它不记得某个 id 曾经指什么),所以一条 `evidence-accept` 的 id 后来指向另一条条目,是文档层面的违规,不是工具能检测的东西。**只有一件事阻断:pending 的条目——没有人接受、且不是已登记 follow-up 的条目。** 已接受的条目报告为仍然在场,工具绝不删除它;风险真正解决时由生产方删掉那一行。已登记的 follow-up(`- <ID>: follow-up → <新 change 名> — <内容>`,§4 Review & Deliver)是本次交付不依赖的新增诉求:作为 note 报告、永不阻断、也不因移出而关闭。只有正确性、安全与既定需求的缺口才立为 pending 条目——本次交付不依赖的新增诉求是 follow-up 条目,不是 pending;其余一律 `advisory`,而这个标注权由评审方独占。R1 未了结的交付义务与 R4 的评审停止保持其效力:登记 follow-up 放行不了任何一个。
++**没有问题台账。** 状态里的 `## Open` 段就是一个 change 开放实质问题的所在——一行一条,稳定 id 在前——也是 `gate`、`archive` 与 `status` 读取它们的唯一位置(6.2:`review/issues.md` 不再用来判定 change)。**一次性迁移:** 活动 bundle 的遗留 `review/issues.md` 若仍有 `open` 行(旧表格契约,`open` 为状态首 token),gate C3 / archive R1 / review-ready 一律拒绝,直到每一行被**移走**——以 `- <ID>: <文字>` 进入 `## Open`,并从台账里删掉该行(或删掉整个文件);复制过去的行仍是 open 行,读不出来的台账是结构错误。冻结的归档永不扫描。**ID:** Open 的 id 是一个 token、不含空格(`[^\s:]+`——把 `data schema` 改键为 `data-schema`);同一问题被再次发现时**重开旧 id**——重开是事件,不是新的一行;同一 bundle 内,关闭的 id 不复用给另一个风险。CLI 无法证明最后这条规则(它不记得某个 id 曾经指什么),所以一条 `evidence-accept` 的 id 后来指向另一条条目,是文档层面的违规,不是工具能检测的东西。**只有一件事阻断:pending 的条目——没有人接受、且不是已登记 follow-up 的条目。** 已接受的条目报告为仍然在场,工具绝不删除它;风险真正解决时由生产方删掉那一行。已登记的 follow-up(`- <ID>: follow-up → <新 change 名> — <内容>`,§4 Review & Deliver)是本次交付不依赖的新增诉求:作为 note 报告、永不阻断、也不因移出而关闭。被带进另一个 change 的承诺在那里保留原 id,作为 pending 条目,直到那个 change 自己的退出证据把它关闭——被接手、来源 change 归档、任一方改名,都不会关闭它。只有正确性、安全与既定需求的缺口才立为 pending 条目——本次交付不依赖的新增诉求是 follow-up 条目,不是 pending;其余一律 `advisory`,而这个标注权由评审方独占。R1 未了结的交付义务与 R4 的评审停止保持其效力:登记 follow-up 放行不了任何一个。
+ 
+ ### P1 —— Ground(可选的启动提示词)
+ 
+@@ -348,7 +348,7 @@ change 需要的其他任何东西——一张草稿、一幅图、给人看的
+ 
+ ```text
+ 【Specify】把**最小**行为契约写成 apriori/changes/<change>/specs/<module>/ 下的增量 spec。除非写文档确实是把事情做对的最便宜手段,否则别写其他文档。
+-* 先拆:这个 change 只承载**一个**主要结果和**一条**主要证据闭环。若它跨越多个各需不同真实环境的边界、逼评审方在互不相关的上下文之间切换、或不断扩大另一个区域的审查面——现在就拆,并把该决定记入 ## Reality Check。
++* 先拆:这个 change 只承载**一个**主要结果和**一条**主要证据闭环。若它跨越多个各需不同真实环境的边界、逼评审方在互不相关的上下文之间切换、或不断扩大另一个区域的审查面——现在就拆,并把该决定记入 ## Reality Check。拆分交给另一个 change 的承诺保留原 id:本次交付依赖它就是由那个 change 承接的 pending 条目,不依赖就是 follow-up。
+ * 每个用户可见输出各自一个 scenario,带稳定 ID(如 KV-03)与可测验收;写明什么不在范围内。
+ * 停下之前,拿契约对照它的来源——四问:你要交付的来源里的每条要求是否都有落点(一个 scenario、一句明确的范围外说明,或一条 ## Open 条目)?每个 scenario 是否都能追到来源(需求章节、原型、所有者决定)?每个条件是否清楚到可以测?来源之间有没有冲突,冲突是由已记录的决定解决了还是留作未决?来源留给你的选择记为 `decision: producer — <选择>`;没有任何来源裁定的用户可见行为是所有者的问题——记为 ## Open 条目,不是你的选择;只有未证实的事实才是 assumption。
+ * 任何外部共享状态(Redis / DB 字段 / 全局单例 / 内存缓存)都描述三个时机:初始化 / 运行期更新 / 清理失效。
+diff --git a/test/commitment-carry.test.js b/test/commitment-carry.test.js
+new file mode 100644
+index 0000000..77b8e9b
+--- /dev/null
++++ b/test/commitment-carry.test.js
+@@ -0,0 +1,45 @@
++'use strict';
++// commitment-carry — PR-57 (a commitment the split hands to another change keeps its id: pending and
++// carried if this delivery depends on it, a follow-up if not, never both) and PR-58 (the receiving
++// change carries it as a pending item and closes it only on its own exit evidence; picking it up,
++// archiving the source or renaming never closes it). Both editions; text-level like the other PR scenarios.
++const { test } = require('node:test');
++const assert = require('node:assert');
++const fs = require('node:fs');
++const path = require('node:path');
++
++const ROOT = path.join(__dirname, '..');
++const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
++const EN = read('RUNBOOK.md');
++const CN = read('RUNBOOK_cn.md');
++
++test('PR-57 a commitment handed across a split keeps its id in Split first and P2 (both editions)', () => {
++  const splitEn = EN.match(/^- \*\*Split first\.\*\*.*$/m)[0];
++  assert.match(splitEn, /When the split hands a commitment to another change — part of what the sources ask for, now to be delivered there — it keeps its id and cannot disappear/);
++  assert.match(splitEn, /if THIS delivery depends on it, it stays a pending `## Open` item naming the change that carries it \(`- <ID>: <text> — carried by <change>`\), blocking until that change's exit evidence lands or the owner accepts it/);
++  assert.match(splitEn, /if this delivery does not depend on it, it is a follow-up \(§4 Review & Deliver\) — never both for the same id/);
++  const splitCn = CN.match(/^- \*\*先拆。\*\*.*$/m)[0];
++  assert.match(splitCn, /拆分把一项承诺交给另一个 change 时——来源要求的一部分,改由那里交付——它保留原 ID、不能凭空消失/);
++  assert.match(splitCn, /本次交付依赖它,就留作一条 pending 的 `## Open` 条目并写明承接的 change\(`- <ID>: <内容> — carried by <change>`\),在那个 change 的退出证据落地或所有者接受之前一直阻断/);
++  assert.match(splitCn, /本次交付不依赖它,就登记为 follow-up\(§4 Review & Deliver\)——同一个 id 绝不两样都记/);
++  assert.match(EN, /A commitment the split hands to another change keeps its id: a pending item carried by that change if this delivery depends on it, a follow-up if not\./);
++  assert.match(CN, /拆分交给另一个 change 的承诺保留原 id:本次交付依赖它就是由那个 change 承接的 pending 条目,不依赖就是 follow-up。/);
++  // the carried form is an ordinary pending item to the machine: C9 blocks on it, while the same id
++  // registered as a follow-up is a note — the two forms are told apart, never both for one id
++  const rd = require('../lib/readiness');
++  const flow = (open) => `change: c1\nphase: review\n\n## Reality Check\n\n## Open\n${open}\n\ngates:\n  - 2026-09-27T00:00 note: fixture\n`;
++  const carried = rd.checkEvidenceStatus(flow('- C8-E2E: e2e covers every prototype page — carried by ops-notify-e2e-acceptance'));
++  assert.strictEqual(carried.status, 'blocked', `a carried commitment must block: ${JSON.stringify(carried)}`);
++  const fu = rd.checkEvidenceStatus(flow('- C8-E2E: follow-up → ops-notify-e2e-acceptance — e2e covers every prototype page'));
++  assert.strictEqual(fu.status, 'pass', `a follow-up is a note: ${JSON.stringify(fu)}`);
++});
++
++test('PR-58 the receiving change carries the commitment as pending and only its own exit evidence closes it (both editions)', () => {
++  assert.match(EN, /when that change is later opened under its own authorization, it carries the original id and text as a pending `## Open` item \(with an `observed:` line in its Reality Check naming the bundle it came from\) and closes it only on its own exit evidence, so the ask is traceable from the archived bundle to where it is picked up and is never closed by being picked up\./);
++  assert.match(CN, /日后在其自身授权下开启那个 change 时,它以原 ID 与原文记一条 pending 的 `## Open` 条目\(其 Reality Check 以一行 `observed:` 注明它来自哪个 bundle\),只凭自己的退出证据关闭,使这条诉求可从归档 bundle 追到接手处,且不因被接手而关闭。/);
++  assert.match(EN, /A commitment carried into another change keeps its original id there as a pending item until that change's own exit evidence closes it — picking it up, archiving the change it came from, or renaming either change never closes it\./);
++  assert.match(CN, /被带进另一个 change 的承诺在那里保留原 id,作为 pending 条目,直到那个 change 自己的退出证据把它关闭——被接手、来源 change 归档、任一方改名,都不会关闭它。/);
++  // the old landing form (an observed line only) is gone from both editions
++  assert.doesNotMatch(EN, /its Reality Check carries the original id and text as an `observed:` line/);
++  assert.doesNotMatch(CN, /其 Reality Check 以一行 `observed:` 带上原 ID 与原文/);
++});
+diff --git a/test/scope-disposition.test.js b/test/scope-disposition.test.js
+index dc8e6c1..383432f 100644
+--- a/test/scope-disposition.test.js
++++ b/test/scope-disposition.test.js
+@@ -137,11 +137,12 @@ test('PR-44 §5 and the CLI reference distinguish a pending item from a register
+   assert.match(en, /\*\*Exactly one thing blocks: a pending item — one nobody has accepted and that is not a registered follow-up\.\*\*/);
+   assert.match(en, /a new ask with no delivery dependency is a follow-up item, not a pending one/);
+   assert.match(en, /R1's unresolved delivery obligations and R4's review stops keep their authority: a follow-up registration releases neither/);
+-  assert.match(en, /The landing spot is a valid change name that is not this change; when that change is later opened under its own authorization, its Reality Check carries the original id and text as an `observed:` line/);
++  // commitment-carry: the receiving change now carries the original id as a pending item (PR-58)
++  assert.match(en, /The landing spot is a valid change name that is not this change; when that change is later opened under its own authorization, it carries the original id and text as a pending `## Open` item/);
+   const cn = fs.readFileSync(path.join(ROOT, 'RUNBOOK_cn.md'), 'utf8');
+   assert.match(cn, /\*\*只有一件事阻断:pending 的条目——没有人接受、且不是已登记 follow-up 的条目。\*\*/);
+   assert.match(cn, /本次交付不依赖的新增诉求是 follow-up 条目,不是 pending/);
+   assert.match(cn, /R1 未了结的交付义务与 R4 的评审停止保持其效力:登记 follow-up 放行不了任何一个/);
+-  assert.match(cn, /落点必须是一个合法且不是本 change 的 change 名;日后在其自身授权下开启那个 change 时,其 Reality Check 以一行 `observed:` 带上原 ID 与原文/);
++  assert.match(cn, /落点必须是一个合法且不是本 change 的 change 名;日后在其自身授权下开启那个 change 时,它以原 ID 与原文记一条 pending 的 `## Open` 条目/);
+   assert.match(fs.readFileSync(path.join(ROOT, 'docs', 'cli.md'), 'utf8'), /a registered follow-up item \(`- <ID>: follow-up → <new-change-name> — <text>`, see C9\) is a note, not a blocker/);
+ });
+diff --git a/RUNBOOK.md b/RUNBOOK.md
+index 400792d..0a6ba2d 100644
+--- a/RUNBOOK.md
++++ b/RUNBOOK.md
+@@ -294,7 +294,7 @@ KB docs have two sections with **opposite truth directions** (§5 P5): `Contract
+ ### Specify — the minimal behavior contract, and the split test
+ 
+ - **Do:** the **Specify action** with **P2** — the delta specs under `apriori/changes/<change>/specs/<module>/`, each scenario with a stable ID and testable acceptance. When implementation remains within the delegation, the default is to go straight to Build & Test — the single final review at Review & Deliver judges spec, code and tests together; a separate spec-review loop (reviewer P3; the producer's revisions touch the contract only — never source) runs only in the two situations §2 names.
+-- **Split first.** One change carries **one main result and one main evidence chain**. Split by default when any of these holds: it crosses several boundaries that need different real environments to verify; a reviewer must switch between unrelated contexts; fixing one area keeps enlarging the review surface of another. The whole question is one sentence: **can one clear, repeatable evidence chain prove this change is done?** Record the split judgement as a `decision` in the `## Reality Check`. When the split hands a commitment to another change — part of what the sources ask for, now to be delivered there — it keeps its id and cannot disappear: if THIS delivery depends on it, it stays a pending `## Open` item naming the change that carries it (`- <ID>: <text> — carried by <change>`), blocking until that change's exit evidence lands or the owner accepts it; if this delivery does not depend on it, it is a follow-up (§4 Review & Deliver) — never both for the same id.
++- **Split first.** One change carries **one main result and one main evidence chain**. Split by default when any of these holds: it crosses several boundaries that need different real environments to verify; a reviewer must switch between unrelated contexts; fixing one area keeps enlarging the review surface of another. The whole question is one sentence: **can one clear, repeatable evidence chain prove this change is done?** Record the split judgement as a `decision` in the `## Reality Check`. When the split hands a commitment to another change — part of what the sources ask for, now to be delivered there — it keeps its id and cannot disappear: if THIS delivery depends on it, it stays a pending `## Open` item naming the change that carries it (`- <ID>: <text> — carried by <change>`), blocking until that change's exit evidence lands or the owner accepts it; if this delivery does not depend on it, it is a follow-up (§4 Review & Deliver) — never both for the same id. The carried line never keeps the follow-up prefix: turning a registered follow-up into a dependency means rewriting the line without `follow-up →` — a carry pointer appended to a follow-up line leaves it a non-blocking follow-up.
+ - **Minimal means minimal.** State the behavior, the boundaries, and what is out of scope. Every user-visible output gets its own scenario; any external shared state (Redis / DB field / global singleton / in-memory cache) describes three moments: init / runtime update / cleanup-invalidation. Describe behavior, not implementation: a spec never names an internal function, handler, or payload field as if it were the contract.
+ - **Model by observable outcome, not by input example.** A Scenario is one observable-outcome category, not one test case; inputs that produce the SAME observable outcome are examples of that one Scenario, listed in its own table, never split into a new Scenario ID.
+ - **Exit (default):** the delta specs state the behavior, each scenario carrying a stable ID — that is the phase condition; §1 R1 routes what follows. In particular, a delegation limited to the spec ends here; otherwise continue to Build & Test when authorized. **Exit (when a spec-review loop ran):** verdict line = `VERDICT: no major issues, ready to proceed to execution` → the reviewed phase condition is met; advance only as §1 R1 routes the delegation; still `revise` below the owner's `review-round-limit` → the next round opens (logging `review-progress` in `gates:` from round 3 on); still `revise` at the effective limit, or `VERDICT: escalate` at any round → the loop stops (§1 R4), an escalation a human decides.
+diff --git a/RUNBOOK_cn.md b/RUNBOOK_cn.md
+index 6b4bde4..5d34934 100644
+--- a/RUNBOOK_cn.md
++++ b/RUNBOOK_cn.md
+@@ -285,7 +285,7 @@ change 需要的其他任何东西——一张草稿、一幅图、给人看的
+ ### Specify —— 最小行为契约,以及拆分判定
+ 
+ - **做:** 用 **P2** 执行 **Specify 动作**——把增量 spec 写在 `apriori/changes/<change>/specs/<module>/`,每个场景带稳定 ID 与可测验收。实现仍在委托范围内时,默认直接进入 Build & Test——Review & Deliver 那一次最终评审会同时评判 spec、代码和测试;单独的 spec-review 循环(评审方 P3;生产方的修订只改契约、绝不碰源码)只在 §2 所述的两种情形下才跑。
+-- **先拆。** 一个 change 只承载**一个主要结果和一条主要证据闭环**。出现下列任一事实,默认拆分:同时跨越多个需要不同真实环境才能验证的边界;评审方必须在互不相关的上下文之间切换;修一个区域会持续扩大另一个区域的审查面。核心问题只有一句:**这个 change 能否通过一条清晰、可重复的证据链证明完成?** 把拆分判定作为一条 `decision` 记入 `## Reality Check`。拆分把一项承诺交给另一个 change 时——来源要求的一部分,改由那里交付——它保留原 ID、不能凭空消失:本次交付依赖它,就留作一条 pending 的 `## Open` 条目并写明承接的 change(`- <ID>: <内容> — carried by <change>`),在那个 change 的退出证据落地或所有者接受之前一直阻断;本次交付不依赖它,就登记为 follow-up(§4 Review & Deliver)——同一个 id 绝不两样都记。
++- **先拆。** 一个 change 只承载**一个主要结果和一条主要证据闭环**。出现下列任一事实,默认拆分:同时跨越多个需要不同真实环境才能验证的边界;评审方必须在互不相关的上下文之间切换;修一个区域会持续扩大另一个区域的审查面。核心问题只有一句:**这个 change 能否通过一条清晰、可重复的证据链证明完成?** 把拆分判定作为一条 `decision` 记入 `## Reality Check`。拆分把一项承诺交给另一个 change 时——来源要求的一部分,改由那里交付——它保留原 ID、不能凭空消失:本次交付依赖它,就留作一条 pending 的 `## Open` 条目并写明承接的 change(`- <ID>: <内容> — carried by <change>`),在那个 change 的退出证据落地或所有者接受之前一直阻断;本次交付不依赖它,就登记为 follow-up(§4 Review & Deliver)——同一个 id 绝不两样都记。承接行绝不保留 follow-up 前缀:把已登记的 follow-up 改为依赖项,就要去掉 `follow-up →` 重写这一行——只在 follow-up 行后面追加承接指针,它仍是不阻断的 follow-up。
+ - **最小就是最小。** 说清行为、边界、以及什么不在范围内。每个用户可见输出各自成一个场景;任何外部共享状态(Redis / DB 字段 / 全局单例 / 内存缓存)都要描述三个时刻:初始化 / 运行期更新 / 清理失效。描述行为,不描述实现:spec 不把内部函数名、handler 名或 payload 字段当契约来写。
+ - **按可观察结果类别建模,不按输入样例。** 一个 Scenario 是一个可观察结果类别,不是一个测试用例;产生同一个可观察结果的不同输入是它的示例,列进它自己的表格,绝不拆成新的 Scenario ID。
+ - **退出(默认):** 增量 spec 已说清行为,每个场景带稳定 ID——这是阶段条件;§1 R1 分流决定接下来做什么。只限定到规格的委托在此结束;否则在授权内前进到 Build & Test。**退出(跑了 spec-review 循环时):** 结论行 = `VERDICT: no major issues, ready to proceed to execution` → 受评审阶段条件满足,仅按 §1 R1 对本次委托的分流前进;在所有者的 `review-round-limit` 之下仍是 `revise` → 开下一轮(第 3 轮起先在 `gates:` 记 `review-progress`);在有效上限仍是 `revise`,或任一轮 `VERDICT: escalate` → 该循环停止(§1 R4),成为由人决定的 escalation。
+diff --git a/apriori/changes/commitment-carry/flow-state.md b/apriori/changes/commitment-carry/flow-state.md
+index 51b5d99..e084cd2 100644
+--- a/apriori/changes/commitment-carry/flow-state.md
++++ b/apriori/changes/commitment-carry/flow-state.md
+@@ -1,21 +1,26 @@
+ change: commitment-carry
+-phase: specify                            # ground | specify | build | review | done | abandoned
+-reviewer-session: n/a                     # the reviewer's resumable session id, the moment round 1 prints it
++phase: review                             # ground | specify | build | review | done | abandoned
++reviewer-session: 01a0dfd9-241b-7a73-ac57-7942d22e3a1d   # codex exec, round 1 (2026-09-27)
+ 
+ ## Reality Check         # observed / decision / assumption — one line each, as you find them
+ - decision: lineage — branch `feature/commitment-carry`（从 v6-dev 开出，A=source-intake 合回后变基）；本地提交；评审通过后合回 v6-dev 并推 judge 与 GitHub；不进 release/v6 / preview 快照
+ - decision: requirement — 人类 09-27 /goal 第 2 条 B 项 + `work/astra-discuss/next-improve/NI-CONSENSUS.md` §一 B（Claude × Astra）：Split first / P2 / §5 各一句——交付依赖的承诺保留 pending + 承接指针、不复制 follow-up；独立诉求才 follow-up；接手端保留来源 ID、据退出证据关闭，不因接手/归档/改名自动关闭；不新增语法
+ - decision: 边界 — 只加句、改句；不改 R1 停点、owner 授权语义、归档放行（C9/R5 谓词不变，承接项是普通 pending 条目）；P3 不动（RIB-10）
+ - observed: RUNBOOK.md §4 Specify「Split first」只要求把拆分判定记为 decision，未规定拆分交出去的承诺落在哪；P2 Split first 同；§4 处置段 follow-up 的接手端写法是「其 Reality Check 以 `observed:` 行带上原 id 与原文」（scope-disposition 84b6e83），接手后不阻断
+-- observed: lib/readiness.js:234 FOLLOW_UP_RE 只认 `follow-up → <name> — <text>`；`- <ID>: <text> — carried by <change>` 形式不匹配，按普通 pending 条目由 C9/R5 阻断（test/commitment-carry.test.js 用 checkEvidenceStatus 实测）
++- observed: lib/readiness.js:234 FOLLOW_UP_RE 只认以 `follow-up →` 开头的行；不带该前缀的 `- <ID>: <text> — carried by <change>` 按普通 pending 由 C9/R5 阻断；**但在 follow-up 行尾追加 carried by 仍被认作 follow-up**（评审 CC-01，test/commitment-carry.test.js 用 checkEvidenceStatus 实测两者）
+ - observed: 真实语料（work/diag-0926/D-59-split.md:178-179,241）——纪要 §23 交给 C8 的 7 项在 C8 归档时未兑现、无门拦下，C9/C10 事后补切；C4→C5 ONW-04（D-59:166）是下游需要改上游已接受契约，走 MODIFIED delta（既有文法），本 change 只让「交出去的承诺」可追，不直接解决上游契约先行定错
++- observed: Build 完成 —— RUNBOOK 两版 Split first / P2 / §4 落点句 / §5 各一句；scope-disposition PR-44 断言随落点句更新；变基到 v6-dev@0bb1d2d 后重打 CAS 戳；全套 848/848；check --self PASS；verify --change GREEN
++- observed: 层 2 限定行为 5 次（HM，候选包 b1dcdb6，/srv/benefit/cc）全部 DONE、0 回复、src/test 不动：split 3/3 依赖项 pending「carried by greet-trim」、独立诉求 follow-up、无重复 id；receive 2/2 原 id pending + 来源 observed、未当作关闭、归档 bundle 未改；详见 /root/asd-lab/work/next-improve-0927/B-报告.md
++- observed: Review 第 1 轮（`review/code-review-v1.md`）= `VERDICT: gaps found`，1 条：CC-01 承接行模板未排除 follow-up 前缀，`follow-up → x — … — carried by x` 仍被 FOLLOW_UP_RE 认作 follow-up、不阻断。修：Split first 两版加一句「承接行绝不保留 follow-up 前缀；只追加指针仍是 follow-up」；delta 需求与 PR-57 THEN 同步；测试加该混合形式的 C9 实测（仍 pass）以钉住规则所依赖的机器事实
+ 
+ ## Open                  # substantive unresolved items — one line each, stable id first: - <ID>: <text>
+ 
+ ## Next                  # at most three concrete actions; the first is the resume point
+-- A 合回后变基 + 重打 CAS 戳
+-- 限定行为 B1（HM）→ Review → archive
++- Review 第 2 轮：resume 复核 CC-01
++- gate → archive --write → 合回 v6-dev
+ 
+ gates:
++  - 2026-09-27T06:34 note: Review 第 1 轮落盘（gaps found：CC-01）；已修；开第 2 轮
++  - 2026-09-27T06:31 note: 变基、Build 与层 2 完成；review-ready；开 Review 第 1 轮
+   - 2026-09-27T06:10 note: Ground 完成；Specify 与测试已写（PR-57/58 基线红、改后绿）
+   - 2026-09-27T06:10 note: change scaffolded by `apriori new`
+diff --git a/apriori/changes/commitment-carry/specs/protocol/spec.md b/apriori/changes/commitment-carry/specs/protocol/spec.md
+index d821adb..5585197 100644
+--- a/apriori/changes/commitment-carry/specs/protocol/spec.md
++++ b/apriori/changes/commitment-carry/specs/protocol/spec.md
+@@ -1,4 +1,4 @@
+-<!-- apriori-base: sha256:0dfeb82e139b1c9b6dff1171d8bef821b998c93c3756d751c9f8ffb7773f1292 -->
++<!-- apriori-base: sha256:9446d2d716dc608dba78332a93058af1ffe19847e0a5b160ae05361c27752590 -->
+ # Delta — protocol (commitment-carry)
+ 
+ ## MODIFIED Requirements
+@@ -17,11 +17,11 @@ Both runbook editions SHALL carry, in §4 Review & Deliver, a disposition rule f
+ ## ADDED Requirements
+ 
+ ### Requirement: a commitment handed across a split keeps its id until exit evidence closes it
+-Both runbook editions SHALL say, in §4 Specify's Split first and in P2, that a commitment a split hands to another change keeps its id and cannot disappear: if the current delivery depends on it, it stays a pending `## Open` item naming the change that carries it (`- <ID>: <text> — carried by <change>`), blocking until that change's exit evidence lands or the owner accepts it; if the current delivery does not depend on it, it is a follow-up; never both for the same id. §5 (both editions) SHALL say that a commitment carried into another change keeps its original id there as a pending item until that change's own exit evidence closes it, and that picking it up, archiving the change it came from, or renaming either change never closes it. No new grammar: the carried form is an ordinary pending item to gate C9 / archive R5, while the follow-up grammar stays the only non-blocking form. Evidence: in 5.9 the seven commitments the split notes handed to the end-to-end change were not delivered when it archived, and nothing stopped it (2026-09-26 diagnosis).
++Both runbook editions SHALL say, in §4 Specify's Split first and in P2, that a commitment a split hands to another change keeps its id and cannot disappear: if the current delivery depends on it, it stays a pending `## Open` item naming the change that carries it (`- <ID>: <text> — carried by <change>`), blocking until that change's exit evidence lands or the owner accepts it; if the current delivery does not depend on it, it is a follow-up; never both for the same id; and the carried line never keeps the follow-up prefix — turning a registered follow-up into a dependency means rewriting the line without `follow-up →`, since a carry pointer appended to a follow-up line leaves it a non-blocking follow-up. §5 (both editions) SHALL say that a commitment carried into another change keeps its original id there as a pending item until that change's own exit evidence closes it, and that picking it up, archiving the change it came from, or renaming either change never closes it. No new grammar: a carried line without the follow-up prefix is an ordinary pending item to gate C9 / archive R5, while the follow-up grammar stays the only non-blocking form. Evidence: in 5.9 the seven commitments the split notes handed to the end-to-end change were not delivered when it archived, and nothing stopped it (2026-09-26 diagnosis).
+ 
+ #### Scenario: PR-57 Split first and P2 keep a handed-over commitment's id (both editions)
+ - WHEN §4 Specify's Split first and P2 of `RUNBOOK.md` and `RUNBOOK_cn.md` are read, and a state carrying `- <ID>: <text> — carried by <change>` and one carrying the same id as a follow-up are judged by C9
+-- THEN both editions say a commitment handed across a split keeps its id — pending and carried when this delivery depends on it, a follow-up when it does not, never both — and C9 blocks on the carried form while reporting the follow-up form as a note
++- THEN both editions say a commitment handed across a split keeps its id — pending and carried when this delivery depends on it, a follow-up when it does not, never both — and that the carried line never keeps the follow-up prefix; C9 blocks on the carried form, reports the follow-up form as a note, and still reports as a note a follow-up line with a carry pointer merely appended
+ 
+ #### Scenario: PR-58 the receiving change carries the commitment as pending until its own exit evidence closes it (both editions)
+ - WHEN §4 Review & Deliver's landing sentence and §5 of both editions are read
+diff --git a/test/commitment-carry.test.js b/test/commitment-carry.test.js
+index 77b8e9b..7b46b5d 100644
+--- a/test/commitment-carry.test.js
++++ b/test/commitment-carry.test.js
+@@ -18,10 +18,12 @@ test('PR-57 a commitment handed across a split keeps its id in Split first and P
+   assert.match(splitEn, /When the split hands a commitment to another change — part of what the sources ask for, now to be delivered there — it keeps its id and cannot disappear/);
+   assert.match(splitEn, /if THIS delivery depends on it, it stays a pending `## Open` item naming the change that carries it \(`- <ID>: <text> — carried by <change>`\), blocking until that change's exit evidence lands or the owner accepts it/);
+   assert.match(splitEn, /if this delivery does not depend on it, it is a follow-up \(§4 Review & Deliver\) — never both for the same id/);
++  assert.match(splitEn, /The carried line never keeps the follow-up prefix: turning a registered follow-up into a dependency means rewriting the line without `follow-up →` — a carry pointer appended to a follow-up line leaves it a non-blocking follow-up\./);
+   const splitCn = CN.match(/^- \*\*先拆。\*\*.*$/m)[0];
+   assert.match(splitCn, /拆分把一项承诺交给另一个 change 时——来源要求的一部分,改由那里交付——它保留原 ID、不能凭空消失/);
+   assert.match(splitCn, /本次交付依赖它,就留作一条 pending 的 `## Open` 条目并写明承接的 change\(`- <ID>: <内容> — carried by <change>`\),在那个 change 的退出证据落地或所有者接受之前一直阻断/);
+   assert.match(splitCn, /本次交付不依赖它,就登记为 follow-up\(§4 Review & Deliver\)——同一个 id 绝不两样都记/);
++  assert.match(splitCn, /承接行绝不保留 follow-up 前缀:把已登记的 follow-up 改为依赖项,就要去掉 `follow-up →` 重写这一行——只在 follow-up 行后面追加承接指针,它仍是不阻断的 follow-up。/);
+   assert.match(EN, /A commitment the split hands to another change keeps its id: a pending item carried by that change if this delivery depends on it, a follow-up if not\./);
+   assert.match(CN, /拆分交给另一个 change 的承诺保留原 id:本次交付依赖它就是由那个 change 承接的 pending 条目,不依赖就是 follow-up。/);
+   // the carried form is an ordinary pending item to the machine: C9 blocks on it, while the same id
+@@ -32,6 +34,11 @@ test('PR-57 a commitment handed across a split keeps its id in Split first and P
+   assert.strictEqual(carried.status, 'blocked', `a carried commitment must block: ${JSON.stringify(carried)}`);
+   const fu = rd.checkEvidenceStatus(flow('- C8-E2E: follow-up → ops-notify-e2e-acceptance — e2e covers every prototype page'));
+   assert.strictEqual(fu.status, 'pass', `a follow-up is a note: ${JSON.stringify(fu)}`);
++  // CC-01 (review round 1): a carry pointer appended to a follow-up line does NOT make it blocking —
++  // the follow-up grammar still matches. That is why the runbook requires rewriting the line without
++  // the prefix; this pins the machine fact the rule leans on.
++  const mixed = rd.checkEvidenceStatus(flow('- C8-E2E: follow-up → ops-notify-e2e-acceptance — e2e covers every page — carried by ops-notify-e2e-acceptance'));
++  assert.strictEqual(mixed.status, 'pass', `a follow-up line with a carry pointer appended is still a follow-up: ${JSON.stringify(mixed)}`);
+ });
+ 
+ test('PR-58 the receiving change carries the commitment as pending and only its own exit evidence closes it (both editions)', () => {
+
+exec
+/usr/bin/zsh -lc 'git diff v6-dev...HEAD -- RUNBOOK_cn.md test/commitment-carry.test.js test/scope-disposition.test.js' in /root/terra/wt-b
+ succeeded in 0ms:
+diff --git a/RUNBOOK_cn.md b/RUNBOOK_cn.md
+index c6aee27..6b4bde4 100644
+--- a/RUNBOOK_cn.md
++++ b/RUNBOOK_cn.md
+@@ -285,7 +285,7 @@ change 需要的其他任何东西——一张草稿、一幅图、给人看的
+ ### Specify —— 最小行为契约,以及拆分判定
+ 
+ - **做:** 用 **P2** 执行 **Specify 动作**——把增量 spec 写在 `apriori/changes/<change>/specs/<module>/`,每个场景带稳定 ID 与可测验收。实现仍在委托范围内时,默认直接进入 Build & Test——Review & Deliver 那一次最终评审会同时评判 spec、代码和测试;单独的 spec-review 循环(评审方 P3;生产方的修订只改契约、绝不碰源码)只在 §2 所述的两种情形下才跑。
+-- **先拆。** 一个 change 只承载**一个主要结果和一条主要证据闭环**。出现下列任一事实,默认拆分:同时跨越多个需要不同真实环境才能验证的边界;评审方必须在互不相关的上下文之间切换;修一个区域会持续扩大另一个区域的审查面。核心问题只有一句:**这个 change 能否通过一条清晰、可重复的证据链证明完成?** 把拆分判定作为一条 `decision` 记入 `## Reality Check`。
++- **先拆。** 一个 change 只承载**一个主要结果和一条主要证据闭环**。出现下列任一事实,默认拆分:同时跨越多个需要不同真实环境才能验证的边界;评审方必须在互不相关的上下文之间切换;修一个区域会持续扩大另一个区域的审查面。核心问题只有一句:**这个 change 能否通过一条清晰、可重复的证据链证明完成?** 把拆分判定作为一条 `decision` 记入 `## Reality Check`。拆分把一项承诺交给另一个 change 时——来源要求的一部分,改由那里交付——它保留原 ID、不能凭空消失:本次交付依赖它,就留作一条 pending 的 `## Open` 条目并写明承接的 change(`- <ID>: <内容> — carried by <change>`),在那个 change 的退出证据落地或所有者接受之前一直阻断;本次交付不依赖它,就登记为 follow-up(§4 Review & Deliver)——同一个 id 绝不两样都记。
+ - **最小就是最小。** 说清行为、边界、以及什么不在范围内。每个用户可见输出各自成一个场景;任何外部共享状态(Redis / DB 字段 / 全局单例 / 内存缓存)都要描述三个时刻:初始化 / 运行期更新 / 清理失效。描述行为,不描述实现:spec 不把内部函数名、handler 名或 payload 字段当契约来写。
+ - **按可观察结果类别建模,不按输入样例。** 一个 Scenario 是一个可观察结果类别,不是一个测试用例;产生同一个可观察结果的不同输入是它的示例,列进它自己的表格,绝不拆成新的 Scenario ID。
+ - **退出(默认):** 增量 spec 已说清行为,每个场景带稳定 ID——这是阶段条件;§1 R1 分流决定接下来做什么。只限定到规格的委托在此结束;否则在授权内前进到 Build & Test。**退出(跑了 spec-review 循环时):** 结论行 = `VERDICT: no major issues, ready to proceed to execution` → 受评审阶段条件满足,仅按 §1 R1 对本次委托的分流前进;在所有者的 `review-round-limit` 之下仍是 `revise` → 开下一轮(第 3 轮起先在 `gates:` 记 `review-progress`);在有效上限仍是 `revise`,或任一轮 `VERDICT: escalate` → 该循环停止(§1 R4),成为由人决定的 escalation。
+@@ -302,7 +302,7 @@ change 需要的其他任何东西——一张草稿、一幅图、给人看的
+ 
+ - **先过 review-ready。** 跑 `apriori gate --change <name> --review-ready --test-cmd "…"`。它什么也不写,只从这次运行已经产生的事实答**两项**:编译和测试**真的**执行过(绝不是零测试的 `BUILD SUCCESS`);以及状态自己没有声明任何未了结的东西——每条 `## Open` 条目都带稳定 id、没有重复 id、没有仍悬着的 Reality Check `assumption`。pending 的条目不挡 review-ready:那正是评审要看的东西。**没准备好不算一轮评审。** 回到 Build & Test。
+ - **然后一次独立评审**(**P3**,R2)。评审方的默认输入恰好是四样:**行为契约**、**diff**、**`## Open` 条目**、**仍未覆盖的边界**;它可以自行查全仓、调用者、配置和原型。原始评审输出、已关闭问题、其他 change 的文档不是默认输入。评审方的输出只保留三样:新发现的实质问题;已查与未查的风险面;以及 `ACCEPT | REVISE | ESCALATE` 之一。**评审方不做生产方的活**——它不是来编译、补测试或重写方案的;如果它必须那么做,说明这个 change 没到 review-ready。 REVISE 的这一轮不扩大那份默认输入到生产方全量历史。这条输入边界不撤销 R2 评审会话的 resume,也不撤销评审方自行查源码的权限;生产方转述不能代替独立判断。 这条边界怎么落实:**不得把此前评审的结论重新包装进下一位评审方的默认输入** —— 去掉来源名、换个说法、或改标成别的字段(`observed`/`decision`)都不改变它的性质,**先写进去再删掉**也**不能抵消**它已经随那一轮带过去的事实。凡是你**自己重新核验过**的 —— 对着真实代码、命令或其输出 —— 那就是你自己的发现,**照常记录**,哪怕此前评审得出过同样结论。**diff 不按路径裁剪**:完整性、可维护性、以及责任可核查,三条都反对裁剪;删除行携带旧内容是机械后果,不是传播。这条边界让**评审存档与 Fix Packet 照旧** —— 两者本就由别处要求,也都不是下一轮评审的默认输入。
+-- **发现的处置——范围按每条发现判断,从不按体量。** 生产方对每条实质发现都记一条处置并写明依据:*当前契约*(增量 spec 与所有者已记录的决定)、*既有约束*(铁律、安全责任、既定保证),还是*新增诉求*。**若不处理该发现,拟交付的产物将违反一条可定位的已承诺验收条件、有效的所有者决定或适用的既有约束,那它就是本次交付的必要修复**——处置须同时引用该依据和违背它的证据。必要修复绝不因体量大而移出:实现可以拆,交付对它的依赖保留。改变承诺是所有者的决定(R1);记录之前,承诺与它的阻断继续有效。本次交付不依赖的新增诉求登记为**带稳定落点的 follow-up**——`## Open` 里写 `- <ID>: follow-up → <新 change 名> — <内容>`,gate C9 / archive R5 / `status` 把它当 note 报告而非阻断(建 change 与实施仍服从委托)——移出不等于关闭。落点必须是一个合法且不是本 change 的 change 名;日后在其自身授权下开启那个 change 时,其 Reality Check 以一行 `observed:` 带上原 ID 与原文,使这条诉求可从归档 bundle 追到接手处。`fixed`(附证据)/ `contract`(待所有者)/ `follow-up` / `invalid`(附理由)/ `duplicate`(附原 ID)是推荐写法,不是封闭词表:未解决的发现保留其 ID、当前影响与下一动作。`review-progress` 的 `approach:` 只说为什么保留或改变方案——它不是第二份问题账本。
++- **发现的处置——范围按每条发现判断,从不按体量。** 生产方对每条实质发现都记一条处置并写明依据:*当前契约*(增量 spec 与所有者已记录的决定)、*既有约束*(铁律、安全责任、既定保证),还是*新增诉求*。**若不处理该发现,拟交付的产物将违反一条可定位的已承诺验收条件、有效的所有者决定或适用的既有约束,那它就是本次交付的必要修复**——处置须同时引用该依据和违背它的证据。必要修复绝不因体量大而移出:实现可以拆,交付对它的依赖保留。改变承诺是所有者的决定(R1);记录之前,承诺与它的阻断继续有效。本次交付不依赖的新增诉求登记为**带稳定落点的 follow-up**——`## Open` 里写 `- <ID>: follow-up → <新 change 名> — <内容>`,gate C9 / archive R5 / `status` 把它当 note 报告而非阻断(建 change 与实施仍服从委托)——移出不等于关闭。落点必须是一个合法且不是本 change 的 change 名;日后在其自身授权下开启那个 change 时,它以原 ID 与原文记一条 pending 的 `## Open` 条目(其 Reality Check 以一行 `observed:` 注明它来自哪个 bundle),只凭自己的退出证据关闭,使这条诉求可从归档 bundle 追到接手处,且不因被接手而关闭。`fixed`(附证据)/ `contract`(待所有者)/ `follow-up` / `invalid`(附理由)/ `duplicate`(附原 ID)是推荐写法,不是封闭词表:未解决的发现保留其 ID、当前影响与下一动作。`review-progress` 的 `approach:` 只说为什么保留或改变方案——它不是第二份问题账本。
+ - **知识库更新是前置条件,不是收尾步骤——而且只在欠着的时候才做。** 只有当 `apriori/truth/<module>.md` 已经覆盖被触达的模块,或所有者/change 明确决定沉淀一份新的持久契约时才欠;绝不为了收官时有一份而凭空造一份。欠着时,review-ready 之前:提交实现,让 `source-commit` 指向它;更新 `apriori/truth/<module>.md`——Contract 段按最终实现写,Decisions 段追加本次的新决定。评审方看到的 diff 里已经带着这份 KB diff;`apriori archive` 从不碰 `apriori/truth/`。
+ - **然后归档——直接执行,不 dry-run。**(会丢掉 store 场景的 MODIFIED delta 会被拒绝:所有者须在 `gates:` 用 `archive-drop <change> sha256:<指纹>` 点名这一次删除,且运行时加 `--force`——同 ID 改标题或改写正文不算丢。) ACCEPT 落地、且产品代码与测试自 review-ready 起未再变化时,正常收尾恰好四个逻辑动作,不多不少:(1)把评审方的输出落成一个 self-contained 评审文件,外加一次简短的 flow-state 更新;(2)跑一次 `apriori check`,再跑一次完整的 `apriori gate --change <name>`(不带 `--review-ready`),在这些仍未变化的输入上绑定 C1;(3)直接跑 `apriori archive --change <name> --write`——`--write` 执行与 dry-run 完全相同的前置检查,先跑一次 dry-run 不会多核实出任何东西;归档把增量 spec 合并进 `apriori/specs` 并搬移 bundle,仅此而已(`--changes-dir` 只是非默认 changes 根的位置覆盖);(4)本地提交收尾,然后停止。那一次原子移动携带整个 bundle 到 `apriori/changes/archive/<stamp>-<change>/`。 这里数的是动作,不是命令:动作二本来就包含 check 与 gate。唯一的例外是下面的重新验证路径,在其已列触发发生时适用;四动作规则不是跳过恢复或适用报告义务的许可。
+ - **归档不是发布。** `apriori archive` 只声明它刚判定过的状态(实现与关键证据是否完成);第三行逐字就是这句话——`delivery: an archive is not a release`——它不冒充发布或外部验收。(flow-state 的 `delivery:` 字段已退役;遗留的行照常读入并忽略。)**归档后的 bundle 是冻结的:任何东西,包括 `phase:`,都不再回写。** 之后发现的缺陷记为一条简短的 outcome 或一个新 change。
+@@ -328,7 +328,7 @@ change 需要的其他任何东西——一张草稿、一幅图、给人看的
+ 
+ **单文件证据自己的词汇表。** 自包含文档(§1 R2)以三种规范整行之一收尾,整行匹配、大小写不敏感:`VERDICT: ACCEPT`、`VERDICT: REVISE`、`VERDICT: ESCALATE`。上表里的措辞在两种形态下都继续合法。这行必须整句匹配:ACCEPT 后面跟着限定从句,或 REVISE 把理由写进了机器行本身,都会被拒绝——理由属于文档正文,永远不属于机器行。
+ 
+-**没有问题台账。** 状态里的 `## Open` 段就是一个 change 开放实质问题的所在——一行一条,稳定 id 在前——也是 `gate`、`archive` 与 `status` 读取它们的唯一位置(6.2:`review/issues.md` 不再用来判定 change)。**一次性迁移:** 活动 bundle 的遗留 `review/issues.md` 若仍有 `open` 行(旧表格契约,`open` 为状态首 token),gate C3 / archive R1 / review-ready 一律拒绝,直到每一行被**移走**——以 `- <ID>: <文字>` 进入 `## Open`,并从台账里删掉该行(或删掉整个文件);复制过去的行仍是 open 行,读不出来的台账是结构错误。冻结的归档永不扫描。**ID:** Open 的 id 是一个 token、不含空格(`[^\s:]+`——把 `data schema` 改键为 `data-schema`);同一问题被再次发现时**重开旧 id**——重开是事件,不是新的一行;同一 bundle 内,关闭的 id 不复用给另一个风险。CLI 无法证明最后这条规则(它不记得某个 id 曾经指什么),所以一条 `evidence-accept` 的 id 后来指向另一条条目,是文档层面的违规,不是工具能检测的东西。**只有一件事阻断:pending 的条目——没有人接受、且不是已登记 follow-up 的条目。** 已接受的条目报告为仍然在场,工具绝不删除它;风险真正解决时由生产方删掉那一行。已登记的 follow-up(`- <ID>: follow-up → <新 change 名> — <内容>`,§4 Review & Deliver)是本次交付不依赖的新增诉求:作为 note 报告、永不阻断、也不因移出而关闭。只有正确性、安全与既定需求的缺口才立为 pending 条目——本次交付不依赖的新增诉求是 follow-up 条目,不是 pending;其余一律 `advisory`,而这个标注权由评审方独占。R1 未了结的交付义务与 R4 的评审停止保持其效力:登记 follow-up 放行不了任何一个。
++**没有问题台账。** 状态里的 `## Open` 段就是一个 change 开放实质问题的所在——一行一条,稳定 id 在前——也是 `gate`、`archive` 与 `status` 读取它们的唯一位置(6.2:`review/issues.md` 不再用来判定 change)。**一次性迁移:** 活动 bundle 的遗留 `review/issues.md` 若仍有 `open` 行(旧表格契约,`open` 为状态首 token),gate C3 / archive R1 / review-ready 一律拒绝,直到每一行被**移走**——以 `- <ID>: <文字>` 进入 `## Open`,并从台账里删掉该行(或删掉整个文件);复制过去的行仍是 open 行,读不出来的台账是结构错误。冻结的归档永不扫描。**ID:** Open 的 id 是一个 token、不含空格(`[^\s:]+`——把 `data schema` 改键为 `data-schema`);同一问题被再次发现时**重开旧 id**——重开是事件,不是新的一行;同一 bundle 内,关闭的 id 不复用给另一个风险。CLI 无法证明最后这条规则(它不记得某个 id 曾经指什么),所以一条 `evidence-accept` 的 id 后来指向另一条条目,是文档层面的违规,不是工具能检测的东西。**只有一件事阻断:pending 的条目——没有人接受、且不是已登记 follow-up 的条目。** 已接受的条目报告为仍然在场,工具绝不删除它;风险真正解决时由生产方删掉那一行。已登记的 follow-up(`- <ID>: follow-up → <新 change 名> — <内容>`,§4 Review & Deliver)是本次交付不依赖的新增诉求:作为 note 报告、永不阻断、也不因移出而关闭。被带进另一个 change 的承诺在那里保留原 id,作为 pending 条目,直到那个 change 自己的退出证据把它关闭——被接手、来源 change 归档、任一方改名,都不会关闭它。只有正确性、安全与既定需求的缺口才立为 pending 条目——本次交付不依赖的新增诉求是 follow-up 条目,不是 pending;其余一律 `advisory`,而这个标注权由评审方独占。R1 未了结的交付义务与 R4 的评审停止保持其效力:登记 follow-up 放行不了任何一个。
+ 
+ ### P1 —— Ground(可选的启动提示词)
+ 
+@@ -348,7 +348,7 @@ change 需要的其他任何东西——一张草稿、一幅图、给人看的
+ 
+ ```text
+ 【Specify】把**最小**行为契约写成 apriori/changes/<change>/specs/<module>/ 下的增量 spec。除非写文档确实是把事情做对的最便宜手段,否则别写其他文档。
+-* 先拆:这个 change 只承载**一个**主要结果和**一条**主要证据闭环。若它跨越多个各需不同真实环境的边界、逼评审方在互不相关的上下文之间切换、或不断扩大另一个区域的审查面——现在就拆,并把该决定记入 ## Reality Check。
++* 先拆:这个 change 只承载**一个**主要结果和**一条**主要证据闭环。若它跨越多个各需不同真实环境的边界、逼评审方在互不相关的上下文之间切换、或不断扩大另一个区域的审查面——现在就拆,并把该决定记入 ## Reality Check。拆分交给另一个 change 的承诺保留原 id:本次交付依赖它就是由那个 change 承接的 pending 条目,不依赖就是 follow-up。
+ * 每个用户可见输出各自一个 scenario,带稳定 ID(如 KV-03)与可测验收;写明什么不在范围内。
+ * 停下之前,拿契约对照它的来源——四问:你要交付的来源里的每条要求是否都有落点(一个 scenario、一句明确的范围外说明,或一条 ## Open 条目)?每个 scenario 是否都能追到来源(需求章节、原型、所有者决定)?每个条件是否清楚到可以测?来源之间有没有冲突,冲突是由已记录的决定解决了还是留作未决?来源留给你的选择记为 `decision: producer — <选择>`;没有任何来源裁定的用户可见行为是所有者的问题——记为 ## Open 条目,不是你的选择;只有未证实的事实才是 assumption。
+ * 任何外部共享状态(Redis / DB 字段 / 全局单例 / 内存缓存)都描述三个时机:初始化 / 运行期更新 / 清理失效。
+diff --git a/test/commitment-carry.test.js b/test/commitment-carry.test.js
+new file mode 100644
+index 0000000..77b8e9b
+--- /dev/null
++++ b/test/commitment-carry.test.js
+@@ -0,0 +1,45 @@
++'use strict';
++// commitment-carry — PR-57 (a commitment the split hands to another change keeps its id: pending and
++// carried if this delivery depends on it, a follow-up if not, never both) and PR-58 (the receiving
++// change carries it as a pending item and closes it only on its own exit evidence; picking it up,
++// archiving the source or renaming never closes it). Both editions; text-level like the other PR scenarios.
++const { test } = require('node:test');
++const assert = require('node:assert');
++const fs = require('node:fs');
++const path = require('node:path');
++
++const ROOT = path.join(__dirname, '..');
++const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
++const EN = read('RUNBOOK.md');
++const CN = read('RUNBOOK_cn.md');
++
++test('PR-57 a commitment handed across a split keeps its id in Split first and P2 (both editions)', () => {
++  const splitEn = EN.match(/^- \*\*Split first\.\*\*.*$/m)[0];
++  assert.match(splitEn, /When the split hands a commitment to another change — part of what the sources ask for, now to be delivered there — it keeps its id and cannot disappear/);
++  assert.match(splitEn, /if THIS delivery depends on it, it stays a pending `## Open` item naming the change that carries it \(`- <ID>: <text> — carried by <change>`\), blocking until that change's exit evidence lands or the owner accepts it/);
++  assert.match(splitEn, /if this delivery does not depend on it, it is a follow-up \(§4 Review & Deliver\) — never both for the same id/);
++  const splitCn = CN.match(/^- \*\*先拆。\*\*.*$/m)[0];
++  assert.match(splitCn, /拆分把一项承诺交给另一个 change 时——来源要求的一部分,改由那里交付——它保留原 ID、不能凭空消失/);
++  assert.match(splitCn, /本次交付依赖它,就留作一条 pending 的 `## Open` 条目并写明承接的 change\(`- <ID>: <内容> — carried by <change>`\),在那个 change 的退出证据落地或所有者接受之前一直阻断/);
++  assert.match(splitCn, /本次交付不依赖它,就登记为 follow-up\(§4 Review & Deliver\)——同一个 id 绝不两样都记/);
++  assert.match(EN, /A commitment the split hands to another change keeps its id: a pending item carried by that change if this delivery depends on it, a follow-up if not\./);
++  assert.match(CN, /拆分交给另一个 change 的承诺保留原 id:本次交付依赖它就是由那个 change 承接的 pending 条目,不依赖就是 follow-up。/);
++  // the carried form is an ordinary pending item to the machine: C9 blocks on it, while the same id
++  // registered as a follow-up is a note — the two forms are told apart, never both for one id
++  const rd = require('../lib/readiness');
++  const flow = (open) => `change: c1\nphase: review\n\n## Reality Check\n\n## Open\n${open}\n\ngates:\n  - 2026-09-27T00:00 note: fixture\n`;
++  const carried = rd.checkEvidenceStatus(flow('- C8-E2E: e2e covers every prototype page — carried by ops-notify-e2e-acceptance'));
++  assert.strictEqual(carried.status, 'blocked', `a carried commitment must block: ${JSON.stringify(carried)}`);
++  const fu = rd.checkEvidenceStatus(flow('- C8-E2E: follow-up → ops-notify-e2e-acceptance — e2e covers every prototype page'));
++  assert.strictEqual(fu.status, 'pass', `a follow-up is a note: ${JSON.stringify(fu)}`);
++});
++
++test('PR-58 the receiving change carries the commitment as pending and only its own exit evidence closes it (both editions)', () => {
++  assert.match(EN, /when that change is later opened under its own authorization, it carries the original id and text as a pending `## Open` item \(with an `observed:` line in its Reality Check naming the bundle it came from\) and closes it only on its own exit evidence, so the ask is traceable from the archived bundle to where it is picked up and is never closed by being picked up\./);
++  assert.match(CN, /日后在其自身授权下开启那个 change 时,它以原 ID 与原文记一条 pending 的 `## Open` 条目\(其 Reality Check 以一行 `observed:` 注明它来自哪个 bundle\),只凭自己的退出证据关闭,使这条诉求可从归档 bundle 追到接手处,且不因被接手而关闭。/);
++  assert.match(EN, /A commitment carried into another change keeps its original id there as a pending item until that change's own exit evidence closes it — picking it up, archiving the change it came from, or renaming either change never closes it\./);
++  assert.match(CN, /被带进另一个 change 的承诺在那里保留原 id,作为 pending 条目,直到那个 change 自己的退出证据把它关闭——被接手、来源 change 归档、任一方改名,都不会关闭它。/);
++  // the old landing form (an observed line only) is gone from both editions
++  assert.doesNotMatch(EN, /its Reality Check carries the original id and text as an `observed:` line/);
++  assert.doesNotMatch(CN, /其 Reality Check 以一行 `observed:` 带上原 ID 与原文/);
++});
+diff --git a/test/scope-disposition.test.js b/test/scope-disposition.test.js
+index dc8e6c1..383432f 100644
+--- a/test/scope-disposition.test.js
++++ b/test/scope-disposition.test.js
+@@ -137,11 +137,12 @@ test('PR-44 §5 and the CLI reference distinguish a pending item from a register
+   assert.match(en, /\*\*Exactly one thing blocks: a pending item — one nobody has accepted and that is not a registered follow-up\.\*\*/);
+   assert.match(en, /a new ask with no delivery dependency is a follow-up item, not a pending one/);
+   assert.match(en, /R1's unresolved delivery obligations and R4's review stops keep their authority: a follow-up registration releases neither/);
+-  assert.match(en, /The landing spot is a valid change name that is not this change; when that change is later opened under its own authorization, its Reality Check carries the original id and text as an `observed:` line/);
++  // commitment-carry: the receiving change now carries the original id as a pending item (PR-58)
++  assert.match(en, /The landing spot is a valid change name that is not this change; when that change is later opened under its own authorization, it carries the original id and text as a pending `## Open` item/);
+   const cn = fs.readFileSync(path.join(ROOT, 'RUNBOOK_cn.md'), 'utf8');
+   assert.match(cn, /\*\*只有一件事阻断:pending 的条目——没有人接受、且不是已登记 follow-up 的条目。\*\*/);
+   assert.match(cn, /本次交付不依赖的新增诉求是 follow-up 条目,不是 pending/);
+   assert.match(cn, /R1 未了结的交付义务与 R4 的评审停止保持其效力:登记 follow-up 放行不了任何一个/);
+-  assert.match(cn, /落点必须是一个合法且不是本 change 的 change 名;日后在其自身授权下开启那个 change 时,其 Reality Check 以一行 `observed:` 带上原 ID 与原文/);
++  assert.match(cn, /落点必须是一个合法且不是本 change 的 change 名;日后在其自身授权下开启那个 change 时,它以原 ID 与原文记一条 pending 的 `## Open` 条目/);
+   assert.match(fs.readFileSync(path.join(ROOT, 'docs', 'cli.md'), 'utf8'), /a registered follow-up item \(`- <ID>: follow-up → <new-change-name> — <text>`, see C9\) is a note, not a blocker/);
+ });
+
+exec
+/usr/bin/zsh -lc "cat apriori/changes/commitment-carry/specs/protocol/spec.md; sed -n '350,370p' RUNBOOK.md; sed -n '228,237p' lib/readiness.js; sed -n '338,352p' lib/readiness.js; node bin/apriori.js gate --change commitment-carry --json; git diff v6-dev --name-only" in /root/terra/wt-b
+ succeeded in 0ms:
+<!-- apriori-base: sha256:9446d2d716dc608dba78332a93058af1ffe19847e0a5b160ae05361c27752590 -->
+# Delta — protocol (commitment-carry)
+
+## MODIFIED Requirements
+
+### Requirement: the runbook states the per-finding disposition rule
+Both runbook editions SHALL carry, in §4 Review & Deliver, a disposition rule for review findings: scope is judged per finding, never by volume; each substantive finding gets a disposition with its basis (current contract / existing constraint / new ask); the necessary-fix criterion — left alone, the delivered product would violate a locatable accepted acceptance condition, a valid owner decision or an applicable existing constraint, cited with the evidence of the violation; a necessary fix is never moved out for its size (split the implementation, keep the dependency); changing a commitment is the owner's decision and its blocking stands until recorded; a new ask the delivery does not depend on is registered as a follow-up with the stable landing grammar `- <ID>: follow-up → <new-change-name> — <text>`, reported as a note and never closed by being moved out; `fixed` / `contract` / `follow-up` / `invalid` / `duplicate` are recommended words, not a closed vocabulary, and an unresolved finding keeps its id, impact and next action; `approach:` in `review-progress` is not a second ledger. §5's rule on what blocks SHALL distinguish a pending item from a registered follow-up in both editions, and the CLI reference SHALL say a registered follow-up is a note; the landing spot SHALL be a valid change name other than the change itself, and the runbook SHALL say that a later authorized session opening that change carries the original id and text as a pending `## Open` item there (an `observed:` line naming the bundle it came from) that only its own exit evidence closes. The P3 prompt is NOT changed (RIB-10 pins it verbatim by a recorded human ruling): the disposition is the producer's duty. Evidence: plan/01 S6 (review-driven scope creep with no gate, ≥5 cases across 5.1/5.2) and the Claude × Astra plan consensus (序 3), which rejected a closed vocabulary and a C8 marker check in favour of this minimal protocol.
+
+#### Scenario: PR-42 the disposition rule lands in both editions of §4
+- WHEN `RUNBOOK.md` and `RUNBOOK_cn.md` are read
+- THEN each §4 Review & Deliver carries, pinned on its own: judged per finding never by volume; the three bases; the necessary-fix criterion sentence; never moved out for size; commitment change is the owner's; the follow-up grammar with its landing spot reported as a note; moving out is not closing; the recommended words are not a closed vocabulary; `approach:` is not a second ledger — and the P3 block of both editions is byte-identical to its frozen form (RIB-10)
+
+#### Scenario: PR-44 §5 and the CLI reference distinguish a pending item from a registered follow-up
+- WHEN `RUNBOOK.md` §5, `RUNBOOK_cn.md` §5 and `docs/cli.md`'s open-item paragraph are read
+- THEN §5 says exactly one thing blocks — a pending item, one nobody has accepted and that is not a registered follow-up — and that a new ask with no delivery dependency is a follow-up item, not a pending one, while R1 obligations and R4 stops keep their authority; §4's bullet says the landing spot is a valid change name other than this change and that the later change carries the original id and text as a pending `## Open` item (with an `observed:` line naming where it came from) that only its own exit evidence closes; `docs/cli.md` says a registered follow-up is a note, not a blocker
+
+## ADDED Requirements
+
+### Requirement: a commitment handed across a split keeps its id until exit evidence closes it
+Both runbook editions SHALL say, in §4 Specify's Split first and in P2, that a commitment a split hands to another change keeps its id and cannot disappear: if the current delivery depends on it, it stays a pending `## Open` item naming the change that carries it (`- <ID>: <text> — carried by <change>`), blocking until that change's exit evidence lands or the owner accepts it; if the current delivery does not depend on it, it is a follow-up; never both for the same id; and the carried line never keeps the follow-up prefix — turning a registered follow-up into a dependency means rewriting the line without `follow-up →`, since a carry pointer appended to a follow-up line leaves it a non-blocking follow-up. §5 (both editions) SHALL say that a commitment carried into another change keeps its original id there as a pending item until that change's own exit evidence closes it, and that picking it up, archiving the change it came from, or renaming either change never closes it. No new grammar: a carried line without the follow-up prefix is an ordinary pending item to gate C9 / archive R5, while the follow-up grammar stays the only non-blocking form. Evidence: in 5.9 the seven commitments the split notes handed to the end-to-end change were not delivered when it archived, and nothing stopped it (2026-09-26 diagnosis).
+
+#### Scenario: PR-57 Split first and P2 keep a handed-over commitment's id (both editions)
+- WHEN §4 Specify's Split first and P2 of `RUNBOOK.md` and `RUNBOOK_cn.md` are read, and a state carrying `- <ID>: <text> — carried by <change>` and one carrying the same id as a follow-up are judged by C9
+- THEN both editions say a commitment handed across a split keeps its id — pending and carried when this delivery depends on it, a follow-up when it does not, never both — and that the carried line never keeps the follow-up prefix; C9 blocks on the carried form, reports the follow-up form as a note, and still reports as a note a follow-up line with a carry pointer merely appended
+
+#### Scenario: PR-58 the receiving change carries the commitment as pending until its own exit evidence closes it (both editions)
+- WHEN §4 Review & Deliver's landing sentence and §5 of both editions are read
+- THEN the later change carries the original id and text as a pending `## Open` item with an `observed:` line naming its origin and closes it only on its own exit evidence, and picking it up, archiving the source change or renaming either change never closes it; the old observed-line-only landing form is gone from both editions
+
+## Notes
+
+Why: the follow-up landing added by scope-disposition made a moved-out ask traceable but let the receiving change pick it up as an observed line only, and nothing tied a commitment the split handed to a sibling to that sibling's exit. In 5.9 the seven items the split notes gave the end-to-end change were missing at its archive with nothing to stop it. Carrying the id as a pending item uses the existing C9/R5 predicate; no new grammar (Claude × Astra consensus NI-CONSENSUS §一 B).
+* assumption: <not proven yet> — verify it before implementing
+Never write a product fact from memory: routes, schema, auth, config and deploy topology are read, or they are assumptions.
+A probe is allowed to settle a fact that will not yield to reading — thrown away afterwards, never a deliverable. Its product is an `observed` line.
+Stop when nothing the work depends on is still an assumption. Anything you could not verify becomes an ## Open item (`- <ID>: <text>`) and stays there until it is resolved or the owner accepts it.
+```
+
+### P2 — producer: the minimal contract, then review-ready
+
+```text
+[Specify] Write the MINIMAL behavior contract as delta specs under apriori/changes/<change>/specs/<module>/. Write no other document unless a document is genuinely the cheapest way to be right.
+* Split first: this change carries ONE main result and ONE main evidence chain. If it spans boundaries needing different real environments, forces a reviewer between unrelated contexts, or keeps enlarging another area's review surface — split now and record that decision in ## Reality Check. A commitment the split hands to another change keeps its id: a pending item carried by that change if this delivery depends on it, a follow-up if not.
+* One scenario per user-visible output, each with a stable ID (e.g. KV-03) and testable acceptance; state what is out of scope.
+* Before you stop, check the contract against its sources — four questions: does every requirement in the sources you are delivering land somewhere (a scenario, an explicit out-of-scope line, or an ## Open item)? does every scenario trace to a source (a requirement section, a prototype, an owner decision)? is every condition clear enough to test? do two sources disagree anywhere, and is that settled by a recorded decision or left open? A choice the sources leave to you is `decision: producer — <choice>`; a user-visible behavior no source settles is the owner's question — an ## Open item, not your choice; only an unproven fact is an assumption.
+* Any external shared state (Redis / DB field / global singleton / in-memory cache) describes three moments: init / runtime update / cleanup-invalidation.
+* List under ## Open, one id'd line each, every risk this change actually hits and has not yet resolved.
+[Build & Test] Derive a failing test that proves every scenario's behavior with real evidence — one parametrized test may cover a scenario's whole examples table, so the bar is every scenario covered, not one test per ID — and SHOW the failing run. Then implement — the scenarios are the work; there is no task list. Run the project's linter/static analysis where configured. For any continue/skip/silently-ignored branch, re-check the spec for whether the failure state must be user-visible. When a new path takes over, name the old owner and its fate (removed, disabled, migrated, or coexisting), prove it in one user-flow test at the highest common container with an assertion that fails if the fate is untrue, and delete only the low-level tests that test replaces. A self-added promise with no established requirement, valid decision or actual safety responsibility behind it is retracted or narrowed by default.
+[Review-ready] Update ## Open: delete what you resolved and say, on each remaining line, what you ran and what is still unverified — every line with a stable id (`- <ID>: <text>`); reclaim the probes, temporary files and dead code this change left behind, along with any comment or DDL header it left contradicting the implementation; then read the COMPLETE diff with known P0/P1 at zero.
+Stop, and run `apriori gate --change <change> --review-ready --test-cmd "…"` before asking for review. Not ready is not a review round.
+```
+
+### P3 — independent review (heterogeneous, R2)
+// A FOLLOW-UP item (S6 scope disposition): `- <ID>: follow-up → <new-change-name> — <text>`. It
+// registers a new ask this delivery does not depend on, with a stable landing spot (the bare
+// kebab-case name of the change that will carry it — creating and implementing that change still
+// follows the delegation). It is reported by C9 / R5 / status as a NOTE, never a blocker; moving
+// the ask out is not closing it. Anything that does not match the grammar exactly (no landing, a
+// non-kebab landing, no text) stays an ordinary pending item and blocks — fail-closed.
+const FOLLOW_UP_RE = /^follow-up[ \t]*(?:→|->)[ \t]*([a-z0-9](?:[a-z0-9-]*[a-z0-9])?)[ \t]+—[ \t]*([\s\S]+)$/;
+const FOLLOW_UP_TEMPLATE = (id) => `  - ${id}: follow-up → <new-change-name> — <the ask, in one line>`;
+// the legacy row, read only to migrate it: `- <name>: <status> — <detail>`
+const LEGACY_EVIDENCE_ROW = /^([^:]+?)\s*:\s*([a-z][a-z/-]*)\s*(?:[—–-]\s*)?(.*)$/;
+      openDefects.push(d); blockers.push(d);
+    } else seen.set(id, line);
+    named.add(id);
+    const ok = accepted(id);
+    const fu = FOLLOW_UP_RE.exec(textOf);
+    // the landing spot must be a change that CAN exist (validateChangeName: shape, no date prefix,
+    // not reserved) and must not be this change itself — otherwise the line is an ordinary pending item
+    const landingOk = (n) => n && n !== own && require('./resolve').validateChangeName(n).ok;
+    const followUp = fu && HAS_REASON.test(fu[2]) && landingOk(fu[1]) ? fu[1] : null;
+    items.push({ id, text: textOf, accepted: ok, acceptedAt: ok ? grants.get(id).at : null, followUp });
+    if (ok) { /* accepted wins the report */ }
+    else if (followUp) notes.push(`follow-up ${id} → ${followUp}: ${fu[2].trim().slice(0, 90)} (registered, not a blocker; moving it out is not closing it)`);
+    else blockers.push(`open item ${id} is pending: ${textOf.slice(0, 90)} — close it (delete the line), register it as a follow-up with its landing spot (${FOLLOW_UP_TEMPLATE(id).trim()}), or record the owner's decision: ${ACCEPT_TEMPLATE(id)}`);
+  }
+
+{
+  "change": "commitment-carry",
+  "stage": "in-flight",
+  "checks": [
+    {
+      "id": "C1",
+      "status": "skipped",
+      "detail": "skipped — no test command (pass --test-cmd or add a test-cmd row to apriori/process-config.md); the binding check did not run"
+    },
+    {
+      "id": "C2",
+      "status": "n/a",
+      "detail": "retired in 6.2 — nothing is read"
+    },
+    {
+      "id": "C3",
+      "status": "pass",
+      "detail": "legal (review)"
+    },
+    {
+      "id": "C4",
+      "status": "n/a",
+      "detail": "ledger retired in 6.2 — open items live in ## Open"
+    },
+    {
+      "id": "C5",
+      "status": "pass",
+      "detail": "1 review doc(s), every verdict has raw evidence"
+    },
+    {
+      "id": "C6",
+      "status": "n/a",
+      "detail": "protocol: no truth doc"
+    },
+    {
+      "id": "C7",
+      "status": "pass",
+      "detail": "every mutation delta is stamped"
+    },
+    {
+      "id": "C8",
+      "status": "blocked",
+      "detail": "code-review round 1 (revise); review-round-limit 7 (default); the independent review has not resolved (code-review round 1, revise) — the reviewer's latest verdict is what must close before the change ships; no ledger state can stand in for it; transcript 'code-review-v2-raw.txt' names a review round whose summary 'code-review-v2.md' is missing"
+    },
+    {
+      "id": "C9",
+      "status": "pass",
+      "detail": "no open items; risk: contract-mutation: protocol/spec.md MODIFIED 'the runbook states the per-finding disposition rule'"
+    }
+  ],
+  "result": "BLOCKED",
+  "blocked": 1,
+  "errors": []
+}
+RUNBOOK.md
+RUNBOOK_cn.md
+apriori/changes/commitment-carry/flow-state.md
+apriori/changes/commitment-carry/specs/protocol/spec.md
+test/commitment-carry.test.js
+test/scope-disposition.test.js
+
+codex
+Review body for `apriori/changes/commitment-carry/review/code-review-v2.md`; read-only permissions prevent saving it. Under RUNBOOK R2, the producer can land this body verbatim, marked “recorded on behalf of the reviewer.”
+
+**CC-01 — ADDRESSED.** Both runbook editions now require removing the follow-up prefix when converting a registration into a dependency, and explicitly explain why merely appending a carry pointer remains non-blocking. The delta and PR-57 reflect this distinction. The test retains the blocking ordinary-carry case and adds the mixed-form non-blocking case, matching the unchanged parser. This resolves the documentation gap without introducing grammar or changing C9/R5.
+
+**New substantive findings:** none.
+
+**Examined:** refreshed `git diff v6-dev...HEAD` and uncommitted diff; EN/CN parity; affected contract and test assertions; corrected flow-state; follow-up classification; preservation of receiving-end ID and exit-evidence obligations, necessary-fix criteria, owner authority, R1 stops, and frozen P3. No unrelated implementation changes appeared.
+
+Gate reports C9 passing. C8 remains blocked by round 1’s verdict and the missing round 2 summary; C1 was skipped because no test command was supplied. These are not new product findings.
+
+**Not examined:** credentials, human-note files, raw review transcripts, other changes’ documents, or optional Layer-2 evidence. I did not rerun the producer-reported full suite, verify, or self-check, and performed no writes.
+
+**Advisories:** none.
+
+VERDICT: no spec-vs-code gaps
+tokens used
+64,345
+Review body for `apriori/changes/commitment-carry/review/code-review-v2.md`; read-only permissions prevent saving it. Under RUNBOOK R2, the producer can land this body verbatim, marked “recorded on behalf of the reviewer.”
+
+**CC-01 — ADDRESSED.** Both runbook editions now require removing the follow-up prefix when converting a registration into a dependency, and explicitly explain why merely appending a carry pointer remains non-blocking. The delta and PR-57 reflect this distinction. The test retains the blocking ordinary-carry case and adds the mixed-form non-blocking case, matching the unchanged parser. This resolves the documentation gap without introducing grammar or changing C9/R5.
+
+**New substantive findings:** none.
+
+**Examined:** refreshed `git diff v6-dev...HEAD` and uncommitted diff; EN/CN parity; affected contract and test assertions; corrected flow-state; follow-up classification; preservation of receiving-end ID and exit-evidence obligations, necessary-fix criteria, owner authority, R1 stops, and frozen P3. No unrelated implementation changes appeared.
+
+Gate reports C9 passing. C8 remains blocked by round 1’s verdict and the missing round 2 summary; C1 was skipped because no test command was supplied. These are not new product findings.
+
+**Not examined:** credentials, human-note files, raw review transcripts, other changes’ documents, or optional Layer-2 evidence. I did not rerun the producer-reported full suite, verify, or self-check, and performed no writes.
+
+**Advisories:** none.
+
+VERDICT: no spec-vs-code gaps

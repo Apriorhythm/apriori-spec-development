@@ -137,11 +137,12 @@ test('PR-44 §5 and the CLI reference distinguish a pending item from a register
   assert.match(en, /\*\*Exactly one thing blocks: a pending item — one nobody has accepted and that is not a registered follow-up\.\*\*/);
   assert.match(en, /a new ask with no delivery dependency is a follow-up item, not a pending one/);
   assert.match(en, /R1's unresolved delivery obligations and R4's review stops keep their authority: a follow-up registration releases neither/);
-  assert.match(en, /The landing spot is a valid change name that is not this change; when that change is later opened under its own authorization, its Reality Check carries the original id and text as an `observed:` line/);
+  // commitment-carry: the receiving change now carries the original id as a pending item (PR-58)
+  assert.match(en, /The landing spot is a valid change name that is not this change; when that change is later opened under its own authorization, it carries the original id and text as a pending `## Open` item/);
   const cn = fs.readFileSync(path.join(ROOT, 'RUNBOOK_cn.md'), 'utf8');
   assert.match(cn, /\*\*只有一件事阻断:pending 的条目——没有人接受、且不是已登记 follow-up 的条目。\*\*/);
   assert.match(cn, /本次交付不依赖的新增诉求是 follow-up 条目,不是 pending/);
   assert.match(cn, /R1 未了结的交付义务与 R4 的评审停止保持其效力:登记 follow-up 放行不了任何一个/);
-  assert.match(cn, /落点必须是一个合法且不是本 change 的 change 名;日后在其自身授权下开启那个 change 时,其 Reality Check 以一行 `observed:` 带上原 ID 与原文/);
+  assert.match(cn, /落点必须是一个合法且不是本 change 的 change 名;日后在其自身授权下开启那个 change 时,它以原 ID 与原文记一条 pending 的 `## Open` 条目/);
   assert.match(fs.readFileSync(path.join(ROOT, 'docs', 'cli.md'), 'utf8'), /a registered follow-up item \(`- <ID>: follow-up → <new-change-name> — <text>`, see C9\) is a note, not a blocker/);
 });

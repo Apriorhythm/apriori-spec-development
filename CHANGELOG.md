@@ -25,6 +25,20 @@ Known limitations, stated as they stand:
 Later preview snapshots are cut from `release/v6` after v6-dev work merges back; fixes in flight
 (authorization-scope, archive-manifest) are not part of this snapshot.
 
+## Unreleased — review-round-scope: a later review round is scoped to what changed
+
+- RUNBOOK §4 Review & Deliver (both editions) gains one bullet: from round 2 on, the producer's resume message (R2) asks the reviewer to judge each finding still open from the previous round ADDRESSED / NOT ADDRESSED and to review the fix diff together with what it affects (callers, shared state, tests — never trimmed to the edited lines). A new finding outside that diff still counts when it violates the current contract or a safety constraint; anything else is advisory and does not extend the loop. A finding is wording only when fixing it changes neither the contract nor how anyone would execute it. The scope rides on a resumed reviewer session: a later round in a fresh session (the non-Codex path when not resumed, or after failed transport recovery) gets only the default input and reviews the whole change as round 1 does. R2's resume clause points at the bullet. P3 is byte-identical (RIB-10); R4 limits, stop points and the verdict vocabulary are unchanged. Scenarios PR-59/60. Nothing here claims fewer rounds.
+
+## Unreleased — commitment-carry: a commitment handed across a split keeps its id
+
+- Split first and P2 (both editions): a commitment a split hands to another change keeps its id — a pending `## Open` item naming its carrier (`- <ID>: <text> — carried by <change>`) when this delivery depends on it, a follow-up when it does not, never both. The carried line never keeps the `follow-up →` prefix (a pointer appended to a follow-up line leaves it a non-blocking follow-up). The receiving change carries the original id as a pending item with an `observed:` origin line and closes it only on its own exit evidence (§4 landing sentence, §5); pick-up, archive or rename never closes it. No new grammar: the carried form is an ordinary pending item to C9 / R5. Scenarios PR-57/58 (PR-44 assertion updated).
+
+## Unreleased — source-intake: the contract is checked against its sources; a discussion held elsewhere is source material
+
+- P2 [Specify] (both editions) adds a four-question check of the contract against its sources: every in-scope requirement lands (scenario, explicit out-of-scope, or `## Open`), every scenario traces to a source, conditions are testable, source conflicts are settled by a recorded decision or left open. A choice the sources leave to the producer is `decision: producer — <choice>`; a user-visible behavior no source settles is the owner's `## Open` question; only an unproven fact is an assumption.
+- Ground: a design document, spec draft or prototype from a discussion held outside the workflow is source material — `observed: <path> — <version or date>; approved: <scope, or "unknown">` — and a decision only as far as the owner approved it. It authorizes neither `apriori new` nor development, and its next steps are not chained on automatically.
+- `/apriori-discuss` can save from such a document without re-running the discussion (same two approvals); the discuss template points at the rule by section and stays under its size cap. The `/apriori` routing template treats "build this design concluded elsewhere" with the document pointed at as identifying the work; the exhaustiveness clause stays last. Both templates get a new generation in `TEMPLATE_GENERATIONS`, so `apriori update` refreshes installed copies. The store's stale PR-07/09/14 wording is rewritten to current semantics. Scenarios PR-53..56.
+
 ## Unreleased — archive-manifest: an archive records what it contained, and check reports drift
 
 `apriori archive --write` now writes `archive-manifest.json` into the bundle — one sha256 per

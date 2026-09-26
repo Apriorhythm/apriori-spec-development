@@ -5,7 +5,7 @@
 // 6.2 retired the issue ledger consumer, and with it the only class `archive-force` ever named:
 // `ledger`. The grammar survives — the owner-entry parser is shared with `evidence-accept` and
 // `reframe` — but an `archive-force` record now authorizes nothing and is reported as a note.
-// The one forceable blocker left is the round-5 escalation (R4), whose double action is
+// The forceable blockers left are the escalation the owner answered (R4) and the named archive-drop; the double action is
 // covered by AM-121 / FF-22..24. Everything here pins what `--force` can NOT do.
 
 const { test } = require('node:test');

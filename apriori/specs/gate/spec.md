@@ -14,7 +14,7 @@
 - THEN C4 reports `{id: 'C4', status: 'n/a', detail: 'ledger retired in 6.2 — open items live in ## Open'}` in every case and the gate is not blocked by it; the ledger classifier, `checkLedger`, `waiveEvidence` and `parseLedger` no longer exist
 
 #### Scenario: GT-04 flow-state legality is enforced
-- WHEN a required flow-state key (`change`, `lineage`, `phase`) is missing, still a `<placeholder>`, has a `phase` outside the exact vocabulary (ground, specify, build, review, done, abandoned), an optional `mode` outside {fast, standard} or still the `<fast | standard>` placeholder, or a `change` value that does not equal `--change`
+- WHEN a required flow-state key (`change`, `phase`) is missing, still a `<placeholder>`, has a `phase` outside the exact vocabulary (ground, specify, build, review, done, abandoned), an optional `mode` outside {fast, standard} or still the `<fast | standard>` placeholder, or a `change` value that does not equal `--change`
 - THEN C3 blocks naming the offending key; a fully legal flow-state passes, with or without a `mode` line
 
 #### Scenario: GT-05 verdict evidence is mechanical

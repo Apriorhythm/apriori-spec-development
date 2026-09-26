@@ -1,5 +1,62 @@
 # Changelog
 
+## Unreleased — protocol-text-consistency: the descriptions catch up with the code
+
+No obligation is added or removed. Sentences that still described retired mechanisms are
+brought back to what the code and the recorded rulings say: §4's archive sentence now names
+the readiness predicates the CLI runs (C3/C5/C8/C9 — a legacy `open` ledger row is the
+one-shot migration refusal, a pending `## Open` item or a standing assumption refuses, and
+`--force` covers only an answered `reframe` and a named `archive-drop`; an `archive-force
+ledger` record forces nothing); the CN edition is realigned with the EN obligations at four
+sentences that drifted in earlier edits (the kickoff no longer names a requirement-document
+sign-off, R3 says "every phase change", the Reality Check bullet states the assumption
+lifecycle once, the follow-up bullet says 委托); the EN Specify bullet attributes "contract
+only — never source" to the producer's revisions, not to the reviewer; the concepts handbook
+describes cross-round review memory as `## Open` + the reviewer session + `review-progress`
+instead of a cumulative ledger, names P3's default inputs as contract / diff / `## Open`
+items / uncovered boundaries, and lists the same archive refusals as §4; VISION's paving
+table no longer presents a machine-read ledger, a verification matrix or test names carrying
+ids as current mechanisms. Store specs: PR-08 says five R1 decision points, RY-17 / AM-82 /
+AM-89 / AM-121 describe a `closed` row and the owner's limit instead of an `open` row and
+"round 5", GT-04 no longer lists `lineage`. `scripts/check_docs.py` is removed — it had no
+caller, its phrase table had drifted, and `apriori check` is its superset (CK-18).
+Left open on purpose (no ruling to lean on): where a decision's "why" lands (VISION L9),
+whether the P11/P12 row is deleted or replaced, and the CN §4 "By default" wording.
+Test-side only, after the review rounds: the AM-30 reference parser now treats a trailing
+`## Notes` section as the boundary the merge already ignores (this change's deltas are the
+first in the corpus to carry one), and the LNG-07 golden re-pins the two store hashes the
+archive rewrote (archive-merge, readiness) — the same deliberate re-pin 2716a54 and 84b6e83 made.
+
+## Unreleased — earlier S2 commits that had no entry
+
+- **G (e4200c9)** — both runbook editions route work by the delegation held, not by phase
+  (the §1 table); finishing a delegated piece is a normal end, not a sixth stop; a capability
+  block is reported as such. The `/apriori` template moved to a new generation.
+- **W3 (c38dc5a)** — §4 states the review-input boundary: an earlier round's conclusion is not
+  re-fed to the next reviewer under another label; a fact you re-verified yourself may be
+  recorded; the diff is never trimmed by path; the three Reality Check kinds obey the same rule.
+- **W2 (7c59510)** — §0's Fix Packet step first asks whether the family has already stopped
+  (now: at the owner's limit or on `escalate`, per review-round-limit) with no valid `reframe`;
+  if so it stops under R1's third point instead of entering the fix loop.
+- **ac665ca** — the distributed `/apriori-discuss` template treats a scope stated in the
+  request as an approval already held and only asks for the decisions that remain the owner's
+  (template generation bumped; the runbook is unchanged).
+- **discuss-save-fidelity (b649bc5)** — a discuss save is a faithful record of the four things
+  said: it adds no commitment, risk acceptance or blocker, promotes no assumption, and a
+  repeated save changes nothing of substance (RUNBOOK §4, P6; template generation bumped).
+- **discuss-save-inference (1a35804)** — a decision is recorded only as far as the human stated
+  it: an inferred one lands as an `assumption` or an `## Open` item, an unanswered question
+  stays open, and holding the save approval does not license writing before the conclusion
+  is stated (RUNBOOK §4, P6; template generation bumped).
+- **P1 (4fd899b)** — `apriori init`'s closing "Next" is routed by intent; README (both
+  editions) gains the two-interfaces table; RUNBOOK §0's entry paragraph follows.
+- **P0 (0178b67)** — doctor D4's cure is the runnable `apriori init --tools <key>`;
+  `check --self` CK-05 rejects the v1 fossil phrases (explore/propose/apply/archive); the
+  `/apriori` template restores R1's third stop (now the limit / `reframe`) in a new generation;
+  two obsolete obligations leave the handbook.
+- P2 (46bb329) is an internal refactor (`commands` map, K=1 byte-identical install) with no
+  visible behaviour change and needs no entry of its own.
+
 All notable changes to `apriori-cli`. Versions follow semver; the stability promise: CLI surface & flags, `--json` shapes, the delta format and the flow-state schema only break in a major.
 
 ## Unreleased — scope-disposition
@@ -46,9 +103,10 @@ Hand-edited entries are protected either way: `update` leaves them alone, and re
 `init` does not clobber a sibling entry you edited.
 
 **Client support is claimed per verified client, not per shipped file.** The README support
-matrix marks OpenCode, Windsurf, Cursor and Copilot **not yet supported**: those paths were
-not exercised for discovery, invocation and argument passing. They predate this round and are
-tracked separately.
+matrix marks Codex CLI (its `.codex/prompts/` entry was never shown to expand — b0cba2c),
+OpenCode, Windsurf, Cursor and Copilot **not yet supported**: those paths were not exercised
+for discovery, invocation and argument passing. They predate this round and are tracked
+separately.
 
 ## Unreleased — cost record for the v6-dev line: measured once, unfavourable, unattributed
 

@@ -332,12 +332,15 @@ test('AM-10 REMOVED rerun: already-deprecated by this change is a no-op; by anot
 // reference: the pre-rewrite split()-based parse, kept verbatim so the corpus
 // test can assert the walker reproduces it byte-identically on well-formed input
 function referenceParseDelta(text) {
-  const SECTION = /^##\s+(ADDED|MODIFIED|REMOVED|RENAMED)\s+Requirements\s*$/m;
+  // `## Notes` is a legal h2 the merge ignores entirely (RUNBOOK §4 delta grammar, b54bb5d): the
+  // reference splits on it too, so a trailing Notes section never leaks into the last block
+  const SECTION = /^##\s+(ADDED|MODIFIED|REMOVED|RENAMED|Notes)(?:\s+Requirements)?\s*$/m;
   const REQ = /^###\s+Requirement:\s+(.+?)\s*$([\s\S]*?)(?=^###\s+Requirement:|$(?![\s\S]))/gm;
   const buckets = { ADDED: new Map(), MODIFIED: new Map(), REMOVED: new Map(), RENAMED: [] };
   const parts = text.split(SECTION);
   for (let i = 1; i < parts.length; i += 2) {
     const kind = parts[i];
+    if (kind === 'Notes') continue;
     if (kind === 'RENAMED') {
       for (const m of parts[i + 1].matchAll(/^\s*-\s*(.+?)\s*->\s*(.+?)\s*$/gm))
         buckets.RENAMED.push([m[1].trim(), m[2].trim()]);

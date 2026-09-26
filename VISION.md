@@ -27,8 +27,8 @@ Choices already made on the V2 line whose deeper purpose is the endgame — keep
 
 | Decision | How it paves |
 |---|---|
-| Scenario IDs, and test names carrying them (§4.8, §8.1) | The ID is the future join key between an assertion and its run |
-| The issue ledger with machine-readable statuses (§7.0) | Review outcomes become data an executable pipeline can consume |
-| Verification matrix: executable instruments first where they exist (§4.8, §1.5) | The endgame is this principle taken to its limit |
+| Scenario IDs bound to test runs by `apriori verify` (a test name carrying the ID is optional — RUNBOOK §4 Build & Test, cli §8.1) | The ID is the future join key between an assertion and its run |
+| Open items with stable ids (`## Open`) and a closed verdict-line vocabulary (RUNBOOK §3, §5), exposed by `gate --json` / `status --json` | Review outcomes and unresolved risks become data an executable pipeline can consume |
+| Executable instruments first where they exist; where none exists, the independent review is the instrument (RUNBOOK §4 Build & Test, §1.5) | The endgame is this principle taken to its limit |
 | KB Contract sections stamped with `source-commit` (§6) | Contracts are the assertions-in-waiting; the stamp is their staleness oracle |
 | P11/P12: extraction traced to an intent card, never to the prototype alone | Generated specs must inherit an intent anchor — same rule when a tool generates them |

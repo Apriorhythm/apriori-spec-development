@@ -1,5 +1,5 @@
 ### Requirement: check ports the v2 doc checker to JS and adds ID coverage
-`apriori check` SHALL reproduce every structural check of v2's `check_docs.py` in JS with equivalent behavior, and additionally enforce that every spec scenario carries a bindable ID.
+`apriori check` SHALL carry, in JS, the structural checks that v2's `check_docs.py` once ran (anchors, file links, EN/CN heading alignment, the verdict-phrase table imported from `lib/review.js`, the codex command forms), and additionally enforce that every spec scenario carries a bindable ID. The Python script itself is retired: it has no caller, its phrase table drifted from the runbook, and its README KB-section check lost its target when that section moved to the handbook — `apriori check` is the only checker, and no repository file invokes `check_docs.py`.
 
 #### Scenario: CK-01 anchor and file-link checks behave as v2
 - WHEN a doc has a broken `](#anchor)` or `](./file)` link
@@ -20,6 +20,10 @@
 #### Scenario: CK-05 no OpenSpec adapter assertions remain
 - WHEN check runs against v3 docs
 - THEN it enforces the single plain-files interface (no `openspec/`-adapter dual-path assertions from v2)
+
+#### Scenario: CK-18 the v2 script is gone and nothing calls it
+- WHEN the repository is scanned for `scripts/check_docs.py` and for references to `check_docs.py` outside the CHANGELOG
+- THEN the file is absent, `package.json`, the CI workflow and the docs reference only `apriori check`, and `apriori check --self` passes on the repository itself
 
 ### Requirement: check warns on a stale scaffolded runbook without failing
 `apriori check` SHALL compare the project's scaffolded `apriori/runbook.md` (when present) against the installed package's `RUNBOOK.md` and warn on divergence, without turning the warning into a failure.

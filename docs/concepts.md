@@ -58,7 +58,7 @@ Claude Code (Opus/Claude)  ──produces──►  SPEC-DOC + DESIGN-DOC
 
 > The last two levers matter *more* than the first, and neither requires a second tool. A **freshly-started session explicitly told to refute** catches most issues even when it runs the same model as the producer — because it isn't bound to its own earlier reasoning. The worst anti-pattern is **asking the model to "review what you just wrote" in the same conversation**: its context is full of its own justifications, so it rubber-stamps. Switching models but staying in one session is *weaker* than the same model in a fresh one. If you only have Claude Code, see [§2.4](#24-adversarial-review-with-only-claude-code).
 
-**Fresh context vs. cross-round memory — the issue ledger.** Multi-round review has a built-in tension: each round's reviewer should be *fresh* (the second lever), yet it must remember earlier rounds to verify "was issue #3 actually fixed?" Keeping one long-lived reviewer session buys memory at the cost of freshness — after round 1, the reviewer is anchored to *its own* past findings too. The fix is to move the memory out of the session and into a file: a cumulative **issue ledger** per change ([§7.0](#70-the-issue-ledger-optional-shared-by-review-loops)), where every issue carries an ID and a status. (Since 6.2 this is the reviewer's own notebook: the CLI never reads it — what blocks a delivery is an `## Open` item in the state, §7.0.) Each round's reviewer can then be a brand-new session: it reads the ledger to verify fixes and appends new findings, staying unanchored. The ledger doubles as the audit trail for human gates — rejections stay visible with their reasons, and a resurfacing issue reopens its old ID instead of masquerading as a new finding.
+**Fresh context vs. cross-round memory — `## Open` and the reviewer session.** Multi-round review has a built-in tension: each round's reviewer should be *fresh* (the second lever), yet it must remember earlier rounds to verify "was issue #3 actually fixed?" Keeping one long-lived reviewer session buys memory at the cost of freshness — after round 1, the reviewer is anchored to *its own* past findings too. 6.2 keeps the memory in three places, none of them a ledger: the state's `## Open`, which the CLI reads (every substantive issue has a stable id; a re-found issue reopens its old id); the reviewer session, which R2 resumes round after round (its id is persisted in the state, PR-12); and from round 3 the producer's `review-progress` record, which must cover the ids of the previous round's summary (R4, checked by C8). Any cumulative notebook a reviewer keeps ([§7.0](#70-the-issue-ledger-optional-shared-by-review-loops)) is its own: the CLI never reads it and it is not part of the next round's default input. `## Open` doubles as the audit trail — an accepted item stays visible with the owner's reason, and a resurfacing issue reopens its old ID instead of masquerading as a new finding.
 
 Adversarial review has one standing point: **the code-implementation review (Review & Deliver)**. A behavior-contract review (Specify) is **not run by default** — it is added only when the owner asks for an early judgment on a specific approach, or the requirement is still substantially uncertain after Ground (RUNBOOK §2). Every round of either records its findings in the same one state file.
 
@@ -153,7 +153,7 @@ Because the session is preserved, the reviewer still remembers its earlier findi
 > codex exec ... 2>&1 | grep -v -E "websocket|Reconnecting|Falling back"
 > ```
 
-> 💡 Even with `resume`, keep the **issue ledger** ([§7.0](#70-the-issue-ledger-optional-shared-by-review-loops)) updated every round — the session gives the *reviewer* memory, but the ledger gives *you* (and every human gate) the audit trail, and it lets you swap in a completely fresh reviewer at any round without losing state.
+> 💡 Even with `resume`, keep `## Open` current every round — the session gives the *reviewer* memory; `## Open` plus the landed review docs and their raws (R2) give *you* the audit trail, and they let you swap in a completely fresh reviewer at any round without losing state.
 
 ### 2.4 Adversarial Review With Only Claude Code
 
@@ -312,7 +312,7 @@ graph TD
     H2 -- No, the design itself is infeasible --> C
     H2 -- Yes --> R{review-ready?}
     R -- No --> H
-    R -- Yes --> RV[One independent review<br/>contract + diff + evidence + uncovered boundaries]
+    R -- Yes --> RV[One independent review<br/>contract + diff + Open items + uncovered boundaries]
     RV --> I[Archive<br/>merge specs, write back to KB, declare three states]
 ```
 
@@ -368,7 +368,7 @@ The **Build & Test action** (RUNBOOK **P2**). Write code per the contract — **
 
 **Review-ready comes first.** `apriori gate --change <name> --review-ready` answers one question from the run's own facts — may a review round start? — and writes nothing. **A change that is not review-ready does not start a review round;** it goes back to Build & Test and nothing is counted. This exists because the practices kept showing the same failure: a reviewer handed a half-built change spends round 1 doing the producer's compilation and testing, and that round is not a review. The two items (`tests`, `open`) and why each is there: [§7.4](#74-review--deliver-consistency-review-and-archive).
 
-**Then one independent review** (RUNBOOK **P3**), on a fixed default context — contract, diff, evidence summary, uncovered boundaries — with `ACCEPT | REVISE | ESCALATE` as the outcome.
+**Then one independent review** (RUNBOOK **P3**), on a fixed default context — contract, diff, the `## Open` items, uncovered boundaries — with `ACCEPT | REVISE | ESCALATE` as the outcome.
 
 **Then archive.** `apriori archive` **merges this change's delta specs into the living spec store** (`apriori/specs/`) per the interface's archive algorithm (RUNBOOK §4), keeping the store consistent with the final implementation.
 
@@ -499,7 +499,7 @@ node -e "const KV=require('./src/mini-kv'); const k=new KV(); k.set('a',1,50); c
 ```
 Then run the consistency review (RUNBOOK **P3**, a different model) and land its verdict beside its raw transcript. Once satisfied, archive. Note the form: a change bundle is archived **whole**, by name —
 `archive` refuses a change that is not finished (`phase: review`, the review loop converged, no
-open ledger row if the change kept a ledger, no critical evidence still blocked), and the
+legacy ledger still carrying `open` rows, no `## Open` item still pending, no standing assumption), and the
 single-file `--store/--delta` form is reserved for one-module surgery on a store file that lives
 outside `apriori/changes/`.
 ```shell
@@ -551,7 +551,7 @@ Notice the two fixed sections and their **opposite truth directions**: the Contr
 **The CLI reads no ledger** (6.2) — the state's `## Open` section holds a change's open substantive issues, one `- <ID>: <text>` line each, and `gate`/`archive`/`status` read them there and nowhere else; `review/issues.md` is never opened. Whether a reviewer still keeps such a table for its own cross-round memory is a human practice with no protocol weight. Two design notes are all that belong here:
 
 - **Why the form exists at all:** cross-round memory lives in a file instead of a session, so every round's reviewer can be a **fresh** session without losing the thread ([§1.4](#14-adversarial-review)). A re-found issue reopens its old ID — that reopened ID is the oscillation alarm [§4.7](#47-automating-the-loop-with-goal-claude-code) watches for.
-- **Why exactly one thing blocks:** an `## Open` item nobody has accepted — a pending item; a registered follow-up (`- <ID>: follow-up → <new-change-name> — <text>`, a new ask the delivery does not depend on) is a note, not a blocker, and is not closed by being moved out. 5.x refused archives over ledger bookkeeping — unknown status tokens, reasonless rejections, unrecorded waives — on changes whose product tests were already green; 6.2 reads none of it, and an accepted item is reported as still present rather than deleted, because the record should be true. Reviews also follow a **scope discipline** (per Anthropic's fully-verified warning that gap-hunting reviewers report gaps even in sound work): only correctness/security/stated-requirement gaps become rows; the rest are `advisory`.
+- **Why exactly one thing blocks:** an `## Open` item nobody has accepted — a pending item; a registered follow-up (`- <ID>: follow-up → <new-change-name> — <text>`, a new ask the delivery does not depend on) is a note, not a blocker, and is not closed by being moved out. 5.x refused archives over ledger bookkeeping — unknown status tokens, reasonless rejections, unrecorded waives — on changes whose product tests were already green; 6.2 reads none of it, and an accepted item is reported as still present rather than deleted, because the record should be true. Reviews also follow a **scope discipline** (per Anthropic's fully-verified warning that gap-hunting reviewers report gaps even in sound work): only correctness/security/stated-requirement gaps become pending `## Open` items; the rest are `advisory`.
 
 ### 7.1 Ground: Reality Check
 
@@ -562,7 +562,7 @@ Prompt: RUNBOOK **P1**. Design notes: facts only — no code. The goal and the K
 Prompts: RUNBOOK **P2** (the producer's contract → review-ready handoff) / **P3** (the independent reviewer). Design notes:
 
 - P2 bakes in the split test (one result, one evidence chain) and the two spec-quality rules from [cli §8.1](./cli.md#81-spec-authoring-rules): one scenario per user-visible output (with a stable ID), and the three moments for any external shared state. It writes the contract and **nothing else** — 5.x had this prompt produce a proposal, a design doc and a task list alongside it.
-- The producer's revise pass touches spec/design content only — never source — and must answer every substantive finding with accept/reject + reason; on `escalate`, or on a verdict that is still revise at the owner's review-round limit, it stops instead of opening another round.
+- The producer's revise pass touches the contract (the delta specs) only — never source — and must answer every substantive finding with accept/reject + reason; on `escalate`, or on a verdict that is still revise at the owner's review-round limit, it stops instead of opening another round.
 
 > 💡 To run this review loop through Codex from the CLI — open the session in round 1, `resume <session-id>` each subsequent round so the reviewer keeps full context — see [§2.3](#23-driving-codex-non-interactively-multi-round-adversarial-review).
 
@@ -575,7 +575,7 @@ Prompt: RUNBOOK **P2**. Design notes: P2 is tests-first — a failing test that 
 Prompt: RUNBOOK **P3** (independent review); the archive itself needs none. Design notes:
 
 - Before P3 runs at all, `apriori gate --review-ready` must exit 0. That check is a **transient view** over the run's own facts — no receipt document, nothing persisted — and its whole purpose is that the reviewer is never the first person to compile the code or run the suite.
-- `apriori verify` has already confirmed tests actually ran with no real failure (UNBOUND is advisory, not proof of coverage), so P3's **semantic faithfulness** check also covers genuine coverage — whether each test actually exercises its scenario's intent, not just shares its ID. Its default context is four things: contract, diff, evidence summary, uncovered boundaries. Its scope clause keeps style findings advisory. Like every review, it runs on a heterogeneous model ([§2.3](#23-driving-codex-non-interactively-multi-round-adversarial-review)).
+- `apriori verify` has already confirmed tests actually ran with no real failure (UNBOUND is advisory, not proof of coverage), so P3's **semantic faithfulness** check also covers genuine coverage — whether each test actually exercises its scenario's intent, not just shares its ID. Its default context is four things: contract, diff, the `## Open` items, uncovered boundaries. Its scope clause keeps style findings advisory. Like every review, it runs on a heterogeneous model ([§2.3](#23-driving-codex-non-interactively-multi-round-adversarial-review)).
 - The archive action merges delta specs into the living spec store per RUNBOOK §4's algorithm (`apriori/specs/`, [§4.6](#46-review--deliver-review-ready-one-review-archive)) — and nothing else: archive never touches `apriori/truth/` (§4). The KB writeback to `apriori/truth/<module>.md`, with its `source-commit` refresh and an explicit list of what changed, is the separate, human-reviewed step that happens BEFORE review-ready when the change owes one. The archive then declares three states — implementation, critical evidence, and the fixed sentence that an archive is not a release — and freezes: a defect found later becomes an outcome note or a new change, never an edit to the archived bundle.
 
 ### 7.5 Reverse Knowledge Capture for Legacy Projects

@@ -22,7 +22,7 @@
 6. 无既定依据的自加承诺默认撤回或收窄。
 7. 交付前取得一次真实独立评审。
 8. 每次修复后重验受影响的行为。
-9. 按既有规则终止无效评审循环:第 3 轮起记 `review-progress`,只在所有者的评审轮次上限或 `escalate` 处停下。
+9. 按既有规则终止无效评审循环:第 3 轮起记 `review-progress`;到了所有者的评审轮次上限,对每条未决发现逐条裁决、再做一次复核,而不是停下;只在 `escalate`、属于所有者的决定、或那次复核仍未解决的问题上停。
 10. 外部副作用与风险接受遵守所有者的有效授权。
 11. 仅在既有收官检查通过后归档。
 12. 归档保留当时证据,不冒充发布或外部验收。
@@ -66,7 +66,7 @@ cd your-project && apriori init --tools claude  # 点名要接入的 AI 工具(�
 **上下文经济。** 上下文窗口是 agent 最稀缺的资源,须刻意管理:
 
 - **会话卫生:**每个阶段都可以换新会话——状态文件(§3)保证无损续跑。handoff 只带状态本身的内容:阶段、决定、开放问题、证据引用;绝不携带原始评审输出或别的 change 的文档。
-- **REVISE 切断会话(Fix Packet)。** 先分清这是哪一种 REVISE:若该 family **已在所有者的评审轮次上限(或因 `escalate` 结论)停下**、且**尚无有效的 owner reframe 重开它**,那就是 R1 的第三类停止 —— 在那里报告并停下,**不进入本节的修复回路**。否则,独立评审返回 REVISE 时,修复轮换一个全新或已清空的会话跑,带过去的只有一份简短的 **Fix Packet**(一条交接消息,不是文件):阻塞性的 P0/P1、最小复现、相关文件、必须跑通的验证命令、明确的非目标。advisory 默认不进入,除非所有者明确升级,或修它是修某个 P0/P1 的直接前置。这是上下文卫生,不是降低标准:每个 P0/P1 照样要修,§4 的重新验证路径照样完整跑一遍。 遵守 R1 与人的限制,修复在委托之内时,它不需要新的授权;换新会话不是交还。若修复要改需求、扩大目标或动用外部副作用而缺少所需有效授权,报告实际决策或授权缺口。无法启动新修复会话时,报告能力阻塞,不得在原生产会话继续实现。修复者的新会话与 R2 评审者的跨轮 resume 是两回事。
+- **REVISE 切断会话(Fix Packet)。** 先分清这是哪一种 REVISE:若该 family **已因 `escalate` 结论停下,或已越过它唯一一次自动复核**(R4)、且**尚无有效的 owner reframe 重开它**,那就是 R1 的第三类停止 —— 在那里报告并停下,**不进入本节的修复回路**。在所有者评审轮次上限处的 REVISE 不属此类:修复轮照下文进行,结束时对每条未决发现各写一行裁决并做那一次复核(R4),而不是再开一轮普通评审。否则,独立评审返回 REVISE 时,修复轮换一个全新或已清空的会话跑,带过去的只有一份简短的 **Fix Packet**(一条交接消息,不是文件):阻塞性的 P0/P1、最小复现、相关文件、必须跑通的验证命令、明确的非目标。advisory 默认不进入,除非所有者明确升级,或修它是修某个 P0/P1 的直接前置。这是上下文卫生,不是降低标准:每个 P0/P1 照样要修,§4 的重新验证路径照样完整跑一遍。 遵守 R1 与人的限制,修复在委托之内时,它不需要新的授权;换新会话不是交还。若修复要改需求、扩大目标或动用外部副作用而缺少所需有效授权,报告实际决策或授权缺口。无法启动新修复会话时,报告能力阻塞,不得在原生产会话继续实现。修复者的新会话与 R2 评审者的跨轮 resume 是两回事。
 - **没有默认阅读清单;不逛别的 change 找格式。** 绝不为了学一种格式惯例去翻另一个 active 或 archive 的 change。`apriori new` 已经把这个 change 的文件脚手架成正确的形状;这份脚手架加上这个 change 自己的产物,就是唯一默认的范例。
 - **不自我计量。** 绝不读 Claude/会话记录或日志去算耗时或 token 花费——那由外部编排器统计。
 - **知识按需加载:**KB 按所涉模块加载——绝不整库预载。
@@ -77,9 +77,9 @@ cd your-project && apriori init --tools claude  # 点名要接入的 AI 工具(�
 
 **R1 —— 需要人做决定时才停,也只在那时停。** 只有五种:
 
-1. **升级(escalation)。** 评审方给出 `VERDICT: escalate`,或某个 review family 在所有者的评审轮次上限(`process-config.md` 的 `review-round-limit`,未配置为 7)仍是 `revise`。`apriori status --change <name> --escalation` 会打印它并以 3 退出。
+1. **升级(escalation)。** 评审方给出 `VERDICT: escalate`,或某个 review family 未经所有者放行就越过了它唯一一次自动复核(R4)。`apriori status --change <name> --escalation` 会打印它并以 3 退出。
 2. **无法解决的 `## Open` 条目**——关键证据被挡住,一条待决条目。三条出路属于所有者:把证据做便宜、拆小 change、或明确接受风险(在 `gates:` 里 `evidence-accept <ID>`)。别无他途。
-3. **某个评审 family 到了它的轮次上限(reframe)。** 在有效上限仍是 `revise`,或任一轮给出 `escalate`,那个循环就停下(R4);只有所有者在 `gates:` 里的 `reframe <family> round <n> <split|tests|redo|accept-risk> — <理由>` 能放行,且只答那一轮:之后到达或超过上限的 `revise` 会再次停下,除非所有者已提高 `review-round-limit` 或用该轮自己的 reframe 作答(`accept` 照常继续)——累计轮次永不清零。在被有效放行之前,这种情形**不进入 §0 的普通 REVISE/Fix Packet 修复回路**——**授权内的修复也要等这个决策点处理完**。为了汇报而去读状态、评审证据和规则,不算继续修复。上限**之下**的 `revise` 不属此类:它本身不停循环。
+3. **某个评审 family 越过了它唯一一次自动复核(reframe)。** 在所有者的评审轮次上限(`process-config.md` 的 `review-round-limit`,未配置为 8)仍是 `revise` 的 family **不**停下:生产方对每条未决发现逐条裁决,随后做一次独立复核(R4);那次复核仍未解决的问题成为 pending 的 `## Open` 条目——即第 2 类。循环只在越过那一次复核的轮次、或任一轮给出 `escalate` 时在这里停下(R4);只有所有者在 `gates:` 里的 `reframe <family> round <n> <split|tests|redo|accept-risk> — <理由>` 能放行,且只答那一轮:之后越过复核的 `revise` 会再次停下,除非所有者已提高 `review-round-limit` 或用该轮自己的 reframe 作答(`accept` 照常继续)——累计轮次永不清零。在被有效放行之前,这种情形**不进入 §0 的普通 REVISE/Fix Packet 修复回路**——**授权内的修复也要等这个决策点处理完**。为了汇报而去读状态、评审证据和规则,不算继续修复。上限**之下**的 `revise` 不属此类:它本身不停循环。
 4. **外部副作用**(见下方硬规则)。永远不在任何一揽子授权之内。
 5. **放弃(abandon)。** 只凭人的一句话。
 
@@ -109,7 +109,7 @@ cd your-project && apriori init --tools claude  # 点名要接入的 AI 工具(�
 
 **R2 —— 评审必须真实外调。** 生产会话永远不出评审结论。真实调起异构评审方——`codex exec -s read-only "<提示词>" < /dev/null`(第 2 轮起 `codex exec resume -c sandbox_mode="read-only" <session-id> "..."`,消息范围按 §4 Review & Deliver 所述;非交互调用必须关闭 stdin,否则 codex 会挂起);没有 Codex 就**新开**一个不同档位的 `claude` 会话——喂给它 P3 的默认上下文——恰好是 §4 点名的那四样,仍允许评审者自行查源码——把结论行**原文**贴回。评审方通常跑在只读沙箱、无法自己写 bundle:评审方在输出末尾给出自己的发现,生产方原样落盘并注明"代评审方录入";同一代录机制也覆盖**评审文档本体**——评审方把文档正文打印到 stdout,生产方原样落到固定路径。落盘形态二选一:文档第一个非空行是四字段齐全的来源标注 `<!-- provenance: provider=<name> model=<id> session=<id> date=<YYYY-MM-DD> -->`(字段未知写 `unknown`)且文档自带结论行——这份文档本身就是原始证据;否则评审方原始输出全文另存为 `review/<stem>-raw.*`(stem=对应评审文档)。第 1 轮一打印评审方的 session id 就记进 flow-state 的 `reviewer-session` 字段。评审方在结论行落盘前死亡 → resume 同一会话让它续完,**只重试一次**——按"在结论行落盘前死亡的评审会话"逐个计数(这是调用恢复,不是额外评审轮次),再失败就换一个新开的独立 `claude` 会话续完;绝不代填结论行,没产出结论行的失败不计入轮次。只读评审方的**动态观测不可信**——它在沙箱里跑测试/构建可能产生幻影发现;只有静态阅读作数。如果无法真实调起评审方,停下来说明——**禁止模拟评审**。
 
-**R3 —— 一切落盘;`/goal` 属于人;配置也属于人。** 产物写到 §4 表格的确切路径;每次阶段变化、每轮评审之后都更新状态文件。`process-config.md` **人类持有,agent 绝不写它**。只有一个配置数字决定某个循环能跑多久:评审轮次上限(`review-round-limit`,缺行 = 7,≥ 1 的整数)——由 R4 逐 family 施行;实现/测试循环的安全上限写死在操作配方正文里(apriori-cli 仓库的 `docs/operator_cn.md`)。`/goal` 是人执行的命令(`docs/operator_cn.md`)——绝不声称自己在跑 `/goal`,也不模仿它的评估器。
+**R3 —— 一切落盘;`/goal` 属于人;配置也属于人。** 产物写到 §4 表格的确切路径;每次阶段变化、每轮评审之后都更新状态文件。`process-config.md` **人类持有,agent 绝不写它**。只有一个配置数字决定某个循环能跑多久:评审轮次上限(`review-round-limit`,缺行 = 8,≥ 1 的整数)——由 R4 逐 family 施行;实现/测试循环的安全上限写死在操作配方正文里(apriori-cli 仓库的 `docs/operator_cn.md`)。`/goal` 是人执行的命令(`docs/operator_cn.md`)——绝不声称自己在跑 `/goal`,也不模仿它的评估器。
 
 **R4 —— 评审轮次由评审证据派生,不手写,且逐 family 单独计数。** 一个 *family* 就是一条评审轨——文件名主干所声明的那个词(`spec-review`、`code-review`)。每个 family 拥有自己的轮次号;各 family 的轮次绝不相加。`round:` 字段被拒绝。
 
@@ -118,19 +118,25 @@ cd your-project && apriori init --tools claude  # 点名要接入的 AI 工具(�
 **证据"完不完整",判得严。** 只有评审文档、它的结论行、以及它的原始证据(旁边的 `<stem>-raw.*`,或文档自己开头合法来源标注下的完整原文)三者齐备才计一轮;同一 family 的轮次必须 **1..N 连续**。**阻断**:结论行不在词汇表内、一篇文档声明两个不同结果、两份文档争同一 family 同一轮、结论行被删而原始记录还在、以原始记录名义声称某一轮但摘要缺失、轮次断档。**只提示**:正文粘贴两遍但结论相同、压根不是评审轮次的原始记录。重排、改标题、重新排版既换不来一轮,也丢不掉一轮。
 
 **轮次上限属于所有者。** 每个评审 family 从完整的评审证据独立计轮;一轮 = 对某个确定的产物版本完成的一次评审结论。
-所有者在 process-config.md 里设定上限(`| review-round-limit | <n> |`);缺行默认 7,显式值必须是 ≥ 1 的整数;agent 绝不写这个文件(R3)。
+所有者在 process-config.md 里设定上限(`| review-round-limit | <n> |`);缺行默认 8,显式值必须是 ≥ 1 的整数(默认值变化时显式行保持原值);agent 绝不写这个文件(R3)。
 非法上限必须让 `apriori gate` 把 C8 报为 blocked(`apriori status --json` 报同一错误),点名键、非法值与合法范围;所有者改正配置之前不得开新一轮评审,agent 绝不悄悄代入默认值。
 「目标 2 轮内收敛」只是建议,绝不改变验收标准,也绝不停下任何循环。
-上限之下的 REVISE 不因轮次数本身而需要所有者介入;不存在固定的第 2 轮、第 3 轮或第 5 轮停止。
+上限之下的 REVISE 不因轮次数本身而需要所有者介入;不存在固定的第 2 轮、第 3 轮或第 5 轮停止——在上限处的 REVISE 也不停(见下文的裁决)。
 进入第 n ≥ 3 轮之前,agent 必须在 gates 记 `- <YYYY-MM-DDTHH:MM> note: review-progress <family> round <n> — issues: <该族最新评审文档 / ## Open 里全部未解决的问题 ID,或 none>; actions: <逐项动作>; evidence: <产物 / 验证的路径或引用>; approach: <kept|changed> — <理由>`。
 C8 必须检查结构完整、family 与目标轮次匹配、覆盖上一轮全部未解决 ID(上一轮摘要里作为列表项或表格行开头出现的每个 ID)、以及每个 `evidence:` 路径都是项目内已存在的普通文件;这些引用是否反映本次提交的产物版本,由评审方判断而非 CLI。记录缺失或无效即阻断本轮提交,由 agent 补齐,绝不需要所有者动作——它永远不是所有者闸门。
 评审方判断实质是否解决;空泛表述不满足结构要求,进展记录既不证明问题已解决,也不放行任何所有者闸门;不另设「连续无进展即停」。
-就评审循环治理而言,只在两种情形为所有者停下:一条写明阻塞与所需决定的显式 `escalate` 结论,或在有效上限仍是 REVISE;上限处 PASS 照常继续。(`apriori gate` 的 **C8**;`apriori status --json` 报告每个 family 的轮次与有效上限;各 family 之间绝不相加。)
-只有所有者已记录的 reframe——`- <YYYY-MM-DDTHH:MM> owner: reframe <family> round <n> <split|tests|redo|accept-risk> — <理由>`(真实时间戳、actor 正好是 `owner`、点名 family 与所答的轮次)——能放行这个停止,且只答那一轮:此后到达或超过上限的每一个 `revise` 轮都会再次停下(`accept` 照常继续,显式 `escalate` 不论上限都停),直到所有者把 `review-round-limit` 提高到一个明确的、大于累计轮次的有限值,或用各轮自己的 reframe 作答;累计轮次绝不清零。
-风险接受必须显式,绝不改写成 PASS;归档一个在上限停下的循环,需要已记录的所有者决定**加上**显式 `--force`,而 `--force` 单独绕不过停摆的循环或证据问题。
+就评审循环治理而言,只在两种情形为所有者停下:任一轮一条写明阻塞与所需决定的显式 `escalate` 结论,或越过下文那一次复核的轮次;上限处 PASS 照常继续。(`apriori gate` 的 **C8**;`apriori status --json` 报告每个 family 的轮次与有效上限;各 family 之间绝不相加。)
+**到了上限,生产方逐条裁决,一次复核定夺。** 在有效上限仍是 REVISE、且所有者没有用 reframe 作答时,循环不停。生产方对该轮摘要里每条仍未决的发现各写一条 `gates:` 记录——`- <YYYY-MM-DDTHH:MM> note: ruling <family> round <n> — <ID>: <fixed|rejected|follow-up|owner> — <依据>`,永远是 `note:` 行,绝不是 `owner:` 行:`fixed` 附验证证据;`rejected` 引用它所依据的契约条款、代码行或命令输出;`follow-up` 只用于本次交付不依赖的诉求,按 §4 登记;`owner` 是不归生产方的决定(改承诺、接受风险、外部副作用),是一条 pending 的 `## Open` 条目。必要修复绝不搁置。
+随后恰好一次独立复核,作为第 n+1 轮——resume 同一个评审会话(R2),resume 消息请它判断每条裁决,并对每个被裁决的 id 单独一行作答:`- <ID>: ADDRESSED — <依据>` 或 `- <ID>: NOT ADDRESSED — <依据>`。这些裁决代替该轮的 `review-progress` 记录。
+C8 机械地检查:每条裁决写了合法类别与依据,裁决覆盖第 n 轮摘要里作为列表项或表格行开头出现的每个 id,同一 id 没有两种不同裁决;随后恰好一次复核;之后每个被裁决的 id 要么有一行 `ADDRESSED`,要么是 pending 的 `## Open` 条目(`owner` 裁决无论复核怎么说都是 pending;同一 id 两种结论都有即阻断);复核里以 id 开头的新发现是 pending 条目;复核的来源标注证明不了它跑在第 n 轮的评审会话里时,每条 `rejected` 与 `follow-up` 裁决都要是交给所有者的 pending 条目。这些问题由生产方修补——永远不是所有者闸门,也不是 escalation。
+复核仍未解决的问题是 pending 的 `## Open` 条目——R1 第 2 类,归所有者:没有所有者的话,生产方不为它改代码;凭所有者的话做的修复,仍保持 pending,直到之后的评审认可它——以同样的固定格式对该 id 答 `ADDRESSED`——或所有者记下 `evidence-accept`。复核之后再改产品代码或测试,需要新的评审或所有者明确接受风险。先前的 REVISE 永不改写;所有者放行后的评审可以新增一个 ACCEPT。
+越过那一次复核的轮次需要所有者:本 family 在复核那一轮或之后某轮的 reframe(或提高上限);没有的话,这一轮就是 escalation,永远不算收敛。提高上限放行更多评审、也放行复核之后的轮次,但绝不关闭那次复核留下的问题:下一轮已落盘的裁决,不论现在上限是多少都照样核对;上限以下零散写下的裁决行也受同样的核对。同一问题换了 id、换了 family 或拆到另一个 change 里,都不再得到复核额度——这条 CLI 不检查。
+逐条裁决与那一次复核让循环不必停等,但不保证方法本身正确;所有者随时可以 reframe 或提高上限。最终报告与归档声明逐条列出全部裁决。
+只有所有者已记录的 reframe——`- <YYYY-MM-DDTHH:MM> owner: reframe <family> round <n> <split|tests|redo|accept-risk> — <理由>`(真实时间戳、actor 正好是 `owner`、点名 family 与所答的轮次)——能放行所有者停止,且只答那一轮:此后越过那一次复核的每一个 `revise` 轮都会再次停下(`accept` 照常继续,显式 `escalate` 不论上限都停),直到所有者把 `review-round-limit` 提高到一个明确的、大于累计轮次的有限值,或用各轮自己的 reframe 作答;累计轮次绝不清零。所有者若直接用 reframe 答了上限那一轮,该 family 就离开裁决路径:此后到达或超过上限的每个 `revise` 都要所有者自己的 reframe。
+风险接受必须显式,绝不改写成 PASS;归档一个因 escalation 停下的循环,需要已记录的所有者决定**加上**显式 `--force`,而 `--force` 单独绕不过停摆的循环或证据问题。由逐条裁决与那一次复核收口的 family 两者都不需要:它的残留问题是 pending 条目,由 R5 拦住,直到所有者作答。
 status 与 gate 必须报告每 family 的累计轮次与有效上限;goal 执行不得另行计数、不得绕过所有者停止,其余所有强制停止规则继续有效。
 
-`apriori archive` 通过就绪度规则 **R4** 消费同一套判定:循环已停止、上限非法或存在证据问题时拒绝归档;advisory 从不拒绝。在上限停下的循环只有在 `gates:` 里**已记录**所有者决定**加上**显式 `--force` 才可 force。
+`apriori archive` 通过就绪度规则 **R4** 消费同一套判定:循环已停止、裁决缺失或未通过检查、复核尚欠、上限非法或存在证据问题时拒绝归档;advisory 从不拒绝。因 escalation 停下的循环只有在 `gates:` 里**已记录**所有者决定**加上**显式 `--force` 才可 force。
 
 **强制边界。** 本仓库不附带任何 Stop hook,`apriori init` 也不写 hook。CLI 提供的是机器可读信号——gate 退出码 1 且 C8 为 blocked、archive 的 `RESULT: NOT READY`、`apriori status --json` 的 `review` 与 `escalation` 字段、`apriori status --escalation` 的退出码 3。把它接进 Stop hook、`/goal` 条件或 CI 是项目自己的一步;接上之前,C8 是你必须去跑的检查,不是会自动落到你身上的停止。评审方的判断质量与对 §5 提示词的语义遵循是劝告性的;结论行必须有原始证据这一条是机械的——它是对模拟评审的后盾。
 
@@ -247,7 +253,7 @@ change 需要的其他任何东西——一张草稿、一幅图、给人看的�
 
 - **布局:** change 把增量 spec 暂存在 `apriori/changes/<change>/specs/`;被接受的 spec 进入存储 `apriori/specs/`。
 - **spec 结构:** Requirement 块内含 Scenario 块,每个场景**必须**带前置稳定 ID(如 `#### Scenario: KV-03 …`)——无 ID 的场景永远绑不上测试(`apriori check` 会标出)。
-- **增量语法与归档:** `## ADDED` → 追加;`## MODIFIED` → 整块替换;`## REMOVED` → 存储块标记 `deprecated (superseded by <change>)`;`## RENAMED`(`- Old -> New`)→ 就地改 ID;`## Notes` → 合并完全忽略的注释,解释某块**为什么**改写在这里(requirement 块内其他非 `Requirement` 的 `###` 会被拒绝)。与分支后已合入的 change 发生同 ID 冲突 → **停下、记为一条开放问题、由人解决**。`apriori archive --change <name>` 发现 change 下的每个增量,默认整批 dry-run,`--write` 时按失败原子提交;`--write` 默认就把在制的 change 目录移到 `apriori/changes/archive/<YYYY-MM-DDThhmm>-<name>/`(`--changes-dir` 只覆盖非默认的 changes 根)——移动发生后,恢复的会话必须去 `archive/` 下找。**它拒绝没做完的 change**(flow-state 合法且处于 `phase: review`,且没有仍带 `open` 行的遗留 `review/issues.md`——一次性迁移,见 §5;评审证据完整、每个 family 的评审循环已收敛;`## Open` 里没有仍 pending 的条目——既未被接受、也不是已登记的 follow-up——也没有仍悬着的 assumption),打印 `RESULT: NOT READY — nothing written`(退出 1),判据与 `gate` 的 C3/C5/C8/C9 相同。`--force` **只**覆盖进度类阻断,且仅限所有者决定已在 `gates:` 里的两种:在上限停下或被 `escalate` 的 family 已由所有者 `reframe` 作答(§1 R4),以及由 `archive-drop` 点名的场景删除(见下)——永不覆盖 `abandoned`、结构性缺陷、pending 的 `## Open` 条目或缺失的现实证据。`archive-force ledger` 记录不强制任何东西(6.2),只作为 note 报告。合并报告、单文件形式 `--store/--delta` 与冲突细节见 CLI 参考(`docs/cli_cn.md` 的 archive 节)。
+- **增量语法与归档:** `## ADDED` → 追加;`## MODIFIED` → 整块替换;`## REMOVED` → 存储块标记 `deprecated (superseded by <change>)`;`## RENAMED`(`- Old -> New`)→ 就地改 ID;`## Notes` → 合并完全忽略的注释,解释某块**为什么**改写在这里(requirement 块内其他非 `Requirement` 的 `###` 会被拒绝)。与分支后已合入的 change 发生同 ID 冲突 → **停下、记为一条开放问题、由人解决**。`apriori archive --change <name>` 发现 change 下的每个增量,默认整批 dry-run,`--write` 时按失败原子提交;`--write` 默认就把在制的 change 目录移到 `apriori/changes/archive/<YYYY-MM-DDThhmm>-<name>/`(`--changes-dir` 只覆盖非默认的 changes 根)——移动发生后,恢复的会话必须去 `archive/` 下找。**它拒绝没做完的 change**(flow-state 合法且处于 `phase: review`,且没有仍带 `open` 行的遗留 `review/issues.md`——一次性迁移,见 §5;评审证据完整、每个 family 的评审循环已收敛;`## Open` 里没有仍 pending 的条目——既未被接受、也不是已登记的 follow-up——也没有仍悬着的 assumption),打印 `RESULT: NOT READY — nothing written`(退出 1),判据与 `gate` 的 C3/C5/C8/C9 相同。`--force` **只**覆盖进度类阻断,且仅限所有者决定已在 `gates:` 里的两种:被 `escalate` 停下、或越过唯一一次自动复核的 family 已由所有者 `reframe` 作答(§1 R4),以及由 `archive-drop` 点名的场景删除(见下)——永不覆盖 `abandoned`、结构性缺陷、pending 的 `## Open` 条目或缺失的现实证据。`archive-force ledger` 记录不强制任何东西(6.2),只作为 note 报告。合并报告、单文件形式 `--store/--delta` 与冲突细节见 CLI 参考(`docs/cli_cn.md` 的 archive 节)。
 - **评审证据留存:** 已归档 change 下的 raw 属于**审计证据**——随归档保留,永不清理;`apriori/tmp/` 是唯一的临时空间。密钥绝不可进入 raw:落盘**之前**先脱敏——`apriori check` 的 CK-10 机械兜底。
 - **CAS 基线戳:** 编写增量时先跑 `apriori stamp apriori/specs/<module>/spec.md`,把打印出的 `<!-- apriori-base: … -->` 行贴到增量文件顶部(第一个 `## … Requirements` 段之前;存储尚不存在时为 `new`)。此后 `verify --change` 与 `archive` 都会在存储自增量编写以来发生分叉时拒绝。未打戳的**变更类**增量(MODIFIED/REMOVED/RENAMED)**默认被拒**——gate C7 阻断,`archive` 在 preflight 拒绝;豁免是 `--no-cas` flag 或 `| cas | optional |` 配置行。
 
@@ -288,7 +294,7 @@ change 需要的其他任何东西——一张草稿、一幅图、给人看的�
 - **先拆。** 一个 change 只承载**一个主要结果和一条主要证据闭环**。出现下列任一事实,默认拆分:同时跨越多个需要不同真实环境才能验证的边界;评审方必须在互不相关的上下文之间切换;修一个区域会持续扩大另一个区域的审查面。核心问题只有一句:**这个 change 能否通过一条清晰、可重复的证据链证明完成?** 把拆分判定作为一条 `decision` 记入 `## Reality Check`。拆分把一项承诺交给另一个 change 时——来源要求的一部分,改由那里交付——它保留原 ID、不能凭空消失:本次交付依赖它,就留作一条 pending 的 `## Open` 条目并写明承接的 change(`- <ID>: <内容> — carried by <change>`),在那个 change 的退出证据落地或所有者接受之前一直阻断;本次交付不依赖它,就登记为 follow-up(§4 Review & Deliver)——同一个 id 绝不两样都记。承接行绝不保留 follow-up 前缀:把已登记的 follow-up 改为依赖项,就要去掉 `follow-up →` 重写这一行——只在 follow-up 行后面追加承接指针,它仍是不阻断的 follow-up。
 - **最小就是最小。** 说清行为、边界、以及什么不在范围内。每个用户可见输出各自成一个场景;任何外部共享状态(Redis / DB 字段 / 全局单例 / 内存缓存)都要描述三个时刻:初始化 / 运行期更新 / 清理失效。描述行为,不描述实现:spec 不把内部函数名、handler 名或 payload 字段当契约来写。
 - **按可观察结果类别建模,不按输入样例。** 一个 Scenario 是一个可观察结果类别,不是一个测试用例;产生同一个可观察结果的不同输入是它的示例,列进它自己的表格,绝不拆成新的 Scenario ID。
-- **退出(默认):** 增量 spec 已说清行为,每个场景带稳定 ID——这是阶段条件;§1 R1 分流决定接下来做什么。只限定到规格的委托在此结束;否则在授权内前进到 Build & Test。**退出(跑了 spec-review 循环时):** 结论行 = `VERDICT: no major issues, ready to proceed to execution` → 受评审阶段条件满足,仅按 §1 R1 对本次委托的分流前进;在所有者的 `review-round-limit` 之下仍是 `revise` → 开下一轮(第 3 轮起先在 `gates:` 记 `review-progress`);在有效上限仍是 `revise`,或任一轮 `VERDICT: escalate` → 该循环停止(§1 R4),成为由人决定的 escalation。
+- **退出(默认):** 增量 spec 已说清行为,每个场景带稳定 ID——这是阶段条件;§1 R1 分流决定接下来做什么。只限定到规格的委托在此结束;否则在授权内前进到 Build & Test。**退出(跑了 spec-review 循环时):** 结论行 = `VERDICT: no major issues, ready to proceed to execution` → 受评审阶段条件满足,仅按 §1 R1 对本次委托的分流前进;在所有者的 `review-round-limit` 之下仍是 `revise` → 开下一轮(第 3 轮起先在 `gates:` 记 `review-progress`);在有效上限仍是 `revise` → 生产方对每条未决发现逐条裁决,随后做一次复核(§1 R4);任一轮 `VERDICT: escalate`,或越过那一次复核的轮次 → 该循环停止(§1 R4),成为由人决定的 escalation。
 
 ### Build & Test —— 先失败证据,再真实测试
 
@@ -302,7 +308,7 @@ change 需要的其他任何东西——一张草稿、一幅图、给人看的�
 
 - **先过 review-ready。** 跑 `apriori gate --change <name> --review-ready --test-cmd "…"`。它什么也不写,只从这次运行已经产生的事实答**两项**:编译和测试**真的**执行过(绝不是零测试的 `BUILD SUCCESS`);以及状态自己没有声明任何未了结的东西——每条 `## Open` 条目都带稳定 id、没有重复 id、没有仍悬着的 Reality Check `assumption`。pending 的条目不挡 review-ready:那正是评审要看的东西。**没准备好不算一轮评审。** 回到 Build & Test。
 - **然后一次独立评审**(**P3**,R2)。评审方的默认输入恰好是四样:**行为契约**、**diff**、**`## Open` 条目**、**仍未覆盖的边界**;它可以自行查全仓、调用者、配置和原型。原始评审输出、已关闭问题、其他 change 的文档不是默认输入。评审方的输出只保留三样:新发现的实质问题;已查与未查的风险面;以及 `ACCEPT | REVISE | ESCALATE` 之一。**评审方不做生产方的活**——它不是来编译、补测试或重写方案的;如果它必须那么做,说明这个 change 没到 review-ready。 REVISE 的这一轮不扩大那份默认输入到生产方全量历史。这条输入边界不撤销 R2 评审会话的 resume,也不撤销评审方自行查源码的权限;生产方转述不能代替独立判断。 这条边界怎么落实:**不得把此前评审的结论重新包装进下一位评审方的默认输入** —— 去掉来源名、换个说法、或改标成别的字段(`observed`/`decision`)都不改变它的性质,**先写进去再删掉**也**不能抵消**它已经随那一轮带过去的事实。凡是你**自己重新核验过**的 —— 对着真实代码、命令或其输出 —— 那就是你自己的发现,**照常记录**,哪怕此前评审得出过同样结论。**diff 不按路径裁剪**:完整性、可维护性、以及责任可核查,三条都反对裁剪;删除行携带旧内容是机械后果,不是传播。这条边界让**评审存档与 Fix Packet 照旧** —— 两者本就由别处要求,也都不是下一轮评审的默认输入。
-- **后续轮次只审改了什么。** 从第 2 轮起,生产方的 resume 消息(R2)请评审方把上一轮每条仍未决的发现判为 ADDRESSED 或 NOT ADDRESSED,并审查修复 diff 连同它影响到的东西——调用方、共享状态与测试,绝不裁剪到只看改动的那几行。该 diff 之外的新发现,若违反当前契约或安全约束,照样计入;其余是 advisory,不延长循环。一条发现只有在修它既不改变契约、也不改变任何人会怎么执行时才算纯措辞——它在文档里的位置不决定它是不是 advisory。这一范围依托于被 resume 的评审会话——它本来就握有上一轮。若后续轮次改由新开的评审会话来跑——R2 的无 Codex 路径且该会话未被 resume,或调用恢复失败后接手续完这一轮的新开 `claude` 会话——它只拿上面的默认输入,像第 1 轮那样审整个 change;上一轮的结论不转包给它。
+- **后续轮次只审改了什么。** 从第 2 轮起,生产方的 resume 消息(R2)请评审方把上一轮每条仍未决的发现判为 ADDRESSED 或 NOT ADDRESSED,并审查修复 diff 连同它影响到的东西——调用方、共享状态与测试,绝不裁剪到只看改动的那几行。该 diff 之外的新发现,若违反当前契约或安全约束,照样计入;其余是 advisory,不延长循环。一条发现只有在修它既不改变契约、也不改变任何人会怎么执行时才算纯措辞——它在文档里的位置不决定它是不是 advisory。这一范围依托于被 resume 的评审会话——它本来就握有上一轮。若后续轮次改由新开的评审会话来跑——R2 的无 Codex 路径且该会话未被 resume,或调用恢复失败后接手续完这一轮的新开 `claude` 会话——它只拿上面的默认输入,像第 1 轮那样审整个 change;上一轮的结论不转包给它。上限处逐条裁决之后的那一次复核(§1 R4)也对每个被裁决的 id 单独一行作答。
 - **发现的处置——范围按每条发现判断,从不按体量。** 生产方对每条实质发现都记一条处置并写明依据:*当前契约*(增量 spec 与所有者已记录的决定)、*既有约束*(铁律、安全责任、既定保证),还是*新增诉求*。**若不处理该发现,拟交付的产物将违反一条可定位的已承诺验收条件、有效的所有者决定或适用的既有约束,那它就是本次交付的必要修复**——处置须同时引用该依据和违背它的证据。必要修复绝不因体量大而移出:实现可以拆,交付对它的依赖保留。改变承诺是所有者的决定(R1);记录之前,承诺与它的阻断继续有效。本次交付不依赖的新增诉求登记为**带稳定落点的 follow-up**——`## Open` 里写 `- <ID>: follow-up → <新 change 名> — <内容>`,gate C9 / archive R5 / `status` 把它当 note 报告而非阻断(建 change 与实施仍服从委托)——移出不等于关闭。落点必须是一个合法且不是本 change 的 change 名;日后在其自身授权下开启那个 change 时,它以原 ID 与原文记一条 pending 的 `## Open` 条目(其 Reality Check 以一行 `observed:` 注明它来自哪个 bundle),只凭自己的退出证据关闭,使这条诉求可从归档 bundle 追到接手处,且不因被接手而关闭。`fixed`(附证据)/ `contract`(待所有者)/ `follow-up` / `invalid`(附理由)/ `duplicate`(附原 ID)是推荐写法,不是封闭词表:未解决的发现保留其 ID、当前影响与下一动作。`review-progress` 的 `approach:` 只说为什么保留或改变方案——它不是第二份问题账本。
 - **知识库更新是前置条件,不是收尾步骤——而且只在欠着的时候才做。** 只有当 `apriori/truth/<module>.md` 已经覆盖被触达的模块,或所有者/change 明确决定沉淀一份新的持久契约时才欠;绝不为了收官时有一份而凭空造一份。欠着时,review-ready 之前:提交实现,让 `source-commit` 指向它;更新 `apriori/truth/<module>.md`——Contract 段按最终实现写,Decisions 段追加本次的新决定。评审方看到的 diff 里已经带着这份 KB diff;`apriori archive` 从不碰 `apriori/truth/`。
 - **然后归档——直接执行,不 dry-run。**(会丢掉 store 场景的 MODIFIED delta 会被拒绝:所有者须在 `gates:` 用 `archive-drop <change> sha256:<指纹>` 点名这一次删除,且运行时加 `--force`——同 ID 改标题或改写正文不算丢。) ACCEPT 落地、且产品代码与测试自 review-ready 起未再变化时,正常收尾恰好四个逻辑动作,不多不少:(1)把评审方的输出落成一个 self-contained 评审文件,外加一次简短的 flow-state 更新;(2)跑一次 `apriori check`,再跑一次完整的 `apriori gate --change <name>`(不带 `--review-ready`),在这些仍未变化的输入上绑定 C1;(3)直接跑 `apriori archive --change <name> --write`——`--write` 执行与 dry-run 完全相同的前置检查,先跑一次 dry-run 不会多核实出任何东西;归档把增量 spec 合并进 `apriori/specs` 并搬移 bundle,仅此而已(`--changes-dir` 只是非默认 changes 根的位置覆盖);(4)本地提交收尾,然后停止。那一次原子移动携带整个 bundle 到 `apriori/changes/archive/<stamp>-<change>/`。 这里数的是动作,不是命令:动作二本来就包含 check 与 gate。唯一的例外是下面的重新验证路径,在其已列触发发生时适用;四动作规则不是跳过恢复或适用报告义务的许可。

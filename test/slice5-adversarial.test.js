@@ -511,11 +511,12 @@ test('AM-121 the owner exit keeps its double action, and the printed cure is cop
   assert.match(open.stderr, /archive: R1 legacy ledger has 1 open row/);
   assert.doesNotMatch(open.stdout, /^forced:/m);
 
-  // R4 — a round-5 escalation, the ONE double action left. Five rounds of one family.
+  // R4 — a round-5 escalation, the ONE double action left. Five rounds of one family, the last an
+  // `escalate` verdict (limit-ruling: a revise AT the limit owes rulings and one re-review instead)
   const five = (gates) => {
     const p = project({ gates });
     for (let i = 1; i <= 5; i++) {
-      w(path.join(p.dir, 'review', `code-review-v${i}.md`), `# r${i}\n\nVERDICT: 3 issues open\n`);
+      w(path.join(p.dir, 'review', `code-review-v${i}.md`), `# r${i}\n\n${i === 5 ? 'VERDICT: escalate' : 'VERDICT: 3 issues open'}\n`);
       w(path.join(p.dir, 'review', `code-review-v${i}-raw.txt`), 'raw\n');
       if (i >= 3) fs.appendFileSync(path.join(p.dir, 'flow-state.md'), `  - 2026-08-23T0${i}:00 note: review-progress code-review round ${i} — issues: none; actions: fixed; evidence: suite; approach: kept — same plan\n`);
     }

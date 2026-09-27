@@ -1,6 +1,16 @@
 # Migrating
 
-The 3.0.0 stability promise — CLI surface & flags, `--json` shapes, the delta format, the flow-state schema and the `apriori/` layout only break in a major — holds for the released 5.x line. **6.x is an unreleased development line** (npm has never shipped a 6.x; `package.json` says `6.2.0-rc.0`, both runbooks `runbook-version: 6.2`): within it the `gate --review-ready` item ids (`tests`, `open`) and the flow-state fields (`## Evidence` gone, `mode:` inert) changed in 6.2, and further changes before a 6.x release are declared here rather than promised away. Everything below is either additive or a declared fail-closed tightening.
+The 3.0.0 stability promise — CLI surface & flags, `--json` shapes, the delta format, the flow-state schema and the `apriori/` layout only break in a major — holds for the released 5.x line. **6.x is an unreleased development line** (npm has never shipped a 6.x; `package.json` says `6.2.0-rc.0`, both runbooks `runbook-version: 6.2`): within it the `gate --review-ready` item ids (`tests`, `open`) and the flow-state fields (`## Evidence` gone, `mode:` inert) changed in 6.2, and further changes before a 6.x release are declared here rather than promised away. Everything below is either additive or a declared fail-closed tightening — except limit-ruling, which moves a stop the owner explicitly approved moving and says so in its section.
+
+## limit-ruling (Unreleased) — at the review-round limit the producer rules, and the default is 8
+
+What changes for a project already on the v6 line:
+
+- **Your explicit limit stays.** `apriori init` scaffolded `| review-round-limit | 7 |` as an explicit row, and an explicit row keeps its value; only a missing row (and a new scaffold) gets 8. Edit the row yourself if you want 8 — the agent never writes it.
+- **A family AT the limit no longer waits for you.** A family whose round at the limit is `revise` and that you have not answered now owes one `- <ts> note: ruling <family> round <n> — <ID>: <fixed|rejected|follow-up|owner> — <basis>` line per open finding and one re-review as the next round (RUNBOOK §1 R4); `gate` C8 and `status` name what is owed, and `status --escalation` no longer exits 3 for it. A `reframe` you already recorded for the limit round keeps working: that family stays on the owner's path.
+- **What still waits for you:** an `escalate` verdict, a round past the one re-review, and every pending `## Open` item the re-review leaves (R5 holds the archive until you answer it with `evidence-accept`, or release another review).
+- **Archived bundles are untouched** — the stop rules never apply retroactively.
+- **Templates:** `apriori update` refreshes the installed `/apriori` command (its R1 list now names "a review family past its one automatic re-review"); `docs/operator.md` adds one Build → Review → Archive `/goal` recipe.
 
 ## 6.2 code layer (Unreleased) — one mechanism of risk acceptance
 

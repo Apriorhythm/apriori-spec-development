@@ -466,8 +466,11 @@ test('FF-14 a delta the scan cannot read is fail-closed: a refusal, never "no ri
 
 test('FF-15 status and gate speak the same stage — a frozen loop is frozen in both', () => {
   const { root, dir } = project({ archived: true, mode: 'standard', step: 'DONE',
-    tasks: '- [x] T1\n', ledger: LEDGER, delta: ADDED, limit: 2 });   // limit 2: a frozen loop that WOULD stop
-  for (const n of [1, 2]) reviewRound(dir, 'spec-review', n, 'gaps found');
+    tasks: '- [x] T1\n', ledger: LEDGER, delta: ADDED, limit: 2 });   // a frozen loop that WOULD stop
+  // limit-ruling: a revise at the limit no longer stops (rulings + one re-review), so the stop
+  // this frozen loop would have hit is an `escalate` verdict
+  reviewRound(dir, 'spec-review', 1, 'gaps found');
+  reviewRound(dir, 'spec-review', 2, 'escalate');
   const g = gate(root);
   assert.match(line(g.stdout, 'C8'), /do not apply retroactively/, line(g.stdout, 'C8'));
   const s = run(['status', '--change', 'c'], root);

@@ -370,8 +370,10 @@ test('RL-19 three families each keep their own round; nothing is summed', () => 
 });
 
 test('RL-20 one family stalling never stops another family', () => {
-  const { root, bundle } = project(undefined, 'build', 2);     // the limit at 2: the old round-2 stall
-  landFamily(bundle, 'spec-review', [REVISE, REVISE]);
+  // limit-ruling: a revise at the limit no longer stops (rulings + one re-review); the family that
+  // stops is one whose reviewer escalated
+  const { root, bundle } = project(undefined, 'build', 2);
+  landFamily(bundle, 'spec-review', [REVISE, 'VERDICT: escalate']);
   landFamily(bundle, 'code-review', [ACCEPT]);
   const l = loopOf(bundle);
   assert.strictEqual(famOf(l, 'spec-review').stopped, true);
@@ -384,9 +386,9 @@ test('RL-20 one family stalling never stops another family', () => {
 
 test('RL-21 the reframe names the family it answers', () => {
   const { root, bundle } = project(
-    '  - 2026-08-23T10:00 owner: reframe spec-review round 2 split — this is two changes\n', 'build', 2);   // limit 2: both stop
-  landFamily(bundle, 'spec-review', [REVISE, REVISE]);
-  landFamily(bundle, 'req-review', [REVISE, REVISE]);
+    '  - 2026-08-23T10:00 owner: reframe spec-review round 2 split — this is two changes\n', 'build', 2);   // both escalate at round 2
+  landFamily(bundle, 'spec-review', [REVISE, 'VERDICT: escalate']);
+  landFamily(bundle, 'req-review', [REVISE, 'VERDICT: escalate']);
   const c = c8(root);
   assert.strictEqual(c.status, 'blocked', 'req-review is still unanswered');
   assert.match(c.detail, /ESCALATION req-review round 2 .*a human decides/);
@@ -397,7 +399,7 @@ test('RL-21 the reframe names the family it answers', () => {
     '  - 2026-08-23T11:00 owner: reframe req-review round 2 tests — add the missing coverage\n');
   // Both loops are released to run another round — and neither has CONVERGED. A reframe buys the
   // next round (decision card §5), never the delivery: the latest verdict of both families is
-  // still revise, so the floor keeps refusing until an accepting round lands.
+  // still escalate, so the floor keeps refusing until an accepting round lands.
   const c2 = c8(root);
   assert.strictEqual(c2.status, 'blocked');
   assert.doesNotMatch(c2.detail, /this review loop stops here/, 'both reframes were consumed');
@@ -425,8 +427,8 @@ test('RL-23 a reframe that does not answer THIS family and round releases nothin
     'reframe spec-review round 2 redo',
     'reframe round 2 split — the old family-less grammar',
   ]) {
-    const { root, bundle } = project(`  - 2026-08-23T10:00 owner: ${entry}\n`, 'build', 2);   // limit 2: round 2 stops
-    landFamily(bundle, 'spec-review', [REVISE, REVISE]);
+    const { root, bundle } = project(`  - 2026-08-23T10:00 owner: ${entry}\n`, 'build', 2);   // round 2 escalates
+    landFamily(bundle, 'spec-review', [REVISE, 'VERDICT: escalate']);
     const c = c8(root);
     assert.strictEqual(c.status, 'blocked', entry);
     assert.match(c.detail, /ESCALATION spec-review round 2 .*a human decides/, entry);   // still stopped: nothing answered it
@@ -448,38 +450,28 @@ test('RL-24 split, tests and redo are equal exits at round 2', () => {
   }
 });
 
-test('RL-25 a family still revising at its own limit escalates (accept at the limit proceeds)', () => {
+test('RL-25 a family still revising at its own limit owes rulings, not an escalation (accept at the limit proceeds)', () => {
+  // limit-ruling (human-approved DA-CONSENSUS §三): at the limit the producer rules on every open
+  // finding and one re-review follows — the owner is not waited on for the limit itself
   const { root, bundle } = project();
   landFamily(bundle, 'spec-review', [REVISE, REVISE, REVISE, REVISE, REVISE]);
   const l = loopOf(bundle);
   assert.strictEqual(famOf(l, 'spec-review').round, 5);
-  assert.ok(Array.isArray(l.escalation) && l.escalation.length === 1);
-  assert.strictEqual(l.escalation[0].family, 'spec-review');
-  assert.strictEqual(l.escalation[0].acknowledged, false);
+  assert.strictEqual(l.escalation, null);
+  assert.strictEqual(famOf(l, 'spec-review').stopped, false);
+  assert.strictEqual(famOf(l, 'spec-review').ruling.state, 'owed');
   const c = c8(root);
   assert.strictEqual(c.status, 'blocked');
-  assert.match(c.detail, /ESCALATION/);
-});
-
-test('RL-26 the owner decision is acknowledged per family and per round', () => {
-  const { root, bundle } = project(
-    '  - 2026-08-23T11:00 owner: reframe spec-review round 5 accept-risk — owner accepts\n');
-  landFamily(bundle, 'spec-review', [REVISE, REVISE, REVISE, REVISE, REVISE]);
-  const l = loopOf(bundle);
-  assert.strictEqual(l.escalation[0].acknowledged, true);
-  const c = c8(root);
-  assert.strictEqual(c.status, 'pass', c.detail);
-  assert.match(c.detail, /ESCALATION/, 'the report is not skippable');
-
-  landRound(bundle, 'spec-review-v6', REVISE);
-  const c2 = c8(root);
-  assert.strictEqual(c2.status, 'blocked');
-  assert.match(c2.detail, /round 6/);
+  assert.match(c.detail, /ruling spec-review round 5 — the round is at the review-round limit \(5\)/);
+  assert.doesNotMatch(c.detail, /ESCALATION/);
+  const { root: r2, bundle: b2 } = project();
+  landFamily(b2, 'spec-review', [REVISE, REVISE, REVISE, REVISE, ACCEPT]);
+  assert.strictEqual(c8(r2).status, 'pass', c8(r2).detail);
 });
 
 test('RL-27 a malformed document never erases an escalation that already exists', () => {
   const { root, bundle } = project();
-  landFamily(bundle, 'spec-review', [REVISE, REVISE, REVISE, REVISE, REVISE]);
+  landFamily(bundle, 'spec-review', [REVISE, REVISE, REVISE, REVISE, 'VERDICT: escalate']);
   landRound(bundle, 'req-review-v1', 'VERDICT: totally fine');
   const l = loopOf(bundle);
   assert.ok(Array.isArray(l.escalation) && l.escalation.length === 1);
@@ -546,29 +538,32 @@ test('RL-30 an unreadable review root leaves C8 without an opinion, not a second
 
 test('RL-31 status shows every family, its verdict, its open count, advisories and escalation', () => {
   const { root, bundle } = project();
-  landFamily(bundle, 'spec-review', [REVISE, REVISE, REVISE, REVISE, REVISE]);
+  landFamily(bundle, 'spec-review', [REVISE, REVISE, REVISE, REVISE, REVISE]);   // at the limit: rulings owed
   landFamily(bundle, 'code-review', [ACCEPT]);
+  landFamily(bundle, 'req-review', ['VERDICT: escalate']);                        // the escalation status shows
   raw(bundle, 'kb-check');
 
   const s = status.changeStatus(root, 'c', bundle, 'in-flight');
   const j = status.toJson(s);
   assert.deepStrictEqual(j.review.families.map((f) => [f.family, f.round, f.verdict]),
-    [['code-review', 1, 'accept'], ['spec-review', 5, 'revise']]);
-  assert.strictEqual(j.review.families[1].issuesOpen, 3, 'the counted spec-review verdict');
+    [['code-review', 1, 'accept'], ['req-review', 1, 'escalate'], ['spec-review', 5, 'revise']]);
+  assert.strictEqual(j.review.families[2].issuesOpen, 3, 'the counted spec-review verdict');
   assert.strictEqual(j.review.families[0].issuesOpen, null, 'the uncounted code-review accept');
   assert.deepStrictEqual(j.review.problems, []);
   assert.strictEqual(j.review.advisories.length, 1);
-  assert.strictEqual(j.escalation[0].round, 5);
+  assert.deepStrictEqual(j.escalation.map((e) => [e.family, e.round]), [['req-review', 1]]);
+  assert.ok(j.review.progress.some((p) => /ruling spec-review round 5/.test(p)), 'the rulings owed are shown');
   assert.strictEqual(j.review.round, undefined, 'there is no global round to report');
 
   const text = status.formatOne(s);
   assert.match(text, /spec-review round 5/);
   assert.match(text, /code-review round 1/);
   assert.match(text, /ESCALATION/);
+  assert.match(text, /review progress: ruling spec-review round 5/);
 
   const cli = run(['status', '--change', 'c', '--json'], root);
   assert.strictEqual(cli.status, 0, cli.stderr);
-  assert.strictEqual(JSON.parse(cli.stdout).escalation[0].family, 'spec-review');
+  assert.strictEqual(JSON.parse(cli.stdout).escalation[0].family, 'req-review');
 });
 
 test('RL-32 a change with no review yet has no ROUND, and that is now the conclusion', () => {
@@ -626,11 +621,11 @@ test('RL-34 a blocked loop refuses archive --write: nothing merged, nothing move
 });
 
 test('RL-35 readinessOf reports R4 through the same loop, not a second parser', () => {
-  const { bundle } = archiveProject(NOTE, { 'spec-review': [REVISE, REVISE] }, undefined, 2);   // limit 2: the old round-2 stall
+  const { bundle } = archiveProject(NOTE, { 'spec-review': [REVISE, 'VERDICT: escalate'] }, undefined, 2);   // round 2 escalates
   const rdy = rd.readinessOf({ bundleDir: bundle, name: 'c' });
   assert.strictEqual(rdy.ready, false);
   const r4 = rdy.blockers.filter((b) => b.rule === 'R4');
-  // two findings, one per claim: the loop stalled at ITS round 2, and the review never resolved.
+  // two findings, one per claim: the loop escalated at ITS round 2, and the review never resolved.
   // Neither is forceable — `--force` overrides progress, and neither of these is progress.
   assert.deepStrictEqual(r4.map((b) => b.class).sort(), ['escalation', 'review']);
   // the limit stop is an escalation with NO owner decision on record: not forceable, cure named, nothing forced
@@ -667,7 +662,7 @@ test('RL-37 a round-2 stall cannot be forced through archive', () => {
 });
 
 test('RL-38 round 5 needs BOTH the recorded human decision and --force', () => {
-  const five = { 'spec-review': [REVISE, REVISE, REVISE, REVISE, REVISE] };
+  const five = { 'spec-review': [REVISE, REVISE, REVISE, REVISE, 'VERDICT: escalate'] };   // the answered stop is an escalation (limit-ruling)
   const ACK = '  - 2026-08-23T11:00 owner: reframe spec-review round 5 accept-risk — owner accepts\n';
   {
     const { root } = archiveProject(NOTE + ACK, five);
@@ -845,7 +840,9 @@ function archivedFixture(verdicts, extra) {
   if (extra) extra(bundle);
   return { root, bundle };
 }
-const FIVE = { 'spec-review': [REVISE, REVISE, REVISE, REVISE, REVISE] };
+// limit-ruling: the stop a frozen or in-flight round-5 fixture exercises is an `escalate` verdict —
+// a revise at the limit now owes rulings and one re-review instead of stopping
+const FIVE = { 'spec-review': [REVISE, REVISE, REVISE, REVISE, 'VERDICT: escalate'] };
 
 test('RL-43 a frozen archive is not stopped or escalated retroactively', () => {
   const { root } = archivedFixture(FIVE);

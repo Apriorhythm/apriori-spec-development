@@ -21,16 +21,16 @@ function upto(text, startRe, endRe, label) {
 const BLOCKS = {
   'EN §0 fix packet': (d) => upto(d.EN, /- \*\*REVISE cuts the session/, /\n- \*\*/, 'EN fix packet'),
   'CN §0 fix packet': (d) => upto(d.CN, /- \*\*REVISE 切断会话/, /\n- \*\*/, 'CN fix packet'),
-  'EN §1 R1 stall':   (d) => upto(d.EN, /^3\. \*\*A review family at its round limit/m, /^4\. \*\*/m, 'EN R1.3'),
+  'EN §1 R1 stall':   (d) => upto(d.EN, /^3\. \*\*A review family past its one automatic re-review/m, /^4\. \*\*/m, 'EN R1.3'),   // limit-ruling
   'CN §1 R1 stall':   (d) => upto(d.CN, /^3\. \*\*某个评审 family/m, /^4\. \*\*/m, 'CN R1.3'),
 };
 
 const MEANINGS = [
   // Fix Packet 入口就地展开停滞判别
   ['SR2-01-EN-stall-check-first', 'EN §0 fix packet',
-    /already stopped at the owner's review-round limit[\s\S]{0,200}do not enter this section's fix loop/],
+    /already stopped by an `escalate` verdict, or past its one automatic re-review[\s\S]{0,200}do not enter this section's fix loop/],   // limit-ruling
   ['SR2-01-CN-stall-check-first', 'CN §0 fix packet',
-    /已在所有者的评审轮次上限[\s\S]{0,200}不进入本节的修复回路/],
+    /已因 `escalate` 结论停下,或已越过它唯一一次自动复核[\s\S]{0,200}不进入本节的修复回路/],   // limit-ruling
   // 必须带「尚未有效重开」限定 —— 否则会挡死合法恢复
   ['SR2-02-EN-not-yet-reopened', 'EN §0 fix packet', /no valid owner reframe has released it/],
   ['SR2-02-CN-not-yet-reopened', 'CN §0 fix packet', /尚无有效的 owner reframe 重开它/],

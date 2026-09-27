@@ -39,6 +39,9 @@ const TAP2 = 'node -e "console.log(\'TAP version 13\');console.log(\'1..2\');con
 const ACCEPT = 'VERDICT: no major issues';
 const REVISE = 'VERDICT: 3 issues open';
 const FIVE = [REVISE, REVISE, REVISE, REVISE, REVISE];
+// limit-ruling: a revise AT the limit is no longer an escalation (the producer rules and one re-review
+// follows) — an `escalate` verdict is what still waits on the owner, so the unanswered-stop fixtures use it
+const ESC5 = [REVISE, REVISE, REVISE, REVISE, 'VERDICT: escalate'];
 const REFRAME = (decision = 'accept-risk') => `  - 2026-08-23T12:00 owner: reframe code-review round 5 ${decision} — the owner takes it\n`;
 
 // One fixture shape: flow-state (+ optional scalar / gates / open) and a review family of N rounds.
@@ -135,13 +138,13 @@ test('ES-02 absent, `none` and `n/a` are fine; in an ARCHIVED bundle the scalar 
 // ---------------------------------------------------------------------------
 
 test('ES-03 active, round 5, no decision → pending: exit 3, C8 blocked, archive blocked even with --force', () => {
-  const p = project({ rounds: FIVE });
+  const p = project({ rounds: ESC5 });
   const l = review.reviewLoop(review.reviewFacts(p.dir), fs.readFileSync(path.join(p.dir, 'flow-state.md'), 'utf8'), 'in-flight', { limit: require('../lib/config').resolveReviewRoundLimit(p.root), cwd: p.root });
   assert.deepStrictEqual(l.escalation.map((x) => [x.family, x.round, x.state, x.acknowledged]), [['code-review', 5, 'pending', false]]);
   assert.strictEqual(l.families[0].stopped, true);
   const e = esc(p);
   assert.strictEqual(e.status, 3, e.stdout);
-  assert.match(e.stdout, /code-review round 5 \(round 5 reached the review-round limit \(5\)\) — a human decides/);
+  assert.match(e.stdout, /code-review round 5 \(the reviewer escalated\) — a human decides/);
   const j = escJson(p);
   assert.strictEqual(j.escalations.length, 1);
   assert.deepStrictEqual(j.acknowledged, []);
@@ -157,7 +160,7 @@ test('ES-03 active, round 5, no decision → pending: exit 3, C8 blocked, archiv
 });
 
 test('ES-04 archived, round 5, no decision → historical: exit 0, shown, C8 not blocked (RL-43)', () => {
-  const p = project({ rounds: FIVE, archived: true });
+  const p = project({ rounds: ESC5, archived: true });
   const l = review.reviewLoop(review.reviewFacts(p.dir), fs.readFileSync(path.join(p.dir, 'flow-state.md'), 'utf8'), 'archived', { limit: require('../lib/config').resolveReviewRoundLimit(p.root), cwd: p.root });
   assert.deepStrictEqual(l.escalation.map((x) => [x.state, x.acknowledged]), [['historical', false]]);
   assert.strictEqual(l.families[0].stopped, false);
@@ -167,8 +170,8 @@ test('ES-04 archived, round 5, no decision → historical: exit 0, shown, C8 not
   const j = escJson(p);
   assert.deepStrictEqual(j.escalations, []);
   assert.strictEqual(j.historical.length, 1);
-  assert.match(j.historical[0], /code-review round 5 \(round 5 reached the review-round limit \(5\)\) — a human decides \(archived history\)/);
-  assert.match(statusText(p), /^ESCALATION: {3}code-review round 5 \(round 5 reached the review-round limit \(5\)\) — a human decides {3}\(archived history\)/m);
+  assert.match(j.historical[0], /code-review round 5 \(the reviewer escalated\) — a human decides \(archived history\)/);
+  assert.match(statusText(p), /^ESCALATION: {3}code-review round 5 \(the reviewer escalated\) — a human decides {3}\(archived history\)/m);
   const g = gate(p);
   assert.strictEqual(g.status, 0, g.stdout);
   assert.match(line(g.stdout, 'C8'), /ESCALATION code-review round 5/);

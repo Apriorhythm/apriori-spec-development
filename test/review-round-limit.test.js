@@ -1,8 +1,9 @@
 'use strict';
-// review-round-limit — GT-50..36 / CF-30..22 / PR-40..31: the review loop is governed by the
-// human-held `review-round-limit` (missing = 7), not by fixed round-2 / round-5 control points;
-// round n >= 3 needs a structurally checked `review-progress` note; the owner is stopped for only
-// on `escalate` or a `revise` AT the limit.
+// review-round-limit — GT-50..59 / CF-30..35 / PR-40..41 / ST-40: the review loop is governed by the
+// human-held `review-round-limit` (missing = 8 since limit-ruling), not by fixed round-2 / round-5
+// control points; round n >= 3 needs a structurally checked `review-progress` note. Since
+// limit-ruling the owner is stopped for only on `escalate` or a round past the one automatic
+// re-review — a `revise` AT the limit owes rulings (test/limit-ruling.test.js).
 const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
@@ -55,12 +56,13 @@ const loopOf = (root, bundle) => review.reviewLoop(review.reviewFacts(bundle), f
 const fam = (l, name) => l.families.find((f) => f.family === name);
 const escStatus = (root) => run(['status', '--change', 'c', '--escalation'], root).status;
 
-test('GT-50 no configured limit means 7, and rounds 2 to 6 at revise never stop the loop', () => {
-  const gates = ['  - 2026-09-25T00:00 note: n\n', ...[3, 4, 5, 6].map((n) => progress('spec-review', n))].join('');
+test('GT-50 no configured limit means 8, and rounds 2 to 7 at revise never stop the loop', () => {
+  const gates = ['  - 2026-09-25T00:00 note: n\n', ...[3, 4, 5, 6, 7].map((n) => progress('spec-review', n))].join('');
   const { root, bundle } = project(gates);
-  landFamily(bundle, 'spec-review', [REVISE, REVISE, REVISE, REVISE, REVISE, REVISE]);
+  landFamily(bundle, 'spec-review', [REVISE, REVISE, REVISE, REVISE, REVISE, REVISE, REVISE]);
   const l = loopOf(root, bundle);
-  assert.strictEqual(fam(l, 'spec-review').round, 6);
+  assert.strictEqual(fam(l, 'spec-review').round, 7);
+  assert.strictEqual(fam(l, 'spec-review').ruling, null, 'below the limit nothing is ruled');
   assert.strictEqual(fam(l, 'spec-review').stopped, false);
   assert.strictEqual(l.escalation, null);
   const c = c8(root);
@@ -70,19 +72,19 @@ test('GT-50 no configured limit means 7, and rounds 2 to 6 at revise never stop 
   assert.strictEqual(escStatus(root), 0);
 });
 
-test('GT-51 a revise verdict at the effective limit stops for the owner; accept at the limit proceeds', () => {
+test('GT-51 a revise verdict at the effective limit asks the producer for rulings, not the owner; accept at the limit proceeds', () => {
   const g = '  - 2026-09-25T00:00 note: n\n' + progress('spec-review', 3);
   const { root, bundle } = project(g, '| review-round-limit | 3 |\n');
   landFamily(bundle, 'spec-review', [REVISE, REVISE, REVISE]);
   const l = loopOf(root, bundle);
-  assert.ok(l.escalation && l.escalation.length === 1);
-  assert.match(l.escalation[0].reason, /round 3 reached the review-round limit \(3\)/);
-  assert.strictEqual(l.escalation[0].acknowledged, false);
+  assert.strictEqual(l.escalation, null);
+  assert.strictEqual(fam(l, 'spec-review').stopped, false);
   const c = c8(root);
   assert.strictEqual(c.status, 'blocked');
-  assert.match(c.detail, /ESCALATION spec-review round 3/);
-  assert.match(c.detail, /owner: reframe spec-review round 3 <split\|tests\|redo\|accept-risk>/);
-  assert.strictEqual(escStatus(root), 3);
+  assert.match(c.detail, /ruling spec-review round 3 — the round is at the review-round limit \(3\) and still revising/);
+  assert.match(c.detail, /note: ruling spec-review round 3 — <ID>: <fixed\|rejected\|follow-up\|owner> — <basis>/);
+  assert.doesNotMatch(c.detail, /owner: reframe|ESCALATION/);
+  assert.strictEqual(escStatus(root), 0);
   // accept AT the limit proceeds
   const p2 = project(g, '| review-round-limit | 3 |\n');
   landFamily(p2.bundle, 'spec-review', [REVISE, REVISE, ACCEPT]);
@@ -90,7 +92,7 @@ test('GT-51 a revise verdict at the effective limit stops for the owner; accept 
   assert.strictEqual(c8(p2.root).status, 'pass', c8(p2.root).detail);
 });
 
-test('GT-52 the owner reframe acknowledges the limit stop and the count never resets', () => {
+test('GT-52 an owner reframe at the limit takes the family out of the automatic path, and the count never resets', () => {
   const g = '  - 2026-09-25T00:00 note: n\n' + progress('spec-review', 3)
     + '  - 2026-09-25T04:00 owner: reframe spec-review round 3 redo — new approach\n' + progress('spec-review', 4);
   const { root, bundle } = project(g, '| review-round-limit | 3 |\n');
@@ -98,6 +100,8 @@ test('GT-52 the owner reframe acknowledges the limit stop and the count never re
   let l = loopOf(root, bundle);
   assert.strictEqual(l.escalation[0].acknowledged, true);
   assert.strictEqual(l.escalation[0].state, 'acknowledged');
+  assert.strictEqual(fam(l, 'spec-review').ruling, null, 'the owner took the limit round: no ruling is asked for');
+  assert.doesNotMatch(c8(root).detail, /ruling spec-review/);
   landRound(bundle, 'spec-review-v4', REVISE);
   l = loopOf(root, bundle);
   assert.strictEqual(fam(l, 'spec-review').round, 4);                     // nothing reset
@@ -158,7 +162,7 @@ test('GT-55 an invalid limit blocks at consumption and names the range', () => {
     assert.strictEqual(c.status, 'blocked', bad);
     assert.match(c.detail, /review-round-limit/, bad);
     assert.match(c.detail, new RegExp(bad.replace('.', '\\.')), bad);
-    assert.match(c.detail, /an integer >= 1 \(missing row = 7\)/, bad);
+    assert.match(c.detail, /an integer >= 1 \(missing row = 8\)/, bad);
     const a = run(['archive', '--change', 'c'], p.root);
     assert.strictEqual(a.status, 1, a.stdout + a.stderr);
     assert.match(a.stdout + a.stderr, /review-round-limit/);
@@ -172,14 +176,15 @@ test('GT-55 an invalid limit blocks at consumption and names the range', () => {
 
 test('GT-56 the progress record is a note entry, not an owner decision', () => {
   // owner-authored progress record: counts as the record, authorizes nothing
+  // (limit-ruling: the stop exercised here is an `escalate` verdict — a revise at the limit owes rulings)
   let p = project('  - 2026-09-25T00:00 note: n\n' + progress('spec-review', 3, { actor: 'owner' }), '| review-round-limit | 3 |\n');
-  landFamily(p.bundle, 'spec-review', [REVISE, REVISE, REVISE]);
+  landFamily(p.bundle, 'spec-review', [REVISE, REVISE, ESCALATE]);
   let c = c8(p.root);
   assert.doesNotMatch(c.detail, /review-progress spec-review round 3 —.*missing/);
   assert.match(c.detail, /ESCALATION spec-review round 3/);                 // still stopped: it is not a reframe
   // note-authored reframe: not a reframe, not a progress record
   p = project('  - 2026-09-25T00:00 note: reframe spec-review round 3 redo — nope\n' + progress('spec-review', 3), '| review-round-limit | 3 |\n');
-  landFamily(p.bundle, 'spec-review', [REVISE, REVISE, REVISE]);
+  landFamily(p.bundle, 'spec-review', [REVISE, REVISE, ESCALATE]);
   c = c8(p.root);
   assert.strictEqual(c.status, 'blocked');
   assert.strictEqual(loopOf(p.root, p.bundle).escalation[0].acknowledged, false);
@@ -293,12 +298,12 @@ test('GT-59 archive consumes the same loop: progress failures block R4, an unans
       assert.ok(fs.existsSync(p.bundle), why);
     }
   }
-  // an unanswered limit stop: forceable false, the cure named, archive prints it (and --force changes nothing)
+  // an unanswered escalation stop: forceable false, the cure named, archive prints it (and --force changes nothing)
   let p = project('  - 2026-09-25T00:00 note: n\n', '| review-round-limit | 2 |\n', 'review');
-  landFamily(p.bundle, 'spec-review', [REVISE, REVISE]);
+  landFamily(p.bundle, 'spec-review', [REVISE, ESCALATE]);
   let rdy = rd.readinessOf({ bundleDir: p.bundle, name: 'c', cwd: p.root });
   const stop = rdy.blockers.find((b) => b.class === 'escalation');
-  assert.ok(stop, 'the limit stop is reported');
+  assert.ok(stop, 'the escalation stop is reported');
   assert.strictEqual(stop.forceable, false);
   assert.match(stop.detail, /not yet on record/);
   assert.match(stop.cure, /owner: reframe spec-review round 2 <split\|tests\|redo\|accept-risk>/);
@@ -332,9 +337,9 @@ test('ST-40 status shows the limit and the progress findings the loop computed',
   // round 1, default limit
   let p = project();
   landFamily(p.bundle, 'spec-review', [REVISE]);
-  assert.match(text(p.root), /review:\s+review-round-limit 7 \(default\)/);
+  assert.match(text(p.root), /review:\s+review-round-limit 8 \(default\)/);
   let j = json(p.root);
-  assert.deepStrictEqual(j.review.limit, { value: 7, origin: 'default' });
+  assert.deepStrictEqual(j.review.limit, { value: 8, origin: 'default' });
   assert.deepStrictEqual(j.review.progress, []);
   assert.strictEqual(j.review.families[0].round, 1);
   // round 3 with the record missing
@@ -345,23 +350,26 @@ test('ST-40 status shows the limit and the progress findings the loop computed',
   j = json(p.root);
   assert.strictEqual(j.review.progress.length, 1);
   assert.match(j.review.progress[0], /review-progress spec-review round 3 — missing/);
-  assert.strictEqual(j.review.limit.value, 7);
+  assert.strictEqual(j.review.limit.value, 8);
   // an invalid row: the resolver's error stands in for the limit
   p = project(undefined, '| review-round-limit | 0 |\n');
   landFamily(p.bundle, 'spec-review', [REVISE]);
-  assert.match(text(p.root), /review:\s+review-round-limit: .*'0'.*an integer >= 1 \(missing row = 7\)/);
+  assert.match(text(p.root), /review:\s+review-round-limit: .*'0'.*an integer >= 1 \(missing row = 8\)/);
   j = json(p.root);
   assert.ok(j.review.limit.error);
-  assert.match(j.review.limit.error, /^review-round-limit: .*an integer >= 1 \(missing row = 7\)$/);
+  assert.match(j.review.limit.error, /^review-round-limit: .*an integer >= 1 \(missing row = 8\)$/);
 });
 
-test('CF-30 the default is 7 and the template ships it visibly', () => {
+test('CF-30 the default is 8 and the template ships it visibly', () => {
   const none = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-rrl-'));
-  assert.deepStrictEqual(config.resolveReviewRoundLimit(none), { value: 7, origin: 'default' });
+  assert.deepStrictEqual(config.resolveReviewRoundLimit(none), { value: 8, origin: 'default' });
   const p = project(undefined, '| cas | required |\n');
-  assert.deepStrictEqual(config.resolveReviewRoundLimit(p.root), { value: 7, origin: 'default' });
+  assert.deepStrictEqual(config.resolveReviewRoundLimit(p.root), { value: 8, origin: 'default' });
   const tpl = fs.readFileSync(path.join(ROOT, 'templates', 'process-config.md'), 'utf8');
-  assert.strictEqual(config.parseConfig(tpl).values.get('review-round-limit'), '7');
+  assert.strictEqual(config.parseConfig(tpl).values.get('review-round-limit'), '8');
+  // a raised default never overrides an explicit value
+  const seven = project(undefined, '| review-round-limit | 7 |\n');
+  assert.deepStrictEqual(config.resolveReviewRoundLimit(seven.root), { value: 7, origin: 'config' });
 });
 
 test('CF-31 legal and illegal cells', () => {
@@ -375,18 +383,18 @@ test('CF-31 legal and illegal cells', () => {
     assert.ok(r.error, bad);
     assert.match(r.error, /review-round-limit/);
     assert.ok(r.error.includes(bad), bad);
-    assert.match(r.error, /an integer >= 1 \(missing row = 7\)/);
+    assert.match(r.error, /an integer >= 1 \(missing row = 8\)/);
   }
   const p = project(undefined, '| review-round-limit | 3 |\n| review-round-limit | 5 |\n');
   const conflict = config.resolveReviewRoundLimit(p.root).error;
   assert.match(conflict, /^review-round-limit: .*conflicting rows \('3' vs '5'\)/);
-  assert.match(conflict, /an integer >= 1 \(missing row = 7\)/);
+  assert.match(conflict, /an integer >= 1 \(missing row = 8\)/);
   // the cap is spent on the cells, never on the key or the range
   const rows = ['a'.repeat(120), 'b'.repeat(120), 'c', 'd', 'e'].map((v) => `| review-round-limit | ${v} |\n`).join('');
   const long = config.resolveReviewRoundLimit(project(undefined, rows).root).error;
   assert.ok(long.length <= 200, long.length);
   assert.match(long, /^review-round-limit: /);
-  assert.match(long, / — must be an integer >= 1 \(missing row = 7\)$/);
+  assert.match(long, / — must be an integer >= 1 \(missing row = 8\)$/);
   assert.match(long, /and 2 more/);
 });
 
@@ -397,7 +405,7 @@ test('CF-33 a present row with an empty or hyphen cell is an error, never the de
     assert.ok(r.error, JSON.stringify(cell));
     assert.match(r.error, /review-round-limit/);
     assert.match(r.error, /empty value cell/);
-    assert.match(r.error, /an integer >= 1 \(missing row = 7\)/);
+    assert.match(r.error, /an integer >= 1 \(missing row = 8\)/);
     // and it blocks C8 the same way an explicit `0` does
     landFamily(p.bundle, 'spec-review', [REVISE]);
     const c = c8(p.root);
@@ -410,7 +418,7 @@ test('CF-33 a present row with an empty or hyphen cell is an error, never the de
     const r = config.resolveReviewRoundLimit(p.root);
     assert.ok(r.error, rows);
     assert.match(r.error, /empty value cell \(beside a row reading '3'\)/, rows);
-    assert.match(r.error, /an integer >= 1 \(missing row = 7\)/, rows);
+    assert.match(r.error, /an integer >= 1 \(missing row = 8\)/, rows);
   }
   // the shared reader still ignores a blank cell for every OTHER key (id-pattern keeps its default)
   const q = project(undefined, '| id-pattern | |\n');
@@ -423,7 +431,7 @@ test('CF-34 a cell too long to be a safe integer is an error, not an infinite li
     const r = config.resolveReviewRoundLimit(p.root);
     assert.ok(r.error, big.length);
     assert.match(r.error, /review-round-limit/);
-    assert.match(r.error, /an integer >= 1 \(missing row = 7\)/);
+    assert.match(r.error, /an integer >= 1 \(missing row = 8\)/);
   }
   const p = project(undefined, '| review-round-limit | 9007199254740991 |\n');
   assert.deepStrictEqual(config.resolveReviewRoundLimit(p.root), { value: 9007199254740991, origin: 'config' });
@@ -435,7 +443,7 @@ test('CF-35 an unreadable file and a conflict resolve to errors that name the ke
   const r = config.resolveReviewRoundLimit(p.root);
   assert.match(r.error, /^review-round-limit: /);
   assert.match(r.error, /cannot be read/);
-  assert.match(r.error, /an integer >= 1 \(missing row = 7\)/);
+  assert.match(r.error, /an integer >= 1 \(missing row = 8\)/);
   landFamily(p.bundle, 'spec-review', [REVISE]);
   // gate itself refuses a broken config before any check runs (gate-degrade); the loop, asked
   // directly (status --json and archive R4 do), carries the decorated error once, not prefixed twice
@@ -473,7 +481,16 @@ test('PR-40 R4 carries the limit rule in both editions', () => {
     assert.doesNotMatch(t, /到达它自己的第 5 轮 → escalation/, f);
     assert.doesNotMatch(t, /第五轮|第二轮|round-5 escalation|round-2 stop/, f);
   }
-  assert.match(fs.readFileSync(path.join(ROOT, 'RUNBOOK.md'), 'utf8'), /defaults to 7/);
+  assert.match(fs.readFileSync(path.join(ROOT, 'RUNBOOK.md'), 'utf8'), /defaults to 8/);
+  assert.match(fs.readFileSync(path.join(ROOT, 'RUNBOOK_cn.md'), 'utf8'), /缺行默认 8/);
+  // limit-ruling: both editions carry the ruling line, its four kinds and the re-review's per-id answer,
+  // and neither says a revise at the limit stops the loop
+  for (const f of ['RUNBOOK.md', 'RUNBOOK_cn.md']) {
+    const t = fs.readFileSync(path.join(ROOT, f), 'utf8');
+    assert.match(t, /`- <YYYY-MM-DDTHH:MM> note: ruling <family> round <n> — <ID>: <fixed\|rejected\|follow-up\|owner> — <(basis|依据)>`/, f);
+    assert.match(t, /`- <ID>: ADDRESSED — <(basis|依据)>` (or|或) `- <ID>: NOT ADDRESSED — <(basis|依据)>`/, f);
+    assert.doesNotMatch(t, /or a REVISE verdict at the effective limit; PASS at the limit proceeds|或在有效上限仍是 REVISE;上限处 PASS 照常继续/, f);
+  }
 });
 
 test('PR-41 the derived documents follow the runbook', () => {
@@ -509,9 +526,9 @@ test('PR-41 the derived documents follow the runbook', () => {
   // positive: the Specify exit and the status reference tie their stop condition to the configured limit
   const rb = fs.readFileSync(path.join(ROOT, 'RUNBOOK.md'), 'utf8');
   assert.match(rb, /\*\*Exit \(when a spec-review loop ran\):\*\*[^\n]*still `revise` at the effective limit/);
-  assert.match(rb, /A review family at its round limit \(reframe\)\.\*\*[^\n]*`accept` proceeds/);
+  assert.match(rb, /A review family past its one automatic re-review \(reframe\)\.\*\*[^\n]*`accept` proceeds/);
   const cli = fs.readFileSync(path.join(ROOT, 'docs', 'cli.md'), 'utf8');
-  assert.match(cli, /`pending`\*\* — [^\n]*still revising at its review-round limit/);
+  assert.match(cli, /`pending`\*\* — [^\n]*a round past its one automatic re-review at the review-round limit/);
   assert.match(cli, /`review\.limit` is the effective review-round limit/);
   // continuation after a limit stop: raise the row OR one reframe per further revise round — never "must raise" alone
   for (const f of ['docs/cli.md', 'docs/operator.md', 'RUNBOOK.md']) {

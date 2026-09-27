@@ -1,0 +1,1180 @@
+OpenAI Codex v0.155.1
+--------
+workdir: /root/terra/wt-d
+model: gpt-6-astra
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: medium
+reasoning summaries: none
+session id: 01a0e250-702e-7302-89cc-b47b6c252edb
+--------
+user
+Round 2 (change limit-ruling, still on feature/limit-ruling; re-run `git diff v6-dev...HEAD` and `git diff`). Scope of this round (RUNBOOK §4 Review & Deliver, "A later round is scoped to what changed"): judge each finding still open from round 1 as ADDRESSED or NOT ADDRESSED, and review the fix diff together with what it affects (callers, shared state, tests; not trimmed to the edited lines); a new finding outside that diff still counts when it violates the current contract or a safety constraint; anything else is advisory.
+Producer answers. LR-01: lib/review.js reviewLoop now checks every ESTABLISHED ruling cycle whatever the current limit — rulings recorded at a round whose verdict was revise, not answered by an owner reframe at that round, with the next round landed — through the same rulingPath (per-id conclusions, owner/pending, session rule, new findings); a raised limit releases the rounds after the re-review (no escalation) but never closes what it left open. New test GT-67: fresh-session re-review, R-02 rejected / R-03 follow-up not pending, owner raises the limit to 6 → C8 still blocks naming both; once pending it passes; a later round-5 accept is released. LR-02: progressProblems now exempts only an explicit set — the current automatic re-review (R+1) and the round after an established cycle whose checks all passed (state closed); a stray ruling note below the limit is held to the ruling checks and buys no exemption. New test GT-68: limit 8, rounds 1-2 revise, round 3 accept, one `note: ruling spec-review round 2 — R-01: parked — x` → C8 blocks on the illegal kind AND on the missing round-3 review-progress record. GT-66 also asserts the exemption survives a raised limit when the cycle closed. LR-03: AM-136 now runs `archive --change c --no-cas --write` and asserts the move, the merged store and the declaration notes. The gate delta requirement gains the established-cycle sentence plus GT-66..68 THENs; both runbook editions gain one sentence in R4. Round-1 review landed as review/code-review-v1.md. Tests 869/869, verify GREEN, check --self PASS. End with one verdict line from §5.
+codex
+I’ll check each fix against LR-01–03, then trace how established cycles interact with owner-released later reviews and the archive checks.
+exec
+/usr/bin/zsh -lc 'git status --short; git diff --stat v6-dev...HEAD; git diff --stat; git diff -- lib/review.js test/limit-ruling.test.js apriori/changes/limit-ruling/specs/gate/spec.md RUNBOOK.md RUNBOOK_cn.md; git log -4 --oneline' in /root/terra/wt-d
+ succeeded in 0ms:
+ M RUNBOOK.md
+ M RUNBOOK_cn.md
+ M apriori/changes/limit-ruling/flow-state.md
+ M apriori/changes/limit-ruling/specs/gate/spec.md
+ M lib/review.js
+ M test/limit-ruling.test.js
+?? apriori/changes/limit-ruling/review/
+ CHANGELOG.md                                       |   6 +
+ MIGRATING.md                                       |  12 +-
+ RUNBOOK.md                                         |  34 +--
+ RUNBOOK_cn.md                                      |  34 +--
+ apriori/changes/limit-ruling/flow-state.md         |  25 ++
+ .../limit-ruling/specs/archive-merge/spec.md       |  48 ++++
+ apriori/changes/limit-ruling/specs/config/spec.md  |  35 +++
+ apriori/changes/limit-ruling/specs/gate/spec.md    |  84 +++++++
+ .../changes/limit-ruling/specs/protocol/spec.md    |  27 ++
+ apriori/changes/limit-ruling/specs/status/spec.md  |  19 ++
+ docs/cli.md                                        |  14 +-
+ docs/cli_cn.md                                     |  14 +-
+ docs/concepts.md                                   |  16 +-
+ docs/concepts_cn.md                                |  16 +-
+ docs/operator.md                                   |  20 +-
+ docs/operator_cn.md                                |  20 +-
+ lib/archive-merge.js                               |  24 +-
+ lib/config.js                                      |   2 +-
+ lib/gate.js                                        |   5 +-
+ lib/managed.js                                     |   1 +
+ lib/readiness.js                                   |   3 +-
+ lib/review.js                                      | 204 +++++++++++++--
+ templates/command.md                               |   2 +-
+ templates/process-config.md                        |   2 +-
+ test/escalation-states.test.js                     |  13 +-
+ test/fast-floor.test.js                            |   7 +-
+ test/fixtures/command.golden.md                    |   2 +-
+ test/limit-ruling.test.js                          | 274 +++++++++++++++++++++
+ test/operator-move.test.js                         |   6 +-
+ test/protocol.test.js                              |   8 +-
+ test/review-loop.test.js                           |  75 +++---
+ test/review-round-limit.test.js                    |  99 +++++---
+ test/slice5-adversarial.test.js                    |   5 +-
+ test/stall-routing.test.js                         |   6 +-
+ 34 files changed, 973 insertions(+), 189 deletions(-)
+ RUNBOOK.md                                      |  2 +-
+ RUNBOOK_cn.md                                   |  2 +-
+ apriori/changes/limit-ruling/flow-state.md      | 13 ++++---
+ apriori/changes/limit-ruling/specs/gate/spec.md | 14 ++++++--
+ lib/review.js                                   | 30 ++++++++++++++--
+ test/limit-ruling.test.js                       | 47 ++++++++++++++++++++++++-
+ 6 files changed, 95 insertions(+), 13 deletions(-)
+diff --git a/RUNBOOK.md b/RUNBOOK.md
+index dbc2596..91fb8db 100644
+--- a/RUNBOOK.md
++++ b/RUNBOOK.md
+@@ -130,7 +130,7 @@ For review-loop governance, stop for the owner on an explicit `escalate` verdict
+ Then exactly ONE independent re-review follows as round n+1 — the same reviewer session, resumed (R2), its resume message asking it to judge each ruling and to answer each ruled id on its own line: `- <ID>: ADDRESSED — <basis>` or `- <ID>: NOT ADDRESSED — <basis>`. The rulings stand in for that round's `review-progress` record.
+ C8 checks this mechanically: every ruling names a legal kind and a basis, the rulings cover every id that opens a list item or table row of round n's summary, and no id carries two different rulings; then exactly one re-review; then every ruled id either has an `ADDRESSED` line or is a pending `## Open` item (an `owner` ruling is pending whatever the re-review says; an id with both conclusions blocks); a new finding the re-review opens with an id is a pending item; and when the re-review's provenance does not prove it ran in round n's reviewer session, every `rejected` and `follow-up` ruling is a pending item for the owner. These findings are the producer's to repair — never an owner gate, never an escalation.
+ What the re-review leaves unresolved is a pending `## Open` item — R1 case 2, the owner's: the producer does not change code for it without the owner's word, and a fix made with that word stays pending until a later review accepts it or the owner records `evidence-accept`. A change to product code or tests after the re-review needs a new review or the owner's explicit acceptance of the risk. An earlier REVISE is never rewritten; a later review the owner released may add an ACCEPT.
+-A round past that one re-review needs the owner: a reframe for this family at a round from the re-review on (or a raised limit); without one, the round is an escalation and never counts as convergence. The same issue under a new id, a new family or a split-off change does not earn another re-review — a rule the CLI does not check.
++A round past that one re-review needs the owner: a reframe for this family at a round from the re-review on (or a raised limit); without one, the round is an escalation and never counts as convergence. Raising the limit permits more review and releases the rounds after the re-review, but never closes what that re-review left open: rulings whose next round has landed are checked whatever the limit says now, and a stray ruling note below the limit is held to the same checks. The same issue under a new id, a new family or a split-off change does not earn another re-review — a rule the CLI does not check.
+ The rulings and the one re-review let the loop go on without waiting, but they do not guarantee the approach is right; the owner may reframe or raise the limit at any time. The final report and the archive declaration list every ruling.
+ Only a recorded owner reframe — `- <YYYY-MM-DDTHH:MM> owner: reframe <family> round <n> <split|tests|redo|accept-risk> — <reason>` (a real timestamp, the actor exactly `owner`, the family AND the round it answers) — may release an owner stop, and it answers that round alone: every further `revise` round past the one re-review stops again (`accept` proceeds, and an explicit `escalate` stops regardless of the limit) until the owner either raises `review-round-limit` to an explicit finite value greater than the cumulative count or answers it with its own reframe; cumulative counts MUST NOT reset. An owner who answers the limit round itself with a reframe takes the family out of the ruling path: from then on every `revise` at or past the limit needs the owner's own reframe.
+ Risk acceptance MUST remain explicit and MUST NOT be relabeled PASS; archiving an escalated loop requires both the recorded owner decision and explicit `--force`, which alone cannot bypass a stopped loop or an evidence problem. A family closed by its rulings and its one re-review needs neither: its residuals are pending items that R5 holds until the owner answers them.
+diff --git a/RUNBOOK_cn.md b/RUNBOOK_cn.md
+index 40173bd..43acab5 100644
+--- a/RUNBOOK_cn.md
++++ b/RUNBOOK_cn.md
+@@ -130,7 +130,7 @@ C8 必须检查结构完整、family 与目标轮次匹配、覆盖上一轮全
+ 随后恰好一次独立复核,作为第 n+1 轮——resume 同一个评审会话(R2),resume 消息请它判断每条裁决,并对每个被裁决的 id 单独一行作答:`- <ID>: ADDRESSED — <依据>` 或 `- <ID>: NOT ADDRESSED — <依据>`。这些裁决代替该轮的 `review-progress` 记录。
+ C8 机械地检查:每条裁决写了合法类别与依据,裁决覆盖第 n 轮摘要里作为列表项或表格行开头出现的每个 id,同一 id 没有两种不同裁决;随后恰好一次复核;之后每个被裁决的 id 要么有一行 `ADDRESSED`,要么是 pending 的 `## Open` 条目(`owner` 裁决无论复核怎么说都是 pending;同一 id 两种结论都有即阻断);复核里以 id 开头的新发现是 pending 条目;复核的来源标注证明不了它跑在第 n 轮的评审会话里时,每条 `rejected` 与 `follow-up` 裁决都要是交给所有者的 pending 条目。这些问题由生产方修补——永远不是所有者闸门,也不是 escalation。
+ 复核仍未解决的问题是 pending 的 `## Open` 条目——R1 第 2 类,归所有者:没有所有者的话,生产方不为它改代码;凭所有者的话做的修复,仍保持 pending,直到之后的评审认可它或所有者记下 `evidence-accept`。复核之后再改产品代码或测试,需要新的评审或所有者明确接受风险。先前的 REVISE 永不改写;所有者放行后的评审可以新增一个 ACCEPT。
+-越过那一次复核的轮次需要所有者:本 family 在复核那一轮或之后某轮的 reframe(或提高上限);没有的话,这一轮就是 escalation,永远不算收敛。同一问题换了 id、换了 family 或拆到另一个 change 里,都不再得到复核额度——这条 CLI 不检查。
++越过那一次复核的轮次需要所有者:本 family 在复核那一轮或之后某轮的 reframe(或提高上限);没有的话,这一轮就是 escalation,永远不算收敛。提高上限放行更多评审、也放行复核之后的轮次,但绝不关闭那次复核留下的问题:下一轮已落盘的裁决,不论现在上限是多少都照样核对;上限以下零散写下的裁决行也受同样的核对。同一问题换了 id、换了 family 或拆到另一个 change 里,都不再得到复核额度——这条 CLI 不检查。
+ 逐条裁决与那一次复核让循环不必停等,但不保证方法本身正确;所有者随时可以 reframe 或提高上限。最终报告与归档声明逐条列出全部裁决。
+ 只有所有者已记录的 reframe——`- <YYYY-MM-DDTHH:MM> owner: reframe <family> round <n> <split|tests|redo|accept-risk> — <理由>`(真实时间戳、actor 正好是 `owner`、点名 family 与所答的轮次)——能放行所有者停止,且只答那一轮:此后越过那一次复核的每一个 `revise` 轮都会再次停下(`accept` 照常继续,显式 `escalate` 不论上限都停),直到所有者把 `review-round-limit` 提高到一个明确的、大于累计轮次的有限值,或用各轮自己的 reframe 作答;累计轮次绝不清零。所有者若直接用 reframe 答了上限那一轮,该 family 就离开裁决路径:此后到达或超过上限的每个 `revise` 都要所有者自己的 reframe。
+ 风险接受必须显式,绝不改写成 PASS;归档一个因 escalation 停下的循环,需要已记录的所有者决定**加上**显式 `--force`,而 `--force` 单独绕不过停摆的循环或证据问题。由逐条裁决与那一次复核收口的 family 两者都不需要:它的残留问题是 pending 条目,由 R5 拦住,直到所有者作答。
+diff --git a/apriori/changes/limit-ruling/specs/gate/spec.md b/apriori/changes/limit-ruling/specs/gate/spec.md
+index 477d9ed..11233f3 100644
+--- a/apriori/changes/limit-ruling/specs/gate/spec.md
++++ b/apriori/changes/limit-ruling/specs/gate/spec.md
+@@ -49,7 +49,7 @@ C8 SHALL derive each review family's round from the review evidence exactly as b
+ ## ADDED Requirements
+ 
+ ### Requirement: at the limit the producer rules on every open finding and one independent re-review decides what reaches the owner
+-At the effective limit, the first round R at or past it whose verdict is `revise`, when the owner has not answered round R with a reframe, SHALL NOT stop the loop. C8 SHALL require one ruling per finding still open in round R's summary, each a `gates:` entry `- <YYYY-MM-DDTHH:MM> note: ruling <family> round <R> — <ID>: <fixed|rejected|follow-up|owner> — <basis>` (a real timestamp and the actor exactly `note:` — a ruling written with any other actor is not a ruling), and SHALL check that at least one ruling exists, that each names a legal kind and carries a basis, that the rulings cover every id opening a list item or table row of round R's summary, and that no id carries two different kinds. Exactly ONE independent re-review SHALL follow as round R+1, answering each ruled id on its own line — `- <ID>: ADDRESSED — <basis>` or `- <ID>: NOT ADDRESSED — <basis>` (the id and the status may be wrapped in `**` or backticks; the id, the status and the em dash match exactly). After it, every ruled id SHALL either carry an ADDRESSED line or be a pending `## Open` item (an item with that id that is not a follow-up line; an owner-accepted item counts); an id with both conclusions blocks; the id of an `owner` ruling SHALL be a pending item whatever the re-review says; the id of a `follow-up` ruling marked ADDRESSED SHALL be a registered follow-up; when the re-review's verdict is not an accept, every id that opens a list item or table row of its summary and was not ruled SHALL be a pending item; and when the re-review's provenance session is missing, `unknown` or not round R's session, the id of every `rejected` and `follow-up` ruling SHALL be a pending item. Until the rulings pass, C8 blocks naming the rulings owed; once they pass and before round R+1 lands, C8 blocks naming the one re-review owed. Every such finding is the producer's to repair — never an owner gate, never an escalation — and `apriori archive` reads them as non-forceable R4 evidence blockers. A family that passes these checks is closed: it no longer counts against the review floor, whatever the re-review's verdict, and its residuals are pending items that R5 holds for the owner. A round R+2 or later opened without an owner reframe for this family at a round from R+1 on SHALL be an escalation (`the one automatic re-review is spent`) and SHALL never count as convergence; after such a reframe, a later `accept` converges and a later `revise` needs its own reframe.
++At the effective limit, the first round R at or past it whose verdict is `revise`, when the owner has not answered round R with a reframe, SHALL NOT stop the loop. C8 SHALL require one ruling per finding still open in round R's summary, each a `gates:` entry `- <YYYY-MM-DDTHH:MM> note: ruling <family> round <R> — <ID>: <fixed|rejected|follow-up|owner> — <basis>` (a real timestamp and the actor exactly `note:` — a ruling written with any other actor is not a ruling), and SHALL check that at least one ruling exists, that each names a legal kind and carries a basis, that the rulings cover every id opening a list item or table row of round R's summary, and that no id carries two different kinds. Exactly ONE independent re-review SHALL follow as round R+1, answering each ruled id on its own line — `- <ID>: ADDRESSED — <basis>` or `- <ID>: NOT ADDRESSED — <basis>` (the id and the status may be wrapped in `**` or backticks; the id, the status and the em dash match exactly). After it, every ruled id SHALL either carry an ADDRESSED line or be a pending `## Open` item (an item with that id that is not a follow-up line; an owner-accepted item counts); an id with both conclusions blocks; the id of an `owner` ruling SHALL be a pending item whatever the re-review says; the id of a `follow-up` ruling marked ADDRESSED SHALL be a registered follow-up; when the re-review's verdict is not an accept, every id that opens a list item or table row of its summary and was not ruled SHALL be a pending item; and when the re-review's provenance session is missing, `unknown` or not round R's session, the id of every `rejected` and `follow-up` ruling SHALL be a pending item. Until the rulings pass, C8 blocks naming the rulings owed; once they pass and before round R+1 lands, C8 blocks naming the one re-review owed. Every such finding is the producer's to repair — never an owner gate, never an escalation — and `apriori archive` reads them as non-forceable R4 evidence blockers. A family that passes these checks is closed: it no longer counts against the review floor, whatever the re-review's verdict, and its residuals are pending items that R5 holds for the owner. A round R+2 or later opened without an owner reframe for this family at a round from R+1 on SHALL be an escalation (`the one automatic re-review is spent`) and SHALL never count as convergence; after such a reframe, a later `accept` converges and a later `revise` needs its own reframe. A ruling cycle, once its next round has landed, SHALL be checked this way whatever the limit says now: raising the limit permits more review and releases the rounds after the re-review, but never closes what that re-review left open. Rulings recorded at any other round whose verdict was `revise` are held to the same checks once the next round lands, and only a re-review whose checks all pass — or the current automatic one — is exempt from the `review-progress` record.
+ 
+ #### Scenario: GT-60 rulings are required at the limit, one per open finding, in the exact grammar
+ - WHEN the limit is 3 and round 3 is `revise` with a summary opening R-01, R-02 and R-03; first with no ruling; then with rulings for R-01 and R-02 only; then with a ruling of kind `parked`; then with a ruling whose basis is empty; then with R-01 ruled both `fixed` and `rejected`; then with the rulings written under the `owner:` actor; then with a complete, well-formed set
+@@ -76,8 +76,16 @@ At the effective limit, the first round R at or past it whose verdict is `revise
+ - THEN the first is an escalation (`the one automatic re-review is spent`) that does not count as convergence and makes `status --escalation` exit 3; with the reframe the round-5 accept converges; the round-6 revise is an escalation needing its own reframe
+ 
+ #### Scenario: GT-66 the re-review round needs no review-progress record
+-- WHEN rulings at round 3 are followed by a round-4 re-review that marks every ruled id ADDRESSED and no `review-progress` record exists for round 4
+-- THEN C8 reports no progress finding for round 4 and passes
++- WHEN rulings at round 3 are followed by a round-4 re-review that marks every ruled id ADDRESSED and no `review-progress` record exists for round 4, and then the owner raises the limit to 6
++- THEN C8 reports no progress finding for round 4 and passes, before and after the limit changes
++
++#### Scenario: GT-67 raising the limit permits more review but never closes what the re-review left open
++- WHEN a fresh-session re-review at round 4 marks R-01, R-02 and R-03 ADDRESSED with R-02 `rejected` and R-03 `follow-up` not pending, and the owner then raises the limit to 6; then R-02 and R-03 become pending items; then a round 5 accept lands with its `review-progress` record
++- THEN C8 still blocks naming R-02 and R-03 after the raise; with both pending it passes; the round-5 accept is no escalation — the raised limit released it
++
++#### Scenario: GT-68 a ruling note below the limit buys no exemption and is held to the ruling checks
++- WHEN the limit is 8, rounds 1-2 are `revise` and round 3 an accept with no `review-progress` record for round 3, and one note reads `ruling spec-review round 2 — R-01: parked — x`
++- THEN C8 blocks naming the illegal kind at round 2 and the missing `review-progress` record for round 3
+ 
+ ## Notes
+ 
+diff --git a/lib/review.js b/lib/review.js
+index 090c81b..a7fd8ed 100644
+--- a/lib/review.js
++++ b/lib/review.js
+@@ -511,10 +511,13 @@ const progressLine = (family, round) =>
+   `  - <YYYY-MM-DDTHH:MM> note: review-progress ${family} round ${round} — issues: <ID[, ID…]|none>; actions: <what changed>; evidence: <path or ref>; approach: <kept|changed> — <reason>`;
+ 
+ // one family's progress findings -> [problem strings] (empty = satisfied)
+-function progressProblems(f, records, cwd, exempt = null) {
++function progressProblems(f, records, cwd, exempt = new Set()) {
+   const out = [];
+   for (let n = 3; n <= f.round; n++) {
+-    if (n === exempt) continue;                  // the automatic re-review: its rulings are its record
++    // the re-review that follows rulings at the limit: its rulings are its record (limit-ruling).
++    // Only an identified re-review is exempt — the current automatic one, or an established one
++    // whose rulings and per-id conclusions all passed — never a round a stray ruling note precedes.
++    if (exempt.has(n)) continue;
+     const rec = records.get(`${f.family}#${n}`);
+     const head = `review-progress ${f.family} round ${n}`;
+     if (!rec) { out.push(`${head} — missing before round ${n}; the producer records it: \`${progressLine(f.family, n)}\``); continue; }
+@@ -731,6 +734,27 @@ function reviewLoop(facts, flowText, stage, opts = {}) {
+     const R = limit === null ? null
+       : (f.rounds.find((r) => r.ordinal >= limit && r.verdict === 'revise') || {}).ordinal || null;
+     const ownerPath = R !== null && decisions.has(`${f.family}#${R}`);
++    const exempt = new Set();
++    if (R !== null && !ownerPath) exempt.add(R + 1);
++    // ESTABLISHED ruling cycles bind whatever the limit says now: rulings recorded at a round whose
++    // verdict was `revise`, not answered by the owner, and the next round landed. Raising the limit
++    // later permits more review; it never closes what that re-review left open (review round 1, LR-01).
++    // A stray ruling note below the limit is held to the same checks and buys no exemption unless
++    // they all pass (LR-02).
++    if (!frozen) {
++      for (const rec of rulingRecs.values()) {
++        const a = rec.round;
++        if (rec.family !== f.family || a === R || !rec.rulings.length) continue;
++        const ra = f.rounds.find((r) => r.ordinal === a);
++        if (!ra || ra.verdict !== 'revise' || decisions.has(`${f.family}#${a}`) || a + 1 > f.round) continue;
++        const est = rulingPath({ ...f, limit }, a, flowText, rulingRecs);
++        progress.push(...est.problems);
++        notes.push(...est.notes);
++        rulings.push(...est.rulings.map((r) => ({ family: f.family, round: a, ...r })));
++        if (est.state === 'closed') exempt.add(a + 1);
++        if (f.round === a + 1 && (R === null || R > f.round)) ruling = { R: a, state: est.state, pending: est.pending };
++      }
++    }
+     const released = (from, to) => { for (let n = from; n <= to; n++) if (decisions.has(`${f.family}#${n}`)) return true; return false; };
+     if (f.verdict === 'escalate') {
+       why = 'the reviewer escalated';
+@@ -765,7 +789,7 @@ function reviewLoop(facts, flowText, stage, opts = {}) {
+         : `ESCALATION ${f.family} round ${f.round} (${why}) — a human decides; record in gates: \`${reframeLine(f.family, f.round, ESCALATION_EXITS)}\``);
+     }
+     // the automatic re-review needs no review-progress record: the rulings stand in for it
+-    if (!frozen) progress.push(...progressProblems(f, records, opts.cwd, R !== null && !ownerPath ? R + 1 : null));
++    if (!frozen) progress.push(...progressProblems(f, records, opts.cwd, exempt));
+     if (wouldStop) wouldStopAny = true;
+     families.push({ family: f.family, round: f.round, verdict: f.verdict, escalating: escalates,
+       issuesOpen: f.issuesOpen, stopped: wouldStop && !frozen, reframe,
+diff --git a/test/limit-ruling.test.js b/test/limit-ruling.test.js
+index 796dc6b..1b69011 100644
+--- a/test/limit-ruling.test.js
++++ b/test/limit-ruling.test.js
+@@ -203,6 +203,45 @@ test('GT-66 the re-review round needs no review-progress record', () => {
+   const l = loopOf(p);
+   assert.deepStrictEqual(l.progress, []);
+   assert.strictEqual(c8(p.root).status, 'pass');
++  // the owner later raises the limit: the round that followed the rulings was still the re-review
++  fs.writeFileSync(path.join(p.root, 'apriori', 'process-config.md'), '| Field | Value |\n|---|---|\n| review-round-limit | 6 |\n');
++  const l2 = loopOf(p);
++  assert.deepStrictEqual(l2.progress, [], JSON.stringify(l2.progress));
++});
++
++test('GT-67 raising the limit permits more review but never closes what the re-review left open', () => {
++  // review round 1, LR-01: a fresh-session re-review ACCEPTs, the rejected / follow-up ids are not pending
++  const p = atLimit({ gates: RULED, open: FOLLOW_UP_R03 });
++  reReview(p, ['- R-01: ADDRESSED — ok', '- R-02: ADDRESSED — ok', '- R-03: ADDRESSED — ok'], ACCEPT, 'S2');
++  assert.match(c8(p.root).detail, /R-02 \(rejected\) must be a pending ## Open item for the owner/);
++  // the owner raises the limit: the obligation stands, the round is still checked as the re-review
++  fs.writeFileSync(path.join(p.root, 'apriori', 'process-config.md'), '| Field | Value |\n|---|---|\n| review-round-limit | 6 |\n');
++  let c = c8(p.root);
++  assert.strictEqual(c.status, 'blocked', c.detail);
++  assert.match(c.detail, /R-02 \(rejected\) must be a pending ## Open item for the owner/);
++  assert.match(c.detail, /R-03 \(follow-up\) must be a pending ## Open item for the owner/);
++  // handed to the owner, the family closes; a later ordinary round under the raised limit is released
++  p.setOpen('- R-02: delete on a missing key — the owner decides\n- R-03: hit counters — the owner decides\n');
++  c = c8(p.root);
++  assert.strictEqual(c.status, 'pass', c.detail);
++  p.addGates(`  - 2026-09-27T06:00 note: review-progress ${FAM} round 5 — issues: R-01, R-02, R-03; actions: none needed; evidence: apriori/specs/kv/spec.md; approach: kept — same plan\n`);
++  p.rev(`${FAM}-v5.md`, `${PROV('S1')}\n# round 5\n\n${ACCEPT}\n`);
++  const l = loopOf(p);
++  assert.strictEqual(l.escalation, null, 'a raised limit is a release');
++  assert.strictEqual(c8(p.root).status, 'pass', c8(p.root).detail);
++});
++
++test('GT-68 a ruling note below the limit buys no exemption and is held to the ruling checks', () => {
++  // review round 1, LR-02: default limit 8, rounds 1-2 revise, round 3 accept, one stray ruling at round 2
++  const p = atLimit({ limit: 8, gates: ruling('R-01', 'parked', 'x', { round: 2 }) });
++  p.rev(`${FAM}-v2.md`, `# review round 2\n\n- R-01 still open\n\n${REVISE}\n`);
++  p.rev(`${FAM}-v3.md`, `${PROV('S1')}\n# review round 3\n\n${ACCEPT}\n`);
++  // the fixture's round-3 progress record would satisfy round 3: drop it so the exemption is what is tested
++  fs.writeFileSync(path.join(p.bundle, 'flow-state.md'), flowOf(p.bundle).replace(/^.*review-progress spec-review round 3.*\n/m, ''));
++  const c = c8(p.root);
++  assert.strictEqual(c.status, 'blocked', c.detail);
++  assert.match(c.detail, /ruling spec-review round 2 — R-01: 'parked' is not a ruling kind/);
++  assert.match(c.detail, /review-progress spec-review round 3 — missing before round 3/);
+ });
+ 
+ test('ST-44 a family at the limit shows the rulings owed and is not an escalation', () => {
+@@ -225,8 +264,14 @@ test('AM-136 rulings at the limit archive without --force and are listed after t
+   const g = ruling('R-01', 'fixed', 'x', { min: 1 }) + ruling('R-02', 'rejected', 'y', { min: 2 }) + ruling('R-03', 'fixed', 'z', { min: 3 });
+   const p = atLimit({ gates: g, phase: 'review' });
+   reReview(p, ['- R-01: ADDRESSED — ok', '- R-02: ADDRESSED — ok', '- R-03: ADDRESSED — ok']);
+-  const a = run(['archive', '--change', 'c', '--no-cas'], p.root);
++  // review round 1, LR-03: the real archive, not the dry-run preview
++  const a = run(['archive', '--change', 'c', '--no-cas', '--write'], p.root);
+   assert.strictEqual(a.status, 0, a.stdout + a.stderr);
++  assert.match(a.stdout, /RESULT: MERGED — 1 module store\(s\) rewritten; change archived →/);
++  assert.ok(!fs.existsSync(p.bundle), 'the change moved out of apriori/changes/c');
++  const moved = fs.readdirSync(path.join(p.root, 'apriori', 'changes', 'archive')).filter((n) => /-c$/.test(n));
++  assert.strictEqual(moved.length, 1);
++  assert.match(fs.readFileSync(path.join(p.root, 'apriori', 'specs', 'kv', 'spec.md'), 'utf8'), /XB-01 new/, 'the delta merged into the store');
+   const decl = a.stdout.slice(a.stdout.indexOf('ARCHIVE DECLARES')).split('\n');
+   assert.strictEqual(decl.slice(1, 4).filter((l) => /^ {2}\w/.test(l)).length, 3);
+   assert.match(decl[1], /implementation:/);
+4942f40 wip(limit-ruling): candidate for layer-2 runs (squashed before archive)
+6041bad status-last-recorded: status shows when each change last recorded something
+d934b99 docs(changelog): record source-intake, commitment-carry and review-round-scope
+6acdad2 review-round-scope: a later review round is scoped to what changed
+
+exec
+/usr/bin/zsh -lc 'git diff v6-dev...HEAD -- lib/review.js lib/readiness.js lib/archive-merge.js lib/gate.js' in /root/terra/wt-d
+ succeeded in 0ms:
+diff --git a/lib/archive-merge.js b/lib/archive-merge.js
+index 53cc469..8d52204 100644
+--- a/lib/archive-merge.js
++++ b/lib/archive-merge.js
+@@ -895,10 +895,32 @@ function archiveDeclaration(bundleDir) {
+         ? 'complete' + (accepted.length ? `, ${accepted.length} risk(s) accepted by the owner (${accepted.map((i) => i.id).join(', ')}), still present` : '')
+           + (followUps.length ? `, ${followUps.length} follow-up(s) registered (${followUps.map((i) => `${i.id} → ${i.followUp}`).join(', ')})` : '')
+         : 'complete';
++  // Every ruling the producer took at the limit (limit-ruling), listed AFTER the three states and
++  // as notes, never as a fourth state: the family, the round, the id, the kind and the one
++  // re-review's conclusion for it — so the decisions taken on the owner's behalf reach them with
++  // the frozen record (the Superpowers "Rulings I made" list, exhaustive).
++  const rulingNotes = [];
++  try {
++    const rv2 = require('./review');
++    const recs = rv2.rulingRecords(text);
++    if (recs.size) {
++      const facts = rv2.reviewFacts(bundleDir);
++      for (const rec of recs.values()) {
++        const fam = facts.families.find((f) => f.family === rec.family);
++        const rr = fam && fam.rounds.find((r) => r.ordinal === rec.round + 1);
++        const concl = rr ? rv2.reReviewConclusions(rr.summaryText) : new Map();
++        for (const r of rec.rulings) {
++          const c = concl.get(r.id);
++          const said = !c ? 'no conclusion' : c.size > 1 ? 'conflicting conclusions' : [...c][0];
++          rulingNotes.push(`  note: ruling ${rec.family} round ${rec.round} — ${r.id}: ${r.kind} (re-review: ${said})`);
++        }
++      }
++    }
++  } catch { /* the loop already judged the evidence; the declaration only lists */ }
+   return { incomplete, lines: ['', 'ARCHIVE DECLARES (frozen; a later defect becomes an outcome note or a new change):',
+     `  implementation:    ${impl}`,
+     `  critical evidence: ${evidence}`,
+-    '  delivery:          an archive is not a release'] };
++    '  delivery:          an archive is not a release', ...rulingNotes] };
+ }
+ 
+ // High-level archive: the whole change, four phases (preflight → stage → commit → move).
+diff --git a/lib/gate.js b/lib/gate.js
+index f32891e..d963c2f 100644
+--- a/lib/gate.js
++++ b/lib/gate.js
+@@ -56,8 +56,9 @@ function checkEvidence(facts) {
+ 
+ // C8: every review family's loop converges, or it stops. Rounds are DERIVED per family
+ // (review.js) — 6.0 keeps no hand-written `round:`, and it never sums families into one
+-// counter. The two control points are the decision card's, applied to each family on its own:
+-// a `revise` at the owner's review-round-limit, and an `escalate` verdict. The STAGE decides whether those
++// counter. The two control points, applied to each family on its own: an `escalate` verdict, and
++// a round past the one automatic re-review that follows the producer's rulings at the owner's
++// review-round-limit (limit-ruling — the limit itself asks the producer, not the owner). The STAGE decides whether those
+ // two are refusals: an archived bundle is frozen history, so they report there instead of
+ // blocking, while evidence-integrity problems block at either stage. An unreadable review/
+ // draws no conclusion here: C5 already blocks on it.
+diff --git a/lib/readiness.js b/lib/readiness.js
+index 28fd827..10a5231 100644
+--- a/lib/readiness.js
++++ b/lib/readiness.js
+@@ -699,7 +699,8 @@ function readinessOf({ bundleDir, name, force = false, ops = DEFAULT_OPS, fsImpl
+           else blockers.push(b);
+         } else if (f.stopped) {
+           // Not forceable, on purpose: a stop that is not an escalation (none exists since
+-          // review-round-limit, kept for the shape) is never a progress override.
++          // review-round-limit, kept for the shape) is never a progress override. The rulings owed
++          // at the limit are not stops either: they arrive through loop.progress above.
+           blockers.push({ rule: 'R4', class: 'loop', forceable: false,
+             detail: `${f.family} round ${f.round} is still revising — record the reframe first: ${rv.reframeLine(f.family, f.round, rv.REFRAME_EXITS)}` });
+         }
+diff --git a/lib/review.js b/lib/review.js
+index 240d270..090c81b 100644
+--- a/lib/review.js
++++ b/lib/review.js
+@@ -387,11 +387,13 @@ function completenessFindings(facts) {
+ // ===========================================================================
+ // PHASE 3 — the loop. ONE human-held number, no fixed control points.
+ // ===========================================================================
+-// The owner's `review-round-limit` (process-config; missing = 7) is the only number that governs
+-// how long a family may keep revising. `revise` below the limit never stops the loop by itself;
+-// the loop stops for the owner on exactly two things — an `escalate` verdict at any round, or a
+-// `revise` verdict AT the limit (`accept` at the limit proceeds). Both are one escalation, answered
+-// by one recorded owner `reframe`. The fixed round-2 stop and round-5 stop-loss of 6.0 are gone:
++// The owner's `review-round-limit` (process-config; missing = 8) is the only number that governs
++// how long a family may keep revising. `revise` below the limit never stops the loop by itself,
++// and since limit-ruling neither does a `revise` AT the limit: the producer rules on every open
++// finding and ONE re-review follows (rulingPath). The loop stops for the owner on exactly two
++// things — an `escalate` verdict at any round, or a round past that one re-review without an owner
++// release (`accept` at the limit proceeds). Both are one escalation, answered by one recorded
++// owner `reframe`. The fixed round-2 stop and round-5 stop-loss of 6.0 are gone:
+ // in practice (37 families, 24% still revising at round 2, every one converging by round 4 once
+ // allowed to continue) the round-2 stop was not a rare escape hatch but a standing blocker that
+ // only a human could release.
+@@ -509,9 +511,10 @@ const progressLine = (family, round) =>
+   `  - <YYYY-MM-DDTHH:MM> note: review-progress ${family} round ${round} — issues: <ID[, ID…]|none>; actions: <what changed>; evidence: <path or ref>; approach: <kept|changed> — <reason>`;
+ 
+ // one family's progress findings -> [problem strings] (empty = satisfied)
+-function progressProblems(f, records, cwd) {
++function progressProblems(f, records, cwd, exempt = null) {
+   const out = [];
+   for (let n = 3; n <= f.round; n++) {
++    if (n === exempt) continue;                  // the automatic re-review: its rulings are its record
+     const rec = records.get(`${f.family}#${n}`);
+     const head = `review-progress ${f.family} round ${n}`;
+     if (!rec) { out.push(`${head} — missing before round ${n}; the producer records it: \`${progressLine(f.family, n)}\``); continue; }
+@@ -533,6 +536,142 @@ function progressProblems(f, records, cwd) {
+   return out;
+ }
+ 
++// ---- the ruling at the limit, and the one re-review (limit-ruling) ----
++// At the owner's limit a still-revising family does not stop for the owner (human-approved
++// DA-CONSENSUS §三, 2026-09-27). The PRODUCER rules on every finding still open in that round's
++// summary, one `gates:` entry each —
++//   `- <YYYY-MM-DDTHH:MM> note: ruling <family> round <n> — <ID>: <fixed|rejected|follow-up|owner> — <basis>`
++// — and exactly ONE independent re-review follows as round n+1, answering each ruled id on its
++// own line: `- <ID>: ADDRESSED — <basis>` or `- <ID>: NOT ADDRESSED — <basis>`. A ruling is the
++// producer's word, so only the `note:` actor writes one: an `owner:` ruling would look like the
++// owner's decision, and is not a ruling at all. The checks are structural; whether a ruling is
++// RIGHT is the re-review's to judge, and what it leaves unresolved goes to the owner as a pending
++// `## Open` item (R5 holds it). None of these findings is an owner gate or an escalation.
++const RULING_KINDS = ['fixed', 'rejected', 'follow-up', 'owner'];
++const RULING_START = /^(\d{4}-\d{2}-\d{2}T\d{2}:?\d{2})[ \t]+note[ \t]*:[ \t]*ruling[ \t]+(\S+)[ \t]+round[ \t]+([1-9][0-9]*)[ \t]+—[ \t]*([\s\S]*)$/;
++const RULING_BODY = /^([A-Z][A-Z0-9]*-[0-9]+[a-z]?)[ \t]*:[ \t]*(\S+)[ \t]+—([\s\S]*)$/;
++const rulingLine = (family, round) =>
++  `  - <YYYY-MM-DDTHH:MM> note: ruling ${family} round ${round} — <ID>: <${RULING_KINDS.join('|')}> — <basis>`;
++
++// -> Map<`family#round`, { rulings: [{id, kind, basis, entry}], unreadable: [string] }> in entry order
++function rulingRecords(flowText) {
++  const out = new Map();
++  for (const e of gatesEntriesRaw(flowText || '')) {
++    const m = RULING_START.exec(e.joined.replace(/^\s*-\s*/, ''));
++    if (!m || !stampInRange(m[1])) continue;
++    const key = `${m[2]}#${Number(m[3])}`;
++    if (!out.has(key)) out.set(key, { family: m[2], round: Number(m[3]), rulings: [], unreadable: [] });
++    const b = RULING_BODY.exec(m[4].trim());
++    if (!b) { out.get(key).unreadable.push(m[4].trim().slice(0, 60)); continue; }
++    out.get(key).rulings.push({ id: b[1], kind: b[2], basis: b[3].trim(), entry: e.firstLine });
++  }
++  return out;
++}
++
++// the re-review's per-id conclusions: `- <ID>: ADDRESSED — <basis>` / `- <ID>: NOT ADDRESSED — …`.
++// The id and the status may be wrapped in `**` or backticks; the id, the status (upper case) and
++// the em dash match exactly. -> Map<id, Set<'ADDRESSED'|'NOT ADDRESSED'>>
++const CONCLUSION_RE = /^\s*-\s+[*`]*([A-Z][A-Z0-9]*-[0-9]+[a-z]?)[*`]*\s*:[*`]*\s*[*`]*(ADDRESSED|NOT ADDRESSED)[*`]*\s+—\s*\S/;
++function reReviewConclusions(summaryText) {
++  const out = new Map();
++  for (const line of stripFences(summaryText || '').split('\n')) {
++    const m = CONCLUSION_RE.exec(line);
++    if (!m) continue;
++    if (!out.has(m[1])) out.set(m[1], new Set());
++    out.get(m[1]).add(m[2]);
++  }
++  return out;
++}
++
++// the session a round's summary names in its provenance header — null when absent or `unknown`
++function roundSession(round) {
++  const p = round ? parseProvenance(round.summaryText || '') : null;
++  return p && p.session && p.session !== 'unknown' ? p.session : null;
++}
++
++// the `## Open` items by id, read by the ONE state predicate (lazy: readiness requires this module)
++function openItemsById(flowText) {
++  const byId = new Map();
++  try {
++    for (const i of require('./readiness').evidenceFindings(flowText || '').items) if (i.id) byId.set(i.id, i);
++  } catch { /* an unreadable state is C3's finding; nothing here is pending then */ }
++  return byId;
++}
++
++// One family's ruling path at the limit -> { state, problems, notes, rulings, R, pending }.
++//   state: 'owed' (no valid rulings) | 're-review' (rulings pass, round R+1 not landed) |
++//          'closed' (the re-review landed and every check passes) | 'open' (the re-review landed, checks fail)
++function rulingPath(f, R, flowText, records) {
++  const problems = [], notes = [];
++  const head = `ruling ${f.family} round ${R}`;
++  const rec = records.get(`${f.family}#${R}`) || { rulings: [], unreadable: [] };
++  const roundR = f.rounds.find((r) => r.ordinal === R);
++  const want = roundR ? openingIds(roundR.summaryText) : new Set();
++  for (const u of rec.unreadable) problems.push(`${head} — unreadable ruling line: '${u}' — write \`<ID>: <kind> — <basis>\``);
++  if (!rec.rulings.length) {
++    problems.push(`${head} — the round is at the review-round limit (${f.limit}) and still revising: record one ruling per open finding, `
++      + `\`${rulingLine(f.family, R)}\` (the producer's to write, never an owner gate; then one independent re-review follows as round ${R + 1})`);
++    return { state: 'owed', problems, notes, rulings: [], R, pending: 0 };
++  }
++  const kinds = new Map();
++  for (const r of rec.rulings) {
++    if (!RULING_KINDS.includes(r.kind)) problems.push(`${head} — ${r.id}: '${r.kind}' is not a ruling kind (${RULING_KINDS.join(', ')})`);
++    if (!HAS_REASON.test(r.basis)) problems.push(`${head} — ${r.id}: the basis is missing`);
++    if (!kinds.has(r.id)) kinds.set(r.id, new Set());
++    kinds.get(r.id).add(r.kind);
++  }
++  for (const [id, ks] of kinds) if (ks.size > 1) problems.push(`${head} — ${id} carries two different rulings (${[...ks].join(', ')})`);
++  const uncovered = [...want].filter((id) => !kinds.has(id));
++  if (uncovered.length) problems.push(`${head} — does not cover ${uncovered.join(', ')} from round ${R}'s summary`);
++  const ruled = [...kinds].map(([id, ks]) => ({ id, kind: [...ks][0], basis: rec.rulings.find((r) => r.id === id).basis }));
++  const reReview = f.rounds.find((r) => r.ordinal === R + 1);
++  if (problems.length) return { state: 'owed', problems, notes, rulings: ruled, R, pending: 0 };
++  if (!reReview) {
++    problems.push(`${head} — rulings recorded; one independent re-review is owed as round ${R + 1} (resume the round-${R} reviewer session; `
++      + 'each ruled id answered `- <ID>: ADDRESSED — <basis>` or `- <ID>: NOT ADDRESSED — <basis>`)');
++    return { state: 're-review', problems, notes, rulings: ruled, R, pending: 0 };
++  }
++  // ---- the one re-review, judged per ruled id ----
++  const rhead = `re-review ${f.family} round ${R + 1}`;
++  const concl = reReviewConclusions(reReview.summaryText);
++  const open = openItemsById(flowText);
++  const isPending = (id) => open.has(id) && !open.get(id).followUp;
++  const s1 = roundSession(roundR), s2 = roundSession(reReview);
++  const sameSession = !!(s1 && s2 && s1 === s2);
++  if (!sameSession) notes.push(`${rhead} — the re-review is not proven to run in round ${R}'s reviewer session (${s2 || 'no session'} vs ${s1 || 'no session'})`);
++  let addressed = 0, pending = 0;
++  for (const r of ruled) {
++    const c = concl.get(r.id) || new Set();
++    if (c.size > 1) { problems.push(`${rhead} — ${r.id} carries both ADDRESSED and NOT ADDRESSED`); r.conclusion = 'conflict'; continue; }
++    r.conclusion = c.size ? [...c][0] : null;
++    const ok = r.conclusion === 'ADDRESSED';
++    if (r.kind === 'owner') {
++      if (isPending(r.id)) pending++;
++      else problems.push(`${rhead} — ${r.id} was ruled owner: it must be a pending ## Open item whatever the re-review says`);
++    } else if (!sameSession && (r.kind === 'rejected' || r.kind === 'follow-up')) {
++      if (isPending(r.id)) pending++;
++      else problems.push(`${rhead} — the re-review is not proven to run in round ${R}'s reviewer session: ${r.id} (${r.kind}) must be a pending ## Open item for the owner`);
++    } else if (ok) {
++      if (r.kind === 'follow-up' && !(open.has(r.id) && open.get(r.id).followUp) && !isPending(r.id))
++        problems.push(`${rhead} — ${r.id} was ruled follow-up: register it in ## Open as \`- ${r.id}: follow-up → <new-change-name> — <text>\`, or hand it to the owner as a pending item`);
++      else if (isPending(r.id)) pending++;
++      else addressed++;
++    } else if (isPending(r.id)) pending++;
++    else problems.push(`${rhead} — ${r.id} (${r.kind}) has no ADDRESSED line and is not a pending ## Open item — record it in ## Open as \`- ${r.id}: <text>\` for the owner`);
++  }
++  // a new finding the re-review opens with an id (not an accept) is the owner's too
++  if (reReview.verdict !== 'accept') {
++    for (const id of openingIds(reReview.summaryText)) {
++      if (kinds.has(id)) continue;
++      if (isPending(id)) pending++;
++      else problems.push(`${rhead} — ${id} is a new finding of the re-review: it must be a pending ## Open item`);
++    }
++  }
++  if (problems.length) return { state: 'open', problems, notes, rulings: ruled, R, pending };
++  notes.push(`ruling ${f.family}: rulings at round ${R}, re-review round ${R + 1} — ${addressed} addressed, ${pending} pending for the owner`);
++  return { state: 'closed', problems, notes, rulings: ruled, R, pending };
++}
++
+ // THE REVIEW FLOOR. Blueprint §7 lists "the required independent review is missing" as a
+ // blocking condition and says nothing about mode, so neither does this: leaving standard exempt
+ // would mean one edited word of flow-state buys the exemption fast was just denied. A round
+@@ -550,7 +689,7 @@ const floorUnresolved = (fams) =>
+   + 'what must close before the change ships; no ledger state can stand in for it';
+ 
+ // facts + the flow-state's recorded decisions (+ the resolved limit) -> the loop's verdict.
+-// opts: { limit: {value, origin} | {error} (default: 7), cwd (for evidence paths) }.
++// opts: { limit: {value, origin} | {error} (default: 8), cwd (for evidence paths) }.
+ // `stage` is the resolver's: 'archived' means a FROZEN snapshot. The stop rules exist to change
+ // what a producer does next, and a frozen change has no next — applying them there would refuse
+ // history for having been written before the rule existed. So on an archived bundle they report
+@@ -575,25 +714,49 @@ function reviewLoop(facts, flowText, stage, opts = {}) {
+   const limit = lim.error ? null : lim.value;
+   const decisions = reframeDecisions(flowText);
+   const records = progressRecords(flowText);
++  const rulingRecs = rulingRecords(flowText);
+   const problems = facts.problems.map((p) => p.detail);
+   const advisories = facts.advisories.map((a) => a.detail);
+-  const families = [], escalation = [], notes = [], progress = [];
++  const families = [], escalation = [], notes = [], progress = [], rulings = [];
+ 
+   let wouldStopAny = false;
+   for (const f of facts.families) {
+     const d = decisions.get(`${f.family}#${f.round}`) || null;
+-    let wouldStop = false, reframe = null;
+-    const atLimit = limit !== null && f.round >= limit && f.verdict !== 'accept';
+-    const escalates = f.verdict === 'escalate' || atLimit;
++    let wouldStop = false, reframe = null, ruling = null, why = null;
++    // THE LIMIT (limit-ruling). R = the first round at or past the limit whose verdict is `revise`.
++    // Unless the owner answered R itself with a reframe (the owner's path, as before), R does not
++    // stop the loop: the producer rules and ONE re-review follows as R+1 (rulingPath). A round past
++    // R+1 needs an owner release — a reframe for this family at a round from R+1 on — or it is an
++    // escalation that never counts as convergence.
++    const R = limit === null ? null
++      : (f.rounds.find((r) => r.ordinal >= limit && r.verdict === 'revise') || {}).ordinal || null;
++    const ownerPath = R !== null && decisions.has(`${f.family}#${R}`);
++    const released = (from, to) => { for (let n = from; n <= to; n++) if (decisions.has(`${f.family}#${n}`)) return true; return false; };
++    if (f.verdict === 'escalate') {
++      why = 'the reviewer escalated';
++    } else if (R !== null && ownerPath) {
++      // the owner took the limit round: every `revise` at or past the limit needs its own reframe
++      if (f.verdict !== 'accept') why = `round ${f.round} reached the review-round limit (${limit})`;
++    } else if (R !== null && f.round <= R + 1) {
++      if (!frozen) {
++        ruling = rulingPath({ ...f, limit }, R, flowText, rulingRecs);
++        progress.push(...ruling.problems);
++        notes.push(...ruling.notes);
++        rulings.push(...ruling.rulings.map((r) => ({ family: f.family, round: R, ...r })));
++      }
++    } else if (R !== null && f.round >= R + 2) {
++      if (!released(R + 1, f.round)) why = `round ${f.round} opened after the one automatic re-review (round ${R + 1}) without an owner release — the one automatic re-review is spent`;
++      else if (f.verdict !== 'accept') why = `round ${f.round} is past the one automatic re-review and still revising`;
++    }
++    const escalates = why !== null;
+     if (escalates) {
+       // TWO ways in, one answer. A reviewer that returned ESCALATE escalates at whatever round it
+       // happened — that verdict says the APPROACH is wrong, or a decision only the owner can
+-      // take. A `revise` at the owner's limit is the budget the owner set being spent. An owner
++      // take. A round past the one automatic re-review is the owner's budget being spent. An owner
+       // decision lets the work go on; it can never take this line out of the report, and it
+       // answers THIS round only — the count never resets.
+       const ack = !!d;
+       reframe = d; wouldStop = !ack;
+-      const why = f.verdict === 'escalate' ? 'the reviewer escalated' : `round ${f.round} reached the review-round limit (${limit})`;
+       escalation.push({ family: f.family, round: f.round, verdict: f.verdict, reason: why,
+         acknowledged: ack, decision: ack ? d.decision : null,
+         state: frozen ? 'historical' : (ack ? 'acknowledged' : 'pending') });
+@@ -601,10 +764,12 @@ function reviewLoop(facts, flowText, stage, opts = {}) {
+         ? `ESCALATION ${f.family} round ${f.round} (${why}) — owner decision on record: ${d.decision}`
+         : `ESCALATION ${f.family} round ${f.round} (${why}) — a human decides; record in gates: \`${reframeLine(f.family, f.round, ESCALATION_EXITS)}\``);
+     }
+-    if (!frozen) progress.push(...progressProblems(f, records, opts.cwd));
++    // the automatic re-review needs no review-progress record: the rulings stand in for it
++    if (!frozen) progress.push(...progressProblems(f, records, opts.cwd, R !== null && !ownerPath ? R + 1 : null));
+     if (wouldStop) wouldStopAny = true;
+     families.push({ family: f.family, round: f.round, verdict: f.verdict, escalating: escalates,
+-      issuesOpen: f.issuesOpen, stopped: wouldStop && !frozen, reframe });
++      issuesOpen: f.issuesOpen, stopped: wouldStop && !frozen, reframe,
++      ruling: ruling ? { round: ruling.R, state: ruling.state, pending: ruling.pending } : null });
+   }
+ 
+   const controlStops = families.some((f) => f.stopped);
+@@ -613,7 +778,10 @@ function reviewLoop(facts, flowText, stage, opts = {}) {
+   // AND an explicit `--force`.
+   const ownerAcceptedRisk = (f) =>
+     f.escalating && f.reframe && f.reframe.decision === 'accept-risk';
+-  const unresolved = families.filter((f) => !ownerAcceptedRisk(f)
++  // a family on the ruling path is judged by its rulings and its one re-review (their findings are
++  // in `progress` until they pass); once closed, its residuals are pending items R5 holds for the
++  // owner — so it no longer counts against the floor, whatever the re-review's verdict
++  const unresolved = families.filter((f) => !ownerAcceptedRisk(f) && !f.ruling
+     && (f.verdict === 'revise' || f.verdict === 'escalate' || (f.issuesOpen !== null && f.issuesOpen > 0)));
+   let reviewFloor = null;
+   if (!frozen) {
+@@ -636,6 +804,9 @@ function reviewLoop(facts, flowText, stage, opts = {}) {
+     escalation: escalation.length ? escalation : null,
+     problems: limitError && families.length ? [limitError, ...problems] : problems,
+     advisories, reviewFloor, progress,
++    // every ruling at the limit (family, round, id, kind, basis, the re-review's conclusion) — the
++    // archive declaration and the final report list them; [] when none
++    rulings,
+     limit: limit !== null ? { value: limit, origin: lim.origin } : { error: lim.error },
+     status: blocked ? 'blocked' : ((frozen || !families.length) ? 'n/a' : 'pass'),
+     detail: detail || 'no completed review round yet',
+@@ -646,5 +817,6 @@ module.exports = {
+   VERDICT_PHRASES, classifyVerdict, isKnownVerdict,     // phase 1
+   reviewFacts, rawLabel, completenessFindings,          // phase 2
+   reframeDecisions, reframeLine, reviewLoop, REFRAME_EXITS, ESCALATION_EXITS,   // phase 3
++  rulingRecords, reReviewConclusions, rulingLine, RULING_KINDS,               // the ruling at the limit
+   progressRecords, progressLine, openingIds, evidenceFileInside, resolveReviewRoundLimit,
+ };
+
+exec
+/usr/bin/zsh -lc "sed -n '590,685p' lib/review.js; sed -n '720,831p' lib/review.js; sed -n '/"'^## Open/,/''^gates:/p'"' apriori/changes/limit-ruling/flow-state.md; node bin/apriori.js gate --change limit-ruling --json" in /root/terra/wt-d
+ exited 1 in 0ms:
+function roundSession(round) {
+  const p = round ? parseProvenance(round.summaryText || '') : null;
+  return p && p.session && p.session !== 'unknown' ? p.session : null;
+}
+
+// the `## Open` items by id, read by the ONE state predicate (lazy: readiness requires this module)
+function openItemsById(flowText) {
+  const byId = new Map();
+  try {
+    for (const i of require('./readiness').evidenceFindings(flowText || '').items) if (i.id) byId.set(i.id, i);
+  } catch { /* an unreadable state is C3's finding; nothing here is pending then */ }
+  return byId;
+}
+
+// One family's ruling path at the limit -> { state, problems, notes, rulings, R, pending }.
+//   state: 'owed' (no valid rulings) | 're-review' (rulings pass, round R+1 not landed) |
+//          'closed' (the re-review landed and every check passes) | 'open' (the re-review landed, checks fail)
+function rulingPath(f, R, flowText, records) {
+  const problems = [], notes = [];
+  const head = `ruling ${f.family} round ${R}`;
+  const rec = records.get(`${f.family}#${R}`) || { rulings: [], unreadable: [] };
+  const roundR = f.rounds.find((r) => r.ordinal === R);
+  const want = roundR ? openingIds(roundR.summaryText) : new Set();
+  for (const u of rec.unreadable) problems.push(`${head} — unreadable ruling line: '${u}' — write \`<ID>: <kind> — <basis>\``);
+  if (!rec.rulings.length) {
+    problems.push(`${head} — the round is at the review-round limit (${f.limit}) and still revising: record one ruling per open finding, `
+      + `\`${rulingLine(f.family, R)}\` (the producer's to write, never an owner gate; then one independent re-review follows as round ${R + 1})`);
+    return { state: 'owed', problems, notes, rulings: [], R, pending: 0 };
+  }
+  const kinds = new Map();
+  for (const r of rec.rulings) {
+    if (!RULING_KINDS.includes(r.kind)) problems.push(`${head} — ${r.id}: '${r.kind}' is not a ruling kind (${RULING_KINDS.join(', ')})`);
+    if (!HAS_REASON.test(r.basis)) problems.push(`${head} — ${r.id}: the basis is missing`);
+    if (!kinds.has(r.id)) kinds.set(r.id, new Set());
+    kinds.get(r.id).add(r.kind);
+  }
+  for (const [id, ks] of kinds) if (ks.size > 1) problems.push(`${head} — ${id} carries two different rulings (${[...ks].join(', ')})`);
+  const uncovered = [...want].filter((id) => !kinds.has(id));
+  if (uncovered.length) problems.push(`${head} — does not cover ${uncovered.join(', ')} from round ${R}'s summary`);
+  const ruled = [...kinds].map(([id, ks]) => ({ id, kind: [...ks][0], basis: rec.rulings.find((r) => r.id === id).basis }));
+  const reReview = f.rounds.find((r) => r.ordinal === R + 1);
+  if (problems.length) return { state: 'owed', problems, notes, rulings: ruled, R, pending: 0 };
+  if (!reReview) {
+    problems.push(`${head} — rulings recorded; one independent re-review is owed as round ${R + 1} (resume the round-${R} reviewer session; `
+      + 'each ruled id answered `- <ID>: ADDRESSED — <basis>` or `- <ID>: NOT ADDRESSED — <basis>`)');
+    return { state: 're-review', problems, notes, rulings: ruled, R, pending: 0 };
+  }
+  // ---- the one re-review, judged per ruled id ----
+  const rhead = `re-review ${f.family} round ${R + 1}`;
+  const concl = reReviewConclusions(reReview.summaryText);
+  const open = openItemsById(flowText);
+  const isPending = (id) => open.has(id) && !open.get(id).followUp;
+  const s1 = roundSession(roundR), s2 = roundSession(reReview);
+  const sameSession = !!(s1 && s2 && s1 === s2);
+  if (!sameSession) notes.push(`${rhead} — the re-review is not proven to run in round ${R}'s reviewer session (${s2 || 'no session'} vs ${s1 || 'no session'})`);
+  let addressed = 0, pending = 0;
+  for (const r of ruled) {
+    const c = concl.get(r.id) || new Set();
+    if (c.size > 1) { problems.push(`${rhead} — ${r.id} carries both ADDRESSED and NOT ADDRESSED`); r.conclusion = 'conflict'; continue; }
+    r.conclusion = c.size ? [...c][0] : null;
+    const ok = r.conclusion === 'ADDRESSED';
+    if (r.kind === 'owner') {
+      if (isPending(r.id)) pending++;
+      else problems.push(`${rhead} — ${r.id} was ruled owner: it must be a pending ## Open item whatever the re-review says`);
+    } else if (!sameSession && (r.kind === 'rejected' || r.kind === 'follow-up')) {
+      if (isPending(r.id)) pending++;
+      else problems.push(`${rhead} — the re-review is not proven to run in round ${R}'s reviewer session: ${r.id} (${r.kind}) must be a pending ## Open item for the owner`);
+    } else if (ok) {
+      if (r.kind === 'follow-up' && !(open.has(r.id) && open.get(r.id).followUp) && !isPending(r.id))
+        problems.push(`${rhead} — ${r.id} was ruled follow-up: register it in ## Open as \`- ${r.id}: follow-up → <new-change-name> — <text>\`, or hand it to the owner as a pending item`);
+      else if (isPending(r.id)) pending++;
+      else addressed++;
+    } else if (isPending(r.id)) pending++;
+    else problems.push(`${rhead} — ${r.id} (${r.kind}) has no ADDRESSED line and is not a pending ## Open item — record it in ## Open as \`- ${r.id}: <text>\` for the owner`);
+  }
+  // a new finding the re-review opens with an id (not an accept) is the owner's too
+  if (reReview.verdict !== 'accept') {
+    for (const id of openingIds(reReview.summaryText)) {
+      if (kinds.has(id)) continue;
+      if (isPending(id)) pending++;
+      else problems.push(`${rhead} — ${id} is a new finding of the re-review: it must be a pending ## Open item`);
+    }
+  }
+  if (problems.length) return { state: 'open', problems, notes, rulings: ruled, R, pending };
+  notes.push(`ruling ${f.family}: rulings at round ${R}, re-review round ${R + 1} — ${addressed} addressed, ${pending} pending for the owner`);
+  return { state: 'closed', problems, notes, rulings: ruled, R, pending };
+}
+
+// THE REVIEW FLOOR. Blueprint §7 lists "the required independent review is missing" as a
+// blocking condition and says nothing about mode, so neither does this: leaving standard exempt
+// would mean one edited word of flow-state buys the exemption fast was just denied. A round
+// counts when slice 2's scanner already counts it as a family — a summary carrying a
+// classifiable verdict AND its `-raw` transcript, which is the attribution. No second counter,
+// no review matrix, no receipt field.
+const FLOOR_NONE = 'no completed independent review round — land `review/<family>-v1.md` with '
+  + 'its VERDICT line and the `<family>-v1-raw.*` transcript beside it';
+  const rulingRecs = rulingRecords(flowText);
+  const problems = facts.problems.map((p) => p.detail);
+  const advisories = facts.advisories.map((a) => a.detail);
+  const families = [], escalation = [], notes = [], progress = [], rulings = [];
+
+  let wouldStopAny = false;
+  for (const f of facts.families) {
+    const d = decisions.get(`${f.family}#${f.round}`) || null;
+    let wouldStop = false, reframe = null, ruling = null, why = null;
+    // THE LIMIT (limit-ruling). R = the first round at or past the limit whose verdict is `revise`.
+    // Unless the owner answered R itself with a reframe (the owner's path, as before), R does not
+    // stop the loop: the producer rules and ONE re-review follows as R+1 (rulingPath). A round past
+    // R+1 needs an owner release — a reframe for this family at a round from R+1 on — or it is an
+    // escalation that never counts as convergence.
+    const R = limit === null ? null
+      : (f.rounds.find((r) => r.ordinal >= limit && r.verdict === 'revise') || {}).ordinal || null;
+    const ownerPath = R !== null && decisions.has(`${f.family}#${R}`);
+    const exempt = new Set();
+    if (R !== null && !ownerPath) exempt.add(R + 1);
+    // ESTABLISHED ruling cycles bind whatever the limit says now: rulings recorded at a round whose
+    // verdict was `revise`, not answered by the owner, and the next round landed. Raising the limit
+    // later permits more review; it never closes what that re-review left open (review round 1, LR-01).
+    // A stray ruling note below the limit is held to the same checks and buys no exemption unless
+    // they all pass (LR-02).
+    if (!frozen) {
+      for (const rec of rulingRecs.values()) {
+        const a = rec.round;
+        if (rec.family !== f.family || a === R || !rec.rulings.length) continue;
+        const ra = f.rounds.find((r) => r.ordinal === a);
+        if (!ra || ra.verdict !== 'revise' || decisions.has(`${f.family}#${a}`) || a + 1 > f.round) continue;
+        const est = rulingPath({ ...f, limit }, a, flowText, rulingRecs);
+        progress.push(...est.problems);
+        notes.push(...est.notes);
+        rulings.push(...est.rulings.map((r) => ({ family: f.family, round: a, ...r })));
+        if (est.state === 'closed') exempt.add(a + 1);
+        if (f.round === a + 1 && (R === null || R > f.round)) ruling = { R: a, state: est.state, pending: est.pending };
+      }
+    }
+    const released = (from, to) => { for (let n = from; n <= to; n++) if (decisions.has(`${f.family}#${n}`)) return true; return false; };
+    if (f.verdict === 'escalate') {
+      why = 'the reviewer escalated';
+    } else if (R !== null && ownerPath) {
+      // the owner took the limit round: every `revise` at or past the limit needs its own reframe
+      if (f.verdict !== 'accept') why = `round ${f.round} reached the review-round limit (${limit})`;
+    } else if (R !== null && f.round <= R + 1) {
+      if (!frozen) {
+        ruling = rulingPath({ ...f, limit }, R, flowText, rulingRecs);
+        progress.push(...ruling.problems);
+        notes.push(...ruling.notes);
+        rulings.push(...ruling.rulings.map((r) => ({ family: f.family, round: R, ...r })));
+      }
+    } else if (R !== null && f.round >= R + 2) {
+      if (!released(R + 1, f.round)) why = `round ${f.round} opened after the one automatic re-review (round ${R + 1}) without an owner release — the one automatic re-review is spent`;
+      else if (f.verdict !== 'accept') why = `round ${f.round} is past the one automatic re-review and still revising`;
+    }
+    const escalates = why !== null;
+    if (escalates) {
+      // TWO ways in, one answer. A reviewer that returned ESCALATE escalates at whatever round it
+      // happened — that verdict says the APPROACH is wrong, or a decision only the owner can
+      // take. A round past the one automatic re-review is the owner's budget being spent. An owner
+      // decision lets the work go on; it can never take this line out of the report, and it
+      // answers THIS round only — the count never resets.
+      const ack = !!d;
+      reframe = d; wouldStop = !ack;
+      escalation.push({ family: f.family, round: f.round, verdict: f.verdict, reason: why,
+        acknowledged: ack, decision: ack ? d.decision : null,
+        state: frozen ? 'historical' : (ack ? 'acknowledged' : 'pending') });
+      notes.push(ack
+        ? `ESCALATION ${f.family} round ${f.round} (${why}) — owner decision on record: ${d.decision}`
+        : `ESCALATION ${f.family} round ${f.round} (${why}) — a human decides; record in gates: \`${reframeLine(f.family, f.round, ESCALATION_EXITS)}\``);
+    }
+    // the automatic re-review needs no review-progress record: the rulings stand in for it
+    if (!frozen) progress.push(...progressProblems(f, records, opts.cwd, exempt));
+    if (wouldStop) wouldStopAny = true;
+    families.push({ family: f.family, round: f.round, verdict: f.verdict, escalating: escalates,
+      issuesOpen: f.issuesOpen, stopped: wouldStop && !frozen, reframe,
+      ruling: ruling ? { round: ruling.R, state: ruling.state, pending: ruling.pending } : null });
+  }
+
+  const controlStops = families.some((f) => f.stopped);
+  // ONE exemption exists, and it is the only one: an escalation the owner ANSWERED with
+  // `accept-risk` — the blueprint's single Owner exit (§6), already costing the `gates:` decision
+  // AND an explicit `--force`.
+  const ownerAcceptedRisk = (f) =>
+    f.escalating && f.reframe && f.reframe.decision === 'accept-risk';
+  // a family on the ruling path is judged by its rulings and its one re-review (their findings are
+  // in `progress` until they pass); once closed, its residuals are pending items R5 holds for the
+  // owner — so it no longer counts against the floor, whatever the re-review's verdict
+  const unresolved = families.filter((f) => !ownerAcceptedRisk(f) && !f.ruling
+    && (f.verdict === 'revise' || f.verdict === 'escalate' || (f.issuesOpen !== null && f.issuesOpen > 0)));
+  let reviewFloor = null;
+  if (!frozen) {
+    if (!families.length) reviewFloor = FLOOR_NONE;
+    else if (unresolved.length) reviewFloor = floorUnresolved(unresolved.map((f) =>
+      `${f.family} round ${f.round}${f.issuesOpen !== null ? `, ${f.issuesOpen} open` : `, ${f.verdict}`}`));
+  }
+  const configBlock = limitError && !frozen && families.length > 0;
+  const blocked = problems.length > 0 || controlStops || !!reviewFloor || configBlock || progress.length > 0;
+  const summary = families.map((f) =>
+    `${f.family} round ${f.round} (${f.verdict}${f.issuesOpen !== null ? `, ${f.issuesOpen} open` : ''})`).join('; ');
+  const limitNote = limit !== null ? `review-round-limit ${limit} (${lim.origin})` : null;
+  const frozenNote = frozen && (wouldStopAny || escalation.length)
+    ? 'archived: the stop rules do not apply retroactively to a frozen change'
+    : null;
+  const detail = [summary, limitNote, limitError, reviewFloor, ...notes, ...progress, ...problems,
+    ...advisories.map((a) => `advisory: ${a}`), frozenNote].filter(Boolean).join('; ');
+  return {
+    families,
+    escalation: escalation.length ? escalation : null,
+    problems: limitError && families.length ? [limitError, ...problems] : problems,
+    advisories, reviewFloor, progress,
+    // every ruling at the limit (family, round, id, kind, basis, the re-review's conclusion) — the
+## Open                  # substantive unresolved items — one line each, stable id first: - <ID>: <text>
+
+## Next                  # at most three concrete actions; the first is the resume point
+- Review 第 2 轮（resume 同一会话，范围按 §4 续轮条）
+
+gates:
+{
+  "change": "limit-ruling",
+  "stage": "in-flight",
+  "checks": [
+    {
+      "id": "C1",
+      "status": "skipped",
+      "detail": "skipped — no test command (pass --test-cmd or add a test-cmd row to apriori/process-config.md); the binding check did not run"
+    },
+    {
+      "id": "C2",
+      "status": "n/a",
+      "detail": "retired in 6.2 — nothing is read"
+    },
+    {
+      "id": "C3",
+      "status": "pass",
+      "detail": "legal (review)"
+    },
+    {
+      "id": "C4",
+      "status": "n/a",
+      "detail": "ledger retired in 6.2 — open items live in ## Open"
+    },
+    {
+      "id": "C5",
+      "status": "pass",
+      "detail": "1 review doc(s), every verdict has raw evidence"
+    },
+    {
+      "id": "C6",
+      "status": "n/a",
+      "detail": "archive-merge: no truth doc; config: no truth doc; gate: no truth doc; protocol: no truth doc; status: no truth doc"
+    },
+    {
+      "id": "C7",
+      "status": "pass",
+      "detail": "every mutation delta is stamped"
+    },
+    {
+      "id": "C8",
+      "status": "blocked",
+      "detail": "code-review round 1 (revise, 3 open); review-round-limit 8 (default); the independent review has not resolved (code-review round 1, 3 open) — the reviewer's latest verdict is what must close before the change ships; no ledger state can stand in for it; transcript 'code-review-v2-raw.txt' names a review round whose summary 'code-review-v2.md' is missing"
+    },
+    {
+      "id": "C9",
+      "status": "pass",
+      "detail": "no open items; risk: contract-mutation: archive-merge/spec.md MODIFIED '--force overrides progress only, on pre-recorded human authority'; risk: contract-mutation: config/spec.md MODIFIED 'review-round-limit is a structured, human-held config key'; risk: contract-mutation: gate/spec.md MODIFIED 'C8 governs the review loop by the human-held round limit, not by fixed control points'; risk: contract-mutation: protocol/spec.md MODIFIED 'the runbook states the review-round limit and retires the fixed control points'; risk: contract-mutation: status/spec.md MODIFIED 'status reports the effective review-round limit and the progress diagnostics'"
+    }
+  ],
+  "result": "BLOCKED",
+  "blocked": 1,
+  "errors": []
+}
+
+codex
+The three original counterexamples are addressed. I found two problems in the extended cycle check: a later owner-released review cannot close historical residuals after a limit raise, and a cycle still identified as the current `R` loses its ruling checks once round `R+2` lands. I’m tracing both through gate and archive readiness to confirm their effects.
+exec
+/usr/bin/zsh -lc "nl -ba lib/review.js | sed -n '636,675p;734,777p'; sed -n '670,723p' lib/readiness.js; sed -n '169,240p' test/limit-ruling.test.js; sed -n '262,286p' test/limit-ruling.test.js; sed -n '129,137p' RUNBOOK.md; git diff --check" in /root/terra/wt-d
+ succeeded in 0ms:
+   636	  }
+   637	  // ---- the one re-review, judged per ruled id ----
+   638	  const rhead = `re-review ${f.family} round ${R + 1}`;
+   639	  const concl = reReviewConclusions(reReview.summaryText);
+   640	  const open = openItemsById(flowText);
+   641	  const isPending = (id) => open.has(id) && !open.get(id).followUp;
+   642	  const s1 = roundSession(roundR), s2 = roundSession(reReview);
+   643	  const sameSession = !!(s1 && s2 && s1 === s2);
+   644	  if (!sameSession) notes.push(`${rhead} — the re-review is not proven to run in round ${R}'s reviewer session (${s2 || 'no session'} vs ${s1 || 'no session'})`);
+   645	  let addressed = 0, pending = 0;
+   646	  for (const r of ruled) {
+   647	    const c = concl.get(r.id) || new Set();
+   648	    if (c.size > 1) { problems.push(`${rhead} — ${r.id} carries both ADDRESSED and NOT ADDRESSED`); r.conclusion = 'conflict'; continue; }
+   649	    r.conclusion = c.size ? [...c][0] : null;
+   650	    const ok = r.conclusion === 'ADDRESSED';
+   651	    if (r.kind === 'owner') {
+   652	      if (isPending(r.id)) pending++;
+   653	      else problems.push(`${rhead} — ${r.id} was ruled owner: it must be a pending ## Open item whatever the re-review says`);
+   654	    } else if (!sameSession && (r.kind === 'rejected' || r.kind === 'follow-up')) {
+   655	      if (isPending(r.id)) pending++;
+   656	      else problems.push(`${rhead} — the re-review is not proven to run in round ${R}'s reviewer session: ${r.id} (${r.kind}) must be a pending ## Open item for the owner`);
+   657	    } else if (ok) {
+   658	      if (r.kind === 'follow-up' && !(open.has(r.id) && open.get(r.id).followUp) && !isPending(r.id))
+   659	        problems.push(`${rhead} — ${r.id} was ruled follow-up: register it in ## Open as \`- ${r.id}: follow-up → <new-change-name> — <text>\`, or hand it to the owner as a pending item`);
+   660	      else if (isPending(r.id)) pending++;
+   661	      else addressed++;
+   662	    } else if (isPending(r.id)) pending++;
+   663	    else problems.push(`${rhead} — ${r.id} (${r.kind}) has no ADDRESSED line and is not a pending ## Open item — record it in ## Open as \`- ${r.id}: <text>\` for the owner`);
+   664	  }
+   665	  // a new finding the re-review opens with an id (not an accept) is the owner's too
+   666	  if (reReview.verdict !== 'accept') {
+   667	    for (const id of openingIds(reReview.summaryText)) {
+   668	      if (kinds.has(id)) continue;
+   669	      if (isPending(id)) pending++;
+   670	      else problems.push(`${rhead} — ${id} is a new finding of the re-review: it must be a pending ## Open item`);
+   671	    }
+   672	  }
+   673	  if (problems.length) return { state: 'open', problems, notes, rulings: ruled, R, pending };
+   674	  notes.push(`ruling ${f.family}: rulings at round ${R}, re-review round ${R + 1} — ${addressed} addressed, ${pending} pending for the owner`);
+   675	  return { state: 'closed', problems, notes, rulings: ruled, R, pending };
+   734	    const R = limit === null ? null
+   735	      : (f.rounds.find((r) => r.ordinal >= limit && r.verdict === 'revise') || {}).ordinal || null;
+   736	    const ownerPath = R !== null && decisions.has(`${f.family}#${R}`);
+   737	    const exempt = new Set();
+   738	    if (R !== null && !ownerPath) exempt.add(R + 1);
+   739	    // ESTABLISHED ruling cycles bind whatever the limit says now: rulings recorded at a round whose
+   740	    // verdict was `revise`, not answered by the owner, and the next round landed. Raising the limit
+   741	    // later permits more review; it never closes what that re-review left open (review round 1, LR-01).
+   742	    // A stray ruling note below the limit is held to the same checks and buys no exemption unless
+   743	    // they all pass (LR-02).
+   744	    if (!frozen) {
+   745	      for (const rec of rulingRecs.values()) {
+   746	        const a = rec.round;
+   747	        if (rec.family !== f.family || a === R || !rec.rulings.length) continue;
+   748	        const ra = f.rounds.find((r) => r.ordinal === a);
+   749	        if (!ra || ra.verdict !== 'revise' || decisions.has(`${f.family}#${a}`) || a + 1 > f.round) continue;
+   750	        const est = rulingPath({ ...f, limit }, a, flowText, rulingRecs);
+   751	        progress.push(...est.problems);
+   752	        notes.push(...est.notes);
+   753	        rulings.push(...est.rulings.map((r) => ({ family: f.family, round: a, ...r })));
+   754	        if (est.state === 'closed') exempt.add(a + 1);
+   755	        if (f.round === a + 1 && (R === null || R > f.round)) ruling = { R: a, state: est.state, pending: est.pending };
+   756	      }
+   757	    }
+   758	    const released = (from, to) => { for (let n = from; n <= to; n++) if (decisions.has(`${f.family}#${n}`)) return true; return false; };
+   759	    if (f.verdict === 'escalate') {
+   760	      why = 'the reviewer escalated';
+   761	    } else if (R !== null && ownerPath) {
+   762	      // the owner took the limit round: every `revise` at or past the limit needs its own reframe
+   763	      if (f.verdict !== 'accept') why = `round ${f.round} reached the review-round limit (${limit})`;
+   764	    } else if (R !== null && f.round <= R + 1) {
+   765	      if (!frozen) {
+   766	        ruling = rulingPath({ ...f, limit }, R, flowText, rulingRecs);
+   767	        progress.push(...ruling.problems);
+   768	        notes.push(...ruling.notes);
+   769	        rulings.push(...ruling.rulings.map((r) => ({ family: f.family, round: R, ...r })));
+   770	      }
+   771	    } else if (R !== null && f.round >= R + 2) {
+   772	      if (!released(R + 1, f.round)) why = `round ${f.round} opened after the one automatic re-review (round ${R + 1}) without an owner release — the one automatic re-review is spent`;
+   773	      else if (f.verdict !== 'accept') why = `round ${f.round} is past the one automatic re-review and still revising`;
+   774	    }
+   775	    const escalates = why !== null;
+   776	    if (escalates) {
+   777	      // TWO ways in, one answer. A reviewer that returned ESCALATE escalates at whatever round it
+      } else {
+        for (const label of c.missing) {
+          blockers.push({ rule: 'R4', class: 'evidence', forceable: false,
+            detail: `verdict doc without a raw archive or self-contained provenance: ${label}` });
+        }
+        const root = cwd ? path.resolve(cwd) : projectRootOf(bundleDir);
+        loop = rv.reviewLoop(facts, flowText, 'in-flight', { limit: require('./config').resolveReviewRoundLimit(root), cwd: root });
+      }
+    }
+    if (loop) {
+      for (const p of loop.problems) blockers.push({ rule: 'R4', class: 'evidence', forceable: false, detail: p });
+      // a review-progress record that is missing or fails its structural check is an evidence
+      // problem too: the producer repairs it, nobody forces past it
+      for (const p of loop.progress) blockers.push({ rule: 'R4', class: 'evidence', forceable: false, detail: p });
+      // Not forceable either: §7 lists a missing independent review as blocking, and a review
+      // that never closed is not something after-the-fact authorization can close for it.
+      if (loop.reviewFloor)
+        blockers.push({ rule: 'R4', class: 'review', forceable: false, detail: loop.reviewFloor });
+      for (const f of loop.families) {
+        if (f.escalating) {
+          // The stop keeps archive's existing DOUBLE authorization: the human decision already
+          // recorded in gates:, AND an explicit --force at the command line. It is forceable
+          // ONLY once that decision is on record — a stop nobody answered is not progress a
+          // flag can override, and it says so (`forceable: false`) while still naming the cure.
+          // One gates: line is a line an agent can append on its own — never enough to archive.
+          const b = { rule: 'R4', class: 'escalation', forceable: !!f.reframe,
+            detail: `${f.family} round ${f.round} (verdict ${f.verdict}) escalated — the answer is the owner's${f.reframe ? ` (decision on record: ${f.reframe.decision})` : ' and is not yet on record'}`,
+            cure: rv.reframeLine(f.family, f.round, rv.ESCALATION_EXITS) };
+          if (force && f.reframe) forced.push({ rule: 'R4', detail: b.detail, entry: f.reframe.entry });
+          else blockers.push(b);
+        } else if (f.stopped) {
+          // Not forceable, on purpose: a stop that is not an escalation (none exists since
+          // review-round-limit, kept for the shape) is never a progress override. The rulings owed
+          // at the limit are not stops either: they arrive through loop.progress above.
+          blockers.push({ rule: 'R4', class: 'loop', forceable: false,
+            detail: `${f.family} round ${f.round} is still revising — record the reframe first: ${rv.reframeLine(f.family, f.round, rv.REFRAME_EXITS)}` });
+        }
+      }
+    }
+  }
+
+  // ---- R5: the ONE substantive state predicate, made once and read from the same state gate
+  // reads at C9 — the open items, the §6 signals the CLI proved about this delta, and the state's
+  // own claims. Never forceable: `--force` overrides progress, and neither missing reality nor an
+  // unaccepted item is progress. Owner acceptance is the exit and is spent in the state.
+  const found = evidenceFindings(flowText, { riskSignals: require('./risk').scanDeltas(bundleDir) });
+  for (const b of found.blockers) blockers.push({ rule: 'R5', class: 'evidence', forceable: false, detail: b });
+  // what the predicate merely REPORTS travels as notes — an accepted item is named here too
+  if (found.items.length) notes.push(openSummary(found));
+  notes.push(...found.notes);
+
+  // flowText travels with the verdict so the archive's later guards read the SAME snapshot
+  // (one look at the bundle, never a second read)
+  return { ready: blockers.length === 0, blockers, forced, na, notes, grant, flowText };
+    assert.match(c.detail, /R-02 \(rejected\) must be a pending ## Open item for the owner/, label);
+    assert.match(c.detail, /R-03 \(follow-up\) must be a pending ## Open item for the owner/, label);
+    assert.doesNotMatch(c.detail, /R-01 \(fixed\)/, label);
+    p.setOpen('- R-02: delete on a missing key — the owner decides\n- R-03: hit counters — the owner decides\n');
+    c = c8(p.root);
+    assert.strictEqual(c.status, 'pass', `${label}: ${c.detail}`);
+  }
+});
+
+test('GT-65 a round past the one re-review needs the owner', () => {
+  const p = atLimit({ gates: RULED, open: FOLLOW_UP_R03 });
+  reReview(p, ['- R-01: ADDRESSED — ok', '- R-02: NOT ADDRESSED — no', '- R-03: ADDRESSED — ok'], 'VERDICT: 1 issues open');
+  p.setOpen(FOLLOW_UP_R03 + '- R-02: pending for the owner\n');
+  p.rev(`${FAM}-v5.md`, `${PROV('S1')}\n# round 5\n\n${ACCEPT}\n`);
+  let l = loopOf(p);
+  assert.ok(l.escalation && l.escalation.some((e) => e.round === 5 && /the one automatic re-review is spent/.test(e.reason)), JSON.stringify(l.escalation));
+  let c = c8(p.root);
+  assert.strictEqual(c.status, 'blocked', c.detail);
+  assert.strictEqual(escStatus(p.root), 3);
+  // the owner releases the family past its re-review; round 5 is then an ordinary round (its record is owed)
+  p.addGates('  - 2026-09-27T05:00 owner: reframe spec-review round 4 tests — add the missing-key test and review again\n'
+    + `  - 2026-09-27T05:10 note: review-progress ${FAM} round 5 — issues: R-01, R-02, R-03; actions: added the missing-key test for R-02, R-01 and R-03 already addressed; evidence: apriori/specs/kv/spec.md; approach: kept — same plan\n`);
+  l = loopOf(p);
+  assert.strictEqual(l.escalation, null, JSON.stringify(l.escalation));
+  assert.strictEqual(fam(l).stopped, false);
+  assert.strictEqual(c8(p.root).status, 'pass', c8(p.root).detail);
+  p.rev(`${FAM}-v6.md`, `${PROV('S1')}\n# round 6\n\n- R-05 regression\n\nVERDICT: 1 issues open\n`);
+  l = loopOf(p);
+  assert.ok(l.escalation && l.escalation.some((e) => e.round === 6 && !e.acknowledged), JSON.stringify(l.escalation));
+});
+
+test('GT-66 the re-review round needs no review-progress record', () => {
+  const p = atLimit({ gates: RULED, open: FOLLOW_UP_R03 });
+  reReview(p, ['- R-01: ADDRESSED — ok', '- R-02: ADDRESSED — ok', '- R-03: ADDRESSED — ok']);
+  const l = loopOf(p);
+  assert.deepStrictEqual(l.progress, []);
+  assert.strictEqual(c8(p.root).status, 'pass');
+  // the owner later raises the limit: the round that followed the rulings was still the re-review
+  fs.writeFileSync(path.join(p.root, 'apriori', 'process-config.md'), '| Field | Value |\n|---|---|\n| review-round-limit | 6 |\n');
+  const l2 = loopOf(p);
+  assert.deepStrictEqual(l2.progress, [], JSON.stringify(l2.progress));
+});
+
+test('GT-67 raising the limit permits more review but never closes what the re-review left open', () => {
+  // review round 1, LR-01: a fresh-session re-review ACCEPTs, the rejected / follow-up ids are not pending
+  const p = atLimit({ gates: RULED, open: FOLLOW_UP_R03 });
+  reReview(p, ['- R-01: ADDRESSED — ok', '- R-02: ADDRESSED — ok', '- R-03: ADDRESSED — ok'], ACCEPT, 'S2');
+  assert.match(c8(p.root).detail, /R-02 \(rejected\) must be a pending ## Open item for the owner/);
+  // the owner raises the limit: the obligation stands, the round is still checked as the re-review
+  fs.writeFileSync(path.join(p.root, 'apriori', 'process-config.md'), '| Field | Value |\n|---|---|\n| review-round-limit | 6 |\n');
+  let c = c8(p.root);
+  assert.strictEqual(c.status, 'blocked', c.detail);
+  assert.match(c.detail, /R-02 \(rejected\) must be a pending ## Open item for the owner/);
+  assert.match(c.detail, /R-03 \(follow-up\) must be a pending ## Open item for the owner/);
+  // handed to the owner, the family closes; a later ordinary round under the raised limit is released
+  p.setOpen('- R-02: delete on a missing key — the owner decides\n- R-03: hit counters — the owner decides\n');
+  c = c8(p.root);
+  assert.strictEqual(c.status, 'pass', c.detail);
+  p.addGates(`  - 2026-09-27T06:00 note: review-progress ${FAM} round 5 — issues: R-01, R-02, R-03; actions: none needed; evidence: apriori/specs/kv/spec.md; approach: kept — same plan\n`);
+  p.rev(`${FAM}-v5.md`, `${PROV('S1')}\n# round 5\n\n${ACCEPT}\n`);
+  const l = loopOf(p);
+  assert.strictEqual(l.escalation, null, 'a raised limit is a release');
+  assert.strictEqual(c8(p.root).status, 'pass', c8(p.root).detail);
+});
+
+test('GT-68 a ruling note below the limit buys no exemption and is held to the ruling checks', () => {
+  // review round 1, LR-02: default limit 8, rounds 1-2 revise, round 3 accept, one stray ruling at round 2
+  const p = atLimit({ limit: 8, gates: ruling('R-01', 'parked', 'x', { round: 2 }) });
+  p.rev(`${FAM}-v2.md`, `# review round 2\n\n- R-01 still open\n\n${REVISE}\n`);
+  p.rev(`${FAM}-v3.md`, `${PROV('S1')}\n# review round 3\n\n${ACCEPT}\n`);
+  // the fixture's round-3 progress record would satisfy round 3: drop it so the exemption is what is tested
+  fs.writeFileSync(path.join(p.bundle, 'flow-state.md'), flowOf(p.bundle).replace(/^.*review-progress spec-review round 3.*\n/m, ''));
+
+test('AM-136 rulings at the limit archive without --force and are listed after the three states', () => {
+  const g = ruling('R-01', 'fixed', 'x', { min: 1 }) + ruling('R-02', 'rejected', 'y', { min: 2 }) + ruling('R-03', 'fixed', 'z', { min: 3 });
+  const p = atLimit({ gates: g, phase: 'review' });
+  reReview(p, ['- R-01: ADDRESSED — ok', '- R-02: ADDRESSED — ok', '- R-03: ADDRESSED — ok']);
+  // review round 1, LR-03: the real archive, not the dry-run preview
+  const a = run(['archive', '--change', 'c', '--no-cas', '--write'], p.root);
+  assert.strictEqual(a.status, 0, a.stdout + a.stderr);
+  assert.match(a.stdout, /RESULT: MERGED — 1 module store\(s\) rewritten; change archived →/);
+  assert.ok(!fs.existsSync(p.bundle), 'the change moved out of apriori/changes/c');
+  const moved = fs.readdirSync(path.join(p.root, 'apriori', 'changes', 'archive')).filter((n) => /-c$/.test(n));
+  assert.strictEqual(moved.length, 1);
+  assert.match(fs.readFileSync(path.join(p.root, 'apriori', 'specs', 'kv', 'spec.md'), 'utf8'), /XB-01 new/, 'the delta merged into the store');
+  const decl = a.stdout.slice(a.stdout.indexOf('ARCHIVE DECLARES')).split('\n');
+  assert.strictEqual(decl.slice(1, 4).filter((l) => /^ {2}\w/.test(l)).length, 3);
+  assert.match(decl[1], /implementation:/);
+  assert.match(decl[3], /delivery:/);
+  assert.match(a.stdout, /note: ruling spec-review round 3 — R-01: fixed \(re-review: ADDRESSED\)/);
+  assert.match(a.stdout, /note: ruling spec-review round 3 — R-02: rejected \(re-review: ADDRESSED\)/);
+  assert.doesNotMatch(a.stdout, /forced:/);
+});
+
+// ---- the text surfaces ----
+const rdText = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
+test('PR-61 the rest of the runbook agrees, and the rulings are disclosed', () => {
+**At the limit, the producer rules and one re-review decides.** A REVISE at the effective limit that the owner has not answered with a reframe does not stop the loop. The producer rules on every finding still open in that round's summary, one `gates:` entry each — `- <YYYY-MM-DDTHH:MM> note: ruling <family> round <n> — <ID>: <fixed|rejected|follow-up|owner> — <basis>`, always a `note:` line, never an `owner:` one: `fixed` carries its verification evidence; `rejected` cites the contract clause, code line or command output it rests on; `follow-up` is only an ask this delivery does not depend on, registered as §4 says; `owner` is a decision that is not the producer's (a changed commitment, an accepted risk, an external side effect) and is a pending `## Open` item. A necessary fix is never set aside.
+Then exactly ONE independent re-review follows as round n+1 — the same reviewer session, resumed (R2), its resume message asking it to judge each ruling and to answer each ruled id on its own line: `- <ID>: ADDRESSED — <basis>` or `- <ID>: NOT ADDRESSED — <basis>`. The rulings stand in for that round's `review-progress` record.
+C8 checks this mechanically: every ruling names a legal kind and a basis, the rulings cover every id that opens a list item or table row of round n's summary, and no id carries two different rulings; then exactly one re-review; then every ruled id either has an `ADDRESSED` line or is a pending `## Open` item (an `owner` ruling is pending whatever the re-review says; an id with both conclusions blocks); a new finding the re-review opens with an id is a pending item; and when the re-review's provenance does not prove it ran in round n's reviewer session, every `rejected` and `follow-up` ruling is a pending item for the owner. These findings are the producer's to repair — never an owner gate, never an escalation.
+What the re-review leaves unresolved is a pending `## Open` item — R1 case 2, the owner's: the producer does not change code for it without the owner's word, and a fix made with that word stays pending until a later review accepts it or the owner records `evidence-accept`. A change to product code or tests after the re-review needs a new review or the owner's explicit acceptance of the risk. An earlier REVISE is never rewritten; a later review the owner released may add an ACCEPT.
+A round past that one re-review needs the owner: a reframe for this family at a round from the re-review on (or a raised limit); without one, the round is an escalation and never counts as convergence. Raising the limit permits more review and releases the rounds after the re-review, but never closes what that re-review left open: rulings whose next round has landed are checked whatever the limit says now, and a stray ruling note below the limit is held to the same checks. The same issue under a new id, a new family or a split-off change does not earn another re-review — a rule the CLI does not check.
+The rulings and the one re-review let the loop go on without waiting, but they do not guarantee the approach is right; the owner may reframe or raise the limit at any time. The final report and the archive declaration list every ruling.
+Only a recorded owner reframe — `- <YYYY-MM-DDTHH:MM> owner: reframe <family> round <n> <split|tests|redo|accept-risk> — <reason>` (a real timestamp, the actor exactly `owner`, the family AND the round it answers) — may release an owner stop, and it answers that round alone: every further `revise` round past the one re-review stops again (`accept` proceeds, and an explicit `escalate` stops regardless of the limit) until the owner either raises `review-round-limit` to an explicit finite value greater than the cumulative count or answers it with its own reframe; cumulative counts MUST NOT reset. An owner who answers the limit round itself with a reframe takes the family out of the ruling path: from then on every `revise` at or past the limit needs the owner's own reframe.
+Risk acceptance MUST remain explicit and MUST NOT be relabeled PASS; archiving an escalated loop requires both the recorded owner decision and explicit `--force`, which alone cannot bypass a stopped loop or an evidence problem. A family closed by its rulings and its one re-review needs neither: its residuals are pending items that R5 holds until the owner answers them.
+Status and gates MUST report per-family cumulative counts and effective limits; goal execution MUST NOT maintain a competing review count or bypass owner stops, and all other mandatory stop rules remain in force.
+
+codex
+<!-- provenance: provider=codex model=unknown session=unknown date=2026-09-27 -->
+
+Review destination: `apriori/changes/limit-ruling/review/code-review-v2.md`. Read-only session: producer to land this body verbatim under RUNBOOK R2.
+
+- LR-01: ADDRESSED — The original raised-limit counterexample now reaches `rulingPath`; GT-67 asserts that rejected/follow-up IDs still require pending items after the raise. The extended checking introduces LR-04 below.
+- LR-02: ADDRESSED — An arbitrary parsed ruling no longer unconditionally exempts the next round. GT-68 checks both the illegal kind and the missing progress record.
+- LR-03: ADDRESSED — AM-136 now invokes `--write` and asserts the completed move, merged store, declaration, and absence of forcing.
+
+Two substantive issues remain:
+
+- **LR-04 — P2: A later owner-released review cannot close historical residuals after a limit raise.** The established-cycle loop at [lib/review.js:750](/root/terra/wt-d/lib/review.js:750) repeatedly calls `rulingPath`, which consults only the original re-review and current Open items. Consider rulings at round 3, round 4 marking R-01 NOT ADDRESSED, and R-01 correctly registered pending. The owner raises the limit to 6 and authorizes the fix; round 5 explicitly marks R-01 ADDRESSED and accepts. Removing the now-resolved Open item still produces the historical round-4 “no ADDRESSED line and is not a pending” blocker at [line 663](/root/terra/wt-d/lib/review.js:663). Keeping it instead leaves C9/R5 blocked. S4 expressly permits closure through an owner-released later review; the implementation effectively requires evidence acceptance despite that review. GT-67 retains its pending items throughout, so it does not exercise this exit. **Suggested fix:** distinguish enduring evidence-integrity checks from residual obligations that a valid, owner-released later review can discharge; preserve the historical verdict.
+
+- **LR-05 — P1: The current ruling cycle escapes historical validation at R+2.** The new established-cycle scan skips `a === R` at [lib/review.js:747](/root/terra/wt-d/lib/review.js:747), but the separate current-cycle branch calls `rulingPath` only through R+1. With limit 3, record conflicting `fixed` and `rejected` rulings for R-01 at round 3, then land rounds 4 and 5 as ACCEPT, with valid progress records and an owner `reframe` for round 4. At round 5, the scan skips the round-3 cycle; the R+2 branch checks only release and latest verdict. The conflicting rulings disappear from C8/R4 findings, and the ACCEPT clears the floor. Assuming other readiness conditions pass, archive can proceed despite a non-forceable ruling-integrity defect. **Suggested fix:** validate the current established cycle beyond R+1 as well; avoid duplicate checking without skipping it entirely. A release authorizes further review, not waiver of malformed or conflicting ruling evidence.
+
+Examined: both requested diffs, the changed cycle/exemption logic, per-ID checks, owner-release branches, gate and archive-readiness consumers, GT-65–68, AM-136, and the changed EN/CN rule sentences. The wording remains aligned between editions, but the two implementation paths above do not satisfy it.
+
+The current Open section is empty. The requested gate reports the prior REVISE and the missing round-2 summary, expected before this review lands. I did not rerun tests, execute an archive, inspect raw transcripts, or revisit unrelated surfaces. Findings are based on static control-flow inspection; the reported 869-test run was not independently reproduced.
+
+Advisories: none. These are implementation defects, not grounds to escalate the approach or split the change.
+
+VERDICT: 2 issues open
+tokens used
+115,436
+<!-- provenance: provider=codex model=unknown session=unknown date=2026-09-27 -->
+
+Review destination: `apriori/changes/limit-ruling/review/code-review-v2.md`. Read-only session: producer to land this body verbatim under RUNBOOK R2.
+
+- LR-01: ADDRESSED — The original raised-limit counterexample now reaches `rulingPath`; GT-67 asserts that rejected/follow-up IDs still require pending items after the raise. The extended checking introduces LR-04 below.
+- LR-02: ADDRESSED — An arbitrary parsed ruling no longer unconditionally exempts the next round. GT-68 checks both the illegal kind and the missing progress record.
+- LR-03: ADDRESSED — AM-136 now invokes `--write` and asserts the completed move, merged store, declaration, and absence of forcing.
+
+Two substantive issues remain:
+
+- **LR-04 — P2: A later owner-released review cannot close historical residuals after a limit raise.** The established-cycle loop at [lib/review.js:750](/root/terra/wt-d/lib/review.js:750) repeatedly calls `rulingPath`, which consults only the original re-review and current Open items. Consider rulings at round 3, round 4 marking R-01 NOT ADDRESSED, and R-01 correctly registered pending. The owner raises the limit to 6 and authorizes the fix; round 5 explicitly marks R-01 ADDRESSED and accepts. Removing the now-resolved Open item still produces the historical round-4 “no ADDRESSED line and is not a pending” blocker at [line 663](/root/terra/wt-d/lib/review.js:663). Keeping it instead leaves C9/R5 blocked. S4 expressly permits closure through an owner-released later review; the implementation effectively requires evidence acceptance despite that review. GT-67 retains its pending items throughout, so it does not exercise this exit. **Suggested fix:** distinguish enduring evidence-integrity checks from residual obligations that a valid, owner-released later review can discharge; preserve the historical verdict.
+
+- **LR-05 — P1: The current ruling cycle escapes historical validation at R+2.** The new established-cycle scan skips `a === R` at [lib/review.js:747](/root/terra/wt-d/lib/review.js:747), but the separate current-cycle branch calls `rulingPath` only through R+1. With limit 3, record conflicting `fixed` and `rejected` rulings for R-01 at round 3, then land rounds 4 and 5 as ACCEPT, with valid progress records and an owner `reframe` for round 4. At round 5, the scan skips the round-3 cycle; the R+2 branch checks only release and latest verdict. The conflicting rulings disappear from C8/R4 findings, and the ACCEPT clears the floor. Assuming other readiness conditions pass, archive can proceed despite a non-forceable ruling-integrity defect. **Suggested fix:** validate the current established cycle beyond R+1 as well; avoid duplicate checking without skipping it entirely. A release authorizes further review, not waiver of malformed or conflicting ruling evidence.
+
+Examined: both requested diffs, the changed cycle/exemption logic, per-ID checks, owner-release branches, gate and archive-readiness consumers, GT-65–68, AM-136, and the changed EN/CN rule sentences. The wording remains aligned between editions, but the two implementation paths above do not satisfy it.
+
+The current Open section is empty. The requested gate reports the prior REVISE and the missing round-2 summary, expected before this review lands. I did not rerun tests, execute an archive, inspect raw transcripts, or revisit unrelated surfaces. Findings are based on static control-flow inspection; the reported 869-test run was not independently reproduced.
+
+Advisories: none. These are implementation defects, not grounds to escalate the approach or split the change.
+
+VERDICT: 2 issues open

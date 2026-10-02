@@ -369,6 +369,104 @@ test('IN-13 fresh init writes the manifest for exactly what it created', () => {
     assert.strictEqual(after.find((x) => x.file === rel).action, 'up-to-date', rel);
 });
 
+test('IN-21 init on a project without a manifest marks it mid-migration; update adopts, then clears the mark', () => {
+  const managed = require('../lib/managed');
+  const locatable = (() => { let fd; try { fd = umFs.openSync(__filename, 'r'); return umFs.readlinkSync(`/proc/self/fd/${fd}`).length > 0; } catch { return false; } finally { if (fd !== undefined) umFs.closeSync(fd); } })();
+  const raw = (root) => JSON.parse(umFs.readFileSync(umPath.join(root, 'apriori', 'managed.json'), 'utf8'));
+  const act = (res, f) => (res.actions.find((a) => a.file === f) || {}).action;
+  // a project an older CLI initialized: no managed.json, an older runbook, no guide yet
+  const old = () => {
+    const root = umTmp();
+    umInit.scaffold(root, ['claude']);
+    umFs.rmSync(umPath.join(root, 'apriori', 'managed.json'));
+    umFs.rmSync(umPath.join(root, 'apriori', 'guides'), { recursive: true });
+    umFs.writeFileSync(umPath.join(root, 'apriori', 'runbook.md'), '# an older runbook\n');
+    return root;
+  };
+  // dry run: the mark is reported, nothing is written
+  const dry = old();
+  assert.match(act(umInit.scaffold(dry, ['claude', 'codex'], { dryRun: true }), 'apriori/managed.json'), /^created \(adoption pending — /);
+  assert.ok(!umFs.existsSync(umPath.join(dry, 'apriori', 'managed.json')));
+  // real run: what it creates is recorded at once — the guide included, on any platform — under the mark
+  const root = old();
+  const r = umInit.scaffold(root, ['claude', 'codex']);
+  assert.match(act(r, 'apriori/managed.json'), /^created \(adoption pending — the runbook and command files that predate this run are still update's to adopt on proof/);
+  const m0 = raw(root);
+  assert.strictEqual(m0.adoptPending, true);
+  assert.deepStrictEqual(Object.keys(m0.files).sort(), ['.codex/prompts/apriori-discuss.md', '.codex/prompts/apriori.md', 'apriori/guides/prototype-walk.md']);
+  // a later init keeps the mark
+  umFs.rmSync(umPath.join(root, '.codex', 'prompts', 'apriori-discuss.md'));
+  umInit.scaffold(root, ['codex']);
+  assert.strictEqual(raw(root).adoptPending, true);
+  // a listed file the owner edited meanwhile keeps its protection while the pass runs
+  umFs.appendFileSync(umPath.join(root, '.codex', 'prompts', 'apriori.md'), '\nlocal\n');
+  // dry run of the pass: reported, nothing written, the mark stays
+  const before = umFs.readFileSync(umPath.join(root, 'apriori', 'managed.json'), 'utf8');
+  assert.strictEqual(act(umUpdate.run(root, { dryRun: true }), 'apriori/runbook.md'), 'updated');
+  assert.strictEqual(umFs.readFileSync(umPath.join(root, 'apriori', 'managed.json'), 'utf8'), before);
+  // an update that throws midway (a command path is a directory) keeps the mark: it had already
+  // refreshed the runbook, which is still unrecorded — the next pass adopts it
+  const cmd = umPath.join(root, '.claude', 'commands', 'apriori.md');
+  const keep = umFs.readFileSync(cmd);
+  umFs.rmSync(cmd); umFs.mkdirSync(cmd);
+  assert.throws(() => umUpdate.run(root), /EISDIR/);
+  assert.strictEqual(raw(root).adoptPending, true);
+  assert.ok(!('apriori/runbook.md' in raw(root).files));
+  umFs.rmdirSync(cmd); umFs.writeFileSync(cmd, keep);
+  // the pass: the runbook adopted, the older command files adopted on proof, the edited listed file
+  // left alone, the guide as recorded; the mark cleared; every entry the hash of the file on disk
+  const u = umUpdate.run(root);
+  assert.strictEqual(act(u, 'apriori/runbook.md'), 'up-to-date');
+  for (const f of ['.claude/commands/apriori.md', '.claude/commands/apriori-discuss.md']) assert.strictEqual(act(u, f), 'up-to-date', f);
+  assert.match(act(u, '.codex/prompts/apriori.md'), /^modified \(skipped/);
+  assert.strictEqual(act(u, 'apriori/guides/prototype-walk.md'), 'up-to-date');
+  const m = raw(root);
+  assert.ok(!('adoptPending' in m), 'the pass clears the mark');
+  assert.deepStrictEqual(Object.keys(m.files).sort(), ['.claude/commands/apriori-discuss.md', '.claude/commands/apriori.md', '.codex/prompts/apriori-discuss.md', '.codex/prompts/apriori.md', 'apriori/guides/prototype-walk.md', 'apriori/runbook.md']);
+  for (const [f, h] of Object.entries(m.files)) if (f !== '.codex/prompts/apriori.md') assert.strictEqual(h, umSha(umPath.join(root, f)), f);
+  // after the pass, an ordinary manifest: an unlisted file with shipped bytes is NOT adopted (UP-06 stays)
+  const opencode = umPath.join(root, '.opencode', 'command', 'apriori.md');
+  umFs.mkdirSync(umPath.dirname(opencode), { recursive: true });
+  umFs.copyFileSync(umPath.join(root, '.claude', 'commands', 'apriori.md'), opencode);
+  assert.match(act(umUpdate.run(root), '.opencode/command/apriori.md'), /^unmanaged \(skipped/);
+  // the runbook path not a regular file: no mark, and what init created is recorded as always — so
+  // repairing the path and retrying strands nothing (review round 1, R2)
+  const dirRb = umTmp();
+  umInit.scaffold(dirRb, ['claude']);
+  umFs.rmSync(umPath.join(dirRb, 'apriori', 'managed.json'));
+  umFs.rmSync(umPath.join(dirRb, 'apriori', 'runbook.md')); umFs.mkdirSync(umPath.join(dirRb, 'apriori', 'runbook.md'));
+  umInit.scaffold(dirRb, ['codex']);
+  const dm = raw(dirRb);
+  assert.ok(!('adoptPending' in dm));
+  assert.ok('.codex/prompts/apriori.md' in dm.files);
+  umFs.rmdirSync(umPath.join(dirRb, 'apriori', 'runbook.md'));
+  umInit.scaffold(dirRb, ['codex']);
+  assert.strictEqual(act(umUpdate.run(dirRb), '.codex/prompts/apriori.md'), 'up-to-date');
+  // the recovery MIGRATING gives for a partial manifest an older init already wrote: mark it, update once —
+  // its entries keep their protection, the older files are adopted
+  const partial = old();
+  umInit.scaffold(partial, ['codex']);
+  const pm = raw(partial); delete pm.adoptPending;
+  umFs.writeFileSync(umPath.join(partial, 'apriori', 'managed.json'), JSON.stringify(pm));
+  assert.match(act(umUpdate.run(partial), 'apriori/runbook.md'), /^unmanaged \(skipped/);
+  umFs.appendFileSync(umPath.join(partial, '.codex', 'prompts', 'apriori.md'), '\nlocal\n');
+  umFs.writeFileSync(umPath.join(partial, 'apriori', 'managed.json'), JSON.stringify({ ...raw(partial), adoptPending: true }));
+  const pu = umUpdate.run(partial);
+  assert.strictEqual(act(pu, 'apriori/runbook.md'), 'updated');
+  assert.strictEqual(act(pu, '.claude/commands/apriori.md'), 'up-to-date');
+  assert.match(act(pu, '.codex/prompts/apriori.md'), /^modified \(skipped/);
+  // hygiene: the mark is a boolean or absent
+  umFs.writeFileSync(umPath.join(partial, 'apriori', 'managed.json'), JSON.stringify({ ...raw(partial), adoptPending: 'yes' }));
+  assert.throws(() => managed.readManifest(partial, require('../lib/init').TOOLS), /managed\.json: adoptPending must be true or false, not "yes"/);
+  // a fresh project and a project with an ordinary manifest are unchanged (IN-13, IN-14)
+  const fresh = umTmp();
+  umInit.scaffold(fresh, ['claude']);
+  assert.ok(!('adoptPending' in raw(fresh)));
+  umInit.scaffold(fresh, ['codex']);
+  assert.ok(!('adoptPending' in raw(fresh)));
+  void locatable;
+});
+
 test('IN-14 add-tool init merges without adopting bystanders', () => {
   const root = umTmp();
   umInit.scaffold(root, ['claude']);

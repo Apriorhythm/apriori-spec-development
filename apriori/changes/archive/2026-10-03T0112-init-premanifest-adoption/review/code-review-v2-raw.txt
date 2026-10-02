@@ -1,0 +1,1191 @@
+OpenAI Codex v0.159.3
+--------
+workdir: /root/terra/wt-fu2
+model: gpt-6-astra
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 01a0fd8c-48c0-7db1-b374-c27506d163d1
+--------
+user
+Round 2 of code-review for `init-premanifest-adoption` (same worktree, still uncommitted). Your R1 and R2 showed that the registered proposal — init writes no manifest — left init's own new files unrecorded. After consulting Astra (recorded in the flow-state), the approach changed: init still records what it creates, at once, and on a mid-migration project (no manifest, a regular in-project runbook that predates the run) marks the manifest `"adoptPending": true`; update treats a marked manifest like a missing one for adopting UNLISTED files on proof (runbook unconditionally, command files on a shipped generation) while listed files keep every rule, and rewrites the manifest without the mark only at the end of a run that got through. A runbook path that is a directory or symlink sets no mark. The mark is validated as a boolean. An older CLI drops the mark when it rewrites the manifest (measured; stated in MIGRATING with a by-hand recovery: add the mark, update once).
+Answer R1 and R2 with ADDRESSED or NOT ADDRESSED and your evidence, and say whether your advisory still applies. Scope is the whole change as it now stands (lib/managed.js, lib/init.js, lib/update.js, IN-21 in test/init.test.js, the init and update deltas, docs/cli.md, docs/cli_cn.md, MIGRATING, CHANGELOG, the flow-state), since the approach itself changed. Report a NEW finding only if it breaks the contract or a safety property — in particular whether an ordinary manifest can now adopt anything it could not before, whether the mark can be lost or left set where the text says otherwise, and whether listed-file protection holds during the pass.
+Give the full review body for apriori/changes/init-premanifest-adoption/review/code-review-v2.md, ending with exactly one VERDICT line.
+codex
+I’ll review the revised ownership path, check R1 and R2 against the new code and tests, and examine how the marker affects adoption, listed-file protection, and interrupted runs. I’ll return the full review body for the producer to save.
+exec
+/usr/bin/zsh -lc 'cat apriori/changes/init-premanifest-adoption/specs/init/spec.md apriori/changes/init-premanifest-adoption/specs/update/spec.md apriori/changes/init-premanifest-adoption/flow-state.md' in /root/terra/wt-fu2
+ succeeded in 0ms:
+<!-- apriori-base: sha256:e95525f263fc9156b626f4ca4610be9decfd27d132f6f0749a84b38d287f2407 -->
+# Delta — init (init-premanifest-adoption)
+
+## MODIFIED Requirements
+
+### Requirement: init records what it creates in the managed manifest
+`apriori init` SHALL maintain `apriori/managed.json` entries ONLY for files it actually creates in a run: a fresh init records the runbook, the prototype-walk guide and each command file it wrote; init for an additional tool merges into a valid existing manifest preserving entries it didn't touch; a command file that already existed on disk is skipped as today and gains NO entry (existing content is never blind-adopted). When init creates a file that is absent on disk — including a manifest-listed file the user deleted as the prescribed cure — the entry is written/replaced with the hash of the bytes just written, so the next update sees `up-to-date`, not `modified`. Each entry is written the moment its file is created, so a run that fails at a later step leaves everything it created recorded (init never adopts what it finds, so an unrecorded file of its own would otherwise stay `unmanaged` on every retry). `init --dry-run` never writes or modifies the manifest (it reports would-be entries). A hygiene-invalid manifest (per the update module's rules) makes init exit nonzero before scaffolding or merging anything. A project with no manifest whose runbook predates the run as a regular file inside the project (initialized before `managed.json` existed, or its manifest deleted) is mid-migration: init records what it creates exactly as above and marks the manifest `"adoptPending": true` so that `apriori update`'s adoption on proof, which a manifest of only this run's files would otherwise end, still runs once (reported as `created (adoption pending — …)` / `merged (adoption pending — …)`); a later init keeps the mark; a runbook path that is a directory or a symlink sets none. Init itself still adopts nothing it finds.
+
+#### Scenario: IN-13 fresh init writes the manifest for exactly what it created
+- WHEN `apriori init --tools <t>` scaffolds a new project
+- THEN `apriori/managed.json` lists the runbook, the prototype-walk guide and the created command file(s) with hashes of the written bytes, and nothing else; and when a fresh `--tools claude,cursor` run throws after Claude's command files were written (`.cursor` is a file), the manifest already lists the runbook, the guide and both Claude command files, and once the obstruction is gone `apriori update` reports those commands `up-to-date`, not `unmanaged`
+
+#### Scenario: IN-14 add-tool init merges without adopting bystanders
+- WHEN init runs for an additional tool in a project where another tool's command path already carries a user file
+- THEN the new tool's created file gains an entry, existing entries are preserved, and the pre-existing user file gains no entry (a later update reports it `unmanaged`)
+
+#### Scenario: IN-15 the delete-and-reinit cure closes cleanly
+- WHEN a managed file was locally modified, deleted, and `apriori init --tools <t>` recreates it
+- THEN the manifest entry is refreshed to the recreated bytes and the next update reports `up-to-date`
+
+#### Scenario: IN-16 init dry-run leaves the manifest alone
+- WHEN `apriori init --dry-run` runs fresh or for an additional tool
+- THEN the manifest is not created or changed, while the report shows the would-be entries
+
+#### Scenario: IN-17 a hygiene-invalid manifest blocks init
+- WHEN `apriori/managed.json` exists but is invalid per the hygiene rules
+- THEN init exits nonzero naming the defect and writes nothing
+
+#### Scenario: IN-21 init on a project without a manifest marks it mid-migration; update adopts, then clears the mark
+- WHEN a project an older CLI initialized (no `managed.json`, an older runbook, no guide) runs `apriori init --tools claude,codex` with `--dry-run`, then for real, then init again; then (with one listed codex command edited) `apriori update --dry-run`, an update that throws midway, and an update that completes; then an unlisted command with shipped bytes appears; separately when the runbook path is a directory during init and is repaired before retrying, when a partial manifest an older init wrote is marked by hand, and when the mark is not a boolean
+- THEN the dry init reports `created (adoption pending — …)` and writes nothing; the real init records codex's commands and the guide at once and marks the manifest; the later init keeps the mark; the dry update writes nothing; the throwing update keeps the mark (the runbook it already refreshed stays unrecorded); the completed update adopts the runbook and Claude's commands, reports the edited listed command `modified`, clears the mark, and records every entry as the hash on disk; afterwards the unlisted shipped-bytes command is `unmanaged`; the directory-runbook project gets no mark, records what init created, and after the repair update reports those commands `up-to-date`; the hand-marked partial manifest adopts the runbook and Claude's commands while its edited listed entry stays `modified`; a non-boolean mark is refused naming `adoptPending`; and a fresh project and an ordinary add-tool init carry no mark
+
+## Notes
+
+Follow-up FU-2 of batch-review-fixes (registered there, measured on c290842): init on a manifest-less project wrote a manifest of only what that run created, and update — which adopts on proof only while no manifest exists — then reported the older runbook and command files `unmanaged`. The registered proposal (init writes no manifest in that case) was tried first; review round 1 found it left init's own new files unrecorded (the guide on platforms that cannot locate a descriptor; commands when the runbook path was a directory). On Astra's advice (lab round R59-R12) the change keeps init's immediate records and carries the owed adoption pass as an explicit mark instead; IN-14 (init adopts nothing it finds) and UP-06 (an ordinary manifest never adopts an unlisted file) are untouched. IN-13..IN-17 keep their ids; IN-21 is new.
+<!-- apriori-base: sha256:0319cf462df165e7d286da2013b4b8ca4b9287a26bb3044b5699e9eecc8c8fae -->
+# Delta — update (init-premanifest-adoption)
+
+## MODIFIED Requirements
+
+### Requirement: update refreshes only manifest-proven tool-owned files
+`apriori update` SHALL consult `apriori/managed.json` (`{ "version": 1, "files": { "<relative path>": "sha256:<64hex>" } }`, hashes over the exact bytes the tool last wrote, never line-ending-normalized) and refresh a candidate file only when the manifest lists it AND its current content hash equals the recorded hash; after a real write the entry is updated to the new content's hash. A listed file with a differing hash is `modified` — skipped with a warning naming the file and the cure (delete it and rerun `apriori init --tools <t>`). An existing file with no entry is `unmanaged` — skipped, never written — with one exception: the prototype-walk guide, adopted when its bytes are exactly a shipped edition, read on a descriptor the platform can locate (its own requirement below). A listed file absent on disk is `missing` — skipped (recreating is init's job). Skip-only runs still exit 0 and name every skip. When no manifest exists (pre-manifest project), update adopts what it can prove: the runbook unconditionally (refreshed as today), each command file only if its content hash equals the current template or a known shipped generation, and the guide on the same proof as above (the package embeds every generation's sha256; a membership test over the live `templates/command.md` keeps the list honest); unproven content is `unmanaged`. The same adoption pass runs once more for a manifest marked `"adoptPending": true` (a project init touched mid-migration, see init): unlisted files are adopted on the same proof (the runbook unconditionally, command files only on a shipped generation), while listed files keep every rule above — an edited one stays `modified`. The adoption pass writes the manifest — materializing it, or rewriting it without the mark — and only at the end of a run that got through, so a run that throws leaves the mark for the next one. A manifest that exists but is unreadable, unparseable, missing `files`, hash-malformed, `version !== 1`, carrying an `adoptPending` that is not a boolean, or carrying a key that is absolute, contains `..`, or is outside the allowed refresh-target set (`apriori/runbook.md`, `apriori/guides/prototype-walk.md`, `TOOLS[*].command`) SHALL make update exit nonzero naming the defect before touching any target; every write additionally requires realpath containment under the project root. `--dry-run` produces the identical report and writes nothing — the manifest included.
+
+#### Scenario: UP-06 a foreign file at a tool path survives update
+- WHEN a file exists at an unselected tool's command path with no manifest entry
+- THEN update leaves it byte-identical, reports `unmanaged` with the cure hint, and exits 0
+
+#### Scenario: UP-07 an unmodified managed file refreshes and re-hashes
+- WHEN a manifest-listed command file matches its recorded hash but the package template has changed
+- THEN update rewrites it from the template and the manifest entry becomes the new content's hash
+
+#### Scenario: UP-08 a locally modified managed file is protected
+- WHEN a manifest-listed file (the runbook included) differs from its recorded hash
+- THEN update reports `modified` with the cure hint and leaves the file byte-identical, and `--dry-run` gives the same report while writing nothing at all
+
+#### Scenario: UP-09 pre-manifest projects are adopted only on proof
+- WHEN no manifest exists and command files variously match the current template, match a known shipped generation, or carry arbitrary content
+- THEN the matching files are adopted (up-to-date / refreshed respectively), the arbitrary one is `unmanaged` and untouched, the runbook refreshes as before, the guide init wrote is adopted on its bytes (where an opened descriptor can be located; elsewhere it is held back `not refreshed` and left out), and the manifest is written covering exactly those (except under `--dry-run`)
+
+#### Scenario: UP-10 manifest hygiene fails closed
+- WHEN `apriori/managed.json` is invalid JSON, lacks `files`, carries a malformed hash or `version: 2`, or lists an absolute, `..`-containing, or non-refresh-target path
+- THEN update exits nonzero naming the manifest defect and no managed target is touched, identically under `--dry-run`
+
+#### Scenario: UP-11 the shipped-generation list stays honest
+- WHEN the live `templates/command.md` is hashed
+- THEN the digest is a member of the package's embedded generation list (changing the template without appending fails the suite)
+
+## Notes
+
+Follow-up FU-2 of batch-review-fixes: the adoption pass now also runs once for a manifest marked `adoptPending` by init on a mid-migration project, and the mark is part of manifest hygiene. Exercised by init's IN-21. UP-06..UP-11 keep their ids and texts.
+change: init-premanifest-adoption
+phase: review                             # ground | specify | build | review | done | abandoned
+reviewer-session: 01a0fd8c-48c0-7db1-b374-c27506d163d1   # codex exec gpt-6-astra, round 1 (2026-10-03)
+
+## Reality Check         # observed / decision / assumption — one line each, as you find them
+- decision: lineage — branch `feature/init-premanifest-adoption`（从 v6-dev@a6c790b 开出）；本地提交；评审通过后合回 v6-dev 并推 judge 与 GitHub
+- observed: 来源——follow-up FU-2，登记于已归档的 `apriori/changes/archive/2026-10-02T2359-batch-review-fixes/`（其 flow-state 的 Open 段），原文：「没有 manifest 的项目（早于 managed.json 的 CLI 初始化）上跑 init 会写出只含本次创建项的 manifest，update 因此不再按证据收编原有的 runbook 与命令文件（判 `unmanaged`，只能删了重 init）；建议：没有 manifest 且本次没有创建 runbook 时，init 不写 manifest，交给 update 的按证据收编」；人类 10-03「两个 follow-up 如果可以开干那就直接开干吧」
+- observed: c290842 上实测（批次修复时）：老项目（无 manifest）上 `init --tools claude,codex` 写出只含 codex 两个命令的 manifest，随后 `update` 把 runbook、guide、claude 命令判为 `unmanaged` 并说 everything already matches
+- decision: approach — 采用登记时的建议：没有 manifest 且 runbook 早于本次运行时，init 照常创建但不写 manifest（报 `deferred`），交给 update 的按证据收编（runbook 无条件、命令文件按已发布版本、guide 按已发布版本且读取须定位）；不让 init 自己收编（保留 IN-14「init 不收编已有内容」），新鲜项目与已有 manifest 的项目不变；已被旧 init 写出部分 manifest 的项目，MIGRATING 给出办法（删掉 manifest 再 update 一次），并有测试佐证
+- observed: 第一版 Build（deferral）—— lib/init.js（`deferred` 判定与报告；init 报告对未写入的动作不再打勾）；test/init.test.js 新增 IN-21（在 a6c790b 的 lib 上红）；docs/cli.md、cli_cn.md、MIGRATING、CHANGELOG；delta：init 清单需求 MODIFIED + IN-21；全套 884/884，隐藏 /proc 亦 884/884；CLI 冒烟：老项目上 init 报 `· apriori/managed.json (deferred …)`
+- observed: Review 第 1 轮（`review/code-review-v1.md`）= `VERDICT: 2 issues open`：R1 deferral 下本次新建的 guide 不登记，在不能定位描述符的平台上 update 又不认领它；R2 runbook 位置是目录/越界链接也触发 deferral，update 读 runbook 失败，修好后重跑 init 会让本次新建的命令文件 unmanaged；advisory：什么都没创建时 deferral 不报告
+- observed: 咨询 Astra（`/root/asd-lab/work/astra-discuss/r59/R59-R12.txt`、`astra-r59-r12-reply.md`）：建议方案 X（init 照常即时登记，清单加 `adoptPending` 标记，update 对带标记清单补一次按证据认领后清除），认为仍在 FU-2 授权内；否决我倾向的 Y（让 update 对任何清单都按证据认领——会扩大认领权限、削弱 UP-06，属改承诺）；指出旧 CLI 会丢标记须写明、部分清单的恢复不能叫人删清单（DISAGREEMENTS 2，均采纳 Astra）
+- decision: approach — 改用 X（取代登记时的 deferral 建议）：仅当 init 开始时无清单、runbook 为项目内普通文件时打标记；init 即时登记并在之后的 init 保留标记；update 对带标记清单像无清单一样认领未登记的 runbook 与命令文件（已登记文件规则不变，guide 规则不变），整次运行完成才写出不带标记的清单，抛错则保留；清单 hygiene 只接受布尔值；部分清单 / 旧 CLI 丢标记的恢复 = 手动加回标记再 update 一次
+- decision: R1、R2 fixed（advisory 随之消失）— R1：标记下本次新建的 guide 即时登记，任何平台都受管；R2：目录/符号链接的 runbook 不打标记，init 照常登记新建文件，修好后重试不搁浅（IN-21 覆盖）
+- observed: 旧 CLI 交互实测（a6c790b 的 git archive）：旧版 update 在带标记的清单上运行后标记消失、runbook 再次 `unmanaged`——已写入 MIGRATING「Finish the migration with this CLI」与恢复办法
+- observed: Build 完成 —— lib/managed.js（读写 `adoptPending`，类型校验）、lib/init.js（标记判定、即时登记带标记、报告）、lib/update.js（adopting = 无清单或带标记）；test/init.test.js IN-21 重写（在 a6c790b 的 lib 上红）；docs/cli 两版、MIGRATING、CHANGELOG 改写；delta：init 清单需求（含 IN-21）与 update 清单需求 MODIFIED；全套 884/884，隐藏 /proc 亦 884/884
+- observed: FU-2 的退出证据——IN-21：标记下 init 即时登记，update 认领较早的 runbook 与命令文件、已登记被改文件仍受保护、完成后清标记且每项等于盘上哈希；目录 runbook 不搁浅；部分清单按 MIGRATING 恢复；据此关闭 FU-2
+
+## Open                  # substantive unresolved items — one line each, stable id first: - <ID>: <text>
+
+## Next                  # at most three concrete actions; the first is the resume point
+- codex P3 第 2 轮（resume）
+- gate → archive --write → 合回 v6-dev
+
+gates:
+  - 2026-10-03T00:54 note: change scaffolded by `apriori new`
+  - 2026-10-03T00:56 note: Ground（承接 FU-2，pending）→ Build（884/884）；FU-2 依 IN-21 的证据关闭（从 ## Open 删去）；review-ready 后开 Review 第 1 轮
+  - 2026-10-03T01:08 note: Review 第 1 轮 2 issues open；咨询 Astra 第 12 轮后改用 adoptPending 标记方案（R1、R2 已修，884/884）；resume 同一评审会话开第 2 轮
+
+exec
+/usr/bin/zsh -lc 'git status --short && git diff --stat && git diff -- lib/init.js lib/managed.js lib/update.js' in /root/terra/wt-fu2
+ succeeded in 0ms:
+ M CHANGELOG.md
+ M MIGRATING.md
+ M docs/cli.md
+ M docs/cli_cn.md
+ M lib/init.js
+ M lib/managed.js
+ M lib/update.js
+ M test/init.test.js
+?? apriori/changes/init-premanifest-adoption/
+ CHANGELOG.md      |  6 ++++
+ MIGRATING.md      |  6 ++++
+ docs/cli.md       |  2 ++
+ docs/cli_cn.md    |  2 ++
+ lib/init.js       | 22 ++++++++++---
+ lib/managed.js    | 15 +++++++--
+ lib/update.js     |  9 +++--
+ test/init.test.js | 98 +++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 8 files changed, 151 insertions(+), 9 deletions(-)
+diff --git a/lib/init.js b/lib/init.js
+index 3917742..7006185 100644
+--- a/lib/init.js
++++ b/lib/init.js
+@@ -123,12 +123,24 @@ function scaffold(root, toolKeys, opts = {}) {
+   // each file is recorded the moment it is created: a later step that throws (a rules path that is a
+   // directory, a tool directory that is a file …) must not leave anything this run created unrecorded —
+   // init never adopts what it finds, so an unrecorded file of its own would stay unmanaged on every retry
++  // A project with no manifest whose runbook predates this run — initialized before managed.json
++  // existed, or its manifest deleted — is MID-MIGRATION: update still owes it the one adoption pass on
++  // proof that a manifest-less project gets, and a manifest listing only this run's files would end
++  // that pass for good (the older runbook and command files left unmanaged — FU-2). So init records
++  // what it creates exactly as always, the moment it exists, and marks the manifest `adoptPending`;
++  // a later init keeps the mark, and update clears it once its adoption pass has run. Only a regular
++  // runbook inside the project counts: a directory or a symlink there is not a runbook to migrate.
++  const rbAbs = path.join(root, 'apriori', 'runbook.md');
++  let rbSt = null;
++  try { rbSt = fs.lstatSync(rbAbs); } catch { /* absent */ }
++  const adoptPending = manifest ? manifest.adoptPending
++    : !!(rbSt && rbSt.isFile() && require('./archive-merge').containsFuturePath(root, rbAbs));
+   const record = (rel) => {
+     created.push(rel);
+     if (dry) return;
+     const files = manifest ? { ...manifest.files } : {};
+     for (const r of created) files[r] = managed.hashFile(path.join(root, r));
+-    managed.writeManifest(root, files);
++    managed.writeManifest(root, files, { adoptPending });
+   };
+   const actions = [];
+   const act = (file, action) => actions.push({ file, action });
+@@ -189,14 +201,16 @@ function scaffold(root, toolKeys, opts = {}) {
+   // 3. the managed manifest: ONLY what THIS run created, merged over valid existing entries (a
+   // recreated missing file gets a fresh hash — the delete-and-reinit cure closes). record() already
+   // wrote it as each file appeared; dry-run reports the would-be entries and touches nothing.
+-  if (created.length) act('apriori/managed.json', manifest ? 'merged' : 'created');
++  if (created.length) act('apriori/managed.json', (manifest ? 'merged' : 'created') + (adoptPending
++    ? " (adoption pending — the runbook and command files that predate this run are still update's to adopt on proof: run 'apriori update')"
++    : ''));
+   return { actions, levels };
+ }
+ 
+ function report(scaffoldResult) {
+   console.log('\n  Wrote:');
+   for (const { file, action } of scaffoldResult.actions)
+-    console.log(`    ${action === 'skipped' ? '·' : '✓'} ${file}${action !== 'created' ? `  (${action})` : ''}`);
++    console.log(`    ${action === 'skipped' || /\(skipped/.test(action) ? '·' : '✓'} ${file}${action !== 'created' ? `  (${action})` : ''}`);   // nothing written: no tick
+   const cmd = [], rule = [];
+   for (const [k, lvl] of Object.entries(scaffoldResult.levels))
+     (lvl.startsWith('command') ? cmd : rule).push(TOOLS[k].name + (lvl === 'command-experimental' ? ' (experimental)' : ''));
+@@ -217,7 +231,7 @@ function preview(root, tools) {
+   const plan = scaffold(root, tools, { dryRun: true });
+   console.log('\n  About to write:');
+   for (const { file, action } of plan.actions)
+-    console.log(`    ${action === 'skipped' ? '·' : '✓'} ${file}${action !== 'created' ? `  (${action})` : ''}`);
++    console.log(`    ${action === 'skipped' || /\(skipped/.test(action) ? '·' : '✓'} ${file}${action !== 'created' ? `  (${action})` : ''}`);   // nothing written: no tick
+   console.log('\n  Existing files are appended-to or skipped, never overwritten.');
+ }
+ 
+diff --git a/lib/managed.js b/lib/managed.js
+index fbf94e3..e4d9e45 100644
+--- a/lib/managed.js
++++ b/lib/managed.js
+@@ -80,15 +80,24 @@ function readManifest(root, tools) {
+     if (!allowed.has(rel)) throw new Error(`managed.json: '${rel}' is not a refresh target`);
+     if (typeof hash !== 'string' || !HASH_RE.test(hash)) throw new Error(`managed.json: malformed hash for '${rel}'`);
+   }
+-  return { files: { ...doc.files } };
++  // `adoptPending: true` — the project is mid-migration from before managed.json: update still owes
++  // it the one adoption pass on proof (init-premanifest-adoption). Absent = false; anything else is
++  // untrustworthy like every other defect here.
++  if (Object.prototype.hasOwnProperty.call(doc, 'adoptPending') && typeof doc.adoptPending !== 'boolean')
++    throw new Error(`managed.json: adoptPending must be true or false, not ${JSON.stringify(doc.adoptPending)}`);
++  return { files: { ...doc.files }, adoptPending: doc.adoptPending === true };
+ }
+ 
+-function writeManifest(root, files) {
++// opts.adoptPending keeps the mid-migration mark; every writer that is not the adoption pass
++// itself must pass it through, or the pass the project is owed is silently lost
++function writeManifest(root, files, opts = {}) {
+   const sorted = {};
+   for (const k of Object.keys(files).sort()) sorted[k] = files[k];
+   const p = path.join(root, MANIFEST_REL);
+   fs.mkdirSync(path.dirname(p), { recursive: true });
+-  fs.writeFileSync(p, JSON.stringify({ version: 1, files: sorted }, null, 2) + '\n');
++  const doc = { version: 1, files: sorted };
++  if (opts.adoptPending) doc.adoptPending = true;
++  fs.writeFileSync(p, JSON.stringify(doc, null, 2) + '\n');
+ }
+ 
+ // containment before ANY read or hash: an existing target must realpath-resolve inside
+diff --git a/lib/update.js b/lib/update.js
+index 7e0f379..9b2910a 100644
+--- a/lib/update.js
++++ b/lib/update.js
+@@ -48,7 +48,12 @@ function run(root, opts = {}) {
+   const dry = !!opts.dryRun;
+   const actions = [];
+   const files = manifest ? { ...manifest.files } : {};
+-  let manifestDirty = manifest === null;                    // adoption always materializes it
++  // the adoption pass on proof runs while no manifest exists, and once more for a manifest marked
++  // `adoptPending` (a project init touched mid-migration); listed files keep their managed rules either
++  // way. The pass always writes the manifest — materializing it, or clearing the mark — and only when
++  // the whole run got through: a run that throws leaves the mark for the next one.
++  const adopting = manifest === null || manifest.adoptPending;
++  let manifestDirty = adopting;
+ 
+   // one candidate: managed semantics when listed; adoption when pre-manifest; unmanaged otherwise
+   const consider = (rel, srcAbs, adoptable) => {
+@@ -67,7 +72,7 @@ function run(root, opts = {}) {
+       if (act === 'updated') { files[rel] = managed.hashBytes(fs.readFileSync(srcAbs)); manifestDirty = true; }
+       return;
+     }
+-    if (manifest === null && adoptable(cur)) {              // pre-manifest adoption on proof
++    if (adopting && adoptable(cur)) {                       // adoption on proof (no manifest yet, or one marked adoptPending)
+       const act = refresh(p, srcAbs, dry);
+       actions.push({ file: rel, action: act });
+       files[rel] = act === 'updated' ? managed.hashBytes(fs.readFileSync(srcAbs)) : cur;
+
+exec
+/usr/bin/zsh -lc 'git diff -- test/init.test.js CHANGELOG.md MIGRATING.md docs/cli.md docs/cli_cn.md' in /root/terra/wt-fu2
+ succeeded in 0ms:
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 7d5381f..f84a532 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -25,6 +25,12 @@ Known limitations, stated as they stand:
+ Later preview snapshots are cut from `release/v6` after v6-dev work merges back; fixes in flight
+ (authorization-scope, archive-manifest) are not part of this snapshot.
+ 
++## Unreleased — init-premanifest-adoption: a project mid-migration keeps its adoption pass
++
++- `apriori init` on a project with no `apriori/managed.json` whose runbook predates the run (a regular file) records what it creates as always and marks the manifest `"adoptPending": true`; `apriori update` treats a marked manifest like a missing one for the adoption on proof of unlisted files — the older runbook, command files whose bytes are a shipped generation — while listed files keep their rules, and clears the mark after a complete run. Before, init's manifest of only its own files ended that adoption and left the older runbook and command files unmanaged. Follow-up FU-2 of batch-review-fixes.
++- `managed.json` accepts an optional boolean `adoptPending`. An older CLI drops it when it rewrites the manifest; MIGRATING gives the by-hand recovery.
++- `init`'s report no longer ticks an action that wrote nothing (a skip with a reason).
++
+ ## Unreleased — batch-recheck-fixes: three findings of the requirement-level re-check
+ 
+ The requirement-level re-check of batch-review-fixes (9020f02) found all 19 original findings addressed and confirmed three new ones (two adversarial votes each), fixed here under their ids.
+diff --git a/MIGRATING.md b/MIGRATING.md
+index 87952c3..0e9c2aa 100644
+--- a/MIGRATING.md
++++ b/MIGRATING.md
+@@ -2,6 +2,12 @@
+ 
+ The 3.0.0 stability promise — CLI surface & flags, `--json` shapes, the delta format, the flow-state schema and the `apriori/` layout only break in a major — holds for the released 5.x line. **6.x is an unreleased development line** (npm has never shipped a 6.x; `package.json` says `6.2.0-rc.0`, the runbook `runbook-version: 6.2`): within it the `gate --review-ready` item ids (`tests`, `open`) and the flow-state fields (`## Evidence` gone, `mode:` inert) changed in 6.2, and further changes before a 6.x release are declared here rather than promised away. Everything below is either additive or a declared fail-closed tightening — except limit-ruling, which moves a stop the owner explicitly approved moving and says so in its section.
+ 
++## init-premanifest-adoption (Unreleased) — a project mid-migration keeps its adoption pass
++
++- On a project with no `apriori/managed.json` whose runbook predates the run (initialized before `managed.json` existed, or the manifest deleted), `apriori init` used to write a manifest of only the files it had just created — which ended `update`'s adoption on proof and left the older runbook and command files `unmanaged`. `init` now still records what it creates, at once, and marks the manifest `"adoptPending": true`; the next `apriori update` adopts the older runbook (overwriting it once — copy your notes out of a customised one first) and the older command files whose bytes are a shipped generation, keeps listed files under their usual rules, and clears the mark only after a complete run.
++- **`managed.json` gains an optional `adoptPending` key** (`true` or `false`; anything else is refused as an untrustworthy manifest).
++- **Finish the migration with this CLI.** An older CLI's `init` or `update` rewrites the manifest without the mark, and the older files are then `unmanaged` again. The same recovery covers that and a partial manifest an older `init` already wrote: add `"adoptPending": true` to `apriori/managed.json` by hand and run `apriori update` once — entries already listed keep their protection, the older files are adopted as above. Do not delete the manifest for this: listed files that you edited would lose their protection.
++
+ ## batch-recheck-fixes (Unreleased) — the runbook header is read literally by `check --self`
+ 
+ - **Contributors to this repository only** (`apriori check --self`; consumer `apriori check` never runs CK-11): the runbook's header region — everything before its first `## ` heading — must not contain a run of three or more backticks or tildes. Any such run fails CK-11 as an unsupported header format, naming the line, with or without a valid `runbook-version` entry beside it. Keep code examples below the first h2. (Owner decision 2026-10-03.)
+diff --git a/docs/cli.md b/docs/cli.md
+index 3b49ff5..43afe37 100644
+--- a/docs/cli.md
++++ b/docs/cli.md
+@@ -16,6 +16,8 @@ Exit: 0 done/aborted-by-you · 1 empty selection · 2 missing `--tools` (the ref
+ 
+ **`--tools` is validated as a whole before anything is written (6.2).** One unknown key — `claud`, `Claude`, `claude,claud` alike — is exit 2 with `unknown tool '…' — known tools: claude, codex, cursor, copilot, opencode, windsurf`, and nothing is created, not the `apriori/` root either. A rules file that already carries an OLD tool-written pointer paragraph (an exact previous generation) gets that paragraph upgraded in place (`pointer updated`); a current or hand-edited pointer is left as it is (`skipped`).
+ 
++**On a project without `apriori/managed.json` (init-premanifest-adoption).** When there is no manifest and the runbook predates this run as a regular file — a project an older CLI initialized, or one whose manifest was deleted — the project is mid-migration: `apriori update` still owes it the one adoption pass on proof a manifest-less project gets. `init` records what it creates as always, the moment each file exists, and marks the manifest `"adoptPending": true` (`apriori/managed.json  (created (adoption pending — …))`); a later `init` keeps the mark. The next `apriori update` adopts the older runbook (refreshing it — copy your notes out of a customised one first) and every unlisted command file whose bytes are a shipped generation, leaves listed files to their usual rules (an edited one stays `modified`), and clears the mark only when the whole run got through. Without the mark, a manifest of only that run's files would end the adoption pass and leave the older files `unmanaged` for good. A runbook path that is a directory or a symlink sets no mark.
++
+ **`--test-cmd` round-trips byte-for-byte (6.2).** The command is written into `apriori/process-config.md` through the serializer twin of the reader (`config.encodeCell` / `splitCells`): a `|` is stored as `\|`, backslashes stay literal, `$&`, `$1` and any other replacement-pattern lookalike are written verbatim (callback replacement, never a template string), unicode untouched — `getConfig(root, 'test-cmd')` returns exactly what you passed, so `verify` runs exactly that. Refused with a clear error BEFORE anything is written (exit 2): an empty value (omit the flag to inherit nothing), a command containing a newline (a config row is one line — wrap it in a script and name that), and the one shape the cell grammar cannot represent, an odd run of backslashes directly before a pipe. Leading and trailing whitespace is trimmed. `--language` goes through the same pair.
+ 
+ ## apriori doctor
+diff --git a/docs/cli_cn.md b/docs/cli_cn.md
+index 479a979..c04bd04 100644
+--- a/docs/cli_cn.md
++++ b/docs/cli_cn.md
+@@ -16,6 +16,8 @@ usage: apriori init [--tools <a,b,...>] [--test-cmd "<cmd>"] [--language <lang>]
+ 
+ **`--tools` 在写入任何东西之前整体校验(6.2)。** 只要有一个未知键——`claud`、`Claude`、`claude,claud` 都一样——就以 2 退出并打印 `unknown tool '…' — known tools: claude, codex, cursor, copilot, opencode, windsurf`,什么都不创建,连 `apriori/` 根目录也不。规则文件里若已有工具写的**旧**指针段落(与某个历史版本逐字相同),该段落会原地升级(`pointer updated`);当前版本或手改过的指针保持原样(`skipped`)。
+ 
++**项目没有 `apriori/managed.json` 时(init-premanifest-adoption)。** 没有清单、且 runbook 早于本次运行就以普通文件存在——由更老的 CLI 初始化的项目,或清单被删掉的项目——这个项目处于迁移中:`apriori update` 还欠它一次没有清单的项目都会得到的按证据认领。`init` 照常登记它创建的文件(每个文件一出现就登记),并在清单上标记 `"adoptPending": true`(`apriori/managed.json  (created (adoption pending — …))`);之后再跑 `init` 会保留这个标记。下一次 `apriori update` 认领较早的 runbook(会刷新它——定制过的话先把笔记抄出来)以及字节等于某个已发布版本的每个未登记命令文件,已登记的文件照常处理(改过的仍报 `modified`),整次运行全部完成后才清掉标记。没有这个标记,一份只列本次文件的清单会终止认领,让更早的文件从此 `unmanaged`。runbook 位置是目录或符号链接时不打标记。
++
+ **`--test-cmd` 逐字节往返(6.2)。** 命令经读取器的序列化孪生(`config.encodeCell` / `splitCells`)写入 `apriori/process-config.md`:`|` 存为 `\|`,反斜线保持原样,`$&`、`$1` 以及任何长得像替换模式的东西都逐字写入(回调替换,绝不用模板字符串),unicode 原样——`getConfig(root, 'test-cmd')` 返回的正是你传入的,所以 `verify` 跑的也正是它。以下在写入任何东西之前就以清楚的错误拒绝(退出码 2):空值(要继承什么都不传就省略该 flag)、含换行的命令(配置行只有一行——把它包进脚本再写脚本名)、以及单元格文法唯一表示不了的形状:紧贴管道符之前的奇数个反斜线。首尾空白会被裁掉。`--language` 走同一对函数。
+ 
+ ## apriori doctor
+diff --git a/test/init.test.js b/test/init.test.js
+index e679291..2e6d5ef 100644
+--- a/test/init.test.js
++++ b/test/init.test.js
+@@ -369,6 +369,104 @@ test('IN-13 fresh init writes the manifest for exactly what it created', () => {
+     assert.strictEqual(after.find((x) => x.file === rel).action, 'up-to-date', rel);
+ });
+ 
++test('IN-21 init on a project without a manifest marks it mid-migration; update adopts, then clears the mark', () => {
++  const managed = require('../lib/managed');
++  const locatable = (() => { let fd; try { fd = umFs.openSync(__filename, 'r'); return umFs.readlinkSync(`/proc/self/fd/${fd}`).length > 0; } catch { return false; } finally { if (fd !== undefined) umFs.closeSync(fd); } })();
++  const raw = (root) => JSON.parse(umFs.readFileSync(umPath.join(root, 'apriori', 'managed.json'), 'utf8'));
++  const act = (res, f) => (res.actions.find((a) => a.file === f) || {}).action;
++  // a project an older CLI initialized: no managed.json, an older runbook, no guide yet
++  const old = () => {
++    const root = umTmp();
++    umInit.scaffold(root, ['claude']);
++    umFs.rmSync(umPath.join(root, 'apriori', 'managed.json'));
++    umFs.rmSync(umPath.join(root, 'apriori', 'guides'), { recursive: true });
++    umFs.writeFileSync(umPath.join(root, 'apriori', 'runbook.md'), '# an older runbook\n');
++    return root;
++  };
++  // dry run: the mark is reported, nothing is written
++  const dry = old();
++  assert.match(act(umInit.scaffold(dry, ['claude', 'codex'], { dryRun: true }), 'apriori/managed.json'), /^created \(adoption pending — /);
++  assert.ok(!umFs.existsSync(umPath.join(dry, 'apriori', 'managed.json')));
++  // real run: what it creates is recorded at once — the guide included, on any platform — under the mark
++  const root = old();
++  const r = umInit.scaffold(root, ['claude', 'codex']);
++  assert.match(act(r, 'apriori/managed.json'), /^created \(adoption pending — the runbook and command files that predate this run are still update's to adopt on proof/);
++  const m0 = raw(root);
++  assert.strictEqual(m0.adoptPending, true);
++  assert.deepStrictEqual(Object.keys(m0.files).sort(), ['.codex/prompts/apriori-discuss.md', '.codex/prompts/apriori.md', 'apriori/guides/prototype-walk.md']);
++  // a later init keeps the mark
++  umFs.rmSync(umPath.join(root, '.codex', 'prompts', 'apriori-discuss.md'));
++  umInit.scaffold(root, ['codex']);
++  assert.strictEqual(raw(root).adoptPending, true);
++  // a listed file the owner edited meanwhile keeps its protection while the pass runs
++  umFs.appendFileSync(umPath.join(root, '.codex', 'prompts', 'apriori.md'), '\nlocal\n');
++  // dry run of the pass: reported, nothing written, the mark stays
++  const before = umFs.readFileSync(umPath.join(root, 'apriori', 'managed.json'), 'utf8');
++  assert.strictEqual(act(umUpdate.run(root, { dryRun: true }), 'apriori/runbook.md'), 'updated');
++  assert.strictEqual(umFs.readFileSync(umPath.join(root, 'apriori', 'managed.json'), 'utf8'), before);
++  // an update that throws midway (a command path is a directory) keeps the mark: it had already
++  // refreshed the runbook, which is still unrecorded — the next pass adopts it
++  const cmd = umPath.join(root, '.claude', 'commands', 'apriori.md');
++  const keep = umFs.readFileSync(cmd);
++  umFs.rmSync(cmd); umFs.mkdirSync(cmd);
++  assert.throws(() => umUpdate.run(root), /EISDIR/);
++  assert.strictEqual(raw(root).adoptPending, true);
++  assert.ok(!('apriori/runbook.md' in raw(root).files));
++  umFs.rmdirSync(cmd); umFs.writeFileSync(cmd, keep);
++  // the pass: the runbook adopted, the older command files adopted on proof, the edited listed file
++  // left alone, the guide as recorded; the mark cleared; every entry the hash of the file on disk
++  const u = umUpdate.run(root);
++  assert.strictEqual(act(u, 'apriori/runbook.md'), 'up-to-date');
++  for (const f of ['.claude/commands/apriori.md', '.claude/commands/apriori-discuss.md']) assert.strictEqual(act(u, f), 'up-to-date', f);
++  assert.match(act(u, '.codex/prompts/apriori.md'), /^modified \(skipped/);
++  assert.strictEqual(act(u, 'apriori/guides/prototype-walk.md'), 'up-to-date');
++  const m = raw(root);
++  assert.ok(!('adoptPending' in m), 'the pass clears the mark');
++  assert.deepStrictEqual(Object.keys(m.files).sort(), ['.claude/commands/apriori-discuss.md', '.claude/commands/apriori.md', '.codex/prompts/apriori-discuss.md', '.codex/prompts/apriori.md', 'apriori/guides/prototype-walk.md', 'apriori/runbook.md']);
++  for (const [f, h] of Object.entries(m.files)) if (f !== '.codex/prompts/apriori.md') assert.strictEqual(h, umSha(umPath.join(root, f)), f);
++  // after the pass, an ordinary manifest: an unlisted file with shipped bytes is NOT adopted (UP-06 stays)
++  const opencode = umPath.join(root, '.opencode', 'command', 'apriori.md');
++  umFs.mkdirSync(umPath.dirname(opencode), { recursive: true });
++  umFs.copyFileSync(umPath.join(root, '.claude', 'commands', 'apriori.md'), opencode);
++  assert.match(act(umUpdate.run(root), '.opencode/command/apriori.md'), /^unmanaged \(skipped/);
++  // the runbook path not a regular file: no mark, and what init created is recorded as always — so
++  // repairing the path and retrying strands nothing (review round 1, R2)
++  const dirRb = umTmp();
++  umInit.scaffold(dirRb, ['claude']);
++  umFs.rmSync(umPath.join(dirRb, 'apriori', 'managed.json'));
++  umFs.rmSync(umPath.join(dirRb, 'apriori', 'runbook.md')); umFs.mkdirSync(umPath.join(dirRb, 'apriori', 'runbook.md'));
++  umInit.scaffold(dirRb, ['codex']);
++  const dm = raw(dirRb);
++  assert.ok(!('adoptPending' in dm));
++  assert.ok('.codex/prompts/apriori.md' in dm.files);
++  umFs.rmdirSync(umPath.join(dirRb, 'apriori', 'runbook.md'));
++  umInit.scaffold(dirRb, ['codex']);
++  assert.strictEqual(act(umUpdate.run(dirRb), '.codex/prompts/apriori.md'), 'up-to-date');
++  // the recovery MIGRATING gives for a partial manifest an older init already wrote: mark it, update once —
++  // its entries keep their protection, the older files are adopted
++  const partial = old();
++  umInit.scaffold(partial, ['codex']);
++  const pm = raw(partial); delete pm.adoptPending;
++  umFs.writeFileSync(umPath.join(partial, 'apriori', 'managed.json'), JSON.stringify(pm));
++  assert.match(act(umUpdate.run(partial), 'apriori/runbook.md'), /^unmanaged \(skipped/);
++  umFs.appendFileSync(umPath.join(partial, '.codex', 'prompts', 'apriori.md'), '\nlocal\n');
++  umFs.writeFileSync(umPath.join(partial, 'apriori', 'managed.json'), JSON.stringify({ ...raw(partial), adoptPending: true }));
++  const pu = umUpdate.run(partial);
++  assert.strictEqual(act(pu, 'apriori/runbook.md'), 'updated');
++  assert.strictEqual(act(pu, '.claude/commands/apriori.md'), 'up-to-date');
++  assert.match(act(pu, '.codex/prompts/apriori.md'), /^modified \(skipped/);
++  // hygiene: the mark is a boolean or absent
++  umFs.writeFileSync(umPath.join(partial, 'apriori', 'managed.json'), JSON.stringify({ ...raw(partial), adoptPending: 'yes' }));
++  assert.throws(() => managed.readManifest(partial, require('../lib/init').TOOLS), /managed\.json: adoptPending must be true or false, not "yes"/);
++  // a fresh project and a project with an ordinary manifest are unchanged (IN-13, IN-14)
++  const fresh = umTmp();
++  umInit.scaffold(fresh, ['claude']);
++  assert.ok(!('adoptPending' in raw(fresh)));
++  umInit.scaffold(fresh, ['codex']);
++  assert.ok(!('adoptPending' in raw(fresh)));
++  void locatable;
++});
++
+ test('IN-14 add-tool init merges without adopting bystanders', () => {
+   const root = umTmp();
+   umInit.scaffold(root, ['claude']);
+
+exec
+/usr/bin/zsh -lc "rg -n 'readManifest\\(|writeManifest\\(|adoptPending|function legacyRoots|function containsFuturePath' lib test/init.test.js && nl -ba lib/update.js | sed -n '38,190p' && rg -n -A45 -B5 'function legacyRoots' lib/resolve.js && rg -n -A35 -B5 'function containsFuturePath' lib/archive-merge.js" in /root/terra/wt-fu2
+ succeeded in 0ms:
+lib/update.js:45:  const manifest = managed.readManifest(root, tools);       // hygiene throws before any touch
+lib/update.js:52:  // `adoptPending` (a project init touched mid-migration); listed files keep their managed rules either
+lib/update.js:55:  const adopting = manifest === null || manifest.adoptPending;
+lib/update.js:75:    if (adopting && adoptable(cur)) {                       // adoption on proof (no manifest yet, or one marked adoptPending)
+lib/update.js:182:  if (manifestDirty && !dry) managed.writeManifest(root, files);
+lib/resolve.js:127:function legacyRoots(root) {
+test/init.test.js:395:  assert.strictEqual(m0.adoptPending, true);
+test/init.test.js:400:  assert.strictEqual(raw(root).adoptPending, true);
+test/init.test.js:413:  assert.strictEqual(raw(root).adoptPending, true);
+test/init.test.js:424:  assert.ok(!('adoptPending' in m), 'the pass clears the mark');
+test/init.test.js:440:  assert.ok(!('adoptPending' in dm));
+test/init.test.js:449:  const pm = raw(partial); delete pm.adoptPending;
+test/init.test.js:453:  umFs.writeFileSync(umPath.join(partial, 'apriori', 'managed.json'), JSON.stringify({ ...raw(partial), adoptPending: true }));
+test/init.test.js:459:  umFs.writeFileSync(umPath.join(partial, 'apriori', 'managed.json'), JSON.stringify({ ...raw(partial), adoptPending: 'yes' }));
+test/init.test.js:460:  assert.throws(() => managed.readManifest(partial, require('../lib/init').TOOLS), /managed\.json: adoptPending must be true or false, not "yes"/);
+test/init.test.js:464:  assert.ok(!('adoptPending' in raw(fresh)));
+test/init.test.js:466:  assert.ok(!('adoptPending' in raw(fresh)));
+lib/init.js:121:  const manifest = managed.readManifest(root, tools);
+lib/init.js:130:  // what it creates exactly as always, the moment it exists, and marks the manifest `adoptPending`;
+lib/init.js:136:  const adoptPending = manifest ? manifest.adoptPending
+lib/init.js:143:    managed.writeManifest(root, files, { adoptPending });
+lib/init.js:204:  if (created.length) act('apriori/managed.json', (manifest ? 'merged' : 'created') + (adoptPending
+lib/managed.js:63:function readManifest(root, tools) {
+lib/managed.js:83:  // `adoptPending: true` — the project is mid-migration from before managed.json: update still owes
+lib/managed.js:86:  if (Object.prototype.hasOwnProperty.call(doc, 'adoptPending') && typeof doc.adoptPending !== 'boolean')
+lib/managed.js:87:    throw new Error(`managed.json: adoptPending must be true or false, not ${JSON.stringify(doc.adoptPending)}`);
+lib/managed.js:88:  return { files: { ...doc.files }, adoptPending: doc.adoptPending === true };
+lib/managed.js:91:// opts.adoptPending keeps the mid-migration mark; every writer that is not the adoption pass
+lib/managed.js:93:function writeManifest(root, files, opts = {}) {
+lib/managed.js:99:  if (opts.adoptPending) doc.adoptPending = true;
+lib/archive-merge.js:272:function containsFuturePath(root, target) {
+    38	// Pre-manifest projects are adopted on proof (runbook unconditionally; command files
+    39	// only when their bytes match a shipped template generation).
+    40	// Returns { actions: [{file, action}] }; throws on no runbook or manifest hygiene errors.
+    41	function run(root, opts = {}) {
+    42	  const rb = path.join(root, 'apriori', 'runbook.md');
+    43	  if (!fs.existsSync(rb)) throw new Error(`no apriori/runbook.md here — run 'apriori init' first`);
+    44	  const tools = opts.tools || TOOLS;                        // test-only injection (K=2)
+    45	  const manifest = managed.readManifest(root, tools);       // hygiene throws before any touch
+    46	  const generations = opts.generations || managed.TEMPLATE_GENERATIONS;
+    47	  const srcs = opts.commandSrc || TEMPLATE_SRC;
+    48	  const dry = !!opts.dryRun;
+    49	  const actions = [];
+    50	  const files = manifest ? { ...manifest.files } : {};
+    51	  // the adoption pass on proof runs while no manifest exists, and once more for a manifest marked
+    52	  // `adoptPending` (a project init touched mid-migration); listed files keep their managed rules either
+    53	  // way. The pass always writes the manifest — materializing it, or clearing the mark — and only when
+    54	  // the whole run got through: a run that throws leaves the mark for the next one.
+    55	  const adopting = manifest === null || manifest.adoptPending;
+    56	  let manifestDirty = adopting;
+    57	
+    58	  // one candidate: managed semantics when listed; adoption when pre-manifest; unmanaged otherwise
+    59	  const consider = (rel, srcAbs, adoptable) => {
+    60	    const p = path.join(root, rel);
+    61	    const listed = manifest && Object.prototype.hasOwnProperty.call(manifest.files, rel);
+    62	    if (!fs.existsSync(p)) {
+    63	      if (listed) actions.push({ file: rel, action: "missing (skipped — recreating is init's job)" });
+    64	      return;
+    65	    }
+    66	    managed.assertContained(root, rel);                     // before ANY read or hash
+    67	    const cur = managed.hashFile(p);
+    68	    if (listed) {
+    69	      if (cur !== manifest.files[rel]) { actions.push({ file: rel, action: `modified (skipped — locally modified; ${CURE})` }); return; }
+    70	      const act = refresh(p, srcAbs, dry);
+    71	      actions.push({ file: rel, action: act });
+    72	      if (act === 'updated') { files[rel] = managed.hashBytes(fs.readFileSync(srcAbs)); manifestDirty = true; }
+    73	      return;
+    74	    }
+    75	    if (adopting && adoptable(cur)) {                       // adoption on proof (no manifest yet, or one marked adoptPending)
+    76	      const act = refresh(p, srcAbs, dry);
+    77	      actions.push({ file: rel, action: act });
+    78	      files[rel] = act === 'updated' ? managed.hashBytes(fs.readFileSync(srcAbs)) : cur;
+    79	      return;
+    80	    }
+    81	    actions.push({ file: rel, action: `unmanaged (skipped — not created by this tool; ${CURE})` });
+    82	  };
+    83	
+    84	  // runbook: adopted unconditionally pre-manifest (its refresh is update's reason to exist)
+    85	  consider('apriori/runbook.md', opts.runbookSrc || RUNBOOK_SRC, () => true);
+    86	  // the guide the runbook names: listed → refreshed like any managed file (modified or missing is
+    87	  // reported and left alone — recreating a listed file is init's job); never installed (not listed,
+    88	  // not present) → installed and recorded now; present but not listed → adopted only on proof (its
+    89	  // bytes are exactly a shipped edition — an install that failed before its record), else the user's
+    90	  // and left alone. Every branch first checks what sits at the path and at apriori/guides (lstat — a
+    91	  // symlink is never followed): an obstruction is reported and left alone before anything is hashed or written.
+    92	  const guideAbs = path.join(root, managed.GUIDE_REL);
+    93	  const guideSrc = opts.guideSrc || managed.GUIDE_SRC;
+    94	  const guideGens = opts.guideGenerations || managed.GUIDE_GENERATIONS;
+    95	  const guideListed = manifest && Object.prototype.hasOwnProperty.call(manifest.files, managed.GUIDE_REL);
+    96	  const obstruction = managed.guideObstruction(root);
+    97	  const G = managed.GUIDE_REL;
+    98	  if (obstruction) {
+    99	    actions.push({ file: G, action: obstruction });
+   100	  } else if (!fs.existsSync(guideAbs)) {
+   101	    if (guideListed) actions.push({ file: G, action: "missing (skipped — recreating is init's job)" });
+   102	    else {
+   103	      const a = managed.installGuide(root, dry);
+   104	      actions.push({ file: G, action: a === 'created' ? 'created (first install)' : a });
+   105	      if (a === 'created' && !dry) { files[G] = managed.hashFile(guideAbs); manifestDirty = true; }
+   106	    }
+   107	  } else {
+   108	    // ONE no-follow look: the hash judged (listed entry, or a shipped edition) and the bytes rewritten
+   109	    // belong to the same file — a symlink swapped in after the checks is never written through
+   110	    const seen = managed.readPlain(root, guideAbs);
+   111	    const cur = seen && managed.hashBytes(seen.bytes);
+   112	    const refreshGuide = () => {
+   113	      const want = fs.readFileSync(guideSrc);
+   114	      if (seen.bytes.equals(want)) return 'up-to-date';
+   115	      if (dry) return seen.st.nlink !== 1 ? LINKED : !seen.located ? UNCONFIRMED : 'updated';   // the run's own answer, predicted
+   116	      const w = managed.writePlain(root, guideAbs, want, seen);
+   117	      return w === 'written' ? 'updated' : w === 'changed' ? CHANGED : w === 'linked' ? LINKED : UNCONFIRMED;
+   118	    };
+   119	    const heldBack = (act) => act === CHANGED || act === LINKED || act === UNCONFIRMED;
+   120	    if (!seen) actions.push({ file: G, action: CHANGED });
+   121	    else if (guideListed) {
+   122	      if (cur !== manifest.files[G]) actions.push({ file: G, action: `modified (skipped — locally modified; ${CURE})` });
+   123	      else {
+   124	        const act = refreshGuide();
+   125	        actions.push({ file: G, action: act });
+   126	        if (act === 'updated') { files[G] = managed.hashBytes(fs.readFileSync(guideSrc)); manifestDirty = true; }
+   127	      }
+   128	    } else if (guideGens.includes(cur)) {
+   129	      // adoption RECORDS ownership on the strength of the bytes read, so it needs the read located on its
+   130	      // descriptor too: a pathname check right after the open can be fooled into judging an outside file
+   131	      const act = seen.located ? refreshGuide() : UNCONFIRMED;
+   132	      if (heldBack(act)) actions.push({ file: G, action: act });
+   133	      else {
+   134	        actions.push({ file: G, action: act === 'updated' ? 'adopted and updated (its bytes were an earlier shipped edition)' : 'adopted (its bytes are the shipped guide)' });
+   135	        files[G] = act === 'updated' ? managed.hashBytes(fs.readFileSync(guideSrc)) : cur;
+   136	        manifestDirty = true;
+   137	      }
+   138	    } else actions.push({ file: G, action: `unmanaged (skipped — not created by this tool; ${CURE})` });
+   139	  }
+   140	  // protocol-required scaffolding the refreshed runbook relies on (IN-11): create if missing,
+   141	  // NEVER modify — and each piece on its own: a lone missing tmp/ is recreated too (BD-02)
+   142	  const gi = path.join(root, 'apriori', '.gitignore');
+   143	  if (!fs.existsSync(gi)) {
+   144	    if (!dry) fs.writeFileSync(gi, 'tmp/\n');
+   145	    actions.push({ file: 'apriori/.gitignore', action: 'created' });
+   146	  }
+   147	  const tmpDir = path.join(root, 'apriori', 'tmp');
+   148	  let tmpSt = null;
+   149	  try { tmpSt = fs.lstatSync(tmpDir); } catch { /* absent */ }
+   150	  if (!tmpSt) {
+   151	    if (!dry) fs.mkdirSync(tmpDir, { recursive: true });
+   152	    actions.push({ file: 'apriori/tmp/', action: 'created' });
+   153	  } else if (!tmpSt.isDirectory()) {
+   154	    actions.push({ file: 'apriori/tmp/', action: 'not a directory (skipped — something else sits at apriori/tmp; move it and rerun)' });
+   155	  }
+   156	  // each mapped template is adopted ONLY against its own generation table — a body that is a
+   157	  // legal generation of a DIFFERENT template is unmanaged, in either direction (MC-04)
+   158	  for (const key of Object.keys(tools)) {
+   159	    for (const [tplId, rel] of Object.entries(tools[key].commands || {})) {
+   160	      const gens = generations[tplId] || [];
+   161	      consider(rel, srcs[tplId], (cur) => gens.includes(cur));
+   162	    }
+   163	  }
+   164	  // the rules files are USER-OWNED; the one thing update may change in them is the pointer
+   165	  // paragraph this tool wrote, and only when it is an exact previous generation (BD-04) —
+   166	  // detected the way command files are: verbatim, never by resemblance
+   167	  const seenRules = new Set();
+   168	  for (const key of Object.keys(tools)) {
+   169	    const rel = TOOLS[key].rules;
+   170	    if (!rel || seenRules.has(rel)) continue;
+   171	    seenRules.add(rel);
+   172	    const p = path.join(root, rel);
+   173	    let st;
+   174	    try { st = fs.lstatSync(p); } catch { continue; }
+   175	    if (st.isSymbolicLink() || !st.isFile() || !containsFuturePath(root, p)) continue;   // not a plain contained file: not touched, not judged
+   176	    const up = upgradePointer(fs.readFileSync(p, 'utf8'));
+   177	    if (up.kind === 'none' || up.kind === 'current') continue;      // a user-owned file with nothing to do is not an action
+   178	    if (up.kind === 'hand-edited') { actions.push({ file: rel, action: 'pointer (skipped — not a shipped generation; hand-edited, left alone)' }); continue; }
+   179	    if (!dry) fs.writeFileSync(p, up.text);
+   180	    actions.push({ file: rel, action: 'pointer updated' });
+   181	  }
+   182	  if (manifestDirty && !dry) managed.writeManifest(root, files);
+   183	  // legacy 3.x layout roots: refreshing the protocol over pre-4.0 artifacts must be loud (UP-12)
+   184	  const legacy = legacyRoots(root);
+   185	  const warnings = legacy.length
+   186	    ? [`legacy 3.x layout root(s) present: ${legacy.join(', ')} — migrate them into their change bundles, see MIGRATING.md (4.0): https://github.com/Apriorhythm/apriori-spec-development/blob/main/MIGRATING.md`]
+   187	    : [];
+   188	  return { actions, warnings };
+   189	}
+   190	
+122-// may own, and this probe is existence-level: it never reads contents, so it cannot tell a 3.x
+123-// artifact from the user's own notes. Dropped 2026-09-12 after a real trial workspace was told to
+124-// "migrate" its own product requirements. Trade-off accepted: a project whose ONLY remaining
+125-// pre-4.0 artifacts sit in those two roots is no longer reminded — that migration is manual.
+126-const LEGACY_ROOTS = ['apriori/review', 'apriori/design', 'apriori/explore'];
+127:function legacyRoots(root) {
+128-  const hits = [];
+129-  for (const rel of LEGACY_ROOTS) {
+130-    try { fs.lstatSync(path.join(root, ...rel.split('/'))); hits.push(rel + '/'); } catch { /* absent */ }
+131-  }
+132-  return hits;
+133-}
+134-
+135-// file-level read guard: a path the tool is about to read must be a REGULAR file
+136-// contained (realpath) within its bundle. Returns null (safe) or a STRUCTURED defect
+137-// { kind: 'missing'|'symlink'|'not-file'|'bad-ancestor'|'escape', path } — consumers
+138-// switch on kind, never on message prefixes (resolver-trust). A missing leaf walks
+139-// its ancestors up to the bundle root: a symlinked/non-directory ancestor is a
+140-// bad-ancestor defect; only a cleanly-absent chain is 'missing'.
+141-function fileReadDefect(bundleDir, p) {
+142-  let st;
+143-  try { st = fs.lstatSync(p); } catch {
+144-    let cur = path.dirname(p);
+145-    const stop = path.resolve(bundleDir);
+146-    while (cur.startsWith(stop)) {
+147-      let ast = null;
+148-      try { ast = fs.lstatSync(cur); } catch { /* keep walking */ }
+149-      if (ast) {
+150-        if (ast.isSymbolicLink() || !ast.isDirectory()) return { kind: 'bad-ancestor', path: cur };
+151-        break;                                             // nearest existing ancestor is a clean dir
+152-      }
+153-      if (cur === stop) break;
+154-      cur = path.dirname(cur);
+155-    }
+156-    return { kind: 'missing', path: p };
+157-  }
+158-  if (st.isSymbolicLink()) return { kind: 'symlink', path: p };
+159-  if (!st.isFile()) return { kind: 'not-file', path: p };
+160-  if (!containsExistingPath(bundleDir, p)) return { kind: 'escape', path: p };
+161-  if (!containsExistingPath(bundleDir, p)) return { kind: 'escape', path: p };
+162-  return null;
+163-}
+164-
+165-module.exports = { CHANGE_NAME_RE, containsExistingPath, resolveChange, configCas, configCasProblem, legacyRoots, fileReadDefect, validateChangeName };
+267-// ---- paths and discovery ---------------------------------------------------
+268-
+269-// Realpath containment of a FUTURE write target: a not-yet-existing target is judged by its
+270-// nearest existing ancestor, and the root itself is NOT inside (strict). Fail-closed. NOT
+271-// resolve's containsExistingPath (existing paths only, root counts as inside).
+272:function containsFuturePath(root, target) {
+273-  let realRoot;
+274-  try { realRoot = fs.realpathSync(root); } catch { return false; }
+275-  let cur = path.resolve(target);
+276-  const rest = [];
+277-  while (!fs.existsSync(cur)) {
+278-    const parent = path.dirname(cur);
+279-    if (parent === cur) return false;
+280-    rest.unshift(path.basename(cur));
+281-    cur = parent;
+282-  }
+283-  let realCur;
+284-  try { realCur = fs.realpathSync(cur); } catch { return false; }
+285-  const full = rest.length ? path.join(realCur, ...rest) : realCur;
+286-  return full !== realRoot && (full + path.sep).startsWith(realRoot + path.sep);
+287-}
+288-
+289-// Every .md under `dir`, each real file once. A DIRECTORY is judged BEFORE it is entered
+290-// (BD-08): its realpath must lie inside the walk root — a symlinked directory that resolves
+291-// outside is REFUSED (thrown, never silently skipped: skipping would hide deltas, entering
+292-// would smuggle files in) — and a realpath already visited is not entered again, so a symlink
+293-// loop terminates instead of recursing until the stack dies. Leaf containment is still the
+294-// caller's (discoverDeltas judges each file against its own root).
+295-function mdFilesUnder(dir) {
+296-  const out = [];
+297-  if (!fs.existsSync(dir)) return out;
+298-  const realRoot = fs.realpathSync(dir);
+299-  const inside = (real) => real === realRoot || real.startsWith(realRoot + path.sep);
+300-  const visited = new Set([realRoot]);
+301-  const walk = (d) => {
+302-    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+303-      const p = path.join(d, e.name);
+304-      // Dirents reflect lstat: a symlink is neither file nor directory. Follow it explicitly —
+305-      // silently skipping a symlinked dir would hide deltas (fail-open); containment judges the target.
+306-      let isDir = e.isDirectory();
+307-      if (e.isSymbolicLink()) {
+
+exec
+/usr/bin/zsh -lc "nl -ba lib/init.js | sed -n '112,240p'; nl -ba lib/managed.js | sed -n '61,112p'; sed -n '/"'^### Requirement: update refreshes only manifest-proven/,/''^### Requirement:/p'"' apriori/specs/update/spec.md" in /root/terra/wt-fu2
+exec
+/usr/bin/zsh -lc 'cat apriori/changes/init-premanifest-adoption/flow-state.md && node bin/apriori.js gate --change init-premanifest-adoption --json && git diff --check' in /root/terra/wt-fu2
+ succeeded in 0ms:
+   112	function scaffold(root, toolKeys, opts = {}) {
+   113	  const dry = !!opts.dryRun;
+   114	  // the whole tool list is validated FIRST — an unknown key never reaches a write (BD-01)
+   115	  const unknown = unknownTool(toolKeys);
+   116	  if (unknown) throw new Error(unknown);
+   117	  // manifest hygiene FIRST: an untrustworthy managed.json blocks init before any write (IN-17)
+   118	  const managed = require('./managed');
+   119	  const tools = opts.tools || TOOLS;                      // test-only injection (K=2)
+   120	  const srcs = opts.templateSrc || TEMPLATE_SRC;
+   121	  const manifest = managed.readManifest(root, tools);
+   122	  const created = [];                                     // rels created THIS run — the only manifest writes
+   123	  // each file is recorded the moment it is created: a later step that throws (a rules path that is a
+   124	  // directory, a tool directory that is a file …) must not leave anything this run created unrecorded —
+   125	  // init never adopts what it finds, so an unrecorded file of its own would stay unmanaged on every retry
+   126	  // A project with no manifest whose runbook predates this run — initialized before managed.json
+   127	  // existed, or its manifest deleted — is MID-MIGRATION: update still owes it the one adoption pass on
+   128	  // proof that a manifest-less project gets, and a manifest listing only this run's files would end
+   129	  // that pass for good (the older runbook and command files left unmanaged — FU-2). So init records
+   130	  // what it creates exactly as always, the moment it exists, and marks the manifest `adoptPending`;
+   131	  // a later init keeps the mark, and update clears it once its adoption pass has run. Only a regular
+   132	  // runbook inside the project counts: a directory or a symlink there is not a runbook to migrate.
+   133	  const rbAbs = path.join(root, 'apriori', 'runbook.md');
+   134	  let rbSt = null;
+   135	  try { rbSt = fs.lstatSync(rbAbs); } catch { /* absent */ }
+   136	  const adoptPending = manifest ? manifest.adoptPending
+   137	    : !!(rbSt && rbSt.isFile() && require('./archive-merge').containsFuturePath(root, rbAbs));
+   138	  const record = (rel) => {
+   139	    created.push(rel);
+   140	    if (dry) return;
+   141	    const files = manifest ? { ...manifest.files } : {};
+   142	    for (const r of created) files[r] = managed.hashFile(path.join(root, r));
+   143	    managed.writeManifest(root, files, { adoptPending });
+   144	  };
+   145	  const actions = [];
+   146	  const act = (file, action) => actions.push({ file, action });
+   147	  const seed = (rel, srcAbs) => {
+   148	    const p = path.join(root, rel);
+   149	    if (!fs.existsSync(p)) { if (!dry) { ensureDir(p); fs.copyFileSync(srcAbs, p); } act(rel, 'created'); return true; }
+   150	    act(rel, 'skipped'); return false;
+   151	  };
+   152	
+   153	  // 1. apriori/ root: runbook + process-config (never clobbered) + working dirs
+   154	  if (seed('apriori/runbook.md', RUNBOOK_SRC)) record('apriori/runbook.md');
+   155	  // the guide the runbook names for a prototype walk — tool-owned, one exact file
+   156	  const guideAct = managed.installGuide(root, dry);
+   157	  act(managed.GUIDE_REL, guideAct);
+   158	  if (guideAct === 'created') record(managed.GUIDE_REL);
+   159	  seed('apriori/process-config.md', path.join(TEMPLATES, 'process-config.md'));
+   160	  // ephemeral scratch (P7 screenshot self-checks etc.) — gitignored, never committed (IN-11)
+   161	  const gi = path.join(root, 'apriori', '.gitignore');
+   162	  if (!fs.existsSync(gi)) { if (!dry) { ensureDir(gi); fs.writeFileSync(gi, 'tmp/\n'); } act('apriori/.gitignore', 'created'); }
+   163	  else act('apriori/.gitignore', 'skipped');
+   164	  // pin a language and/or persist a test command in the scaffolded config (only on a freshly-created config).
+   165	  // Both go through config.encodeCell — the serializer twin of the reader — and a CALLBACK
+   166	  // replacement: a template string would read `$&` / `$1` inside the command as replacement
+   167	  // patterns, and a bare `|` would split the cell (6.2, A-4). A value the cell cannot carry
+   168	  // throws before the write; the CLI validates the same way before it touches anything.
+   169	  if ((opts.language || opts.testCmd) && !dry) {
+   170	    const cfg = path.join(root, 'apriori', 'process-config.md');
+   171	    const created = actions.some((a) => a.file === 'apriori/process-config.md' && a.action === 'created');
+   172	    if (created) {
+   173	      const cell = (label, v) => { const e = encodeCell(v); if (e.error) throw new Error(`${label} ${e.error}`); return e.cell; };
+   174	      let body = fs.readFileSync(cfg, 'utf8');
+   175	      if (opts.language) { const c = cell('--language', opts.language); body = body.replace(/(\| language \| )auto( \|)/, (m, a, b) => a + c + b); }
+   176	      if (opts.testCmd) {  // consumed by `apriori verify` as the default when --test-cmd is omitted
+   177	        const c = cell('--test-cmd', opts.testCmd);
+   178	        body = body.replace(/^(\| language \|.*)$/m, (m) => `${m}\n| test-cmd | ${c} | any shell command emitting TAP — \`apriori verify\`'s default | (none) |`);
+   179	      }
+   180	      fs.writeFileSync(cfg, body);
+   181	    }
+   182	  }
+   183	  if (!dry) for (const sub of ['specs', 'changes', 'changes/archive', 'truth', 'tmp'])
+   184	    fs.mkdirSync(path.join(root, 'apriori', sub), { recursive: true });
+   185	
+   186	  // 2. per-tool pointers / commands
+   187	  const levels = {};
+   188	  for (const key of toolKeys) {
+   189	    const t = tools[key];
+   190	    if (!t) continue;
+   191	    act(t.rules, writePointer(root, t.rules, t.mdc, dry));
+   192	    for (const [tplId, rel] of Object.entries(t.commands || {})) {
+   193	      const src = srcs[tplId];
+   194	      if (!src) throw new Error(`no template source registered for '${tplId}'`);
+   195	      const cmdAct = writeCommand(root, rel, src, dry);
+   196	      act(rel, cmdAct);
+   197	      if (cmdAct === 'created') record(rel);               // pre-existing files are never adopted
+   198	    }
+   199	    levels[key] = t.level;
+   200	  }
+   201	  // 3. the managed manifest: ONLY what THIS run created, merged over valid existing entries (a
+   202	  // recreated missing file gets a fresh hash — the delete-and-reinit cure closes). record() already
+   203	  // wrote it as each file appeared; dry-run reports the would-be entries and touches nothing.
+   204	  if (created.length) act('apriori/managed.json', (manifest ? 'merged' : 'created') + (adoptPending
+   205	    ? " (adoption pending — the runbook and command files that predate this run are still update's to adopt on proof: run 'apriori update')"
+   206	    : ''));
+   207	  return { actions, levels };
+   208	}
+   209	
+   210	function report(scaffoldResult) {
+   211	  console.log('\n  Wrote:');
+   212	  for (const { file, action } of scaffoldResult.actions)
+   213	    console.log(`    ${action === 'skipped' || /\(skipped/.test(action) ? '·' : '✓'} ${file}${action !== 'created' ? `  (${action})` : ''}`);   // nothing written: no tick
+   214	  const cmd = [], rule = [];
+   215	  for (const [k, lvl] of Object.entries(scaffoldResult.levels))
+   216	    (lvl.startsWith('command') ? cmd : rule).push(TOOLS[k].name + (lvl === 'command-experimental' ? ' (experimental)' : ''));
+   217	  if (cmd.length) console.log(`\n  /apriori command-level: ${cmd.join(', ')}`);
+   218	  if (rule.length) console.log(`  rule-level (no slash command, just point the agent at the runbook): ${rule.join(', ')}`);
+   219	  console.log('\n  Next — /apriori routes by intent:');
+   220	  console.log('    discuss first   /apriori                                   (with no arguments)');
+   221	  console.log('                    /apriori discuss foo without starting development');
+   222	  console.log('                    free text that does not identify a change to work on also enters discussion;');
+   223	  console.log('                    mentioning an existing change does not authorize development, and nothing');
+   224	  console.log('                    durable is written without approval to save or develop.');
+   225	  console.log('    start the work  /apriori implement add-reopen              (or the kickoff prompt)');
+   226	  console.log('                    work starts or resumes only when you identify a change to work on and');
+   227	  console.log('                    have not limited the request to discussion; then answer at each human gate.');
+   228	}
+   229	
+   230	function preview(root, tools) {
+   231	  const plan = scaffold(root, tools, { dryRun: true });
+   232	  console.log('\n  About to write:');
+   233	  for (const { file, action } of plan.actions)
+   234	    console.log(`    ${action === 'skipped' || /\(skipped/.test(action) ? '·' : '✓'} ${file}${action !== 'created' ? `  (${action})` : ''}`);   // nothing written: no tick
+   235	  console.log('\n  Existing files are appended-to or skipped, never overwritten.');
+   236	}
+   237	
+   238	async function confirm(question) {
+   239	  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+   240	  const ans = await new Promise((res) => rl.question(question, res));
+    61	// → { files } | null (absent). Throws 'managed.json: <defect>' on anything untrustworthy —
+    62	// hygiene runs on READ, so init and update both fail closed before touching any target.
+    63	function readManifest(root, tools) {
+    64	  const p = path.join(root, MANIFEST_REL);
+    65	  if (!fs.existsSync(p)) return null;
+    66	  let raw;
+    67	  try { raw = fs.readFileSync(p, 'utf8'); }
+    68	  catch (e) { throw new Error(`managed.json: unreadable (${e.message})`); }
+    69	  let doc;
+    70	  try { doc = JSON.parse(raw); }
+    71	  catch (e) { throw new Error(`managed.json: invalid JSON (${e.message})`); }
+    72	  if (!doc || typeof doc !== 'object' || Array.isArray(doc)) throw new Error('managed.json: not an object');
+    73	  if (doc.version !== 1) throw new Error(`managed.json: unsupported version ${JSON.stringify(doc.version)} (expected 1)`);
+    74	  if (!doc.files || typeof doc.files !== 'object' || Array.isArray(doc.files)) throw new Error('managed.json: missing files object');
+    75	  const allowed = allowedTargets(tools);
+    76	  for (const [rel, hash] of Object.entries(doc.files)) {
+    77	    if (rel.includes('\\')) throw new Error(`managed.json: non-canonical key '${rel}' (keys use forward slashes)`);
+    78	    if (path.isAbsolute(rel) || /^[a-zA-Z]:/.test(rel)) throw new Error(`managed.json: absolute path entry '${rel}'`);
+    79	    if (rel.split('/').includes('..')) throw new Error(`managed.json: path escape in entry '${rel}'`);
+    80	    if (!allowed.has(rel)) throw new Error(`managed.json: '${rel}' is not a refresh target`);
+    81	    if (typeof hash !== 'string' || !HASH_RE.test(hash)) throw new Error(`managed.json: malformed hash for '${rel}'`);
+    82	  }
+    83	  // `adoptPending: true` — the project is mid-migration from before managed.json: update still owes
+    84	  // it the one adoption pass on proof (init-premanifest-adoption). Absent = false; anything else is
+    85	  // untrustworthy like every other defect here.
+    86	  if (Object.prototype.hasOwnProperty.call(doc, 'adoptPending') && typeof doc.adoptPending !== 'boolean')
+    87	    throw new Error(`managed.json: adoptPending must be true or false, not ${JSON.stringify(doc.adoptPending)}`);
+    88	  return { files: { ...doc.files }, adoptPending: doc.adoptPending === true };
+    89	}
+    90	
+    91	// opts.adoptPending keeps the mid-migration mark; every writer that is not the adoption pass
+    92	// itself must pass it through, or the pass the project is owed is silently lost
+    93	function writeManifest(root, files, opts = {}) {
+    94	  const sorted = {};
+    95	  for (const k of Object.keys(files).sort()) sorted[k] = files[k];
+    96	  const p = path.join(root, MANIFEST_REL);
+    97	  fs.mkdirSync(path.dirname(p), { recursive: true });
+    98	  const doc = { version: 1, files: sorted };
+    99	  if (opts.adoptPending) doc.adoptPending = true;
+   100	  fs.writeFileSync(p, JSON.stringify(doc, null, 2) + '\n');
+   101	}
+   102	
+   103	// containment before ANY read or hash: an existing target must realpath-resolve inside
+   104	// the project; a missing one is judged by its nearest existing ancestor (containsFuturePath).
+   105	// An escaping path is a hygiene error, never classified modified/up-to-date.
+   106	function assertContained(root, rel) {
+   107	  const abs = path.join(root, rel);
+   108	  if (!containsFuturePath(root, abs)) throw new Error(`managed.json: '${rel}' escapes the project root`);
+   109	}
+   110	
+   111	// First install of the guide (init, and update on a project that never had it). Never overwrites,
+   112	// never follows a path out of the project, never writes through something that is not a plain
+### Requirement: update refreshes only manifest-proven tool-owned files
+`apriori update` SHALL consult `apriori/managed.json` (`{ "version": 1, "files": { "<relative path>": "sha256:<64hex>" } }`, hashes over the exact bytes the tool last wrote, never line-ending-normalized) and refresh a candidate file only when the manifest lists it AND its current content hash equals the recorded hash; after a real write the entry is updated to the new content's hash. A listed file with a differing hash is `modified` — skipped with a warning naming the file and the cure (delete it and rerun `apriori init --tools <t>`). An existing file with no entry is `unmanaged` — skipped, never written — with one exception: the prototype-walk guide, adopted when its bytes are exactly a shipped edition, read on a descriptor the platform can locate (its own requirement below). A listed file absent on disk is `missing` — skipped (recreating is init's job). Skip-only runs still exit 0 and name every skip. When no manifest exists (pre-manifest project), update adopts what it can prove: the runbook unconditionally (refreshed as today), each command file only if its content hash equals the current template or a known shipped generation, and the guide on the same proof as above (the package embeds every generation's sha256; a membership test over the live `templates/command.md` keeps the list honest); unproven content is `unmanaged`. The adoption pass writes the manifest. A manifest that exists but is unreadable, unparseable, missing `files`, hash-malformed, `version !== 1`, or carrying a key that is absolute, contains `..`, or is outside the allowed refresh-target set (`apriori/runbook.md`, `apriori/guides/prototype-walk.md`, `TOOLS[*].command`) SHALL make update exit nonzero naming the defect before touching any target; every write additionally requires realpath containment under the project root. `--dry-run` produces the identical report and writes nothing — the manifest included.
+
+#### Scenario: UP-06 a foreign file at a tool path survives update
+- WHEN a file exists at an unselected tool's command path with no manifest entry
+- THEN update leaves it byte-identical, reports `unmanaged` with the cure hint, and exits 0
+
+#### Scenario: UP-07 an unmodified managed file refreshes and re-hashes
+- WHEN a manifest-listed command file matches its recorded hash but the package template has changed
+- THEN update rewrites it from the template and the manifest entry becomes the new content's hash
+
+#### Scenario: UP-08 a locally modified managed file is protected
+- WHEN a manifest-listed file (the runbook included) differs from its recorded hash
+- THEN update reports `modified` with the cure hint and leaves the file byte-identical, and `--dry-run` gives the same report while writing nothing at all
+
+#### Scenario: UP-09 pre-manifest projects are adopted only on proof
+- WHEN no manifest exists and command files variously match the current template, match a known shipped generation, or carry arbitrary content
+- THEN the matching files are adopted (up-to-date / refreshed respectively), the arbitrary one is `unmanaged` and untouched, the runbook refreshes as before, the guide init wrote is adopted on its bytes (where an opened descriptor can be located; elsewhere it is held back `not refreshed` and left out), and the manifest is written covering exactly those (except under `--dry-run`)
+
+#### Scenario: UP-10 manifest hygiene fails closed
+- WHEN `apriori/managed.json` is invalid JSON, lacks `files`, carries a malformed hash or `version: 2`, or lists an absolute, `..`-containing, or non-refresh-target path
+- THEN update exits nonzero naming the manifest defect and no managed target is touched, identically under `--dry-run`
+
+#### Scenario: UP-11 the shipped-generation list stays honest
+- WHEN the live `templates/command.md` is hashed
+- THEN the digest is a member of the package's embedded generation list (changing the template without appending fails the suite)
+
+### Requirement: update warns on legacy 3.x layouts
+
+ exited 1 in 53ms:
+change: init-premanifest-adoption
+phase: review                             # ground | specify | build | review | done | abandoned
+reviewer-session: 01a0fd8c-48c0-7db1-b374-c27506d163d1   # codex exec gpt-6-astra, round 1 (2026-10-03)
+
+## Reality Check         # observed / decision / assumption — one line each, as you find them
+- decision: lineage — branch `feature/init-premanifest-adoption`（从 v6-dev@a6c790b 开出）；本地提交；评审通过后合回 v6-dev 并推 judge 与 GitHub
+- observed: 来源——follow-up FU-2，登记于已归档的 `apriori/changes/archive/2026-10-02T2359-batch-review-fixes/`（其 flow-state 的 Open 段），原文：「没有 manifest 的项目（早于 managed.json 的 CLI 初始化）上跑 init 会写出只含本次创建项的 manifest，update 因此不再按证据收编原有的 runbook 与命令文件（判 `unmanaged`，只能删了重 init）；建议：没有 manifest 且本次没有创建 runbook 时，init 不写 manifest，交给 update 的按证据收编」；人类 10-03「两个 follow-up 如果可以开干那就直接开干吧」
+- observed: c290842 上实测（批次修复时）：老项目（无 manifest）上 `init --tools claude,codex` 写出只含 codex 两个命令的 manifest，随后 `update` 把 runbook、guide、claude 命令判为 `unmanaged` 并说 everything already matches
+- decision: approach — 采用登记时的建议：没有 manifest 且 runbook 早于本次运行时，init 照常创建但不写 manifest（报 `deferred`），交给 update 的按证据收编（runbook 无条件、命令文件按已发布版本、guide 按已发布版本且读取须定位）；不让 init 自己收编（保留 IN-14「init 不收编已有内容」），新鲜项目与已有 manifest 的项目不变；已被旧 init 写出部分 manifest 的项目，MIGRATING 给出办法（删掉 manifest 再 update 一次），并有测试佐证
+- observed: 第一版 Build（deferral）—— lib/init.js（`deferred` 判定与报告；init 报告对未写入的动作不再打勾）；test/init.test.js 新增 IN-21（在 a6c790b 的 lib 上红）；docs/cli.md、cli_cn.md、MIGRATING、CHANGELOG；delta：init 清单需求 MODIFIED + IN-21；全套 884/884，隐藏 /proc 亦 884/884；CLI 冒烟：老项目上 init 报 `· apriori/managed.json (deferred …)`
+- observed: Review 第 1 轮（`review/code-review-v1.md`）= `VERDICT: 2 issues open`：R1 deferral 下本次新建的 guide 不登记，在不能定位描述符的平台上 update 又不认领它；R2 runbook 位置是目录/越界链接也触发 deferral，update 读 runbook 失败，修好后重跑 init 会让本次新建的命令文件 unmanaged；advisory：什么都没创建时 deferral 不报告
+- observed: 咨询 Astra（`/root/asd-lab/work/astra-discuss/r59/R59-R12.txt`、`astra-r59-r12-reply.md`）：建议方案 X（init 照常即时登记，清单加 `adoptPending` 标记，update 对带标记清单补一次按证据认领后清除），认为仍在 FU-2 授权内；否决我倾向的 Y（让 update 对任何清单都按证据认领——会扩大认领权限、削弱 UP-06，属改承诺）；指出旧 CLI 会丢标记须写明、部分清单的恢复不能叫人删清单（DISAGREEMENTS 2，均采纳 Astra）
+- decision: approach — 改用 X（取代登记时的 deferral 建议）：仅当 init 开始时无清单、runbook 为项目内普通文件时打标记；init 即时登记并在之后的 init 保留标记；update 对带标记清单像无清单一样认领未登记的 runbook 与命令文件（已登记文件规则不变，guide 规则不变），整次运行完成才写出不带标记的清单，抛错则保留；清单 hygiene 只接受布尔值；部分清单 / 旧 CLI 丢标记的恢复 = 手动加回标记再 update 一次
+- decision: R1、R2 fixed（advisory 随之消失）— R1：标记下本次新建的 guide 即时登记，任何平台都受管；R2：目录/符号链接的 runbook 不打标记，init 照常登记新建文件，修好后重试不搁浅（IN-21 覆盖）
+- observed: 旧 CLI 交互实测（a6c790b 的 git archive）：旧版 update 在带标记的清单上运行后标记消失、runbook 再次 `unmanaged`——已写入 MIGRATING「Finish the migration with this CLI」与恢复办法
+- observed: Build 完成 —— lib/managed.js（读写 `adoptPending`，类型校验）、lib/init.js（标记判定、即时登记带标记、报告）、lib/update.js（adopting = 无清单或带标记）；test/init.test.js IN-21 重写（在 a6c790b 的 lib 上红）；docs/cli 两版、MIGRATING、CHANGELOG 改写；delta：init 清单需求（含 IN-21）与 update 清单需求 MODIFIED；全套 884/884，隐藏 /proc 亦 884/884
+- observed: FU-2 的退出证据——IN-21：标记下 init 即时登记，update 认领较早的 runbook 与命令文件、已登记被改文件仍受保护、完成后清标记且每项等于盘上哈希；目录 runbook 不搁浅；部分清单按 MIGRATING 恢复；据此关闭 FU-2
+
+## Open                  # substantive unresolved items — one line each, stable id first: - <ID>: <text>
+
+## Next                  # at most three concrete actions; the first is the resume point
+- codex P3 第 2 轮（resume）
+- gate → archive --write → 合回 v6-dev
+
+gates:
+  - 2026-10-03T00:54 note: change scaffolded by `apriori new`
+  - 2026-10-03T00:56 note: Ground（承接 FU-2，pending）→ Build（884/884）；FU-2 依 IN-21 的证据关闭（从 ## Open 删去）；review-ready 后开 Review 第 1 轮
+  - 2026-10-03T01:08 note: Review 第 1 轮 2 issues open；咨询 Astra 第 12 轮后改用 adoptPending 标记方案（R1、R2 已修，884/884）；resume 同一评审会话开第 2 轮
+{
+  "change": "init-premanifest-adoption",
+  "stage": "in-flight",
+  "checks": [
+    {
+      "id": "C1",
+      "status": "skipped",
+      "detail": "skipped — no test command (pass --test-cmd or add a test-cmd row to apriori/process-config.md); the binding check did not run"
+    },
+    {
+      "id": "C2",
+      "status": "n/a",
+      "detail": "retired in 6.2 — nothing is read"
+    },
+    {
+      "id": "C3",
+      "status": "pass",
+      "detail": "legal (review)"
+    },
+    {
+      "id": "C4",
+      "status": "n/a",
+      "detail": "ledger retired in 6.2 — open items live in ## Open"
+    },
+    {
+      "id": "C5",
+      "status": "pass",
+      "detail": "1 review doc(s), every verdict has raw evidence"
+    },
+    {
+      "id": "C6",
+      "status": "n/a",
+      "detail": "init: no truth doc; update: no truth doc"
+    },
+    {
+      "id": "C7",
+      "status": "pass",
+      "detail": "every mutation delta is stamped"
+    },
+    {
+      "id": "C8",
+      "status": "blocked",
+      "detail": "code-review round 1 (revise, 2 open); review-round-limit 8 (default); the independent review has not resolved (code-review round 1, 2 open) — the reviewer's latest verdict is what must close before the change ships; no ledger state can stand in for it; transcript 'code-review-v2-raw.txt' names a review round whose summary 'code-review-v2.md' is missing"
+    },
+    {
+      "id": "C9",
+      "status": "pass",
+      "detail": "no open items; risk: contract-mutation: init/spec.md MODIFIED 'init records what it creates in the managed manifest'; risk: contract-mutation: update/spec.md MODIFIED 'update refreshes only manifest-proven tool-owned files'"
+    }
+  ],
+  "result": "BLOCKED",
+  "blocked": 1,
+  "errors": []
+}
+
+codex
+R1 and R2 appear addressed: init records the guide and commands immediately again, and directory or symlink runbooks do not trigger the marker. Update checks listed-file protection before adoption, preserves the marker through a dry run or an exception before manifest persistence, and clears it after the pass. The earlier reporting advisory still applies when init creates no managed files, though it no longer risks losing ownership.
+exec
+/usr/bin/zsh -lc "nl -ba apriori/changes/init-premanifest-adoption/flow-state.md | sed -n '7,24p'; nl -ba test/update.test.js | sed -n '163,205p'; nl -ba test/init.test.js | sed -n '345,372p'; nl -ba apriori/changes/init-premanifest-adoption/specs/init/spec.md | sed -n '27,38p'" in /root/terra/wt-fu2
+ succeeded in 0ms:
+     7	- observed: 来源——follow-up FU-2，登记于已归档的 `apriori/changes/archive/2026-10-02T2359-batch-review-fixes/`（其 flow-state 的 Open 段），原文：「没有 manifest 的项目（早于 managed.json 的 CLI 初始化）上跑 init 会写出只含本次创建项的 manifest，update 因此不再按证据收编原有的 runbook 与命令文件（判 `unmanaged`，只能删了重 init）；建议：没有 manifest 且本次没有创建 runbook 时，init 不写 manifest，交给 update 的按证据收编」；人类 10-03「两个 follow-up 如果可以开干那就直接开干吧」
+     8	- observed: c290842 上实测（批次修复时）：老项目（无 manifest）上 `init --tools claude,codex` 写出只含 codex 两个命令的 manifest，随后 `update` 把 runbook、guide、claude 命令判为 `unmanaged` 并说 everything already matches
+     9	- decision: approach — 采用登记时的建议：没有 manifest 且 runbook 早于本次运行时，init 照常创建但不写 manifest（报 `deferred`），交给 update 的按证据收编（runbook 无条件、命令文件按已发布版本、guide 按已发布版本且读取须定位）；不让 init 自己收编（保留 IN-14「init 不收编已有内容」），新鲜项目与已有 manifest 的项目不变；已被旧 init 写出部分 manifest 的项目，MIGRATING 给出办法（删掉 manifest 再 update 一次），并有测试佐证
+    10	- observed: 第一版 Build（deferral）—— lib/init.js（`deferred` 判定与报告；init 报告对未写入的动作不再打勾）；test/init.test.js 新增 IN-21（在 a6c790b 的 lib 上红）；docs/cli.md、cli_cn.md、MIGRATING、CHANGELOG；delta：init 清单需求 MODIFIED + IN-21；全套 884/884，隐藏 /proc 亦 884/884；CLI 冒烟：老项目上 init 报 `· apriori/managed.json (deferred …)`
+    11	- observed: Review 第 1 轮（`review/code-review-v1.md`）= `VERDICT: 2 issues open`：R1 deferral 下本次新建的 guide 不登记，在不能定位描述符的平台上 update 又不认领它；R2 runbook 位置是目录/越界链接也触发 deferral，update 读 runbook 失败，修好后重跑 init 会让本次新建的命令文件 unmanaged；advisory：什么都没创建时 deferral 不报告
+    12	- observed: 咨询 Astra（`/root/asd-lab/work/astra-discuss/r59/R59-R12.txt`、`astra-r59-r12-reply.md`）：建议方案 X（init 照常即时登记，清单加 `adoptPending` 标记，update 对带标记清单补一次按证据认领后清除），认为仍在 FU-2 授权内；否决我倾向的 Y（让 update 对任何清单都按证据认领——会扩大认领权限、削弱 UP-06，属改承诺）；指出旧 CLI 会丢标记须写明、部分清单的恢复不能叫人删清单（DISAGREEMENTS 2，均采纳 Astra）
+    13	- decision: approach — 改用 X（取代登记时的 deferral 建议）：仅当 init 开始时无清单、runbook 为项目内普通文件时打标记；init 即时登记并在之后的 init 保留标记；update 对带标记清单像无清单一样认领未登记的 runbook 与命令文件（已登记文件规则不变，guide 规则不变），整次运行完成才写出不带标记的清单，抛错则保留；清单 hygiene 只接受布尔值；部分清单 / 旧 CLI 丢标记的恢复 = 手动加回标记再 update 一次
+    14	- decision: R1、R2 fixed（advisory 随之消失）— R1：标记下本次新建的 guide 即时登记，任何平台都受管；R2：目录/符号链接的 runbook 不打标记，init 照常登记新建文件，修好后重试不搁浅（IN-21 覆盖）
+    15	- observed: 旧 CLI 交互实测（a6c790b 的 git archive）：旧版 update 在带标记的清单上运行后标记消失、runbook 再次 `unmanaged`——已写入 MIGRATING「Finish the migration with this CLI」与恢复办法
+    16	- observed: Build 完成 —— lib/managed.js（读写 `adoptPending`，类型校验）、lib/init.js（标记判定、即时登记带标记、报告）、lib/update.js（adopting = 无清单或带标记）；test/init.test.js IN-21 重写（在 a6c790b 的 lib 上红）；docs/cli 两版、MIGRATING、CHANGELOG 改写；delta：init 清单需求（含 IN-21）与 update 清单需求 MODIFIED；全套 884/884，隐藏 /proc 亦 884/884
+    17	- observed: FU-2 的退出证据——IN-21：标记下 init 即时登记，update 认领较早的 runbook 与命令文件、已登记被改文件仍受保护、完成后清标记且每项等于盘上哈希；目录 runbook 不搁浅；部分清单按 MIGRATING 恢复；据此关闭 FU-2
+    18	
+    19	## Open                  # substantive unresolved items — one line each, stable id first: - <ID>: <text>
+    20	
+    21	## Next                  # at most three concrete actions; the first is the resume point
+    22	- codex P3 第 2 轮（resume）
+    23	- gate → archive --write → 合回 v6-dev
+    24	
+   163	  const root = agedProject();
+   164	  // the user edited both managed files AFTER the manifest recorded them
+   165	  fs.appendFileSync(path.join(root, '.claude', 'commands', 'apriori.md'), '\nteam-specific extras\n');
+   166	  fs.appendFileSync(path.join(root, 'apriori', 'runbook.md'), '\nlocal notes\n');
+   167	  const cmdBefore = fs.readFileSync(path.join(root, '.claude', 'commands', 'apriori.md'), 'utf8');
+   168	  const rbBefore = fs.readFileSync(path.join(root, 'apriori', 'runbook.md'), 'utf8');
+   169	  const manifestBefore = fs.readFileSync(path.join(root, 'apriori', 'managed.json'), 'utf8');
+   170	  const { actions } = update.run(root);
+   171	  for (const rel of ['.claude/commands/apriori.md', 'apriori/runbook.md']) {
+   172	    const row = actions.find((a) => a.file === rel);
+   173	    assert.ok(row && /modified/.test(row.action), JSON.stringify(actions));
+   174	  }
+   175	  assert.strictEqual(fs.readFileSync(path.join(root, '.claude', 'commands', 'apriori.md'), 'utf8'), cmdBefore);
+   176	  assert.strictEqual(fs.readFileSync(path.join(root, 'apriori', 'runbook.md'), 'utf8'), rbBefore);
+   177	  // the two protected entries keep their recorded hashes; the only manifest change is the guide's
+   178	  // first install (prototype-walk-guide, UP-13) — an older CLI never installed it
+   179	  const before = JSON.parse(manifestBefore).files, after = JSON.parse(fs.readFileSync(path.join(root, 'apriori', 'managed.json'), 'utf8')).files;
+   180	  for (const rel of ['.claude/commands/apriori.md', 'apriori/runbook.md']) assert.strictEqual(after[rel], before[rel], rel);
+   181	  assert.deepStrictEqual(Object.keys(after).sort(), [...Object.keys(before), 'apriori/guides/prototype-walk.md'].sort());
+   182	  const manifestAfter = fs.readFileSync(path.join(root, 'apriori', 'managed.json'), 'utf8');
+   183	  // --dry-run through the CLI: identical classification, nothing written at all
+   184	  const { spawnSync } = require('node:child_process');
+   185	  const r = spawnSync('node', [path.join(__dirname, '..', 'bin', 'apriori.js'), 'update', '--dry-run'],
+   186	    { cwd: root, encoding: 'utf8' });
+   187	  assert.strictEqual(r.status, 0);
+   188	  assert.match(r.stdout, /modified/);
+   189	  assert.strictEqual(fs.readFileSync(path.join(root, 'apriori', 'managed.json'), 'utf8'), manifestAfter);
+   190	});
+   191	
+   192	test('UP-09 pre-manifest projects are adopted only on proof', () => {
+   193	  const root = tmp();
+   194	  init.scaffold(root, ['claude', 'codex']);
+   195	  fs.rmSync(path.join(root, 'apriori', 'managed.json'), { force: true });   // pre-manifest CLI wrote none
+   196	  // claude command = pristine current template (identity proof);
+   197	  // codex command = a previous shipped generation (proved via the injectable generation list);
+   198	  // opencode command = arbitrary user content (no proof)
+   199	  fs.writeFileSync(path.join(root, '.codex', 'prompts', 'apriori.md'), 'generation zero body\n');
+   200	  const oc = path.join(root, '.opencode', 'command', 'apriori.md');
+   201	  fs.mkdirSync(path.dirname(oc), { recursive: true });
+   202	  fs.writeFileSync(oc, 'user-owned free text\n');
+   203	  const gens = [shaFile(path.join(__dirname, '..', 'templates', 'command.md')), sha('generation zero body\n')];
+   204	  // P2: generations are indexed by template id now — injection structure only, same behaviour
+   205	  const { actions } = update.run(root, { generations: { apriori: gens } });
+   345	const umManifest = (root) => JSON.parse(umFs.readFileSync(umPath.join(root, 'apriori', 'managed.json'), 'utf8'));
+   346	
+   347	test('IN-13 fresh init writes the manifest for exactly what it created', () => {
+   348	  const root = umTmp();
+   349	  umInit.scaffold(root, ['claude']);
+   350	  const m = umManifest(root);
+   351	  assert.strictEqual(m.version, 1);
+   352	  assert.deepStrictEqual(Object.keys(m.files).sort(),
+   353	    ['.claude/commands/apriori-discuss.md', '.claude/commands/apriori.md', 'apriori/guides/prototype-walk.md', 'apriori/runbook.md']);   // S2 P3: K=2; prototype-walk-guide: the guide
+   354	  assert.strictEqual(m.files['apriori/runbook.md'], umSha(umPath.join(root, 'apriori', 'runbook.md')));
+   355	  assert.strictEqual(m.files['.claude/commands/apriori.md'], umSha(umPath.join(root, '.claude', 'commands', 'apriori.md')));
+   356	  assert.strictEqual(m.files['.claude/commands/apriori-discuss.md'], umSha(umPath.join(root, '.claude', 'commands', 'apriori-discuss.md')));
+   357	  // each file is recorded the moment it is created (batch-review-fixes, round 1 BRF-R2): a run that throws
+   358	  // after one tool's commands were written — the next tool's directory is a file — keeps them recorded,
+   359	  // and once the obstruction is gone update still manages them instead of calling them unmanaged
+   360	  const broken = umTmp();
+   361	  umFs.writeFileSync(umPath.join(broken, '.cursor'), 'not a dir\n');
+   362	  assert.throws(() => umInit.scaffold(broken, ['claude', 'cursor']), /ENOTDIR|EEXIST/);
+   363	  const bm = umManifest(broken);
+   364	  for (const rel of ['apriori/runbook.md', 'apriori/guides/prototype-walk.md', '.claude/commands/apriori.md', '.claude/commands/apriori-discuss.md'])
+   365	    assert.strictEqual(bm.files[rel], umSha(umPath.join(broken, rel)), rel);
+   366	  umFs.rmSync(umPath.join(broken, '.cursor'));
+   367	  const after = umUpdate.run(broken).actions;
+   368	  for (const rel of ['.claude/commands/apriori.md', '.claude/commands/apriori-discuss.md'])
+   369	    assert.strictEqual(after.find((x) => x.file === rel).action, 'up-to-date', rel);
+   370	});
+   371	
+   372	test('IN-21 init on a project without a manifest marks it mid-migration; update adopts, then clears the mark', () => {
+    27	- THEN init exits nonzero naming the defect and writes nothing
+    28	
+    29	#### Scenario: IN-21 init on a project without a manifest marks it mid-migration; update adopts, then clears the mark
+    30	- WHEN a project an older CLI initialized (no `managed.json`, an older runbook, no guide) runs `apriori init --tools claude,codex` with `--dry-run`, then for real, then init again; then (with one listed codex command edited) `apriori update --dry-run`, an update that throws midway, and an update that completes; then an unlisted command with shipped bytes appears; separately when the runbook path is a directory during init and is repaired before retrying, when a partial manifest an older init wrote is marked by hand, and when the mark is not a boolean
+    31	- THEN the dry init reports `created (adoption pending — …)` and writes nothing; the real init records codex's commands and the guide at once and marks the manifest; the later init keeps the mark; the dry update writes nothing; the throwing update keeps the mark (the runbook it already refreshed stays unrecorded); the completed update adopts the runbook and Claude's commands, reports the edited listed command `modified`, clears the mark, and records every entry as the hash on disk; afterwards the unlisted shipped-bytes command is `unmanaged`; the directory-runbook project gets no mark, records what init created, and after the repair update reports those commands `up-to-date`; the hand-marked partial manifest adopts the runbook and Claude's commands while its edited listed entry stays `modified`; a non-boolean mark is refused naming `adoptPending`; and a fresh project and an ordinary add-tool init carry no mark
+    32	
+    33	## Notes
+    34	
+    35	Follow-up FU-2 of batch-review-fixes (registered there, measured on c290842): init on a manifest-less project wrote a manifest of only what that run created, and update — which adopts on proof only while no manifest exists — then reported the older runbook and command files `unmanaged`. The registered proposal (init writes no manifest in that case) was tried first; review round 1 found it left init's own new files unrecorded (the guide on platforms that cannot locate a descriptor; commands when the runbook path was a directory). On Astra's advice (lab round R59-R12) the change keeps init's immediate records and carries the owed adoption pass as an explicit mark instead; IN-14 (init adopts nothing it finds) and UP-06 (an ordinary manifest never adopts an unlisted file) are untouched. IN-13..IN-17 keep their ids; IN-21 is new.
+
+exec
+/usr/bin/zsh -lc "git diff --check && node -e 'const m=require(\"./lib/managed\");const i=require(\"./lib/init\");for(const [id,p] of Object.entries(i.TEMPLATE_SRC)) console.log(id+\" current generation: \"+m.TEMPLATE_GENERATIONS[id].includes(m.hashFile(p)));console.log(\"guide current generation: \"+m.GUIDE_GENERATIONS.includes(m.hashFile(m.GUIDE_SRC)));'" in /root/terra/wt-fu2
+ succeeded in 0ms:
+apriori current generation: true
+discuss current generation: true
+guide current generation: true
+
+codex
+<!-- provenance: provider=openai model=unknown session=unknown date=2026-10-03 -->
+
+Review body for `apriori/changes/init-premanifest-adoption/review/code-review-v2.md`. Reviewed read-only; the producer must save this body verbatim.
+
+**ADDRESSED R1 — Newly created guide ownership**
+
+[Init’s record function](/root/terra/wt-fu2/lib/init.js:138) now immediately records each created file, carrying `adoptPending` instead of suppressing the write. The guide is recorded immediately after installation. Update consequently processes it through the existing listed-guide rules; descriptor-location restrictions on adopting an *unlisted* guide no longer strand this newly created guide.
+
+[IN-21](/root/terra/wt-fu2/test/init.test.js:372) now starts without a guide, requires its entry in the marked manifest, and requires update to report it `up-to-date`, without a platform-dependent omission. The immediate recording path also remains effective if a later init step throws.
+
+**ADDRESSED R2 — Directory or symlink runbook**
+
+[The marker predicate](/root/terra/wt-fu2/lib/init.js:133) uses `lstat`, requires a regular file, and checks realpath containment. A directory or leaf symlink cannot initiate migration marking. Regardless of that predicate, init records its newly created commands.
+
+IN-21 exercises the directory case: no marker, newly created Codex command recorded, obstruction removed, init retried, and update reports the command `up-to-date`. Symlink exclusion is supported by the predicate’s static semantics; IN-21 does not separately exercise it.
+
+**Whole-change assessment**
+
+No new substantive finding.
+
+- **Ordinary manifests retain their adoption boundary.** The reader normalizes absent or false `adoptPending` to false. Update enables runbook/command adoption only for a missing manifest or a true marker. IN-21 verifies that an unlisted command containing shipped bytes becomes `unmanaged` after the marker clears. The guide’s pre-existing adoption exception is unchanged.
+- **Listed-file protection takes precedence.** [Update’s listed branch](/root/terra/wt-fu2/lib/update.js:68) returns before the adoption branch. Modified files keep their bytes and recorded hashes; missing files remain missing. IN-21 exercises a modified listed command during migration and manual recovery. Existing UP-08 checks byte and hash preservation through the shared listed-file branch.
+- **Marker lifecycle matches the intended pass.** Both production manifest writers were examined. Init passes the marker through every record; update removes it at the final manifest write after candidate and pointer processing. Dry runs do not write. IN-21 injects an update failure before persistence, verifies marker retention, then verifies successful retry and removal. Clearing after a completed pass with protected or unproven files skipped is consistent with the stated rules.
+- **Validation and recovery are appropriately bounded.** Non-boolean markers are rejected by the shared manifest reader before scaffolding or refreshing targets. MIGRATING’s manual-marker recovery preserves existing ownership hashes and warns about unconditional adoption of an unlisted runbook. Its older-CLI limitation is stated.
+- **Scope remains cohesive.** The init/update deltas describe one migration mechanism, retaining the existing scenario IDs. FU-2’s source, revised approach, and closure evidence are traceable in the flow-state. No split is warranted.
+
+**Advisories**
+
+The earlier reporting advisory **still applies in narrower form**: [the manifest action remains conditional on `created.length`](/root/terra/wt-fu2/lib/init.js:204). A no-op init on a manifestless or already-marked project gives no adoption-pending reminder. Ownership is not lost: the absent manifest or existing marker still permits update’s pass. The flow-state’s statement that the advisory disappeared is therefore too strong.
+
+IN-21’s delta and the flow-state also say every entry equals the current disk hash. That wording should exclude modified listed files, whose previous hashes must remain. The test correctly excludes the edited command from that equality assertion.
+
+**Review limits**
+
+Examined all changed code, tests, deltas, documentation, flow-state, relevant callers, and gate output. Current template/guide hashes belong to their generation tables; `git diff --check` passed. No builds, test-suite execution, filesystem fault injection, or concurrent-mutation experiments were performed. Reported suite and older-CLI results were not independently reproduced. Credentials, human notes, consultation transcripts, and raw review transcripts were not read.
+
+VERDICT: no spec-vs-code gaps
+tokens used
+91,555
+<!-- provenance: provider=openai model=unknown session=unknown date=2026-10-03 -->
+
+Review body for `apriori/changes/init-premanifest-adoption/review/code-review-v2.md`. Reviewed read-only; the producer must save this body verbatim.
+
+**ADDRESSED R1 — Newly created guide ownership**
+
+[Init’s record function](/root/terra/wt-fu2/lib/init.js:138) now immediately records each created file, carrying `adoptPending` instead of suppressing the write. The guide is recorded immediately after installation. Update consequently processes it through the existing listed-guide rules; descriptor-location restrictions on adopting an *unlisted* guide no longer strand this newly created guide.
+
+[IN-21](/root/terra/wt-fu2/test/init.test.js:372) now starts without a guide, requires its entry in the marked manifest, and requires update to report it `up-to-date`, without a platform-dependent omission. The immediate recording path also remains effective if a later init step throws.
+
+**ADDRESSED R2 — Directory or symlink runbook**
+
+[The marker predicate](/root/terra/wt-fu2/lib/init.js:133) uses `lstat`, requires a regular file, and checks realpath containment. A directory or leaf symlink cannot initiate migration marking. Regardless of that predicate, init records its newly created commands.
+
+IN-21 exercises the directory case: no marker, newly created Codex command recorded, obstruction removed, init retried, and update reports the command `up-to-date`. Symlink exclusion is supported by the predicate’s static semantics; IN-21 does not separately exercise it.
+
+**Whole-change assessment**
+
+No new substantive finding.
+
+- **Ordinary manifests retain their adoption boundary.** The reader normalizes absent or false `adoptPending` to false. Update enables runbook/command adoption only for a missing manifest or a true marker. IN-21 verifies that an unlisted command containing shipped bytes becomes `unmanaged` after the marker clears. The guide’s pre-existing adoption exception is unchanged.
+- **Listed-file protection takes precedence.** [Update’s listed branch](/root/terra/wt-fu2/lib/update.js:68) returns before the adoption branch. Modified files keep their bytes and recorded hashes; missing files remain missing. IN-21 exercises a modified listed command during migration and manual recovery. Existing UP-08 checks byte and hash preservation through the shared listed-file branch.
+- **Marker lifecycle matches the intended pass.** Both production manifest writers were examined. Init passes the marker through every record; update removes it at the final manifest write after candidate and pointer processing. Dry runs do not write. IN-21 injects an update failure before persistence, verifies marker retention, then verifies successful retry and removal. Clearing after a completed pass with protected or unproven files skipped is consistent with the stated rules.
+- **Validation and recovery are appropriately bounded.** Non-boolean markers are rejected by the shared manifest reader before scaffolding or refreshing targets. MIGRATING’s manual-marker recovery preserves existing ownership hashes and warns about unconditional adoption of an unlisted runbook. Its older-CLI limitation is stated.
+- **Scope remains cohesive.** The init/update deltas describe one migration mechanism, retaining the existing scenario IDs. FU-2’s source, revised approach, and closure evidence are traceable in the flow-state. No split is warranted.
+
+**Advisories**
+
+The earlier reporting advisory **still applies in narrower form**: [the manifest action remains conditional on `created.length`](/root/terra/wt-fu2/lib/init.js:204). A no-op init on a manifestless or already-marked project gives no adoption-pending reminder. Ownership is not lost: the absent manifest or existing marker still permits update’s pass. The flow-state’s statement that the advisory disappeared is therefore too strong.
+
+IN-21’s delta and the flow-state also say every entry equals the current disk hash. That wording should exclude modified listed files, whose previous hashes must remain. The test correctly excludes the edited command from that equality assertion.
+
+**Review limits**
+
+Examined all changed code, tests, deltas, documentation, flow-state, relevant callers, and gate output. Current template/guide hashes belong to their generation tables; `git diff --check` passed. No builds, test-suite execution, filesystem fault injection, or concurrent-mutation experiments were performed. Reported suite and older-CLI results were not independently reproduced. Credentials, human notes, consultation transcripts, and raw review transcripts were not read.
+
+VERDICT: no spec-vs-code gaps

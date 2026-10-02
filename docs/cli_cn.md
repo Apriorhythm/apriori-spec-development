@@ -16,6 +16,8 @@ usage: apriori init [--tools <a,b,...>] [--test-cmd "<cmd>"] [--language <lang>]
 
 **`--tools` 在写入任何东西之前整体校验(6.2)。** 只要有一个未知键——`claud`、`Claude`、`claude,claud` 都一样——就以 2 退出并打印 `unknown tool '…' — known tools: claude, codex, cursor, copilot, opencode, windsurf`,什么都不创建,连 `apriori/` 根目录也不。规则文件里若已有工具写的**旧**指针段落(与某个历史版本逐字相同),该段落会原地升级(`pointer updated`);当前版本或手改过的指针保持原样(`skipped`)。
 
+**项目没有 `apriori/managed.json` 时(init-premanifest-adoption)。** 没有清单、且 runbook 早于本次运行就以普通文件存在——由更老的 CLI 初始化的项目,或清单被删掉的项目——这个项目处于迁移中:`apriori update` 还欠它一次没有清单的项目都会得到的按证据认领。`init` 照常登记它创建的文件(每个文件一出现就登记),并在清单上标记 `"adoptPending": true`(`apriori/managed.json  (created (adoption pending — …))`);之后再跑 `init` 会保留这个标记。下一次 `apriori update` 认领较早的 runbook(会刷新它——定制过的话先把笔记抄出来)以及字节等于某个已发布版本的每个未登记命令文件,已登记的文件照常处理(改过的仍报 `modified`),整次运行全部完成后才清掉标记。没有这个标记,一份只列本次文件的清单会终止认领,让更早的文件从此 `unmanaged`。runbook 位置是目录或符号链接时不打标记。
+
 **`--test-cmd` 逐字节往返(6.2)。** 命令经读取器的序列化孪生(`config.encodeCell` / `splitCells`)写入 `apriori/process-config.md`:`|` 存为 `\|`,反斜线保持原样,`$&`、`$1` 以及任何长得像替换模式的东西都逐字写入(回调替换,绝不用模板字符串),unicode 原样——`getConfig(root, 'test-cmd')` 返回的正是你传入的,所以 `verify` 跑的也正是它。以下在写入任何东西之前就以清楚的错误拒绝(退出码 2):空值(要继承什么都不传就省略该 flag)、含换行的命令(配置行只有一行——把它包进脚本再写脚本名)、以及单元格文法唯一表示不了的形状:紧贴管道符之前的奇数个反斜线。首尾空白会被裁掉。`--language` 走同一对函数。
 
 ## apriori doctor

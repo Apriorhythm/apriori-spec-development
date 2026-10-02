@@ -25,6 +25,12 @@ Known limitations, stated as they stand:
 Later preview snapshots are cut from `release/v6` after v6-dev work merges back; fixes in flight
 (authorization-scope, archive-manifest) are not part of this snapshot.
 
+## Unreleased — init-premanifest-adoption: a project mid-migration keeps its adoption pass
+
+- `apriori init` on a project with no `apriori/managed.json` whose runbook predates the run (a regular file) records what it creates as always and marks the manifest `"adoptPending": true`; `apriori update` treats a marked manifest like a missing one for the adoption on proof of unlisted files — the older runbook, command files whose bytes are a shipped generation — while listed files keep their rules, and clears the mark after a complete run. Before, init's manifest of only its own files ended that adoption and left the older runbook and command files unmanaged. Follow-up FU-2 of batch-review-fixes.
+- `managed.json` accepts an optional boolean `adoptPending`. An older CLI drops it when it rewrites the manifest; MIGRATING gives the by-hand recovery.
+- `init`'s report no longer ticks an action that wrote nothing (a skip with a reason).
+
 ## Unreleased — batch-recheck-fixes: three findings of the requirement-level re-check
 
 The requirement-level re-check of batch-review-fixes (9020f02) found all 19 original findings addressed and confirmed three new ones (two adversarial votes each), fixed here under their ids.

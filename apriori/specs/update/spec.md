@@ -1,5 +1,5 @@
 ### Requirement: apriori update refreshes tool-owned files after a CLI upgrade
-`apriori update` SHALL refresh every tool-owned scaffolded file — the runbook copy (`apriori/runbook.md`) and per-tool command files that already exist — to the installed package's versions, SHALL never modify user-owned files and never create new per-tool files (the only creation permitted is protocol-required scaffolding, UP-05), and SHALL report per-file what it did.
+`apriori update` SHALL refresh every tool-owned scaffolded file — the runbook copy (`apriori/runbook.md`) and per-tool command files that already exist — to the installed package's versions, SHALL never modify user-owned files and never create new per-tool files (the only creations permitted are protocol-required scaffolding, UP-05, and the prototype-walk guide's first install, PW-02), and SHALL report per-file what it did.
 
 #### Scenario: UP-01 refreshes the runbook copy and existing command files
 - WHEN `apriori update` runs in an initialized project whose `apriori/runbook.md` or existing per-tool command files differ from the installed package's copies
@@ -7,7 +7,7 @@
 
 #### Scenario: UP-02 user-owned files are never touched
 - WHEN `apriori update` runs
-- THEN `apriori/process-config.md`, `specs/`, `changes/`, `review/`, `truth/`, and the tool rules files the init pointer was appended to (CLAUDE.md, AGENTS.md, …) are left byte-identical, and no new per-tool file is created (adding a tool is `apriori init`'s job); the only creation permitted is protocol-required scaffolding (UP-05)
+- THEN `apriori/process-config.md`, `specs/`, `changes/`, `review/`, `truth/`, and the tool rules files the init pointer was appended to (CLAUDE.md, AGENTS.md, …) are left byte-identical, and no new per-tool file is created (adding a tool is `apriori init`'s job); the only creations permitted are protocol-required scaffolding (UP-05) and the prototype-walk guide's first install (PW-02)
 
 #### Scenario: UP-03 uninitialized project errors
 - WHEN `apriori update` runs where `apriori/runbook.md` does not exist
@@ -54,3 +54,10 @@
 #### Scenario: UP-12 updating a legacy-layout project is loud
 - WHEN `apriori update` runs in a project still carrying `apriori/review/` and `apriori/design/`, alongside a top-level `requirement/` of the project's own
 - THEN the update proceeds as normal AND a warning names the two apriori-owned roots with the migration pointer — and never names `requirement/`; a clean 4.0 project updates without the warning
+
+### Requirement: update installs the prototype-walk guide once and then manages it like the runbook
+`apriori update` SHALL treat `apriori/guides/prototype-walk.md` by its manifest state: never installed (not listed, not present) → install it and record it, reported `created (first install)` and counted as a refresh in the summary; listed and unmodified → refreshed to the package's guide (`updated` / `up-to-date`) and re-hashed; listed and locally modified → reported `modified` and left alone; listed but missing → reported missing and left to `apriori init` (the existing cure); present but not listed → reported `unmanaged` and left alone (never adopted). It never writes through a path that is not a regular file or that resolves outside the project, and `--dry-run` reports without writing. A CLI from before this change refuses a manifest that lists the guide (`not a refresh target`) — downgrading is not supported, and MIGRATING says so.
+
+#### Scenario: PW-02 the guide is installed once, then refreshed, protected or left alone by its manifest state
+- WHEN `apriori update` runs on a project an older CLI initialized (no guide, no entry), runs again, runs after the package's guide changed, runs after the user edited the guide, runs after the user deleted the listed guide, runs where an unlisted user file sits at the guide's path, and runs with `--dry-run` on a project without the guide
+- THEN the first run creates the guide byte-identical to the package's, records it and reports `created (first install)` with the summary counting it; the second reports `up-to-date`; the changed package guide is `updated` and re-hashed; the edited guide is reported `modified` and keeps its bytes and its entry; the deleted one is reported missing and not recreated; the unlisted file is reported `unmanaged` and untouched; the dry run reports the creation and writes neither the guide nor the manifest

@@ -9,6 +9,7 @@ const doctor = require('../lib/doctor');
 
 const BIN = path.join(__dirname, '..', 'bin', 'apriori.js');
 const PKG_RUNBOOK = fs.readFileSync(path.join(__dirname, '..', 'RUNBOOK.md'), 'utf8');
+const PKG_GUIDE = fs.readFileSync(path.join(__dirname, '..', 'guides', 'prototype-walk.md'), 'utf8');
 function run(args, cwd) { return spawnSync('node', [BIN, ...args], { encoding: 'utf8', cwd }); }
 function tapCmd(...lines) {
   return `node -e "${lines.map((l) => `console.log('${l}')`).join(';')}"`;
@@ -29,6 +30,7 @@ function mkProject(files) {
 function healthy() {
   return mkProject({
     'apriori/runbook.md': PKG_RUNBOOK,
+    'apriori/guides/prototype-walk.md': PKG_GUIDE,   // prototype-walk-guide: the guide the runbook names
     'apriori/.gitignore': 'tmp/\n',
     'apriori/tmp': null,
     'apriori/specs': null,

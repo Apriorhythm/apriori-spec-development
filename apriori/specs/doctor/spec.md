@@ -98,3 +98,10 @@ Doctor's config consumption (the D5 probe's test-cmd fallback) SHALL use the sha
 #### Scenario: DR-20 D6 tells you which repair it means
 - WHEN the store holds scenarios whose titles carry an ID-shaped leading token that the effective pattern does not match, and separately scenarios with no such token at all
 - THEN two findings appear, each naming only its own scenarios: the first's fix points at the `id-pattern` row in `apriori/process-config.md` and its detail carries the bounded pattern source, its origin, and at most three store-order samples each capped at 40 characters, the second's fix is the unchanged add-a-leading-ID text — a well-formed ID that merely misses the pattern must never send a human off to rewrite fifty IDs
+
+### Requirement: D2 names the guide the runbook relies on when it is missing
+When the installed runbook names `apriori/guides/prototype-walk.md` and that path is missing or not a regular file, D2 SHALL report one finding naming the guide and the fix (`apriori update` installs a guide never installed; when update reports it missing, `apriori init --tools <t>` recreates it). A runbook that does not name the guide, or no readable runbook, raises no guide finding (a missing runbook is D2's own finding already).
+
+#### Scenario: PW-03 doctor reports a missing guide the runbook names, and nothing otherwise
+- WHEN doctor runs on a healthy project whose runbook names the guide and the guide is present, then with the guide deleted, then with a directory in its place, then with the guide deleted and the runbook missing
+- THEN the first is HEALTHY; the second and third each give exactly one D2 finding naming `apriori/guides/prototype-walk.md` with a fix naming `apriori update`; the fourth gives the runbook's D2 finding and no guide finding

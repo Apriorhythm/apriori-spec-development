@@ -40,6 +40,8 @@ Work in stages, and when a stage fails go back to that stage:
 Stop and report only at §1 R1's stops: an escalation (a `VERDICT: escalate`, or a round past the one re-review), a pending ## Open item only the owner can settle, an external side effect without its authorization, or abandonment. Reaching the Build & Test bound is a stopped loop for the human to judge, NEVER a pass."
 ```
 
+**原型走查(可选,在写契约之前):** 需求带有可运行的 UI 原型时,agent 会在登记需求来源时提议一次走查;你也可以自己发起:*「按 `apriori/guides/prototype-walk.md` 走查原型 `<路径>`,对照 `<PRD>`,范围 `<页面>`。」* agent 会系统遍历原型,留下一份对照清单——列、字段、选项及其取值、状态、逐字文案、原型自身的缺陷——契约和后面的独立核对都以它为准。它需要本机有本地服务和浏览器自动化工具(Playwright 或同类);没有时,它会如实报告哪些没能实际操作。清单是来源材料:它不授权任何事;原型缺陷照不照做,需求没有定的,由你决定。
+
 **你亲自决定的事(只有五件,再没有别的):**
 
 1. **一次 escalation** —— 一条 `VERDICT: escalate`,或某个 family 未经你放行就越过了它唯一一次自动复核(§1 R4)。`apriori status --change <name> --escalation` 打印它并以 3 退出。用 `gates:` 里的 `reframe <family> round <n> <split|tests|redo|accept-risk> — <理由>` 回答。要升级标准,绝不悄悄降低它。

@@ -1,0 +1,1197 @@
+OpenAI Codex v0.159.3
+--------
+workdir: /root/terra/wt-cb
+model: gpt-6-astra
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 01a0fcbe-eb66-7a00-bdb0-d2de4f02bccc
+--------
+user
+Round 2 (change prototype-walk-guide; re-run `git diff v6-dev...HEAD`, `git status` and `git diff`). Scope as §4 Review & Deliver says for a later round: judge each finding still open from round 1 as ADDRESSED or NOT ADDRESSED and review the fix diff with what it affects; a new finding outside it counts only when it violates the current contract or a safety constraint.
+Producer answer to PW-R1: lib/managed.js gains `guideObstruction(root)` — an escape, anything but a plain directory at apriori/guides (lstat, so a symlinked directory counts), or a symlink (dangling or not), a directory or another non-file at the guide path → a reason; `installGuide` uses it, and lib/update.js checks it on EVERY branch before anything is hashed or written (obstruction → reported and skipped; unlisted and absent → first install; otherwise the existing managed `consider`). PW-02 gains four adversarial cases through update: a listed guide replaced by a symlink to an in-project copy whose hash still matches (target not written through), apriori/guides a symlink to an in-project directory, a directory at the guide path (reported, no crash, the runbook refresh and its manifest hash still land), an unlisted dangling symlink (reported). Reverting lib/update.js and lib/managed.js to the WIP commit makes PW-02 fail; with the fix it passes.
+Producer answer to PW-R2: the checklist separates `scope` (must the delivery show this row: `in` / `out`) from `ruling` (how: `as prototype` · `corrected — <source line or recorded decision>` · `not built — <reason>` · `owner — <Open id>`); a prototype defect the sources correct is an `in` row with a `corrected` ruling and is reconciled against its ruling like every `in` row; `not-reproduced` is gone; the Ground registration line counts "in <a>, of which corrected <c> / out <b>".
+Producer answer to PW-R3: a screenshot a checklist row cites is kept, scrubbed, under `OUT/evidence/` (archived with the change) and the `evidence` field names that; only uncited captures stay in SCRATCH; the completion criteria require it.
+Producer answer to PW-R4: §9 now reuses a walk for the scope it covered at that prototype version and, with the owner's authorization, continues the same walk in the same checklist (existing ids kept) for paths left uncovered or blocked, pages newly in scope, or runtime phases that could not run; a new prototype version is walked again against the old checklist; the runbook's once-per-requirement offer is about starting a walk, not finishing an authorized one.
+PW-05's delta requirement/scenario and test pin all three guide changes. The limited-behavior runs used the guide as of the WIP commit (before these wording changes); what they tested — reading the referenced guide before walking, and offering only when due — is not what changed. Round-1 review landed as review/code-review-v1.md (placeholder provenance line omitted and noted). Tests 881/881, verify --change GREEN, check --self PASS. End with one verdict line from §5.
+codex
+I’ll check each round-1 finding against the fixes and review the affected code, guide, contract, and assertions. I’ll return the round-2 review body for landing under the same read-only R2 procedure.
+
+exec
+/usr/bin/zsh -lc 'git status --short; git diff --stat v6-dev...HEAD; git diff --stat; git log -3 --oneline; git diff v6-dev...HEAD -- lib/managed.js lib/update.js; git diff -- lib/managed.js lib/update.js' in /root/terra/wt-cb
+ succeeded in 0ms:
+ M apriori/changes/prototype-walk-guide/flow-state.md
+ M apriori/changes/prototype-walk-guide/specs/protocol/spec.md
+ M guides/prototype-walk.md
+ M lib/managed.js
+ M lib/update.js
+ M test/prototype-walk-guide.test.js
+?? apriori/changes/prototype-walk-guide/review/
+ CHANGELOG.md                                       |   7 +
+ MIGRATING.md                                       |   6 +
+ RUNBOOK.md                                         |   3 +-
+ apriori/changes/prototype-walk-guide/flow-state.md |  23 +++
+ .../prototype-walk-guide/specs/doctor/spec.md      |  15 ++
+ .../prototype-walk-guide/specs/init/spec.md        |  40 +++++
+ .../prototype-walk-guide/specs/protocol/spec.md    |  29 +++
+ .../prototype-walk-guide/specs/update/spec.md      |  40 +++++
+ docs/operator.md                                   |   2 +
+ docs/operator_cn.md                                |   2 +
+ guides/prototype-walk.md                           | 147 ++++++++++++++++
+ lib/doctor.js                                      |   5 +
+ lib/init.js                                        |   4 +
+ lib/managed.js                                     |  25 ++-
+ lib/update.js                                      |  20 ++-
+ package.json                                       |   1 +
+ test/doctor.test.js                                |   2 +
+ test/init.test.js                                  |   2 +-
+ test/multi-command.test.js                         |   2 +-
+ test/prototype-walk-guide.test.js                  | 196 +++++++++++++++++++++
+ test/update.test.js                                |  14 +-
+ 21 files changed, 575 insertions(+), 10 deletions(-)
+ apriori/changes/prototype-walk-guide/flow-state.md | 11 ++++--
+ .../prototype-walk-guide/specs/protocol/spec.md    |  4 +-
+ guides/prototype-walk.md                           | 24 ++++++------
+ lib/managed.js                                     | 23 +++++++++---
+ lib/update.js                                      |  9 +++--
+ test/prototype-walk-guide.test.js                  | 43 ++++++++++++++++++++++
+ 6 files changed, 87 insertions(+), 27 deletions(-)
+90e245f wip: prototype-walk-guide (layer-2 candidate)
+2bcbd45 owner-calls-and-handoffs: owner items stay the owner's, outside hand-offs keep their id, a goal can end at a human stop
+4f502fc runbook-english-only: the runbook has one edition, in English
+diff --git a/lib/managed.js b/lib/managed.js
+index 740aee2..004a730 100644
+--- a/lib/managed.js
++++ b/lib/managed.js
+@@ -11,6 +11,11 @@ const { containsFuturePath } = require('./archive-merge');
+ 
+ const MANIFEST_REL = 'apriori/managed.json';
+ 
++// The one guide the runbook names (§4 Ground: read it before a prototype walk). Tool-owned like the
++// runbook — one exact file, never the directory around it (prototype-walk-guide).
++const GUIDE_REL = 'apriori/guides/prototype-walk.md';
++const GUIDE_SRC = path.join(__dirname, '..', 'guides', 'prototype-walk.md');
++
+ // sha256 of every shipped generation, **indexed by template id**, newest first.
+ // APPEND when a template changes — UP-11 hashes each live template and asserts membership
+ // in ITS OWN table. Cross-template content must never be adopted (MC-04).
+@@ -46,7 +51,7 @@ function hashFile(p) { return hashBytes(fs.readFileSync(p)); }
+ 
+ // the only paths update may ever refresh: the runbook + each tool's command file
+ function allowedTargets(tools) {
+-  const set = new Set(['apriori/runbook.md']);
++  const set = new Set(['apriori/runbook.md', GUIDE_REL]);
+   for (const k of Object.keys(tools)) for (const rel of Object.values(tools[k].commands || {})) set.add(rel);
+   return set;
+ }
+@@ -94,5 +99,21 @@ function assertContained(root, rel) {
+   if (!containsFuturePath(root, abs)) throw new Error(`managed.json: '${rel}' escapes the project root`);
+ }
+ 
++// First install of the guide (init, and update on a project that never had it). Never overwrites,
++// never follows a path out of the project, never writes through something that is not a plain
++// directory/file → 'created' | 'skipped' | '<reason> (skipped — …)'. The caller records 'created'.
++function installGuide(root, dryRun) {
++  const abs = path.join(root, GUIDE_REL);
++  if (!containsFuturePath(root, abs)) return `escapes the project root (skipped — ${GUIDE_REL} must resolve inside the project)`;
++  let st = null;
++  try { st = fs.lstatSync(abs); } catch { /* absent */ }
++  if (st) return st.isFile() ? 'skipped' : 'not a regular file (skipped — move what sits there and rerun)';
++  let dir = null;
++  try { dir = fs.lstatSync(path.dirname(abs)); } catch { /* absent: created below */ }
++  if (dir && !dir.isDirectory()) return 'not a regular file (skipped — something other than a directory sits at apriori/guides; move it and rerun)';
++  if (!dryRun) { fs.mkdirSync(path.dirname(abs), { recursive: true }); fs.copyFileSync(GUIDE_SRC, abs); }
++  return 'created';
++}
++
+ module.exports = { TEMPLATE_GENERATIONS, allowedTargets, hashBytes, hashFile,
+-  readManifest, writeManifest, assertContained };
++  readManifest, writeManifest, assertContained, GUIDE_REL, GUIDE_SRC, installGuide };
+diff --git a/lib/update.js b/lib/update.js
+index 34898be..13989e6 100644
+--- a/lib/update.js
++++ b/lib/update.js
+@@ -1,7 +1,8 @@
+ 'use strict';
+ /*
+  * apriori update — refresh tool-owned scaffolded files after a CLI upgrade.
+- * Tool-owned: apriori/runbook.md (copied from the package's own RUNBOOK.md — single source)
++ * Tool-owned: apriori/runbook.md (copied from the package's own RUNBOOK.md — single source),
++ * apriori/guides/prototype-walk.md (the one guide the runbook names, from guides/)
+  * and per-tool command files that already exist (from templates/command.md).
+  * User-owned is NEVER touched: process-config.md, specs/, changes/, review/, truth/,
+  * and the rules files the init pointer was appended to (CLAUDE.md, AGENTS.md, …).
+@@ -74,6 +75,19 @@ function run(root, opts = {}) {
+ 
+   // runbook: adopted unconditionally pre-manifest (its refresh is update's reason to exist)
+   consider('apriori/runbook.md', opts.runbookSrc || RUNBOOK_SRC, () => true);
++  // the guide the runbook names: listed → refreshed like any managed file (modified or missing is
++  // reported and left alone — recreating a listed file is init's job); never installed (not listed,
++  // not present) → installed and recorded now; present but not listed → the user's, left alone
++  const guideListed = manifest && Object.prototype.hasOwnProperty.call(manifest.files, managed.GUIDE_REL);
++  let guideSt = null;
++  try { guideSt = fs.lstatSync(path.join(root, managed.GUIDE_REL)); } catch { /* absent */ }
++  if (!guideListed && !guideSt) {
++    const a = managed.installGuide(root, dry);
++    actions.push({ file: managed.GUIDE_REL, action: a === 'created' ? 'created (first install)' : a });
++    if (a === 'created' && !dry) { files[managed.GUIDE_REL] = managed.hashFile(path.join(root, managed.GUIDE_REL)); manifestDirty = true; }
++  } else {
++    consider(managed.GUIDE_REL, opts.guideSrc || managed.GUIDE_SRC, () => false);
++  }
+   // protocol-required scaffolding the refreshed runbook relies on (IN-11): create if missing,
+   // NEVER modify — and each piece on its own: a lone missing tmp/ is recreated too (BD-02)
+   const gi = path.join(root, 'apriori', '.gitignore');
+@@ -134,9 +148,9 @@ function cli(argv) {
+     try { res = run(process.cwd(), { dryRun }); }
+     catch (e) { console.error('  ' + e.message); return 1; }
+     for (const { file, action } of res.actions)
+-      console.log(`  ${action === 'updated' || action === 'pointer updated' ? '✓' : '·'} ${file}  (${action})`);
++      console.log(`  ${action === 'updated' || action === 'pointer updated' || action === 'created (first install)' ? '✓' : '·'} ${file}  (${action})`);
+     for (const w of res.warnings || []) console.error(`  warning: ${w}`);
+-    const n = res.actions.filter((a) => a.action === 'updated' || a.action === 'pointer updated').length;
++    const n = res.actions.filter((a) => a.action === 'updated' || a.action === 'pointer updated' || a.action === 'created (first install)').length;
+     const modified = res.actions.filter((a) => /^modified \(skipped/.test(a.action)).length;
+     const v = require('../package.json').version;
+     // the summary never says "everything matches" over a file it just declined to refresh (BD-03)
+diff --git a/lib/managed.js b/lib/managed.js
+index 004a730..235bbde 100644
+--- a/lib/managed.js
++++ b/lib/managed.js
+@@ -102,18 +102,29 @@ function assertContained(root, rel) {
+ // First install of the guide (init, and update on a project that never had it). Never overwrites,
+ // never follows a path out of the project, never writes through something that is not a plain
+ // directory/file → 'created' | 'skipped' | '<reason> (skipped — …)'. The caller records 'created'.
+-function installGuide(root, dryRun) {
++// What sits at the guide's path or at apriori/guides that the tool must not hash or write through:
++// an escape, a symlink (dangling or not), a directory or another non-file at the path, or anything
++// but a plain directory at apriori/guides → the reason; null when the path is clear or a plain file.
++function guideObstruction(root) {
+   const abs = path.join(root, GUIDE_REL);
+   if (!containsFuturePath(root, abs)) return `escapes the project root (skipped — ${GUIDE_REL} must resolve inside the project)`;
++  let dir = null;
++  try { dir = fs.lstatSync(path.dirname(abs)); } catch { /* absent */ }
++  if (dir && !dir.isDirectory()) return 'not a regular file (skipped — something other than a plain directory sits at apriori/guides; move it and rerun)';
+   let st = null;
+   try { st = fs.lstatSync(abs); } catch { /* absent */ }
+-  if (st) return st.isFile() ? 'skipped' : 'not a regular file (skipped — move what sits there and rerun)';
+-  let dir = null;
+-  try { dir = fs.lstatSync(path.dirname(abs)); } catch { /* absent: created below */ }
+-  if (dir && !dir.isDirectory()) return 'not a regular file (skipped — something other than a directory sits at apriori/guides; move it and rerun)';
++  if (st && !st.isFile()) return `not a regular file (skipped — ${st.isSymbolicLink() ? 'a symlink' : 'a directory or other non-file'} sits at ${GUIDE_REL}; move it and rerun)`;
++  return null;
++}
++
++function installGuide(root, dryRun) {
++  const ob = guideObstruction(root);
++  if (ob) return ob;
++  if (fs.existsSync(path.join(root, GUIDE_REL))) return 'skipped';
++  const abs = path.join(root, GUIDE_REL);
+   if (!dryRun) { fs.mkdirSync(path.dirname(abs), { recursive: true }); fs.copyFileSync(GUIDE_SRC, abs); }
+   return 'created';
+ }
+ 
+ module.exports = { TEMPLATE_GENERATIONS, allowedTargets, hashBytes, hashFile,
+-  readManifest, writeManifest, assertContained, GUIDE_REL, GUIDE_SRC, installGuide };
++  readManifest, writeManifest, assertContained, GUIDE_REL, GUIDE_SRC, guideObstruction, installGuide };
+diff --git a/lib/update.js b/lib/update.js
+index 13989e6..2e593c6 100644
+--- a/lib/update.js
++++ b/lib/update.js
+@@ -78,10 +78,13 @@ function run(root, opts = {}) {
+   // the guide the runbook names: listed → refreshed like any managed file (modified or missing is
+   // reported and left alone — recreating a listed file is init's job); never installed (not listed,
+   // not present) → installed and recorded now; present but not listed → the user's, left alone
++  // Every branch first checks what sits at the path and at apriori/guides (lstat — a symlink is never
++  // followed): an obstruction is reported and left alone before anything is hashed or written.
+   const guideListed = manifest && Object.prototype.hasOwnProperty.call(manifest.files, managed.GUIDE_REL);
+-  let guideSt = null;
+-  try { guideSt = fs.lstatSync(path.join(root, managed.GUIDE_REL)); } catch { /* absent */ }
+-  if (!guideListed && !guideSt) {
++  const obstruction = managed.guideObstruction(root);
++  if (obstruction) {
++    actions.push({ file: managed.GUIDE_REL, action: obstruction });
++  } else if (!guideListed && !fs.existsSync(path.join(root, managed.GUIDE_REL))) {
+     const a = managed.installGuide(root, dry);
+     actions.push({ file: managed.GUIDE_REL, action: a === 'created' ? 'created (first install)' : a });
+     if (a === 'created' && !dry) { files[managed.GUIDE_REL] = managed.hashFile(path.join(root, managed.GUIDE_REL)); manifestDirty = true; }
+
+exec
+/usr/bin/zsh -lc 'git diff -- guides/prototype-walk.md apriori/changes/prototype-walk-guide/specs/protocol/spec.md test/prototype-walk-guide.test.js; git diff -- apriori/changes/prototype-walk-guide/flow-state.md' in /root/terra/wt-cb
+ succeeded in 0ms:
+diff --git a/apriori/changes/prototype-walk-guide/specs/protocol/spec.md b/apriori/changes/prototype-walk-guide/specs/protocol/spec.md
+index f2a994d..b059a10 100644
+--- a/apriori/changes/prototype-walk-guide/specs/protocol/spec.md
++++ b/apriori/changes/prototype-walk-guide/specs/protocol/spec.md
+@@ -11,11 +11,11 @@
+ - THEN Ground says when to offer a walk (a runnable prototype meant as acceptance basis, no walk on record for this scope and version), once per requirement with the answer recorded as a `decision`, that an authorized walk runs and a made choice is not asked again, that screenshots or a static design do not qualify, that the agent reads `apriori/guides/prototype-walk.md` in full before running a walk, that its checklist is source material and prototype defects follow the sources and recorded decisions before reaching the owner, and that skipping it skips none of P2's source checks; the header says the runbook is self-contained but for that one guide, read only when a walk runs; and P3 is byte-identical to its frozen form (RIB-10)
+ 
+ ### Requirement: the guide states its entry, its checklist and its hard constraints, and the operator guide tells the human how to ask for a walk
+-`guides/prototype-walk.md` (English) SHALL open with a parameterized entry (prototype and its version, sources and their versions, scope, caps set before running, where the kept artifacts and the scratch go) and a one-sentence form a human can paste; SHALL generalize the walk's method (static analysis, a local server, runtime discovery, a state model, signatures with a stated equivalence basis, traversal, interaction and boundary coverage, path-explosion control by component class, errors, screenshots, coverage with uncovered/blocked/duplicate/injected-only paths) without naming one requirement's components; SHALL define the reconciliation checklist with its minimal fields (`ID`, `version`, `observable`, `evidence`, `scope`, `ruling`, `implementation`, `verification`) as the one progress source, and say that a later check ticks it against the implementation while checking the assertion and run conditions behind each tick; SHALL state four hard constraints (equivalence justified and injected states kept apart; caps set before running and never a coverage claim; tools optional, not apriori-cli dependencies, the prototype unmodified; isolation and scrubbing of everything written); and SHALL say how the result is registered in Ground. `docs/operator.md` and `docs/operator_cn.md` SHALL each carry a short paragraph telling the human when the agent offers a walk, how to ask for one, what it needs on the machine, and that its checklist authorizes nothing.
++`guides/prototype-walk.md` (English) SHALL open with a parameterized entry (prototype and its version, sources and their versions, scope, caps set before running, where the kept artifacts and the scratch go) and a one-sentence form a human can paste; SHALL generalize the walk's method (static analysis, a local server, runtime discovery, a state model, signatures with a stated equivalence basis, traversal, interaction and boundary coverage, path-explosion control by component class, errors, screenshots, coverage with uncovered/blocked/duplicate/injected-only paths) without naming one requirement's components; SHALL define the reconciliation checklist with its minimal fields (`ID`, `version`, `observable`, `evidence`, `scope`, `ruling`, `implementation`, `verification`) as the one progress source — `scope` saying whether the delivery must show the row (`in` / `out`) apart from `ruling` saying how (`as prototype`, `corrected — <source>`, `not built — <reason>`, `owner — <Open id>`), so a prototype defect the sources correct is an `in` row reconciled against its ruling; a screenshot a row cites kept under the archived `OUT/evidence/`; and say that a later check ticks every `in` row against the implementation while checking the assertion and run conditions behind each tick, and that a later change reuses a walk for the scope it covered at that prototype version and, with the owner's authorization, continues it for what it left uncovered, blocked or out of reach, in the same checklist; SHALL state four hard constraints (equivalence justified and injected states kept apart; caps set before running and never a coverage claim; tools optional, not apriori-cli dependencies, the prototype unmodified; isolation and scrubbing of everything written); and SHALL say how the result is registered in Ground. `docs/operator.md` and `docs/operator_cn.md` SHALL each carry a short paragraph telling the human when the agent offers a walk, how to ask for one, what it needs on the machine, and that its checklist authorizes nothing.
+ 
+ #### Scenario: PW-05 the guide carries its entry, method, checklist fields and four constraints, and both operator editions point a human at it
+ - WHEN `guides/prototype-walk.md`, `docs/operator.md` and `docs/operator_cn.md` are read
+-- THEN the guide has the entry table with all five parameters and the paste-able sentence, the method sections, the checklist with the eight fields, the four hard constraints, the completion criteria (uncovered work is reported, never "all done") and the Ground registration line, and names none of one requirement's components as its own rules; each operator edition has the prototype-walk paragraph naming the guide, the tools it needs and that the checklist authorizes nothing
++- THEN the guide has the entry table with its parameters and the paste-able sentence, the method sections, the checklist with the eight fields (scope apart from ruling; corrected defects are `in` rows; cited screenshots kept under `OUT/evidence/`; reuse for the covered scope and authorized continuation otherwise), the four hard constraints, the completion criteria (uncovered work is reported, never "all done") and the Ground registration line, and names none of one requirement's components as its own rules; each operator edition has the prototype-walk paragraph naming the guide, the tools it needs and that the checklist authorizes nothing
+ 
+ ### Requirement: MIGRATING states what the guide changes for a project and that downgrading is not supported
+ MIGRATING.md SHALL say that `apriori update` installs the guide on a project that never had it, that a locally edited guide is left alone like the runbook, and that a CLI from before this change refuses a manifest listing the guide (`not a refresh target`), so downgrading the CLI is not supported once the guide is recorded.
+diff --git a/guides/prototype-walk.md b/guides/prototype-walk.md
+index 362ec5f..8c8753a 100644
+--- a/guides/prototype-walk.md
++++ b/guides/prototype-walk.md
+@@ -11,8 +11,8 @@
+ | `SOURCES` | the requirement documents the prototype is read against (PRD, change notices), each with its version | — (required) |
+ | `SCOPE` | the pages, flows or components this walk covers | the whole prototype |
+ | `CAPS` | max states, max actions, max workflow depth, per-action timeout, global timeout — set **before** running | 300 states · 2000 actions · depth 8 · 10 s · 30 min |
+-| `OUT` | where the kept artifacts go — `checklist.md`, `REPORT.md`, the JSON maps | `apriori/changes/<change>/prototype-walk/` (archived with the change); before a change exists, a path the owner names |
+-| `SCRATCH` | screenshots, raw action logs, runtime copies — large and re-creatable, not committed | `apriori/tmp/prototype-walk/<change>/` |
++| `OUT` | where the kept artifacts go — `checklist.md`, `REPORT.md`, the JSON maps, and under `evidence/` the scrubbed screenshots the checklist cites | `apriori/changes/<change>/prototype-walk/` (archived with the change); before a change exists, a path the owner names |
++| `SCRATCH` | screenshots no row cites, raw action logs, runtime copies — large and re-creatable, not committed | `apriori/tmp/prototype-walk/<change>/` |
+ 
+ A human can start one with a single sentence: *"Walk the prototype `<PROTOTYPE>` against `<SOURCES>` per `apriori/guides/prototype-walk.md`, scope `<SCOPE>`."*
+ 
+@@ -83,8 +83,8 @@ Cover meaningful state boundaries, not the Cartesian product of every field, opt
+ ### 3.9 Errors
+ Listen throughout for console errors, page errors, failed requests, failed navigations, uncaught exceptions and unhandled rejections; after each significant action check for new ones. Record timestamp, action, state, URL, target, message and stack. Scrub them before writing (§6.4).
+ 
+-### 3.10 Screenshots → `SCRATCH/screenshots/`, `OUT/screenshot-index.txt`
+-Take a screenshot at each first visit to a state, each open container, each validation/success/error state, each scroll extreme of a table, and wherever a checklist row needs visual evidence. Name them `NNN_<page>_<what>.png` and index them with the state they show. Scrub them before writing (§6.4).
++### 3.10 Screenshots → `SCRATCH/screenshots/`, `OUT/evidence/`, `OUT/screenshot-index.txt`
++Take a screenshot at each first visit to a state, each open container, each validation/success/error state, each scroll extreme of a table, and wherever a checklist row needs visual evidence. Name them `NNN_<page>_<what>.png` and index them with the state they show. Scrub them before writing (§6.4). A screenshot a checklist row cites is kept in `OUT/evidence/` — it is that row's evidence and must survive the archive; the rest stay in `SCRATCH/`.
+ 
+ ### 3.11 Coverage → `coverage.json`
+ Report, separately: interactions discovered statically, discovered at runtime, and both; **covered**, **uncovered** (with the reason), **blocked** (with the reason and whether it could continue automatically), **skipped as duplicates**, and **injected-only** states; and whether any cap from §0 was reached. Never mark something covered to raise a number.
+@@ -94,7 +94,7 @@ Report, separately: interactions discovered statically, discovered at runtime, a
+ - Something the prototype does that looks wrong — a broken flow, a dead control, a contradiction with itself or with the sources — is a **prototype defect**, recorded with: observed behaviour, steps, the state, why it may matter, and the assumption it depends on. Grade it (P0–P3) by impact on the delivery.
+ - Something you cannot confirm (a business rule the prototype hints at but no source states) is a **potential issue**, not a defect: record it, never invent the rule.
+ - Code in the prototype that no user path reaches (a function never called, a hidden panel never opened) is **not** a feature: record it as unreachable; do not count it as something to build.
+-- Who decides: the requirement sources and the owner's recorded decisions settle what to reproduce, in that order. A defect the sources already settle is ruled by them (record which line). Only a question nothing settles goes to the owner — as an `## Open` item, never as your choice.
++- Who decides: the requirement sources and the owner's recorded decisions settle what to reproduce, in that order. A defect the sources already settle is ruled by them (record which line): the delivery shows the corrected behaviour, so the row stays `in` with ruling `corrected — <source line>` (§5). Only a question nothing settles goes to the owner — as an `## Open` item, never as your choice.
+ 
+ ## 5. The output that matters: the reconciliation checklist → `checklist.md`
+ 
+@@ -105,17 +105,17 @@ The walk exists to produce this file. Every observable fact the delivery will be
+ | `ID` | stable, never reused: `PW-<page>-<nn>` |
+ | `version` | the prototype version the row was read from |
+ | `observable` | exactly what a user can see or do: a column header, a field label, an option's display text **and its value**, a default, a message's exact wording, a state and its transition, a disabled condition |
+-| `evidence` | where it was read: a screenshot name, a state id, a source location |
+-| `scope` | `in` this delivery · `out` of it · `not-reproduced` (a prototype defect corrected per §4) |
+-| `ruling` | for `in` rows: reproduce as shown, or as corrected by which source line or recorded decision; for unsettled rows: `owner — <Open id>` |
++| `evidence` | where it was read: a screenshot kept under `OUT/evidence/`, a state id, a source location |
++| `scope` | whether the delivery must show this row: `in` · `out` (outside this delivery, listed so a later check names it as excluded) |
++| `ruling` | how the delivery shows it: `as prototype` · `corrected — <source line or recorded decision>` (a prototype defect: the delivery shows the corrected behaviour) · `not built — <reason>` (unreachable code, a feature out of scope) · `owner — <Open id>` (nothing settles it yet) |
+ | `implementation` | where it was built (file, component) — filled when it is built |
+ | `verification` | the test or scenario id that pins it — filled when it is verified |
+ 
+ Rules for the checklist:
+ - Exact text is copied, not paraphrased; an option list is copied with its values (the key-value pairs are exactly what drifted on earlier requirements).
+-- Prototype defects appear as `not-reproduced` rows with their ruling, so the implementation does not copy them back in.
++- A prototype defect the sources correct is an `in` row with ruling `corrected — …`: the delivery must show the corrected behaviour, and it is reconciled like every other `in` row — against its ruling, not against the prototype — so the implementation neither copies the defect back in nor drops the correction.
+ - When the contract is written, a scenario that pins observable content cites the checklist ids it covers.
+-- **Reconciling it later is not the walk's job, but the walk must make it possible:** the later check ticks each `in` row against the built page, fills `implementation` and `verification`, and lists every row left open. Ticking is not proof: the check also looks at the assertion behind each tick and the conditions it ran under — an assertion that is true on an empty list, a log check run at a level that hides the line it looks for, a row ticked off against the wrong item all look green and prove nothing.
++- **Reconciling it later is not the walk's job, but the walk must make it possible:** the later check ticks each `in` row — corrected ones included — against the built page and the row's ruling, fills `implementation` and `verification`, and lists every row left open. Ticking is not proof: the check also looks at the assertion behind each tick and the conditions it ran under — an assertion that is true on an empty list, a log check run at a level that hides the line it looks for, a row ticked off against the wrong item all look green and prove nothing.
+ 
+ ## 6. Hard constraints
+ 
+@@ -133,7 +133,7 @@ The walk is complete only when all of these hold:
+ - the main reachable states, actions and transitions explored; modals, drawers, dropdowns and pickers opened; conditional branches, input boundaries, save/cancel/delete/enable/disable flows and table scrolling exercised;
+ - errors checked; screenshots and `actions.jsonl` (in `SCRATCH/`) and `coverage.json` written;
+ - uncovered, blocked, duplicate and injected-only paths listed, with reasons, and any cap reached named;
+-- `checklist.md` written with every row's fields filled up to `ruling`, and every unsettled row pointing at an `## Open` item;
++- `checklist.md` written with every row's fields filled up to `ruling`, every corrected prototype defect an `in` row with its correcting source, every row a cited screenshot supports backed by a file under `OUT/evidence/`, and every unsettled row pointing at an `## Open` item;
+ - `REPORT.md` written (§8).
+ If anything is still uncovered, the report says so; it never says "all done".
+ 
+@@ -144,4 +144,4 @@ The final message to the human is short: target, counts (states, actions, transi
+ 
+ ## 9. Registering the result
+ 
+-In the change's `## Reality Check` (§4 Ground), one line: `observed: <OUT>/checklist.md — prototype <version>, walked <date>; scope <scope>; rows <n> (in <a> / out <b> / not-reproduced <c>); <k> awaiting the owner`. The checklist is source material: decisions in it are decisions only where a source line or a recorded owner decision says so. Rows awaiting the owner become `## Open` items with their own ids. A later change that builds or checks the pages reads the checklist; it does not re-walk unless the prototype's version changed.
++In the change's `## Reality Check` (§4 Ground), one line: `observed: <OUT>/checklist.md — prototype <version>, walked <date>; scope <scope>; rows <n> (in <a>, of which corrected <c> / out <b>); <k> awaiting the owner; runtime phases <run | not run — why>`. The checklist is source material: decisions in it are decisions only where a source line or a recorded owner decision says so. Rows awaiting the owner become `## Open` items with their own ids. A later change that builds or checks the pages reads the checklist and reuses it for the scope it covered at that prototype version. It does not re-walk what is covered; with the owner's authorization it **continues** the same walk for what is not — paths left uncovered or blocked, pages newly in scope, runtime phases that could not run before (§6.3) — adding rows to the same checklist and keeping existing ids. A new prototype version is walked again, against the old checklist. The runbook's once-per-requirement offer is about starting a walk; finishing one the owner authorized needs no new offer.
+diff --git a/test/prototype-walk-guide.test.js b/test/prototype-walk-guide.test.js
+index 6e4b8b4..74849f0 100644
+--- a/test/prototype-walk-guide.test.js
++++ b/test/prototype-walk-guide.test.js
+@@ -115,6 +115,38 @@ test('PW-02 the guide is installed once, then refreshed, protected or left alone
+   assert.strictEqual(actionOf(update.run(dryRoot, { dryRun: true }).actions, GUIDE), 'created (first install)');
+   assert.ok(!fs.existsSync(path.join(dryRoot, GUIDE)));
+   assert.strictEqual(fs.readFileSync(path.join(dryRoot, 'apriori', 'managed.json'), 'utf8'), mBefore);
++  // PW-R1 (review round 1): every update branch refuses to hash or write through what is not a plain file
++  // in a plain directory — a listed guide swapped for a symlink whose target still matches the hash
++  const swapped = tmp(); init.scaffold(swapped, ['claude']);
++  const elsewhere = path.join(swapped, 'docs', 'moved-guide.md');
++  fs.mkdirSync(path.dirname(elsewhere), { recursive: true });
++  fs.renameSync(path.join(swapped, GUIDE), elsewhere);
++  fs.symlinkSync(elsewhere, path.join(swapped, GUIDE));
++  const sw = update.run(swapped, { guideSrc: newer });
++  assert.match(actionOf(sw.actions, GUIDE), /^not a regular file \(skipped — a symlink sits at/);
++  assert.strictEqual(fs.readFileSync(elsewhere, 'utf8'), PKG_GUIDE, 'the symlink target must not be written through');
++  // apriori/guides itself a symlink to a directory inside the project
++  const linkedDir = tmp(); init.scaffold(linkedDir, ['claude']);
++  fs.renameSync(path.join(linkedDir, 'apriori', 'guides'), path.join(linkedDir, 'real-guides'));
++  fs.symlinkSync(path.join(linkedDir, 'real-guides'), path.join(linkedDir, 'apriori', 'guides'));
++  const ld = update.run(linkedDir, { guideSrc: newer });
++  assert.match(actionOf(ld.actions, GUIDE), /^not a regular file \(skipped — something other than a plain directory sits at apriori\/guides/);
++  assert.strictEqual(fs.readFileSync(path.join(linkedDir, 'real-guides', 'prototype-walk.md'), 'utf8'), PKG_GUIDE);
++  // a directory at the guide's path: reported, no crash, the rest of the update still lands
++  const dirAt = tmp(); init.scaffold(dirAt, ['claude']);
++  fs.rmSync(path.join(dirAt, GUIDE)); fs.mkdirSync(path.join(dirAt, GUIDE));
++  fs.writeFileSync(path.join(dirAt, 'apriori', 'runbook.md'), '# older runbook\n');
++  const mf = manifestOf(dirAt); mf['apriori/runbook.md'] = sha(path.join(dirAt, 'apriori', 'runbook.md')); managed.writeManifest(dirAt, mf);
++  const da = update.run(dirAt);
++  assert.match(actionOf(da.actions, GUIDE), /^not a regular file \(skipped — a directory or other non-file sits at/);
++  assert.strictEqual(actionOf(da.actions, 'apriori/runbook.md'), 'updated');
++  assert.strictEqual(manifestOf(dirAt)['apriori/runbook.md'], sha(path.join(dirAt, 'apriori', 'runbook.md')));
++  // an unlisted dangling symlink is reported, not silently passed over
++  const dangling = aged();
++  fs.mkdirSync(path.join(dangling, 'apriori', 'guides'), { recursive: true });
++  fs.symlinkSync(path.join(dangling, 'nowhere.md'), path.join(dangling, GUIDE));
++  assert.match(actionOf(update.run(dangling).actions, GUIDE), /^not a regular file \(skipped — a symlink sits at/);
++  assert.ok(!fs.existsSync(path.join(dangling, 'nowhere.md')));
+ });
+ 
+ test('PW-03 doctor reports a missing guide the runbook names, and nothing otherwise', () => {
+@@ -173,6 +205,17 @@ test('PW-05 the guide carries its entry, method, checklist fields and four const
+   for (const f of ['ID', 'version', 'observable', 'evidence', 'scope', 'ruling', 'implementation', 'verification'])
+     assert.match(checklist, new RegExp('\\| `' + f + '` \\|'), `checklist field ${f}`);
+   assert.match(flat(checklist), /keep \*\*one\*\* progress source: do not fork a second ledger elsewhere/);
++  // PW-R2: scope (must the delivery show it?) is apart from ruling (how?); a corrected defect is an `in` row
++  assert.match(flat(checklist), /\| `scope` \| whether the delivery must show this row: `in` · `out`/);
++  assert.match(flat(checklist), /\| `ruling` \| how the delivery shows it: `as prototype` · `corrected — <source line or recorded decision>`/);
++  assert.match(flat(checklist), /A prototype defect the sources correct is an `in` row with ruling `corrected — …`: the delivery must show the corrected behaviour, and it is reconciled like every other `in` row — against its ruling, not against the prototype/);
++  assert.doesNotMatch(g, /not-reproduced/);
++  // PW-R3: cited evidence survives the archive
++  assert.match(flat(checklist), /\| `evidence` \| where it was read: a screenshot kept under `OUT\/evidence\/`/);
++  assert.match(flat(g), /A screenshot a checklist row cites is kept in `OUT\/evidence\/` — it is that row's evidence and must survive the archive/);
++  // PW-R4: reuse the covered scope; continue an authorized walk for what it did not cover
++  assert.match(flat(g), /reuses it for the scope it covered at that prototype version\. It does not re-walk what is covered; with the owner's authorization it \*\*continues\*\* the same walk for what is not/);
++  assert.match(flat(g), /The runbook's once-per-requirement offer is about starting a walk; finishing one the owner authorized needs no new offer\./);
+   assert.match(flat(checklist), /Ticking is not proof: the check also looks at the assertion behind each tick and the conditions it ran under/);
+   const constraints = flat(g.slice(g.indexOf('## 6. '), g.indexOf('## 7. ')));
+   assert.match(constraints, /1\. \*\*Equivalence is justified \(§3\.5\)\.\*\*.*keep injected states apart from user-reachable ones/);
+diff --git a/apriori/changes/prototype-walk-guide/flow-state.md b/apriori/changes/prototype-walk-guide/flow-state.md
+index 2049330..fbf16c5 100644
+--- a/apriori/changes/prototype-walk-guide/flow-state.md
++++ b/apriori/changes/prototype-walk-guide/flow-state.md
+@@ -1,6 +1,6 @@
+ change: prototype-walk-guide
+-phase: build                             # ground | specify | build | review | done | abandoned
+-reviewer-session: n/a                     # the reviewer's resumable session id, the moment round 1 prints it
++phase: review                             # ground | specify | build | review | done | abandoned
++reviewer-session: 01a0fcbe-eb66-7a00-bdb0-d2de4f02bccc   # codex exec, round 1 (2026-10-02)
+ 
+ ## Reality Check         # observed / decision / assumption — one line each, as you find them
+ - decision: lineage — branch `feature/prototype-walk-guide`（从 v6-dev@2bcbd45 开出）；本地提交；评审通过后合回 v6-dev 并推 judge 与 GitHub
+@@ -11,13 +11,16 @@ reviewer-session: n/a                     # the reviewer's resumable session id,
+ - observed: 机制现状 —— `lib/managed.js` allowedTargets 只有 runbook 与命令文件；`readManifest` 对未知路径抛「not a refresh target」（旧 CLI 读到新路径会使 init/update 失败）；`lib/update.js` 已有「已登记缺失 → 交 init」「未登记存在 → unmanaged」；`lib/init.js` seed 不覆盖已有文件；`lib/doctor.js` D2 逐项报脚手架缺口；package.json files = bin/ lib/ templates/ RUNBOOK.md MIGRATING.md docs/operator.md
+ - observed: 本机无 Playwright（仅 snap chromium），层 2 的运行时遍历测不到；按指南 §6.3，正例应报告缺口而不是假装覆盖
+ - observed: Build 完成 —— guides/prototype-walk.md；managed.js（GUIDE_REL/GUIDE_SRC/installGuide，allowedTargets 加入）；init.js 安装并登记；update.js 首次安装/其余走既有受管语义，汇总计入首次安装；doctor.js D2 指南缺失；package.json files 加 guides/；RUNBOOK Ground 一条 + 头部声明；operator 两版短说明；MIGRATING（含降级限制）、CHANGELOG；测试：新增 test/prototype-walk-guide.test.js（PW-01..06，改前在 v6-dev 上因指南不存在整文件失败），既有 doctor/init/multi-command/update 测试随「项目里多一个受管文件」调整（UP-08 改为精确断言两条被保护记录不变、manifest 只多指南一条）；全套 881/881；`check --self` PASS；`verify --change` GREEN；P3 不动
++- observed: 层 2 五场景（`/root/asd-lab/work/next-improve-1002/C-b-层2实测.md`，候选包 90e245f，HM 账号 4，新上下文，不预塞指南）全部符合期望：G-pw-first 第 1 轮只提议一次，获准后先完整 `cat` 指南（工具调用 #19）再写产物（#23），清单 8 字段 43 行，抓到金额 >0 与删除无效两处，报告运行时缺口、不称全覆盖，答复记为 decision；G-pw-auth 不再询问，先读指南（#6）再写（#12），清单 8 字段 38 行，缺口登记为 Open；G-pw-evidence 不提议，读清单与指南并在契约里引用清单 id，不重走；G-pw-noproto、G-pw-screens 不提议并说明理由（后者识破截图是纯色占位图）。设施两处问题已修并照实记录（导出漏 guides/；场景名前缀）。局限：各 1 次；运行时遍历未测（无 Playwright）；跨 change 不重复提示只间接覆盖
++- observed: Review 第 1 轮（`review/code-review-v1.md`）= `VERDICT: 4 issues open`。PW-R1：update 只在首次安装分支查类型，已登记/已存在分支直接进 consider，会经符号链接写穿、目录占位会在 runbook 已刷新后读失败、未登记的悬空链接被忽略——修：managed.js 新增 `guideObstruction`（逃逸、apriori/guides 非普通目录、路径上是符号链接/目录/其他非文件），update 每个分支先查、有障碍就报告并跳过，installGuide 复用它；PW-02 加四个对抗用例（已登记指南换成哈希仍匹配的符号链接、apriori/guides 为符号链接、路径上是目录且其余刷新照常落地、未登记悬空链接），在修复前代码上 PW-02 失败、修复后通过。PW-R2：改正的原型缺陷归 `not-reproduced`，而核对只要求 `in` 行——修：`scope`（交付是否必须体现：in/out）与 `ruling`（如何体现：as prototype / corrected — <来源> / not built — <原因> / owner — <Open id>）分开，改正的缺陷是 `in` 行、按裁定核对；去掉 `not-reproduced`；登记行改为「in <a>, of which corrected <c> / out <b>」。PW-R3：截图在不提交的 SCRATCH，而清单可以只引用截图名——修：被清单引用的截图（脱敏后）存 `OUT/evidence/`，随归档保存，未被引用的才留 SCRATCH。PW-R4：「版本不变不重走」挡住合法补全——修：同版本只对已覆盖范围复用；经 owner 授权可在同一清单内继续走未覆盖/被阻塞/新纳入/当时跑不了的部分，保留已有 id；一次提议只管「开始」走查。PW-05 规格与测试同步；评审方确认 UP-08 调整未削弱
+ 
+ ## Open                  # substantive unresolved items — one line each, stable id first: - <ID>: <text>
+ 
+ ## Next                  # at most three concrete actions; the first is the resume point
+-- 层 2 五场景（`/root/asd-lab/work/next-improve-1002/cb_walk_behavior.py`）
+-- review-ready → codex P3 评审
++- codex P3 评审第 1 轮
+ 
+ gates:
+   - 2026-10-02T20:42 note: change scaffolded by `apriori new`
+   - 2026-10-02T20:54 note: Ground、Specify、Build 完成（全套 881/881）；开层 2 实测
++  - 2026-10-02T21:12 note: 层 2 五场景完成（5/5 符合期望）；review-ready；开 Review 第 1 轮
++  - 2026-10-02T21:22 note: Review 第 1 轮落盘（4 issues open）；已修；开第 2 轮
+
+exec
+/usr/bin/zsh -lc "cat lib/managed.js; sed -n '25,170p' lib/update.js; cat guides/prototype-walk.md" in /root/terra/wt-cb
+ succeeded in 0ms:
+'use strict';
+/*
+ * managed.json — the record of which scaffolded files the tool owns, and the exact
+ * bytes it last wrote there (sha256). init records what it CREATES; update refreshes
+ * only what the manifest proves is tool-owned AND unmodified. Zero deps.
+ */
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+const { containsFuturePath } = require('./archive-merge');
+
+const MANIFEST_REL = 'apriori/managed.json';
+
+// The one guide the runbook names (§4 Ground: read it before a prototype walk). Tool-owned like the
+// runbook — one exact file, never the directory around it (prototype-walk-guide).
+const GUIDE_REL = 'apriori/guides/prototype-walk.md';
+const GUIDE_SRC = path.join(__dirname, '..', 'guides', 'prototype-walk.md');
+
+// sha256 of every shipped generation, **indexed by template id**, newest first.
+// APPEND when a template changes — UP-11 hashes each live template and asserts membership
+// in ITS OWN table. Cross-template content must never be adopted (MC-04).
+const TEMPLATE_GENERATIONS = {
+  // S2 P3: the discuss shell ships its own table — a body that is a legal generation of a
+  // DIFFERENT template stays unmanaged in either direction (MC-04).
+  discuss: [
+    'sha256:2f6680fb48beab9a9384c9f9f1cad26e15024ce15d44767397ca9d76e33313a5',   // S2 P3: /apriori-discuss thin shell, first generation
+    'sha256:5187d8853422d78e2120578e3c5b573abf748db508390ddd328f6305e8d8eb75',   // S2 A≥1 fix: a scope stated in the request is an approval already held
+    'sha256:ee004fb3179df3c5ea75e622342c43f54e32854b638a58a81691e591cb48589d',   // discuss-save-fidelity: a save is a faithful record of the discussion, nothing more
+    'sha256:81de0ca483c5c5fd103c479027eea6d1d431379fdce3d010353745d800c8d317',   // discuss-save-inference: only as far as they said it; silence is not a decision; write once settled
+    'sha256:bc5b641e632097b7ae50449e6bd6f273a45800eda630a390e4b1b3c60505b38d',   // source-intake: the shell points at saving from a document discussed elsewhere
+  ],
+  apriori: [
+    'sha256:b4c8398b0f75fa8c954fc3df06775f9ad5152e400c68d9c9bc37b1e94cb2c3d2',   // S2 P0: R1's five, stalled-review class restored
+    'sha256:b3306395331a075448d0715f8904354436cec2f91af393a1ea0da0e2bc43423d',   // 6.2 intent-first routing
+    'sha256:26a0aa9eef6681288c8ddda55d5261761591d3627af1f58216ce82ac556be406',   // 6.2 open-item stop
+    'sha256:26ede9b6f095e03b58b88e83bff1ec706aa5d1ca362ead1dec8bb336518fe04f',   // 6.0 status-first JIT
+    'sha256:ce21ebe7635eccf468614b2e0dfe6196bc390383f76322a46ad4554dcf12b9a2',   // 6.0 minimal-context
+    'sha256:f4555198e6a1f3d5054f8b976fd317293e20d6bed519f6737b5cea4aea8b704d',   // 6.0 four-decisions
+    'sha256:4ada03a2b8a9d6b86fd610e0f4363c31dcea2ba2460d6e96e1231004e4a9c8a0',   // 3.0 front-door
+    'sha256:1dfa5eece0f3c109aae765aa52ffb89f59c0f0f3b494f9430148ac6baeeab046',   // pre-front-door
+    'sha256:d4cbe8f2366643ba3df930d7b09cf14b75a57007a4698b2e0fd7b0504c8b8fae',   // S2 G: delegation routing and triggered reading
+    'sha256:ae5d6b8b9c320a218b96bf0b2ab9a1ad1d855e7aa0445ff0f3bb19ef10e946bf',   // review-round-limit: the R1 stop class names the limit, not round 2
+    'sha256:97e1b5ae5856027d07c503e6cf1cfc87159c9658c2d38e5fbf8b16334e42b641',   // source-intake: a design concluded elsewhere identifies the work
+    'sha256:4652f44145b10265b9a455173793f89b5c383eddc00501dea16e3fe6f2faeaa1',   // limit-ruling: R1's third stop is a family past its one automatic re-review
+  ],
+};
+
+// exact bytes, never line-ending-normalized — we hash what we wrote
+function hashBytes(buf) { return 'sha256:' + crypto.createHash('sha256').update(buf).digest('hex'); }
+function hashFile(p) { return hashBytes(fs.readFileSync(p)); }
+
+// the only paths update may ever refresh: the runbook + each tool's command file
+function allowedTargets(tools) {
+  const set = new Set(['apriori/runbook.md', GUIDE_REL]);
+  for (const k of Object.keys(tools)) for (const rel of Object.values(tools[k].commands || {})) set.add(rel);
+  return set;
+}
+
+const HASH_RE = /^sha256:[0-9a-f]{64}$/;
+
+// → { files } | null (absent). Throws 'managed.json: <defect>' on anything untrustworthy —
+// hygiene runs on READ, so init and update both fail closed before touching any target.
+function readManifest(root, tools) {
+  const p = path.join(root, MANIFEST_REL);
+  if (!fs.existsSync(p)) return null;
+  let raw;
+  try { raw = fs.readFileSync(p, 'utf8'); }
+  catch (e) { throw new Error(`managed.json: unreadable (${e.message})`); }
+  let doc;
+  try { doc = JSON.parse(raw); }
+  catch (e) { throw new Error(`managed.json: invalid JSON (${e.message})`); }
+  if (!doc || typeof doc !== 'object' || Array.isArray(doc)) throw new Error('managed.json: not an object');
+  if (doc.version !== 1) throw new Error(`managed.json: unsupported version ${JSON.stringify(doc.version)} (expected 1)`);
+  if (!doc.files || typeof doc.files !== 'object' || Array.isArray(doc.files)) throw new Error('managed.json: missing files object');
+  const allowed = allowedTargets(tools);
+  for (const [rel, hash] of Object.entries(doc.files)) {
+    if (rel.includes('\\')) throw new Error(`managed.json: non-canonical key '${rel}' (keys use forward slashes)`);
+    if (path.isAbsolute(rel) || /^[a-zA-Z]:/.test(rel)) throw new Error(`managed.json: absolute path entry '${rel}'`);
+    if (rel.split('/').includes('..')) throw new Error(`managed.json: path escape in entry '${rel}'`);
+    if (!allowed.has(rel)) throw new Error(`managed.json: '${rel}' is not a refresh target`);
+    if (typeof hash !== 'string' || !HASH_RE.test(hash)) throw new Error(`managed.json: malformed hash for '${rel}'`);
+  }
+  return { files: { ...doc.files } };
+}
+
+function writeManifest(root, files) {
+  const sorted = {};
+  for (const k of Object.keys(files).sort()) sorted[k] = files[k];
+  const p = path.join(root, MANIFEST_REL);
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  fs.writeFileSync(p, JSON.stringify({ version: 1, files: sorted }, null, 2) + '\n');
+}
+
+// containment before ANY read or hash: an existing target must realpath-resolve inside
+// the project; a missing one is judged by its nearest existing ancestor (containsFuturePath).
+// An escaping path is a hygiene error, never classified modified/up-to-date.
+function assertContained(root, rel) {
+  const abs = path.join(root, rel);
+  if (!containsFuturePath(root, abs)) throw new Error(`managed.json: '${rel}' escapes the project root`);
+}
+
+// First install of the guide (init, and update on a project that never had it). Never overwrites,
+// never follows a path out of the project, never writes through something that is not a plain
+// directory/file → 'created' | 'skipped' | '<reason> (skipped — …)'. The caller records 'created'.
+// What sits at the guide's path or at apriori/guides that the tool must not hash or write through:
+// an escape, a symlink (dangling or not), a directory or another non-file at the path, or anything
+// but a plain directory at apriori/guides → the reason; null when the path is clear or a plain file.
+function guideObstruction(root) {
+  const abs = path.join(root, GUIDE_REL);
+  if (!containsFuturePath(root, abs)) return `escapes the project root (skipped — ${GUIDE_REL} must resolve inside the project)`;
+  let dir = null;
+  try { dir = fs.lstatSync(path.dirname(abs)); } catch { /* absent */ }
+  if (dir && !dir.isDirectory()) return 'not a regular file (skipped — something other than a plain directory sits at apriori/guides; move it and rerun)';
+  let st = null;
+  try { st = fs.lstatSync(abs); } catch { /* absent */ }
+  if (st && !st.isFile()) return `not a regular file (skipped — ${st.isSymbolicLink() ? 'a symlink' : 'a directory or other non-file'} sits at ${GUIDE_REL}; move it and rerun)`;
+  return null;
+}
+
+function installGuide(root, dryRun) {
+  const ob = guideObstruction(root);
+  if (ob) return ob;
+  if (fs.existsSync(path.join(root, GUIDE_REL))) return 'skipped';
+  const abs = path.join(root, GUIDE_REL);
+  if (!dryRun) { fs.mkdirSync(path.dirname(abs), { recursive: true }); fs.copyFileSync(GUIDE_SRC, abs); }
+  return 'created';
+}
+
+module.exports = { TEMPLATE_GENERATIONS, allowedTargets, hashBytes, hashFile,
+  readManifest, writeManifest, assertContained, GUIDE_REL, GUIDE_SRC, guideObstruction, installGuide };
+  const want = fs.readFileSync(src, 'utf8');
+  if (fs.readFileSync(target, 'utf8') === want) return 'up-to-date';
+  if (!dryRun) fs.writeFileSync(target, want);
+  return 'updated';
+}
+
+const CURE = "delete it and rerun 'apriori init --tools <t>' to hand it back to the tool";
+
+// Refresh tool-owned files under root — but only those apriori/managed.json proves the
+// tool owns AND the user hasn't modified. Everything else is reported and left alone.
+// Pre-manifest projects are adopted on proof (runbook unconditionally; command files
+// only when their bytes match a shipped template generation).
+// Returns { actions: [{file, action}] }; throws on no runbook or manifest hygiene errors.
+function run(root, opts = {}) {
+  const rb = path.join(root, 'apriori', 'runbook.md');
+  if (!fs.existsSync(rb)) throw new Error(`no apriori/runbook.md here — run 'apriori init' first`);
+  const tools = opts.tools || TOOLS;                        // test-only injection (K=2)
+  const manifest = managed.readManifest(root, tools);       // hygiene throws before any touch
+  const generations = opts.generations || managed.TEMPLATE_GENERATIONS;
+  const srcs = opts.commandSrc || TEMPLATE_SRC;
+  const dry = !!opts.dryRun;
+  const actions = [];
+  const files = manifest ? { ...manifest.files } : {};
+  let manifestDirty = manifest === null;                    // adoption always materializes it
+
+  // one candidate: managed semantics when listed; adoption when pre-manifest; unmanaged otherwise
+  const consider = (rel, srcAbs, adoptable) => {
+    const p = path.join(root, rel);
+    const listed = manifest && Object.prototype.hasOwnProperty.call(manifest.files, rel);
+    if (!fs.existsSync(p)) {
+      if (listed) actions.push({ file: rel, action: "missing (skipped — recreating is init's job)" });
+      return;
+    }
+    managed.assertContained(root, rel);                     // before ANY read or hash
+    const cur = managed.hashFile(p);
+    if (listed) {
+      if (cur !== manifest.files[rel]) { actions.push({ file: rel, action: `modified (skipped — locally modified; ${CURE})` }); return; }
+      const act = refresh(p, srcAbs, dry);
+      actions.push({ file: rel, action: act });
+      if (act === 'updated') { files[rel] = managed.hashBytes(fs.readFileSync(srcAbs)); manifestDirty = true; }
+      return;
+    }
+    if (manifest === null && adoptable(cur)) {              // pre-manifest adoption on proof
+      const act = refresh(p, srcAbs, dry);
+      actions.push({ file: rel, action: act });
+      files[rel] = act === 'updated' ? managed.hashBytes(fs.readFileSync(srcAbs)) : cur;
+      return;
+    }
+    actions.push({ file: rel, action: `unmanaged (skipped — not created by this tool; ${CURE})` });
+  };
+
+  // runbook: adopted unconditionally pre-manifest (its refresh is update's reason to exist)
+  consider('apriori/runbook.md', opts.runbookSrc || RUNBOOK_SRC, () => true);
+  // the guide the runbook names: listed → refreshed like any managed file (modified or missing is
+  // reported and left alone — recreating a listed file is init's job); never installed (not listed,
+  // not present) → installed and recorded now; present but not listed → the user's, left alone
+  // Every branch first checks what sits at the path and at apriori/guides (lstat — a symlink is never
+  // followed): an obstruction is reported and left alone before anything is hashed or written.
+  const guideListed = manifest && Object.prototype.hasOwnProperty.call(manifest.files, managed.GUIDE_REL);
+  const obstruction = managed.guideObstruction(root);
+  if (obstruction) {
+    actions.push({ file: managed.GUIDE_REL, action: obstruction });
+  } else if (!guideListed && !fs.existsSync(path.join(root, managed.GUIDE_REL))) {
+    const a = managed.installGuide(root, dry);
+    actions.push({ file: managed.GUIDE_REL, action: a === 'created' ? 'created (first install)' : a });
+    if (a === 'created' && !dry) { files[managed.GUIDE_REL] = managed.hashFile(path.join(root, managed.GUIDE_REL)); manifestDirty = true; }
+  } else {
+    consider(managed.GUIDE_REL, opts.guideSrc || managed.GUIDE_SRC, () => false);
+  }
+  // protocol-required scaffolding the refreshed runbook relies on (IN-11): create if missing,
+  // NEVER modify — and each piece on its own: a lone missing tmp/ is recreated too (BD-02)
+  const gi = path.join(root, 'apriori', '.gitignore');
+  if (!fs.existsSync(gi)) {
+    if (!dry) fs.writeFileSync(gi, 'tmp/\n');
+    actions.push({ file: 'apriori/.gitignore', action: 'created' });
+  }
+  const tmpDir = path.join(root, 'apriori', 'tmp');
+  let tmpSt = null;
+  try { tmpSt = fs.lstatSync(tmpDir); } catch { /* absent */ }
+  if (!tmpSt) {
+    if (!dry) fs.mkdirSync(tmpDir, { recursive: true });
+    actions.push({ file: 'apriori/tmp/', action: 'created' });
+  } else if (!tmpSt.isDirectory()) {
+    actions.push({ file: 'apriori/tmp/', action: 'not a directory (skipped — something else sits at apriori/tmp; move it and rerun)' });
+  }
+  // each mapped template is adopted ONLY against its own generation table — a body that is a
+  // legal generation of a DIFFERENT template is unmanaged, in either direction (MC-04)
+  for (const key of Object.keys(tools)) {
+    for (const [tplId, rel] of Object.entries(tools[key].commands || {})) {
+      const gens = generations[tplId] || [];
+      consider(rel, srcs[tplId], (cur) => gens.includes(cur));
+    }
+  }
+  // the rules files are USER-OWNED; the one thing update may change in them is the pointer
+  // paragraph this tool wrote, and only when it is an exact previous generation (BD-04) —
+  // detected the way command files are: verbatim, never by resemblance
+  const seenRules = new Set();
+  for (const key of Object.keys(tools)) {
+    const rel = TOOLS[key].rules;
+    if (!rel || seenRules.has(rel)) continue;
+    seenRules.add(rel);
+    const p = path.join(root, rel);
+    let st;
+    try { st = fs.lstatSync(p); } catch { continue; }
+    if (st.isSymbolicLink() || !st.isFile() || !containsFuturePath(root, p)) continue;   // not a plain contained file: not touched, not judged
+    const up = upgradePointer(fs.readFileSync(p, 'utf8'));
+    if (up.kind === 'none' || up.kind === 'current') continue;      // a user-owned file with nothing to do is not an action
+    if (up.kind === 'hand-edited') { actions.push({ file: rel, action: 'pointer (skipped — not a shipped generation; hand-edited, left alone)' }); continue; }
+    if (!dry) fs.writeFileSync(p, up.text);
+    actions.push({ file: rel, action: 'pointer updated' });
+  }
+  if (manifestDirty && !dry) managed.writeManifest(root, files);
+  // legacy 3.x layout roots: refreshing the protocol over pre-4.0 artifacts must be loud (UP-12)
+  const legacy = legacyRoots(root);
+  const warnings = legacy.length
+    ? [`legacy 3.x layout root(s) present: ${legacy.join(', ')} — migrate them into their change bundles, see MIGRATING.md (4.0): https://github.com/Apriorhythm/apriori-spec-development/blob/main/MIGRATING.md`]
+    : [];
+  return { actions, warnings };
+}
+
+const USAGE = 'usage: apriori update [--dry-run]';
+
+function cli(argv) {
+  return withStrict(argv, { sub: 'update', usage: USAGE, positionals: 0, flags: { '--dry-run': 'flag' } }, (f) => {
+    const dryRun = !!f['--dry-run'];
+    let res;
+    try { res = run(process.cwd(), { dryRun }); }
+    catch (e) { console.error('  ' + e.message); return 1; }
+    for (const { file, action } of res.actions)
+      console.log(`  ${action === 'updated' || action === 'pointer updated' || action === 'created (first install)' ? '✓' : '·'} ${file}  (${action})`);
+    for (const w of res.warnings || []) console.error(`  warning: ${w}`);
+    const n = res.actions.filter((a) => a.action === 'updated' || a.action === 'pointer updated' || a.action === 'created (first install)').length;
+    const modified = res.actions.filter((a) => /^modified \(skipped/.test(a.action)).length;
+    const v = require('../package.json').version;
+    // the summary never says "everything matches" over a file it just declined to refresh (BD-03)
+    console.log(n
+      ? `\n  ${n} file(s) ${dryRun ? 'would be ' : ''}refreshed to apriori-cli ${v}.`
+      : modified
+        ? `\n  ${modified} modified (skipped) — locally modified, not refreshed; ${CURE}.`
+        : `\n  everything already matches apriori-cli ${v}.`);
+    console.log('  (user-owned files — process-config.md, specs/, changes/, rules files — are never touched.)');
+    return 0;
+  });
+}
+
+module.exports = { run, refresh, cli };
+# Prototype walk — turning a runnable UI prototype into a checkable inventory
+
+> **Audience: AI agents.** The runbook sends you here (§4 Ground) only when a walk is to run; read this file in full before you start. It is optional, owner-authorized work — never a default step.
+> Source: generalized from the walk specification an owner used on a real requirement (2026-09), whose output a later change reconciled item by item against the implementation.
+
+## 0. Entry — fill these in, then follow §1–§9
+
+| Parameter | What to put | Default |
+|---|---|---|
+| `PROTOTYPE` | path of the runnable prototype (HTML/JS) and its version or date | — (required) |
+| `SOURCES` | the requirement documents the prototype is read against (PRD, change notices), each with its version | — (required) |
+| `SCOPE` | the pages, flows or components this walk covers | the whole prototype |
+| `CAPS` | max states, max actions, max workflow depth, per-action timeout, global timeout — set **before** running | 300 states · 2000 actions · depth 8 · 10 s · 30 min |
+| `OUT` | where the kept artifacts go — `checklist.md`, `REPORT.md`, the JSON maps, and under `evidence/` the scrubbed screenshots the checklist cites | `apriori/changes/<change>/prototype-walk/` (archived with the change); before a change exists, a path the owner names |
+| `SCRATCH` | screenshots no row cites, raw action logs, runtime copies — large and re-creatable, not committed | `apriori/tmp/prototype-walk/<change>/` |
+
+A human can start one with a single sentence: *"Walk the prototype `<PROTOTYPE>` against `<SOURCES>` per `apriori/guides/prototype-walk.md`, scope `<SCOPE>`."*
+
+## 1. What a walk is, and what it is not
+
+- It **is** a systematic exploration of a runnable prototype — static reading of its code, then real interaction with it — that leaves a **checklist of observable facts** (pages, columns, fields, options and their key-values, states, texts, transitions) with evidence for each, plus the prototype's own defects.
+- It is **source material**, registered in Ground (§9): it authorizes nothing — not `apriori new`, not development, not reproducing what the prototype does.
+- It does **not** replace the requirement sources: where the prototype and the PRD disagree, the walk records the disagreement; it does not settle it (§4).
+- It does **not** prove the implementation: a later independent check reconciles the checklist against the built pages (§5). The walk only makes that check possible.
+
+Why it exists: on two earlier requirements, pages shipped missing columns, fields and option values that the prototype showed, while every end-to-end assertion was green — the implementation, the spec and the tests all came from one spec that had left those items out. On a later requirement the prototype was first turned into a checklist like this one, and a change near the end reconciled it row by row; the page gaps it found (labels, prompts, input behaviour) were fixed before any human acceptance.
+
+## 2. Before you start
+
+1. **Record the inputs.** The prototype's path and version, each source's path and version, the scope, the caps. These go into the report header (§8) and into the Ground `observed` line (§9).
+2. **Read the requirement sources first**, to understand what the pages are for; then the prototype. Reading the prototype only tells you what was drawn, not what was asked for.
+3. **Do not modify the prototype.** If it cannot run as-is (a missing local asset, a hard-coded absolute path), work on a copy under `SCRATCH/runtime/`, record every change you made and why, and say so in the report.
+4. **Check what you can actually run** (§6.3): a local HTTP server, a browser automation tool (Playwright or an equivalent), a browser. Whatever is missing, say so now — the walk then continues with what is possible and reports the gap; it never pretends to have covered runtime behaviour it could not exercise.
+
+## 3. The walk, phase by phase
+
+Run the phases in order and do not stop after the first few. Each phase leaves an artifact in `OUT/` (maps, model, coverage, checklist, report) or `SCRATCH/` (screenshots, the raw action log, runtime copies).
+
+### 3.1 Static interaction analysis → `static-interaction-map.json`
+Read the HTML, CSS and JavaScript **before** clicking anything. The goal is a map of potential interactions, including ones invisible in the initial state:
+- event bindings (`onclick`, `addEventListener`, change/input/submit/key handlers), render/show/hide/open/close functions, modals, drawers, dropdowns, pickers, tabs, toggles, `disabled` logic, validation, storage use (`localStorage` / `sessionStorage`), navigation;
+- **state variables** that drive the UI (the current page, the active tab, the selected items, an open flag, the record being edited, form data, filters) — for each: which UI it controls, which actions change it, what effect follows;
+- **conditional rendering** — every `condition → UI effect` (a field shown only for one channel type, a button only for one status);
+- **literal text and option lists** in the source — labels, placeholders, prompts, error messages, option values and their display texts (key-value pairs). These feed the checklist directly (§5).
+
+One entry per interaction: component, element, source location, action, condition, state variable, expected UI effect.
+
+### 3.2 Serve it locally
+Serve the prototype over a local HTTP server (not `file://`). Record the server URL, port, target URL, browser and viewport. On first load record the title, main regions, visible interactive elements, console errors, page errors, failed requests and any storage it uses.
+
+### 3.3 Runtime discovery → `runtime-elements.json`
+With the automation tool, enumerate the interactive elements actually present — buttons, links, inputs, textareas, selects, checkboxes, radios, comboboxes, tabs, menus, dialogs, drawers, pickers, clickable divs/spans, elements with a `role`, `tabindex` or an inline handler, dynamically created elements. For each: a selector, role, accessible name, text, label/placeholder/title, visibility, enabled state, bounding box, owning page and component, whether it sits in a scroll container, whether a parent must be opened first. Prefer role and accessible name, then label, text, `data-*`, id, name; avoid brittle CSS selectors without a reason.
+
+### 3.4 UI state model → `ui-state-model.json`
+Model states, not element lists:
+- **page state** — URL, page or module, main content, relevant storage;
+- **component state** — the open modal/drawer/dropdown/picker, the active tab, selections, input values, checkbox/radio/select values, disabled and expanded states, table scroll position, which conditional fields are shown;
+- **action** — click, fill, type, select, check, uncheck, press, scroll, hover, submit, cancel, close, navigate;
+- **result** — what changed: elements added or removed, fields changed, URL, storage, a validation message, a success or error state, a newly opened container, newly available interactions.
+
+### 3.5 State signature and de-duplication
+Give each state a signature from what matters to the user: page, open containers, active tab, selections, input values, toggle states, expanded/collapsed parts, relevant storage and scroll. Two states with the same signature are one state.
+**Hard rule (§6.1):** write down, once, what the signature includes and why that is enough to call two states equal. A signature that leaves out something visible (a message, a disabled flag, a column) merges states that differ — when in doubt, include it.
+States you **injected** to reach something (by setting storage, calling a function from the console, editing the DOM) are marked as injected and kept apart from states a user can reach by interacting; the coverage counts them separately.
+
+### 3.6 Traversal → `OUT/transitions.json`, `SCRATCH/actions.jsonl`
+Traverse breadth-first, depth-first or equivalently: state before → action → wait for the UI to settle → state after → signature → new state queued or duplicate skipped. The same action in a different state is a different transition (Edit from the default state, from a selected state, from a validation state). Log every action with timestamp, state before, target, input, state after, and any error.
+
+### 3.7 Interactions and boundaries to cover
+Cover at least: navigation, tabs, dropdowns and selects, checkboxes and radios, text inputs and search, clear, select all and deselect all, modals, drawers, pickers (single and multiple), add, delete, edit, copy, enable, disable, save, cancel, close, back, view details, expand and collapse, table scrolling in both directions and sticky areas, validation, success, error, empty and disabled states, conditional show and hide, refresh and re-entry (storage persistence), browser back/forward where it applies.
+For inputs: empty, whitespace only, the maximum length and one beyond it, special characters, a value the validation should refuse, and a value it should accept. Record each validation message verbatim.
+
+### 3.8 Path explosion control
+Cover meaningful state boundaries, not the Cartesian product of every field, option and entity. Use these classes, and record which representative stood for which class:
+- **Selection components** (multi-select, checkbox group, tag picker): default, empty, one, several, all, clear, change an existing selection, save and reopen.
+- **Cascading selectors** (province → city, category → item): pick a parent, pick a child, remove a child, remove a parent, and the parent/child state staying in sync.
+- **Entity pickers** (people, projects, records): open, search, select one, select several (if supported), clear, confirm, cancel, reopen with an existing selection, save after changing it.
+- **Type or event switches that reshape a form** (a channel type, an event kind): for each value — select it, see which fields appear, fill what is required, save, reopen, check the values come back. Values that produce the same form are merged into one representative, and that is recorded.
+- **Combinations of conditions:** each condition on its own; the pairs that change the form's structure, its validation or what is saved; nothing beyond that unless it changes the outcome.
+- **Tables:** first, middle and last row; the empty table; the action column; horizontal and vertical scroll to start, middle and end — never row by row.
+- **Duplicates and loops:** a transition already seen (same state, same action, same result) is skipped and logged as a skipped duplicate; `A → B → A` is resolved by signature; no element is clicked endlessly. The caps from §0 stop the walk where nothing else does (§6.2).
+
+### 3.9 Errors
+Listen throughout for console errors, page errors, failed requests, failed navigations, uncaught exceptions and unhandled rejections; after each significant action check for new ones. Record timestamp, action, state, URL, target, message and stack. Scrub them before writing (§6.4).
+
+### 3.10 Screenshots → `SCRATCH/screenshots/`, `OUT/evidence/`, `OUT/screenshot-index.txt`
+Take a screenshot at each first visit to a state, each open container, each validation/success/error state, each scroll extreme of a table, and wherever a checklist row needs visual evidence. Name them `NNN_<page>_<what>.png` and index them with the state they show. Scrub them before writing (§6.4). A screenshot a checklist row cites is kept in `OUT/evidence/` — it is that row's evidence and must survive the archive; the rest stay in `SCRATCH/`.
+
+### 3.11 Coverage → `coverage.json`
+Report, separately: interactions discovered statically, discovered at runtime, and both; **covered**, **uncovered** (with the reason), **blocked** (with the reason and whether it could continue automatically), **skipped as duplicates**, and **injected-only** states; and whether any cap from §0 was reached. Never mark something covered to raise a number.
+
+## 4. Prototype defects and unsettled rules
+
+- Something the prototype does that looks wrong — a broken flow, a dead control, a contradiction with itself or with the sources — is a **prototype defect**, recorded with: observed behaviour, steps, the state, why it may matter, and the assumption it depends on. Grade it (P0–P3) by impact on the delivery.
+- Something you cannot confirm (a business rule the prototype hints at but no source states) is a **potential issue**, not a defect: record it, never invent the rule.
+- Code in the prototype that no user path reaches (a function never called, a hidden panel never opened) is **not** a feature: record it as unreachable; do not count it as something to build.
+- Who decides: the requirement sources and the owner's recorded decisions settle what to reproduce, in that order. A defect the sources already settle is ruled by them (record which line): the delivery shows the corrected behaviour, so the row stays `in` with ruling `corrected — <source line>` (§5). Only a question nothing settles goes to the owner — as an `## Open` item, never as your choice.
+
+## 5. The output that matters: the reconciliation checklist → `checklist.md`
+
+The walk exists to produce this file. Every observable fact the delivery will be judged on gets one row; the later independent check (and the contract) work from it. Reuse what §3 produced — the checklist points into it — and keep **one** progress source: do not fork a second ledger elsewhere.
+
+| Field | Meaning |
+|---|---|
+| `ID` | stable, never reused: `PW-<page>-<nn>` |
+| `version` | the prototype version the row was read from |
+| `observable` | exactly what a user can see or do: a column header, a field label, an option's display text **and its value**, a default, a message's exact wording, a state and its transition, a disabled condition |
+| `evidence` | where it was read: a screenshot kept under `OUT/evidence/`, a state id, a source location |
+| `scope` | whether the delivery must show this row: `in` · `out` (outside this delivery, listed so a later check names it as excluded) |
+| `ruling` | how the delivery shows it: `as prototype` · `corrected — <source line or recorded decision>` (a prototype defect: the delivery shows the corrected behaviour) · `not built — <reason>` (unreachable code, a feature out of scope) · `owner — <Open id>` (nothing settles it yet) |
+| `implementation` | where it was built (file, component) — filled when it is built |
+| `verification` | the test or scenario id that pins it — filled when it is verified |
+
+Rules for the checklist:
+- Exact text is copied, not paraphrased; an option list is copied with its values (the key-value pairs are exactly what drifted on earlier requirements).
+- A prototype defect the sources correct is an `in` row with ruling `corrected — …`: the delivery must show the corrected behaviour, and it is reconciled like every other `in` row — against its ruling, not against the prototype — so the implementation neither copies the defect back in nor drops the correction.
+- When the contract is written, a scenario that pins observable content cites the checklist ids it covers.
+- **Reconciling it later is not the walk's job, but the walk must make it possible:** the later check ticks each `in` row — corrected ones included — against the built page and the row's ruling, fills `implementation` and `verification`, and lists every row left open. Ticking is not proof: the check also looks at the assertion behind each tick and the conditions it ran under — an assertion that is true on an empty list, a log check run at a level that hides the line it looks for, a row ticked off against the wrong item all look green and prove nothing.
+
+## 6. Hard constraints
+
+1. **Equivalence is justified (§3.5).** State the signature's contents and why they suffice; do not merge states that differ in anything a user sees; keep injected states apart from user-reachable ones.
+2. **Caps are set before running and never become a claim.** Reaching a cap, missing a capability or meeting a blocked path is reported as such, with what was not covered; it is never "fully covered".
+3. **Tools are optional prerequisites, not new dependencies.** A local server, Playwright (or an equivalent) and a browser are needed for §3.2–§3.10; apriori-cli does not install or require them. Without them, do §3.1 and §5 from the source, mark every runtime row as not exercised, and say what is missing. The prototype itself stays unmodified (§2.3).
+4. **Isolation and scrubbing.** Use made-up data, never real customer or personal data. Block or avoid calls to external services; if the prototype makes one, record it without letting it reach anyone. Scrub everything written — screenshots, action logs, input values, storage dumps, error stacks — of tokens, keys, phone numbers, addresses and anything personal; masking the screenshots alone is not enough.
+
+## 7. Completion criteria
+
+The walk is complete only when all of these hold:
+- static analysis done and `static-interaction-map.json` written;
+- the prototype served locally and exercised with the automation tool — or the missing capability reported (§6.3);
+- runtime elements discovered; the state model built; signatures with their stated equivalence basis used for de-duplication;
+- the main reachable states, actions and transitions explored; modals, drawers, dropdowns and pickers opened; conditional branches, input boundaries, save/cancel/delete/enable/disable flows and table scrolling exercised;
+- errors checked; screenshots and `actions.jsonl` (in `SCRATCH/`) and `coverage.json` written;
+- uncovered, blocked, duplicate and injected-only paths listed, with reasons, and any cap reached named;
+- `checklist.md` written with every row's fields filled up to `ruling`, every corrected prototype defect an `in` row with its correcting source, every row a cited screenshot supports backed by a file under `OUT/evidence/`, and every unsettled row pointing at an `## Open` item;
+- `REPORT.md` written (§8).
+If anything is still uncovered, the report says so; it never says "all done".
+
+## 8. Report → `REPORT.md`
+
+Sections: inputs (prototype, sources and versions, scope, caps, environment); page structure; static and runtime interaction maps (summaries, with pointers); state model; covered paths; uncovered paths; blocked paths (path, reason, status, can continue automatically?); skipped duplicates; workflows; errors; prototype defects and potential issues (§4); screenshot index; coverage numbers; the checklist summary (rows per scope, rows awaiting the owner). Every conclusion traces to an action, a state, a screenshot or a source location.
+The final message to the human is short: target, counts (states, actions, transitions, screenshots, checklist rows), errors, defects, uncovered and blocked items, rows awaiting the owner, where the artifacts are.
+
+## 9. Registering the result
+
+In the change's `## Reality Check` (§4 Ground), one line: `observed: <OUT>/checklist.md — prototype <version>, walked <date>; scope <scope>; rows <n> (in <a>, of which corrected <c> / out <b>); <k> awaiting the owner; runtime phases <run | not run — why>`. The checklist is source material: decisions in it are decisions only where a source line or a recorded owner decision says so. Rows awaiting the owner become `## Open` items with their own ids. A later change that builds or checks the pages reads the checklist and reuses it for the scope it covered at that prototype version. It does not re-walk what is covered; with the owner's authorization it **continues** the same walk for what is not — paths left uncovered or blocked, pages newly in scope, runtime phases that could not run before (§6.3) — adding rows to the same checklist and keeping existing ids. A new prototype version is walked again, against the old checklist. The runbook's once-per-requirement offer is about starting a walk; finishing one the owner authorized needs no new offer.
+
+exec
+/usr/bin/zsh -lc "git diff -- test/prototype-walk-guide.test.js; rg -n 'archived bundle is frozen|nothing.*written back|same checklist|archive|OUT' RUNBOOK.md guides/prototype-walk.md; sed -n '100,144p' lib/managed.js; sed -n '75,105p' lib/update.js; sed -n '30,43p' apriori/changes/prototype-walk-guide/specs/update/spec.md" in /root/terra/wt-cb
+ succeeded in 0ms:
+diff --git a/test/prototype-walk-guide.test.js b/test/prototype-walk-guide.test.js
+index 6e4b8b4..74849f0 100644
+--- a/test/prototype-walk-guide.test.js
++++ b/test/prototype-walk-guide.test.js
+@@ -115,6 +115,38 @@ test('PW-02 the guide is installed once, then refreshed, protected or left alone
+   assert.strictEqual(actionOf(update.run(dryRoot, { dryRun: true }).actions, GUIDE), 'created (first install)');
+   assert.ok(!fs.existsSync(path.join(dryRoot, GUIDE)));
+   assert.strictEqual(fs.readFileSync(path.join(dryRoot, 'apriori', 'managed.json'), 'utf8'), mBefore);
++  // PW-R1 (review round 1): every update branch refuses to hash or write through what is not a plain file
++  // in a plain directory — a listed guide swapped for a symlink whose target still matches the hash
++  const swapped = tmp(); init.scaffold(swapped, ['claude']);
++  const elsewhere = path.join(swapped, 'docs', 'moved-guide.md');
++  fs.mkdirSync(path.dirname(elsewhere), { recursive: true });
++  fs.renameSync(path.join(swapped, GUIDE), elsewhere);
++  fs.symlinkSync(elsewhere, path.join(swapped, GUIDE));
++  const sw = update.run(swapped, { guideSrc: newer });
++  assert.match(actionOf(sw.actions, GUIDE), /^not a regular file \(skipped — a symlink sits at/);
++  assert.strictEqual(fs.readFileSync(elsewhere, 'utf8'), PKG_GUIDE, 'the symlink target must not be written through');
++  // apriori/guides itself a symlink to a directory inside the project
++  const linkedDir = tmp(); init.scaffold(linkedDir, ['claude']);
++  fs.renameSync(path.join(linkedDir, 'apriori', 'guides'), path.join(linkedDir, 'real-guides'));
++  fs.symlinkSync(path.join(linkedDir, 'real-guides'), path.join(linkedDir, 'apriori', 'guides'));
++  const ld = update.run(linkedDir, { guideSrc: newer });
++  assert.match(actionOf(ld.actions, GUIDE), /^not a regular file \(skipped — something other than a plain directory sits at apriori\/guides/);
++  assert.strictEqual(fs.readFileSync(path.join(linkedDir, 'real-guides', 'prototype-walk.md'), 'utf8'), PKG_GUIDE);
++  // a directory at the guide's path: reported, no crash, the rest of the update still lands
++  const dirAt = tmp(); init.scaffold(dirAt, ['claude']);
++  fs.rmSync(path.join(dirAt, GUIDE)); fs.mkdirSync(path.join(dirAt, GUIDE));
++  fs.writeFileSync(path.join(dirAt, 'apriori', 'runbook.md'), '# older runbook\n');
++  const mf = manifestOf(dirAt); mf['apriori/runbook.md'] = sha(path.join(dirAt, 'apriori', 'runbook.md')); managed.writeManifest(dirAt, mf);
++  const da = update.run(dirAt);
++  assert.match(actionOf(da.actions, GUIDE), /^not a regular file \(skipped — a directory or other non-file sits at/);
++  assert.strictEqual(actionOf(da.actions, 'apriori/runbook.md'), 'updated');
++  assert.strictEqual(manifestOf(dirAt)['apriori/runbook.md'], sha(path.join(dirAt, 'apriori', 'runbook.md')));
++  // an unlisted dangling symlink is reported, not silently passed over
++  const dangling = aged();
++  fs.mkdirSync(path.join(dangling, 'apriori', 'guides'), { recursive: true });
++  fs.symlinkSync(path.join(dangling, 'nowhere.md'), path.join(dangling, GUIDE));
++  assert.match(actionOf(update.run(dangling).actions, GUIDE), /^not a regular file \(skipped — a symlink sits at/);
++  assert.ok(!fs.existsSync(path.join(dangling, 'nowhere.md')));
+ });
+ 
+ test('PW-03 doctor reports a missing guide the runbook names, and nothing otherwise', () => {
+@@ -173,6 +205,17 @@ test('PW-05 the guide carries its entry, method, checklist fields and four const
+   for (const f of ['ID', 'version', 'observable', 'evidence', 'scope', 'ruling', 'implementation', 'verification'])
+     assert.match(checklist, new RegExp('\\| `' + f + '` \\|'), `checklist field ${f}`);
+   assert.match(flat(checklist), /keep \*\*one\*\* progress source: do not fork a second ledger elsewhere/);
++  // PW-R2: scope (must the delivery show it?) is apart from ruling (how?); a corrected defect is an `in` row
++  assert.match(flat(checklist), /\| `scope` \| whether the delivery must show this row: `in` · `out`/);
++  assert.match(flat(checklist), /\| `ruling` \| how the delivery shows it: `as prototype` · `corrected — <source line or recorded decision>`/);
++  assert.match(flat(checklist), /A prototype defect the sources correct is an `in` row with ruling `corrected — …`: the delivery must show the corrected behaviour, and it is reconciled like every other `in` row — against its ruling, not against the prototype/);
++  assert.doesNotMatch(g, /not-reproduced/);
++  // PW-R3: cited evidence survives the archive
++  assert.match(flat(checklist), /\| `evidence` \| where it was read: a screenshot kept under `OUT\/evidence\/`/);
++  assert.match(flat(g), /A screenshot a checklist row cites is kept in `OUT\/evidence\/` — it is that row's evidence and must survive the archive/);
++  // PW-R4: reuse the covered scope; continue an authorized walk for what it did not cover
++  assert.match(flat(g), /reuses it for the scope it covered at that prototype version\. It does not re-walk what is covered; with the owner's authorization it \*\*continues\*\* the same walk for what is not/);
++  assert.match(flat(g), /The runbook's once-per-requirement offer is about starting a walk; finishing one the owner authorized needs no new offer\./);
+   assert.match(flat(checklist), /Ticking is not proof: the check also looks at the assertion behind each tick and the conditions it ran under/);
+   const constraints = flat(g.slice(g.indexOf('## 6. '), g.indexOf('## 7. ')));
+   assert.match(constraints, /1\. \*\*Equivalence is justified \(§3\.5\)\.\*\*.*keep injected states apart from user-reachable ones/);
+guides/prototype-walk.md:14:| `OUT` | where the kept artifacts go — `checklist.md`, `REPORT.md`, the JSON maps, and under `evidence/` the scrubbed screenshots the checklist cites | `apriori/changes/<change>/prototype-walk/` (archived with the change); before a change exists, a path the owner names |
+guides/prototype-walk.md:37:Run the phases in order and do not stop after the first few. Each phase leaves an artifact in `OUT/` (maps, model, coverage, checklist, report) or `SCRATCH/` (screenshots, the raw action log, runtime copies).
+guides/prototype-walk.md:66:### 3.6 Traversal → `OUT/transitions.json`, `SCRATCH/actions.jsonl`
+guides/prototype-walk.md:86:### 3.10 Screenshots → `SCRATCH/screenshots/`, `OUT/evidence/`, `OUT/screenshot-index.txt`
+guides/prototype-walk.md:87:Take a screenshot at each first visit to a state, each open container, each validation/success/error state, each scroll extreme of a table, and wherever a checklist row needs visual evidence. Name them `NNN_<page>_<what>.png` and index them with the state they show. Scrub them before writing (§6.4). A screenshot a checklist row cites is kept in `OUT/evidence/` — it is that row's evidence and must survive the archive; the rest stay in `SCRATCH/`.
+guides/prototype-walk.md:108:| `evidence` | where it was read: a screenshot kept under `OUT/evidence/`, a state id, a source location |
+guides/prototype-walk.md:136:- `checklist.md` written with every row's fields filled up to `ruling`, every corrected prototype defect an `in` row with its correcting source, every row a cited screenshot supports backed by a file under `OUT/evidence/`, and every unsettled row pointing at an `## Open` item;
+guides/prototype-walk.md:147:In the change's `## Reality Check` (§4 Ground), one line: `observed: <OUT>/checklist.md — prototype <version>, walked <date>; scope <scope>; rows <n> (in <a>, of which corrected <c> / out <b>); <k> awaiting the owner; runtime phases <run | not run — why>`. The checklist is source material: decisions in it are decisions only where a source line or a recorded owner decision says so. Rows awaiting the owner become `## Open` items with their own ids. A later change that builds or checks the pages reads the checklist and reuses it for the scope it covered at that prototype version. It does not re-walk what is covered; with the owner's authorization it **continues** the same walk for what is not — paths left uncovered or blocked, pages newly in scope, runtime phases that could not run before (§6.3) — adding rows to the same checklist and keeping existing ids. A new prototype version is walked again, against the old checklist. The runbook's once-per-requirement offer is about starting a walk; finishing one the owner authorized needs no new offer.
+RUNBOOK.md:22:12. An archive preserves the evidence of its time and never poses as a release or external acceptance.
+RUNBOOK.md:37:`apriori/process-config.md` is **human-held; the agent treats it as read-only** (R3). Without it, each row's Default column applies. The three deterministic gates run as CLI commands: `apriori verify` (Build & Test), `apriori archive` (Review & Deliver), `apriori check` (CI).
+RUNBOOK.md:64:- **No default reading list; no format shopping.** Never open another active or archived change to learn a formatting convention. `apriori new` already scaffolds this change's files in the right shape; that scaffold, and this change's own prior artifacts, are the only default examples.
+RUNBOOK.md:82:> An owner decision is recorded **verbatim** in `gates:`, one entry per decision, and it is **one-shot**: it settles exactly the thing it names and never inherits to the next one of its kind. `apriori gate` and `apriori archive` machine-check that: an accepted open item needs a `gates:` entry naming its id, and an escalated review family — an `escalate` verdict, a round past its one automatic re-review that no owner release opened or that still revises, or a `revise` after the owner answered the limit round itself with a `reframe` (§1 R4) — needs both the recorded decision AND an explicit `--force`. A decision an agent appended by itself is never enough.
+RUNBOOK.md:102:2. **Scoped standing authorization.** The human may authorize a NAMED action class for a NAMED scope with a NAMED expiry boundary (e.g. "push after each change of this batch" — expires when the batch's last change archives). The record carries all three: class, scope, and expiry. An ambiguous, expired, or out-of-scope invocation of a standing grant is invalid; silence, precedent, or a generic "continue" never extends a grant to a new class, scope, or period.
+RUNBOOK.md:106:**R2 — Reviews must be genuinely external.** The producing session never issues a review verdict. Spawn a heterogeneous reviewer — `codex exec -s read-only "<prompt>" < /dev/null` (rounds 2+: `codex exec resume -c sandbox_mode="read-only" <session-id> "..."`, the message scoped as §4 Review & Deliver says; a non-interactive invocation must close stdin or codex hangs), or — without Codex — a **fresh** `claude` session on a different tier — fed P3's default context — exactly the four inputs §4 names, with the reviewer's own source inspection still allowed — and paste the verdict line back verbatim. Reviewers usually run in read-only sandboxes and cannot write to the bundle: the reviewer prints the review doc body to stdout, and the producer lands it verbatim, marked "recorded on behalf of the reviewer". The same transcription mechanism covers the **review doc itself**: the reviewer prints the doc body and the producer lands it at its fixed path. Two landing shapes: the doc's very first non-blank line is a provenance header with all four fields, `<!-- provenance: provider=<name> model=<id> session=<id> date=<YYYY-MM-DD> -->` (`unknown` is legal for any field), and the doc carries its own verdict line — then the doc IS the raw evidence; otherwise the reviewer's full raw output is archived beside it as `review/<stem>-raw.*` (the stem = its review doc). Then record the reviewer's session id in flow-state's `reviewer-session` field the moment round 1 prints it. If the reviewer dies before its verdict line lands → resume the same session and have it finish, **one retry only** — counted per reviewer session that died before its verdict line landed (this is transport recovery, not an extra review round); if that also fails, switch to a fresh independent `claude` session and have IT finish. Never fill in the verdict yourself; a failure that produced no verdict line is never a round. A read-only reviewer's **dynamic observations are untrustworthy** — test runs and builds inside its sandbox can produce phantom findings; only its static reads count. If you cannot actually spawn a reviewer, stop and say so — **do not simulate one**.
+RUNBOOK.md:130:The rulings and the one re-review let the loop go on without waiting, but they do not guarantee the approach is right; the owner may reframe or raise the limit at any time. The final report and the archive declaration list every ruling.
+RUNBOOK.md:135:`apriori archive` consults the same loop as readiness rule **R4**: a stopped loop, missing or failing rulings, a re-review still owed, an invalid limit or an evidence problem refuses the archive; advisories never refuse. A loop stopped by an escalation is forceable only with the owner's decision already recorded in `gates:` **and** an explicit `--force`.
+RUNBOOK.md:137:**Enforcement boundary.** *this repository ships no Stop hook*, and `apriori init` writes none. What the CLI provides is the machine-readable signal — gate exit code 1 with a blocked C8, archive's `RESULT: NOT READY`, the `review` / `escalation` fields of `apriori status --json`, and exit code 3 from `apriori status --escalation`. Wiring that into a Stop hook, a `/goal` condition or CI is the project's own step; until it is wired, C8 is a check you have to run, not a stop that happens to you. A reviewer's judgment quality and semantic adherence to the §5 prompts are advisory; that every verdict line must have raw evidence is mechanical — the backstop against a simulated review.
+RUNBOOK.md:145:**Be careful when the change touches any of these** — migration / schema / DDL · transactions or locks · permission or auth · external configuration · public API · cross-repo reference · a new route or page. Each is a risk that wants real evidence, and each one you cannot verify becomes an `## Open` item (§3) until it is resolved or the owner accepts it. One of them is mechanical: when the delta declares `## MODIFIED` / `## REMOVED` / `## RENAMED Requirements`, `gate`, `archive` and `status` report the signal (`contract-mutation: <file> <op> '<requirement>'`) — information, not a demand. Every other item on that list needs your product's routes, schema, auth or deploy config, and the CLI reads none of them — **naming those risks is still a rule only you can keep.** Re-ask after every substantial diff: a change that starts local and grows a migration owes migration evidence from that moment on.
+RUNBOOK.md:147:**No change may drop the one independent review.** A change with no completed review round is refused by `gate` (C8) and `archive` (R4). **The review must also have CLOSED.** If a family's **latest** round still says `gaps found`, `escalate`, or a positive `N issues open`, the change is refused; a round-1 revise answered by a round-2 accept has converged. `--force` cannot buy a review, and neither can a symlinked or unreadable evidence file.
+RUNBOOK.md:165:                        # §4's four phases, plus the two exits. A normal archive moves
+RUNBOOK.md:166:                        # the bundle at `review`, and the archived stage is terminal —
+RUNBOOK.md:176:                        # There is no `delivery:` field either (retired): the archive's third
+RUNBOOK.md:177:                        # state is one fixed sentence — an archive is not a release. A legacy
+RUNBOOK.md:191:                        # (gate C9, archive R5) and is never forceable. The owner's OWN decision,
+RUNBOOK.md:240:| **Review & Deliver** | Once review-ready, one independent review; deliver when the substantive issues are closed | verdict accepted, `apriori gate` PASS, archived |
+RUNBOOK.md:261:- **Delta grammar and archive:** `## ADDED` → append; `## MODIFIED` → replace the whole block; `## REMOVED` → the store block is marked `deprecated (superseded by <change>)`; `## RENAMED` (`- Old -> New`) → rename the ID in place; `## Notes` → commentary the merge ignores entirely — write WHY a block changed there (any other non-`Requirement` `###` inside a requirement block is refused). A same-ID conflict with a change merged since branching → **stop, record it as an open issue, a human resolves**. `apriori archive --change <name>` discovers every delta under the change, dry-runs by default, and on `--write` commits failure-atomically; `--write` moves the in-flight change dir to `apriori/changes/archive/<YYYY-MM-DDThhmm>-<name>/` by default (`--changes-dir` only overrides a non-default changes root) — a resumed session must look under `archive/` once the move has happened. **It refuses a change that is not finished** (flow-state legal and at `phase: review`, with no legacy `review/issues.md` still carrying `open` rows — the one-shot migration, §5; the review evidence complete and every family's loop converged; no `## Open` item still pending — unaccepted and not a registered follow-up — and no standing assumption), printing `RESULT: NOT READY — nothing written` (exit 1) on the same predicates `gate` runs for C3/C5/C8/C9. `--force` overrides **progress only**, and only where the owner's decision is already in `gates:`: an escalated review family — an `escalate` verdict, a round past its one automatic re-review that no owner release opened or that still revises, or a `revise` after the owner answered the limit round itself with a `reframe` (§1 R4) — that the owner answered with `reframe`, and a scenario drop named by `archive-drop` (below) — never `abandoned`, a structural defect, a pending `## Open` item, or a missing piece of reality. An `archive-force ledger` record forces nothing (6.2); it is reported as a note. The merge report, the single-file `--store/--delta` form and conflict details are in the CLI reference (`docs/cli.md`, archive).
+RUNBOOK.md:262:- **Review evidence retention:** raws under archived changes are AUDIT EVIDENCE — kept with the archive, never pruned; `apriori/tmp/` is the only ephemeral space. Secrets must never enter a raw: sanitize BEFORE landing — `apriori check`'s CK-10 tripwire backs this mechanically.
+RUNBOOK.md:263:- **CAS base stamps:** when authoring a delta, run `apriori stamp apriori/specs/<module>/spec.md` and paste the printed `<!-- apriori-base: … -->` line at the top of the delta file (before the first `## … Requirements` section; `new` for a not-yet-existing store). Both `verify --change` and `archive` then refuse if the store has diverged since the delta was authored. Unstamped MUTATION deltas (MODIFIED/REMOVED/RENAMED) are **denied by default** — gate C7 blocks and `archive` refuses at preflight; the waivers are the `--no-cas` flag or a `| cas | optional |` config row.
+RUNBOOK.md:308:- **The spec-runner gate (`apriori verify`).** Mid-change, use the projected form: `apriori verify --change <name> --test-cmd "<your test command>"` — it applies the delta to the store in memory and binds scenarios against that. Post-archive, the plain form `apriori verify --specs apriori/specs --test-cmd "…"`. Both report BOUND-GREEN / BOUND-RED / UNBOUND / ORPHAN / UNIDENTIFIED. **GREEN (exit 0) = within this change's scope no bound scenario's test fails, no failure is unattributable, and no ID is duplicated across boundaries; UNBOUND, a non-failing ORPHAN and UNIDENTIFIED are advisory only and never block** — do not write TAP mergers or ID promoters for them. Exit 1 = gaps; exit 2 = the run itself is untrustworthy (missing spec paths, zero scenarios, non-TAP output, test-command crash, merge conflict, diverged base stamp, malformed delta) — **a broken or vacuous run is never GREEN**. `apriori gate`'s C1 reads the identical result. The diagnostic classes are detailed in the CLI reference (`docs/cli.md`, verify).
+RUNBOOK.md:313:### Review & Deliver — review-ready, one independent review, then archive
+RUNBOOK.md:316:- **Then one independent review** (**P3**, R2). The reviewer's default input is exactly four things: the **behavior contract**, the **diff**, the **`## Open` items** and the **boundaries still uncovered**; it may read the whole repo, callers, config and prototypes on its own. Raw review output, closed issues and other changes' documents are not default inputs. The reviewer's output keeps three things: newly found substantive issues; which risk surfaces it did and did not examine; and one of `ACCEPT | REVISE | ESCALATE`. **The reviewer does not do the producer's job** — it is not there to compile, add tests or rewrite the approach; if it has to, the change was not review-ready. A REVISE round does not widen that default input to the producer's full history. This input boundary does not revoke R2's reviewer resume mechanism or the reviewer's permission to inspect sources; the producer's description is not a substitute for that independent judgment. Carrying that boundary: **do not repackage a prior review's conclusions into the next reviewer's default input** — dropping the source name, rewording it, or re-labelling it as your own `observed`/`decision` changes nothing, and writing it in and deleting it later does not undo the round it was carried through. What you **re-established yourself**, against real code, a command or its output, is your own finding: record it, even if a prior review reached the same conclusion. The diff is not trimmed by path — completeness, maintainability and a checkable line of responsibility all argue against that, and a deletion carrying old content is mechanical, not propagation. This leaves the review archive and the Fix Packet untouched: both are required elsewhere and neither is a default input to the next review.
+RUNBOOK.md:318:- **Disposition of findings — scope is judged per finding, never by volume.** For every substantive finding the producer records a disposition with its basis: the *current contract* (the delta specs and the owner's recorded decisions), an *existing constraint* (a hard rule, a safety responsibility, an established guarantee), or a *new ask*. **A finding is a necessary fix for THIS delivery when, left alone, the product as it would be delivered violates a locatable accepted acceptance condition, a valid owner decision or an applicable existing constraint** — the disposition cites that basis and the evidence of the violation. A necessary fix is never moved out because it is large: split the implementation if you must, the delivery keeps its dependency on it. Changing a commitment is the owner's decision (R1); until it is recorded, the commitment and its blocking stand. A new ask this delivery does not depend on is registered as a **follow-up with a stable landing spot** — `- <ID>: follow-up → <new-change-name> — <text>` in `## Open`, which gate C9 / archive R5 / `status` report as a note, not a blocker (creating and implementing that change still follows the delegation) — and moving it out is not closing it. The landing spot is a valid change name that is not this change; when that change is later opened under its own authorization, it carries the original id and text as a pending `## Open` item (with an `observed:` line in its Reality Check naming the bundle it came from) and closes it only on its own exit evidence, so the ask is traceable from the archived bundle to where it is picked up and is never closed by being picked up. `fixed` (with its evidence) / `contract` (pending the owner) / `follow-up` / `invalid` (with the reason) / `duplicate` (with the original id) are the recommended words, not a closed vocabulary: an unresolved finding keeps its id, its current impact and its next action. `review-progress`'s `approach:` says why the approach was kept or changed — it is not a second ledger of findings.
+RUNBOOK.md:319:- **KB update is a precondition, not a closeout step — and it is owed only when** `apriori/truth/<module>.md` already covers the touched module, or the owner/change explicitly decided to persist a new durable contract. Never fabricate one just to have one at closeout. When owed, before review-ready: commit the implementation and point `source-commit` at it; update `apriori/truth/<module>.md` — Contract section from the final implementation, Decisions section appending this change's new decisions. The reviewer's diff already carries this KB diff; `apriori archive` never touches `apriori/truth/`.
+RUNBOOK.md:320:- **Then archive — directly, not a dry-run.** (A MODIFIED delta that would drop a store scenario is refused: the owner must name that exact deletion with an `archive-drop <change> sha256:<fingerprint>` entry in `gates:` and the run must add `--force` — retitling under the same ID or rewriting a scenario is not dropping.) ACCEPT, plus no product-code or test change since review-ready, means the normal close is four logical actions, no more: (1) land the reviewer's output as one self-contained review file, plus a short flow-state update; (2) run `apriori check`, then a full `apriori gate --change <name>` (not `--review-ready`), which binds C1 on these still-unchanged inputs; (3) run `apriori archive --change <name> --write` directly — `--write` runs the same preflight a dry-run would, so dry-running first re-checks nothing; archive merges the delta specs into `apriori/specs` and moves the bundle, and nothing else (`--changes-dir` is only a location override for a non-default changes root); (4) commit the closeout locally, and stop. The atomic move carries the whole bundle to `apriori/changes/archive/<stamp>-<change>/`. Count logical actions, not commands: action 2 already contains both check and gate. The one exception is the re-verify path below when its stated triggers occur; the four-action rule is not permission to skip recovery or an applicable report.
+RUNBOOK.md:321:- **An archive is not a release.** `apriori archive` declares only the state it just judged (whether the implementation and the critical evidence are complete); its third line says exactly that, verbatim — `delivery: an archive is not a release` — and it never poses as a release or external acceptance. (The flow-state `delivery:` field is retired; a legacy line is read and ignored.) **The archived bundle is frozen: nothing, including `phase:`, is written back to it.** A defect found afterwards becomes a short outcome note or a new change.
+RUNBOOK.md:322:- **Exit (normal path).** By default: do not rerun the test command separately before step 2's gate — `--test-cmd` already ran it; do not rerun `apriori verify`, `check`, `gate`, or `status` after archive — step 2 already bound C1 on these inputs, step 3 already re-checked archive's own readiness and CAS, nothing changed between them, so none of the four learns anything new; and do not narrate the full review, flow-state, or command output back to the human. Exit is: delta specs merged + the precondition KB diff, human-approved (same-repo layout: that's just PR review).
+RUNBOOK.md:323:- **Re-verify instead, whenever:** review returns REVISE and product code or tests changed; archive reports a conflict, CAS, readiness, or structural problem; a business file changes between gate (action 2) and archive (action 3); or `apriori check` fails — any of these returns the change to Build & Test and a fresh gate; nothing archives on a partial pass. **On REVISE, start that round in a fresh session with a Fix Packet** (§0).
+RUNBOOK.md:327:The human changes their mind: abandonment is a legal exit from any phase — on the human's word (their call alone; never proposed by the agent as a way out of failing reviews). Record the human's verbatim reason in `gates:`, move the change dir to `apriori/changes/archive/<stamp>-<name>/` (flow-state `phase: abandoned`), write nothing to the KB or spec store, and leave any code the change already touched exactly where the human directs (revert / keep on a branch — ask, don't assume). Whatever the change did write is kept: an abandoned change is a recorded decision, not an erased one.
+RUNBOOK.md:344:**There is no issue ledger.** The state's `## Open` section is where a change's open substantive issues live — one line each, a stable id first — and it is the only place `gate`, `archive` and `status` read them (6.2: `review/issues.md` is never read to judge a change). **Migration, once:** an ACTIVE bundle whose legacy `review/issues.md` still carries `open` rows (old table contract, `open` as the leading status token) is refused at gate C3 / archive R1 / review-ready until each row is MOVED — `- <ID>: <text>` into `## Open`, the row deleted from the ledger (or the file deleted); a copied row is still an open row, and a ledger that cannot be read is a structural error. Frozen archives are never scanned. **IDs:** an Open id is one token, no spaces (`[^\s:]+` — re-key `data schema` as `data-schema`); a re-found issue reopens its old id — reopened is an event, not a new line; a closed id is never reused for a different risk within the same bundle. The CLI cannot prove that last rule (it has no memory of what an id once named), so an `evidence-accept` whose id later names a different item is a documentation violation, not something the tool detects. **Exactly one thing blocks: a pending item — one nobody has accepted and that is not a registered follow-up.** An accepted item is reported as still present and never deleted by a tool; the producer deletes the line when the risk is actually resolved. A registered follow-up (`- <ID>: follow-up → <new-change-name> — <text>`, §4 Review & Deliver) is a new ask this delivery does not depend on: reported as a note, never a blocker, never closed by being moved out. A commitment carried into another change keeps its original id there as a pending item until that change's own exit evidence closes it — picking it up, archiving the change it came from, or renaming either change never closes it. Only correctness, security and stated-requirement gaps become pending items at all — a new ask with no delivery dependency is a follow-up item, not a pending one; everything else is `advisory`, and that label is the reviewer's exclusive call. R1's unresolved delivery obligations and R4's review stops keep their authority: a follow-up registration releases neither.
+RUNBOOK.md:396:I need to perform an operation that mutates state OUTSIDE this repository/workspace, so it needs your explicit authorization (runbook §1).
+}
+
+// First install of the guide (init, and update on a project that never had it). Never overwrites,
+// never follows a path out of the project, never writes through something that is not a plain
+// directory/file → 'created' | 'skipped' | '<reason> (skipped — …)'. The caller records 'created'.
+// What sits at the guide's path or at apriori/guides that the tool must not hash or write through:
+// an escape, a symlink (dangling or not), a directory or another non-file at the path, or anything
+// but a plain directory at apriori/guides → the reason; null when the path is clear or a plain file.
+function guideObstruction(root) {
+  const abs = path.join(root, GUIDE_REL);
+  if (!containsFuturePath(root, abs)) return `escapes the project root (skipped — ${GUIDE_REL} must resolve inside the project)`;
+  let dir = null;
+  try { dir = fs.lstatSync(path.dirname(abs)); } catch { /* absent */ }
+  if (dir && !dir.isDirectory()) return 'not a regular file (skipped — something other than a plain directory sits at apriori/guides; move it and rerun)';
+  let st = null;
+  try { st = fs.lstatSync(abs); } catch { /* absent */ }
+  if (st && !st.isFile()) return `not a regular file (skipped — ${st.isSymbolicLink() ? 'a symlink' : 'a directory or other non-file'} sits at ${GUIDE_REL}; move it and rerun)`;
+  return null;
+}
+
+function installGuide(root, dryRun) {
+  const ob = guideObstruction(root);
+  if (ob) return ob;
+  if (fs.existsSync(path.join(root, GUIDE_REL))) return 'skipped';
+  const abs = path.join(root, GUIDE_REL);
+  if (!dryRun) { fs.mkdirSync(path.dirname(abs), { recursive: true }); fs.copyFileSync(GUIDE_SRC, abs); }
+  return 'created';
+}
+
+module.exports = { TEMPLATE_GENERATIONS, allowedTargets, hashBytes, hashFile,
+  readManifest, writeManifest, assertContained, GUIDE_REL, GUIDE_SRC, guideObstruction, installGuide };
+
+  // runbook: adopted unconditionally pre-manifest (its refresh is update's reason to exist)
+  consider('apriori/runbook.md', opts.runbookSrc || RUNBOOK_SRC, () => true);
+  // the guide the runbook names: listed → refreshed like any managed file (modified or missing is
+  // reported and left alone — recreating a listed file is init's job); never installed (not listed,
+  // not present) → installed and recorded now; present but not listed → the user's, left alone
+  // Every branch first checks what sits at the path and at apriori/guides (lstat — a symlink is never
+  // followed): an obstruction is reported and left alone before anything is hashed or written.
+  const guideListed = manifest && Object.prototype.hasOwnProperty.call(manifest.files, managed.GUIDE_REL);
+  const obstruction = managed.guideObstruction(root);
+  if (obstruction) {
+    actions.push({ file: managed.GUIDE_REL, action: obstruction });
+  } else if (!guideListed && !fs.existsSync(path.join(root, managed.GUIDE_REL))) {
+    const a = managed.installGuide(root, dry);
+    actions.push({ file: managed.GUIDE_REL, action: a === 'created' ? 'created (first install)' : a });
+    if (a === 'created' && !dry) { files[managed.GUIDE_REL] = managed.hashFile(path.join(root, managed.GUIDE_REL)); manifestDirty = true; }
+  } else {
+    consider(managed.GUIDE_REL, opts.guideSrc || managed.GUIDE_SRC, () => false);
+  }
+  // protocol-required scaffolding the refreshed runbook relies on (IN-11): create if missing,
+  // NEVER modify — and each piece on its own: a lone missing tmp/ is recreated too (BD-02)
+  const gi = path.join(root, 'apriori', '.gitignore');
+  if (!fs.existsSync(gi)) {
+    if (!dry) fs.writeFileSync(gi, 'tmp/\n');
+    actions.push({ file: 'apriori/.gitignore', action: 'created' });
+  }
+  const tmpDir = path.join(root, 'apriori', 'tmp');
+  let tmpSt = null;
+  try { tmpSt = fs.lstatSync(tmpDir); } catch { /* absent */ }
+  if (!tmpSt) {
+    if (!dry) fs.mkdirSync(tmpDir, { recursive: true });
+
+### Requirement: update installs the prototype-walk guide once and then manages it like the runbook
+`apriori update` SHALL treat `apriori/guides/prototype-walk.md` by its manifest state: never installed (not listed, not present) → install it and record it, reported `created (first install)` and counted as a refresh in the summary; listed and unmodified → refreshed to the package's guide (`updated` / `up-to-date`) and re-hashed; listed and locally modified → reported `modified` and left alone; listed but missing → reported missing and left to `apriori init` (the existing cure); present but not listed → reported `unmanaged` and left alone (never adopted). It never writes through a path that is not a regular file or that resolves outside the project, and `--dry-run` reports without writing. A CLI from before this change refuses a manifest that lists the guide (`not a refresh target`) — downgrading is not supported, and MIGRATING says so.
+
+#### Scenario: PW-02 the guide is installed once, then refreshed, protected or left alone by its manifest state
+- WHEN `apriori update` runs on a project an older CLI initialized (no guide, no entry), runs again, runs after the package's guide changed, runs after the user edited the guide, runs after the user deleted the listed guide, runs where an unlisted user file sits at the guide's path, and runs with `--dry-run` on a project without the guide
+- THEN the first run creates the guide byte-identical to the package's, records it and reports `created (first install)` with the summary counting it; the second reports `up-to-date`; the changed package guide is `updated` and re-hashed; the edited guide is reported `modified` and keeps its bytes and its entry; the deleted one is reported missing and not recreated; the unlisted file is reported `unmanaged` and untouched; the dry run reports the creation and writes neither the guide nor the manifest
+
+## Notes
+
+Why: the owner decided on 2026-10-02 that the prototype-walk specification used on a real requirement enters apriori as a separate guide the runbook references, not as more runbook text, and that the runbook is not split now (Claude × Astra plan C-b, R59-CONSENSUS §四). It is also the first, deliberately small, test of the reference pattern — whether an agent reads a referenced file when the runbook tells it to — before any split is considered.
+
+codex
+The fixes address all four round-1 findings, and PW-02 now asserts that matching-hash symlink targets remain unchanged. I found one conflict in the continuation fix: it tells a later change to add rows to the same checklist, while the default location is inside a change bundle that the runbook freezes after archiving.
+
+exec
+/usr/bin/zsh -lc "sed -n '307,321p' RUNBOOK.md; nl -ba guides/prototype-walk.md | sed -n '140,148p'; rg -n 'checklist|prototype-walk' lib/archive.js lib/archive-manifest.js; git diff --check; git status --short" in /root/terra/wt-cb
+ succeeded in 0ms:
+- **Do, in order:** (1) a failing test that proves every scenario's behavior with real evidence — a Scenario's examples table may share ONE parametrized test, so the bar is "every scenario covered," never "one test per ID"; naming a test with its scenario ID is a suggestion, never mandatory — show the failing run; (2) implement with **P2**; (3) run until green; (4) `apriori verify` GREEN; (5) update `## Open`: delete what you resolved, and give every risk this change hits and has not resolved its own line with a stable id (`- <ID>: <text>`).
+- **The spec-runner gate (`apriori verify`).** Mid-change, use the projected form: `apriori verify --change <name> --test-cmd "<your test command>"` — it applies the delta to the store in memory and binds scenarios against that. Post-archive, the plain form `apriori verify --specs apriori/specs --test-cmd "…"`. Both report BOUND-GREEN / BOUND-RED / UNBOUND / ORPHAN / UNIDENTIFIED. **GREEN (exit 0) = within this change's scope no bound scenario's test fails, no failure is unattributable, and no ID is duplicated across boundaries; UNBOUND, a non-failing ORPHAN and UNIDENTIFIED are advisory only and never block** — do not write TAP mergers or ID promoters for them. Exit 1 = gaps; exit 2 = the run itself is untrustworthy (missing spec paths, zero scenarios, non-TAP output, test-command crash, merge conflict, diverged base stamp, malformed delta) — **a broken or vacuous run is never GREEN**. `apriori gate`'s C1 reads the identical result. The diagnostic classes are detailed in the CLI reference (`docs/cli.md`, verify).
+- **Run the tests the risks call for, not a matrix.** There is no per-project-type evidence table: what a change owes is the evidence the risks it actually hits call for, and whatever stays unverified is an `## Open` item. Scenario IDs bind to `apriori verify` through unit/component tests — verify's gate speaks TAP, which Playwright does not emit, so an E2E/visual layer sits **on top of** the binding gate as an additional exit condition and its visual checks must emit a textual pass/fail. Implementation-time screenshots go to the gitignored `apriori/tmp/`; visual-regression baseline images belong to the project's own test suite. Where no executable instrument exists for a risk, the independent review is the instrument there.
+- **Self-added-promise discipline.** A self-added promise with no established requirement, valid decision or actual safety responsibility behind it — hard guarantees such as "always / under concurrency / crash-durable / atomic", and mechanisms beyond the requirement — is retracted or narrowed to what is actually verified, by default. An established guarantee needs a test that injects the adversarial condition on its **success path**; for any continue/skip/silently-ignored branch, re-check the spec for whether the failure state must be user-visible.
+- **Exit:** tests green; `apriori verify` GREEN; lint/static analysis green (where configured); `## Open` holds only what is genuinely unresolved, each line with a stable id. Design infeasible or the requirement itself wrong → back to Specify or Ground (update the state file and tell the human). No docs-only substitute exists: a change with no executable test evidence has no C1 evidence; a documentation project that wants the workflow must provide a real TAP-emitting check.
+
+### Review & Deliver — review-ready, one independent review, then archive
+
+- **Review-ready comes first.** Run `apriori gate --change <name> --review-ready --test-cmd "…"`. It writes nothing and answers TWO items from facts the run already produced: compilation and tests really executed (never `BUILD SUCCESS` with zero tests); and the state claims nothing unresolved of its own — every `## Open` item carries a stable id, no id is duplicated, and no Reality Check `assumption` is still standing. A pending item does not stop review-ready: it is what the review is for. **Not ready is not a review round.** Go back to Build & Test.
+- **Then one independent review** (**P3**, R2). The reviewer's default input is exactly four things: the **behavior contract**, the **diff**, the **`## Open` items** and the **boundaries still uncovered**; it may read the whole repo, callers, config and prototypes on its own. Raw review output, closed issues and other changes' documents are not default inputs. The reviewer's output keeps three things: newly found substantive issues; which risk surfaces it did and did not examine; and one of `ACCEPT | REVISE | ESCALATE`. **The reviewer does not do the producer's job** — it is not there to compile, add tests or rewrite the approach; if it has to, the change was not review-ready. A REVISE round does not widen that default input to the producer's full history. This input boundary does not revoke R2's reviewer resume mechanism or the reviewer's permission to inspect sources; the producer's description is not a substitute for that independent judgment. Carrying that boundary: **do not repackage a prior review's conclusions into the next reviewer's default input** — dropping the source name, rewording it, or re-labelling it as your own `observed`/`decision` changes nothing, and writing it in and deleting it later does not undo the round it was carried through. What you **re-established yourself**, against real code, a command or its output, is your own finding: record it, even if a prior review reached the same conclusion. The diff is not trimmed by path — completeness, maintainability and a checkable line of responsibility all argue against that, and a deletion carrying old content is mechanical, not propagation. This leaves the review archive and the Fix Packet untouched: both are required elsewhere and neither is a default input to the next review.
+- **A later round is scoped to what changed.** From round 2 on, the producer's resume message (R2) asks the reviewer to judge each finding still open from the previous round as ADDRESSED or NOT ADDRESSED, and to review the fix diff together with what it affects — its callers, shared state and tests, never trimmed to the edited lines. A new finding outside that diff still counts when it violates the current contract or a safety constraint; anything else is advisory and does not extend the loop. A finding is wording only when fixing it changes neither the contract nor how anyone would execute it — where it sits in a document does not make it advisory. This scope rides on a resumed reviewer session, which already holds the previous round. A later round run in a fresh reviewer session instead — R2's non-Codex path when that session is not resumed, or the fresh `claude` session that finishes a round after transport recovery failed — gets only the default input above and reviews the whole change as round 1 does; the previous round's conclusions are not repackaged into it. The one re-review after the rulings at the limit (§1 R4) also answers each ruled id on its own line.
+- **Disposition of findings — scope is judged per finding, never by volume.** For every substantive finding the producer records a disposition with its basis: the *current contract* (the delta specs and the owner's recorded decisions), an *existing constraint* (a hard rule, a safety responsibility, an established guarantee), or a *new ask*. **A finding is a necessary fix for THIS delivery when, left alone, the product as it would be delivered violates a locatable accepted acceptance condition, a valid owner decision or an applicable existing constraint** — the disposition cites that basis and the evidence of the violation. A necessary fix is never moved out because it is large: split the implementation if you must, the delivery keeps its dependency on it. Changing a commitment is the owner's decision (R1); until it is recorded, the commitment and its blocking stand. A new ask this delivery does not depend on is registered as a **follow-up with a stable landing spot** — `- <ID>: follow-up → <new-change-name> — <text>` in `## Open`, which gate C9 / archive R5 / `status` report as a note, not a blocker (creating and implementing that change still follows the delegation) — and moving it out is not closing it. The landing spot is a valid change name that is not this change; when that change is later opened under its own authorization, it carries the original id and text as a pending `## Open` item (with an `observed:` line in its Reality Check naming the bundle it came from) and closes it only on its own exit evidence, so the ask is traceable from the archived bundle to where it is picked up and is never closed by being picked up. `fixed` (with its evidence) / `contract` (pending the owner) / `follow-up` / `invalid` (with the reason) / `duplicate` (with the original id) are the recommended words, not a closed vocabulary: an unresolved finding keeps its id, its current impact and its next action. `review-progress`'s `approach:` says why the approach was kept or changed — it is not a second ledger of findings.
+- **KB update is a precondition, not a closeout step — and it is owed only when** `apriori/truth/<module>.md` already covers the touched module, or the owner/change explicitly decided to persist a new durable contract. Never fabricate one just to have one at closeout. When owed, before review-ready: commit the implementation and point `source-commit` at it; update `apriori/truth/<module>.md` — Contract section from the final implementation, Decisions section appending this change's new decisions. The reviewer's diff already carries this KB diff; `apriori archive` never touches `apriori/truth/`.
+- **Then archive — directly, not a dry-run.** (A MODIFIED delta that would drop a store scenario is refused: the owner must name that exact deletion with an `archive-drop <change> sha256:<fingerprint>` entry in `gates:` and the run must add `--force` — retitling under the same ID or rewriting a scenario is not dropping.) ACCEPT, plus no product-code or test change since review-ready, means the normal close is four logical actions, no more: (1) land the reviewer's output as one self-contained review file, plus a short flow-state update; (2) run `apriori check`, then a full `apriori gate --change <name>` (not `--review-ready`), which binds C1 on these still-unchanged inputs; (3) run `apriori archive --change <name> --write` directly — `--write` runs the same preflight a dry-run would, so dry-running first re-checks nothing; archive merges the delta specs into `apriori/specs` and moves the bundle, and nothing else (`--changes-dir` is only a location override for a non-default changes root); (4) commit the closeout locally, and stop. The atomic move carries the whole bundle to `apriori/changes/archive/<stamp>-<change>/`. Count logical actions, not commands: action 2 already contains both check and gate. The one exception is the re-verify path below when its stated triggers occur; the four-action rule is not permission to skip recovery or an applicable report.
+- **An archive is not a release.** `apriori archive` declares only the state it just judged (whether the implementation and the critical evidence are complete); its third line says exactly that, verbatim — `delivery: an archive is not a release` — and it never poses as a release or external acceptance. (The flow-state `delivery:` field is retired; a legacy line is read and ignored.) **The archived bundle is frozen: nothing, including `phase:`, is written back to it.** A defect found afterwards becomes a short outcome note or a new change.
+   140	## 8. Report → `REPORT.md`
+   141	
+   142	Sections: inputs (prototype, sources and versions, scope, caps, environment); page structure; static and runtime interaction maps (summaries, with pointers); state model; covered paths; uncovered paths; blocked paths (path, reason, status, can continue automatically?); skipped duplicates; workflows; errors; prototype defects and potential issues (§4); screenshot index; coverage numbers; the checklist summary (rows per scope, rows awaiting the owner). Every conclusion traces to an action, a state, a screenshot or a source location.
+   143	The final message to the human is short: target, counts (states, actions, transitions, screenshots, checklist rows), errors, defects, uncovered and blocked items, rows awaiting the owner, where the artifacts are.
+   144	
+   145	## 9. Registering the result
+   146	
+   147	In the change's `## Reality Check` (§4 Ground), one line: `observed: <OUT>/checklist.md — prototype <version>, walked <date>; scope <scope>; rows <n> (in <a>, of which corrected <c> / out <b>); <k> awaiting the owner; runtime phases <run | not run — why>`. The checklist is source material: decisions in it are decisions only where a source line or a recorded owner decision says so. Rows awaiting the owner become `## Open` items with their own ids. A later change that builds or checks the pages reads the checklist and reuses it for the scope it covered at that prototype version. It does not re-walk what is covered; with the owner's authorization it **continues** the same walk for what is not — paths left uncovered or blocked, pages newly in scope, runtime phases that could not run before (§6.3) — adding rows to the same checklist and keeping existing ids. A new prototype version is walked again, against the old checklist. The runbook's once-per-requirement offer is about starting a walk; finishing one the owner authorized needs no new offer.
+rg: lib/archive.js: No such file or directory (os error 2)
+rg: lib/archive-manifest.js: No such file or directory (os error 2)
+ M apriori/changes/prototype-walk-guide/flow-state.md
+ M apriori/changes/prototype-walk-guide/specs/protocol/spec.md
+ M guides/prototype-walk.md
+ M lib/managed.js
+ M lib/update.js
+ M test/prototype-walk-guide.test.js
+?? apriori/changes/prototype-walk-guide/review/
+
+exec
+/usr/bin/zsh -lc "rg --files lib | rg 'archive|manifest'; rg -n -F 'The archived bundle is frozen' RUNBOOK.md; sed -n '118,154p' test/prototype-walk-guide.test.js; sed -n '203,224p' test/prototype-walk-guide.test.js; git diff v6-dev...HEAD --name-only" in /root/terra/wt-cb
+ succeeded in 0ms:
+lib/archive-merge.js
+lib/manifest.js
+321:- **An archive is not a release.** `apriori archive` declares only the state it just judged (whether the implementation and the critical evidence are complete); its third line says exactly that, verbatim — `delivery: an archive is not a release` — and it never poses as a release or external acceptance. (The flow-state `delivery:` field is retired; a legacy line is read and ignored.) **The archived bundle is frozen: nothing, including `phase:`, is written back to it.** A defect found afterwards becomes a short outcome note or a new change.
+  // PW-R1 (review round 1): every update branch refuses to hash or write through what is not a plain file
+  // in a plain directory — a listed guide swapped for a symlink whose target still matches the hash
+  const swapped = tmp(); init.scaffold(swapped, ['claude']);
+  const elsewhere = path.join(swapped, 'docs', 'moved-guide.md');
+  fs.mkdirSync(path.dirname(elsewhere), { recursive: true });
+  fs.renameSync(path.join(swapped, GUIDE), elsewhere);
+  fs.symlinkSync(elsewhere, path.join(swapped, GUIDE));
+  const sw = update.run(swapped, { guideSrc: newer });
+  assert.match(actionOf(sw.actions, GUIDE), /^not a regular file \(skipped — a symlink sits at/);
+  assert.strictEqual(fs.readFileSync(elsewhere, 'utf8'), PKG_GUIDE, 'the symlink target must not be written through');
+  // apriori/guides itself a symlink to a directory inside the project
+  const linkedDir = tmp(); init.scaffold(linkedDir, ['claude']);
+  fs.renameSync(path.join(linkedDir, 'apriori', 'guides'), path.join(linkedDir, 'real-guides'));
+  fs.symlinkSync(path.join(linkedDir, 'real-guides'), path.join(linkedDir, 'apriori', 'guides'));
+  const ld = update.run(linkedDir, { guideSrc: newer });
+  assert.match(actionOf(ld.actions, GUIDE), /^not a regular file \(skipped — something other than a plain directory sits at apriori\/guides/);
+  assert.strictEqual(fs.readFileSync(path.join(linkedDir, 'real-guides', 'prototype-walk.md'), 'utf8'), PKG_GUIDE);
+  // a directory at the guide's path: reported, no crash, the rest of the update still lands
+  const dirAt = tmp(); init.scaffold(dirAt, ['claude']);
+  fs.rmSync(path.join(dirAt, GUIDE)); fs.mkdirSync(path.join(dirAt, GUIDE));
+  fs.writeFileSync(path.join(dirAt, 'apriori', 'runbook.md'), '# older runbook\n');
+  const mf = manifestOf(dirAt); mf['apriori/runbook.md'] = sha(path.join(dirAt, 'apriori', 'runbook.md')); managed.writeManifest(dirAt, mf);
+  const da = update.run(dirAt);
+  assert.match(actionOf(da.actions, GUIDE), /^not a regular file \(skipped — a directory or other non-file sits at/);
+  assert.strictEqual(actionOf(da.actions, 'apriori/runbook.md'), 'updated');
+  assert.strictEqual(manifestOf(dirAt)['apriori/runbook.md'], sha(path.join(dirAt, 'apriori', 'runbook.md')));
+  // an unlisted dangling symlink is reported, not silently passed over
+  const dangling = aged();
+  fs.mkdirSync(path.join(dangling, 'apriori', 'guides'), { recursive: true });
+  fs.symlinkSync(path.join(dangling, 'nowhere.md'), path.join(dangling, GUIDE));
+  assert.match(actionOf(update.run(dangling).actions, GUIDE), /^not a regular file \(skipped — a symlink sits at/);
+  assert.ok(!fs.existsSync(path.join(dangling, 'nowhere.md')));
+});
+
+test('PW-03 doctor reports a missing guide the runbook names, and nothing otherwise', () => {
+  const healthy = () => {
+    const root = tmp();
+    assert.ok(g.includes(h), h);
+  const checklist = g.slice(g.indexOf('## 5. '), g.indexOf('## 6. '));
+  for (const f of ['ID', 'version', 'observable', 'evidence', 'scope', 'ruling', 'implementation', 'verification'])
+    assert.match(checklist, new RegExp('\\| `' + f + '` \\|'), `checklist field ${f}`);
+  assert.match(flat(checklist), /keep \*\*one\*\* progress source: do not fork a second ledger elsewhere/);
+  // PW-R2: scope (must the delivery show it?) is apart from ruling (how?); a corrected defect is an `in` row
+  assert.match(flat(checklist), /\| `scope` \| whether the delivery must show this row: `in` · `out`/);
+  assert.match(flat(checklist), /\| `ruling` \| how the delivery shows it: `as prototype` · `corrected — <source line or recorded decision>`/);
+  assert.match(flat(checklist), /A prototype defect the sources correct is an `in` row with ruling `corrected — …`: the delivery must show the corrected behaviour, and it is reconciled like every other `in` row — against its ruling, not against the prototype/);
+  assert.doesNotMatch(g, /not-reproduced/);
+  // PW-R3: cited evidence survives the archive
+  assert.match(flat(checklist), /\| `evidence` \| where it was read: a screenshot kept under `OUT\/evidence\/`/);
+  assert.match(flat(g), /A screenshot a checklist row cites is kept in `OUT\/evidence\/` — it is that row's evidence and must survive the archive/);
+  // PW-R4: reuse the covered scope; continue an authorized walk for what it did not cover
+  assert.match(flat(g), /reuses it for the scope it covered at that prototype version\. It does not re-walk what is covered; with the owner's authorization it \*\*continues\*\* the same walk for what is not/);
+  assert.match(flat(g), /The runbook's once-per-requirement offer is about starting a walk; finishing one the owner authorized needs no new offer\./);
+  assert.match(flat(checklist), /Ticking is not proof: the check also looks at the assertion behind each tick and the conditions it ran under/);
+  const constraints = flat(g.slice(g.indexOf('## 6. '), g.indexOf('## 7. ')));
+  assert.match(constraints, /1\. \*\*Equivalence is justified \(§3\.5\)\.\*\*.*keep injected states apart from user-reachable ones/);
+  assert.match(constraints, /2\. \*\*Caps are set before running and never become a claim\.\*\*.*it is never "fully covered"/);
+  assert.match(constraints, /3\. \*\*Tools are optional prerequisites, not new dependencies\.\*\*.*apriori-cli does not install or require them.*The prototype itself stays unmodified/);
+  assert.match(constraints, /4\. \*\*Isolation and scrubbing\.\*\*.*masking the screenshots alone is not enough/);
+CHANGELOG.md
+MIGRATING.md
+RUNBOOK.md
+apriori/changes/prototype-walk-guide/flow-state.md
+apriori/changes/prototype-walk-guide/specs/doctor/spec.md
+apriori/changes/prototype-walk-guide/specs/init/spec.md
+apriori/changes/prototype-walk-guide/specs/protocol/spec.md
+apriori/changes/prototype-walk-guide/specs/update/spec.md
+docs/operator.md
+docs/operator_cn.md
+guides/prototype-walk.md
+lib/doctor.js
+lib/init.js
+lib/managed.js
+lib/update.js
+package.json
+test/doctor.test.js
+test/init.test.js
+test/multi-command.test.js
+test/prototype-walk-guide.test.js
+test/update.test.js
+
+codex
+Round-2 review for `apriori/changes/prototype-walk-guide/review/code-review-v2.md`. Read-only: the producer must land this body under RUNBOOK §1 R2.
+
+Re-read `git diff v6-dev...HEAD`, `git status`, and `git diff`.
+
+| Finding | Disposition | Basis |
+|---|---|---|
+| PW-R1 | **ADDRESSED** | `guideObstruction` guards installation and every update branch before guide hashing/writing. PW-02 asserts matching-hash symlink targets remain unchanged, symlinked directories are rejected, directory obstruction permits runbook/manifest refresh to finish, and dangling links are reported. |
+| PW-R2 | **ADDRESSED** | Scope and ruling are separate. Corrected defects remain `in` and require reconciliation against their ruling, including implementation and verification evidence. |
+| PW-R3 | **ADDRESSED** | Cited screenshots must remain under archived `OUT/evidence/`; the entry, evidence field, screenshot procedure, and completion criteria agree. |
+| PW-R4 | **ADDRESSED** | Same-version evidence is reused only for covered scope. Authorized continuation now includes uncovered/blocked paths, newly included pages, and previously unavailable runtime phases without another offer. |
+
+**One substantive issue in the fix: PW-R5 — Continuing “the same checklist” conflicts with frozen archives.**
+
+[Guide §9](/root/terra/wt-cb/guides/prototype-walk.md:147) directs a later change to continue by “adding rows to the same checklist.” Its [default output location](/root/terra/wt-cb/guides/prototype-walk.md:14) is inside the original change bundle. [RUNBOOK §4](/root/terra/wt-cb/RUNBOOK.md:321) expressly forbids writing anything back to an archived bundle.
+
+A concrete sequence exposes the conflict: change A completes a walk covering page A and archives; change B adds page B to scope at the same prototype version and receives authorization to continue. Following the new continuation instruction modifies A’s frozen checklist. Preserving A leaves no specified writable continuation location, while the guide prohibits a second progress ledger.
+
+**Risk:** the newly supported cross-change continuation either changes historical evidence or requires the agent to invent an exception to the guide.
+
+**Suggested fix:** define continuation after archival explicitly. For example, create a successor checklist in the current change, preserve stable IDs and source/evidence references, identify it as the sole current progress source, and leave the archived predecessor immutable. Apply the same distinction when later reconciliation fills implementation and verification fields. No new CLI mechanism is needed.
+
+**Examined:** shared obstruction handling and its init/update callers, manifest and dry-run interactions, new adversarial assertions, revised guide/contract/test wording, and the continuation rule’s interaction with archive immutability. No additional substantive issue found in those fixes.
+
+**Limits:** no mutating reproductions, full-suite rerun, or new behavioral runs. The reported 881/881 and revert-to-failure result remain producer evidence. Earlier behavioral runs support the unchanged offer/read behavior, not the revised checklist lifecycle. Gate remains blocked pending the resolving review.
+
+**Advisories:** none additional. The approach remains appropriate; PW-R5 is a lifecycle detail requiring correction, not escalation.
+
+VERDICT: 1 issues open
+tokens used
+289,875
+Round-2 review for `apriori/changes/prototype-walk-guide/review/code-review-v2.md`. Read-only: the producer must land this body under RUNBOOK §1 R2.
+
+Re-read `git diff v6-dev...HEAD`, `git status`, and `git diff`.
+
+| Finding | Disposition | Basis |
+|---|---|---|
+| PW-R1 | **ADDRESSED** | `guideObstruction` guards installation and every update branch before guide hashing/writing. PW-02 asserts matching-hash symlink targets remain unchanged, symlinked directories are rejected, directory obstruction permits runbook/manifest refresh to finish, and dangling links are reported. |
+| PW-R2 | **ADDRESSED** | Scope and ruling are separate. Corrected defects remain `in` and require reconciliation against their ruling, including implementation and verification evidence. |
+| PW-R3 | **ADDRESSED** | Cited screenshots must remain under archived `OUT/evidence/`; the entry, evidence field, screenshot procedure, and completion criteria agree. |
+| PW-R4 | **ADDRESSED** | Same-version evidence is reused only for covered scope. Authorized continuation now includes uncovered/blocked paths, newly included pages, and previously unavailable runtime phases without another offer. |
+
+**One substantive issue in the fix: PW-R5 — Continuing “the same checklist” conflicts with frozen archives.**
+
+[Guide §9](/root/terra/wt-cb/guides/prototype-walk.md:147) directs a later change to continue by “adding rows to the same checklist.” Its [default output location](/root/terra/wt-cb/guides/prototype-walk.md:14) is inside the original change bundle. [RUNBOOK §4](/root/terra/wt-cb/RUNBOOK.md:321) expressly forbids writing anything back to an archived bundle.
+
+A concrete sequence exposes the conflict: change A completes a walk covering page A and archives; change B adds page B to scope at the same prototype version and receives authorization to continue. Following the new continuation instruction modifies A’s frozen checklist. Preserving A leaves no specified writable continuation location, while the guide prohibits a second progress ledger.
+
+**Risk:** the newly supported cross-change continuation either changes historical evidence or requires the agent to invent an exception to the guide.
+
+**Suggested fix:** define continuation after archival explicitly. For example, create a successor checklist in the current change, preserve stable IDs and source/evidence references, identify it as the sole current progress source, and leave the archived predecessor immutable. Apply the same distinction when later reconciliation fills implementation and verification fields. No new CLI mechanism is needed.
+
+**Examined:** shared obstruction handling and its init/update callers, manifest and dry-run interactions, new adversarial assertions, revised guide/contract/test wording, and the continuation rule’s interaction with archive immutability. No additional substantive issue found in those fixes.
+
+**Limits:** no mutating reproductions, full-suite rerun, or new behavioral runs. The reported 881/881 and revert-to-failure result remain producer evidence. Earlier behavioral runs support the unchanged offer/read behavior, not the revised checklist lifecycle. Gate remains blocked pending the resolving review.
+
+**Advisories:** none additional. The approach remains appropriate; PW-R5 is a lifecycle detail requiring correction, not escalation.
+
+VERDICT: 1 issues open

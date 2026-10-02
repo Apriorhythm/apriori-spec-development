@@ -40,6 +40,8 @@ Work in stages, and when a stage fails go back to that stage:
 Stop and report only at §1 R1's stops: an escalation (a `VERDICT: escalate`, or a round past the one re-review), a pending ## Open item only the owner can settle, an external side effect without its authorization, or abandonment. Reaching the Build & Test bound is a stopped loop for the human to judge, NEVER a pass."
 ```
 
+**Prototype walk (optional, before the contract):** when a requirement comes with a runnable UI prototype, the agent offers a walk once — when it registers the requirement's sources — and you can also ask for one yourself: *"Walk the prototype `<path>` against `<PRD>` per `apriori/guides/prototype-walk.md`, scope `<pages>`."* The agent explores the prototype systematically and leaves a checklist — columns, fields, option values with their keys, states, exact texts, the prototype's own defects — that the contract and a later independent check work from. It needs a local server and a browser-automation tool (Playwright or an equivalent) on the machine; without them it reports what it could not exercise. The checklist is source material: it authorizes nothing, and where the requirement does not settle whether to reproduce a prototype defect, that is your call.
+
 **What you personally decide (there are five, and no others):**
 
 1. **An escalation** — a `VERDICT: escalate`, or a family that went past its one automatic re-review without your release (§1 R4). `apriori status --change <name> --escalation` prints it and exits 3. Answer with `reframe <family> round <n> <split|tests|redo|accept-risk> — <reason>` in `gates:`. Escalate the bar, never quietly lower it.

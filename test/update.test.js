@@ -28,6 +28,8 @@ function agedProject() {
   init.scaffold(root, ['claude']);
   fs.writeFileSync(path.join(root, 'apriori', 'runbook.md'), '# old runbook from a previous CLI version\n');
   fs.writeFileSync(path.join(root, '.claude', 'commands', 'apriori.md'), 'old command body\n');
+  // an older CLI never installed the prototype-walk guide (prototype-walk-guide)
+  fs.rmSync(path.join(root, 'apriori', 'guides'), { recursive: true, force: true });
   writeManifest(root, {
     'apriori/runbook.md': shaFile(path.join(root, 'apriori', 'runbook.md')),
     '.claude/commands/apriori.md': shaFile(path.join(root, '.claude', 'commands', 'apriori.md')),
@@ -87,7 +89,9 @@ test('UP-02 user-owned files are never touched, nothing new is created', () => {
   // S2 P3 (卡 P3 ④): the shipped config for this tool is now K=2 — both its entries appear.
   // The behaviour under test is unchanged, and now stated explicitly: no OTHER tool's command was created.
   assert.deepStrictEqual(actions.map((a) => a.file).sort(),
-    ['.claude/commands/apriori-discuss.md', '.claude/commands/apriori.md', 'apriori/runbook.md']);
+    ['.claude/commands/apriori-discuss.md', '.claude/commands/apriori.md', 'apriori/guides/prototype-walk.md', 'apriori/runbook.md']);
+  // prototype-walk-guide: the one creation besides protocol scaffolding is the guide's first install (UP-13)
+  assert.strictEqual(actions.find((a) => a.file === 'apriori/guides/prototype-walk.md').action, 'created (first install)');
   assert.ok(!actions.some((a) => /^\.(codex|opencode|windsurf|cursor)\//.test(a.file)),
     "another tool's command was created");
   assert.ok(!fs.existsSync(path.join(root, '.codex')));
@@ -170,13 +174,19 @@ test('UP-08 a locally modified managed file is protected', () => {
   }
   assert.strictEqual(fs.readFileSync(path.join(root, '.claude', 'commands', 'apriori.md'), 'utf8'), cmdBefore);
   assert.strictEqual(fs.readFileSync(path.join(root, 'apriori', 'runbook.md'), 'utf8'), rbBefore);
+  // the two protected entries keep their recorded hashes; the only manifest change is the guide's
+  // first install (prototype-walk-guide, UP-13) — an older CLI never installed it
+  const before = JSON.parse(manifestBefore).files, after = JSON.parse(fs.readFileSync(path.join(root, 'apriori', 'managed.json'), 'utf8')).files;
+  for (const rel of ['.claude/commands/apriori.md', 'apriori/runbook.md']) assert.strictEqual(after[rel], before[rel], rel);
+  assert.deepStrictEqual(Object.keys(after).sort(), [...Object.keys(before), 'apriori/guides/prototype-walk.md'].sort());
+  const manifestAfter = fs.readFileSync(path.join(root, 'apriori', 'managed.json'), 'utf8');
   // --dry-run through the CLI: identical classification, nothing written at all
   const { spawnSync } = require('node:child_process');
   const r = spawnSync('node', [path.join(__dirname, '..', 'bin', 'apriori.js'), 'update', '--dry-run'],
     { cwd: root, encoding: 'utf8' });
   assert.strictEqual(r.status, 0);
   assert.match(r.stdout, /modified/);
-  assert.strictEqual(fs.readFileSync(path.join(root, 'apriori', 'managed.json'), 'utf8'), manifestBefore);
+  assert.strictEqual(fs.readFileSync(path.join(root, 'apriori', 'managed.json'), 'utf8'), manifestAfter);
 });
 
 test('UP-09 pre-manifest projects are adopted only on proof', () => {

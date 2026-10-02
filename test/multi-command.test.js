@@ -58,7 +58,7 @@ test('MC-01 K=1 install is byte-identical to the P1 baseline behaviour', () => {
   const mf = JSON.parse(read(root, 'apriori/managed.json'));
   assert.deepStrictEqual(Object.keys(mf.files).sort(),
     ['.claude/commands/apriori.md', '.claude/commands/apriori-discuss.md',
-     '.codex/prompts/apriori.md', '.codex/prompts/apriori-discuss.md', 'apriori/runbook.md'].sort());
+     '.codex/prompts/apriori.md', '.codex/prompts/apriori-discuss.md', 'apriori/guides/prototype-walk.md', 'apriori/runbook.md'].sort());
   assert.ok(r.actions.length > 0);
 });
 

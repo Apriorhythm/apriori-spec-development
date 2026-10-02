@@ -25,6 +25,13 @@ Known limitations, stated as they stand:
 Later preview snapshots are cut from `release/v6` after v6-dev work merges back; fixes in flight
 (authorization-scope, archive-manifest) are not part of this snapshot.
 
+## Unreleased — owner-calls-and-handoffs: owner items stay the owner's, outside hand-offs keep their id, and a goal can end at a human stop
+
+- §1 R1: an item a review or an outside report marks as the owner's call (a scope, a caliber, a risk to accept) and that no valid owner decision covers is not decided by a broad instruction such as "fix everything else" — it stays a pending `## Open` item until the owner answers; one answer may settle several when it names them. A decision recorded in `gates:` on the owner's behalf carries a `note:` saying so and where the words came from, and says which parts are the agent's. The same paragraph, and §4's archive `--force` sentence, now name the families `--force` carries as the code derives them since limit-ruling: the derived escalation, including the owner-reframe path at the limit.
+- §4 Specify / P2: a delivery dependency handed outside this workflow — a manual release step, another repository, a person — keeps its id as a pending item naming its carrier and what is unverified; a document describing the work is not the work done, and a `decision` line never stands in for it. No new grammar: C9 and R5 treat it as any pending item.
+- `docs/operator.md` (and the verbatim recipes in `operator_cn.md`): every `/goal` recipe's condition now carries a second outcome — the agent stopped at a human stop (for Build & Test also the 25-turn bound) and its last message names it, what is still open and the decision needed; that outcome hands the change back and is never a pass or a delivery. `/goal`'s evaluator judges only the condition, so a stop listed only in the body kept the loop re-prompting. `docs/concepts.md` §4.7 (both languages) says why.
+- From the 2026-10-02 analysis of a real project run; written rules only — the CLI does not check a note's content or what an owner item is.
+
 ## Unreleased — runbook-english-only: the runbook has one edition, in English
 
 - `RUNBOOK_cn.md` is gone. `apriori init` and `apriori update` only ever installed the English `RUNBOOK.md` (the repository's README_cn pointed readers at the Chinese edition); keeping it meant every rule change was written and pinned twice. The English runbook is the only rule source. Nothing changes in an installed project.

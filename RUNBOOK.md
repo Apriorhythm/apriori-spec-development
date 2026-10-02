@@ -1,9 +1,3 @@
-<p align="center">
-  Languages:
-  <a href="./RUNBOOK.md">English</a> ·
-  <a href="./RUNBOOK_cn.md">中文</a>
-</p>
-
 # Apriori RUNBOOK — the Executable Protocol for AI Agents
 
 > `runbook-version: 6.2` · upstream: `https://github.com/Apriorhythm/apriori-spec-development`

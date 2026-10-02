@@ -33,14 +33,13 @@ function packedDir() {
 }
 const runPacked = (args, cwd) => spawnSync('node', [path.join(packedDir(), 'bin', 'apriori.js'), ...args], { encoding: 'utf8', cwd });
 
-test('ID-01 in the packed directory, --version, both runbook headers, the installed copy and update\'s target agree', () => {
+test('ID-01 in the packed directory, --version, the runbook header, the installed copy and update\'s target agree', () => {
   assert.strictEqual(pkg.version, '6.2.0-rc.0', 'batch B set the 6.x pre-release identity');
   const dir = packedDir();
   const v = runPacked(['--version'], dir);
   assert.strictEqual(v.stdout.trim(), pkg.version);
   const packedRunbook = fs.readFileSync(path.join(dir, 'RUNBOOK.md'), 'utf8');
   assert.strictEqual(header(packedRunbook), majorMinor(pkg.version), 'the packed runbook header is the CLI major.minor');
-  assert.strictEqual(header(fs.readFileSync(path.join(ROOT, 'RUNBOOK_cn.md'), 'utf8')), majorMinor(pkg.version), 'the CN edition carries the same header');
   assert.strictEqual(packedRunbook, fs.readFileSync(path.join(ROOT, 'RUNBOOK.md'), 'utf8'), 'the packed runbook is the source runbook');
   assert.ok(fs.existsSync(path.join(dir, 'MIGRATING.md')), 'the migration record ships');
   // a fresh project, initialised from the PACKED bin: the copied runbook is the packed one, byte for byte
@@ -65,9 +64,6 @@ test('ID-02 the INSTALLED runbook copy links nothing as if it were beside it', (
   assert.doesNotMatch(installed, /\]\(\.\.?\//, 'no relative markdown link — README.md and docs/ are not next to the copy');
   assert.doesNotMatch(installed, /\.\/README\.md|\.\/docs\/concepts\.md/);
   assert.match(installed, /`README\.md` and `docs\/concepts\.md` in the apriori-cli repository \(not necessarily beside this copy\)/);
-  // the CN edition (not copied by init, but shipped in the repo) keeps the same discipline
-  const cn = fs.readFileSync(path.join(ROOT, 'RUNBOOK_cn.md'), 'utf8');
-  assert.doesNotMatch(cn, /\]\(\.\.?\//);
 });
 
 test('ID-03 MIGRATING.md carries ONE 6.2 section, and it lists every 6.2 change', () => {
@@ -104,16 +100,12 @@ test('ID-05 the runbook finer-behavior pointer names files that actually carry t
   // docs/concepts.md — none of those keywords exist there ("CAS" has zero hits). The real home
   // is the CLI reference. Pin the pointer on files that carry what they are pointed at for.
   const en = fs.readFileSync(path.join(ROOT, 'RUNBOOK.md'), 'utf8');
-  const cn = fs.readFileSync(path.join(ROOT, 'RUNBOOK_cn.md'), 'utf8');
-  const enHead = en.slice(0, en.search(/^## /m)), cnHead = cn.slice(0, cn.search(/^## /m));
+  const enHead = en.slice(0, en.search(/^## /m));
   assert.match(enHead, /the tool's finer behavior \(verdict parsing, the CAS algorithm, verify's diagnostic classes\) is in that repository's `docs\/cli\.md` \(the CLI reference\) and `docs\/troubleshooting\.md`/);
   assert.doesNotMatch(enHead, /is in that `docs\/concepts\.md`/);
-  assert.match(cnHead, /工具行为的细节\(结论词汇解析、CAS 算法、verify 的诊断分类\)在该仓库的 `docs\/cli_cn\.md`\(CLI 参考\)与 `docs\/troubleshooting_cn\.md` 里/);
   // the two body pointers of the same class follow the same fix
   assert.match(en, /The merge report, the single-file `--store\/--delta` form and conflict details are in the CLI reference \(`docs\/cli\.md`, archive\)\./);
   assert.match(en, /The diagnostic classes are detailed in the CLI reference \(`docs\/cli\.md`, verify\)\./);
-  assert.match(cn, /合并报告、单文件形式 `--store\/--delta` 与冲突细节见 CLI 参考\(`docs\/cli_cn\.md` 的 archive 节\)。/);
-  assert.match(cn, /诊断分类的细节见 CLI 参考\(`docs\/cli_cn\.md` 的 verify 节\)。/);
   // and the pointed-at files really carry the keywords the pointer promises
   const cli = fs.readFileSync(path.join(ROOT, 'docs', 'cli.md'), 'utf8');
   for (const kw of [/CAS/, /verdict/i, /UNBOUND/, /ORPHAN/]) assert.match(cli, kw);

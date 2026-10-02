@@ -10,7 +10,7 @@
 
 **apriori** 是一套面向 AI 编程的规格驱动工作流,外加一个零依赖 CLI(`apriori-cli`),让你的规格**可执行**:每条 scenario 都绑定到一个测试,"写了规格没实现"由一条命令抓出来,而不是靠肉眼看 diff。你驱动 AI agent 走一个状态机——精化规格、由*另一个*模型对抗评审、实现、归档——在真正要紧的人工闸口停下。
 
-人类从下面的 Quickstart 开始;AI agent 读自包含的 [RUNBOOK_cn.md](./RUNBOOK_cn.md),不需要本手册。apriori **用你书写的语言干活**(想固定语言就 `apriori init --language 中文`)。
+人类从下面的 Quickstart 开始;AI agent 读自包含的 [RUNBOOK.md](./RUNBOOK.md)(runbook 只有英文一版),不需要本手册。apriori **用你书写的语言干活**(想固定语言就 `apriori init --language 中文`)。
 
 <p align="center">
   <img src="docs/demo.gif" alt="apriori CLI 循环:verify 报 GAPS(红),绑定到场景的测试让它变 GREEN,gate PASS,archive 归档" width="820">
@@ -149,7 +149,7 @@ apriori check
 | [docs/ci_cn.md](./docs/ci_cn.md) | 可直接粘贴的 CI 片段:`check` / `verify` / `gate`,退出码表 |
 | [docs/cli_cn.md](./docs/cli_cn.md) | 全部十个子命令:精确用法行、旗标、退出码、配置参考 |
 | [docs/troubleshooting_cn.md](./docs/troubleshooting_cn.md) | 每类 doctor 发现与经典陷阱,各配修法 |
-| [RUNBOOK_cn.md](./RUNBOOK_cn.md) | 面向 agent 的可执行协议(两者不一致时以它为准) |
+| [RUNBOOK.md](./RUNBOOK.md) | 面向 agent 的可执行协议,只有英文一版(两者不一致时以它为准) |
 
 ### Command Cheat Sheet
 

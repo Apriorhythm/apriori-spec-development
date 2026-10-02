@@ -1,7 +1,7 @@
 'use strict';
 // SR — card G's five shared-rule rewrite sites, made executable over the runbook text.
 // Every meaning is asserted inside the BLOCK that must carry it (never across the whole file:
-// PR-14's lesson — a table elsewhere can mask a deletion in the bullets), in BOTH editions.
+// PR-14's lesson — a table elsewhere can mask a deletion in the bullets), in the one English runbook.
 // SR-06 is the degradation harness: deleting any one meaning must turn its own check red and
 // name that meaning, so a green suite cannot mean "the assertion never bound".
 const { test } = require('node:test');
@@ -11,7 +11,7 @@ const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..');
 const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
-const docs = () => ({ EN: read('RUNBOOK.md'), CN: read('RUNBOOK_cn.md'), CMD: read('templates/command.md') });
+const docs = () => ({ EN: read('RUNBOOK.md'), CMD: read('templates/command.md') });   // the runbook is English only (runbook-english-only)
 
 // heading/paragraph → the first following delimiter; the start match itself is always kept
 function upto(text, startRe, endRe, label) {
@@ -39,16 +39,6 @@ const BLOCKS = {
     'EN §4 head':             (d) => upto(d.EN, /^## 4\. The Flow/m, /\*\*Artifact paths\*\*/, 'EN §4 head'),
     'EN §4 Specify':          (d) => upto(d.EN, /^### Specify — /m, /^### /m, 'EN §4 Specify'),
     'EN §4 Review':           (d) => upto(d.EN, /^### Review & Deliver — /m, /^### ABANDONED/m, 'EN §4 Review'),
-    'CN §0 step 4':           (d) => upto(d.CN, /^4\. 只有当 `status`/m, /\n\n/, 'CN §0 step 4'),
-    'CN §0 two doors':        (d) => upto(d.CN, /\*\*两扇门/, /\n\n/, 'CN §0 two doors'),
-    'CN §0 fix packet':       (d) => upto(d.CN, /- \*\*REVISE 切断会话/, /\n- \*\*/, 'CN §0 fix packet'),
-    'CN §1 R1':               (d) => between(d.CN, '**R1 ——', '### 外部副作用', 'CN §1 R1'),
-    'CN §1 R2':               (d) => upto(d.CN, /\*\*R2 —— 评审必须真实外调/, /\n\n\*\*R3 ——/, 'CN §1 R2'),
-    'CN §1 R4':               (d) => upto(d.CN, /\*\*R4 —— 评审轮次/, /\*\*强制边界/, 'CN §1 R4'),
-    'CN §3 ## Next':          (d) => upto(d.CN, /^## Next {2,}# 最多/m, /\ngates:/, 'CN §3 ## Next'),
-    'CN §4 head':             (d) => upto(d.CN, /^## 4\. 流程/m, /\*\*产物路径\*\*/, 'CN §4 head'),
-    'CN §4 Specify':          (d) => upto(d.CN, /^### Specify —— /m, /^### /m, 'CN §4 Specify'),
-    'CN §4 Review':           (d) => upto(d.CN, /^### Review & Deliver —— /m, /^### ABANDONED/m, 'CN §4 Review'),
   'command template':    (d) => d.CMD,
 };
 
@@ -63,13 +53,6 @@ const MEANINGS = [
   ['(1) reading path', '1-EN-unanswered-goes-to-open', 'EN §0 step 4',
     /an `assumption`, then an `## Open` item \(§4 Ground\)/],
   ['(1) reading path', '1-EN-no-default-list', 'EN §0 step 4', /never preload the full runbook/],
-  ['(1) reading path', '1-CN-trigger-four', 'CN §0 step 4',
-    /只有当 `status`、`## Next`、一个被阻塞的命令、或一个不确定的事实指向某节时,才去读那一节 runbook/],
-  ['(1) reading path', '1-CN-only-that-section', 'CN §0 step 4', /只读它点名的那一节/],
-  ['(1) reading path', '1-CN-stop-when-answered', 'CN §0 step 4', /答出触发即止/],
-  ['(1) reading path', '1-CN-pointer-is-next-trigger', 'CN §0 step 4', /那个指向就是下一个触发/],
-  ['(1) reading path', '1-CN-unanswered-goes-to-open', 'CN §0 step 4', /一条 `assumption`,继而是一条 `## Open` 条目\(§4 Ground\)/],
-  ['(1) reading path', '1-CN-no-default-list', 'CN §0 step 4', /绝不预载完整 RUNBOOK/],
   ['(1) reading path', '1-CMD-only-that-section', 'command template', /and read only that\s+section — stop once it answers/],
 
   // ② 共享路由 —— R9 的四行条件表，严格转写，不新增授权类型
@@ -89,16 +72,6 @@ const MEANINGS = [
   ['(2) shared routing', '2-EN-entry-name-grants-nothing', 'EN §1 R1',
     /grants no permission, and it revokes none the human already gave/],
   ['(2) shared routing', '2-EN-doors-point-at-routing', 'EN §0 two doors', /the delegation, and §1 R1 routes by it/],
-  ['(2) shared routing', '2-CN-by-delegation-not-phase', 'CN §1 R1', /按委托分流,不按阶段分流/],
-  ['(2) shared routing', '2-CN-row-outside-hands-back', 'CN §1 R1', /超出委托范围或违反明确限制 \| 说明具体原因并交还/],
-  ['(2) shared routing', '2-CN-row-complete-reports', 'CN §1 R1', /委托的结果已完成[^|]*\| 完成报告并结束/],
-  ['(2) shared routing', '2-CN-row-continue-inside', 'CN §1 R1', /下一个必要动作在委托之内 \| 继续/],
-  ['(2) shared routing', '2-CN-row-capability-block', 'CN §1 R1', /绝不把它伪装成在等人授权/],
-  ['(2) shared routing', '2-CN-limited-is-normal-end', 'CN §1 R1', /是正常结束,不是第六类停止/],
-  ['(2) shared routing', '2-CN-phase-is-not-a-handback', 'CN §1 R1', /阶段发生变化、前置你自己就能补上、或协议自己的修复回路/],
-  ['(2) shared routing', '2-CN-no-false-completion', 'CN §1 R1', /绝不因此声称完成/],
-  ['(2) shared routing', '2-CN-entry-name-grants-nothing', 'CN §1 R1', /入口的名字既不授予权限,也不收回人已经给出的权限/],
-  ['(2) shared routing', '2-CN-doors-point-at-routing', 'CN §0 two doors', /就是本次委托,§1 R1 按它分流/],
   ['(2) shared routing', '2-CMD-not-a-sixth-stop', 'command template', /not a sixth\s+stop/],
 
   // ③ 阶段 Exit —— 「阶段条件满足」与「当前委托是否完成」分开
@@ -108,10 +81,6 @@ const MEANINGS = [
     /whether you then advance, finish and report, or hand back is §1 R1's routing/],
   ['(3) phase exit', '3-EN-specify-splits-the-two', 'EN §4 Specify', /that is the phase condition[^\n]*§1 R1 routes what follows/],
   ['(3) phase exit', '3-EN-specify-limited-ends-here', 'EN §4 Specify', /a delegation limited to the spec ends here/],
-  ['(3) phase exit', '3-CN-exit-is-phase-condition', 'CN §4 head', /是阶段条件,不是对本次委托的判定/],
-  ['(3) phase exit', '3-CN-routing-decides-next', 'CN §4 head', /前进、完成并汇报、还是交还,由 §1 R1 的分流决定/],
-  ['(3) phase exit', '3-CN-specify-splits-the-two', 'CN §4 Specify', /这是阶段条件[^\n]*§1 R1 分流决定接下来做什么/],
-  ['(3) phase exit', '3-CN-specify-limited-ends-here', 'CN §4 Specify', /只限定到规格的委托在此结束/],
 
   // ④ 评审输入与修复回路 —— P3 默认输入与 Fix Packet 的实际边界保留
   ['(4) review input & fix loop', '4-EN-r2-four-inputs', 'EN §1 R2',
@@ -123,11 +92,6 @@ const MEANINGS = [
     /change the requirement, widen the goal, or take an external side effect/],
   ['(4) review input & fix loop', '4-EN-revise-does-not-widen-input', 'EN §4 Review',
     /A REVISE round does not widen that default input/],
-  ['(4) review input & fix loop', '4-CN-r2-four-inputs', 'CN §1 R2', /恰好是 §4 点名的那四样/],
-  ['(4) review input & fix loop', '4-CN-fix-loop-no-new-auth', 'CN §0 fix packet', /修复在委托之内时,它不需要新的授权/],
-  ['(4) review input & fix loop', '4-CN-fix-loop-not-a-handback', 'CN §0 fix packet', /换新会话不是交还/],
-  ['(4) review input & fix loop', '4-CN-fix-outside-hands-back', 'CN §0 fix packet', /要改需求、扩大目标或动用外部副作用/],
-  ['(4) review input & fix loop', '4-CN-revise-does-not-widen-input', 'CN §4 Review', /REVISE 的这一轮不扩大那份默认输入/],
 
   // ⑤ 已有数量限制 —— 只明确触发对象、计数方式与例外，保留原义
   ['(5) existing limits', '5-EN-next-counting', 'EN §3 ## Next', /counted as the items in THIS change's section/],
@@ -137,13 +101,6 @@ const MEANINGS = [
   ['(5) existing limits', '5-EN-reframe-does-not-reset', 'EN §1 R4', /cumulative counts MUST NOT reset/],
   ['(5) existing limits', '5-EN-four-actions-not-commands', 'EN §4 Review', /actions, not commands/],
   ['(5) existing limits', '5-EN-four-actions-exception', 'EN §4 Review', /The one exception is the re-verify path/],
-  ['(5) existing limits', '5-CN-next-counting', 'CN §3 ## Next', /只数本 change 这一段里的条目/],
-  ['(5) existing limits', '5-CN-next-overflow-advisory', 'CN §3 ## Next', /并报告超出——只提示,从不阻断/],
-  ['(5) existing limits', '5-CN-retry-counting', 'CN §1 R2', /按"在结论行落盘前死亡的评审会话"逐个计数/],
-  ['(5) existing limits', '5-CN-round-counting', 'CN §1 R4', /各 family 之间绝不相加/],
-  ['(5) existing limits', '5-CN-reframe-does-not-reset', 'CN §1 R4', /累计轮次绝不清零/],
-  ['(5) existing limits', '5-CN-four-actions-not-commands', 'CN §4 Review', /数的是动作,不是命令/],
-  ['(5) existing limits', '5-CN-four-actions-exception', 'CN §4 Review', /唯一的例外是下面的重新验证路径/],
 ];
 
 function checkOne(d, m) {
@@ -158,7 +115,7 @@ function checkOne(d, m) {
 
 const GROUPS = [...new Set(MEANINGS.map((m) => m[0]))];
 for (const g of GROUPS) {
-  test(`SR ${g} is carried by both editions, inside its own block`, () => {
+  test(`SR ${g} is carried by the runbook, inside its own block`, () => {
     const d = docs();
     for (const m of MEANINGS.filter((x) => x[0] === g)) checkOne(d, m);
   });
@@ -166,10 +123,10 @@ for (const g of GROUPS) {
 
 test('SR-06 degradation: cutting any one meaning turns its own check red and names it', () => {
   const base = docs();
-  const docOf = { EN: 'EN', CN: 'CN', CMD: 'CMD' };
+  const docOf = { EN: 'EN', CMD: 'CMD' };
   for (const m of MEANINGS) {
     const [, id, blockName, re] = m;
-    const key = blockName.startsWith('EN') ? 'EN' : blockName.startsWith('CN') ? 'CN' : 'CMD';
+    const key = blockName.startsWith('EN') ? 'EN' : 'CMD';
     assert.ok(docOf[key], 'doc key');
     const cut = { ...base, [key]: base[key].replace(re, '') };
     assert.notStrictEqual(cut[key], base[key], `cutting ${id} changed nothing — the regex never matched`);

@@ -469,23 +469,20 @@ test('CF-32 the key is consumed by C8 through the shared reader only', () => {
   assert.doesNotMatch(rv, /STOP_AFTER|ESCALATE_AT/);
 });
 
-test('PR-40 R4 carries the limit rule in both editions', () => {
-  for (const f of ['RUNBOOK.md', 'RUNBOOK_cn.md']) {
+test('PR-40 R4 carries the limit rule', () => {
+  for (const f of ['RUNBOOK.md']) {
     const t = fs.readFileSync(path.join(ROOT, f), 'utf8');
     assert.match(t, /review-round-limit/, f);
     assert.match(t, /review-progress/, f);
     assert.match(t, /VERDICT: escalate|`escalate`/, f);
     assert.doesNotMatch(t, /still `revise` after ITS round 2 → that loop stops/, f);
     assert.doesNotMatch(t, /reaching ITS round 5 → an escalation/, f);
-    assert.doesNotMatch(t, /它自己的第 2 轮后仍是 `revise` → 该循环停止/, f);
-    assert.doesNotMatch(t, /到达它自己的第 5 轮 → escalation/, f);
     assert.doesNotMatch(t, /第五轮|第二轮|round-5 escalation|round-2 stop/, f);
   }
   assert.match(fs.readFileSync(path.join(ROOT, 'RUNBOOK.md'), 'utf8'), /defaults to 8/);
-  assert.match(fs.readFileSync(path.join(ROOT, 'RUNBOOK_cn.md'), 'utf8'), /缺行默认 8/);
-  // limit-ruling: both editions carry the ruling line, its four kinds and the re-review's per-id answer,
-  // and neither says a revise at the limit stops the loop
-  for (const f of ['RUNBOOK.md', 'RUNBOOK_cn.md']) {
+  // limit-ruling: the runbook carries the ruling line, its four kinds and the re-review's per-id answer,
+  // and does not say a revise at the limit stops the loop
+  for (const f of ['RUNBOOK.md']) {
     const t = fs.readFileSync(path.join(ROOT, f), 'utf8');
     assert.match(t, /`- <YYYY-MM-DDTHH:MM> note: ruling <family> round <n> — <ID>: <fixed\|rejected\|follow-up\|owner> — <(basis|依据)>`/, f);
     assert.match(t, /`- <ID>: ADDRESSED — <(basis|依据)>` (or|或) `- <ID>: NOT ADDRESSED — <(basis|依据)>`/, f);
@@ -511,7 +508,7 @@ test('PR-41 the derived documents follow the runbook', () => {
   // no derived doc or runbook names a fixed round as a current stop, in any wording — the only
   // legal mentions are the retirement sentence itself ("no fixed round-2, round-3 or round-5 stop")
   // and the advisory "2 rounds" target
-  for (const f of ['docs/operator.md', 'docs/operator_cn.md', 'docs/concepts.md', 'docs/concepts_cn.md', 'docs/cli.md', 'docs/cli_cn.md', 'RUNBOOK.md', 'RUNBOOK_cn.md']) {
+  for (const f of ['docs/operator.md', 'docs/operator_cn.md', 'docs/concepts.md', 'docs/concepts_cn.md', 'docs/cli.md', 'docs/cli_cn.md', 'RUNBOOK.md']) {
     const t = fs.readFileSync(path.join(ROOT, f), 'utf8');
     assert.doesNotMatch(t, /\b(at|reached|reaching|reaches) (its |ITS )?round [25]\b/, f);
     assert.doesNotMatch(t, /(after|beyond) (its |ITS )?round 2\b/, f);
@@ -520,7 +517,7 @@ test('PR-41 the derived documents follow the runbook', () => {
     assert.doesNotMatch(t, /第 2 轮后/, f);
   }
   // and the runbook promises only what the CLI enforces: C8 lives in `gate` (and status), not in `check`
-  for (const f of ['RUNBOOK.md', 'RUNBOOK_cn.md']) {
+  for (const f of ['RUNBOOK.md']) {
     assert.doesNotMatch(fs.readFileSync(path.join(ROOT, f), 'utf8'), /`apriori check` \/ `gate`/, f);
   }
   // positive: the Specify exit and the status reference tie their stop condition to the configured limit
@@ -536,7 +533,7 @@ test('PR-41 the derived documents follow the runbook', () => {
     assert.doesNotMatch(t, /needs the owner to raise the row|raise `review-round-limit` if it should keep going|needs the owner to raise the limit too/, f);
     assert.match(t, /either raises? (the row|`review-round-limit`)|raise `review-round-limit` in `process-config\.md` if the family should run on/, f);
   }
-  for (const f of ['docs/cli_cn.md', 'docs/operator_cn.md', 'RUNBOOK_cn.md']) {
+  for (const f of ['docs/cli_cn.md', 'docs/operator_cn.md']) {
     const t = fs.readFileSync(path.join(ROOT, f), 'utf8');
     assert.doesNotMatch(t, /还要所有者提高那一行|要继续就同时提高|还需要所有者提高上限/, f);
     assert.match(t, /提高那一行或用该轮自己的 reframe|提高 `review-round-limit`|提高 `review-round-limit` 或用该轮自己的 reframe/, f);

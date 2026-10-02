@@ -369,12 +369,6 @@ test('PR-61 the rest of the runbook agrees, and the rulings are disclosed', () =
       disclose: /The rulings and the one re-review let the loop go on without waiting, but they do not guarantee the approach is right; the owner may reframe or raise the limit at any time\. The final report and the archive declaration list every ruling\./,
       noStop: /still `revise` at the effective limit, or `VERDICT: escalate` at any round → the loop stops/,
     }],
-    ['RUNBOOK_cn.md', {
-      principle: /^9\. 按既有规则终止无效评审循环:第 3 轮起记 `review-progress`;到了所有者的评审轮次上限,对每条未决发现逐条裁决、再做一次复核,而不是停下;只在 `escalate`、属于所有者的决定、或那次复核仍未解决的问题上停。$/m,
-      r1: /^3\. \*\*某个评审 family 越过了它唯一一次自动复核\(reframe\)。\*\*/m,
-      disclose: /逐条裁决与那一次复核让循环不必停等,但不保证方法本身正确;所有者随时可以 reframe 或提高上限。最终报告与归档声明逐条列出全部裁决。/,
-      noStop: /在有效上限仍是 `revise`,或任一轮 `VERDICT: escalate` → 该循环停止/,
-    }],
   ]) {
     const s = rdText(file);
     assert.match(s, re.principle, `${file}: principle 9`);

@@ -26,7 +26,6 @@ const RECOVERY_LINE = 'Stop when every condition holds. If turn 25 ends with any
 const ESCALATION_LINE = 'Escalate the bar, never quietly lower it.';
 
 const EN_HEADING = '## 6. Human Operator Appendix';
-const CN_HEADING = '## 6. 人类操作员附录';
 
 test('OPM-01 install view: npm pack ships the runbook without the appendix body AND the EN operator doc that carries it', () => {
   // P3 acceptance reversal: the old success condition ("docs/ is not packaged") certified the
@@ -141,10 +140,9 @@ test('OPM-04 docs/operator_cn.md keeps the same frozen recipe text (recipes stay
     assert.ok(op.includes(b), `a full EN recipe block is not verbatim in the CN edition: ${b.slice(0, 60)}…`);
 });
 
-test('OPM-05 both runbooks: §6 body gone, pointer present, §0-§5 untouched anchors stay', () => {
+test('OPM-05 the runbook: §6 body gone, pointer present, §0-§5 untouched anchors stay', () => {
   const en = read('RUNBOOK.md');
-  const cn = read('RUNBOOK_cn.md');
-  for (const [name, text, heading] of [['RUNBOOK.md', en, EN_HEADING], ['RUNBOOK_cn.md', cn, CN_HEADING]]) {
+  for (const [name, text, heading] of [['RUNBOOK.md', en, EN_HEADING]]) {
     assert.ok(!text.includes(heading), `${name} still carries the §6 heading`);
     assert.ok(!text.includes('Safety bound: 25 turns'), `${name} still carries the recipe body`);
     assert.ok(!/§6/.test(text), `${name} still references §6 — internal refs must re-point to docs/operator`);
@@ -153,12 +151,9 @@ test('OPM-05 both runbooks: §6 body gone, pointer present, §0-§5 untouched an
     assert.ok(text.includes('< /dev/null'), `${name} lost the < /dev/null guidance`);
   }
   assert.ok(en.includes('docs/operator.md'), 'RUNBOOK.md lacks the operator pointer');
-  assert.ok(cn.includes('docs/operator_cn.md'), 'RUNBOOK_cn.md lacks the operator pointer');
-  // both editions name an executable install-side read path, not just a repository location
+  // the runbook names an executable install-side read path, not just a repository location
   assert.ok(en.includes('node_modules/apriori-cli/docs/operator.md'),
     'RUNBOOK.md gives no executable local read path for the shipped operator doc');
-  assert.ok(cn.includes('node_modules/apriori-cli/docs/operator.md'),
-    'RUNBOOK_cn.md gives no executable local read path for the shipped operator doc');
 });
 
 test('OPM-06 outside references re-point: concepts EN/CN name operator.md, not runbook §6', () => {

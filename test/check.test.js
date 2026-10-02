@@ -27,14 +27,10 @@ test('CK-03 verdict-phrase and codex-command checks catch drift', () => {
   assert.ok(drift.some((f) => /ready to execute/.test(f)));
   const notInTable = c.checkVerdictPhrases({ 'README.md': 'VERDICT: made up phrase' });
   assert.ok(notInTable.some((f) => /not in table/.test(f)));
-  // codex command EN/CN parity: differing flag value is caught, prompt payload ignored
-  const en = 'codex exec resume -c sandbox_mode="read-only" <id> "review this"';
-  const cnOk = 'codex exec resume -c sandbox_mode="read-only" <id> "评审这个"';
-  assert.strictEqual(c.checkCodexCommands(en, cnOk).length, 0);
-  const cnBad = 'codex exec resume -c sandbox_mode="danger" <id> "评审这个"';
-  assert.ok(c.checkCodexCommands(en, cnBad).some((f) => /token mismatch/.test(f)));
-  // checker 8 (ported): resume must carry -c sandbox_mode="read-only"; RUNBOOKs need `< /dev/null`
-  const good = { 'RUNBOOK.md': 'codex exec resume -c sandbox_mode="read-only" <id> "x"\nrun `< /dev/null`', 'RUNBOOK_cn.md': 'codex exec resume -c sandbox_mode="read-only" <id> "x"\n用 `< /dev/null`' };
+  // the EN/CN codex-command comparison is retired with the Chinese runbook (runbook-english-only)
+  assert.strictEqual(c.checkCodexCommands, undefined);
+  // checker 8 (ported): resume must carry -c sandbox_mode="read-only"; the runbook needs `< /dev/null`
+  const good = { 'RUNBOOK.md': 'codex exec resume -c sandbox_mode="read-only" <id> "x"\nrun `< /dev/null`' };
   assert.strictEqual(c.checkCodexKnownForms(good).length, 0);
   assert.ok(c.checkCodexKnownForms({ 'RUNBOOK.md': 'codex exec resume -s read-only <id> "x"\n< /dev/null' }).some((f) => /uses -s/.test(f)));
   assert.ok(c.checkCodexKnownForms({ 'RUNBOOK.md': 'codex exec resume -c sandbox_mode="read-only" <id> "x"' }).some((f) => /dev\/null/.test(f)));
@@ -266,24 +262,21 @@ test('CK-11 the runbook major.minor tracks the CLI major.minor', () => {
   const root = fs3.mkdtempSync(p3.join(os3.tmpdir(), 'apriori-ck11-'));
   fs3.writeFileSync(p3.join(root, 'package.json'), JSON.stringify({ version: '4.0.3' }));
   const EN = '# R\n\n> `runbook-version: 4.0` · upstream: x\n';
-  const CN = '# R\n\n> `runbook-version: 4.0` · 上游:x\n';
-  const files = (en, cn) => ({ 'RUNBOOK.md': en, ...(cn !== undefined ? { 'RUNBOOK_cn.md': cn } : {}) });
+  const files = (en) => ({ 'RUNBOOK.md': en });
   // aligned -> pass
-  assert.deepStrictEqual(checkRunbookVersion(root, files(EN, CN)), []);
-  // EN flipped to 3.0 -> fail naming file + both majors
-  const bad = checkRunbookVersion(root, files(EN.replace('4.0', '3.0'), CN));
+  assert.deepStrictEqual(checkRunbookVersion(root, files(EN)), []);
+  // flipped to 3.0 -> fail naming file + both majors
+  const bad = checkRunbookVersion(root, files(EN.replace('4.0', '3.0')));
   assert.strictEqual(bad.length, 1);
   assert.match(bad[0], /RUNBOOK\.md/);
   assert.match(bad[0], /3.*4|major/);
-  // CN flipped -> fail names CN
-  assert.match(checkRunbookVersion(root, files(EN, CN.replace('4.0', '5.0')))[0], /RUNBOOK_cn\.md/);
   // a MINOR drift fails too — 6.2 code under a 6.0 runbook is exactly the drift this check exists for
-  const minor = checkRunbookVersion(root, files(EN.replace('4.0', '4.1'), CN));
+  const minor = checkRunbookVersion(root, files(EN.replace('4.0', '4.1')));
   assert.strictEqual(minor.length, 1);
   assert.match(minor[0], /4\.1.*4\.0/);
   // a pre-release package tag is ignored: 4.0.0-rc.0 still wants 4.0
   fs3.writeFileSync(p3.join(root, 'package.json'), JSON.stringify({ version: '4.0.0-rc.0' }));
-  assert.deepStrictEqual(checkRunbookVersion(root, files(EN, CN)), []);
+  assert.deepStrictEqual(checkRunbookVersion(root, files(EN)), []);
 });
 
 test('CK-12 malformed, missing, duplicate, and body occurrences', () => {
@@ -305,7 +298,7 @@ test('CK-12 malformed, missing, duplicate, and body occurrences', () => {
   // a real blockquote AFTER the first h2 (body region) is never matched -> missing (RVIMPL-2)
   assert.match(checkRunbookVersion(root, { 'RUNBOOK.md': '# R\n\n## Body\n\n> `runbook-version: 4.0`\n' })[0], /no.*runbook-version|missing/i);
   // RUNBOOK.md absent under --self -> the canonical runbook is required (RVIMPL-1)
-  assert.match(checkRunbookVersion(root, { 'RUNBOOK_cn.md': '# R\n\n> `runbook-version: 4.0`\n' })[0], /canonical|missing/i);
+  assert.match(checkRunbookVersion(root, {})[0], /canonical|missing/i);
 });
 
 test('CK-11 runs under --self and not in consumer mode', () => {
@@ -317,7 +310,6 @@ test('CK-11 runs under --self and not in consumer mode', () => {
   fs3.writeFileSync(p3.join(root, 'apriori/specs/x.md'), '#### Scenario: XX-01 a\n- t\n');
   fs3.writeFileSync(p3.join(root, 'package.json'), JSON.stringify({ version: '4.0.3' }));
   fs3.writeFileSync(p3.join(root, 'RUNBOOK.md'), '# R\n\n> `runbook-version: 3.0`\n');
-  fs3.writeFileSync(p3.join(root, 'RUNBOOK_cn.md'), '# R\n\n> `runbook-version: 3.0`\n');
   const self = spawnSync('node', [BIN3, 'check', '--self'], { cwd: root, encoding: 'utf8' });
   assert.match(self.stdout + self.stderr, /runbook-version|CK-11/i);
   const consumer = spawnSync('node', [BIN3, 'check'], { cwd: root, encoding: 'utf8' });
@@ -333,7 +325,7 @@ test('CK-17 the retired lanes leave the phrase table, and the table stays closed
   for (const kept of ['VERDICT: no spec-vs-code gaps', 'VERDICT: gaps found', 'VERDICT: no major issues'])
     assert.ok(VERDICT_PHRASES.includes(kept), `live phrase missing: ${kept}`);
 
-  const runbooks = Object.fromEntries(['RUNBOOK.md', 'RUNBOOK_cn.md'].map((n) => [n, VERDICT_PHRASES.join('\n')]));
+  const runbooks = { 'RUNBOOK.md': VERDICT_PHRASES.join('\n') };
   assert.deepStrictEqual(checkVerdictPhrases(runbooks), [], 'the canonical table checks clean against itself');
 
   // an unregistered phrase still fails — including one a retired lane used to license

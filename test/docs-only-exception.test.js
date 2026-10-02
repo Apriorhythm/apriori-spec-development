@@ -14,7 +14,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..');
-const FILES = ['RUNBOOK.md', 'RUNBOOK_cn.md', 'README.md', 'README_cn.md', 'templates/command.md',
+const FILES = ['RUNBOOK.md', 'README.md', 'README_cn.md', 'templates/command.md',
   'docs/concepts.md', 'docs/concepts_cn.md', 'docs/ci.md', 'docs/ci_cn.md', 'docs/cli.md', 'docs/cli_cn.md',
   'docs/troubleshooting.md', 'docs/troubleshooting_cn.md', 'docs/legacy.md', 'docs/legacy_cn.md'];
 
@@ -31,12 +31,12 @@ test('DO-01 no document tells a docs-only project to substitute `apriori check` 
       /把 `npm test` 换成 `apriori check`/, /映射成 `apriori check`/,
     ]) assert.doesNotMatch(t, re, `${f}: the exception survives`);
   }
-  // the one sentence that replaces it, in the four documents that carried the exception
+  // the one sentence that replaces it, in the three documents that carried the exception (the runbook is English only)
   for (const f of ['RUNBOOK.md', 'docs/concepts.md']) {
     const t = fs.readFileSync(path.join(ROOT, f), 'utf8');
     assert.match(t, /a change with no executable test evidence has no C1 evidence; a documentation project that wants the workflow must provide a real TAP-emitting check/, f);
   }
-  for (const f of ['RUNBOOK_cn.md', 'docs/concepts_cn.md']) {
+  for (const f of ['docs/concepts_cn.md']) {
     const t = fs.readFileSync(path.join(ROOT, f), 'utf8');
     assert.match(t, /没有可执行测试证据的 change 就没有 C1 证据;想走这套流程的文档项目必须提供一个真正会输出 TAP 的检查/, f);
   }

@@ -1,6 +1,10 @@
 # Migrating
 
-The 3.0.0 stability promise — CLI surface & flags, `--json` shapes, the delta format, the flow-state schema and the `apriori/` layout only break in a major — holds for the released 5.x line. **6.x is an unreleased development line** (npm has never shipped a 6.x; `package.json` says `6.2.0-rc.0`, both runbooks `runbook-version: 6.2`): within it the `gate --review-ready` item ids (`tests`, `open`) and the flow-state fields (`## Evidence` gone, `mode:` inert) changed in 6.2, and further changes before a 6.x release are declared here rather than promised away. Everything below is either additive or a declared fail-closed tightening — except limit-ruling, which moves a stop the owner explicitly approved moving and says so in its section.
+The 3.0.0 stability promise — CLI surface & flags, `--json` shapes, the delta format, the flow-state schema and the `apriori/` layout only break in a major — holds for the released 5.x line. **6.x is an unreleased development line** (npm has never shipped a 6.x; `package.json` says `6.2.0-rc.0`, the runbook `runbook-version: 6.2`): within it the `gate --review-ready` item ids (`tests`, `open`) and the flow-state fields (`## Evidence` gone, `mode:` inert) changed in 6.2, and further changes before a 6.x release are declared here rather than promised away. Everything below is either additive or a declared fail-closed tightening — except limit-ruling, which moves a stop the owner explicitly approved moving and says so in its section.
+
+## runbook-english-only (Unreleased) — the runbook is English only
+
+Nothing to do in a project: `apriori init` and `apriori update` only ever installed the English `RUNBOOK.md`. If you read or forked the repository's `RUNBOOK_cn.md`, read `RUNBOOK.md` instead — the Chinese edition is removed, and the Chinese human documents (`README_cn.md`, `docs/*_cn.md`) stay.
 
 ## limit-ruling (Unreleased) — at the review-round limit the producer rules, and the default is 8
 

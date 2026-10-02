@@ -1,6 +1,6 @@
 # 人类操作员附录
 
-> 自 `RUNBOOK_cn.md`(原 §6)原文迁出;下文的 § 引用(§1、§4、§5)指向 `RUNBOOK_cn.md`。
+> 自 runbook(原 §6)原文迁出;下文的 § 引用(§1、§4、§5)指向 `RUNBOOK.md`(runbook 只有英文一版)。
 
 > 本节的一切都**由人执行**。agent 绝不可执行或模拟 `/goal`(R3)。架构与注意事项见 apriori-cli 仓库里的 `docs/concepts_cn.md` §4.7(用 /goal 自动化整个流程)。
 > **两个循环、两个上界。** *评审轮次*由派生循环按 family、对照所有者在 `process-config.md` 里的 `review-round-limit`(默认 8;到了上限,agent 对每条未决发现逐条裁决,随后做一次复核)治理(§1 R4 / `gate` C8);*实现与测试循环*的最坏情况是固定的 **25 轮**,写在下面的配方文本里——`process-config.md` 不为它配任何数字。

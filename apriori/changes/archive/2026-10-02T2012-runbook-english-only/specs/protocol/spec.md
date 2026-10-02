@@ -1,3 +1,8 @@
+<!-- apriori-base: sha256:ba4eba725355736155b75bafac39ab28d6a8c547a5ff39aedb019d8e5ae6905a -->
+# Delta — protocol (runbook-english-only)
+
+## MODIFIED Requirements
+
 ### Requirement: executable specs shrink verification and drop the OpenSpec adapter
 The V3 runbook SHALL make scenario-to-test binding a deterministic gate, narrow the heterogeneous consistency review to what binding cannot prove, implement archive natively, and remove the OpenSpec adapter so the interface is single-path plain-files.
 
@@ -79,40 +84,12 @@ The runbook SHALL document that there is no issue ledger: the state's `## Open` 
 - WHEN the §5 prompts section is read
 - THEN `## Open` is named as the only home of open issues, `review/issues.md` is stated to be never opened, the reopen-is-an-event rule is stated, exactly one blocking thing (a pending item: unaccepted and not a registered follow-up) is named, the retired vocabulary is absent, the artifact table carries no ledger row, and the concepts handbook says the CLI reads no ledger in both languages
 
-### Requirement: requirement-stage paths carry the change name  _deprecated (superseded by change-bundle)_
-The runbook (both editions) and the concepts handbook (both languages) SHALL write every requirement-stage path with the change prefix — `requirement/<change>-req-v{N}.md` finalized as `requirement/<change>-req-final.md`, and `requirement/<change>-intent-card.md` on the explore track — and none of the old global literals (`requirement/req-v`, `requirement/req-final.md`, `requirement/intent-card.md`) anywhere in the four live docs; parallel changes stop overwriting each other's requirement history. The STEP6 section (both runbook editions) SHALL carry the preservation clause: after `apriori archive --change <name> --write --changes-dir apriori/changes` moves the change dir, and before the STEP6 closeout commit, every `requirement/<change>-req-*.md` and `requirement/<change>-intent-card.md` (if present) is copied into `apriori/changes/archive/<stamp>-<change>/requirement/`, basenames preserved, all versions included. Already-archived changes keep their old file names (grandfathered — nothing parses requirement filenames).
-
-#### Scenario: PR-19 the prefixed convention binds in every live doc
-- WHEN the four live docs (runbook EN/CN, concepts EN/CN) are scanned
-- THEN the prefixed forms appear where the convention is written (artifact table, STEP0, intent card, the goal recipes, concepts' walkthrough), the STEP6 preservation clause names its destination and its before-the-closeout-commit timing in both runbook editions, and none of the three forbidden old literals appears anywhere in the four docs
-
-### Requirement: the preservation of requirement history is command behavior  _deprecated (superseded by change-bundle)_
-The runbook STEP6 section (both editions) SHALL state that the archive action itself stages `requirement/<change>-*` (req versions, final, intent card) into the change dir and carries them through the atomic move into `archive/<stamp>-<change>/requirement/` — the executor's residual duty is only the closeout commit; the former executor-copy instruction SHALL be absent.
-
-#### Scenario: PR-20 the automatic carry binds and the manual instruction is gone
-- WHEN the STEP6 section is read in either edition
-- THEN it states the archive action carries the requirement history automatically (destination named), the executor's duty is the closeout commit alone, and the old copy-it-yourself phrasing ("copy every"/"拷入") appears nowhere in the section
-
 ### Requirement: no live document requires the fixed artifact family
 The runbook and the concepts handbook (both languages) SHALL define the bundle as the ONLY layout: everything a change owns lives in `apriori/changes/<name>/` — `flow-state.md`, `specs/<module>/` for the delta contract, and `review/` holding each review doc with its raw beside it under the unchanged `<stem>-raw.*` rule. 6.0 retired the fixed artifact family: no live document SHALL require, instruct the production of, or scaffold a requirement doc, a proposal, a design doc, a gap report or a task list, and none of `req-v{N}.md`, `req-final.md`, `proposal.md`, `design.md`, `tasks.md` or `gap-report.md` SHALL appear as a path a change is told to write. The pre-4.0 legacy roots (`requirement/`, `spike/`, `apriori/review/`, `apriori/design/`, `apriori/explore/`) appear nowhere as standalone paths — they survive only as migration history (MIGRATING.md 4.0), of which `doctor`'s D8 probe covers the three apriori-owned ones (`apriori/review/`, `apriori/design/`, `apriori/explore/`); the two generic names are documented there but deliberately unprobed. Mentions that are explicitly historical ("5.x demanded…", "it replaced gap-report.md", "a `tasks.md` a 5.x bundle still carries") are the only permitted occurrences, and each must read as a negation or a migration note rather than an instruction. The archive action carries the whole bundle in its one atomic move. The v4 stability sentence states its promise over the CLI surface & flags, `--json` shapes, the delta format, and the flow-state schema — without a layout clause.
 
 #### Scenario: PR-21 the artifact family is gone from every live document
 - WHEN the three live docs (the runbook, concepts EN/CN) are scanned
 - THEN the artifact table names only flow-state, `specs/` and `review/` (docs + raws); the strip-scan finds zero standalone occurrences of the five legacy roots; every surviving mention of `req-v`, `req-final`, `proposal.md`, `design.md`, `tasks.md` or `gap-report` sits in a sentence that negates it or labels it 5.x history; and the stability sentence carries no layout clause
-
-### Requirement: the CAS promise speaks the present tense and the release surface points at the repository root
-The runbook SHALL state the CAS rule in the present tense — unstamped mutation deltas are denied by archive by default, naming the two visible waivers (`--no-cas`, `| cas | optional |`) — with no future-tense "mandatory in 4.0" phrasing left; MIGRATING.md SHALL carry a 4.0 section with the legacy-root detection guidance and the manual migration mapping; `package.json`'s homepage SHALL point at the repository root (`#readme`, carrying no branch segment) so it follows the default branch.
-
-#### Scenario: PR-22 the promise and the pointers are current
-- WHEN the runbook, MIGRATING.md, and package.json are read
-- THEN the runbook states archive's default denial in the present tense with both waivers named and carry no future-tense mandatory-in-4.0 phrasing; MIGRATING.md has a 4.0 section naming the five legacy roots; the homepage field ends in `apriori-spec-development#readme` and carries no `/tree/<branch>` segment
-
-### Requirement: the migration pointer reaches npm users
-The npm package SHALL ship `MIGRATING.md` (listed in `package.json` `files`), and the legacy-layout messages (doctor D8's fix, update's warning) SHALL carry both the local path and the stable URL `https://github.com/Apriorhythm/apriori-spec-development/blob/main/MIGRATING.md` — a pointer the diagnosed user can actually open.
-
-#### Scenario: PR-23 the pointer is packaged and dual-form
-- WHEN the npm files list and the D8/update message templates are read
-- THEN `MIGRATING.md` appears in `package.json` `files`, both messages carry the local file reference and the stable blob URL, and MIGRATING's pre-4.0 CAS wording carries the "archive denies by default since 4.0.1" correction so the old table cannot be read as current behavior
 
 ### Requirement: the runbook states the review-round limit and retires the fixed control points
 The runbook SHALL state in §1 R4 that the round limit is the owner's `review-round-limit` row (missing row = 8, integers >= 1, the agent never writes the file), that `revise` below the limit never stops the loop on its own, that no fixed round-2, round-3 or round-5 stop applies, that a `review-progress <family> round <n>` note entry with `issues / actions / evidence / approach` is required before round n >= 3 and is checked by C8 structurally without ever becoming an owner gate, that a `revise` AT the limit does not stop either — the producer writes one `note: ruling <family> round <n> — <ID>: <fixed|rejected|follow-up|owner> — <basis>` line per open finding (a necessary fix is never set aside) and exactly one independent re-review follows, the same reviewer session resumed and answering each ruled id `- <ID>: ADDRESSED — <basis>` or `- <ID>: NOT ADDRESSED — <basis>`, whose unresolved ids become pending `## Open` items for the owner — that the loop stops for the owner only on an explicit `escalate` or on a round past that one re-review, that only an owner reframe releases that stop with the cumulative count never resetting, that `--force` alone bypasses neither a stopped loop nor an evidence problem, and that the rulings and the one re-review do not guarantee the approach is right. §1 R1's third stop class SHALL name a family past its one automatic re-review; §1 R3 SHALL name the one configured number that governs review rounds; the operator guide (both editions) SHALL carry one `/goal` recipe from Build & Test through archive beside the same five-stop list, and the concepts doc (both editions) the same five-stop list; "converge within 2 rounds" MAY remain only as advisory wording.
@@ -222,9 +199,22 @@ The runbook SHALL carry, in §4 Review & Deliver right after the one-independent
 - WHEN R2 and the P3 block of the runbook are read
 - THEN R2's rounds-2+ clause says the resume message is scoped as §4 Review & Deliver says, and the P3 block is byte-identical to its frozen form
 
+### Requirement: the CAS promise speaks the present tense and the release surface points at the repository root
+The runbook SHALL state the CAS rule in the present tense — unstamped mutation deltas are denied by archive by default, naming the two visible waivers (`--no-cas`, `| cas | optional |`) — with no future-tense "mandatory in 4.0" phrasing left; MIGRATING.md SHALL carry a 4.0 section with the legacy-root detection guidance and the manual migration mapping; `package.json`'s homepage SHALL point at the repository root (`#readme`, carrying no branch segment) so it follows the default branch.
+
+#### Scenario: PR-22 the promise and the pointers are current
+- WHEN the runbook, MIGRATING.md, and package.json are read
+- THEN the runbook states archive's default denial in the present tense with both waivers named and carry no future-tense mandatory-in-4.0 phrasing; MIGRATING.md has a 4.0 section naming the five legacy roots; the homepage field ends in `apriori-spec-development#readme` and carries no `/tree/<branch>` segment
+
+## ADDED Requirements
+
 ### Requirement: the runbook has one edition, in English
 The runbook SHALL exist only as `RUNBOOK.md`, in English — the copy `apriori init` installs and the only rule source an agent reads. The repository SHALL carry no Chinese runbook edition (`RUNBOOK_cn.md`); `apriori check --self` fails if one reappears (check, CK-23). No live document SHALL point at a Chinese runbook: the Chinese human documents (`README_cn.md`, `docs/*_cn.md`) stay, and where they point at the runbook they name the English `RUNBOOK.md`. The runbook's header SHALL carry no language switcher — in an installed project that link pointed at a file that is not there. An obligation that was pinned only through the Chinese edition is pinned on the English text or by a behavior test; historical records (CHANGELOG entries, archived bundles, validation labs) are not rewritten.
 
 #### Scenario: PR-63 one English runbook, no Chinese edition, and nothing live points at one
 - WHEN the repository's live documents are read
 - THEN `RUNBOOK_cn.md` is absent; `RUNBOOK.md`'s header carries no language switcher and no link to a Chinese edition; `README_cn.md` and every `docs/*_cn.md` that points at the runbook names `RUNBOOK.md`; and the P3 block of `RUNBOOK.md` keeps its frozen bytes (RIB-10)
+
+## Notes
+
+Why: the owner decided on 2026-10-02 that the runbook needs no second language. `apriori init` and `apriori update` only ever installed the English `RUNBOOK.md` (the repository's README_cn pointed readers at `RUNBOOK_cn.md`); keeping it meant every rule change was written twice and pinned twice, and the mirror could drift. The thirteen requirements modified above said "both editions"; they now bind the one English runbook, and every obligation they carried stays in force there. The operator guide and the concepts handbook stay bilingual — they are written for the human — so their "both editions / both languages" wording is unchanged. This is not a claim that agents execute better with one language; it removes a duplicated rule source. Source: owner 2026-10-02, Claude × Astra plan C-a (DISAGREEMENTS 0).

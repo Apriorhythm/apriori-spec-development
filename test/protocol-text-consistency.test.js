@@ -12,7 +12,6 @@ const { spawnSync } = require('node:child_process');
 const ROOT = path.join(__dirname, '..');
 const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
 const EN = read('RUNBOOK.md');
-const CN = read('RUNBOOK_cn.md');
 const CONCEPTS = read('docs/concepts.md');
 const CONCEPTS_CN = read('docs/concepts_cn.md');
 const VISION = read('VISION.md');
@@ -27,10 +26,9 @@ function archiveBullet(doc, startRe) {
   return end < 0 ? rest : rest.slice(0, end + 1);
 }
 
-test('PR-50 the archive sentence names the predicates the code runs, in both editions', () => {
+test('PR-50 the archive sentence names the predicates the code runs', () => {
   const en = archiveBullet(EN, /^- \*\*Delta grammar and archive:\*\*/m);
-  const cn = archiveBullet(CN, /^- \*\*增量语法与归档:\*\*/m);
-  for (const [label, b] of [['EN', en], ['CN', cn]]) {
+  for (const [label, b] of [['EN', en]]) {
     assert.match(b, /C3\/C5\/C8\/C9/, `${label}: the predicates are gate's C3/C5/C8/C9`);
     assert.doesNotMatch(b, /C3\/C4\/C8\/C9/, `${label}: the retired C4 is not a predicate`);
     assert.doesNotMatch(b, /kept ledger|保留的台账/, `${label}: no "kept ledger" predicate`);
@@ -41,35 +39,31 @@ test('PR-50 the archive sentence names the predicates the code runs, in both edi
   assert.match(en, /no legacy `review\/issues\.md` still carrying `open` rows — the one-shot migration/);
   assert.match(en, /An `archive-force ledger` record forces nothing \(6\.2\); it is reported as a note\./);
   assert.match(en, /no `## Open` item still pending — unaccepted and not a registered follow-up — and no standing assumption/);
-  assert.match(cn, /没有仍带 `open` 行的遗留 `review\/issues\.md`——一次性迁移/);
-  assert.match(cn, /`archive-force ledger` 记录不强制任何东西\(6\.2\),只作为 note 报告。/);
-  assert.match(cn, /`## Open` 里没有仍 pending 的条目——既未被接受、也不是已登记的 follow-up——也没有仍悬着的 assumption/);
 });
 
-test('PR-51 the two editions carry the same obligations at the four drifted sentences', () => {
-  // kickoff: the CN no longer names a requirement-document sign-off (6.0 has no such document)
+test('PR-51 the runbook carries the obligations at the four once-drifted sentences', () => {
+  // these sentences once drifted between the two runbook editions; the runbook is English only now
+  // (runbook-english-only), so each obligation is pinned on the English text
+  // kickoff: no requirement-document sign-off (6.0 has no such document)
   assert.match(EN, /^> This kickoff \*is\* the human intent acknowledgment\.$/m);
-  assert.match(CN, /^> 这句 kickoff \*就是\*人对意图的认可。$/m);
-  assert.doesNotMatch(CN, /需求文档的签核/);
-  // R3: every phase change and every review round — no retired step vocabulary in the CN
+  assert.doesNotMatch(EN, /requirement[- ]document sign-?off/i);
+  // R3: every phase change and every review round — no retired step vocabulary
   assert.match(EN, /the state file is updated after every phase change and every review round/);
-  assert.match(CN, /每次阶段变化、每轮评审之后都更新状态文件/);
-  assert.doesNotMatch(CN, /每完成一步/);
-  // Reality Check bullet: the CN states the assumption lifecycle exactly once
-  const cnRc = CN.match(/^- \*\*只有三类。\*\*.*$/m);
-  assert.ok(cnRc, 'CN Reality Check bullet found');
-  assert.strictEqual((cnRc[0].match(/直到.{0,3}被解决或所有者接受/g) || []).length, 1, 'the lifecycle is stated once');
-  assert.match(cnRc[0], /\*\*实现前先验证\*\*。它的生命周期只有两个出口/);
-  // Specify bullet: "contract only — never source" belongs to the producer's revisions in both editions
+  assert.doesNotMatch(EN, /after (each|every) step\b/i);
+  // Reality Check bullet: the assumption lifecycle is stated exactly once
+  const rc = EN.match(/^- \*\*Three kinds only\.\*\*.*$/m);
+  assert.ok(rc, 'Reality Check bullet found');
+  assert.strictEqual((rc[0].match(/until it is resolved or the owner accepts/g) || []).length, 1, 'the lifecycle is stated once');
+  assert.match(rc[0], /\*\*verify it before implementing\*\*\. Its lifecycle has two exits and no third/);
+  // Specify bullet: "contract only — never source" belongs to the producer's revisions
   assert.match(EN, /\(reviewer P3; the producer's revisions touch the contract only — never source\)/);
   assert.doesNotMatch(EN, /\(reviewer P3, on the contract only — never source\)/);
-  assert.match(CN, /\(评审方 P3;生产方的修订只改契约、绝不碰源码\)/);
   // the reviewer's own source inspection is untouched (R2) and P3 still lets it read the repo
   assert.match(EN, /reviewer's own source inspection still allowed/);
   assert.match(EN, /You may read the whole repo, its callers, config and prototypes on your own initiative\./);
-  // follow-up bullet: the CN says 委托, like every other rendering of "delegation"
-  assert.match(CN, /\(建 change 与实施仍服从委托\)/);
-  assert.doesNotMatch(CN, /仍服从既有授权/);
+  // follow-up bullet: creating the change follows the delegation, like every other rendering of it
+  assert.match(EN, /\(creating and implementing that change still follows the delegation\)/);
+  assert.doesNotMatch(EN, /still follows the existing authori[sz]ation/);
 });
 
 test('PR-52 the handbook and VISION describe the current mechanisms', () => {
@@ -104,7 +98,7 @@ test('PR-52 the handbook and VISION describe the current mechanisms', () => {
 
 test('CK-18 the v2 script is gone and nothing calls it', () => {
   assert.ok(!fs.existsSync(path.join(ROOT, 'scripts', 'check_docs.py')), 'scripts/check_docs.py is absent');
-  for (const p of ['package.json', '.github/workflows/ci.yml', 'README.md', 'README_cn.md', 'docs/ci.md', 'docs/cli.md', 'RUNBOOK.md', 'RUNBOOK_cn.md']) {
+  for (const p of ['package.json', '.github/workflows/ci.yml', 'README.md', 'README_cn.md', 'docs/ci.md', 'docs/cli.md', 'RUNBOOK.md']) {
     assert.ok(!read(p).includes('check_docs'), `${p} does not reference check_docs.py`);
   }
   assert.match(read('.github/workflows/ci.yml'), /check --self/);

@@ -775,7 +775,7 @@ test('RL-41 a corpus bundle with real damage still blocks', () => {
 // ===========================================================================
 
 const readRoot = (rel) => fs.readFileSync(path.join(__dirname, '..', rel), 'utf8');
-const LIVE_DOCS = ['templates/process-config.md', 'RUNBOOK.md', 'RUNBOOK_cn.md',
+const LIVE_DOCS = ['templates/process-config.md', 'RUNBOOK.md',
   'docs/concepts.md', 'docs/concepts_cn.md', 'docs/cli.md', 'docs/cli_cn.md'];
 
 test('RL-42 the docs state the two phases, the cure line and the boundary', () => {
@@ -783,8 +783,8 @@ test('RL-42 the docs state the two phases, the cure line and the boundary', () =
     assert.doesNotMatch(readRoot(rel), /step0-cap/, `${rel} still carries step0-cap`);
     assert.doesNotMatch(readRoot(rel), /step2-cap/, `${rel} still carries step2-cap`);
   }
-  const EN = readRoot('RUNBOOK.md'), CN = readRoot('RUNBOOK_cn.md');
-  for (const d of [EN, CN]) {
+  const EN = readRoot('RUNBOOK.md');
+  for (const d of [EN]) {
     assert.match(d, /apriori gate/);
     assert.match(d, /reframe <family> round <n> <split\|tests\|redo(?:\|accept-risk)?>/);
     assert.match(d, /C8/);
@@ -794,11 +794,7 @@ test('RL-42 the docs state the two phases, the cure line and the boundary', () =
   assert.match(EN, /never written by hand/i);
   assert.match(EN, /per family/i);
   assert.match(EN, /this repository ships no Stop hook/);
-  assert.match(CN, /由评审证据派生/);
-  assert.match(CN, /不手写/);
-  assert.match(CN, /逐 family/);
-  assert.match(CN, /本仓库不附带任何 Stop hook/);
-  for (const d of [EN, CN, readRoot('CHANGELOG.md'), readRoot('docs/cli.md'), readRoot('docs/cli_cn.md')]) {
+  for (const d of [EN, readRoot('CHANGELOG.md'), readRoot('docs/cli.md'), readRoot('docs/cli_cn.md')]) {
     assert.doesNotMatch(d, /new issues per round/i);
     assert.doesNotMatch(d, /每轮新增问题/);
   }

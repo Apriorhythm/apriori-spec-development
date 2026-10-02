@@ -263,7 +263,7 @@ rules:
 | Copilot | `.github/copilot-instructions.md` |
 | Codex | `AGENTS.md` |
 
-> 不管你用哪些工具，都在各自的规则文件里加一行，引用项目内那份 runbook（`apriori/runbook.md`，安装步骤见 [RUNBOOK_cn.md](../RUNBOOK_cn.md) §0）——正是这一行让每个会话自动加载协议。
+> 不管你用哪些工具，都在各自的规则文件里加一行，引用项目内那份 runbook（`apriori/runbook.md`，安装步骤见 [RUNBOOK.md](../RUNBOOK.md) §0）——正是这一行让每个会话自动加载协议。
 
 > **建议把同一份规范同时落到你团队在用的几个工具里**，保证不同工具行为一致。规则文件的内容**与技术栈强相关**，应由你按自己的项目编写。下面是一份**与语言无关的骨架模板**，照着填进你团队的真实约定即可（示例条目仅作占位，请替换）。
 

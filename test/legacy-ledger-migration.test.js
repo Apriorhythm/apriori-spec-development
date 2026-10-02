@@ -188,8 +188,8 @@ test('LM-07 an Open id is one token (`[^\\s:]+`); a legacy name with spaces must
   assert.match(rd.legacyLedgerMigration(p.dir) || '', /line 3: 'data schema' \(re-key it — an Open id has no spaces, e\.g\. `data-schema`\) \(the v1 risk\)/);
 });
 
-test('LM-08 the two ID rules the CLI cannot prove are stated as rules, in both editions', () => {
-  for (const f of ['RUNBOOK.md', 'RUNBOOK_cn.md', 'docs/cli.md', 'docs/cli_cn.md']) {
+test('LM-08 the two ID rules the CLI cannot prove are stated as rules, in the runbook and both CLI references', () => {
+  for (const f of ['RUNBOOK.md', 'docs/cli.md', 'docs/cli_cn.md']) {
     const t = fs.readFileSync(path.join(ROOT, f), 'utf8');
     assert.match(t, /never reused for a different risk|不复用给另一个风险/, `${f}: a closed id is never reused for a different risk within the same bundle`);
     assert.match(t, /cannot prove|无法证明/, `${f}: the CLI cannot prove it — say so`);
@@ -225,13 +225,10 @@ test('LM-09 an assumption blocks C9 with the lifecycle in its message; an accept
   assert.match(bad.blockers[0], /Reality Check entry names no kind: 'the schema matches' — write observed\/decision\/assumption/);
 });
 
-test('LM-10 the assumption lifecycle is documented in both RUNBOOK editions', () => {
+test('LM-10 the assumption lifecycle is documented in the runbook', () => {
   const en = fs.readFileSync(path.join(ROOT, 'RUNBOOK.md'), 'utf8');
-  const cn = fs.readFileSync(path.join(ROOT, 'RUNBOOK_cn.md'), 'utf8');
   assert.match(en, /rewrite it as `observed`/);
   assert.match(en, /must not coexist/);
-  assert.match(cn, /改写为 `observed`/);
-  assert.match(cn, /不能并存/);
 });
 
 test('LM-11 an unusable review ROOT is the root guard\'s finding (C5 / R4), never a second ledger finding', { skip: canSymlink() ? false : 'platform refuses symlinks' }, () => {

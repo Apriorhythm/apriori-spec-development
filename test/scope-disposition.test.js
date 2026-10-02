@@ -111,22 +111,9 @@ test('PR-42 the disposition rule lands in both editions of §4', () => {
     'recommended words, not closed': /are the recommended words, not a closed vocabulary: an unresolved finding keeps its id, its current impact and its next action/,
     'approach is not a ledger': /`review-progress`'s `approach:`[^\n]*not a second ledger of findings/,
   })) assert.match(en, re, `RUNBOOK.md §4 lacks: ${label}`);
-  const cn = sec(fs.readFileSync(path.join(ROOT, 'RUNBOOK_cn.md'), 'utf8'), '### Review & Deliver', '\n## ');
-  for (const [label, re] of Object.entries({
-    '按每条发现': /范围按每条发现判断,从不按体量/,
-    '三种依据': /\*当前契约\*[^\n]*\*既有约束\*[^\n]*\*新增诉求\*/,
-    '必要修复判据': /若不处理该发现,拟交付的产物将违反一条可定位的已承诺验收条件、有效的所有者决定或适用的既有约束,那它就是本次交付的必要修复/,
-    '引用依据与证据': /处置须同时引用该依据和违背它的证据/,
-    '不因体量移出': /绝不因体量大而移出:实现可以拆,交付对它的依赖保留/,
-    '改承诺是所有者的': /改变承诺是所有者的决定\(R1\);记录之前,承诺与它的阻断继续有效/,
-    'follow-up 语法 + note': /`- <ID>: follow-up → <新 change 名> — <内容>`,gate C9 \/ archive R5 \/ `status` 把它当 note 报告而非阻断/,
-    '移出不等于关闭': /移出不等于关闭/,
-    '推荐写法非封闭': /是推荐写法,不是封闭词表:未解决的发现保留其 ID、当前影响与下一动作/,
-    'approach 不是账本': /`approach:` 只说为什么保留或改变方案——它不是第二份问题账本/,
-  })) assert.match(cn, re, `RUNBOOK_cn.md §4 lacks: ${label}`);
   // the P3 block is not touched (RIB-10 pins it verbatim by a recorded human ruling): the disposition is the producer's duty
   const crypto = require('crypto');
-  for (const [file, want] of Object.entries({ 'RUNBOOK.md': '97a85ca560d41c70', 'RUNBOOK_cn.md': 'd3c2c74d8aa3f3b6' })) {
+  for (const [file, want] of Object.entries({ 'RUNBOOK.md': '97a85ca560d41c70' })) {
     const m = fs.readFileSync(path.join(ROOT, file), 'utf8').match(/### P3 [\s\S]*?(?=### P4 )/);
     assert.strictEqual(crypto.createHash('sha256').update(m[0]).digest('hex').slice(0, 16), want, `${file}: P3 must stay verbatim`);
   }
@@ -139,10 +126,5 @@ test('PR-44 §5 and the CLI reference distinguish a pending item from a register
   assert.match(en, /R1's unresolved delivery obligations and R4's review stops keep their authority: a follow-up registration releases neither/);
   // commitment-carry: the receiving change now carries the original id as a pending item (PR-58)
   assert.match(en, /The landing spot is a valid change name that is not this change; when that change is later opened under its own authorization, it carries the original id and text as a pending `## Open` item/);
-  const cn = fs.readFileSync(path.join(ROOT, 'RUNBOOK_cn.md'), 'utf8');
-  assert.match(cn, /\*\*只有一件事阻断:pending 的条目——没有人接受、且不是已登记 follow-up 的条目。\*\*/);
-  assert.match(cn, /本次交付不依赖的新增诉求是 follow-up 条目,不是 pending/);
-  assert.match(cn, /R1 未了结的交付义务与 R4 的评审停止保持其效力:登记 follow-up 放行不了任何一个/);
-  assert.match(cn, /落点必须是一个合法且不是本 change 的 change 名;日后在其自身授权下开启那个 change 时,它以原 ID 与原文记一条 pending 的 `## Open` 条目/);
   assert.match(fs.readFileSync(path.join(ROOT, 'docs', 'cli.md'), 'utf8'), /a registered follow-up item \(`- <ID>: follow-up → <new-change-name> — <text>`, see C9\) is a note, not a blocker/);
 });

@@ -265,18 +265,17 @@ test('MD-13 status surfaces the legacy identity rather than printing a healthy l
 
 test('MD-14 the runbook kickoff and session-start no longer ask for the removed four', () => {
   const read = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
-  for (const f of ['RUNBOOK.md', 'RUNBOOK_cn.md']) {
+  for (const f of ['RUNBOOK.md']) {
     const doc = read(f);
     // the kickoff prompt block is the copy-and-fill line a human actually pastes
     const kickoff = doc.split('\n').filter((l) => /apriori runbook|apriori\/runbook\.md/.test(l)).join('\n');
-    for (const dead of ['tier', 'track', 'mode', '级别', '轨道', '模式'])
+    for (const dead of ['tier', 'track', 'mode'])
       assert.ok(!kickoff.includes(dead), `${f}: the kickoff prompt still asks for '${dead}'`);
     // 6.2: no section asks the human to pick a mode, and the state template writes no mode line
     assert.doesNotMatch(doc, /Pick the Mode|选择模式/, f);
     assert.doesNotMatch(doc, /^mode: /m, `${f}: the state template still carries a mode line`);
     // the session-start rule must not route by a vocabulary that no longer exists
     assert.doesNotMatch(doc, /begin at the tier's first step/, f);
-    assert.doesNotMatch(doc, /从该级别的第一步开始/, f);
     // and no dangling reference to a deleted tier value anywhere
     for (const dead of [/\btrivial tier\b/, /\bLarge tier\b/, /\bmedium\/large\b/])
       assert.doesNotMatch(doc, dead, `${f}: dangling ${dead}`);
@@ -285,46 +284,33 @@ test('MD-14 the runbook kickoff and session-start no longer ask for the removed 
 
 test('MD-15 the mechanical floor claims exactly what the CLI actually does', () => {
   const en = fs.readFileSync(path.join(__dirname, '..', 'RUNBOOK.md'), 'utf8');
-  const cn = fs.readFileSync(path.join(__dirname, '..', 'RUNBOOK_cn.md'), 'utf8');
   // slice 3 made ONE of §2's situations mechanical. The runbook must claim that one...
   assert.match(en, /contract-mutation/, 'the mechanical half must be named, with its reason token');
-  assert.match(cn, /contract-mutation/);
   // ...and must still say plainly that the others are the human's, so it never over-claims a
   // diff scanner this CLI does not have. The slice-1 sentence "not enforced by the CLI" is
   // retired WITH the thing it described — a rule that becomes mechanical takes its own
   // disclaimer with it, rather than leaving a false statement standing beside a true one.
   assert.doesNotMatch(en, /not enforced by the CLI/, 'the blanket disclaimer outlived its truth');
-  assert.doesNotMatch(cn, /CLI 目前不做机械强制/);
   assert.match(en, /reads none of them/, 'the unimplemented rows must still be declared unimplemented');
-  assert.match(cn, /CLI 一个都不读/);
   // and the review floor is stated in §2, for every change — 6.2 has no mode to say it per
   assert.match(en, /No change may drop the one independent review/);
-  assert.match(cn, /任何 change 都不能省那一次独立评审/);
   assert.match(en, /The review must also have CLOSED\.\*\*/);
-  assert.match(cn, /评审还必须已经收敛。\*\*/);
   // …and the signal is stated as information, never as a mode
   assert.match(en, /information, not a demand/);
-  assert.match(cn, /它是信息,不是要求/);
-  for (const d of [en, cn]) assert.doesNotMatch(d, /fast → standard|upgrade[sd]? fast|机械升级/, 'the retired upgrade survives');
+  assert.doesNotMatch(en, /fast → standard|upgrade[sd]? fast/, 'the retired upgrade survives');
 });
 
 test('MD-16 every session runs status + flow-state + Next first, reading the runbook only on demand', () => {
   const en = fs.readFileSync(path.join(__dirname, '..', 'RUNBOOK.md'), 'utf8');
-  const cn = fs.readFileSync(path.join(__dirname, '..', 'RUNBOOK_cn.md'), 'utf8');
   assert.doesNotMatch(en, /read this runbook in full/i);
-  assert.doesNotMatch(cn, /完整读本 RUNBOOK/);
   // the old fixed default reading set (read §1/§3/§2/§5/§4 every session) is gone
   for (const token of ['§1 hard rules', '§3 state-file rules', "recorded mode's §2 entry",
                         'recorded phase in §5', "phase's §4 entry"])
     assert.ok(!en.includes(token), `EN still declares the old default reading set: ${token}`);
-  for (const token of ['§1 铁律', '§3 状态文件规则', 'mode 在 §2', 'phase 在 §5', '阶段在 §4'])
-    assert.ok(!cn.includes(token), `CN still declares the old default reading set: ${token}`);
   // the on-demand entry point: status first, then flow-state's Next, then a runbook section
   // only when status/Next/a blocked command/an uncertain fact points there
   assert.match(en, /Run `apriori status --change <name>`/);
   assert.match(en, /Read a runbook section only when `status`, `## Next`, a blocked command, or an uncertain fact points you there/);
-  assert.match(cn, /先跑 `apriori status --change <name>`/);
-  assert.match(cn, /只有当 `status`、`## Next`、一个被阻塞的命令、或一个不确定的事实指向某节时,才去读那一节 runbook/);
 
   const command = fs.readFileSync(path.join(__dirname, '..', 'templates', 'command.md'), 'utf8');
   assert.doesNotMatch(command, /current mode\/phase minimal set/);

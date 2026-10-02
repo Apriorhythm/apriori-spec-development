@@ -30,7 +30,6 @@ const rd = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
 // the six agent-facing live docs — the ones an agent is told to read and obey
 const LIVE = {
   'RUNBOOK.md': rd('RUNBOOK.md'),
-  'RUNBOOK_cn.md': rd('RUNBOOK_cn.md'),
   'README.md': rd('README.md'),
   'README_cn.md': rd('README_cn.md'),
   'docs/concepts.md': rd('docs/concepts.md'),
@@ -213,7 +212,7 @@ test('LN-07 the live docs name the four phases, in both languages', () => {
   for (const [name, doc] of [['RUNBOOK.md', LIVE['RUNBOOK.md']], ['docs/concepts.md', LIVE['docs/concepts.md']]])
     for (const phase of ['Ground', 'Specify', 'Build & Test', 'Review & Deliver'])
       assert.ok(doc.includes(phase), `${name}: phase '${phase}' is not named`);
-  for (const [name, doc] of [['RUNBOOK_cn.md', LIVE['RUNBOOK_cn.md']], ['docs/concepts_cn.md', LIVE['docs/concepts_cn.md']]])
+  for (const [name, doc] of [['docs/concepts_cn.md', LIVE['docs/concepts_cn.md']]])
     for (const phase of ['Ground', 'Specify', 'Build & Test', 'Review & Deliver'])
       assert.ok(doc.includes(phase), `${name}: phase '${phase}' is not named`);
 });
@@ -237,9 +236,9 @@ test('LN-08 no live doc sells rounds as a continuous patching budget', () => {
   }
 });
 
-test('LN-09 both languages carry the same round semantics', () => {
+test('LN-09 the runbook and both concepts handbooks carry the same round semantics', () => {
   const en = LIVE['RUNBOOK.md'] + LIVE['docs/concepts.md'];
-  const cn = LIVE['RUNBOOK_cn.md'] + LIVE['docs/concepts_cn.md'];
+  const cn = LIVE['docs/concepts_cn.md'];   // the runbook is English only (runbook-english-only)
   // the 2-round target survives as ADVISORY wording only
   assert.match(en, /convergence within 2 rounds is advisory/i, 'EN: the advisory 2-round target is missing');
   assert.match(cn, /2 轮内收敛」只是建议/, 'CN: the advisory 2-round target is missing');
@@ -251,7 +250,6 @@ test('LN-09 both languages carry the same round semantics', () => {
   assert.match(cn, /拆分.{0,4}补测试.{0,4}重做/, 'CN: the three reframes are missing');
   // the limit is a human decision, not an automatic cap
   assert.match(en, /at the effective limit[\s\S]{0,200}(owner|human)/i, 'EN: the limit does not end at a person');
-  assert.match(cn, /在有效上限[\s\S]{0,200}(所有者|人|owner)/, 'CN: the limit does not end at a person');
 });
 
 test('LN-10 the packaged templates carry neither lane', () => {

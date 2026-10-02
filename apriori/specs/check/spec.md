@@ -10,8 +10,8 @@
 - THEN check reports the misalignment (same rules as the ported checker)
 
 #### Scenario: CK-03 verdict-phrase-table and codex-command checks behave as v2
-- WHEN a verdict-line drift variant or an EN/CN codex-command mismatch is introduced
-- THEN check reports it (the v2.3 checkers 6-8, ported)
+- WHEN a verdict-line drift variant or a codex resume command outside the known-good forms is introduced
+- THEN check reports it (the v2.3 checkers 6-8, ported; the EN/CN codex-command comparison is retired with the Chinese runbook edition)
 
 #### Scenario: CK-04 every spec scenario must carry an ID (new)
 - WHEN a `#### Scenario:` heading in the spec store lacks a leading id-pattern match
@@ -37,7 +37,7 @@
 - THEN only the spec-store checks (CK-04), runbook freshness (CK-06), and the review-evidence secret tripwire (CK-10) run — a consumer legitimately using OpenSpec or shipping its own README is never failed by apriori's handbook self-checks (EN/CN pairs, verdict phrases, codex forms, no-openspec), which run only under `--self`; and a missing spec-store path is an error (exit 2, naming `apriori init` when uninitialized), never a silent PASS
 
 ### Requirement: self-mode guards the split documentation set
-`apriori check --self` SHALL extend its EN/CN pair coverage to the docs/ pairs (concepts, legacy, ci, cli, troubleshooting — `_cn` suffix convention) and SHALL resolve links relative to the linking file, validating cross-file fragments.
+`apriori check --self` SHALL extend its EN/CN pair coverage to the docs/ pairs (concepts, legacy, ci, cli, troubleshooting — `_cn` suffix convention) and SHALL resolve links relative to the linking file, validating cross-file fragments. The runbook is not a pair: `RUNBOOK.md` is checked on its own (verdict phrases, the `< /dev/null` guidance, codex forms, links, CK-11), and a `RUNBOOK_cn.md` in the repository FAILs self-mode — the English runbook is the only rule source.
 
 #### Scenario: CK-08 docs pairs are guarded, one-sided pairs fail
 - WHEN `check --self` runs where a docs/ pair misaligns (heading count, level, or numeric prefix), or exactly ONE side of a pair exists
@@ -47,6 +47,10 @@
 - WHEN a checked file links `./y.md` or `./y.md#frag`
 - THEN the target resolves relative to THAT file's directory (root files unchanged); a missing target file FAILs naming the linking file; and a fragment with no heading in the target slugifying (ghSlug) to it FAILs naming both — self-mode only
 
+#### Scenario: CK-23 the runbook has no Chinese edition, and one that reappears fails
+- WHEN `check --self` runs on a repository whose `RUNBOOK.md` stands alone, and again after a `RUNBOOK_cn.md` is added
+- THEN the first run applies the runbook checks to `RUNBOOK.md` alone and reports no one-sided pair for it; the second FAILs naming `RUNBOOK_cn.md` as a Chinese runbook edition that must not exist; the remaining EN/CN pairs (README, VISION, docs/) are checked as before
+
 ### Requirement: review evidence is guarded against committed secrets
 `apriori check` (consumer mode) SHALL scan every `review/` directory under `apriori/changes/*/` and `apriori/changes/archive/*/` — recursive, regular files only, symlinked entries skipped with a warn line naming them, an absent dir skipped — for exactly three literal secret formats: AWS access keys (`AKIA[0-9A-Z]{16}`), GitHub tokens (`gh[pousr]_[A-Za-z0-9]{36,}`), and PEM private-key headers (`-----BEGIN [A-Z ]*PRIVATE KEY-----`). Root discovery is itself guarded: each discovered change dir and its `review/` must realpath-resolve inside the changes root; escaping or symlinked dirs are warn-skipped like symlinked files. A hit SHALL fail the check naming the file, line number, and pattern class — never echoing the matched value — with a remedy pointer (sanitize the raw; if already pushed, rewrite history per SECURITY.md).
 
@@ -55,14 +59,14 @@
 - THEN `check` FAILs naming the file, line and pattern class without echoing the secret, and the message points at the remedy; clean bundles pass; a symlinked entry or an escaping review/ dir is skipped with a warn naming it; a project with no bundles skips the check entirely
 
 ### Requirement: CK-11 keeps the runbook version aligned with the CLI major
-`apriori check --self` SHALL assert that RUNBOOK.md — the canonical packaged runbook — carries exactly one header-blockquote entry of the form `` > `runbook-version: X.Y` `` whose major (`X`) equals `package.json`'s version major; RUNBOOK_cn.md, when present, SHALL likewise carry exactly one such entry whose major also equals the package major (each edition equals the package major, not merely each other). A missing entry, more than one, or a malformed value FAILs (self-mode only) naming the file and the failure reason; a major mismatch FAILs naming the file, the runbook major, and the package major. Occurrences of `runbook-version:` in body text or code fences are never matched. Consumer `apriori check` (no `--self`) never runs CK-11.
+`apriori check --self` SHALL assert that RUNBOOK.md — the canonical packaged runbook — carries exactly one header-blockquote entry of the form `` > `runbook-version: X.Y` `` whose major (`X`) equals `package.json`'s version major. A missing entry, more than one, or a malformed value FAILs (self-mode only) naming the file and the failure reason; a major mismatch FAILs naming the file, the runbook major, and the package major. Occurrences of `runbook-version:` in body text or code fences are never matched. Consumer `apriori check` (no `--self`) never runs CK-11.
 
 #### Scenario: CK-11 the runbook major tracks the CLI major
-- WHEN `apriori check --self` runs where RUNBOOK.md and RUNBOOK_cn.md declare `runbook-version: 4.0` and package.json is on a 4.x version
-- THEN CK-11 passes; flipping either edition's header to a `3.0` major FAILs (self-mode) naming the file, the runbook major, and the package major; and a consumer `apriori check` without `--self` never raises CK-11
+- WHEN `apriori check --self` runs where RUNBOOK.md declares `runbook-version: 4.0` and package.json is on a 4.x version
+- THEN CK-11 passes; flipping its header to a `3.0` major FAILs (self-mode) naming the file, the runbook major, and the package major; and a consumer `apriori check` without `--self` never raises CK-11
 
 #### Scenario: CK-12 malformed, missing, duplicate, and body occurrences
-- WHEN a runbook edition has no `runbook-version` blockquote entry, has two of them, carries a malformed value (`runbook-version: vier`), or mentions `runbook-version:` only in body text or inside a code fence
+- WHEN the runbook has no `runbook-version` blockquote entry, has two of them, carries a malformed value (`runbook-version: vier`), or mentions `runbook-version:` only in body text or inside a code fence
 - THEN the missing/duplicate/malformed cases FAIL (self-mode) naming the file and the reason, while the body-text and code-fence occurrences are never matched (they alone do not satisfy or fail the check — a real header entry is still required)
 
 ### Requirement: CK-04 recognizes IDs through the shared contract
@@ -85,11 +89,11 @@
 - THEN the child is killed within its budget and check prints a sanitized error naming `process-config` with `RESULT: ERROR`, exit 2 — CI cannot be hung by a config row
 
 ### Requirement: the canonical verdict phrase table is closed and carries no retired lane
-The canonical table SHALL carry exactly the phrases the live review loops use — the `no major issues` family, `no spec-vs-code gaps` and `gaps found` (P8 and the fast floor), plus the `<N> issues open` prose placeholder — and SHALL NOT carry the phrases retired with the hotfix lane and the explore track (`no findings`, `extraction accepted`, `extraction rejected`). Both runbooks SHALL contain every canonical phrase. A `VERDICT:` string appearing anywhere in the scanned docs that does not start with a table entry stays a failure, retired phrases included; recognition is the SAME prefix rule as every other consumer, with no trailer grammar of its own.
+The canonical table SHALL carry exactly the phrases the live review loops use — the `no major issues` family, `no spec-vs-code gaps` and `gaps found` (P8 and the fast floor), plus the `<N> issues open` prose placeholder — and SHALL NOT carry the phrases retired with the hotfix lane and the explore track (`no findings`, `extraction accepted`, `extraction rejected`). The runbook (`RUNBOOK.md`, its only edition) SHALL contain every canonical phrase. A `VERDICT:` string appearing anywhere in the scanned docs that does not start with a table entry stays a failure, retired phrases included; recognition is the SAME prefix rule as every other consumer, with no trailer grammar of its own.
 
 #### Scenario: CK-17 the retired lanes leave the table and the table stays closed
-- WHEN the phrase table is checked against the runbooks, and separately when a scanned doc carries `VERDICT: looks fine to me` or the retired `VERDICT: no findings`
-- THEN the retired phrases are absent from the table while P8's and the fast floor's remain, the runbooks check clean, and both unregistered lines fail naming the file and line
+- WHEN the phrase table is checked against the runbook, and separately when a scanned doc carries `VERDICT: looks fine to me` or the retired `VERDICT: no findings`
+- THEN the retired phrases are absent from the table while P8's and the fast floor's remain, the runbook checks clean, and both unregistered lines fail naming the file and line
 
 ### Requirement: check reports archive drift and never fails on it
 In both modes `apriori check` SHALL look at every directory under `apriori/changes/archive/` (an absent archive root is nothing to report). For a bundle that carries a readable `archive-manifest.json` it SHALL recompute the same listing and report, as a `!` note that does not affect the exit code, `archive drift: <dir> +<added> −<removed> ~<modified>` followed by one indented line per differing path; an unchanged bundle prints nothing. Bundles without a manifest are counted and reported in ONE summary note (`no baseline: N archived bundle(s) carry no manifest — archived before manifests were written, or the manifest is gone`), never one line per bundle; a manifest that exists but cannot be parsed is reported as unreadable, also as a note; an entry under `archive/` that is a symbolic link is named as not compared. Membership is judged on own properties, so a file named `constructor` or `__proto__` is inventoried and its removal reported like any other. The check compares content hashes, so a changed mtime with identical bytes is not drift. Drift is a report of a changed snapshot, not a verdict that the change was wrong, and check never repairs, rewrites or deletes a manifest.

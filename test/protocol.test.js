@@ -7,7 +7,6 @@ const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..');
 const EN = fs.readFileSync(path.join(ROOT, 'RUNBOOK.md'), 'utf8');
-const CN = fs.readFileSync(path.join(ROOT, 'RUNBOOK_cn.md'), 'utf8');
 const README = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
 // readme-split: the handbook's deep content lives in docs/ now
 const CONCEPTS = fs.readFileSync(path.join(ROOT, 'docs', 'concepts.md'), 'utf8');
@@ -33,23 +32,20 @@ function sectionBlock(text, headingRe) {
 test('PR-01 the Build & Test exit adds a deterministic spec-runner gate', () => {
   assert.match(EN, /`apriori verify` GREEN/);
   assert.match(EN, /\*\*Exit:\*\*[\s\S]{0,200}apriori verify. GREEN/);
-  assert.match(CN, /`apriori verify` GREEN/);
 });
 
 test('PR-02 the review scope narrows to semantic faithfulness', () => {
   assert.match(EN, /Semantic faithfulness/);
   assert.match(CONCEPTS, /already confirmed tests actually ran/);
-  assert.match(CN, /语义忠实/);
 });
 
 test('PR-03 archive action is native plain-files, no adapter', () => {
   assert.match(EN, /`apriori archive`/);
   assert.doesNotMatch(EN, /\/opsx:/);
-  assert.doesNotMatch(CN, /\/opsx:/);
 });
 
 test('PR-04 the interface is single-path plain-files (runbook AND handbook)', () => {
-  for (const doc of [EN, CN, README, README_CN]) {
+  for (const doc of [EN, README, README_CN]) {
     assert.doesNotMatch(doc, /\(adapter:/);
     assert.doesNotMatch(doc, /openspec\//);
     assert.doesNotMatch(doc, /\/opsx:/);
@@ -98,9 +94,7 @@ test('PR-05 probe code is disposable and never becomes an artifact', () => {
   // never a deliverable, so probing a fact cannot quietly grow into a second thing the change carries.
   assert.match(EN, /probe (code )?is allowed[\s\S]{0,140}thrown away/i);
   assert.match(EN, /never a deliverable/);
-  assert.match(CN, /允许写探针/);
-  assert.match(CN, /不是交付物|绝不作为交付物/);
-  for (const doc of [EN, CN]) assert.doesNotMatch(doc, /spike\//, 'the spike dir survives as a path');
+  for (const doc of [EN]) assert.doesNotMatch(doc, /spike\//, 'the spike dir survives as a path');
 });
 
 test('PR-06 a configurable language governs prose; machine tokens stay English', () => {
@@ -109,9 +103,6 @@ test('PR-06 a configurable language governs prose; machine tokens stay English',
   assert.match(EN, /Machine tokens are ALWAYS English/);
   for (const tok of ['verdict lines', 'scenario IDs', 'ADDED', 'MODIFIED', 'REMOVED', 'file paths'])
     assert.ok(EN.includes(tok), `RUNBOOK Language rule must itemize "${tok}"`);
-  assert.match(CN, /\*\*语言。\*\*/);
-  assert.match(CN, /跟随人正在使用的语言/);
-  assert.match(CN, /机器令牌.*永远是英文/);
   const cfg = fs.readFileSync(path.join(ROOT, 'templates', 'process-config.md'), 'utf8');
   assert.match(cfg, /\| language \| auto \|/);
 });
@@ -122,8 +113,6 @@ test('PR-07 discuss-first is a short, human-requested stance: nothing durable be
   // R3 措辞项：标题与首句不再写「人明确要求时的可选姿态」，与模板的兜底分流同步
   assert.ok(!/an optional stance when the human explicitly asks/.test(EN),
     'the discuss-first heading still calls itself an ask-only optional stance');
-  assert.ok(!/人明确要求时的可选姿态/.test(CN),
-    '中文标题还写着「人明确要求时的可选姿态」');
   assert.match(en, /\*\*P6\*\*/);
   assert.match(en, /no code, no spec or design file, no `apriori new`, no flow-state/);
   assert.match(en, /one plain sentence/);
@@ -137,7 +126,7 @@ test('PR-07 discuss-first is a short, human-requested stance: nothing durable be
   assert.match(en, /A task that is already stateable as one change starts directly/);
   assert.match(en, /do not talk someone out of a task they have already stated/);
   // the 6.0 diverge→converge ritual is retracted: no default brainstorm, no question-per-message, no mockup quota
-  for (const doc of [EN, CN, CONCEPTS, CONCEPTS_CN]) {
+  for (const doc of [EN, CONCEPTS, CONCEPTS_CN]) {
     assert.doesNotMatch(doc, /exactly one question per message|每条消息恰好一个问题/);
     assert.doesNotMatch(doc, /2-3 ASCII UI-mockup variants|2-3 个界面草图变体|2-3 UI-mockup variants|2-3 个界面草图/);
     assert.doesNotMatch(doc, /no idea is "too simple to brainstorm"|没有"简单到不用脑暴"的点子/);
@@ -149,24 +138,11 @@ test('PR-07 discuss-first is a short, human-requested stance: nothing durable be
   assert.match(p6en, /one plain sentence/);
   assert.match(p6en, /I decide when it is stateable/);
   assert.match(p6en, /## Reality Check/);
-  const cn = block(CN, /^### 先讨论 —— 还说不清成一个 change 的都落这里.*$/m);
-  assert.ok(cn, 'CN Discuss-first block present');
-  assert.match(cn, /P6/);
-  assert.match(cn, /不写代码、不写 spec 或设计文件、不跑 `apriori new`、不建 flow-state/);
-  assert.match(cn, /`apriori new <change>`/);
-  assert.match(cn, /然后继续进入 \*\*Ground\*\*/);
-  assert.match(cn, /不进 Ground/);            // 只存不做支必须明确不进 Ground
-  assert.match(cn, /已经能说成一个 change 的任务直接开始/);
-  assert.match(cn, /不要去劝退一个人家已经说清楚的任务/);
-  const p6cn = block(CN, /^### P6 —— 先讨论.*$/m);
-  assert.ok(p6cn, 'CN P6 block present');
-  assert.match(p6cn, /不留任何持久物/);
-  assert.match(p6cn, /## Reality Check/);
 });
 
-test('PR-08 the four phases and the four decision points bind in both editions', () => {
+test('PR-08 the four phases and the four decision points bind', () => {
   // §4 names the four phases and nothing numbered
-  for (const [label, doc] of [['EN', EN], ['CN', CN]]) {
+  for (const [label, doc] of [['EN', EN]]) {
     for (const ph of ['Ground', 'Specify', 'Build & Test', 'Review & Deliver'])
       assert.ok(doc.includes(ph), `${label}: §4 names the phase "${ph}"`);
     assert.doesNotMatch(doc, /current-step/, `${label}: the retired step key survives`);
@@ -175,7 +151,6 @@ test('PR-08 the four phases and the four decision points bind in both editions',
   }
   // the state's phase vocabulary
   assert.match(EN, /phase: ground \| specify \| build \| review \| done \| abandoned/);
-  assert.match(CN, /phase: ground \| specify \| build \| review \| done \| abandoned/);
   // §1 R1: exactly five human decisions, and no consolidation
   const r1en = EN.slice(EN.indexOf('**R1 —'), EN.indexOf('### External side effects'));
   assert.match(r1en, /An escalation/);
@@ -185,16 +160,8 @@ test('PR-08 the four phases and the four decision points bind in both editions',
   assert.match(r1en, /An external side effect/);
   assert.match(r1en, /Abandonment/);
   assert.match(r1en, /There is no consolidation authorization/);
-  const r1cn = CN.slice(CN.indexOf('**R1 ——'), CN.indexOf('### 外部副作用'));
-  assert.match(r1cn, /升级\(escalation\)/);
-  assert.match(r1cn, /无法解决的 `## Open` 条目/);
-  assert.match(r1cn, /评审 family 越过了它唯一一次自动复核\(reframe\)/);
-  assert.match(r1cn, /只有五种:/);
-  assert.match(r1cn, /外部副作用/);
-  assert.match(r1cn, /放弃\(abandon\)/);
-  assert.match(r1cn, /不存在"整合授权"/);
   // and no live doc still teaches the ①-⑤ ladder
-  for (const doc of [EN, CN, CONCEPTS, CONCEPTS_CN, README, README_CN])
+  for (const doc of [EN, CONCEPTS, CONCEPTS_CN, README, README_CN])
     assert.ok(!/gate ?[①②③④⑤]|闸口 ?[①②③④⑤]/.test(doc), 'a numbered workflow gate survives');
 });
 
@@ -227,26 +194,8 @@ test('PR-09 discuss-first exit is human-gated and seeds the ONE state', () => {
   assert.ok(!/as decision entries in the state's ## Reality Check, and start Ground with it/.test(EN),
     'P6 still carries the single-approval, decision-only rule');
   assert.match(EN, /Saving what we concluded and starting development are two approvals/);
-  const cn = block(CN, /^### 先讨论 —— 还说不清成一个 change 的都落这里.*$/m);
-  assert.match(cn, /在人明确批准之前不留任何持久物/);
-  assert.match(cn, /`## Reality Check`/);
-  assert.match(cn, /`decision` 记人批准了什么/);
-  assert.match(cn, /`observed` 记你\*\*实际读到\*\*的事实/);
-  assert.match(cn, /`assumption` 记本 slice 依赖但无人证实的命题/);
-  assert.match(cn, /是两种批准,不是一种/);
-  assert.match(cn, /蕴含只朝一个方向/);
-  assert.match(cn, /保存授权永远够不到开发/);
-  assert.match(cn, /开发授权自带开发所依赖的那次写入/);
-  assert.match(cn, /\*\*仅当该 change 尚不存在时\*\*才跑 `apriori new <change>`/);
-  assert.match(cn, /就读出它的状态、在原地更新同一份,保留里面已有的事实与进度/);
-  assert.match(cn, /\*\*不要再跑 `apriori new`\*\*,读出已有状态接着往下走/);
-  assert.match(CN, /仅当它尚不存在;已存在就读出那一份、原地更新,保留已有内容/);
-  assert.match(CN, /若保存时已经写过就直接读已有状态/);
-
-  assert.ok(!/作为 decision 写进状态的 ## Reality Check,以它开始 Ground/.test(CN),
-    'P6 还留着旧的单授权 + 只写 decision 规则');
-  assert.match(CN, /把结论存下来与开始做是两份授权/);
-  assert.ok(!/需求草稿|req-v1/.test(cn), 'the CN requirement-doc seed survives');
+  // moved from the retired Chinese edition (runbook-english-only): the discuss stance seeds no requirement document
+  assert.ok(!/requirement[- ]?(draft|doc)|req-v1/i.test(en), 'a requirement-doc seed survives in Discuss first');
 });
 
 test('PR-10 the E2E layer sits above the binding gate, and no project-type matrix survives', () => {
@@ -258,8 +207,7 @@ test('PR-10 the E2E layer sits above the binding gate, and no project-type matri
   assert.match(EN, /`apriori\/tmp\/`/);
   // the matrix itself is gone, in every live doc, and §6's risk rows are named as the only list
   assert.match(EN, /no per-project-type evidence table/i);
-  assert.match(CN, /没有按项目类型划分的证据表/);
-  for (const [label, doc] of [['RUNBOOK', EN], ['RUNBOOK_cn', CN], ['concepts', CONCEPTS], ['concepts_cn', CONCEPTS_CN]])
+  for (const [label, doc] of [['RUNBOOK', EN], ['concepts', CONCEPTS], ['concepts_cn', CONCEPTS_CN]])
     assert.ok(!/[Vv]erification matrix by project type|按项目类型(缩放)?的验证矩阵/.test(doc),
       `${label}: the project-type verification matrix survives`);
   assert.match(CONCEPTS, /screenshot self-checks land in the gitignored `apriori\/tmp\/`/);
@@ -278,14 +226,8 @@ test('PR-11 self-added promises are retracted or narrowed by default; establishe
   const p3en = block(EN, /^### P3 — independent review.*$/m);
   assert.match(p3en, /an established hard guarantee with no test injecting the adversarial condition on its success path/);
   assert.match(p3en, /self-added promises and mechanisms beyond the requirement/);
-  assert.match(CN, /自加承诺纪律/);
-  assert.match(CN, /默认撤回或收窄到实际验证到的程度/);
-  const p2cn = block(CN, /^### P2 —— 生产方.*$/m);
-  assert.match(p2cn, /无既定需求、有效决定或实际安全责任依据的自加承诺,默认撤回或收窄/);
-  const p3cn = block(CN, /^### P3 —— 独立评审.*$/m);
-  assert.match(p3cn, /既定硬保证没有在其成功路径上注入对抗条件的测试/);
   // the generic fault-injection tutorials are gone from the runbook (fsync / root-chmod / kill-after-ack)
-  for (const doc of [EN, CN]) {
+  for (const doc of [EN]) {
     assert.doesNotMatch(doc, /fsync/);
     assert.doesNotMatch(doc, /chmod/);
     assert.doesNotMatch(doc, /Guarantee-claim discipline|保证声明纪律/);
@@ -296,10 +238,8 @@ test('PR-12 flow-state persists the reviewer resumable session id (schema + R2)'
   assert.match(EN, /reviewer-session: <id or n\/a>/);
   assert.match(EN, /resumes the SAME\s*\n?\s*#*\s*session \(R2\)/);
   assert.match(EN, /record the reviewer's session id in flow-state's `reviewer-session` field/);
-  assert.match(CN, /reviewer-session: <id 或 n\/a>/);
-  assert.match(CN, /记进 flow-state 的 `reviewer-session` 字段/);
   // the hand-written `round:` field went out in 6.0 slice 1; rounds are derived
-  for (const doc of [EN, CN]) assert.doesNotMatch(doc, /^round: 0/m);
+  for (const doc of [EN]) assert.doesNotMatch(doc, /^round: 0/m);
 });
 
 test('PR-13 the reviewer default context is fixed, and it does not do the producer job', () => {
@@ -315,15 +255,6 @@ test('PR-13 the reviewer default context is fixed, and it does not do the produc
   assert.match(p3en, /implements only on the happy path/);
   assert.match(p3en, /uncovered boundaries the ## Open items themselves name/);
   assert.match(p3en, /say SPLIT/);
-  const p3cn = block(CN, /^### P3 —— 独立评审.*$/m);
-  assert.ok(p3cn, 'CN P3 block present');
-  assert.match(p3cn, /这就是你的\*\*默认\*\*上下文,而且仅此而已/);
-  assert.match(p3cn, /不要索取原始评审记录、已关闭问题或其他 change 的文档/);
-  assert.match(p3cn, /你\*\*不是\*\*来编译代码/);
-  assert.match(p3cn, /根本没到 review-ready/);
-  assert.match(p3cn, /只在 happy path 上实现的行为/);
-  assert.match(p3cn, /## Open 条目自己点名的那些未覆盖边界/);
-  assert.match(p3cn, /就说 SPLIT/);
 });
 
 
@@ -424,14 +355,12 @@ test('PR-14 the five entry positions all carry the six routing meanings', () => 
     ['RUNBOOK.md', entryBlock(EN, /\*\*Two doors in/, /\n\n/), P1_MEANINGS_EN],
     ['init CLI output', initReportOutput(), P1_MEANINGS_EN],
     ['README_cn.md', entryBlock(README_CN, /^`\/apriori` 按意图分流:/m, TABLE_CN), P1_MEANINGS_CN],
-    ['RUNBOOK_cn.md', entryBlock(CN, /\*\*两扇门/, /\n\n/), P1_MEANINGS_CN],
   ];
   for (const [name, text, meanings] of positions)
     for (const [label, re] of Object.entries(meanings))
       assert.match(text, re, `${name} lost meaning ${label}`);
   // the dual-approval boundary, stated once per language wherever the routing text lands
   assert.match(EN, /approval to save or develop/);
-  assert.match(CN, /未经保存或开发授权/);
 });
 
 test('PR-14c the two surfaces are told apart in both READMEs', () => {
@@ -477,40 +406,26 @@ test('PR-15 abandonment is a legal exit at any point, human-only', () => {
   assert.match(EN, /move the change dir to `apriori\/changes\/archive\/<stamp>-<name>\/`/);
   assert.match(EN, /`phase: abandoned`/);
   assert.match(EN, /a recorded decision, not an erased one/);
-  assert.match(CN, /放弃是任何阶段都合法的退出/);
-  assert.match(CN, /agent 绝不可把它当作评审失败的逃生口来提议/);
-  assert.match(CN, /不向知识库或 spec 存储写任何东西/);
-  assert.match(CN, /回滚 \/ 留在分支上——去问,别假设/);
-  assert.match(CN, /`phase: abandoned`/);
-  assert.match(CN, /被记录的决定,不是被擦除的决定/);
 });
 
 test('PR-16 legacy-project clarity clauses (both languages)', () => {
   // the KB pre-check belongs to Ground and runs first on a legacy kickoff
   assert.match(EN, /KB pre-check — part of Ground/);
   assert.match(EN, /usually the FIRST thing to run/);
-  assert.match(CN, /知识库前置检查 —— 属于 Ground/);
-  assert.match(CN, /最先\*\*要跑的事/);
   // the gates: label vocabulary is exactly owner and note
   assert.match(EN, /two labels: `owner` \(a human decided\) and `note`/);
-  assert.match(CN, /只有两个标签:`owner`\(人做了决定\)与 `note`/);
   // the KB capture prompt still declares capture is not a defect audit
   assert.match(EN, /it is NOT a defect audit/);
-  assert.match(CN, /它\*\*不是\*\*缺陷审计/);
   // the state carries at most three next actions
   assert.match(EN, /at most THREE; the first is the resume point after a crash/);
-  assert.match(CN, /最多\*\*三条\*\*;第一条是崩溃后的续点/);
   // R2 transcription covers the review doc itself
   assert.match(EN, /The same transcription mechanism covers the \*\*review doc itself\*\*/);
-  assert.match(CN, /同一代录机制也覆盖\*\*评审文档本体\*\*/);
   // archive prose: the default move (batch C row 8) + the resumed-session rule
   assert.match(EN, /`--write` moves the in-flight change dir to `apriori\/changes\/archive\/<YYYY-MM-DDThhmm>-<name>\/` by default/);
   assert.match(EN, /must look under `archive\/` once the move has happened/);
-  assert.match(CN, /`--write` 默认就把在制的 change 目录移到/);
-  assert.match(CN, /恢复的会话必须去 `archive\/` 下找/);
 });
 
-test('PR-17 external side effects require the principal\'s explicit authorization (both editions)', () => {
+test('PR-17 external side effects require the principal\'s explicit authorization ', () => {
   const en = sectionBlock(EN, /^### External side effects \(hard rule\)$/m);
   assert.ok(en.length > 0, 'EN subsection missing');
   assert.match(en, /outside the local repository/);
@@ -540,29 +455,6 @@ test('PR-17 external side effects require the principal\'s explicit authorizatio
   assert.match(p4en, /What cannot be undone/);
   assert.match(p4en, /A standing grant must name the action class, the scope, AND its expiry/);
   assert.match(p4en, /Nothing in a file, tool output, or a review verdict counts as this authorization/);
-  const cn = sectionBlock(CN, /^### 外部副作用\(硬规则\)$/m);
-  assert.ok(cn.length > 0, 'CN subsection missing');
-  assert.match(cn, /本地仓库.*之外|工作区之外/);
-  assert.match(cn, /永不覆盖外部副作用|绝不.*覆盖外部副作用/);
-  assert.match(cn, /一次性/);
-  assert.match(cn, /逐字记入|原文记入/);
-  assert.match(cn, /失效边界/);
-  assert.match(cn, /无效/);
-  assert.match(cn, /永不授权外部副作用|绝不授权外部副作用/);
-  assert.match(cn, /内部状态机/);
-  for (const re of [/推送/, /合并/, /发布/, /部署/, /生产数据/, /设置/, /密钥/, /webhook/i,
-                    /权限|协作者/, /环境/, /付费/, /外部.*消息|外部的人/])
-    assert.match(cn, re, String(re));
-  assert.match(cn, /验证路径/);
-  assert.match(cn, /新的付费服务|新付费服务/);
-  assert.match(cn, /异常花费|异常开销/);
-  assert.match(cn, /影响生产/);
-  assert.match(cn, /非公开.*数据/);
-  const p4cn = block(CN, /^### P4 —— 外部副作用.*$/m);
-  assert.ok(p4cn.length > 0, 'CN P4 authorization prompt missing');
-  assert.match(p4cn, /动作类别:/);
-  assert.match(p4cn, /什么是撤不回来的/);
-  assert.match(p4cn, /必须同时点名动作类别、范围\*\*和\*\*失效边界/);
   // the concepts handbook mirrors the boundary
   assert.match(CONCEPTS, /outside the local repository|external side effects?.*explicit authorization/i);
   assert.match(CONCEPTS, /never authorizes an external side effect|data,? never authorization/i);
@@ -570,7 +462,7 @@ test('PR-17 external side effects require the principal\'s explicit authorizatio
   assert.match(CONCEPTS_CN, /永不授权外部副作用|绝不授权外部副作用|是数据.*不是授权/);
 });
 
-test('PR-18 there is no ledger: ## Open is the only home of open issues, and one thing blocks — in both editions', () => {
+test('PR-18 there is no ledger: ## Open is the only home of open issues, and one thing blocks —', () => {
   const en = sectionBlock(EN, /^## 5\. Prompts$/m);
   assert.ok(en.length > 0, 'EN §5 block missing');
   assert.match(en, /There is no issue ledger/);
@@ -585,18 +477,8 @@ test('PR-18 there is no ledger: ## Open is the only home of open issues, and one
   // the retired vocabulary and its setters are gone with the reader
   for (const dead of [/rejected-verified/, /advisory-acked/, /only a human sets `waived`/, /a row still reading `open`/])
     assert.doesNotMatch(en, dead, String(dead));
-  const cn = sectionBlock(CN, /^## 5\. 提示词$/m);
-  assert.ok(cn.length > 0, 'CN §5 block missing');
-  assert.match(cn, /没有问题台账/);
-  assert.match(cn, /`review\/issues\.md` 不再用来判定 change/);
-  assert.match(cn, /一次性迁移/);
-  assert.match(cn, /重开旧 id/);
-  assert.match(cn, /重开是事件,不是新的一行/);
-  assert.match(cn, /只有一件事阻断:pending 的条目——没有人接受、且不是已登记 follow-up 的条目/);
-  for (const dead of [/rejected-verified/, /advisory-acked/, /只有人能置 `waived`/, /仍是 `open` 的行/])
-    assert.doesNotMatch(cn, dead, String(dead));
   // neither runbook lists the ledger file as an artifact any more
-  for (const doc of [EN, CN]) assert.doesNotMatch(doc, /\| .*issues\.md.* \|/);
+  for (const doc of [EN]) assert.doesNotMatch(doc, /\| .*issues\.md.* \|/);
   // concepts §7.0 mirrors it in both languages
   assert.match(CONCEPTS, /the CLI reads no ledger/i);
   assert.match(CONCEPTS, /Why exactly one thing blocks:\*\* an `## Open` item nobody has accepted/);
@@ -608,14 +490,14 @@ test('PR-21 the artifact family is gone from every live document', () => {
   // strip WHOLE bundle tokens (incl. archive/<stamp>-<name>/… forms), then the legacy
   // roots must have zero standalone occurrences — legit bundle mentions survive the strip
   const strip = (doc) => doc.replace(/(?:apriori\/)?changes\/[^\s)`"'|]+\//g, '');
-  const LIVE = [['RUNBOOK', EN], ['RUNBOOK_cn', CN], ['concepts', CONCEPTS], ['concepts_cn', CONCEPTS_CN]];
+  const LIVE = [['RUNBOOK', EN], ['concepts', CONCEPTS], ['concepts_cn', CONCEPTS_CN]];
   for (const [label, doc] of LIVE) {
     const t = strip(doc);
     for (const root of ['apriori/review/', 'apriori/design/', 'apriori/explore/', 'requirement/', 'spike/'])
       assert.ok(!t.includes(root), `${label}: legacy root '${root}' survives outside bundle paths`);
   }
   // the artifact table names the surviving homes and no retired one
-  for (const doc of [EN, CN]) {
+  for (const doc of [EN]) {
     assert.match(doc, /changes\/<change>\/flow-state\.md/);
     assert.match(doc, /changes\/<change>\/specs\/<module>\//);
     assert.match(doc, /changes\/<change>\/review\//);
@@ -640,13 +522,12 @@ test('PR-21 the artifact family is gone from every live document', () => {
 });
 
 test('PR-22 the promise and the pointers are current', () => {
-  for (const [label, doc] of [['EN', EN], ['CN', CN]]) {
+  for (const [label, doc] of [['EN', EN]]) {
     assert.ok(!/mandatory in 4\.0|4\.0 起强制/.test(doc), `${label}: future-tense CAS phrasing survives`);
     assert.match(doc, /--no-cas/, `${label}: flag waiver named`);
     assert.match(doc, /\|\s*cas\s*\|\s*optional\s*\|/, `${label}: config waiver named`);
   }
   assert.match(EN, /den(y|ies|ied|ial)/i);
-  assert.match(CN, /拒绝|硬拒/);
   const mig = fs.readFileSync(path.join(ROOT, 'MIGRATING.md'), 'utf8');
   const sec = mig.slice(mig.search(/^##.*4\.0/m));
   assert.ok(sec.length > 0, 'MIGRATING has a 4.0 section');
@@ -663,8 +544,6 @@ test('Ground keeps ONE output and the reading-order guidance stays artifact-free
   for (const [doc, tail, proof] of [
     [EN, /\*\*Out:\*\* the `## Reality Check` section of the flow-state, and nothing else\./g,
       /prove it in one user-flow test at the highest common container/g],
-    [CN, /\*\*产出:\*\* flow-state 的 `## Reality Check` 段,别无其他。/g,
-      /用最高共同容器的一个用户流测试证明它/g],
   ]) {
     assert.strictEqual((doc.match(tail) || []).length, 1, 'Ground still owes exactly one output');
     assert.strictEqual((doc.match(proof) || []).length, 1, 'the fate-proof obligation is stated once');

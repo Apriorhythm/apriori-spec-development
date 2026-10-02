@@ -151,13 +151,13 @@ test('DS-10 the README support matrix separates verified clients from unverified
 });
 
 // ── R1 漏掉的两项（卡 P3 ①）─────────────────────────────────────────────
-test('DS-11 the shared scope rule lands in BOTH runbooks, not only in the shell', () => {
-  for (const f of ['RUNBOOK.md', 'RUNBOOK_cn.md']) {
+test('DS-11 the shared scope rule lands in the runbook, not only in the shell', () => {
+  for (const f of ['RUNBOOK.md']) {
     const s = fs.readFileSync(path.join(ROOT, f), 'utf8');
     // 新入口必须在 runbook 里有短范围声明 —— 不能只让薄壳引用工作区纲领
     assert.match(s, /apriori-discuss/, `${f}: the dedicated entry is absent from the runbook`);
     // 范围声明，且明确它不改变 R1 的分流（卡 P3 ②：不首次定义全局停止语义）
-    assert.match(s, f.endsWith('_cn.md') ? /入口的名字既不授予权限|不改变 §1 R1/ : /grants no permission|does not change §1 R1/,
+    assert.match(s, /grants no permission|does not change §1 R1/,
       `${f}: the entry's scope statement does not defer to R1`);
   }
 });
@@ -196,10 +196,9 @@ test('DS-14 the discuss shell carries the save-fidelity rule and stays thin', ()
   assert.ok(!s.includes(para[0]), 'the shell copied the runbook paragraph verbatim — it must point, not duplicate');
 });
 
-test('DS-15 both runbook editions state the rule in §4 and mirror it in P6', () => {
+test('DS-15 the runbook states the rule in §4 and mirrors it in P6', () => {
   const en = fs.readFileSync(path.join(ROOT, 'RUNBOOK.md'), 'utf8');
-  const cn = fs.readFileSync(path.join(ROOT, 'RUNBOOK_cn.md'), 'utf8');
-  // every safeguard is pinned on its own, per edition and per section — deleting any one of them fails
+  // every safeguard is pinned on its own, per section — deleting any one of them fails
   const enDiscuss = en.slice(en.indexOf('### Discuss first'), en.indexOf('### ', en.indexOf('### Discuss first') + 10));
   const EN_S4 = {
     'faithful record': /\*\*A save is a faithful record, nothing more\.\*\*/,
@@ -226,32 +225,6 @@ test('DS-15 both runbook editions state the rule in §4 and mirror it in P6', ()
     'idempotent, of substance': /saving again with nothing new changes nothing of substance/,
   };
   for (const [label, re] of Object.entries(EN_P6)) assert.match(enP6, re, `RUNBOOK.md P6 lacks: ${label}`);
-  const cnDiscuss = cn.slice(cn.indexOf('### 先讨论'), cn.indexOf('### ', cn.indexOf('### 先讨论') + 10));
-  const CN_S4 = {
-    '忠实记录': /\*\*保存只是忠实记录,不多一个字。\*\*/,
-    '四类没有第五类': /分四类、没有第五类/,
-    'decision 用人自己的话': /`decision`——人决定了什么,用人自己的话/,
-    '没说过的理由/条件/风险接受不行': /人没说过的理由、条件或风险接受不行/,
-    'observed 附来源': /`observed`——你实际读到的事实,各附来源/,
-    'assumption 标明': /`assumption`——讨论所依赖、尚未证实的命题,并标明是假设/,
-    'Open = 未决问题': /`## Open`——讨论留下的未决问题/,
-    '不新增承诺/风险接受/需求/阻塞项': /绝不新增讨论里没出现过的承诺、风险接受、需求或阻塞项/,
-    '不升格': /绝不把假设或你自己的建议升格成决定或事实/,
-    '开放保持开放不替人决定': /保持开放——不替人决定/,
-    '幂等（实质）': /再次保存不改变任何实质:不重复行、不新增条目/,
-    '不启动开发': /永不启动开发/,
-  };
-  for (const [label, re] of Object.entries(CN_S4)) assert.match(cnDiscuss, re, `RUNBOOK_cn.md §4 先讨论 lacks: ${label}`);
-  const cnP6 = cn.slice(cn.indexOf('### P6'), cn.indexOf('---', cn.indexOf('### P6')));
-  const CN_P6 = {
-    '只存结论用我的话': /只存我们得出的结论,用我的话/,
-    '不加我没说过的理由/条件/风险接受/需求/阻塞项': /不加我没说过的理由、条件、风险接受、需求或阻塞项/,
-    '假设仍是假设': /假设仍是假设/,
-    '建议不是决定': /你的建议不是我的决定/,
-    '留着的问题保持开放': /我留着的问题保持开放/,
-    '幂等（实质）': /没有新内容再保存一次不改变任何实质/,
-  };
-  for (const [label, re] of Object.entries(CN_P6)) assert.match(cnP6, re, `RUNBOOK_cn.md P6 lacks: ${label}`);
 });
 
 // discuss-save-inference（层 2 第 1 批：006 把建模推论记成所有者决定；007 由「任意字符串」推出空串语义并关闭未答的 OPEN-1；001/007 拍板前先写）
@@ -266,9 +239,8 @@ test('DS-16 the shell states the three refinements and stays thin', () => {
   assert.ok(s.length < 2600, `shell is ${s.length} chars`);
 });
 
-test('DS-17 both runbook editions carry the refinements in §4 and mirror them in P6', () => {
+test('DS-17 the runbook carries the refinements in §4 and mirrors them in P6', () => {
   const en = fs.readFileSync(path.join(ROOT, 'RUNBOOK.md'), 'utf8');
-  const cn = fs.readFileSync(path.join(ROOT, 'RUNBOOK_cn.md'), 'utf8');
   const sec = (t, h) => t.slice(t.indexOf(h), t.indexOf('### ', t.indexOf(h) + 10));
   const p6 = (t) => t.slice(t.indexOf('### P6'), t.indexOf('---', t.indexOf('### P6')));
   for (const [label, re] of Object.entries({
@@ -282,17 +254,6 @@ test('DS-17 both runbook editions carry the refinements in §4 and mirror them i
     'unanswered stays open': /a question I did not answer stays open/,
     'write only once settled': /write only once the conclusion is settled/,
   })) assert.match(p6(en), re, `RUNBOOK.md P6 lacks: ${label}`);
-  for (const [label, re] of Object.entries({
-    '只记到说到为止': /决定只记到人说到的地方为止/,
-    '推论 → assumption / Open': /另一个未决问题的隐含答案、建模或规格结构上的后果——是你的推论,记成 `assumption` 或留在 `## Open`,绝不记成人的决定/,
-    '沉默不是决定': /沉默不是决定,哪怕你论证过两个问题其实是一个/,
-    '已拿到授权也只在结论定下之后才写': /已经拿到保存授权,也只在结论定下之后才写,不在讨论进行中写/,
-  })) assert.match(sec(cn, '### 先讨论'), re, `RUNBOOK_cn.md §4 lacks: ${label}`);
-  for (const [label, re] of Object.entries({
-    '推论不是决定': /由我的决定经你推理得出的东西是你的推论,不是我的决定/,
-    '没回答的保持开放': /我没回答的问题保持开放/,
-    '结论定了才写': /结论定了才写/,
-  })) assert.match(p6(cn), re, `RUNBOOK_cn.md P6 lacks: ${label}`);
 });
 
 // S2 A≥1 修复（人类 2026-09-24 批准，方案 ①）：FC3 中用户已在请求里写明「保存，别开始开发」，

@@ -552,6 +552,12 @@ test('GT-20 malformed source-commit stamps are diagnosed, not silently skipped',
   const fenced = c6of(root);
   assert.strictEqual(fenced.status, 'n/a');
   assert.doesNotMatch(fenced.detail, /format|line-start/i);           // fenced example → no diagnostic (just "no truth"/"no stamp")
+  // a tilde fence is a fence too (fence-tilde-readers): a non-canonical stamp quoted inside one is an
+  // example, not a malformed stamp to diagnose
+  fs.writeFileSync(path.join(root, 'apriori/truth/kv.md'), '# T\n\n~~~\n> `source-commit: deadbeef`\n~~~\n');
+  const tilde = c6of(root);
+  assert.strictEqual(tilde.status, 'n/a');
+  assert.doesNotMatch(tilde.detail, /format|line-start/i);
 });
 
 test('GT-21 field-less truth docs behave exactly as before', () => {

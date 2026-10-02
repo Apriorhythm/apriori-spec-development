@@ -1,0 +1,1000 @@
+OpenAI Codex v0.159.3
+--------
+workdir: /root/terra/wt-fu1
+model: gpt-6-astra
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 01a0fda1-9fd6-78f2-8cb7-2ecc5bd2b671
+--------
+user
+Round 3 of code-review for `fence-tilde-readers` (same worktree, still uncommitted). The producer fixed FTR-2, FTR-3 and FTR-4; the dispositions with their evidence are the `decision: FTR-2 fixed`, `decision: FTR-3 fixed` and `decision: FTR-4 fixed` lines in apriori/changes/fence-tilde-readers/flow-state.md, and the round-3 review-progress note is the last `gates:` entry.
+Answer FTR-2, FTR-3 and FTR-4 with ADDRESSED or NOT ADDRESSED and your evidence (FTR-1 you found addressed; say so again only if these fixes disturb it).
+Scope is what changed since round 2: lib/text.js (fenceSpans — the cached backtick search and the max segment tree for closers), lib/archive-merge.js (requirementHeadings now walks as the historical regex walks; renderStore keeps a store's text when it has no live requirement — for a prose-only store too, a declared correction of the historical drop), test/fence-tilde-readers.test.js (TX-02's edge-heading equivalence cases and larger scaling inputs; TX-03's no-live-requirement render cases), the text delta (requirement prose, TX-02/TX-03, Notes), CHANGELOG and MIGRATING.
+Report a NEW finding only if it breaks the contract or a safety property. Give the full review body for apriori/changes/fence-tilde-readers/review/code-review-v3.md, ending with exactly one VERDICT line.
+codex
+I’ll check the three fixes against their repros, then review the scanner’s complexity and the parser/render changes for contract or safety regressions. I’ll provide the full round-3 review body without modifying the worktree.
+
+exec
+/usr/bin/zsh -lc "cat lib/text.js && sed -n '1,94p' lib/archive-merge.js && sed -n '283,303p' lib/archive-merge.js && cat apriori/changes/fence-tilde-readers/flow-state.md" in /root/terra/wt-fu1
+ succeeded in 0ms:
+'use strict';
+/*
+ * Leaf text helpers shared by check, review, readiness and spec-runner — this module
+ * requires nothing, so any sibling can import it without opening a cycle.
+ */
+
+// THE fence grammar every structural reader shares (fence-tilde-readers). It is this tool's own
+// grammar, not CommonMark — containers (lists, blockquotes) are not modeled:
+//   backticks — the historical reading, unchanged byte for byte: a run of ``` ANYWHERE opens and
+//               the next ``` closes (the lazy span `/```[\s\S]*?```/`); an unclosed opener is text.
+//   tildes    — a LINE whose first non-blank characters (up to three spaces in) are three or more
+//               `~` opens, an info string may follow; the first later line holding only `~` at
+//               least as many (up to three spaces in, trailing blanks allowed) closes. An inline
+//               `~~~` is ordinary text.
+// Whichever opens first wins, and inside one the other marker is content. Span readers
+// (stripFences, fenceSpans) treat an unclosed tilde opener as text, as they do a backtick one;
+// line readers (config, the delta parser) keep their own policy for an unclosed fence and use
+// fenceOpen / fenceCloses for the open and close lines.
+const TILDE_OPEN_RE = /^ {0,3}(~{3,})([^\n]*)$/;              // [^\n]: a CRLF line keeps its \r in the info string
+const TILDE_CLOSE_RE = /^ {0,3}(~{3,})[ \t]*\r?$/;
+
+function fenceOpen(line) {
+  if (/^\s*```/.test(line)) return { ch: '`', len: 3 };      // the line readers' historical backtick rule
+  const m = TILDE_OPEN_RE.exec(line);
+  return m ? { ch: '~', len: m[1].length } : null;
+}
+function fenceCloses(open, line) {
+  if (open.ch === '`') return /^\s*```/.test(line);           // historical: any ```-led line closes
+  const m = TILDE_CLOSE_RE.exec(line);
+  return !!m && m[1].length >= open.len;
+}
+
+// [[start, end)] of every CLOSED fence span, in order, non-overlapping. Near-linear on any input:
+// the next ``` is searched once per position it can move past (an exhausted search is never
+// repeated), and the closer of a tilde opener of length L — the first later bare run at least L
+// long — comes from a max segment tree over the bare runs, never from rescanning or refiltering.
+function fenceSpans(text) {
+  const s = String(text);
+  const starts = [0];
+  for (let i = s.indexOf('\n'); i >= 0; i = s.indexOf('\n', i + 1)) starts.push(i + 1);
+  const lineAt = (k) => { const e = k + 1 < starts.length ? starts[k + 1] - 1 : s.length; return s.slice(starts[k], e); };
+  const openers = [];                                     // [line index, run length] of every tilde opener line
+  const cLine = [], cLen = [];                            // every bare tilde line, in line order, and its run length
+  for (let j = 0; j < starts.length; j++) {
+    const line = lineAt(j);
+    if (line.indexOf('~~~') < 0) continue;
+    const m = TILDE_OPEN_RE.exec(line);
+    if (m) openers.push([j, m[1].length]);
+    const c = TILDE_CLOSE_RE.exec(line);
+    if (c) { cLine.push(j); cLen.push(c[1].length); }
+  }
+  let size = 1;
+  while (size < cLen.length) size <<= 1;
+  const tree = new Array(2 * size).fill(0);               // max run length per node
+  cLen.forEach((n, i) => { tree[size + i] = n; });
+  for (let i = size - 1; i >= 1; i--) tree[i] = Math.max(tree[2 * i], tree[2 * i + 1]);
+  const firstAtLeast = (node, lo, hi, from, L) => {       // first closer index >= from with length >= L, or -1
+    if (hi < from || tree[node] < L) return -1;
+    if (lo === hi) return lo;
+    const mid = (lo + hi) >> 1;
+    const r = firstAtLeast(2 * node, lo, mid, from, L);
+    return r >= 0 ? r : firstAtLeast(2 * node + 1, mid + 1, hi, from, L);
+  };
+  const closerAfter = (j, L) => {
+    let lo = 0, hi = cLine.length;                        // first closer on a later line
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (cLine[mid] > j) hi = mid; else lo = mid + 1; }
+    if (lo >= cLine.length) return -1;
+    const k = firstAtLeast(1, 0, size - 1, lo, L);
+    return k >= 0 && k < cLine.length ? cLine[k] : -1;
+  };
+  const spans = [];
+  let pos = 0, o = 0, b = -2;                             // b: the next ``` at or after pos; -2 unknown, -1 none left
+  while (pos < s.length) {
+    while (o < openers.length && starts[openers[o][0]] < pos) o++;
+    const [t, tLen] = o < openers.length ? openers[o] : [-1, 0];
+    if (b !== -1 && b < pos) b = s.indexOf('```', pos);
+    if (t < 0 && b < 0) break;
+    if (t >= 0 && (b < 0 || starts[t] < b)) {
+      const c = closerAfter(t, tLen);
+      if (c < 0) { pos = (t + 1 < starts.length ? starts[t + 1] : s.length); continue; }   // unclosed: text
+      const end = c + 1 < starts.length ? starts[c + 1] - 1 : s.length;
+      spans.push([starts[t], end]);
+      pos = end;
+      continue;
+    }
+    const e = s.indexOf('```', b + 3);
+    if (e < 0) { pos = b + 3; b = -1; continue; }         // unclosed: text, and no later ``` can close
+    spans.push([b, e + 3]);
+    pos = e + 3;
+  }
+  return spans;
+}
+
+// drop every CLOSED fence span (an unclosed opener is ordinary text)
+function stripFences(text) {
+  const s = String(text);
+  let out = '', at = 0;
+  for (const [a, b] of fenceSpans(s)) { out += s.slice(at, a); at = b; }
+  return out + s.slice(at);
+}
+
+// a reason must carry a letter or a digit IN ANY SCRIPT — `\w` is ASCII-only and would
+// make every Chinese reason illegal in a log written in Chinese
+const HAS_REASON = /[\p{L}\p{N}]/u;
+
+module.exports = { stripFences, fenceSpans, fenceOpen, fenceCloses, HAS_REASON };
+'use strict';
+/*
+ * archive-merge — plain-files native implementation of the archive action (§4).
+ * Zero deps — pure Node stdlib. Consumes the same delta format the OpenSpec adapter used
+ * (## ADDED/MODIFIED/REMOVED/RENAMED Requirements), so it is the adapter-free path.
+ *
+ * 3.1: also home of the merge-family pure helpers shared with `verify --change` —
+ * delta discovery, projection building, CAS base stamps, realpath containment.
+ */
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+const { withStrict } = require('./args');
+const { configCas, configCasProblem, CHANGE_NAME_RE } = require('./resolve');
+const { stripFences, fenceSpans, fenceOpen, fenceCloses } = require('./text');
+// archive's precondition: a change that is not finished never reaches the store
+const readiness = require('./readiness');
+const manifest = require('./manifest');
+
+// a whole deprecated block (heading line + body up to the next requirement)
+const DEPRECATED_BLOCK_RE = /^###[ \t]+Requirement:[^\n]*_deprecated \(superseded by [^)]*\)_[^\n]*$[\s\S]*?(?=^###[ \t]+Requirement:|$(?![\s\S]))/gm;
+
+function stripDeprecatedBlocks(text) { return text.replace(DEPRECATED_BLOCK_RE, ''); }
+
+// name -> full block (heading + body), in document order; duplicates reported (first block wins)
+// Requirement blocks: the historical reading `/^###\s+Requirement:\s+(.+?)\s*$([\s\S]*?)(?=^###\s+Requirement:|$(?![\s\S]))/gm`,
+// walked the way that regex walks — with fences honoured. From the current position, the next
+// heading is the first line-start `### Requirement: <name>` match outside every fence of the shared
+// grammar (lib/text.js); the heading match may run onto the next line exactly as the regex's `\s+`
+// lets it, and the block then runs, raw — fenced lines included — from the heading to the first
+// line-start `### Requirement:` at or after the END of that heading match that is outside every
+// fence, or to the end of the text; the walk resumes there. A heading inside a fence is block
+// content, never a boundary. With no fenced heading this is exactly what the regex matched.
+// -> [{ at, end, name }] in order
+function requirementHeadings(text) {
+  const spans = fenceSpans(text);
+  const fenced = (at) => {                                   // binary search: is offset `at` inside a span?
+    let lo = 0, hi = spans.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (spans[mid][1] <= at) lo = mid + 1; else hi = mid; }
+    return lo < spans.length && spans[lo][0] <= at;
+  };
+  const head = /^###\s+Requirement:\s+(.+?)\s*$/gm;
+  const lead = /^###\s+Requirement:/gm;
+  const out = [];
+  let pos = 0;
+  for (;;) {
+    head.lastIndex = pos;
+    let h;
+    while ((h = head.exec(text)) !== null && fenced(h.index)) head.lastIndex = h.index + 1;
+    if (!h) break;
+    const headEnd = h.index + h[0].length;
+    lead.lastIndex = headEnd;
+    let b;
+    while ((b = lead.exec(text)) !== null && fenced(b.index)) lead.lastIndex = b.index + 1;
+    const end = b ? b.index : text.length;
+    out.push({ at: h.index, end, name: h[1].trim() });
+    pos = end;
+    if (end >= text.length) break;
+  }
+  return out;
+}
+
+function parseRequirementsStrict(text) {
+  const map = new Map();
+  const duplicates = [];
+  for (const { at, end, name } of requirementHeadings(text)) {
+    if (map.has(name)) duplicates.push(name);
+    else map.set(name, text.slice(at, end).replace(/\s+$/, '') + '\n');
+  }
+  return { map, duplicates };
+}
+
+// ---- CAS base stamps -------------------------------------------------------
+
+// sha256 over content with line endings normalized — a delta authored on Windows
+// must fingerprint identically to the same store checked out with LF
+function fingerprint(text) {
+  const norm = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  return 'sha256:' + crypto.createHash('sha256').update(norm, 'utf8').digest('hex');
+}
+
+// ---- delta parsing ---------------------------------------------------------
+
+// per-line forms of the shared regexes (no /m — the walker feeds one normalized line at a time)
+const SECTION_LINE_RE = /^##\s+(ADDED|MODIFIED|REMOVED|RENAMED)\s+Requirements\s*$/;
+const NOTES_LINE_RE = /^##\s+Notes\s*$/;   // the one h2 the parser is allowed to ignore
+const H2_LINE_RE = /^##\s/;
+const REQ_LINE_RE = /^###\s+Requirement:\s+(.+?)\s*$/;
+const SCENARIO_LINE_RE = /^####\s+Scenario:/;
+const RENAME_LINE_RE = /^\s*-\s*(.+?)\s*->\s*(.+?)\s*$/;
+const STAMP_ATTEMPT_LINE_RE = /^\s*<!--(?=[^>]*apriori-base)[^>]*-->\s*$/;
+const STAMP_STRICT_LINE_RE = /^<!--\s*apriori-base:\s*(\S+)\s*-->\s*$/;
+const SCENARIO_TITLE_LINE_RE = /^####\s+Scenario:\s+(.*)$/;
+
+      conflicts.push(`REMOVED '${name}' has no target in store`);
+    } else {
+      const block = store.get(name);
+      const nl = block.indexOf('\n');
+      store.set(name, block.slice(0, nl) + `  _deprecated (superseded by ${change})_` + block.slice(nl));
+      deprecated.push(name);
+    }
+  }
+  return { store, merged, modified, deprecated, renamed, conflicts, unchanged };
+}
+
+function renderStore(storeText, store) {
+  const first = requirementHeadings(storeText)[0];          // a fenced example heading is not where the store's blocks begin
+  // the text before the first live requirement is kept as the store's preamble; a store with no live
+  // requirement at all — empty, prose only, or only a fenced example — is ALL preamble, never dropped
+  const header = first ? storeText.slice(0, first.at)
+    : storeText.trim() ? storeText.replace(/\s*$/, '\n\n') : '';
+  return header + [...store.values()].join('\n');
+}
+
+// ---- paths and discovery ---------------------------------------------------
+change: fence-tilde-readers
+phase: review                             # ground | specify | build | review | done | abandoned
+reviewer-session: 01a0fda1-9fd6-78f2-8cb7-2ecc5bd2b671   # codex exec gpt-6-astra, round 1 (2026-10-03)
+
+## Reality Check         # observed / decision / assumption — one line each, as you find them
+- decision: lineage — branch `feature/fence-tilde-readers`（从 v6-dev@a6c790b 开出，FU-2 合入后换基到 8a93dbb）；本地提交；评审通过后合回 v6-dev 并推 judge 与 GitHub
+- observed: 来源——follow-up FU-1，登记于已归档的 `apriori/changes/archive/2026-10-02T2359-batch-review-fixes/`，原文：「共用围栏读法只认 ``` 不认 ~~~（`lib/text.js` stripFences，及 gate.js、config.js、archive-merge.js 各自的反引号正则）；对齐会同时改变 delta 解析与 check/verify 的一致性面，单独一个 change 做」；人类 10-03「两个 follow-up 如果可以开干那就直接开干吧」
+- observed: 现状盘点——两种模型：跨行的反引号区段（text.js stripFences；gate.js、archive-merge 的 closedFenceSpans / scanBlockStructure / 题目收集各自复制了同一正则）与按行开合（config.js、archive-merge parseDeltaStrict 的 `/^\s*```/`）；flow.js 已按行读 ``` 与 ~~~（CommonMark 式），不在此列
+- decision: approach — 一个共享语法放在 lib/text.js（本工具自己的语法，不是 CommonMark，不建模列表/引用等容器——CK-11 的教训）：反引号保持历史读法逐字节不变；波浪线只在行首（至多 3 空格）以 3 个以上 ~ 开，同字符、不短于开头、只含 ~ 的行关；先开者胜，围栏内另一种标记是内容；区段读法未闭合即普通文本，按行读法沿用各自对未闭合的既有策略；所有复制的正则改为调用共享函数
+- observed: 兼容证据——仓库全部 1079 个 Markdown 文件（规格、已归档 bundle、评审、文档）新旧 stripFences 输出逐字节相同；`check --self` 输出与 v6-dev 逐字节相同；全套原有测试不改即全部通过
+- observed: Build 完成 —— lib/text.js（fenceSpans、stripFences、fenceOpen、fenceCloses）、lib/config.js、lib/archive-merge.js、lib/gate.js 接入；新增 test/fence-tilde-readers.test.js（TX-01 语法、TX-02 仓库语料的反引号读法不变、TX-03 各读者：config、check 与 verify 的场景发现、delta 解析、存储扫描、MODIFIED 比较引擎、review 的结论与 id 读取）；GT-20 加波浪线用例（非规范 stamp 写在 ~~~ 中不再报格式问题）；在 8a93dbb 的 lib 上 TX-01/TX-03 红，逐文件回退 config/archive-merge/gate 各自让对应断言变红；全套 887/887，隐藏 /proc 亦 887/887；delta：新模块 text（ADDED，TX-01..03）、config 需求 MODIFIED；MIGRATING、CHANGELOG
+- observed: FU-1 的退出证据——TX-01..03 与 GT-20：波浪线围栏在每个结构读者处都不透明（存储的需求块边界也在内），反引号的剥离读法与仓库内存储的切块不变；据此关闭 FU-1
+
+- observed: 构建中 ID-03 变红：我在 MIGRATING 散文里写了字面的三个反引号，历史的反引号区段读法把它与后文配对、吞掉了 6.2 标题——正是本 change 处理的那类脆弱性（反引号读法按决定保持不变）；已把新写的规格、MIGRATING、CHANGELOG 散文改为不含字面三反引号（「反引号围栏」等措辞），887/887
+- observed: Review 第 1 轮（`review/code-review-v1.md`）= `VERDICT: 2 issues open`：FTR-1 store 的需求块边界在 merge、MODIFIED 基线、单文件形式里读的是原文、不认任何围栏（反引号也一样，早于本 change），围栏里的需求标题会切块，MODIFIED 替换后留下幽灵块；FTR-2 未闭合的 ~~~ 开头逐个向后扫描，构造输入可致平方级；advisory：golden-path.mjs 自带反引号提取，需说明「每个结构读者」是否包含它
+- decision: FTR-1 fixed — `parseRequirementsStrict` 改为在共享语法的围栏之外找边界（`requirementHeadings`），块内容保留原文（围栏在内），`renderStore` 的头部截取同样跳过围栏里的标题；仓库内全部规格存储与 delta 切块与旧正则逐字节相同（TX-02 新增语料断言），只有 6 份历史评审文档不同（它们在围栏里引用需求标题，本就不是存储）；证据：TX-03 新增 merge→render→重跑用例，把解析换回旧正则时 TX-03 变红
+- decision: FTR-2 fixed — 每个长度 L 预先列出不短于 L 的裸 ~ 行，开头用二分查找找闭合，未闭合不再回扫；证据：TX-02 三种病态输入（2 万行未闭合、长开头配短裸行、多种长度）各在 1 秒内（实测约 20 ms）
+- decision: advisory — 契约写明本语法之外的两个读者：状态文件读法 flow.js（已认 ~~~）与 golden-path 脚本的 Quickstart shell 块提取（只读一份已知 README）
+- observed: 回归——全套 887/887，隐藏 /proc 亦 887/887；`check --self` 输出与 v6-dev 仍逐字节相同；MIGRATING 补一条：存储里围栏中的需求标题不再切块（两种标记皆然），仓库内无此情形
+- observed: Review 第 2 轮（`review/code-review-v2.md`）= `VERDICT: 3 issues open`：FTR-1 ADDRESSED；FTR-2 NOT ADDRESSED（每轮仍重做 ``` 搜索；每种开头长度都过滤一遍全部闭合行，构造输入 O(n³)）；新 FTR-3（边界改写后不再跟随旧正则对跨行标题的消费，`### Requirement:\n### Requirement: B` 被切成两块）；新 FTR-4（存储没有活需求、只有围栏示例时，加入第一个需求会丢掉原文）；advisory 已了结
+- decision: FTR-2 fixed — 反引号的下一个位置只在越过时才重搜（耗尽即不再搜）；闭合查找改为在裸 ~ 行长度上建最大值线段树，二分定位起点后一次下探；证据：TX-02 加大到 20 万行未闭合、10 万对长短交替、600 种长度压在 36 万裸行上、未闭合反引号后 10 万开头，各 < 2 秒（实测 55–142 ms）；把缓存改回每轮重搜时 1 万/2 万/4 万行耗时 9/22/68 ms 呈超线性，缓存版 7/10/11 ms
+- decision: FTR-3 fixed — `requirementHeadings` 按旧正则自身的走法：从当前位置找围栏外的下一个完整标题，块结束于该标题匹配末尾之后第一个围栏外的行首 `### Requirement:`，从那里继续；跨行标题、无名标题行、相邻块、CRLF 与旧正则逐字节相同（TX-02 新增），仓库全部存储与 delta 仍相同
+- decision: FTR-4 fixed — `renderStore` 在没有活需求时把整份原文当作前言保留（末尾规整为空一行），空存储仍只渲染新块；这对「只有散文的存储」也是对历史行为（丢弃）的修正，已写入 MIGRATING、CHANGELOG 与契约；证据：TX-03 两种存储加入首个需求后原文保留、重跑无变化；去掉保留逻辑时 TX-03 变红
+## Open                  # substantive unresolved items — one line each, stable id first: - <ID>: <text>
+
+## Next                  # at most three concrete actions; the first is the resume point
+- codex P3 第 3 轮（resume；第 3 轮前已记 review-progress）
+- gate → archive --write → 合回 v6-dev
+
+gates:
+  - 2026-10-03T00:59 note: change scaffolded by `apriori new`
+  - 2026-10-03T01:16 note: Ground（承接 FU-1，pending）→ Build（887/887）；FU-1 依 TX-01..03 与 GT-20 的证据关闭（从 ## Open 删去）；review-ready 后开 Review 第 1 轮
+  - 2026-10-03T01:28 note: Review 第 1 轮 2 issues open（FTR-1、FTR-2）均已修复，advisory 已在契约中写明；887/887；resume 同一评审会话开第 2 轮
+  - 2026-10-03T01:51 note: review-progress code-review round 3 — issues: FTR-1, FTR-2, FTR-3, FTR-4; actions: FTR-1 addressed in round 2 (no further change), FTR-2 fixed — cached backtick search and a max segment tree for closers, FTR-3 fixed — the boundary walk follows the historical regex's own consumption, FTR-4 fixed — a store without a live requirement keeps its text; evidence: lib/text.js, lib/archive-merge.js, test/fence-tilde-readers.test.js, MIGRATING.md; approach: kept — one shared fence grammar; each finding was an implementation gap in it, closed with a regression and a corpus or scaling check
+
+exec
+/usr/bin/zsh -lc 'cat test/fence-tilde-readers.test.js && cat apriori/changes/fence-tilde-readers/specs/text/spec.md && git diff -- CHANGELOG.md MIGRATING.md' in /root/terra/wt-fu1
+ succeeded in 0ms:
+'use strict';
+// fence-tilde-readers — TX-01 (the shared fence grammar: ``` as always, ~~~ by line, marker and
+// length), TX-02 (the backtick reading is unchanged: every Markdown file in this repository strips
+// exactly as the historical regex did), TX-03 (every structural reader honours the same fences:
+// config rows, scenario discovery in check and verify alike, the delta parser, the store scan and
+// the MODIFIED-block engine). Follow-up FU-1 of batch-review-fixes; owner 2026-10-03 "开干".
+const { test } = require('node:test');
+const assert = require('node:assert');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
+const text = require('../lib/text');
+
+const ROOT = path.join(__dirname, '..');
+const OLD = (t) => t.replace(/```[\s\S]*?```/g, '');           // the historical backtick reading
+
+test('TX-01 the shared fence grammar: tildes by line, marker and length; backticks as always', () => {
+  const S = text.stripFences;
+  // a tilde fence hides what it holds, structure-shaped lines included
+  assert.strictEqual(S('a\n~~~\n#### Scenario: XX-99 fake\n~~~\nb'), 'a\n\nb');
+  // an info string may follow the opener; the closer may be longer, indented up to three spaces, trailing blanks allowed
+  assert.strictEqual(S('~~~ md\nX\n   ~~~~  \nY'), '\nY');
+  // a shorter run, a tagged line or the other marker does not close it
+  assert.strictEqual(S('~~~~\n~~~\nX\n~~~ md\n```\n~~~~\nY'), '\nY');
+  // inline ~~~ is ordinary text, and so is a line indented four spaces
+  assert.strictEqual(S('say `~~~` twice: `~~~`'), 'say `~~~` twice: `~~~`');
+  assert.strictEqual(S('    ~~~\nX\n    ~~~'), '    ~~~\nX\n    ~~~');
+  // an unclosed tilde opener is ordinary text, as an unclosed backtick one is
+  assert.strictEqual(S('~~~\nX'), '~~~\nX');
+  assert.strictEqual(S('```\nX'), '```\nX');
+  // whichever opens first wins; inside one, the other marker is content
+  assert.strictEqual(S('```\n~~~\n```\nY\n~~~'), '\nY\n~~~');
+  assert.strictEqual(S('~~~\n```\n~~~\nY\n```'), '\nY\n```');
+  // CRLF lines read the same
+  assert.strictEqual(S('~~~\r\nX\r\n~~~\r\nY'), '\nY');
+  // spans are what stripFences removes, in order
+  const t = 'a\n```\nx\n```\nb\n~~~\ny\n~~~\nc';
+  assert.deepStrictEqual(text.fenceSpans(t).map(([s, e]) => t.slice(s, e)), ['```\nx\n```', '~~~\ny\n~~~']);
+  // the line readers' open/close rule: ``` as before (any indentation; any ```-led line closes), ~~~ by marker and length
+  assert.deepStrictEqual(text.fenceOpen('  ```js'), { ch: '`', len: 3 });
+  assert.deepStrictEqual(text.fenceOpen('~~~~ md'), { ch: '~', len: 4 });
+  assert.strictEqual(text.fenceOpen('    ~~~'), null);
+  assert.strictEqual(text.fenceCloses({ ch: '`', len: 3 }, '```js'), true);
+  assert.strictEqual(text.fenceCloses({ ch: '~', len: 4 }, '~~~'), false);
+  assert.strictEqual(text.fenceCloses({ ch: '~', len: 3 }, '~~~ md'), false);
+  assert.strictEqual(text.fenceCloses({ ch: '~', len: 3 }, ' ~~~~ '), true);
+  assert.strictEqual(text.fenceCloses({ ch: '~', len: 3 }, '```'), false);
+});
+
+test('TX-02 the backtick reading is unchanged across this repository', () => {
+  const files = [];
+  const walk = (d) => {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      if (e.name === 'node_modules' || e.name === '.git') continue;
+      const p = path.join(d, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (e.isFile() && e.name.endsWith('.md')) files.push(p);
+    }
+  };
+  walk(ROOT);
+  assert.ok(files.length > 200, `the corpus is the repository's Markdown (${files.length} files)`);
+  const differ = files.filter((f) => { const t = fs.readFileSync(f, 'utf8'); return text.stripFences(t) !== OLD(t); });
+  assert.deepStrictEqual(differ.map((f) => path.relative(ROOT, f)), [], 'no file with only backtick fences may read differently');
+  // and synthetic edges of the historical reading
+  for (const t of ['```x``` and ```', '````\n```\nX\n```\n````', 'a ``` b ``` c ``` d', '```\n```\n```'])
+    assert.strictEqual(text.stripFences(t), OLD(t), JSON.stringify(t));
+  // every spec store and delta splits into requirement blocks exactly as the historical regex split it
+  const am = require('../lib/archive-merge');
+  const REQ_RE = /^###\s+Requirement:\s+(.+?)\s*$([\s\S]*?)(?=^###\s+Requirement:|$(?![\s\S]))/gm;
+  const oldBlocks = (t) => { const out = []; let m; REQ_RE.lastIndex = 0; while ((m = REQ_RE.exec(t)) !== null) out.push([m[1].trim(), m[0].replace(/\s+$/, '') + '\n']); return out; };
+  const specs = files.filter((f) => /[\/]specs[\/]/.test(path.relative(ROOT, f)) && path.relative(ROOT, f).startsWith('apriori'));
+  assert.ok(specs.length > 100, `stores and deltas (${specs.length})`);
+  for (const f of specs) {
+    const t = fs.readFileSync(f, 'utf8');
+    assert.deepStrictEqual([...am.parseRequirementsStrict(t).map], oldBlocks(t).filter(([n], i, a) => a.findIndex(([x]) => x === n) === i), path.relative(ROOT, f));
+  }
+  // the historical regex's own walk is kept where no fence is involved (review FTR-3): a heading
+  // whose name runs onto the next line, a nameless heading line ending the previous block, adjacent blocks
+  for (const t of ['### Requirement:\n### Requirement: B\nbody\n', '### Requirement: A\nx\n### Requirement:\n',
+    '### Requirement: A\n### Requirement: B\n', '### Requirement:   \n\n### Requirement: C\nz', 'pre\n### Requirement: A\r\nx\r\n### Requirement: B\r\n'])
+    assert.deepStrictEqual([...am.parseRequirementsStrict(t).map], oldBlocks(t), JSON.stringify(t));
+  // no input makes the scanner superlinear (review FTR-2): far beyond any real document, each well
+  // under two seconds — a quadratic scan of the first input alone would take minutes
+  const distinct = (n) => { let t = ''; for (let L = n + 3; L >= 4; L--) t += '~'.repeat(L) + ' tag\n'; return t + '~~~\n'.repeat(n * n); };
+  for (const t of ['~~~info\n'.repeat(200000), '~~~~\n~~~\n'.repeat(100000), distinct(600), '```\n' + '~~~info\n'.repeat(100000)]) {
+    const t0 = process.hrtime.bigint();
+    text.stripFences(t);
+    assert.ok(Number(process.hrtime.bigint() - t0) / 1e6 < 2000, `the fence scan stays near-linear (${t.length} bytes)`);
+  }
+});
+
+test('TX-03 every structural reader honours the same fences', () => {
+  const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-tx-'));
+  // config: a tilde-fenced row grants nothing; the live row decides; an unterminated tilde fence makes the rest inert
+  const config = require('../lib/config');
+  const c1 = config.parseConfig('~~~\n| cas | optional |\n~~~\n\n| cas | required |\n');
+  assert.strictEqual(c1.values.get('cas'), 'required');
+  assert.ok(!config.parseConfig('~~~ md\n| cas | optional |\n').values.has('cas'));
+  assert.strictEqual(config.parseConfig('~~~~\n~~~\n| cas | optional |\n~~~~\n| test-cmd | npm test |\n').values.get('test-cmd'), 'npm test');
+  assert.ok(!config.parseConfig('~~~~\n~~~\n| cas | optional |\n~~~~\n').values.has('cas'));
+  // scenario discovery: verify's scanner and check's CLI both pass over a tilde-fenced example (CK-14 parity)
+  const am = require('../lib/archive-merge');
+  const spec = '### Requirement: R\nBody.\n\n~~~md\n#### Scenario: no id fenced example\n~~~\n\n#### Scenario: TX-90 real\n- t\n';
+  assert.deepStrictEqual(am.scanScenarioTitles(spec), ['TX-90 real']);
+  const root = tmp();
+  fs.mkdirSync(path.join(root, 'apriori', 'specs', 'm'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'apriori', 'specs', 'm', 'spec.md'), spec);
+  const ck = spawnSync('node', [path.join(ROOT, 'bin', 'apriori.js'), 'check'], { cwd: root, encoding: 'utf8' });
+  assert.strictEqual(ck.status, 0, ck.stdout + ck.stderr);
+  const col = require('../lib/spec-runner').collectScenarios([path.join(root, 'apriori', 'specs')], /[A-Z]+-\d+/);
+  assert.deepStrictEqual([...col.byId.keys()], ['TX-90']);
+  assert.deepStrictEqual(col.unidentified, []);
+  // the delta parser: a tilde fence is opaque — its heading-shaped lines are body, never structure or a problem
+  const delta = '## ADDED Requirements\n\n### Requirement: Fenced\n\nBody.\n\n~~~md\n## Bogus Heading\n### Requirement: InsideFence\n<!-- apriori-base: sha256:zzz -->\n~~~\n\n#### Scenario: TX-91 f\n- t\n';
+  const p = am.parseDeltaStrict(delta);
+  assert.deepStrictEqual(p.problems, []);
+  assert.deepStrictEqual([...p.delta.ADDED.keys()], ['Fenced']);
+  assert.match(p.delta.ADDED.get('Fenced'), /Bogus Heading/);
+  assert.deepStrictEqual(am.parseDeltaStrict(delta.replace(/\n/g, '\r\n')).problems, []);
+  // the store scan and the MODIFIED-block engine read the same fences
+  const store = '### Requirement: A\nProse.\n\n~~~\n### Requirement: Ghost\n#### Scenario: TX-92 ghost\n~~~\n\n#### Scenario: TX-93 a\n- t\n';
+  // the store scan: a fenced requirement heading is block content, never a boundary — on raw text too
+  // (merge, the MODIFIED baseline and the single-file form read the raw store — review FTR-1)
+  assert.deepStrictEqual([...am.parseRequirementsStrict(store).map.keys()], ['A']);
+  assert.strictEqual(am.parseRequirementsStrict(store).map.get('A'), store.replace(/\s+$/, '') + '\n', 'the block is the raw text, fence and all');
+  assert.deepStrictEqual([...am.parseRequirementsStrict(text.stripFences(store)).map.keys()], ['A']);
+  // through the archive merge: a prose-only MODIFIED replacement of the whole block leaves no ghost
+  // behind, the projection lists the real scenario once, and a rerun changes nothing
+  const fullStore = '# Store\n\n' + store;
+  const replaced = store.replace('Prose.', 'Updated prose.');
+  const delta2 = am.parseDeltaStrict(`## MODIFIED Requirements\n\n${replaced}`);
+  assert.deepStrictEqual(delta2.problems, []);
+  const merged = am.merge(fullStore, delta2.delta, 'c');
+  assert.deepStrictEqual(merged.conflicts, []);
+  const rendered = am.renderStore(fullStore, merged.store);
+  assert.deepStrictEqual(am.scanScenarioTitles(rendered), ['TX-93 a']);
+  assert.ok(rendered.startsWith('# Store\n\n### Requirement: A\nUpdated prose.'));
+  const again = am.merge(rendered, delta2.delta, 'c');
+  assert.strictEqual(am.renderStore(rendered, again.store), rendered, 'a rerun is a no-op');
+  // a store with no live requirement — only a fenced example, or prose — keeps its text when the first
+  // requirement is added (review FTR-4); an empty store renders just the blocks
+  const added = am.parseDeltaStrict('## ADDED Requirements\n\n### Requirement: Real\n\n#### Scenario: TX-99 r\n- t\n').delta;
+  for (const pre of ['# Store\n\nExplain.\n\n~~~\n### Requirement: Example\n~~~\n', '# Store\n\nProse only.\n']) {
+    const out = am.renderStore(pre, am.merge(pre, added, 'c').store);
+    assert.strictEqual(out, pre.replace(/\s*$/, '\n\n') + '### Requirement: Real\n\n#### Scenario: TX-99 r\n- t\n');
+    assert.deepStrictEqual(am.scanScenarioTitles(out), ['TX-99 r']);
+    assert.strictEqual(am.renderStore(out, am.merge(out, added, 'c').store), out, 'a rerun is a no-op');
+  }
+  assert.strictEqual(am.renderStore('', am.merge('', added, 'c').store), '### Requirement: Real\n\n#### Scenario: TX-99 r\n- t\n');
+  // the engine: a scenario-looking line inside a tilde fence is body, not a scenario — rewriting the
+  // fence's contents drops nothing, and the real scenario is retained by its id
+  const idOf = (title) => { const m = /^([A-Z]+-\d+)\b/.exec(title); return m ? m[1] : null; };
+  const cmp = am.compareModifiedBlock(store.trim(), store.replace('#### Scenario: TX-92 ghost', 'an example, reworded').trim(), idOf);
+  assert.deepStrictEqual(cmp.dropped, []);
+  assert.deepStrictEqual(cmp.ambiguous, []);
+  assert.deepStrictEqual(cmp.retained.map((r) => r.id), ['TX-93']);
+  assert.deepStrictEqual(cmp.missingLines, [{ scenario: null, line: '#### Scenario: TX-92 ghost' }], 'the reworded fenced line is prose that went missing, reported as such');
+  // the review reader: a verdict quoted in a tilde fence of a self-contained doc is an example, and a
+  // round summary's id lists and re-review conclusions skip what a tilde fence holds
+  const review = require('../lib/review');
+  const bundle = tmp();
+  fs.mkdirSync(path.join(bundle, 'review'));
+  const PROV = '<!-- provenance: provider=anthropic model=claude-sonnet-5 session=sess-1 date=2026-08-24 -->';
+  fs.writeFileSync(path.join(bundle, 'review', 'req-review-v1.md'),
+    `${PROV}\n# Review\n\nThe vocabulary:\n\n~~~\nVERDICT: ESCALATE\n~~~\n\nMy conclusion:\n\nVERDICT: ACCEPT\n`);
+  const f = review.reviewFacts(bundle);
+  assert.deepStrictEqual(f.problems, []);
+  assert.strictEqual(f.families[0].verdict, 'accept');
+  const conc = review.reReviewConclusions('- AB-1: ADDRESSED — fixed\n~~~\n- AB-2: NOT ADDRESSED — quoted example\n~~~\n');
+  assert.deepStrictEqual([...conc.keys()], ['AB-1']);
+});
+# Delta — text (fence-tilde-readers)
+
+## ADDED Requirements
+
+### Requirement: one fence grammar for every structural reader
+`lib/text.js` SHALL define the one fence grammar every structural reader of Markdown uses — this tool's own grammar, not CommonMark (lists, blockquotes and other containers are not modeled). Backticks keep the historical reading byte for byte: a run of three backticks anywhere opens and the next run of three closes, and an unclosed opener is ordinary text. Tildes open only as a line whose first non-blank characters (up to three spaces in) are three or more `~`, an info string allowed after them, and close at the first later line holding only `~` at least as many (up to three spaces in, trailing blanks allowed); an inline `~~~` is ordinary text. Whichever opens first wins, and inside a fence the other marker is content; CRLF lines read as LF lines. Span readers (`stripFences`, `fenceSpans`) treat an unclosed tilde opener as ordinary text, as they do a backtick one; line readers use the same open and close rule (`fenceOpen`, `fenceCloses`) and keep their own policy for an unterminated fence. The readers SHALL be: scenario discovery in `check` and in `verify` (one scanner, so they agree), the delta parser in `archive`, requirement-block boundaries in a store wherever they are read — the merge, the render, the MODIFIED baselines, the single-file form and the change-scope scan — walked exactly as the historical requirement regex walked them (a heading's name may run onto its next line; a block ends at the first later line-start `### Requirement:`), except that a heading inside a fence of either marker is block content, the block keeping its raw text; and the render keeps a store's text before its first live requirement — all of it when the store has none yet — the MODIFIED-block comparison engine, the process-config reader, gate's truth-doc `source-commit` reader (C6), and the review reader — verdict lines of a self-contained review document, and the round summary's opening ids and re-review conclusions. Existing Markdown that uses only backtick fences SHALL strip exactly as before, and every spec store and delta in this repository SHALL split into the same requirement blocks as before. The scan SHALL stay near-linear on any input: no position is searched again for a backtick run once passed, and an unclosed opener never rescans or refilters the rest of the text. Outside this grammar, by design: the state-file reader (`lib/flow.js`, which already reads tildes) and the golden-path script's Quickstart shell-block extraction (`scripts/golden-path.mjs`, which reads one known README).
+
+#### Scenario: TX-01 the shared fence grammar: tildes by line, marker and length; backticks as always
+- WHEN `stripFences`, `fenceSpans`, `fenceOpen` and `fenceCloses` read tilde fences with and without info strings, longer and indented closers, shorter or tagged or other-marker lines inside, inline `~~~`, a four-space-indented run, unclosed openers of either marker, one marker's fence holding the other's, and CRLF lines
+- THEN a tilde fence is removed from its opener line through its closer line; a shorter, tagged or other-marker line does not close it; inline and four-space runs are text; an unclosed opener of either marker is text; the first opener wins and the other marker inside is content; CRLF reads as LF; the spans are exactly what is removed, in order; and the line rule opens a backtick fence at any indentation and closes it on any line led by three backticks, while a tilde fence opens up to three spaces in and closes only on a bare run at least as long
+
+#### Scenario: TX-02 the backtick reading is unchanged across this repository
+- WHEN every Markdown file in the repository (more than two hundred: specs, archived bundles, reviews, docs) and synthetic backtick edges (an inline span, a longer run, an odd run) are read; every spec store and delta among them is split into requirement blocks; unfenced edge headings (a name on the next line, a nameless heading line, adjacent blocks, CRLF) are split; and hundreds of thousands of unmatched openers, long openers over short bare runs, hundreds of distinct opener lengths over a third of a million bare runs, and an unclosed backtick before a hundred thousand tilde openers are scanned
+- THEN `stripFences` returns exactly what the historical lazy backtick-span regex returned for every one of them; each store, delta and edge case splits into exactly the blocks the historical requirement regex produced; and each pathological scan finishes in under two seconds
+
+#### Scenario: TX-03 every structural reader honours the same fences
+- WHEN a process-config holds a tilde-fenced `| cas | optional |` beside a live row, an unterminated tilde fence, and a longer tilde fence a shorter run does not close; a spec holds a tilde-fenced `#### Scenario:` example; a delta holds a tilde fence of heading-shaped lines inside an ADDED block (LF and CRLF); a store requirement holds a tilde-fenced requirement and scenario heading that a MODIFIED replacement rewords; a self-contained review doc quotes `VERDICT: ESCALATE` inside a tilde fence above its real verdict; and a re-review summary quotes a conclusion line inside a tilde fence
+- THEN the fenced config rows grant nothing (the live row decides; the unterminated fence makes the rest inert); `check` and `verify` both pass over the fenced scenario example and bind only the real one; the delta parses with no problem, one requirement, and the fenced lines kept in its body; the store scan — on the raw store as on the stripped one — sees one requirement whose block is the raw text, fence and all; a prose-only MODIFIED replacement merged and rendered leaves no ghost block, lists the real scenario once, and is a no-op when rerun; a store holding only a fenced example, or only prose, keeps all of its text when its first requirement is ADDED (and an empty store renders just the block), each a no-op when rerun; the engine drops nothing, retaining the real scenario and reporting the reworded fenced line as missing prose; the review reads only the real verdict with no problem, and only the unfenced conclusion counts (gate C6's fenced example is GT-20's, whose test carries the tilde case too)
+
+## Notes
+
+Follow-up FU-1 of batch-review-fixes (registered there): the shared readers saw only backtick fences, so a tilde-fenced example in a spec, delta, config, truth doc or self-contained review was read as structure. The grammar is declared as the tool's own on purpose — CK-11's line-based CommonMark subset kept missing container edges until the owner had it read the runbook header literally (batch-recheck-fixes); readers here need agreement and the tilde marker, not CommonMark conformance. `flow.js` already read tildes for the state file and is unchanged. Review round 1: the store's requirement boundaries were read from raw text without any fence (FTR-1 — for backtick fences too, before this change), and an unclosed tilde opener rescanned the rest of the text (FTR-2); both fixed, with the corpus split guard and a performance bound in TX-02. Round 2: the backtick search was still repeated per iteration and the closer index refiltered per length (FTR-2, now a cached search and a max segment tree), the boundary walk had stopped following the regex's own consumption of a multi-line heading (FTR-3, now the regex's walk), and a store with no live requirement lost its text when one was added (FTR-4 — historically so for a prose-only store too; now kept).
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index f84a532..a66eb1a 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -25,6 +25,10 @@ Known limitations, stated as they stand:
+ Later preview snapshots are cut from `release/v6` after v6-dev work merges back; fixes in flight
+ (authorization-scope, archive-manifest) are not part of this snapshot.
+ 
++## Unreleased — fence-tilde-readers: one fence grammar, tildes included
++
++- Every structural Markdown reader — scenario discovery in `check` and `verify`, the delta parser, the store scan and the MODIFIED-block engine in `archive`, the process-config reader, gate's truth-doc `source-commit` reader, and the review reader — now uses one fence grammar from `lib/text.js`: a `~~~` fence (a line of three or more `~`, closed by a bare line of at least as many) is opaque like a backtick fence, so a tilde-fenced example of a config row, scenario, requirement, stamp or verdict no longer takes effect. A store's requirement blocks no longer split at a requirement heading inside a fence of either marker (before, a fenced example heading split the block in `archive`'s merge, for backtick fences too); the block keeps its raw text — and a store with no requirement yet (prose, or only a fenced example) keeps its text when its first requirement is added, where `archive` used to drop it. Backtick fences strip exactly as before, and every spec store and delta in this repository splits into the same blocks (both checked). The grammar is the tool's own, not CommonMark. Follow-up FU-1 of batch-review-fixes.
++
+ ## Unreleased — init-premanifest-adoption: a project mid-migration keeps its adoption pass
+ 
+ - `apriori init` on a project with no `apriori/managed.json` whose runbook predates the run (a regular file) records what it creates as always and marks the manifest `"adoptPending": true`; `apriori update` treats a marked manifest like a missing one for the adoption on proof of unlisted files — the older runbook, command files whose bytes are a shipped generation — while listed files keep their rules, and clears the mark after a complete run. Before, init's manifest of only its own files ended that adoption and left the older runbook and command files unmanaged. Follow-up FU-2 of batch-review-fixes.
+diff --git a/MIGRATING.md b/MIGRATING.md
+index 0e9c2aa..ed44691 100644
+--- a/MIGRATING.md
++++ b/MIGRATING.md
+@@ -2,6 +2,11 @@
+ 
+ The 3.0.0 stability promise — CLI surface & flags, `--json` shapes, the delta format, the flow-state schema and the `apriori/` layout only break in a major — holds for the released 5.x line. **6.x is an unreleased development line** (npm has never shipped a 6.x; `package.json` says `6.2.0-rc.0`, the runbook `runbook-version: 6.2`): within it the `gate --review-ready` item ids (`tests`, `open`) and the flow-state fields (`## Evidence` gone, `mode:` inert) changed in 6.2, and further changes before a 6.x release are declared here rather than promised away. Everything below is either additive or a declared fail-closed tightening — except limit-ruling, which moves a stop the owner explicitly approved moving and says so in its section.
+ 
++## fence-tilde-readers (Unreleased) — `~~~` fences are fences everywhere
++
++- A block fenced with `~~~` (a line of three or more tildes, closed by a bare line of at least as many) is now opaque to every structural reader, as a backtick-fenced block always was: a config row, `#### Scenario:` or `### Requirement:` heading, `source-commit:` stamp or `VERDICT:` line inside one no longer takes effect. If you relied on a tilde-fenced row or heading being live, move it out of the fence. Backtick-fenced content reads exactly as before; an inline `~~~` is ordinary text.
++- In a spec store, a `### Requirement:` heading inside a fence of either marker is now part of the block it sits in, not the start of a new one — before, `archive`'s merge split the block there even for a backtick fence, so a MODIFIED replacement could leave a ghost block behind. No store in this repository had such a heading. And a store with no requirement yet — a title and prose, or only a fenced example — now keeps that text when `archive` adds its first requirement; it used to be dropped.
++
+ ## init-premanifest-adoption (Unreleased) — a project mid-migration keeps its adoption pass
+ 
+ - On a project with no `apriori/managed.json` whose runbook predates the run (initialized before `managed.json` existed, or the manifest deleted), `apriori init` used to write a manifest of only the files it had just created — which ended `update`'s adoption on proof and left the older runbook and command files `unmanaged`. `init` now still records what it creates, at once, and marks the manifest `"adoptPending": true`; the next `apriori update` adopts the older runbook (overwriting it once — copy your notes out of a customised one first) and the older command files whose bytes are a shipped generation, keeps listed files under their usual rules, and clears the mark only after a complete run.
+
+exec
+/usr/bin/zsh -lc "sed -n '62,112p' test/fence-tilde-readers.test.js && nl -ba lib/text.js | sed -n '33,94p' && nl -ba lib/archive-merge.js | sed -n '30,76p' && nl -ba lib/archive-merge.js | sed -n '294,304p' && git diff --stat" in /root/terra/wt-fu1
+ succeeded in 0ms:
+  assert.ok(files.length > 200, `the corpus is the repository's Markdown (${files.length} files)`);
+  const differ = files.filter((f) => { const t = fs.readFileSync(f, 'utf8'); return text.stripFences(t) !== OLD(t); });
+  assert.deepStrictEqual(differ.map((f) => path.relative(ROOT, f)), [], 'no file with only backtick fences may read differently');
+  // and synthetic edges of the historical reading
+  for (const t of ['```x``` and ```', '````\n```\nX\n```\n````', 'a ``` b ``` c ``` d', '```\n```\n```'])
+    assert.strictEqual(text.stripFences(t), OLD(t), JSON.stringify(t));
+  // every spec store and delta splits into requirement blocks exactly as the historical regex split it
+  const am = require('../lib/archive-merge');
+  const REQ_RE = /^###\s+Requirement:\s+(.+?)\s*$([\s\S]*?)(?=^###\s+Requirement:|$(?![\s\S]))/gm;
+  const oldBlocks = (t) => { const out = []; let m; REQ_RE.lastIndex = 0; while ((m = REQ_RE.exec(t)) !== null) out.push([m[1].trim(), m[0].replace(/\s+$/, '') + '\n']); return out; };
+  const specs = files.filter((f) => /[\/]specs[\/]/.test(path.relative(ROOT, f)) && path.relative(ROOT, f).startsWith('apriori'));
+  assert.ok(specs.length > 100, `stores and deltas (${specs.length})`);
+  for (const f of specs) {
+    const t = fs.readFileSync(f, 'utf8');
+    assert.deepStrictEqual([...am.parseRequirementsStrict(t).map], oldBlocks(t).filter(([n], i, a) => a.findIndex(([x]) => x === n) === i), path.relative(ROOT, f));
+  }
+  // the historical regex's own walk is kept where no fence is involved (review FTR-3): a heading
+  // whose name runs onto the next line, a nameless heading line ending the previous block, adjacent blocks
+  for (const t of ['### Requirement:\n### Requirement: B\nbody\n', '### Requirement: A\nx\n### Requirement:\n',
+    '### Requirement: A\n### Requirement: B\n', '### Requirement:   \n\n### Requirement: C\nz', 'pre\n### Requirement: A\r\nx\r\n### Requirement: B\r\n'])
+    assert.deepStrictEqual([...am.parseRequirementsStrict(t).map], oldBlocks(t), JSON.stringify(t));
+  // no input makes the scanner superlinear (review FTR-2): far beyond any real document, each well
+  // under two seconds — a quadratic scan of the first input alone would take minutes
+  const distinct = (n) => { let t = ''; for (let L = n + 3; L >= 4; L--) t += '~'.repeat(L) + ' tag\n'; return t + '~~~\n'.repeat(n * n); };
+  for (const t of ['~~~info\n'.repeat(200000), '~~~~\n~~~\n'.repeat(100000), distinct(600), '```\n' + '~~~info\n'.repeat(100000)]) {
+    const t0 = process.hrtime.bigint();
+    text.stripFences(t);
+    assert.ok(Number(process.hrtime.bigint() - t0) / 1e6 < 2000, `the fence scan stays near-linear (${t.length} bytes)`);
+  }
+});
+
+test('TX-03 every structural reader honours the same fences', () => {
+  const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-tx-'));
+  // config: a tilde-fenced row grants nothing; the live row decides; an unterminated tilde fence makes the rest inert
+  const config = require('../lib/config');
+  const c1 = config.parseConfig('~~~\n| cas | optional |\n~~~\n\n| cas | required |\n');
+  assert.strictEqual(c1.values.get('cas'), 'required');
+  assert.ok(!config.parseConfig('~~~ md\n| cas | optional |\n').values.has('cas'));
+  assert.strictEqual(config.parseConfig('~~~~\n~~~\n| cas | optional |\n~~~~\n| test-cmd | npm test |\n').values.get('test-cmd'), 'npm test');
+  assert.ok(!config.parseConfig('~~~~\n~~~\n| cas | optional |\n~~~~\n').values.has('cas'));
+  // scenario discovery: verify's scanner and check's CLI both pass over a tilde-fenced example (CK-14 parity)
+  const am = require('../lib/archive-merge');
+  const spec = '### Requirement: R\nBody.\n\n~~~md\n#### Scenario: no id fenced example\n~~~\n\n#### Scenario: TX-90 real\n- t\n';
+  assert.deepStrictEqual(am.scanScenarioTitles(spec), ['TX-90 real']);
+  const root = tmp();
+  fs.mkdirSync(path.join(root, 'apriori', 'specs', 'm'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'apriori', 'specs', 'm', 'spec.md'), spec);
+  const ck = spawnSync('node', [path.join(ROOT, 'bin', 'apriori.js'), 'check'], { cwd: root, encoding: 'utf8' });
+  assert.strictEqual(ck.status, 0, ck.stdout + ck.stderr);
+  const col = require('../lib/spec-runner').collectScenarios([path.join(root, 'apriori', 'specs')], /[A-Z]+-\d+/);
+  assert.deepStrictEqual([...col.byId.keys()], ['TX-90']);
+    33	// [[start, end)] of every CLOSED fence span, in order, non-overlapping. Near-linear on any input:
+    34	// the next ``` is searched once per position it can move past (an exhausted search is never
+    35	// repeated), and the closer of a tilde opener of length L — the first later bare run at least L
+    36	// long — comes from a max segment tree over the bare runs, never from rescanning or refiltering.
+    37	function fenceSpans(text) {
+    38	  const s = String(text);
+    39	  const starts = [0];
+    40	  for (let i = s.indexOf('\n'); i >= 0; i = s.indexOf('\n', i + 1)) starts.push(i + 1);
+    41	  const lineAt = (k) => { const e = k + 1 < starts.length ? starts[k + 1] - 1 : s.length; return s.slice(starts[k], e); };
+    42	  const openers = [];                                     // [line index, run length] of every tilde opener line
+    43	  const cLine = [], cLen = [];                            // every bare tilde line, in line order, and its run length
+    44	  for (let j = 0; j < starts.length; j++) {
+    45	    const line = lineAt(j);
+    46	    if (line.indexOf('~~~') < 0) continue;
+    47	    const m = TILDE_OPEN_RE.exec(line);
+    48	    if (m) openers.push([j, m[1].length]);
+    49	    const c = TILDE_CLOSE_RE.exec(line);
+    50	    if (c) { cLine.push(j); cLen.push(c[1].length); }
+    51	  }
+    52	  let size = 1;
+    53	  while (size < cLen.length) size <<= 1;
+    54	  const tree = new Array(2 * size).fill(0);               // max run length per node
+    55	  cLen.forEach((n, i) => { tree[size + i] = n; });
+    56	  for (let i = size - 1; i >= 1; i--) tree[i] = Math.max(tree[2 * i], tree[2 * i + 1]);
+    57	  const firstAtLeast = (node, lo, hi, from, L) => {       // first closer index >= from with length >= L, or -1
+    58	    if (hi < from || tree[node] < L) return -1;
+    59	    if (lo === hi) return lo;
+    60	    const mid = (lo + hi) >> 1;
+    61	    const r = firstAtLeast(2 * node, lo, mid, from, L);
+    62	    return r >= 0 ? r : firstAtLeast(2 * node + 1, mid + 1, hi, from, L);
+    63	  };
+    64	  const closerAfter = (j, L) => {
+    65	    let lo = 0, hi = cLine.length;                        // first closer on a later line
+    66	    while (lo < hi) { const mid = (lo + hi) >> 1; if (cLine[mid] > j) hi = mid; else lo = mid + 1; }
+    67	    if (lo >= cLine.length) return -1;
+    68	    const k = firstAtLeast(1, 0, size - 1, lo, L);
+    69	    return k >= 0 && k < cLine.length ? cLine[k] : -1;
+    70	  };
+    71	  const spans = [];
+    72	  let pos = 0, o = 0, b = -2;                             // b: the next ``` at or after pos; -2 unknown, -1 none left
+    73	  while (pos < s.length) {
+    74	    while (o < openers.length && starts[openers[o][0]] < pos) o++;
+    75	    const [t, tLen] = o < openers.length ? openers[o] : [-1, 0];
+    76	    if (b !== -1 && b < pos) b = s.indexOf('```', pos);
+    77	    if (t < 0 && b < 0) break;
+    78	    if (t >= 0 && (b < 0 || starts[t] < b)) {
+    79	      const c = closerAfter(t, tLen);
+    80	      if (c < 0) { pos = (t + 1 < starts.length ? starts[t + 1] : s.length); continue; }   // unclosed: text
+    81	      const end = c + 1 < starts.length ? starts[c + 1] - 1 : s.length;
+    82	      spans.push([starts[t], end]);
+    83	      pos = end;
+    84	      continue;
+    85	    }
+    86	    const e = s.indexOf('```', b + 3);
+    87	    if (e < 0) { pos = b + 3; b = -1; continue; }         // unclosed: text, and no later ``` can close
+    88	    spans.push([b, e + 3]);
+    89	    pos = e + 3;
+    90	  }
+    91	  return spans;
+    92	}
+    93	
+    94	// drop every CLOSED fence span (an unclosed opener is ordinary text)
+    30	// lets it, and the block then runs, raw — fenced lines included — from the heading to the first
+    31	// line-start `### Requirement:` at or after the END of that heading match that is outside every
+    32	// fence, or to the end of the text; the walk resumes there. A heading inside a fence is block
+    33	// content, never a boundary. With no fenced heading this is exactly what the regex matched.
+    34	// -> [{ at, end, name }] in order
+    35	function requirementHeadings(text) {
+    36	  const spans = fenceSpans(text);
+    37	  const fenced = (at) => {                                   // binary search: is offset `at` inside a span?
+    38	    let lo = 0, hi = spans.length;
+    39	    while (lo < hi) { const mid = (lo + hi) >> 1; if (spans[mid][1] <= at) lo = mid + 1; else hi = mid; }
+    40	    return lo < spans.length && spans[lo][0] <= at;
+    41	  };
+    42	  const head = /^###\s+Requirement:\s+(.+?)\s*$/gm;
+    43	  const lead = /^###\s+Requirement:/gm;
+    44	  const out = [];
+    45	  let pos = 0;
+    46	  for (;;) {
+    47	    head.lastIndex = pos;
+    48	    let h;
+    49	    while ((h = head.exec(text)) !== null && fenced(h.index)) head.lastIndex = h.index + 1;
+    50	    if (!h) break;
+    51	    const headEnd = h.index + h[0].length;
+    52	    lead.lastIndex = headEnd;
+    53	    let b;
+    54	    while ((b = lead.exec(text)) !== null && fenced(b.index)) lead.lastIndex = b.index + 1;
+    55	    const end = b ? b.index : text.length;
+    56	    out.push({ at: h.index, end, name: h[1].trim() });
+    57	    pos = end;
+    58	    if (end >= text.length) break;
+    59	  }
+    60	  return out;
+    61	}
+    62	
+    63	function parseRequirementsStrict(text) {
+    64	  const map = new Map();
+    65	  const duplicates = [];
+    66	  for (const { at, end, name } of requirementHeadings(text)) {
+    67	    if (map.has(name)) duplicates.push(name);
+    68	    else map.set(name, text.slice(at, end).replace(/\s+$/, '') + '\n');
+    69	  }
+    70	  return { map, duplicates };
+    71	}
+    72	
+    73	// ---- CAS base stamps -------------------------------------------------------
+    74	
+    75	// sha256 over content with line endings normalized — a delta authored on Windows
+    76	// must fingerprint identically to the same store checked out with LF
+   294	function renderStore(storeText, store) {
+   295	  const first = requirementHeadings(storeText)[0];          // a fenced example heading is not where the store's blocks begin
+   296	  // the text before the first live requirement is kept as the store's preamble; a store with no live
+   297	  // requirement at all — empty, prose only, or only a fenced example — is ALL preamble, never dropped
+   298	  const header = first ? storeText.slice(0, first.at)
+   299	    : storeText.trim() ? storeText.replace(/\s*$/, '\n\n') : '';
+   300	  return header + [...store.values()].join('\n');
+   301	}
+   302	
+   303	// ---- paths and discovery ---------------------------------------------------
+   304	
+ CHANGELOG.md         |  4 +++
+ MIGRATING.md         |  5 +++
+ lib/archive-merge.js | 79 +++++++++++++++++++++++++++++-------------
+ lib/config.js        |  8 +++--
+ lib/gate.js          |  3 +-
+ lib/text.js          | 98 ++++++++++++++++++++++++++++++++++++++++++++++++++--
+ test/gate.test.js    |  6 ++++
+ 7 files changed, 172 insertions(+), 31 deletions(-)
+
+exec
+/usr/bin/zsh -lc "node -e 'const a=require(\"./lib/archive-merge\"); const t=require(\"./lib/text\"); const pre=\"# Store\\n\\n~~~\\n\";const raw=\"## ADDED Requirements\\n\\n### Requirement: Real\\nBody.\\n\\n~~~\\nexample\\n~~~\\n\\n#### Scenario: TX-99 real\\n- t\\n\";const p=a.parseDeltaStrict(raw);const m=a.merge(pre,p.delta,\"probe\");const rendered=a.renderStore(pre,m.store);const ops=new Map([[\"spec.md\",{added:[\"Real\"],modified:[],renamedPairs:[],removed:[]}]]);const texts=new Map([[\"spec.md\",rendered]]);const scenarios=new Map([[\"spec.md\",p.scenarios]]);const matcher={batch:titles=>({ids:titles.map(x=>x.match(/"'^TX-'"\\d+/)?.[0]||null)})};console.log(JSON.stringify({problems:p.problems,conflicts:m.conflicts,reportedAdded:m.merged,rendered,clean:t.stripFences(rendered),rawStoreBlocks:[...a.parseRequirementsStrict(rendered).map.keys()],scope:a.collectChangePairs(texts,ops),preflight:a.structuralPreflight(texts,ops,scenarios,matcher),rerunAdded:a.merge(rendered,p.delta,\"probe\").merged},null,2));'" in /root/terra/wt-fu1
+ succeeded in 0ms:
+{
+  "problems": [],
+  "conflicts": [],
+  "reportedAdded": [
+    "Real"
+  ],
+  "rendered": "# Store\n\n~~~\n\n### Requirement: Real\nBody.\n\n~~~\nexample\n~~~\n\n#### Scenario: TX-99 real\n- t\n",
+  "clean": "# Store\n\n\nexample\n~~~\n\n#### Scenario: TX-99 real\n- t\n",
+  "rawStoreBlocks": [],
+  "scope": {
+    "pairs": [
+      [
+        "spec.md",
+        "TX-99 real",
+        false
+      ]
+    ],
+    "requirements": []
+  },
+  "preflight": {
+    "refusals": [],
+    "debt": []
+  },
+  "rerunAdded": [
+    "Real"
+  ]
+}
+
+codex
+The three reported defects appear fixed. I found one new interaction in the preamble-preservation change: an unclosed tilde opener, which the span grammar treats as ordinary text, can pair with a fence in the newly added requirement. That hides the new requirement heading. The merge reports success, structural preflight returns no refusals, and a rerun adds the requirement again. I’m documenting the repro as a separate finding.
+
+exec
+/usr/bin/zsh -lc "node -e 'const assert=require(\"node:assert/strict\");const a=require(\"./lib/archive-merge\");const old=s=>{const r=/"'^###'"\\s+Requirement:\\s+(.+?)\\s*"'$(['"\\s\\S]*?)(?="'^###'"\\s+Requirement:|"'$(?!['"\\s\\S]))/gm;const map=new Map(),duplicates=[];let m;while((m=r.exec(s))){const n=m[1].trim();if(map.has(n))duplicates.push(n);else map.set(n,m[0].replace(/\\s+"'$/, "")+"'"\\n\");}return {map,duplicates};};for(const s of [\"### Requirement:\\n### Requirement: B\\nbody\\n\",\"### Requirement: A\\nx\\n### Requirement:\\n\",\"### Requirement: A\\n### Requirement: B\\n\",\"### Requirement:   \\n\\n### Requirement: C\\nz\",\"pre\\n### Requirement: A\\r\\nx\\r\\n### Requirement: B\\r\\n\",\"### Requirement: A\\nx\\n### Requirement: A\\ny\\n\"]){assert.deepEqual(a.parseRequirementsStrict(s),old(s));}const d=a.parseDeltaStrict(\"## ADDED Requirements\\n\\n### Requirement: Real\\n\\n#### Scenario: TX-99 r\\n- t\\n\").delta;for(const pre of [\"# Store\\n\\nExplain.\\n\\n~~~\\n### Requirement: Example\\n~~~\\n\",\"# Store\\n\\nProse only.\\n\",\"\"]){const out=a.renderStore(pre,a.merge(pre,d,\"probe\").store);assert.ok("'!pre||out.startsWith(pre.trimEnd()+"'"\\n\\n\"));assert.deepEqual([...a.parseRequirementsStrict(out).map.keys()],[\"Real\"]);assert.equal(a.renderStore(out,a.merge(out,d,\"probe\").store),out);}console.log(\"FTR-3 historical edge comparisons and FTR-4 original preservation/rerun cases agree.\");'" in /root/terra/wt-fu1
+ succeeded in 0ms:
+FTR-3 historical edge comparisons and FTR-4 original preservation/rerun cases agree.
+
+exec
+/usr/bin/zsh -lc "rg -n 'function (buildProjection|collectChangePairs|structuralPreflight|dropGuard|fingerprint)|parseRequirementsStrict\\(storeText\\)|renderStore\\(storeText|texts.set\\(suffix|sources.set\\(suffix' lib/archive-merge.js && git status --short" in /root/terra/wt-fu1
+ succeeded in 0ms:
+77:function fingerprint(text) {
+238:  const parsed = parseRequirementsStrict(storeText);
+294:function renderStore(storeText, store) {
+388:function buildProjection(storeRoot, deltaFiles, change) {
+404:    const storeBlocks = parseRequirementsStrict(storeText).map;
+427:    sources.set(suffix, { storeText: texts.get(suffix) || '', storeExists: texts.has(suffix), deltaText: raw });
+460:    texts.set(suffix, renderStore(storeText, r.store));
+493:function collectChangePairs(texts, deltaOps) {
+564:function structuralPreflight(texts, deltaOps, deltaScenarios, matcher) {
+843:function dropGuard(target, sources, entries, flowText, force) {
+1332:      const storeBlocks = parseRequirementsStrict(storeText).map;
+1357:      const texts = new Map([[label, renderStore(storeText, store)]]);
+1376:      fs.writeFileSync(tmp, renderStore(storeText, store));
+ M CHANGELOG.md
+ M MIGRATING.md
+ M lib/archive-merge.js
+ M lib/config.js
+ M lib/gate.js
+ M lib/text.js
+ M test/gate.test.js
+?? apriori/changes/fence-tilde-readers/
+?? test/fence-tilde-readers.test.js
+
+exec
+/usr/bin/zsh -lc "sed -n '1030,1085p' lib/archive-merge.js && sed -n '1346,1378p' lib/archive-merge.js && sed -n '493,521p' lib/archive-merge.js" in /root/terra/wt-fu1
+ succeeded in 0ms:
+    // move is the default now (batch C row 8), --changes-dir is only a location override
+    const probe = path.join(changesDir, 'archive', 'probe');
+    if (!containsFuturePath(changesDir, probe)) {
+      err.push(`archive: archive destination escapes ${changesDir} (symlinked archive/?)`);
+      return { code: 2, out, err };
+    }
+    // …and so is the destination's SHAPE: a plain file (or a symlink to one, or a broken
+    // link) squatting on <changes-dir>/archive would otherwise surface only after the
+    // stores were committed (P3 acceptance r1: the recognizable target-shape error is
+    // refused in preflight, before anything is written)
+    const archiveRoot = path.join(changesDir, 'archive');
+    let occupant = null;
+    try { occupant = fs.lstatSync(archiveRoot); } catch { /* absent — created at move time */ }
+    if (occupant) {
+      let target = occupant;
+      if (occupant.isSymbolicLink()) { try { target = fs.statSync(archiveRoot); } catch { target = null; } }
+      if (!target || !target.isDirectory()) {
+        err.push(`archive: ${archiveRoot} exists but is not a directory — remove or rename it before archiving`);
+        return { code: 2, out, err };
+      }
+    }
+  }
+  // --- readiness: the bundle's own state, judged AFTER every existing preflight guard so
+  // their diagnoses and exit codes are untouched, and BEFORE the integrity section so an
+  // unready change reports nothing but why it is unready. Same point in dry-run and --write.
+  const rdy = (o.readinessOf || readiness.readinessOf)({ bundleDir: path.join(changesDir, o.change), name: o.change, force: !!o.force, cwd });
+  if (!rdy.ready) {
+    for (const b of rdy.blockers) err.push(`archive: ${b.rule} ${b.detail}`);
+    // forceable = the owner's decision IS on record and only the --force half is missing;
+    // pending = a stop that names its cure but has no decision yet — not forceable, and the
+    // cure is printed so the owner knows which gates: line the double action starts with
+    const stuck = rdy.blockers.filter((b) => b.forceable);
+    const pending = rdy.blockers.filter((b) => !b.forceable && b.cure);
+    if (stuck.length && !o.force) {
+      err.push('archive: some of these are progress blockers — see --force and the gates: record it requires');
+    }
+    if (pending.length) {
+      const want = [...new Set(pending.map((b) => b.cure))];
+      err.push(o.force
+        ? `archive: --force needs a pre-recorded human decision in the bundle's flow-state; append one gates: entry per class:`
+        : 'archive: a stopped review loop is not forceable until the owner\'s decision is on record; append one gates: entry per class, then archive with --force:');
+      for (const c of want) err.push(c);
+    }
+    out.push('\nRESULT: NOT READY — nothing written');
+    return { code: 1, out, err };
+  }
+  for (const n of rdy.notes) out.push(`note: ${n}`);
+  for (const f of rdy.forced) { out.push(`forced: ${f.rule} ${f.detail}`); out.push(`  ${f.entry}`); }
+  // The archive DECLARATION (blueprint §8): a frozen snapshot claims three things and no more.
+  // It is not a new document — three lines in the run's own report, derived from the state it
+  // just judged. Printed in dry-run too, so what --write will declare is visible beforehand.
+  //
+  // And it may never be a SUCCESSFUL run that declares the implementation incomplete: readiness
+  // R5 already refuses a pending open item or a standing assumption, so this is the backstop that
+  // makes the two impossible to drift apart — an archive whose own declaration says the work is
+  // not finished is a false green, whatever the exit code would otherwise have been.
+          for (const d of e.dropped) console.error(`archive: ${e.name}: scenario ${sanField(d.id !== null ? d.id : d.title)} would be DROPPED — the single-file form never drops a store scenario; use the high-level form with an owner archive-drop decision`);
+          for (const x of e.ambiguous) console.error(`archive: ${e.name}: scenario key '${sanField(x.key)}' is ambiguous (${x.side}; old ${x.oldCount}/new ${x.newCount}) — disambiguate the delta (the single-file form never resolves this; the high-level form refuses it too)`);
+        }
+        console.log('\nRESULT: REFUSED — nothing written');
+        return 1;
+      }
+    }
+    // the structural preflight, on the one-module projection this form is about to write
+    {
+      const parsed = parseDeltaStrict(deltaText);
+      const label = a.delta;
+      const texts = new Map([[label, renderStore(storeText, store)]]);
+      const ops = new Map([[label, { added: [...delta.ADDED.keys()], modified: [...delta.MODIFIED.keys()],
+        renamedPairs: delta.RENAMED.map((p) => [...p]), removed: [...delta.REMOVED.keys()] }]]);
+      const scen = new Map([[label, scopedScenariosOf(parsed.scenarios, delta)]]);
+      const matcher = matcherFor(deps.idMatcherFactory, process.cwd());
+      const sp = matcher.error ? { failure: matcher.error } : structuralPreflight(texts, ops, scen, matcher);
+      const fails = sp.failure ? [`the structural check could not run — ${sp.failure}`] : sp.refusals;
+      if (fails.length) {
+        for (const f of fails) console.error(`archive: ${f}`);
+        console.log('\nRESULT: FAILED PREFLIGHT — nothing written');
+        return 1;
+      }
+      if (sp.debt && sp.debt.length) console.log(`note: store debt outside this change (reported, not a block): ${sp.debt.join('; ')}`);
+    }
+    if (a.write) {
+      // Stage the store to a temp file, then commit it via one atomic rename. The single-file
+      // form moves no change dir (that is the high-level form's job) — the store is the only write.
+      fs.mkdirSync(path.dirname(a.store), { recursive: true });
+      const tmp = a.store + '.tmp-archive';
+      fs.writeFileSync(tmp, renderStore(storeText, store));
+      fs.renameSync(tmp, a.store);
+      console.log(`\nRESULT: MERGED — ${a.store} rewritten`);
+function collectChangePairs(texts, deltaOps) {
+  const pairs = [];
+  const requirements = [];
+  for (const [label, text] of texts) {
+    const clean = stripDeprecatedBlocks(stripFences(text));
+    const ops = deltaOps.get(label);
+    if (!ops) {
+      for (const t of scanScenarioTitles(clean, true)) pairs.push([label, t, false]);
+      continue;
+    }
+    const removed = new Set(ops.removed);
+    const renamedNew = ops.renamedPairs.map(([, n]) => n);
+    const scopeNames = new Set([...ops.added, ...ops.modified, ...renamedNew].filter((n) => !removed.has(n)));
+    const { map } = parseRequirementsStrict(clean);
+    const firstBlock = clean.search(/^###\s+Requirement:/m);
+    const preamble = firstBlock >= 0 ? clean.slice(0, firstBlock) : clean;
+    for (const t of scanScenarioTitles(preamble, true)) pairs.push([label, t, false]);
+    for (const [name, block] of map) {
+      const scoped = scopeNames.has(name);
+      if (scoped) {
+        const operations = [];
+        if (renamedNew.includes(name)) operations.push('RENAMED');
+        if (ops.added.includes(name)) operations.push('ADDED');
+        if (ops.modified.includes(name)) operations.push('MODIFIED');
+        requirements.push({ file: label, name, operations });
+      }
+      for (const t of scanScenarioTitles(block, true)) pairs.push([label, t, scoped]);
+    }
+  }
+
+codex
+<!-- provenance: provider=openai model=unknown session=unknown date=2026-10-03 -->
+
+Round 3 review for `apriori/changes/fence-tilde-readers/review/code-review-v3.md`. Read-only review body for producer transcription under RUNBOOK §1 R2.
+
+- FTR-2: ADDRESSED — [fenceSpans](/root/terra/wt-fu1/lib/text.js:37) now retains the next backtick position, including an exhausted search. Advancing through tilde openers no longer searches the same suffix repeatedly. The max segment tree replaces per-length filtering: preprocessing is linear in input size, and each closer query uses logarithmic search and tree traversal. This removes both superlinear mechanisms identified in round 2. TX-02 now includes the large unmatched-opener input, distinct long openers preceding many short closers, and an unmatched backtick preceding tilde openers. Static complexity supports the fix independently of timing results.
+
+- FTR-3: ADDRESSED — [requirementHeadings](/root/terra/wt-fu1/lib/archive-merge.js:35) now consumes the complete historical heading match before searching for the block’s ending boundary, then resumes from that boundary. The original reproduction, `"### Requirement:\n### Requirement: B\nbody\n"`, again produces one complete block named `### Requirement: B`. TX-02 compares the historical regex against multiline names, nameless trailing headings, adjacent requirements, and CRLF. Bounded in-memory comparisons, including duplicate-name handling, corroborated the static reading.
+
+- FTR-4: ADDRESSED — [renderStore](/root/terra/wt-fu1/lib/archive-merge.js:294) now retains a nonempty document with no live requirement as preamble, normalizing its trailing whitespace to a blank line. The original closed-example reproduction and the prose-only case retain their content, append the first requirement, and rerun unchanged. TX-03 asserts those results and the empty-store case. The prose-only correction is declared in the contract, CHANGELOG, and MIGRATING. A separate interaction introduced by preserving preambles remains below.
+
+One new substantive finding:
+
+- FTR-5: **A preserved unmatched opener can hide the newly added requirement while archive reports success.**
+
+  Existing store:
+
+  ```text
+  # Store
+
+  ~~~
+  ```
+
+  ADDED delta:
+
+  ```text
+  ## ADDED Requirements
+
+  ### Requirement: Real
+  Body.
+
+  ~~~
+  example
+  ~~~
+
+  #### Scenario: TX-99 real
+  - t
+  ```
+
+  The existing store has no live requirement. Its unmatched tilde opener is ordinary text under the declared span grammar. After `renderStore` preserves that preamble and appends `Real`, the preamble’s opener pairs with the first tilde line inside the new block. The resulting closed span contains—and hides—the `Real` heading.
+
+  The product’s pure entry helpers produce this evidence chain:
+
+  - `parseDeltaStrict`: no problems.
+  - `merge`: no conflicts; reports `Real` added.
+  - `parseRequirementsStrict(rendered)`: no requirements.
+  - `collectChangePairs`: no scoped requirements; `TX-99 real` is classified outside the change.
+  - `structuralPreflight`: no refusals or debt.
+  - Repeating the merge reports `Real` added again.
+
+  **Risk:** a valid ADDED operation can be reported successful while its requirement disappears from structural discovery and its scenario escapes change-scoped validation. Reruns duplicate the addition. This is introduced by retaining previously discarded preamble text. The single-file archive path proceeds from this structural preflight directly to writing the rendered store; an ADDED-only operation receives no MODIFIED drop check.
+
+  **Suggested fix:** validate the composed projection against the operations and scenario scope it must preserve. When retained preamble syntax consumes an inserted requirement, refuse before writing with a diagnostic identifying the boundary interaction. Cover unmatched preamble markers followed by fenced content in the first added requirement, including rerun behavior.
+
+Examined: the round-3 scanner, boundary walker, rendering changes, updated assertions and contract, migration notes, dispositions, and review-progress entry; their effects on projection, scenario scope, integrity inputs, and archive preflight. Fingerprint construction is unchanged. No further substantive issue was found in the reviewed changes.
+
+Validation used static inspection and bounded in-memory reproductions. I did not modify files, run the full suite or corpus traversal, inspect credentials/human notes, or read raw review transcripts. Producer-reported suite and timing results remain producer evidence.
+
+No new advisories. The approach remains appropriate; FTR-5 is a composition and preflight defect.
+
+VERDICT: 1 issues open
+tokens used
+127,942
+<!-- provenance: provider=openai model=unknown session=unknown date=2026-10-03 -->
+
+Round 3 review for `apriori/changes/fence-tilde-readers/review/code-review-v3.md`. Read-only review body for producer transcription under RUNBOOK §1 R2.
+
+- FTR-2: ADDRESSED — [fenceSpans](/root/terra/wt-fu1/lib/text.js:37) now retains the next backtick position, including an exhausted search. Advancing through tilde openers no longer searches the same suffix repeatedly. The max segment tree replaces per-length filtering: preprocessing is linear in input size, and each closer query uses logarithmic search and tree traversal. This removes both superlinear mechanisms identified in round 2. TX-02 now includes the large unmatched-opener input, distinct long openers preceding many short closers, and an unmatched backtick preceding tilde openers. Static complexity supports the fix independently of timing results.
+
+- FTR-3: ADDRESSED — [requirementHeadings](/root/terra/wt-fu1/lib/archive-merge.js:35) now consumes the complete historical heading match before searching for the block’s ending boundary, then resumes from that boundary. The original reproduction, `"### Requirement:\n### Requirement: B\nbody\n"`, again produces one complete block named `### Requirement: B`. TX-02 compares the historical regex against multiline names, nameless trailing headings, adjacent requirements, and CRLF. Bounded in-memory comparisons, including duplicate-name handling, corroborated the static reading.
+
+- FTR-4: ADDRESSED — [renderStore](/root/terra/wt-fu1/lib/archive-merge.js:294) now retains a nonempty document with no live requirement as preamble, normalizing its trailing whitespace to a blank line. The original closed-example reproduction and the prose-only case retain their content, append the first requirement, and rerun unchanged. TX-03 asserts those results and the empty-store case. The prose-only correction is declared in the contract, CHANGELOG, and MIGRATING. A separate interaction introduced by preserving preambles remains below.
+
+One new substantive finding:
+
+- FTR-5: **A preserved unmatched opener can hide the newly added requirement while archive reports success.**
+
+  Existing store:
+
+  ```text
+  # Store
+
+  ~~~
+  ```
+
+  ADDED delta:
+
+  ```text
+  ## ADDED Requirements
+
+  ### Requirement: Real
+  Body.
+
+  ~~~
+  example
+  ~~~
+
+  #### Scenario: TX-99 real
+  - t
+  ```
+
+  The existing store has no live requirement. Its unmatched tilde opener is ordinary text under the declared span grammar. After `renderStore` preserves that preamble and appends `Real`, the preamble’s opener pairs with the first tilde line inside the new block. The resulting closed span contains—and hides—the `Real` heading.
+
+  The product’s pure entry helpers produce this evidence chain:
+
+  - `parseDeltaStrict`: no problems.
+  - `merge`: no conflicts; reports `Real` added.
+  - `parseRequirementsStrict(rendered)`: no requirements.
+  - `collectChangePairs`: no scoped requirements; `TX-99 real` is classified outside the change.
+  - `structuralPreflight`: no refusals or debt.
+  - Repeating the merge reports `Real` added again.
+
+  **Risk:** a valid ADDED operation can be reported successful while its requirement disappears from structural discovery and its scenario escapes change-scoped validation. Reruns duplicate the addition. This is introduced by retaining previously discarded preamble text. The single-file archive path proceeds from this structural preflight directly to writing the rendered store; an ADDED-only operation receives no MODIFIED drop check.
+
+  **Suggested fix:** validate the composed projection against the operations and scenario scope it must preserve. When retained preamble syntax consumes an inserted requirement, refuse before writing with a diagnostic identifying the boundary interaction. Cover unmatched preamble markers followed by fenced content in the first added requirement, including rerun behavior.
+
+Examined: the round-3 scanner, boundary walker, rendering changes, updated assertions and contract, migration notes, dispositions, and review-progress entry; their effects on projection, scenario scope, integrity inputs, and archive preflight. Fingerprint construction is unchanged. No further substantive issue was found in the reviewed changes.
+
+Validation used static inspection and bounded in-memory reproductions. I did not modify files, run the full suite or corpus traversal, inspect credentials/human notes, or read raw review transcripts. Producer-reported suite and timing results remain producer evidence.
+
+No new advisories. The approach remains appropriate; FTR-5 is a composition and preflight defect.
+
+VERDICT: 1 issues open

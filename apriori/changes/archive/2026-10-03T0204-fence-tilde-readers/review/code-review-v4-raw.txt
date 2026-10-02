@@ -1,0 +1,1135 @@
+OpenAI Codex v0.159.3
+--------
+workdir: /root/terra/wt-fu1
+model: gpt-6-astra
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 01a0fda1-9fd6-78f2-8cb7-2ecc5bd2b671
+--------
+user
+Round 4 of code-review for `fence-tilde-readers` (same worktree, still uncommitted). FTR-5 was the second composition edge in a row (after FTR-4), so instead of patching it alone the producer added one general check: `renderReadback` reads every rendered store back through the same grammar and requires exactly the merged blocks, in order; when they differ, the module is refused in both archive forms — a projection conflict in the high-level form, an exit-1 FAILED PREFLIGHT before anything is written in the single-file form — naming the first block that went missing. The disposition and evidence are the `decision: FTR-5 fixed` line in apriori/changes/fence-tilde-readers/flow-state.md; the round-4 review-progress note is the last `gates:` entry.
+Answer FTR-5 with ADDRESSED or NOT ADDRESSED and your evidence (FTR-1..FTR-4 you found addressed; say so again only if this change disturbs them).
+Scope is what changed since round 3: lib/archive-merge.js (renderReadback; its use in buildProjection and in the single-file form, which now renders once), test/fence-tilde-readers.test.js (TX-03's readback cases: pure, single-file CLI, high-level projection, and every repository store reading back as itself), the text delta, CHANGELOG and MIGRATING.
+Report a NEW finding only if it breaks the contract or a safety property — in particular whether the readback can refuse a store archive accepted before (deprecated blocks, renames, reruns, CRLF, an empty or prose-only store), and whether any write path renders without the check. Give the full review body for apriori/changes/fence-tilde-readers/review/code-review-v4.md, ending with exactly one VERDICT line.
+codex
+I’ll trace the readback check through both archive forms, check the FTR-5 repro and compatibility cases, and confirm that each write path uses the validated rendering.
+
+exec
+/usr/bin/zsh -lc 'cat test/fence-tilde-readers.test.js && cat apriori/changes/fence-tilde-readers/specs/text/spec.md && git diff -- CHANGELOG.md MIGRATING.md' in /root/terra/wt-fu1
+ succeeded in 0ms:
+'use strict';
+// fence-tilde-readers — TX-01 (the shared fence grammar: ``` as always, ~~~ by line, marker and
+// length), TX-02 (the backtick reading is unchanged: every Markdown file in this repository strips
+// exactly as the historical regex did), TX-03 (every structural reader honours the same fences:
+// config rows, scenario discovery in check and verify alike, the delta parser, the store scan and
+// the MODIFIED-block engine). Follow-up FU-1 of batch-review-fixes; owner 2026-10-03 "开干".
+const { test } = require('node:test');
+const assert = require('node:assert');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
+const text = require('../lib/text');
+
+const ROOT = path.join(__dirname, '..');
+const OLD = (t) => t.replace(/```[\s\S]*?```/g, '');           // the historical backtick reading
+
+test('TX-01 the shared fence grammar: tildes by line, marker and length; backticks as always', () => {
+  const S = text.stripFences;
+  // a tilde fence hides what it holds, structure-shaped lines included
+  assert.strictEqual(S('a\n~~~\n#### Scenario: XX-99 fake\n~~~\nb'), 'a\n\nb');
+  // an info string may follow the opener; the closer may be longer, indented up to three spaces, trailing blanks allowed
+  assert.strictEqual(S('~~~ md\nX\n   ~~~~  \nY'), '\nY');
+  // a shorter run, a tagged line or the other marker does not close it
+  assert.strictEqual(S('~~~~\n~~~\nX\n~~~ md\n```\n~~~~\nY'), '\nY');
+  // inline ~~~ is ordinary text, and so is a line indented four spaces
+  assert.strictEqual(S('say `~~~` twice: `~~~`'), 'say `~~~` twice: `~~~`');
+  assert.strictEqual(S('    ~~~\nX\n    ~~~'), '    ~~~\nX\n    ~~~');
+  // an unclosed tilde opener is ordinary text, as an unclosed backtick one is
+  assert.strictEqual(S('~~~\nX'), '~~~\nX');
+  assert.strictEqual(S('```\nX'), '```\nX');
+  // whichever opens first wins; inside one, the other marker is content
+  assert.strictEqual(S('```\n~~~\n```\nY\n~~~'), '\nY\n~~~');
+  assert.strictEqual(S('~~~\n```\n~~~\nY\n```'), '\nY\n```');
+  // CRLF lines read the same
+  assert.strictEqual(S('~~~\r\nX\r\n~~~\r\nY'), '\nY');
+  // spans are what stripFences removes, in order
+  const t = 'a\n```\nx\n```\nb\n~~~\ny\n~~~\nc';
+  assert.deepStrictEqual(text.fenceSpans(t).map(([s, e]) => t.slice(s, e)), ['```\nx\n```', '~~~\ny\n~~~']);
+  // the line readers' open/close rule: ``` as before (any indentation; any ```-led line closes), ~~~ by marker and length
+  assert.deepStrictEqual(text.fenceOpen('  ```js'), { ch: '`', len: 3 });
+  assert.deepStrictEqual(text.fenceOpen('~~~~ md'), { ch: '~', len: 4 });
+  assert.strictEqual(text.fenceOpen('    ~~~'), null);
+  assert.strictEqual(text.fenceCloses({ ch: '`', len: 3 }, '```js'), true);
+  assert.strictEqual(text.fenceCloses({ ch: '~', len: 4 }, '~~~'), false);
+  assert.strictEqual(text.fenceCloses({ ch: '~', len: 3 }, '~~~ md'), false);
+  assert.strictEqual(text.fenceCloses({ ch: '~', len: 3 }, ' ~~~~ '), true);
+  assert.strictEqual(text.fenceCloses({ ch: '~', len: 3 }, '```'), false);
+});
+
+test('TX-02 the backtick reading is unchanged across this repository', () => {
+  const files = [];
+  const walk = (d) => {
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      if (e.name === 'node_modules' || e.name === '.git') continue;
+      const p = path.join(d, e.name);
+      if (e.isDirectory()) walk(p);
+      else if (e.isFile() && e.name.endsWith('.md')) files.push(p);
+    }
+  };
+  walk(ROOT);
+  assert.ok(files.length > 200, `the corpus is the repository's Markdown (${files.length} files)`);
+  const differ = files.filter((f) => { const t = fs.readFileSync(f, 'utf8'); return text.stripFences(t) !== OLD(t); });
+  assert.deepStrictEqual(differ.map((f) => path.relative(ROOT, f)), [], 'no file with only backtick fences may read differently');
+  // and synthetic edges of the historical reading
+  for (const t of ['```x``` and ```', '````\n```\nX\n```\n````', 'a ``` b ``` c ``` d', '```\n```\n```'])
+    assert.strictEqual(text.stripFences(t), OLD(t), JSON.stringify(t));
+  // every spec store and delta splits into requirement blocks exactly as the historical regex split it
+  const am = require('../lib/archive-merge');
+  const REQ_RE = /^###\s+Requirement:\s+(.+?)\s*$([\s\S]*?)(?=^###\s+Requirement:|$(?![\s\S]))/gm;
+  const oldBlocks = (t) => { const out = []; let m; REQ_RE.lastIndex = 0; while ((m = REQ_RE.exec(t)) !== null) out.push([m[1].trim(), m[0].replace(/\s+$/, '') + '\n']); return out; };
+  const specs = files.filter((f) => /[\/]specs[\/]/.test(path.relative(ROOT, f)) && path.relative(ROOT, f).startsWith('apriori'));
+  assert.ok(specs.length > 100, `stores and deltas (${specs.length})`);
+  for (const f of specs) {
+    const t = fs.readFileSync(f, 'utf8');
+    assert.deepStrictEqual([...am.parseRequirementsStrict(t).map], oldBlocks(t).filter(([n], i, a) => a.findIndex(([x]) => x === n) === i), path.relative(ROOT, f));
+  }
+  // the historical regex's own walk is kept where no fence is involved (review FTR-3): a heading
+  // whose name runs onto the next line, a nameless heading line ending the previous block, adjacent blocks
+  for (const t of ['### Requirement:\n### Requirement: B\nbody\n', '### Requirement: A\nx\n### Requirement:\n',
+    '### Requirement: A\n### Requirement: B\n', '### Requirement:   \n\n### Requirement: C\nz', 'pre\n### Requirement: A\r\nx\r\n### Requirement: B\r\n'])
+    assert.deepStrictEqual([...am.parseRequirementsStrict(t).map], oldBlocks(t), JSON.stringify(t));
+  // no input makes the scanner superlinear (review FTR-2): far beyond any real document, each well
+  // under two seconds — a quadratic scan of the first input alone would take minutes
+  const distinct = (n) => { let t = ''; for (let L = n + 3; L >= 4; L--) t += '~'.repeat(L) + ' tag\n'; return t + '~~~\n'.repeat(n * n); };
+  for (const t of ['~~~info\n'.repeat(200000), '~~~~\n~~~\n'.repeat(100000), distinct(600), '```\n' + '~~~info\n'.repeat(100000)]) {
+    const t0 = process.hrtime.bigint();
+    text.stripFences(t);
+    assert.ok(Number(process.hrtime.bigint() - t0) / 1e6 < 2000, `the fence scan stays near-linear (${t.length} bytes)`);
+  }
+});
+
+test('TX-03 every structural reader honours the same fences', () => {
+  const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-tx-'));
+  // config: a tilde-fenced row grants nothing; the live row decides; an unterminated tilde fence makes the rest inert
+  const config = require('../lib/config');
+  const c1 = config.parseConfig('~~~\n| cas | optional |\n~~~\n\n| cas | required |\n');
+  assert.strictEqual(c1.values.get('cas'), 'required');
+  assert.ok(!config.parseConfig('~~~ md\n| cas | optional |\n').values.has('cas'));
+  assert.strictEqual(config.parseConfig('~~~~\n~~~\n| cas | optional |\n~~~~\n| test-cmd | npm test |\n').values.get('test-cmd'), 'npm test');
+  assert.ok(!config.parseConfig('~~~~\n~~~\n| cas | optional |\n~~~~\n').values.has('cas'));
+  // scenario discovery: verify's scanner and check's CLI both pass over a tilde-fenced example (CK-14 parity)
+  const am = require('../lib/archive-merge');
+  const spec = '### Requirement: R\nBody.\n\n~~~md\n#### Scenario: no id fenced example\n~~~\n\n#### Scenario: TX-90 real\n- t\n';
+  assert.deepStrictEqual(am.scanScenarioTitles(spec), ['TX-90 real']);
+  const root = tmp();
+  fs.mkdirSync(path.join(root, 'apriori', 'specs', 'm'), { recursive: true });
+  fs.writeFileSync(path.join(root, 'apriori', 'specs', 'm', 'spec.md'), spec);
+  const ck = spawnSync('node', [path.join(ROOT, 'bin', 'apriori.js'), 'check'], { cwd: root, encoding: 'utf8' });
+  assert.strictEqual(ck.status, 0, ck.stdout + ck.stderr);
+  const col = require('../lib/spec-runner').collectScenarios([path.join(root, 'apriori', 'specs')], /[A-Z]+-\d+/);
+  assert.deepStrictEqual([...col.byId.keys()], ['TX-90']);
+  assert.deepStrictEqual(col.unidentified, []);
+  // the delta parser: a tilde fence is opaque — its heading-shaped lines are body, never structure or a problem
+  const delta = '## ADDED Requirements\n\n### Requirement: Fenced\n\nBody.\n\n~~~md\n## Bogus Heading\n### Requirement: InsideFence\n<!-- apriori-base: sha256:zzz -->\n~~~\n\n#### Scenario: TX-91 f\n- t\n';
+  const p = am.parseDeltaStrict(delta);
+  assert.deepStrictEqual(p.problems, []);
+  assert.deepStrictEqual([...p.delta.ADDED.keys()], ['Fenced']);
+  assert.match(p.delta.ADDED.get('Fenced'), /Bogus Heading/);
+  assert.deepStrictEqual(am.parseDeltaStrict(delta.replace(/\n/g, '\r\n')).problems, []);
+  // the store scan and the MODIFIED-block engine read the same fences
+  const store = '### Requirement: A\nProse.\n\n~~~\n### Requirement: Ghost\n#### Scenario: TX-92 ghost\n~~~\n\n#### Scenario: TX-93 a\n- t\n';
+  // the store scan: a fenced requirement heading is block content, never a boundary — on raw text too
+  // (merge, the MODIFIED baseline and the single-file form read the raw store — review FTR-1)
+  assert.deepStrictEqual([...am.parseRequirementsStrict(store).map.keys()], ['A']);
+  assert.strictEqual(am.parseRequirementsStrict(store).map.get('A'), store.replace(/\s+$/, '') + '\n', 'the block is the raw text, fence and all');
+  assert.deepStrictEqual([...am.parseRequirementsStrict(text.stripFences(store)).map.keys()], ['A']);
+  // through the archive merge: a prose-only MODIFIED replacement of the whole block leaves no ghost
+  // behind, the projection lists the real scenario once, and a rerun changes nothing
+  const fullStore = '# Store\n\n' + store;
+  const replaced = store.replace('Prose.', 'Updated prose.');
+  const delta2 = am.parseDeltaStrict(`## MODIFIED Requirements\n\n${replaced}`);
+  assert.deepStrictEqual(delta2.problems, []);
+  const merged = am.merge(fullStore, delta2.delta, 'c');
+  assert.deepStrictEqual(merged.conflicts, []);
+  const rendered = am.renderStore(fullStore, merged.store);
+  assert.deepStrictEqual(am.scanScenarioTitles(rendered), ['TX-93 a']);
+  assert.ok(rendered.startsWith('# Store\n\n### Requirement: A\nUpdated prose.'));
+  const again = am.merge(rendered, delta2.delta, 'c');
+  assert.strictEqual(am.renderStore(rendered, again.store), rendered, 'a rerun is a no-op');
+  // a store with no live requirement — only a fenced example, or prose — keeps its text when the first
+  // requirement is added (review FTR-4); an empty store renders just the blocks
+  const added = am.parseDeltaStrict('## ADDED Requirements\n\n### Requirement: Real\n\n#### Scenario: TX-99 r\n- t\n').delta;
+  for (const pre of ['# Store\n\nExplain.\n\n~~~\n### Requirement: Example\n~~~\n', '# Store\n\nProse only.\n']) {
+    const out = am.renderStore(pre, am.merge(pre, added, 'c').store);
+    assert.strictEqual(out, pre.replace(/\s*$/, '\n\n') + '### Requirement: Real\n\n#### Scenario: TX-99 r\n- t\n');
+    assert.deepStrictEqual(am.scanScenarioTitles(out), ['TX-99 r']);
+    assert.strictEqual(am.renderStore(out, am.merge(out, added, 'c').store), out, 'a rerun is a no-op');
+  }
+  assert.strictEqual(am.renderStore('', am.merge('', added, 'c').store), '### Requirement: Real\n\n#### Scenario: TX-99 r\n- t\n');
+  // composition never lets one part swallow another (review FTR-5): a kept preamble holding an unclosed
+  // tilde opener would pair with the first fence inside the added block and hide its heading — the
+  // rendered store must read back as exactly its merged blocks, or the archive refuses, writing nothing
+  const swallowing = '# Store\n\n~~~\n';
+  const fencedAdd = am.parseDeltaStrict('## ADDED Requirements\n\n### Requirement: Real\nBody.\n\n~~~\nexample\n~~~\n\n#### Scenario: TX-99 real\n- t\n');
+  const sm = am.merge(swallowing, fencedAdd.delta, 'c');
+  assert.match(am.renderReadback(am.renderStore(swallowing, sm.store), sm.store) || '', /'Real' is swallowed or altered by the text before it/);
+  const dir = tmp(), storeFile = path.join(dir, 'spec.md'), deltaFile = path.join(dir, 'delta.md');
+  fs.writeFileSync(storeFile, swallowing);
+  fs.writeFileSync(deltaFile, '## ADDED Requirements\n\n### Requirement: Real\nBody.\n\n~~~\nexample\n~~~\n\n#### Scenario: TX-99 real\n- t\n');
+  const one = spawnSync('node', [path.join(ROOT, 'bin', 'apriori.js'), 'archive', '--store', storeFile, '--delta', deltaFile, '--change', 'c', '--write', '--no-cas'], { cwd: dir, encoding: 'utf8' });
+  assert.strictEqual(one.status, 1, one.stdout + one.stderr);
+  assert.match(one.stderr, /'Real' is swallowed or altered by the text before it/);
+  assert.match(one.stdout, /RESULT: FAILED PREFLIGHT — nothing written/);
+  assert.strictEqual(fs.readFileSync(storeFile, 'utf8'), swallowing, 'nothing written');
+  // the high-level form's projection refuses the same module as a conflict (archive then writes nothing)
+  const proj = tmp();
+  fs.mkdirSync(path.join(proj, 'apriori', 'specs', 'kv'), { recursive: true });
+  fs.writeFileSync(path.join(proj, 'apriori', 'specs', 'kv', 'spec.md'), swallowing);
+  fs.mkdirSync(path.join(proj, 'apriori', 'changes', 'c', 'specs', 'kv'), { recursive: true });
+  const dfile = path.join(proj, 'apriori', 'changes', 'c', 'specs', 'kv', 'spec.md');
+  fs.writeFileSync(dfile, '## ADDED Requirements\n\n### Requirement: Real\nBody.\n\n~~~\nexample\n~~~\n\n#### Scenario: TX-99 real\n- t\n');
+  const pj = am.buildProjection(path.join(proj, 'apriori', 'specs'), am.discoverDeltas(path.join(proj, 'apriori', 'changes'), 'c').files, 'c');
+  assert.ok(pj.conflicts.some((c) => /'Real' is swallowed or altered by the text before it/.test(c)), JSON.stringify(pj.conflicts));
+  assert.strictEqual(pj.texts.get('kv/spec.md'), swallowing, 'the refused module keeps its store text in the projection (nothing rendered over it)');
+  // and every store in this repository renders and reads back as its own blocks
+  for (const f of fs.readdirSync(path.join(ROOT, 'apriori', 'specs'))) {
+    const t = fs.readFileSync(path.join(ROOT, 'apriori', 'specs', f, 'spec.md'), 'utf8');
+    const m = am.parseRequirementsStrict(t).map;
+    assert.strictEqual(am.renderReadback(am.renderStore(t, m), m), null, f);
+  }
+  // the engine: a scenario-looking line inside a tilde fence is body, not a scenario — rewriting the
+  // fence's contents drops nothing, and the real scenario is retained by its id
+  const idOf = (title) => { const m = /^([A-Z]+-\d+)\b/.exec(title); return m ? m[1] : null; };
+  const cmp = am.compareModifiedBlock(store.trim(), store.replace('#### Scenario: TX-92 ghost', 'an example, reworded').trim(), idOf);
+  assert.deepStrictEqual(cmp.dropped, []);
+  assert.deepStrictEqual(cmp.ambiguous, []);
+  assert.deepStrictEqual(cmp.retained.map((r) => r.id), ['TX-93']);
+  assert.deepStrictEqual(cmp.missingLines, [{ scenario: null, line: '#### Scenario: TX-92 ghost' }], 'the reworded fenced line is prose that went missing, reported as such');
+  // the review reader: a verdict quoted in a tilde fence of a self-contained doc is an example, and a
+  // round summary's id lists and re-review conclusions skip what a tilde fence holds
+  const review = require('../lib/review');
+  const bundle = tmp();
+  fs.mkdirSync(path.join(bundle, 'review'));
+  const PROV = '<!-- provenance: provider=anthropic model=claude-sonnet-5 session=sess-1 date=2026-08-24 -->';
+  fs.writeFileSync(path.join(bundle, 'review', 'req-review-v1.md'),
+    `${PROV}\n# Review\n\nThe vocabulary:\n\n~~~\nVERDICT: ESCALATE\n~~~\n\nMy conclusion:\n\nVERDICT: ACCEPT\n`);
+  const f = review.reviewFacts(bundle);
+  assert.deepStrictEqual(f.problems, []);
+  assert.strictEqual(f.families[0].verdict, 'accept');
+  const conc = review.reReviewConclusions('- AB-1: ADDRESSED — fixed\n~~~\n- AB-2: NOT ADDRESSED — quoted example\n~~~\n');
+  assert.deepStrictEqual([...conc.keys()], ['AB-1']);
+});
+# Delta — text (fence-tilde-readers)
+
+## ADDED Requirements
+
+### Requirement: one fence grammar for every structural reader
+`lib/text.js` SHALL define the one fence grammar every structural reader of Markdown uses — this tool's own grammar, not CommonMark (lists, blockquotes and other containers are not modeled). Backticks keep the historical reading byte for byte: a run of three backticks anywhere opens and the next run of three closes, and an unclosed opener is ordinary text. Tildes open only as a line whose first non-blank characters (up to three spaces in) are three or more `~`, an info string allowed after them, and close at the first later line holding only `~` at least as many (up to three spaces in, trailing blanks allowed); an inline `~~~` is ordinary text. Whichever opens first wins, and inside a fence the other marker is content; CRLF lines read as LF lines. Span readers (`stripFences`, `fenceSpans`) treat an unclosed tilde opener as ordinary text, as they do a backtick one; line readers use the same open and close rule (`fenceOpen`, `fenceCloses`) and keep their own policy for an unterminated fence. The readers SHALL be: scenario discovery in `check` and in `verify` (one scanner, so they agree), the delta parser in `archive`, requirement-block boundaries in a store wherever they are read — the merge, the render, the MODIFIED baselines, the single-file form and the change-scope scan — walked exactly as the historical requirement regex walked them (a heading's name may run onto its next line; a block ends at the first later line-start `### Requirement:`), except that a heading inside a fence of either marker is block content, the block keeping its raw text; and the render keeps a store's text before its first live requirement — all of it when the store has none yet — and must read back as exactly its merged blocks, in order: when a part's text would swallow another (an unclosed fence opener in a kept preamble or an earlier block pairing with a fence further on), `archive` refuses that module in both forms, naming the first block that went missing, and writes nothing — the MODIFIED-block comparison engine, the process-config reader, gate's truth-doc `source-commit` reader (C6), and the review reader — verdict lines of a self-contained review document, and the round summary's opening ids and re-review conclusions. Existing Markdown that uses only backtick fences SHALL strip exactly as before, and every spec store and delta in this repository SHALL split into the same requirement blocks as before. The scan SHALL stay near-linear on any input: no position is searched again for a backtick run once passed, and an unclosed opener never rescans or refilters the rest of the text. Outside this grammar, by design: the state-file reader (`lib/flow.js`, which already reads tildes) and the golden-path script's Quickstart shell-block extraction (`scripts/golden-path.mjs`, which reads one known README).
+
+#### Scenario: TX-01 the shared fence grammar: tildes by line, marker and length; backticks as always
+- WHEN `stripFences`, `fenceSpans`, `fenceOpen` and `fenceCloses` read tilde fences with and without info strings, longer and indented closers, shorter or tagged or other-marker lines inside, inline `~~~`, a four-space-indented run, unclosed openers of either marker, one marker's fence holding the other's, and CRLF lines
+- THEN a tilde fence is removed from its opener line through its closer line; a shorter, tagged or other-marker line does not close it; inline and four-space runs are text; an unclosed opener of either marker is text; the first opener wins and the other marker inside is content; CRLF reads as LF; the spans are exactly what is removed, in order; and the line rule opens a backtick fence at any indentation and closes it on any line led by three backticks, while a tilde fence opens up to three spaces in and closes only on a bare run at least as long
+
+#### Scenario: TX-02 the backtick reading is unchanged across this repository
+- WHEN every Markdown file in the repository (more than two hundred: specs, archived bundles, reviews, docs) and synthetic backtick edges (an inline span, a longer run, an odd run) are read; every spec store and delta among them is split into requirement blocks; unfenced edge headings (a name on the next line, a nameless heading line, adjacent blocks, CRLF) are split; and hundreds of thousands of unmatched openers, long openers over short bare runs, hundreds of distinct opener lengths over a third of a million bare runs, and an unclosed backtick before a hundred thousand tilde openers are scanned
+- THEN `stripFences` returns exactly what the historical lazy backtick-span regex returned for every one of them; each store, delta and edge case splits into exactly the blocks the historical requirement regex produced; and each pathological scan finishes in under two seconds
+
+#### Scenario: TX-03 every structural reader honours the same fences
+- WHEN a process-config holds a tilde-fenced `| cas | optional |` beside a live row, an unterminated tilde fence, and a longer tilde fence a shorter run does not close; a spec holds a tilde-fenced `#### Scenario:` example; a delta holds a tilde fence of heading-shaped lines inside an ADDED block (LF and CRLF); a store requirement holds a tilde-fenced requirement and scenario heading that a MODIFIED replacement rewords; a self-contained review doc quotes `VERDICT: ESCALATE` inside a tilde fence above its real verdict; and a re-review summary quotes a conclusion line inside a tilde fence
+- THEN the fenced config rows grant nothing (the live row decides; the unterminated fence makes the rest inert); `check` and `verify` both pass over the fenced scenario example and bind only the real one; the delta parses with no problem, one requirement, and the fenced lines kept in its body; the store scan — on the raw store as on the stripped one — sees one requirement whose block is the raw text, fence and all; a prose-only MODIFIED replacement merged and rendered leaves no ghost block, lists the real scenario once, and is a no-op when rerun; a store holding only a fenced example, or only prose, keeps all of its text when its first requirement is ADDED (and an empty store renders just the block), each a no-op when rerun; a store whose preamble holds an unclosed tilde opener, given an ADDED requirement whose body holds a tilde fence, is refused — the readback names the swallowed requirement, the single-file form exits 1 with `FAILED PREFLIGHT — nothing written` and leaves the store byte-identical, the high-level projection reports it as a conflict and renders nothing over the store — while every store in this repository renders and reads back as its own blocks; the engine drops nothing, retaining the real scenario and reporting the reworded fenced line as missing prose; the review reads only the real verdict with no problem, and only the unfenced conclusion counts (gate C6's fenced example is GT-20's, whose test carries the tilde case too)
+
+## Notes
+
+Follow-up FU-1 of batch-review-fixes (registered there): the shared readers saw only backtick fences, so a tilde-fenced example in a spec, delta, config, truth doc or self-contained review was read as structure. The grammar is declared as the tool's own on purpose — CK-11's line-based CommonMark subset kept missing container edges until the owner had it read the runbook header literally (batch-recheck-fixes); readers here need agreement and the tilde marker, not CommonMark conformance. `flow.js` already read tildes for the state file and is unchanged. Review round 1: the store's requirement boundaries were read from raw text without any fence (FTR-1 — for backtick fences too, before this change), and an unclosed tilde opener rescanned the rest of the text (FTR-2); both fixed, with the corpus split guard and a performance bound in TX-02. Round 2: the backtick search was still repeated per iteration and the closer index refiltered per length (FTR-2, now a cached search and a max segment tree), the boundary walk had stopped following the regex's own consumption of a multi-line heading (FTR-3, now the regex's walk), and a store with no live requirement lost its text when one was added (FTR-4 — historically so for a prose-only store too; now kept). Round 3: keeping that text let an unclosed opener in it swallow the added block (FTR-5); the rendered store is now read back against its merged blocks and the module refused when they differ — a check that also covers any other composition of parts, backtick fences included.
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index f84a532..a511cb6 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -25,6 +25,10 @@ Known limitations, stated as they stand:
+ Later preview snapshots are cut from `release/v6` after v6-dev work merges back; fixes in flight
+ (authorization-scope, archive-manifest) are not part of this snapshot.
+ 
++## Unreleased — fence-tilde-readers: one fence grammar, tildes included
++
++- Every structural Markdown reader — scenario discovery in `check` and `verify`, the delta parser, the store scan and the MODIFIED-block engine in `archive`, the process-config reader, gate's truth-doc `source-commit` reader, and the review reader — now uses one fence grammar from `lib/text.js`: a `~~~` fence (a line of three or more `~`, closed by a bare line of at least as many) is opaque like a backtick fence, so a tilde-fenced example of a config row, scenario, requirement, stamp or verdict no longer takes effect. A store's requirement blocks no longer split at a requirement heading inside a fence of either marker (before, a fenced example heading split the block in `archive`'s merge, for backtick fences too); the block keeps its raw text — and a store with no requirement yet (prose, or only a fenced example) keeps its text when its first requirement is added, where `archive` used to drop it. `archive` now reads every rendered store back against its merged requirement blocks and refuses the module, writing nothing, when the text of one part would swallow another (an unclosed fence opener before a block). Backtick fences strip exactly as before, and every spec store and delta in this repository splits into the same blocks (both checked). The grammar is the tool's own, not CommonMark. Follow-up FU-1 of batch-review-fixes.
++
+ ## Unreleased — init-premanifest-adoption: a project mid-migration keeps its adoption pass
+ 
+ - `apriori init` on a project with no `apriori/managed.json` whose runbook predates the run (a regular file) records what it creates as always and marks the manifest `"adoptPending": true`; `apriori update` treats a marked manifest like a missing one for the adoption on proof of unlisted files — the older runbook, command files whose bytes are a shipped generation — while listed files keep their rules, and clears the mark after a complete run. Before, init's manifest of only its own files ended that adoption and left the older runbook and command files unmanaged. Follow-up FU-2 of batch-review-fixes.
+diff --git a/MIGRATING.md b/MIGRATING.md
+index 0e9c2aa..ae37b19 100644
+--- a/MIGRATING.md
++++ b/MIGRATING.md
+@@ -2,6 +2,11 @@
+ 
+ The 3.0.0 stability promise — CLI surface & flags, `--json` shapes, the delta format, the flow-state schema and the `apriori/` layout only break in a major — holds for the released 5.x line. **6.x is an unreleased development line** (npm has never shipped a 6.x; `package.json` says `6.2.0-rc.0`, the runbook `runbook-version: 6.2`): within it the `gate --review-ready` item ids (`tests`, `open`) and the flow-state fields (`## Evidence` gone, `mode:` inert) changed in 6.2, and further changes before a 6.x release are declared here rather than promised away. Everything below is either additive or a declared fail-closed tightening — except limit-ruling, which moves a stop the owner explicitly approved moving and says so in its section.
+ 
++## fence-tilde-readers (Unreleased) — `~~~` fences are fences everywhere
++
++- A block fenced with `~~~` (a line of three or more tildes, closed by a bare line of at least as many) is now opaque to every structural reader, as a backtick-fenced block always was: a config row, `#### Scenario:` or `### Requirement:` heading, `source-commit:` stamp or `VERDICT:` line inside one no longer takes effect. If you relied on a tilde-fenced row or heading being live, move it out of the fence. Backtick-fenced content reads exactly as before; an inline `~~~` is ordinary text.
++- In a spec store, a `### Requirement:` heading inside a fence of either marker is now part of the block it sits in, not the start of a new one — before, `archive`'s merge split the block there even for a backtick fence, so a MODIFIED replacement could leave a ghost block behind. No store in this repository had such a heading. And a store with no requirement yet — a title and prose, or only a fenced example — now keeps that text when `archive` adds its first requirement; it used to be dropped. If that kept text (or any part of a store) holds an unclosed fence opener that would pair with a fence in a block after it, `archive` refuses the module — `the merged store would not read back as its requirement blocks — '<name>' is swallowed …` — and writes nothing: close the fence in the store and rerun.
++
+ ## init-premanifest-adoption (Unreleased) — a project mid-migration keeps its adoption pass
+ 
+ - On a project with no `apriori/managed.json` whose runbook predates the run (initialized before `managed.json` existed, or the manifest deleted), `apriori init` used to write a manifest of only the files it had just created — which ended `update`'s adoption on proof and left the older runbook and command files `unmanaged`. `init` now still records what it creates, at once, and marks the manifest `"adoptPending": true`; the next `apriori update` adopts the older runbook (overwriting it once — copy your notes out of a customised one first) and the older command files whose bytes are a shipped generation, keeps listed files under their usual rules, and clears the mark only after a complete run.
+
+exec
+/usr/bin/zsh -lc "rg -n 'renderReadback|renderStore\\(|FTR-5 fixed|review-progress code-review round 4' lib/archive-merge.js apriori/changes/fence-tilde-readers/flow-state.md && sed -n '280,345p' lib/archive-merge.js && sed -n '397,503p' lib/archive-merge.js && sed -n '1280,1435p' lib/archive-merge.js" in /root/terra/wt-fu1
+ succeeded in 0ms:
+apriori/changes/fence-tilde-readers/flow-state.md:25:- decision: FTR-5 fixed — 不再逐个补拼接边角（与 FTR-4 同属 render 组合一类，循环征兆），改加一道通用核查：`renderReadback` 把渲染结果按同一语法读回，必须恰为合并后的各块（按序、逐字节），否则该模块拒绝并点名第一个被吞的需求——高层形式记为 projection 冲突（archive 随之拒绝、不写），单文件形式在结构预检前退出 1 `FAILED PREFLIGHT — nothing written`；这道核查同样覆盖反引号围栏等任何组合问题；仓库 15 个存储全部读回为自身（TX-03 断言）；证据：TX-03 新增纯函数、单文件 CLI（存储逐字节不变）与高层 projection 三处拒绝用例；把核查改为恒通过时 TX-03 变红；全套 887/887，隐藏 /proc 亦 887/887，`check --self` 输出仍与 v6-dev 相同
+apriori/changes/fence-tilde-readers/flow-state.md:37:  - 2026-10-03T02:00 note: review-progress code-review round 4 — issues: FTR-2, FTR-3, FTR-4, FTR-5; actions: FTR-2/FTR-3/FTR-4 addressed in round 3 (no further change), FTR-5 fixed — every rendered store is read back against its merged blocks and the module refused in both archive forms when a part swallows another; evidence: lib/archive-merge.js, test/fence-tilde-readers.test.js, MIGRATING.md; approach: kept for the grammar, changed for composition — instead of patching each composition edge, one general readback check refuses any rendered store that does not read back as its blocks
+lib/archive-merge.js:298:function renderReadback(rendered, store) {
+lib/archive-merge.js:309:function renderStore(storeText, store) {
+lib/archive-merge.js:475:    const rendered = renderStore(storeText, r.store);
+lib/archive-merge.js:476:    const unreadable = renderReadback(rendered, r.store);
+lib/archive-merge.js:1372:    const rendered = renderStore(storeText, store);
+lib/archive-merge.js:1374:      const unreadable = renderReadback(rendered, store);
+lib/archive-merge.js:1416:  merge, renderStore, renderReadback, archiveStamp, archiveChangeDir, archiveChange, archiveDeclaration,
+      if (store.has(depByThis)) { unchanged.push(`${name} (already deprecated)`); continue; }
+      const depOther = [...store.keys()].find((k) => k.startsWith(`${name}  _deprecated (superseded by `));
+      if (depOther) { conflicts.push(`REMOVED '${name}' was already deprecated by a different change ('${depOther}')`); continue; }
+      conflicts.push(`REMOVED '${name}' has no target in store`);
+    } else {
+      const block = store.get(name);
+      const nl = block.indexOf('\n');
+      store.set(name, block.slice(0, nl) + `  _deprecated (superseded by ${change})_` + block.slice(nl));
+      deprecated.push(name);
+    }
+  }
+  return { store, merged, modified, deprecated, renamed, conflicts, unchanged };
+}
+
+// The rendered store must read back as exactly the merged blocks, in order. Rendering composes text —
+// the store's preamble, then the blocks — and composition must never let one part's syntax swallow
+// another: an unclosed fence opener in a preamble (or in a block) pairs with the first matching fence
+// line after it, wherever that lands. -> null, or the refusal naming the first block that went missing
+function renderReadback(rendered, store) {
+  const want = [...store.values()];
+  const got = [...parseRequirementsStrict(rendered).map.values()];
+  for (let i = 0; i < want.length; i++) {
+    if (got[i] === want[i]) continue;
+    const name = (/^###\s+Requirement:\s+(.+?)\s*$/m.exec(want[i]) || [])[1] || `block ${i + 1}`;
+    return `the merged store would not read back as its requirement blocks — '${name.trim()}' is swallowed or altered by the text before it (an unclosed fence opener in the store's preamble or an earlier block pairs with a fence line further on); close that fence in the store and rerun — nothing is written`;
+  }
+  return got.length === want.length ? null : `the merged store would not read back as its requirement blocks — ${got.length} read back for ${want.length} merged; nothing is written`;
+}
+
+function renderStore(storeText, store) {
+  const first = requirementHeadings(storeText)[0];          // a fenced example heading is not where the store's blocks begin
+  // the text before the first live requirement is kept as the store's preamble; a store with no live
+  // requirement at all — empty, prose only, or only a fenced example — is ALL preamble, never dropped
+  const header = first ? storeText.slice(0, first.at)
+    : storeText.trim() ? storeText.replace(/\s*$/, '\n\n') : '';
+  return header + [...store.values()].join('\n');
+}
+
+// ---- paths and discovery ---------------------------------------------------
+
+// Realpath containment of a FUTURE write target: a not-yet-existing target is judged by its
+// nearest existing ancestor, and the root itself is NOT inside (strict). Fail-closed. NOT
+// resolve's containsExistingPath (existing paths only, root counts as inside).
+function containsFuturePath(root, target) {
+  let realRoot;
+  try { realRoot = fs.realpathSync(root); } catch { return false; }
+  let cur = path.resolve(target);
+  const rest = [];
+  while (!fs.existsSync(cur)) {
+    const parent = path.dirname(cur);
+    if (parent === cur) return false;
+    rest.unshift(path.basename(cur));
+    cur = parent;
+  }
+  let realCur;
+  try { realCur = fs.realpathSync(cur); } catch { return false; }
+  const full = rest.length ? path.join(realCur, ...rest) : realCur;
+  return full !== realRoot && (full + path.sep).startsWith(realRoot + path.sep);
+}
+
+// Every .md under `dir`, each real file once. A DIRECTORY is judged BEFORE it is entered
+// (BD-08): its realpath must lie inside the walk root — a symlinked directory that resolves
+// outside is REFUSED (thrown, never silently skipped: skipping would hide deltas, entering
+// would smuggle files in) — and a realpath already visited is not entered again, so a symlink
+// loop terminates instead of recursing until the stack dies. Leaf containment is still the
+// caller's (discoverDeltas judges each file against its own root).
+  return { files, errors };
+}
+
+// Build the projection: apply every delta to its mapped store file IN MEMORY.
+// → { texts: Map<suffix, projectedText>, modules, perModule, conflicts, casMismatches,
+//     hygiene, validation } — texts covers ALL store files (pass-through + projected).
+function buildProjection(storeRoot, deltaFiles, change) {
+  const texts = new Map(), perModule = new Map(), modules = [];
+  const conflicts = [], casMismatches = [], hygiene = [], validation = [];
+  const unstampedMutations = [], notes = [], repaired = [];
+  // per-suffix operation buckets captured at THIS parse — the one delta snapshot
+  // (change-scope provenance must never come from a second read of the file)
+  const deltaOps = new Map();
+  // per-suffix scenarios the delta ADDS or MODIFIES, with their delta lines — the preflight's input
+  const deltaScenarios = new Map();
+  // per-suffix raw old/new block text pairs for every MODIFIED operation (rename-then-modify
+  // baselines the COMPLETE pre-rename block) — the integrity engine's single-snapshot input
+  const modifiedBlocks = new Map();
+  // per-suffix raw store/delta text at THIS parse — the drop guard's fingerprint input (never re-read)
+  const sources = new Map();
+  const captureModified = (suffix, storeText, delta) => {
+    if (!delta.MODIFIED.size) return;
+    const storeBlocks = parseRequirementsStrict(storeText).map;
+    const renamedTo = new Map(delta.RENAMED.map(([o, n]) => [n, o]));
+    const pairs = [];
+    for (const [name, newBlock] of delta.MODIFIED) {
+      const oldName = renamedTo.get(name) || name;
+      // repaired rename-then-modify rerun: the pre-rename source is gone, the store already
+      // holds the post-rename block — fall back to it so the operation still owes its pair
+      const oldBlock = storeBlocks.get(oldName) !== undefined ? storeBlocks.get(oldName) : storeBlocks.get(name);
+      if (oldBlock === undefined) continue;               // missing target → the merge conflict path reports it
+      pairs.push({ name, oldBlock, newBlock });
+    }
+    if (pairs.length) modifiedBlocks.set(suffix, pairs);
+  };
+  let storeFiles;
+  try { storeFiles = mdFilesUnder(storeRoot); }
+  catch (e) { validation.push(`store cannot be walked: ${e.message}`); storeFiles = []; }
+  for (const abs of storeFiles)
+    texts.set(path.relative(storeRoot, abs).split(path.sep).join('/'), fs.readFileSync(abs, 'utf8'));
+  for (const { abs, suffix } of deltaFiles) {
+    modules.push(suffix);
+    const target = path.join(storeRoot, ...suffix.split('/'));
+    if (!containsFuturePath(storeRoot, target)) { validation.push(`store target escapes ${storeRoot}: ${target}`); continue; }
+    const raw = fs.readFileSync(abs, 'utf8');
+    sources.set(suffix, { storeText: texts.get(suffix) || '', storeExists: texts.has(suffix), deltaText: raw });
+    if (!raw.trim()) { hygiene.push(`empty delta file: ${abs}`); continue; }
+    const { delta, stamp, problems, scenarios } = parseDeltaStrict(raw);
+    if (problems.length) { hygiene.push(...problems.map((p) => `${abs}: ${p}`)); continue; }
+    if (deltaOpCount(delta) === 0) { hygiene.push(`parsed 0 delta operations from ${abs} — it has content but no recognized operations`); continue; }
+    deltaOps.set(suffix, Object.freeze({
+      added: [...delta.ADDED.keys()], modified: [...delta.MODIFIED.keys()],
+      renamedPairs: delta.RENAMED.map((p) => [...p]), removed: [...delta.REMOVED.keys()],
+    }));
+    deltaScenarios.set(suffix, scopedScenariosOf(scenarios, delta));
+    if (!stamp && mutationOpCount(delta) > 0) unstampedMutations.push(suffix);   // WARN grade (callers print)
+    const storeText = texts.get(suffix) || '';
+    if (stamp) {
+      const actual = texts.has(suffix) ? fingerprint(storeText) : 'new';
+      if (stamp !== actual) {
+        // rerun repair: a mismatch whose every op is already applied is the resumed-rerun
+        // signature — divergence with ANY real pending op still fails exactly as before
+        const probe = merge(storeText, delta, change);
+        const pending = probe.merged.length + probe.modified.length + probe.deprecated.length + probe.renamed.length;
+        if (pending === 0 && probe.conflicts.length === 0) {
+          notes.push(`${suffix}: stamp mismatch but the delta is already fully applied — rerun accepted`);
+          perModule.set(suffix, probe);
+          repaired.push(suffix);
+          captureModified(suffix, storeText, delta);         // a repaired module still owes its pairs
+          continue;                                          // contributes no writes
+        }
+        casMismatches.push(`base mismatch for ${target}: delta expects ${stamp}, store is ${actual}`); continue;
+      }
+    }
+    const r = merge(storeText, delta, change);
+    perModule.set(suffix, r);
+    captureModified(suffix, storeText, delta);
+    if (r.conflicts.length) { conflicts.push(...r.conflicts.map((c) => `${suffix}: ${c}`)); continue; }
+    const rendered = renderStore(storeText, r.store);
+    const unreadable = renderReadback(rendered, r.store);
+    if (unreadable) { conflicts.push(`${suffix}: ${unreadable}`); continue; }
+    texts.set(suffix, rendered);
+  }
+  modules.sort();
+  return { texts, modules, perModule, deltaOps, deltaScenarios, modifiedBlocks, sources, conflicts, casMismatches, hygiene, validation, unstampedMutations, notes, repaired };
+}
+
+
+// ---- the change scope, and the structural preflight (6.2) ------------------------------
+// ONE scanner for scenario titles: fenced content is documentation, and scenarios inside
+// DEPRECATED requirement blocks are excluded in every form (they are neither demanded nor
+// listed). `preClean` skips the stripping for a text already cleaned. -> [title]
+const SCENARIO_RE = /^####\s+Scenario:\s+(.*)$/gm;
+function scanScenarioTitles(text, preClean) {
+  const clean = preClean ? text : stripDeprecatedBlocks(stripFences(text));
+  const out = [];
+  let m;
+  SCENARIO_RE.lastIndex = 0;
+  while ((m = SCENARIO_RE.exec(clean)) !== null) out.push(m[1]);
+  return out;
+}
+
+// the scenarios a parsed delta ADDS or MODIFIES — its change scope, REMOVED names excluded
+// (a block both modified and removed ends deprecated). -> [{name, title, line}]
+function scopedScenariosOf(scenarios, delta) {
+  return scenarios.filter((s) => (s.kind === 'ADDED' || s.kind === 'MODIFIED') && !delta.REMOVED.has(s.name))
+    .map(({ name, title, line }) => ({ name, title, line }));
+      if (a.force) {
+        console.error('archive: --force belongs to the high-level form only (there is no readiness to override in one-module surgery)\n' + USAGE);
+        return 2;
+      }
+      const scope = deltaScope(process.cwd(), a.delta);
+      if (scope.inside) {
+        console.error(`archive: --delta resolves inside apriori/changes (${scope.measure} measure): ${a.delta}\nthe single-file form is for one-module surgery outside the changes root; a change bundle is archived whole.\nuse the high-level form: apriori archive --change ${a.change || '<name>'}${a.write ? ' --write --changes-dir apriori/changes' : ''}`);
+        return 1;
+      }
+    }
+    if (a.change && (a.store || a.delta) && !(a.store && a.delta)) {
+      console.error('usage: apriori archive --change <name> [--write] [--changes-dir <dir>]  (high-level form)\n   or: apriori archive --store <f> --delta <f> --change <name> [--write] [--no-cas]  (single-file form)\n(--change cannot be combined with only one of --store/--delta)');
+      return 2;
+    }
+    if (!a.store || !a.delta || !a.change) { console.error(USAGE); return 2; }
+    const vEarly = require('./resolve').validateChangeName(a.change);
+    if (!vEarly.ok) { console.error(`archive: invalid change name '${a.change}' (${vEarly.kind}) — bare kebab-case, not date-prefixed, not a reserved name`); return 2; }
+    // first archive in a repo: the store file may not exist yet — start from an empty store
+    const storeExists = fs.existsSync(a.store);
+    const storeText = storeExists ? fs.readFileSync(a.store, 'utf8') : '';
+    if (!storeExists) console.log(`store ${a.store} does not exist yet — will be created${a.write ? '' : ' on --write'}`);
+    const deltaText = fs.readFileSync(a.delta, 'utf8');
+    const { delta, stamp, problems } = parseDeltaStrict(deltaText);
+    if (problems.length) {
+      for (const p of problems) console.error(`archive: ${a.delta}: ${p}`);
+      console.log('\nRESULT: MALFORMED DELTA — nothing written');
+      return 1;
+    }
+    // Guard against a silent no-op: a delta with real content that parsed to zero operations
+    // is almost always a format mismatch (wrong heading level/keyword), not an empty change.
+    if (deltaText.trim() && deltaOpCount(delta) === 0) {
+      console.error(`archive: parsed 0 delta operations from ${a.delta} — it has content but no recognized operations.`);
+      console.error('  expected `## ADDED|MODIFIED|REMOVED Requirements` (h2) with `### Requirement: <name>` (h3) blocks,');
+      console.error('  or `## RENAMED Requirements` with `- Old -> New` lines. Nothing written.');
+      return 1;
+    }
+    // AM-32 (4.0): mutation ops without a stamp are denied unless visibly waived
+    if (!stamp && mutationOpCount(delta) > 0) {
+      const w = casWaiver(process.cwd(), a.noCas);
+      if (w.problem || !w.waiver) {
+        console.error(`archive: ${w.problem ? w.problem + ' — a broken config never equals a waiver (denied)' : unstampedWarning(a.delta) + ' — denied by default; waive with --no-cas or a | cas | optional | config row'}`);
+        console.log('\nRESULT: FAILED PREFLIGHT — nothing written');
+        return 1;
+      }
+      console.log(`warning: ${unstampedWarning(a.delta)}`);
+      console.log(`note: cas waived by ${w.waiver}`);
+    }
+    // CAS: a present base stamp must match the store the delta is about to merge into (AM-24/AM-26)
+    if (stamp) {
+      const actual = storeExists ? fingerprint(storeText) : 'new';
+      if (stamp !== actual) {
+        console.error(`archive: base mismatch for ${a.store}: delta expects ${stamp}, store is ${actual} — nothing written (re-stamp the delta against the current store and retry)`);
+        return 1;
+      }
+    }
+    const { store, merged, modified, deprecated, renamed, conflicts, unchanged } = merge(storeText, delta, a.change);
+
+    for (const [label, ids] of [['merged (ADDED)', merged], ['modified (MODIFIED)', modified], ['deprecated (REMOVED)', deprecated], ['renamed (RENAMED)', renamed], ['already merged (no-op)', unchanged]])
+      if (ids.length) console.log(`${label}: ${ids.join(', ')}`);
+
+    if (conflicts.length) {
+      console.log('\nCONFLICTS (stop — a human resolves them):');
+      for (const c of conflicts) console.log(`  ✗ ${c}`);
+      console.log('\nRESULT: CONFLICT — nothing written');
+      return 1;
+    }
+    // the drop guard on the single-file form: this form has no bundle, so no `gates:` can hold
+    // the owner's fingerprint-bound decision — a delta that would drop a store scenario is
+    // refused here and pointed at the high-level form (never forceable, --force is not even a flag)
+    if (delta.MODIFIED.size) {
+      const storeBlocks = parseRequirementsStrict(storeText).map;
+      const renamedTo = new Map(delta.RENAMED.map(([o, n]) => [n, o]));
+      const pairs = [];
+      for (const [name, newBlock] of delta.MODIFIED) {
+        const oldName = renamedTo.get(name) || name;
+        const oldBlock = storeBlocks.get(oldName) !== undefined ? storeBlocks.get(oldName) : storeBlocks.get(name);
+        if (oldBlock !== undefined) pairs.push({ name, oldBlock, newBlock });
+      }
+      const r = integrityEntries(new Map([[a.delta, pairs]]), deps.idMatcherFactory || defaultIdMatcherFactory, process.cwd());
+      const blind = !!r.warning && oldBlocksWithScenarios(new Map([[a.delta, pairs]]));
+      const bad = r.warning ? [] : r.entries.filter((e) => e.dropped.length || e.ambiguous.length);
+      if (blind || bad.length) {
+        if (blind) console.error(`archive: the modified-block comparison could not run (${r.warning}), so dropped scenarios cannot be ruled out — nothing written`);
+        for (const e of (bad || [])) {
+          for (const d of e.dropped) console.error(`archive: ${e.name}: scenario ${sanField(d.id !== null ? d.id : d.title)} would be DROPPED — the single-file form never drops a store scenario; use the high-level form with an owner archive-drop decision`);
+          for (const x of e.ambiguous) console.error(`archive: ${e.name}: scenario key '${sanField(x.key)}' is ambiguous (${x.side}; old ${x.oldCount}/new ${x.newCount}) — disambiguate the delta (the single-file form never resolves this; the high-level form refuses it too)`);
+        }
+        console.log('\nRESULT: REFUSED — nothing written');
+        return 1;
+      }
+    }
+    // the rendered store must read back as its blocks before anything else is judged on it
+    const rendered = renderStore(storeText, store);
+    {
+      const unreadable = renderReadback(rendered, store);
+      if (unreadable) {
+        console.error(`archive: ${unreadable}`);
+        console.log('\nRESULT: FAILED PREFLIGHT — nothing written');
+        return 1;
+      }
+    }
+    // the structural preflight, on the one-module projection this form is about to write
+    {
+      const parsed = parseDeltaStrict(deltaText);
+      const label = a.delta;
+      const texts = new Map([[label, rendered]]);
+      const ops = new Map([[label, { added: [...delta.ADDED.keys()], modified: [...delta.MODIFIED.keys()],
+        renamedPairs: delta.RENAMED.map((p) => [...p]), removed: [...delta.REMOVED.keys()] }]]);
+      const scen = new Map([[label, scopedScenariosOf(parsed.scenarios, delta)]]);
+      const matcher = matcherFor(deps.idMatcherFactory, process.cwd());
+      const sp = matcher.error ? { failure: matcher.error } : structuralPreflight(texts, ops, scen, matcher);
+      const fails = sp.failure ? [`the structural check could not run — ${sp.failure}`] : sp.refusals;
+      if (fails.length) {
+        for (const f of fails) console.error(`archive: ${f}`);
+        console.log('\nRESULT: FAILED PREFLIGHT — nothing written');
+        return 1;
+      }
+      if (sp.debt && sp.debt.length) console.log(`note: store debt outside this change (reported, not a block): ${sp.debt.join('; ')}`);
+    }
+    if (a.write) {
+      // Stage the store to a temp file, then commit it via one atomic rename. The single-file
+      // form moves no change dir (that is the high-level form's job) — the store is the only write.
+      fs.mkdirSync(path.dirname(a.store), { recursive: true });
+      const tmp = a.store + '.tmp-archive';
+      fs.writeFileSync(tmp, rendered);
+      fs.renameSync(tmp, a.store);
+      console.log(`\nRESULT: MERGED — ${a.store} rewritten`);
+    } else {
+      console.log(`\nRESULT: MERGED (dry-run; ${store.size} requirements in result) — pass --write to apply`);
+    }
+    return 0;
+  });
+}
+module.exports = {
+  deltaScope, parseRequirementsStrict, parseDelta, parseDeltaStrict, deltaOpCount, mutationOpCount, unstampedWarning,
+  compareModifiedBlock, formatIntegrityHuman, integrityEntries, dropManifest, dropGuard,
+  merge, renderStore, renderReadback, archiveStamp, archiveChangeDir, archiveChange, archiveDeclaration,
+  fingerprint, containsFuturePath, mdFilesUnder, discoverDeltas, buildProjection,
+  stripDeprecatedBlocks, scanScenarioTitles, collectChangePairs, scopedIdRefusals, structuralPreflight,
+  stampCli, cli };
+
+exec
+/usr/bin/zsh -lc "rg -n 'projection|\\.conflicts|repaired|writeFileSync|renderStore|renderReadback|buildProjection' lib/archive-merge.js lib/spec-runner.js && sed -n '960,1045p' lib/archive-merge.js && sed -n '1120,1225p' lib/archive-merge.js && sed -n '1367,1414p' lib/archive-merge.js" in /root/terra/wt-fu1
+ succeeded in 0ms:
+lib/spec-runner.js:14:// merge-family helpers shared with archive (3.1 projection); archive-merge never requires spec-runner
+lib/spec-runner.js:131:// scenarios already live in this change's projection and bind as out-of-scope reds).
+lib/spec-runner.js:541:    lines.push('\n— STORE REPORT (informative; whole projection, same TAP snapshot) —');
+lib/spec-runner.js:573:  const projection = { change, modules: [], conflicts: [], unstampedMutations: [] };
+lib/spec-runner.js:575:  if (d.errors.length) return { projection, errors: d.errors, texts: null };
+lib/spec-runner.js:576:  const p = am.buildProjection(storeRoot, d.files, change);
+lib/spec-runner.js:577:  projection.modules = p.modules;
+lib/spec-runner.js:578:  projection.conflicts = p.conflicts;
+lib/spec-runner.js:579:  projection.unstampedMutations = p.unstampedMutations;      // WARN grade — cli prints, verdict untouched
+lib/spec-runner.js:580:  projection.notes = p.notes;
+lib/spec-runner.js:582:  if (p.conflicts.length) errors.push(`projection has ${p.conflicts.length} merge conflict(s) — no trustworthy projection: ${p.conflicts.join('; ')}`);
+lib/spec-runner.js:583:  // deltaOps/deltaScenarios/modifiedBlocks travel with the SAME parse snapshot the projection used (never re-read)
+lib/spec-runner.js:584:  return { projection, errors, texts: errors.length ? null : p.texts, deltaOps: p.deltaOps, deltaScenarios: p.deltaScenarios, modifiedBlocks: p.modifiedBlocks };
+lib/spec-runner.js:587:// Two test seams over the projection builder and the test-command runner. They exist so a
+lib/spec-runner.js:588:// SECOND consumer (gate's skipped-C1 path) can be proven to share this file's one projection
+lib/spec-runner.js:596:let projectionBuilderOverride = null;
+lib/spec-runner.js:597:function _setProjectionBuilder(fn) { projectionBuilderOverride = fn; }
+lib/spec-runner.js:598:function currentProjectionBuilder() { return projectionBuilderOverride || buildChangeProjection; }
+lib/spec-runner.js:604:// ---- change scope (verify --change): requirement-block provenance over the projection ----
+lib/spec-runner.js:622:// an errors-only run shape shared by every pre-test early exit (failed projection,
+lib/spec-runner.js:624:function errorsRun(errors, projection) {
+lib/spec-runner.js:629:  if (projection) run.projection = projection;
+lib/spec-runner.js:633:// enumeration-only projection metadata for the invalid-pattern early exit on --change runs:
+lib/spec-runner.js:634:// SR-23's projection contract survives, yet no delta CONTENT is read (directory listing only)
+lib/spec-runner.js:637:  const projection = { change, modules: [], conflicts: [], unstampedMutations: [] };
+lib/spec-runner.js:639:  if (!d.errors.length) projection.modules = d.files.map((f) => f.suffix);
+lib/spec-runner.js:640:  return projection;
+lib/spec-runner.js:652:  let collected, projection = null, changeMeta = null;
+lib/spec-runner.js:655:    projection = b.projection;
+lib/spec-runner.js:656:    if (!b.texts) return errorsRun(b.errors, projection);
+lib/spec-runner.js:657:    // one pass over the projection: every occurrence collected once, tagged with its
+lib/spec-runner.js:669:    if (batch.failure) return errorsRun([matcherFailureMsg(batch.failure)], projection);
+lib/spec-runner.js:671:    // with no id, or an id it introduces twice / against the store, is not a projection to judge
+lib/spec-runner.js:674:    if (sp.refusals.length) return errorsRun(sp.refusals.map((r) => `structural: ${r}`), projection);
+lib/spec-runner.js:684:    if (collected.failure) return errorsRun([matcherFailureMsg(collected.failure)], projection);
+lib/spec-runner.js:690:    const run = errorsRun([matcherFailureMsg(parsed.matchFailure)], projection);
+lib/spec-runner.js:708:  if (projection) run.projection = projection;
+lib/spec-runner.js:727:// Fail-closed on failure signals: only a red BOUND to an out-of-scope projection scenario
+lib/spec-runner.js:730:  const full = run.verdict;                                  // whole-projection evaluation
+lib/spec-runner.js:790:  const json = projectionless(run, clean);
+lib/spec-runner.js:791:  if (run.projection) json.projection = run.projection;   // ONLY --change runs carry this field
+lib/spec-runner.js:801:function projectionless(run, clean) {
+lib/spec-runner.js:830:// an argument error, a config error and a broken projection all read the same way (JC-01)
+lib/spec-runner.js:846:    if (a.change && a.specs.length) return refuse('--specs cannot be combined with --change — the projection defines the spec set');
+lib/spec-runner.js:856:    if (run.projection)
+lib/spec-runner.js:857:      for (const sfx of run.projection.unstampedMutations || []) console.error('warning: ' + am.unstampedWarning(sfx));
+lib/archive-merge.js:8: * delta discovery, projection building, CAS base stamps, realpath containment.
+lib/archive-merge.js:298:function renderReadback(rendered, store) {
+lib/archive-merge.js:309:function renderStore(storeText, store) {
+lib/archive-merge.js:400:// Build the projection: apply every delta to its mapped store file IN MEMORY.
+lib/archive-merge.js:403:function buildProjection(storeRoot, deltaFiles, change) {
+lib/archive-merge.js:406:  const unstampedMutations = [], notes = [], repaired = [];
+lib/archive-merge.js:424:      // repaired rename-then-modify rerun: the pre-rename source is gone, the store already
+lib/archive-merge.js:461:        if (pending === 0 && probe.conflicts.length === 0) {
+lib/archive-merge.js:464:          repaired.push(suffix);
+lib/archive-merge.js:465:          captureModified(suffix, storeText, delta);         // a repaired module still owes its pairs
+lib/archive-merge.js:474:    if (r.conflicts.length) { conflicts.push(...r.conflicts.map((c) => `${suffix}: ${c}`)); continue; }
+lib/archive-merge.js:475:    const rendered = renderStore(storeText, r.store);
+lib/archive-merge.js:476:    const unreadable = renderReadback(rendered, r.store);
+lib/archive-merge.js:481:  return { texts, modules, perModule, deltaOps, deltaScenarios, modifiedBlocks, sources, conflicts, casMismatches, hygiene, validation, unstampedMutations, notes, repaired };
+lib/archive-merge.js:506:// Every scenario occurrence of the projection ONCE, tagged with its change-scope provenance:
+lib/archive-merge.js:549:// the DELTA's, joined to the projection's occurrences by (file, title) in document order.
+lib/archive-merge.js:580:// the preflight over a projection, through an injected matcher ({batch}) — the archive faces
+lib/archive-merge.js:979:  const ops = o.ops || { writeFileSync: fs.writeFileSync.bind(fs), renameSync: fs.renameSync.bind(fs), rmSync: fs.rmSync.bind(fs) };
+lib/archive-merge.js:987:  const p = buildProjection(storeRoot, d.files, o.change);
+lib/archive-merge.js:992:    if (!r || r.conflicts.length) continue;
+lib/archive-merge.js:1011:  const preflightFailures = [...casDenials, ...p.hygiene, ...p.casMismatches, ...p.conflicts];
+lib/archive-merge.js:1012:  // the STRUCTURAL preflight (6.2): once the projection itself is sound, every scenario this
+lib/archive-merge.js:1036:  const repaired = new Set(p.repaired);                     // already applied — no writes for these
+lib/archive-merge.js:1037:  const jobs = d.files.filter(({ suffix }) => !repaired.has(suffix)).map(({ suffix }) => {
+lib/archive-merge.js:1188:      ops.writeFileSync(j.tmp, j.text);
+lib/archive-merge.js:1372:    const rendered = renderStore(storeText, store);
+lib/archive-merge.js:1374:      const unreadable = renderReadback(rendered, store);
+lib/archive-merge.js:1381:    // the structural preflight, on the one-module projection this form is about to write
+lib/archive-merge.js:1404:      fs.writeFileSync(tmp, rendered);
+lib/archive-merge.js:1416:  merge, renderStore, renderReadback, archiveStamp, archiveChangeDir, archiveChange, archiveDeclaration,
+lib/archive-merge.js:1417:  fingerprint, containsFuturePath, mdFilesUnder, discoverDeltas, buildProjection,
+        const concl = rr ? rv2.reReviewConclusions(rr.summaryText) : new Map();
+        for (const r of rec.rulings) {
+          const c = concl.get(r.id);
+          const said = !c ? 'no conclusion' : c.size > 1 ? 'conflicting conclusions' : [...c][0];
+          rulingNotes.push(`  note: ruling ${rec.family} round ${rec.round} — ${r.id}: ${r.kind} (re-review: ${said})`);
+        }
+      }
+    }
+  } catch { /* the loop already judged the evidence; the declaration only lists */ }
+  return { incomplete, lines: ['', 'ARCHIVE DECLARES (frozen; a later defect becomes an outcome note or a new change):',
+    `  implementation:    ${impl}`,
+    `  critical evidence: ${evidence}`,
+    '  delivery:          an archive is not a release', ...rulingNotes] };
+}
+
+// High-level archive: the whole change, four phases (preflight → stage → commit → move).
+// → { code, out: [], err: [] } — pure return; cli() prints. ops is the fault-injection seam.
+function archiveChange(o) {
+  const out = [], err = [];
+  const ops = o.ops || { writeFileSync: fs.writeFileSync.bind(fs), renameSync: fs.renameSync.bind(fs), rmSync: fs.rmSync.bind(fs) };
+  const cwd = o.cwd || process.cwd();
+  const changesDir = path.resolve(cwd, o.changesDir || path.join('apriori', 'changes'));
+  const storeRoot = path.resolve(cwd, 'apriori', 'specs');
+
+  // --- phase 1: preflight (no writes) ---
+  const d = discoverDeltas(changesDir, o.change);
+  if (d.errors.length) { err.push(...d.errors.map((e) => `archive: ${e}`)); return { code: 2, out, err }; }
+  const p = buildProjection(storeRoot, d.files, o.change);
+  if (p.validation.length) { err.push(...p.validation.map((e) => `archive: ${e}`)); return { code: 2, out, err }; }
+  // per-module report for whatever merged cleanly (dry-run info comes first, then failures)
+  for (const suffix of p.modules) {
+    const r = p.perModule.get(suffix);
+    if (!r || r.conflicts.length) continue;
+    out.push(`--- ${suffix}`);
+    for (const [label, key] of CATEGORY_LABELS) if (r[key].length) out.push(`${label}: ${r[key].join(', ')}`);
+  }
+  const casDenials = [];
+  if (p.unstampedMutations.length) {
+    const w = casWaiver(cwd, o.noCas);
+    if (w.problem) {
+      casDenials.push(`${w.problem} — a broken config never equals a waiver (denied)`);
+    } else if (!w.waiver) {
+      for (const sfx of p.unstampedMutations)
+        casDenials.push(`${unstampedWarning(sfx)} — denied by default; waive with --no-cas or a | cas | optional | config row`);
+    } else {
+      for (const sfx of p.unstampedMutations) out.push(`warning: ${unstampedWarning(sfx)}`);
+      out.push(`note: cas waived by ${w.waiver}`);
+    }
+  }
+  for (const n of p.notes) out.push(`note: ${n}`);
+  // CAS denial joins the preflight failure set — every diagnosis stays visible in one report
+  const preflightFailures = [...casDenials, ...p.hygiene, ...p.casMismatches, ...p.conflicts];
+  // the STRUCTURAL preflight (6.2): once the projection itself is sound, every scenario this
+  // change adds or modifies must carry one stable id that nothing else carries — refused here,
+  // before anything is written. A matcher that cannot run is a refusal too (fail-closed), never
+  // a skipped check. Debt outside the scope is a note.
+  // ONE matcher factory for the preflight and the integrity section: the injected one (bin
+  // seam) or the module's own lazily composed controlled matcher — never two recognitions
+  const factory = o.idMatcherFactory || defaultIdMatcherFactory;
+  if (!preflightFailures.length) {
+    const matcher = matcherFor(factory, cwd);
+    if (matcher.error) preflightFailures.push(`the structural check could not run — ${matcher.error}`);
+    else {
+      const sp = structuralPreflight(p.texts, p.deltaOps, p.deltaScenarios, matcher);
+      if (sp.failure) preflightFailures.push(`the structural check could not run — ${require('./config').sanitizeMsg(`process-config id-pattern matching failed (${sp.failure})`)}`);
+      else {
+        preflightFailures.push(...sp.refusals);
+        if (sp.debt.length) out.push(`note: store debt outside this change (reported, not a block): ${sp.debt.join('; ')}`);
+      }
+    }
+  }
+  if (preflightFailures.length) {
+    for (const f of preflightFailures) err.push(`archive: ${f}`);
+    out.push('\nRESULT: FAILED PREFLIGHT — nothing written');
+    return { code: 1, out, err };
+  }
+  const repaired = new Set(p.repaired);                     // already applied — no writes for these
+  const jobs = d.files.filter(({ suffix }) => !repaired.has(suffix)).map(({ suffix }) => {
+    const store = path.join(storeRoot, ...suffix.split('/'));
+    return { suffix, store, tmp: store + '.tmp-archive', text: p.texts.get(suffix) };
+  }).sort((a, b) => (a.store < b.store ? -1 : 1));
+  if (o.write) {
+    for (const j of jobs) if (fs.existsSync(j.tmp)) {
+      err.push(`archive: temp file already exists: ${j.tmp} — another run in flight or a manual-recovery artifact; not touching it`);
+      out.push('\nRESULT: FAILED PREFLIGHT — nothing written');
+      return { code: 1, out, err };
+
+  // the modified-block integrity section: AFTER every preflight guard (incl. the --write
+  // temp/containment checks above), BEFORE any write-result line — informative only
+  const entries = pushIntegritySection(out, err, p.modifiedBlocks, factory, cwd);
+  // The drop guard consumes the comparison just printed. When the report could not be built
+  // (no matcher) and some old block carries scenarios, none can be ruled dropped — the run is
+  // refused outright: a guard that cannot see must not wave anything through. Old blocks with
+  // no scenario at all have nothing to drop and need no matcher.
+  if (entries === null && oldBlocksWithScenarios(p.modifiedBlocks)) {
+    err.push('archive: the modified-block comparison could not run, so dropped scenarios cannot be ruled out — fix the id-pattern channel first; nothing written');
+    out.push('\nRESULT: REFUSED — nothing written');
+    return { code: 1, out, err };
+  }
+  const guard = dropGuard(o.change, p.sources, entries || [], rdy.flowText, !!o.force);
+  out.push(...guard.out);
+  if (guard.refuse.length) {
+    err.push(...guard.refuse);
+    out.push('\nRESULT: REFUSED — nothing written');
+    return { code: 1, out, err };
+  }
+  if (guard.forced) out.push(guard.forced);
+  const bundleDir = path.join(changesDir, o.change);
+  if (!o.write) {
+    // the manifest is only counted here — dry-run writes nothing into the bundle either
+    try { out.push(`manifest: would list ${Object.keys(manifest.listBundle(bundleDir, { hash: false })).length} entries in ${manifest.MANIFEST_NAME}`); }
+    catch (e) { out.push(`note: manifest could not be counted (${e.message})`); }
+    out.push(...decl.lines);                    // the preview of what --write will declare
+    out.push(`\nRESULT: MERGED (dry-run; ${jobs.length} module(s)) — pass --write to apply`);
+    return { code: 0, out, err };
+  }
+
+  // --- phase 1b: the content manifest, INSIDE the transaction and BEFORE the first store byte.
+  // What the archive contained at archive time is recorded in the bundle itself, so it travels
+  // with the move; `apriori check` reads it back to report drift. Written here — not after the
+  // move — so a failure can never leave the stores rewritten and the archive unbaselined: if the
+  // manifest cannot be produced (a file vanished between listing and hashing, an unreadable
+  // entry, a write failure) the run stops with nothing written. The stamp is fixed now and the
+  // move below reuses it, so the manifest names the directory it ends up in. A rerun after a
+  // failed move recomputes and replaces it (the manifest never lists itself).
+  // The bundle root itself must be a real directory: written through a symlinked
+  // `changes/<name>` the manifest would land in — and rewrite the baseline of — whatever the
+  // link points at (an already archived bundle included), and the move would move the link.
+  let rootStat = null;
+  try { rootStat = fs.lstatSync(bundleDir); } catch (e) { rootStat = null; }
+  if (!rootStat || rootStat.isSymbolicLink() || !rootStat.isDirectory()) {
+    err.push(`archive: ${bundleDir} is ${rootStat ? (rootStat.isSymbolicLink() ? 'a symbolic link' : 'not a directory') : 'not readable'} — an in-flight bundle must be a real directory; nothing written`);
+    out.push('\nRESULT: REFUSED — nothing written');
+    return { code: 1, out, err };
+  }
+  const now = new Date();
+  let manifestEntries = 0;
+  try {
+    const tmpName = manifest.ownTempName();
+    const m = manifest.build(bundleDir, { change: o.change, stamp: archiveStamp(now), ops, exclude: [tmpName] });
+    manifestEntries = Object.keys(m.files).length;
+    manifest.writeInto(bundleDir, m, ops, tmpName);
+  } catch (e) {
+    err.push(`archive: the content manifest (${manifest.MANIFEST_NAME}) could not be written: ${e.message} — nothing written to the store`);
+    out.push('\nRESULT: FAILED — nothing written');
+    return { code: 1, out, err };
+  }
+  out.push(`manifest: ${manifest.MANIFEST_NAME} (${manifestEntries} entries)`);
+
+  // --- phase 2: stage (this run's temps only — preflight proved none pre-existed) ---
+  const staged = [];
+  try {
+    for (const j of jobs) {
+      fs.mkdirSync(path.dirname(j.store), { recursive: true });
+      ops.writeFileSync(j.tmp, j.text);
+      staged.push(j.tmp);
+    }
+  } catch (e) {
+    for (const t of staged) { try { ops.rmSync(t, { force: true }); } catch { /* best effort */ } }
+    err.push(`archive: staging failed (${e.message}) — stores untouched, this run's temp files removed`);
+    return { code: 1, out, err };
+  }
+
+  // --- phase 3: commit (per-file atomic renames, sorted order; no rollback on mid-commit failure) ---
+  const committed = [];
+  for (const j of jobs) {
+    try { ops.renameSync(j.tmp, j.store); committed.push(j); }
+    catch (e) {
+      err.push(`archive: COMMIT FAILED at ${j.suffix} (${e.message})`);
+      err.push(`  committed:     ${committed.map((c) => c.suffix).join(', ') || '(none)'}`);
+      const remaining = jobs.filter((x) => !committed.includes(x));
+      err.push(`  NOT committed: ${remaining.map((x) => x.suffix).join(', ')}`);
+      err.push(`  temp files remaining for manual completion: ${remaining.map((x) => x.tmp).join(', ')}`);
+      return { code: 1, out, err };
+    }
+  }
+
+  // --- phase 4: move. The DEFAULT since batch C row 8: the runbook always declared that
+  // archive "merges the delta specs into apriori/specs and moves the bundle", but the move
+  // used to happen only under an explicit --changes-dir (P6). The behaviour is aligned to
+  // the declaration; --changes-dir stays an optional location override, nothing more.
+  let moved = null;
+  try { moved = archiveChangeDir(changesDir, o.change, now, ops); }   // the stamp the manifest recorded
+  catch (e) { err.push(`archive: stores committed but the change-dir move failed: ${e.message} — rerun to complete`); return { code: 1, out, err }; }
+  if (moved === null) { err.push('archive: stores committed but the change dir vanished before the move'); return { code: 1, out, err }; }
+  out.push(...decl.lines);                      // published now: merged AND moved — it is true
+  out.push(`\nRESULT: MERGED — ${jobs.length} module store(s) rewritten${moved ? `; change archived → ${moved}` : ''}`);
+  return { code: 0, out, err };
+}
+
+// print the CAS stamp line for a store file's current content
+const STAMP_USAGE = 'usage: apriori stamp <store-file>';
+        console.log('\nRESULT: REFUSED — nothing written');
+        return 1;
+      }
+    }
+    // the rendered store must read back as its blocks before anything else is judged on it
+    const rendered = renderStore(storeText, store);
+    {
+      const unreadable = renderReadback(rendered, store);
+      if (unreadable) {
+        console.error(`archive: ${unreadable}`);
+        console.log('\nRESULT: FAILED PREFLIGHT — nothing written');
+        return 1;
+      }
+    }
+    // the structural preflight, on the one-module projection this form is about to write
+    {
+      const parsed = parseDeltaStrict(deltaText);
+      const label = a.delta;
+      const texts = new Map([[label, rendered]]);
+      const ops = new Map([[label, { added: [...delta.ADDED.keys()], modified: [...delta.MODIFIED.keys()],
+        renamedPairs: delta.RENAMED.map((p) => [...p]), removed: [...delta.REMOVED.keys()] }]]);
+      const scen = new Map([[label, scopedScenariosOf(parsed.scenarios, delta)]]);
+      const matcher = matcherFor(deps.idMatcherFactory, process.cwd());
+      const sp = matcher.error ? { failure: matcher.error } : structuralPreflight(texts, ops, scen, matcher);
+      const fails = sp.failure ? [`the structural check could not run — ${sp.failure}`] : sp.refusals;
+      if (fails.length) {
+        for (const f of fails) console.error(`archive: ${f}`);
+        console.log('\nRESULT: FAILED PREFLIGHT — nothing written');
+        return 1;
+      }
+      if (sp.debt && sp.debt.length) console.log(`note: store debt outside this change (reported, not a block): ${sp.debt.join('; ')}`);
+    }
+    if (a.write) {
+      // Stage the store to a temp file, then commit it via one atomic rename. The single-file
+      // form moves no change dir (that is the high-level form's job) — the store is the only write.
+      fs.mkdirSync(path.dirname(a.store), { recursive: true });
+      const tmp = a.store + '.tmp-archive';
+      fs.writeFileSync(tmp, rendered);
+      fs.renameSync(tmp, a.store);
+      console.log(`\nRESULT: MERGED — ${a.store} rewritten`);
+    } else {
+      console.log(`\nRESULT: MERGED (dry-run; ${store.size} requirements in result) — pass --write to apply`);
+    }
+    return 0;
+  });
+}
+module.exports = {
+  deltaScope, parseRequirementsStrict, parseDelta, parseDeltaStrict, deltaOpCount, mutationOpCount, unstampedWarning,
+
+exec
+/usr/bin/zsh -lc "sed -n '148,219p' test/fence-tilde-readers.test.js && sed -n '230,294p' lib/archive-merge.js && rg -n 'AM-0[46789]|AM-22|AM-24|AM-26|AM-42|renam|deprecated|rerun|CRLF' test/archive-merge.test.js" in /root/terra/wt-fu1
+ succeeded in 0ms:
+    assert.strictEqual(am.renderStore(out, am.merge(out, added, 'c').store), out, 'a rerun is a no-op');
+  }
+  assert.strictEqual(am.renderStore('', am.merge('', added, 'c').store), '### Requirement: Real\n\n#### Scenario: TX-99 r\n- t\n');
+  // composition never lets one part swallow another (review FTR-5): a kept preamble holding an unclosed
+  // tilde opener would pair with the first fence inside the added block and hide its heading — the
+  // rendered store must read back as exactly its merged blocks, or the archive refuses, writing nothing
+  const swallowing = '# Store\n\n~~~\n';
+  const fencedAdd = am.parseDeltaStrict('## ADDED Requirements\n\n### Requirement: Real\nBody.\n\n~~~\nexample\n~~~\n\n#### Scenario: TX-99 real\n- t\n');
+  const sm = am.merge(swallowing, fencedAdd.delta, 'c');
+  assert.match(am.renderReadback(am.renderStore(swallowing, sm.store), sm.store) || '', /'Real' is swallowed or altered by the text before it/);
+  const dir = tmp(), storeFile = path.join(dir, 'spec.md'), deltaFile = path.join(dir, 'delta.md');
+  fs.writeFileSync(storeFile, swallowing);
+  fs.writeFileSync(deltaFile, '## ADDED Requirements\n\n### Requirement: Real\nBody.\n\n~~~\nexample\n~~~\n\n#### Scenario: TX-99 real\n- t\n');
+  const one = spawnSync('node', [path.join(ROOT, 'bin', 'apriori.js'), 'archive', '--store', storeFile, '--delta', deltaFile, '--change', 'c', '--write', '--no-cas'], { cwd: dir, encoding: 'utf8' });
+  assert.strictEqual(one.status, 1, one.stdout + one.stderr);
+  assert.match(one.stderr, /'Real' is swallowed or altered by the text before it/);
+  assert.match(one.stdout, /RESULT: FAILED PREFLIGHT — nothing written/);
+  assert.strictEqual(fs.readFileSync(storeFile, 'utf8'), swallowing, 'nothing written');
+  // the high-level form's projection refuses the same module as a conflict (archive then writes nothing)
+  const proj = tmp();
+  fs.mkdirSync(path.join(proj, 'apriori', 'specs', 'kv'), { recursive: true });
+  fs.writeFileSync(path.join(proj, 'apriori', 'specs', 'kv', 'spec.md'), swallowing);
+  fs.mkdirSync(path.join(proj, 'apriori', 'changes', 'c', 'specs', 'kv'), { recursive: true });
+  const dfile = path.join(proj, 'apriori', 'changes', 'c', 'specs', 'kv', 'spec.md');
+  fs.writeFileSync(dfile, '## ADDED Requirements\n\n### Requirement: Real\nBody.\n\n~~~\nexample\n~~~\n\n#### Scenario: TX-99 real\n- t\n');
+  const pj = am.buildProjection(path.join(proj, 'apriori', 'specs'), am.discoverDeltas(path.join(proj, 'apriori', 'changes'), 'c').files, 'c');
+  assert.ok(pj.conflicts.some((c) => /'Real' is swallowed or altered by the text before it/.test(c)), JSON.stringify(pj.conflicts));
+  assert.strictEqual(pj.texts.get('kv/spec.md'), swallowing, 'the refused module keeps its store text in the projection (nothing rendered over it)');
+  // and every store in this repository renders and reads back as its own blocks
+  for (const f of fs.readdirSync(path.join(ROOT, 'apriori', 'specs'))) {
+    const t = fs.readFileSync(path.join(ROOT, 'apriori', 'specs', f, 'spec.md'), 'utf8');
+    const m = am.parseRequirementsStrict(t).map;
+    assert.strictEqual(am.renderReadback(am.renderStore(t, m), m), null, f);
+  }
+  // the engine: a scenario-looking line inside a tilde fence is body, not a scenario — rewriting the
+  // fence's contents drops nothing, and the real scenario is retained by its id
+  const idOf = (title) => { const m = /^([A-Z]+-\d+)\b/.exec(title); return m ? m[1] : null; };
+  const cmp = am.compareModifiedBlock(store.trim(), store.replace('#### Scenario: TX-92 ghost', 'an example, reworded').trim(), idOf);
+  assert.deepStrictEqual(cmp.dropped, []);
+  assert.deepStrictEqual(cmp.ambiguous, []);
+  assert.deepStrictEqual(cmp.retained.map((r) => r.id), ['TX-93']);
+  assert.deepStrictEqual(cmp.missingLines, [{ scenario: null, line: '#### Scenario: TX-92 ghost' }], 'the reworded fenced line is prose that went missing, reported as such');
+  // the review reader: a verdict quoted in a tilde fence of a self-contained doc is an example, and a
+  // round summary's id lists and re-review conclusions skip what a tilde fence holds
+  const review = require('../lib/review');
+  const bundle = tmp();
+  fs.mkdirSync(path.join(bundle, 'review'));
+  const PROV = '<!-- provenance: provider=anthropic model=claude-sonnet-5 session=sess-1 date=2026-08-24 -->';
+  fs.writeFileSync(path.join(bundle, 'review', 'req-review-v1.md'),
+    `${PROV}\n# Review\n\nThe vocabulary:\n\n~~~\nVERDICT: ESCALATE\n~~~\n\nMy conclusion:\n\nVERDICT: ACCEPT\n`);
+  const f = review.reviewFacts(bundle);
+  assert.deepStrictEqual(f.problems, []);
+  assert.strictEqual(f.families[0].verdict, 'accept');
+  const conc = review.reReviewConclusions('- AB-1: ADDRESSED — fixed\n~~~\n- AB-2: NOT ADDRESSED — quoted example\n~~~\n');
+  assert.deepStrictEqual([...conc.keys()], ['AB-1']);
+});
+function unstampedWarning(suffix) {
+  return `unstamped mutation delta ${suffix} — divergence undetectable; run: apriori stamp <store-file>`;
+}
+
+// ---- merge (pure) ----------------------------------------------------------
+
+// Pure merge. Returns { store: Map, merged, modified, deprecated, renamed, conflicts, unchanged }
+function merge(storeText, delta, change) {
+  const parsed = parseRequirementsStrict(storeText);
+  const store = parsed.map;
+  const merged = [], modified = [], deprecated = [], renamed = [], conflicts = [], unchanged = [];
+  // a corrupt store (same requirement name twice) must never be silently collapsed
+  for (const d of parsed.duplicates) conflicts.push(`duplicate requirement '${d}' in the store (corrupt store)`);
+  const renamedTargets = new Set();   // names created by THIS run's renames — an ADDED hitting one is a same-delta collision, never a rerun no-op
+  // RENAMED first: rename the store block's ID, preserving its content
+  for (const [oldName, newName] of (delta.RENAMED || [])) {
+    if (!store.has(oldName)) {
+      // rerun signature: source already gone AND target present → this rename already happened
+      if (store.has(newName)) { unchanged.push(`${oldName} -> ${newName} (already renamed)`); continue; }
+      conflicts.push(`RENAMED '${oldName}' has no target in store`); continue;
+    }
+    if (store.has(newName)) { conflicts.push(`RENAMED target '${newName}' already exists in store`); continue; }
+    const block = store.get(oldName);
+    const renamedBlock = block.replace(/^###\s+Requirement:\s+.+$/m, `### Requirement: ${newName}`);
+    // rebuild the map preserving order, swapping the key at the old position
+    const rebuilt = new Map();
+    for (const [k, v] of store) rebuilt.set(k === oldName ? newName : k, k === oldName ? renamedBlock : v);
+    store.clear();
+    for (const [k, v] of rebuilt) store.set(k, v);
+    renamed.push(`${oldName} -> ${newName}`);
+    renamedTargets.add(newName);
+  }
+  for (const [name, block] of delta.ADDED) {
+    if (store.has(name)) {
+      // idempotent rerun: identical content means this delta already merged — a no-op, not a collision.
+      // But a name just created by THIS run's RENAMED is a same-delta collision, never a rerun.
+      if (!renamedTargets.has(name) && store.get(name).trim() === block.trim()) unchanged.push(name);
+      else conflicts.push(`ADDED '${name}' already exists in store`);
+    } else { store.set(name, block); merged.push(name); }
+  }
+  for (const [name, block] of delta.MODIFIED) {
+    if (!store.has(name)) conflicts.push(`MODIFIED '${name}' has no target in store`);
+    // already applied (rerun signature) — same trim comparison the ADDED no-op uses
+    else if (store.get(name).trim() === block.trim()) unchanged.push(name);
+    else { store.set(name, block); modified.push(name); }
+  }
+  for (const name of delta.REMOVED.keys()) {
+    if (!store.has(name)) {
+      // rerun signature: already deprecated BY THIS CHANGE → no-op; by another change → real collision
+      const depByThis = `${name}  _deprecated (superseded by ${change})_`;
+      if (store.has(depByThis)) { unchanged.push(`${name} (already deprecated)`); continue; }
+      const depOther = [...store.keys()].find((k) => k.startsWith(`${name}  _deprecated (superseded by `));
+      if (depOther) { conflicts.push(`REMOVED '${name}' was already deprecated by a different change ('${depOther}')`); continue; }
+      conflicts.push(`REMOVED '${name}' has no target in store`);
+    } else {
+      const block = store.get(name);
+      const nl = block.indexOf('\n');
+      store.set(name, block.slice(0, nl) + `  _deprecated (superseded by ${change})_` + block.slice(nl));
+      deprecated.push(name);
+    }
+  }
+  return { store, merged, modified, deprecated, renamed, conflicts, unchanged };
+}
+
+// The rendered store must read back as exactly the merged blocks, in order. Rendering composes text —
+40:test('AM-03 REMOVED marks the block deprecated, not deleted', () => {
+43:  assert.deepStrictEqual(r.deprecated, ['Alpha']);
+45:  assert.match(r.store.get('Alpha'), /deprecated \(superseded by drop-alpha\)/);
+48:test('AM-04 same-ID conflict stops without writing', () => {
+62:test('AM-05 the action lists every merged/modified/deprecated ID', () => {
+68:  assert.deepStrictEqual([r.merged, r.modified, r.deprecated], [['Gamma'], ['Beta'], ['Alpha']]);
+83:  assert.match(printed, /deprecated \(REMOVED\): Alpha/);
+87:test('AM-07 RENAMED renames a requirement in place, preserving content', () => {
+90:  assert.deepStrictEqual(r.renamed, ['Beta -> Bravo']);
+98:  // CLI layer: success prints "renamed (RENAMED)"; a conflict exits 1 and writes nothing
+104:  assert.match(out.join('\n'), /renamed \(RENAMED\): Beta -> Bravo/);
+110:test('AM-06 archive moves the in-flight change under a dated (date-time) archive dir', () => {
+124:test('AM-08 a content-bearing delta that parses to zero operations is a hard error', () => {
+160:test('AM-09 the first archive in a repo creates the store file', () => {
+195:test('AM-10 rename-aware idempotency: same-delta RENAMED+ADDED collides; rename rerun is a no-op', () => {
+196:  // same delta renames Alpha->Gamma AND adds an identical Gamma → collision, not no-op
+200:  // rerun of a rename-only delta: source gone, target present → already-renamed no-op
+201:  const renamedStore = STORE.replace('### Requirement: Beta', '### Requirement: Bravo');
+202:  const r2 = merge(renamedStore, parseDelta('## RENAMED Requirements\n- Beta -> Bravo\n'), 'c');
+204:  assert.ok(r2.unchanged.some((u) => /Beta -> Bravo \(already renamed\)/.test(u)));
+
+exec
+/usr/bin/zsh -lc "node -e 'const a=require(\"./lib/archive-merge\");const fs=require(\"node:fs\"),path=require(\"node:path\");const cases=[];const base=\"### Requirement: A\\nBody A.\\n\\n#### Scenario: TX-90 a\\n- t\\n\\n### Requirement: B\\nBody B.\\n\";for(const crlf of [false,true]){const s=crlf?base.replace(/\\n/g,\"\\r\\n\"):base;for(const [kind,d] of [[\"added\",\"## ADDED Requirements\\n### Requirement: C\\nBody C.\\n\"],[\"removed\",\"## REMOVED Requirements\\n### Requirement: A\\n\"],[\"renamed\",\"## RENAMED Requirements\\n- A -> Renamed A\\n\"],[\"modified\",\"## MODIFIED Requirements\\n### Requirement: B\\nNew body.\\n\"]]){const delta=a.parseDeltaStrict(d).delta;const m=a.merge(s,delta,\"probe\");const out=a.renderStore(s,m.store);const again=a.merge(out,delta,\"probe\");cases.push({kind,crlf,conflicts:m.conflicts,readback:a.renderReadback(out,m.store),rerunConflicts:again.conflicts,rerunReadback:a.renderReadback(a.renderStore(out,again.store),again.store)});}}const added=a.parseDeltaStrict(\"## ADDED Requirements\\n### Requirement: Real\\nBody.\\n\").delta;for(const s of [\"\",\"# Store\\nProse only.\\n\",\"# Store\\n~~~\\n### Requirement: Example\\n~~~\\n\"]){const m=a.merge(s,added,\"probe\");cases.push({kind:\"preamble\",readback:a.renderReadback(a.renderStore(s,m.store),m.store)});}let count=0;const failures=[];for(const e of fs.readdirSync(\"apriori/specs\",{withFileTypes:true})){if("'!e.isDirectory())continue;const f=path.join("apriori/specs",e.name,"spec.md");const s=fs.readFileSync(f,"utf8");const m=a.parseRequirementsStrict(s).map;const err=a.renderReadback(a.renderStore(s,m),m);count++;if(err)failures.push({file:f,err});}const bad=cases.filter(x=>x.readback||x.rerunReadback||x.conflicts?.length||x.rerunConflicts?.length);const s="# Store'"\\n\\n~~~\\n\";const d=a.parseDeltaStrict(\"## ADDED Requirements\\n### Requirement: Real\\nBody.\\n~~~\\nexample\\n~~~\\n#### Scenario: TX-99 real\\n- t\\n\").delta;const m=a.merge(s,d,\"probe\");console.log(JSON.stringify({compatibilityCases:cases.length,failures:bad,repositoryStores:count,repositoryFailures:failures,ftr5:a.renderReadback(a.renderStore(s,m.store),m.store)},null,2));'" in /root/terra/wt-fu1
+ succeeded in 0ms:
+{
+  "compatibilityCases": 11,
+  "failures": [],
+  "repositoryStores": 15,
+  "repositoryFailures": [],
+  "ftr5": "the merged store would not read back as its requirement blocks — 'Real' is swallowed or altered by the text before it (an unclosed fence opener in the store's preamble or an earlier block pairs with a fence line further on); close that fence in the store and rerun — nothing is written"
+}
+
+codex
+<!-- provenance: provider=openai model=unknown session=unknown date=2026-10-03 -->
+
+Round 4 review for `apriori/changes/fence-tilde-readers/review/code-review-v4.md`. Read-only review body for producer transcription under RUNBOOK §1 R2.
+
+- FTR-5: ADDRESSED — [renderReadback](/root/terra/wt-fu1/lib/archive-merge.js:298) compares the rendered store’s parsed block values against the merged blocks, in order, checking both content and count. The original unmatched-preamble reproduction now fails with a diagnostic naming `Real`.
+
+  Both archive forms enforce the check before writing:
+  - [buildProjection](/root/terra/wt-fu1/lib/archive-merge.js:475) records a conflict and retains the original module text when readback fails. High-level archive includes that conflict in its preflight refusal, before manifest creation or store staging. `verify --change` also rejects the conflicted projection.
+  - The [single-file form](/root/terra/wt-fu1/lib/archive-merge.js:1372) renders once, checks that string, and returns exit 1 with `FAILED PREFLIGHT — nothing written` on failure. Subsequent structural checks and the write use the same validated string.
+
+  TX-03 now asserts the pure rejection, single-file CLI refusal with byte-identical stored content, and high-level projection conflict with unchanged module text. These assertions cover the original failure through its actual consumers.
+
+No new substantive findings.
+
+Compatibility inspection found no unintended refusal in the requested cases. Comparing block values rather than map keys accommodates REMOVED operations, whose deprecated heading changes while the merge retains the original key. Rename results, ordinary reruns, and CRLF content undergo the same block normalization on both sides. Stamp-mismatch repair skips rendering and excludes repaired modules from write jobs, so that branch is not an unchecked rendering path.
+
+Bounded in-memory checks corroborated this reading: ADDED, MODIFIED, REMOVED, and RENAMED operations under LF and CRLF, their reruns, and empty, prose-only, and closed-example preambles passed readback. All 15 current repository stores also rendered and read back successfully.
+
+Examined: the new helper and both call sites; projection-conflict propagation; high-level staging and single-file writes; repaired reruns; deprecated and renamed blocks; CRLF handling; updated tests, contract, migration notes, disposition, and review-progress entry. Fingerprint construction and integrity/drop-guard inputs are unchanged.
+
+I did not modify files, rerun the full suite or writable CLI tests, inspect credentials/human notes, or read raw review transcripts. Static inspection is the review basis; the bounded checks are corroboration. Producer-reported full-suite results remain producer evidence.
+
+No new advisories.
+
+VERDICT: no spec-vs-code gaps
+tokens used
+157,045
+<!-- provenance: provider=openai model=unknown session=unknown date=2026-10-03 -->
+
+Round 4 review for `apriori/changes/fence-tilde-readers/review/code-review-v4.md`. Read-only review body for producer transcription under RUNBOOK §1 R2.
+
+- FTR-5: ADDRESSED — [renderReadback](/root/terra/wt-fu1/lib/archive-merge.js:298) compares the rendered store’s parsed block values against the merged blocks, in order, checking both content and count. The original unmatched-preamble reproduction now fails with a diagnostic naming `Real`.
+
+  Both archive forms enforce the check before writing:
+  - [buildProjection](/root/terra/wt-fu1/lib/archive-merge.js:475) records a conflict and retains the original module text when readback fails. High-level archive includes that conflict in its preflight refusal, before manifest creation or store staging. `verify --change` also rejects the conflicted projection.
+  - The [single-file form](/root/terra/wt-fu1/lib/archive-merge.js:1372) renders once, checks that string, and returns exit 1 with `FAILED PREFLIGHT — nothing written` on failure. Subsequent structural checks and the write use the same validated string.
+
+  TX-03 now asserts the pure rejection, single-file CLI refusal with byte-identical stored content, and high-level projection conflict with unchanged module text. These assertions cover the original failure through its actual consumers.
+
+No new substantive findings.
+
+Compatibility inspection found no unintended refusal in the requested cases. Comparing block values rather than map keys accommodates REMOVED operations, whose deprecated heading changes while the merge retains the original key. Rename results, ordinary reruns, and CRLF content undergo the same block normalization on both sides. Stamp-mismatch repair skips rendering and excludes repaired modules from write jobs, so that branch is not an unchecked rendering path.
+
+Bounded in-memory checks corroborated this reading: ADDED, MODIFIED, REMOVED, and RENAMED operations under LF and CRLF, their reruns, and empty, prose-only, and closed-example preambles passed readback. All 15 current repository stores also rendered and read back successfully.
+
+Examined: the new helper and both call sites; projection-conflict propagation; high-level staging and single-file writes; repaired reruns; deprecated and renamed blocks; CRLF handling; updated tests, contract, migration notes, disposition, and review-progress entry. Fingerprint construction and integrity/drop-guard inputs are unchanged.
+
+I did not modify files, rerun the full suite or writable CLI tests, inspect credentials/human notes, or read raw review transcripts. Static inspection is the review basis; the bounded checks are corroboration. Producer-reported full-suite results remain producer evidence.
+
+No new advisories.
+
+VERDICT: no spec-vs-code gaps

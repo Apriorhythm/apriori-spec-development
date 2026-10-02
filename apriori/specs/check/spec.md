@@ -37,11 +37,11 @@
 - THEN only the spec-store checks (CK-04), runbook freshness (CK-06), and the review-evidence secret tripwire (CK-10) run — a consumer legitimately using OpenSpec or shipping its own README is never failed by apriori's handbook self-checks (EN/CN pairs, verdict phrases, codex forms, no-openspec), which run only under `--self`; and a missing spec-store path is an error (exit 2, naming `apriori init` when uninitialized), never a silent PASS
 
 ### Requirement: self-mode guards the split documentation set
-`apriori check --self` SHALL extend its EN/CN pair coverage to the docs/ pairs (concepts, legacy, ci, cli, troubleshooting — `_cn` suffix convention) and SHALL resolve links relative to the linking file, validating cross-file fragments. The runbook is not a pair: `RUNBOOK.md` is checked on its own (verdict phrases, the `< /dev/null` guidance, codex forms, links, CK-11), and a `RUNBOOK_cn.md` in the repository FAILs self-mode — the English runbook is the only rule source.
+`apriori check --self` SHALL extend its EN/CN pair coverage to the docs/ pairs (concepts, legacy, ci, cli, troubleshooting — `_cn` suffix convention) and SHALL resolve links relative to the linking file, validating cross-file fragments. A side of a pair that exists is present even when it is empty: an empty mirror is aligned like any other, never skipped. The runbook is not a pair: `RUNBOOK.md` is checked on its own (verdict phrases, the `< /dev/null` guidance, codex forms, links, CK-11), and a `RUNBOOK_cn.md` in the repository FAILs self-mode — the English runbook is the only rule source.
 
 #### Scenario: CK-08 docs pairs are guarded, one-sided pairs fail
 - WHEN `check --self` runs where a docs/ pair misaligns (heading count, level, or numeric prefix), or exactly ONE side of a pair exists
-- THEN it FAILs naming the pair (or the missing mirror); WHEN both sides of a pair are absent THEN that pair is skipped and older checkouts pass as before
+- THEN it FAILs naming the pair (or the missing mirror) — an existing but empty mirror included, its heading count compared like any other; WHEN both sides of a pair are absent THEN that pair is skipped and older checkouts pass as before
 
 #### Scenario: CK-09 links resolve from the linking file and fragments are validated
 - WHEN a checked file links `./y.md` or `./y.md#frag`
@@ -58,16 +58,16 @@
 - WHEN a file under any bundle's `review/` (active or archived, any depth) contains an AWS key, a GitHub token, or a PEM private-key header
 - THEN `check` FAILs naming the file, line and pattern class without echoing the secret, and the message points at the remedy; clean bundles pass; a symlinked entry or an escaping review/ dir is skipped with a warn naming it; a project with no bundles skips the check entirely
 
-### Requirement: CK-11 keeps the runbook version aligned with the CLI major
-`apriori check --self` SHALL assert that RUNBOOK.md — the canonical packaged runbook — carries exactly one header-blockquote entry of the form `` > `runbook-version: X.Y` `` whose major (`X`) equals `package.json`'s version major. A missing entry, more than one, or a malformed value FAILs (self-mode only) naming the file and the failure reason; a major mismatch FAILs naming the file, the runbook major, and the package major. Occurrences of `runbook-version:` in body text or code fences are never matched. Consumer `apriori check` (no `--self`) never runs CK-11.
+### Requirement: CK-11 keeps the runbook version aligned with the CLI major.minor
+`apriori check --self` SHALL assert that RUNBOOK.md — the canonical packaged runbook — carries exactly one header-blockquote entry of the form `` > `runbook-version: X.Y` `` whose major.minor (`X.Y`) equals `package.json`'s version major.minor (a pre-release tag is ignored). A missing entry, more than one, or a malformed value FAILs (self-mode only) naming the file and the failure reason; a major.minor mismatch FAILs naming the file, the runbook's X.Y and the package's. Occurrences of `runbook-version:` in body text or in a code fence are never matched — every CommonMark fence counts (backtick or tilde, closed only by the same character at least as long, an unclosed one running to the end), and a fence belongs to its container: one opened inside a blockquote closes only at that quote depth and ends with its blockquote, and inside a fence opened outside any quote a quoted line is content, never a closer. Consumer `apriori check` (no `--self`) never runs CK-11.
 
-#### Scenario: CK-11 the runbook major tracks the CLI major
-- WHEN `apriori check --self` runs where RUNBOOK.md declares `runbook-version: 4.0` and package.json is on a 4.x version
-- THEN CK-11 passes; flipping its header to a `3.0` major FAILs (self-mode) naming the file, the runbook major, and the package major; and a consumer `apriori check` without `--self` never raises CK-11
+#### Scenario: CK-11 the runbook major.minor tracks the CLI major.minor
+- WHEN `apriori check --self` runs where RUNBOOK.md declares `runbook-version: 4.0` and package.json is on 4.0.3, then 4.0.0-rc.0
+- THEN CK-11 passes; flipping its header to `3.0` FAILs (self-mode) naming the file and both versions, and so does a minor drift to `4.1`; and a consumer `apriori check` without `--self` never raises CK-11
 
 #### Scenario: CK-12 malformed, missing, duplicate, and body occurrences
-- WHEN the runbook has no `runbook-version` blockquote entry, has two of them, carries a malformed value (`runbook-version: vier`), or mentions `runbook-version:` only in body text or inside a code fence
-- THEN the missing/duplicate/malformed cases FAIL (self-mode) naming the file and the reason, while the body-text and code-fence occurrences are never matched (they alone do not satisfy or fail the check — a real header entry is still required)
+- WHEN the runbook has no `runbook-version` blockquote entry, has two of them, carries a malformed value (`runbook-version: vier`), or mentions `runbook-version:` only in body text or inside a code fence — a backtick or tilde fence, a longer fence a shorter run inside does not close, a fence behind blockquote markers, a quoted `> ~~~` inside a top-level fence (content, not a closer), a deeper-quoted run inside a quoted fence, or an unclosed one
+- THEN the missing/duplicate/malformed cases FAIL (self-mode) naming the file and the reason, while the body-text and code-fence occurrences are never matched (they alone do not satisfy or fail the check — a real header entry is still required), and a real entry after a closed fence of either kind — or after a quoted fence whose blockquote ended — still counts
 
 ### Requirement: CK-04 recognizes IDs through the shared contract
 `check`'s CK-04 SHALL resolve its id-pattern from the config `id-pattern` row (else `DEFAULT_ID`; check gains NO CLI flag — a CI gate consumes the project constant) and SHALL recognize scenario IDs through the same `leadId` semantics as verify — replacing its private `^(…)\b` anchoring — so the four consumers can never disagree on the same title. An invalid config row is `RESULT: ERROR`, exit 2, through check's existing error channel.
@@ -89,7 +89,7 @@
 - THEN the child is killed within its budget and check prints a sanitized error naming `process-config` with `RESULT: ERROR`, exit 2 — CI cannot be hung by a config row
 
 ### Requirement: the canonical verdict phrase table is closed and carries no retired lane
-The canonical table SHALL carry exactly the phrases the live review loops use — the `no major issues` family, `no spec-vs-code gaps` and `gaps found` (P8 and the fast floor), plus the `<N> issues open` prose placeholder — and SHALL NOT carry the phrases retired with the hotfix lane and the explore track (`no findings`, `extraction accepted`, `extraction rejected`). The runbook (`RUNBOOK.md`, its only edition) SHALL contain every canonical phrase. A `VERDICT:` string appearing anywhere in the scanned docs that does not start with a table entry stays a failure, retired phrases included; recognition is the SAME prefix rule as every other consumer, with no trailer grammar of its own.
+The canonical table SHALL carry exactly the phrases the live review loops use — the `no major issues` family, `no spec-vs-code gaps` and `gaps found` (P8 and the fast floor), plus the `<N> issues open` prose placeholder — and SHALL NOT carry the phrases retired with the hotfix lane and the explore track (`no findings`, `extraction accepted`, `extraction rejected`). The runbook (`RUNBOOK.md`, its only edition) SHALL contain every canonical phrase. A `VERDICT:` string appearing anywhere in the scanned docs that does not start with a table entry stays a failure, retired phrases included; recognition is the SAME whole-verdict rule as every other consumer — a closed set matched whole (case-folded, whitespace collapsed, terminal punctuation dropped), never a prefix, so a canonical phrase followed by a clause is not a table entry — with no trailer grammar of its own.
 
 #### Scenario: CK-17 the retired lanes leave the table and the table stays closed
 - WHEN the phrase table is checked against the runbook, and separately when a scanned doc carries `VERDICT: looks fine to me` or the retired `VERDICT: no findings`

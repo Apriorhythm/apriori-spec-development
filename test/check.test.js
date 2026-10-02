@@ -154,6 +154,13 @@ test('CK-08 self-mode guards docs pairs; one-sided pairs fail; absent pairs skip
   const one = run(mk({ 'docs/concepts.md': '## A\n' }));
   assert.strictEqual(one.status, 1);
   assert.match(one.stdout, /concepts_cn\.md/);
+  // an existing but EMPTY mirror is a present side and is aligned, never skipped (batch review check-self-3)
+  const empty = run(mk({ 'docs/concepts.md': '## A\n', 'docs/concepts_cn.md': '' }));
+  assert.strictEqual(empty.status, 1, empty.stdout);
+  assert.match(empty.stdout, /concepts/);
+  assert.match(empty.stdout, /heading count/i);
+  // both sides present and empty: aligned (0 = 0), passes
+  assert.strictEqual(run(mk({ 'docs/concepts.md': '', 'docs/concepts_cn.md': '' })).status, 0);
 });
 
 test('CK-09 links resolve from the linking file; cross-file fragments validated (self-mode)', () => {
@@ -295,6 +302,24 @@ test('CK-12 malformed, missing, duplicate, and body occurrences', () => {
   assert.match(checkRunbookVersion(root, one('the field runbook-version: 4.0 in prose'))[0], /no.*runbook-version|missing/i);
   // inside a code fence -> never matched -> missing
   assert.match(checkRunbookVersion(root, one('```\n> `runbook-version: 4.0`\n```'))[0], /no.*runbook-version|missing/i);
+  // every CommonMark fence, not backticks alone (batch review check-self-4): a tilde fence, a longer fence
+  // that a shorter run inside does not close, a fence behind blockquote markers, and an unclosed fence
+  const MISSING = /no.*runbook-version|missing/i;
+  assert.match(checkRunbookVersion(root, one('~~~\n> `runbook-version: 4.0`\n~~~'))[0], MISSING);
+  assert.match(checkRunbookVersion(root, one('~~~~\n~~~\n> `runbook-version: 4.0`\n~~~~'))[0], MISSING);
+  assert.match(checkRunbookVersion(root, one('````\n```\n> `runbook-version: 4.0`\n````'))[0], MISSING);
+  assert.match(checkRunbookVersion(root, one('> ~~~\n> `runbook-version: 4.0`\n> ~~~'))[0], MISSING);
+  assert.match(checkRunbookVersion(root, one('~~~ md\n> `runbook-version: 4.0`'))[0], MISSING);
+  // a fence belongs to its container (round 1 BRF-R3): inside a top-level fence a quoted `> ~~~` is
+  // content, not a closer; a quoted fence closes only at its own depth and ends with its blockquote
+  assert.match(checkRunbookVersion(root, one('~~~\n> ~~~\n> `runbook-version: 4.0`\n~~~'))[0], MISSING);
+  assert.match(checkRunbookVersion(root, one('> ~~~\n> > ~~~\n> `runbook-version: 4.0`\n> ~~~'))[0], MISSING);
+  assert.deepStrictEqual(checkRunbookVersion(root, one('> ~~~\n> x\n\n> `runbook-version: 4.0`')), []);
+  // a backtick fence closes only on a backtick line, a tilde fence only on a tilde line
+  assert.match(checkRunbookVersion(root, one('~~~\n```\n> `runbook-version: 4.0`\n~~~'))[0], MISSING);
+  // a real entry after a CLOSED fence of either kind still counts
+  assert.deepStrictEqual(checkRunbookVersion(root, one('~~~\nx\n~~~\n\n> `runbook-version: 4.0`')), []);
+  assert.deepStrictEqual(checkRunbookVersion(root, one('```\nx\n```\n\n> `runbook-version: 4.0`')), []);
   // a real blockquote AFTER the first h2 (body region) is never matched -> missing (RVIMPL-2)
   assert.match(checkRunbookVersion(root, { 'RUNBOOK.md': '# R\n\n## Body\n\n> `runbook-version: 4.0`\n' })[0], /no.*runbook-version|missing/i);
   // RUNBOOK.md absent under --self -> the canonical runbook is required (RVIMPL-1)

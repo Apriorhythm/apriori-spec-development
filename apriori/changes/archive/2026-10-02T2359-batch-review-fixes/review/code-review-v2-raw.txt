@@ -1,0 +1,1491 @@
+OpenAI Codex v0.159.3
+--------
+workdir: /root/terra/wt-fix
+model: gpt-6-astra
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 01a0fd3f-14d0-7460-8c18-7a0bdbb927db
+--------
+user
+Round 2 of code-review for `batch-review-fixes` (same worktree, still uncommitted). The producer fixed round 1's three findings; the dispositions with their evidence are the `decision: BRF-R…` lines in apriori/changes/batch-review-fixes/flow-state.md.
+For each of BRF-R1, BRF-R2 and BRF-R3, answer ADDRESSED or NOT ADDRESSED with your evidence.
+Scope is what changed since round 1: lib/managed.js (readPlain, writePlain), lib/update.js (the guide branch, CHANGED, the summary's blocked pattern), lib/init.js (record — every created file recorded the moment it exists; the final step only reports), lib/check.js (stripFencedBlocks — fences carry their quote depth), the tests (PW-02's swap-at-write cases, IN-13's failed-run case, CK-12's new cases), the updated deltas (check; init — the manifest requirement IN-13..IN-17 is now MODIFIED too; update), CHANGELOG, MIGRATING, docs/cli.md and docs/cli_cn.md.
+Report a NEW finding only if it breaks the contract or a safety property. Two follow-ups are registered in ## Open: FU-1 (fence-tilde-readers, unchanged) and FU-2 (init-premanifest-adoption — a pre-existing gap found while fixing BRF-R2, measured on c290842): judge whether FU-2 is rightly a follow-up rather than a necessary fix for this delivery.
+Give the full review body for apriori/changes/batch-review-fixes/review/code-review-v2.md, ending with exactly one VERDICT line.
+codex
+I’ll trace each round-one finding through the revised code and tests, then check whether FU-2 is genuinely pre-existing and separable from this delivery. I’ll return the full round-two report body without modifying the worktree.
+exec
+/usr/bin/zsh -lc 'git status --short; cat apriori/changes/batch-review-fixes/flow-state.md; git diff --stat' in /root/terra/wt-fix
+ succeeded in 0ms:
+ M CHANGELOG.md
+ M MIGRATING.md
+ M RUNBOOK.md
+ M docs/cli.md
+ M docs/cli_cn.md
+ M docs/concepts.md
+ M docs/concepts_cn.md
+ M docs/operator.md
+ M docs/operator_cn.md
+ M guides/prototype-walk.md
+ M lib/check.js
+ M lib/doctor.js
+ M lib/init.js
+ M lib/managed.js
+ M lib/update.js
+ M test/check.test.js
+ M test/init.test.js
+ M test/operator-move.test.js
+ M test/owner-calls-and-handoffs.test.js
+ M test/prototype-walk-guide.test.js
+ M test/requirement-check-recipe.test.js
+ M test/update.test.js
+?? apriori/changes/batch-review-fixes/
+change: batch-review-fixes
+phase: review                             # ground | specify | build | review | done | abandoned
+reviewer-session: 01a0fd3f-14d0-7460-8c18-7a0bdbb927db   # codex exec gpt-6-astra, round 1 (2026-10-02)
+
+## Reality Check         # observed / decision / assumption — one line each, as you find them
+- decision: lineage — branch `feature/batch-review-fixes`（从 v6-dev@c290842 开出）；本地提交；评审通过后合回 v6-dev 并推 judge 与 GitHub
+- decision: requirement — 来源：需求级独立核对报告 `/root/asd-lab/work/next-improve-1002/批次核对报告.md`（被核对提交 c290842，范围 v6-dev `5d3fc78..c290842`，codex gpt-6-astra 找问题 + 每条 2 票对抗核验，19 条成立）；人类 10-02「全部修复完毕，然后，这个过程中的 code-review 使用 codex」：19 条全修，承接原 id（check-self-1..4、guide-1..4、goal-1、PW-1/2、SST-1..6、shipping-docs-1/2）；本 change 的 P3 与需求级复核分别闭合，复核结果写回该报告
+- decision: scope — check-self-4 只在 CK-11 的版本行检测里同时剥 ``` 与 ~~~ 围栏（CommonMark：字符 + 长度），不动共用 `lib/text.js` stripFences：它同时被 check/verify 的规格解析（CK-14 两面一致）与 archive-merge 使用，改它会连带改变 delta 解析；共用读法的波浪线对齐登记为 follow-up（见 Open）
+- decision: approach — guide-2 = 预防 + 恢复：init 装上 guide 后立即落 manifest；update 对未登记、字节等于某一已发布版 guide 的文件按证据收编（`adopted`），版本表 `GUIDE_GENERATIONS` 收录 e22e8d8、c290842 两版与本次新版，测试钉住现行 guide 必须在表中。update 不提前写 manifest：未有 manifest 的老项目提前写会让中途失败后的命令文件失去收编资格，恢复交给收编
+- decision: approach — guide-1 用独占创建（`wx`）：路径在检查之后出现任何东西（含符号链接）都 EEXIST → 跳过并说明，不跟随、不覆盖；残余：检查后把 `apriori/guides` 换成指向项目外的符号链接仍可在外面**新建**文件（不能覆盖已有文件），Node 没有 openat，记入代码注释与 MIGRATING
+- observed: SST-1 —— PR-11 的测试断言 runbook 不含 fsync/chmod（教程已删），而 PR-11/PR-16 规格仍要求写出；以现行 runbook 与测试为准改规格文字，场景 id 全保留
+- observed: 同一 MODIFIED 块里 PR-08（「at its round limit」）、PR-10（「一条 `## Evidence` 行」）、PR-16 的归档句（`--changes-dir` 而非默认移动）同样过时，一并对齐（与 SST-1 同类）；update 的清单需求仍把可刷新目标写成 runbook + 命令文件，C-b 加了 guide 却没改这句，一并补上
+- observed: UP-09（预清单项目收编）原测试预期清单只含 runbook + 命令文件；新收编规则下 init 写下的 guide 按字节被收编——测试与 UP-09 场景随之更新（行为变化是 guide-2 的预期结果，不是回归）
+- observed: Build 完成 —— 代码：lib/managed.js（guideBlock、独占创建、GUIDE_GENERATIONS 三版）、lib/init.js（guide 创建即落 manifest）、lib/update.js（按已发布版本字节收编；汇总计 missing/obstructed）、lib/doctor.js（lstat，与 update 同一判断）、lib/check.js（空镜像对齐；CK-11 自带 CommonMark 围栏读法）；文档：operator 两版（Review & Deliver 的 25 轮界限；Build & Test 条件写「what is still open」）、concepts 两版 mini-kv goal、cli 两版（--force 三种升级形态；update 汇总与 guide 收编）、guide §4/§7/§9、RUNBOOK Ground 一句、MIGRATING、CHANGELOG；测试：红测试先行（旧代码上 CK-08/CK-12/PW-01/02/03 与文档类 7 项红；SST-2/3/5 用内存变异验证新断言能抓到删除），全套 883/883；`check --self` PASS；`verify --change` GREEN；delta：check（RENAMED CK-11 标题 + 3 MODIFIED）、protocol 5 MODIFIED、init/update/doctor 各自 MODIFIED，场景 id 全保留
+- observed: Review 第 1 轮（`review/code-review-v1.md`）= `VERDICT: 3 issues open`；19 条原发现评审方逐条判为已处理（check-self-4 与 guide-1/guide-2 各带出一条新问题）；无 advisory
+- decision: BRF-R1 fixed — 收编（及已登记 guide 的刷新，同一缺口）原先先按路径算哈希、再按路径普通打开改写，中间换进的符号链接会被跟着写；现在 guide 只读一次（O_NOFOLLOW），判断与改写都用这一次读到的内容，改写时再以 O_NOFOLLOW 打开并核对 dev/ino 一致才截断写入，否则报 `changed during refresh (skipped — …)`、不记账；证据：PW-02 新增「读后写前换成指向外部文件的符号链接」两例（收编旧版本、刷新已登记 guide），把改写换回普通 writeFileSync 时 PW-02 变红
+- decision: BRF-R2 fixed — 第 0 轮只让 guide 提前落 manifest，留下的 manifest 会让同一次失败运行里后建的命令文件失去 update 的收编资格；现在 init 每创建一个文件就立即记账（runbook、guide、每个命令文件），最后一步只报告；证据：IN-13 新增 `--tools claude,cursor` 在 `.cursor` 为文件时中途失败的例子——manifest 已含 Claude 两个命令文件，清掉障碍后 update 判 `up-to-date`；把记账改回只记 guide 时 IN-13 变红
+- decision: BRF-R3 fixed — CK-11 自带的围栏读法给每个围栏记下所在引用深度：顶层围栏里的 `> ~~~` 是内容、不是闭合；引用内的围栏只在同一深度闭合、随引用结束而结束；证据：CK-12 新增评审方的原例及两例，去掉深度判断时 CK-12 变红；全套 883/883
+- observed: 顺查发现一个早于本批次的缺口——在没有 manifest 的老项目上跑 init（只要创建了任何文件）会写出只含本次创建项的 manifest，原有 runbook 与命令文件此后被 update 判为 `unmanaged`（c290842 上实测）；IN-14 明确规定 init 不收编已有文件，属设计缺口而非违约，登记 follow-up FU-2
+
+## Open                  # substantive unresolved items — one line each, stable id first: - <ID>: <text>
+- FU-2: follow-up → init-premanifest-adoption — 没有 manifest 的项目（早于 managed.json 的 CLI 初始化）上跑 init 会写出只含本次创建项的 manifest，update 因此不再按证据收编原有的 runbook 与命令文件（判 `unmanaged`，只能删了重 init）；建议：没有 manifest 且本次没有创建 runbook 时，init 不写 manifest，交给 update 的按证据收编
+- FU-1: follow-up → fence-tilde-readers — 共用围栏读法只认 ``` 不认 ~~~（`lib/text.js` stripFences，及 gate.js、config.js、archive-merge.js 各自的反引号正则）；对齐会同时改变 delta 解析与 check/verify 的一致性面，单独一个 change 做；本 change 只修 CK-11 的版本行检测（check-self-4）
+
+## Next                  # at most three concrete actions; the first is the resume point
+- codex P3 第 1 轮（gpt-6-astra，read-only）
+- 按评审处置 → gate → archive --write → 合回 v6-dev
+- 需求级复核：resume 各区域的 codex finder 会话复核修复与受影响路径，写回批次核对报告
+
+gates:
+  - 2026-10-02T23:11 note: change scaffolded by `apriori new`
+  - 2026-10-02T23:17 note: Ground 完成（来源 = 批次核对报告 19 条）；进入 Build
+  - 2026-10-02T23:31 note: Build 完成（883/883，check --self PASS，verify GREEN）；review-ready 后开 Review 第 1 轮
+  - 2026-10-02T23:44 note: Review 第 1 轮 3 issues open（BRF-R1..R3）均已修复（883/883）；resume 同一评审会话开第 2 轮
+ CHANGELOG.md                          |  10 +++
+ MIGRATING.md                          |   2 +
+ RUNBOOK.md                            |   2 +-
+ docs/cli.md                           |   4 +-
+ docs/cli_cn.md                        |   4 +-
+ docs/concepts.md                      |   2 +-
+ docs/concepts_cn.md                   |   2 +-
+ docs/operator.md                      |   8 +--
+ docs/operator_cn.md                   |   8 +--
+ guides/prototype-walk.md              |   6 +-
+ lib/check.js                          |  32 ++++++++-
+ lib/doctor.js                         |  13 +++-
+ lib/init.js                           |  31 ++++----
+ lib/managed.js                        |  72 ++++++++++++++++---
+ lib/update.js                         |  69 ++++++++++++++----
+ test/check.test.js                    |  25 +++++++
+ test/init.test.js                     |  13 ++++
+ test/operator-move.test.js            |   2 +-
+ test/owner-calls-and-handoffs.test.js |  18 ++++-
+ test/prototype-walk-guide.test.js     | 128 +++++++++++++++++++++++++++++++++-
+ test/requirement-check-recipe.test.js |   6 +-
+ test/update.test.js                   |   4 +-
+ 22 files changed, 396 insertions(+), 65 deletions(-)
+
+exec
+/usr/bin/zsh -lc 'cat lib/managed.js; cat lib/update.js' in /root/terra/wt-fix
+ succeeded in 0ms:
+'use strict';
+/*
+ * managed.json — the record of which scaffolded files the tool owns, and the exact
+ * bytes it last wrote there (sha256). init records what it CREATES; update refreshes
+ * only what the manifest proves is tool-owned AND unmodified. Zero deps.
+ */
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+const { containsFuturePath } = require('./archive-merge');
+
+const MANIFEST_REL = 'apriori/managed.json';
+
+// The one guide the runbook names (§4 Ground: read it before a prototype walk). Tool-owned like the
+// runbook — one exact file, never the directory around it (prototype-walk-guide).
+const GUIDE_REL = 'apriori/guides/prototype-walk.md';
+const GUIDE_SRC = path.join(__dirname, '..', 'guides', 'prototype-walk.md');
+
+// sha256 of every shipped generation, **indexed by template id**, newest first.
+// APPEND when a template changes — UP-11 hashes each live template and asserts membership
+// in ITS OWN table. Cross-template content must never be adopted (MC-04).
+const TEMPLATE_GENERATIONS = {
+  // S2 P3: the discuss shell ships its own table — a body that is a legal generation of a
+  // DIFFERENT template stays unmanaged in either direction (MC-04).
+  discuss: [
+    'sha256:2f6680fb48beab9a9384c9f9f1cad26e15024ce15d44767397ca9d76e33313a5',   // S2 P3: /apriori-discuss thin shell, first generation
+    'sha256:5187d8853422d78e2120578e3c5b573abf748db508390ddd328f6305e8d8eb75',   // S2 A≥1 fix: a scope stated in the request is an approval already held
+    'sha256:ee004fb3179df3c5ea75e622342c43f54e32854b638a58a81691e591cb48589d',   // discuss-save-fidelity: a save is a faithful record of the discussion, nothing more
+    'sha256:81de0ca483c5c5fd103c479027eea6d1d431379fdce3d010353745d800c8d317',   // discuss-save-inference: only as far as they said it; silence is not a decision; write once settled
+    'sha256:bc5b641e632097b7ae50449e6bd6f273a45800eda630a390e4b1b3c60505b38d',   // source-intake: the shell points at saving from a document discussed elsewhere
+  ],
+  apriori: [
+    'sha256:b4c8398b0f75fa8c954fc3df06775f9ad5152e400c68d9c9bc37b1e94cb2c3d2',   // S2 P0: R1's five, stalled-review class restored
+    'sha256:b3306395331a075448d0715f8904354436cec2f91af393a1ea0da0e2bc43423d',   // 6.2 intent-first routing
+    'sha256:26a0aa9eef6681288c8ddda55d5261761591d3627af1f58216ce82ac556be406',   // 6.2 open-item stop
+    'sha256:26ede9b6f095e03b58b88e83bff1ec706aa5d1ca362ead1dec8bb336518fe04f',   // 6.0 status-first JIT
+    'sha256:ce21ebe7635eccf468614b2e0dfe6196bc390383f76322a46ad4554dcf12b9a2',   // 6.0 minimal-context
+    'sha256:f4555198e6a1f3d5054f8b976fd317293e20d6bed519f6737b5cea4aea8b704d',   // 6.0 four-decisions
+    'sha256:4ada03a2b8a9d6b86fd610e0f4363c31dcea2ba2460d6e96e1231004e4a9c8a0',   // 3.0 front-door
+    'sha256:1dfa5eece0f3c109aae765aa52ffb89f59c0f0f3b494f9430148ac6baeeab046',   // pre-front-door
+    'sha256:d4cbe8f2366643ba3df930d7b09cf14b75a57007a4698b2e0fd7b0504c8b8fae',   // S2 G: delegation routing and triggered reading
+    'sha256:ae5d6b8b9c320a218b96bf0b2ab9a1ad1d855e7aa0445ff0f3bb19ef10e946bf',   // review-round-limit: the R1 stop class names the limit, not round 2
+    'sha256:97e1b5ae5856027d07c503e6cf1cfc87159c9658c2d38e5fbf8b16334e42b641',   // source-intake: a design concluded elsewhere identifies the work
+    'sha256:4652f44145b10265b9a455173793f89b5c383eddc00501dea16e3fe6f2faeaa1',   // limit-ruling: R1's third stop is a family past its one automatic re-review
+  ],
+};
+
+// exact bytes, never line-ending-normalized — we hash what we wrote
+function hashBytes(buf) { return 'sha256:' + crypto.createHash('sha256').update(buf).digest('hex'); }
+function hashFile(p) { return hashBytes(fs.readFileSync(p)); }
+
+// the only paths update may ever refresh: the runbook + each tool's command file
+function allowedTargets(tools) {
+  const set = new Set(['apriori/runbook.md', GUIDE_REL]);
+  for (const k of Object.keys(tools)) for (const rel of Object.values(tools[k].commands || {})) set.add(rel);
+  return set;
+}
+
+const HASH_RE = /^sha256:[0-9a-f]{64}$/;
+
+// → { files } | null (absent). Throws 'managed.json: <defect>' on anything untrustworthy —
+// hygiene runs on READ, so init and update both fail closed before touching any target.
+function readManifest(root, tools) {
+  const p = path.join(root, MANIFEST_REL);
+  if (!fs.existsSync(p)) return null;
+  let raw;
+  try { raw = fs.readFileSync(p, 'utf8'); }
+  catch (e) { throw new Error(`managed.json: unreadable (${e.message})`); }
+  let doc;
+  try { doc = JSON.parse(raw); }
+  catch (e) { throw new Error(`managed.json: invalid JSON (${e.message})`); }
+  if (!doc || typeof doc !== 'object' || Array.isArray(doc)) throw new Error('managed.json: not an object');
+  if (doc.version !== 1) throw new Error(`managed.json: unsupported version ${JSON.stringify(doc.version)} (expected 1)`);
+  if (!doc.files || typeof doc.files !== 'object' || Array.isArray(doc.files)) throw new Error('managed.json: missing files object');
+  const allowed = allowedTargets(tools);
+  for (const [rel, hash] of Object.entries(doc.files)) {
+    if (rel.includes('\\')) throw new Error(`managed.json: non-canonical key '${rel}' (keys use forward slashes)`);
+    if (path.isAbsolute(rel) || /^[a-zA-Z]:/.test(rel)) throw new Error(`managed.json: absolute path entry '${rel}'`);
+    if (rel.split('/').includes('..')) throw new Error(`managed.json: path escape in entry '${rel}'`);
+    if (!allowed.has(rel)) throw new Error(`managed.json: '${rel}' is not a refresh target`);
+    if (typeof hash !== 'string' || !HASH_RE.test(hash)) throw new Error(`managed.json: malformed hash for '${rel}'`);
+  }
+  return { files: { ...doc.files } };
+}
+
+function writeManifest(root, files) {
+  const sorted = {};
+  for (const k of Object.keys(files).sort()) sorted[k] = files[k];
+  const p = path.join(root, MANIFEST_REL);
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  fs.writeFileSync(p, JSON.stringify({ version: 1, files: sorted }, null, 2) + '\n');
+}
+
+// containment before ANY read or hash: an existing target must realpath-resolve inside
+// the project; a missing one is judged by its nearest existing ancestor (containsFuturePath).
+// An escaping path is a hygiene error, never classified modified/up-to-date.
+function assertContained(root, rel) {
+  const abs = path.join(root, rel);
+  if (!containsFuturePath(root, abs)) throw new Error(`managed.json: '${rel}' escapes the project root`);
+}
+
+// First install of the guide (init, and update on a project that never had it). Never overwrites,
+// never follows a path out of the project, never writes through something that is not a plain
+// directory/file → 'created' | 'skipped' | '<reason> (skipped — …)'. The caller records 'created'.
+// What sits at the guide's path or at apriori/guides that the tool must not hash or write through:
+// an escape, a symlink (dangling or not), a directory or another non-file at the path, or anything
+// but a plain directory at apriori/guides → { head, why, cure }; null when the path is clear or a
+// plain file. lstat throughout — a symlink is never followed. doctor reads the same judgment.
+function guideBlock(root) {
+  const abs = path.join(root, GUIDE_REL);
+  if (!containsFuturePath(root, abs)) return { head: 'escapes the project root', why: `${GUIDE_REL} must resolve inside the project`, cure: null };
+  let dir = null;
+  try { dir = fs.lstatSync(path.dirname(abs)); } catch { /* absent */ }
+  if (dir && !dir.isDirectory()) return { head: 'not a regular file', why: 'something other than a plain directory sits at apriori/guides', cure: 'move it and rerun' };
+  let st = null;
+  try { st = fs.lstatSync(abs); } catch { /* absent */ }
+  if (st && !st.isFile()) return { head: 'not a regular file', why: `${st.isSymbolicLink() ? 'a symlink' : 'a directory or other non-file'} sits at ${GUIDE_REL}`, cure: 'move it and rerun' };
+  return null;
+}
+
+function guideObstruction(root) {
+  const b = guideBlock(root);
+  return b && `${b.head} (skipped — ${b.why}${b.cure ? '; ' + b.cure : ''})`;
+}
+
+// Every shipped edition of the guide, newest first — the proof update adopts an unlisted guide on
+// (an install that failed before its record). APPEND when guides/prototype-walk.md changes; PW-02
+// asserts the live guide is listed.
+const GUIDE_GENERATIONS = [
+  'sha256:e2794aa421cd2fc6d1ffe536c32556995be7f13b4205949265e5f4227f078e51',   // batch-review-fixes: owner decisions first; a walk before any change
+  'sha256:3d4e6dce8590ddb1207099e9a6ba1f70f61e28d46a10ec027773c59038f2b968',   // requirement-check-recipe: the requirement-directory successor
+  'sha256:551c6686be36479d352ca3b364bd05dcdbda00b8ae40966bd50367f7c38255a7',   // prototype-walk-guide: first edition
+];
+
+// One look at a regular file that never follows a symlink at its last component: { bytes, st }, or
+// null when what is there now is a symlink, a directory or another non-file, or nothing. The guide's
+// ownership judgment (hash, edition) and its rewrite both use what THIS look saw.
+const NOFOLLOW = fs.constants.O_NOFOLLOW || 0;
+function readPlain(abs) {
+  let fd;
+  try { fd = fs.openSync(abs, fs.constants.O_RDONLY | NOFOLLOW); }
+  catch (e) { if (['ELOOP', 'ENOENT', 'EISDIR', 'ENOTDIR'].includes(e.code)) return null; throw e; }
+  try {
+    const st = fs.fstatSync(fd);
+    return st.isFile() ? { bytes: fs.readFileSync(fd), st } : null;
+  } finally { fs.closeSync(fd); }
+}
+
+// Rewrite the file readPlain saw — only while it is still that file: opened without following a
+// symlink, then the same device and inode, and only then truncated. false = it was replaced in
+// between (nothing written). The parent-directory residual of installGuide applies here too.
+function writePlain(abs, buf, seen) {
+  let fd;
+  try { fd = fs.openSync(abs, fs.constants.O_WRONLY | NOFOLLOW); }
+  catch (e) { if (['ELOOP', 'ENOENT', 'EISDIR', 'ENOTDIR'].includes(e.code)) return false; throw e; }
+  try {
+    const st = fs.fstatSync(fd);
+    if (!st.isFile() || st.dev !== seen.st.dev || st.ino !== seen.st.ino) return false;
+    fs.ftruncateSync(fd, 0);
+    for (let off = 0; off < buf.length;) off += fs.writeSync(fd, buf, off, buf.length - off, off);
+    return true;
+  } finally { fs.closeSync(fd); }
+}
+
+function installGuide(root, dryRun) {
+  const ob = guideObstruction(root);
+  if (ob) return ob;
+  const abs = path.join(root, GUIDE_REL);
+  if (fs.existsSync(abs)) return 'skipped';
+  if (dryRun) return 'created';
+  fs.mkdirSync(path.dirname(abs), { recursive: true });
+  // exclusive create: whatever appeared at the path after the checks above — a file, a symlink,
+  // dangling or not — makes this fail with EEXIST; it is never followed and never overwritten.
+  // Residual, stated: apriori/guides itself swapped for a symlink out of the project between the
+  // checks and this call can still receive a NEW file there (never an overwrite) — Node has no
+  // openat, and whoever can swap directories inside the project already controls its tree.
+  try { fs.writeFileSync(abs, fs.readFileSync(GUIDE_SRC), { flag: 'wx' }); }
+  catch (e) {
+    if (e.code === 'EEXIST') return `changed during install (skipped — something appeared at ${GUIDE_REL} after the checks; left alone, rerun to judge it)`;
+    throw e;
+  }
+  return 'created';
+}
+
+module.exports = { TEMPLATE_GENERATIONS, allowedTargets, hashBytes, hashFile,
+  readManifest, writeManifest, assertContained, GUIDE_REL, GUIDE_SRC, GUIDE_GENERATIONS, guideBlock, guideObstruction, installGuide, readPlain, writePlain };
+'use strict';
+/*
+ * apriori update — refresh tool-owned scaffolded files after a CLI upgrade.
+ * Tool-owned: apriori/runbook.md (copied from the package's own RUNBOOK.md — single source),
+ * apriori/guides/prototype-walk.md (the one guide the runbook names, from guides/)
+ * and per-tool command files that already exist (from templates/command.md).
+ * User-owned is NEVER touched: process-config.md, specs/, changes/, review/, truth/,
+ * and the rules files the init pointer was appended to (CLAUDE.md, AGENTS.md, …).
+ * Zero deps — pure Node stdlib.
+ */
+const fs = require('fs');
+const path = require('path');
+const { TOOLS, upgradePointer } = require('./init');
+const { containsFuturePath } = require('./archive-merge');
+const { withStrict } = require('./args');
+const { legacyRoots } = require('./resolve');
+const managed = require('./managed');
+
+const PKG_ROOT = path.join(__dirname, '..');
+const RUNBOOK_SRC = path.join(PKG_ROOT, 'RUNBOOK.md');
+const { TEMPLATE_SRC } = require('./init');           // template id → shipped source path
+
+// Refresh one existing target from src; returns 'updated' | 'up-to-date'.
+function refresh(target, src, dryRun) {
+  const want = fs.readFileSync(src, 'utf8');
+  if (fs.readFileSync(target, 'utf8') === want) return 'up-to-date';
+  if (!dryRun) fs.writeFileSync(target, want);
+  return 'updated';
+}
+
+const CURE = "delete it and rerun 'apriori init --tools <t>' to hand it back to the tool";
+const CHANGED = 'changed during refresh (skipped — what sits at the path was replaced after it was read; left alone, rerun to judge it)';
+
+// Refresh tool-owned files under root — but only those apriori/managed.json proves the
+// tool owns AND the user hasn't modified. Everything else is reported and left alone.
+// Pre-manifest projects are adopted on proof (runbook unconditionally; command files
+// only when their bytes match a shipped template generation).
+// Returns { actions: [{file, action}] }; throws on no runbook or manifest hygiene errors.
+function run(root, opts = {}) {
+  const rb = path.join(root, 'apriori', 'runbook.md');
+  if (!fs.existsSync(rb)) throw new Error(`no apriori/runbook.md here — run 'apriori init' first`);
+  const tools = opts.tools || TOOLS;                        // test-only injection (K=2)
+  const manifest = managed.readManifest(root, tools);       // hygiene throws before any touch
+  const generations = opts.generations || managed.TEMPLATE_GENERATIONS;
+  const srcs = opts.commandSrc || TEMPLATE_SRC;
+  const dry = !!opts.dryRun;
+  const actions = [];
+  const files = manifest ? { ...manifest.files } : {};
+  let manifestDirty = manifest === null;                    // adoption always materializes it
+
+  // one candidate: managed semantics when listed; adoption when pre-manifest; unmanaged otherwise
+  const consider = (rel, srcAbs, adoptable) => {
+    const p = path.join(root, rel);
+    const listed = manifest && Object.prototype.hasOwnProperty.call(manifest.files, rel);
+    if (!fs.existsSync(p)) {
+      if (listed) actions.push({ file: rel, action: "missing (skipped — recreating is init's job)" });
+      return;
+    }
+    managed.assertContained(root, rel);                     // before ANY read or hash
+    const cur = managed.hashFile(p);
+    if (listed) {
+      if (cur !== manifest.files[rel]) { actions.push({ file: rel, action: `modified (skipped — locally modified; ${CURE})` }); return; }
+      const act = refresh(p, srcAbs, dry);
+      actions.push({ file: rel, action: act });
+      if (act === 'updated') { files[rel] = managed.hashBytes(fs.readFileSync(srcAbs)); manifestDirty = true; }
+      return;
+    }
+    if (manifest === null && adoptable(cur)) {              // pre-manifest adoption on proof
+      const act = refresh(p, srcAbs, dry);
+      actions.push({ file: rel, action: act });
+      files[rel] = act === 'updated' ? managed.hashBytes(fs.readFileSync(srcAbs)) : cur;
+      return;
+    }
+    actions.push({ file: rel, action: `unmanaged (skipped — not created by this tool; ${CURE})` });
+  };
+
+  // runbook: adopted unconditionally pre-manifest (its refresh is update's reason to exist)
+  consider('apriori/runbook.md', opts.runbookSrc || RUNBOOK_SRC, () => true);
+  // the guide the runbook names: listed → refreshed like any managed file (modified or missing is
+  // reported and left alone — recreating a listed file is init's job); never installed (not listed,
+  // not present) → installed and recorded now; present but not listed → adopted only on proof (its
+  // bytes are exactly a shipped edition — an install that failed before its record), else the user's
+  // and left alone. Every branch first checks what sits at the path and at apriori/guides (lstat — a
+  // symlink is never followed): an obstruction is reported and left alone before anything is hashed or written.
+  const guideAbs = path.join(root, managed.GUIDE_REL);
+  const guideSrc = opts.guideSrc || managed.GUIDE_SRC;
+  const guideGens = opts.guideGenerations || managed.GUIDE_GENERATIONS;
+  const guideListed = manifest && Object.prototype.hasOwnProperty.call(manifest.files, managed.GUIDE_REL);
+  const obstruction = managed.guideObstruction(root);
+  const G = managed.GUIDE_REL;
+  if (obstruction) {
+    actions.push({ file: G, action: obstruction });
+  } else if (!fs.existsSync(guideAbs)) {
+    if (guideListed) actions.push({ file: G, action: "missing (skipped — recreating is init's job)" });
+    else {
+      const a = managed.installGuide(root, dry);
+      actions.push({ file: G, action: a === 'created' ? 'created (first install)' : a });
+      if (a === 'created' && !dry) { files[G] = managed.hashFile(guideAbs); manifestDirty = true; }
+    }
+  } else {
+    // ONE no-follow look: the hash judged (listed entry, or a shipped edition) and the bytes rewritten
+    // belong to the same file — a symlink swapped in after the checks is never written through
+    const seen = managed.readPlain(guideAbs);
+    const cur = seen && managed.hashBytes(seen.bytes);
+    const refreshGuide = () => {
+      const want = fs.readFileSync(guideSrc);
+      if (seen.bytes.equals(want)) return 'up-to-date';
+      if (!dry && !managed.writePlain(guideAbs, want, seen)) return CHANGED;
+      return 'updated';
+    };
+    if (!seen) actions.push({ file: G, action: CHANGED });
+    else if (guideListed) {
+      if (cur !== manifest.files[G]) actions.push({ file: G, action: `modified (skipped — locally modified; ${CURE})` });
+      else {
+        const act = refreshGuide();
+        actions.push({ file: G, action: act });
+        if (act === 'updated') { files[G] = managed.hashBytes(fs.readFileSync(guideSrc)); manifestDirty = true; }
+      }
+    } else if (guideGens.includes(cur)) {
+      const act = refreshGuide();
+      if (act === CHANGED) actions.push({ file: G, action: act });
+      else {
+        actions.push({ file: G, action: act === 'updated' ? 'adopted and updated (its bytes were an earlier shipped edition)' : 'adopted (its bytes are the shipped guide)' });
+        files[G] = act === 'updated' ? managed.hashBytes(fs.readFileSync(guideSrc)) : cur;
+        manifestDirty = true;
+      }
+    } else actions.push({ file: G, action: `unmanaged (skipped — not created by this tool; ${CURE})` });
+  }
+  // protocol-required scaffolding the refreshed runbook relies on (IN-11): create if missing,
+  // NEVER modify — and each piece on its own: a lone missing tmp/ is recreated too (BD-02)
+  const gi = path.join(root, 'apriori', '.gitignore');
+  if (!fs.existsSync(gi)) {
+    if (!dry) fs.writeFileSync(gi, 'tmp/\n');
+    actions.push({ file: 'apriori/.gitignore', action: 'created' });
+  }
+  const tmpDir = path.join(root, 'apriori', 'tmp');
+  let tmpSt = null;
+  try { tmpSt = fs.lstatSync(tmpDir); } catch { /* absent */ }
+  if (!tmpSt) {
+    if (!dry) fs.mkdirSync(tmpDir, { recursive: true });
+    actions.push({ file: 'apriori/tmp/', action: 'created' });
+  } else if (!tmpSt.isDirectory()) {
+    actions.push({ file: 'apriori/tmp/', action: 'not a directory (skipped — something else sits at apriori/tmp; move it and rerun)' });
+  }
+  // each mapped template is adopted ONLY against its own generation table — a body that is a
+  // legal generation of a DIFFERENT template is unmanaged, in either direction (MC-04)
+  for (const key of Object.keys(tools)) {
+    for (const [tplId, rel] of Object.entries(tools[key].commands || {})) {
+      const gens = generations[tplId] || [];
+      consider(rel, srcs[tplId], (cur) => gens.includes(cur));
+    }
+  }
+  // the rules files are USER-OWNED; the one thing update may change in them is the pointer
+  // paragraph this tool wrote, and only when it is an exact previous generation (BD-04) —
+  // detected the way command files are: verbatim, never by resemblance
+  const seenRules = new Set();
+  for (const key of Object.keys(tools)) {
+    const rel = TOOLS[key].rules;
+    if (!rel || seenRules.has(rel)) continue;
+    seenRules.add(rel);
+    const p = path.join(root, rel);
+    let st;
+    try { st = fs.lstatSync(p); } catch { continue; }
+    if (st.isSymbolicLink() || !st.isFile() || !containsFuturePath(root, p)) continue;   // not a plain contained file: not touched, not judged
+    const up = upgradePointer(fs.readFileSync(p, 'utf8'));
+    if (up.kind === 'none' || up.kind === 'current') continue;      // a user-owned file with nothing to do is not an action
+    if (up.kind === 'hand-edited') { actions.push({ file: rel, action: 'pointer (skipped — not a shipped generation; hand-edited, left alone)' }); continue; }
+    if (!dry) fs.writeFileSync(p, up.text);
+    actions.push({ file: rel, action: 'pointer updated' });
+  }
+  if (manifestDirty && !dry) managed.writeManifest(root, files);
+  // legacy 3.x layout roots: refreshing the protocol over pre-4.0 artifacts must be loud (UP-12)
+  const legacy = legacyRoots(root);
+  const warnings = legacy.length
+    ? [`legacy 3.x layout root(s) present: ${legacy.join(', ')} — migrate them into their change bundles, see MIGRATING.md (4.0): https://github.com/Apriorhythm/apriori-spec-development/blob/main/MIGRATING.md`]
+    : [];
+  return { actions, warnings };
+}
+
+const USAGE = 'usage: apriori update [--dry-run]';
+
+function cli(argv) {
+  return withStrict(argv, { sub: 'update', usage: USAGE, positionals: 0, flags: { '--dry-run': 'flag' } }, (f) => {
+    const dryRun = !!f['--dry-run'];
+    let res;
+    try { res = run(process.cwd(), { dryRun }); }
+    catch (e) { console.error('  ' + e.message); return 1; }
+    const refreshed = (a) => a === 'updated' || a === 'pointer updated' || a === 'created (first install)' || a.startsWith('adopted and updated');
+    for (const { file, action } of res.actions)
+      console.log(`  ${refreshed(action) ? '✓' : '·'} ${file}  (${action})`);
+    for (const w of res.warnings || []) console.error(`  warning: ${w}`);
+    const n = res.actions.filter((a) => refreshed(a.action)).length;
+    const modified = res.actions.filter((a) => /^modified \(skipped/.test(a.action)).length;
+    // a tool-owned path it could not bring to match: deleted, obstructed, escaping, or changed mid-install
+    const blocked = res.actions.filter((a) => /^(missing|not a regular file|not a directory|escapes the project root|changed during (?:install|refresh)) \(skipped/.test(a.action)).length;
+    const held = [];
+    if (modified) held.push(`${modified} modified (skipped) — locally modified, not refreshed; ${CURE}`);
+    if (blocked) held.push(`${blocked} missing or obstructed (skipped) — not refreshed; see the lines above`);
+    const v = require('../package.json').version;
+    // the summary never says "everything matches" over a file it just declined or could not refresh (BD-03)
+    console.log(n
+      ? `\n  ${n} file(s) ${dryRun ? 'would be ' : ''}refreshed to apriori-cli ${v}.`
+      : held.length
+        ? `\n  ${held.join('; ')}.`
+        : `\n  everything already matches apriori-cli ${v}.`);
+    console.log('  (user-owned files — process-config.md, specs/, changes/, rules files — are never touched.)');
+    return 0;
+  });
+}
+
+module.exports = { run, refresh, cli };
+
+exec
+/usr/bin/zsh -lc "sed -n '110,213p' lib/init.js; sed -n '250,288p' lib/check.js; git diff -- test/init.test.js; sed -n '130,225p' test/prototype-walk-guide.test.js; sed -n '300,337p' test/check.test.js" in /root/terra/wt-fix
+ succeeded in 0ms:
+// Scaffold the apriori/ root + per-tool pointers. Pure enough to unit-test.
+// opts.dryRun computes actions without writing. Returns { actions:[{file,action}], levels:{tool:level} }
+function scaffold(root, toolKeys, opts = {}) {
+  const dry = !!opts.dryRun;
+  // the whole tool list is validated FIRST — an unknown key never reaches a write (BD-01)
+  const unknown = unknownTool(toolKeys);
+  if (unknown) throw new Error(unknown);
+  // manifest hygiene FIRST: an untrustworthy managed.json blocks init before any write (IN-17)
+  const managed = require('./managed');
+  const tools = opts.tools || TOOLS;                      // test-only injection (K=2)
+  const srcs = opts.templateSrc || TEMPLATE_SRC;
+  const manifest = managed.readManifest(root, tools);
+  const created = [];                                     // rels created THIS run — the only manifest writes
+  // each file is recorded the moment it is created: a later step that throws (a rules path that is a
+  // directory, a tool directory that is a file …) must not leave anything this run created unrecorded —
+  // init never adopts what it finds, so an unrecorded file of its own would stay unmanaged on every retry
+  const record = (rel) => {
+    created.push(rel);
+    if (dry) return;
+    const files = manifest ? { ...manifest.files } : {};
+    for (const r of created) files[r] = managed.hashFile(path.join(root, r));
+    managed.writeManifest(root, files);
+  };
+  const actions = [];
+  const act = (file, action) => actions.push({ file, action });
+  const seed = (rel, srcAbs) => {
+    const p = path.join(root, rel);
+    if (!fs.existsSync(p)) { if (!dry) { ensureDir(p); fs.copyFileSync(srcAbs, p); } act(rel, 'created'); return true; }
+    act(rel, 'skipped'); return false;
+  };
+
+  // 1. apriori/ root: runbook + process-config (never clobbered) + working dirs
+  if (seed('apriori/runbook.md', RUNBOOK_SRC)) record('apriori/runbook.md');
+  // the guide the runbook names for a prototype walk — tool-owned, one exact file
+  const guideAct = managed.installGuide(root, dry);
+  act(managed.GUIDE_REL, guideAct);
+  if (guideAct === 'created') record(managed.GUIDE_REL);
+  seed('apriori/process-config.md', path.join(TEMPLATES, 'process-config.md'));
+  // ephemeral scratch (P7 screenshot self-checks etc.) — gitignored, never committed (IN-11)
+  const gi = path.join(root, 'apriori', '.gitignore');
+  if (!fs.existsSync(gi)) { if (!dry) { ensureDir(gi); fs.writeFileSync(gi, 'tmp/\n'); } act('apriori/.gitignore', 'created'); }
+  else act('apriori/.gitignore', 'skipped');
+  // pin a language and/or persist a test command in the scaffolded config (only on a freshly-created config).
+  // Both go through config.encodeCell — the serializer twin of the reader — and a CALLBACK
+  // replacement: a template string would read `$&` / `$1` inside the command as replacement
+  // patterns, and a bare `|` would split the cell (6.2, A-4). A value the cell cannot carry
+  // throws before the write; the CLI validates the same way before it touches anything.
+  if ((opts.language || opts.testCmd) && !dry) {
+    const cfg = path.join(root, 'apriori', 'process-config.md');
+    const created = actions.some((a) => a.file === 'apriori/process-config.md' && a.action === 'created');
+    if (created) {
+      const cell = (label, v) => { const e = encodeCell(v); if (e.error) throw new Error(`${label} ${e.error}`); return e.cell; };
+      let body = fs.readFileSync(cfg, 'utf8');
+      if (opts.language) { const c = cell('--language', opts.language); body = body.replace(/(\| language \| )auto( \|)/, (m, a, b) => a + c + b); }
+      if (opts.testCmd) {  // consumed by `apriori verify` as the default when --test-cmd is omitted
+        const c = cell('--test-cmd', opts.testCmd);
+        body = body.replace(/^(\| language \|.*)$/m, (m) => `${m}\n| test-cmd | ${c} | any shell command emitting TAP — \`apriori verify\`'s default | (none) |`);
+      }
+      fs.writeFileSync(cfg, body);
+    }
+  }
+  if (!dry) for (const sub of ['specs', 'changes', 'changes/archive', 'truth', 'tmp'])
+    fs.mkdirSync(path.join(root, 'apriori', sub), { recursive: true });
+
+  // 2. per-tool pointers / commands
+  const levels = {};
+  for (const key of toolKeys) {
+    const t = tools[key];
+    if (!t) continue;
+    act(t.rules, writePointer(root, t.rules, t.mdc, dry));
+    for (const [tplId, rel] of Object.entries(t.commands || {})) {
+      const src = srcs[tplId];
+      if (!src) throw new Error(`no template source registered for '${tplId}'`);
+      const cmdAct = writeCommand(root, rel, src, dry);
+      act(rel, cmdAct);
+      if (cmdAct === 'created') record(rel);               // pre-existing files are never adopted
+    }
+    levels[key] = t.level;
+  }
+  // 3. the managed manifest: ONLY what THIS run created, merged over valid existing entries (a
+  // recreated missing file gets a fresh hash — the delete-and-reinit cure closes). record() already
+  // wrote it as each file appeared; dry-run reports the would-be entries and touches nothing.
+  if (created.length) act('apriori/managed.json', manifest ? 'merged' : 'created');
+  return { actions, levels };
+}
+
+function report(scaffoldResult) {
+  console.log('\n  Wrote:');
+  for (const { file, action } of scaffoldResult.actions)
+    console.log(`    ${action === 'skipped' ? '·' : '✓'} ${file}${action !== 'created' ? `  (${action})` : ''}`);
+  const cmd = [], rule = [];
+  for (const [k, lvl] of Object.entries(scaffoldResult.levels))
+    (lvl.startsWith('command') ? cmd : rule).push(TOOLS[k].name + (lvl === 'command-experimental' ? ' (experimental)' : ''));
+  if (cmd.length) console.log(`\n  /apriori command-level: ${cmd.join(', ')}`);
+  if (rule.length) console.log(`  rule-level (no slash command, just point the agent at the runbook): ${rule.join(', ')}`);
+  console.log('\n  Next — /apriori routes by intent:');
+  console.log('    discuss first   /apriori                                   (with no arguments)');
+  console.log('                    /apriori discuss foo without starting development');
+  console.log('                    free text that does not identify a change to work on also enters discussion;');
+  console.log('                    mentioning an existing change does not authorize development, and nothing');
+  console.log('                    durable is written without approval to save or develop.');
+  console.log('    start the work  /apriori implement add-reopen              (or the kickoff prompt)');
+  console.log('                    work starts or resumes only when you identify a change to work on and');
+  console.log('                    have not limited the request to discussion; then answer at each human gate.');
+}
+
+// CK-11/CK-12's own fence reader: CommonMark fenced blocks by line — ``` or ~~~ (three or more, up to
+// three spaces of indent), closed only by the same character at least as long, an unclosed one running
+// to the end. A fence belongs to its container: one opened inside a blockquote (`> ~~~`) closes only at
+// that same quote depth and ends with its blockquote; inside a fence opened outside any quote, a quoted
+// line (`> ~~~`) is content, never a closer. checkRunbookVersion applies it BEFORE the shared
+// stripFences, which reads backtick spans alone and stays as it is for every other reader (its tilde
+// alignment is follow-up FU-1 of batch-review-fixes: it also feeds the delta parsers).
+function stripFencedBlocks(text) {
+  const out = [];
+  let fence = null;
+  for (const line of text.split('\n')) {
+    const quote = /^(?: {0,3}>[ \t]?)*/.exec(line)[0];
+    const depth = (quote.match(/>/g) || []).length;
+    const m = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line.slice(quote.length));
+    if (fence) {
+      if (depth >= fence.depth) {
+        if (depth === fence.depth && m && m[1][0] === fence.ch && m[1].length >= fence.len && !m[2].trim()) fence = null;
+        continue;
+      }
+      fence = null;                     // its blockquote ended, and the fence with it: judge this line afresh
+    }
+    if (m && !(m[1][0] === '`' && m[2].includes('`'))) { fence = { ch: m[1][0], len: m[1].length, depth }; continue; }
+    out.push(line);
+  }
+  return out.join('\n');
+}
+
+const PACKAGED_RUNBOOK = path.join(__dirname, '..', 'RUNBOOK.md');
+function checkRunbookFreshness(root, packagedPath = PACKAGED_RUNBOOK) {
+  const scaffolded = path.join(root, 'apriori', 'runbook.md');
+  if (!fs.existsSync(scaffolded) || !fs.existsSync(packagedPath)) return [];
+  if (fs.readFileSync(scaffolded, 'utf8') === fs.readFileSync(packagedPath, 'utf8')) return [];
+  return [`apriori/runbook.md differs from the installed apriori-cli runbook — run 'apriori update' to refresh`];
+}
+
+// ---- cli --------------------------------------------------------------------
+// ---- CK-19..21: archive drift — a report, never a failure -------------------
+diff --git a/test/init.test.js b/test/init.test.js
+index 31dc2c9..e679291 100644
+--- a/test/init.test.js
++++ b/test/init.test.js
+@@ -354,6 +354,19 @@ test('IN-13 fresh init writes the manifest for exactly what it created', () => {
+   assert.strictEqual(m.files['apriori/runbook.md'], umSha(umPath.join(root, 'apriori', 'runbook.md')));
+   assert.strictEqual(m.files['.claude/commands/apriori.md'], umSha(umPath.join(root, '.claude', 'commands', 'apriori.md')));
+   assert.strictEqual(m.files['.claude/commands/apriori-discuss.md'], umSha(umPath.join(root, '.claude', 'commands', 'apriori-discuss.md')));
++  // each file is recorded the moment it is created (batch-review-fixes, round 1 BRF-R2): a run that throws
++  // after one tool's commands were written — the next tool's directory is a file — keeps them recorded,
++  // and once the obstruction is gone update still manages them instead of calling them unmanaged
++  const broken = umTmp();
++  umFs.writeFileSync(umPath.join(broken, '.cursor'), 'not a dir\n');
++  assert.throws(() => umInit.scaffold(broken, ['claude', 'cursor']), /ENOTDIR|EEXIST/);
++  const bm = umManifest(broken);
++  for (const rel of ['apriori/runbook.md', 'apriori/guides/prototype-walk.md', '.claude/commands/apriori.md', '.claude/commands/apriori-discuss.md'])
++    assert.strictEqual(bm.files[rel], umSha(umPath.join(broken, rel)), rel);
++  umFs.rmSync(umPath.join(broken, '.cursor'));
++  const after = umUpdate.run(broken).actions;
++  for (const rel of ['.claude/commands/apriori.md', '.claude/commands/apriori-discuss.md'])
++    assert.strictEqual(after.find((x) => x.file === rel).action, 'up-to-date', rel);
+ });
+ 
+ test('IN-14 add-tool init merges without adopting bystanders', () => {
+  const foreign = aged();
+  fs.mkdirSync(path.join(foreign, 'apriori', 'guides'), { recursive: true });
+  fs.writeFileSync(path.join(foreign, GUIDE), 'mine\n');
+  assert.match(actionOf(update.run(foreign).actions, GUIDE), /^unmanaged \(skipped/);
+  assert.strictEqual(fs.readFileSync(path.join(foreign, GUIDE), 'utf8'), 'mine\n');
+  // batch review guide-2: an update that throws after installing the guide (a listed command path is a
+  // directory) leaves it unrecorded; the next run adopts it on proof — its bytes are a shipped edition
+  const crashed = aged();
+  const cmd = path.join(crashed, '.claude', 'commands', 'apriori.md');
+  fs.rmSync(cmd); fs.mkdirSync(cmd);
+  assert.throws(() => update.run(crashed), /EISDIR/);
+  assert.strictEqual(fs.readFileSync(path.join(crashed, GUIDE), 'utf8'), PKG_GUIDE);
+  assert.ok(!(GUIDE in manifestOf(crashed)));
+  fs.rmdirSync(cmd);
+  assert.strictEqual(actionOf(update.run(crashed).actions, GUIDE), 'adopted (its bytes are the shipped guide)');
+  assert.strictEqual(manifestOf(crashed)[GUIDE], sha(path.join(crashed, GUIDE)));
+  assert.strictEqual(actionOf(update.run(crashed).actions, GUIDE), 'up-to-date');
+  // an earlier shipped edition left unrecorded is adopted and brought to the package's guide
+  const earlier = aged();
+  fs.mkdirSync(path.join(earlier, 'apriori', 'guides'), { recursive: true });
+  fs.writeFileSync(path.join(earlier, GUIDE), '# an earlier edition\n');
+  const gens = [sha(path.join(earlier, GUIDE))];
+  assert.match(actionOf(update.run(earlier, { dryRun: true, guideGenerations: gens }).actions, GUIDE), /^adopted and updated/);
+  assert.strictEqual(fs.readFileSync(path.join(earlier, GUIDE), 'utf8'), '# an earlier edition\n', 'dry run writes nothing');
+  assert.ok(!(GUIDE in manifestOf(earlier)));
+  assert.match(actionOf(update.run(earlier, { guideGenerations: gens }).actions, GUIDE), /^adopted and updated/);
+  assert.strictEqual(fs.readFileSync(path.join(earlier, GUIDE), 'utf8'), PKG_GUIDE);
+  assert.strictEqual(manifestOf(earlier)[GUIDE], sha(path.join(earlier, GUIDE)));
+  // round 1 BRF-R1: the hash judged and the bytes rewritten belong to one file — a symlink swapped in
+  // between the read and the write (adoption of an earlier edition, and a listed guide's refresh) is
+  // never written through; the run reports it and records nothing for it
+  const swapAtWrite = (root, victim, fn) => {
+    const abs = path.join(root, GUIDE), realOpen = fs.openSync;
+    fs.openSync = function (p, flags, ...rest) {
+      if (p === abs && typeof flags === 'number' && (flags & fs.constants.O_WRONLY)) {
+        fs.openSync = realOpen;
+        fs.renameSync(abs, abs + '.moved'); fs.symlinkSync(victim, abs);
+      }
+      return realOpen.call(fs, p, flags, ...rest);
+    };
+    try { return fn(); } finally { fs.openSync = realOpen; }
+  };
+  for (const listed of [false, true]) {
+    const r = listed ? (() => { const x = tmp(); init.scaffold(x, ['claude']); return x; })() : aged();
+    const victim = path.join(tmp(), 'victim.md');
+    fs.writeFileSync(victim, 'outside\n');
+    let opts;
+    if (listed) opts = { guideSrc: newer };
+    else {
+      fs.mkdirSync(path.join(r, 'apriori', 'guides'), { recursive: true });
+      fs.writeFileSync(path.join(r, GUIDE), '# an earlier edition\n');
+      opts = { guideGenerations: [sha(path.join(r, GUIDE))] };
+    }
+    const before = manifestOf(r)[GUIDE];
+    const res = swapAtWrite(r, victim, () => update.run(r, opts));
+    assert.match(actionOf(res.actions, GUIDE), /^changed during refresh \(skipped — what sits at the path was replaced after it was read/, `listed=${listed}`);
+    assert.strictEqual(fs.readFileSync(victim, 'utf8'), 'outside\n', `listed=${listed}: the swapped-in symlink must not be written through`);
+    assert.strictEqual(manifestOf(r)[GUIDE], before, `listed=${listed}: nothing recorded for it`);
+  }
+  // the shipped-edition table carries the live guide and every edition shipped before it
+  for (const h of [sha(path.join(ROOT, 'guides', 'prototype-walk.md')),
+    'sha256:3d4e6dce8590ddb1207099e9a6ba1f70f61e28d46a10ec027773c59038f2b968',     // c290842
+    'sha256:551c6686be36479d352ca3b364bd05dcdbda00b8ae40966bd50367f7c38255a7'])    // e22e8d8
+    assert.ok(managed.GUIDE_GENERATIONS.includes(h), `GUIDE_GENERATIONS lacks ${h}`);
+  // batch review guide-3: the summary never says everything matches over a guide it could not refresh
+  for (const spoil of [(r) => fs.rmSync(path.join(r, GUIDE)), (r) => { fs.rmSync(path.join(r, GUIDE)); fs.mkdirSync(path.join(r, GUIDE)); }]) {
+    const r = tmp(); init.scaffold(r, ['claude']); spoil(r);
+    const o = spawnSync('node', [BIN, 'update'], { cwd: r, encoding: 'utf8' });
+    assert.strictEqual(o.status, 0, o.stderr);
+    assert.doesNotMatch(o.stdout, /everything already matches/);
+    assert.match(o.stdout, /1 missing or obstructed \(skipped\) — not refreshed; see the lines above\./);
+  }
+  // dry run on a project without it: reported, neither the guide nor the manifest written
+  const dryRoot = aged();
+  const mBefore = fs.readFileSync(path.join(dryRoot, 'apriori', 'managed.json'), 'utf8');
+  assert.strictEqual(actionOf(update.run(dryRoot, { dryRun: true }).actions, GUIDE), 'created (first install)');
+  assert.ok(!fs.existsSync(path.join(dryRoot, GUIDE)));
+  assert.strictEqual(fs.readFileSync(path.join(dryRoot, 'apriori', 'managed.json'), 'utf8'), mBefore);
+  // PW-R1 (review round 1): every update branch refuses to hash or write through what is not a plain file
+  // in a plain directory — a listed guide swapped for a symlink whose target still matches the hash
+  const swapped = tmp(); init.scaffold(swapped, ['claude']);
+  const elsewhere = path.join(swapped, 'docs', 'moved-guide.md');
+  fs.mkdirSync(path.dirname(elsewhere), { recursive: true });
+  fs.renameSync(path.join(swapped, GUIDE), elsewhere);
+  fs.symlinkSync(elsewhere, path.join(swapped, GUIDE));
+  const sw = update.run(swapped, { guideSrc: newer });
+  assert.match(actionOf(sw.actions, GUIDE), /^not a regular file \(skipped — a symlink sits at/);
+  assert.strictEqual(fs.readFileSync(elsewhere, 'utf8'), PKG_GUIDE, 'the symlink target must not be written through');
+  // apriori/guides itself a symlink to a directory inside the project
+  const linkedDir = tmp(); init.scaffold(linkedDir, ['claude']);
+  fs.renameSync(path.join(linkedDir, 'apriori', 'guides'), path.join(linkedDir, 'real-guides'));
+  fs.symlinkSync(path.join(linkedDir, 'real-guides'), path.join(linkedDir, 'apriori', 'guides'));
+  const ld = update.run(linkedDir, { guideSrc: newer });
+  assert.match(actionOf(ld.actions, GUIDE), /^not a regular file \(skipped — something other than a plain directory sits at apriori\/guides/);
+  assert.strictEqual(fs.readFileSync(path.join(linkedDir, 'real-guides', 'prototype-walk.md'), 'utf8'), PKG_GUIDE);
+  // a directory at the guide's path: reported, no crash, the rest of the update still lands
+  assert.match(checkRunbookVersion(root, one('> `runbook-version: vier`'))[0], /malformed/i);
+  // body-text occurrence (not a blockquote-backtick entry) is never matched -> treated as missing
+  assert.match(checkRunbookVersion(root, one('the field runbook-version: 4.0 in prose'))[0], /no.*runbook-version|missing/i);
+  // inside a code fence -> never matched -> missing
+  assert.match(checkRunbookVersion(root, one('```\n> `runbook-version: 4.0`\n```'))[0], /no.*runbook-version|missing/i);
+  // every CommonMark fence, not backticks alone (batch review check-self-4): a tilde fence, a longer fence
+  // that a shorter run inside does not close, a fence behind blockquote markers, and an unclosed fence
+  const MISSING = /no.*runbook-version|missing/i;
+  assert.match(checkRunbookVersion(root, one('~~~\n> `runbook-version: 4.0`\n~~~'))[0], MISSING);
+  assert.match(checkRunbookVersion(root, one('~~~~\n~~~\n> `runbook-version: 4.0`\n~~~~'))[0], MISSING);
+  assert.match(checkRunbookVersion(root, one('````\n```\n> `runbook-version: 4.0`\n````'))[0], MISSING);
+  assert.match(checkRunbookVersion(root, one('> ~~~\n> `runbook-version: 4.0`\n> ~~~'))[0], MISSING);
+  assert.match(checkRunbookVersion(root, one('~~~ md\n> `runbook-version: 4.0`'))[0], MISSING);
+  // a fence belongs to its container (round 1 BRF-R3): inside a top-level fence a quoted `> ~~~` is
+  // content, not a closer; a quoted fence closes only at its own depth and ends with its blockquote
+  assert.match(checkRunbookVersion(root, one('~~~\n> ~~~\n> `runbook-version: 4.0`\n~~~'))[0], MISSING);
+  assert.match(checkRunbookVersion(root, one('> ~~~\n> > ~~~\n> `runbook-version: 4.0`\n> ~~~'))[0], MISSING);
+  assert.deepStrictEqual(checkRunbookVersion(root, one('> ~~~\n> x\n\n> `runbook-version: 4.0`')), []);
+  // a backtick fence closes only on a backtick line, a tilde fence only on a tilde line
+  assert.match(checkRunbookVersion(root, one('~~~\n```\n> `runbook-version: 4.0`\n~~~'))[0], MISSING);
+  // a real entry after a CLOSED fence of either kind still counts
+  assert.deepStrictEqual(checkRunbookVersion(root, one('~~~\nx\n~~~\n\n> `runbook-version: 4.0`')), []);
+  assert.deepStrictEqual(checkRunbookVersion(root, one('```\nx\n```\n\n> `runbook-version: 4.0`')), []);
+  // a real blockquote AFTER the first h2 (body region) is never matched -> missing (RVIMPL-2)
+  assert.match(checkRunbookVersion(root, { 'RUNBOOK.md': '# R\n\n## Body\n\n> `runbook-version: 4.0`\n' })[0], /no.*runbook-version|missing/i);
+  // RUNBOOK.md absent under --self -> the canonical runbook is required (RVIMPL-1)
+  assert.match(checkRunbookVersion(root, {})[0], /canonical|missing/i);
+});
+
+test('CK-11 runs under --self and not in consumer mode', () => {
+  const os3 = require('node:os'); const fs3 = require('node:fs'); const p3 = require('node:path');
+  const { spawnSync } = require('node:child_process');
+  const BIN3 = p3.join(__dirname, '..', 'bin', 'apriori.js');
+  const root = fs3.mkdtempSync(p3.join(os3.tmpdir(), 'apriori-ck11s-'));
+  fs3.mkdirSync(p3.join(root, 'apriori', 'specs'), { recursive: true });
+  fs3.writeFileSync(p3.join(root, 'apriori/specs/x.md'), '#### Scenario: XX-01 a\n- t\n');
+  fs3.writeFileSync(p3.join(root, 'package.json'), JSON.stringify({ version: '4.0.3' }));
+  fs3.writeFileSync(p3.join(root, 'RUNBOOK.md'), '# R\n\n> `runbook-version: 3.0`\n');
+
+exec
+/usr/bin/zsh -lc "cat apriori/changes/batch-review-fixes/specs/init/spec.md; cat apriori/changes/batch-review-fixes/specs/update/spec.md; sed -n '28,52p' apriori/changes/batch-review-fixes/specs/check/spec.md; git diff -- CHANGELOG.md MIGRATING.md docs/cli.md docs/cli_cn.md" in /root/terra/wt-fix
+ succeeded in 0ms:
+<!-- apriori-base: sha256:fac02666bc78da0e09b54c5fb9ebd61e378d66638e3a92bb6621474d6ed9cce2 -->
+# Delta — init (batch-review-fixes)
+
+## MODIFIED Requirements
+
+### Requirement: init records what it creates in the managed manifest
+`apriori init` SHALL maintain `apriori/managed.json` entries ONLY for files it actually creates in a run: a fresh init records the runbook, the prototype-walk guide and each command file it wrote; init for an additional tool merges into a valid existing manifest preserving entries it didn't touch; a command file that already existed on disk is skipped as today and gains NO entry (existing content is never blind-adopted). When init creates a file that is absent on disk — including a manifest-listed file the user deleted as the prescribed cure — the entry is written/replaced with the hash of the bytes just written, so the next update sees `up-to-date`, not `modified`. Each entry is written the moment its file is created, so a run that fails at a later step leaves everything it created recorded (init never adopts what it finds, so an unrecorded file of its own would otherwise stay `unmanaged` on every retry). `init --dry-run` never writes or modifies the manifest (it reports would-be entries). A hygiene-invalid manifest (per the update module's rules) makes init exit nonzero before scaffolding or merging anything.
+
+#### Scenario: IN-13 fresh init writes the manifest for exactly what it created
+- WHEN `apriori init --tools <t>` scaffolds a new project
+- THEN `apriori/managed.json` lists the runbook, the prototype-walk guide and the created command file(s) with hashes of the written bytes, and nothing else; and when a fresh `--tools claude,cursor` run throws after Claude's command files were written (`.cursor` is a file), the manifest already lists the runbook, the guide and both Claude command files, and once the obstruction is gone `apriori update` reports those commands `up-to-date`, not `unmanaged`
+
+#### Scenario: IN-14 add-tool init merges without adopting bystanders
+- WHEN init runs for an additional tool in a project where another tool's command path already carries a user file
+- THEN the new tool's created file gains an entry, existing entries are preserved, and the pre-existing user file gains no entry (a later update reports it `unmanaged`)
+
+#### Scenario: IN-15 the delete-and-reinit cure closes cleanly
+- WHEN a managed file was locally modified, deleted, and `apriori init --tools <t>` recreates it
+- THEN the manifest entry is refreshed to the recreated bytes and the next update reports `up-to-date`
+
+#### Scenario: IN-16 init dry-run leaves the manifest alone
+- WHEN `apriori init --dry-run` runs fresh or for an additional tool
+- THEN the manifest is not created or changed, while the report shows the would-be entries
+
+#### Scenario: IN-17 a hygiene-invalid manifest blocks init
+- WHEN `apriori/managed.json` exists but is invalid per the hygiene rules
+- THEN init exits nonzero naming the defect and writes nothing
+
+### Requirement: init installs the prototype-walk guide as one managed file
+The package SHALL ship `guides/prototype-walk.md` (listed in `package.json`'s `files`), and `apriori init` SHALL install it as `apriori/guides/prototype-walk.md` — one exact tool-owned file, never the directory around it — recording it in `apriori/managed.json` like the runbook — the moment it is created, as every file init creates is recorded. Init never overwrites: the guide is created exclusively, so whatever appears at the path after the checks (a file, a symlink) is never followed or overwritten — it is skipped with a reason and gains no entry; an existing file at that path is skipped and gains no entry; a path that is not a regular file, a non-directory at `apriori/guides`, or a path resolving outside the project is skipped with the reason; `--dry-run` writes nothing.
+
+#### Scenario: PW-01 init installs the guide byte-for-byte and records it, and skips what is not its own
+- WHEN `apriori init --tools claude` runs in a new project, in a project that already has a user file at `apriori/guides/prototype-walk.md`, in one where `apriori/guides` is a regular file, in one where `apriori/guides` is a symlink out of the project, in one where a symlink to a file outside the project appears at the guide's path right after `apriori/guides` is made, in one whose `CLAUDE.md` is a directory (init throws after the guide is created), and with `--dry-run`
+- THEN the new project gets the guide byte-identical to the package's `guides/prototype-walk.md` with its manifest entry; the user file is untouched and gains no entry; the other two are skipped with a reason naming the path and nothing is written outside the project; the planted symlink is reported `changed during install (skipped — …)`, its target is untouched and no entry is made; the failing init still leaves the created guide recorded; the dry run reports the would-be creation and writes nothing; and `package.json`'s `files` lists `guides/`
+
+## Notes
+
+Batch review (10-02, c290842) guide-1: the first-install copy followed a symlink created between the checks and the copy; it is now an exclusive create (`wx`). Residual, stated in MIGRATING and the code: `apriori/guides` swapped for an outside symlink in that window can still receive a new file (never an overwrite). guide-2: the manifest is written as soon as the guide exists. Review round 1 (BRF-R2): recording only the guide early left a manifest behind that stranded command files created later in a run that then failed (update adopts commands only when no manifest exists); every created file is now recorded the moment it exists — IN-13 covers it. IN-13..IN-17 and PW-01 keep their ids.
+<!-- apriori-base: sha256:0a89a1a4108e75af7d59b7b8050cd2d4f4675ee5c85157406123f8d475aae435 -->
+# Delta — update (batch-review-fixes)
+
+## MODIFIED Requirements
+
+### Requirement: update refreshes only manifest-proven tool-owned files
+`apriori update` SHALL consult `apriori/managed.json` (`{ "version": 1, "files": { "<relative path>": "sha256:<64hex>" } }`, hashes over the exact bytes the tool last wrote, never line-ending-normalized) and refresh a candidate file only when the manifest lists it AND its current content hash equals the recorded hash; after a real write the entry is updated to the new content's hash. A listed file with a differing hash is `modified` — skipped with a warning naming the file and the cure (delete it and rerun `apriori init --tools <t>`). An existing file with no entry is `unmanaged` — skipped, never written — with one exception: the prototype-walk guide, adopted when its bytes are exactly a shipped edition (its own requirement below). A listed file absent on disk is `missing` — skipped (recreating is init's job). Skip-only runs still exit 0 and name every skip. When no manifest exists (pre-manifest project), update adopts what it can prove: the runbook unconditionally (refreshed as today), each command file only if its content hash equals the current template or a known shipped generation, and the guide on the same proof as above (the package embeds every generation's sha256; a membership test over the live `templates/command.md` keeps the list honest); unproven content is `unmanaged`. The adoption pass writes the manifest. A manifest that exists but is unreadable, unparseable, missing `files`, hash-malformed, `version !== 1`, or carrying a key that is absolute, contains `..`, or is outside the allowed refresh-target set (`apriori/runbook.md`, `apriori/guides/prototype-walk.md`, `TOOLS[*].command`) SHALL make update exit nonzero naming the defect before touching any target; every write additionally requires realpath containment under the project root. `--dry-run` produces the identical report and writes nothing — the manifest included.
+
+#### Scenario: UP-06 a foreign file at a tool path survives update
+- WHEN a file exists at an unselected tool's command path with no manifest entry
+- THEN update leaves it byte-identical, reports `unmanaged` with the cure hint, and exits 0
+
+#### Scenario: UP-07 an unmodified managed file refreshes and re-hashes
+- WHEN a manifest-listed command file matches its recorded hash but the package template has changed
+- THEN update rewrites it from the template and the manifest entry becomes the new content's hash
+
+#### Scenario: UP-08 a locally modified managed file is protected
+- WHEN a manifest-listed file (the runbook included) differs from its recorded hash
+- THEN update reports `modified` with the cure hint and leaves the file byte-identical, and `--dry-run` gives the same report while writing nothing at all
+
+#### Scenario: UP-09 pre-manifest projects are adopted only on proof
+- WHEN no manifest exists and command files variously match the current template, match a known shipped generation, or carry arbitrary content
+- THEN the matching files are adopted (up-to-date / refreshed respectively), the arbitrary one is `unmanaged` and untouched, the runbook refreshes as before, the guide init wrote is adopted on its bytes, and the manifest is written covering exactly those (except under `--dry-run`)
+
+#### Scenario: UP-10 manifest hygiene fails closed
+- WHEN `apriori/managed.json` is invalid JSON, lacks `files`, carries a malformed hash or `version: 2`, or lists an absolute, `..`-containing, or non-refresh-target path
+- THEN update exits nonzero naming the manifest defect and no managed target is touched, identically under `--dry-run`
+
+#### Scenario: UP-11 the shipped-generation list stays honest
+- WHEN the live `templates/command.md` is hashed
+- THEN the digest is a member of the package's embedded generation list (changing the template without appending fails the suite)
+
+### Requirement: update installs the prototype-walk guide once and then manages it like the runbook
+`apriori update` SHALL treat `apriori/guides/prototype-walk.md` by its manifest state: never installed (not listed, not present) → install it and record it, reported `created (first install)` and counted as a refresh in the summary; listed and unmodified → refreshed to the package's guide (`updated` / `up-to-date`) and re-hashed; listed and locally modified → reported `modified` and left alone; listed but missing → reported missing and left to `apriori init` (the existing cure); present but not listed → adopted only on proof: when its bytes are exactly a shipped edition of the guide (an install that failed before its record; the package lists every edition's sha256 and a test keeps the live guide in it), it is recorded — `adopted (its bytes are the shipped guide)`, or refreshed to the package's guide and recorded as `adopted and updated …` for an earlier edition; anything else there is reported `unmanaged` and left alone. The summary never says everything matches over a guide it could not refresh: a missing or obstructed one is counted as `N missing or obstructed (skipped)`. The first install is an exclusive create (as init's). A present guide is read once without following a symlink, and that one read is what gets judged (its listed hash, or a shipped edition) and what gets rewritten: the rewrite opens it again without following a symlink and writes only while it is the same file, so a symlink or another file swapped in after the read is never written through — reported `changed during refresh (skipped — …)` and nothing is recorded for it. It never writes through a path that is not a regular file or that resolves outside the project, and `--dry-run` reports without writing. A CLI from before this change refuses a manifest that lists the guide (`not a refresh target`) — downgrading is not supported, and MIGRATING says so.
+
+#### Scenario: PW-02 the guide is installed once, then refreshed, protected or left alone by its manifest state
+- WHEN `apriori update` runs on a project an older CLI initialized (no guide, no entry), runs again, runs after the package's guide changed, runs after the user edited the guide, runs after the user deleted the listed guide, runs where an unlisted user file sits at the guide's path, runs again after a run that threw after installing the guide (a listed command path was a directory), runs where an unlisted earlier shipped edition sits at the path (dry-run, then for real), runs where a symlink to an outside file is swapped in for the guide between its read and its rewrite (an earlier edition being adopted, and a listed guide being refreshed), runs from the CLI on a fresh project whose guide was deleted or replaced by a directory, and runs with `--dry-run` on a project without the guide
+- THEN the first run creates the guide byte-identical to the package's, records it and reports `created (first install)` with the summary counting it; the second reports `up-to-date`; the changed package guide is `updated`, its new bytes installed and re-hashed; the edited guide is reported `modified` and keeps its bytes and its entry; the deleted one is reported missing and not recreated; the unlisted file is reported `unmanaged` and untouched; after the failed run the guide is `adopted (its bytes are the shipped guide)` and recorded, then `up-to-date`; the earlier edition is `adopted and updated` — the dry run writing nothing, the real run installing the package's guide and recording it; the swapped-in symlink is reported `changed during refresh`, its target untouched and the manifest unchanged, in both cases; the package's edition list carries the live guide and both editions shipped before it; the CLI summary for the deleted or obstructed guide says `1 missing or obstructed (skipped)` and never "everything already matches"; the dry run reports the creation and writes neither the guide nor the manifest
+
+## Notes
+
+Batch review (10-02, c290842) guide-2: an update (or init) that failed after writing the guide left it unrecorded, and ordinary reruns kept calling it `unmanaged`; update now adopts an unrecorded guide on the same kind of proof command files get — its exact bytes are a shipped edition (`GUIDE_GENERATIONS`). update does not write the manifest early: in a pre-manifest project that would cost a later-failing run's command files their adoption, and the adoption covers the guide anyway. Review round 1 (BRF-R1): adoption hashed the path and then rewrote it through an ordinary open, so a symlink swapped in between could redirect the write; the guide is now judged and rewritten through one no-follow read and an identity-checked no-follow write (a listed guide's refresh too, which had the same gap). guide-3: the summary counts missing and obstructed tool-owned paths. SST-4: PW-02 checks the refreshed bytes. The manifest requirement's refresh-target list now names the guide, as the code has since prototype-walk-guide. All scenario ids are kept.
+#### Scenario: CK-11 the runbook major.minor tracks the CLI major.minor
+- WHEN `apriori check --self` runs where RUNBOOK.md declares `runbook-version: 4.0` and package.json is on 4.0.3, then 4.0.0-rc.0
+- THEN CK-11 passes; flipping its header to `3.0` FAILs (self-mode) naming the file and both versions, and so does a minor drift to `4.1`; and a consumer `apriori check` without `--self` never raises CK-11
+
+#### Scenario: CK-12 malformed, missing, duplicate, and body occurrences
+- WHEN the runbook has no `runbook-version` blockquote entry, has two of them, carries a malformed value (`runbook-version: vier`), or mentions `runbook-version:` only in body text or inside a code fence — a backtick or tilde fence, a longer fence a shorter run inside does not close, a fence behind blockquote markers, a quoted `> ~~~` inside a top-level fence (content, not a closer), a deeper-quoted run inside a quoted fence, or an unclosed one
+- THEN the missing/duplicate/malformed cases FAIL (self-mode) naming the file and the reason, while the body-text and code-fence occurrences are never matched (they alone do not satisfy or fail the check — a real header entry is still required), and a real entry after a closed fence of either kind — or after a quoted fence whose blockquote ended — still counts
+
+### Requirement: the canonical verdict phrase table is closed and carries no retired lane
+The canonical table SHALL carry exactly the phrases the live review loops use — the `no major issues` family, `no spec-vs-code gaps` and `gaps found` (P8 and the fast floor), plus the `<N> issues open` prose placeholder — and SHALL NOT carry the phrases retired with the hotfix lane and the explore track (`no findings`, `extraction accepted`, `extraction rejected`). The runbook (`RUNBOOK.md`, its only edition) SHALL contain every canonical phrase. A `VERDICT:` string appearing anywhere in the scanned docs that does not start with a table entry stays a failure, retired phrases included; recognition is the SAME whole-verdict rule as every other consumer — a closed set matched whole (case-folded, whitespace collapsed, terminal punctuation dropped), never a prefix, so a canonical phrase followed by a clause is not a table entry — with no trailer grammar of its own.
+
+#### Scenario: CK-17 the retired lanes leave the table and the table stays closed
+- WHEN the phrase table is checked against the runbook, and separately when a scanned doc carries `VERDICT: looks fine to me` or the retired `VERDICT: no findings`
+- THEN the retired phrases are absent from the table while P8's and the fast floor's remain, the runbook checks clean, and both unregistered lines fail naming the file and line
+
+## Notes
+
+Batch review (10-02, c290842) check-self-1..3: CK-11 said "major" while the code and its test compare major.minor (minor drift fails); CK-17 said "prefix rule" while the shared classifier matches whole verdicts (RUNBOOK §1 R4: "never a prefix rule"); CK-08 skipped an existing but empty mirror because the guard tested truthiness. check-self-4: CK-11's fenced-occurrence exclusion read backtick fences only; it now reads every CommonMark fence. The shared `stripFences` (lib/text.js) is left backtick-only on purpose — it also feeds the delta parsers and the check/verify parity of CK-14 — and its alignment is follow-up `fence-tilde-readers`. Review round 1 (BRF-R3): the first fence reader stripped quote markers inside a top-level fence and so closed it on a quoted `> ~~~`; fences now carry their quote depth. The requirement is renamed so its title stops saying "major". Every scenario id is kept.
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index fe085a2..ad6124a 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -25,6 +25,16 @@ Known limitations, stated as they stand:
+ Later preview snapshots are cut from `release/v6` after v6-dev work merges back; fixes in flight
+ (authorization-scope, archive-manifest) are not part of this snapshot.
+ 
++## Unreleased — batch-review-fixes: the 19 findings of the 10-02 batch's requirement-level check
++
++A requirement-level independent check (codex, two adversarial votes per finding) over `5d3fc78..c290842` confirmed 19 findings; this change fixes all of them under their original ids.
++
++- **Guide install (guide-1..4).** The guide is created exclusively (`wx`): whatever appears at the path after the checks is never followed or overwritten (residual stated in MIGRATING). `init` records every file it creates the moment it exists; `update` adopts an unrecorded guide only when its bytes are a shipped edition (`GUIDE_GENERATIONS`, kept honest by PW-02), and judges and rewrites a present guide through one no-follow read and an identity-checked no-follow write, so a symlink swapped in meanwhile is never written through. The update summary reports `N missing or obstructed (skipped)` instead of "everything already matches". `doctor` judges the guide by lstat as update does — a symlink or a non-directory `apriori/guides` is a finding with the move-aside cure.
++- **check --self (check-self-1..4).** An existing but empty EN/CN mirror is aligned, not skipped. CK-11's version entry ignores every CommonMark fence (``` and ~~~, closed by the same character at least as long, at the fence's own blockquote depth, unclosed to the end); the shared `stripFences` stays backtick-only for now (follow-up `fence-tilde-readers`). The CK-11 and CK-17 spec text says what the code does: major.minor, whole-verdict recognition.
++- **Recipes and handbook (goal-1, shipping-docs-1/2).** Review & Deliver, which can go back to Build & Test, ends at that stage's 25-turn bound too; Build & Test's condition names what is still open; the concepts mini-kv goal (both editions) carries the human-stop outcome and the bound; the CLI reference names the three forms of an escalated family `--force` answers, the owner's reframe at the limit included.
++- **Guide text (PW-1/2).** Recorded owner decisions come before the requirement sources (guide §4 and the runbook's Ground bullet); a walk before any change exists registers nothing, creates no change and lists its owner rows by id for the change that later takes it up.
++- **Specs and tests (SST-1..6).** PR-11/PR-16 (and the stale PR-08/PR-10 wording in the same block) state the current runbook; PR-66, PR-67, PW-02, PW-03 and PW-05 now assert what their scenarios promise.
++
+ ## Unreleased — requirement-check-recipe: an optional requirement-level independent check
+ 
+ - `docs/operator.md` (with the identical recipe and a Chinese explanation in `operator_cn.md`) gains an optional fifth `/goal` recipe for a requirement split into several changes: after its last change is archived, a reviewer independent of the building session reconciles every `in` row of the source checklist (corrected rows against their ruling), traces the end-to-end paths, checks delivery dependencies handed outside the workflow and the assertion and run conditions behind each tick; it reads the code and does not fix it. Its inputs are listed apart from P3's default input.
+diff --git a/MIGRATING.md b/MIGRATING.md
+index e5c863f..2c9edd3 100644
+--- a/MIGRATING.md
++++ b/MIGRATING.md
+@@ -6,6 +6,8 @@ The 3.0.0 stability promise — CLI surface & flags, `--json` shapes, the delta
+ 
+ - **`apriori update` installs `apriori/guides/prototype-walk.md`** on a project that never had it and records it in `apriori/managed.json`; from then on it is refreshed like the runbook. A guide you edited locally is reported `modified` and left alone; one you deleted is reported missing — `apriori init --tools <t>` recreates it.
+ - **The runbook now names that guide** (§4 Ground): when a requirement comes with a runnable UI prototype, the agent offers an optional walk once and reads the guide in full before running one. Nothing else in a project changes.
++- **An unrecorded guide is adopted only on proof** (batch-review-fixes): when an `init` or `update` failed after writing the guide but before recording it, the next `update` adopts a guide whose bytes are exactly a shipped edition (`adopted …`, refreshed if it is an earlier one); anything else at that path stays `unmanaged`. `init` now records every file it creates the moment it creates it, and creates the guide exclusively — something that appears at the path meanwhile is reported and left alone; `update` judges and rewrites a present guide through one read that never follows a symlink, so one swapped in meanwhile is reported (`changed during refresh`) and never written through. One residual is stated rather than closed: `apriori/guides` itself swapped for a symlink out of the project between the check and the write can still receive a new file there (never an overwrite of an existing one).
++- **The update summary** no longer says "everything already matches" when a tool-owned path was missing or obstructed: it reports `N missing or obstructed (skipped)`.
+ - **Downgrading is not supported** once the guide is recorded: a CLI from before this change refuses a manifest that lists it (`managed.json: 'apriori/guides/prototype-walk.md' is not a refresh target`), so `init` and `update` would fail. To go back, remove that entry from `apriori/managed.json` (and the guide, if you like) first.
+ 
+ ## owner-calls-and-handoffs (Unreleased) — owner items, outside hand-offs, and goals that end at a human stop
+diff --git a/docs/cli.md b/docs/cli.md
+index cef2cf6..83e5d91 100644
+--- a/docs/cli.md
++++ b/docs/cli.md
+@@ -114,7 +114,7 @@ On `--write` the bundle gains `archive-manifest.json` — every file's sha256 (l
+ 
+ **Dropped scenarios (archive-drop-guard).** A MODIFIED replacement that drops a store scenario (paired by ID — retitling under the same ID is not dropping) is refused in dry-run and `--write` alike: `RESULT: REFUSED — nothing written`, a `— DROPPED SCENARIOS —` block listing each `<file> · <requirement> · <id>` with the **manifest fingerprint**, and the cure on stderr. The fingerprint is the SHA-256 of the exact archive input (target, every touched store's and delta's digest, the sorted drop list), so the owner's decision names *this* deletion of *this* content and nothing else — edit a delta or a store and it no longer applies. Releasing takes both halves: `- <YYYY-MM-DDTHH:MM> owner: archive-drop <change> sha256:<fingerprint> — <reason>` in `gates:` **and** `--force`. An ambiguous key (a scenario occurring twice on either side) is never forceable — disambiguate first; requirement-prose and scenario-body line losses stay report-only. The single-file form has no bundle to hold a decision and refuses any dropping replacement outright.
+ 
+-**`--force`** belongs to the high-level form and overrides **progress only**, which is exactly two things: a review family's escalation the owner already answered, and a scenario drop the owner already named through the fingerprint-bound `archive-drop` record above. The first is (its `reframe` record plus the flag) — since limit-ruling, that is an `escalate` verdict or a round past the one automatic re-review; a family closed by its rulings and its re-review needs no `--force` at all. It never overrides R1 (`abandoned` above all), a structural defect, an invalid `review-round-limit` row, rulings that are missing or fail their checks, a re-review still owed, a loop stopped with no owner decision on record, an unmet review floor, or an R5 refusal — an open item nobody accepted is not progress. The `archive-force` grammar is still parsed and reported as a note; it forces nothing.
++**`--force`** belongs to the high-level form and overrides **progress only**, which is exactly two things: a review family's escalation the owner already answered, and a scenario drop the owner already named through the fingerprint-bound `archive-drop` record above. The first is an escalated family the owner answered — its `reframe` record plus the flag. Since limit-ruling a family is escalated by an `escalate` verdict, by a round past its one automatic re-review that no owner release opened or that still revises, or by a `revise` after the owner answered the limit round itself with a `reframe` (RUNBOOK §1 R1 / R4); a family closed by its rulings and its re-review needs no `--force` at all. It never overrides R1 (`abandoned` above all), a structural defect, an invalid `review-round-limit` row, rulings that are missing or fail their checks, a re-review still owed, a loop stopped with no owner decision on record, an unmet review floor, or an R5 refusal — an open item nobody accepted is not progress. The `archive-force` grammar is still parsed and reported as a note; it forces nothing.
+ 
+ ```text
+   - <YYYY-MM-DDTHH:MM> owner: archive-force ledger — <the human's reason, verbatim>
+@@ -206,7 +206,7 @@ Example: `apriori update --dry-run`
+ 
+ Exit: 0 done · 1 uninitialized.
+ 
+-**What one run does (6.2).** The runbook copy and each tool's command file are refreshed only when `apriori/managed.json` proves the tool wrote them and you did not modify them since (`updated` / `up-to-date`); a locally modified one is `modified (skipped — …)`, an unrecognised one `unmanaged (skipped — …)`. Protocol scaffolding is re-established piece by piece and never modified: a missing `apriori/.gitignore` is created, and a missing `apriori/tmp/` is created on its own too (`apriori/tmp/  (created)`; something else sitting at that path is reported, never replaced). **Rules files are yours**; the one thing update may change in `CLAUDE.md` / `AGENTS.md` / `.cursor/rules/apriori.mdc` / … is the pointer paragraph this tool wrote, and only when it is verbatim one of the previous shipped generations — that paragraph is replaced by the current one (`pointer updated`), the rest of the file byte-for-byte untouched; a hand-edited pointer is reported (`pointer (skipped — not a shipped generation; hand-edited, left alone)`) and never rewritten; a file with no pointer, or with the current one, is not an action. **The summary is honest:** `N file(s) refreshed`, or `N modified (skipped) — locally modified, not refreshed; …` when anything was declined, or `everything already matches` only when nothing was. **The one adoption exception, stated:** a project initialised by a CLI older than `managed.json` has no manifest; its `apriori/runbook.md` is adopted and overwritten once on the first `update` (a command file only when its bytes match a shipped generation), and from then on both are protected like any managed file — if you customised that old runbook, copy your notes out before the first `update`.
++**What one run does (6.2).** The runbook copy and each tool's command file are refreshed only when `apriori/managed.json` proves the tool wrote them and you did not modify them since (`updated` / `up-to-date`); a locally modified one is `modified (skipped — …)`, an unrecognised one `unmanaged (skipped — …)`. Protocol scaffolding is re-established piece by piece and never modified: a missing `apriori/.gitignore` is created, and a missing `apriori/tmp/` is created on its own too (`apriori/tmp/  (created)`; something else sitting at that path is reported, never replaced). **Rules files are yours**; the one thing update may change in `CLAUDE.md` / `AGENTS.md` / `.cursor/rules/apriori.mdc` / … is the pointer paragraph this tool wrote, and only when it is verbatim one of the previous shipped generations — that paragraph is replaced by the current one (`pointer updated`), the rest of the file byte-for-byte untouched; a hand-edited pointer is reported (`pointer (skipped — not a shipped generation; hand-edited, left alone)`) and never rewritten; a file with no pointer, or with the current one, is not an action. **The summary is honest:** `N file(s) refreshed`, or — when nothing was refreshed — `N modified (skipped) — locally modified, not refreshed; …` for files you edited and `N missing or obstructed (skipped) — not refreshed; see the lines above` for a tool-owned path it could not bring to match (deleted, a symlink or directory in its place, outside the project, replaced mid-install or mid-refresh), or `everything already matches` only when neither holds. **The prototype-walk guide** (`apriori/guides/prototype-walk.md`) is installed once on a project that never had it (`created (first install)`, created exclusively — something that appears at the path meanwhile is left alone and reported) and then managed like the runbook — read once without following a symlink, and rewritten only while it is still that file; an unrecorded guide whose bytes are exactly a shipped edition — an install that failed before its record — is adopted (`adopted …`, refreshed if it is an earlier edition), and any other unrecorded file there stays `unmanaged`. **The one adoption exception, stated:** a project initialised by a CLI older than `managed.json` has no manifest; its `apriori/runbook.md` is adopted and overwritten once on the first `update` (a command file only when its bytes match a shipped generation), and from then on both are protected like any managed file — if you customised that old runbook, copy your notes out before the first `update`.
+ 
+ ## 8. Configuration Reference
+ 
+diff --git a/docs/cli_cn.md b/docs/cli_cn.md
+index a41cf3f..f156299 100644
+--- a/docs/cli_cn.md
++++ b/docs/cli_cn.md
+@@ -112,7 +112,7 @@ usage: apriori archive --store <f> --delta <f> --change <name> [--write] [--no-c
+ 
+ **丢场景护栏(archive-drop-guard)。** MODIFIED 替换若丢掉 store 里的场景(按 ID 配对——同 ID 改标题不算丢),dry-run 与 `--write` 一律拒绝:`RESULT: REFUSED — nothing written`,打印 `— DROPPED SCENARIOS —` 块(逐条 `<文件> · <需求> · <ID>`)与 **manifest 指纹**,stderr 给出可复制的授权行。指纹是本次归档输入(目标、涉及的每个 store 与 delta 的摘要、排序后的删除清单)的 SHA-256,所以所有者的决定只对*这份*内容的*这次*删除有效——改了 delta 或 store 它就失效。放行要两半都有:`gates:` 里的 `- <YYYY-MM-DDTHH:MM> owner: archive-drop <change> sha256:<指纹> — <理由>` **加** `--force`。歧义键(同一场景在任一侧出现两次)永不可 force——先消歧;需求正文与场景正文的行丢失仍只报告。单文件形式没有 bundle 可放决定,一律拒绝丢场景的替换。
+ 
+-**`--force`** 只属于高层形式,且**只解进度类**——恰好两件:所有者已回答的评审 family 升级,以及所有者已通过上面那条指纹绑定的 `archive-drop` 记录点名的场景删除。第一件是所有者已回答的 escalation(它的 `reframe` 记录加上这个 flag)——自 limit-ruling 起,即 `escalate` 结论或越过唯一一次自动复核的轮次;由逐条裁决与复核收口的 family 根本不需要 `--force`。它绝不解 R1(尤其 `abandoned`)、结构性缺陷、非法的 `review-round-limit` 行、缺失或未通过检查的裁决、尚欠的复核、没有所有者决定在案的停摆循环、未满足的评审底线、或任何 R5 拒绝——没人接受的 open 条目不是"进度"。`archive-force` 文法仍然会被解析并以 note 报告,不解任何东西。
++**`--force`** 只属于高层形式,且**只解进度类**——恰好两件:所有者已回答的评审 family 升级,以及所有者已通过上面那条指纹绑定的 `archive-drop` 记录点名的场景删除。第一件是所有者已回答的升级 family——它的 `reframe` 记录加上这个 flag。自 limit-ruling 起,让 family 升级的有三种:`escalate` 结论;越过唯一一次自动复核的轮次(没有所有者放行开启它,或它仍是 revise);所有者用 `reframe` 回答了限额轮本身之后的 `revise`(RUNBOOK §1 R1 / R4)。由逐条裁决与复核收口的 family 根本不需要 `--force`。它绝不解 R1(尤其 `abandoned`)、结构性缺陷、非法的 `review-round-limit` 行、缺失或未通过检查的裁决、尚欠的复核、没有所有者决定在案的停摆循环、未满足的评审底线、或任何 R5 拒绝——没人接受的 open 条目不是"进度"。`archive-force` 文法仍然会被解析并以 note 报告,不解任何东西。
+ 
+ ```text
+   - <YYYY-MM-DDTHH:MM> owner: archive-force ledger — <人类的理由,逐字>
+@@ -204,7 +204,7 @@ usage: apriori update [--dry-run]
+ 
+ 退出码:0 完成 · 1 未初始化。
+ 
+-**一次运行做什么(6.2)。** runbook 副本与各工具的命令文件,只在 `apriori/managed.json` 证明它们由工具写下、且你此后没改过时才刷新(`updated` / `up-to-date`);本地改过的是 `modified (skipped — …)`,认不出来的是 `unmanaged (skipped — …)`。协议所需的脚手架逐项补齐、绝不修改:缺 `apriori/.gitignore` 就创建,单独缺 `apriori/tmp/` 也会创建(`apriori/tmp/  (created)`;那个位置上若是别的东西,只报告、绝不替换)。**规则文件是你的**;update 在 `CLAUDE.md` / `AGENTS.md` / `.cursor/rules/apriori.mdc` / … 里唯一可能改的,是工具自己写下的指针段落,且只在它与某个历史发布版本逐字相同时——该段落换成当前版本(`pointer updated`),文件其余部分逐字节不动;手改过的指针只报告(`pointer (skipped — not a shipped generation; hand-edited, left alone)`)、绝不改写;没有指针或已是当前指针的文件不算动作。**汇总是诚实的:** `N file(s) refreshed`;有任何被拒绝刷新的就是 `N modified (skipped) — locally modified, not refreshed; …`;只有真的什么都没动时才说 `everything already matches`。**唯一的认领例外,明说:** 由早于 `managed.json` 的 CLI 初始化的项目没有清单;它的 `apriori/runbook.md` 会在第一次 `update` 时被认领并覆盖一次(命令文件只在字节与某个发布版本一致时才认领),此后两者像任何受管文件一样受保护——如果你定制过那份旧 runbook,第一次 `update` 前先把你的笔记复制出来。
++**一次运行做什么(6.2)。** runbook 副本与各工具的命令文件,只在 `apriori/managed.json` 证明它们由工具写下、且你此后没改过时才刷新(`updated` / `up-to-date`);本地改过的是 `modified (skipped — …)`,认不出来的是 `unmanaged (skipped — …)`。协议所需的脚手架逐项补齐、绝不修改:缺 `apriori/.gitignore` 就创建,单独缺 `apriori/tmp/` 也会创建(`apriori/tmp/  (created)`;那个位置上若是别的东西,只报告、绝不替换)。**规则文件是你的**;update 在 `CLAUDE.md` / `AGENTS.md` / `.cursor/rules/apriori.mdc` / … 里唯一可能改的,是工具自己写下的指针段落,且只在它与某个历史发布版本逐字相同时——该段落换成当前版本(`pointer updated`),文件其余部分逐字节不动;手改过的指针只报告(`pointer (skipped — not a shipped generation; hand-edited, left alone)`)、绝不改写;没有指针或已是当前指针的文件不算动作。**汇总是诚实的:** `N file(s) refreshed`;什么都没刷新时,有你改过的文件就是 `N modified (skipped) — locally modified, not refreshed; …`,有工具拥有却没法对齐的路径(被删、原处换成了符号链接或目录、解析到项目外、安装或刷新途中被换掉)就是 `N missing or obstructed (skipped) — not refreshed; see the lines above`;两者都没有时才说 `everything already matches`。**原型走查指南**(`apriori/guides/prototype-walk.md`)在从没装过的项目上安装一次(`created (first install)`,独占创建——期间有东西出现在该路径就不碰它并报告),此后像 runbook 一样受管——读取时不跟随符号链接,改写时只在它仍是读到的那个文件时才写;没有登记、但字节正好是某个已发布版本的指南——安装后、登记前失败留下的——会被认领(`adopted …`,是旧版本就顺带刷新),那里的其他未登记文件仍是 `unmanaged`。**唯一的认领例外,明说:** 由早于 `managed.json` 的 CLI 初始化的项目没有清单;它的 `apriori/runbook.md` 会在第一次 `update` 时被认领并覆盖一次(命令文件只在字节与某个发布版本一致时才认领),此后两者像任何受管文件一样受保护——如果你定制过那份旧 runbook,第一次 `update` 前先把你的笔记复制出来。
+ 
+ ## 八、配置参考
+ 
+
+exec
+/usr/bin/zsh -lc "git show c290842:lib/init.js | sed -n '117,207p'; git show c290842:lib/update.js | sed -n '48,78p'; cat apriori/changes/batch-review-fixes/specs/init/spec.md" in /root/terra/wt-fix
+ succeeded in 0ms:
+  // manifest hygiene FIRST: an untrustworthy managed.json blocks init before any write (IN-17)
+  const managed = require('./managed');
+  const tools = opts.tools || TOOLS;                      // test-only injection (K=2)
+  const srcs = opts.templateSrc || TEMPLATE_SRC;
+  const manifest = managed.readManifest(root, tools);
+  const created = [];                                     // rels created THIS run — the only manifest writes
+  const actions = [];
+  const act = (file, action) => actions.push({ file, action });
+  const seed = (rel, srcAbs) => {
+    const p = path.join(root, rel);
+    if (!fs.existsSync(p)) { if (!dry) { ensureDir(p); fs.copyFileSync(srcAbs, p); } act(rel, 'created'); return true; }
+    act(rel, 'skipped'); return false;
+  };
+
+  // 1. apriori/ root: runbook + process-config (never clobbered) + working dirs
+  if (seed('apriori/runbook.md', RUNBOOK_SRC)) created.push('apriori/runbook.md');
+  // the guide the runbook names for a prototype walk — tool-owned, one exact file
+  const guideAct = managed.installGuide(root, dry);
+  act(managed.GUIDE_REL, guideAct);
+  if (guideAct === 'created') created.push(managed.GUIDE_REL);
+  seed('apriori/process-config.md', path.join(TEMPLATES, 'process-config.md'));
+  // ephemeral scratch (P7 screenshot self-checks etc.) — gitignored, never committed (IN-11)
+  const gi = path.join(root, 'apriori', '.gitignore');
+  if (!fs.existsSync(gi)) { if (!dry) { ensureDir(gi); fs.writeFileSync(gi, 'tmp/\n'); } act('apriori/.gitignore', 'created'); }
+  else act('apriori/.gitignore', 'skipped');
+  // pin a language and/or persist a test command in the scaffolded config (only on a freshly-created config).
+  // Both go through config.encodeCell — the serializer twin of the reader — and a CALLBACK
+  // replacement: a template string would read `$&` / `$1` inside the command as replacement
+  // patterns, and a bare `|` would split the cell (6.2, A-4). A value the cell cannot carry
+  // throws before the write; the CLI validates the same way before it touches anything.
+  if ((opts.language || opts.testCmd) && !dry) {
+    const cfg = path.join(root, 'apriori', 'process-config.md');
+    const created = actions.some((a) => a.file === 'apriori/process-config.md' && a.action === 'created');
+    if (created) {
+      const cell = (label, v) => { const e = encodeCell(v); if (e.error) throw new Error(`${label} ${e.error}`); return e.cell; };
+      let body = fs.readFileSync(cfg, 'utf8');
+      if (opts.language) { const c = cell('--language', opts.language); body = body.replace(/(\| language \| )auto( \|)/, (m, a, b) => a + c + b); }
+      if (opts.testCmd) {  // consumed by `apriori verify` as the default when --test-cmd is omitted
+        const c = cell('--test-cmd', opts.testCmd);
+        body = body.replace(/^(\| language \|.*)$/m, (m) => `${m}\n| test-cmd | ${c} | any shell command emitting TAP — \`apriori verify\`'s default | (none) |`);
+      }
+      fs.writeFileSync(cfg, body);
+    }
+  }
+  if (!dry) for (const sub of ['specs', 'changes', 'changes/archive', 'truth', 'tmp'])
+    fs.mkdirSync(path.join(root, 'apriori', sub), { recursive: true });
+
+  // 2. per-tool pointers / commands
+  const levels = {};
+  for (const key of toolKeys) {
+    const t = tools[key];
+    if (!t) continue;
+    act(t.rules, writePointer(root, t.rules, t.mdc, dry));
+    for (const [tplId, rel] of Object.entries(t.commands || {})) {
+      const src = srcs[tplId];
+      if (!src) throw new Error(`no template source registered for '${tplId}'`);
+      const cmdAct = writeCommand(root, rel, src, dry);
+      act(rel, cmdAct);
+      if (cmdAct === 'created') created.push(rel);         // pre-existing files are never adopted
+    }
+    levels[key] = t.level;
+  }
+  // 3. the managed manifest: record ONLY what THIS run created, merged over valid existing
+  // entries (a recreated missing file gets a fresh hash — the delete-and-reinit cure closes).
+  // dry-run reports the would-be entries and touches nothing.
+  if (created.length) {
+    act('apriori/managed.json', manifest ? 'merged' : 'created');
+    if (!dry) {
+      const files = manifest ? { ...manifest.files } : {};
+      for (const rel of created) files[rel] = managed.hashFile(path.join(root, rel));
+      managed.writeManifest(root, files);
+    }
+  }
+  return { actions, levels };
+}
+
+function report(scaffoldResult) {
+  console.log('\n  Wrote:');
+  for (const { file, action } of scaffoldResult.actions)
+    console.log(`    ${action === 'skipped' ? '·' : '✓'} ${file}${action !== 'created' ? `  (${action})` : ''}`);
+  const cmd = [], rule = [];
+  for (const [k, lvl] of Object.entries(scaffoldResult.levels))
+    (lvl.startsWith('command') ? cmd : rule).push(TOOLS[k].name + (lvl === 'command-experimental' ? ' (experimental)' : ''));
+  if (cmd.length) console.log(`\n  /apriori command-level: ${cmd.join(', ')}`);
+  if (rule.length) console.log(`  rule-level (no slash command, just point the agent at the runbook): ${rule.join(', ')}`);
+  console.log('\n  Next — /apriori routes by intent:');
+  console.log('    discuss first   /apriori                                   (with no arguments)');
+  console.log('                    /apriori discuss foo without starting development');
+  console.log('                    free text that does not identify a change to work on also enters discussion;');
+  console.log('                    mentioning an existing change does not authorize development, and nothing');
+  console.log('                    durable is written without approval to save or develop.');
+  let manifestDirty = manifest === null;                    // adoption always materializes it
+
+  // one candidate: managed semantics when listed; adoption when pre-manifest; unmanaged otherwise
+  const consider = (rel, srcAbs, adoptable) => {
+    const p = path.join(root, rel);
+    const listed = manifest && Object.prototype.hasOwnProperty.call(manifest.files, rel);
+    if (!fs.existsSync(p)) {
+      if (listed) actions.push({ file: rel, action: "missing (skipped — recreating is init's job)" });
+      return;
+    }
+    managed.assertContained(root, rel);                     // before ANY read or hash
+    const cur = managed.hashFile(p);
+    if (listed) {
+      if (cur !== manifest.files[rel]) { actions.push({ file: rel, action: `modified (skipped — locally modified; ${CURE})` }); return; }
+      const act = refresh(p, srcAbs, dry);
+      actions.push({ file: rel, action: act });
+      if (act === 'updated') { files[rel] = managed.hashBytes(fs.readFileSync(srcAbs)); manifestDirty = true; }
+      return;
+    }
+    if (manifest === null && adoptable(cur)) {              // pre-manifest adoption on proof
+      const act = refresh(p, srcAbs, dry);
+      actions.push({ file: rel, action: act });
+      files[rel] = act === 'updated' ? managed.hashBytes(fs.readFileSync(srcAbs)) : cur;
+      return;
+    }
+    actions.push({ file: rel, action: `unmanaged (skipped — not created by this tool; ${CURE})` });
+  };
+
+  // runbook: adopted unconditionally pre-manifest (its refresh is update's reason to exist)
+  consider('apriori/runbook.md', opts.runbookSrc || RUNBOOK_SRC, () => true);
+  // the guide the runbook names: listed → refreshed like any managed file (modified or missing is
+<!-- apriori-base: sha256:fac02666bc78da0e09b54c5fb9ebd61e378d66638e3a92bb6621474d6ed9cce2 -->
+# Delta — init (batch-review-fixes)
+
+## MODIFIED Requirements
+
+### Requirement: init records what it creates in the managed manifest
+`apriori init` SHALL maintain `apriori/managed.json` entries ONLY for files it actually creates in a run: a fresh init records the runbook, the prototype-walk guide and each command file it wrote; init for an additional tool merges into a valid existing manifest preserving entries it didn't touch; a command file that already existed on disk is skipped as today and gains NO entry (existing content is never blind-adopted). When init creates a file that is absent on disk — including a manifest-listed file the user deleted as the prescribed cure — the entry is written/replaced with the hash of the bytes just written, so the next update sees `up-to-date`, not `modified`. Each entry is written the moment its file is created, so a run that fails at a later step leaves everything it created recorded (init never adopts what it finds, so an unrecorded file of its own would otherwise stay `unmanaged` on every retry). `init --dry-run` never writes or modifies the manifest (it reports would-be entries). A hygiene-invalid manifest (per the update module's rules) makes init exit nonzero before scaffolding or merging anything.
+
+#### Scenario: IN-13 fresh init writes the manifest for exactly what it created
+- WHEN `apriori init --tools <t>` scaffolds a new project
+- THEN `apriori/managed.json` lists the runbook, the prototype-walk guide and the created command file(s) with hashes of the written bytes, and nothing else; and when a fresh `--tools claude,cursor` run throws after Claude's command files were written (`.cursor` is a file), the manifest already lists the runbook, the guide and both Claude command files, and once the obstruction is gone `apriori update` reports those commands `up-to-date`, not `unmanaged`
+
+#### Scenario: IN-14 add-tool init merges without adopting bystanders
+- WHEN init runs for an additional tool in a project where another tool's command path already carries a user file
+- THEN the new tool's created file gains an entry, existing entries are preserved, and the pre-existing user file gains no entry (a later update reports it `unmanaged`)
+
+#### Scenario: IN-15 the delete-and-reinit cure closes cleanly
+- WHEN a managed file was locally modified, deleted, and `apriori init --tools <t>` recreates it
+- THEN the manifest entry is refreshed to the recreated bytes and the next update reports `up-to-date`
+
+#### Scenario: IN-16 init dry-run leaves the manifest alone
+- WHEN `apriori init --dry-run` runs fresh or for an additional tool
+- THEN the manifest is not created or changed, while the report shows the would-be entries
+
+#### Scenario: IN-17 a hygiene-invalid manifest blocks init
+- WHEN `apriori/managed.json` exists but is invalid per the hygiene rules
+- THEN init exits nonzero naming the defect and writes nothing
+
+### Requirement: init installs the prototype-walk guide as one managed file
+The package SHALL ship `guides/prototype-walk.md` (listed in `package.json`'s `files`), and `apriori init` SHALL install it as `apriori/guides/prototype-walk.md` — one exact tool-owned file, never the directory around it — recording it in `apriori/managed.json` like the runbook — the moment it is created, as every file init creates is recorded. Init never overwrites: the guide is created exclusively, so whatever appears at the path after the checks (a file, a symlink) is never followed or overwritten — it is skipped with a reason and gains no entry; an existing file at that path is skipped and gains no entry; a path that is not a regular file, a non-directory at `apriori/guides`, or a path resolving outside the project is skipped with the reason; `--dry-run` writes nothing.
+
+#### Scenario: PW-01 init installs the guide byte-for-byte and records it, and skips what is not its own
+- WHEN `apriori init --tools claude` runs in a new project, in a project that already has a user file at `apriori/guides/prototype-walk.md`, in one where `apriori/guides` is a regular file, in one where `apriori/guides` is a symlink out of the project, in one where a symlink to a file outside the project appears at the guide's path right after `apriori/guides` is made, in one whose `CLAUDE.md` is a directory (init throws after the guide is created), and with `--dry-run`
+- THEN the new project gets the guide byte-identical to the package's `guides/prototype-walk.md` with its manifest entry; the user file is untouched and gains no entry; the other two are skipped with a reason naming the path and nothing is written outside the project; the planted symlink is reported `changed during install (skipped — …)`, its target is untouched and no entry is made; the failing init still leaves the created guide recorded; the dry run reports the would-be creation and writes nothing; and `package.json`'s `files` lists `guides/`
+
+## Notes
+
+Batch review (10-02, c290842) guide-1: the first-install copy followed a symlink created between the checks and the copy; it is now an exclusive create (`wx`). Residual, stated in MIGRATING and the code: `apriori/guides` swapped for an outside symlink in that window can still receive a new file (never an overwrite). guide-2: the manifest is written as soon as the guide exists. Review round 1 (BRF-R2): recording only the guide early left a manifest behind that stranded command files created later in a run that then failed (update adopts commands only when no manifest exists); every created file is now recorded the moment it exists — IN-13 covers it. IN-13..IN-17 and PW-01 keep their ids.
+
+exec
+/usr/bin/zsh -lc "cat apriori/changes/batch-review-fixes/specs/update/spec.md; sed -n '20,43p' apriori/changes/batch-review-fixes/specs/check/spec.md; sed -n '28,40p' CHANGELOG.md; sed -n '5,13p' MIGRATING.md" in /root/terra/wt-fix
+ succeeded in 0ms:
+<!-- apriori-base: sha256:0a89a1a4108e75af7d59b7b8050cd2d4f4675ee5c85157406123f8d475aae435 -->
+# Delta — update (batch-review-fixes)
+
+## MODIFIED Requirements
+
+### Requirement: update refreshes only manifest-proven tool-owned files
+`apriori update` SHALL consult `apriori/managed.json` (`{ "version": 1, "files": { "<relative path>": "sha256:<64hex>" } }`, hashes over the exact bytes the tool last wrote, never line-ending-normalized) and refresh a candidate file only when the manifest lists it AND its current content hash equals the recorded hash; after a real write the entry is updated to the new content's hash. A listed file with a differing hash is `modified` — skipped with a warning naming the file and the cure (delete it and rerun `apriori init --tools <t>`). An existing file with no entry is `unmanaged` — skipped, never written — with one exception: the prototype-walk guide, adopted when its bytes are exactly a shipped edition (its own requirement below). A listed file absent on disk is `missing` — skipped (recreating is init's job). Skip-only runs still exit 0 and name every skip. When no manifest exists (pre-manifest project), update adopts what it can prove: the runbook unconditionally (refreshed as today), each command file only if its content hash equals the current template or a known shipped generation, and the guide on the same proof as above (the package embeds every generation's sha256; a membership test over the live `templates/command.md` keeps the list honest); unproven content is `unmanaged`. The adoption pass writes the manifest. A manifest that exists but is unreadable, unparseable, missing `files`, hash-malformed, `version !== 1`, or carrying a key that is absolute, contains `..`, or is outside the allowed refresh-target set (`apriori/runbook.md`, `apriori/guides/prototype-walk.md`, `TOOLS[*].command`) SHALL make update exit nonzero naming the defect before touching any target; every write additionally requires realpath containment under the project root. `--dry-run` produces the identical report and writes nothing — the manifest included.
+
+#### Scenario: UP-06 a foreign file at a tool path survives update
+- WHEN a file exists at an unselected tool's command path with no manifest entry
+- THEN update leaves it byte-identical, reports `unmanaged` with the cure hint, and exits 0
+
+#### Scenario: UP-07 an unmodified managed file refreshes and re-hashes
+- WHEN a manifest-listed command file matches its recorded hash but the package template has changed
+- THEN update rewrites it from the template and the manifest entry becomes the new content's hash
+
+#### Scenario: UP-08 a locally modified managed file is protected
+- WHEN a manifest-listed file (the runbook included) differs from its recorded hash
+- THEN update reports `modified` with the cure hint and leaves the file byte-identical, and `--dry-run` gives the same report while writing nothing at all
+
+#### Scenario: UP-09 pre-manifest projects are adopted only on proof
+- WHEN no manifest exists and command files variously match the current template, match a known shipped generation, or carry arbitrary content
+- THEN the matching files are adopted (up-to-date / refreshed respectively), the arbitrary one is `unmanaged` and untouched, the runbook refreshes as before, the guide init wrote is adopted on its bytes, and the manifest is written covering exactly those (except under `--dry-run`)
+
+#### Scenario: UP-10 manifest hygiene fails closed
+- WHEN `apriori/managed.json` is invalid JSON, lacks `files`, carries a malformed hash or `version: 2`, or lists an absolute, `..`-containing, or non-refresh-target path
+- THEN update exits nonzero naming the manifest defect and no managed target is touched, identically under `--dry-run`
+
+#### Scenario: UP-11 the shipped-generation list stays honest
+- WHEN the live `templates/command.md` is hashed
+- THEN the digest is a member of the package's embedded generation list (changing the template without appending fails the suite)
+
+### Requirement: update installs the prototype-walk guide once and then manages it like the runbook
+`apriori update` SHALL treat `apriori/guides/prototype-walk.md` by its manifest state: never installed (not listed, not present) → install it and record it, reported `created (first install)` and counted as a refresh in the summary; listed and unmodified → refreshed to the package's guide (`updated` / `up-to-date`) and re-hashed; listed and locally modified → reported `modified` and left alone; listed but missing → reported missing and left to `apriori init` (the existing cure); present but not listed → adopted only on proof: when its bytes are exactly a shipped edition of the guide (an install that failed before its record; the package lists every edition's sha256 and a test keeps the live guide in it), it is recorded — `adopted (its bytes are the shipped guide)`, or refreshed to the package's guide and recorded as `adopted and updated …` for an earlier edition; anything else there is reported `unmanaged` and left alone. The summary never says everything matches over a guide it could not refresh: a missing or obstructed one is counted as `N missing or obstructed (skipped)`. The first install is an exclusive create (as init's). A present guide is read once without following a symlink, and that one read is what gets judged (its listed hash, or a shipped edition) and what gets rewritten: the rewrite opens it again without following a symlink and writes only while it is the same file, so a symlink or another file swapped in after the read is never written through — reported `changed during refresh (skipped — …)` and nothing is recorded for it. It never writes through a path that is not a regular file or that resolves outside the project, and `--dry-run` reports without writing. A CLI from before this change refuses a manifest that lists the guide (`not a refresh target`) — downgrading is not supported, and MIGRATING says so.
+
+#### Scenario: PW-02 the guide is installed once, then refreshed, protected or left alone by its manifest state
+- WHEN `apriori update` runs on a project an older CLI initialized (no guide, no entry), runs again, runs after the package's guide changed, runs after the user edited the guide, runs after the user deleted the listed guide, runs where an unlisted user file sits at the guide's path, runs again after a run that threw after installing the guide (a listed command path was a directory), runs where an unlisted earlier shipped edition sits at the path (dry-run, then for real), runs where a symlink to an outside file is swapped in for the guide between its read and its rewrite (an earlier edition being adopted, and a listed guide being refreshed), runs from the CLI on a fresh project whose guide was deleted or replaced by a directory, and runs with `--dry-run` on a project without the guide
+- THEN the first run creates the guide byte-identical to the package's, records it and reports `created (first install)` with the summary counting it; the second reports `up-to-date`; the changed package guide is `updated`, its new bytes installed and re-hashed; the edited guide is reported `modified` and keeps its bytes and its entry; the deleted one is reported missing and not recreated; the unlisted file is reported `unmanaged` and untouched; after the failed run the guide is `adopted (its bytes are the shipped guide)` and recorded, then `up-to-date`; the earlier edition is `adopted and updated` — the dry run writing nothing, the real run installing the package's guide and recording it; the swapped-in symlink is reported `changed during refresh`, its target untouched and the manifest unchanged, in both cases; the package's edition list carries the live guide and both editions shipped before it; the CLI summary for the deleted or obstructed guide says `1 missing or obstructed (skipped)` and never "everything already matches"; the dry run reports the creation and writes neither the guide nor the manifest
+
+## Notes
+
+Batch review (10-02, c290842) guide-2: an update (or init) that failed after writing the guide left it unrecorded, and ordinary reruns kept calling it `unmanaged`; update now adopts an unrecorded guide on the same kind of proof command files get — its exact bytes are a shipped edition (`GUIDE_GENERATIONS`). update does not write the manifest early: in a pre-manifest project that would cost a later-failing run's command files their adoption, and the adoption covers the guide anyway. Review round 1 (BRF-R1): adoption hashed the path and then rewrote it through an ordinary open, so a symlink swapped in between could redirect the write; the guide is now judged and rewritten through one no-follow read and an identity-checked no-follow write (a listed guide's refresh too, which had the same gap). guide-3: the summary counts missing and obstructed tool-owned paths. SST-4: PW-02 checks the refreshed bytes. The manifest requirement's refresh-target list now names the guide, as the code has since prototype-walk-guide. All scenario ids are kept.
+
+#### Scenario: CK-23 the runbook has no Chinese edition, and one that reappears fails
+- WHEN `check --self` runs on a repository whose `RUNBOOK.md` stands alone, and again after a `RUNBOOK_cn.md` is added
+- THEN the first run applies the runbook checks to `RUNBOOK.md` alone and reports no one-sided pair for it; the second FAILs naming `RUNBOOK_cn.md` as a Chinese runbook edition that must not exist; the remaining EN/CN pairs (README, VISION, docs/) are checked as before
+
+### Requirement: CK-11 keeps the runbook version aligned with the CLI major.minor
+`apriori check --self` SHALL assert that RUNBOOK.md — the canonical packaged runbook — carries exactly one header-blockquote entry of the form `` > `runbook-version: X.Y` `` whose major.minor (`X.Y`) equals `package.json`'s version major.minor (a pre-release tag is ignored). A missing entry, more than one, or a malformed value FAILs (self-mode only) naming the file and the failure reason; a major.minor mismatch FAILs naming the file, the runbook's X.Y and the package's. Occurrences of `runbook-version:` in body text or in a code fence are never matched — every CommonMark fence counts (backtick or tilde, closed only by the same character at least as long, an unclosed one running to the end), and a fence belongs to its container: one opened inside a blockquote closes only at that quote depth and ends with its blockquote, and inside a fence opened outside any quote a quoted line is content, never a closer. Consumer `apriori check` (no `--self`) never runs CK-11.
+
+#### Scenario: CK-11 the runbook major.minor tracks the CLI major.minor
+- WHEN `apriori check --self` runs where RUNBOOK.md declares `runbook-version: 4.0` and package.json is on 4.0.3, then 4.0.0-rc.0
+- THEN CK-11 passes; flipping its header to `3.0` FAILs (self-mode) naming the file and both versions, and so does a minor drift to `4.1`; and a consumer `apriori check` without `--self` never raises CK-11
+
+#### Scenario: CK-12 malformed, missing, duplicate, and body occurrences
+- WHEN the runbook has no `runbook-version` blockquote entry, has two of them, carries a malformed value (`runbook-version: vier`), or mentions `runbook-version:` only in body text or inside a code fence — a backtick or tilde fence, a longer fence a shorter run inside does not close, a fence behind blockquote markers, a quoted `> ~~~` inside a top-level fence (content, not a closer), a deeper-quoted run inside a quoted fence, or an unclosed one
+- THEN the missing/duplicate/malformed cases FAIL (self-mode) naming the file and the reason, while the body-text and code-fence occurrences are never matched (they alone do not satisfy or fail the check — a real header entry is still required), and a real entry after a closed fence of either kind — or after a quoted fence whose blockquote ended — still counts
+
+### Requirement: the canonical verdict phrase table is closed and carries no retired lane
+The canonical table SHALL carry exactly the phrases the live review loops use — the `no major issues` family, `no spec-vs-code gaps` and `gaps found` (P8 and the fast floor), plus the `<N> issues open` prose placeholder — and SHALL NOT carry the phrases retired with the hotfix lane and the explore track (`no findings`, `extraction accepted`, `extraction rejected`). The runbook (`RUNBOOK.md`, its only edition) SHALL contain every canonical phrase. A `VERDICT:` string appearing anywhere in the scanned docs that does not start with a table entry stays a failure, retired phrases included; recognition is the SAME whole-verdict rule as every other consumer — a closed set matched whole (case-folded, whitespace collapsed, terminal punctuation dropped), never a prefix, so a canonical phrase followed by a clause is not a table entry — with no trailer grammar of its own.
+
+#### Scenario: CK-17 the retired lanes leave the table and the table stays closed
+- WHEN the phrase table is checked against the runbook, and separately when a scanned doc carries `VERDICT: looks fine to me` or the retired `VERDICT: no findings`
+- THEN the retired phrases are absent from the table while P8's and the fast floor's remain, the runbook checks clean, and both unregistered lines fail naming the file and line
+
+## Notes
+## Unreleased — batch-review-fixes: the 19 findings of the 10-02 batch's requirement-level check
+
+A requirement-level independent check (codex, two adversarial votes per finding) over `5d3fc78..c290842` confirmed 19 findings; this change fixes all of them under their original ids.
+
+- **Guide install (guide-1..4).** The guide is created exclusively (`wx`): whatever appears at the path after the checks is never followed or overwritten (residual stated in MIGRATING). `init` records every file it creates the moment it exists; `update` adopts an unrecorded guide only when its bytes are a shipped edition (`GUIDE_GENERATIONS`, kept honest by PW-02), and judges and rewrites a present guide through one no-follow read and an identity-checked no-follow write, so a symlink swapped in meanwhile is never written through. The update summary reports `N missing or obstructed (skipped)` instead of "everything already matches". `doctor` judges the guide by lstat as update does — a symlink or a non-directory `apriori/guides` is a finding with the move-aside cure.
+- **check --self (check-self-1..4).** An existing but empty EN/CN mirror is aligned, not skipped. CK-11's version entry ignores every CommonMark fence (``` and ~~~, closed by the same character at least as long, at the fence's own blockquote depth, unclosed to the end); the shared `stripFences` stays backtick-only for now (follow-up `fence-tilde-readers`). The CK-11 and CK-17 spec text says what the code does: major.minor, whole-verdict recognition.
+- **Recipes and handbook (goal-1, shipping-docs-1/2).** Review & Deliver, which can go back to Build & Test, ends at that stage's 25-turn bound too; Build & Test's condition names what is still open; the concepts mini-kv goal (both editions) carries the human-stop outcome and the bound; the CLI reference names the three forms of an escalated family `--force` answers, the owner's reframe at the limit included.
+- **Guide text (PW-1/2).** Recorded owner decisions come before the requirement sources (guide §4 and the runbook's Ground bullet); a walk before any change exists registers nothing, creates no change and lists its owner rows by id for the change that later takes it up.
+- **Specs and tests (SST-1..6).** PR-11/PR-16 (and the stale PR-08/PR-10 wording in the same block) state the current runbook; PR-66, PR-67, PW-02, PW-03 and PW-05 now assert what their scenarios promise.
+
+## Unreleased — requirement-check-recipe: an optional requirement-level independent check
+
+- `docs/operator.md` (with the identical recipe and a Chinese explanation in `operator_cn.md`) gains an optional fifth `/goal` recipe for a requirement split into several changes: after its last change is archived, a reviewer independent of the building session reconciles every `in` row of the source checklist (corrected rows against their ruling), traces the end-to-end paths, checks delivery dependencies handed outside the workflow and the assertion and run conditions behind each tick; it reads the code and does not fix it. Its inputs are listed apart from P3's default input.
+## prototype-walk-guide (Unreleased) — one guide beside the runbook, and no downgrade past it
+
+- **`apriori update` installs `apriori/guides/prototype-walk.md`** on a project that never had it and records it in `apriori/managed.json`; from then on it is refreshed like the runbook. A guide you edited locally is reported `modified` and left alone; one you deleted is reported missing — `apriori init --tools <t>` recreates it.
+- **The runbook now names that guide** (§4 Ground): when a requirement comes with a runnable UI prototype, the agent offers an optional walk once and reads the guide in full before running one. Nothing else in a project changes.
+- **An unrecorded guide is adopted only on proof** (batch-review-fixes): when an `init` or `update` failed after writing the guide but before recording it, the next `update` adopts a guide whose bytes are exactly a shipped edition (`adopted …`, refreshed if it is an earlier one); anything else at that path stays `unmanaged`. `init` now records every file it creates the moment it creates it, and creates the guide exclusively — something that appears at the path meanwhile is reported and left alone; `update` judges and rewrites a present guide through one read that never follows a symlink, so one swapped in meanwhile is reported (`changed during refresh`) and never written through. One residual is stated rather than closed: `apriori/guides` itself swapped for a symlink out of the project between the check and the write can still receive a new file there (never an overwrite of an existing one).
+- **The update summary** no longer says "everything already matches" when a tool-owned path was missing or obstructed: it reports `N missing or obstructed (skipped)`.
+- **Downgrading is not supported** once the guide is recorded: a CLI from before this change refuses a manifest that lists it (`managed.json: 'apriori/guides/prototype-walk.md' is not a refresh target`), so `init` and `update` would fail. To go back, remove that entry from `apriori/managed.json` (and the guide, if you like) first.
+
+## owner-calls-and-handoffs (Unreleased) — owner items, outside hand-offs, and goals that end at a human stop
+
+codex
+The three original reproducers are addressed by the revised code and assertions. FU-2 is also visible in c290842’s successful-init path, which supports keeping it separate. I found one additional safety gap in the revised guide reader: `O_NOFOLLOW` protects the final filename, but a parent-directory swap before the read can still redirect adoption to an existing external file. I’m checking that against the stated residual before finalizing the report.
+exec
+/usr/bin/zsh -lc "nl -ba lib/managed.js | sed -n '144,180p'; nl -ba lib/update.js | sed -n '84,130p'; nl -ba lib/init.js | sed -n '121,145p'; nl -ba lib/check.js | sed -n '258,278p'; nl -ba MIGRATING.md | sed -n '7,11p'" in /root/terra/wt-fix
+ succeeded in 0ms:
+   144	    const st = fs.fstatSync(fd);
+   145	    return st.isFile() ? { bytes: fs.readFileSync(fd), st } : null;
+   146	  } finally { fs.closeSync(fd); }
+   147	}
+   148	
+   149	// Rewrite the file readPlain saw — only while it is still that file: opened without following a
+   150	// symlink, then the same device and inode, and only then truncated. false = it was replaced in
+   151	// between (nothing written). The parent-directory residual of installGuide applies here too.
+   152	function writePlain(abs, buf, seen) {
+   153	  let fd;
+   154	  try { fd = fs.openSync(abs, fs.constants.O_WRONLY | NOFOLLOW); }
+   155	  catch (e) { if (['ELOOP', 'ENOENT', 'EISDIR', 'ENOTDIR'].includes(e.code)) return false; throw e; }
+   156	  try {
+   157	    const st = fs.fstatSync(fd);
+   158	    if (!st.isFile() || st.dev !== seen.st.dev || st.ino !== seen.st.ino) return false;
+   159	    fs.ftruncateSync(fd, 0);
+   160	    for (let off = 0; off < buf.length;) off += fs.writeSync(fd, buf, off, buf.length - off, off);
+   161	    return true;
+   162	  } finally { fs.closeSync(fd); }
+   163	}
+   164	
+   165	function installGuide(root, dryRun) {
+   166	  const ob = guideObstruction(root);
+   167	  if (ob) return ob;
+   168	  const abs = path.join(root, GUIDE_REL);
+   169	  if (fs.existsSync(abs)) return 'skipped';
+   170	  if (dryRun) return 'created';
+   171	  fs.mkdirSync(path.dirname(abs), { recursive: true });
+   172	  // exclusive create: whatever appeared at the path after the checks above — a file, a symlink,
+   173	  // dangling or not — makes this fail with EEXIST; it is never followed and never overwritten.
+   174	  // Residual, stated: apriori/guides itself swapped for a symlink out of the project between the
+   175	  // checks and this call can still receive a NEW file there (never an overwrite) — Node has no
+   176	  // openat, and whoever can swap directories inside the project already controls its tree.
+   177	  try { fs.writeFileSync(abs, fs.readFileSync(GUIDE_SRC), { flag: 'wx' }); }
+   178	  catch (e) {
+   179	    if (e.code === 'EEXIST') return `changed during install (skipped — something appeared at ${GUIDE_REL} after the checks; left alone, rerun to judge it)`;
+   180	    throw e;
+    84	  // symlink is never followed): an obstruction is reported and left alone before anything is hashed or written.
+    85	  const guideAbs = path.join(root, managed.GUIDE_REL);
+    86	  const guideSrc = opts.guideSrc || managed.GUIDE_SRC;
+    87	  const guideGens = opts.guideGenerations || managed.GUIDE_GENERATIONS;
+    88	  const guideListed = manifest && Object.prototype.hasOwnProperty.call(manifest.files, managed.GUIDE_REL);
+    89	  const obstruction = managed.guideObstruction(root);
+    90	  const G = managed.GUIDE_REL;
+    91	  if (obstruction) {
+    92	    actions.push({ file: G, action: obstruction });
+    93	  } else if (!fs.existsSync(guideAbs)) {
+    94	    if (guideListed) actions.push({ file: G, action: "missing (skipped — recreating is init's job)" });
+    95	    else {
+    96	      const a = managed.installGuide(root, dry);
+    97	      actions.push({ file: G, action: a === 'created' ? 'created (first install)' : a });
+    98	      if (a === 'created' && !dry) { files[G] = managed.hashFile(guideAbs); manifestDirty = true; }
+    99	    }
+   100	  } else {
+   101	    // ONE no-follow look: the hash judged (listed entry, or a shipped edition) and the bytes rewritten
+   102	    // belong to the same file — a symlink swapped in after the checks is never written through
+   103	    const seen = managed.readPlain(guideAbs);
+   104	    const cur = seen && managed.hashBytes(seen.bytes);
+   105	    const refreshGuide = () => {
+   106	      const want = fs.readFileSync(guideSrc);
+   107	      if (seen.bytes.equals(want)) return 'up-to-date';
+   108	      if (!dry && !managed.writePlain(guideAbs, want, seen)) return CHANGED;
+   109	      return 'updated';
+   110	    };
+   111	    if (!seen) actions.push({ file: G, action: CHANGED });
+   112	    else if (guideListed) {
+   113	      if (cur !== manifest.files[G]) actions.push({ file: G, action: `modified (skipped — locally modified; ${CURE})` });
+   114	      else {
+   115	        const act = refreshGuide();
+   116	        actions.push({ file: G, action: act });
+   117	        if (act === 'updated') { files[G] = managed.hashBytes(fs.readFileSync(guideSrc)); manifestDirty = true; }
+   118	      }
+   119	    } else if (guideGens.includes(cur)) {
+   120	      const act = refreshGuide();
+   121	      if (act === CHANGED) actions.push({ file: G, action: act });
+   122	      else {
+   123	        actions.push({ file: G, action: act === 'updated' ? 'adopted and updated (its bytes were an earlier shipped edition)' : 'adopted (its bytes are the shipped guide)' });
+   124	        files[G] = act === 'updated' ? managed.hashBytes(fs.readFileSync(guideSrc)) : cur;
+   125	        manifestDirty = true;
+   126	      }
+   127	    } else actions.push({ file: G, action: `unmanaged (skipped — not created by this tool; ${CURE})` });
+   128	  }
+   129	  // protocol-required scaffolding the refreshed runbook relies on (IN-11): create if missing,
+   130	  // NEVER modify — and each piece on its own: a lone missing tmp/ is recreated too (BD-02)
+   121	  const manifest = managed.readManifest(root, tools);
+   122	  const created = [];                                     // rels created THIS run — the only manifest writes
+   123	  // each file is recorded the moment it is created: a later step that throws (a rules path that is a
+   124	  // directory, a tool directory that is a file …) must not leave anything this run created unrecorded —
+   125	  // init never adopts what it finds, so an unrecorded file of its own would stay unmanaged on every retry
+   126	  const record = (rel) => {
+   127	    created.push(rel);
+   128	    if (dry) return;
+   129	    const files = manifest ? { ...manifest.files } : {};
+   130	    for (const r of created) files[r] = managed.hashFile(path.join(root, r));
+   131	    managed.writeManifest(root, files);
+   132	  };
+   133	  const actions = [];
+   134	  const act = (file, action) => actions.push({ file, action });
+   135	  const seed = (rel, srcAbs) => {
+   136	    const p = path.join(root, rel);
+   137	    if (!fs.existsSync(p)) { if (!dry) { ensureDir(p); fs.copyFileSync(srcAbs, p); } act(rel, 'created'); return true; }
+   138	    act(rel, 'skipped'); return false;
+   139	  };
+   140	
+   141	  // 1. apriori/ root: runbook + process-config (never clobbered) + working dirs
+   142	  if (seed('apriori/runbook.md', RUNBOOK_SRC)) record('apriori/runbook.md');
+   143	  // the guide the runbook names for a prototype walk — tool-owned, one exact file
+   144	  const guideAct = managed.installGuide(root, dry);
+   145	  act(managed.GUIDE_REL, guideAct);
+   258	// alignment is follow-up FU-1 of batch-review-fixes: it also feeds the delta parsers).
+   259	function stripFencedBlocks(text) {
+   260	  const out = [];
+   261	  let fence = null;
+   262	  for (const line of text.split('\n')) {
+   263	    const quote = /^(?: {0,3}>[ \t]?)*/.exec(line)[0];
+   264	    const depth = (quote.match(/>/g) || []).length;
+   265	    const m = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line.slice(quote.length));
+   266	    if (fence) {
+   267	      if (depth >= fence.depth) {
+   268	        if (depth === fence.depth && m && m[1][0] === fence.ch && m[1].length >= fence.len && !m[2].trim()) fence = null;
+   269	        continue;
+   270	      }
+   271	      fence = null;                     // its blockquote ended, and the fence with it: judge this line afresh
+   272	    }
+   273	    if (m && !(m[1][0] === '`' && m[2].includes('`'))) { fence = { ch: m[1][0], len: m[1].length, depth }; continue; }
+   274	    out.push(line);
+   275	  }
+   276	  return out.join('\n');
+   277	}
+   278	
+     7	- **`apriori update` installs `apriori/guides/prototype-walk.md`** on a project that never had it and records it in `apriori/managed.json`; from then on it is refreshed like the runbook. A guide you edited locally is reported `modified` and left alone; one you deleted is reported missing — `apriori init --tools <t>` recreates it.
+     8	- **The runbook now names that guide** (§4 Ground): when a requirement comes with a runnable UI prototype, the agent offers an optional walk once and reads the guide in full before running one. Nothing else in a project changes.
+     9	- **An unrecorded guide is adopted only on proof** (batch-review-fixes): when an `init` or `update` failed after writing the guide but before recording it, the next `update` adopts a guide whose bytes are exactly a shipped edition (`adopted …`, refreshed if it is an earlier one); anything else at that path stays `unmanaged`. `init` now records every file it creates the moment it creates it, and creates the guide exclusively — something that appears at the path meanwhile is reported and left alone; `update` judges and rewrites a present guide through one read that never follows a symlink, so one swapped in meanwhile is reported (`changed during refresh`) and never written through. One residual is stated rather than closed: `apriori/guides` itself swapped for a symlink out of the project between the check and the write can still receive a new file there (never an overwrite of an existing one).
+    10	- **The update summary** no longer says "everything already matches" when a tool-owned path was missing or obstructed: it reports `N missing or obstructed (skipped)`.
+    11	- **Downgrading is not supported** once the guide is recorded: a CLI from before this change refuses a manifest that lists it (`managed.json: 'apriori/guides/prototype-walk.md' is not a refresh target`), so `init` and `update` would fail. To go back, remove that entry from `apriori/managed.json` (and the guide, if you like) first.
+
+exec
+/usr/bin/zsh -lc "rg -n 'swapAtWrite|round 1 BRF-R3|each file is recorded|IN-13|IN-14|IN-15|IN-16|IN-17' test/prototype-walk-guide.test.js test/check.test.js test/init.test.js; git diff --check; git show c290842:apriori/specs/init/spec.md | sed -n '60,77p'" in /root/terra/wt-fix
+ succeeded in 0ms:
+test/init.test.js:335:// ---- update-manifest (IN-13..17): init records what it creates ----
+test/init.test.js:347:test('IN-13 fresh init writes the manifest for exactly what it created', () => {
+test/init.test.js:357:  // each file is recorded the moment it is created (batch-review-fixes, round 1 BRF-R2): a run that throws
+test/init.test.js:372:test('IN-14 add-tool init merges without adopting bystanders', () => {
+test/init.test.js:390:test('IN-15 the delete-and-reinit cure closes cleanly', () => {
+test/init.test.js:403:test('IN-16 init dry-run leaves the manifest alone', () => {
+test/init.test.js:413:test('IN-17 a hygiene-invalid manifest blocks init', () => {
+test/prototype-walk-guide.test.js:161:  const swapAtWrite = (root, victim, fn) => {
+test/prototype-walk-guide.test.js:184:    const res = swapAtWrite(r, victim, () => update.run(r, opts));
+test/check.test.js:313:  // a fence belongs to its container (round 1 BRF-R3): inside a top-level fence a quoted `> ~~~` is
+### Requirement: init records what it creates in the managed manifest
+`apriori init` SHALL maintain `apriori/managed.json` entries ONLY for files it actually creates in a run: a fresh init records the runbook, the prototype-walk guide and each command file it wrote; init for an additional tool merges into a valid existing manifest preserving entries it didn't touch; a command file that already existed on disk is skipped as today and gains NO entry (existing content is never blind-adopted). When init creates a file that is absent on disk — including a manifest-listed file the user deleted as the prescribed cure — the entry is written/replaced with the hash of the bytes just written, so the next update sees `up-to-date`, not `modified`. `init --dry-run` never writes or modifies the manifest (it reports would-be entries). A hygiene-invalid manifest (per the update module's rules) makes init exit nonzero before scaffolding or merging anything.
+
+#### Scenario: IN-13 fresh init writes the manifest for exactly what it created
+- WHEN `apriori init --tools <t>` scaffolds a new project
+- THEN `apriori/managed.json` lists the runbook, the prototype-walk guide and the created command file(s) with hashes of the written bytes, and nothing else
+
+#### Scenario: IN-14 add-tool init merges without adopting bystanders
+- WHEN init runs for an additional tool in a project where another tool's command path already carries a user file
+- THEN the new tool's created file gains an entry, existing entries are preserved, and the pre-existing user file gains no entry (a later update reports it `unmanaged`)
+
+#### Scenario: IN-15 the delete-and-reinit cure closes cleanly
+- WHEN a managed file was locally modified, deleted, and `apriori init --tools <t>` recreates it
+- THEN the manifest entry is refreshed to the recreated bytes and the next update reports `up-to-date`
+
+#### Scenario: IN-16 init dry-run leaves the manifest alone
+- WHEN `apriori init --dry-run` runs fresh or for an additional tool
+- THEN the manifest is not created or changed, while the report shows the would-be entries
+
+codex
+<!-- provenance: provider=openai model=unknown session=unknown date=2026-10-02 -->
+
+Review body for `apriori/changes/batch-review-fixes/review/code-review-v2.md`.
+
+The three round-one findings are addressed in their reported failure scenarios. One additional safety issue remains in the revised guide-adoption path.
+
+- **BRF-R1 — ADDRESSED.** `readPlain` reads through a no-follow descriptor; `writePlain` opens without truncation, rejects a different device/inode, and only then truncates and writes. Both adoption and listed-guide refresh use this path. PW-02’s two `swapAtWrite` cases inject the original leaf-symlink substitution and assert the skip diagnostic, unchanged external victim, and unchanged guide manifest entry. `CHANGED` also matches the summary’s blocked pattern. This closes the original substitution-after-read scenario, subject to the separate parent-directory finding below.
+
+- **BRF-R2 — ADDRESSED.** `record()` now persists the accumulated created-file entries immediately after creating the runbook, guide, and each command file. Existing manifest entries are retained; dry-run returns before hashing or writing; the final step only reports. IN-13 reproduces the `.cursor` obstruction after Claude’s commands are created, checks all four managed entries against their file hashes, then verifies update reports both commands `up-to-date`. The newly MODIFIED manifest requirement preserves IN-13 through IN-17.
+
+- **BRF-R3 — ADDRESSED.** The fence state now carries its opening quote depth. A deeper-quoted delimiter cannot close it, and leaving its quote container ends it. CK-12 directly covers the original top-level-fence reproducer, a deeper-quoted delimiter, and a real version entry following an ended blockquote. The revised contract describes these distinctions.
+
+**New finding: BRF-R4 — P2 — a parent-directory swap before the guide read can overwrite an existing external file.**
+
+The containment/obstruction check at [lib/update.js:89](/root/terra/wt-fix/lib/update.js:89) remains separate from `readPlain` at line 103. `O_NOFOLLOW` protects the final filename, not symlinked parent components.
+
+Concrete interleaving:
+
+1. An unlisted guide passes `guideObstruction` inside the project.
+2. Before `readPlain`, another process replaces `apriori/guides` with a symlink to an external directory.
+3. That directory already contains a regular `prototype-walk.md` whose bytes match an earlier recognized shipped guide.
+4. `readPlain` follows the parent symlink and reads that external regular file. Its bytes qualify for adoption.
+5. `writePlain` follows the same parent symlink. Its device/inode comparison succeeds because both opens reached the same external file. [lib/managed.js:159](/root/terra/wt-fix/lib/managed.js:159) then truncates and overwrites it.
+
+This violates the update contract’s prohibition on writes outside the project. It also exceeds the stated residual in [MIGRATING.md:9](/root/terra/wt-fix/MIGRATING.md:9): the outcome is an **existing-file overwrite**, not merely creation of a new external file. The comment that the installation residual also applies to `writePlain` is therefore insufficient.
+
+**Suggested fix:** bind containment and parent validation to the identity actually opened for the ownership read and subsequent write; reject redirection before adopting or truncating. Add a regression that swaps the parent after obstruction checking but before `readPlain`, with an existing external victim containing a recognized earlier edition, and asserts unchanged victim bytes and no adoption. Current PW-02 injections replace only the final filename at the write open, so they cannot detect this case.
+
+**FU-2 — appropriately retained as a separate follow-up.** I inspected c290842’s source: successful init already wrote a manifest containing only files created during that invocation, while update already limited runbook/command adoption to `manifest === null`. Thus adding a file through init in a pre-manifest project already removed adoption eligibility for its pre-existing files. IN-14 explicitly excludes adopting bystanders. This is distinct from BRF-R2’s newly created command files, which are now recorded and covered by regression assertions. FU-2 is not necessary to close that finding; its eventual solution must reconcile migration behavior with immediate ownership recording. FU-1 remains unchanged and separate.
+
+**Review scope and limits.** Examined the revised helpers, guide branches and summary, init recording, fence handling, corresponding assertions and deltas, shipping-document updates, and the c290842 paths relevant to FU-2. Findings rely on static control flow and filesystem API semantics. I did not rerun the reported suite or mutation checks, execute filesystem races, modify files, or read credentials, human notes, or raw review transcripts.
+
+**Advisories:** none. The remaining issue is an implementation safety gap, not grounds to reject the overall approach.
+
+VERDICT: 1 issues open
+tokens used
+143,559
+<!-- provenance: provider=openai model=unknown session=unknown date=2026-10-02 -->
+
+Review body for `apriori/changes/batch-review-fixes/review/code-review-v2.md`.
+
+The three round-one findings are addressed in their reported failure scenarios. One additional safety issue remains in the revised guide-adoption path.
+
+- **BRF-R1 — ADDRESSED.** `readPlain` reads through a no-follow descriptor; `writePlain` opens without truncation, rejects a different device/inode, and only then truncates and writes. Both adoption and listed-guide refresh use this path. PW-02’s two `swapAtWrite` cases inject the original leaf-symlink substitution and assert the skip diagnostic, unchanged external victim, and unchanged guide manifest entry. `CHANGED` also matches the summary’s blocked pattern. This closes the original substitution-after-read scenario, subject to the separate parent-directory finding below.
+
+- **BRF-R2 — ADDRESSED.** `record()` now persists the accumulated created-file entries immediately after creating the runbook, guide, and each command file. Existing manifest entries are retained; dry-run returns before hashing or writing; the final step only reports. IN-13 reproduces the `.cursor` obstruction after Claude’s commands are created, checks all four managed entries against their file hashes, then verifies update reports both commands `up-to-date`. The newly MODIFIED manifest requirement preserves IN-13 through IN-17.
+
+- **BRF-R3 — ADDRESSED.** The fence state now carries its opening quote depth. A deeper-quoted delimiter cannot close it, and leaving its quote container ends it. CK-12 directly covers the original top-level-fence reproducer, a deeper-quoted delimiter, and a real version entry following an ended blockquote. The revised contract describes these distinctions.
+
+**New finding: BRF-R4 — P2 — a parent-directory swap before the guide read can overwrite an existing external file.**
+
+The containment/obstruction check at [lib/update.js:89](/root/terra/wt-fix/lib/update.js:89) remains separate from `readPlain` at line 103. `O_NOFOLLOW` protects the final filename, not symlinked parent components.
+
+Concrete interleaving:
+
+1. An unlisted guide passes `guideObstruction` inside the project.
+2. Before `readPlain`, another process replaces `apriori/guides` with a symlink to an external directory.
+3. That directory already contains a regular `prototype-walk.md` whose bytes match an earlier recognized shipped guide.
+4. `readPlain` follows the parent symlink and reads that external regular file. Its bytes qualify for adoption.
+5. `writePlain` follows the same parent symlink. Its device/inode comparison succeeds because both opens reached the same external file. [lib/managed.js:159](/root/terra/wt-fix/lib/managed.js:159) then truncates and overwrites it.
+
+This violates the update contract’s prohibition on writes outside the project. It also exceeds the stated residual in [MIGRATING.md:9](/root/terra/wt-fix/MIGRATING.md:9): the outcome is an **existing-file overwrite**, not merely creation of a new external file. The comment that the installation residual also applies to `writePlain` is therefore insufficient.
+
+**Suggested fix:** bind containment and parent validation to the identity actually opened for the ownership read and subsequent write; reject redirection before adopting or truncating. Add a regression that swaps the parent after obstruction checking but before `readPlain`, with an existing external victim containing a recognized earlier edition, and asserts unchanged victim bytes and no adoption. Current PW-02 injections replace only the final filename at the write open, so they cannot detect this case.
+
+**FU-2 — appropriately retained as a separate follow-up.** I inspected c290842’s source: successful init already wrote a manifest containing only files created during that invocation, while update already limited runbook/command adoption to `manifest === null`. Thus adding a file through init in a pre-manifest project already removed adoption eligibility for its pre-existing files. IN-14 explicitly excludes adopting bystanders. This is distinct from BRF-R2’s newly created command files, which are now recorded and covered by regression assertions. FU-2 is not necessary to close that finding; its eventual solution must reconcile migration behavior with immediate ownership recording. FU-1 remains unchanged and separate.
+
+**Review scope and limits.** Examined the revised helpers, guide branches and summary, init recording, fence handling, corresponding assertions and deltas, shipping-document updates, and the c290842 paths relevant to FU-2. Findings rely on static control flow and filesystem API semantics. I did not rerun the reported suite or mutation checks, execute filesystem races, modify files, or read credentials, human notes, or raw review transcripts.
+
+**Advisories:** none. The remaining issue is an implementation safety gap, not grounds to reject the overall approach.
+
+VERDICT: 1 issues open

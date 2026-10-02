@@ -28,14 +28,18 @@ test('PR-67 both operator editions carry the requirement-level check, its landin
   assert.match(body, /checks every delivery dependency handed outside the workflow; and checks the assertion and run conditions behind each tick/);
   assert.match(body, /It reads the code; it does not fix it\./);
   assert.match(body, /Never mark a row reconciled the reviewer did not check\./);
+  // batch review SST-2: the fix procedure itself — changes with their own P3, then the requirement-level re-check
+  assert.match(body, /a necessary fix → one or more changes, each registering the report in Ground, carrying the finding's id and passing its own P3; then resume the requirement-level reviewer on the fixes and what they affect, its re-check landing in <dir>/);
   const para = flat(en.slice(en.indexOf('**Requirement-level independent check'), en.indexOf(rc)));
   assert.match(para, /never in an archived bundle, and never in a change's `review\/` \(a file there is read as a review family and could pass for that change's independent review\)/);
   assert.match(para, /The report pins the code commit it checked, the source versions and the scope/);
+  assert.match(para, /a necessary fix lands in one or more changes, each registering the report as source material in Ground, carrying the finding's id and passing its own P3; the requirement-level reviewer then re-checks the fixes and what they affect, writing back to the requirement's directory\./);   // SST-2
   assert.match(para, /The changes' P3 and this re-check close separately, and an earlier check's conclusions are never P3's default input\./);
   assert.match(para, /A clean check opens no change; its report and checklist are kept all the same\./);
   assert.match(para, /\*\*owner acceptance walk\*\*.*a guard before any real side effect.*real side effects only with their one-shot authorization; problems recorded first and classified after/);
   const cpara = flat(cn.slice(cn.indexOf('**需求级独立核对'), cn.indexOf(rc)));
-  for (const re of [/不进任何已归档的 bundle,也不进任何 change 的 `review\/`/, /报告钉住被核对的代码提交、来源版本和核对范围/,
+  for (const re of [/必要修复落到一个或多个 change,每个都在 Ground 把这份报告登记为来源材料、承接该发现的 id、走自己的 P3;之后需求级评审方复核这些修复及其影响到的路径,结果写回需求目录/,   // SST-2
+                    /不进任何已归档的 bundle,也不进任何 change 的 `review\/`/, /报告钉住被核对的代码提交、来源版本和核对范围/,
                     /各 change 的 P3 与这次复核分别闭合,先前核对的结论永远不进 P3 的默认输入/, /核对干净时不开 change,报告和清单照样保留/, /\*\*所有者验收剧本\*\*/])
     assert.match(cpara, re, String(re));
 });

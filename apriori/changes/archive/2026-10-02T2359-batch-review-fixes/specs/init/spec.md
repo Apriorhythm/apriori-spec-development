@@ -1,61 +1,7 @@
-### Requirement: apriori init scaffolds the workflow and per-tool pointers
-`apriori init` SHALL scaffold the single `apriori/` root and write a thin pointer to the self-contained runbook in each selected AI tool's native location and format, selected explicitly via `--tools` (there is no interactive menu), without ever overwriting existing files silently.
+<!-- apriori-base: sha256:fac02666bc78da0e09b54c5fb9ebd61e378d66638e3a92bb6621474d6ed9cce2 -->
+# Delta — init (batch-review-fixes)
 
-#### Scenario: IN-01 detects present tools and names them in the guidance
-- WHEN the project already contains a tool's own high-confidence marker (CLAUDE.md, .cursor/, .github/copilot-instructions.md, …)
-- THEN detection finds that tool — the missing `--tools` refusal names it (IN-20) and `doctor` D4 watches its pointers
-
-#### Scenario: IN-18 low-confidence markers attribute no tool
-- WHEN the project carries only an ambiguous marker — a `.github/` dir without `copilot-instructions.md`, or an `AGENTS.md` that any of several tools could have written
-- THEN detection attributes NO tool to it (no mis-add), while a genuinely present tool is still found by its own marker (`.github/copilot-instructions.md`, `.codex/`, `.opencode/`)
-
-#### Scenario: IN-19 explicit --tools is unchanged by detection
-- WHEN the same `--tools` selection runs in a project with misleading markers and in one without
-- THEN the scaffold actions are identical, no file is written for an unselected tool, and a user-owned `AGENTS.md` is untouched unless codex or opencode was selected
-
-#### Scenario: IN-02 the tool universe is the six supported tools
-- WHEN any selection is validated
-- THEN the known-tool universe is exactly {Claude Code, Codex, Cursor, GitHub Copilot, OpenCode, Windsurf}
-
-#### Scenario: IN-03 non-interactive via flags
-- WHEN run with `--tools a,b --test-cmd "…" --yes`
-- THEN it scaffolds without prompting (CI-friendly)
-
-#### Scenario: IN-20 no interactive menu — every selection cell has an explicit outlet
-- WHEN `init` runs on a TTY or off one, with no `--tools`, an empty `--tools`, a single tool or several
-- THEN missing/empty `--tools` is a refusal (exit non-zero) whose message names the flag, the known tools and the DETECTED tools (a genuinely present tool is never silently left unconfigured); a valid selection installs completely for every selected tool — no cell ever produces a silent partial install
-
-#### Scenario: IN-04 the protocol is written once; tools get pointers
-- WHEN any set of tools is selected
-- THEN `apriori/runbook.md` is written once, **byte-identical to the package's own `RUNBOOK.md` (single source — no separate template copy to drift)**, and each tool gets only a pointer to it (no protocol duplication)
-
-#### Scenario: IN-05 per-tool native location and format
-- WHEN a tool is selected
-- THEN its pointer lands at that tool's path in its format (e.g. Cursor → `.cursor/rules/apriori.mdc` with MDC frontmatter; Claude Code → `CLAUDE.md` + `.claude/commands/apriori.md`; AGENTS.md shared by Codex/OpenCode)
-
-#### Scenario: IN-06 additive and non-clobbering
-- WHEN a target file already exists
-- THEN init appends the pointer (rules files) or skips with a notice (runbook), never silently overwriting; re-running is safe
-
-#### Scenario: IN-07 preview before writing
-- WHEN about to write
-- THEN it lists every file it will create or touch and asks to proceed (skippable with --yes)
-
-#### Scenario: IN-08 reports command-level vs rule-level entry honestly
-- WHEN a selected tool has no slash-command mechanism (e.g. Cursor, Copilot)
-- THEN init states that tool gets a rule-level entry (point the agent at the runbook), not a `/apriori` command
-
-#### Scenario: IN-09 --language pins a language in the scaffolded config
-- WHEN init runs with `--language 中文` on a project without an existing config
-- THEN the scaffolded `apriori/process-config.md` has its `language` field set to `中文` (default is `auto` = match the human); an existing config is never overwritten
-
-#### Scenario: IN-11 a gitignored scratch dir for ephemeral instruments
-- WHEN init scaffolds the `apriori/` root
-- THEN it creates `apriori/tmp/` and an `apriori/.gitignore` containing `tmp/`, so P7 screenshot self-checks and similar ephemeral instruments never enter version control; an existing `.gitignore` is never overwritten
-
-#### Scenario: IN-12 --test-cmd is persisted, not parsed-and-dropped
-- WHEN `apriori init --test-cmd "<cmd>"` creates a fresh process-config
-- THEN the config gains a `test-cmd` row that `apriori verify` uses as its default test command; an existing config is never rewritten
+## MODIFIED Requirements
 
 ### Requirement: init records what it creates in the managed manifest
 `apriori init` SHALL maintain `apriori/managed.json` entries ONLY for files it actually creates in a run: a fresh init records the runbook, the prototype-walk guide and each command file it wrote; init for an additional tool merges into a valid existing manifest preserving entries it didn't touch; a command file that already existed on disk is skipped as today and gains NO entry (existing content is never blind-adopted). When init creates a file that is absent on disk — including a manifest-listed file the user deleted as the prescribed cure — the entry is written/replaced with the hash of the bytes just written, so the next update sees `up-to-date`, not `modified`. Each entry is written the moment its file is created, so a run that fails at a later step leaves everything it created recorded (init never adopts what it finds, so an unrecorded file of its own would otherwise stay `unmanaged` on every retry). `init --dry-run` never writes or modifies the manifest (it reports would-be entries). A hygiene-invalid manifest (per the update module's rules) makes init exit nonzero before scaffolding or merging anything.
@@ -86,3 +32,7 @@ The package SHALL ship `guides/prototype-walk.md` (listed in `package.json`'s `f
 #### Scenario: PW-01 init installs the guide byte-for-byte and records it, and skips what is not its own
 - WHEN `apriori init --tools claude` runs in a new project, in a project that already has a user file at `apriori/guides/prototype-walk.md`, in one where `apriori/guides` is a regular file, in one where `apriori/guides` is a symlink out of the project, in one where a symlink to a file outside the project appears at the guide's path right after `apriori/guides` is made, in one whose `CLAUDE.md` is a directory (init throws after the guide is created), and with `--dry-run`
 - THEN the new project gets the guide byte-identical to the package's `guides/prototype-walk.md` with its manifest entry; the user file is untouched and gains no entry; the other two are skipped with a reason naming the path and nothing is written outside the project; the planted symlink is reported `changed during install (skipped — …)`, its target is untouched and no entry is made; the failing init still leaves the created guide recorded; the dry run reports the would-be creation and writes nothing; and `package.json`'s `files` lists `guides/`
+
+## Notes
+
+Batch review (10-02, c290842) guide-1: the first-install copy followed a symlink created between the checks and the copy; it is now an exclusive create (`wx`). Residual, stated in MIGRATING and the code: `apriori/guides` swapped for an outside symlink in that window can still receive a new file (never an overwrite). guide-2: the manifest is written as soon as the guide exists. Review round 1 (BRF-R2): recording only the guide early left a manifest behind that stranded command files created later in a run that then failed (update adopts commands only when no manifest exists); every created file is now recorded the moment it exists — IN-13 covers it. IN-13..IN-17 and PW-01 keep their ids.

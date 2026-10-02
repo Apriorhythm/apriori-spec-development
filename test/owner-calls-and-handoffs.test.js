@@ -21,6 +21,9 @@ test('PR-64 a broad instruction does not decide an owner item, and recording for
   // §4's archive sentence names the same escalated family (OC-02: archive keys --force on the derived escalation, not on a round's position)
   assert.match(flat(EN), /`--force` overrides \*\*progress only\*\*, and only where the owner's decision is already in `gates:`: an escalated review family — an `escalate` verdict, a round past its one automatic re-review that no owner release opened or that still revises, or a `revise` after the owner answered the limit round itself with a `reframe` \(§1 R4\) — that the owner answered with `reframe`/);
   assert.doesNotMatch(r1, /stopped at its limit/, 'the stale "stopped at its limit" survives in R1');
+  // batch review shipping-docs-2: the CLI reference's archive --force names the same three escalated forms
+  assert.match(flat(read('docs/cli.md')), /Since limit-ruling a family is escalated by an `escalate` verdict, by a round past its one automatic re-review that no owner release opened or that still revises, or by a `revise` after the owner answered the limit round itself with a `reframe` \(RUNBOOK §1 R1 \/ R4\)/);
+  assert.match(flat(read('docs/cli_cn.md')), /自 limit-ruling 起,让 family 升级的有三种:`escalate` 结论;越过唯一一次自动复核的轮次\(没有所有者放行开启它,或它仍是 revise\);所有者用 `reframe` 回答了限额轮本身之后的 `revise`\(RUNBOOK §1 R1 \/ R4\)/);
   assert.match(para, /\*\*What is marked as the owner's stays the owner's\.\*\*/);
   assert.match(para, /marks an item as the owner's call — a scope, a caliber, a risk to accept — and no valid owner decision covers it yet, a broad instruction such as "fix everything else" does not decide it: it stays a pending `## Open` item until the owner answers it/);
   assert.match(para, /One answer may settle several such items, as long as it names them/);
@@ -51,9 +54,13 @@ test('PR-66 each recipe\'s goal condition carries the human-stop outcome, and th
       const sentence = g.split('\n')[0];                       // the goal condition is the recipe's first line
       assert.match(sentence, /— OR you stopped at (a human stop|the 25-turn bound or at a human stop|one of the human stops listed below) \(§1 R1[^)]*\)(?: or at the Build & Test stage's 25-turn bound,|, at an actual capability block or at a set execution bound,)? and your last message names it/, `${f}: ${sentence.slice(0, 60)}…`);
       assert.match(sentence, /the decision the owner must make; that outcome hands the (change|requirement) back and is never a (pass|delivery|pass or a delivery)\./, `${f}: ${sentence.slice(0, 60)}…`);
+      // batch review SST-5: every stop reports what is still open, not the stop alone
+      assert.match(sentence, /and your last message names it, what is still open (?:\(at the bound: the conditions still unmet and the failing evidence\) )?and the decision the owner must make/, `${f}: ${sentence.slice(0, 60)}…`);
     }
-    // OC-01: a recipe that runs Build & Test carries its 25-turn bound in the condition too
-    for (const g of goals.filter((x) => /Safety bound(?: for this stage)?: 25 turns/.test(x)))
+    // OC-01: a recipe that runs Build & Test — or sends the agent back to it (batch review goal-1) —
+    // carries its 25-turn bound in the condition too
+    assert.strictEqual(goals.filter((x) => /go back to Build & Test/.test(x)).length, 1, `${f}: Review & Deliver goes back to Build & Test`);
+    for (const g of goals.filter((x) => /Safety bound(?: for this stage)?: 25 turns|go back to Build & Test/.test(x)))
       assert.match(g.split('\n')[0], /25-turn bound/, `${f}: a recipe bounded at 25 turns does not end at that bound in its condition`);
   }
   // the Chinese operator guide carries the identical recipe text
@@ -61,4 +68,11 @@ test('PR-66 each recipe\'s goal condition carries the human-stop outcome, and th
   assert.deepStrictEqual(recipes('docs/operator_cn.md'), recipes('docs/operator.md'));
   assert.match(flat(read('docs/concepts.md')), /\*\*A goal ends at a human stop too\.\*\* The evaluator judges only the condition you gave it: a stop listed in the goal's body does not end the loop/);
   assert.match(flat(read('docs/concepts_cn.md')), /\*\*goal 也要在人类停点结束。\*\* 评估器只判你给它的那个条件:写在 goal 正文里的停点结束不了循环/);
+  // batch review shipping-docs-1: the copyable mini-kv Build & Test goal (concepts §5.3) ends at the bound or a human stop too
+  const miniKv = (f) => [...read(f).matchAll(/```text\n([\s\S]*?)```/g)].map((m) => m[1]).filter((b) => b.startsWith('/goal "') && b.includes('npm test'));
+  const [en] = miniKv('docs/concepts.md'), [cn] = miniKv('docs/concepts_cn.md');
+  assert.match(en, /— OR you stopped at the 25-turn bound or at a human stop \(RUNBOOK §1 R1\) and your last message names it, what is still open \(at the bound: the conditions still unmet and the failing evidence\) and the decision the owner must make; that outcome hands the change back and is never a pass\. Safety bound: 25 turns\./);
+  assert.match(en, /if turn 25 ends with any still unmet, STOP anyway and report the failing evidence — reaching the bound is never a pass/);
+  assert.match(cn, /——或者你停在了 25 turn 安全上限或人类停点\(RUNBOOK §1 R1\),并且最后一条消息点明了它、还有什么没完成\(到上限时:仍未满足的条件和失败证据\)以及所有者要做的决定;这个结局把 change 交还,永远不算通过。安全上限:25 轮。/);
+  assert.match(cn, /第 25 轮结束时仍有条件未满足,也照样停下并报告失败证据——触到安全上限永远不算通过/);
 });

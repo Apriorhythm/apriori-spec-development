@@ -491,7 +491,7 @@ npm test
 
 想让"实现 → 测试"循环无人值守地跑，就用 goal 包起来——这是 [§4.7](#47-用-goal-自动化整个流程) Build & Test 配方的 mini-kv 版（它是个库，所以没有 Playwright 那一条）：
 ```text
-/goal "目标——以下全部成立:`npm test` 退出码 0(用 scenario ID 命名测试是建议,不是强制);apriori/changes/<change>/flow-state.md 的每条 ## Open 条目都带稳定 id;且 `apriori gate --change <change> --review-ready --test-cmd \"npm test\"` 退出码 0。第 1 轮:为每个 spec scenario 生成一条失败测试并把失败运行结果打印出来。之后每一轮:实现下一个 scenario,跑 `npm test` 并把输出打印出来。全部成立则停。"
+/goal "目标——以下全部成立:`npm test` 退出码 0(用 scenario ID 命名测试是建议,不是强制);apriori/changes/<change>/flow-state.md 的每条 ## Open 条目都带稳定 id;且 `apriori gate --change <change> --review-ready --test-cmd \"npm test\"` 退出码 0——或者你停在了 25 turn 安全上限或人类停点(RUNBOOK §1 R1),并且最后一条消息点明了它、还有什么没完成(到上限时:仍未满足的条件和失败证据)以及所有者要做的决定;这个结局把 change 交还,永远不算通过。安全上限:25 轮。第 1 轮:为每个 spec scenario 生成一条失败测试并把失败运行结果打印出来。之后每一轮:实现下一个 scenario,跑 `npm test` 并把输出打印出来。全部成立则停;第 25 轮结束时仍有条件未满足,也照样停下并报告失败证据——触到安全上限永远不算通过。"
 ```
 
 ### 5.4 Review & Deliver · 验收与归档

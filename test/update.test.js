@@ -209,10 +209,12 @@ test('UP-09 pre-manifest projects are adopted only on proof', () => {
   assert.ok(/unmanaged/.test(byFile['.opencode/command/apriori.md']), JSON.stringify(byFile));
   assert.strictEqual(fs.readFileSync(oc, 'utf8'), 'user-owned free text\n');
   assert.strictEqual(fs.readFileSync(path.join(root, '.codex', 'prompts', 'apriori.md'), 'utf8'), PKG_COMMAND);
+  // the guide init wrote is proven by its bytes (a shipped edition) and adopted too (batch-review-fixes guide-2)
+  assert.strictEqual(byFile['apriori/guides/prototype-walk.md'], 'adopted (its bytes are the shipped guide)');
   // the adoption pass materialized the manifest, covering exactly the proven files + runbook
   const m = JSON.parse(fs.readFileSync(path.join(root, 'apriori', 'managed.json'), 'utf8'));
   assert.deepStrictEqual(Object.keys(m.files).sort(),
-    ['.claude/commands/apriori.md', '.codex/prompts/apriori.md', 'apriori/runbook.md']);
+    ['.claude/commands/apriori.md', '.codex/prompts/apriori.md', 'apriori/guides/prototype-walk.md', 'apriori/runbook.md']);
   // dry-run pre-manifest: no manifest materializes
   const root2 = tmp();
   init.scaffold(root2, ['claude']);

@@ -491,7 +491,7 @@ Then look at the state's `## Open` section. mini-kv is a pure library with no UI
 
 To run the implement → test loop unattended, wrap it in a goal — the mini-kv form of the [§4.7](#47-automating-the-loop-with-goal-claude-code) Build & Test recipe (it's a library, so no Playwright clause):
 ```text
-/goal "All of: `npm test` exits 0 (naming a test with its scenario ID is a suggestion, never mandatory); every ## Open item in apriori/changes/<change>/flow-state.md carries a stable id; and `apriori gate --change <change> --review-ready --test-cmd \"npm test\"` exits 0. Turn 1: generate one failing test per spec scenario and SHOW the failing run. Each later turn: implement the next scenario, run `npm test` and SHOW the output. Stop when all hold."
+/goal "All of: `npm test` exits 0 (naming a test with its scenario ID is a suggestion, never mandatory); every ## Open item in apriori/changes/<change>/flow-state.md carries a stable id; and `apriori gate --change <change> --review-ready --test-cmd \"npm test\"` exits 0 — OR you stopped at the 25-turn bound or at a human stop (RUNBOOK §1 R1) and your last message names it, what is still open (at the bound: the conditions still unmet and the failing evidence) and the decision the owner must make; that outcome hands the change back and is never a pass. Safety bound: 25 turns. Turn 1: generate one failing test per spec scenario and SHOW the failing run. Each later turn: implement the next scenario, run `npm test` and SHOW the output. Stop when all hold; if turn 25 ends with any still unmet, STOP anyway and report the failing evidence — reaching the bound is never a pass."
 ```
 
 ### 5.4 Review & Deliver · Acceptance and Archive

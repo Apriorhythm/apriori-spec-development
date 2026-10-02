@@ -1,0 +1,491 @@
+OpenAI Codex v0.159.3
+--------
+workdir: /root/terra/wt-fix
+model: gpt-6-astra
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 01a0fd3f-14d0-7460-8c18-7a0bdbb927db
+--------
+user
+Round 4 of code-review for `batch-review-fixes` (same worktree, still uncommitted). The producer took your suggested fix for the rest of BRF-R4; its disposition and evidence are the `decision: BRF-R4 (rest) fixed` line in apriori/changes/batch-review-fixes/flow-state.md, and the round-4 review-progress note is the last `gates:` entry.
+Answer BRF-R4 with ADDRESSED or NOT ADDRESSED and your evidence.
+Scope is what changed since round 3: lib/managed.js (fdLocation, inside; readPlain keeps a realpath fallback for judging only and reports whether the descriptor was located; writePlain now returns written / changed / linked / unconfirmed and fails closed when the descriptor cannot be located or the file has another hard link), lib/update.js (refreshGuide, LINKED, UNCONFIRMED, the dry-run prediction, the summary's blocked pattern), PW-02's new cases in test/prototype-walk-guide.test.js (redirect-and-restore around each open with and without descriptor location; no-/proc dry and real runs; the delete-and-init cure; hard links), the update delta (PW-02 requirement, scenario, Notes — including the stated cost on macOS/Windows), MIGRATING, CHANGELOG, docs/cli.md and docs/cli_cn.md.
+Report a NEW finding only if it breaks the contract or a safety property. Give the full review body for apriori/changes/batch-review-fixes/review/code-review-v4.md, ending with exactly one VERDICT line.
+codex
+I’ll check that writes now fail closed without descriptor location, then trace the dry-run, hard-link, and delete-and-init cases against the revised contract and tests.
+exec
+/usr/bin/zsh -lc "rg -n 'BRF-R4 \\(rest\\)|review-progress code-review round 4' apriori/changes/batch-review-fixes/flow-state.md; sed -n '134,240p' lib/managed.js; sed -n '26,36p' lib/update.js; sed -n '85,150p' lib/update.js; sed -n '205,240p' lib/update.js" in /root/terra/wt-fix
+ succeeded in 0ms:
+23:- decision: BRF-R4 (rest) fixed — 按评审建议改为失败即关闭：改写只在新打开的描述符上同时满足「末段不跟随符号链接、与读取时同 dev/ino、没有其他硬链接、经 `/proc/self/fd` 定位在项目内」时才原地进行；定位不了（macOS、Windows、无 /proc 的容器）一律不改写，报 `not refreshed (skipped — …)` 并给出「删掉再 init」的办法；有其他硬链接的 guide 同样不原地改写（改写会波及另一个名字，顺手补上的同类缺口）；只读判断仍可退回 realpath（读取只用于判断、不写）；dry-run 预测同样的结果。代价：macOS/Windows 上 update 不再原地刷新 guide（已写入 MIGRATING、cli 两版、CHANGELOG、update delta）。证据：PW-02 新增「每次打开前后翻转目录」两例（有/无描述符定位）、无 /proc 时 dry-run 与实跑都 `not refreshed`、up-to-date 不受影响、删掉再 init 能登记新 guide、硬链接两例；把失败即关闭换回 realpath 写入或去掉硬链接检查时 PW-02 变红；全套 883/883
+40:  - 2026-10-02T23:57 note: review-progress code-review round 4 — issues: BRF-R4; actions: BRF-R4 rest fixed — a rewrite fails closed unless the new descriptor is located inside the project (/proc/self/fd), same dev/ino, no other hard link; regressions added to PW-02; evidence: lib/managed.js, lib/update.js, test/prototype-walk-guide.test.js, MIGRATING.md; approach: kept — the reviewer's suggested fail-closed rule, the same guarded write narrowed again; its cost on platforms without /proc is stated in MIGRATING and the CLI reference
+
+// One look at a regular file that never follows a symlink at its last component: { bytes, st }, or
+// null when what is there now is a symlink, a directory or another non-file, nothing, or a file outside
+// the project. The guide's ownership judgment (hash, edition) and its rewrite both use what THIS look saw.
+const NOFOLLOW = fs.constants.O_NOFOLLOW || 0;
+// O_NOFOLLOW guards the last component only: a parent directory swapped for a symlink after the
+// obstruction check would still lead the open outside. So containment is judged on the opened
+// descriptor itself: where it really is (/proc/self/fd) → that real path, or null when the platform
+// cannot say (no /proc: macOS, Windows, a container without it).
+function fdLocation(fd) {
+  try { return fs.readlinkSync(`/proc/self/fd/${fd}`); } catch { return null; }
+}
+function inside(root, real) {
+  let realRoot;
+  try { realRoot = fs.realpathSync(root); } catch { return false; }
+  return real !== realRoot && (real + path.sep).startsWith(realRoot + path.sep);
+}
+
+// Reading only JUDGES (hash, edition) and never writes, so where the descriptor cannot be located it
+// falls back to the path's realpath right after the open; every write goes through writePlain.
+function readPlain(root, abs) {
+  let fd;
+  try { fd = fs.openSync(abs, fs.constants.O_RDONLY | NOFOLLOW); }
+  catch (e) { if (['ELOOP', 'ENOENT', 'EISDIR', 'ENOTDIR'].includes(e.code)) return null; throw e; }
+  try {
+    const st = fs.fstatSync(fd);
+    if (!st.isFile()) return null;
+    let real = fdLocation(fd);
+    const located = real !== null;                // whether a rewrite here could be confirmed (writePlain)
+    if (!located) { try { real = fs.realpathSync(abs); } catch { return null; } }
+    return inside(root, real) ? { bytes: fs.readFileSync(fd), st, located } : null;
+  } finally { fs.closeSync(fd); }
+}
+
+// Rewrite the file readPlain saw, in place, only when all of it holds: opened without following a
+// symlink at the last component; the same device and inode; no other hard link (one would carry the
+// rewrite to a name elsewhere); and inside the project judged on the descriptor itself. Where the
+// descriptor cannot be located it fails CLOSED — a pathname check cannot bind to the opened file —
+// and nothing is written. → 'written' | 'changed' (replaced or redirected) | 'linked' | 'unconfirmed'.
+function writePlain(root, abs, buf, seen) {
+  let fd;
+  try { fd = fs.openSync(abs, fs.constants.O_WRONLY | NOFOLLOW); }
+  catch (e) { if (['ELOOP', 'ENOENT', 'EISDIR', 'ENOTDIR'].includes(e.code)) return 'changed'; throw e; }
+  try {
+    const st = fs.fstatSync(fd);
+    if (!st.isFile() || st.dev !== seen.st.dev || st.ino !== seen.st.ino) return 'changed';
+    if (st.nlink !== 1) return 'linked';
+    const real = fdLocation(fd);
+    if (real === null) return 'unconfirmed';
+    if (!inside(root, real)) return 'changed';
+    fs.ftruncateSync(fd, 0);
+    for (let off = 0; off < buf.length;) off += fs.writeSync(fd, buf, off, buf.length - off, off);
+    return 'written';
+  } finally { fs.closeSync(fd); }
+}
+
+function installGuide(root, dryRun) {
+  const ob = guideObstruction(root);
+  if (ob) return ob;
+  const abs = path.join(root, GUIDE_REL);
+  if (fs.existsSync(abs)) return 'skipped';
+  if (dryRun) return 'created';
+  fs.mkdirSync(path.dirname(abs), { recursive: true });
+  // exclusive create: whatever appeared at the path after the checks above — a file, a symlink,
+  // dangling or not — makes this fail with EEXIST; it is never followed and never overwritten.
+  // Residual, stated: apriori/guides itself swapped for a symlink out of the project between the
+  // checks and this call can still receive a NEW file there (never an overwrite) — Node has no
+  // openat, and whoever can swap directories inside the project already controls its tree.
+  try { fs.writeFileSync(abs, fs.readFileSync(GUIDE_SRC), { flag: 'wx' }); }
+  catch (e) {
+    if (e.code === 'EEXIST') return `changed during install (skipped — something appeared at ${GUIDE_REL} after the checks; left alone, rerun to judge it)`;
+    throw e;
+  }
+  return 'created';
+}
+
+module.exports = { TEMPLATE_GENERATIONS, allowedTargets, hashBytes, hashFile,
+  readManifest, writeManifest, assertContained, GUIDE_REL, GUIDE_SRC, GUIDE_GENERATIONS, guideBlock, guideObstruction, installGuide, readPlain, writePlain };
+  if (fs.readFileSync(target, 'utf8') === want) return 'up-to-date';
+  if (!dryRun) fs.writeFileSync(target, want);
+  return 'updated';
+}
+
+const CURE = "delete it and rerun 'apriori init --tools <t>' to hand it back to the tool";
+const CHANGED = 'changed during refresh (skipped — what sits at the path was replaced after it was read; left alone, rerun to judge it)';
+const LINKED = `not refreshed (skipped — the guide has other hard links, so rewriting it in place would change them too; ${CURE})`;
+const UNCONFIRMED = `not refreshed (skipped — this platform cannot tell where an opened file really is, so the guide is never rewritten in place here; ${CURE})`;
+
+// Refresh tool-owned files under root — but only those apriori/managed.json proves the
+  // and left alone. Every branch first checks what sits at the path and at apriori/guides (lstat — a
+  // symlink is never followed): an obstruction is reported and left alone before anything is hashed or written.
+  const guideAbs = path.join(root, managed.GUIDE_REL);
+  const guideSrc = opts.guideSrc || managed.GUIDE_SRC;
+  const guideGens = opts.guideGenerations || managed.GUIDE_GENERATIONS;
+  const guideListed = manifest && Object.prototype.hasOwnProperty.call(manifest.files, managed.GUIDE_REL);
+  const obstruction = managed.guideObstruction(root);
+  const G = managed.GUIDE_REL;
+  if (obstruction) {
+    actions.push({ file: G, action: obstruction });
+  } else if (!fs.existsSync(guideAbs)) {
+    if (guideListed) actions.push({ file: G, action: "missing (skipped — recreating is init's job)" });
+    else {
+      const a = managed.installGuide(root, dry);
+      actions.push({ file: G, action: a === 'created' ? 'created (first install)' : a });
+      if (a === 'created' && !dry) { files[G] = managed.hashFile(guideAbs); manifestDirty = true; }
+    }
+  } else {
+    // ONE no-follow look: the hash judged (listed entry, or a shipped edition) and the bytes rewritten
+    // belong to the same file — a symlink swapped in after the checks is never written through
+    const seen = managed.readPlain(root, guideAbs);
+    const cur = seen && managed.hashBytes(seen.bytes);
+    const refreshGuide = () => {
+      const want = fs.readFileSync(guideSrc);
+      if (seen.bytes.equals(want)) return 'up-to-date';
+      if (dry) return seen.st.nlink !== 1 ? LINKED : !seen.located ? UNCONFIRMED : 'updated';   // the run's own answer, predicted
+      const w = managed.writePlain(root, guideAbs, want, seen);
+      return w === 'written' ? 'updated' : w === 'changed' ? CHANGED : w === 'linked' ? LINKED : UNCONFIRMED;
+    };
+    const heldBack = (act) => act === CHANGED || act === LINKED || act === UNCONFIRMED;
+    if (!seen) actions.push({ file: G, action: CHANGED });
+    else if (guideListed) {
+      if (cur !== manifest.files[G]) actions.push({ file: G, action: `modified (skipped — locally modified; ${CURE})` });
+      else {
+        const act = refreshGuide();
+        actions.push({ file: G, action: act });
+        if (act === 'updated') { files[G] = managed.hashBytes(fs.readFileSync(guideSrc)); manifestDirty = true; }
+      }
+    } else if (guideGens.includes(cur)) {
+      const act = refreshGuide();
+      if (heldBack(act)) actions.push({ file: G, action: act });
+      else {
+        actions.push({ file: G, action: act === 'updated' ? 'adopted and updated (its bytes were an earlier shipped edition)' : 'adopted (its bytes are the shipped guide)' });
+        files[G] = act === 'updated' ? managed.hashBytes(fs.readFileSync(guideSrc)) : cur;
+        manifestDirty = true;
+      }
+    } else actions.push({ file: G, action: `unmanaged (skipped — not created by this tool; ${CURE})` });
+  }
+  // protocol-required scaffolding the refreshed runbook relies on (IN-11): create if missing,
+  // NEVER modify — and each piece on its own: a lone missing tmp/ is recreated too (BD-02)
+  const gi = path.join(root, 'apriori', '.gitignore');
+  if (!fs.existsSync(gi)) {
+    if (!dry) fs.writeFileSync(gi, 'tmp/\n');
+    actions.push({ file: 'apriori/.gitignore', action: 'created' });
+  }
+  const tmpDir = path.join(root, 'apriori', 'tmp');
+  let tmpSt = null;
+  try { tmpSt = fs.lstatSync(tmpDir); } catch { /* absent */ }
+  if (!tmpSt) {
+    if (!dry) fs.mkdirSync(tmpDir, { recursive: true });
+    actions.push({ file: 'apriori/tmp/', action: 'created' });
+  } else if (!tmpSt.isDirectory()) {
+    actions.push({ file: 'apriori/tmp/', action: 'not a directory (skipped — something else sits at apriori/tmp; move it and rerun)' });
+  }
+  // each mapped template is adopted ONLY against its own generation table — a body that is a
+  // legal generation of a DIFFERENT template is unmanaged, in either direction (MC-04)
+    console.log(n
+      ? `\n  ${n} file(s) ${dryRun ? 'would be ' : ''}refreshed to apriori-cli ${v}.`
+      : held.length
+        ? `\n  ${held.join('; ')}.`
+        : `\n  everything already matches apriori-cli ${v}.`);
+    console.log('  (user-owned files — process-config.md, specs/, changes/, rules files — are never touched.)');
+    return 0;
+  });
+}
+
+module.exports = { run, refresh, cli };
+
+exec
+/usr/bin/zsh -lc "sed -n '188,365p' test/prototype-walk-guide.test.js" in /root/terra/wt-fix
+ succeeded in 0ms:
+  }
+  // round 2 BRF-R4: apriori/guides swapped for a symlink to an outside directory between the obstruction
+  // check and the read — whose prototype-walk.md is an existing file with recognized bytes — is neither
+  // adopted nor overwritten: containment is judged on the opened descriptor, not on the path checked earlier
+  {
+    const r = aged(), outside = tmp(), victim = path.join(outside, 'prototype-walk.md');
+    fs.mkdirSync(path.join(r, 'apriori', 'guides'), { recursive: true });
+    fs.writeFileSync(path.join(r, GUIDE), '# an earlier edition\n');
+    fs.writeFileSync(victim, '# an earlier edition\n');
+    const gens = [sha(victim)], abs = path.join(r, GUIDE), dir = path.join(r, 'apriori', 'guides'), realOpen = fs.openSync;
+    fs.openSync = function (p, flags, ...rest) {
+      if (p === abs && typeof flags === 'number' && !(flags & fs.constants.O_WRONLY)) {
+        fs.openSync = realOpen;
+        fs.renameSync(dir, dir + '.real'); fs.symlinkSync(outside, dir);
+      }
+      return realOpen.call(fs, p, flags, ...rest);
+    };
+    let res;
+    try { res = update.run(r, { guideGenerations: gens }); } finally { fs.openSync = realOpen; }
+    assert.match(actionOf(res.actions, GUIDE), /^changed during refresh \(skipped/);
+    assert.strictEqual(fs.readFileSync(victim, 'utf8'), '# an earlier edition\n', 'the outside file must not be overwritten');
+    assert.ok(!(GUIDE in manifestOf(r)), 'nothing outside the project is adopted');
+  }
+  // round 3 BRF-R4 (rest): redirect the directory for each open and restore it right after, so a pathname
+  // checked afterwards looks fine — with the descriptor locatable (/proc) the read is refused; without it
+  // the rewrite fails closed. The outside file is never adopted, truncated or overwritten either way.
+  const flipAround = (r, outside, fn, noProc) => {
+    const abs = path.join(r, GUIDE), dir = path.join(r, 'apriori', 'guides');
+    const realOpen = fs.openSync, realReadlink = fs.readlinkSync;
+    fs.openSync = function (p, flags, ...rest) {
+      if (p !== abs) return realOpen.call(fs, p, flags, ...rest);
+      fs.renameSync(dir, dir + '.real'); fs.symlinkSync(outside, dir);
+      try { return realOpen.call(fs, p, flags, ...rest); }
+      finally { fs.unlinkSync(dir); fs.renameSync(dir + '.real', dir); }
+    };
+    if (noProc) fs.readlinkSync = function (p, ...rest) {
+      if (String(p).startsWith('/proc/self/fd/')) { const e = new Error('ENOENT'); e.code = 'ENOENT'; throw e; }
+      return realReadlink.call(fs, p, ...rest);
+    };
+    try { return fn(); } finally { fs.openSync = realOpen; fs.readlinkSync = realReadlink; }
+  };
+  for (const noProc of [false, true]) {
+    const r = aged(), outside = tmp(), victim = path.join(outside, 'prototype-walk.md');
+    fs.mkdirSync(path.join(r, 'apriori', 'guides'), { recursive: true });
+    fs.writeFileSync(path.join(r, GUIDE), '# an earlier edition\n');
+    fs.writeFileSync(victim, '# an earlier edition\n');
+    const res = flipAround(r, outside, () => update.run(r, { guideGenerations: [sha(victim)] }), noProc);
+    assert.match(actionOf(res.actions, GUIDE), noProc ? /^not refreshed \(skipped — this platform cannot tell where an opened file really is/ : /^changed during refresh \(skipped/, `noProc=${noProc}`);
+    assert.strictEqual(fs.readFileSync(victim, 'utf8'), '# an earlier edition\n', `noProc=${noProc}: the outside file must stay as it was`);
+    assert.ok(!(GUIDE in manifestOf(r)), `noProc=${noProc}: nothing adopted`);
+  }
+  // where the descriptor cannot be located, a guide needing a rewrite is held back — dry run and real run
+  // alike — and the cure in the message still brings it current
+  const noProcRun = (fn) => {
+    const realReadlink = fs.readlinkSync;
+    fs.readlinkSync = function (p, ...rest) {
+      if (String(p).startsWith('/proc/self/fd/')) { const e = new Error('ENOENT'); e.code = 'ENOENT'; throw e; }
+      return realReadlink.call(fs, p, ...rest);
+    };
+    try { return fn(); } finally { fs.readlinkSync = realReadlink; }
+  };
+  {
+    const r = tmp(); init.scaffold(r, ['claude']);
+    const entry = manifestOf(r)[GUIDE];
+    for (const dryRun of [true, false])
+      assert.match(actionOf(noProcRun(() => update.run(r, { guideSrc: newer, dryRun })).actions, GUIDE), /^not refreshed \(skipped — this platform cannot tell/, `dryRun=${dryRun}`);
+    assert.strictEqual(fs.readFileSync(path.join(r, GUIDE), 'utf8'), PKG_GUIDE);
+    assert.strictEqual(manifestOf(r)[GUIDE], entry);
+    // an up-to-date guide needs no rewrite and is simply up-to-date there
+    assert.strictEqual(actionOf(noProcRun(() => update.run(r)).actions, GUIDE), 'up-to-date');
+    fs.rmSync(path.join(r, GUIDE)); init.scaffold(r, ['claude']);
+    assert.strictEqual(manifestOf(r)[GUIDE], sha(path.join(r, GUIDE)), 'the delete-and-init cure records a fresh guide');
+  }
+  // a guide with another hard link is never rewritten in place: the rewrite would reach that other name too
+  {
+    const r = tmp(); init.scaffold(r, ['claude']);
+    const other = path.join(tmp(), 'linked-guide.md');
+    fs.linkSync(path.join(r, GUIDE), other);
+    for (const dryRun of [true, false])
+      assert.match(actionOf(update.run(r, { guideSrc: newer, dryRun }).actions, GUIDE), /^not refreshed \(skipped — the guide has other hard links/, `dryRun=${dryRun}`);
+    assert.strictEqual(fs.readFileSync(other, 'utf8'), PKG_GUIDE, 'the other name keeps its bytes');
+  }
+  // the shipped-edition table carries the live guide and every edition shipped before it
+  for (const h of [sha(path.join(ROOT, 'guides', 'prototype-walk.md')),
+    'sha256:3d4e6dce8590ddb1207099e9a6ba1f70f61e28d46a10ec027773c59038f2b968',     // c290842
+    'sha256:551c6686be36479d352ca3b364bd05dcdbda00b8ae40966bd50367f7c38255a7'])    // e22e8d8
+    assert.ok(managed.GUIDE_GENERATIONS.includes(h), `GUIDE_GENERATIONS lacks ${h}`);
+  // batch review guide-3: the summary never says everything matches over a guide it could not refresh
+  for (const spoil of [(r) => fs.rmSync(path.join(r, GUIDE)), (r) => { fs.rmSync(path.join(r, GUIDE)); fs.mkdirSync(path.join(r, GUIDE)); }]) {
+    const r = tmp(); init.scaffold(r, ['claude']); spoil(r);
+    const o = spawnSync('node', [BIN, 'update'], { cwd: r, encoding: 'utf8' });
+    assert.strictEqual(o.status, 0, o.stderr);
+    assert.doesNotMatch(o.stdout, /everything already matches/);
+    assert.match(o.stdout, /1 missing or obstructed \(skipped\) — not refreshed; see the lines above\./);
+  }
+  // dry run on a project without it: reported, neither the guide nor the manifest written
+  const dryRoot = aged();
+  const mBefore = fs.readFileSync(path.join(dryRoot, 'apriori', 'managed.json'), 'utf8');
+  assert.strictEqual(actionOf(update.run(dryRoot, { dryRun: true }).actions, GUIDE), 'created (first install)');
+  assert.ok(!fs.existsSync(path.join(dryRoot, GUIDE)));
+  assert.strictEqual(fs.readFileSync(path.join(dryRoot, 'apriori', 'managed.json'), 'utf8'), mBefore);
+  // PW-R1 (review round 1): every update branch refuses to hash or write through what is not a plain file
+  // in a plain directory — a listed guide swapped for a symlink whose target still matches the hash
+  const swapped = tmp(); init.scaffold(swapped, ['claude']);
+  const elsewhere = path.join(swapped, 'docs', 'moved-guide.md');
+  fs.mkdirSync(path.dirname(elsewhere), { recursive: true });
+  fs.renameSync(path.join(swapped, GUIDE), elsewhere);
+  fs.symlinkSync(elsewhere, path.join(swapped, GUIDE));
+  const sw = update.run(swapped, { guideSrc: newer });
+  assert.match(actionOf(sw.actions, GUIDE), /^not a regular file \(skipped — a symlink sits at/);
+  assert.strictEqual(fs.readFileSync(elsewhere, 'utf8'), PKG_GUIDE, 'the symlink target must not be written through');
+  // apriori/guides itself a symlink to a directory inside the project
+  const linkedDir = tmp(); init.scaffold(linkedDir, ['claude']);
+  fs.renameSync(path.join(linkedDir, 'apriori', 'guides'), path.join(linkedDir, 'real-guides'));
+  fs.symlinkSync(path.join(linkedDir, 'real-guides'), path.join(linkedDir, 'apriori', 'guides'));
+  const ld = update.run(linkedDir, { guideSrc: newer });
+  assert.match(actionOf(ld.actions, GUIDE), /^not a regular file \(skipped — something other than a plain directory sits at apriori\/guides/);
+  assert.strictEqual(fs.readFileSync(path.join(linkedDir, 'real-guides', 'prototype-walk.md'), 'utf8'), PKG_GUIDE);
+  // a directory at the guide's path: reported, no crash, the rest of the update still lands
+  const dirAt = tmp(); init.scaffold(dirAt, ['claude']);
+  fs.rmSync(path.join(dirAt, GUIDE)); fs.mkdirSync(path.join(dirAt, GUIDE));
+  fs.writeFileSync(path.join(dirAt, 'apriori', 'runbook.md'), '# older runbook\n');
+  const mf = manifestOf(dirAt); mf['apriori/runbook.md'] = sha(path.join(dirAt, 'apriori', 'runbook.md')); managed.writeManifest(dirAt, mf);
+  const da = update.run(dirAt);
+  assert.match(actionOf(da.actions, GUIDE), /^not a regular file \(skipped — a directory or other non-file sits at/);
+  assert.strictEqual(actionOf(da.actions, 'apriori/runbook.md'), 'updated');
+  assert.strictEqual(manifestOf(dirAt)['apriori/runbook.md'], sha(path.join(dirAt, 'apriori', 'runbook.md')));
+  // an unlisted dangling symlink is reported, not silently passed over
+  const dangling = aged();
+  fs.mkdirSync(path.join(dangling, 'apriori', 'guides'), { recursive: true });
+  fs.symlinkSync(path.join(dangling, 'nowhere.md'), path.join(dangling, GUIDE));
+  assert.match(actionOf(update.run(dangling).actions, GUIDE), /^not a regular file \(skipped — a symlink sits at/);
+  assert.ok(!fs.existsSync(path.join(dangling, 'nowhere.md')));
+});
+
+test('PW-03 doctor reports a missing guide the runbook names, and nothing otherwise', () => {
+  const healthy = () => {
+    const root = tmp();
+    init.scaffold(root, ['claude']);
+    return root;
+  };
+  const TAP_OK = `node -e "console.log('TAP version 13\\n1..1\\nok 1 - fine')"`;
+  const guideFindings = (r) => r.checks.filter((c) => c.id === 'D2' && c.status === 'finding' && c.detail.includes(GUIDE));
+  const ok = doctor.runDoctor({ cwd: healthy(), testCmd: TAP_OK });
+  assert.strictEqual(guideFindings(ok).length, 0, JSON.stringify(ok.checks));
+  assert.strictEqual(ok.result, 'HEALTHY', JSON.stringify(ok.checks));      // batch review SST-6
+  assert.strictEqual(ok.code, 0);
+  const gone = healthy(); fs.rmSync(path.join(gone, GUIDE));
+  const g = guideFindings(doctor.runDoctor({ cwd: gone, testCmd: TAP_OK }));
+  assert.strictEqual(g.length, 1);
+  assert.match(g[0].detail, /missing — the runbook names it/);
+  assert.match(g[0].fix, /apriori update/);
+  const dir = healthy(); fs.rmSync(path.join(dir, GUIDE)); fs.mkdirSync(path.join(dir, GUIDE));
+  const dg = guideFindings(doctor.runDoctor({ cwd: dir, testCmd: TAP_OK }));
+  assert.strictEqual(dg.length, 1);
+  assert.match(dg[0].detail, /is not a regular file/);
+  assert.match(dg[0].fix, /apriori update/);                                  // batch review SST-6
+  // batch review guide-4: judged by lstat, as update judges it — a symlink to a good file in the
+  // project, and apriori/guides as a symlink, are each one finding with the move-aside cure
+  const ln = healthy(), moved = path.join(ln, 'docs', 'guide.md');
+  fs.mkdirSync(path.dirname(moved), { recursive: true });
+  fs.renameSync(path.join(ln, GUIDE), moved); fs.symlinkSync(moved, path.join(ln, GUIDE));
+  const lnr = doctor.runDoctor({ cwd: ln, testCmd: TAP_OK });
+  const lg = guideFindings(lnr);
+  assert.strictEqual(lg.length, 1, JSON.stringify(lnr.checks));
+  assert.match(lg[0].detail, /is not a regular file \(a symlink sits at apriori\/guides\/prototype-walk\.md\)/);
+  assert.match(lg[0].fix, /^move it aside, then apriori update/);
+  assert.strictEqual(lnr.result, 'FINDINGS');
+  const ld = healthy();
+  fs.renameSync(path.join(ld, 'apriori', 'guides'), path.join(ld, 'real-guides'));
+  fs.symlinkSync(path.join(ld, 'real-guides'), path.join(ld, 'apriori', 'guides'));
+  const ldg = guideFindings(doctor.runDoctor({ cwd: ld, testCmd: TAP_OK }));
+  assert.strictEqual(ldg.length, 1);
+  assert.match(ldg[0].detail, /something other than a plain directory sits at apriori\/guides/);
+  const noRb = healthy(); fs.rmSync(path.join(noRb, GUIDE)); fs.rmSync(path.join(noRb, 'apriori', 'runbook.md'));
+  const nr = doctor.runDoctor({ cwd: noRb, testCmd: TAP_OK });
+  assert.strictEqual(guideFindings(nr).length, 0);
+  assert.ok(nr.checks.some((c) => c.id === 'D2' && c.status === 'finding' && /apriori\/runbook\.md/.test(c.detail)));
+
+exec
+/usr/bin/zsh -lc "sed -n '32,65p' apriori/changes/batch-review-fixes/specs/update/spec.md; sed -n '7,12p' MIGRATING.md; sed -n '28,35p' CHANGELOG.md; sed -n '205,212p' docs/cli.md; sed -n '203,210p' docs/cli_cn.md; sed -n '189,207p' lib/update.js; git diff --check" in /root/terra/wt-fix
+ succeeded in 0ms:
+
+### Requirement: update installs the prototype-walk guide once and then manages it like the runbook
+`apriori update` SHALL treat `apriori/guides/prototype-walk.md` by its manifest state: never installed (not listed, not present) → install it and record it, reported `created (first install)` and counted as a refresh in the summary; listed and unmodified → refreshed to the package's guide (`updated` / `up-to-date`) and re-hashed; listed and locally modified → reported `modified` and left alone; listed but missing → reported missing and left to `apriori init` (the existing cure); present but not listed → adopted only on proof: when its bytes are exactly a shipped edition of the guide (an install that failed before its record; the package lists every edition's sha256 and a test keeps the live guide in it), it is recorded — `adopted (its bytes are the shipped guide)`, or refreshed to the package's guide and recorded as `adopted and updated …` for an earlier edition; anything else there is reported `unmanaged` and left alone. The summary never says everything matches over a guide it could not refresh: a missing or obstructed one is counted as `N missing or obstructed (skipped)`. The first install is an exclusive create (as init's). A present guide is read once without following a symlink, and only when the opened file is inside the project — judged on the opened descriptor itself where the platform can locate it (`/proc/self/fd`), otherwise on its realpath right after opening, which is enough for a read that only judges — and that one read is what gets judged (its listed hash, or a shipped edition). A rewrite happens in place only when all of these hold on the newly opened descriptor: no symlink followed at the last component, the same device and inode as the read, no other hard link, and inside the project as located on the descriptor itself. A file swapped or redirected in between is reported `changed during refresh (skipped — …)`; a guide with another hard link, and any rewrite on a platform that cannot locate an opened descriptor (no `/proc`: macOS, Windows), is held back as `not refreshed (skipped — …)` naming the delete-and-`init` cure — fail closed, never a pathname check standing in for the descriptor. Nothing held back is recorded, and `--dry-run` predicts the same outcome. It never writes through a path that is not a regular file or that resolves outside the project, and `--dry-run` reports without writing. A CLI from before this change refuses a manifest that lists the guide (`not a refresh target`) — downgrading is not supported, and MIGRATING says so.
+
+#### Scenario: PW-02 the guide is installed once, then refreshed, protected or left alone by its manifest state
+- WHEN `apriori update` runs on a project an older CLI initialized (no guide, no entry), runs again, runs after the package's guide changed, runs after the user edited the guide, runs after the user deleted the listed guide, runs where an unlisted user file sits at the guide's path, runs again after a run that threw after installing the guide (a listed command path was a directory), runs where an unlisted earlier shipped edition sits at the path (dry-run, then for real), runs where a symlink to an outside file is swapped in for the guide between its read and its rewrite (an earlier edition being adopted, and a listed guide being refreshed), runs where `apriori/guides` is swapped for a symlink to an outside directory — holding a `prototype-walk.md` with recognized bytes — between the obstruction check and the read, runs where that directory is redirected around each open and restored right after (with the descriptor locatable, and without), runs on a platform that cannot locate a descriptor where a listed guide needs a rewrite (dry-run, then for real) or is up-to-date, runs where the listed guide has another hard link, runs from the CLI on a fresh project whose guide was deleted or replaced by a directory, and runs with `--dry-run` on a project without the guide
+- THEN the first run creates the guide byte-identical to the package's, records it and reports `created (first install)` with the summary counting it; the second reports `up-to-date`; the changed package guide is `updated`, its new bytes installed and re-hashed; the edited guide is reported `modified` and keeps its bytes and its entry; the deleted one is reported missing and not recreated; the unlisted file is reported `unmanaged` and untouched; after the failed run the guide is `adopted (its bytes are the shipped guide)` and recorded, then `up-to-date`; the earlier edition is `adopted and updated` — the dry run writing nothing, the real run installing the package's guide and recording it; the swapped-in symlink is reported `changed during refresh`, its target untouched and the manifest unchanged, in both cases; the swapped parent likewise — the outside file is neither adopted nor overwritten; redirected-and-restored opens are refused at the read (descriptor located) or held back `not refreshed` at the rewrite (not located), the outside file keeping its bytes and nothing adopted; without descriptor location the guide needing a rewrite is `not refreshed` in the dry run and the real run alike, bytes and entry unchanged, an up-to-date one is `up-to-date`, and deleting it and rerunning `apriori init` records a fresh guide; the hard-linked guide is `not refreshed` in both runs and its other name keeps its bytes; the package's edition list carries the live guide and both editions shipped before it; the CLI summary for the deleted or obstructed guide says `1 missing or obstructed (skipped)` and never "everything already matches"; the dry run reports the creation and writes neither the guide nor the manifest
+
+## Notes
+
+Batch review (10-02, c290842) guide-2: an update (or init) that failed after writing the guide left it unrecorded, and ordinary reruns kept calling it `unmanaged`; update now adopts an unrecorded guide on the same kind of proof command files get — its exact bytes are a shipped edition (`GUIDE_GENERATIONS`). update does not write the manifest early: in a pre-manifest project that would cost a later-failing run's command files their adoption, and the adoption covers the guide anyway. Review round 1 (BRF-R1): adoption hashed the path and then rewrote it through an ordinary open, so a symlink swapped in between could redirect the write; the guide is now judged and rewritten through one no-follow read and an identity-checked no-follow write (a listed guide's refresh too, which had the same gap). Review round 2 (BRF-R4): O_NOFOLLOW guards only the last component, so a parent swapped after the obstruction check could still lead both opens to an existing outside file; containment is now judged on each opened descriptor. Round 3 (BRF-R4, rest): the realpath fallback for an unlocatable descriptor checked the pathname, not the opened file, so redirect-and-restore around each open still reached an outside file; a rewrite now fails closed where the descriptor cannot be located, and a guide with another hard link is not rewritten in place either (that would reach the other name). The cost, stated: on macOS and Windows `update` never rewrites the guide in place — an outdated one is reported `not refreshed` with the delete-and-`init` cure. guide-3: the summary counts missing and obstructed tool-owned paths. SST-4: PW-02 checks the refreshed bytes. The manifest requirement's refresh-target list now names the guide, as the code has since prototype-walk-guide. All scenario ids are kept.
+- **`apriori update` installs `apriori/guides/prototype-walk.md`** on a project that never had it and records it in `apriori/managed.json`; from then on it is refreshed like the runbook. A guide you edited locally is reported `modified` and left alone; one you deleted is reported missing — `apriori init --tools <t>` recreates it.
+- **The runbook now names that guide** (§4 Ground): when a requirement comes with a runnable UI prototype, the agent offers an optional walk once and reads the guide in full before running one. Nothing else in a project changes.
+- **An unrecorded guide is adopted only on proof** (batch-review-fixes): when an `init` or `update` failed after writing the guide but before recording it, the next `update` adopts a guide whose bytes are exactly a shipped edition (`adopted …`, refreshed if it is an earlier one); anything else at that path stays `unmanaged`. `init` now records every file it creates the moment it creates it, and creates the guide exclusively — something that appears at the path meanwhile is reported and left alone; `update` judges and rewrites a present guide through one read that never follows a symlink, so one swapped in meanwhile is reported (`changed during refresh`) and never written through. Two residuals are stated rather than closed: `apriori/guides` itself swapped for a symlink out of the project between the check and the exclusive create can still receive a new file there (never an overwrite of an existing one); and `update` rewrites a present guide in place only where it can locate the opened file itself (`/proc/self/fd`, i.e. Linux and WSL) and the file has no other hard link — elsewhere (macOS, Windows) an outdated guide is reported `not refreshed (skipped — …)`: delete it and rerun `apriori init --tools <t>` to get the current one.
+- **The update summary** no longer says "everything already matches" when a tool-owned path was missing or obstructed: it reports `N missing or obstructed (skipped)`.
+- **Downgrading is not supported** once the guide is recorded: a CLI from before this change refuses a manifest that lists it (`managed.json: 'apriori/guides/prototype-walk.md' is not a refresh target`), so `init` and `update` would fail. To go back, remove that entry from `apriori/managed.json` (and the guide, if you like) first.
+
+## Unreleased — batch-review-fixes: the 19 findings of the 10-02 batch's requirement-level check
+
+A requirement-level independent check (codex, two adversarial votes per finding) over `5d3fc78..c290842` confirmed 19 findings; this change fixes all of them under their original ids.
+
+- **Guide install (guide-1..4).** The guide is created exclusively (`wx`): whatever appears at the path after the checks is never followed or overwritten (residual stated in MIGRATING). `init` records every file it creates the moment it exists; `update` adopts an unrecorded guide only when its bytes are a shipped edition (`GUIDE_GENERATIONS`, kept honest by PW-02), and judges and rewrites a present guide through one no-follow read and an identity-checked no-follow write, each checked to be inside the project on the opened descriptor, so a symlink swapped in meanwhile — for the guide or for its directory — is never written through; where a descriptor cannot be located (macOS, Windows) or the guide has another hard link, the rewrite fails closed as `not refreshed` with the delete-and-`init` cure. The update summary reports `N missing or obstructed (skipped)` instead of "everything already matches". `doctor` judges the guide by lstat as update does — a symlink or a non-directory `apriori/guides` is a finding with the move-aside cure.
+- **check --self (check-self-1..4).** An existing but empty EN/CN mirror is aligned, not skipped. CK-11's version entry ignores every CommonMark fence (``` and ~~~, closed by the same character at least as long, at the fence's own blockquote depth, unclosed to the end); the shared `stripFences` stays backtick-only for now (follow-up `fence-tilde-readers`). The CK-11 and CK-17 spec text says what the code does: major.minor, whole-verdict recognition.
+- **Recipes and handbook (goal-1, shipping-docs-1/2).** Review & Deliver, which can go back to Build & Test, ends at that stage's 25-turn bound too; Build & Test's condition names what is still open; the concepts mini-kv goal (both editions) carries the human-stop outcome and the bound; the CLI reference names the three forms of an escalated family `--force` answers, the owner's reframe at the limit included.
+- **Guide text (PW-1/2).** Recorded owner decisions come before the requirement sources (guide §4 and the runbook's Ground bullet); a walk before any change exists registers nothing, creates no change and lists its owner rows by id for the change that later takes it up.
+Example: `apriori update --dry-run`
+
+Exit: 0 done · 1 uninitialized.
+
+**What one run does (6.2).** The runbook copy and each tool's command file are refreshed only when `apriori/managed.json` proves the tool wrote them and you did not modify them since (`updated` / `up-to-date`); a locally modified one is `modified (skipped — …)`, an unrecognised one `unmanaged (skipped — …)`. Protocol scaffolding is re-established piece by piece and never modified: a missing `apriori/.gitignore` is created, and a missing `apriori/tmp/` is created on its own too (`apriori/tmp/  (created)`; something else sitting at that path is reported, never replaced). **Rules files are yours**; the one thing update may change in `CLAUDE.md` / `AGENTS.md` / `.cursor/rules/apriori.mdc` / … is the pointer paragraph this tool wrote, and only when it is verbatim one of the previous shipped generations — that paragraph is replaced by the current one (`pointer updated`), the rest of the file byte-for-byte untouched; a hand-edited pointer is reported (`pointer (skipped — not a shipped generation; hand-edited, left alone)`) and never rewritten; a file with no pointer, or with the current one, is not an action. **The summary is honest:** `N file(s) refreshed`, or — when nothing was refreshed — `N modified (skipped) — locally modified, not refreshed; …` for files you edited and `N missing or obstructed (skipped) — not refreshed; see the lines above` for a tool-owned path it could not bring to match (deleted, a symlink or directory in its place, outside the project, replaced mid-install or mid-refresh), or `everything already matches` only when neither holds. **The prototype-walk guide** (`apriori/guides/prototype-walk.md`) is installed once on a project that never had it (`created (first install)`, created exclusively — something that appears at the path meanwhile is left alone and reported) and then managed like the runbook — read once without following a symlink, and rewritten in place only while it is still that file, has no other hard link and is located inside the project on the opened descriptor itself (Linux/WSL); where that cannot be confirmed (macOS, Windows) an outdated guide is reported `not refreshed (skipped — …)` and the cure is to delete it and rerun `apriori init --tools <t>`; an unrecorded guide whose bytes are exactly a shipped edition — an install that failed before its record — is adopted (`adopted …`, refreshed if it is an earlier edition), and any other unrecorded file there stays `unmanaged`. **The one adoption exception, stated:** a project initialised by a CLI older than `managed.json` has no manifest; its `apriori/runbook.md` is adopted and overwritten once on the first `update` (a command file only when its bytes match a shipped generation), and from then on both are protected like any managed file — if you customised that old runbook, copy your notes out before the first `update`.
+
+## 8. Configuration Reference
+
+示例:`apriori update --dry-run`
+
+退出码:0 完成 · 1 未初始化。
+
+**一次运行做什么(6.2)。** runbook 副本与各工具的命令文件,只在 `apriori/managed.json` 证明它们由工具写下、且你此后没改过时才刷新(`updated` / `up-to-date`);本地改过的是 `modified (skipped — …)`,认不出来的是 `unmanaged (skipped — …)`。协议所需的脚手架逐项补齐、绝不修改:缺 `apriori/.gitignore` 就创建,单独缺 `apriori/tmp/` 也会创建(`apriori/tmp/  (created)`;那个位置上若是别的东西,只报告、绝不替换)。**规则文件是你的**;update 在 `CLAUDE.md` / `AGENTS.md` / `.cursor/rules/apriori.mdc` / … 里唯一可能改的,是工具自己写下的指针段落,且只在它与某个历史发布版本逐字相同时——该段落换成当前版本(`pointer updated`),文件其余部分逐字节不动;手改过的指针只报告(`pointer (skipped — not a shipped generation; hand-edited, left alone)`)、绝不改写;没有指针或已是当前指针的文件不算动作。**汇总是诚实的:** `N file(s) refreshed`;什么都没刷新时,有你改过的文件就是 `N modified (skipped) — locally modified, not refreshed; …`,有工具拥有却没法对齐的路径(被删、原处换成了符号链接或目录、解析到项目外、安装或刷新途中被换掉)就是 `N missing or obstructed (skipped) — not refreshed; see the lines above`;两者都没有时才说 `everything already matches`。**原型走查指南**(`apriori/guides/prototype-walk.md`)在从没装过的项目上安装一次(`created (first install)`,独占创建——期间有东西出现在该路径就不碰它并报告),此后像 runbook 一样受管——读取时不跟随符号链接;只有它仍是读到的那个文件、没有别的硬链接、并且能在打开的描述符本身上确认它位于项目内(Linux/WSL)时才原地改写;确认不了的平台(macOS、Windows)上,过时的指南报 `not refreshed (skipped — …)`,办法是删掉它再跑 `apriori init --tools <t>`;没有登记、但字节正好是某个已发布版本的指南——安装后、登记前失败留下的——会被认领(`adopted …`,是旧版本就顺带刷新),那里的其他未登记文件仍是 `unmanaged`。**唯一的认领例外,明说:** 由早于 `managed.json` 的 CLI 初始化的项目没有清单;它的 `apriori/runbook.md` 会在第一次 `update` 时被认领并覆盖一次(命令文件只在字节与某个发布版本一致时才认领),此后两者像任何受管文件一样受保护——如果你定制过那份旧 runbook,第一次 `update` 前先把你的笔记复制出来。
+
+## 八、配置参考
+
+    let res;
+    try { res = run(process.cwd(), { dryRun }); }
+    catch (e) { console.error('  ' + e.message); return 1; }
+    const refreshed = (a) => a === 'updated' || a === 'pointer updated' || a === 'created (first install)' || a.startsWith('adopted and updated');
+    for (const { file, action } of res.actions)
+      console.log(`  ${refreshed(action) ? '✓' : '·'} ${file}  (${action})`);
+    for (const w of res.warnings || []) console.error(`  warning: ${w}`);
+    const n = res.actions.filter((a) => refreshed(a.action)).length;
+    const modified = res.actions.filter((a) => /^modified \(skipped/.test(a.action)).length;
+    // a tool-owned path it could not bring to match: deleted, obstructed, escaping, or changed mid-install
+    const blocked = res.actions.filter((a) => /^(missing|not a regular file|not a directory|escapes the project root|changed during (?:install|refresh)|not refreshed) \(skipped/.test(a.action)).length;
+    const held = [];
+    if (modified) held.push(`${modified} modified (skipped) — locally modified, not refreshed; ${CURE}`);
+    if (blocked) held.push(`${blocked} missing or obstructed (skipped) — not refreshed; see the lines above`);
+    const v = require('../package.json').version;
+    // the summary never says "everything matches" over a file it just declined or could not refresh (BD-03)
+    console.log(n
+      ? `\n  ${n} file(s) ${dryRun ? 'would be ' : ''}refreshed to apriori-cli ${v}.`
+      : held.length
+
+codex
+<!-- provenance: provider=openai model=unknown session=unknown date=2026-10-02 -->
+
+Review body for `apriori/changes/batch-review-fixes/review/code-review-v4.md`.
+
+**BRF-R4 — ADDRESSED.**
+
+The pathname fallback no longer authorizes a write. In `lib/managed.js`, `writePlain` opens without truncation and requires a regular file, matching device/inode, exactly one hard link, and descriptor-derived containment. Missing descriptor location returns `unconfirmed` before truncation or writing. Restoring an internal pathname after opening an external file therefore cannot authorize the external overwrite reported in round three.
+
+`lib/update.js` maps refused writes to `CHANGED`, `LINKED`, or `UNCONFIRMED`. The adoption branch records none of those outcomes, and listed-guide entries remain unchanged. Dry-run predicts the hard-link and unavailable-location refusals; the summary includes `not refreshed` among blocked actions, preventing an “everything already matches” conclusion over those skips.
+
+PW-02 now exercises the decisive interleaving: redirect the parent around each open and restore it immediately afterward. It covers both available and unavailable descriptor location, asserting unchanged external bytes and no adoption. These assertions distinguish the corrected implementation from the former pathname-authorized write. Additional cases cover:
+
+- Matching dry-run and real-run refusals without descriptor location, preserving guide bytes and manifest entry.
+- An already-current guide remaining `up-to-date`.
+- Delete-and-init recreating and recording the guide.
+- Hard-linked guides being refused in dry and real runs, preserving the other link’s bytes.
+
+The updated delta explicitly states the platform cost: without descriptor location, an outdated guide requires delete-and-init instead of an in-place refresh. MIGRATING, CHANGELOG, and both CLI editions disclose that behavior. This fulfills the requested fail-closed correction rather than leaving the overwrite vulnerability as a documented residual. The separately stated exclusive-create residual remains unchanged.
+
+**New substantive findings:** none within the round-four scope.
+
+**Scope and limits.** Reviewed the revised helpers, update branches and summary, new PW-02 assertions, update delta, shipping documentation, and disposition/progress entries. Conclusions rest on static control-flow and assertion review; I did not independently rerun the reported suite or mutation checks. No files were modified, and credentials, human notes, and raw review transcripts were not read.
+
+**Advisories:** none.
+
+VERDICT: no spec-vs-code gaps
+tokens used
+319,258
+<!-- provenance: provider=openai model=unknown session=unknown date=2026-10-02 -->
+
+Review body for `apriori/changes/batch-review-fixes/review/code-review-v4.md`.
+
+**BRF-R4 — ADDRESSED.**
+
+The pathname fallback no longer authorizes a write. In `lib/managed.js`, `writePlain` opens without truncation and requires a regular file, matching device/inode, exactly one hard link, and descriptor-derived containment. Missing descriptor location returns `unconfirmed` before truncation or writing. Restoring an internal pathname after opening an external file therefore cannot authorize the external overwrite reported in round three.
+
+`lib/update.js` maps refused writes to `CHANGED`, `LINKED`, or `UNCONFIRMED`. The adoption branch records none of those outcomes, and listed-guide entries remain unchanged. Dry-run predicts the hard-link and unavailable-location refusals; the summary includes `not refreshed` among blocked actions, preventing an “everything already matches” conclusion over those skips.
+
+PW-02 now exercises the decisive interleaving: redirect the parent around each open and restore it immediately afterward. It covers both available and unavailable descriptor location, asserting unchanged external bytes and no adoption. These assertions distinguish the corrected implementation from the former pathname-authorized write. Additional cases cover:
+
+- Matching dry-run and real-run refusals without descriptor location, preserving guide bytes and manifest entry.
+- An already-current guide remaining `up-to-date`.
+- Delete-and-init recreating and recording the guide.
+- Hard-linked guides being refused in dry and real runs, preserving the other link’s bytes.
+
+The updated delta explicitly states the platform cost: without descriptor location, an outdated guide requires delete-and-init instead of an in-place refresh. MIGRATING, CHANGELOG, and both CLI editions disclose that behavior. This fulfills the requested fail-closed correction rather than leaving the overwrite vulnerability as a documented residual. The separately stated exclusive-create residual remains unchanged.
+
+**New substantive findings:** none within the round-four scope.
+
+**Scope and limits.** Reviewed the revised helpers, update branches and summary, new PW-02 assertions, update delta, shipping documentation, and disposition/progress entries. Conclusions rest on static control-flow and assertion review; I did not independently rerun the reported suite or mutation checks. No files were modified, and credentials, human notes, and raw review transcripts were not read.
+
+**Advisories:** none.
+
+VERDICT: no spec-vs-code gaps

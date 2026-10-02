@@ -354,6 +354,19 @@ test('IN-13 fresh init writes the manifest for exactly what it created', () => {
   assert.strictEqual(m.files['apriori/runbook.md'], umSha(umPath.join(root, 'apriori', 'runbook.md')));
   assert.strictEqual(m.files['.claude/commands/apriori.md'], umSha(umPath.join(root, '.claude', 'commands', 'apriori.md')));
   assert.strictEqual(m.files['.claude/commands/apriori-discuss.md'], umSha(umPath.join(root, '.claude', 'commands', 'apriori-discuss.md')));
+  // each file is recorded the moment it is created (batch-review-fixes, round 1 BRF-R2): a run that throws
+  // after one tool's commands were written — the next tool's directory is a file — keeps them recorded,
+  // and once the obstruction is gone update still manages them instead of calling them unmanaged
+  const broken = umTmp();
+  umFs.writeFileSync(umPath.join(broken, '.cursor'), 'not a dir\n');
+  assert.throws(() => umInit.scaffold(broken, ['claude', 'cursor']), /ENOTDIR|EEXIST/);
+  const bm = umManifest(broken);
+  for (const rel of ['apriori/runbook.md', 'apriori/guides/prototype-walk.md', '.claude/commands/apriori.md', '.claude/commands/apriori-discuss.md'])
+    assert.strictEqual(bm.files[rel], umSha(umPath.join(broken, rel)), rel);
+  umFs.rmSync(umPath.join(broken, '.cursor'));
+  const after = umUpdate.run(broken).actions;
+  for (const rel of ['.claude/commands/apriori.md', '.claude/commands/apriori-discuss.md'])
+    assert.strictEqual(after.find((x) => x.file === rel).action, 'up-to-date', rel);
 });
 
 test('IN-14 add-tool init merges without adopting bystanders', () => {

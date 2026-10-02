@@ -1,0 +1,464 @@
+2026-10-02T15:51:50.536187Z ERROR codex_models_manager::manager: failed to refresh available models: request timed out
+2026-10-02T15:51:50.580112Z ERROR codex_models_manager::manager: failed to refresh available models: request timed out
+OpenAI Codex v0.159.3
+--------
+workdir: /root/terra/wt-fix
+model: gpt-6-astra
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 01a0fd3f-14d0-7460-8c18-7a0bdbb927db
+--------
+user
+Round 3 of code-review for `batch-review-fixes` (same worktree, still uncommitted). The producer fixed BRF-R4; its disposition and evidence are the `decision: BRF-R4 fixed` line in apriori/changes/batch-review-fixes/flow-state.md, and the round-3 review-progress note is the last `gates:` entry.
+Answer BRF-R4 with ADDRESSED or NOT ADDRESSED and your evidence (BRF-R1..R3 you already found addressed; say so again only if the BRF-R4 fix disturbs them).
+Scope is what changed since round 2: lib/managed.js (openedInside; readPlain and writePlain now take the project root and judge containment on the opened descriptor — /proc/self/fd on Linux, otherwise the realpath right after opening), lib/update.js (the two call sites), PW-02's new parent-swap regression in test/prototype-walk-guide.test.js, the update delta (PW-02 requirement and scenario, Notes), MIGRATING (the two stated residuals) and CHANGELOG.
+Report a NEW finding only if it breaks the contract or a safety property. Give the full review body for apriori/changes/batch-review-fixes/review/code-review-v3.md, ending with exactly one VERDICT line.
+codex
+I’ll check whether the opened-descriptor containment check closes BRF-R4, whether the new regression exercises that path, and whether the revised residuals accurately describe what remains.
+exec
+/usr/bin/zsh -lc "rg -n 'BRF-R4|review-progress' apriori/changes/batch-review-fixes/flow-state.md; sed -n '126,235p' lib/managed.js; sed -n '84,132p' lib/update.js" in /root/terra/wt-fix
+ succeeded in 0ms:
+20:- observed: Review 第 2 轮（`review/code-review-v2.md`）= `VERDICT: 1 issues open`；BRF-R1、BRF-R2、BRF-R3 均 ADDRESSED；FU-2 评审方认可为独立 follow-up（c290842 上成功的 init 即已如此）；新发现 BRF-R4
+21:- decision: BRF-R4 fixed — O_NOFOLLOW 只管最后一段路径，障碍检查之后把 `apriori/guides` 换成指向外部目录的符号链接，两次打开仍会到达同一个外部文件（同 inode）而覆盖它；现在 readPlain、writePlain 打开后都在描述符本身上判断是否在项目内（Linux 用 `/proc/self/fd`，无 /proc 的平台退回打开后立即 realpath，较窄的窗口，已作为残余写入 MIGRATING）；证据：PW-02 新增「障碍检查后、读取前换掉父目录，外部同名文件为已识别旧版本」一例——不收编、不覆盖、报 `changed during refresh`；去掉描述符判断时 PW-02 变红；全套 883/883，`check --self` PASS
+37:  - 2026-10-02T23:51 note: review-progress code-review round 3 — issues: BRF-R1, BRF-R2, BRF-R3, BRF-R4; actions: BRF-R1/R2/R3 addressed in round 2 (no further change), BRF-R4 fixed — containment judged on each opened descriptor in readPlain/writePlain, regression added to PW-02; evidence: lib/managed.js, lib/update.js, test/prototype-walk-guide.test.js, test/init.test.js, test/check.test.js; approach: kept — each round's finding was a narrower hole in the same guarded write, closed in place; nothing in the reviews questions the approach
+// Every shipped edition of the guide, newest first — the proof update adopts an unlisted guide on
+// (an install that failed before its record). APPEND when guides/prototype-walk.md changes; PW-02
+// asserts the live guide is listed.
+const GUIDE_GENERATIONS = [
+  'sha256:e2794aa421cd2fc6d1ffe536c32556995be7f13b4205949265e5f4227f078e51',   // batch-review-fixes: owner decisions first; a walk before any change
+  'sha256:3d4e6dce8590ddb1207099e9a6ba1f70f61e28d46a10ec027773c59038f2b968',   // requirement-check-recipe: the requirement-directory successor
+  'sha256:551c6686be36479d352ca3b364bd05dcdbda00b8ae40966bd50367f7c38255a7',   // prototype-walk-guide: first edition
+];
+
+// One look at a regular file that never follows a symlink at its last component: { bytes, st }, or
+// null when what is there now is a symlink, a directory or another non-file, nothing, or a file outside
+// the project. The guide's ownership judgment (hash, edition) and its rewrite both use what THIS look saw.
+const NOFOLLOW = fs.constants.O_NOFOLLOW || 0;
+// O_NOFOLLOW guards the last component only: a parent directory swapped for a symlink after the
+// obstruction check would still lead the open outside. So containment is judged on the opened
+// descriptor itself — where it really is (/proc/self/fd on Linux), else its path's realpath right
+// after the open (a narrower window, the residual on platforms without /proc).
+function openedInside(root, abs, fd) {
+  let real = null;
+  try { real = fs.readlinkSync(`/proc/self/fd/${fd}`); } catch { /* no /proc */ }
+  if (real === null) { try { real = fs.realpathSync(abs); } catch { return false; } }
+  let realRoot;
+  try { realRoot = fs.realpathSync(root); } catch { return false; }
+  return real !== realRoot && (real + path.sep).startsWith(realRoot + path.sep);
+}
+
+function readPlain(root, abs) {
+  let fd;
+  try { fd = fs.openSync(abs, fs.constants.O_RDONLY | NOFOLLOW); }
+  catch (e) { if (['ELOOP', 'ENOENT', 'EISDIR', 'ENOTDIR'].includes(e.code)) return null; throw e; }
+  try {
+    const st = fs.fstatSync(fd);
+    return st.isFile() && openedInside(root, abs, fd) ? { bytes: fs.readFileSync(fd), st } : null;
+  } finally { fs.closeSync(fd); }
+}
+
+// Rewrite the file readPlain saw — only while it is still that file: opened without following a
+// symlink at the last component, inside the project (judged on the descriptor), the same device and
+// inode, and only then truncated. false = it was replaced or redirected in between (nothing written).
+function writePlain(root, abs, buf, seen) {
+  let fd;
+  try { fd = fs.openSync(abs, fs.constants.O_WRONLY | NOFOLLOW); }
+  catch (e) { if (['ELOOP', 'ENOENT', 'EISDIR', 'ENOTDIR'].includes(e.code)) return false; throw e; }
+  try {
+    const st = fs.fstatSync(fd);
+    if (!st.isFile() || st.dev !== seen.st.dev || st.ino !== seen.st.ino || !openedInside(root, abs, fd)) return false;
+    fs.ftruncateSync(fd, 0);
+    for (let off = 0; off < buf.length;) off += fs.writeSync(fd, buf, off, buf.length - off, off);
+    return true;
+  } finally { fs.closeSync(fd); }
+}
+
+function installGuide(root, dryRun) {
+  const ob = guideObstruction(root);
+  if (ob) return ob;
+  const abs = path.join(root, GUIDE_REL);
+  if (fs.existsSync(abs)) return 'skipped';
+  if (dryRun) return 'created';
+  fs.mkdirSync(path.dirname(abs), { recursive: true });
+  // exclusive create: whatever appeared at the path after the checks above — a file, a symlink,
+  // dangling or not — makes this fail with EEXIST; it is never followed and never overwritten.
+  // Residual, stated: apriori/guides itself swapped for a symlink out of the project between the
+  // checks and this call can still receive a NEW file there (never an overwrite) — Node has no
+  // openat, and whoever can swap directories inside the project already controls its tree.
+  try { fs.writeFileSync(abs, fs.readFileSync(GUIDE_SRC), { flag: 'wx' }); }
+  catch (e) {
+    if (e.code === 'EEXIST') return `changed during install (skipped — something appeared at ${GUIDE_REL} after the checks; left alone, rerun to judge it)`;
+    throw e;
+  }
+  return 'created';
+}
+
+module.exports = { TEMPLATE_GENERATIONS, allowedTargets, hashBytes, hashFile,
+  readManifest, writeManifest, assertContained, GUIDE_REL, GUIDE_SRC, GUIDE_GENERATIONS, guideBlock, guideObstruction, installGuide, readPlain, writePlain };
+  // symlink is never followed): an obstruction is reported and left alone before anything is hashed or written.
+  const guideAbs = path.join(root, managed.GUIDE_REL);
+  const guideSrc = opts.guideSrc || managed.GUIDE_SRC;
+  const guideGens = opts.guideGenerations || managed.GUIDE_GENERATIONS;
+  const guideListed = manifest && Object.prototype.hasOwnProperty.call(manifest.files, managed.GUIDE_REL);
+  const obstruction = managed.guideObstruction(root);
+  const G = managed.GUIDE_REL;
+  if (obstruction) {
+    actions.push({ file: G, action: obstruction });
+  } else if (!fs.existsSync(guideAbs)) {
+    if (guideListed) actions.push({ file: G, action: "missing (skipped — recreating is init's job)" });
+    else {
+      const a = managed.installGuide(root, dry);
+      actions.push({ file: G, action: a === 'created' ? 'created (first install)' : a });
+      if (a === 'created' && !dry) { files[G] = managed.hashFile(guideAbs); manifestDirty = true; }
+    }
+  } else {
+    // ONE no-follow look: the hash judged (listed entry, or a shipped edition) and the bytes rewritten
+    // belong to the same file — a symlink swapped in after the checks is never written through
+    const seen = managed.readPlain(root, guideAbs);
+    const cur = seen && managed.hashBytes(seen.bytes);
+    const refreshGuide = () => {
+      const want = fs.readFileSync(guideSrc);
+      if (seen.bytes.equals(want)) return 'up-to-date';
+      if (!dry && !managed.writePlain(root, guideAbs, want, seen)) return CHANGED;
+      return 'updated';
+    };
+    if (!seen) actions.push({ file: G, action: CHANGED });
+    else if (guideListed) {
+      if (cur !== manifest.files[G]) actions.push({ file: G, action: `modified (skipped — locally modified; ${CURE})` });
+      else {
+        const act = refreshGuide();
+        actions.push({ file: G, action: act });
+        if (act === 'updated') { files[G] = managed.hashBytes(fs.readFileSync(guideSrc)); manifestDirty = true; }
+      }
+    } else if (guideGens.includes(cur)) {
+      const act = refreshGuide();
+      if (act === CHANGED) actions.push({ file: G, action: act });
+      else {
+        actions.push({ file: G, action: act === 'updated' ? 'adopted and updated (its bytes were an earlier shipped edition)' : 'adopted (its bytes are the shipped guide)' });
+        files[G] = act === 'updated' ? managed.hashBytes(fs.readFileSync(guideSrc)) : cur;
+        manifestDirty = true;
+      }
+    } else actions.push({ file: G, action: `unmanaged (skipped — not created by this tool; ${CURE})` });
+  }
+  // protocol-required scaffolding the refreshed runbook relies on (IN-11): create if missing,
+  // NEVER modify — and each piece on its own: a lone missing tmp/ is recreated too (BD-02)
+  const gi = path.join(root, 'apriori', '.gitignore');
+  if (!fs.existsSync(gi)) {
+
+exec
+/usr/bin/zsh -lc "sed -n '154,245p' test/prototype-walk-guide.test.js; cat apriori/changes/batch-review-fixes/specs/update/spec.md; sed -n '5,13p' MIGRATING.md; sed -n '28,40p' CHANGELOG.md" in /root/terra/wt-fix
+ succeeded in 0ms:
+  assert.ok(!(GUIDE in manifestOf(earlier)));
+  assert.match(actionOf(update.run(earlier, { guideGenerations: gens }).actions, GUIDE), /^adopted and updated/);
+  assert.strictEqual(fs.readFileSync(path.join(earlier, GUIDE), 'utf8'), PKG_GUIDE);
+  assert.strictEqual(manifestOf(earlier)[GUIDE], sha(path.join(earlier, GUIDE)));
+  // round 1 BRF-R1: the hash judged and the bytes rewritten belong to one file — a symlink swapped in
+  // between the read and the write (adoption of an earlier edition, and a listed guide's refresh) is
+  // never written through; the run reports it and records nothing for it
+  const swapAtWrite = (root, victim, fn) => {
+    const abs = path.join(root, GUIDE), realOpen = fs.openSync;
+    fs.openSync = function (p, flags, ...rest) {
+      if (p === abs && typeof flags === 'number' && (flags & fs.constants.O_WRONLY)) {
+        fs.openSync = realOpen;
+        fs.renameSync(abs, abs + '.moved'); fs.symlinkSync(victim, abs);
+      }
+      return realOpen.call(fs, p, flags, ...rest);
+    };
+    try { return fn(); } finally { fs.openSync = realOpen; }
+  };
+  for (const listed of [false, true]) {
+    const r = listed ? (() => { const x = tmp(); init.scaffold(x, ['claude']); return x; })() : aged();
+    const victim = path.join(tmp(), 'victim.md');
+    fs.writeFileSync(victim, 'outside\n');
+    let opts;
+    if (listed) opts = { guideSrc: newer };
+    else {
+      fs.mkdirSync(path.join(r, 'apriori', 'guides'), { recursive: true });
+      fs.writeFileSync(path.join(r, GUIDE), '# an earlier edition\n');
+      opts = { guideGenerations: [sha(path.join(r, GUIDE))] };
+    }
+    const before = manifestOf(r)[GUIDE];
+    const res = swapAtWrite(r, victim, () => update.run(r, opts));
+    assert.match(actionOf(res.actions, GUIDE), /^changed during refresh \(skipped — what sits at the path was replaced after it was read/, `listed=${listed}`);
+    assert.strictEqual(fs.readFileSync(victim, 'utf8'), 'outside\n', `listed=${listed}: the swapped-in symlink must not be written through`);
+    assert.strictEqual(manifestOf(r)[GUIDE], before, `listed=${listed}: nothing recorded for it`);
+  }
+  // round 2 BRF-R4: apriori/guides swapped for a symlink to an outside directory between the obstruction
+  // check and the read — whose prototype-walk.md is an existing file with recognized bytes — is neither
+  // adopted nor overwritten: containment is judged on the opened descriptor, not on the path checked earlier
+  {
+    const r = aged(), outside = tmp(), victim = path.join(outside, 'prototype-walk.md');
+    fs.mkdirSync(path.join(r, 'apriori', 'guides'), { recursive: true });
+    fs.writeFileSync(path.join(r, GUIDE), '# an earlier edition\n');
+    fs.writeFileSync(victim, '# an earlier edition\n');
+    const gens = [sha(victim)], abs = path.join(r, GUIDE), dir = path.join(r, 'apriori', 'guides'), realOpen = fs.openSync;
+    fs.openSync = function (p, flags, ...rest) {
+      if (p === abs && typeof flags === 'number' && !(flags & fs.constants.O_WRONLY)) {
+        fs.openSync = realOpen;
+        fs.renameSync(dir, dir + '.real'); fs.symlinkSync(outside, dir);
+      }
+      return realOpen.call(fs, p, flags, ...rest);
+    };
+    let res;
+    try { res = update.run(r, { guideGenerations: gens }); } finally { fs.openSync = realOpen; }
+    assert.match(actionOf(res.actions, GUIDE), /^changed during refresh \(skipped/);
+    assert.strictEqual(fs.readFileSync(victim, 'utf8'), '# an earlier edition\n', 'the outside file must not be overwritten');
+    assert.ok(!(GUIDE in manifestOf(r)), 'nothing outside the project is adopted');
+  }
+  // the shipped-edition table carries the live guide and every edition shipped before it
+  for (const h of [sha(path.join(ROOT, 'guides', 'prototype-walk.md')),
+    'sha256:3d4e6dce8590ddb1207099e9a6ba1f70f61e28d46a10ec027773c59038f2b968',     // c290842
+    'sha256:551c6686be36479d352ca3b364bd05dcdbda00b8ae40966bd50367f7c38255a7'])    // e22e8d8
+    assert.ok(managed.GUIDE_GENERATIONS.includes(h), `GUIDE_GENERATIONS lacks ${h}`);
+  // batch review guide-3: the summary never says everything matches over a guide it could not refresh
+  for (const spoil of [(r) => fs.rmSync(path.join(r, GUIDE)), (r) => { fs.rmSync(path.join(r, GUIDE)); fs.mkdirSync(path.join(r, GUIDE)); }]) {
+    const r = tmp(); init.scaffold(r, ['claude']); spoil(r);
+    const o = spawnSync('node', [BIN, 'update'], { cwd: r, encoding: 'utf8' });
+    assert.strictEqual(o.status, 0, o.stderr);
+    assert.doesNotMatch(o.stdout, /everything already matches/);
+    assert.match(o.stdout, /1 missing or obstructed \(skipped\) — not refreshed; see the lines above\./);
+  }
+  // dry run on a project without it: reported, neither the guide nor the manifest written
+  const dryRoot = aged();
+  const mBefore = fs.readFileSync(path.join(dryRoot, 'apriori', 'managed.json'), 'utf8');
+  assert.strictEqual(actionOf(update.run(dryRoot, { dryRun: true }).actions, GUIDE), 'created (first install)');
+  assert.ok(!fs.existsSync(path.join(dryRoot, GUIDE)));
+  assert.strictEqual(fs.readFileSync(path.join(dryRoot, 'apriori', 'managed.json'), 'utf8'), mBefore);
+  // PW-R1 (review round 1): every update branch refuses to hash or write through what is not a plain file
+  // in a plain directory — a listed guide swapped for a symlink whose target still matches the hash
+  const swapped = tmp(); init.scaffold(swapped, ['claude']);
+  const elsewhere = path.join(swapped, 'docs', 'moved-guide.md');
+  fs.mkdirSync(path.dirname(elsewhere), { recursive: true });
+  fs.renameSync(path.join(swapped, GUIDE), elsewhere);
+  fs.symlinkSync(elsewhere, path.join(swapped, GUIDE));
+  const sw = update.run(swapped, { guideSrc: newer });
+  assert.match(actionOf(sw.actions, GUIDE), /^not a regular file \(skipped — a symlink sits at/);
+  assert.strictEqual(fs.readFileSync(elsewhere, 'utf8'), PKG_GUIDE, 'the symlink target must not be written through');
+  // apriori/guides itself a symlink to a directory inside the project
+  const linkedDir = tmp(); init.scaffold(linkedDir, ['claude']);
+  fs.renameSync(path.join(linkedDir, 'apriori', 'guides'), path.join(linkedDir, 'real-guides'));
+  fs.symlinkSync(path.join(linkedDir, 'real-guides'), path.join(linkedDir, 'apriori', 'guides'));
+  const ld = update.run(linkedDir, { guideSrc: newer });
+  assert.match(actionOf(ld.actions, GUIDE), /^not a regular file \(skipped — something other than a plain directory sits at apriori\/guides/);
+<!-- apriori-base: sha256:0a89a1a4108e75af7d59b7b8050cd2d4f4675ee5c85157406123f8d475aae435 -->
+# Delta — update (batch-review-fixes)
+
+## MODIFIED Requirements
+
+### Requirement: update refreshes only manifest-proven tool-owned files
+`apriori update` SHALL consult `apriori/managed.json` (`{ "version": 1, "files": { "<relative path>": "sha256:<64hex>" } }`, hashes over the exact bytes the tool last wrote, never line-ending-normalized) and refresh a candidate file only when the manifest lists it AND its current content hash equals the recorded hash; after a real write the entry is updated to the new content's hash. A listed file with a differing hash is `modified` — skipped with a warning naming the file and the cure (delete it and rerun `apriori init --tools <t>`). An existing file with no entry is `unmanaged` — skipped, never written — with one exception: the prototype-walk guide, adopted when its bytes are exactly a shipped edition (its own requirement below). A listed file absent on disk is `missing` — skipped (recreating is init's job). Skip-only runs still exit 0 and name every skip. When no manifest exists (pre-manifest project), update adopts what it can prove: the runbook unconditionally (refreshed as today), each command file only if its content hash equals the current template or a known shipped generation, and the guide on the same proof as above (the package embeds every generation's sha256; a membership test over the live `templates/command.md` keeps the list honest); unproven content is `unmanaged`. The adoption pass writes the manifest. A manifest that exists but is unreadable, unparseable, missing `files`, hash-malformed, `version !== 1`, or carrying a key that is absolute, contains `..`, or is outside the allowed refresh-target set (`apriori/runbook.md`, `apriori/guides/prototype-walk.md`, `TOOLS[*].command`) SHALL make update exit nonzero naming the defect before touching any target; every write additionally requires realpath containment under the project root. `--dry-run` produces the identical report and writes nothing — the manifest included.
+
+#### Scenario: UP-06 a foreign file at a tool path survives update
+- WHEN a file exists at an unselected tool's command path with no manifest entry
+- THEN update leaves it byte-identical, reports `unmanaged` with the cure hint, and exits 0
+
+#### Scenario: UP-07 an unmodified managed file refreshes and re-hashes
+- WHEN a manifest-listed command file matches its recorded hash but the package template has changed
+- THEN update rewrites it from the template and the manifest entry becomes the new content's hash
+
+#### Scenario: UP-08 a locally modified managed file is protected
+- WHEN a manifest-listed file (the runbook included) differs from its recorded hash
+- THEN update reports `modified` with the cure hint and leaves the file byte-identical, and `--dry-run` gives the same report while writing nothing at all
+
+#### Scenario: UP-09 pre-manifest projects are adopted only on proof
+- WHEN no manifest exists and command files variously match the current template, match a known shipped generation, or carry arbitrary content
+- THEN the matching files are adopted (up-to-date / refreshed respectively), the arbitrary one is `unmanaged` and untouched, the runbook refreshes as before, the guide init wrote is adopted on its bytes, and the manifest is written covering exactly those (except under `--dry-run`)
+
+#### Scenario: UP-10 manifest hygiene fails closed
+- WHEN `apriori/managed.json` is invalid JSON, lacks `files`, carries a malformed hash or `version: 2`, or lists an absolute, `..`-containing, or non-refresh-target path
+- THEN update exits nonzero naming the manifest defect and no managed target is touched, identically under `--dry-run`
+
+#### Scenario: UP-11 the shipped-generation list stays honest
+- WHEN the live `templates/command.md` is hashed
+- THEN the digest is a member of the package's embedded generation list (changing the template without appending fails the suite)
+
+### Requirement: update installs the prototype-walk guide once and then manages it like the runbook
+`apriori update` SHALL treat `apriori/guides/prototype-walk.md` by its manifest state: never installed (not listed, not present) → install it and record it, reported `created (first install)` and counted as a refresh in the summary; listed and unmodified → refreshed to the package's guide (`updated` / `up-to-date`) and re-hashed; listed and locally modified → reported `modified` and left alone; listed but missing → reported missing and left to `apriori init` (the existing cure); present but not listed → adopted only on proof: when its bytes are exactly a shipped edition of the guide (an install that failed before its record; the package lists every edition's sha256 and a test keeps the live guide in it), it is recorded — `adopted (its bytes are the shipped guide)`, or refreshed to the package's guide and recorded as `adopted and updated …` for an earlier edition; anything else there is reported `unmanaged` and left alone. The summary never says everything matches over a guide it could not refresh: a missing or obstructed one is counted as `N missing or obstructed (skipped)`. The first install is an exclusive create (as init's). A present guide is read once without following a symlink, and only when the opened file is inside the project — judged on the opened descriptor itself (`/proc/self/fd` on Linux; elsewhere its realpath right after opening), so a parent directory swapped for an outside symlink after the obstruction check leads nowhere — and that one read is what gets judged (its listed hash, or a shipped edition) and what gets rewritten: the rewrite opens it again the same way and writes only while it is the same file, still inside the project, so a symlink or another file swapped in after the read is never written through — reported `changed during refresh (skipped — …)` and nothing is recorded for it. It never writes through a path that is not a regular file or that resolves outside the project, and `--dry-run` reports without writing. A CLI from before this change refuses a manifest that lists the guide (`not a refresh target`) — downgrading is not supported, and MIGRATING says so.
+
+#### Scenario: PW-02 the guide is installed once, then refreshed, protected or left alone by its manifest state
+- WHEN `apriori update` runs on a project an older CLI initialized (no guide, no entry), runs again, runs after the package's guide changed, runs after the user edited the guide, runs after the user deleted the listed guide, runs where an unlisted user file sits at the guide's path, runs again after a run that threw after installing the guide (a listed command path was a directory), runs where an unlisted earlier shipped edition sits at the path (dry-run, then for real), runs where a symlink to an outside file is swapped in for the guide between its read and its rewrite (an earlier edition being adopted, and a listed guide being refreshed), runs where `apriori/guides` is swapped for a symlink to an outside directory — holding a `prototype-walk.md` with recognized bytes — between the obstruction check and the read, runs from the CLI on a fresh project whose guide was deleted or replaced by a directory, and runs with `--dry-run` on a project without the guide
+- THEN the first run creates the guide byte-identical to the package's, records it and reports `created (first install)` with the summary counting it; the second reports `up-to-date`; the changed package guide is `updated`, its new bytes installed and re-hashed; the edited guide is reported `modified` and keeps its bytes and its entry; the deleted one is reported missing and not recreated; the unlisted file is reported `unmanaged` and untouched; after the failed run the guide is `adopted (its bytes are the shipped guide)` and recorded, then `up-to-date`; the earlier edition is `adopted and updated` — the dry run writing nothing, the real run installing the package's guide and recording it; the swapped-in symlink is reported `changed during refresh`, its target untouched and the manifest unchanged, in both cases; the swapped parent likewise — the outside file is neither adopted nor overwritten; the package's edition list carries the live guide and both editions shipped before it; the CLI summary for the deleted or obstructed guide says `1 missing or obstructed (skipped)` and never "everything already matches"; the dry run reports the creation and writes neither the guide nor the manifest
+
+## Notes
+
+Batch review (10-02, c290842) guide-2: an update (or init) that failed after writing the guide left it unrecorded, and ordinary reruns kept calling it `unmanaged`; update now adopts an unrecorded guide on the same kind of proof command files get — its exact bytes are a shipped edition (`GUIDE_GENERATIONS`). update does not write the manifest early: in a pre-manifest project that would cost a later-failing run's command files their adoption, and the adoption covers the guide anyway. Review round 1 (BRF-R1): adoption hashed the path and then rewrote it through an ordinary open, so a symlink swapped in between could redirect the write; the guide is now judged and rewritten through one no-follow read and an identity-checked no-follow write (a listed guide's refresh too, which had the same gap). Review round 2 (BRF-R4): O_NOFOLLOW guards only the last component, so a parent swapped after the obstruction check could still lead both opens to an existing outside file; containment is now judged on each opened descriptor. guide-3: the summary counts missing and obstructed tool-owned paths. SST-4: PW-02 checks the refreshed bytes. The manifest requirement's refresh-target list now names the guide, as the code has since prototype-walk-guide. All scenario ids are kept.
+## prototype-walk-guide (Unreleased) — one guide beside the runbook, and no downgrade past it
+
+- **`apriori update` installs `apriori/guides/prototype-walk.md`** on a project that never had it and records it in `apriori/managed.json`; from then on it is refreshed like the runbook. A guide you edited locally is reported `modified` and left alone; one you deleted is reported missing — `apriori init --tools <t>` recreates it.
+- **The runbook now names that guide** (§4 Ground): when a requirement comes with a runnable UI prototype, the agent offers an optional walk once and reads the guide in full before running one. Nothing else in a project changes.
+- **An unrecorded guide is adopted only on proof** (batch-review-fixes): when an `init` or `update` failed after writing the guide but before recording it, the next `update` adopts a guide whose bytes are exactly a shipped edition (`adopted …`, refreshed if it is an earlier one); anything else at that path stays `unmanaged`. `init` now records every file it creates the moment it creates it, and creates the guide exclusively — something that appears at the path meanwhile is reported and left alone; `update` judges and rewrites a present guide through one read that never follows a symlink, so one swapped in meanwhile is reported (`changed during refresh`) and never written through. Two residuals are stated rather than closed: `apriori/guides` itself swapped for a symlink out of the project between the check and the exclusive create can still receive a new file there (never an overwrite of an existing one); and a present guide's containment is judged on the opened file itself on Linux (`/proc/self/fd`), but elsewhere on its realpath right after opening — a narrower window, not none.
+- **The update summary** no longer says "everything already matches" when a tool-owned path was missing or obstructed: it reports `N missing or obstructed (skipped)`.
+- **Downgrading is not supported** once the guide is recorded: a CLI from before this change refuses a manifest that lists it (`managed.json: 'apriori/guides/prototype-walk.md' is not a refresh target`), so `init` and `update` would fail. To go back, remove that entry from `apriori/managed.json` (and the guide, if you like) first.
+
+## owner-calls-and-handoffs (Unreleased) — owner items, outside hand-offs, and goals that end at a human stop
+## Unreleased — batch-review-fixes: the 19 findings of the 10-02 batch's requirement-level check
+
+A requirement-level independent check (codex, two adversarial votes per finding) over `5d3fc78..c290842` confirmed 19 findings; this change fixes all of them under their original ids.
+
+- **Guide install (guide-1..4).** The guide is created exclusively (`wx`): whatever appears at the path after the checks is never followed or overwritten (residual stated in MIGRATING). `init` records every file it creates the moment it exists; `update` adopts an unrecorded guide only when its bytes are a shipped edition (`GUIDE_GENERATIONS`, kept honest by PW-02), and judges and rewrites a present guide through one no-follow read and an identity-checked no-follow write, each checked to be inside the project on the opened descriptor, so a symlink swapped in meanwhile — for the guide or for its directory — is never written through. The update summary reports `N missing or obstructed (skipped)` instead of "everything already matches". `doctor` judges the guide by lstat as update does — a symlink or a non-directory `apriori/guides` is a finding with the move-aside cure.
+- **check --self (check-self-1..4).** An existing but empty EN/CN mirror is aligned, not skipped. CK-11's version entry ignores every CommonMark fence (``` and ~~~, closed by the same character at least as long, at the fence's own blockquote depth, unclosed to the end); the shared `stripFences` stays backtick-only for now (follow-up `fence-tilde-readers`). The CK-11 and CK-17 spec text says what the code does: major.minor, whole-verdict recognition.
+- **Recipes and handbook (goal-1, shipping-docs-1/2).** Review & Deliver, which can go back to Build & Test, ends at that stage's 25-turn bound too; Build & Test's condition names what is still open; the concepts mini-kv goal (both editions) carries the human-stop outcome and the bound; the CLI reference names the three forms of an escalated family `--force` answers, the owner's reframe at the limit included.
+- **Guide text (PW-1/2).** Recorded owner decisions come before the requirement sources (guide §4 and the runbook's Ground bullet); a walk before any change exists registers nothing, creates no change and lists its owner rows by id for the change that later takes it up.
+- **Specs and tests (SST-1..6).** PR-11/PR-16 (and the stale PR-08/PR-10 wording in the same block) state the current runbook; PR-66, PR-67, PW-02, PW-03 and PW-05 now assert what their scenarios promise.
+
+## Unreleased — requirement-check-recipe: an optional requirement-level independent check
+
+- `docs/operator.md` (with the identical recipe and a Chinese explanation in `operator_cn.md`) gains an optional fifth `/goal` recipe for a requirement split into several changes: after its last change is archived, a reviewer independent of the building session reconciles every `in` row of the source checklist (corrected rows against their ruling), traces the end-to-end paths, checks delivery dependencies handed outside the workflow and the assertion and run conditions behind each tick; it reads the code and does not fix it. Its inputs are listed apart from P3's default input.
+
+exec
+/usr/bin/zsh -lc "nl -ba lib/managed.js | sed -n '135,187p'; nl -ba test/prototype-walk-guide.test.js | sed -n '189,218p'; rg -n 'readPlain\\(|writePlain\\(' lib/ test/; git diff --check" in /root/terra/wt-fix
+ succeeded in 0ms:
+   135	// One look at a regular file that never follows a symlink at its last component: { bytes, st }, or
+   136	// null when what is there now is a symlink, a directory or another non-file, nothing, or a file outside
+   137	// the project. The guide's ownership judgment (hash, edition) and its rewrite both use what THIS look saw.
+   138	const NOFOLLOW = fs.constants.O_NOFOLLOW || 0;
+   139	// O_NOFOLLOW guards the last component only: a parent directory swapped for a symlink after the
+   140	// obstruction check would still lead the open outside. So containment is judged on the opened
+   141	// descriptor itself — where it really is (/proc/self/fd on Linux), else its path's realpath right
+   142	// after the open (a narrower window, the residual on platforms without /proc).
+   143	function openedInside(root, abs, fd) {
+   144	  let real = null;
+   145	  try { real = fs.readlinkSync(`/proc/self/fd/${fd}`); } catch { /* no /proc */ }
+   146	  if (real === null) { try { real = fs.realpathSync(abs); } catch { return false; } }
+   147	  let realRoot;
+   148	  try { realRoot = fs.realpathSync(root); } catch { return false; }
+   149	  return real !== realRoot && (real + path.sep).startsWith(realRoot + path.sep);
+   150	}
+   151	
+   152	function readPlain(root, abs) {
+   153	  let fd;
+   154	  try { fd = fs.openSync(abs, fs.constants.O_RDONLY | NOFOLLOW); }
+   155	  catch (e) { if (['ELOOP', 'ENOENT', 'EISDIR', 'ENOTDIR'].includes(e.code)) return null; throw e; }
+   156	  try {
+   157	    const st = fs.fstatSync(fd);
+   158	    return st.isFile() && openedInside(root, abs, fd) ? { bytes: fs.readFileSync(fd), st } : null;
+   159	  } finally { fs.closeSync(fd); }
+   160	}
+   161	
+   162	// Rewrite the file readPlain saw — only while it is still that file: opened without following a
+   163	// symlink at the last component, inside the project (judged on the descriptor), the same device and
+   164	// inode, and only then truncated. false = it was replaced or redirected in between (nothing written).
+   165	function writePlain(root, abs, buf, seen) {
+   166	  let fd;
+   167	  try { fd = fs.openSync(abs, fs.constants.O_WRONLY | NOFOLLOW); }
+   168	  catch (e) { if (['ELOOP', 'ENOENT', 'EISDIR', 'ENOTDIR'].includes(e.code)) return false; throw e; }
+   169	  try {
+   170	    const st = fs.fstatSync(fd);
+   171	    if (!st.isFile() || st.dev !== seen.st.dev || st.ino !== seen.st.ino || !openedInside(root, abs, fd)) return false;
+   172	    fs.ftruncateSync(fd, 0);
+   173	    for (let off = 0; off < buf.length;) off += fs.writeSync(fd, buf, off, buf.length - off, off);
+   174	    return true;
+   175	  } finally { fs.closeSync(fd); }
+   176	}
+   177	
+   178	function installGuide(root, dryRun) {
+   179	  const ob = guideObstruction(root);
+   180	  if (ob) return ob;
+   181	  const abs = path.join(root, GUIDE_REL);
+   182	  if (fs.existsSync(abs)) return 'skipped';
+   183	  if (dryRun) return 'created';
+   184	  fs.mkdirSync(path.dirname(abs), { recursive: true });
+   185	  // exclusive create: whatever appeared at the path after the checks above — a file, a symlink,
+   186	  // dangling or not — makes this fail with EEXIST; it is never followed and never overwritten.
+   187	  // Residual, stated: apriori/guides itself swapped for a symlink out of the project between the
+   189	  // round 2 BRF-R4: apriori/guides swapped for a symlink to an outside directory between the obstruction
+   190	  // check and the read — whose prototype-walk.md is an existing file with recognized bytes — is neither
+   191	  // adopted nor overwritten: containment is judged on the opened descriptor, not on the path checked earlier
+   192	  {
+   193	    const r = aged(), outside = tmp(), victim = path.join(outside, 'prototype-walk.md');
+   194	    fs.mkdirSync(path.join(r, 'apriori', 'guides'), { recursive: true });
+   195	    fs.writeFileSync(path.join(r, GUIDE), '# an earlier edition\n');
+   196	    fs.writeFileSync(victim, '# an earlier edition\n');
+   197	    const gens = [sha(victim)], abs = path.join(r, GUIDE), dir = path.join(r, 'apriori', 'guides'), realOpen = fs.openSync;
+   198	    fs.openSync = function (p, flags, ...rest) {
+   199	      if (p === abs && typeof flags === 'number' && !(flags & fs.constants.O_WRONLY)) {
+   200	        fs.openSync = realOpen;
+   201	        fs.renameSync(dir, dir + '.real'); fs.symlinkSync(outside, dir);
+   202	      }
+   203	      return realOpen.call(fs, p, flags, ...rest);
+   204	    };
+   205	    let res;
+   206	    try { res = update.run(r, { guideGenerations: gens }); } finally { fs.openSync = realOpen; }
+   207	    assert.match(actionOf(res.actions, GUIDE), /^changed during refresh \(skipped/);
+   208	    assert.strictEqual(fs.readFileSync(victim, 'utf8'), '# an earlier edition\n', 'the outside file must not be overwritten');
+   209	    assert.ok(!(GUIDE in manifestOf(r)), 'nothing outside the project is adopted');
+   210	  }
+   211	  // the shipped-edition table carries the live guide and every edition shipped before it
+   212	  for (const h of [sha(path.join(ROOT, 'guides', 'prototype-walk.md')),
+   213	    'sha256:3d4e6dce8590ddb1207099e9a6ba1f70f61e28d46a10ec027773c59038f2b968',     // c290842
+   214	    'sha256:551c6686be36479d352ca3b364bd05dcdbda00b8ae40966bd50367f7c38255a7'])    // e22e8d8
+   215	    assert.ok(managed.GUIDE_GENERATIONS.includes(h), `GUIDE_GENERATIONS lacks ${h}`);
+   216	  // batch review guide-3: the summary never says everything matches over a guide it could not refresh
+   217	  for (const spoil of [(r) => fs.rmSync(path.join(r, GUIDE)), (r) => { fs.rmSync(path.join(r, GUIDE)); fs.mkdirSync(path.join(r, GUIDE)); }]) {
+   218	    const r = tmp(); init.scaffold(r, ['claude']); spoil(r);
+lib/update.js:103:    const seen = managed.readPlain(root, guideAbs);
+lib/update.js:108:      if (!dry && !managed.writePlain(root, guideAbs, want, seen)) return CHANGED;
+lib/managed.js:152:function readPlain(root, abs) {
+lib/managed.js:165:function writePlain(root, abs, buf, seen) {
+
+codex
+<!-- provenance: provider=openai model=unknown session=unknown date=2026-10-02 -->
+
+Review body for `apriori/changes/batch-review-fixes/review/code-review-v3.md`.
+
+**BRF-R4 — NOT ADDRESSED in full.** The original single-swap reproducer is closed, but the fallback retains the external-file overwrite vulnerability.
+
+When `/proc/self/fd` is available, `openedInside` checks the opened descriptor’s location before reading or truncating. Both update call sites supply the project root. PW-02’s new regression correctly inserts the parent symlink after obstruction checking and asserts the skip diagnostic, unchanged external bytes, and no guide adoption.
+
+However, [lib/managed.js:146](/root/terra/wt-fix/lib/managed.js:146) falls back to `realpathSync(abs)`. That checks the pathname’s **current target**, not the file already opened. A concrete interleaving remains:
+
+1. With descriptor lookup unavailable, redirect `apriori/guides` outside before the read open. The external file contains a recognized earlier guide edition.
+2. Restore the original directory before the fallback `realpathSync(abs)`. Containment passes for the restored internal pathname, while `readFileSync(fd)` reads the external file.
+3. Repeat the redirect-and-restore around the write open and its fallback containment check.
+4. The device/inode comparison passes: both descriptors refer to the same external file. `ftruncateSync(fd, 0)` then truncates it and the subsequent write overwrites it.
+
+This retains BRF-R4’s substantive risk: adoption can overwrite an existing external file. Moving the pathname check after opening narrows the window but does not bind containment to the descriptor.
+
+The fallback also runs on **any** `/proc/self/fd` readlink failure, including Linux environments where that lookup is unavailable; it is not confined to non-Linux platforms.
+
+**Contract and evidence.** The updated requirement still promises that the opened file is inside the project and that update never writes through a path resolving outside it. The CHANGELOG likewise states that each opened descriptor is checked. MIGRATING acknowledges a residual window, but that disclosure does not fulfill the existing containment guarantee. The new test leaves the redirected parent in place, so both descriptor-based checking and the vulnerable pathname fallback reject it; it cannot distinguish them.
+
+**Suggested fix:** use trustworthy descriptor-bound containment on supported platforms, and fail closed when it cannot be established rather than substituting an unrelated pathname check. Add a fallback-path regression that restores the internal pathname after each external open and asserts that the external file is neither adopted nor overwritten.
+
+No separate new finding is raised; this is the remaining portion of BRF-R4. The approach remains viable without escalation.
+
+**Scope and limits.** Reviewed `openedInside`, both guarded I/O helpers and their call sites, the new PW-02 regression, the updated requirement/scenario, MIGRATING, CHANGELOG, and the disposition/progress entries. Evidence is static control-flow analysis. I did not rerun the reported suite or race tests, modify files, or read credentials, human notes, or raw review transcripts.
+
+**Advisories:** none.
+
+VERDICT: 1 issues open
+tokens used
+288,084
+<!-- provenance: provider=openai model=unknown session=unknown date=2026-10-02 -->
+
+Review body for `apriori/changes/batch-review-fixes/review/code-review-v3.md`.
+
+**BRF-R4 — NOT ADDRESSED in full.** The original single-swap reproducer is closed, but the fallback retains the external-file overwrite vulnerability.
+
+When `/proc/self/fd` is available, `openedInside` checks the opened descriptor’s location before reading or truncating. Both update call sites supply the project root. PW-02’s new regression correctly inserts the parent symlink after obstruction checking and asserts the skip diagnostic, unchanged external bytes, and no guide adoption.
+
+However, [lib/managed.js:146](/root/terra/wt-fix/lib/managed.js:146) falls back to `realpathSync(abs)`. That checks the pathname’s **current target**, not the file already opened. A concrete interleaving remains:
+
+1. With descriptor lookup unavailable, redirect `apriori/guides` outside before the read open. The external file contains a recognized earlier guide edition.
+2. Restore the original directory before the fallback `realpathSync(abs)`. Containment passes for the restored internal pathname, while `readFileSync(fd)` reads the external file.
+3. Repeat the redirect-and-restore around the write open and its fallback containment check.
+4. The device/inode comparison passes: both descriptors refer to the same external file. `ftruncateSync(fd, 0)` then truncates it and the subsequent write overwrites it.
+
+This retains BRF-R4’s substantive risk: adoption can overwrite an existing external file. Moving the pathname check after opening narrows the window but does not bind containment to the descriptor.
+
+The fallback also runs on **any** `/proc/self/fd` readlink failure, including Linux environments where that lookup is unavailable; it is not confined to non-Linux platforms.
+
+**Contract and evidence.** The updated requirement still promises that the opened file is inside the project and that update never writes through a path resolving outside it. The CHANGELOG likewise states that each opened descriptor is checked. MIGRATING acknowledges a residual window, but that disclosure does not fulfill the existing containment guarantee. The new test leaves the redirected parent in place, so both descriptor-based checking and the vulnerable pathname fallback reject it; it cannot distinguish them.
+
+**Suggested fix:** use trustworthy descriptor-bound containment on supported platforms, and fail closed when it cannot be established rather than substituting an unrelated pathname check. Add a fallback-path regression that restores the internal pathname after each external open and asserts that the external file is neither adopted nor overwritten.
+
+No separate new finding is raised; this is the remaining portion of BRF-R4. The approach remains viable without escalation.
+
+**Scope and limits.** Reviewed `openedInside`, both guarded I/O helpers and their call sites, the new PW-02 regression, the updated requirement/scenario, MIGRATING, CHANGELOG, and the disposition/progress entries. Evidence is static control-flow analysis. I did not rerun the reported suite or race tests, modify files, or read credentials, human notes, or raw review transcripts.
+
+**Advisories:** none.
+
+VERDICT: 1 issues open

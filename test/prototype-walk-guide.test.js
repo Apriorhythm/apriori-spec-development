@@ -26,6 +26,16 @@ const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-pw-'));
 const manifestOf = (root) => JSON.parse(fs.readFileSync(path.join(root, 'apriori', 'managed.json'), 'utf8')).files;
 const sha = (p) => 'sha256:' + crypto.createHash('sha256').update(fs.readFileSync(p)).digest('hex');
 const actionOf = (actions, file) => (actions.find((a) => a.file === file) || {}).action;
+// Platform facts the expectations depend on (batch-recheck-fixes SST-R1). update rewrites or adopts the
+// guide in place only where it can locate an opened descriptor (/proc/self/fd); elsewhere it holds back.
+const LOCATABLE = (() => {
+  let fd;
+  try { fd = fs.openSync(__filename, 'r'); return fs.readlinkSync(`/proc/self/fd/${fd}`).length > 0; }
+  catch { return false; } finally { if (fd !== undefined) fs.closeSync(fd); }
+})();
+const HELD = /^not refreshed \(skipped — this platform cannot tell where an opened file really is/;
+const CHANGED = /^changed during refresh \(skipped — what sits at the path was replaced after it was read/;
+const SYMLINKS = process.platform !== 'win32';
 
 test('PW-01 init installs the guide byte-for-byte and records it, and skips what is not its own', () => {
   // fresh project
@@ -49,28 +59,30 @@ test('PW-01 init installs the guide byte-for-byte and records it, and skips what
   const b = init.scaffold(blocked, ['claude']);
   assert.match(actionOf(b.actions, GUIDE), /not a regular file \(skipped/);
   assert.strictEqual(fs.readFileSync(path.join(blocked, 'apriori', 'guides'), 'utf8'), 'not a dir\n');
-  // apriori/guides is a symlink out of the project: skipped, nothing written outside
-  const esc = tmp(), outside = tmp();
-  fs.mkdirSync(path.join(esc, 'apriori'), { recursive: true });
-  fs.symlinkSync(outside, path.join(esc, 'apriori', 'guides'));
-  const e = init.scaffold(esc, ['claude']);
-  assert.match(actionOf(e.actions, GUIDE), /escapes the project root \(skipped/);
-  assert.deepStrictEqual(fs.readdirSync(outside), [], 'nothing may be written outside the project');
-  // batch review guide-1: what appears at the path after the checks — here a symlink to a file
-  // outside the project, planted the moment apriori/guides is made — is never followed or overwritten
-  const race = tmp(), victim = path.join(tmp(), 'victim.md');
-  fs.writeFileSync(victim, 'outside\n');
-  const realMkdir = fs.mkdirSync;
-  fs.mkdirSync = function (p, o) {
-    const r = realMkdir.call(fs, p, o);
-    if (p === path.join(race, 'apriori', 'guides')) { fs.mkdirSync = realMkdir; fs.symlinkSync(victim, path.join(race, GUIDE)); }
-    return r;
-  };
-  let ra;
-  try { ra = init.scaffold(race, ['claude']); } finally { fs.mkdirSync = realMkdir; }
-  assert.match(actionOf(ra.actions, GUIDE), /^changed during install \(skipped — something appeared at apriori\/guides\/prototype-walk\.md after the checks/);
-  assert.strictEqual(fs.readFileSync(victim, 'utf8'), 'outside\n', 'the planted symlink must not be written through');
-  assert.ok(!(GUIDE in manifestOf(race)), 'what the tool did not create gains no entry');
+  if (SYMLINKS) {   // symlink creation needs privileges on Windows (update.test.js convention)
+    // apriori/guides is a symlink out of the project: skipped, nothing written outside
+    const esc = tmp(), outside = tmp();
+    fs.mkdirSync(path.join(esc, 'apriori'), { recursive: true });
+    fs.symlinkSync(outside, path.join(esc, 'apriori', 'guides'));
+    const e = init.scaffold(esc, ['claude']);
+    assert.match(actionOf(e.actions, GUIDE), /escapes the project root \(skipped/);
+    assert.deepStrictEqual(fs.readdirSync(outside), [], 'nothing may be written outside the project');
+    // batch review guide-1: what appears at the path after the checks — here a symlink to a file
+    // outside the project, planted the moment apriori/guides is made — is never followed or overwritten
+    const race = tmp(), victim = path.join(tmp(), 'victim.md');
+    fs.writeFileSync(victim, 'outside\n');
+    const realMkdir = fs.mkdirSync;
+    fs.mkdirSync = function (p, o) {
+      const r = realMkdir.call(fs, p, o);
+      if (p === path.join(race, 'apriori', 'guides')) { fs.mkdirSync = realMkdir; fs.symlinkSync(victim, path.join(race, GUIDE)); }
+      return r;
+    };
+    let ra;
+    try { ra = init.scaffold(race, ['claude']); } finally { fs.mkdirSync = realMkdir; }
+    assert.match(actionOf(ra.actions, GUIDE), /^changed during install \(skipped — something appeared at apriori\/guides\/prototype-walk\.md after the checks/);
+    assert.strictEqual(fs.readFileSync(victim, 'utf8'), 'outside\n', 'the planted symlink must not be written through');
+    assert.ok(!(GUIDE in manifestOf(race)), 'what the tool did not create gains no entry');
+  }
   // batch review guide-2: the guide is recorded the moment it is created — an init that throws later
   // (its rules path is a directory) still leaves the guide owned
   const crash = tmp();
@@ -113,9 +125,16 @@ test('PW-02 the guide is installed once, then refreshed, protected or left alone
   // the package's guide changed → updated and re-hashed
   const newer = path.join(tmp(), 'guide.md');
   fs.writeFileSync(newer, PKG_GUIDE + '\nA later edition.\n');
-  assert.strictEqual(actionOf(update.run(root, { guideSrc: newer }).actions, GUIDE), 'updated');
-  assert.strictEqual(manifestOf(root)[GUIDE], sha(newer));
-  assert.strictEqual(fs.readFileSync(path.join(root, GUIDE), 'utf8'), fs.readFileSync(newer, 'utf8'), 'the newer bytes are installed (batch review SST-4)');
+  if (LOCATABLE) {
+    assert.strictEqual(actionOf(update.run(root, { guideSrc: newer }).actions, GUIDE), 'updated');
+    assert.strictEqual(manifestOf(root)[GUIDE], sha(newer));
+    assert.strictEqual(fs.readFileSync(path.join(root, GUIDE), 'utf8'), fs.readFileSync(newer, 'utf8'), 'the newer bytes are installed (batch review SST-4)');
+  } else {                                        // held back where no descriptor can be located: bytes and entry unchanged
+    const entryBefore = manifestOf(root)[GUIDE];
+    assert.match(actionOf(update.run(root, { guideSrc: newer }).actions, GUIDE), HELD);
+    assert.strictEqual(fs.readFileSync(path.join(root, GUIDE), 'utf8'), PKG_GUIDE);
+    assert.strictEqual(manifestOf(root)[GUIDE], entryBefore);
+  }
   // the user edited it → modified, bytes and entry kept
   fs.appendFileSync(path.join(root, GUIDE), '\nteam notes\n');
   const edited = fs.readFileSync(path.join(root, GUIDE), 'utf8'), entry = manifestOf(root)[GUIDE];
@@ -141,100 +160,126 @@ test('PW-02 the guide is installed once, then refreshed, protected or left alone
   assert.strictEqual(fs.readFileSync(path.join(crashed, GUIDE), 'utf8'), PKG_GUIDE);
   assert.ok(!(GUIDE in manifestOf(crashed)));
   fs.rmdirSync(cmd);
-  assert.strictEqual(actionOf(update.run(crashed).actions, GUIDE), 'adopted (its bytes are the shipped guide)');
-  assert.strictEqual(manifestOf(crashed)[GUIDE], sha(path.join(crashed, GUIDE)));
-  assert.strictEqual(actionOf(update.run(crashed).actions, GUIDE), 'up-to-date');
+  if (LOCATABLE) {
+    assert.strictEqual(actionOf(update.run(crashed).actions, GUIDE), 'adopted (its bytes are the shipped guide)');
+    assert.strictEqual(manifestOf(crashed)[GUIDE], sha(path.join(crashed, GUIDE)));
+    assert.strictEqual(actionOf(update.run(crashed).actions, GUIDE), 'up-to-date');
+  } else {                                        // adoption records ownership on what was read: never on an unlocated read
+    assert.match(actionOf(update.run(crashed).actions, GUIDE), HELD);
+    assert.ok(!(GUIDE in manifestOf(crashed)));
+  }
   // an earlier shipped edition left unrecorded is adopted and brought to the package's guide
   const earlier = aged();
   fs.mkdirSync(path.join(earlier, 'apriori', 'guides'), { recursive: true });
   fs.writeFileSync(path.join(earlier, GUIDE), '# an earlier edition\n');
   const gens = [sha(path.join(earlier, GUIDE))];
-  assert.match(actionOf(update.run(earlier, { dryRun: true, guideGenerations: gens }).actions, GUIDE), /^adopted and updated/);
+  const ADOPT = LOCATABLE ? /^adopted and updated/ : HELD;
+  assert.match(actionOf(update.run(earlier, { dryRun: true, guideGenerations: gens }).actions, GUIDE), ADOPT);
   assert.strictEqual(fs.readFileSync(path.join(earlier, GUIDE), 'utf8'), '# an earlier edition\n', 'dry run writes nothing');
   assert.ok(!(GUIDE in manifestOf(earlier)));
-  assert.match(actionOf(update.run(earlier, { guideGenerations: gens }).actions, GUIDE), /^adopted and updated/);
-  assert.strictEqual(fs.readFileSync(path.join(earlier, GUIDE), 'utf8'), PKG_GUIDE);
-  assert.strictEqual(manifestOf(earlier)[GUIDE], sha(path.join(earlier, GUIDE)));
-  // round 1 BRF-R1: the hash judged and the bytes rewritten belong to one file — a symlink swapped in
-  // between the read and the write (adoption of an earlier edition, and a listed guide's refresh) is
-  // never written through; the run reports it and records nothing for it
-  const swapAtWrite = (root, victim, fn) => {
-    const abs = path.join(root, GUIDE), realOpen = fs.openSync;
-    fs.openSync = function (p, flags, ...rest) {
-      if (p === abs && typeof flags === 'number' && (flags & fs.constants.O_WRONLY)) {
-        fs.openSync = realOpen;
-        fs.renameSync(abs, abs + '.moved'); fs.symlinkSync(victim, abs);
-      }
-      return realOpen.call(fs, p, flags, ...rest);
+  assert.match(actionOf(update.run(earlier, { guideGenerations: gens }).actions, GUIDE), ADOPT);
+  if (LOCATABLE) {
+    assert.strictEqual(fs.readFileSync(path.join(earlier, GUIDE), 'utf8'), PKG_GUIDE);
+    assert.strictEqual(manifestOf(earlier)[GUIDE], sha(path.join(earlier, GUIDE)));
+  } else {
+    assert.strictEqual(fs.readFileSync(path.join(earlier, GUIDE), 'utf8'), '# an earlier edition\n');
+    assert.ok(!(GUIDE in manifestOf(earlier)));
+  }
+  if (SYMLINKS) {   // symlink creation needs privileges on Windows (update.test.js convention)
+    // round 1 BRF-R1: the hash judged and the bytes rewritten belong to one file — a symlink swapped in
+    // between the read and the write (adoption of an earlier edition, and a listed guide's refresh) is
+    // never written through; the run reports it and records nothing for it
+    const swapAtWrite = (root, victim, fn) => {
+      const abs = path.join(root, GUIDE), realOpen = fs.openSync;
+      fs.openSync = function (p, flags, ...rest) {
+        if (p === abs && typeof flags === 'number' && (flags & fs.constants.O_WRONLY)) {
+          fs.openSync = realOpen;
+          fs.renameSync(abs, abs + '.moved'); fs.symlinkSync(victim, abs);
+        }
+        return realOpen.call(fs, p, flags, ...rest);
+      };
+      try { return fn(); } finally { fs.openSync = realOpen; }
     };
-    try { return fn(); } finally { fs.openSync = realOpen; }
-  };
-  for (const listed of [false, true]) {
-    const r = listed ? (() => { const x = tmp(); init.scaffold(x, ['claude']); return x; })() : aged();
-    const victim = path.join(tmp(), 'victim.md');
-    fs.writeFileSync(victim, 'outside\n');
-    let opts;
-    if (listed) opts = { guideSrc: newer };
-    else {
+    for (const listed of [false, true]) {
+      const r = listed ? (() => { const x = tmp(); init.scaffold(x, ['claude']); return x; })() : aged();
+      const victim = path.join(tmp(), 'victim.md');
+      fs.writeFileSync(victim, 'outside\n');
+      let opts;
+      if (listed) opts = { guideSrc: newer };
+      else {
+        fs.mkdirSync(path.join(r, 'apriori', 'guides'), { recursive: true });
+        fs.writeFileSync(path.join(r, GUIDE), '# an earlier edition\n');
+        opts = { guideGenerations: [sha(path.join(r, GUIDE))] };
+      }
+      const before = manifestOf(r)[GUIDE];
+      const res = swapAtWrite(r, victim, () => update.run(r, opts));
+      assert.match(actionOf(res.actions, GUIDE), listed || LOCATABLE ? CHANGED : HELD, `listed=${listed}`);
+      assert.strictEqual(fs.readFileSync(victim, 'utf8'), 'outside\n', `listed=${listed}: the swapped-in symlink must not be written through`);
+      assert.strictEqual(manifestOf(r)[GUIDE], before, `listed=${listed}: nothing recorded for it`);
+    }
+    // round 2 BRF-R4: apriori/guides swapped for a symlink to an outside directory between the obstruction
+    // check and the read — whose prototype-walk.md is an existing file with recognized bytes — is neither
+    // adopted nor overwritten: containment is judged on the opened descriptor, not on the path checked earlier
+    {
+      const r = aged(), outside = tmp(), victim = path.join(outside, 'prototype-walk.md');
       fs.mkdirSync(path.join(r, 'apriori', 'guides'), { recursive: true });
       fs.writeFileSync(path.join(r, GUIDE), '# an earlier edition\n');
-      opts = { guideGenerations: [sha(path.join(r, GUIDE))] };
+      fs.writeFileSync(victim, '# an earlier edition\n');
+      const gens = [sha(victim)], abs = path.join(r, GUIDE), dir = path.join(r, 'apriori', 'guides'), realOpen = fs.openSync;
+      fs.openSync = function (p, flags, ...rest) {
+        if (p === abs && typeof flags === 'number' && !(flags & fs.constants.O_WRONLY)) {
+          fs.openSync = realOpen;
+          fs.renameSync(dir, dir + '.real'); fs.symlinkSync(outside, dir);
+        }
+        return realOpen.call(fs, p, flags, ...rest);
+      };
+      let res;
+      try { res = update.run(r, { guideGenerations: gens }); } finally { fs.openSync = realOpen; }
+      assert.match(actionOf(res.actions, GUIDE), /^changed during refresh \(skipped/);
+      assert.strictEqual(fs.readFileSync(victim, 'utf8'), '# an earlier edition\n', 'the outside file must not be overwritten');
+      assert.ok(!(GUIDE in manifestOf(r)), 'nothing outside the project is adopted');
     }
-    const before = manifestOf(r)[GUIDE];
-    const res = swapAtWrite(r, victim, () => update.run(r, opts));
-    assert.match(actionOf(res.actions, GUIDE), /^changed during refresh \(skipped — what sits at the path was replaced after it was read/, `listed=${listed}`);
-    assert.strictEqual(fs.readFileSync(victim, 'utf8'), 'outside\n', `listed=${listed}: the swapped-in symlink must not be written through`);
-    assert.strictEqual(manifestOf(r)[GUIDE], before, `listed=${listed}: nothing recorded for it`);
-  }
-  // round 2 BRF-R4: apriori/guides swapped for a symlink to an outside directory between the obstruction
-  // check and the read — whose prototype-walk.md is an existing file with recognized bytes — is neither
-  // adopted nor overwritten: containment is judged on the opened descriptor, not on the path checked earlier
-  {
-    const r = aged(), outside = tmp(), victim = path.join(outside, 'prototype-walk.md');
-    fs.mkdirSync(path.join(r, 'apriori', 'guides'), { recursive: true });
-    fs.writeFileSync(path.join(r, GUIDE), '# an earlier edition\n');
-    fs.writeFileSync(victim, '# an earlier edition\n');
-    const gens = [sha(victim)], abs = path.join(r, GUIDE), dir = path.join(r, 'apriori', 'guides'), realOpen = fs.openSync;
-    fs.openSync = function (p, flags, ...rest) {
-      if (p === abs && typeof flags === 'number' && !(flags & fs.constants.O_WRONLY)) {
-        fs.openSync = realOpen;
+    // round 3 BRF-R4 (rest): redirect the directory for each open and restore it right after, so a pathname
+    // checked afterwards looks fine — with the descriptor locatable (/proc) the read is refused; without it
+    // the rewrite fails closed. The outside file is never adopted, truncated or overwritten either way.
+    const flipAround = (r, outside, fn, noProc) => {
+      const abs = path.join(r, GUIDE), dir = path.join(r, 'apriori', 'guides');
+      const realOpen = fs.openSync, realReadlink = fs.readlinkSync;
+      fs.openSync = function (p, flags, ...rest) {
+        if (p !== abs) return realOpen.call(fs, p, flags, ...rest);
         fs.renameSync(dir, dir + '.real'); fs.symlinkSync(outside, dir);
-      }
-      return realOpen.call(fs, p, flags, ...rest);
+        try { return realOpen.call(fs, p, flags, ...rest); }
+        finally { fs.unlinkSync(dir); fs.renameSync(dir + '.real', dir); }
+      };
+      if (noProc) fs.readlinkSync = function (p, ...rest) {
+        if (String(p).startsWith('/proc/self/fd/')) { const e = new Error('ENOENT'); e.code = 'ENOENT'; throw e; }
+        return realReadlink.call(fs, p, ...rest);
+      };
+      try { return fn(); } finally { fs.openSync = realOpen; fs.readlinkSync = realReadlink; }
     };
-    let res;
-    try { res = update.run(r, { guideGenerations: gens }); } finally { fs.openSync = realOpen; }
-    assert.match(actionOf(res.actions, GUIDE), /^changed during refresh \(skipped/);
-    assert.strictEqual(fs.readFileSync(victim, 'utf8'), '# an earlier edition\n', 'the outside file must not be overwritten');
-    assert.ok(!(GUIDE in manifestOf(r)), 'nothing outside the project is adopted');
-  }
-  // round 3 BRF-R4 (rest): redirect the directory for each open and restore it right after, so a pathname
-  // checked afterwards looks fine — with the descriptor locatable (/proc) the read is refused; without it
-  // the rewrite fails closed. The outside file is never adopted, truncated or overwritten either way.
-  const flipAround = (r, outside, fn, noProc) => {
-    const abs = path.join(r, GUIDE), dir = path.join(r, 'apriori', 'guides');
-    const realOpen = fs.openSync, realReadlink = fs.readlinkSync;
-    fs.openSync = function (p, flags, ...rest) {
-      if (p !== abs) return realOpen.call(fs, p, flags, ...rest);
-      fs.renameSync(dir, dir + '.real'); fs.symlinkSync(outside, dir);
-      try { return realOpen.call(fs, p, flags, ...rest); }
-      finally { fs.unlinkSync(dir); fs.renameSync(dir + '.real', dir); }
-    };
-    if (noProc) fs.readlinkSync = function (p, ...rest) {
-      if (String(p).startsWith('/proc/self/fd/')) { const e = new Error('ENOENT'); e.code = 'ENOENT'; throw e; }
-      return realReadlink.call(fs, p, ...rest);
-    };
-    try { return fn(); } finally { fs.openSync = realOpen; fs.readlinkSync = realReadlink; }
-  };
-  for (const noProc of [false, true]) {
-    const r = aged(), outside = tmp(), victim = path.join(outside, 'prototype-walk.md');
-    fs.mkdirSync(path.join(r, 'apriori', 'guides'), { recursive: true });
-    fs.writeFileSync(path.join(r, GUIDE), '# an earlier edition\n');
-    fs.writeFileSync(victim, '# an earlier edition\n');
-    const res = flipAround(r, outside, () => update.run(r, { guideGenerations: [sha(victim)] }), noProc);
-    assert.match(actionOf(res.actions, GUIDE), noProc ? /^not refreshed \(skipped — this platform cannot tell where an opened file really is/ : /^changed during refresh \(skipped/, `noProc=${noProc}`);
-    assert.strictEqual(fs.readFileSync(victim, 'utf8'), '# an earlier edition\n', `noProc=${noProc}: the outside file must stay as it was`);
-    assert.ok(!(GUIDE in manifestOf(r)), `noProc=${noProc}: nothing adopted`);
+    for (const noProc of [false, true]) {
+      const r = aged(), outside = tmp(), victim = path.join(outside, 'prototype-walk.md');
+      fs.mkdirSync(path.join(r, 'apriori', 'guides'), { recursive: true });
+      fs.writeFileSync(path.join(r, GUIDE), '# an earlier edition\n');
+      fs.writeFileSync(victim, '# an earlier edition\n');
+      const res = flipAround(r, outside, () => update.run(r, { guideGenerations: [sha(victim)] }), noProc);
+      assert.match(actionOf(res.actions, GUIDE), noProc || !LOCATABLE ? HELD : CHANGED, `noProc=${noProc}`);
+      assert.strictEqual(fs.readFileSync(victim, 'utf8'), '# an earlier edition\n', `noProc=${noProc}: the outside file must stay as it was`);
+      assert.ok(!(GUIDE in manifestOf(r)), `noProc=${noProc}: nothing adopted`);
+    }
+    // batch-recheck-fixes guide-R1: with no descriptor location, an outside file whose bytes are the CURRENT
+    // guide (no rewrite needed) read through a redirect-and-restore is not adopted for the team's own
+    // guide inside — adoption records ownership on what was read, so it wants the read located too
+    for (const noProc of [false, true]) {
+      const r = aged(), outside = tmp();
+      fs.mkdirSync(path.join(r, 'apriori', 'guides'), { recursive: true });
+      fs.writeFileSync(path.join(r, GUIDE), 'team-authored guide\n');
+      fs.writeFileSync(path.join(outside, 'prototype-walk.md'), PKG_GUIDE);
+      const res = flipAround(r, outside, () => update.run(r), noProc);
+      assert.match(actionOf(res.actions, GUIDE), noProc || !LOCATABLE ? HELD : CHANGED, `noProc=${noProc}`);
+      assert.strictEqual(fs.readFileSync(path.join(r, GUIDE), 'utf8'), 'team-authored guide\n');
+      assert.ok(!(GUIDE in manifestOf(r)), `noProc=${noProc}: no ownership recorded for the team's guide`);
+    }
   }
   // where the descriptor cannot be located, a guide needing a rewrite is held back — dry run and real run
   // alike — and the cure in the message still brings it current
@@ -286,23 +331,25 @@ test('PW-02 the guide is installed once, then refreshed, protected or left alone
   assert.strictEqual(actionOf(update.run(dryRoot, { dryRun: true }).actions, GUIDE), 'created (first install)');
   assert.ok(!fs.existsSync(path.join(dryRoot, GUIDE)));
   assert.strictEqual(fs.readFileSync(path.join(dryRoot, 'apriori', 'managed.json'), 'utf8'), mBefore);
-  // PW-R1 (review round 1): every update branch refuses to hash or write through what is not a plain file
-  // in a plain directory — a listed guide swapped for a symlink whose target still matches the hash
-  const swapped = tmp(); init.scaffold(swapped, ['claude']);
-  const elsewhere = path.join(swapped, 'docs', 'moved-guide.md');
-  fs.mkdirSync(path.dirname(elsewhere), { recursive: true });
-  fs.renameSync(path.join(swapped, GUIDE), elsewhere);
-  fs.symlinkSync(elsewhere, path.join(swapped, GUIDE));
-  const sw = update.run(swapped, { guideSrc: newer });
-  assert.match(actionOf(sw.actions, GUIDE), /^not a regular file \(skipped — a symlink sits at/);
-  assert.strictEqual(fs.readFileSync(elsewhere, 'utf8'), PKG_GUIDE, 'the symlink target must not be written through');
-  // apriori/guides itself a symlink to a directory inside the project
-  const linkedDir = tmp(); init.scaffold(linkedDir, ['claude']);
-  fs.renameSync(path.join(linkedDir, 'apriori', 'guides'), path.join(linkedDir, 'real-guides'));
-  fs.symlinkSync(path.join(linkedDir, 'real-guides'), path.join(linkedDir, 'apriori', 'guides'));
-  const ld = update.run(linkedDir, { guideSrc: newer });
-  assert.match(actionOf(ld.actions, GUIDE), /^not a regular file \(skipped — something other than a plain directory sits at apriori\/guides/);
-  assert.strictEqual(fs.readFileSync(path.join(linkedDir, 'real-guides', 'prototype-walk.md'), 'utf8'), PKG_GUIDE);
+  if (SYMLINKS) {   // symlink creation needs privileges on Windows (update.test.js convention)
+    // PW-R1 (review round 1): every update branch refuses to hash or write through what is not a plain file
+    // in a plain directory — a listed guide swapped for a symlink whose target still matches the hash
+    const swapped = tmp(); init.scaffold(swapped, ['claude']);
+    const elsewhere = path.join(swapped, 'docs', 'moved-guide.md');
+    fs.mkdirSync(path.dirname(elsewhere), { recursive: true });
+    fs.renameSync(path.join(swapped, GUIDE), elsewhere);
+    fs.symlinkSync(elsewhere, path.join(swapped, GUIDE));
+    const sw = update.run(swapped, { guideSrc: newer });
+    assert.match(actionOf(sw.actions, GUIDE), /^not a regular file \(skipped — a symlink sits at/);
+    assert.strictEqual(fs.readFileSync(elsewhere, 'utf8'), PKG_GUIDE, 'the symlink target must not be written through');
+    // apriori/guides itself a symlink to a directory inside the project
+    const linkedDir = tmp(); init.scaffold(linkedDir, ['claude']);
+    fs.renameSync(path.join(linkedDir, 'apriori', 'guides'), path.join(linkedDir, 'real-guides'));
+    fs.symlinkSync(path.join(linkedDir, 'real-guides'), path.join(linkedDir, 'apriori', 'guides'));
+    const ld = update.run(linkedDir, { guideSrc: newer });
+    assert.match(actionOf(ld.actions, GUIDE), /^not a regular file \(skipped — something other than a plain directory sits at apriori\/guides/);
+    assert.strictEqual(fs.readFileSync(path.join(linkedDir, 'real-guides', 'prototype-walk.md'), 'utf8'), PKG_GUIDE);
+  }
   // a directory at the guide's path: reported, no crash, the rest of the update still lands
   const dirAt = tmp(); init.scaffold(dirAt, ['claude']);
   fs.rmSync(path.join(dirAt, GUIDE)); fs.mkdirSync(path.join(dirAt, GUIDE));
@@ -312,12 +359,14 @@ test('PW-02 the guide is installed once, then refreshed, protected or left alone
   assert.match(actionOf(da.actions, GUIDE), /^not a regular file \(skipped — a directory or other non-file sits at/);
   assert.strictEqual(actionOf(da.actions, 'apriori/runbook.md'), 'updated');
   assert.strictEqual(manifestOf(dirAt)['apriori/runbook.md'], sha(path.join(dirAt, 'apriori', 'runbook.md')));
-  // an unlisted dangling symlink is reported, not silently passed over
-  const dangling = aged();
-  fs.mkdirSync(path.join(dangling, 'apriori', 'guides'), { recursive: true });
-  fs.symlinkSync(path.join(dangling, 'nowhere.md'), path.join(dangling, GUIDE));
-  assert.match(actionOf(update.run(dangling).actions, GUIDE), /^not a regular file \(skipped — a symlink sits at/);
-  assert.ok(!fs.existsSync(path.join(dangling, 'nowhere.md')));
+  if (SYMLINKS) {   // symlink creation needs privileges on Windows (update.test.js convention)
+    // an unlisted dangling symlink is reported, not silently passed over
+    const dangling = aged();
+    fs.mkdirSync(path.join(dangling, 'apriori', 'guides'), { recursive: true });
+    fs.symlinkSync(path.join(dangling, 'nowhere.md'), path.join(dangling, GUIDE));
+    assert.match(actionOf(update.run(dangling).actions, GUIDE), /^not a regular file \(skipped — a symlink sits at/);
+    assert.ok(!fs.existsSync(path.join(dangling, 'nowhere.md')));
+  }
 });
 
 test('PW-03 doctor reports a missing guide the runbook names, and nothing otherwise', () => {
@@ -342,23 +391,25 @@ test('PW-03 doctor reports a missing guide the runbook names, and nothing otherw
   assert.strictEqual(dg.length, 1);
   assert.match(dg[0].detail, /is not a regular file/);
   assert.match(dg[0].fix, /apriori update/);                                  // batch review SST-6
-  // batch review guide-4: judged by lstat, as update judges it — a symlink to a good file in the
-  // project, and apriori/guides as a symlink, are each one finding with the move-aside cure
-  const ln = healthy(), moved = path.join(ln, 'docs', 'guide.md');
-  fs.mkdirSync(path.dirname(moved), { recursive: true });
-  fs.renameSync(path.join(ln, GUIDE), moved); fs.symlinkSync(moved, path.join(ln, GUIDE));
-  const lnr = doctor.runDoctor({ cwd: ln, testCmd: TAP_OK });
-  const lg = guideFindings(lnr);
-  assert.strictEqual(lg.length, 1, JSON.stringify(lnr.checks));
-  assert.match(lg[0].detail, /is not a regular file \(a symlink sits at apriori\/guides\/prototype-walk\.md\)/);
-  assert.match(lg[0].fix, /^move it aside, then apriori update/);
-  assert.strictEqual(lnr.result, 'FINDINGS');
-  const ld = healthy();
-  fs.renameSync(path.join(ld, 'apriori', 'guides'), path.join(ld, 'real-guides'));
-  fs.symlinkSync(path.join(ld, 'real-guides'), path.join(ld, 'apriori', 'guides'));
-  const ldg = guideFindings(doctor.runDoctor({ cwd: ld, testCmd: TAP_OK }));
-  assert.strictEqual(ldg.length, 1);
-  assert.match(ldg[0].detail, /something other than a plain directory sits at apriori\/guides/);
+  if (SYMLINKS) {   // symlink creation needs privileges on Windows (update.test.js convention)
+    // batch review guide-4: judged by lstat, as update judges it — a symlink to a good file in the
+    // project, and apriori/guides as a symlink, are each one finding with the move-aside cure
+    const ln = healthy(), moved = path.join(ln, 'docs', 'guide.md');
+    fs.mkdirSync(path.dirname(moved), { recursive: true });
+    fs.renameSync(path.join(ln, GUIDE), moved); fs.symlinkSync(moved, path.join(ln, GUIDE));
+    const lnr = doctor.runDoctor({ cwd: ln, testCmd: TAP_OK });
+    const lg = guideFindings(lnr);
+    assert.strictEqual(lg.length, 1, JSON.stringify(lnr.checks));
+    assert.match(lg[0].detail, /is not a regular file \(a symlink sits at apriori\/guides\/prototype-walk\.md\)/);
+    assert.match(lg[0].fix, /^move it aside, then apriori update/);
+    assert.strictEqual(lnr.result, 'FINDINGS');
+    const ld = healthy();
+    fs.renameSync(path.join(ld, 'apriori', 'guides'), path.join(ld, 'real-guides'));
+    fs.symlinkSync(path.join(ld, 'real-guides'), path.join(ld, 'apriori', 'guides'));
+    const ldg = guideFindings(doctor.runDoctor({ cwd: ld, testCmd: TAP_OK }));
+    assert.strictEqual(ldg.length, 1);
+    assert.match(ldg[0].detail, /something other than a plain directory sits at apriori\/guides/);
+  }
   const noRb = healthy(); fs.rmSync(path.join(noRb, GUIDE)); fs.rmSync(path.join(noRb, 'apriori', 'runbook.md'));
   const nr = doctor.runDoctor({ cwd: noRb, testCmd: TAP_OK });
   assert.strictEqual(guideFindings(nr).length, 0);

@@ -1,0 +1,566 @@
+OpenAI Codex v0.159.3
+--------
+workdir: /root/terra/wt-fix2
+model: gpt-6-astra
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 01a0fd6c-8d20-79e2-a01a-a7ef11cfd856
+--------
+user
+Round 2 of code-review for `batch-recheck-fixes` (same worktree, still uncommitted). Your BRC-R1 and BRC-R2 were the fourth round running in which the line-based fence reader for CK-11 missed a CommonMark container edge. After consulting Astra, the owner decided (2026-10-03, recorded in the flow-state's `gates:` with a disclosure note) to stop parsing: CK-11 now reads the runbook header literally, and any run of three or more backticks or tildes in the header region fails as an unsupported header format, naming the line. That withdraws CK-12's earlier tolerance of a fenced occurrence in the header; the body region and consumer mode are unchanged. The disposition is the `decision: BRC-R1、BRC-R2、check-self-R1 fixed` line in the flow-state.
+Answer BRC-R1 and BRC-R2 with ADDRESSED or NOT ADDRESSED and your evidence. Scope is what changed since round 1: lib/check.js (stripFencedBlocks removed; checkRunbookVersion's literal header rule), CK-12 in test/check.test.js (the container cases now asserted as refusals with their line), the check delta (CK-11 requirement and CK-12 scenario rewritten, Notes), MIGRATING (new batch-recheck-fixes section), CHANGELOG, and the flow-state. Judge whether the implementation, tests and contract text say the same thing, and whether the literal rule can still be made to read a fenced entry or hide a duplicate.
+Report a NEW finding only if it breaks the contract or a safety property. Give the full review body for apriori/changes/batch-recheck-fixes/review/code-review-v2.md, ending with exactly one VERDICT line.
+codex
+I’ll review the revised header rule, tests, and contract, then trace whether either reported case can still pass incorrectly. I’ll return the full round-2 review body for landing.
+exec
+/usr/bin/zsh -lc 'cat apriori/changes/batch-recheck-fixes/specs/check/spec.md; cat apriori/changes/batch-recheck-fixes/flow-state.md; git diff -- MIGRATING.md CHANGELOG.md' in /root/terra/wt-fix2
+ succeeded in 0ms:
+<!-- apriori-base: sha256:c00732f78c0e68b1f227014d657b3d1ba924e0749f0f941027d8015baa2eaf79 -->
+# Delta — check (batch-recheck-fixes)
+
+## MODIFIED Requirements
+
+### Requirement: CK-11 keeps the runbook version aligned with the CLI major.minor
+`apriori check --self` SHALL assert that RUNBOOK.md — the canonical packaged runbook — carries exactly one header-blockquote entry of the form `` > `runbook-version: X.Y` `` whose major.minor (`X.Y`) equals `package.json`'s version major.minor (a pre-release tag is ignored). The header region (from the top to the first line starting `## `) is read literally, never as CommonMark: a run of three or more backticks or three or more tildes anywhere in it — whatever its indentation, container or purpose, with or without a real entry beside it — FAILs as an unsupported header format naming the line, and nothing in that header is read as an entry; the runbook header carries no code fence. Otherwise a missing entry, more than one, or a malformed value FAILs (self-mode only) naming the file and the failure reason, and a major.minor mismatch FAILs naming the file, the runbook's X.Y and the package's. A mention of `runbook-version:` in body text (not entry-shaped) or anywhere after the first h2 is never matched, and the body region is not subject to the fence rule. Consumer `apriori check` (no `--self`) never runs CK-11.
+
+#### Scenario: CK-11 the runbook major.minor tracks the CLI major.minor
+- WHEN `apriori check --self` runs where RUNBOOK.md declares `runbook-version: 4.0` and package.json is on 4.0.3, then 4.0.0-rc.0
+- THEN CK-11 passes; flipping its header to `3.0` FAILs (self-mode) naming the file and both versions, and so does a minor drift to `4.1`; and a consumer `apriori check` without `--self` never raises CK-11
+
+#### Scenario: CK-12 malformed, missing, duplicate, body occurrences, and a fence in the header
+- WHEN the runbook has no `runbook-version` blockquote entry, has two of them, carries a malformed value (`runbook-version: vier`), or mentions `runbook-version:` only in body text; and, separately, when its header region holds a run of three or more backticks or tildes — a fenced entry alone (backtick, tilde, longer, quoted, unclosed), a real entry after a list item's fence, an ordered-list line after a paragraph, a list continuation fence between two entries, an unrelated inline run beside a real entry, a four-space-indented run — or a fence only after the first h2
+- THEN the missing/duplicate/malformed cases FAIL (self-mode) naming the file and the reason, and the body-text mention is never matched; every header run FAILs once as an unsupported header format naming its line, with or without a real entry; single backticks (inline code) are ordinary text; and a fence after the first h2 does not concern CK-11
+
+## Notes
+
+Owner decision 2026-10-03 (recorded in this change's `gates:`), on Astra's advice (lab round R59-R11): CK-11 reads the runbook header literally and refuses any fence-like run in it, instead of parsing CommonMark. The line-based fence reader added for check-self-4 kept missing container edges four rounds running — quoted fences (BRF-R3), list items (check-self-R1, from the requirement-level re-check), an ordered list that cannot interrupt a paragraph (BRC-R1) and a fence on a list continuation line (BRC-R2), each a false PASS or a hidden duplicate. CK-12's earlier promise that a fenced occurrence in the header "alone does not fail the check" is withdrawn by that decision: a fence in the header now fails, whatever it holds. The body region and consumer mode are unchanged, and the shared `stripFences` is not touched (FU-1 of batch-review-fixes stays open). CK-11 and CK-12 keep their ids; CK-12 is retitled under its id.
+change: batch-recheck-fixes
+phase: review                             # ground | specify | build | review | done | abandoned
+reviewer-session: 01a0fd6c-8d20-79e2-a01a-a7ef11cfd856   # codex exec gpt-6-astra, round 1 (2026-10-03)
+
+## Reality Check         # observed / decision / assumption — one line each, as you find them
+- decision: lineage — branch `feature/batch-recheck-fixes`（从 v6-dev@9020f02 开出）；本地提交；评审通过后合回 v6-dev 并推 judge 与 GitHub
+- decision: requirement — 来源：需求级复核（`/root/asd-lab/work/next-improve-1002/批次核对报告.md` 复核节；原始数据 `/srv/review-1002/recheck/`）：在 9020f02 上 resume 8 个区域的 codex finder 会话，原 19 条全部 ADDRESSED，新发现 3 条经 2 票对抗核验全部成立——check-self-R1、guide-R1、SST-R1；人类 10-02「全部修复完毕」及需求级核对配方（必要修复进 change、走自己的 P3、再由需求级评审方复核）：3 条承接原 id 修复
+- observed: check-self-R1 —— `- ~~~` 不被识别为围栏开头，而其缩进的收尾 `  ~~~` 被当成顶层开头，吞掉后面的版本行（误报缺失；两条版本行之间夹一个列表围栏时 `check --self` PASS）；c290842 的反引号读法对这两种情况是对的，这是 batch-review-fixes 引入的回归
+- observed: guide-R1 —— 无 /proc 时，读取用的 realpath 退路可被「打开前换目录、打开后换回」骗过；外部文件字节恰为当前 guide 时不需要改写，writePlain 的失败即关闭根本不运行，于是按外部字节给项目内团队自写的 guide 记了账（不覆盖，但所有权记错）
+- observed: SST-R1 —— PW-02 无条件期待原地改写/收编成功；在无 /proc 平台（macOS、Windows；CI 含 windows-latest，但只对 main 触发）上规格本就要求拒绝，测试必然失败
+- decision: approach — check-self-R1：围栏记下所在容器——引用深度之外再记列表项的内容列，围栏内的行按其容器读（只剥该围栏那么多层引用），收尾须缩进到内容列（再多至 3 空格），更少缩进的非空行结束列表项与围栏；guide-R1：收编要求读取已在描述符上定位（`seen.located`），否则 `not refreshed`（信息同时说明不收编也不改写）；SST-R1：测试按平台给期待（LOCATABLE 探测 /proc/self/fd），依赖符号链接的段落在 win32 上跳过（沿用 update.test.js 的约定），并在隐藏 /proc 的条件下跑全套验证
+- observed: Build 完成 —— 代码：lib/check.js（stripFencedBlocks 带容器）、lib/update.js（收编需定位；UNCONFIRMED 文案）、lib/managed.js（注释）；测试：CK-12 新增列表围栏 4 例 + 跨列表围栏的重复 + 列表围栏内的版本行 + 缩进更少结束列表项 + 4 空格非围栏；PW-02 新增 guide-R1 两例（有/无定位）并按平台改写期待；UP-09 按平台；红测试：在 9020f02 的 lib 上 CK-12 与 PW-02 变红，隐藏 /proc 时 9020f02 的测试在 UP-09/PW-02 失败；修复后全套 883/883，隐藏 /proc（NODE_OPTIONS 预加载）也 883/883；文档：MIGRATING、cli 两版、CHANGELOG；delta：check（CK-11 需求 MODIFIED）、update（清单需求与 guide 需求 MODIFIED），场景 id 全保留
+
+- observed: 手写 flow-state 时覆盖了 `apriori new` 生成的 scaffold 行；其时间取自紧接 `apriori new` 之后 `date` 的输出（2026-10-03T00:16），不是原行
+- observed: Review 第 1 轮（`review/code-review-v1.md`）= `VERDICT: 2 issues open`：BRC-R1（`paragraph\n2. ~~~` 有序列表不能打断段落，新读法开了列表围栏 → 假通过）、BRC-R2（列表续行中的围栏用了基准列 0 → 藏住重复条目）；guide-R1、SST-R1 的修法评审方逐项查过，未提问题
+- observed: CK-11 的按行围栏读法连续 4 轮出现同类缺口（BRF-R3 → check-self-R1 → BRC-R1/R2），符合「循环陷阱」判据；咨询 Astra（`/root/asd-lab/work/astra-discuss/r59/R59-R11.txt`、`astra-r59-r11-reply.md`）：建议 C′——头部按字面读、出现连续 3 个以上 ` 或 ~ 即判「不支持的头部格式」、不再解析 CommonMark；并指出这会撤回 CK-12「头部围栏里的出现单独存在时不导致失败」的承诺，属 owner 的决定（R1）；对我提的 B+警告有 1 条分歧（会放过头部别处的重复条目），已采纳 Astra 的意见
+- decision: owner — 2026-10-03 人类在本会话的选择题中选了「C′ 字面格式检查」（见 gates 的 owner 行及其代录说明）
+- decision: BRC-R1、BRC-R2、check-self-R1 fixed — 按 owner 决定改为字面规则：lib/check.js 删去 stripFencedBlocks，`checkRunbookVersion` 在头部区域（第一个 `## ` 之前）发现连续 3 个以上 ` 或 ~ 即报 `unsupported header format — line N …` 并不再读条目；CK-12 测试把历轮所有容器反例（BRF-R3、check-self-R1、BRC-R1、BRC-R2 原例等 11 例）改为断言「拒绝且指出行号」，另断言单反引号是普通文本、h2 之后的围栏与 CK-11 无关；delta 重写 CK-11 需求与 CK-12 场景（CK-12 同 id 改题）；MIGRATING 新增一节（仅影响本仓库贡献者的 `check --self`）；CHANGELOG 改写；`check --self` 在现行 runbook 上 PASS
+## Open                  # substantive unresolved items — one line each, stable id first: - <ID>: <text>
+
+## Next                  # at most three concrete actions; the first is the resume point
+- codex P3 第 1 轮
+- gate → archive --write → 合回 v6-dev
+- resume 需求级复核方复核这 3 条，写回批次核对报告
+
+gates:
+  - 2026-10-03T00:16 note: change scaffolded by `apriori new`
+  - 2026-10-03T00:21 note: Ground、Build 完成（883/883；隐藏 /proc 亦 883/883）；review-ready 后开 Review 第 1 轮
+  - 2026-10-03T00:36 owner: 选择「C′ 字面格式检查 (Recommended)」——CK-11 不再解析围栏：标题到第一个 h2 的头部区域里只要出现连续 3 个以上 ` 或 ~，就报「不支持的头部格式」；撤回 CK-12 中「头部围栏里的出现单独存在时不导致失败」的承诺；正文和 consumer 模式不受影响
+  - 2026-10-03T00:36 note: 上一行由 Claude 代录：人类在 Claude Code 会话里回答了一道选择题（问 CK-11 选哪种修法），选中的选项标签是「C′ 字面格式检查 (Recommended)」；owner 行的文字是该选项的说明原文（略去了其中「Astra 的建议」与代价说明两句），不是人类另行写下的句子
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 68c5d36..7d5381f 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -25,6 +25,14 @@ Known limitations, stated as they stand:
+ Later preview snapshots are cut from `release/v6` after v6-dev work merges back; fixes in flight
+ (authorization-scope, archive-manifest) are not part of this snapshot.
+ 
++## Unreleased — batch-recheck-fixes: three findings of the requirement-level re-check
++
++The requirement-level re-check of batch-review-fixes (9020f02) found all 19 original findings addressed and confirmed three new ones (two adversarial votes each), fixed here under their ids.
++
++- **check-self-R1 (and BRC-R1/R2 of this change's review).** CK-11 no longer parses CommonMark in the runbook header: by the owner's decision (2026-10-03) the header region is read literally, and any run of three or more backticks or tildes in it fails as an unsupported header format, naming the line. The line-based fence reader kept missing container edges (quotes, list items, list continuation, an ordered list after a paragraph); none can be misread now. This withdraws CK-12's tolerance of a fenced occurrence in the header; the body region is unaffected.
++- **guide-R1.** `update` adopts an unrecorded guide only on a read located on its descriptor — never on a pathname check — so on macOS and Windows an unrecorded guide is held back `not refreshed` like an outdated one (delete it and rerun `apriori init`).
++- **SST-R1.** The guide tests follow the platform: where no descriptor can be located the suite asserts the refusals, and symlink-dependent cases are skipped on Windows as elsewhere in the suite; the whole suite passes with `/proc` hidden.
++
+ ## Unreleased — batch-review-fixes: the 19 findings of the 10-02 batch's requirement-level check
+ 
+ A requirement-level independent check (codex, two adversarial votes per finding) over `5d3fc78..c290842` confirmed 19 findings; this change fixes all of them under their original ids.
+diff --git a/MIGRATING.md b/MIGRATING.md
+index a71444c..87952c3 100644
+--- a/MIGRATING.md
++++ b/MIGRATING.md
+@@ -2,11 +2,16 @@
+ 
+ The 3.0.0 stability promise — CLI surface & flags, `--json` shapes, the delta format, the flow-state schema and the `apriori/` layout only break in a major — holds for the released 5.x line. **6.x is an unreleased development line** (npm has never shipped a 6.x; `package.json` says `6.2.0-rc.0`, the runbook `runbook-version: 6.2`): within it the `gate --review-ready` item ids (`tests`, `open`) and the flow-state fields (`## Evidence` gone, `mode:` inert) changed in 6.2, and further changes before a 6.x release are declared here rather than promised away. Everything below is either additive or a declared fail-closed tightening — except limit-ruling, which moves a stop the owner explicitly approved moving and says so in its section.
+ 
++## batch-recheck-fixes (Unreleased) — the runbook header is read literally by `check --self`
++
++- **Contributors to this repository only** (`apriori check --self`; consumer `apriori check` never runs CK-11): the runbook's header region — everything before its first `## ` heading — must not contain a run of three or more backticks or tildes. Any such run fails CK-11 as an unsupported header format, naming the line, with or without a valid `runbook-version` entry beside it. Keep code examples below the first h2. (Owner decision 2026-10-03.)
++- `apriori update` on macOS and Windows never adopts an unrecorded guide either — see the prototype-walk-guide section below.
++
+ ## prototype-walk-guide (Unreleased) — one guide beside the runbook, and no downgrade past it
+ 
+ - **`apriori update` installs `apriori/guides/prototype-walk.md`** on a project that never had it and records it in `apriori/managed.json`; from then on it is refreshed like the runbook. A guide you edited locally is reported `modified` and left alone; one you deleted is reported missing — `apriori init --tools <t>` recreates it.
+ - **The runbook now names that guide** (§4 Ground): when a requirement comes with a runnable UI prototype, the agent offers an optional walk once and reads the guide in full before running one. Nothing else in a project changes.
+-- **An unrecorded guide is adopted only on proof** (batch-review-fixes): when an `init` or `update` failed after writing the guide but before recording it, the next `update` adopts a guide whose bytes are exactly a shipped edition (`adopted …`, refreshed if it is an earlier one); anything else at that path stays `unmanaged`. `init` now records every file it creates the moment it creates it, and creates the guide exclusively — something that appears at the path meanwhile is reported and left alone; `update` judges and rewrites a present guide through one read that never follows a symlink, so one swapped in meanwhile is reported (`changed during refresh`) and never written through. Two residuals are stated rather than closed: `apriori/guides` itself swapped for a symlink out of the project between the check and the exclusive create can still receive a new file there (never an overwrite of an existing one); and `update` rewrites a present guide in place only where it can locate the opened file itself (`/proc/self/fd`, i.e. Linux and WSL) and the file has no other hard link — elsewhere (macOS, Windows) an outdated guide is reported `not refreshed (skipped — …)`: delete it and rerun `apriori init --tools <t>` to get the current one.
++- **An unrecorded guide is adopted only on proof** (batch-review-fixes): when an `init` or `update` failed after writing the guide but before recording it, the next `update` adopts a guide whose bytes are exactly a shipped edition (`adopted …`, refreshed if it is an earlier one); anything else at that path stays `unmanaged`. `init` now records every file it creates the moment it creates it, and creates the guide exclusively — something that appears at the path meanwhile is reported and left alone; `update` judges and rewrites a present guide through one read that never follows a symlink, so one swapped in meanwhile is reported (`changed during refresh`) and never written through. Two residuals are stated rather than closed: `apriori/guides` itself swapped for a symlink out of the project between the check and the exclusive create can still receive a new file there (never an overwrite of an existing one); and `update` rewrites a present guide in place only where it can locate the opened file itself (`/proc/self/fd`, i.e. Linux and WSL) and the file has no other hard link — elsewhere (macOS, Windows) an outdated guide is reported `not refreshed (skipped — …)`, and an unrecorded one is never adopted (the same message): delete it and rerun `apriori init --tools <t>` to get the current one, recorded.
+ - **The update summary** no longer says "everything already matches" when a tool-owned path was missing or obstructed: it reports `N missing or obstructed (skipped)`.
+ - **Downgrading is not supported** once the guide is recorded: a CLI from before this change refuses a manifest that lists it (`managed.json: 'apriori/guides/prototype-walk.md' is not a refresh target`), so `init` and `update` would fail. To go back, remove that entry from `apriori/managed.json` (and the guide, if you like) first.
+ 
+
+exec
+/usr/bin/zsh -lc 'git status --short; git diff -- lib/check.js test/check.test.js' in /root/terra/wt-fix2
+ succeeded in 0ms:
+ M CHANGELOG.md
+ M MIGRATING.md
+ M docs/cli.md
+ M docs/cli_cn.md
+ M lib/check.js
+ M lib/managed.js
+ M lib/update.js
+ M test/check.test.js
+ M test/prototype-walk-guide.test.js
+ M test/update.test.js
+?? apriori/changes/batch-recheck-fixes/
+diff --git a/lib/check.js b/lib/check.js
+index b3cbdf9..8bd9017 100644
+--- a/lib/check.js
++++ b/lib/check.js
+@@ -234,10 +234,18 @@ function checkRunbookVersion(root, files) {
+       fails.push(`CK-11 ${label}: the canonical runbook is missing — a version header is required`);
+       continue;
+     }
+-    // header region only: before the first h2 — a body-text blockquote never counts
++    // header region only: before the first h2 — a body-text blockquote never counts. It is read
++    // LITERALLY, never as CommonMark (owner 2026-10-03, batch-recheck-fixes): a run of three or more
++    // backticks or tildes anywhere in it — whatever its indentation, container or purpose — is an
++    // unsupported header format, so no fence is ever read, and so none can be misread
+     const h2 = text.search(/^##\s/m);
+     const header = h2 >= 0 ? text.slice(0, h2) : text;
+-    const hits = [...stripFences(stripFencedBlocks(header)).matchAll(/^>\s*`runbook-version:\s*([^`]*)`/gm)];
++    const fenceRun = /`{3,}|~{3,}/.exec(header);
++    if (fenceRun) {
++      fails.push(`CK-11 ${label}: unsupported header format — line ${lineOf(header, fenceRun.index)} has a run of three or more backticks or tildes; the header region (before the first h2) is read literally and carries no code fence, so no runbook-version entry is read`);
++      continue;
++    }
++    const hits = [...header.matchAll(/^>\s*`runbook-version:\s*([^`]*)`/gm)];
+     if (hits.length === 0) fails.push(`CK-11 ${label}: no \`runbook-version\` blockquote entry (expected \`> \`runbook-version: ${pkgVer}\`\`)`);
+     else if (hits.length > 1) fails.push(`CK-11 ${label}: ${hits.length} runbook-version entries — exactly one required`);
+     else {
+@@ -249,33 +257,6 @@ function checkRunbookVersion(root, files) {
+   return fails;
+ }
+ 
+-// CK-11/CK-12's own fence reader: CommonMark fenced blocks by line — ``` or ~~~ (three or more, up to
+-// three spaces of indent), closed only by the same character at least as long, an unclosed one running
+-// to the end. A fence belongs to its container: one opened inside a blockquote (`> ~~~`) closes only at
+-// that same quote depth and ends with its blockquote; inside a fence opened outside any quote, a quoted
+-// line (`> ~~~`) is content, never a closer. checkRunbookVersion applies it BEFORE the shared
+-// stripFences, which reads backtick spans alone and stays as it is for every other reader (its tilde
+-// alignment is follow-up FU-1 of batch-review-fixes: it also feeds the delta parsers).
+-function stripFencedBlocks(text) {
+-  const out = [];
+-  let fence = null;
+-  for (const line of text.split('\n')) {
+-    const quote = /^(?: {0,3}>[ \t]?)*/.exec(line)[0];
+-    const depth = (quote.match(/>/g) || []).length;
+-    const m = /^ {0,3}(`{3,}|~{3,})(.*)$/.exec(line.slice(quote.length));
+-    if (fence) {
+-      if (depth >= fence.depth) {
+-        if (depth === fence.depth && m && m[1][0] === fence.ch && m[1].length >= fence.len && !m[2].trim()) fence = null;
+-        continue;
+-      }
+-      fence = null;                     // its blockquote ended, and the fence with it: judge this line afresh
+-    }
+-    if (m && !(m[1][0] === '`' && m[2].includes('`'))) { fence = { ch: m[1][0], len: m[1].length, depth }; continue; }
+-    out.push(line);
+-  }
+-  return out.join('\n');
+-}
+-
+ const PACKAGED_RUNBOOK = path.join(__dirname, '..', 'RUNBOOK.md');
+ function checkRunbookFreshness(root, packagedPath = PACKAGED_RUNBOOK) {
+   const scaffolded = path.join(root, 'apriori', 'runbook.md');
+diff --git a/test/check.test.js b/test/check.test.js
+index 7a57fb8..e40320a 100644
+--- a/test/check.test.js
++++ b/test/check.test.js
+@@ -286,7 +286,7 @@ test('CK-11 the runbook major.minor tracks the CLI major.minor', () => {
+   assert.deepStrictEqual(checkRunbookVersion(root, files(EN)), []);
+ });
+ 
+-test('CK-12 malformed, missing, duplicate, and body occurrences', () => {
++test('CK-12 malformed, missing, duplicate, body occurrences, and a fence in the header', () => {
+   const { checkRunbookVersion } = require('../lib/check');
+   const os3 = require('node:os'); const fs3 = require('node:fs'); const p3 = require('node:path');
+   const root = fs3.mkdtempSync(p3.join(os3.tmpdir(), 'apriori-ck11b-'));
+@@ -300,26 +300,33 @@ test('CK-12 malformed, missing, duplicate, and body occurrences', () => {
+   assert.match(checkRunbookVersion(root, one('> `runbook-version: vier`'))[0], /malformed/i);
+   // body-text occurrence (not a blockquote-backtick entry) is never matched -> treated as missing
+   assert.match(checkRunbookVersion(root, one('the field runbook-version: 4.0 in prose'))[0], /no.*runbook-version|missing/i);
+-  // inside a code fence -> never matched -> missing
+-  assert.match(checkRunbookVersion(root, one('```\n> `runbook-version: 4.0`\n```'))[0], /no.*runbook-version|missing/i);
+-  // every CommonMark fence, not backticks alone (batch review check-self-4): a tilde fence, a longer fence
+-  // that a shorter run inside does not close, a fence behind blockquote markers, and an unclosed fence
+-  const MISSING = /no.*runbook-version|missing/i;
+-  assert.match(checkRunbookVersion(root, one('~~~\n> `runbook-version: 4.0`\n~~~'))[0], MISSING);
+-  assert.match(checkRunbookVersion(root, one('~~~~\n~~~\n> `runbook-version: 4.0`\n~~~~'))[0], MISSING);
+-  assert.match(checkRunbookVersion(root, one('````\n```\n> `runbook-version: 4.0`\n````'))[0], MISSING);
+-  assert.match(checkRunbookVersion(root, one('> ~~~\n> `runbook-version: 4.0`\n> ~~~'))[0], MISSING);
+-  assert.match(checkRunbookVersion(root, one('~~~ md\n> `runbook-version: 4.0`'))[0], MISSING);
+-  // a fence belongs to its container (round 1 BRF-R3): inside a top-level fence a quoted `> ~~~` is
+-  // content, not a closer; a quoted fence closes only at its own depth and ends with its blockquote
+-  assert.match(checkRunbookVersion(root, one('~~~\n> ~~~\n> `runbook-version: 4.0`\n~~~'))[0], MISSING);
+-  assert.match(checkRunbookVersion(root, one('> ~~~\n> > ~~~\n> `runbook-version: 4.0`\n> ~~~'))[0], MISSING);
+-  assert.deepStrictEqual(checkRunbookVersion(root, one('> ~~~\n> x\n\n> `runbook-version: 4.0`')), []);
+-  // a backtick fence closes only on a backtick line, a tilde fence only on a tilde line
+-  assert.match(checkRunbookVersion(root, one('~~~\n```\n> `runbook-version: 4.0`\n~~~'))[0], MISSING);
+-  // a real entry after a CLOSED fence of either kind still counts
+-  assert.deepStrictEqual(checkRunbookVersion(root, one('~~~\nx\n~~~\n\n> `runbook-version: 4.0`')), []);
+-  assert.deepStrictEqual(checkRunbookVersion(root, one('```\nx\n```\n\n> `runbook-version: 4.0`')), []);
++  // the header region is read literally, never as CommonMark (owner 2026-10-03, batch-recheck-fixes): any
++  // run of three or more backticks or tildes in it — any indentation, container or purpose, with or without a
++  // real entry — is an unsupported header format, naming the line; nothing in it is read as a version entry.
++  // The cases below are the container edges a fence reader kept missing (check-self-4, BRF-R3, check-self-R1,
++  // BRC-R1, BRC-R2); each is now refused, never read.
++  const UNSUPPORTED = /CK-11 RUNBOOK\.md: unsupported header format — line (\d+) has a run of three or more backticks or tildes/;
++  for (const body of [
++    '```\n> `runbook-version: 4.0`\n```',                          // a fenced entry alone
++    '~~~\n> `runbook-version: 4.0`\n~~~',
++    '~~~~\n~~~\n> `runbook-version: 4.0`\n~~~~',
++    '> ~~~\n> `runbook-version: 4.0`\n> ~~~',
++    '~~~ md\n> `runbook-version: 4.0`',                             // unclosed
++    '~~~\n> ~~~\n> `runbook-version: 4.0`\n~~~',
++    '- ~~~\n  example\n  ~~~\n\n> `runbook-version: 4.0`',         // a real entry after a list item's fence
++    'paragraph\n2. ~~~\n   ~~~\n> `runbook-version: 4.0`',
++    '> `runbook-version: 4.0`\n\n- example\n\n  ~~~\n  sample\n     ~~~\n\n> `runbook-version: 4.0`',
++    '> `runbook-version: 4.0`\n\nsee ```inline``` here',             // a real entry plus an unrelated run
++    '      ~~~\n> `runbook-version: 4.0`',
++  ]) {
++    const f = checkRunbookVersion(root, one(body));
++    assert.strictEqual(f.length, 1, body);
++    assert.match(f[0], UNSUPPORTED, body);
++  }
++  // it names the line the run is on
++  assert.strictEqual(UNSUPPORTED.exec(checkRunbookVersion(root, one('> `runbook-version: 4.0`\n\nx\n~~~'))[0])[1], '6');
++  // single backticks (inline code) are ordinary text, and a fence after the first h2 does not concern CK-11
++  assert.deepStrictEqual(checkRunbookVersion(root, one('> `runbook-version: 4.0` · upstream: `https://x`\n\n## Body\n\n~~~\n> `runbook-version: 9.9`\n~~~')), []);
+   // a real blockquote AFTER the first h2 (body region) is never matched -> missing (RVIMPL-2)
+   assert.match(checkRunbookVersion(root, { 'RUNBOOK.md': '# R\n\n## Body\n\n> `runbook-version: 4.0`\n' })[0], /no.*runbook-version|missing/i);
+   // RUNBOOK.md absent under --self -> the canonical runbook is required (RVIMPL-1)
+
+exec
+/usr/bin/zsh -lc "rg -n 'lineOf|checkRunbookVersion|stripFencedBlocks|selfMode|self' lib/check.js; nl -ba lib/check.js | sed -n '1,70p'; nl -ba lib/check.js | sed -n '218,262p'; nl -ba test/check.test.js | sed -n '286,363p'; rg -n 'function lineOf|const lineOf' lib" in /root/terra/wt-fix2
+ succeeded in 0ms:
+37:function lineOf(text, idx) { return text.slice(0, idx).split('\n').length; }
+40:// cross-file fragments (./y.md#frag) validated against the target's headings (self-mode)
+89:      for (const m of text.matchAll(re)) fails.push(`${name}:${lineOf(text, m.index)}: ${label}`);
+93:        fails.push(`${name}:${lineOf(text, m.index)}: VERDICT string not in table: ${q}`);
+145:// in-process helper that compiled the pattern itself is gone (6.2): a config-origin pattern
+220:// ---- CK-11: the runbook major.minor tracks the CLI major.minor (self-mode) ----
+223:function checkRunbookVersion(root, files) {
+233:    if (text === undefined) {           // the runbook is REQUIRED under --self
+245:      fails.push(`CK-11 ${label}: unsupported header format — line ${lineOf(header, fenceRun.index)} has a run of three or more backticks or tildes; the header region (before the first h2) is read literally and carries no code fence, so no runbook-version entry is read`);
+307:// OpenSpec or shipping its own README is never failed by apriori's self-checks.
+308:// SELF (--self): additionally runs the apriori repo's handbook checks (EN/CN pairs,
+310:const USAGE = 'usage: apriori check [--specs <dir>] [--self]';
+314:    flags: { '--specs': 'value', '--self': 'flag' } }, (f) => {
+317:    const self = !!f['--self'];
+364:    if (self) {
+393:      fails.push(...checkRunbookVersion(root, files));   // CK-11
+407:  checkRunbookFreshness, checkRunbookVersion, VERDICT_PHRASES, cli,
+     1	'use strict';
+     2	/*
+     3	 * apriori check — structural consistency checks (originally a JS port of v2's check_docs.py; that script is retired, this is the only checker).
+     4	 * Zero deps — pure Node stdlib. Each check returns an array of failure strings.
+     5	 *
+     6	 * Ported from v2 (behaviour-equivalent): anchor resolution, file-link existence,
+     7	 * EN/CN heading alignment, verdict-phrase table + drift variants, codex-command EN/CN parity.
+     8	 * V3 changes: CK-04 every spec scenario carries a bindable ID; CK-05 no OpenSpec adapter
+     9	 * references remain (the v2 "adapter wording" assertions invert to "no openspec/opsx at all").
+    10	 */
+    11	const fs = require('fs');
+    12	const path = require('path');
+    13	const { containsFuturePath } = require('./archive-merge');
+    14	const { withStrict } = require('./args');
+    15	const { stripFences } = require('./text');
+    16	const { resolveIdPattern } = require('./config');
+    17	const manifest = require('./manifest');
+    18	const { makeIdMatcher, matcherFailureMsg } = require('./spec-runner');   // one recognition contract for all consumers
+    19	
+    20	// ---- helpers (ported from gh_slug / parse / num_prefix) ---------------------
+    21	function ghSlug(heading) {
+    22	  const s = heading.trim().toLowerCase().replace(/`/g, '').replace(/\*/g, '');
+    23	  let out = '';
+    24	  for (const ch of s) {
+    25	    if (ch === ' ') out += '-';
+    26	    else if (ch === '-' || ch === '_') out += ch;
+    27	    else if (/[\p{L}\p{N}\p{M}]/u.test(ch)) out += ch;
+    28	  }
+    29	  return out;
+    30	}
+    31	function headings(text) {
+    32	  const s = stripFences(text);
+    33	  return [...s.matchAll(/^(#{1,6})\s+(.+)$/gm)].map((m) => [m[1].length, m[2]]);
+    34	}
+    35	function anchors(text) { return [...stripFences(text).matchAll(/\]\(#([^)]+)\)/g)].map((m) => m[1]); }
+    36	function numPrefix(t) { const m = t.trim().match(/^(\d+(?:\.\d+)*)\b/); return m ? m[1] : null; }
+    37	function lineOf(text, idx) { return text.slice(0, idx).split('\n').length; }
+    38	
+    39	// ---- CK-01/CK-09: anchors resolve, file links exist — resolved from the LINKING file's dir;
+    40	// cross-file fragments (./y.md#frag) validated against the target's headings (self-mode)
+    41	function fileLinksWithFrags(text) {
+    42	  return [...stripFences(text).matchAll(/\]\((\.\/[^)#]+)(?:#([^)]*))?\)/g)].map((m) => [m[1], m[2] || null]);
+    43	}
+    44	function checkLinks(baseDir, name, text) {
+    45	  const fails = [];
+    46	  const slugs = new Set(headings(text).map(([, t]) => ghSlug(t)));
+    47	  for (const a of anchors(text)) if (!slugs.has(a)) fails.push(`${name}: broken anchor #${a}`);
+    48	  for (const [f, frag] of fileLinksWithFrags(text)) {
+    49	    const target = path.join(baseDir, f);
+    50	    if (!fs.existsSync(target)) { fails.push(`${name}: broken file link ${f}`); continue; }
+    51	    if (frag) {
+    52	      const tslugs = new Set(headings(fs.readFileSync(target, 'utf8')).map(([, t]) => ghSlug(t)));
+    53	      if (!tslugs.has(frag)) fails.push(`${name}: broken cross-file fragment ${f}#${frag}`);
+    54	    }
+    55	  }
+    56	  return fails;
+    57	}
+    58	
+    59	// ---- CK-02: EN/CN heading alignment (length, levels, numeric prefixes) -------
+    60	function checkHeadingAlignment(enName, enText, cnName, cnText) {
+    61	  const fails = [];
+    62	  const eh = headings(enText), ch = headings(cnText);
+    63	  if (eh.length !== ch.length) fails.push(`heading count mismatch: ${enName}=${eh.length} vs ${cnName}=${ch.length}`);
+    64	  const n = Math.min(eh.length, ch.length);
+    65	  for (let i = 0; i < n; i++) {
+    66	    const [el, et] = eh[i], [cl, ct] = ch[i];
+    67	    const ep = numPrefix(et), cp = numPrefix(ct);
+    68	    const numOk = (ep && cp) ? ep === cp : true;
+    69	    if (el !== cl || !numOk) fails.push(`heading misaligned @#${i + 1}: [h${el}] ${et.slice(0, 40)} <-> [h${cl}] ${ct.slice(0, 40)}`);
+    70	  }
+   218	
+   219	// ---- CK-06: scaffolded-runbook freshness (warn-only, never a failure) ---------
+   220	// ---- CK-11: the runbook major.minor tracks the CLI major.minor (self-mode) ----
+   221	// A canonical entry is a fence-outside header blockquote `> `runbook-version: X.Y``;
+   222	// body-text or fenced occurrences are never matched. RUNBOOK.md is the one runbook (English only).
+   223	function checkRunbookVersion(root, files) {
+   224	  const fails = [];
+   225	  let pkgVer;                           // 'X.Y' of the package version (a pre-release tag is ignored)
+   226	  try {
+   227	    const m = /^(\d+)\.(\d+)/.exec(String(JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).version || ''));
+   228	    pkgVer = m ? `${m[1]}.${m[2]}` : '';
+   229	  } catch { return fails; }             // no readable package.json → not this check's business
+   230	  if (!pkgVer) return fails;
+   231	  for (const label of ['RUNBOOK.md']) {
+   232	    const text = files[label];
+   233	    if (text === undefined) {           // the runbook is REQUIRED under --self
+   234	      fails.push(`CK-11 ${label}: the canonical runbook is missing — a version header is required`);
+   235	      continue;
+   236	    }
+   237	    // header region only: before the first h2 — a body-text blockquote never counts. It is read
+   238	    // LITERALLY, never as CommonMark (owner 2026-10-03, batch-recheck-fixes): a run of three or more
+   239	    // backticks or tildes anywhere in it — whatever its indentation, container or purpose — is an
+   240	    // unsupported header format, so no fence is ever read, and so none can be misread
+   241	    const h2 = text.search(/^##\s/m);
+   242	    const header = h2 >= 0 ? text.slice(0, h2) : text;
+   243	    const fenceRun = /`{3,}|~{3,}/.exec(header);
+   244	    if (fenceRun) {
+   245	      fails.push(`CK-11 ${label}: unsupported header format — line ${lineOf(header, fenceRun.index)} has a run of three or more backticks or tildes; the header region (before the first h2) is read literally and carries no code fence, so no runbook-version entry is read`);
+   246	      continue;
+   247	    }
+   248	    const hits = [...header.matchAll(/^>\s*`runbook-version:\s*([^`]*)`/gm)];
+   249	    if (hits.length === 0) fails.push(`CK-11 ${label}: no \`runbook-version\` blockquote entry (expected \`> \`runbook-version: ${pkgVer}\`\`)`);
+   250	    else if (hits.length > 1) fails.push(`CK-11 ${label}: ${hits.length} runbook-version entries — exactly one required`);
+   251	    else {
+   252	      const m = /^(\d+)\.(\d+)$/.exec(hits[0][1].trim());
+   253	      if (!m) fails.push(`CK-11 ${label}: malformed runbook-version value '${hits[0][1].trim()}' (expected X.Y)`);
+   254	      else if (`${m[1]}.${m[2]}` !== pkgVer) fails.push(`CK-11 ${label}: runbook-version ${m[1]}.${m[2]} != package ${pkgVer} (major.minor must match)`);
+   255	    }
+   256	  }
+   257	  return fails;
+   258	}
+   259	
+   260	const PACKAGED_RUNBOOK = path.join(__dirname, '..', 'RUNBOOK.md');
+   261	function checkRunbookFreshness(root, packagedPath = PACKAGED_RUNBOOK) {
+   262	  const scaffolded = path.join(root, 'apriori', 'runbook.md');
+   286	  assert.deepStrictEqual(checkRunbookVersion(root, files(EN)), []);
+   287	});
+   288	
+   289	test('CK-12 malformed, missing, duplicate, body occurrences, and a fence in the header', () => {
+   290	  const { checkRunbookVersion } = require('../lib/check');
+   291	  const os3 = require('node:os'); const fs3 = require('node:fs'); const p3 = require('node:path');
+   292	  const root = fs3.mkdtempSync(p3.join(os3.tmpdir(), 'apriori-ck11b-'));
+   293	  fs3.writeFileSync(p3.join(root, 'package.json'), JSON.stringify({ version: '4.0.3' }));
+   294	  const one = (body) => ({ 'RUNBOOK.md': `# R\n\n${body}\n` });
+   295	  // missing entry
+   296	  assert.match(checkRunbookVersion(root, one('just prose, no version'))[0], /no.*runbook-version|missing/i);
+   297	  // duplicate
+   298	  assert.match(checkRunbookVersion(root, one('> `runbook-version: 4.0`\n> `runbook-version: 4.0`'))[0], /one required|duplicate|2 /i);
+   299	  // malformed value
+   300	  assert.match(checkRunbookVersion(root, one('> `runbook-version: vier`'))[0], /malformed/i);
+   301	  // body-text occurrence (not a blockquote-backtick entry) is never matched -> treated as missing
+   302	  assert.match(checkRunbookVersion(root, one('the field runbook-version: 4.0 in prose'))[0], /no.*runbook-version|missing/i);
+   303	  // the header region is read literally, never as CommonMark (owner 2026-10-03, batch-recheck-fixes): any
+   304	  // run of three or more backticks or tildes in it — any indentation, container or purpose, with or without a
+   305	  // real entry — is an unsupported header format, naming the line; nothing in it is read as a version entry.
+   306	  // The cases below are the container edges a fence reader kept missing (check-self-4, BRF-R3, check-self-R1,
+   307	  // BRC-R1, BRC-R2); each is now refused, never read.
+   308	  const UNSUPPORTED = /CK-11 RUNBOOK\.md: unsupported header format — line (\d+) has a run of three or more backticks or tildes/;
+   309	  for (const body of [
+   310	    '```\n> `runbook-version: 4.0`\n```',                          // a fenced entry alone
+   311	    '~~~\n> `runbook-version: 4.0`\n~~~',
+   312	    '~~~~\n~~~\n> `runbook-version: 4.0`\n~~~~',
+   313	    '> ~~~\n> `runbook-version: 4.0`\n> ~~~',
+   314	    '~~~ md\n> `runbook-version: 4.0`',                             // unclosed
+   315	    '~~~\n> ~~~\n> `runbook-version: 4.0`\n~~~',
+   316	    '- ~~~\n  example\n  ~~~\n\n> `runbook-version: 4.0`',         // a real entry after a list item's fence
+   317	    'paragraph\n2. ~~~\n   ~~~\n> `runbook-version: 4.0`',
+   318	    '> `runbook-version: 4.0`\n\n- example\n\n  ~~~\n  sample\n     ~~~\n\n> `runbook-version: 4.0`',
+   319	    '> `runbook-version: 4.0`\n\nsee ```inline``` here',             // a real entry plus an unrelated run
+   320	    '      ~~~\n> `runbook-version: 4.0`',
+   321	  ]) {
+   322	    const f = checkRunbookVersion(root, one(body));
+   323	    assert.strictEqual(f.length, 1, body);
+   324	    assert.match(f[0], UNSUPPORTED, body);
+   325	  }
+   326	  // it names the line the run is on
+   327	  assert.strictEqual(UNSUPPORTED.exec(checkRunbookVersion(root, one('> `runbook-version: 4.0`\n\nx\n~~~'))[0])[1], '6');
+   328	  // single backticks (inline code) are ordinary text, and a fence after the first h2 does not concern CK-11
+   329	  assert.deepStrictEqual(checkRunbookVersion(root, one('> `runbook-version: 4.0` · upstream: `https://x`\n\n## Body\n\n~~~\n> `runbook-version: 9.9`\n~~~')), []);
+   330	  // a real blockquote AFTER the first h2 (body region) is never matched -> missing (RVIMPL-2)
+   331	  assert.match(checkRunbookVersion(root, { 'RUNBOOK.md': '# R\n\n## Body\n\n> `runbook-version: 4.0`\n' })[0], /no.*runbook-version|missing/i);
+   332	  // RUNBOOK.md absent under --self -> the canonical runbook is required (RVIMPL-1)
+   333	  assert.match(checkRunbookVersion(root, {})[0], /canonical|missing/i);
+   334	});
+   335	
+   336	test('CK-11 runs under --self and not in consumer mode', () => {
+   337	  const os3 = require('node:os'); const fs3 = require('node:fs'); const p3 = require('node:path');
+   338	  const { spawnSync } = require('node:child_process');
+   339	  const BIN3 = p3.join(__dirname, '..', 'bin', 'apriori.js');
+   340	  const root = fs3.mkdtempSync(p3.join(os3.tmpdir(), 'apriori-ck11s-'));
+   341	  fs3.mkdirSync(p3.join(root, 'apriori', 'specs'), { recursive: true });
+   342	  fs3.writeFileSync(p3.join(root, 'apriori/specs/x.md'), '#### Scenario: XX-01 a\n- t\n');
+   343	  fs3.writeFileSync(p3.join(root, 'package.json'), JSON.stringify({ version: '4.0.3' }));
+   344	  fs3.writeFileSync(p3.join(root, 'RUNBOOK.md'), '# R\n\n> `runbook-version: 3.0`\n');
+   345	  const self = spawnSync('node', [BIN3, 'check', '--self'], { cwd: root, encoding: 'utf8' });
+   346	  assert.match(self.stdout + self.stderr, /runbook-version|CK-11/i);
+   347	  const consumer = spawnSync('node', [BIN3, 'check'], { cwd: root, encoding: 'utf8' });
+   348	  assert.doesNotMatch(consumer.stdout + consumer.stderr, /runbook-version|CK-11/i);
+   349	});
+   350	
+   351	test('CK-17 the retired lanes leave the phrase table, and the table stays closed', () => {
+   352	  const { checkVerdictPhrases, VERDICT_PHRASES } = require('../lib/check.js');
+   353	  // the lane's `inspection` phrase and the explore track's P12 pair went with their owners
+   354	  for (const gone of ['VERDICT: no findings', 'VERDICT: extraction accepted', 'VERDICT: extraction rejected'])
+   355	    assert.ok(!VERDICT_PHRASES.includes(gone), `retired phrase still registered: ${gone}`);
+   356	  // what P8 and the fast floor actually use is still there
+   357	  for (const kept of ['VERDICT: no spec-vs-code gaps', 'VERDICT: gaps found', 'VERDICT: no major issues'])
+   358	    assert.ok(VERDICT_PHRASES.includes(kept), `live phrase missing: ${kept}`);
+   359	
+   360	  const runbooks = { 'RUNBOOK.md': VERDICT_PHRASES.join('\n') };
+   361	  assert.deepStrictEqual(checkVerdictPhrases(runbooks), [], 'the canonical table checks clean against itself');
+   362	
+   363	  // an unregistered phrase still fails — including one a retired lane used to license
+lib/check.js:37:function lineOf(text, idx) { return text.slice(0, idx).split('\n').length; }
+
+exec
+/usr/bin/zsh -lc 'node bin/apriori.js gate --change batch-recheck-fixes --json; git diff --check' in /root/terra/wt-fix2
+ succeeded in 0ms:
+{
+  "change": "batch-recheck-fixes",
+  "stage": "in-flight",
+  "checks": [
+    {
+      "id": "C1",
+      "status": "skipped",
+      "detail": "skipped — no test command (pass --test-cmd or add a test-cmd row to apriori/process-config.md); the binding check did not run"
+    },
+    {
+      "id": "C2",
+      "status": "n/a",
+      "detail": "retired in 6.2 — nothing is read"
+    },
+    {
+      "id": "C3",
+      "status": "pass",
+      "detail": "legal (review)"
+    },
+    {
+      "id": "C4",
+      "status": "n/a",
+      "detail": "ledger retired in 6.2 — open items live in ## Open"
+    },
+    {
+      "id": "C5",
+      "status": "pass",
+      "detail": "1 review doc(s), every verdict has raw evidence"
+    },
+    {
+      "id": "C6",
+      "status": "n/a",
+      "detail": "check: no truth doc; update: no truth doc"
+    },
+    {
+      "id": "C7",
+      "status": "pass",
+      "detail": "every mutation delta is stamped"
+    },
+    {
+      "id": "C8",
+      "status": "blocked",
+      "detail": "code-review round 1 (revise, 2 open); review-round-limit 8 (default); the independent review has not resolved (code-review round 1, 2 open) — the reviewer's latest verdict is what must close before the change ships; no ledger state can stand in for it; transcript 'code-review-v2-raw.txt' names a review round whose summary 'code-review-v2.md' is missing"
+    },
+    {
+      "id": "C9",
+      "status": "pass",
+      "detail": "no open items; risk: contract-mutation: check/spec.md MODIFIED 'CK-11 keeps the runbook version aligned with the CLI major.minor'; risk: contract-mutation: update/spec.md MODIFIED 'update refreshes only manifest-proven tool-owned files', MODIFIED 'update installs the prototype-walk guide once and then manages it like the runbook'"
+    }
+  ],
+  "result": "BLOCKED",
+  "blocked": 1,
+  "errors": []
+}
+
+codex
+<!-- provenance: provider=openai model=unknown session=unknown date=2026-10-03 -->
+
+Review body for `apriori/changes/batch-recheck-fixes/review/code-review-v2.md`, returned for verbatim landing under RUNBOOK §1 R2.
+
+**BRC-R1: ADDRESSED.** The ordered-list counterexample now encounters the unconditional delimiter-run check at [lib/check.js:243](/root/terra/wt-fix2/lib/check.js:243). It produces an unsupported-header diagnostic at line 4 and exits before matching version entries. Paragraph interruption and list recognition no longer influence the result. The original counterexample appears in CK-12 at [test/check.test.js:317](/root/terra/wt-fix2/test/check.test.js:317), where the test requires exactly one unsupported-format diagnostic containing a line number.
+
+**BRC-R2: ADDRESSED.** The list-continuation counterexample likewise fails at its first delimiter run, line 7. No content is stripped, and no container state can suppress the second version entry. Its original duplicate-header fixture appears at [test/check.test.js:318](/root/terra/wt-fix2/test/check.test.js:318) and must produce the unsupported-format refusal. The separate ordinary-duplicate assertion remains.
+
+The implementation and revised behavior contract agree on the owner-authorized change: any qualifying delimiter run in the header causes refusal before entry recognition, regardless of indentation, container, or whether a valid entry also exists. `stripFencedBlocks` is removed, and CK-11 no longer calls the shared `stripFences`. Without a prohibited run, the header reaches the entry matcher unchanged; with one, it cannot pass. Thus neither reported fence mechanism can admit a fenced entry or conceal a duplicate.
+
+CK-12 also checks backtick and tilde runs, longer and unclosed runs, quoted/list forms, unrelated inline runs, and indented runs. Each fixture requires one diagnostic with a line number; a separate fixture asserts the exact line number, `6`. Positive coverage retains inline single backticks and a valid header followed by a body fence. The existing consumer-mode test and CLI dispatch preserve CK-11’s self-mode restriction.
+
+The check delta, its Notes, MIGRATING, CHANGELOG, and the flow-state disposition consistently disclose the withdrawal of header-fence tolerance. The owner’s authorization is explicit in this review request and recorded with the transcription disclosure.
+
+**New substantive findings:** none. **Advisories:** none.
+
+Review scope was the round-2 changes, their header-matching path, diagnostics, tests, contract, and migration explanation. Guide ownership changes were not re-reviewed. No test suite or build was run; conclusions rest on static inspection. The gate remains blocked on round 1’s unresolved verdict and the missing round-2 summary; this invocation skipped C1 because no test command was supplied. Credentials, human-note files, and raw transcripts were not read.
+
+VERDICT: no spec-vs-code gaps
+tokens used
+91,049
+<!-- provenance: provider=openai model=unknown session=unknown date=2026-10-03 -->
+
+Review body for `apriori/changes/batch-recheck-fixes/review/code-review-v2.md`, returned for verbatim landing under RUNBOOK §1 R2.
+
+**BRC-R1: ADDRESSED.** The ordered-list counterexample now encounters the unconditional delimiter-run check at [lib/check.js:243](/root/terra/wt-fix2/lib/check.js:243). It produces an unsupported-header diagnostic at line 4 and exits before matching version entries. Paragraph interruption and list recognition no longer influence the result. The original counterexample appears in CK-12 at [test/check.test.js:317](/root/terra/wt-fix2/test/check.test.js:317), where the test requires exactly one unsupported-format diagnostic containing a line number.
+
+**BRC-R2: ADDRESSED.** The list-continuation counterexample likewise fails at its first delimiter run, line 7. No content is stripped, and no container state can suppress the second version entry. Its original duplicate-header fixture appears at [test/check.test.js:318](/root/terra/wt-fix2/test/check.test.js:318) and must produce the unsupported-format refusal. The separate ordinary-duplicate assertion remains.
+
+The implementation and revised behavior contract agree on the owner-authorized change: any qualifying delimiter run in the header causes refusal before entry recognition, regardless of indentation, container, or whether a valid entry also exists. `stripFencedBlocks` is removed, and CK-11 no longer calls the shared `stripFences`. Without a prohibited run, the header reaches the entry matcher unchanged; with one, it cannot pass. Thus neither reported fence mechanism can admit a fenced entry or conceal a duplicate.
+
+CK-12 also checks backtick and tilde runs, longer and unclosed runs, quoted/list forms, unrelated inline runs, and indented runs. Each fixture requires one diagnostic with a line number; a separate fixture asserts the exact line number, `6`. Positive coverage retains inline single backticks and a valid header followed by a body fence. The existing consumer-mode test and CLI dispatch preserve CK-11’s self-mode restriction.
+
+The check delta, its Notes, MIGRATING, CHANGELOG, and the flow-state disposition consistently disclose the withdrawal of header-fence tolerance. The owner’s authorization is explicit in this review request and recorded with the transcription disclosure.
+
+**New substantive findings:** none. **Advisories:** none.
+
+Review scope was the round-2 changes, their header-matching path, diagnostics, tests, contract, and migration explanation. Guide ownership changes were not re-reviewed. No test suite or build was run; conclusions rest on static inspection. The gate remains blocked on round 1’s unresolved verdict and the missing round-2 summary; this invocation skipped C1 because no test command was supplied. Credentials, human-note files, and raw transcripts were not read.
+
+VERDICT: no spec-vs-code gaps

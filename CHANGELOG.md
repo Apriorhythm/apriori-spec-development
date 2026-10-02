@@ -25,6 +25,14 @@ Known limitations, stated as they stand:
 Later preview snapshots are cut from `release/v6` after v6-dev work merges back; fixes in flight
 (authorization-scope, archive-manifest) are not part of this snapshot.
 
+## Unreleased — batch-recheck-fixes: three findings of the requirement-level re-check
+
+The requirement-level re-check of batch-review-fixes (9020f02) found all 19 original findings addressed and confirmed three new ones (two adversarial votes each), fixed here under their ids.
+
+- **check-self-R1 (and BRC-R1/R2 of this change's review).** CK-11 no longer parses CommonMark in the runbook header: by the owner's decision (2026-10-03) the header region is read literally, and any run of three or more backticks or tildes in it fails as an unsupported header format, naming the line. The line-based fence reader kept missing container edges (quotes, list items, list continuation, an ordered list after a paragraph); none can be misread now. This withdraws CK-12's tolerance of a fenced occurrence in the header; the body region is unaffected.
+- **guide-R1.** `update` adopts an unrecorded guide only on a read located on its descriptor — never on a pathname check — so on macOS and Windows an unrecorded guide is held back `not refreshed` like an outdated one (delete it and rerun `apriori init`).
+- **SST-R1.** The guide tests follow the platform: where no descriptor can be located the suite asserts the refusals, and symlink-dependent cases are skipped on Windows as elsewhere in the suite; the whole suite passes with `/proc` hidden.
+
 ## Unreleased — batch-review-fixes: the 19 findings of the 10-02 batch's requirement-level check
 
 A requirement-level independent check (codex, two adversarial votes per finding) over `5d3fc78..c290842` confirmed 19 findings; this change fixes all of them under their original ids.

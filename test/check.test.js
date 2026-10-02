@@ -286,7 +286,7 @@ test('CK-11 the runbook major.minor tracks the CLI major.minor', () => {
   assert.deepStrictEqual(checkRunbookVersion(root, files(EN)), []);
 });
 
-test('CK-12 malformed, missing, duplicate, and body occurrences', () => {
+test('CK-12 malformed, missing, duplicate, body occurrences, and a fence in the header', () => {
   const { checkRunbookVersion } = require('../lib/check');
   const os3 = require('node:os'); const fs3 = require('node:fs'); const p3 = require('node:path');
   const root = fs3.mkdtempSync(p3.join(os3.tmpdir(), 'apriori-ck11b-'));
@@ -300,26 +300,33 @@ test('CK-12 malformed, missing, duplicate, and body occurrences', () => {
   assert.match(checkRunbookVersion(root, one('> `runbook-version: vier`'))[0], /malformed/i);
   // body-text occurrence (not a blockquote-backtick entry) is never matched -> treated as missing
   assert.match(checkRunbookVersion(root, one('the field runbook-version: 4.0 in prose'))[0], /no.*runbook-version|missing/i);
-  // inside a code fence -> never matched -> missing
-  assert.match(checkRunbookVersion(root, one('```\n> `runbook-version: 4.0`\n```'))[0], /no.*runbook-version|missing/i);
-  // every CommonMark fence, not backticks alone (batch review check-self-4): a tilde fence, a longer fence
-  // that a shorter run inside does not close, a fence behind blockquote markers, and an unclosed fence
-  const MISSING = /no.*runbook-version|missing/i;
-  assert.match(checkRunbookVersion(root, one('~~~\n> `runbook-version: 4.0`\n~~~'))[0], MISSING);
-  assert.match(checkRunbookVersion(root, one('~~~~\n~~~\n> `runbook-version: 4.0`\n~~~~'))[0], MISSING);
-  assert.match(checkRunbookVersion(root, one('````\n```\n> `runbook-version: 4.0`\n````'))[0], MISSING);
-  assert.match(checkRunbookVersion(root, one('> ~~~\n> `runbook-version: 4.0`\n> ~~~'))[0], MISSING);
-  assert.match(checkRunbookVersion(root, one('~~~ md\n> `runbook-version: 4.0`'))[0], MISSING);
-  // a fence belongs to its container (round 1 BRF-R3): inside a top-level fence a quoted `> ~~~` is
-  // content, not a closer; a quoted fence closes only at its own depth and ends with its blockquote
-  assert.match(checkRunbookVersion(root, one('~~~\n> ~~~\n> `runbook-version: 4.0`\n~~~'))[0], MISSING);
-  assert.match(checkRunbookVersion(root, one('> ~~~\n> > ~~~\n> `runbook-version: 4.0`\n> ~~~'))[0], MISSING);
-  assert.deepStrictEqual(checkRunbookVersion(root, one('> ~~~\n> x\n\n> `runbook-version: 4.0`')), []);
-  // a backtick fence closes only on a backtick line, a tilde fence only on a tilde line
-  assert.match(checkRunbookVersion(root, one('~~~\n```\n> `runbook-version: 4.0`\n~~~'))[0], MISSING);
-  // a real entry after a CLOSED fence of either kind still counts
-  assert.deepStrictEqual(checkRunbookVersion(root, one('~~~\nx\n~~~\n\n> `runbook-version: 4.0`')), []);
-  assert.deepStrictEqual(checkRunbookVersion(root, one('```\nx\n```\n\n> `runbook-version: 4.0`')), []);
+  // the header region is read literally, never as CommonMark (owner 2026-10-03, batch-recheck-fixes): any
+  // run of three or more backticks or tildes in it — any indentation, container or purpose, with or without a
+  // real entry — is an unsupported header format, naming the line; nothing in it is read as a version entry.
+  // The cases below are the container edges a fence reader kept missing (check-self-4, BRF-R3, check-self-R1,
+  // BRC-R1, BRC-R2); each is now refused, never read.
+  const UNSUPPORTED = /CK-11 RUNBOOK\.md: unsupported header format — line (\d+) has a run of three or more backticks or tildes/;
+  for (const body of [
+    '```\n> `runbook-version: 4.0`\n```',                          // a fenced entry alone
+    '~~~\n> `runbook-version: 4.0`\n~~~',
+    '~~~~\n~~~\n> `runbook-version: 4.0`\n~~~~',
+    '> ~~~\n> `runbook-version: 4.0`\n> ~~~',
+    '~~~ md\n> `runbook-version: 4.0`',                             // unclosed
+    '~~~\n> ~~~\n> `runbook-version: 4.0`\n~~~',
+    '- ~~~\n  example\n  ~~~\n\n> `runbook-version: 4.0`',         // a real entry after a list item's fence
+    'paragraph\n2. ~~~\n   ~~~\n> `runbook-version: 4.0`',
+    '> `runbook-version: 4.0`\n\n- example\n\n  ~~~\n  sample\n     ~~~\n\n> `runbook-version: 4.0`',
+    '> `runbook-version: 4.0`\n\nsee ```inline``` here',             // a real entry plus an unrelated run
+    '      ~~~\n> `runbook-version: 4.0`',
+  ]) {
+    const f = checkRunbookVersion(root, one(body));
+    assert.strictEqual(f.length, 1, body);
+    assert.match(f[0], UNSUPPORTED, body);
+  }
+  // it names the line the run is on
+  assert.strictEqual(UNSUPPORTED.exec(checkRunbookVersion(root, one('> `runbook-version: 4.0`\n\nx\n~~~'))[0])[1], '6');
+  // single backticks (inline code) are ordinary text, and a fence after the first h2 does not concern CK-11
+  assert.deepStrictEqual(checkRunbookVersion(root, one('> `runbook-version: 4.0` · upstream: `https://x`\n\n## Body\n\n~~~\n> `runbook-version: 9.9`\n~~~')), []);
   // a real blockquote AFTER the first h2 (body region) is never matched -> missing (RVIMPL-2)
   assert.match(checkRunbookVersion(root, { 'RUNBOOK.md': '# R\n\n## Body\n\n> `runbook-version: 4.0`\n' })[0], /no.*runbook-version|missing/i);
   // RUNBOOK.md absent under --self -> the canonical runbook is required (RVIMPL-1)

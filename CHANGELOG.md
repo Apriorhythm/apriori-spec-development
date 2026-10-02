@@ -25,6 +25,12 @@ Known limitations, stated as they stand:
 Later preview snapshots are cut from `release/v6` after v6-dev work merges back; fixes in flight
 (authorization-scope, archive-manifest) are not part of this snapshot.
 
+## Unreleased — requirement-check-recipe: an optional requirement-level independent check
+
+- `docs/operator.md` (with the identical recipe and a Chinese explanation in `operator_cn.md`) gains an optional fifth `/goal` recipe for a requirement split into several changes: after its last change is archived, a reviewer independent of the building session reconciles every `in` row of the source checklist (corrected rows against their ruling), traces the end-to-end paths, checks delivery dependencies handed outside the workflow and the assertion and run conditions behind each tick; it reads the code and does not fix it. Its inputs are listed apart from P3's default input.
+- The report, every re-check and the one current checklist live in the requirement's document directory — never in an archived bundle or a change's `review/` — and the report pins the code commit, source versions and scope. Necessary fixes land in one or more changes with their own P3, then a separate re-check; a clean check opens no change. The goal ends at a human stop, an actual capability block or a set execution bound only by handing the requirement back, never as a delivery. An optional owner acceptance walk may follow.
+- `guides/prototype-walk.md` names the requirement directory as where a requirement-level check keeps its successor checklist. No machine check is added.
+
 ## Unreleased — prototype-walk-guide: a prototype walk, as one guide the runbook references
 
 - New `guides/prototype-walk.md` (English), generalized from the walk specification an owner used on a real requirement: a parameterized entry (prototype and version, sources, scope, caps, where kept artifacts and scratch go), the walk's method (static analysis, a local server, runtime discovery, a state model with a justified equivalence basis, traversal, boundaries, path-explosion control by component class, errors, screenshots, coverage), a reconciliation checklist (`ID`, `version`, `observable`, `evidence`, `scope`, `ruling`, `implementation`, `verification`) as the one progress source, four hard constraints, completion criteria and how the result is registered.

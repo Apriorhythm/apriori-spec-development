@@ -46,11 +46,11 @@ test('PR-66 each recipe\'s goal condition carries the human-stop outcome, and th
   for (const f of ['docs/operator.md', 'docs/operator_cn.md']) {
     const blocks = [...read(f).matchAll(/```text\n([\s\S]*?)```/g)].map((m) => m[1]);
     const goals = blocks.filter((b) => b.startsWith('/goal "'));
-    assert.strictEqual(goals.length, 4, `${f}: four /goal recipes`);
+    assert.strictEqual(goals.length, 5, `${f}: five /goal recipes (requirement-check-recipe added the fifth)`);
     for (const g of goals) {
       const sentence = g.split('\n')[0];                       // the goal condition is the recipe's first line
-      assert.match(sentence, /— OR you stopped at (a human stop|the 25-turn bound or at a human stop|one of the human stops listed below) \(§1 R1[^)]*\)(?: or at the Build & Test stage's 25-turn bound,)? and your last message names it/, `${f}: ${sentence.slice(0, 60)}…`);
-      assert.match(sentence, /the decision the owner must make; that outcome hands the change back and is never a (pass|delivery|pass or a delivery)\./, `${f}: ${sentence.slice(0, 60)}…`);
+      assert.match(sentence, /— OR you stopped at (a human stop|the 25-turn bound or at a human stop|one of the human stops listed below) \(§1 R1[^)]*\)(?: or at the Build & Test stage's 25-turn bound,|, at an actual capability block or at a set execution bound,)? and your last message names it/, `${f}: ${sentence.slice(0, 60)}…`);
+      assert.match(sentence, /the decision the owner must make; that outcome hands the (change|requirement) back and is never a (pass|delivery|pass or a delivery)\./, `${f}: ${sentence.slice(0, 60)}…`);
     }
     // OC-01: a recipe that runs Build & Test carries its 25-turn bound in the condition too
     for (const g of goals.filter((x) => /Safety bound(?: for this stage)?: 25 turns/.test(x)))

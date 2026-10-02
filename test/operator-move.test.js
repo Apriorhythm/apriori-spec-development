@@ -117,8 +117,9 @@ test('OPM-03 docs/operator.md keeps the launch / revise / recovery sentences byt
   // full-text strength (P3): not just sentences — the doc carries exactly the three complete
   // fenced recipe blocks (Specify / Build & Test / Review & Deliver), each with its /goal body
   const blocks = op.match(/```text\n[\s\S]*?```/g) || [];
-  // limit-ruling added the fourth: one end-to-end Build → Review → Archive goal
-  assert.strictEqual(blocks.length, 4, `docs/operator.md must carry exactly the four recipe blocks, found ${blocks.length}`);
+  // limit-ruling added the fourth: one end-to-end Build → Review → Archive goal; requirement-check-recipe the fifth
+  assert.strictEqual(blocks.length, 5, `docs/operator.md must carry exactly the five recipe blocks, found ${blocks.length}`);
+  assert.ok(blocks[4].includes('requirement-level independent check'), 'the fifth block is the requirement-level independent check');
   assert.ok(blocks[3].includes('Goal — this change is archived') && blocks[3].includes('note: ruling'), 'the fourth block is the one-goal Build → Review → Archive recipe');
   for (const b of blocks) assert.ok(b.includes('/goal "Goal'), 'a recipe block lost its /goal body');
   assert.ok(blocks[1].includes(LAUNCH_LINE) && blocks[1].includes(RECOVERY_LINE),
@@ -135,7 +136,7 @@ test('OPM-04 docs/operator_cn.md keeps the same frozen recipe text (recipes stay
   // in the CN edition — the editions cannot drift a recipe apart
   const en = read('docs/operator.md');
   const blocks = en.match(/```text\n[\s\S]*?```/g) || [];
-  assert.strictEqual(blocks.length, 4);
+  assert.strictEqual(blocks.length, 5);
   for (const b of blocks)
     assert.ok(op.includes(b), `a full EN recipe block is not verbatim in the CN edition: ${b.slice(0, 60)}…`);
 });

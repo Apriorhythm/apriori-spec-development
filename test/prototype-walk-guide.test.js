@@ -219,7 +219,7 @@ test('PW-05 the guide carries its entry, method, checklist fields and four const
   // PW-R5: an archived checklist is frozen — continuation and reconciliation go to a successor in the current change
   assert.match(flat(g), /once it is archived, its bundle is frozen \(§4\) — never edit it\. Instead start a \*\*successor\*\* `checklist\.md` in the current change's `OUT`: carry every row over with its id, sources and evidence references/);
   assert.match(flat(g), /From then on the successor is the one current progress source; the archived predecessor is history\./);
-  assert.match(flat(g), /in the current checklist, which for an archived walk is a successor in the current change \(§9\), never the frozen original/);
+  assert.match(flat(g), /in the current checklist, which for an archived walk is a successor in the current change \(§9\)(?: or, for a requirement-level check, in the requirement's document directory \(§9\))? — never the frozen original|in the current checklist, which for an archived walk is a successor in the current change \(§9\), never the frozen original/);   // requirement-check-recipe added the requirement-directory exception
   assert.doesNotMatch(flat(g), /adding rows to the same checklist/);
   assert.match(flat(checklist), /Ticking is not proof: the check also looks at the assertion behind each tick and the conditions it ran under/);
   const constraints = flat(g.slice(g.indexOf('## 6. '), g.indexOf('## 7. ')));

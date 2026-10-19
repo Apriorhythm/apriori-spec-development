@@ -1,0 +1,39 @@
+<!-- provenance: provider=anthropic model=claude-fable-5-1 session=unknown date=2026-10-20 -->
+
+Round 4 review of `archive-unreviewed` (family `code-review`), scoped to the round-3 findings AU-6/AU-7/AU-8 and the fix diff `39e6acd..3fa8b81` with its impact chain (lib/review.js `claimedMax`, lib/readiness.js closeout classification, lib/archive-merge.js `none` wording, the archive-merge delta, RUNBOOK §4, docs/cli.md, docs/cli_cn.md, test/archive-unreviewed.test.js). The producer's dispositions are the round-3 lines of flow-state's Reality Check; `## Open` is still empty.
+
+## Rulings on the round-3 findings
+
+- **AU-6: ADDRESSED.** `validateEvidence` now returns `claimedMax` — per family, the highest ordinal the evidence claims, attributable or not, taken from the same `present` set the ordinal-gap rule already keeps ([lib/review.js:355–360](/root/terra/asd-v62-code/lib/review.js)). The closeout walks the union of attributable families and claimed families; any claim beyond a family's last attributable round (or in a family with none) is appended to `rounds` as `<family> round <n> (unattributable)` and sets `beyond`, which forces `not converged` ([lib/readiness.js:777–796](/root/terra/asd-v62-code/lib/readiness.js)). I re-ran my round-3 counterexamples against `3fa8b81` with `readinessOf`: an attributable accept followed by a round 2 with no raw, by a round 2 whose VERDICT line was removed beside its transcript, by an orphan round-2 transcript, and by a provenance-only round 2 with no verdict each now declares `not converged — code-review round 1 (accept); code-review round 2 (unattributable)` with the finding named in `waived`; a second family that is wholly unattributable beside a converged first family also reads `not converged` and is named. The benign ordering (unattributable round 1, accepting round 2) still reads `evidence incomplete`, as the contract says. The normal path is untouched by `claimedMax` (the same bundle without `--unreviewed` refuses on the missing raw exactly as before), and an unrelated `*-raw` file (advisory, no claim) still closes as `converged` at build. AM-139 carries the three unattributable histories and asserts the `(unattributable)` naming.
+
+- **AU-7: ADDRESSED — and the choice is sound.** The producer took the second option: every evidence-integrity finding (`ordinal-gap`, `duplicate-ordinal`, `verdict-deleted`, `orphan-round-raw`, `unclassified`, `conflicting-verdict`, `provenance-verdict-missing`) stays waivable under the closeout, is named as a waived demand, and `integrity = factsSeen.problems.length > 0` forces `not converged` ([lib/readiness.js:794–796](/root/terra/asd-v62-code/lib/readiness.js)), so neither `evidence incomplete` nor `converged` is reachable with any such finding present. Verified on the gap (rounds 1 and 3) and the two-outcome doc: both `not converged`, the finding in `waived`. Against the owner's words: 「不放行…结构缺陷」 in apriori's own vocabulary means what the tool cannot read or judge (`STRUCTURAL` = io-error / symlink / not-file / not-dir / escape / bad-ancestor, plus the closeout's unreadable-summary and non-regular-entry guards), and all of those still refuse; an integrity finding is a judgment about review history, and the owner's requirement is that a delivered change can be closed while the record says truthfully 「评审未收敛」 with the last round named. Refusing these would leave the real case the producer cites (transcripts present, no verdict line) closable only by deleting evidence, which is the opposite of the goal; waiving them while naming each in declaration and manifest and never calling the family converged satisfies the requirement. The contract, RUNBOOK §4, docs/cli.md and docs/cli_cn.md now all list the integrity kinds under the waived loop demand with "each named, and the review then declared not converged", which is exactly what the code does.
+
+- **AU-8: ADDRESSED.** Both MODIFIED sentences now carry the four states (`none`, `not converged`, `evidence incomplete`, `converged`; the manifest value set likewise); I re-diffed the three MODIFIED blocks against the store — every scenario (AM-74…AM-114, AM-118/119, AM-128…AM-131) is still byte-identical, only the requirement paragraphs differ by their one sentence each.
+
+## Newly found substantive issues
+
+None.
+
+## Risk surfaces examined
+
+- The four-state classifier after the fix: `none` (no attributable round, now listing claimed unattributable rounds), `not converged` (any family not converged by its own verdict/ruling state, any claim beyond the last attributable round, any integrity finding), `evidence incomplete` (all converged, only earlier missing raws / `review-progress` records owed), `converged` (only the phase waived). Traced each branch and exercised twelve bundles with `readinessOf` (round-3 set plus the new ones above); the forced-escalation and limit-1 cases still read `not converged`.
+- `claimedMax` provenance: built from `present`, which is noted for verdict docs (attributable or not), provenance docs without a verdict, round-named verdict-deleted stems and orphan round transcripts; a non-round-named doc that lost its verdict is not a claim but still an integrity finding, so it cannot slip into a converged-class state. `EMPTY()` carries the key, so the symlink-abort path cannot throw on it.
+- Normal path byte-identity: `claimedMax` is read only inside the closeout branch; gate C5/C8 and the review reader's other consumers ignore the extra key; `check.js`, `manifest.js`, the check delta and CHANGELOG are untouched by this commit.
+- Refusal wording at `review` with nothing owed (`nothing is left for the closeout to waive …`): true for the converged case and for the forced `accept-risk` escalation alike; AM-141 asserts it.
+- AM-140 additions: `done` phase (R1), an ADDED requirement the store already holds with other text (`FAILED PREFLIGHT`), a MODIFIED replacement dropping a store scenario with no `archive-drop` decision (`REFUSED`), each with the store and bundle unchanged — matching what I ran manually in round 3.
+- Contract vs. code vs. docs: the ADDED requirement, RUNBOOK §4 CLOSED WITHOUT REVIEW, docs/cli.md and docs/cli_cn.md all state the integrity-finding waiver, the `(unattributable)` naming and the new refusal text; the delta's AM-139/AM-140/AM-141 texts match the tests.
+- Test suite on `3fa8b81`: 894/894 pass in my sandbox (confirmation only).
+
+## Not examined
+
+- The two real projects' bundles (outside this repository), including the `skill-usage-stats` case the producer cites; whether any real `review/` holds a shape not in my probe set.
+- `status`, `doctor` and `gate` beyond confirming they do not consume `closeout` or `claimedMax`; raw transcripts of rounds 1–3.
+
+## Advisories
+
+- CHANGELOG still says "a change at `review` whose review converged refuses the flag" — not false (converged ⇒ nothing owed ⇒ refused), but narrower than the code, and it does not mention that integrity findings are waived and force `not converged`. One clause would align it with RUNBOOK §4 and the two CLI docs.
+- docs/cli.md and cli_cn.md show the `none` line as `; independent review: none — closed by the owner without one` only; the contract and the code also admit `none — <family> round <n> (unattributable) — closed by the owner without one`. Mention the optional bracket there as the contract does.
+- An invalid `review-round-limit` row reaches `owed` through `loop.problems` (not `facts.problems`), so a converged family under a bad config row closes as `evidence incomplete` with the config error named as waived; the state's parenthetical ("evidence or a `review-progress` record missing") does not quite cover a configuration error. Information only; it cannot produce `converged`.
+- Round-3 advisories on the continuation-line reason, doctor D7 wording and the `(unknown)` fallback were left as information, which is fine.
+
+VERDICT: no spec-vs-code gaps

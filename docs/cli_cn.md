@@ -97,7 +97,7 @@ usage: apriori verify --specs <dir...> --test-cmd "<cmd>" [--id-pattern <re>] [-
 
 ```text
 usage: apriori archive --store <f> --delta <f> --change <name> [--write] [--no-cas]
-   or: apriori archive --change <name> [--write] [--changes-dir <dir>] [--no-cas] [--force]
+   or: apriori archive --change <name> [--write] [--changes-dir <dir>] [--no-cas] [--force] [--unreviewed]
 ```
 
 示例:`apriori archive --change add-playback --write`
@@ -121,6 +121,8 @@ usage: apriori archive --store <f> --delta <f> --change <name> [--write] [--no-c
 ```
 
 这与接受出口、以及循环的 `reframe` 决定是**同一条**规范所有者条目,由**同一个**解析器读取:真实时间戳、actor 正好是 `owner`、小写动词打头、目标整体匹配、破折号、以及理由。`producer:`、`note:`、`agent:` 和 `gate⑤ (owner):` 前缀在这三种文法里一律不构成授权。但文法里唯一的类别 `ledger` 已经没有消费者:一条在案的 `archive-force` 记录只报告为 `note: archive-force has nothing left to force in 6.2`,不改变任何裁决,带不带 `--force` 都一样。撤销是**追加**一条 `archive-force-revoke ledger — <理由>`,以最后一条为准——只影响这条注记,别无其他。每一条被越过的 R4 阻断项都会连同记录的原始首行一起打印。
+
+**无收敛评审的收尾(archive-unreviewed)。** 所有者说已交付的变更,可以在独立评审没有收敛的情况下归档(RUNBOOK §4, CLOSED WITHOUT REVIEW)。两半都要有:`gates:` 里的 `- <YYYY-MM-DDTHH:MM> owner: archive-unreviewed <change> — <理由>`(与其他动词同一种规范 owner 条目,按变更名整体匹配)**加** `--unreviewed`。只有参数没有记录:拒绝,并给出要记录的那一行;只有记录没有参数:照常拒绝,并提示 `pass --unreviewed`。两半都有时,就绪度接受 `phase: build`(与 `review` 并列),不再要求评审循环收敛——没有任何一轮、某轮仍在 revise 或已 escalate、缺 `review-progress` 记录、结论文档没有原始记录,或评审证据的完整性问题(缺轮次、重复轮次、结论被删或自相矛盾、孤立的原始记录——每条都会点名,且评审随之记为 `not converged`)——而 R5、C3 合法性、结构性守卫(symlink 或读不出来的 review 根、读不出来的评审摘要、`review/` 里任何不是普通文件的条目——所以 symlink 的原始记录绝不会被当成只是缺失)以及全部预检(CAS、冲突、丢场景护栏)照旧拒绝;处在 `review` 阶段且评审循环无欠项的变更,`--unreviewed` 会被拒绝(`nothing is left for the closeout to waive`)。声明仍只有三种状态:关键证据那一行末尾加上 `; independent review: none — [<family> round <n> (unattributable); … — ]closed by the owner without one`、`; independent review: not converged — <family> round <n> (<verdict>[, <k> open]); … — closed by the owner without a converged one`、`; independent review: evidence incomplete — … — closed by the owner with its review evidence incomplete`(各族都已收敛,但证据或 `review-progress` 记录缺失)或 `; independent review: converged — … — closed by the owner at phase build`(只放宽了 phase)——每族都按其最后一个可归属轮次自己的轮号列出,在它之后声称的轮次记为 `<family> round <n> (unattributable)`——其后是 `note: owner decision on record: <条目>`,以及每一项被放过的要求各一行 `note: waived by the owner's closeout: <规则> <详情>`,放宽了 R1 的 phase 时它排第一。manifest 增加 `"review": { "independentReview": "none" | "not converged" | "evidence incomplete" | "converged", "rounds": [...], "decision": "<条目>", "waived": [...] }`(正常归档的 manifest 形状不变),`apriori check` 会打印 `closed by the owner's closeout (archive-unreviewed): <n> archived bundle(s) — <目录> (<状态>), …`。状态按每族自己的最后结论与裁决状态读出——最后一个可归属轮次是接受、没有未决项也没有 escalate,或在上限处由逐条裁决与那一次复核收口,才算收敛——绝不从放过了哪些要求、force 了哪些要求倒推。单文件形式不接受 `--unreviewed`。
 
 **单文件形式(deprecated,保留)。** `--store/--delta` 是对某个规格库文件的单模块手术。自批 C 第 9 行起标注 deprecated——凡 delta 属于某个 change bundle 的场合请一律用高层形态——并**保留**,直到每一种合法的单文件操作都有经证实的 bundle 形态迁移路径,**逐例判定**。store 在 `apriori/specs` 之外并非绝对不可达:根映射工作区(把 `apriori/specs` 软链接到 store 自己所在目录;遍历跟随根的 realpath)能在同一绝对路径上逐字节复现语料形态——前提是平台支持 symlink,且散落的 delta 先迁入 bundle(留在 store 旁会被当成携带重复场景的第二个 store 模块而拒绝)。仍然没有 bundle 路径的操作:store 目标不是 `*.md`(bundle 的 delta 发现只读 `*.md`),以及无法采用映射工作区加就绪 bundle 的调用方。该清单非空之前入口不删;行为面无任何变化。它**不再接受** `--changes-dir`(因此永不移动变更目录),也不接受 `--force`,并且会拒绝任何解析到 `apriori/changes` 之内的 `--delta`——词法拼写与 realpath 两种量度、按路径段边界判定。变更 bundle 一律整个按名字归档。
 

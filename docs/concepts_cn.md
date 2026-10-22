@@ -177,7 +177,7 @@ ANTHROPIC_MODEL="claude-sonnet-4-6" claude
 | 评审点 | 它需要什么 | 建议评审模型 |
 |---|---|---|
 | Specify(行为契约) | 判断与推理 | **最强**可用模型(如 Opus),新会话 |
-| Review & Deliver(实现 vs spec 一致性) | 语义忠实(绑定已由 apriori verify 机械完成) | **Sonnet 4.6 / Haiku 4.5**——快且便宜就够 |
+| Review & Deliver(实现 vs spec 一致性) | 语义忠实(绑定已由 apriori verify 机械完成) | 独立于生产方的评审方(R2:不同的模型或全新的会话)——目前没有证据表明哪一档就够 |
 
 > ⚠️ 别拿弱模型去审强模型的硬推理——用 Haiku 审 Opus 的设计,往往恰好漏掉 Haiku 本就跟不上的微妙问题。评审要*平级或向下*选模型,别陡峭向上。(`/model` 切的是当前会话,但评审务必**另起新会话**,让评审方保持新鲜视角。)
 

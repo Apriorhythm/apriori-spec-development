@@ -177,7 +177,7 @@ This two-terminal setup is the Claude-only equivalent of §2.3's `codex exec` / 
 | Review point | What it needs | Suggested reviewer |
 |---|---|---|
 | Specify (the behavior contract) | Judgment & reasoning | the **strongest** model available (e.g. Opus), fresh session |
-| Review & Deliver (impl vs spec consistency) | Semantic faithfulness (binding already done by `apriori verify`) | **Sonnet 4.6 / Haiku 4.5** — fast and cheap is enough |
+| Review & Deliver (impl vs spec consistency) | Semantic faithfulness (binding already done by `apriori verify`) | a reviewer independent of the producer (R2: a different model or a fresh session) — no evidence so far shows which tier is enough |
 
 > ⚠️ Don't point a weaker model at a stronger one's hard reasoning — auditing an Opus design with Haiku tends to miss exactly the subtle issues Haiku can't follow. Review *sideways or down* in capability, not steeply up. (`/model` switches the current session, but for review always **start a new session** so the reviewer keeps fresh eyes.)
 

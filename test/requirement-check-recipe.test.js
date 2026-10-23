@@ -114,3 +114,17 @@ test('PR-71 the concepts guide promises no reviewer tier for semantic faithfulne
   assert.match(read('docs/concepts.md'), /\| a reviewer independent of the producer \(R2: a different model or a fresh session\) — no evidence so far shows which tier is enough \|/);
   assert.match(read('docs/concepts_cn.md'), /\| 独立于生产方的评审方\(R2:不同的模型或全新的会话\)——目前没有证据表明哪一档就够 \|/);
 });
+
+test('PR-72 a delivered operating material is checked against its recipient\'s actual entry point before hand-over', () => {
+  // delivery-material-check (R1023 consensus, owner 「都同意」 2026-10-23): one sentence beside the script paragraph, no gate
+  const en = read('docs/operator.md'), cn = read('docs/operator_cn.md');
+  const rc = blocksOf(en).find((b) => b.includes('requirement-level independent check'));
+  const para = (t, marker) => flat(t.slice(t.indexOf(rc) + rc.length, t.indexOf(marker)));
+  const p = para(en, '**Prototype walk');
+  assert.match(p, /Before a delivered operating material is handed over, it is checked against its recipient's actual entry point — the prerequisite state, the inputs and the observable result each step needs — and its key references are checked against the applicable version; what was not verified is stated\./);
+  const c = para(cn, '**原型走查');
+  assert.match(c, /对已承诺交付的操作材料,按接收者的实际入口核对必要的前置状态、输入与可观察结果;依据适用版本核实关键引用,并说明未验证部分。/);
+  // it stays one sentence of advice: no new stage, checklist, gate or unattended-run demand — in either edition (review r1, DM-1)
+  assert.doesNotMatch(p, /unattended|gate|stage/i);
+  assert.doesNotMatch(c, /无人值守|门禁|gate|阶段|检查清单|清单阶段/);
+});

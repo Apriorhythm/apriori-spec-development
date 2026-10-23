@@ -48,7 +48,7 @@ Stop and report only at §1 R1's stops: an escalation (a `VERDICT: escalate`, or
 3. Dispose every finding per §4 Review & Deliver: a necessary fix → the in-flight change it belongs to, or a new change once that one is archived, each registering the report in Ground, carrying the finding's id and passing its own P3; then resume the requirement-level reviewer on the fixes and what they affect, its re-check landing in <dir>; a new ask → a follow-up with its landing spot; an owner call → a pending ## Open item. Never mark a row reconciled the reviewer did not check."
 ```
 
-**所有者验收或联调剧本(可选——可以单独交付,做不做需求级核对都行):** 给你,或给你转交的人(前端、测试)执行的剧本,从适用的需求来源、契约和已有清单派生,预期写成看得到的样子——页面上的,或者只做后端时接口的返回;配一套 kit(造数、命令、任何真实副作用之前的守卫、清理);真实副作用只凭一次性授权;问题先记下、事后再分类(剧本、数据、代码或配置)——只有人能确认的,由你确认。交付之前,agent 先执行已有授权和能力范围内能执行的步骤,说明实际执行了哪条路径、哪些没有执行;剧本和代码对不上时,按契约、有效决定或来源判定,而不是按代码碰巧的行为。接口跑通不能冒充浏览器步骤已验证;把剧本交给别人,仍要你授权。
+**所有者验收或联调剧本(可选——可以单独交付,做不做需求级核对都行):** 给你,或给你转交的人(前端、测试)执行的剧本,从适用的需求来源、契约和已有清单派生,预期写成看得到的样子——页面上的,或者只做后端时接口的返回;配一套 kit(造数、命令、任何真实副作用之前的守卫、清理);真实副作用只凭一次性授权;问题先记下、事后再分类(剧本、数据、代码或配置)——只有人能确认的,由你确认。交付之前,agent 先执行已有授权和能力范围内能执行的步骤,说明实际执行了哪条路径、哪些没有执行;剧本和代码对不上时,按契约、有效决定或来源判定,而不是按代码碰巧的行为。接口跑通不能冒充浏览器步骤已验证;把剧本交给别人,仍要你授权。对已承诺交付的操作材料,按接收者的实际入口核对必要的前置状态、输入与可观察结果;依据适用版本核实关键引用,并说明未验证部分。
 
 **原型走查(可选,在写契约之前):** 需求带有可运行的 UI 原型时,agent 会在登记需求来源时提议一次走查;你也可以自己发起:*「按 `apriori/guides/prototype-walk.md` 走查原型 `<路径>`,对照 `<PRD>`,范围 `<页面>`。」* agent 会系统遍历原型,留下一份对照清单——列、字段、选项及其取值、状态、逐字文案、原型自身的缺陷——契约和后面的独立核对都以它为准。它需要本机有本地服务和浏览器自动化工具(Playwright 或同类);没有时,它会如实报告哪些没能实际操作。清单是来源材料:它不授权任何事;原型缺陷照不照做,需求没有定的,由你决定。
 

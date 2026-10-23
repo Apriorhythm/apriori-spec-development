@@ -25,6 +25,10 @@ Known limitations, stated as they stand:
 Later preview snapshots are cut from `release/v6` after v6-dev work merges back; fixes in flight
 (authorization-scope, archive-manifest) are not part of this snapshot.
 
+## Unreleased — delivery-material-check: a delivered operating material is checked at its recipient's entry point
+
+- The operator's script paragraph gains one sentence: before it is handed over, a delivered operating material (a script, an API flow, a test manual) is checked against its recipient's actual entry point — the prerequisite state, the inputs and the observable result each step needs — and its key references against the applicable version, with what was not verified stated. Advice only: no stage, checklist, gate or unattended-run demand. Basis: across four real requirements the owner repeatedly had to stop and ask where to look, what state a step needs or which input to use.
+
 ## Unreleased — check-recipe-revision: the requirement-level check for any requirement, the script on its own
 
 - The optional requirement-level independent check (`docs/operator.md`) now applies to any requirement, split into several changes or not, before it goes to test, at the owner's call; RUNBOOK §2's risk surfaces are offered as help, not as a validated threshold. Its inputs are pinned to the version checked — each repository's commit and comparison base, the whole requirement's diff, and the effective contracts (the store as of the comparison base with the changes' deltas applied in merge order, archived ones included). It adds three dimensions — regression of the behavior the changes touch and its callers, the permission and data scope of the other entrances to the affected data, and concurrency, transactions and side-effect consistency — counts a finding only once verified against the code, and lets a fix land back in a change still in flight. The prototype-walk guide's requirement-level successor follows (before test, carrying ids, sources and evidence references; carried rows gain no authority); its new edition is registered so existing projects adopt it on proof.

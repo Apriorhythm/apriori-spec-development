@@ -1,0 +1,20 @@
+<!-- apriori-base: sha256:7ea0bcbd28d5124793e044ece9b2f3a85cba79effaa9fdd56498f6460ef9c6ed -->
+
+# Delta — protocol (delivery-material-check)
+
+## MODIFIED Requirements
+
+### Requirement: the operator guide carries an owner acceptance or integration script that stands on its own and is run before it is handed over
+`docs/operator.md` and `docs/operator_cn.md` SHALL carry, right after the requirement-level check's recipe block, a paragraph on an optional owner acceptance or integration script that can be delivered on its own, with or without a requirement-level check: a script for the owner or whoever they hand it to (front end, test), derived from the applicable requirement sources, contracts and any existing checklist, with visible expectations — on the page, or in an API's response when only the back end is the team's; a kit (seed data, commands, a guard before any real side effect, cleanup); real side effects only with their one-shot authorization; problems recorded first and classified after. Before handing it over the agent runs the steps it is already authorized and able to run and says which path it actually ran and what it did not; a mismatch between the script and the code is judged by the contract, a valid decision or the source, not by what the code happens to do. An API run does not stand in for a browser step, and handing the script to someone else still needs the owner's authorization. The paragraph SHALL also say that before it is handed over, a delivered operating material is checked against its recipient's actual entry point — the prerequisite state, the inputs and the observable result each step needs — and its key references against the applicable version, with what was not verified stated. No gate, machine check, checklist stage or unattended-run demand is added.
+
+#### Scenario: PR-69 the owner acceptance or integration script stands on its own and is run before it is handed over
+- WHEN the paragraph after the requirement-level check's recipe block is read in both operator editions
+- THEN each edition says the script is optional and can be delivered with or without a requirement-level check, for the owner or whoever they hand it to, derived from the applicable sources, contracts and any existing checklist, with visible expectations on the page or in an API response; it keeps the kit, the guard, one-shot authorization and record-then-classify; it says the agent runs the steps it is already authorized and able to run before handing it over and states which path ran and which did not, that a mismatch is judged by the contract, a valid decision or the source rather than by the code's behavior, that an API run does not stand in for a browser step and that handing it on still needs authorization; and it introduces no gate
+
+#### Scenario: PR-72 a delivered operating material is checked against its recipient's actual entry point before hand-over
+- WHEN the script paragraph after the requirement-level check's recipe block is read in both operator editions
+- THEN each edition says that before hand-over the material is checked against the recipient's actual entry point — the prerequisite state, the inputs and the observable result each step needs — and its key references against the applicable version, with what was not verified stated; and the paragraph adds no stage, checklist, gate or unattended-run demand
+
+## Notes
+
+Claude × Astra consensus `work/astra-discuss/r1023/R1023-CONSENSUS.md` (2026-10-23, three rounds, DISAGREEMENTS 0), owner 「都同意」 the same day. Across four real requirements the material handed to a person (scripts, Postman flows, test manuals, hand-over docs) repeatedly needed the owner to stop and ask where to look, what state a step needs, or which input to use (5.9 L11218, L11555, L11782, L12194; AI2 L4487, L5027; MB L726, L6345); 8acee75's "run what you can before hand-over" covers execution, not what the material must say. One sentence of advice beside it; no new stage, checklist, gate or unattended-run demand (Astra: migrations may legitimately need manual approval; design drafts are not executable scripts).

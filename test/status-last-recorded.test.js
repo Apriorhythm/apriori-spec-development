@@ -2,7 +2,7 @@
 // status-last-recorded — ST-41 (the list shows each change's last recorded time: the latest date
 // its own gates: log carries, whatever order the entries were written in; unknown says why; the
 // source is named and nothing judges staleness), ST-42 (--change prints the same time on its own
-// line; lastGate / `last decision:` keep their meaning), ST-43 (--json carries lastRecorded in
+// line; lastGate / `last decision:` is the latest owner decision — status-last-gate-order), ST-43 (--json carries lastRecorded in
 // every change view; the error view carries null; no age or staleness field).
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -79,12 +79,12 @@ test('ST-41 the list shows each change\'s last recorded time — latest wins, un
   assert.doesNotMatch(out, /stale|idle|inactive|\bdays?\b|\bago\b|\bage\b/i);
 });
 
-test('ST-42 --change prints the same time on its own line; last decision keeps its meaning', () => {
+test('ST-42 --change prints the same time on its own line, beside the last decision', () => {
   const root = project();
   const r = run(['status', '--change', 'outoforder'], root);
   assert.strictEqual(r.status, 0, r.stderr);
   assert.match(r.stdout, /^last recorded: 2026-09-15T10:00 {3}\(the latest date in this change's gates: log — self-recorded, not proof of activity\)$/m);
-  // lastGate is still the textually last dated entry — unchanged by this change
+  // lastGate is the latest owner decision by stamp (status-last-gate-order) — here the one owner entry
   assert.match(r.stdout, /^last decision: 2026-09-09T11:35 owner: approved the plan$/m);
   const u = run(['status', '--change', 'nodated'], root);
   assert.match(u.stdout, /^last recorded: unknown \(no dated entry\) {3}\(the latest date in this change's gates: log — self-recorded, not proof of activity\)$/m);
@@ -95,7 +95,7 @@ test('ST-43 --json carries lastRecorded in every change view; the error view car
   const root = project();
   const single = JSON.parse(run(['status', '--change', 'outoforder', '--json'], root).stdout);
   assert.deepStrictEqual(single.lastRecorded, { at: '2026-09-15T10:00', source: 'gates', reason: null });
-  assert.match(single.lastGate, /^2026-09-09T11:35 owner: approved the plan$/, 'lastGate unchanged');
+  assert.match(single.lastGate, /^2026-09-09T11:35 owner: approved the plan$/, 'lastGate: the one owner decision');
   const list = JSON.parse(run(['status', '--json'], root).stdout);
   const by = Object.fromEntries(list.changes.map((c) => [c.change, c.lastRecorded]));
   for (const [name, at] of Object.entries(WANT)) assert.deepStrictEqual(by[name], { at, source: 'gates', reason: null }, name);

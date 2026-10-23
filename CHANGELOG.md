@@ -25,6 +25,10 @@ Known limitations, stated as they stand:
 Later preview snapshots are cut from `release/v6` after v6-dev work merges back; fixes in flight
 (authorization-scope, archive-manifest) are not part of this snapshot.
 
+## Unreleased — status-last-gate-order: the last decision is the latest owner entry, never a note
+
+- `apriori status`'s `last decision:` line and the `lastGate` field now show the latest OWNER entry of the gates log by its stamp (a tie goes to the later line), `null` when there is none; before, they took the textually last dated entry and could show a `note:` as a decision — in the real corpus 4 of 20 in-flight changes had it wrong. `lastRecorded` is unchanged. Follow-up LG-1 (status-last-recorded, 2026-09-27).
+
 ## Unreleased — cli-json-pipe-flush: the CLI exits only after its output has drained
 
 - `apriori <cmd> --json` through a pipe lost everything past 64 KiB: the entry point called `process.exit()` right after `console.log()`, and a POSIX pipe write is asynchronous. The process now exits once stdout and stderr have drained (when nothing is queued it exits at once, as before); exit codes are unchanged — a reader that closed early included — on the success path and the uncaught-error path alike. Follow-up JP-1 (status-last-recorded, 2026-09-27); reproduced with a 90-change project before the fix.

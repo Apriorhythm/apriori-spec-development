@@ -276,7 +276,9 @@ test('FC-21 the subset: list items, indented continuation, defects for the rest;
   assert.deepStrictEqual(rc.defects, ['line 2: reality check section line is not a list item — write `- observed: x`']);
   // an inline comment span is stripped and the rest of the line stays live
   assert.deepStrictEqual(flow.sectionItems('## Open\n- R-1: real <!-- not an item: - R-9: x --> item\n', 'Open'), ['R-1: real  item']);
-  // `lastGate` comes from the gates block only, not from any dated list line elsewhere
-  const lg = flow.parseFlowState('## Open\n- 2026-01-01T00:00 not a gate\n\ngates:\n  - 2026-08-23T00:00 note: scaffolded\n');
-  assert.strictEqual(lg.lastGate, '2026-08-23T00:00 note: scaffolded');
+  // `lastGate` comes from the gates block only, not from any dated list line elsewhere — and it is an
+  // owner decision, never a note (status-last-gate-order)
+  const lg = flow.parseFlowState('## Open\n- 2026-01-01T00:00 owner: not a gate\n\ngates:\n  - 2026-08-23T00:00 note: scaffolded\n  - 2026-08-23T00:05 owner: go\n');
+  assert.strictEqual(lg.lastGate, '2026-08-23T00:05 owner: go');
+  assert.strictEqual(flow.parseFlowState('gates:\n  - 2026-08-23T00:00 note: scaffolded\n').lastGate, null);
 });

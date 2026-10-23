@@ -66,13 +66,27 @@ async function main() {
 // answers null when no JSON view was requested (JC-08, F5). Commands without a JSON face
 // answer in text.
 const JSON_FACES = { status: 'status', verify: 'spec-runner', gate: 'gate', doctor: 'doctor' };
+// Exit only once stdout and stderr have drained. On POSIX a write to a pipe is asynchronous and
+// process.exit() right after console.log() drops whatever is still queued — past the kernel's
+// 64 KiB pipe buffer a `--json` envelope arrived truncated and unparseable (JP-1). When nothing is
+// queued (a POSIX TTY or file writes synchronously) the exit is immediate as before. The exit code
+// never changes: a reader that closed early (EPIPE) must not turn it into Node's unhandled-error 1.
+function exitWhenDrained(code) {
+  process.exitCode = code;
+  let pending = 0;
+  const done = () => { if (--pending === 0) process.exit(code); };
+  for (const stream of [process.stdout, process.stderr]) {
+    if (stream.writableLength > 0) { pending++; stream.on('error', () => {}); stream.write('', done); }
+  }
+  if (pending === 0) process.exit(code);
+}
 main().then(
-  (code) => process.exit(code),
+  (code) => exitWhenDrained(code),
   (err) => {
     const msg = err && err.message ? err.message : String(err);
     const out = JSON_FACES[sub] ? require(`../lib/${JSON_FACES[sub]}`).jsonError(msg, rest) : null;
     if (out) console.log(out);
     else console.error(`apriori: ${msg}`);
-    process.exit(2);
+    exitWhenDrained(2);
   }
 );

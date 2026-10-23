@@ -25,6 +25,10 @@ Known limitations, stated as they stand:
 Later preview snapshots are cut from `release/v6` after v6-dev work merges back; fixes in flight
 (authorization-scope, archive-manifest) are not part of this snapshot.
 
+## Unreleased — cli-json-pipe-flush: the CLI exits only after its output has drained
+
+- `apriori <cmd> --json` through a pipe lost everything past 64 KiB: the entry point called `process.exit()` right after `console.log()`, and a POSIX pipe write is asynchronous. The process now exits once stdout and stderr have drained (when nothing is queued it exits at once, as before); exit codes are unchanged — a reader that closed early included — on the success path and the uncaught-error path alike. Follow-up JP-1 (status-last-recorded, 2026-09-27); reproduced with a 90-change project before the fix.
+
 ## Unreleased — delivery-material-check: a delivered operating material is checked at its recipient's entry point
 
 - The operator's script paragraph gains one sentence: before it is handed over, a delivered operating material (a script, an API flow, a test manual) is checked against its recipient's actual entry point — the prerequisite state, the inputs and the observable result each step needs — and its key references against the applicable version, with what was not verified stated. Advice only: no stage, checklist, gate or unattended-run demand. Basis: across four real requirements the owner repeatedly had to stop and ask where to look, what state a step needs or which input to use.

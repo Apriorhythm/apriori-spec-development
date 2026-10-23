@@ -30,6 +30,13 @@ and passed QA with zero bugs; the owner intervened throughout, so nothing is att
 alone. No comparison against a control arm has been run, and cost is not endorsed (see the
 cost-record entry below). Only Claude Code is verified as a client.
 
+### bd08-windows-separators: one more separator-bound assertion
+
+- BD-08 (boundaries) compared a `path.relative` result with `'kv/spec.md'` and matched the walk-root
+  message with `kv\/out`; both read either separator now. Found by the first Windows CI run that got
+  past CL-21 — the runners can create symlinks, so they ran the case a host without the privilege had
+  skipped. Test only; `mdFilesUnder` is unchanged.
+
 ### windows-ci-portability: the suite runs on the Windows CI matrix
 
 - Eight tests failed on Windows for reasons unrelated to the code under test, found on a Windows host

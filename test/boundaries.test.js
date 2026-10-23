@@ -198,7 +198,7 @@ test('BD-08 archive-merge.mdFilesUnder judges a directory BEFORE descending: a s
   // a loop: specs/kv/loop -> specs (would recurse forever without a visited set)
   fs.symlinkSync(specs, path.join(specs, 'kv', 'loop'));
   const files = am.mdFilesUnder(specs);
-  assert.deepStrictEqual(files.map((f) => path.relative(specs, f)), ['kv/spec.md'], 'each real file once, the loop terminated');
+  assert.deepStrictEqual(files.map((f) => path.relative(specs, f).split(path.sep).join('/')), ['kv/spec.md'], 'each real file once, the loop terminated');   // separator-neutral (Windows CI)
   assert.strictEqual(run(['verify', '--change', 'c', '--test-cmd', TAP2], root).status, 0);
   assert.strictEqual(run(['archive', '--change', 'c', '--no-cas'], root).status, 0);
   fs.unlinkSync(path.join(specs, 'kv', 'loop'));
@@ -206,7 +206,7 @@ test('BD-08 archive-merge.mdFilesUnder judges a directory BEFORE descending: a s
   const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-bd-out-'));
   fs.writeFileSync(path.join(outside, 'smuggled.md'), ADDED);
   fs.symlinkSync(outside, path.join(specs, 'kv', 'out'));
-  assert.throws(() => am.mdFilesUnder(specs), /escapes the walk root: .*kv\/out/);
+  assert.throws(() => am.mdFilesUnder(specs), /escapes the walk root: .*kv[\\/]out/);   // the message carries the host's separator
   const v = run(['verify', '--change', 'c', '--test-cmd', TAP2, '--json'], root);
   assert.strictEqual(v.status, 2);
   assert.ok(JSON.parse(v.stdout).errors.some((e) => /escapes the walk root/.test(e)), v.stdout);

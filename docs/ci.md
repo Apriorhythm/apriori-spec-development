@@ -2,11 +2,10 @@
 
 Three deterministic commands slot straight into any CI. Exit codes are the contract: 0 = go, 1 = a gap a human should look at, 2 = the run itself is untrustworthy (treat as failure, but read the message — it usually names a setup problem, not a code problem).
 
-**Installing 6.0.0 in CI.** npm still serves 5.0.0, so a plain `npx apriori-cli` runs 5.0.0 today. Until 6.0.0 is published, install it from the repository in a step before the ones below, which then call `apriori` directly:
+Install it in a step before the ones below (Node ≥ 22 on the runner; pin the major so a later major cannot change the contract under you), or prefix each command with `npx apriori-cli@6`:
 
 ```yaml
-- name: install apriori-cli 6.0.0 (not on npm yet)
-  run: npm i -g github:Apriorhythm/apriori-spec-development#v6-dev
+- run: npm i -g apriori-cli@6
 ```
 
 ## check — the PR gate

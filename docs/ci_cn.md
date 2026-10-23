@@ -2,11 +2,10 @@
 
 三个确定性命令可直接挂进任意 CI。退出码即契约:0 = 放行,1 = 需要人看一眼的缺口,2 = 这次运行本身不可信(按失败处理,但要读消息——它通常指向环境问题而非代码问题)。
 
-**在 CI 里安装 6.0.0。** npm 上目前仍是 5.0.0,所以直接 `npx apriori-cli` 今天跑的是 5.0.0。在 6.0.0 发布之前,请在下面这些步骤之前加一步从仓库安装,之后的步骤直接调用 `apriori`:
+先在下面这些步骤之前装一次(runner 上需要 Node ≥ 22;钉住大版本,以免以后的大版本改变契约),或者给每条命令加 `npx apriori-cli@6` 前缀:
 
 ```yaml
-- name: install apriori-cli 6.0.0 (not on npm yet)
-  run: npm i -g github:Apriorhythm/apriori-spec-development#v6-dev
+- run: npm i -g apriori-cli@6
 ```
 
 ## check —— PR 闸口

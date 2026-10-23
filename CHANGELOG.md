@@ -19,16 +19,28 @@ published: `6.2` was the name of a development stage, not a version, which is wh
 of the line is 6.0.0 and not 6.2.0. The package version goes from `6.2.0-rc.0` to `6.0.0`, the runbook
 header to `runbook-version: 6.0`, and the tool's own messages say `6.0` where they said `6.2`.
 
-**Not part of this entry.** Nothing is published to npm (its latest stays 5.0.0, so
-`npm i -g apriori-cli` does not install this version yet — install from the repository, see the
-README); `main` still points at 5.0.0; there is no GitHub release and no `v6.0.0` tag yet. Those are
-separate decisions.
+**Release steps (2026-10-23).** Tag `v6.0.0` is cut on this line; `release/v6` (the limited-use
+preview line) and `main` (5.0.0 until now) are fast-forwarded to it; the package is published to npm
+as `apriori-cli@6.0.0`, so `npm i -g apriori-cli` installs this version. No GitHub release page is
+written.
 
 **Evidence, stated as it stands.** Between 2026-09-27 and 2026-10-22 four real back-office
 requirements were delivered on this line (from `stable/v6-20260927-touchstone` = 5d3fc78 to c69174a)
 and passed QA with zero bugs; the owner intervened throughout, so nothing is attributed to the tool
 alone. No comparison against a control arm has been run, and cost is not endorsed (see the
 cost-record entry below). Only Claude Code is verified as a client.
+
+### release-tag-6-0-0: the install line points at npm, and the release steps are recorded
+
+- README (both editions) and RUNBOOK §0 install from npm again (`npm i -g apriori-cli`); the CI
+  page (both editions) pins the major (`apriori-cli@6`) and notes Node ≥ 22; the repository form
+  `github:…#v6-dev` that bridged the gap before the publish is gone — follow-up FU-A3 of
+  release-6-0-0 closes with it (no `#v6-dev` line is left to re-point at the tag). The 6.0.0
+  section's "Not part of this entry" paragraph becomes the release-steps record above.
+- Spec: the cli release-identity requirement now states the install lines and the owner's release
+  acts; **`ID-07` new** — every install line a reader meets installs the published package, and no
+  repository or branch-pinned form remains in README, RUNBOOK, MIGRATING, docs/, guides/ or
+  templates/. No code or template changes.
 
 ### release-6-0-0: the 6 line's release identity is 6.0.0
 

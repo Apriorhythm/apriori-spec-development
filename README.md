@@ -28,7 +28,7 @@ apriori is built to be **driven by an AI agent** — you talk, it runs the loop,
   <br><sub>Real, unedited run (waits cut; recorded on the 4.x CLI — the flow is unchanged in 6.0.0): <code>npm i</code> → <code>apriori init</code> → <code>/apriori</code> a tiny change → <code>/goal</code> drives spec → review → implement → verify → gate → archive on its own, stops at the one human gate for your OK, then you run the tool it built. You say what you want and nod once.</sub>
 </p>
 
-Install once — 6.0.0 is not on npm yet (npm still serves 5.0.0), so install from the repository: `npm i -g github:Apriorhythm/apriori-spec-development#v6-dev` — then in your project name the AI tools to wire up:
+Install once (`npm i -g apriori-cli`), then in your project name the AI tools to wire up:
 
 ```text
 apriori init --tools claude
@@ -70,7 +70,7 @@ Until each of those paths is exercised, the entry is not claimed for that client
 Route A's agent runs exactly the commands below. Doing them yourself once — ten minutes, empty directory to a spec-bound green — is the fastest way to trust what the agent does, and it's the deterministic path, so every output is checkable.
 
 ```shell
-npm i -g github:Apriorhythm/apriori-spec-development#v6-dev   # 6.0.0 is not on npm yet (npm still serves 5.0.0)
+npm i -g apriori-cli
 mkdir hello-apriori && cd hello-apriori
 apriori init --tools claude --test-cmd "node --test --test-reporter=tap" --yes
 apriori doctor --no-run

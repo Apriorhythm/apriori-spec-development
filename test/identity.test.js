@@ -140,3 +140,20 @@ test('ID-06 6.0.0 is the release identity everywhere a reader meets it (release-
   assert.ok(gateSrc.includes("'retired in 6.0 — nothing is read'"));
   assert.ok(gateSrc.includes("'ledger retired in 6.0 — open items live in ## Open'"));
 });
+
+test('ID-07 every install line a reader meets installs the published package (release-tag-6-0-0)', () => {
+  const read = (...p) => fs.readFileSync(path.join(ROOT, ...p), 'utf8');
+  const readme = read('README.md'), readmeCn = read('README_cn.md'), rb = read('RUNBOOK.md'), ci = read('docs', 'ci.md'), ciCn = read('docs', 'ci_cn.md');
+  assert.match(readme, /^npm i -g apriori-cli$/m, 'README Quickstart block');
+  assert.match(readme, /Install once \(`npm i -g apriori-cli`\)/, 'README install line');
+  assert.match(readmeCn, /^npm i -g apriori-cli$/m); assert.match(readmeCn, /`npm i -g apriori-cli`/);
+  assert.match(rb.slice(0, rb.search(/^## 1\b/m)), /^npm i -g apriori-cli\b/m, 'RUNBOOK §0');
+  for (const [label, text] of [['ci', ci], ['ci_cn', ciCn]]) assert.match(text, /npm i -g apriori-cli@6\b/, `${label} pins the major`);
+  const files = ['README.md', 'README_cn.md', 'RUNBOOK.md', 'MIGRATING.md'];
+  for (const dir of ['docs', 'guides', 'templates']) for (const f of fs.readdirSync(path.join(ROOT, dir))) if (f.endsWith('.md')) files.push(path.join(dir, f));
+  for (const f of files) {
+    const text = read(f);
+    assert.doesNotMatch(text, /github:Apriorhythm\/apriori-spec-development/, `${f}: repository install form`);
+    assert.doesNotMatch(text, /#v6-dev\b/, `${f}: branch pin`);
+  }
+});

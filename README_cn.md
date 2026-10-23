@@ -28,7 +28,7 @@ apriori 天生就是**让 AI agent 来驱动**的——你说话,它跑循环,�
   <br><sub>真实录制(等待已剪;录制于 4.x 版 CLI,6.0.0 流程相同):<code>npm i</code> → <code>apriori init</code>(选 Claude Code)→ <code>/apriori</code> 提一个小需求 → <code>/goal</code> 自动跑完 规格→评审→实现→verify→gate→归档,只在唯一的人工闸口停下等你点头,最后你亲手运行它造出来的工具。你只需说要什么、点一次头。</sub>
 </p>
 
-先装一次——6.0.0 还没发到 npm(npm 上仍是 5.0.0),所以从仓库安装:`npm i -g github:Apriorhythm/apriori-spec-development#v6-dev`——然后在你的项目里点名要接的 AI 工具:
+先装一次(`npm i -g apriori-cli`),然后在你的项目里点名要接的 AI 工具:
 
 ```text
 apriori init --tools claude
@@ -70,7 +70,7 @@ apriori init --tools claude
 路线 A 的 agent 跑的正是下面这些命令。自己手敲一遍——十分钟,从空目录到规格绑定的绿——是信任 agent 所作所为的最快方式,而且它是确定性路径,每个输出都可核对。
 
 ```shell
-npm i -g github:Apriorhythm/apriori-spec-development#v6-dev   # 6.0.0 还没发到 npm(npm 上仍是 5.0.0)
+npm i -g apriori-cli
 mkdir hello-apriori && cd hello-apriori
 apriori init --tools claude --test-cmd "node --test --test-reporter=tap" --yes
 apriori doctor --no-run

@@ -28,7 +28,7 @@
 **Install (human, once per project):**
 
 ```shell
-npm i -g github:Apriorhythm/apriori-spec-development#v6-dev   # 6.0.0 is not on npm yet (npm still serves 5.0.0); once published: npm i -g apriori-cli
+npm i -g apriori-cli     # or run any command below via `npx apriori-cli …`
 cd your-project && apriori init --tools claude  # name the AI tools to configure (comma-separated)
 ```
 

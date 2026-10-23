@@ -14,6 +14,7 @@ const BIN = path.join(__dirname, '..', 'bin', 'apriori.js');
 const am = require('../lib/archive-merge');
 const rd = require('../lib/readiness');
 const { FLOW, REVIEW, REVIEW_RAW, withOpen } = require('./helpers/ready-bundle');
+const { canSymlink } = require('./helpers/can-symlink');
 
 const DELTA = '## ADDED Requirements\n\n### Requirement: R-U\nThe system SHALL do u.\n\n#### Scenario: UV-01 u\n- WHEN w\n- THEN t\n';
 const DECISION = '  - 2026-10-20T01:00 owner: archive-unreviewed c — 已交付上线，不再补评审\n';
@@ -192,23 +193,27 @@ test('AM-140 the closeout never waives a pending item, an illegal or unfinished 
     assert.ok(untouched(root), label);
   }
   // a symlinked review root stays a structural refusal
-  const linked = proj();
-  fs.mkdirSync(path.join(linked, 'apriori/changes/c/elsewhere'));
-  fs.writeFileSync(path.join(linked, 'apriori/changes/c/elsewhere/code-review-v1.md'), REVIEW);
-  fs.writeFileSync(path.join(linked, 'apriori/changes/c/elsewhere/code-review-v1-raw.txt'), REVIEW_RAW);
-  fs.symlinkSync('elsewhere', path.join(linked, 'apriori/changes/c/review'));
-  const rl = run(linked, ['archive', '--change', 'c', '--unreviewed', '--write']);
-  assert.strictEqual(rl.status, 1, rl.stdout + rl.stderr);
-  assert.match(rl.stderr, /R4 review\/: symlink/);
-  assert.ok(untouched(linked));
-  // a symlinked raw beside a regular summary is structural, not a merely missing raw (review r1, AU-1)
-  const rawLink = proj({ review: { 'apriori/changes/c/review/code-review-v1.md': REVISE, 'apriori/changes/c/elsewhere.txt': REVIEW_RAW } });
-  fs.symlinkSync('../elsewhere.txt', path.join(rawLink, 'apriori/changes/c/review/code-review-v1-raw.txt'));
-  for (const write of [false, true]) {
-    const rr = run(rawLink, ['archive', '--change', 'c', '--unreviewed', ...(write ? ['--write'] : [])]);
-    assert.strictEqual(rr.status, 1, rr.stdout + rr.stderr);
-    assert.match(rr.stderr, /R4 review\/code-review-v1-raw\.txt is a symlink/);
-    assert.ok(untouched(rawLink));
+  // the two symlink cases need a host that can create symlinks (a Windows account without the privilege
+  // cannot); every other case above and below runs regardless — see test/helpers/can-symlink.js
+  if (canSymlink()) {
+    const linked = proj();
+    fs.mkdirSync(path.join(linked, 'apriori/changes/c/elsewhere'));
+    fs.writeFileSync(path.join(linked, 'apriori/changes/c/elsewhere/code-review-v1.md'), REVIEW);
+    fs.writeFileSync(path.join(linked, 'apriori/changes/c/elsewhere/code-review-v1-raw.txt'), REVIEW_RAW);
+    fs.symlinkSync('elsewhere', path.join(linked, 'apriori/changes/c/review'));
+    const rl = run(linked, ['archive', '--change', 'c', '--unreviewed', '--write']);
+    assert.strictEqual(rl.status, 1, rl.stdout + rl.stderr);
+    assert.match(rl.stderr, /R4 review\/: symlink/);
+    assert.ok(untouched(linked));
+    // a symlinked raw beside a regular summary is structural, not a merely missing raw (review r1, AU-1)
+    const rawLink = proj({ review: { 'apriori/changes/c/review/code-review-v1.md': REVISE, 'apriori/changes/c/elsewhere.txt': REVIEW_RAW } });
+    fs.symlinkSync('../elsewhere.txt', path.join(rawLink, 'apriori/changes/c/review/code-review-v1-raw.txt'));
+    for (const write of [false, true]) {
+      const rr = run(rawLink, ['archive', '--change', 'c', '--unreviewed', ...(write ? ['--write'] : [])]);
+      assert.strictEqual(rr.status, 1, rr.stdout + rr.stderr);
+      assert.match(rr.stderr, /R4 review\/code-review-v1-raw\.txt is a symlink/);
+      assert.ok(untouched(rawLink));
+    }
   }
   // a summary that cannot be read is structural too: readiness refuses, even under the closeout
   const unread = proj({ review: { 'apriori/changes/c/review/code-review-v1.md': REVISE, 'apriori/changes/c/review/code-review-v1-raw.txt': REVIEW_RAW } });

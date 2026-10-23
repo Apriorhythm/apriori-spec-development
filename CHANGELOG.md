@@ -30,6 +30,20 @@ and passed QA with zero bugs; the owner intervened throughout, so nothing is att
 alone. No comparison against a control arm has been run, and cost is not endorsed (see the
 cost-record entry below). Only Claude Code is verified as a client.
 
+### windows-ci-portability: the suite runs on the Windows CI matrix
+
+- Eight tests failed on Windows for reasons unrelated to the code under test, found on a Windows host
+  once the CL-21 hang that stopped the 6 line's first Windows CI run (PR #1) was skipped: `npm` spawned by its bare name (ID-01, ID-02, OPM-01, OPM-07 —
+  it is `npm.cmd` there), the LNG-07 golden compared with backslash paths, TX-02's filter bound to
+  `/`, AM-140/GT-57 creating symlinks on a host without the privilege, and a GT-57 assertion that
+  stripped `/ext.txt` from a `path.join` result. Now: one npm seam
+  (`test/helpers/npm.js`), a separator-neutral `<ROOT>` normalizer, a separator-neutral filter,
+  and `canSymlink()` guards on the two tests (the symlink cases still run wherever links can be
+  made). **`WN-01` new** pins the seams; **`CL-22` new** — the Windows-safe companion of CL-21: an
+  early-closed stdout reader leaves the exit code alone on every platform; CL-21 and CL-22 carry a
+  60 s timeout so a future hang fails the test instead of holding the job. No pinned expectation,
+  `bin/` or `lib/` change.
+
 ### cl21-windows-blocking-pipes: the early-closed-reader test is POSIX-only
 
 - `CL-21` (cli-json-pipe-flush) is skipped on Windows with its reason: a Node child sets its own stdio

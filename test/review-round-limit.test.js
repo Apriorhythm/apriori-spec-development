@@ -15,6 +15,7 @@ const review = require('../lib/review');
 const gate = require('../lib/gate');
 const config = require('../lib/config');
 const rd = require('../lib/readiness');
+const { canSymlink } = require('./helpers/can-symlink');
 
 const ROOT = path.join(__dirname, '..');
 const BIN = path.join(ROOT, 'bin', 'apriori.js');
@@ -197,7 +198,7 @@ test('GT-57 evidence references are confined to the project', () => {
   const mk = (evidence, prep) => cases.push({ evidence, prep });
   mk(path.join(outside, 'ext.txt'));                                                       // absolute, outside
   mk(`../${path.basename(outside)}/ext.txt`);                                                // `..` traversal
-  mk('apriori/ext-link.txt', (root) => fs.symlinkSync(path.join(outside, 'ext.txt'), path.join(root, 'apriori', 'ext-link.txt')));   // escaping symlink
+  if (canSymlink()) mk('apriori/ext-link.txt', (root) => fs.symlinkSync(path.join(outside, 'ext.txt'), path.join(root, 'apriori', 'ext-link.txt')));   // escaping symlink (hosts that can link)
   mk('apriori/specs', null);                                                                 // a directory
   for (const { evidence, prep } of cases) {
     const p = project('  - 2026-09-25T00:00 note: n\n' + progress('spec-review', 3, { evidence }));
@@ -211,14 +212,14 @@ test('GT-57 evidence references are confined to the project', () => {
   // a regular file inside, and a symlink whose target is inside, both satisfy the record
   for (const [evidence, prep] of [
     ['apriori/specs/kv/spec.md', null],
-    ['apriori/spec-link.md', (root) => fs.symlinkSync(path.join(root, 'apriori', 'specs', 'kv', 'spec.md'), path.join(root, 'apriori', 'spec-link.md'))],
+    ...(canSymlink() ? [['apriori/spec-link.md', (root) => fs.symlinkSync(path.join(root, 'apriori', 'specs', 'kv', 'spec.md'), path.join(root, 'apriori', 'spec-link.md'))]] : []),
   ]) {
     const p = project('  - 2026-09-25T00:00 note: n\n' + progress('spec-review', 3, { evidence }));
     if (prep) prep(p.root);
     landFamily(p.bundle, 'spec-review', [REVISE, REVISE, ACCEPT]);
     assert.strictEqual(c8(p.root).status, 'pass', evidence);
   }
-  assert.strictEqual(review.evidenceFileInside(cases[0].evidence.replace('/ext.txt', ''), 'ext.txt'), true);
+  assert.strictEqual(review.evidenceFileInside(outside, 'ext.txt'), true);   // the outside dir as root: its own file is inside (separator-neutral — cases[0] is a path.join)
   assert.strictEqual(review.evidenceFileInside(outside, '.'), false);
 });
 

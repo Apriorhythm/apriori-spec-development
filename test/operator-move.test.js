@@ -10,6 +10,7 @@ const path = require('node:path');
 const fs = require('node:fs');
 const os = require('node:os');
 const { execFileSync } = require('node:child_process');
+const { npmOut } = require('./helpers/npm');
 
 const ROOT = path.join(__dirname, '..');
 const read = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
@@ -32,7 +33,7 @@ test('OPM-01 install view: npm pack ships the runbook without the appendix body 
   // installed user's LOSS of the launch / revise-reentry / bound-recovery recipes. The package
   // must ship the appendix it points at. Owner ruling: the published package is English-only;
   // the CN edition stays in-repo.
-  const out = execFileSync('npm', ['pack', '--dry-run', '--json'], { cwd: ROOT, encoding: 'utf8' });
+  const out = npmOut(['pack', '--dry-run', '--json'], { cwd: ROOT, encoding: 'utf8' });
   const files = JSON.parse(out)[0].files.map((f) => f.path);
   assert.ok(files.includes('RUNBOOK.md'), 'RUNBOOK.md must be packaged');
   assert.ok(files.includes('docs/operator.md'),
@@ -56,7 +57,7 @@ test('OPM-07 delivery proof: pack → unpack → install → init — all three 
   // path the delivered runbook names.
   const tmpd = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-opm7-'));
   try {
-    const out = execFileSync('npm', ['pack', '--json', '--pack-destination', tmpd],
+    const out = npmOut(['pack', '--json', '--pack-destination', tmpd],
       { cwd: ROOT, encoding: 'utf8' });
     const tarball = path.join(tmpd, JSON.parse(out)[0].filename);
     execFileSync('tar', ['-xzf', tarball, '-C', tmpd]);

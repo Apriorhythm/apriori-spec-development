@@ -43,3 +43,10 @@
 #### Scenario: GP-10 the resolved bash is visible
 - WHEN the walker resolves its bash
 - THEN the choice is logged exactly once per run
+
+### Requirement: the suite is portable to the Windows CI matrix
+The test suite SHALL pass on the CI workflow's Windows runners as it does on Linux, without weakening what it asserts about the code: a test that runs `npm` SHALL do so through one seam (`test/helpers/npm.js`: `npm.cmd` through a shell on `win32`, bare `npm` elsewhere); a test that compares recorded text containing repository paths SHALL compare them in a separator-neutral form (the corpus normalizer renders the path under `<ROOT>` with `/` whatever the host printed, and a filter on a relative path reads it with `/`); and a test that creates a symlink SHALL not fail for want of the privilege: it probes first (`canSymlink()` in nineteen files, AM-140 and GT-57 newly among them; an inline try/catch probe in six older files) or, in two older tests (UP-10 in update.test.js, the prototype-walk guide tests), skips the symlink case on `win32` outright — either way only the symlink case is skipped and every other assertion keeps running; the probe form is preferred for new tests because it keeps the case alive on a Windows host that can link. A test whose premise cannot arise on a platform (CL-21: blocking stdio pipes on Windows) SHALL be skipped there with its reason, never silently passed.
+
+#### Scenario: WN-01 the suite is portable to the Windows CI matrix: npm goes through one seam, recorded paths read with /, symlink fixtures are guarded
+- WHEN every `test/*.test.js` source is scanned, the corpus normalizer is given a Windows-style path under the repository root, and the npm seam is read
+- THEN no test spawns `npm` by its bare name, the seam names `npm.cmd` under `win32` with a shell, the normalizer yields `<ROOT>/apriori/specs/x/spec.md` for the backslash form and the forward-slash form alike, and the two tests that lacked a probe (AM-140, GT-57) consult `canSymlink()`

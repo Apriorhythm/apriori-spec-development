@@ -13,7 +13,7 @@
 //   - the full gate: result, code, stage, the BLOCKED check set, the error list
 //   - archive readiness: ready + the complete blocker set
 // Line numbers are normalized (a stripped/added line may shift them); the repo root is
-// normalized to <ROOT> so the record is machine-independent. NOTHING else is normalized:
+// normalized to <ROOT> (and the path under it read with '/') so the record is machine-independent. NOTHING else is normalized:
 // every other byte of every verdict must match the golden literally.
 //
 // Regenerating the golden (only when the BASELINE is deliberately re-pinned):
@@ -35,6 +35,8 @@ const makeNorm = (root) => {
   const abs = path.resolve(root);
   return (s) => String(s)
     .split(abs).join('<ROOT>')
+    // the path under <ROOT> reads with '/' on every platform (Windows prints backslashes)
+    .replace(/<ROOT>[^\s'"\x60]*/g, (m) => m.split('\\').join('/'))
     .replace(/lines \d+ and \d+/g, 'lines N and N')
     .replace(/line \d+/g, 'line N');
 };
@@ -107,4 +109,4 @@ function judgeCorpus(root, impl) {
   return out;
 }
 
-module.exports = { judgeCorpus };
+module.exports = { judgeCorpus, makeNorm };

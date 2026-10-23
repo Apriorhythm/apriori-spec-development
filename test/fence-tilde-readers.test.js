@@ -69,7 +69,7 @@ test('TX-02 the backtick reading is unchanged across this repository', () => {
   const am = require('../lib/archive-merge');
   const REQ_RE = /^###\s+Requirement:\s+(.+?)\s*$([\s\S]*?)(?=^###\s+Requirement:|$(?![\s\S]))/gm;
   const oldBlocks = (t) => { const out = []; let m; REQ_RE.lastIndex = 0; while ((m = REQ_RE.exec(t)) !== null) out.push([m[1].trim(), m[0].replace(/\s+$/, '') + '\n']); return out; };
-  const specs = files.filter((f) => /[\/]specs[\/]/.test(path.relative(ROOT, f)) && path.relative(ROOT, f).startsWith('apriori'));
+  const specs = files.filter((f) => { const rel = path.relative(ROOT, f).split(path.sep).join('/'); return /\/specs\//.test(rel) && rel.startsWith('apriori'); });
   assert.ok(specs.length > 100, `stores and deltas (${specs.length})`);
   for (const f of specs) {
     const t = fs.readFileSync(f, 'utf8');

@@ -68,7 +68,23 @@ fs.readFileSync = function (p, ...rest) { if (String(p).endsWith(${JSON.stringif
 // Found by the 6 line's first Windows CI run (2026-10-23); CL-19/CL-20 pass on Windows.
 const WIN32_BLOCKING_PIPES = process.platform === 'win32'
   && 'stdio pipes are blocking on Windows: nothing is queued at exit, and the paused-stderr choreography deadlocks';
-test('CL-21 a reader that closes early never changes the exit code (JP-1)', { skip: WIN32_BLOCKING_PIPES }, async () => {
+test('CL-22 an early-closed stdout reader leaves the exit code alone on every platform (JP-1)', { timeout: 60000 }, async () => {
+  // the Windows-safe companion of CL-21: stderr flows from the start, so nothing can deadlock on a
+  // platform with blocking stdio pipes; what is asserted is only that an early-closed reader never
+  // turns the command's own exit code into an EPIPE failure
+  const { spawn } = require('node:child_process');
+  const root = bigProject(300);
+  const code = await new Promise((resolve, reject) => {
+    const child = spawn('node', [BIN, 'status', '--json'], { cwd: root, stdio: ['ignore', 'pipe', 'pipe'] });
+    child.stderr.on('data', () => {});
+    child.stdout.once('data', () => child.stdout.destroy());
+    child.on('error', reject);
+    child.on('close', (c) => resolve(c));
+  });
+  assert.strictEqual(code, 0, 'the exit code is the command\'s own on every platform');
+});
+
+test('CL-21 a reader that closes early never changes the exit code (JP-1)', { skip: WIN32_BLOCKING_PIPES, timeout: 60000 }, async () => {
   // review r1 A1 / r2 B2: the failure needs BOTH streams queued at exit — then an early-closed stdout
   // reader's EPIPE fires while the exit still waits on stderr, and without a listener Node turns it into
   // exit 1. A preload queues 300 KB on stderr at startup; the 300-change envelope queues stdout; the

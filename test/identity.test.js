@@ -11,6 +11,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { npmSync } = require('./helpers/npm');
 
 const ROOT = path.join(__dirname, '..');
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
@@ -22,7 +23,7 @@ let packed = null;
 function packedDir() {
   if (packed) return packed;
   const dest = fs.mkdtempSync(path.join(os.tmpdir(), 'apriori-pack-'));
-  const p = spawnSync('npm', ['pack', '--silent', '--pack-destination', dest], { cwd: ROOT, encoding: 'utf8' });
+  const p = npmSync(['pack', '--silent', '--pack-destination', dest], { cwd: ROOT, encoding: 'utf8' });
   assert.strictEqual(p.status, 0, p.stdout + p.stderr);
   const tarball = fs.readdirSync(dest).find((f) => f.endsWith('.tgz'));
   assert.ok(tarball, 'npm pack produced a tarball');

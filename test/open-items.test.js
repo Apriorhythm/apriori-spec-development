@@ -253,7 +253,7 @@ test('OI-04 legacy Evidence rows migrate by rule: blocked blocks, accepted is an
   const b = project({ evidence: '- producer-diff: done — read the whole diff\n- data-schema: blocked — staging DB offline\n' });
   const f = rd.evidenceFindings(flowOf(b));
   assert.deepStrictEqual(f.blockers.length, 1); assert.match(f.blockers[0], MSG);
-  assert.deepStrictEqual(f.notes, ['legacy ## Evidence section ignored (6.2: risks live in ## Open)']);
+  assert.deepStrictEqual(f.notes, ['legacy ## Evidence section ignored (6.0: risks live in ## Open)']);
   assert.deepStrictEqual(f.legacy.rows, [
     { name: 'producer-diff', status: 'done', detail: 'read the whole diff' },
     { name: 'data-schema', status: 'blocked', detail: 'staging DB offline' }]);
@@ -293,9 +293,9 @@ test('OI-04 legacy Evidence rows migrate by rule: blocked blocks, accepted is an
   const fi = rd.evidenceFindings(flowOf(ig));
   assert.deepStrictEqual(fi.blockers, []);
   assert.deepStrictEqual(fi.items, []);
-  assert.deepStrictEqual(fi.notes, ['legacy ## Evidence section ignored (6.2: risks live in ## Open)']);
+  assert.deepStrictEqual(fi.notes, ['legacy ## Evidence section ignored (6.0: risks live in ## Open)']);
   assert.strictEqual(gate(ig).status, 0, gate(ig).stdout);
-  assert.match(line(gate(ig).stdout, 'C9'), /^✓ C9 no open items; legacy ## Evidence section ignored \(6\.2: risks live in ## Open\)$/);
+  assert.match(line(gate(ig).stdout, 'C9'), /^✓ C9 no open items; legacy ## Evidence section ignored \(6\.0: risks live in ## Open\)$/);
   assert.strictEqual(archive(ig).status, 0);
   // the retired vocabulary left with the table
   for (const gone of ['EVIDENCE_STATUS', 'EVIDENCE_STATUS_ALIAS', 'canonicalEvidenceStatus'])

@@ -33,7 +33,7 @@ Then redirect to /login, carrying a redirect parameter
 
 After the AI writes the code and the tests, it **runs the tests itself**, keeping the code self-consistent and eliminating low-level mistakes (compile errors, missing fields, malformed data).
 
-> Each scenario in the SPEC-DOC ([§4.5](#44-specify-the-minimal-behavior-contract)) is one such `if … then …`, so **the spec's scenarios *are* the test cases** the implementation must satisfy in Build & Test — "test-driven" here means letting the spec's scenarios drive the tests.
+> Each scenario in the SPEC-DOC ([§4.4](#44-specify-the-minimal-behavior-contract)) is one such `if … then …`, so **the spec's scenarios *are* the test cases** the implementation must satisfy in Build & Test — "test-driven" here means letting the spec's scenarios drive the tests.
 
 ### 1.4 Adversarial Review
 
@@ -58,7 +58,7 @@ Claude Code (Opus/Claude)  ──produces──►  SPEC-DOC + DESIGN-DOC
 
 > The last two levers matter *more* than the first, and neither requires a second tool. A **freshly-started session explicitly told to refute** catches most issues even when it runs the same model as the producer — because it isn't bound to its own earlier reasoning. The worst anti-pattern is **asking the model to "review what you just wrote" in the same conversation**: its context is full of its own justifications, so it rubber-stamps. Switching models but staying in one session is *weaker* than the same model in a fresh one. If you only have Claude Code, see [§2.4](#24-adversarial-review-with-only-claude-code).
 
-**Fresh context vs. cross-round memory — `## Open` and the reviewer session.** Multi-round review has a built-in tension: each round's reviewer should be *fresh* (the second lever), yet it must remember earlier rounds to verify "was issue #3 actually fixed?" Keeping one long-lived reviewer session buys memory at the cost of freshness — after round 1, the reviewer is anchored to *its own* past findings too. 6.2 keeps the memory in three places, none of them a ledger: the state's `## Open`, which the CLI reads (every substantive issue has a stable id; a re-found issue reopens its old id); the reviewer session, which R2 resumes round after round (its id is persisted in the state, PR-12); and from round 3 the producer's `review-progress` record, which must cover the ids of the previous round's summary (R4, checked by C8). Any cumulative notebook a reviewer keeps ([§7.0](#70-the-issue-ledger-optional-shared-by-review-loops)) is its own: the CLI never reads it and it is not part of the next round's default input. `## Open` doubles as the audit trail — an accepted item stays visible with the owner's reason, and a resurfacing issue reopens its old ID instead of masquerading as a new finding.
+**Fresh context vs. cross-round memory — `## Open` and the reviewer session.** Multi-round review has a built-in tension: each round's reviewer should be *fresh* (the second lever), yet it must remember earlier rounds to verify "was issue #3 actually fixed?" Keeping one long-lived reviewer session buys memory at the cost of freshness — after round 1, the reviewer is anchored to *its own* past findings too. The memory lives in three places, none of them a ledger: the state's `## Open`, which the CLI reads (every substantive issue has a stable id; a re-found issue reopens its old id); the reviewer session, which R2 resumes round after round (its id is persisted in the state, PR-12); and from round 3 the producer's `review-progress` record, which must cover the ids of the previous round's summary (R4, checked by C8). Any cumulative notebook a reviewer keeps ([§7.0](#70-the-issue-ledger-optional-shared-by-review-loops)) is its own: the CLI never reads it and it is not part of the next round's default input. `## Open` doubles as the audit trail — an accepted item stays visible with the owner's reason, and a resurfacing issue reopens its old ID instead of masquerading as a new finding.
 
 Adversarial review has one standing point: **the code-implementation review (Review & Deliver)**. A behavior-contract review (Specify) is **not run by default** — it is added only when the owner asks for an early judgment on a specific approach, or the requirement is still substantially uncertain after Ground (RUNBOOK §2). Every round of either records its findings in the same one state file.
 
@@ -92,8 +92,9 @@ This methodology is **decoupled from any specific tool** — any "LLM + Tool use
 | **Cursor** | IDE (VSCode-derived) | Multiple models | `.cursor/rules/apriori.mdc` (rule-level) | Produce or review, depending on the chosen model |
 | **Windsurf** | IDE | Multiple models (Cascade) | `.windsurf/rules` + workflow | Produce or review |
 | **Copilot** | IDE plugin | Multiple models | `.github/copilot-instructions.md` | Produce or review, inline completion |
+| **OpenCode** | Terminal | Multiple models | `AGENTS.md` + `.opencode/command` (installed, not yet exercised) | Produce or review |
 
-> ⚠️ `apriori init` writes each tool a thin **pointer** to the one self-contained `apriori/runbook.md` in that tool's native location — a slash command where the tool supports one (Claude Code, Codex, Windsurf), a rule-level entry otherwise (Cursor, Copilot). **The protocol lives once; only the entry point differs per tool.** The four phases (RUNBOOK §4) are universal.
+> ⚠️ `apriori init` writes each tool a thin **pointer** to the one self-contained `apriori/runbook.md` in that tool's native location — a slash command where the tool supports one (Claude Code, Codex, OpenCode, Windsurf), a rule-level entry otherwise (Cursor, Copilot). **The protocol lives once; only the entry point differs per tool.** The four phases (RUNBOOK §4) are universal.
 
 > **Process-skill layers are swappable — artifact machinery is not.** The RUNBOOK's P1–P6 prompts *are* this workflow's own SDD skill layer; skill systems such as Claude Code's superpowers (TDD, debugging, planning) sit below it at the implementation layer — compatible, but no replacement for the artifact machinery (spec store, ledger, gates). On any conflict of instructions, the RUNBOOK stays canonical.
 
@@ -131,7 +132,7 @@ The adversarial-review loop (review → revise → re-review) only works if the 
 ```shell
 # -s read-only : the reviewer only audits; it must not modify your files
 # --skip-git-repo-check : only needed when running outside a git repo
-codex exec -s read-only "<your review prompt — e.g. the RUNBOOK P5 reviewer prompt>"
+codex exec -s read-only "<your review prompt — e.g. the RUNBOOK P3 reviewer prompt>"
 ```
 The output header prints a line like `session id: 019f....`. **Copy that id** — it's the handle for the next round. (Invoking codex from a script or background job? Close stdin — append `< /dev/null`; PowerShell has no /dev/null, pipe instead: `$null | codex exec …` — or it waits for input and hangs.)
 
@@ -170,7 +171,7 @@ ANTHROPIC_MODEL="claude-sonnet-4-6" claude
 # then paste the RUNBOOK P3 reviewer prompt, pointing at the artifact paths
 ```
 
-This two-terminal setup is the Claude-only equivalent of §2.3's `codex exec` / `resume` loop: produce on the left, hand the artifacts to the right, paste findings back, repeat until "VERDICT: no major issues." One difference from `resume`: a fresh `claude` remembers nothing across rounds — so hand the reviewer the **issue ledger** ([§7.0](#70-the-issue-ledger-optional-shared-by-review-loops)) along with the artifacts. It verifies earlier fixes from the ledger while keeping fresh eyes; per [§1.4](#14-adversarial-review), that combination is worth having even when `resume` is available.
+This two-terminal setup is the Claude-only equivalent of §2.3's `codex exec` / `resume` loop: produce on the left, hand the artifacts to the right, paste findings back, repeat until "VERDICT: no major issues." One difference from `resume`: a fresh `claude` remembers nothing across rounds — so every round hands it the same default input as round 1 (the contract, the diff, the `## Open` items, the boundaries still uncovered) and it reviews the whole change afresh; the previous round's conclusions are not repackaged into it (RUNBOOK §4 Review & Deliver). What is still unresolved reaches it through `## Open`, where a re-found issue reopens its old id; per [§1.4](#14-adversarial-review), those fresh eyes are worth having even when `resume` is available.
 
 **Match the model tier to the review point:**
 
@@ -238,7 +239,7 @@ npm -v    # e.g. 10.x.x
 
 ### 4.0 Four Phases
 
-Every change runs the same four phases. There is no second track, no size tier and — since 6.2 — no mode: what varies is the evidence a change owes, which follows the risks it actually hits, never the number of documents or rounds. (A `mode:` line may still sit in the state file; it is optional and inert.)
+Every change runs the same four phases. There is no second track, no size tier and no mode: what varies is the evidence a change owes, which follows the risks it actually hits, never the number of documents or rounds. (A `mode:` line may still sit in the state file; it is optional and inert.)
 
 | Phase | What it settles | Done when |
 |---|---|---|
@@ -251,12 +252,9 @@ The state file's `phase` field carries exactly these four words plus the two exi
 
 **Five things stop for a human, and nothing else does** (RUNBOOK §1 R1): an escalation (a `VERDICT: escalate`, or a review family that went past its one automatic re-review); critical evidence blocked (a pending `## Open` item); a review family past its one automatic re-review (reframe) — at the owner's review-round limit the producer rules on each open finding and one re-review follows, so the limit itself stops nobody; any external side effect; abandonment. 5.x had a fixed ladder of five numbered gates plus a ritual for consolidating them away — a stop that fires on a step number stops changes that had nothing to decide, and teaches people to consolidate the stops that mattered.
 
-| Mode | When | What runs |
-|---|---|---|
-| **fast** | A reproducible defect, a local fix, and none of the risk signals below | reproduce → fix → regression → **one** independent review |
-| **standard** | Everything else | evidence proportional to the risks actually hit — never more documents, never more rounds |
+**Be careful when the change touches any of these** (RUNBOOK §2): migration / schema / DDL · transactions or locks · permission or auth · external configuration · public API · cross-repo reference · a new route or page. Each is a risk that wants real evidence; re-ask after every substantial diff — a change that starts local and grows a migration owes migration evidence from that moment on.
 
-The signals that call for real evidence are facts, not estimates: UI / prototype · cross-process or cross-repo · data / transactions · config / deploy / environment · permission / security · migration / compatibility. Hitting one is not negotiable by self-report — what stays unverified becomes an `## Open` item, and only the owner's `evidence-accept <ID>` settles it. One signal is mechanical: a delta declaring `## MODIFIED`, `## REMOVED` or `## RENAMED` against an already-published requirement is reported by the CLI itself as `contract-mutation` — information, since 6.2, not a mode (RUNBOOK §2).
+These signals are facts, not estimates. Hitting one is not negotiable by self-report — what stays unverified becomes an `## Open` item, and only the owner's `evidence-accept <ID>` settles it. One signal is mechanical: a delta declaring `## MODIFIED`, `## REMOVED` or `## RENAMED` against an already-published requirement is reported by the CLI itself as `contract-mutation` — information, not a demand (RUNBOOK §2).
 
 **A change should have one main result and one main evidence chain.** Split it when it spans several boundaries that each need a different real environment, when a reviewer must switch between unrelated contexts to judge correctness, or when fixing one area keeps widening the review surface in another. This is not a line or file-count threshold — the question is whether one clear, repeatable evidence chain can prove the change done.
 
@@ -268,10 +266,10 @@ The signals that call for real evidence are facts, not estimates: UI / prototype
 | SPEC-DOC | The behavior contract | The delta specs produced in Specify, describing every scenario of this change |
 | SPEC-EVALUATION-DOC | Contract review doc | In **Specify**'s adversarial review, another model's audit of the delta specs |
 | Reality Check | The state's Ground section | `observed` / `decision` / `assumption` lines in the flow-state. It **replaced** the gap report — one state, no second file |
-| Open item | The state's unresolved items | `- <ID>: <text>` under `## Open`; pending until the owner records `evidence-accept <ID>` in `gates:`, and reported as still present after — the one mechanism of risk acceptance since 6.2 |
-| Issue ledger | A reviewer's cross-round notebook — **optional, never read by the CLI** | A human practice for cross-round memory; since 6.2 `gate`/`archive`/`status` never open it and nothing in it blocks — see [§7.0](#70-the-issue-ledger-optional-shared-by-review-loops) |
+| Open item | The state's unresolved items | `- <ID>: <text>` under `## Open`; pending until the owner records `evidence-accept <ID>` in `gates:`, and reported as still present after — the one mechanism of risk acceptance |
+| Issue ledger | A reviewer's cross-round notebook — **optional, never read by the CLI** | A human practice for cross-round memory; `gate`/`archive`/`status` never open it and nothing in it blocks — see [§7.0](#70-the-issue-ledger-optional-shared-by-review-loops) |
 | P6 | Discuss first | Only when the human explicitly asks to discuss an idea first: nothing durable until they approve, then `apriori new` → Ground (RUNBOOK "Discuss first") |
-| mode | An optional, inert field | `fast` or `standard` may still be written in the state file; since 6.2 nothing decides anything by it ([§4.0](#40-four-phases)) |
+| mode | An optional, inert field | `fast` or `standard` may still be written in the state file; nothing decides anything by it ([§4.0](#40-four-phases)) |
 | phase | Where the change is | `ground` / `specify` / `build` / `review`, plus `done` / `abandoned` |
 
 **Where each artifact lives** (these paths are the conventions used throughout the RUNBOOK's prompts — adjust to your repo):
@@ -284,7 +282,7 @@ The signals that call for real evidence are facts, not estimates: UI / prototype
 | Reviewer raw output | `apriori/changes/<change>/review/<stem>-raw.*` |
 | TRUTH-DOC (knowledge base) | `apriori/truth/<module>.md`, **in the same repo as the code** (a separate KB repo also works if every doc carries a `source-commit` stamp — see §6) |
 
-Note what is absent: no requirement doc, no proposal, no design doc, no gap report, no task list. 6.0 demanded all five of every 5.x change and the practices showed the cost landing on reviewers rather than on defects — so `apriori new` scaffolds none of them, and neither `gate` nor `archive` asks for one.
+Note what is absent: no requirement doc, no proposal, no design doc, no gap report, no task list. 5.x demanded all five of every change and the practices showed the cost landing on reviewers rather than on defects — so `apriori new` scaffolds none of them, and neither `gate` nor `archive` asks for one.
 
 ### 4.2 Overview Flowchart
 
@@ -315,7 +313,7 @@ graph TD
     H2 -- Yes --> R{review-ready?}
     R -- No --> H
     R -- Yes --> RV[One independent review<br/>contract + diff + Open items + uncovered boundaries]
-    RV --> I[Archive<br/>merge specs, write back to KB, declare three states]
+    RV --> I[Archive<br/>merge specs, declare three states]
 ```
 
 > Every loop drawn here has a machine-checkable exit condition, so each can be **driven automatically by `/goal`** — see [§4.7](#47-automating-the-loop-with-goal-claude-code).
@@ -376,7 +374,7 @@ The **Build & Test action** (RUNBOOK **P2**). Write code per the contract — **
 
 > ⚠️ Note the distinction: the archive action **does NOT automatically update your own TRUTH-DOC** (`apriori/truth/` or a separate KB repo — §6). Writing this change's new/changed facts **back into the KB is a separate step, and it is owed only when** `apriori/truth/<module>.md` already covers the module, or the owner/change explicitly decided to persist a durable contract (RUNBOOK §4) (use the prompt in [§7.4](#74-review--deliver-consistency-review-and-archive) to have the AI do it explicitly, or write it manually).
 
-**The archive declares three states and freezes.** Whether the implementation is complete, whether the critical evidence is complete, and — one fixed sentence since batch C row 6 — that **an archive is not a release**: delivery is not a claim the archive makes, whatever any legacy `delivery:` line says. That is the whole claim an archive makes. **A defect found afterwards becomes a short outcome note or a new change — never a rewrite of the archived bundle.** Back-writing an old archive manufactures a timeline in which the work was already finished, which is exactly what the practices kept producing.
+**The archive declares three states and freezes.** Whether the implementation is complete, whether the critical evidence is complete, and — one fixed sentence — that **an archive is not a release**: delivery is not a claim the archive makes, whatever any legacy `delivery:` line says. That is the whole claim an archive makes. **A defect found afterwards becomes a short outcome note or a new change — never a rewrite of the archived bundle.** Back-writing an old archive manufactures a timeline in which the work was already finished, which is exactly what the practices kept producing.
 
 **Where a KB is kept, this step is the lifeline of long-term maintainability for legacy projects** — each change that owes a writeback deposits its new facts there, so the next Ground has no holes. With the KB in the same repo (§6), the writeback rides in the same PR as the code, where a reviewer can actually see it — the enforcement mapping is in [§4.8](#48-mapping-the-workflow-onto-git--pr--ci).
 
@@ -435,7 +433,7 @@ We'll run the whole workflow end-to-end on a small library with **real state and
 ```shell
 mkdir mini-kv && cd mini-kv
 npm init -y
-apriori init         # scaffold the apriori/ root and per-tool pointers
+apriori init --tools claude --test-cmd "npm test" --yes   # scaffold the apriori/ root and per-tool pointers
 git init             # version control recommended, so you can diff each step
 ```
 
@@ -513,12 +511,13 @@ apriori archive --change add-mini-kv --write
 ```
 Those three lines are the whole claim the archive makes, and the bundle is frozen afterwards: a defect you find next week becomes a new change, not an edit to this record.
 
-A new project's first archive **produces the initial TRUTH-DOC** (per §6's default: `apriori/truth/mini-kv.md`, in the same repo) — congratulations, your mini-kv now has a system knowledge base, and the next feature can start from the "knowledge base exists" path in Section 6. To calibrate granularity, here's roughly what that first KB doc should look like:
+A new project has no KB to keep current, so whether to persist this contract is the owner's decision (RUNBOOK §4). If it is, the change itself writes the **initial TRUTH-DOC** (per §6's default: `apriori/truth/mini-kv.md`, in the same repo) before review-ready, so the reviewer sees it in the diff — `apriori archive` never touches `apriori/truth/`. Once that lands, your mini-kv has a system knowledge base, and the next feature can start from the "knowledge base exists" path in Section 6. To calibrate granularity, here's roughly what that first KB doc should look like:
 
 ```markdown
 ---
 module: mini-kv
-source-commit: <commit sha at archive time>   # covers the Contract section only
+source-commit: <sha of the implementation commit>   # covers the Contract section only
+source-files: src/mini-kv.js
 ---
 # mini-kv — in-memory KV cache with TTL
 
@@ -542,7 +541,7 @@ source-commit: <commit sha at archive time>   # covers the Contract section only
 - **CON-1 (active, product constraint)** — zero runtime dependencies; the library stays embeddable.
 ```
 
-Notice the two fixed sections and their **opposite truth directions**: the Contract section is reconciled *from* code and covered by the `source-commit` stamp; the Decisions section outranks code — it ages by being superseded, not by code drift. And notice what the doc is not: no code listings, no line-by-line walkthrough. That's the granularity every later `explore` will consume.
+Notice the two fixed sections and their **opposite truth directions**: the Contract section is reconciled *from* code and covered by the `source-commit` stamp; the Decisions section outranks code — it ages by being superseded, not by code drift. And notice what the doc is not: no code listings, no line-by-line walkthrough. That's the granularity every later `explore` will consume. The `source-files:` line is there because the code lives in `src/`: without it, gate's KB-freshness check (C6) looks for `lib/mini-kv.js`, finds nothing to compare, and the stamp goes unchecked.
 
 ---
 
@@ -552,10 +551,10 @@ Notice the two fixed sections and their **opposite truth directions**: the Contr
 
 ### 7.0 The Issue Ledger (Optional; Shared by Review Loops)
 
-**The CLI reads no ledger** (6.2) — the state's `## Open` section holds a change's open substantive issues, one `- <ID>: <text>` line each, and `gate`/`archive`/`status` read them there and nowhere else; `review/issues.md` is never opened. Whether a reviewer still keeps such a table for its own cross-round memory is a human practice with no protocol weight. Two design notes are all that belong here:
+**The CLI reads no ledger** — the state's `## Open` section holds a change's open substantive issues, one `- <ID>: <text>` line each, and `gate`/`archive`/`status` read them there and nowhere else; `review/issues.md` is never opened. Whether a reviewer still keeps such a table for its own cross-round memory is a human practice with no protocol weight. Two design notes are all that belong here:
 
 - **Why the form exists at all:** cross-round memory lives in a file instead of a session, so every round's reviewer can be a **fresh** session without losing the thread ([§1.4](#14-adversarial-review)). A re-found issue reopens its old ID — that reopened ID is the oscillation alarm [§4.7](#47-automating-the-loop-with-goal-claude-code) watches for.
-- **Why exactly one thing blocks:** an `## Open` item nobody has accepted — a pending item; a registered follow-up (`- <ID>: follow-up → <new-change-name> — <text>`, a new ask the delivery does not depend on) is a note, not a blocker, and is not closed by being moved out. 5.x refused archives over ledger bookkeeping — unknown status tokens, reasonless rejections, unrecorded waives — on changes whose product tests were already green; 6.2 reads none of it, and an accepted item is reported as still present rather than deleted, because the record should be true. Reviews also follow a **scope discipline** (per Anthropic's fully-verified warning that gap-hunting reviewers report gaps even in sound work): only correctness/security/stated-requirement gaps become pending `## Open` items; the rest are `advisory`.
+- **Why exactly one thing blocks:** an `## Open` item nobody has accepted — a pending item; a registered follow-up (`- <ID>: follow-up → <new-change-name> — <text>`, a new ask the delivery does not depend on) is a note, not a blocker, and is not closed by being moved out. 5.x refused archives over ledger bookkeeping — unknown status tokens, reasonless rejections, unrecorded waives — on changes whose product tests were already green; 6.0 reads none of it, and an accepted item is reported as still present rather than deleted, because the record should be true. Reviews also follow a **scope discipline** (per Anthropic's fully-verified warning that gap-hunting reviewers report gaps even in sound work): only correctness/security/stated-requirement gaps become pending `## Open` items; the rest are `advisory`.
 
 ### 7.1 Ground: Reality Check
 
@@ -572,7 +571,7 @@ Prompts: RUNBOOK **P2** (the producer's contract → review-ready handoff) / **P
 
 ### 7.3 Build & Test: Code + Test
 
-Prompt: RUNBOOK **P2**. Design notes: P2 is tests-first — a failing test that proves every scenario's behavior, shown failing *before* implementation (one parametrized test may cover a scenario's whole examples table); naming a test with its scenario ID is a suggestion, never mandatory. There is no task list to execute in order: the contract's scenarios are the work, which removes the one artifact 5.x's apply step depended on. Scenario coverage with real test evidence is the hard bar; line coverage stays a signal ([§4.5](#45-build--test-failing-evidence-first)). The prompt ends by requiring two things the reviewer would otherwise have to establish itself: `## Open` brought up to date (every remaining item id'd, saying what is still unverified), and the complete diff read with known P0/P1 at zero — an instruction, since 6.2, that nothing checks.
+Prompt: RUNBOOK **P2**. Design notes: P2 is tests-first — a failing test that proves every scenario's behavior, shown failing *before* implementation (one parametrized test may cover a scenario's whole examples table); naming a test with its scenario ID is a suggestion, never mandatory. There is no task list to execute in order: the contract's scenarios are the work, which removes the one artifact 5.x's apply step depended on. Scenario coverage with real test evidence is the hard bar; line coverage stays a signal ([§4.5](#45-build--test-failing-evidence-first)). The prompt ends by requiring two things the reviewer would otherwise have to establish itself: `## Open` brought up to date (every remaining item id'd, saying what is still unverified), and the complete diff read with known P0/P1 at zero — an instruction that nothing checks.
 
 ### 7.4 Review & Deliver: Consistency Review and Archive
 

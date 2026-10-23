@@ -8,13 +8,13 @@
 apriori-cli 需要 Node ≥ 22。先升级 Node,否则一切免谈。
 
 ### D2 —— 没有 apriori/ / 脚手架缺口
-未初始化(或半初始化:缺 `runbook.md`、`specs/`、`.gitignore` 的 `tmp/` 行、或 `tmp/` 目录)。修复:`apriori init`(缺脚手架)或 `apriori update`(gitignore/tmp 缺口)。目录位置上蹲着一个文件也会同样报出——换掉它。
+未初始化(或半初始化:缺 `runbook.md`、`specs/`、`.gitignore` 的 `tmp/` 行、或 `tmp/` 目录),或者 runbook 点名的原型走查指南(`apriori/guides/prototype-walk.md`)缺失、或不是可用的普通文件(符号链接、目录、解析到项目外)。修复:`apriori init --tools <工具>`(缺脚手架——`init` 永远需要 `--tools`)或 `apriori update`(gitignore/tmp 缺口;它也会安装从没装过的指南——若它报告指南缺失,`apriori init --tools <工具>` 会重建;挡路的符号链接或目录先挪开)。目录位置上蹲着一个文件也会同样报出——换掉它。
 
 ### D3 —— runbook 副本与已装 CLI 不一致
 `apriori/runbook.md` 过期(或被本地改过——它是工具所有的文件)。修复:`apriori update`。
 
 ### D4 —— 工具指针丢失 / 命令文件缺失
-某个已检测到的 AI 工具,其规则文件不再指向 `apriori/runbook.md`,或命令文件没了。修复:重跑 `apriori init`(增量写入,绝不覆盖你的内容)。
+某个已检测到的 AI 工具,其规则文件不再指向 `apriori/runbook.md`,或命令文件没了。修复:重跑 `apriori init --tools <工具>`——该发现会给出确切命令(增量写入,绝不覆盖你的内容)。
 
 ### D5 —— 测试命令类发现
 - *无法启动 / 被信号杀死*:命令行本身坏了;手动跑一遍。
@@ -27,13 +27,13 @@ apriori-cli 需要 Node ≥ 22。先升级 Node,否则一切免谈。
 ### D6 —— scenario 无可绑定 ID / ID 重复
 每个 `#### Scenario:` 标题必须以形如 `KV-03` 的 ID 开头,且全库唯一。改规格文件;CI 里 `check` 强制同一规则。
 
-### D7 —— flow-state 问题 / "closeout pending"
-活动变更目录缺可解析的 `flow-state.md`(或其 `change:` 与目录名不符)需手工修复。5.x 身份键(`tier`、`track`、`track-rationale`、`round`、`current-step`)也在这里报告——按 MIGRATING.md 替换掉它;已自记收束(DONE/SUPERSEDED/ABANDONED)且原地保留作先例的 5.x bundle 是冻结历史,报为 note 而非 finding。"closeout pending" 一行是信息不是问题:归档后 `phase` 尚未置 `done`,只是收官还没记录。
+### D7 —— flow-state 问题 / "archived before review"
+活动变更目录缺可解析的 `flow-state.md`(或其 `change:` 与目录名不符)需手工修复。5.x 身份键(`tier`、`track`、`track-rationale`、`round`、`current-step`)也在这里报告——按 MIGRATING.md 替换掉它;已自记收束(DONE/SUPERSEDED/ABANDONED)且原地保留作先例的 5.x bundle 是冻结历史,报为 note 而非 finding。`archived <stamp>-<name> @ <phase> — archived before review; frozen as is` 这一行是信息不是问题:那次归档发生在评审之前(例如所有者在 `phase: build` 时的收尾),并按原样冻结。冻结在 `phase: review` 的归档是正常状态,不会被提及。
 
 ## 经典陷阱
 
-### verify 报 GAPS 且全部 UNBOUND,并附报告器提示
-测试命令没输出 TAP。修法同 D5。
+### verify 报 `RESULT: ERROR — run not trustworthy` 并提示 "ZERO TAP results were parsed"
+测试命令没有在 stdout 上输出 TAP,于是 verify 把这次运行判为不可信而拒绝(退出码 2)。修法同 D5;runner 把 TAP 写到 stderr 的,追加 `2>&1`。(单独的 UNBOUND 只是劝告,永远不会让运行失败。)
 
 ### 删除 requirement 后出现 ORPHAN 测试
 REMOVED 增量归档后,其 scenario 不再被要求——但旧测试还带着那些 ID。删掉测试;ORPHAN 就是提醒。
@@ -42,7 +42,7 @@ REMOVED 增量归档后,其 scenario 不再被要求——但旧测试还带着�
 增量里的 CAS 章不再匹配规格库——增量写成之后有人合并过。重读规格库、更新增量、用 `apriori stamp <store-file>` 重新盖章。绝不手改摘要。
 
 ### 本地 verify GREEN,CI 里 ORPHAN
-通常是测试名/ID 漂移:测试标题里的 ID 必须在词边界上匹配 scenario ID(`XX-01b` 永远绑不上 `XX-01`)。
+通常是测试名/ID 漂移:测试标题必须以 scenario ID **开头**(前导空白除外),而且 ID 必须在那里结束——后面紧跟字母、数字或下划线就匹配不上(`XX-01b` 永远绑不上 `XX-01`)。
 
 ### 升级后出现 `unknown flag`
 严格解析版本之后,打错的旗标会大声失败而不是被忽略——这个报错就是特性本身。`apriori <sub> --help` 打印可用旗标。

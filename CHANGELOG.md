@@ -1,6 +1,72 @@
 # Changelog
 
-## Preview snapshot — `preview/v6-20260926` (limited-use preview line `release/v6`)
+## 6.0.0 — 2026-10-23 · the first release of the 6 line: one flow, one bundle, one independent review
+
+**Why a major.** Against 5.0.0 the CLI surface, the `--json` shapes, the delta format and the flow-state
+schema all changed, and the 3.0.0 stability promise says that only happens in a major: the fixed
+artifact family (requirement doc, proposal, design, gap report, task list, issue ledger) is gone; the
+hotfix lane is gone and `apriori hotfix` refuses with a pointer; a change is one bundle under
+`apriori/changes/<name>/` with `phase:` as its identity; the review loop derives its round per family
+and the owner holds its limit; `gate` keeps `C2`/`C4` as placeholders and judges `## Open` items in C9;
+`archive` records a manifest, refuses an unfinished change and offers the owner's `--unreviewed`
+closeout. The 5.0.0 → 6.0.0 migration is MIGRATING.md, read upward from its `5.x → 6.0` section.
+
+**What this version is.** The v6-dev line as of this entry. Every entry between this heading and
+`5.0.0` below is part of 6.0.0: the entries were written as the line was built and keep the working
+names they were written under — `6.0 slice 1`–`5`, `6.2-sub-doc`, `6.2 code layer`, the
+`preview/v6-20260926` snapshot, and the per-change entries after it. None of those stages was ever
+published: `6.2` was the name of a development stage, not a version, which is why the first release
+of the line is 6.0.0 and not 6.2.0. The package version goes from `6.2.0-rc.0` to `6.0.0`, the runbook
+header to `runbook-version: 6.0`, and the tool's own messages say `6.0` where they said `6.2`.
+
+**Not part of this entry.** Nothing is published to npm (its latest stays 5.0.0, so
+`npm i -g apriori-cli` does not install this version yet — install from the repository, see the
+README); `main` still points at 5.0.0; there is no GitHub release and no `v6.0.0` tag yet. Those are
+separate decisions.
+
+**Evidence, stated as it stands.** Between 2026-09-27 and 2026-10-22 four real back-office
+requirements were delivered on this line (from `stable/v6-20260927-touchstone` = 5d3fc78 to c69174a)
+and passed QA with zero bugs; the owner intervened throughout, so nothing is attributed to the tool
+alone. No comparison against a control arm has been run, and cost is not endorsed (see the
+cost-record entry below). Only Claude Code is verified as a client.
+
+### release-6-0-0: the 6 line's release identity is 6.0.0
+
+- `package.json` `6.2.0-rc.0` → `6.0.0`; `RUNBOOK.md` header `runbook-version: 6.0` (CK-11 compares
+  major.minor; `apriori update` refreshes a project's copy of the runbook).
+- The runtime messages that named the `6.2` stage now say `6.0`, strings only: gate `C2`/`C4`
+  details (`retired in 6.0 — nothing is read`, `ledger retired in 6.0 — open items live in ## Open`),
+  doctor D7's fix (`mode: is optional and inert since 6.0`), readiness's legacy notes
+  (`legacy ## Evidence section ignored (6.0: risks live in ## Open)`,
+  `archive-force has nothing left to force in 6.0`) and its 5.x-identity refusal. No `--json` key,
+  status or judgement changes.
+- CHANGELOG: the line's entries become subsections of this release. MIGRATING: the opening names
+  6.0.0 as released and the headings lose `(Unreleased)`. RUNBOOK §0 installs from the repository until 6.0.0 is on npm. Specs: gate (the three strings, the
+  requirement title), cli (the release-identity requirement).
+- Tests: `ID-01` pins `6.0.0`; **`ID-06` new** — the identity everywhere a reader meets it, and a
+  comment-stripped scan of `lib/` and `bin/` for any string still naming `6.2`. The tests (13 cases in 8 files) and the
+  LNG-07 golden oracle that pinned the old strings follow (`_meta.repins` records the text-only repin).
+- README (both editions): the install line now installs from the repository
+  (`npm i -g github:Apriorhythm/apriori-spec-development#v6-dev`) and says npm still serves 5.0.0;
+  the two demo GIFs are captioned as recorded on the 4.x CLI; `verify`'s promise is stated as it is
+  (green needs tests that ran and no attributable failure — binding gaps are reported, not required);
+  the `mode`/`fast`/`standard` wording, "this round"/"this machine" and the V1/V2/V3 line names are
+  gone; `/apriori-discuss` and `archive --unreviewed` are named. VISION (both editions): design-notes →
+  a Reality Check `decision`, P8/§6/P11-P12/§1.5 pointers restated against the current runbook (the
+  historical trigger sentence stays, with a present-day gloss). The runbook drops its three `(6.2)`
+  markers. `scripts/golden-path.mjs` recognises the repository install line as the install seam it
+  rewrites (GP-01 follows).
+- docs/ (both editions, 23 audit findings): the quoted gate/readiness strings say `6.0`; `init`'s and
+  `update`'s exit codes, the `status --json` open-item (`followUp`) and error shapes, the per-command
+  `--json` error view and `check`'s exit 2 are stated as the code has them; the troubleshooting entries
+  for a non-TAP test command, D2/D4/D7 and the scenario-ID rule (the ID starts the test title) are
+  corrected; the concepts handbook names P3 as the reviewer prompt, hands a fresh reviewer its four
+  default inputs instead of a ledger, replaces the fast/standard table with the runbook's risk list,
+  and no longer says `archive` writes the knowledge base; the mini-kv walkthrough's `init` and KB
+  example run as written; OpenCode joins the tool tables; the CI page installs from the repository
+  until 6.0.0 is on npm; the stage markers (`6.2`, `batch C`, `V3`) are gone.
+
+### Preview snapshot — `preview/v6-20260926` (limited-use preview line `release/v6`)
 
 This tag fixes the v6 line at de304fc (plus this note) as a **limited-use preview**: two real
 projects have run the v6 line since 2026-09-10 (on 59e5c15) and the line is now offered for
@@ -25,39 +91,39 @@ Known limitations, stated as they stand:
 Later preview snapshots are cut from `release/v6` after v6-dev work merges back; fixes in flight
 (authorization-scope, archive-manifest) are not part of this snapshot.
 
-## Unreleased — status-last-gate-order: the last decision is the latest owner entry, never a note
+### status-last-gate-order: the last decision is the latest owner entry, never a note
 
 - `apriori status`'s `last decision:` line and the `lastGate` field now show the latest OWNER entry of the gates log by its stamp (a tie goes to the later line), `null` when there is none; before, they took the textually last dated entry and could show a `note:` as a decision — in the real corpus 4 of 20 in-flight changes had it wrong. `lastRecorded` is unchanged. Follow-up LG-1 (status-last-recorded, 2026-09-27).
 
-## Unreleased — cli-json-pipe-flush: the CLI exits only after its output has drained
+### cli-json-pipe-flush: the CLI exits only after its output has drained
 
 - `apriori <cmd> --json` through a pipe lost everything past 64 KiB: the entry point called `process.exit()` right after `console.log()`, and a POSIX pipe write is asynchronous. The process now exits once stdout and stderr have drained (when nothing is queued it exits at once, as before); exit codes are unchanged — a reader that closed early included — on the success path and the uncaught-error path alike. Follow-up JP-1 (status-last-recorded, 2026-09-27); reproduced with a 90-change project before the fix.
 
-## Unreleased — delivery-material-check: a delivered operating material is checked at its recipient's entry point
+### delivery-material-check: a delivered operating material is checked at its recipient's entry point
 
 - The operator's script paragraph gains one sentence: before it is handed over, a delivered operating material (a script, an API flow, a test manual) is checked against its recipient's actual entry point — the prerequisite state, the inputs and the observable result each step needs — and its key references against the applicable version, with what was not verified stated. Advice only: no stage, checklist, gate or unattended-run demand. Basis: across four real requirements the owner repeatedly had to stop and ask where to look, what state a step needs or which input to use.
 
-## Unreleased — check-recipe-revision: the requirement-level check for any requirement, the script on its own
+### check-recipe-revision: the requirement-level check for any requirement, the script on its own
 
 - The optional requirement-level independent check (`docs/operator.md`) now applies to any requirement, split into several changes or not, before it goes to test, at the owner's call; RUNBOOK §2's risk surfaces are offered as help, not as a validated threshold. Its inputs are pinned to the version checked — each repository's commit and comparison base, the whole requirement's diff, and the effective contracts (the store as of the comparison base with the changes' deltas applied in merge order, archived ones included). It adds three dimensions — regression of the behavior the changes touch and its callers, the permission and data scope of the other entrances to the affected data, and concurrency, transactions and side-effect consistency — counts a finding only once verified against the code, and lets a fix land back in a change still in flight. The prototype-walk guide's requirement-level successor follows (before test, carrying ids, sources and evidence references; carried rows gain no authority); its new edition is registered so existing projects adopt it on proof.
 - The owner acceptance or integration script stands on its own paragraph: it can be delivered with or without the check, for the owner or whoever they hand it to; before handing it over the agent runs what it is already authorized and able to run and says which path ran and which did not. No gate.
 - RUNBOOK §4 says a delta's preamble and `## Notes` never reach the merged spec, so the source and decision basis a reader needs go in the requirement body. `docs/concepts.md` no longer says a fast and cheap tier is enough for the faithfulness review. P3 is unchanged.
 
-## Unreleased — archive-unreviewed: the owner's closeout of a delivered change without a converged review
+### archive-unreviewed: the owner's closeout of a delivered change without a converged review
 
 - `apriori archive --change <name> --unreviewed`, with the owner's `- <ts> owner: archive-unreviewed <name> — <reason>` in `gates:`, archives a change the owner says is delivered although its independent review never converged (or never ran). Real projects left most delivered changes unarchived for exactly this reason: once the work shipped nobody closed the process, and no exit said so honestly. Both halves are required; only the phase demand (`build` is accepted) and the review loop's convergence are waived — a pending open item, a standing assumption, an illegal state, a structural defect, a CAS or merge conflict still refuse, and a change at `review` whose review loop owes nothing refuses the flag. Integrity findings of the review evidence (a gap, a removed or conflicting verdict, an orphan transcript) are waived only by name and always make the review `not converged`; a round claimed beyond a family's last attributable one is named `(unattributable)`. The declaration's critical-evidence line says `independent review: none`, `not converged`, `evidence incomplete` or `converged` (only the phase was waived) with each family's last attributable round, the owner's record and every waived demand follow as notes, the manifest carries them in a new `review` key (normal archives unchanged), and `apriori check` names every archive closed this way with its recorded review state. RUNBOOK §4 gains CLOSED WITHOUT REVIEW.
 
-## Unreleased — fence-tilde-readers: one fence grammar, tildes included
+### fence-tilde-readers: one fence grammar, tildes included
 
 - Every structural Markdown reader — scenario discovery in `check` and `verify`, the delta parser, the store scan and the MODIFIED-block engine in `archive`, the process-config reader, gate's truth-doc `source-commit` reader, and the review reader — now uses one fence grammar from `lib/text.js`: a `~~~` fence (a line of three or more `~`, closed by a bare line of at least as many) is opaque like a backtick fence, so a tilde-fenced example of a config row, scenario, requirement, stamp or verdict no longer takes effect. A store's requirement blocks no longer split at a requirement heading inside a fence of either marker (before, a fenced example heading split the block in `archive`'s merge, for backtick fences too); the block keeps its raw text — and a store with no requirement yet (prose, or only a fenced example) keeps its text when its first requirement is added, where `archive` used to drop it. `archive` now reads every rendered store back against its merged requirement blocks and refuses the module, writing nothing, when the text of one part would swallow another (an unclosed fence opener before a block). Backtick fences strip exactly as before, and every spec store and delta in this repository splits into the same blocks (both checked). The grammar is the tool's own, not CommonMark. Follow-up FU-1 of batch-review-fixes.
 
-## Unreleased — init-premanifest-adoption: a project mid-migration keeps its adoption pass
+### init-premanifest-adoption: a project mid-migration keeps its adoption pass
 
 - `apriori init` on a project with no `apriori/managed.json` whose runbook predates the run (a regular file) records what it creates as always and marks the manifest `"adoptPending": true`; `apriori update` treats a marked manifest like a missing one for the adoption on proof of unlisted files — the older runbook, command files whose bytes are a shipped generation — while listed files keep their rules, and clears the mark after a complete run. Before, init's manifest of only its own files ended that adoption and left the older runbook and command files unmanaged. Follow-up FU-2 of batch-review-fixes.
 - `managed.json` accepts an optional boolean `adoptPending`. An older CLI drops it when it rewrites the manifest; MIGRATING gives the by-hand recovery.
 - `init`'s report no longer ticks an action that wrote nothing (a skip with a reason).
 
-## Unreleased — batch-recheck-fixes: three findings of the requirement-level re-check
+### batch-recheck-fixes: three findings of the requirement-level re-check
 
 The requirement-level re-check of batch-review-fixes (9020f02) found all 19 original findings addressed and confirmed three new ones (two adversarial votes each), fixed here under their ids.
 
@@ -65,7 +131,7 @@ The requirement-level re-check of batch-review-fixes (9020f02) found all 19 orig
 - **guide-R1.** `update` adopts an unrecorded guide only on a read located on its descriptor — never on a pathname check — so on macOS and Windows an unrecorded guide is held back `not refreshed` like an outdated one (delete it and rerun `apriori init`).
 - **SST-R1.** The guide tests follow the platform: where no descriptor can be located the suite asserts the refusals, and symlink-dependent cases are skipped on Windows as elsewhere in the suite; the whole suite passes with `/proc` hidden.
 
-## Unreleased — batch-review-fixes: the 19 findings of the 10-02 batch's requirement-level check
+### batch-review-fixes: the 19 findings of the 10-02 batch's requirement-level check
 
 A requirement-level independent check (codex, two adversarial votes per finding) over `5d3fc78..c290842` confirmed 19 findings; this change fixes all of them under their original ids.
 
@@ -75,57 +141,57 @@ A requirement-level independent check (codex, two adversarial votes per finding)
 - **Guide text (PW-1/2).** Recorded owner decisions come before the requirement sources (guide §4 and the runbook's Ground bullet); a walk before any change exists registers nothing, creates no change and lists its owner rows by id for the change that later takes it up.
 - **Specs and tests (SST-1..6).** PR-11/PR-16 (and the stale PR-08/PR-10 wording in the same block) state the current runbook; PR-66, PR-67, PW-02, PW-03 and PW-05 now assert what their scenarios promise.
 
-## Unreleased — requirement-check-recipe: an optional requirement-level independent check
+### requirement-check-recipe: an optional requirement-level independent check
 
 - `docs/operator.md` (with the identical recipe and a Chinese explanation in `operator_cn.md`) gains an optional fifth `/goal` recipe for a requirement split into several changes: after its last change is archived, a reviewer independent of the building session reconciles every `in` row of the source checklist (corrected rows against their ruling), traces the end-to-end paths, checks delivery dependencies handed outside the workflow and the assertion and run conditions behind each tick; it reads the code and does not fix it. Its inputs are listed apart from P3's default input.
 - The report, every re-check and the one current checklist live in the requirement's document directory — never in an archived bundle or a change's `review/` — and the report pins the code commit, source versions and scope. Necessary fixes land in one or more changes with their own P3, then a separate re-check; a clean check opens no change. The goal ends at a human stop, an actual capability block or a set execution bound only by handing the requirement back, never as a delivery. An optional owner acceptance walk may follow.
 - `guides/prototype-walk.md` names the requirement directory as where a requirement-level check keeps its successor checklist. No machine check is added.
 
-## Unreleased — prototype-walk-guide: a prototype walk, as one guide the runbook references
+### prototype-walk-guide: a prototype walk, as one guide the runbook references
 
 - New `guides/prototype-walk.md` (English), generalized from the walk specification an owner used on a real requirement: a parameterized entry (prototype and version, sources, scope, caps, where kept artifacts and scratch go), the walk's method (static analysis, a local server, runtime discovery, a state model with a justified equivalence basis, traversal, boundaries, path-explosion control by component class, errors, screenshots, coverage), a reconciliation checklist (`ID`, `version`, `observable`, `evidence`, `scope`, `ruling`, `implementation`, `verification`) as the one progress source, four hard constraints, completion criteria and how the result is registered.
 - `apriori init` installs it as `apriori/guides/prototype-walk.md` and records it; `apriori update` installs it on a project that never had it (`created (first install)`) and manages it like the runbook afterwards; both skip, with a reason, a path that is not a regular file or resolves outside the project. `apriori doctor` D2 reports the guide missing when the runbook names it. `package.json` ships `guides/`.
 - RUNBOOK §4 Ground: when the sources include a runnable UI prototype meant as an acceptance basis and no walk of it is on record, the agent offers an optional walk once per requirement (the answer recorded as a `decision`), and reads the guide in full before running one; its checklist is source material. The header says the runbook is self-contained but for that guide. `docs/operator(_cn).md` tell the human how to ask for a walk.
 - The first, deliberately small, use of a runbook-referenced file; the runbook is not split. A CLI from before this change refuses a manifest listing the guide — see MIGRATING.
 
-## Unreleased — owner-calls-and-handoffs: owner items stay the owner's, outside hand-offs keep their id, and a goal can end at a human stop
+### owner-calls-and-handoffs: owner items stay the owner's, outside hand-offs keep their id, and a goal can end at a human stop
 
 - §1 R1: an item a review or an outside report marks as the owner's call (a scope, a caliber, a risk to accept) and that no valid owner decision covers is not decided by a broad instruction such as "fix everything else" — it stays a pending `## Open` item until the owner answers; one answer may settle several when it names them. A decision recorded in `gates:` on the owner's behalf carries a `note:` saying so and where the words came from, and says which parts are the agent's. The same paragraph, and §4's archive `--force` sentence, now name the families `--force` carries as the code derives them since limit-ruling: the derived escalation, including the owner-reframe path at the limit.
 - §4 Specify / P2: a delivery dependency handed outside this workflow — a manual release step, another repository, a person — keeps its id as a pending item naming its carrier and what is unverified; a document describing the work is not the work done, and a `decision` line never stands in for it. No new grammar: C9 and R5 treat it as any pending item.
 - `docs/operator.md` (and the verbatim recipes in `operator_cn.md`): every `/goal` recipe's condition now carries a second outcome — the agent stopped at a human stop (for Build & Test also the 25-turn bound) and its last message names it, what is still open and the decision needed; that outcome hands the change back and is never a pass or a delivery. `/goal`'s evaluator judges only the condition, so a stop listed only in the body kept the loop re-prompting. `docs/concepts.md` §4.7 (both languages) says why.
 - From the 2026-10-02 analysis of a real project run; written rules only — the CLI does not check a note's content or what an owner item is.
 
-## Unreleased — runbook-english-only: the runbook has one edition, in English
+### runbook-english-only: the runbook has one edition, in English
 
 - `RUNBOOK_cn.md` is gone. `apriori init` and `apriori update` only ever installed the English `RUNBOOK.md` (the repository's README_cn pointed readers at the Chinese edition); keeping it meant every rule change was written and pinned twice. The English runbook is the only rule source. Nothing changes in an installed project.
 - The checks that compared the two runbook editions now run on `RUNBOOK.md` alone (verdict phrases, the `< /dev/null` guidance, codex forms, links, CK-11); the EN/CN codex-command comparison is retired. `apriori check --self` fails if a `RUNBOOK_cn.md` reappears (CK-23). Every obligation once pinned only through the Chinese edition is pinned on the English text.
 - The runbook header no longer carries a language switcher — in an installed project it linked to a file that is not there. The Chinese human documents (`README_cn.md`, `docs/*_cn.md`) stay and point at `RUNBOOK.md`. This removes a duplicated rule source; it is not a claim that agents execute better.
 
-## Unreleased — limit-ruling: at the review-round limit the producer rules and one re-review decides; the default limit is 8
+### limit-ruling: at the review-round limit the producer rules and one re-review decides; the default limit is 8
 
 - A `revise` at the owner's `review-round-limit` no longer stops for the owner. The producer writes one `note: ruling <family> round <n> — <ID>: <fixed|rejected|follow-up|owner> — <basis>` line per finding still open in that round (a necessary fix is never set aside), and exactly one independent re-review follows as the next round — the same reviewer session, answering each ruled id `- <ID>: ADDRESSED|NOT ADDRESSED — <basis>`. `gate` C8 checks it mechanically: legal kinds and a basis, every opening id covered, no id ruled two ways, exactly one re-review, every ruled id ADDRESSED or a pending `## Open` item (an `owner` ruling always pending; conflicting conclusions block), new re-review findings pending, and — when the re-review's provenance does not prove the same session — every `rejected` / `follow-up` pending. These are producer findings, never an owner gate; the re-review round needs no `review-progress` record. A family that passes is closed; its residuals are pending items R5 holds for the owner. Only an `escalate` verdict or a round past the one re-review stops for the owner (reframe as before); a reframe on the limit round itself keeps the old owner path. `--force` is no longer needed at the limit. The archive declaration keeps its three states and lists every ruling after them. RUNBOOK §1 R1/R3/R4, the Fix Packet, principle 9 and the Specify exit (both editions), `docs/operator.md` (a new one-goal Build → Review → Archive recipe), `docs/concepts.md`, `docs/cli.md`, the `/apriori` template (new generation) and the process-config template follow.
 - `review-round-limit` defaults to 8 (was 7). An explicit row keeps its value — projects scaffolded earlier carry an explicit `7`.
 - Deliberate relaxations the owner approved: no check that a ruling's evidence path exists, and the same issue under a new id, family or change earning no second re-review is a written rule the CLI does not check. The rulings and the one re-review do not guarantee the approach is right. Nothing here claims fewer rounds or lower cost. Basis: human approval of `DA-CONSENSUS` §三 (Claude × Astra, 2026-09-27) with the owner's own two conditions — the default raised to 8, and a flow that stays simple and runs under one `/goal`. Scenarios GT-50..66, AM-87/89..117/136, ST-40/44, CF-30..35, PR-40/41/61/62.
 
-## Unreleased — status-last-recorded: status shows when each change last recorded something
+### status-last-recorded: status shows when each change last recorded something
 
 - `apriori status` lists each active change with `last recorded in gates: <time>` — the latest date the change's own `gates:` log carries, to the minute when that entry's time is readable and to the day otherwise — or `unknown (no dated entry | no flow-state)`, followed by one line saying the time is self-recorded and not proof of activity. `--change` prints the same time on its own `last recorded:` line, and every JSON change view carries `lastRecorded: {at, source: 'gates', reason}` (`null` in the error view). The latest date wins whatever order the entries were written in: five of fifteen real in-flight logs with more than one dated entry were written out of order, and in four of them the last line is not the latest entry (two by several days). Status computes no age and labels nothing stale. `lastGate` / `last decision:` keep their meaning (the textually last dated entry). Scenarios ST-41..43.
 
-## Unreleased — review-round-scope: a later review round is scoped to what changed
+### review-round-scope: a later review round is scoped to what changed
 
 - RUNBOOK §4 Review & Deliver (both editions) gains one bullet: from round 2 on, the producer's resume message (R2) asks the reviewer to judge each finding still open from the previous round ADDRESSED / NOT ADDRESSED and to review the fix diff together with what it affects (callers, shared state, tests — never trimmed to the edited lines). A new finding outside that diff still counts when it violates the current contract or a safety constraint; anything else is advisory and does not extend the loop. A finding is wording only when fixing it changes neither the contract nor how anyone would execute it. The scope rides on a resumed reviewer session: a later round in a fresh session (the non-Codex path when not resumed, or after failed transport recovery) gets only the default input and reviews the whole change as round 1 does. R2's resume clause points at the bullet. P3 is byte-identical (RIB-10); R4 limits, stop points and the verdict vocabulary are unchanged. Scenarios PR-59/60. Nothing here claims fewer rounds.
 
-## Unreleased — commitment-carry: a commitment handed across a split keeps its id
+### commitment-carry: a commitment handed across a split keeps its id
 
 - Split first and P2 (both editions): a commitment a split hands to another change keeps its id — a pending `## Open` item naming its carrier (`- <ID>: <text> — carried by <change>`) when this delivery depends on it, a follow-up when it does not, never both. The carried line never keeps the `follow-up →` prefix (a pointer appended to a follow-up line leaves it a non-blocking follow-up). The receiving change carries the original id as a pending item with an `observed:` origin line and closes it only on its own exit evidence (§4 landing sentence, §5); pick-up, archive or rename never closes it. No new grammar: the carried form is an ordinary pending item to C9 / R5. Scenarios PR-57/58 (PR-44 assertion updated).
 
-## Unreleased — source-intake: the contract is checked against its sources; a discussion held elsewhere is source material
+### source-intake: the contract is checked against its sources; a discussion held elsewhere is source material
 
 - P2 [Specify] (both editions) adds a four-question check of the contract against its sources: every in-scope requirement lands (scenario, explicit out-of-scope, or `## Open`), every scenario traces to a source, conditions are testable, source conflicts are settled by a recorded decision or left open. A choice the sources leave to the producer is `decision: producer — <choice>`; a user-visible behavior no source settles is the owner's `## Open` question; only an unproven fact is an assumption.
 - Ground: a design document, spec draft or prototype from a discussion held outside the workflow is source material — `observed: <path> — <version or date>; approved: <scope, or "unknown">` — and a decision only as far as the owner approved it. It authorizes neither `apriori new` nor development, and its next steps are not chained on automatically.
 - `/apriori-discuss` can save from such a document without re-running the discussion (same two approvals); the discuss template points at the rule by section and stays under its size cap. The `/apriori` routing template treats "build this design concluded elsewhere" with the document pointed at as identifying the work; the exhaustiveness clause stays last. Both templates get a new generation in `TEMPLATE_GENERATIONS`, so `apriori update` refreshes installed copies. The store's stale PR-07/09/14 wording is rewritten to current semantics. Scenarios PR-53..56.
 
-## Unreleased — archive-manifest: an archive records what it contained, and check reports drift
+### archive-manifest: an archive records what it contained, and check reports drift
 
 `apriori archive --write` now writes `archive-manifest.json` into the bundle — one sha256 per
 regular file (streamed; review raws included), symbolic links recorded as `link:<target>` and
@@ -148,7 +214,7 @@ files into an archived bundle seven days after archiving with no trace (Claude �
 consensus 2026-09-26, `DN-CONSENSUS` / `TT-CONSENSUS` in the lab). Scenarios AM-128..131,
 CK-19..21.
 
-## Unreleased — protocol-text-consistency: the descriptions catch up with the code
+### protocol-text-consistency: the descriptions catch up with the code
 
 No obligation is added or removed. Sentences that still described retired mechanisms are
 brought back to what the code and the recorded rulings say: §4's archive sentence now names
@@ -175,7 +241,7 @@ Test-side only, after the review rounds: the AM-30 reference parser now treats a
 first in the corpus to carry one), and the LNG-07 golden re-pins the two store hashes the
 archive rewrote (archive-merge, readiness) — the same deliberate re-pin 2716a54 and 84b6e83 made.
 
-## Unreleased — earlier S2 commits that had no entry
+### earlier S2 commits that had no entry
 
 - **G (e4200c9)** — both runbook editions route work by the delegation held, not by phase
   (the §1 table); finishing a delegated piece is a normal end, not a sixth stop; a capability
@@ -207,15 +273,15 @@ archive rewrote (archive-merge, readiness) — the same deliberate re-pin 2716a5
 
 All notable changes to `apriori-cli`. Versions follow semver; the stability promise: CLI surface & flags, `--json` shapes, the delta format and the flow-state schema only break in a major.
 
-## Unreleased — scope-disposition
+### scope-disposition
 
 - Review findings get a per-finding disposition with its basis (contract / existing constraint / new ask) and a necessary-fix criterion (RUNBOOK §4 Review & Deliver, both editions; P3 untouched). A new ask the delivery does not depend on is registered as `- <ID>: follow-up → <new-change-name> — <text>` in `## Open`: C9 / R5 / the archive declaration / `status` report it as a note, never a blocker (`followUp` in `status --json`, `null` elsewhere); the grammar is exact and anything else stays a pending item. No closed vocabulary, no C8 marker check (S6, plan consensus 序 3).
 
-## Unreleased — archive-drop-guard
+### archive-drop-guard
 
 - `apriori archive` never drops a store scenario silently: a MODIFIED replacement whose `dropped` class is non-empty is refused (`RESULT: REFUSED — nothing written`) with a `— DROPPED SCENARIOS —` block and a manifest fingerprint; release = the owner's fingerprint-bound `archive-drop <change> sha256:<fp> — <reason>` entry **and** `--force`. Ambiguous keys are never forceable; `missingLines` stays report-only; the single-file form refuses drops outright. `buildProjection` exposes `sources` (the store/delta texts of its own parse) for the manifest.
 
-## Unreleased — review-round-limit: the review loop's limit belongs to the owner
+### review-round-limit: the review loop's limit belongs to the owner
 
 The fixed round-2 stop and round-5 stop-loss of 6.0 are retired. One human-held number —
 `| review-round-limit | <n> |` in `apriori/process-config.md` (missing row = 7, integers >= 1,
@@ -232,7 +298,7 @@ reset. Why: across 37 real review families, 24% were still revising at round 2 a
 them converged by round 4 once allowed to continue; none reached round 5 — the round-2 stop was a
 standing blocker only a human could release, not a rare escape hatch.
 
-## Unreleased — S2 P3: a dedicated `/apriori-discuss` entry, and what its manifest does not do
+### S2 P3: a dedicated `/apriori-discuss` entry, and what its manifest does not do
 
 `init` now installs **two** command entries per command-level tool: the existing `apriori`
 entry and a thin `apriori-discuss` shell. The shell points at the runbook by **section**
@@ -256,7 +322,7 @@ OpenCode, Windsurf, Cursor and Copilot **not yet supported**: those paths were n
 for discovery, invocation and argument passing. They predate this round and are tracked
 separately.
 
-## Unreleased — cost record for the v6-dev line: measured once, unfavourable, unattributed
+### cost record for the v6-dev line: measured once, unfavourable, unattributed
 
 *Not a code change.* This entry exists so that the next person to reach for "6.x is leaner"
 finds the measurement instead of the intention. The v6 line was cut to make the document layer
@@ -283,7 +349,7 @@ Green tests, a shorter runbook, and fewer words in the document layer are not be
 The one direction that has been measured points the wrong way, and it is not yet attributable to
 anything we could fix.
 
-## Unreleased — D8 stops probing two generic directory names
+### D8 stops probing two generic directory names
 
 **Branch `feature/d8-narrow-legacy-roots`, cut from `v6-dev`.** Reported from real trial use
 (2026-09-10): a user's own `requirement/` directory — their product notes — made `apriori doctor`
@@ -308,7 +374,7 @@ say *"legacy 3.x layout root(s) present … migrate the artifacts into their cha
   + `spike/` must keep D8 `ok`; `UP-12` asserts the same for `update`'s warnings, covering both
   generic names.
 
-## Unreleased — 6.2 code layer · one mechanism of risk acceptance
+### 6.2 code layer · one mechanism of risk acceptance
 
 **Branch `v6.2-code`, cut from `v6.2-sub-doc`.** The runtime consumers the 6.2 document layer had
 already stopped teaching are retired, and risk acceptance is unified on ONE mechanism.
@@ -635,7 +701,7 @@ already stopped teaching are retired, and risk acceptance is unified on ONE mech
   read-event count will be delivered from the validation arm's session jsonl after that arm
   closes, and until then this entry claims relocation + preserved delivery only.
 
-## Unreleased — 6.2-sub-doc · the document layer loses weight (text only; tool behavior unchanged)
+### 6.2-sub-doc · the document layer loses weight (text only; tool behavior unchanged)
 
 **Branch `v6.2-sub-doc`, cut from `v6.0.0-rc1`.** Nothing under `lib/`, `bin/`, `templates/` or the
 CLI defaults changes; every `--json` shape, gate/archive predicate, delta grammar and flow-state
@@ -670,7 +736,7 @@ field is exactly rc1's. What changes is what the agent reads.
 - Tests: the text-anchor tests for the retracted disciplines (PR-07/09/11) now pin the
   subtraction; every behavioral test is untouched. 616/616.
 
-## Unreleased — 6.0 slice 5 · the fixed artifact family is gone
+### 6.0 slice 5 · the fixed artifact family is gone
 
 **The 5.x seven-step artifact machine is removed from the runtime, the living specs, the tests
 and both doc editions in one slice.** A half-removed state would have left the old obligations
@@ -755,7 +821,7 @@ authorization.
 
 ---
 
-## Unreleased — 6.0 slice 4 · one flow, no parallel lanes
+### 6.0 slice 4 · one flow, no parallel lanes
 
 - **The hotfix lane is removed.** `apriori hotfix` refuses with a pointer to `apriori new
   <name>` + `mode: fast` rather than an unknown-command error; `lib/hotfix.js`, its dedicated
@@ -772,7 +838,7 @@ authorization.
 
 ---
 
-## Unreleased — 6.0 slice 3 · fast gets a floor, and one risk signal closes its lane
+### 6.0 slice 3 · fast gets a floor, and one risk signal closes its lane
 
 **The hole, reproduced before it was fixed.** A `mode: fast` bundle with an empty `review/`
 reached `GATE: PASS`, exit 0, and `archive` merged it. C5 was passing *vacuously* — "0 review
@@ -836,7 +902,7 @@ review and §7 lists a missing one as blocking; the CLI was enforcing neither.
 
 ---
 
-## Unreleased — 6.0 slice 2b · the supervision parameters nothing reads are deleted
+### 6.0 slice 2b · the supervision parameters nothing reads are deleted
 
 **Removed from `templates/process-config.md`:** `step5-cap`, `step6-cap`, `spike-cap`,
 `extraction-review-cap`, `shrink-state`, `rejected-ratio-guard`, `shrink-proposal-freq` and
@@ -890,7 +956,7 @@ real change, and nothing reported it, because nothing could.
 
 ---
 
-## Unreleased — 6.0 slice 2 · the review round is derived per family, in two phases
+### 6.0 slice 2 · the review round is derived per family, in two phases
 
 **New: `gate` check C8 and archive readiness rule R4 — the review loop.** The round is no longer
 a number anyone writes; it is counted from the review evidence itself, **inside each review
@@ -953,7 +1019,7 @@ step. The runbook says so in §1 R4 rather than claiming an enforcement that doe
 
 ---
 
-## Unreleased — 6.0 slice 1 · the change identity collapses to one field
+### 6.0 slice 1 · the change identity collapses to one field
 
 **Behavior change (flow-state schema).** `tier`, `track`, `track-rationale` and `round` are
 replaced by a single `mode: fast | standard`. Three of the four decided nothing: `round` was

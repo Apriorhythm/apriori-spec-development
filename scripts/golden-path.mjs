@@ -90,7 +90,8 @@ export function buildPlan(blocks, mode, opts = {}) {
     let body = block.trimEnd();
     if (i === 0) {
       body = body.split('\n').map((ln) => {
-        if (!ln.startsWith('npm i -g apriori-cli')) return ln;
+        // the install line: the published package, or the repository form the README carries while a release is not on npm
+        if (!/^npm i -g (apriori-cli\b|github:Apriorhythm\/apriori-spec-development)/.test(ln)) return ln;
         return mode === 'packed'
           ? `npm i -g "${opts.tgz.replace(/\\/g, '/')}" --prefix "${opts.prefix.replace(/\\/g, '/')}"`
           : 'true # local mode: checkout bin shimmed onto PATH';

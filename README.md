@@ -8,13 +8,13 @@
 
 ## What is this & how to use it
 
-**apriori** is a spec-driven workflow for AI coding, plus a zero-dependency CLI (`apriori-cli`) that makes your specs **executable**: every scenario is bound to a test, so "spec'd but never built" is caught by a command, not by eyeballing a diff. You drive an AI agent through a state machine — refine the spec, adversarial review by a *different* model, implement, archive — stopping at the human gates that matter.
+**apriori** is a spec-driven workflow for AI coding, plus a zero-dependency CLI (`apriori-cli`) that makes your specs **executable**: a scenario with no bound test is reported, and `verify` refuses to go green until tests actually ran and nothing attributable fails — so "spec'd but never built" is caught by a command, not by eyeballing a diff. You drive an AI agent through a state machine — refine the spec, adversarial review by a *different* model, implement, archive — stopping at the human gates that matter.
 
 Humans start with the Quickstart below; AI agents read the self-contained [RUNBOOK.md](./RUNBOOK.md) instead and never need this handbook. apriori answers in **whatever language you write in** (pin it with `apriori init --language 中文` if you prefer).
 
 <p align="center">
   <img src="docs/demo.gif" alt="apriori CLI loop: verify reports GAPS in red, a test bound to the scenario turns it GREEN, gate PASS, archive merged" width="820">
-  <br><sub><b>spec → red → green → gate → archive.</b> <code>verify</code> refuses to go green until there is real, passing test evidence for the change — a false &ldquo;done&rdquo; is caught by a command, not by eyeballing a diff.</sub>
+  <br><sub><b>spec → red → green → gate → archive.</b> <code>verify</code> refuses to go green until there is real, passing test evidence for the change — a false &ldquo;done&rdquo; is caught by a command, not by eyeballing a diff. <i>(Recorded on the 4.x CLI: the gate rows differ in 6.0.0, the loop does not.)</i></sub>
 </p>
 
 ## Quickstart
@@ -25,10 +25,10 @@ apriori is built to be **driven by an AI agent** — you talk, it runs the loop,
 
 <p align="center">
   <img src="docs/onboard-goal-demo.gif" alt="Full Claude Code flow: install apriori, apriori init picks Claude Code, /apriori builds a CLI adder, /goal drives the whole apriori pipeline to archived, then the generated tool runs" width="880">
-  <br><sub>Real, unedited run (waits cut): <code>npm i</code> → <code>apriori init</code> → <code>/apriori</code> a tiny change → <code>/goal</code> drives spec → review → implement → verify → gate → archive on its own, stops at the one human gate for your OK, then you run the tool it built. You say what you want and nod once.</sub>
+  <br><sub>Real, unedited run (waits cut; recorded on the 4.x CLI — the flow is unchanged in 6.0.0): <code>npm i</code> → <code>apriori init</code> → <code>/apriori</code> a tiny change → <code>/goal</code> drives spec → review → implement → verify → gate → archive on its own, stops at the one human gate for your OK, then you run the tool it built. You say what you want and nod once.</sub>
 </p>
 
-Install once (`npm i -g apriori-cli`), then in your project name the AI tools to wire up:
+Install once — 6.0.0 is not on npm yet (npm still serves 5.0.0), so install from the repository: `npm i -g github:Apriorhythm/apriori-spec-development#v6-dev` — then in your project name the AI tools to wire up:
 
 ```text
 apriori init --tools claude
@@ -36,7 +36,7 @@ apriori init --tools claude
 
 (The known tools are `claude, codex, cursor, copilot, opencode, windsurf` — run `apriori init` bare and the message lists them, plus any it detects in your project.)
 
-It previews what it'll write, asks `Proceed? (Y/n)`, then scaffolds `apriori/` and gives Claude Code its two pointers: a `CLAUDE.md` rule and a `/apriori` slash command. Now launch Claude Code (`claude`) and drive it in plain language:
+It previews what it'll write, asks `Proceed? (Y/n)`, then scaffolds `apriori/` and gives Claude Code its pointers: a `CLAUDE.md` rule and the `/apriori` and `/apriori-discuss` slash commands. Now launch Claude Code (`claude`) and drive it in plain language:
 
 `/apriori` routes by intent:
 
@@ -57,20 +57,20 @@ You do two things: **say what you want, and approve at the gates** — you never
 
 | Client | Entry paths | Status |
 |---|---|---|
-| Claude Code | `.claude/commands/apriori.md`, `apriori-discuss.md` | verified on this machine (Claude Code 2.1.278, claude-opus-5) |
-| Codex CLI | `.codex/prompts/apriori.md`, `apriori-discuss.md` | **not yet supported** — the entry is installed, but this round never drove it from codex CLI |
+| Claude Code | `.claude/commands/apriori.md`, `apriori-discuss.md` | verified on the 6 line (Claude Code 2.1.278, claude-opus-5) |
+| Codex CLI | `.codex/prompts/apriori.md`, `apriori-discuss.md` | **not yet supported** — the entry is installed but has not been exercised from the Codex CLI |
 | OpenCode | `.opencode/command/…` | **not yet supported** — the singular `command/` path is unverified |
 | Windsurf | `.windsurf/workflows/…` | **not yet supported** — unverified |
 | Cursor · GitHub Copilot | rule-level only, no command entry | **not yet supported** — cannot be driven from here |
 
-The unverified paths predate this round; they are tracked and fixed separately, and until each is exercised the entry is not claimed for that client.
+Until each of those paths is exercised, the entry is not claimed for that client.
 
 ### Route B — see the engine (run the loop by hand once)
 
 Route A's agent runs exactly the commands below. Doing them yourself once — ten minutes, empty directory to a spec-bound green — is the fastest way to trust what the agent does, and it's the deterministic path, so every output is checkable.
 
 ```shell
-npm i -g apriori-cli
+npm i -g github:Apriorhythm/apriori-spec-development#v6-dev   # 6.0.0 is not on npm yet (npm still serves 5.0.0)
 mkdir hello-apriori && cd hello-apriori
 apriori init --tools claude --test-cmd "node --test --test-reporter=tap" --yes
 apriori doctor --no-run
@@ -103,7 +103,7 @@ EOF
 apriori verify --change hello
 ```
 
-Every change carries a tiny state file (`flow-state.md` — `mode` sizes the workflow; an agent normally maintains it for you) and its delta specs. `verify --change` binds scenarios against the **projected** store (the store as it will look after this change merges). One scenario, zero tests → `RESULT: GAPS`, exit 1. Fail-closed is the point. Now make it green:
+Every change carries a tiny state file (`flow-state.md` — its `phase:` line is the change's identity; an agent normally maintains it for you) and its delta specs. `verify --change` binds scenarios against the **projected** store (the store as it will look after this change merges). One scenario, no test run → `RESULT: GAPS`, exit 1. Fail-closed is the point. Now make it green:
 
 ```shell
 mkdir -p test
@@ -138,7 +138,7 @@ apriori verify --specs apriori/specs
 apriori check
 ```
 
-The two review files are the one thing neither mode may drop: **the single independent review** — `gate` and `archive` refuse a change that has none, `fast` and `standard` alike. Here they are hand-written because this is a demo; in a real change the `.md` carries the reviewer's verdict and the `-raw.*` file its output verbatim, from a *different* model (runbook R2). Note what is NOT in this bundle: no requirement doc, no proposal, no design doc, no gap report, no task list — 6.0 asks for none of them, in either mode. `gate` aggregates the mechanical checks into one exit code (its PASS never replaces a human decision). `archive --change` merges the delta into the living store `apriori/specs/` and files the change away — it **refuses a change that is not finished**, which is why the flow-state above already says `phase: review` (the delivering phase); then it declares three states and freezes the bundle. Plain `verify` now proves the merged store, and `check` is your CI guard. That's the loop Route A automates for you: **ground → spec → red → green → review → gate → archive**.
+The two review files are the one thing no change may drop: **the single independent review** — `gate` and `archive` refuse a change that has none (the owner's `archive --unreviewed` closeout is the one exit, and it declares the review absent). Here they are hand-written because this is a demo; in a real change the `.md` carries the reviewer's verdict and the `-raw.*` file its output verbatim, from a *different* model (runbook R2). Note what is NOT in this bundle: no requirement doc, no proposal, no design doc, no gap report, no task list — 6.0 asks for none of them. `gate` aggregates the mechanical checks into one exit code (its PASS never replaces a human decision). `archive --change` merges the delta into the living store `apriori/specs/` and files the change away — it **refuses a change that is not finished**, which is why the flow-state above already says `phase: review` (the delivering phase); then it declares three states and freezes the bundle. Plain `verify` now proves the merged store, and `check` is your CI guard. That's the loop Route A automates for you: **ground → spec → red → green → review → gate → archive**.
 
 ## Where everything else lives
 
@@ -162,10 +162,10 @@ The two review files are the one thing neither mode may drop: **the single indep
 | `apriori verify` | Build & Test exit gate | confirms tests actually ran and nothing attributable is failing; scenario-ID binding gaps are reported as diagnostics, not gates; `--change <name>` = the projected, mid-change form |
 | `apriori stamp <store-file>` | delta authoring | print the CAS base-stamp line — verify/archive refuse if the store diverged since |
 | `apriori gate --change <name>` | Build & Test / Review, CI | one exit code over the mechanical checks (PASS ≠ a human decision); `--review-ready` is the transient admission view |
-| `apriori archive` | Review & Deliver | merge delta specs into the living store; `--change <name>` = whole-change, failure-atomic (up to the commit point) |
+| `apriori archive` | Review & Deliver | merge delta specs into the living store; `--change <name>` = whole-change, failure-atomic (up to the commit point); `--unreviewed` = the owner's closeout of a delivered change with no converged review, declared as such |
 | `apriori check` | CI / pre-commit | structural consistency (scenario IDs bindable) |
 | `apriori update` | after a CLI upgrade | refresh the runbook copy + command pointers (never your files — one exception, stated: a pre-manifest `apriori/runbook.md`, written by a CLI older than `managed.json`, is adopted and overwritten once, then protected like any managed file; an old tool-written pointer paragraph in a rules file is upgraded in place, the rest of the file untouched) |
 
 ## Acknowledgments
 
-The artifact interface this workflow is built on — delta specs (`ADDED` / `MODIFIED` / `REMOVED`), Requirement/Scenario blocks with stable IDs, the archive-merge semantics, and the multi-tool `init` scaffolding pattern — is directly inspired by **[OpenSpec](https://github.com/Fission-AI/OpenSpec/)**, which the V1 and V2 lines used directly. V3 reimplements that interface natively as the zero-dependency `apriori` CLI rather than depending on it — but the shape of the interface is OpenSpec's, and the debt is gladly acknowledged.
+The artifact interface this workflow is built on — delta specs (`ADDED` / `MODIFIED` / `REMOVED`), Requirement/Scenario blocks with stable IDs, the archive-merge semantics, and the multi-tool `init` scaffolding pattern — is directly inspired by **[OpenSpec](https://github.com/Fission-AI/OpenSpec/)**, which earlier lines of this project used directly; since 3.x the CLI reimplements that interface natively as the zero-dependency `apriori` CLI rather than depending on it — but the shape of the interface is OpenSpec's, and the debt is gladly acknowledged.

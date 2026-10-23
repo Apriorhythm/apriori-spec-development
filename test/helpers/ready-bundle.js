@@ -11,7 +11,7 @@
 // on it: `- <ID>: <text>`, accepted by the owner's `evidence-accept <ID>`). A ready fixture
 // carries the section EMPTY — nothing owed — so C9/R5 pass on their own subject; a test that
 // wants an item in it uses `withOpen`. It sits BEFORE `gates:` because fixtures append their
-// own gates entries. No `mode:` line: the field is optional and inert since 6.2.
+// own gates entries. No `mode:` line: the field is optional and inert.
 const OPEN = '\n## Open\n\n';
 
 // Replace the fixture's (empty) Open section with a test's own items (`- ` is added here).

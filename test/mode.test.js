@@ -112,7 +112,7 @@ test('MD-05 neither mode is asked for tasks.md — the reader is gone, whatever 
     for (const tasks of [null, '- [ ] never finished\n']) {
       const p = project(flowWith(`mode: ${mode}\n`), { tasks });
       const g = run(['gate', '--change', 'c'], p.root);
-      assert.match(checkLine(g.stdout, 'C2'), /^– C2 retired in 6\.2 — nothing is read$/, `${mode}: ${checkLine(g.stdout, 'C2')}`);
+      assert.match(checkLine(g.stdout, 'C2'), /^– C2 retired in 6\.0 — nothing is read$/, `${mode}: ${checkLine(g.stdout, 'C2')}`);
       assert.doesNotMatch(g.stdout, /trivial|unchecked/, 'a leftover word survives in the C2 line');
     }
   }
@@ -247,6 +247,7 @@ test('MD-12 doctor reports a 5.x identity bundle instead of calling it healthy',
   assert.ok(finding, `D7 must name it: ${JSON.stringify(d7)}`);
   assert.match(finding.detail, /tier/); assert.match(finding.detail, /round/);
   assert.match(String(finding.fix), /MIGRATING/);
+  assert.match(String(finding.fix), /mode: is optional and inert since 6\.0\)/, 'the fix names the release, not a working stage (release-6-0-0)');
   // it is a finding, not a stop: the other diagnostics still ran
   for (const id of ['D1', 'D2', 'D8']) assert.ok(dr.checks.some((x) => x.id === id), `${id} must still run`);
 });

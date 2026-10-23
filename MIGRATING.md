@@ -1,24 +1,24 @@
 # Migrating
 
-The 3.0.0 stability promise — CLI surface & flags, `--json` shapes, the delta format, the flow-state schema and the `apriori/` layout only break in a major — holds for the released 5.x line. **6.x is an unreleased development line** (npm has never shipped a 6.x; `package.json` says `6.2.0-rc.0`, the runbook `runbook-version: 6.2`): within it the `gate --review-ready` item ids (`tests`, `open`) and the flow-state fields (`## Evidence` gone, `mode:` inert) changed in 6.2, and further changes before a 6.x release are declared here rather than promised away. Everything below is either additive or a declared fail-closed tightening — except limit-ruling, which moves a stop the owner explicitly approved moving and says so in its section.
+The 3.0.0 stability promise — CLI surface & flags, `--json` shapes, the delta format, the flow-state schema and the `apriori/` layout only break in a major — holds for the released 5.x line and, from **6.0.0 (2026-10-23)**, for the 6 line. 6.0.0 is the first release of the 6 line: npm never shipped a 6.x before it (the package says `6.0.0`, the runbook `runbook-version: 6.0`). It was built in stages that kept their working names — `6.0 slice 1`–`5`, `6.2` — and the sections below, down to `5.x → 6.0`, are those stages: read together, upward from `5.x → 6.0`, they are the 5.0.0 → 6.0.0 migration. None of the stages was a release. Within the line the `gate --review-ready` item ids (`tests`, `open`) and the flow-state fields (`## Evidence` gone, `mode:` inert) changed in the `6.2` stage, and the tool's messages that named that stage now say `6.0`. Everything below is either additive or a declared fail-closed tightening — except limit-ruling, which moves a stop the owner explicitly approved moving and says so in its section.
 
-## fence-tilde-readers (Unreleased) — `~~~` fences are fences everywhere
+## fence-tilde-readers — `~~~` fences are fences everywhere
 
 - A block fenced with `~~~` (a line of three or more tildes, closed by a bare line of at least as many) is now opaque to every structural reader, as a backtick-fenced block always was: a config row, `#### Scenario:` or `### Requirement:` heading, `source-commit:` stamp or `VERDICT:` line inside one no longer takes effect. If you relied on a tilde-fenced row or heading being live, move it out of the fence. Backtick-fenced content reads exactly as before; an inline `~~~` is ordinary text.
 - In a spec store, a `### Requirement:` heading inside a fence of either marker is now part of the block it sits in, not the start of a new one — before, `archive`'s merge split the block there even for a backtick fence, so a MODIFIED replacement could leave a ghost block behind. No store in this repository had such a heading. And a store with no requirement yet — a title and prose, or only a fenced example — now keeps that text when `archive` adds its first requirement; it used to be dropped. If that kept text (or any part of a store) holds an unclosed fence opener that would pair with a fence in a block after it, `archive` refuses the module — `the merged store would not read back as its requirement blocks — '<name>' is swallowed …` — and writes nothing: close the fence in the store and rerun.
 
-## init-premanifest-adoption (Unreleased) — a project mid-migration keeps its adoption pass
+## init-premanifest-adoption — a project mid-migration keeps its adoption pass
 
 - On a project with no `apriori/managed.json` whose runbook predates the run (initialized before `managed.json` existed, or the manifest deleted), `apriori init` used to write a manifest of only the files it had just created — which ended `update`'s adoption on proof and left the older runbook and command files `unmanaged`. `init` now still records what it creates, at once, and marks the manifest `"adoptPending": true`; the next `apriori update` adopts the older runbook (overwriting it once — copy your notes out of a customised one first) and the older command files whose bytes are a shipped generation, keeps listed files under their usual rules, and clears the mark only after a complete run.
 - **`managed.json` gains an optional `adoptPending` key** (`true` or `false`; anything else is refused as an untrustworthy manifest).
 - **Finish the migration with this CLI.** An older CLI's `init` or `update` rewrites the manifest without the mark, and the older files are then `unmanaged` again. The same recovery covers that and a partial manifest an older `init` already wrote: add `"adoptPending": true` to `apriori/managed.json` by hand and run `apriori update` once — entries already listed keep their protection, the older files are adopted as above. Do not delete the manifest for this: listed files that you edited would lose their protection.
 
-## batch-recheck-fixes (Unreleased) — the runbook header is read literally by `check --self`
+## batch-recheck-fixes — the runbook header is read literally by `check --self`
 
 - **Contributors to this repository only** (`apriori check --self`; consumer `apriori check` never runs CK-11): the runbook's header region — everything before its first `## ` heading — must not contain a run of three or more backticks or tildes. Any such run fails CK-11 as an unsupported header format, naming the line, with or without a valid `runbook-version` entry beside it. Keep code examples below the first h2. (Owner decision 2026-10-03.)
 - `apriori update` on macOS and Windows never adopts an unrecorded guide either — see the prototype-walk-guide section below.
 
-## prototype-walk-guide (Unreleased) — one guide beside the runbook, and no downgrade past it
+## prototype-walk-guide — one guide beside the runbook, and no downgrade past it
 
 - **`apriori update` installs `apriori/guides/prototype-walk.md`** on a project that never had it and records it in `apriori/managed.json`; from then on it is refreshed like the runbook. A guide you edited locally is reported `modified` and left alone; one you deleted is reported missing — `apriori init --tools <t>` recreates it.
 - **The runbook now names that guide** (§4 Ground): when a requirement comes with a runnable UI prototype, the agent offers an optional walk once and reads the guide in full before running one. Nothing else in a project changes.
@@ -26,15 +26,15 @@ The 3.0.0 stability promise — CLI surface & flags, `--json` shapes, the delta 
 - **The update summary** no longer says "everything already matches" when a tool-owned path was missing or obstructed: it reports `N missing or obstructed (skipped)`.
 - **Downgrading is not supported** once the guide is recorded: a CLI from before this change refuses a manifest that lists it (`managed.json: 'apriori/guides/prototype-walk.md' is not a refresh target`), so `init` and `update` would fail. To go back, remove that entry from `apriori/managed.json` (and the guide, if you like) first.
 
-## owner-calls-and-handoffs (Unreleased) — owner items, outside hand-offs, and goals that end at a human stop
+## owner-calls-and-handoffs — owner items, outside hand-offs, and goals that end at a human stop
 
 Nothing breaks. `apriori update` refreshes the runbook. If you keep your own copy of a `/goal` recipe, take the new goal line from `docs/operator.md`: its condition now also ends at a human stop the agent reported, so the evaluator stops re-prompting there. A dependency you used to leave as a "deliver it as a document" decision now stays a pending `## Open` item until you accept it or its evidence lands.
 
-## runbook-english-only (Unreleased) — the runbook is English only
+## runbook-english-only — the runbook is English only
 
 Nothing to do in a project: `apriori init` and `apriori update` only ever installed the English `RUNBOOK.md`. If you read or forked the repository's `RUNBOOK_cn.md`, read `RUNBOOK.md` instead — the Chinese edition is removed, and the Chinese human documents (`README_cn.md`, `docs/*_cn.md`) stay.
 
-## limit-ruling (Unreleased) — at the review-round limit the producer rules, and the default is 8
+## limit-ruling — at the review-round limit the producer rules, and the default is 8
 
 What changes for a project already on the v6 line:
 
@@ -44,7 +44,7 @@ What changes for a project already on the v6 line:
 - **Archived bundles are untouched** — the stop rules never apply retroactively.
 - **Templates:** `apriori update` refreshes the installed `/apriori` command (its R1 list now names "a review family past its one automatic re-review"); `docs/operator.md` adds one Build → Review → Archive `/goal` recipe.
 
-## 6.2 code layer (Unreleased) — one mechanism of risk acceptance
+## 6.2 code layer (a stage of 6.0.0) — one mechanism of risk acceptance
 
 **In this section:** ① `## Open` items + `evidence-accept` replace the Evidence rows · ② the
 issue ledger is retired, with a one-shot migration gate for still-open rows · ③ the hand-written
@@ -53,7 +53,7 @@ a migration refusal · ④ `mode:` is optional and inert · ⑤ `--review-ready`
 ⑥ the flow-state reader is one Markdown subset (`lib/flow.js`) · ⑦ `init --test-cmd` persists
 byte-for-byte · ⑧ every `--json` view has a fixed envelope · ⑨ the docs-only exception is removed.
 Also: a structural preflight before the projection is written, and the read boundaries (A-7).
-Node ≥ 22; package `6.2.0-rc.0`; runbook headers `runbook-version: 6.2` (CK-11 compares major.minor).
+Node ≥ 22; package `6.0.0` (was `6.2.0-rc.0` while this stage was in development); runbook header `runbook-version: 6.0` (CK-11 compares major.minor).
 
 **What moved where.** The `## Evidence` row table, its status vocabulary (`done | blocked |
 owner-accepted | n/a` and the completion synonyms), the reserved `producer-diff` and
@@ -172,13 +172,13 @@ Check line). A pending item does not fail it — that is what the review is for.
 The `evidence` and `producer-diff` items are gone; the JSON shape `{change, ready, items}` is
 unchanged, only the ids changed.
 
-**Compat placeholders, kept for `--json` shapes:** gate `C2` (`retired in 6.2 — nothing is
-read`) and `C4` (`ledger retired in 6.2 — open items live in ## Open`) stay in `checks[]` as
+**Compat placeholders, kept for `--json` shapes:** gate `C2` (`retired in 6.0 — nothing is
+read`) and `C4` (`ledger retired in 6.0 — open items live in ## Open`) stay in `checks[]` as
 `n/a` and read nothing; `status --json` keeps `openLedger` (always `[]`), `effectiveMode` (equal
 to `mode`, or `null`) and `evidence` (legacy rows only — `{rows:[], blocked:[], recorded:[]}`
 when there are none), and ADDS `openItems: [{id, text, accepted, acceptedAt}]`. `review/issues.md`
 and `tasks.md` are never opened. Archive readiness has no R2 and no R3; an `archive-force ledger`
-record is parsed and reported as `note: archive-force has nothing left to force in 6.2`, and
+record is parsed and reported as `note: archive-force has nothing left to force in 6.0`, and
 `--force` still opens exactly one thing — an answered round-5 escalation.
 
 **`delivery:` is retired (batch C row 6).** The field never carried a decision any command
@@ -237,7 +237,7 @@ readiness while still recording pending items/assumptions) exits 1, writes and m
 what it prints is a NON-success declaration — `implementation: INCOMPLETE …` followed by
 `RESULT: NOT READY — nothing written` — never a claim that anything completed or was archived.
 
-## 6.0 slice 4 → slice 5 (Unreleased) — the artifact family is gone
+## 6.0 slice 4 → slice 5 — the artifact family is gone
 
 > **Read with the 6.2 section above:** the `## Evidence` rows, the ledger rule (R3 / C4) and the
 > mode upgrade described below were retired in 6.2. This section is kept as the 5.x → 6.0 record.

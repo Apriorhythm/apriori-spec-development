@@ -7,11 +7,11 @@
 
 #### Scenario: GT-02 C2 is a placeholder — tasks.md is never read
 - WHEN the resolved change dir carries a 5.x `tasks.md`, with or without unchecked `- [ ]` boxes, and then carries none
-- THEN C2 reports `{id: 'C2', status: 'n/a', detail: 'retired in 6.2 — nothing is read'}` in every case, the gate is not blocked by it, and no reader of the file exists in `lib/readiness.js`
+- THEN C2 reports `{id: 'C2', status: 'n/a', detail: 'retired in 6.0 — nothing is read'}` in every case, the gate is not blocked by it, and no reader of the file exists in `lib/readiness.js`
 
 #### Scenario: GT-03 C4 is a placeholder — review/issues.md is never read
 - WHEN the bundle ledger at `<changeDir>/review/issues.md` holds an `open` row, and then is not even a readable file
-- THEN C4 reports `{id: 'C4', status: 'n/a', detail: 'ledger retired in 6.2 — open items live in ## Open'}` in every case and the gate is not blocked by it; the ledger classifier, `checkLedger`, `waiveEvidence` and `parseLedger` no longer exist
+- THEN C4 reports `{id: 'C4', status: 'n/a', detail: 'ledger retired in 6.0 — open items live in ## Open'}` in every case and the gate is not blocked by it; the ledger classifier, `checkLedger`, `waiveEvidence` and `parseLedger` no longer exist
 
 #### Scenario: GT-04 flow-state legality is enforced
 - WHEN a required flow-state key (`change`, `phase`) is missing, still a `<placeholder>`, has a `phase` outside the exact vocabulary (ground, specify, build, review, done, abandoned), an optional `mode` outside {fast, standard} or still the `<fast | standard>` placeholder, or a `change` value that does not equal `--change`
@@ -35,7 +35,7 @@
 
 #### Scenario: GT-09 neither mode is asked for artifacts 6.0 does not require
 - WHEN flow-state declares `mode: fast`, and again when it declares `mode: standard`, and neither a task list nor the bundle ledger `<changeDir>/review/issues.md` is present
-- THEN C2/C4 report `–` in BOTH cases — 6.2 reads neither file, so their absence is never a block and the (inert) mode never changes that answer
+- THEN C2/C4 report `–` in BOTH cases — 6.0 reads neither file, so their absence is never a block and the (inert) mode never changes that answer
 
 #### Scenario: GT-10 KB freshness degrades honestly through the truth index
 - WHEN a touched module `<m>` (first path segment of the change's delta-spec suffixes) resolves through the truth index to a truth doc carrying a canonical `source-commit` stamp (a fence-outside line-start `source-commit: <ref>`), whose resolved `source-files` are all verifiable, and git reports commits in `<ref>..HEAD -- <source-files...>`
@@ -82,7 +82,7 @@ Gate SHALL run a ninth check over the flow-state's `## Open` section, and it SHA
 
 #### Scenario: OI-04 legacy Evidence rows migrate by rule
 - WHEN an in-flight bundle carries a legacy `## Evidence` section with a `blocked` row, then rows whose names carry valid acceptances, then a self-declared `owner-accepted` row beside a `producer:` entry, then rows reading `done` / `n/a` / `fixed` / an unfilled scaffold row / an unreadable line
-- THEN the blocked row blocks at gate, archive and status with `legacy Evidence row '<name>' is blocked — move it to ## Open as an item (or accept it via evidence-accept <name>)`; the accepted rows are accepted items (named in the declaration, nothing ignored); the self-declared row blocks with `… claims owner acceptance with no canonical gates: entry — move it to ## Open, or record: <template>`, non-forceably; the rest are ignored with the one note `legacy ## Evidence section ignored (6.2: risks live in ## Open)`; and the retired vocabulary (`EVIDENCE_STATUS`, its alias table, `PRODUCER_DIFF_ROW`) no longer exists
+- THEN the blocked row blocks at gate, archive and status with `legacy Evidence row '<name>' is blocked — move it to ## Open as an item (or accept it via evidence-accept <name>)`; the accepted rows are accepted items (named in the declaration, nothing ignored); the self-declared row blocks with `… claims owner acceptance with no canonical gates: entry — move it to ## Open, or record: <template>`, non-forceably; the rest are ignored with the one note `legacy ## Evidence section ignored (6.0: risks live in ## Open)`; and the retired vocabulary (`EVIDENCE_STATUS`, its alias table, `PRODUCER_DIFF_ROW`) no longer exists
 
 #### Scenario: GT-39 a pending open item refuses, and owner acceptance is a recorded human act
 - WHEN the state carries a pending item, then the same item with a `producer:` entry, then with the owner's canonical entry, then an id-less item beside an acceptance naming its first word, then no section at all
@@ -107,8 +107,8 @@ Gate SHALL run a ninth check over the flow-state's `## Open` section, and it SHA
 - WHEN `--review-ready` runs on a change with a pending item, then with an id-less item, then with a duplicated id, then with a standing assumption, then with a kind-less Reality Check line, then with no items, then with no test command
 - THEN the items are exactly `tests` and `open`; the pending item reads `… — pending items are what the review is for` and is ready, the four state claims are `✗ open` naming the defect in C9's wording, the empty section reads `no open items`, and the missing suite is `✗ tests`
 
-### Requirement: C2 and C4 are placeholders since 6.2
-Gate SHALL keep the ids `C2` and `C4` in `checks[]` for `--json` shape compatibility and SHALL report both as `n/a` with a detail that says why (`retired in 6.2 — nothing is read`; `ledger retired in 6.2 — open items live in ## Open`). Neither `tasks.md` nor `review/issues.md` SHALL be opened, present or absent, whatever they contain. An unusable review ROOT (symlink, escape, not a directory) SHALL be refused at C5 alone.
+### Requirement: C2 and C4 are placeholders since 6.0
+Gate SHALL keep the ids `C2` and `C4` in `checks[]` for `--json` shape compatibility and SHALL report both as `n/a` with a detail that says why (`retired in 6.0 — nothing is read`; `ledger retired in 6.0 — open items live in ## Open`). Neither `tasks.md` nor `review/issues.md` SHALL be opened, present or absent, whatever they contain. An unusable review ROOT (symlink, escape, not a directory) SHALL be refused at C5 alone.
 
 ### Requirement: C7 denies unstamped mutation deltas unless visibly waived
 Gate SHALL run a seventh check: the change's projection carrying `unstampedMutations` → `C7 BLOCKED` naming each suffix and the stamp cure. Two escapes, flag over config: `gate --no-cas` → the check reports `waived (--no-cas)`; a process-config `cas` row read through the shared structured reader with value `optional` (leading token, case-insensitive; an absent row or `required` means required) → `waived (process-config)`. A cas CONFLICT or illegal value at consultation makes C7 BLOCKED naming the config error — bad config never equals a waiver, though the `--no-cas` flag still waives explicitly. A waiver is always visible in the gate output — never a silent skip. The waiver vocabulary is shared with `archive` (which denies by default since 4.0.1); verify's projection stays warn-only. In-flight only: at the archived stage the deltas are already merged and C7 reports n/a.

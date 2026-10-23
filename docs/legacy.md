@@ -50,17 +50,17 @@ observed / decision / assumption, one line each.
 
 ### 6.3 Path B: Knowledge Base Is Stale
 
-First have the AI treat the **code as the source of truth** to reconcile and revise the knowledge base (prompt: [§7.6](./concepts.md#75-reverse-knowledge-capture-for-legacy-projects)), commit the revised KB docs with refreshed `source-commit` stamps, then follow Path A.
+First have the AI treat the **code as the source of truth** to reconcile and revise the knowledge base (prompt: [§7.5](./concepts.md#75-reverse-knowledge-capture-for-legacy-projects)), commit the revised KB docs with refreshed `source-commit` stamps, then follow Path A.
 
 ### 6.4 Path C: Knowledge Base Missing (Most Common)
 
-**Reverse knowledge capture**: have the AI read the target module's code and produce that module's KB doc (abstract intent, public interfaces, data flow, dependencies, side effects). It lands directly at `apriori/truth/<module>.md` on your change branch, so **the review happens where reviews already happen — in the PR diff**; once approved, enter the normal workflow. Prompt: [§7.6](./concepts.md#75-reverse-knowledge-capture-for-legacy-projects).
+**Reverse knowledge capture**: have the AI read the target module's code and produce that module's KB doc (abstract intent, public interfaces, data flow, dependencies, side effects). It lands directly at `apriori/truth/<module>.md` on your change branch, so **the review happens where reviews already happen — in the PR diff**; once approved, enter the normal workflow. Prompt: [§7.5](./concepts.md#75-reverse-knowledge-capture-for-legacy-projects).
 
 > ⚠️ Reverse-captured knowledge **must be reviewed by a human or a heterogeneous model** — when an AI reverse-engineers intent from code, it fabricates "plausible-looking but actually wrong" abstractions. Don't let a poisoned knowledge base contaminate all downstream development.
 
 ### 6.5 Closing the Loop: Write Back After Every Change
 
-Whether a legacy project gets easier to change over time depends on **whether the archive step faithfully writes back to the KB**. Bake it into a team rule:
+Whether a legacy project gets easier to change over time depends on **whether every change that owes a KB update faithfully writes it back** — in the change itself, before review-ready (`apriori archive` never touches `apriori/truth/`). Bake it into a team rule:
 **one change = one PR that contains both the code diff and the KB diff.** With the KB in the same repo (the §6 default) this is enforceable in review — a PR that touches `src/<module>/` but not `apriori/truth/<module>.md` gets asked why ([§4.8](./concepts.md#48-mapping-the-workflow-onto-git--pr--ci)). Separate-repo teams have to lean on convention plus the `source-commit` freshness check to catch drift after the fact. Sustained over time, the KB converges from "Path C" toward "Path A," and development efficiency keeps rising.
 
 ---

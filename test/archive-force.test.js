@@ -53,7 +53,7 @@ test('AM-89 an archive-force record is inert: nothing is forced, and the note sa
   for (const args of [['archive', '--change', 'c'], ['archive', '--change', 'c', '--force']]) {
     const r = run(args, l);
     assert.strictEqual(r.status, 0, `${args.join(' ')}: ${r.stdout}${r.stderr}`);
-    assert.match(r.stdout, /^note: archive-force has nothing left to force in 6\.2$/m, args.join(' '));
+    assert.match(r.stdout, /^note: archive-force has nothing left to force in 6\.0$/m, args.join(' '));
     assert.doesNotMatch(r.stdout, /^forced:/m, 'nothing was forced, so nothing may say it was');
     assert.doesNotMatch(r.stdout + r.stderr, /Q-1/, 'the unread ledger never reaches the report');
   }

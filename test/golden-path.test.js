@@ -15,7 +15,7 @@ test('GP-01 the extractor is a pure text seam', async () => {
   const { extractBlocks } = await gp();
   const blocks = extractBlocks(README);
   assert.strictEqual(blocks.length, 4);
-  assert.match(blocks[0], /npm i -g apriori-cli/);
+  assert.match(blocks[0], /^npm i -g (apriori-cli\b|github:Apriorhythm\/apriori-spec-development)/m);
   assert.match(blocks[1], /apriori verify --change hello/);
   assert.match(blocks[3], /apriori check/);
   // pure: works on arbitrary text, throws without a Quickstart section

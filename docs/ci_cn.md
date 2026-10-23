@@ -2,13 +2,20 @@
 
 三个确定性命令可直接挂进任意 CI。退出码即契约:0 = 放行,1 = 需要人看一眼的缺口,2 = 这次运行本身不可信(按失败处理,但要读消息——它通常指向环境问题而非代码问题)。
 
+**在 CI 里安装 6.0.0。** npm 上目前仍是 5.0.0,所以直接 `npx apriori-cli` 今天跑的是 5.0.0。在 6.0.0 发布之前,请在下面这些步骤之前加一步从仓库安装,之后的步骤直接调用 `apriori`:
+
+```yaml
+- name: install apriori-cli 6.0.0 (not on npm yet)
+  run: npm i -g github:Apriorhythm/apriori-spec-development#v6-dev
+```
+
 ## check —— PR 闸口
 
 规格库结构一致性:每条 scenario 都带可绑定 ID。开销小;每个 PR 都跑。
 
 ```yaml
 - name: apriori check
-  run: npx apriori-cli check
+  run: apriori check
 ```
 
 ## verify —— 合并后的绑定闸口
@@ -17,7 +24,7 @@
 
 ```yaml
 - name: apriori verify
-  run: npx apriori-cli verify --specs apriori/specs --test-cmd "node --test --test-reporter=tap"
+  run: apriori verify --specs apriori/specs --test-cmd "node --test --test-reporter=tap"
 ```
 
 ## gate —— 按在途变更
@@ -26,7 +33,7 @@
 
 ```yaml
 - name: apriori gate
-  run: npx apriori-cli gate --change ${{ inputs.change }} --test-cmd "node --test --test-reporter=tap" --json
+  run: apriori gate --change ${{ inputs.change }} --test-cmd "node --test --test-reporter=tap" --json
 ```
 
 ## 退出码速查表
@@ -35,7 +42,7 @@
 |---|---|---|---|
 | 0 | PASS | GREEN | PASS(机械面) |
 | 1 | FAIL(n) | 缺口:red/failing-orphan/unattributed/重复/零执行证据 | BLOCKED(n) |
-| 2 | 规格库路径缺失 | 运行不可信(非 TAP、崩溃、冲突、CAS) | 评估不可信 |
+| 2 | 规格库路径缺失,或 `id-pattern` 配置行无效/被终止 | 运行不可信(非 TAP、崩溃、冲突、CAS) | 评估不可信 |
 | 3 | — | — | INCOMPLETE — 能跑的检查都过了,但至少一项被跳过(没有测试命令 → C1 跑不了)。按"未通过"对待。
 
-接入新 runner?`npx apriori-cli doctor --no-run` 不执行你的测试命令就能体检整条接缝。
+接入新 runner?`apriori doctor --no-run` 不执行你的测试命令就能体检整条接缝。

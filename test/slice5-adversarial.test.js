@@ -503,7 +503,7 @@ test('AM-121 the owner exit keeps its double action, and the printed cure is cop
   const rec = CANON('archive-force ledger — the owner says ship it') + '\n';
   const inert = archive(project({ ledger: LED('fixed'), gates: rec }));
   assert.strictEqual(inert.status, 0, inert.stdout + inert.stderr);
-  assert.match(inert.stdout, /^note: archive-force has nothing left to force in 6\.2$/m);
+  assert.match(inert.stdout, /^note: archive-force has nothing left to force in 6\.0$/m);
   assert.doesNotMatch(inert.stdout, /^forced:/m);
   // and an OPEN row is the A-5 migration refusal — structural, which no force record ever opens
   const open = archive(project({ ledger: LED('open'), gates: rec }), ['--force']);

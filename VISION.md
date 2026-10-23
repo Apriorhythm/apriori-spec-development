@@ -6,29 +6,29 @@
 
 # VISION — the North Star
 
-> **Non-blocking guidance.** This file adds no gate and no exit condition; nothing in the workflow reads it as a requirement. The only obligation it creates: a change that *conflicts* with it records why, in that change's design notes. It exists so that the V2 line's improvements accumulate in one direction instead of scattering.
+> **Non-blocking guidance.** This file adds no gate and no exit condition; nothing in the workflow reads it as a requirement. The only obligation it creates: a change that *conflicts* with it records why, as a `decision` line in that change's `## Reality Check`. It exists so that the line's improvements accumulate in one direction instead of scattering.
 
 ## 1. The Endgame
 
 Scenarios become **executable**: the spec *is* the test suite. Every scenario is an assertion that runs; the prose handbook of a system is *generated from* its assertions, not maintained beside them. At that point the Specify↔Build consistency problem — "spec'd but not implemented, implemented but never spec'd" — disappears by construction, and the LLM's role in verification shrinks to judging what assertions cannot express: intent, taste, product fit.
 
-## 2. Trigger Conditions — fired on the V3 line
+## 2. Trigger Conditions — fired by the CLI (3.x onward)
 
-The endgame became the requirement for **V3** when the second condition below was met by a self-built tool:
+The endgame became the requirement for **the CLI** (3.x onward) when the second condition below was met by a self-built tool:
 
 - ~~OpenSpec (or its successor) supports executable scenarios natively~~ — it does not, and shows no movement toward it; or
-- **an equivalent tool clears the same bar: scenario IDs, delta specs, archive-merge semantics** — met by the self-contained `apriori` CLI (`apriori verify` binds scenario IDs to test runs; `apriori archive` implements delta merge natively). V3 realizes the weak form: `apriori verify` GREEN is the deterministic Build & Test gate, and P8 narrows to what binding cannot prove.
+- **an equivalent tool clears the same bar: scenario IDs, delta specs, archive-merge semantics** — met by the self-contained `apriori` CLI (`apriori verify` binds scenario IDs to test runs; `apriori archive` implements delta merge natively). The CLI realized the weak form: `apriori verify` GREEN is the deterministic Build & Test gate, and P8 narrows to what binding cannot prove (that line's names — today the independent review is P3, and `verify` reports scenario-ID binding gaps rather than requiring them: it refuses green only when tests did not run or something attributable fails).
 
 The strong form (the prose handbook *generated from* assertions; scenarios compiled to test code) remains ahead — deliberately excluded, to keep the LLM's judgment role in the loop.
 
 ## 3. Paving Decisions
 
-Choices already made on the V2 line whose deeper purpose is the endgame — keep them aligned:
+Choices already made whose deeper purpose is the endgame — keep them aligned:
 
 | Decision | How it paves |
 |---|---|
 | Scenario IDs bound to test runs by `apriori verify` (a test name carrying the ID is optional — RUNBOOK §4 Build & Test, cli §8.1) | The ID is the future join key between an assertion and its run |
 | Open items with stable ids (`## Open`) and a closed verdict-line vocabulary (RUNBOOK §3, §5), exposed by `gate --json` / `status --json` | Review outcomes and unresolved risks become data an executable pipeline can consume |
-| Executable instruments first where they exist; where none exists, the independent review is the instrument (RUNBOOK §4 Build & Test, §1.5) | The endgame is this principle taken to its limit |
-| KB Contract sections stamped with `source-commit` (§6) | Contracts are the assertions-in-waiting; the stamp is their staleness oracle |
-| P11/P12: extraction traced to an intent card, never to the prototype alone | Generated specs must inherit an intent anchor — same rule when a tool generates them |
+| Executable instruments first where they exist; where none exists, the independent review is the instrument (RUNBOOK §4 Build & Test; concepts §1.5) | The endgame is this principle taken to its limit |
+| KB Contract sections stamped with `source-commit` (RUNBOOK §4 KB pre-check, P5) | Contracts are the assertions-in-waiting; the stamp is their staleness oracle |
+| A spec extracted from a prototype is traced to its sources — the requirement, the Ground's `observed` lines, the prototype walk's checklist — never to the prototype alone | Generated specs must inherit an intent anchor — same rule when a tool generates them |

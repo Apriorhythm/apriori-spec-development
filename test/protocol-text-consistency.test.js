@@ -37,7 +37,7 @@ test('PR-50 the archive sentence names the predicates the code runs', () => {
     assert.match(b, /reframe/, `${label}: --force covers the answered reframe`);
   }
   assert.match(en, /no legacy `review\/issues\.md` still carrying `open` rows — the one-shot migration/);
-  assert.match(en, /An `archive-force ledger` record forces nothing \(6\.2\); it is reported as a note\./);
+  assert.match(en, /An `archive-force ledger` record forces nothing \(6\.0\); it is reported as a note\./);
   assert.match(en, /no `## Open` item still pending — unaccepted and not a registered follow-up — and no standing assumption/);
 });
 

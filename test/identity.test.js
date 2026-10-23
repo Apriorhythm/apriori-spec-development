@@ -1,5 +1,5 @@
 'use strict';
-// ID-01..ID-04 — version identity, install-time links, the 6.2 migration record (6.2 batch A-9).
+// ID-01..ID-06 — version identity (6.0.0, release-6-0-0), install-time links, the 6.2-stage migration record (6.2 batch A-9).
 //
 // Astra P9/P15, R8: the package said 5.0.0 while the branch spoke 6.2; the copied runbook linked
 // files that are not beside it; the migration record was spread over slices. Pinned here on the
@@ -34,7 +34,7 @@ function packedDir() {
 const runPacked = (args, cwd) => spawnSync('node', [path.join(packedDir(), 'bin', 'apriori.js'), ...args], { encoding: 'utf8', cwd });
 
 test('ID-01 in the packed directory, --version, the runbook header, the installed copy and update\'s target agree', () => {
-  assert.strictEqual(pkg.version, '6.2.0-rc.0', 'batch B set the 6.x pre-release identity');
+  assert.strictEqual(pkg.version, '6.0.0', 'release-6-0-0: the 6 line\'s release identity');
   const dir = packedDir();
   const v = runPacked(['--version'], dir);
   assert.strictEqual(v.stdout.trim(), pkg.version);
@@ -66,7 +66,7 @@ test('ID-02 the INSTALLED runbook copy links nothing as if it were beside it', (
   assert.match(installed, /`README\.md` and `docs\/concepts\.md` in the apriori-cli repository \(not necessarily beside this copy\)/);
 });
 
-test('ID-03 MIGRATING.md carries ONE 6.2 section, and it lists every 6.2 change', () => {
+test('ID-03 MIGRATING.md carries ONE 6.2-stage section, and it lists every 6.2 change', () => {
   // fenced examples are not headings (the section's own `## Open` sample would end it early)
   const t = fs.readFileSync(path.join(ROOT, 'MIGRATING.md'), 'utf8').replace(/```[\s\S]*?```/g, '');
   const heads = t.match(/^## 6\.2\b.*$/gm) || [];
@@ -86,11 +86,11 @@ test('ID-03 MIGRATING.md carries ONE 6.2 section, and it lists every 6.2 change'
   ]) assert.match(section, re, `6.2 section names: ${what}`);
 });
 
-test('ID-04 CHANGELOG "Unreleased — 6.2" records batch A, item by item', () => {
+test('ID-04 CHANGELOG "6.2 code layer" (a subsection of 6.0.0) records batch A, item by item', () => {
   const t = fs.readFileSync(path.join(ROOT, 'CHANGELOG.md'), 'utf8');
-  const start = t.indexOf('## Unreleased — 6.2');
+  const start = t.indexOf('### 6.2 code layer');
   assert.ok(start >= 0);
-  const section = t.slice(start, t.indexOf('\n## ', start + 1));
+  const section = t.slice(start, t.indexOf('\n### ', start + 1));
   for (const id of ['A-1', 'A-2', 'A-3', 'A-4', 'A-5', 'A-6', 'A-7', 'A-8', 'A-9'])
     assert.match(section, new RegExp(`Batch ${id} —`), id);
 });
@@ -111,4 +111,32 @@ test('ID-05 the runbook finer-behavior pointer names files that actually carry t
   for (const kw of [/CAS/, /verdict/i, /UNBOUND/, /ORPHAN/]) assert.match(cli, kw);
   const concepts = fs.readFileSync(path.join(ROOT, 'docs', 'concepts.md'), 'utf8');
   assert.doesNotMatch(concepts, /\bCAS\b/, 'concepts still has no CAS content — the old pointer must not return');
+});
+
+test('ID-06 6.0.0 is the release identity everywhere a reader meets it (release-6-0-0)', () => {
+  assert.strictEqual(pkg.version, '6.0.0');
+  assert.strictEqual(header(fs.readFileSync(path.join(ROOT, 'RUNBOOK.md'), 'utf8')), '6.0');
+  // CHANGELOG: the release is the first h2, 5.0.0 the next; every entry of the line is a subsection
+  const cl = fs.readFileSync(path.join(ROOT, 'CHANGELOG.md'), 'utf8');
+  const h2 = cl.match(/^## .*$/gm);
+  assert.match(h2[0], /^## 6\.0\.0 — 2026-10-23/, h2[0]);
+  assert.match(h2[1], /^## 5\.0\.0 — /, `the h2 after 6.0.0 must be 5.0.0, got: ${h2[1]}`);
+  assert.doesNotMatch(cl.slice(0, cl.indexOf(h2[1])), /^## Unreleased/m);
+  // MIGRATING: the opening names the release; no section is labelled (Unreleased)
+  const mig = fs.readFileSync(path.join(ROOT, 'MIGRATING.md'), 'utf8');
+  assert.match(mig.slice(0, mig.search(/^## /m)), /6\.0\.0 is the first release of the 6 line/);
+  assert.doesNotMatch(mig, /\(Unreleased\)/);
+  // no runtime message names the retired working stage: scan lib/ and bin/ with comments stripped
+  const strip = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/\s\/\/[^'"`\n]*$/gm, '');
+  const offenders = [];
+  for (const dir of ['lib', 'bin']) for (const f of fs.readdirSync(path.join(ROOT, dir))) {
+    if (!f.endsWith('.js')) continue;
+    const src = strip(fs.readFileSync(path.join(ROOT, dir, f), 'utf8'));
+    const m = src.match(/^.*\b6\.2\b.*$/gm);
+    if (m) offenders.push(`${dir}/${f}: ${m[0].trim().slice(0, 100)}`);
+  }
+  assert.deepStrictEqual(offenders, [], 'a runtime string still names 6.2');
+  const gateSrc = fs.readFileSync(path.join(ROOT, 'lib', 'gate.js'), 'utf8');
+  assert.ok(gateSrc.includes("'retired in 6.0 — nothing is read'"));
+  assert.ok(gateSrc.includes("'ledger retired in 6.0 — open items live in ## Open'"));
 });

@@ -8,13 +8,13 @@
 
 ## What is this & how to use it
 
-**apriori** 是一套面向 AI 编程的规格驱动工作流,外加一个零依赖 CLI(`apriori-cli`),让你的规格**可执行**:每条 scenario 都绑定到一个测试,"写了规格没实现"由一条命令抓出来,而不是靠肉眼看 diff。你驱动 AI agent 走一个状态机——精化规格、由*另一个*模型对抗评审、实现、归档——在真正要紧的人工闸口停下。
+**apriori** 是一套面向 AI 编程的规格驱动工作流,外加一个零依赖 CLI(`apriori-cli`),让你的规格**可执行**:没有绑定测试的 scenario 会被报出来,测试没真跑过、或有可归属的失败,`verify` 就不给绿——"写了规格没实现"由一条命令抓出来,而不是靠肉眼看 diff。你驱动 AI agent 走一个状态机——精化规格、由*另一个*模型对抗评审、实现、归档——在真正要紧的人工闸口停下。
 
 人类从下面的 Quickstart 开始;AI agent 读自包含的 [RUNBOOK.md](./RUNBOOK.md)(runbook 只有英文一版),不需要本手册。apriori **用你书写的语言干活**(想固定语言就 `apriori init --language 中文`)。
 
 <p align="center">
   <img src="docs/demo.gif" alt="apriori CLI 循环:verify 报 GAPS(红),绑定到场景的测试让它变 GREEN,gate PASS,archive 归档" width="820">
-  <br><sub><b>规格 → 红 → 绿 → gate → 归档。</b> 这个变更没有真实的、通过的测试证据,<code>verify</code> 就不给绿——一句“搞定了”的假绿由命令抓出来,而不是靠肉眼看 diff。<br><i>(CLI 输出按设计恒为英文,中英文档共用此图。)</i></sub>
+  <br><sub><b>规格 → 红 → 绿 → gate → 归档。</b> 这个变更没有真实的、通过的测试证据,<code>verify</code> 就不给绿——一句“搞定了”的假绿由命令抓出来,而不是靠肉眼看 diff。<br><i>(CLI 输出按设计恒为英文,中英文档共用此图。录制于 4.x 版 CLI:6.0.0 的 gate 行有变化,循环本身没变。)</i></sub>
 </p>
 
 ## Quickstart
@@ -25,10 +25,10 @@ apriori 天生就是**让 AI agent 来驱动**的——你说话,它跑循环,�
 
 <p align="center">
   <img src="docs/onboard-goal-demo-cn.gif" alt="Claude Code 全流程:装 apriori、apriori init 选 Claude Code、/apriori 造一个命令行加法器、/goal 自动跑完整条 apriori 流水线并归档,最后运行生成的工具" width="880">
-  <br><sub>真实录制(等待已剪):<code>npm i</code> → <code>apriori init</code>(选 Claude Code)→ <code>/apriori</code> 提一个小需求 → <code>/goal</code> 自动跑完 规格→评审→实现→verify→gate→归档,只在唯一的人工闸口停下等你点头,最后你亲手运行它造出来的工具。你只需说要什么、点一次头。</sub>
+  <br><sub>真实录制(等待已剪;录制于 4.x 版 CLI,6.0.0 流程相同):<code>npm i</code> → <code>apriori init</code>(选 Claude Code)→ <code>/apriori</code> 提一个小需求 → <code>/goal</code> 自动跑完 规格→评审→实现→verify→gate→归档,只在唯一的人工闸口停下等你点头,最后你亲手运行它造出来的工具。你只需说要什么、点一次头。</sub>
 </p>
 
-先装一次(`npm i -g apriori-cli`),然后在你的项目里点名要接的 AI 工具:
+先装一次——6.0.0 还没发到 npm(npm 上仍是 5.0.0),所以从仓库安装:`npm i -g github:Apriorhythm/apriori-spec-development#v6-dev`——然后在你的项目里点名要接的 AI 工具:
 
 ```text
 apriori init --tools claude
@@ -36,7 +36,7 @@ apriori init --tools claude
 
 (已知工具是 `claude, codex, cursor, copilot, opencode, windsurf`——裸跑 `apriori init` 时,提示信息会列出全部,并附上它在你项目里检测到的那些。)
 
-它会预览要写哪些文件,问 `Proceed? (Y/n)`,然后搭好 `apriori/`,并给 Claude Code 写两个指针:一份 `CLAUDE.md` 规则和一个 `/apriori` 斜杠命令。现在启动 Claude Code(`claude`),用大白话驱动它:
+它会预览要写哪些文件,问 `Proceed? (Y/n)`,然后搭好 `apriori/`,并给 Claude Code 写好指针:一份 `CLAUDE.md` 规则,以及 `/apriori` 与 `/apriori-discuss` 两个斜杠命令。现在启动 Claude Code(`claude`),用大白话驱动它:
 
 `/apriori` 按意图分流:
 
@@ -57,20 +57,20 @@ apriori init --tools claude
 
 | 客户端 | 入口路径 | 状态 |
 |---|---|---|
-| Claude Code | `.claude/commands/apriori.md`、`apriori-discuss.md` | 本机实测通过(Claude Code 2.1.278、claude-opus-5) |
-| Codex CLI | `.codex/prompts/apriori.md`、`apriori-discuss.md` | **尚未支持** —— 入口已安装,但本轮未以 codex CLI 驱动过 |
+| Claude Code | `.claude/commands/apriori.md`、`apriori-discuss.md` | 6 线上已实测(Claude Code 2.1.278、claude-opus-5) |
+| Codex CLI | `.codex/prompts/apriori.md`、`apriori-discuss.md` | **尚未支持** —— 入口已安装,但尚未以 Codex CLI 实际驱动过 |
 | OpenCode | `.opencode/command/…` | **尚未支持** —— 单数 `command/` 路径未实测 |
 | Windsurf | `.windsurf/workflows/…` | **尚未支持** —— 未实测 |
 | Cursor · GitHub Copilot | 只有规则层,无命令入口 | **尚未支持** —— 本机驱动不了 |
 
-未实测的路径**非本轮引入**,单独归因、单独修;在逐一验过之前,不为该客户端宣称可用。
+在逐一验过之前,不为该客户端宣称可用。
 
 ### 路线 B —— 看看引擎(手敲一遍这个循环)
 
 路线 A 的 agent 跑的正是下面这些命令。自己手敲一遍——十分钟,从空目录到规格绑定的绿——是信任 agent 所作所为的最快方式,而且它是确定性路径,每个输出都可核对。
 
 ```shell
-npm i -g apriori-cli
+npm i -g github:Apriorhythm/apriori-spec-development#v6-dev   # 6.0.0 还没发到 npm(npm 上仍是 5.0.0)
 mkdir hello-apriori && cd hello-apriori
 apriori init --tools claude --test-cmd "node --test --test-reporter=tap" --yes
 apriori doctor --no-run
@@ -103,7 +103,7 @@ EOF
 apriori verify --change hello
 ```
 
-每个变更带一个小状态文件(`flow-state.md`——`mode` 决定流程规模;通常由 agent 替你维护)和它的增量规格。`verify --change` 对**投影**规格库(本变更合并后规格库的样子)做绑定。一条 scenario、零测试 → `RESULT: GAPS`,退出码 1。fail-closed 正是要点。现在把它变绿:
+每个变更带一个小状态文件(`flow-state.md`——它的 `phase:` 行就是变更的身份;通常由 agent 替你维护)和它的增量规格。`verify --change` 对**投影**规格库(本变更合并后规格库的样子)做绑定。一条 scenario、没有跑过测试 → `RESULT: GAPS`,退出码 1。fail-closed 正是要点。现在把它变绿:
 
 ```shell
 mkdir -p test
@@ -138,7 +138,7 @@ apriori verify --specs apriori/specs
 apriori check
 ```
 
-那两个评审文件是两种模式都不能省的那一样东西:**唯一一次独立评审**——没有它,`gate` 与 `archive` 都会拒绝这个变更,`fast` 与 `standard` 一视同仁。这里是手写的,因为这是演示;真实变更里 `.md` 承载评审方的 verdict,`-raw.*` 逐字承载它的原始输出,而且来自**另一个**模型(runbook R2)。注意这个 bundle 里**没有**什么:没有需求文档、没有提案、没有设计文档、没有 gap 报告、没有任务清单——6.0 两种模式都不要它们。`gate` 把机械检查合成一个退出码(它的 PASS 绝不替代人做的决定)。`archive --change` 把增量并入 living 规格库 `apriori/specs/` 并归档变更——它**会拒绝一个还没做完的变更**,这正是上面的 flow-state 已经写 `phase: review`(交付所在的那个阶段)的原因;然后它声明三个状态并冻结这个 bundle。普通 `verify` 现在证明合并后的库,`check` 是 CI 守卫。这正是路线 A 替你自动跑的循环:**核对现实 → 规格 → 红 → 绿 → 评审 → gate → 归档**。
+那两个评审文件是任何变更都不能省的那一样东西:**唯一一次独立评审**——没有它,`gate` 与 `archive` 都会拒绝这个变更(唯一的出口是 owner 的 `archive --unreviewed` 收尾,而它会如实声明评审缺席)。这里是手写的,因为这是演示;真实变更里 `.md` 承载评审方的 verdict,`-raw.*` 逐字承载它的原始输出,而且来自**另一个**模型(runbook R2)。注意这个 bundle 里**没有**什么:没有需求文档、没有提案、没有设计文档、没有 gap 报告、没有任务清单——6.0 都不要它们。`gate` 把机械检查合成一个退出码(它的 PASS 绝不替代人做的决定)。`archive --change` 把增量并入 living 规格库 `apriori/specs/` 并归档变更——它**会拒绝一个还没做完的变更**,这正是上面的 flow-state 已经写 `phase: review`(交付所在的那个阶段)的原因;然后它声明三个状态并冻结这个 bundle。普通 `verify` 现在证明合并后的库,`check` 是 CI 守卫。这正是路线 A 替你自动跑的循环:**核对现实 → 规格 → 红 → 绿 → 评审 → gate → 归档**。
 
 ## Where everything else lives
 
@@ -162,10 +162,10 @@ apriori check
 | `apriori verify` | Build & Test 退出闸口 | 确认测试确实跑过,且没有可归属的真实失败;scenario-ID 绑定缺口只作诊断,不是 gate;`--change <name>` = 投影的、变更进行中的形式 |
 | `apriori stamp <store-file>` | 写增量规格时 | 打印 CAS 基线章——库分叉后 verify/archive 会拒绝 |
 | `apriori gate --change <name>` | Build & Test / Review、CI | 机械检查合成一个退出码(PASS ≠ 人做的决定);`--review-ready` 是临时的准入视图 |
-| `apriori archive` | Review & Deliver | 把增量规格并入 living 规格库;`--change <name>` = 整变更、失败原子(直到提交点为止) |
+| `apriori archive` | Review & Deliver | 把增量规格并入 living 规格库;`--change <name>` = 整变更、失败原子(直到提交点为止);`--unreviewed` = owner 对已交付但评审未收敛的变更的收尾,并如实声明 |
 | `apriori check` | CI / pre-commit | 结构一致性(scenario ID 可绑定) |
 | `apriori update` | CLI 升级后 | 刷新 runbook 副本 + 命令指针(绝不动你的文件——唯一的例外明说:早于 `managed.json` 的 CLI 写下的 `apriori/runbook.md` 会被认领并覆盖一次,此后像任何受管文件一样受保护;规则文件里工具写的旧指针段落会原地升级,文件其余部分不动) |
 
 ## Acknowledgments
 
-本工作流建立在其上的产物接口——增量规格(`ADDED` / `MODIFIED` / `REMOVED`)、带稳定 ID 的 Requirement/Scenario 块、archive 合并语义、多工具 `init` 脚手架模式——直接受 **[OpenSpec](https://github.com/Fission-AI/OpenSpec/)** 启发,V1 与 V2 线曾直接使用它。V3 把该接口原生重实现为零依赖的 `apriori` CLI,不再依赖它——但接口的形状来自 OpenSpec,此谢郑重致上。
+本工作流建立在其上的产物接口——增量规格(`ADDED` / `MODIFIED` / `REMOVED`)、带稳定 ID 的 Requirement/Scenario 块、archive 合并语义、多工具 `init` 脚手架模式——直接受 **[OpenSpec](https://github.com/Fission-AI/OpenSpec/)** 启发,本项目早期的版本线曾直接使用它;自 3.x 起 CLI 把该接口原生重实现为零依赖的 `apriori` CLI,不再依赖它——但接口的形状来自 OpenSpec,此谢郑重致上。

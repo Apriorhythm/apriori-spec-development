@@ -177,8 +177,8 @@ test('FF-07 what is fast\'s alone is the WAIVER, not the review', () => {
     review: (d) => reviewRound(d, 'code-review', 1, 'no major issues') });
   const g = gate(root);
   assert.strictEqual(g.status, 0, g.stdout);
-  assert.match(line(g.stdout, 'C2'), /^– C2 retired in 6\.2/);
-  assert.match(line(g.stdout, 'C4'), /^– C4 ledger retired in 6\.2/);
+  assert.match(line(g.stdout, 'C2'), /^– C2 retired in 6\.0/);
+  assert.match(line(g.stdout, 'C4'), /^– C4 ledger retired in 6\.0/);
 });
 
 // ---------------------------------------------------------------------------
@@ -371,8 +371,8 @@ test('FF-09 an ADDED-only delta raises no signal', () => {
   assert.strictEqual(g.status, 0, `an additive change must pass, got exit ${g.status}:\n${g.stdout}`);
   assert.doesNotMatch(line(g.stdout, 'C3'), /standard/, `no upgrade may be invented, got: ${line(g.stdout, 'C3')}`);
   assert.match(line(g.stdout, 'C9'), /^✓ C9 no open items$/, 'no signal, no note');
-  assert.match(line(g.stdout, 'C2'), /^– C2 retired in 6\.2/, 'the retired readers stay retired');
-  assert.match(line(g.stdout, 'C4'), /^– C4 ledger retired in 6\.2/, 'the retired readers stay retired');
+  assert.match(line(g.stdout, 'C2'), /^– C2 retired in 6\.0/, 'the retired readers stay retired');
+  assert.match(line(g.stdout, 'C4'), /^– C4 ledger retired in 6\.0/, 'the retired readers stay retired');
 });
 
 test('FF-10 gate, archive readiness and status report the same signal, and none of them an upgrade', () => {

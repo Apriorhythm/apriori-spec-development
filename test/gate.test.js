@@ -60,7 +60,7 @@ test('GT-01 a clean in-flight change passes (exit 0, all checks ✓)', () => {
 test('GT-02 C2 is a placeholder — tasks.md is never read', () => {
   // 6.2 retired the diagnostic with the artifact: the check id stays in `checks[]` for --json
   // shape compatibility and says so, whatever file sits in the bundle.
-  const PLACEHOLDER = { id: 'C2', status: 'n/a', detail: 'retired in 6.2 — nothing is read' };
+  const PLACEHOLDER = { id: 'C2', status: 'n/a', detail: 'retired in 6.0 — nothing is read' };
   const root = healthy();
   fs.writeFileSync(path.join(root, 'apriori/changes/c/tasks.md'), '- [x] T1 done\n- [ ] T3 not done\n');
   let r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });
@@ -73,7 +73,7 @@ test('GT-02 C2 is a placeholder — tasks.md is never read', () => {
 });
 
 test('GT-03 C4 is a placeholder — review/issues.md is never read', () => {
-  const PLACEHOLDER = { id: 'C4', status: 'n/a', detail: 'ledger retired in 6.2 — open items live in ## Open' };
+  const PLACEHOLDER = { id: 'C4', status: 'n/a', detail: 'ledger retired in 6.0 — open items live in ## Open' };
   const root = healthy();
   fs.writeFileSync(path.join(root, 'apriori/changes/c/review/issues.md'), LEDGER_OPEN);
   const r = gate.runGate({ cwd: root, change: 'c', testCmd: TAP_OK });

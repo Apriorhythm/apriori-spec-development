@@ -30,6 +30,15 @@ and passed QA with zero bugs; the owner intervened throughout, so nothing is att
 alone. No comparison against a control arm has been run, and cost is not endorsed (see the
 cost-record entry below). Only Claude Code is verified as a client.
 
+### cl21-windows-blocking-pipes: the early-closed-reader test is POSIX-only
+
+- `CL-21` (cli-json-pipe-flush) is skipped on Windows with its reason: a Node child sets its own stdio
+  pipes blocking there (net.Socket via libuv), so nothing is queued at exit — the truncation JP-1 closes cannot occur on
+  Windows — and the test's paused-stderr choreography deadlocks (found by the 6 line's first Windows CI
+  run, PR #1). The CLI itself exits with its own code after an early-closed reader on Windows too
+  (EPIPE in 5 ms, verified on a Windows host). Spec: the CL-21 scenario states the platform scope.
+  No `bin/` or `lib/` change.
+
 ### release-tag-6-0-0: the install line points at npm, and the release steps are recorded
 
 - README (both editions) and RUNBOOK §0 install from npm again (`npm i -g apriori-cli`); the CI

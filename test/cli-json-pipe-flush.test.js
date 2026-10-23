@@ -61,7 +61,14 @@ fs.readFileSync = function (p, ...rest) { if (String(p).endsWith(${JSON.stringif
   assert.ok(t.stderr.includes(marker), 'stderr arrived whole');
 });
 
-test('CL-21 a reader that closes early never changes the exit code (JP-1)', async () => {
+// On Windows a Node child sets its own stdout/stderr pipes BLOCKING (net.Socket via libuv): nothing is
+// ever queued at exit, so the truncation JP-1 closes cannot occur there — and this choreography
+// deadlocks (the preload's 300 KB stderr write exceeds the pipe buffer plus the paused parent's 64 KiB
+// pre-read, and blocks until the parent reads stderr, which it does only after stdout's first chunk).
+// Found by the 6 line's first Windows CI run (2026-10-23); CL-19/CL-20 pass on Windows.
+const WIN32_BLOCKING_PIPES = process.platform === 'win32'
+  && 'stdio pipes are blocking on Windows: nothing is queued at exit, and the paused-stderr choreography deadlocks';
+test('CL-21 a reader that closes early never changes the exit code (JP-1)', { skip: WIN32_BLOCKING_PIPES }, async () => {
   // review r1 A1 / r2 B2: the failure needs BOTH streams queued at exit — then an early-closed stdout
   // reader's EPIPE fires while the exit still waits on stderr, and without a listener Node turns it into
   // exit 1. A preload queues 300 KB on stderr at startup; the 300-change envelope queues stdout; the

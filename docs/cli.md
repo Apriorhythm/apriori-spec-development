@@ -48,6 +48,20 @@ Example: `apriori new add-playback`
 
 Exit: 0 created · 1 name/exists error · 2 usage.
 
+## apriori note
+
+append a stamped entry to a change's `gates:` log (the CLI writes the time of recording)
+
+```text
+usage: apriori note --change <name> [--owner] "<text>"
+```
+
+Example: `apriori note --change add-playback "Specify done — spec.md CP-01..CP-10"`
+
+Without `--owner` the entry is a `note:`; `--owner` writes the `owner:` label for a human's decision transcribed verbatim (it transcribes, it does not prove the human decided — RUNBOOK §1 R1). The stamp is the CLI's local clock at the moment of writing: there is no date or time argument, and a text about an earlier event says so in its own words. A multi-line text is one entry (continuation lines indented by at least four spaces); a text whose continuation line would open a list item or a code fence, or that contains an HTML comment marker, is refused rather than rewritten, because the state file's readers would read it as a second entry or blank the log. The command only appends — the file's own line ending (LF or CRLF) included — nothing before the new entry changes, and it refuses an archived change, a symlinked or missing flow-state and a file without exactly one `gates:` block. `apriori status --change` flags a stamp later than the machine's clock as an advisory, nothing more.
+
+Exit: 0 appended · 1 not an active change / flow-state unreadable / no single `gates:` block · 2 usage.
+
 ## apriori status
 
 where each change is: phase, Reality Check, open items, next actions, the derived review round and any escalation

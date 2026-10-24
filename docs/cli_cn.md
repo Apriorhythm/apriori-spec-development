@@ -48,6 +48,20 @@ usage: apriori new <change-name>   (bare kebab-case, e.g. add-playback)
 
 退出码:0 已创建 · 1 名字非法/已存在 · 2 用法错误。
 
+## apriori note
+
+向变更的 `gates:` 日志追加一条带时间戳的条目(时间戳由 CLI 写入,是记录时间)
+
+```text
+usage: apriori note --change <name> [--owner] "<text>"
+```
+
+示例:`apriori note --change add-playback "Specify done — spec.md CP-01..CP-10"`
+
+不带 `--owner` 写 `note:`;`--owner` 写 `owner:`,用于逐字转录人类的决定(只是转录,不证明人类确实决定过——RUNBOOK §1 R1)。时间戳是 CLI 写入时的本地时钟:没有日期或时间参数,补记更早的事件时在正文里说明。多行文本是一条条目(续行至少缩进四格);续行会开出列表项或代码围栏、或文本里含 HTML 注释标记的,直接拒绝而不改写,因为状态文件的读取器会把它读成第二条条目或把日志后半截抹掉。命令只追加——保留文件自己的换行(LF 或 CRLF),新条目之前的内容一个字节都不改——并拒绝已归档的变更、符号链接或缺失的 flow-state、以及没有恰好一个 `gates:` 块的文件。`apriori status --change` 对晚于本机时钟的时间戳只打 advisory,不做别的。
+
+退出码:0 已追加 · 1 不是活动变更 / flow-state 不可读 / 没有唯一的 `gates:` 块 · 2 用法错误。
+
 ## apriori status
 
 每个变更走到哪了:阶段、现实核对、open 条目、下一步、派生的评审轮次与 escalation

@@ -30,6 +30,10 @@ and passed QA with zero bugs; the owner intervened throughout, so nothing is att
 alone. No comparison against a control arm has been run, and cost is not endorsed (see the
 cost-record entry below). Only Claude Code is verified as a client.
 
+### Unreleased since 6.0.0 · gates-note-command (2026-10-24) — the CLI stamps `gates:` entries
+
+`apriori note --change <name> [--owner] "<text>"` appends one entry to a change's `gates:` log with the CLI's local clock as its stamp — the time of recording, never a time the agent fills in; there is no date argument. It only appends, refuses anything but an active change's own flow-state with one `gates:` block, and writes a multi-line text as one entry. `apriori status --change` now flags a stamp later than the machine's clock as an `advisory:` line and `advisories` in `--json` — advisory only: stamps carry no time zone, so no gate, archive refusal or decision reading changes. RUNBOOK §3 and §1 R4 and the C8 hints send the agent to the command; `docs/cli.md` / `docs/cli_cn.md` document it. Why: in three evaluation-baseline runs of 6.0.0 every hand-written gates stamp but the scaffold's disagreed with the real production time (Claude × Astra consensus 2026-10-24). Specs: note (NT-01..NT-06, new), status (ST-47, ST-48), protocol (PR-73).
+
 ### bd08-windows-separators: one more separator-bound assertion
 
 - BD-08 (boundaries) compared a `path.relative` result with `'kv/spec.md'` and matched the walk-root

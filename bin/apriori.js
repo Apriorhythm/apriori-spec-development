@@ -8,6 +8,7 @@ const rest = process.argv.slice(3);
 const USAGE = `apriori <command>
 
   new       scaffold a change dir + flow-state skeleton (bare kebab-case name)
+  note      append a stamped entry to a change's gates: log (the CLI writes the time of recording)
   status    show where a change is: phase, reality check, evidence, next actions (--json)
   verify    bind spec scenarios to test runs (the Build & Test binding gate) (--json)
   archive   merge a change's delta specs into the living store (freezes the bundle)
@@ -23,6 +24,7 @@ Run 'apriori <command>' with no args for that command's usage.`;
 async function main() {
   switch (sub) {
     case 'new':     return require('../lib/new').cli(rest);
+    case 'note':    return require('../lib/note').cli(rest);
     // retired in 6.0: the lane was a parallel process, not a shortcut. Refused with a
     // pointer rather than deleted outright — `apriori hotfix new x` in an old habit or
     // an old script should say what replaced it, not 'unknown command'.

@@ -29,6 +29,6 @@ Choices already made whose deeper purpose is the endgame — keep them aligned:
 |---|---|
 | Scenario IDs bound to test runs by `apriori verify` (a test name carrying the ID is optional — RUNBOOK §4 Build & Test, cli §8.1) | The ID is the future join key between an assertion and its run |
 | Open items with stable ids (`## Open`) and a closed verdict-line vocabulary (RUNBOOK §3, §5), exposed by `gate --json` / `status --json` | Review outcomes and unresolved risks become data an executable pipeline can consume |
-| Executable instruments first where they exist; where none exists, the independent review is the instrument (RUNBOOK §4 Build & Test; concepts §1.5) | The endgame is this principle taken to its limit |
+| Executable instruments first where they exist; a runtime behavior no instrument executes is run and recorded, or it is an `## Open` item — the review reads, it does not run (RUNBOOK §4 Build & Test; concepts §1.5) | The endgame is this principle taken to its limit |
 | KB Contract sections stamped with `source-commit` (RUNBOOK §4 KB pre-check, P5) | Contracts are the assertions-in-waiting; the stamp is their staleness oracle |
 | A spec extracted from a prototype is traced to its sources — the requirement, the Ground's `observed` lines, the prototype walk's checklist — never to the prototype alone | Generated specs must inherit an intent anchor — same rule when a tool generates them |

@@ -29,6 +29,6 @@ scenario 变得**可执行**:spec *就是*测试套件。每个 scenario 都是�
 |---|---|
 | 由 `apriori verify` 把 scenario ID 绑定到测试运行(测试名携带 ID 只是可选——RUNBOOK §4 Build & Test、cli §8.1) | ID 是未来"断言↔运行"之间的连接键 |
 | 带稳定 id 的开放条目(`## Open`)与封闭的 verdict 词表(RUNBOOK §3、§5),由 `gate --json` / `status --json` 暴露 | 评审结论与未解决的风险成为可被可执行流水线消费的数据 |
-| 凡可执行仪器存在处优先用它;没有仪器的地方,独立评审就是仪器(RUNBOOK §4 Build & Test;concepts §1.5) | 终局就是这条原则推到极限 |
+| 凡可执行仪器存在处优先用它;没有仪器执行到的运行时行为,要真跑一次并记录,否则就是 `## Open` 条目——评审只读,不运行(RUNBOOK §4 Build & Test;concepts §1.5) | 终局就是这条原则推到极限 |
 | 知识库契约节带 `source-commit` 标记(RUNBOOK §4 知识库预检、P5) | 契约是待转正的断言;标记是它们的过期判据 |
 | 从原型提取的规格要溯源到来源——需求、Ground 的 `observed`、原型走查清单——绝不只对照原型 | 生成的规格必须继承意图锚点——工具生成时同样适用 |

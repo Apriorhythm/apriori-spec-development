@@ -257,10 +257,10 @@ rules:
     - Every "user-visible output" must have its own scenario; if one requirement has multiple visible side-effects (e.g. "filtering" and "showing the filtered-out results"), write them as two separate scenarios, never merged into one sentence
     - Give every scenario a stable ID (e.g. KV-03) — `apriori check` rejects an ID-less scenario. Genuine coverage is Build & Test's own job, not `verify`'s: `verify` only confirms tests ran with no real failure (UNBOUND is advisory); naming a test with its scenario ID is a suggestion, never a requirement
     - |
-      For any spec involving "external shared state" (Redis, DB fields, global singletons, etc.),
+      For any spec involving "external shared state" (Redis, DB fields, global singletons, etc. — a stored structure whose meaning the change extends included),
       you MUST additionally describe behavior at these three moments:
       1. Initialization (how it's written at run/session/request start)
-      2. Update at runtime
+      2. Update at runtime (for a structure the change extends: what happens to the parts of the stored value the new code cannot represent)
       3. Cleanup/invalidation (how it's handled on run end, timeout, reset)
       Missing any one of these moments means the spec is incomplete.
   build:

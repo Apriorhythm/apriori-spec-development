@@ -460,7 +460,7 @@ Write the minimal behavior contract for mini-kv as delta specs under apriori/cha
 One scenario per user-visible behavior, each with a stable ID and testable acceptance.
 ```
 
-Pay attention to whether the resulting `spec.md` **gives each user-visible behavior its own scenario**, and whether the **external shared state (here, that in-memory map) describes the three moments: init / update-at-runtime / cleanup-and-invalidation**. Edge cases a reviewer should catch: what `ttlMs<=0` does, whether `get` cleans up lazily or on a timer, overwrite semantics.
+Pay attention to whether the resulting `spec.md` **gives each user-visible behavior its own scenario**, and whether the **external shared state (here, that in-memory map) describes the three moments: init / update-at-runtime / cleanup-and-invalidation** (a stored structure whose meaning the change extends counts as that state: Ground traces its read → intermediate form → edit → write-back and records the fate of the parts the new code cannot represent). Edge cases a reviewer should catch: what `ttlMs<=0` does, whether `get` cleans up lazily or on a timer, overwrite semantics.
 
 If you asked for a contract review (it is **not** the default — RUNBOOK §2), then switch to your reviewing tool/model and review → revise per [§7.2](#72-specify-contract-adversarial-review-and-revision), looping until `VERDICT: no major issues, ready to proceed to execution`. Concretely, drive the review with Codex ([§2.3](#23-driving-codex-non-interactively-multi-round-adversarial-review)):
 ```shell
@@ -564,7 +564,7 @@ Prompt: RUNBOOK **P1**. Design notes: facts only — no code. The goal and the K
 
 Prompts: RUNBOOK **P2** (the producer's contract → review-ready handoff) / **P3** (the independent reviewer). Design notes:
 
-- P2 bakes in the split test (one result, one evidence chain) and the two spec-quality rules from [cli §8.1](./cli.md#81-spec-authoring-rules): one scenario per user-visible output (with a stable ID), and the three moments for any external shared state. It writes the contract and **nothing else** — 5.x had this prompt produce a proposal, a design doc and a task list alongside it.
+- P2 bakes in the split test (one result, one evidence chain) and the two spec-quality rules from [cli §8.1](./cli.md#81-spec-authoring-rules): one scenario per user-visible output (with a stable ID), and the three moments for any external shared state (a stored structure whose meaning the change extends included; its runtime-update moment states what happens to the parts the new code cannot represent). It writes the contract and **nothing else** — 5.x had this prompt produce a proposal, a design doc and a task list alongside it.
 - The producer's revise pass touches the contract (the delta specs) only — never source — and must answer every substantive finding with accept/reject + reason; at the owner's review-round limit it rules on each open finding and one re-review follows instead of another ordinary round; on `escalate`, or on a round past that re-review, it stops.
 
 > 💡 To run this review loop through Codex from the CLI — open the session in round 1, `resume <session-id>` each subsequent round so the reviewer keeps full context — see [§2.3](#23-driving-codex-non-interactively-multi-round-adversarial-review).

@@ -260,7 +260,7 @@ rules:
       For any spec involving "external shared state" (Redis, DB fields, global singletons, etc. — a stored structure whose meaning the change extends included),
       you MUST additionally describe behavior at these three moments:
       1. Initialization (how it's written at run/session/request start)
-      2. Update at runtime (for a structure the change extends: what happens to the parts of the stored value the new code cannot represent)
+      2. Update at runtime (for a structure the change extends: what happens to the parts of the stored value the new code cannot represent — kept, or the edit refused / the region read-only, unless a source authorizes their loss; never dropped silently)
       3. Cleanup/invalidation (how it's handled on run end, timeout, reset)
       Missing any one of these moments means the spec is incomplete.
   build:

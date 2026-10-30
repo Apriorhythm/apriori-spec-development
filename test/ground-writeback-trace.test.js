@@ -27,7 +27,7 @@ test('PR-76 an extended persisted structure is shared state and Ground traces it
   assert.match(ground, /how it is read, what intermediate form it takes, where it is edited and how it is written back/);
   assert.match(ground, /records as an `observed:` line what the existing read → edit → write-back path does to the parts of the stored value the changed representation cannot hold \(what the page or API cannot show or edit\): kept, merged, dropped or refused, for example/);
   assert.match(ground, /until that write-back has been read, that fate is an `assumption`, with the lifecycle above — verified, or carried to `## Open`/);
-  assert.match(ground, /Where this change builds or replaces the write-back, that fate is a behavior of the contract, not an assumption: Specify's runtime-update moment states it — a `decision` when a source or the owner settles it, otherwise an `## Open` item for the owner/);
+  assert.match(ground, /Where this change changes how the stored content enters an edit path, how it is represented, edited or written back — an existing adapter or representation it extends included, whether or not the write-back function itself is touched — that fate is a behavior of the contract, not an assumption: Specify's runtime-update moment states it — a `decision` when a source or the owner settles it, otherwise the safe default below/); // widened by writeback-fate-default (PR-77)
   assert.doesNotMatch(ground, /the new code cannot represent/, 'Ground does not ask for an observed line about code that does not exist yet (GW-1)');
   // P1 carries it to the producer
   const p1 = line(EN, 'A persisted structure whose meaning this change extends (a stored JSON field, a settings record, a saved document) is shared state:');
@@ -36,7 +36,7 @@ test('PR-76 an extended persisted structure is shared state and Ground traces it
   assert.match(p1, /trace how it is read, what intermediate form it takes, where it is edited and how it is written back/);
   assert.match(p1, /record as observed: what the existing write-back does to the parts of the stored value the changed representation cannot hold \(kept, merged, dropped, refused, for example\)/);
   assert.match(p1, /until that write-back is read, that fate is an assumption/);
-  assert.match(p1, /Where this change builds or replaces the write-back, that fate is contract behavior for Specify's runtime-update moment \(a decision when a source or the owner settles it, otherwise an ## Open item\), not an assumption/);
+  assert.match(p1, /Where this change changes how the stored content enters an edit path, is represented, edited or written back \(an existing adapter or representation it extends included, whether or not the write-back itself is touched\), that fate is contract behavior for Specify's runtime-update moment: a decision when a source or the owner settles it, otherwise the runbook's safe default/); // widened by writeback-fate-default (PR-77)
   // P2 and §4 Specify name the structure among the shared state and pin the runtime-update moment
   const p2 = line(EN, '* Any external shared state');
   assert.match(p2, /\(Redis \/ DB field \/ global singleton \/ in-memory cache — a stored structure whose meaning you extend included\)/);
@@ -54,9 +54,9 @@ test('PR-76 an extended persisted structure is shared state and Ground traces it
   assert.match(cn, /本次改动扩展了语义的已存结构也算；其「运行中更新」要说明新代码表示不了的部分会怎样/, 'CN P2 note carries the runtime-update clause');
   const cli = read('docs/cli.md'); const cliCn = read('docs/cli_cn.md');
   assert.match(cli, /"external shared state" \(Redis, DB fields, global singletons, etc\. — a stored structure whose meaning the change extends included\)/);
-  assert.match(cli, /2\. Update at runtime \(for a structure the change extends: what happens to the parts of the stored value the new code cannot represent\)/);
+  assert.match(cli, /2\. Update at runtime \(for a structure the change extends: what happens to the parts of the stored value the new code cannot represent — /);   // the default appended by writeback-fate-default (PR-77) is asserted in its own guard
   assert.match(cliCn, /外部共享状态"（Redis、DB 字段、全局单例等——本次改动扩展了语义的已存结构也算）/);
-  assert.match(cliCn, /2\. 运行中更新（对本次改动扩展了语义的结构：存储值里新代码表示不了的部分会怎样）/);
+  assert.match(cliCn, /2\. 运行中更新（对本次改动扩展了语义的结构：存储值里新代码表示不了的部分会怎样——/);
   // no new mechanism
   const added = (t, from) => { const i = t.indexOf(from); assert.ok(i >= 0, `fragment "${from}" present`); const end = t.indexOf('\n', i); return t.slice(i, end < 0 ? undefined : end); }; // the added sentence only, to its line end (A-6)
   for (const [label, t] of [['ground', ground], ['p1', p1], ['p2', added(p2, 'a stored structure')], ['minimal', added(minimal, 'a stored structure')],

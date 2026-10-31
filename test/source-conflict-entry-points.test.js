@@ -35,7 +35,7 @@ test('PR-78 a source constraint applies to existing entry points too, and an obs
   assert.match(LINES[doIdx], /rather than sweeping the repo/, 'the Do bullet keeps its targeted-reading rule');
   // §4 Specify: the examples sentence is appended to "Minimal means minimal"
   const minimal = line('- **Minimal means minimal.**');
-  assert.match(minimal, /For every conflict Ground observed between a source and current behavior, the examples carry its triggering condition at the affected caller-visible entry points, including existing ones, with representatives for each distinct path that determines the result; one representative may stand for several entry points only when an existing `observed:` entry establishes that the same path determines their result under that condition, and each expected result retains every source obligation applicable to that example\./);
+  assert.match(minimal, /For every conflict Ground observed between a source and current behavior, the examples carry its triggering condition at the affected caller-visible entry points, including existing ones, with representatives for each distinct path that determines the result; one representative may stand for several entry points only when an existing `observed:` entry establishes that the same path determines their result under that condition\./);  // tail replaced by PR-79
   assert.match(minimal, /the entry points through which the same rule can fail/, 'PR-75 text stays');
   assert.match(minimal, /states §4 Ground's safe default/, 'PR-77 text stays');
   // P1 and P2 carry it to the producer
@@ -44,7 +44,7 @@ test('PR-78 a source constraint applies to existing entry points too, and an obs
   assert.match(p1, /Where a source explicitly rules out an exception, override or continuation under a stated condition, or Ground has already observed a conflict with a source, trace the affected existing or reused entry points within the requirement scope defined in §4 Ground far enough to establish their observable result; record the condition, entry point, deciding code and current result\./);
   const p2 = line('* One scenario per user-visible output');
   assert.ok(p2, 'P2 scenario bullet exists');
-  assert.match(p2, /For each conflict Ground observed between a source and current behavior, include its triggering condition at affected caller-visible entry points, existing ones included; use representatives for distinct deciding paths, sharing one only where observed evidence establishes the same deciding path under that condition, and retain every source obligation applicable to each example\./);
+  assert.match(p2, /For each conflict Ground observed between a source and current behavior, include its triggering condition at affected caller-visible entry points, existing ones included; use representatives for distinct deciding paths, sharing one only where observed evidence establishes the same deciding path under that condition\./);  // tail replaced by PR-79
   assert.match(p2, /named as a caller reaches it \(route, page, command, input channel\), never as an internal handler/, 'PR-75 text stays');
   // P3 reads exactly as before (actual comparison with the v6-dev@d5a5060 section)
   const p3 = between('### P3 — independent review', '### P4 —');

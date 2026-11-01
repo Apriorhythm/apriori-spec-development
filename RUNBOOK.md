@@ -1,6 +1,6 @@
 # Apriori RUNBOOK — the Executable Protocol for AI Agents
 
-> `runbook-version: 6.0` · upstream: `https://github.com/Apriorhythm/apriori-spec-development`
+> `runbook-version: 6.1` · upstream: `https://github.com/Apriorhythm/apriori-spec-development`
 > Local state lives ONLY in `apriori/process-config.md` and the flow-state file — this file is stateless, so **upgrading = overwriting it with the upstream version**.
 
 > **Audience: AI agents** (plus `docs/operator.md` in the apriori-cli repository for the human operating them). This file is self-contained but for one guide: everything an agent needs at runtime is here — hard rules, state machine, artifact paths, prompts — except the prototype-walk procedure, which lives in `apriori/guides/prototype-walk.md` (installed beside this copy) and is read only when a walk runs (§4 Ground).

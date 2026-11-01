@@ -1,5 +1,5 @@
 'use strict';
-// ID-01..ID-06 — version identity (6.0.0, release-6-0-0), install-time links, the 6.2-stage migration record (6.2 batch A-9).
+// ID-01..ID-06 — version identity (6.1.0, release-6-1-0; 6.0.0 was release-6-0-0), install-time links, the 6.2-stage migration record (6.2 batch A-9).
 //
 // Astra P9/P15, R8: the package said 5.0.0 while the branch spoke 6.2; the copied runbook linked
 // files that are not beside it; the migration record was spread over slices. Pinned here on the
@@ -35,7 +35,7 @@ function packedDir() {
 const runPacked = (args, cwd) => spawnSync('node', [path.join(packedDir(), 'bin', 'apriori.js'), ...args], { encoding: 'utf8', cwd });
 
 test('ID-01 in the packed directory, --version, the runbook header, the installed copy and update\'s target agree', () => {
-  assert.strictEqual(pkg.version, '6.0.0', 'release-6-0-0: the 6 line\'s release identity');
+  assert.strictEqual(pkg.version, '6.1.0', 'release-6-1-0: the package\'s release identity');
   const dir = packedDir();
   const v = runPacked(['--version'], dir);
   assert.strictEqual(v.stdout.trim(), pkg.version);
@@ -114,18 +114,26 @@ test('ID-05 the runbook finer-behavior pointer names files that actually carry t
   assert.doesNotMatch(concepts, /\bCAS\b/, 'concepts still has no CAS content — the old pointer must not return');
 });
 
-test('ID-06 6.0.0 is the release identity everywhere a reader meets it (release-6-0-0)', () => {
-  assert.strictEqual(pkg.version, '6.0.0');
-  assert.strictEqual(header(fs.readFileSync(path.join(ROOT, 'RUNBOOK.md'), 'utf8')), '6.0');
-  // CHANGELOG: the release is the first h2, 5.0.0 the next; every entry of the line is a subsection
+test('ID-06 6.1.0 is the release identity everywhere a reader meets it (release-6-1-0)', () => {
+  assert.strictEqual(pkg.version, '6.1.0');
+  assert.strictEqual(header(fs.readFileSync(path.join(ROOT, 'RUNBOOK.md'), 'utf8')), '6.1');
+  // CHANGELOG: 6.1.0 is the first h2, 6.0.0 the next, 5.0.0 after it; every entry since 6.0.0 is a subsection of 6.1.0
   const cl = fs.readFileSync(path.join(ROOT, 'CHANGELOG.md'), 'utf8');
   const h2 = cl.match(/^## .*$/gm);
-  assert.match(h2[0], /^## 6\.0\.0 — 2026-10-23/, h2[0]);
-  assert.match(h2[1], /^## 5\.0\.0 — /, `the h2 after 6.0.0 must be 5.0.0, got: ${h2[1]}`);
-  assert.doesNotMatch(cl.slice(0, cl.indexOf(h2[1])), /^## Unreleased/m);
+  assert.match(h2[0], /^## 6\.1\.0 — 2026-11-01/, h2[0]);
+  assert.match(h2[1], /^## 6\.0\.0 — 2026-10-23/, `the h2 after 6.1.0 must be 6.0.0, got: ${h2[1]}`);
+  assert.match(h2[2], /^## 5\.0\.0 — /, `the h2 after 6.0.0 must be 5.0.0, got: ${h2[2]}`);
+  assert.doesNotMatch(cl.slice(0, cl.indexOf(h2[2])), /^## Unreleased/m);
+  assert.doesNotMatch(cl, /^### Unreleased since/m, 'every entry since 6.0.0 is filed under 6.1.0');
+  const sixOne = cl.slice(cl.indexOf(h2[0]), cl.indexOf(h2[1]));
+  for (const name of ['gates-note-command', 'runtime-evidence-not-reviewable', 'discriminating-examples', 'ground-writeback-trace', 'writeback-fate-default', 'source-conflict-entry-points', 'preserve-source-outcomes', 'release-6-1-0']) {
+    assert.match(sixOne, new RegExp(`^### ${name}\\b`, 'm'), `${name} is a subsection of 6.1.0`);
+  }
+  assert.match(sixOne, /not a general guarantee of zero data loss/, 'the release note states the evidence as it stands');
   // MIGRATING: the opening names the release; no section is labelled (Unreleased)
   const mig = fs.readFileSync(path.join(ROOT, 'MIGRATING.md'), 'utf8');
   assert.match(mig.slice(0, mig.search(/^## /m)), /6\.0\.0 is the first release of the 6 line/);
+  assert.match(mig.slice(0, mig.search(/^## /m)), /6\.1\.0 \(2026-11-01\) is a minor release of the 6 line: nothing to migrate from 6\.0\.0/);
   assert.doesNotMatch(mig, /\(Unreleased\)/);
   // no runtime message names the retired working stage: scan lib/ and bin/ with comments stripped
   const strip = (src) => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/\s\/\/[^'"`\n]*$/gm, '');

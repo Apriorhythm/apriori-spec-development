@@ -6,11 +6,11 @@ the scenario IDs (`test_PY_01_...` — Python identifiers can't contain hyphens,
 adapter below restores them).
 
 ```shell
-pip install pytest pytest-tap
+pip install "pytest<9" pytest-tap
 apriori verify --specs apriori/specs --test-cmd "python run_tap.py"
 ```
 
-Expect `RESULT: GREEN — spec is the test suite`.
+Expect `RESULT: GREEN — spec is the test suite`. pytest is pinned below 9 because pytest 9.2 breaks pytest-tap 3.5 when the plugin loads (`option dest 'tap_stream' already used`), so the test command exits 3 with no TAP and `verify` refuses the run.
 
 `run_tap.py` is the whole integration: pytest-tap's dialect (`ok 1 tests/x.py::test_PY_01_name`)
 lacks the ` - ` separator apriori's TAP parser couples to, and encodes IDs with underscores —

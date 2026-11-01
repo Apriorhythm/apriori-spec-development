@@ -1,0 +1,1324 @@
+OpenAI Codex v0.162.1
+--------
+workdir: /root/terra/asd-v62-code
+model: gpt-6-astra
+provider: openai
+approval: never
+sandbox: read-only
+reasoning effort: high
+reasoning summaries: none
+session id: 01a1973f-0576-70f0-a49e-f31a517e9c50
+--------
+user
+Repository: /root/terra/asd-v62-code, branch feature/ci-pytest-tap-compat (the diff = `git diff v6-dev...HEAD`; the change pins the CI and example dependency pytest below 9 with a guard test; no product behaviour). Read-only sandbox: you cannot write the review file — print the complete review as your final message and the producer lands it verbatim. Do NOT read: any CLAUDE.md, human-note*, /root/asd-lab, /root/.claude, ~/.bin, credential or token files, session .jsonl files.
+
+You are an independent reviewer. Judge the product, not the paperwork.
+[Input] — this is your DEFAULT context, and it is all of it:
+* the behavior contract: apriori/changes/ci-pytest-tap-compat/specs/
+* the diff
+* the ## Open items and the boundaries still uncovered: apriori/changes/ci-pytest-tap-compat/flow-state.md, plus `apriori gate --change ci-pytest-tap-compat --json`
+You may read the whole repo, its callers, config and prototypes on your own initiative. Do NOT ask for raw review transcripts, closed issues, or other changes' documents.
+You are NOT here to compile the code, to add the producer's missing tests one by one, or to rewrite the approach. If any of that is needed, the change was not review-ready — say so and stop.
+[Three questions]
+1. Does it violate established behavior or an actual safety constraint: behavior the contract requires that the code does not implement, or implements only on the happy path; where external input or permissions are touched, unvalidated input, missing authz, secrets in logs, injection surfaces; an established hard guarantee with no test injecting the adversarial condition on its success path.
+2. Semantic faithfulness — does real entry-point evidence support the implementation: does each test assert its scenario's behavior, or share its ID while asserting less; does a replaced owner have an assertion that fails if it is still live; the uncovered boundaries the ## Open items themselves name — is each genuinely acceptable, or is it the defect.
+3. Does the scope exceed the goal, or defy judgment: self-added promises and mechanisms beyond the requirement, valid decisions or safety responsibility; can one clear, repeatable evidence chain prove this change done — if not, say SPLIT.
+[Scope] Only the above count toward the verdict. Style, taste and nice-to-haves — label advisory. If you run tests in a read-only sandbox, treat degraded output as a sandbox artifact, not a finding (R2).
+[Output] The newly found substantive issues (description / risk / suggested fix); which risk surfaces you did and did not examine; advisories separately. Land it at apriori/changes/ci-pytest-tap-compat/review/code-review-v1.md.
+End with one verdict line from §5's phrase table — including "VERDICT: escalate" when the APPROACH is wrong rather than the details.
+codex
+I’ll review the diff against the behavior contract, inspect the guard test and CI entry points, and check the open items and gate result. I’ll print the complete review here for the producer to land.
+exec
+/usr/bin/zsh -lc 'pwd; git status --short; git branch --show-current; git diff --stat v6-dev...HEAD; git diff v6-dev...HEAD' in /root/terra/asd-v62-code
+ succeeded in 0ms:
+/root/terra/asd-v62-code
+?? apriori/changes/ci-pytest-tap-compat/review/
+feature/ci-pytest-tap-compat
+ .github/workflows/ci.yml                           |  3 ++-
+ apriori/changes/ci-pytest-tap-compat/flow-state.md | 19 ++++++++++++++++
+ .../ci-pytest-tap-compat/specs/golden/spec.md      | 16 ++++++++++++++
+ examples/python-pytest/README.md                   |  4 ++--
+ test/ci-pytest-tap-compat.test.js                  | 25 ++++++++++++++++++++++
+ 5 files changed, 64 insertions(+), 3 deletions(-)
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 545e493..92e4f12 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -54,7 +54,8 @@ jobs:
+       - uses: actions/setup-python@v5
+         with:
+           python-version: '3.12'
+-      - run: pip install pytest pytest-tap
++      # pytest 9.2 breaks pytest-tap 3.5 at plugin load (option dest 'tap_stream' already used); pin below 9
++      - run: pip install "pytest<9" pytest-tap
+       - name: verify the Python example (specs bound via the TAP adapter)
+         working-directory: examples/python-pytest
+         shell: bash
+diff --git a/apriori/changes/ci-pytest-tap-compat/flow-state.md b/apriori/changes/ci-pytest-tap-compat/flow-state.md
+new file mode 100644
+index 0000000..84e3124
+--- /dev/null
++++ b/apriori/changes/ci-pytest-tap-compat/flow-state.md
+@@ -0,0 +1,19 @@
++change: ci-pytest-tap-compat
++phase: review                             # ground | specify | build | review | done | abandoned
++reviewer-session: n/a                     # the reviewer's resumable session id, the moment round 1 prints it
++
++## Reality Check         # observed / decision / assumption — one line each, as you find them
++- decision: lineage — branch `feature/ci-pytest-tap-compat`（从 v6-dev@6efe97f 开出）；评审接受后 squash 合回 v6-dev，推 judge 与 GitHub；PR #2 的 CI 随之重跑，全绿后继续 6.1.0 的发布步骤
++- observed: 触发——6.1.0 发布 CI（PR #2，run 41309720507）python-example 两个 OS 都失败：`python run_tap.py` 退出 3、0 条 TAP、PY-01..03 UNBOUND、verify 拒绝；runner 装的是 pytest-9.2.0 + pytest-tap-3.5（Successfully installed 行）；其余 test 矩阵与 golden-path 全过；PR #1（10-23，518b377）同一 job 全绿
++- observed: 本机复现——全新 venv 装最新 pytest 9.2.0 + pytest-tap 3.5：`pytest --tap-stream` 在插件加载时报 `ValueError: option dest 'tap_stream' already used by ['--tap']`，rc=3；同 venv 降到 pytest 8.4.2：run_tap.py 输出 PY-01..03 三条 ok，rc=0
++- decision: approach——外部发布导致，与 apriori 代码无关；最小修法是 CI 的 python-example 安装行与示例 README 都钉 `pytest<9`，README 写明原因；golden 规格加一条 requirement（WN-02，WN-01 已占用）与守卫测试；pytest-tap 支持 pytest 9 后再放开
++- observed: Build——test/ci-pytest-tap-compat.test.js 先红（安装行未钉）后绿；全新 venv 按 CI 原样跑 `apriori verify --specs apriori/specs --test-cmd "python run_tap.py"` → RESULT: GREEN
++
++## Open                  # substantive unresolved items — one line each, stable id first: - <ID>: <text>
++
++## Next                  # at most three concrete actions; the first is the resume point
++- P3（Astra）→ check / gate / archive --write（不接管道）→ 合回 v6-dev → PR #2 CI 重跑
++
++gates:
++  - 2026-11-01T21:12 note: change scaffolded by `apriori new`
++  - 2026-11-01T21:13 note: Ground + Specify + Build：PR #2 python-example 失败归因于外部 pytest 9.2 与 pytest-tap 3.5 冲突（本机复现，8.4.2 下 GREEN）；CI 与 README 钉 pytest<9，golden 加 WN-02 与守卫测试（先红后绿）；全新 venv 按 CI 原样 verify GREEN
+diff --git a/apriori/changes/ci-pytest-tap-compat/specs/golden/spec.md b/apriori/changes/ci-pytest-tap-compat/specs/golden/spec.md
+new file mode 100644
+index 0000000..e1a0a94
+--- /dev/null
++++ b/apriori/changes/ci-pytest-tap-compat/specs/golden/spec.md
+@@ -0,0 +1,16 @@
++<!-- apriori-base: sha256:a605f197d4012ba2978143d5de8cc65038533dbdaeae60f937d88c1dc4f8bf69 -->
++
++# Delta — golden (ci-pytest-tap-compat)
++
++## ADDED Requirements
++
++### Requirement: the Python example installs a pytest that pytest-tap supports
++The CI workflow's `python-example` job and the example's README SHALL install pytest below 9 together with pytest-tap (`pip install "pytest<9" pytest-tap`), and the README SHALL say why: pytest 9.2 breaks pytest-tap 3.5 when the plugin loads, so the example's test command exits 3 with no TAP and `verify` refuses the run.
++
++#### Scenario: WN-02 the Python example installs a pytest that pytest-tap supports, in CI and in its README
++- WHEN `.github/workflows/ci.yml`'s `python-example` job and `examples/python-pytest/README.md` are read
++- THEN the job's install step is `pip install "pytest<9" pytest-tap`, the README carries the same line, and the README names pytest 9 as the reason for the pin
++
++## Notes
++
++Found by the 6.1.0 release CI (PR #2, 2026-11-01): pytest 9.2.0 had just been released; with it, pytest-tap 3.5 fails at load (`ValueError: option dest 'tap_stream' already used by ['--tap']`). Reproduced locally in a fresh venv; with pytest 8.4.2 the example is GREEN (PY-01..03). An external release, not a change in apriori; the pin is lifted when pytest-tap supports pytest 9.
+diff --git a/examples/python-pytest/README.md b/examples/python-pytest/README.md
+index 513f8dd..cca7168 100644
+--- a/examples/python-pytest/README.md
++++ b/examples/python-pytest/README.md
+@@ -6,11 +6,11 @@ the scenario IDs (`test_PY_01_...` — Python identifiers can't contain hyphens,
+ adapter below restores them).
+ 
+ ```shell
+-pip install pytest pytest-tap
++pip install "pytest<9" pytest-tap
+ apriori verify --specs apriori/specs --test-cmd "python run_tap.py"
+ ```
+ 
+-Expect `RESULT: GREEN — spec is the test suite`.
++Expect `RESULT: GREEN — spec is the test suite`. pytest is pinned below 9 because pytest 9.2 breaks pytest-tap 3.5 when the plugin loads (`option dest 'tap_stream' already used`), so the test command exits 3 with no TAP and `verify` refuses the run.
+ 
+ `run_tap.py` is the whole integration: pytest-tap's dialect (`ok 1 tests/x.py::test_PY_01_name`)
+ lacks the ` - ` separator apriori's TAP parser couples to, and encodes IDs with underscores —
+diff --git a/test/ci-pytest-tap-compat.test.js b/test/ci-pytest-tap-compat.test.js
+new file mode 100644
+index 0000000..937a39d
+--- /dev/null
++++ b/test/ci-pytest-tap-compat.test.js
+@@ -0,0 +1,25 @@
++'use strict';
++// ci-pytest-tap-compat — the Python example's CI job and its README install a pytest that pytest-tap supports (WN-02).
++// Trigger: the 6.1.0 release CI (PR #2, 2026-11-01) — pytest 9.2.0 broke pytest-tap 3.5 at plugin load ("option dest
++// 'tap_stream' already used by ['--tap']"), so `python run_tap.py` exited 3 with no TAP and verify refused the run;
++// with pytest 8.4.2 the same example is GREEN. An external release, not a change in apriori.
++const { test } = require('node:test');
++const assert = require('node:assert');
++const fs = require('node:fs');
++const path = require('node:path');
++
++const ROOT = path.join(__dirname, '..');
++const read = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
++
++test('WN-02 the Python example installs a pytest that pytest-tap supports, in CI and in its README', () => {
++  const ci = read('.github/workflows/ci.yml');
++  const job = ci.slice(ci.indexOf('python-example:'));
++  assert.ok(job.length > 0, 'the python-example job exists');
++  const pip = job.match(/^\s*- run: pip install .*$/m);
++  assert.ok(pip, 'the job installs its Python dependencies');
++  assert.match(pip[0], /"pytest<9"/, 'CI pins pytest below 9 (pytest 9.2 breaks pytest-tap 3.5)');
++  assert.match(pip[0], /\bpytest-tap\b/);
++  const readme = read('examples/python-pytest/README.md');
++  assert.match(readme, /^pip install "pytest<9" pytest-tap$/m, 'the README install line matches CI');
++  assert.match(readme, /pytest 9/, 'the README says why the pin is there');
++});
+
+exec
+/usr/bin/zsh -lc "rg --files -g 'AGENTS.md' -g '"'!CLAUDE.md'"' -g '"'!human-note*'"' -g '"'!*.jsonl'"' -g '"'!**/.git/**'"' apriori/changes/ci-pytest-tap-compat; rg --files -g 'AGENTS.md' -g '"'!CLAUDE.md'"' -g '"'!human-note*'"' -g '"'!*.jsonl'"' -g '"'!**/.git/**'"' ." in /root/terra/asd-v62-code
+ exited 1 in 0ms:
+exec
+/usr/bin/zsh -lc "rg --files -g '"'!CLAUDE.md'"' -g '"'!human-note*'"' -g '"'!*.jsonl'"' -g '"'!**/.git/**'"' -g '"'!**/review/**'"' -g '"'!**/changes/**'"' -g '"'!**/*token*'"' -g '"'!**/*credential*'"' -g '"'!package-lock.json'"' -g '"'!node_modules/**'"' -g '"'!vendor/**'"' .; cat .github/workflows/ci.yml package.json examples/python-pytest/README.md examples/python-pytest/run_tap.py apriori/changes/ci-pytest-tap-compat/flow-state.md apriori/changes/ci-pytest-tap-compat/specs/golden/spec.md" in /root/terra/asd-v62-code
+ succeeded in 0ms:
+./README_cn.md
+./examples/python-pytest/run_tap.py
+./examples/python-pytest/README.md
+./examples/python-pytest/tests/test_slug.py
+./examples/python-pytest/apriori/specs/slug/spec.md
+./examples/python-pytest/slug.py
+./docs/onboard-goal-demo-cn.gif
+./docs/demo.gif
+./docs/ci.md
+./docs/legacy.md
+./docs/cli_cn.md
+./docs/operator.md
+./docs/cli.md
+./docs/concepts_cn.md
+./docs/legacy_cn.md
+./docs/operator_cn.md
+./docs/troubleshooting_cn.md
+./docs/troubleshooting.md
+./docs/ci_cn.md
+./docs/onboard-goal-demo.gif
+./docs/concepts.md
+./MIGRATING.md
+./README.md
+./RUNBOOK.md
+./bin/apriori.js
+./LICENSE
+./guides/prototype-walk.md
+./CHANGELOG.md
+./SECURITY.md
+./scripts/run-tests.mjs
+./validation/fullrun-lab/evaluation-round2.md
+./validation/fullrun-lab/audit-v3-r2.txt
+./validation/fullrun-lab/FINAL-REPORT.md
+./scripts/golden-path.mjs
+./package.json
+./VISION.md
+./lib/id-match-child.js
+./lib/text.js
+./lib/flow.js
+./apriori/specs/readiness/spec.md
+./lib/gate.js
+./lib/init.js
+./lib/archive-merge.js
+./lib/status.js
+./lib/readiness.js
+./lib/review.js
+./VISION_cn.md
+./lib/spec-runner.js
+./lib/doctor.js
+./lib/args.js
+./lib/check.js
+./lib/config.js
+./lib/managed.js
+./lib/manifest.js
+./lib/resolve.js
+./lib/new.js
+./validation/README.md
+./validation/fullrun-lab/v3-poll-r3/LAB-NOTES.md
+./lib/risk.js
+./apriori/specs/note/spec.md
+./validation/fullrun-lab/v3-poll-r3/package.json
+./test/new.test.js
+./apriori/specs/spec-runner/spec.md
+./validation/brainstorm-lab/openspec-music/openspec/config.yaml
+./lib/update.js
+./apriori/specs/archive-merge/spec.md
+./validation/brainstorm-lab/openspec-music/explore-instruction.md
+./validation/brainstorm-lab/persona.md
+./validation/brainstorm-lab2/persona.md
+./validation/fullrun-lab/v3-poll-r3/src/queue.js
+./apriori/specs/doctor/spec.md
+./validation/brainstorm-lab/v3-music/apriori/process-config.md
+./validation/fullrun-lab/v3-poll-r3/src/store.js
+./templates/command.md
+./test/archive-unreviewed.test.js
+./validation/fullrun-lab/v3-poll-r3/src/model.js
+./validation/fullrun-lab/v3-poll-r3/src/index.js
+./validation/fullrun-lab/v3-poll-r3/src/server.js
+./validation/fullrun-lab/v3-poll-r3/src/errors.js
+./validation/fullrun-lab/v3-poll-r3/src/validate.js
+./validation/fullrun-lab/v3-poll-r3/src/render.js
+./validation/brainstorm-lab2/evaluation.md
+./validation/brainstorm-lab/v3-music/apriori/runbook.md
+./lib/note.js
+./validation/legacy-lab/evaluation.md
+./validation/fullrun-lab/audit-superpowers.txt
+./validation/fullrun-lab/audit-v3-r3.txt
+./validation/fullrun-lab/evaluation-round1.md
+./validation/fullrun-lab/gauntlet.md
+./templates/discuss.md
+./test/json-contracts.test.js
+./templates/process-config.md
+./validation/fullrun-lab/v3-poll-r3/test/concurrency/concurrency.test.js
+./validation/fullrun-lab/v3-poll-r3/test/concurrency/crash.test.js
+./validation/fullrun-lab/v3-poll-r3/test/api/lifecycle.test.js
+./validation/fullrun-lab/openspec-poll/LAB-NOTES.md
+./validation/legacy-lab/inherited-poll/README.md
+./validation/fullrun-lab/v3-poll-r2/LAB-NOTES.md
+./apriori/specs/check/spec.md
+./validation/brainstorm-lab/superpowers-music/brainstorming-skill.md
+./validation/fullrun-lab/v3-poll-r3/test/api/vote.test.js
+./validation/fullrun-lab/v3-poll-r3/test/api/create.test.js
+./validation/fullrun-lab/v3-poll-r3/test/api/security.test.js
+./validation/fullrun-lab/v3-poll-r3/test/_helper.js
+./apriori/specs/config/spec.md
+./validation/fullrun-lab/v3-poll-r2/package.json
+./validation/fullrun-lab/openspec-poll/openspec/config.yaml
+./validation/brainstorm-lab2/v3-organizer/apriori/runbook.md
+./validation/brainstorm-lab2/v3-organizer/apriori/process-config.md
+./validation/legacy-lab/inherited-poll/package.json
+./validation/brainstorm-lab2/superpowers-organizer/brainstorming-skill.md
+./test/config-template-slim.test.js
+./test/windows-portability.test.js
+./test/artifact-root-retirement.test.js
+./test/init.test.js
+./test/ground-writeback-trace.test.js
+./test/args.test.js
+./test/check.test.js
+./test/delivery-retirement.test.js
+./test/slice5-adversarial.test.js
+./test/gate.test.js
+./test/open-items.test.js
+./test/review-round-scope.test.js
+./test/id-default-and-notes.test.js
+./test/init-test-cmd.test.js
+./test/single-file-deprecation.test.js
+./test/archive-change.test.js
+./test/source-intake.test.js
+./test/golden-path.test.js
+./test/review-round-limit.test.js
+./test/status-last-gate-order.test.js
+./validation/brainstorm-lab/superpowers-music/docs/superpowers/specs/2026-07-07-personal-music-site-design.md
+./test/discuss.test.js
+./test/identity.test.js
+./test/id-pattern.test.js
+./test/readiness.test.js
+./test/spec-runner.test.js
+./test/status-last-recorded.test.js
+./apriori/specs/golden/spec.md
+./apriori/specs/update/spec.md
+./validation/fullrun-lab/openspec-poll/package.json
+./validation/brainstorm-lab/evaluation.md
+./validation/fullrun-lab/audit-openspec.txt
+./validation/fullrun-lab/openspec-poll/openspec/specs/poll-storage/spec.md
+./apriori/specs/resolve/spec.md
+./apriori/specs/cli/spec.md
+./validation/fullrun-lab/v3-poll-r3/apriori/design/quick-poll-review-v1.md
+./validation/legacy-lab/inherited-poll/public/admin.html
+./apriori/specs/init/spec.md
+./validation/fullrun-lab/v3-poll-r2/src/queue.js
+./validation/fullrun-lab/v3-poll-r2/src/store.js
+./validation/fullrun-lab/v3-poll-r2/src/escape.js
+./validation/fullrun-lab/v3-poll-r2/src/server.js
+./validation/fullrun-lab/v3-poll-r2/src/views.js
+./validation/fullrun-lab/v3-poll-r2/src/ids.js
+./validation/fullrun-lab/v3-poll-r2/src/validate.js
+./validation/fullrun-lab/openspec-poll/test/store.test.js
+./test/fixtures/multi-command/second-command.md
+./test/fixtures/multi-command/second-command.golden.md
+./test/fixtures/command.golden.md
+./test/fixtures/discuss.golden.md
+./test/fixtures/lineage-baseline-golden.json
+./validation/fullrun-lab/v3-poll-r2/public/create.js
+./validation/fullrun-lab/v3-poll-r2/public/poll.js
+./validation/fullrun-lab/v3-poll-r2/public/admin.js
+./validation/fullrun-lab/openspec-poll/openspec/specs/poll-lifecycle/spec.md
+./apriori/specs/new/spec.md
+./validation/legacy-lab/inherited-poll/apriori/design/vote-dedup-review-v1.md
+./validation/legacy-lab/inherited-poll/apriori/design/vote-dedup-review-v2.md
+./validation/fullrun-lab/v3-poll-r2/test/e2e.mjs
+./validation/fullrun-lab/v3-poll-r2/test/quick-poll.test.js
+./validation/fullrun-lab/openspec-poll/openspec/specs/poll-results/spec.md
+./validation/legacy-lab/inherited-poll/apriori/truth/polls.md
+./validation/brainstorm-lab2/superpowers-organizer/docs/superpowers/specs/2026-07-08-download-organizer-design.md
+./test/fixtures/flow-corpus/fenced-reality.md
+./test/fixtures/flow-corpus/unclosed-comment.md
+./test/fixtures/flow-corpus/annotated-heading.md
+./test/fixtures/flow-corpus/dup-open.md
+./test/fixtures/flow-corpus/star-continuation.md
+./test/fixtures/flow-corpus/commented-gates.md
+./test/fixtures/flow-corpus/feb-31.md
+./test/fixtures/flow-corpus/fenced-gates.md
+./test/fixtures/flow-corpus/h3-annotated.md
+./test/fixtures/flow-corpus/numbered-list.md
+./test/fixtures/flow-corpus/bare-lowercase-open.md
+./test/fixtures/flow-corpus/stamp-compact.md
+./validation/fullrun-lab/openspec-poll/test/e2e/run-e2e.js
+./test/fixtures/flow-corpus/dup-scalar-same.md
+./test/fixtures/flow-corpus/unclosed-fence.md
+./validation/fullrun-lab/openspec-poll/test/poll.test.js
+./test/fixtures/flow-corpus/case-title.md
+./test/fixtures/flow-corpus/bare-reality.md
+./test/fixtures/flow-corpus/stamp-chinese.md
+./validation/fullrun-lab/openspec-poll/server.js
+./test/fixtures/flow-corpus/dup-scalar.md
+./test/fixtures/flow-corpus/crlf.md
+./test/fixtures/flow-corpus/bare-line.md
+./test/fixtures/flow-corpus/commented-open.md
+./test/fixtures/flow-corpus/fenced-open.md
+./test/fixtures/flow-corpus/bare-after-list.md
+./test/fixtures/flow-corpus/long-fence-gates.md
+./validation/fullrun-lab/openspec-poll/openspec/specs/poll-creation/spec.md
+./apriori/specs/status/spec.md
+./apriori/specs/text/spec.md
+./validation/fullrun-lab/v3-poll-r3/apriori/design/quick-poll-review-v2.md
+./validation/fullrun-lab/openspec-poll/lib/store.js
+./apriori/specs/gate/spec.md
+./validation/legacy-lab/inherited-poll/apriori/explore/vote-dedup-gap-report.md
+./validation/brainstorm-lab2/openspec-organizer/explore-instruction.md
+./validation/brainstorm-lab2/openspec-organizer/openspec/config.yaml
+./test/accept-r1-reader.test.js
+./test/archive-single-file-scope.test.js
+./test/change-scope.test.js
+./test/archive-force.test.js
+./test/multi-tap.test.js
+./test/scope-disposition.test.js
+./test/limit-ruling.test.js
+./test/operator-move.test.js
+./test/review-loop.test.js
+./test/commitment-carry.test.js
+./test/readiness-archive-layer.test.js
+./test/cli.test.js
+./test/requirement-check-recipe.test.js
+./test/review-input-boundary.test.js
+./test/accept-r1-contracts.test.js
+./test/multi-command.test.js
+./test/cli-json-pipe-flush.test.js
+./test/accept-r2.test.js
+./test/structural-preflight.test.js
+./test/docs-only-exception.test.js
+./test/runtime-evidence.test.js
+./test/update.test.js
+./test/lineage-retirement.test.js
+./test/config.test.js
+./test/shared-routing.test.js
+./test/legacy-ledger-migration.test.js
+./test/protocol.test.js
+./test/stall-routing.test.js
+./test/discriminating-examples.test.js
+./test/golden-path-resolve.test.js
+./test/prototype-walk-guide.test.js
+./test/runbook-english-only.test.js
+./test/source-conflict-entry-points.test.js
+./test/gate-degrade.test.js
+./test/archive-readiness.test.js
+./test/doctor.test.js
+./test/predicate-unification.test.js
+./test/mode.test.js
+./test/doc-economy-slice.test.js
+./test/lean-closeout.test.js
+./test/resolve.test.js
+./test/archive-manifest.test.js
+./test/ci-pytest-tap-compat.test.js
+./test/note.test.js
+./test/boundaries.test.js
+./test/fast-floor.test.js
+./test/modified-integrity.test.js
+./test/escalation-states.test.js
+./test/writeback-fate-default.test.js
+./test/flow-corpus.test.js
+./test/owner-calls-and-handoffs.test.js
+./test/reclaim-discipline.test.js
+./test/slice5-subtraction.test.js
+./test/config-surface.test.js
+./test/archive-drop-guard.test.js
+./test/single-review-evidence.test.js
+./test/spec-runner-projection.test.js
+./test/lane-removal.test.js
+./test/fence-tilde-readers.test.js
+./test/preserve-source-outcomes.test.js
+./validation/fullrun-lab/openspec-poll/openspec/specs/poll-voting/spec.md
+./test/fixtures/multi-tap/r02-web-raw.tap
+./test/fixtures/multi-tap/r02-core-raw.tap
+./test/fixtures/modified-integrity/old-block.md
+./test/fixtures/modified-integrity/new-block.md
+./test/status.test.js
+./test/accept-r3.test.js
+./test/archive-merge.test.js
+./test/archive-default-move.test.js
+./test/protocol-text-consistency.test.js
+./validation/fullrun-lab/v3-poll-r2/apriori/specs/poll.md
+./validation/fullrun-lab/v3-poll-r2/apriori/process-config.md
+./validation/fullrun-lab/v3-poll-r2/server.js
+./validation/fullrun-lab/persona.md
+./test/fixtures/multi-tap/node-tap-a/a.test.js
+./apriori/specs/protocol/spec.md
+./validation/fullrun-lab/openspec-poll/lib/pages.js
+./validation/fullrun-lab/openspec-poll/lib/poll.js
+./test/fixtures/specs-golden/green-json.stdout
+./test/fixtures/specs-golden/error-json.stderr
+./validation/fullrun-lab/audit-v3.txt
+./test/helpers/npm.js
+./test/helpers/gate-corpus.js
+./test/helpers/verdict-corpus.js
+./test/helpers/can-symlink.js
+./test/helpers/ready-bundle.js
+./validation/legacy-lab/inherited-poll/apriori/runbook.md
+./validation/legacy-lab/inherited-poll/public/style.css
+./test/fixtures/multi-tap/node-tap-b/b.test.js
+./validation/legacy-lab/inherited-poll/public/index.html
+./validation/legacy-lab/inherited-poll/public/poll.html
+./validation/fullrun-lab/v3-poll-r2/apriori/truth/poll.md
+./validation/legacy-lab/inherited-poll/apriori/specs/polls.md
+./test/fixtures/specs-golden/gaps.stderr
+./test/fixtures/specs-golden/green.stdout
+./test/fixtures/specs-golden/error-json.stdout
+./test/fixtures/specs-golden/capture.mjs
+./test/fixtures/specs-golden/green.stderr
+./test/fixtures/specs-golden/gaps-json.stdout
+./test/fixtures/specs-golden/error.stdout
+./test/fixtures/specs-golden/gaps.stdout
+./test/fixtures/specs-golden/gaps-json.stderr
+./test/fixtures/specs-golden/manifest.json
+./test/fixtures/specs-golden/green-json.stderr
+./validation/fullrun-lab/v3-poll/LAB-NOTES.md
+./validation/fullrun-lab/v3-poll/README.md
+./validation/fullrun-lab/v3-poll/package.json
+./validation/legacy-lab/inherited-poll/test/voter-identity.test.js
+./validation/legacy-lab/inherited-poll/test/e2e.test.js
+./validation/legacy-lab/inherited-poll/test/store.test.js
+./validation/legacy-lab/inherited-poll/test/polls.test.js
+./validation/legacy-lab/inherited-poll/test/server.test.js
+./test/fixtures/specs-golden/error.stderr
+./test/fixtures/specs-golden/proj/apriori/process-config.md
+./validation/fullrun-lab/v3-poll-r2/apriori/runbook.md
+./validation/fullrun-lab/v3-poll/server.js
+./test/fixtures/specs-golden/proj/apriori/specs/m/spec.md
+./test/fixtures/specs-golden/proj/solo/spec.md
+./validation/fullrun-lab/v3-poll-r2/apriori/explore/quick-poll-gap-report.md
+./validation/fullrun-lab/v3-poll/tests/pages.test.js
+./validation/fullrun-lab/v3-poll/tests/helpers.js
+./validation/fullrun-lab/v3-poll/tests/client.test.js
+./validation/fullrun-lab/v3-poll/tests/create.test.js
+./validation/fullrun-lab/v3-poll-r2/apriori/design/quick-poll-review-v1.md
+./validation/fullrun-lab/v3-poll-r2/apriori/design/quick-poll-review-v2.md
+./validation/fullrun-lab/v3-poll-r2/apriori/design/quick-poll-step3-packet.md
+./validation/legacy-lab/inherited-poll/server.js
+./validation/fullrun-lab/v3-poll-r3/apriori/truth/poll.md
+./validation/legacy-lab/inherited-poll/apriori/process-config.md
+./validation/fullrun-lab/v3-poll-r3/apriori/process-config.md
+./validation/fullrun-lab/v3-poll-r3/apriori/specs/quick-poll.md
+./validation/fullrun-lab/v3-poll-r3/apriori/runbook.md
+./validation/fullrun-lab/v3-poll/tests/results.test.js
+./validation/fullrun-lab/v3-poll/tests/close.test.js
+./validation/fullrun-lab/v3-poll/tests/vote.test.js
+./validation/fullrun-lab/v3-poll/lib/router.js
+./validation/fullrun-lab/v3-poll/lib/queue.js
+./validation/fullrun-lab/v3-poll/lib/store.js
+./validation/fullrun-lab/v3-poll/lib/errors.js
+./validation/fullrun-lab/v3-poll/lib/ids.js
+./validation/fullrun-lab/v3-poll/lib/polls.js
+./validation/fullrun-lab/v3-poll/public/app.js
+./validation/fullrun-lab/v3-poll/public/poll.html
+./validation/fullrun-lab/v3-poll/public/admin.js
+./validation/fullrun-lab/v3-poll/public/poll-core.js
+./validation/fullrun-lab/v3-poll/public/poll.js
+./validation/fullrun-lab/v3-poll/public/index.html
+./validation/fullrun-lab/superpowers-poll/server.js
+./validation/legacy-lab/inherited-poll/lib/store.js
+./validation/legacy-lab/inherited-poll/lib/voter-identity.js
+./validation/legacy-lab/inherited-poll/lib/polls.js
+./validation/fullrun-lab/v3-poll-r3/apriori/explore/quick-poll-gap-report.md
+./validation/fullrun-lab/v3-poll/public/style.css
+./validation/fullrun-lab/v3-poll/public/admin.html
+./validation/fullrun-lab/superpowers-poll/README.md
+./validation/fullrun-lab/superpowers-poll/package.json
+./validation/fullrun-lab/v3-poll/tests/robustness.test.js
+./validation/fullrun-lab/v3-poll/apriori/process-config.md
+./validation/fullrun-lab/v3-poll-r3/e2e/poll.e2e.js
+./validation/fullrun-lab/superpowers-poll/public/admin.html
+./validation/fullrun-lab/superpowers-poll/public/style.css
+./validation/fullrun-lab/superpowers-poll/public/index.html
+./validation/fullrun-lab/superpowers-poll/public/poll.html
+./validation/fullrun-lab/superpowers-poll/lib/store.js
+./validation/fullrun-lab/superpowers-poll/lib/polls.js
+./validation/fullrun-lab/superpowers-poll/test/e2e.test.js
+./validation/fullrun-lab/superpowers-poll/test/store.test.js
+./validation/fullrun-lab/superpowers-poll/test/polls.test.js
+./validation/fullrun-lab/superpowers-poll/test/server.test.js
+./validation/fullrun-lab/v3-poll/apriori/explore/quick-poll-gap-report.md
+./validation/fullrun-lab/v3-poll/apriori/runbook.md
+./validation/fullrun-lab/v3-poll/tests/e2e/e2e.mjs
+./validation/fullrun-lab/v3-poll/apriori/truth/poll-service.md
+./validation/fullrun-lab/v3-poll/apriori/specs/poll-service.md
+./validation/fullrun-lab/v3-poll/apriori/design/quick-poll-review-v2.md
+./validation/fullrun-lab/v3-poll/apriori/design/quick-poll-review-v1.md
+./validation/fullrun-lab/superpowers-poll/docs/superpowers/plans/2026-07-08-quick-poll.md
+./validation/fullrun-lab/superpowers-poll/docs/superpowers/specs/2026-07-07-quick-poll-design.md
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: ['22', '24']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: node scripts/run-tests.mjs
+      - run: npm run verify
+      - run: node bin/apriori.js check --self
+
+  golden-path:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: pack and walk the README Quickstart with the packed tarball
+        shell: bash
+        run: |
+          TGZ=$(npm pack --silent)
+          node scripts/golden-path.mjs --packed "$TGZ"
+
+  python-example:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      # pytest 9.2 breaks pytest-tap 3.5 at plugin load (option dest 'tap_stream' already used); pin below 9
+      - run: pip install "pytest<9" pytest-tap
+      - name: verify the Python example (specs bound via the TAP adapter)
+        working-directory: examples/python-pytest
+        shell: bash
+        run: node ../../bin/apriori.js verify --specs apriori/specs --test-cmd "python run_tap.py"
+{
+  "name": "apriori-cli",
+  "version": "6.1.0",
+  "description": "Spec-driven development with executable specs — self-contained, zero-dependency CLI",
+  "type": "commonjs",
+  "bin": {
+    "apriori": "bin/apriori.js"
+  },
+  "scripts": {
+    "test": "node scripts/run-tests.mjs",
+    "verify": "node bin/apriori.js verify --specs apriori/specs --test-cmd \"node scripts/run-tests.mjs --test-reporter=tap\""
+  },
+  "files": [
+    "bin/",
+    "lib/",
+    "templates/",
+    "guides/",
+    "RUNBOOK.md",
+    "MIGRATING.md",
+    "docs/operator.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "keywords": [
+    "spec-driven-development",
+    "sdd",
+    "executable-specs",
+    "spec",
+    "ai-coding",
+    "agent-workflow",
+    "claude-code",
+    "codex",
+    "cursor",
+    "cli"
+  ],
+  "author": "Apriorhythm",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Apriorhythm/apriori-spec-development.git"
+  },
+  "homepage": "https://github.com/Apriorhythm/apriori-spec-development#readme",
+  "bugs": {
+    "url": "https://github.com/Apriorhythm/apriori-spec-development/issues"
+  },
+  "license": "MIT"
+}
+# Python + pytest example
+
+The smallest possible apriori-bound Python project: one module (`slug.py`), one spec
+(`apriori/specs/slug/spec.md`, scenarios PY-01..03), one test file whose test names carry
+the scenario IDs (`test_PY_01_...` — Python identifiers can't contain hyphens, so the
+adapter below restores them).
+
+```shell
+pip install "pytest<9" pytest-tap
+apriori verify --specs apriori/specs --test-cmd "python run_tap.py"
+```
+
+Expect `RESULT: GREEN — spec is the test suite`. pytest is pinned below 9 because pytest 9.2 breaks pytest-tap 3.5 when the plugin loads (`option dest 'tap_stream' already used`), so the test command exits 3 with no TAP and `verify` refuses the run.
+
+`run_tap.py` is the whole integration: pytest-tap's dialect (`ok 1 tests/x.py::test_PY_01_name`)
+lacks the ` - ` separator apriori's TAP parser couples to, and encodes IDs with underscores —
+the adapter normalizes both. This is the pattern for ANY language: emit TAP lines shaped
+`ok N - <ID> ...` and every apriori gate works unchanged. This example runs in CI on every push.
+#!/usr/bin/env python3
+"""pytest → apriori-friendly TAP.
+
+pytest-tap emits `ok 1 tests/x.py::test_PY_01_name` — no ` - ` separator, and Python
+identifiers can't contain hyphens, so scenario IDs are written PY_01 in test names.
+This small adapter restores both: `ok 1 - PY-01 name`. Any language can play this
+game — apriori only ever couples to TAP lines shaped `ok N - <ID> ...`.
+"""
+import re
+import subprocess
+import sys
+
+proc = subprocess.run(
+    [sys.executable, "-m", "pytest", "--tap-stream", "-q"],
+    capture_output=True, text=True,
+)
+for line in proc.stdout.splitlines():
+    m = re.match(r"^(ok|not ok) (\d+) (.*)$", line)
+    if m:
+        status, num, name = m.groups()
+        idm = re.search(r"test_([A-Z]+)_(\d+)", name)
+        tag = f"{idm.group(1)}-{idm.group(2)} " if idm else ""
+        print(f"{status} {num} - {tag}{name}")
+    else:
+        print(line)
+sys.exit(proc.returncode)
+change: ci-pytest-tap-compat
+phase: review                             # ground | specify | build | review | done | abandoned
+reviewer-session: n/a                     # the reviewer's resumable session id, the moment round 1 prints it
+
+## Reality Check         # observed / decision / assumption — one line each, as you find them
+- decision: lineage — branch `feature/ci-pytest-tap-compat`（从 v6-dev@6efe97f 开出）；评审接受后 squash 合回 v6-dev，推 judge 与 GitHub；PR #2 的 CI 随之重跑，全绿后继续 6.1.0 的发布步骤
+- observed: 触发——6.1.0 发布 CI（PR #2，run 41309720507）python-example 两个 OS 都失败：`python run_tap.py` 退出 3、0 条 TAP、PY-01..03 UNBOUND、verify 拒绝；runner 装的是 pytest-9.2.0 + pytest-tap-3.5（Successfully installed 行）；其余 test 矩阵与 golden-path 全过；PR #1（10-23，518b377）同一 job 全绿
+- observed: 本机复现——全新 venv 装最新 pytest 9.2.0 + pytest-tap 3.5：`pytest --tap-stream` 在插件加载时报 `ValueError: option dest 'tap_stream' already used by ['--tap']`，rc=3；同 venv 降到 pytest 8.4.2：run_tap.py 输出 PY-01..03 三条 ok，rc=0
+- decision: approach——外部发布导致，与 apriori 代码无关；最小修法是 CI 的 python-example 安装行与示例 README 都钉 `pytest<9`，README 写明原因；golden 规格加一条 requirement（WN-02，WN-01 已占用）与守卫测试；pytest-tap 支持 pytest 9 后再放开
+- observed: Build——test/ci-pytest-tap-compat.test.js 先红（安装行未钉）后绿；全新 venv 按 CI 原样跑 `apriori verify --specs apriori/specs --test-cmd "python run_tap.py"` → RESULT: GREEN
+
+## Open                  # substantive unresolved items — one line each, stable id first: - <ID>: <text>
+
+## Next                  # at most three concrete actions; the first is the resume point
+- P3（Astra）→ check / gate / archive --write（不接管道）→ 合回 v6-dev → PR #2 CI 重跑
+
+gates:
+  - 2026-11-01T21:12 note: change scaffolded by `apriori new`
+  - 2026-11-01T21:13 note: Ground + Specify + Build：PR #2 python-example 失败归因于外部 pytest 9.2 与 pytest-tap 3.5 冲突（本机复现，8.4.2 下 GREEN）；CI 与 README 钉 pytest<9，golden 加 WN-02 与守卫测试（先红后绿）；全新 venv 按 CI 原样 verify GREEN
+<!-- apriori-base: sha256:a605f197d4012ba2978143d5de8cc65038533dbdaeae60f937d88c1dc4f8bf69 -->
+
+# Delta — golden (ci-pytest-tap-compat)
+
+## ADDED Requirements
+
+### Requirement: the Python example installs a pytest that pytest-tap supports
+The CI workflow's `python-example` job and the example's README SHALL install pytest below 9 together with pytest-tap (`pip install "pytest<9" pytest-tap`), and the README SHALL say why: pytest 9.2 breaks pytest-tap 3.5 when the plugin loads, so the example's test command exits 3 with no TAP and `verify` refuses the run.
+
+#### Scenario: WN-02 the Python example installs a pytest that pytest-tap supports, in CI and in its README
+- WHEN `.github/workflows/ci.yml`'s `python-example` job and `examples/python-pytest/README.md` are read
+- THEN the job's install step is `pip install "pytest<9" pytest-tap`, the README carries the same line, and the README names pytest 9 as the reason for the pin
+
+## Notes
+
+Found by the 6.1.0 release CI (PR #2, 2026-11-01): pytest 9.2.0 had just been released; with it, pytest-tap 3.5 fails at load (`ValueError: option dest 'tap_stream' already used by ['--tap']`). Reproduced locally in a fresh venv; with pytest 8.4.2 the example is GREEN (PY-01..03). An external release, not a change in apriori; the pin is lifted when pytest-tap supports pytest 9.
+
+exec
+/usr/bin/zsh -lc "rg -n '§5|VERDICT:|phrase|"'^## 5|''^#.*review'"' RUNBOOK.md; cat scripts/run-tests.mjs; sed -n '1,220p' lib/gate.js; cat apriori/specs/golden/spec.md examples/python-pytest/tests/test_slug.py examples/python-pytest/apriori/specs/slug/spec.md" in /root/terra/asd-v62-code
+ succeeded in 0ms:
+39:**Language.** Human-facing prose — spec scenario descriptions, review docs, the state's own sections, and every message to the human — uses the `language` field in `apriori/process-config.md`; if it is unset or `auto`, **match the language the human is using**. Machine tokens are ALWAYS English, whatever the language: verdict lines (§5 phrase table), scenario IDs (`KV-03`), the delta keywords `ADDED`/`MODIFIED`/`REMOVED`, file paths, and this runbook.
+74:1. **An escalation.** A reviewer returned `VERDICT: escalate`, or a review family went past its one automatic re-review without an owner release (R4). `apriori status --change <name> --escalation` prints it and exits 3.
+137:**Enforcement boundary.** *this repository ships no Stop hook*, and `apriori init` writes none. What the CLI provides is the machine-readable signal — gate exit code 1 with a blocked C8, archive's `RESULT: NOT READY`, the `review` / `escalation` fields of `apriori status --json`, and exit code 3 from `apriori status --escalation`. Wiring that into a Stop hook, a `/goal` condition or CI is the project's own step; until it is wired, C8 is a check you have to run, not a stop that happens to you. A reviewer's judgment quality and semantic adherence to the §5 prompts are advisory; that every verdict line must have raw evidence is mechanical — the backstop against a simulated review.
+257:| Knowledge base (TRUTH-DOC) | `apriori/truth/<module>.md` — a fence-outside line-start `source-commit: <ref>` stamp required (covers the Contract section only, §5 P5); for an aliased filename or non-`lib/` code, declare `store-module:` / `source-files:` in the header region |
+265:- **Delta grammar and archive:** `## ADDED` → append; `## MODIFIED` → replace the whole block; `## REMOVED` → the store block is marked `deprecated (superseded by <change>)`; `## RENAMED` (`- Old -> New`) → rename the ID in place; `## Notes` → commentary the merge ignores entirely — write WHY a block changed there (any other non-`Requirement` `###` inside a requirement block is refused). The file's preamble and `## Notes` never reach the merged spec: the source, the open status and the basis of a decision that a reader needs to understand the lasting contract go in the requirement's own body; an item that was once pending and now has a valid decision says how it was settled, so an old "to be confirmed" never reads as still blocking. A same-ID conflict with a change merged since branching → **stop, record it as an open issue, a human resolves**. `apriori archive --change <name>` discovers every delta under the change, dry-runs by default, and on `--write` commits failure-atomically; `--write` moves the in-flight change dir to `apriori/changes/archive/<YYYY-MM-DDThhmm>-<name>/` by default (`--changes-dir` only overrides a non-default changes root) — a resumed session must look under `archive/` once the move has happened. **It refuses a change that is not finished** (flow-state legal and at `phase: review`, with no legacy `review/issues.md` still carrying `open` rows — the one-shot migration, §5; the review evidence complete and every family's loop converged; no `## Open` item still pending — unaccepted and not a registered follow-up — and no standing assumption), printing `RESULT: NOT READY — nothing written` (exit 1) on the same predicates `gate` runs for C3/C5/C8/C9. `--force` overrides **progress only**, and only where the owner's decision is already in `gates:`: an escalated review family — an `escalate` verdict, a round past its one automatic re-review that no owner release opened or that still revises, or a `revise` after the owner answered the limit round itself with a `reframe` (§1 R4) — that the owner answered with `reframe`, and a scenario drop named by `archive-drop` (below) — never `abandoned`, a structural defect, a pending `## Open` item, or a missing piece of reality. An `archive-force ledger` record forces nothing (6.0); it is reported as a note. The merge report, the single-file `--store/--delta` form and conflict details are in the CLI reference (`docs/cli.md`, archive).
+275:**A save is a faithful record, nothing more.** The write records exactly what the discussion produced, in four kinds and no others: `decision` — what the human decided, in their words (a faithful paraphrase is fine; reasons, conditions or risk acceptances they did not state are not); `observed` — facts actually read, each with its source; `assumption` — what the discussion leaned on unconfirmed, labelled as such; `## Open` — the questions the discussion left open. A save never adds a commitment, a risk acceptance, a requirement or a blocking item that was not raised in the discussion, and never promotes an assumption or the agent's own recommendation into a decision or an observed fact. A question the human explicitly left open stays open — the agent does not decide it for them. A decision is recorded only as far as the human stated it: what follows from it by the agent's own reasoning — an implied answer to another open question, a modelling or spec-structure consequence — is the agent's inference and is written as `assumption` or stays in `## Open`, never as their decision. A question the human did not answer stays open: silence is not a decision, even when the agent argued that two questions are one. With approval to save already held, the write still happens only once the conclusion is settled, not during the discussion. Saving again with nothing new changes nothing of substance: no duplicated lines, no new items, the facts and progress already in the state kept — and a save, first or repeated, never starts development.
+298:KB docs have two sections with **opposite truth directions** (§5 P5): `Contract (code-is-truth)` and `Decisions (doc-is-truth)`.
+309:- **Exit (default):** the delta specs state the behavior, each scenario carrying a stable ID — that is the phase condition; §1 R1 routes what follows. In particular, a delegation limited to the spec ends here; otherwise continue to Build & Test when authorized. **Exit (when a spec-review loop ran):** verdict line = `VERDICT: no major issues, ready to proceed to execution` → the reviewed phase condition is met; advance only as §1 R1 routes the delegation; still `revise` below the owner's `review-round-limit` → the next round opens (logging `review-progress` in `gates:` from round 3 on); still `revise` at the effective limit → the producer rules on each open finding and one re-review follows (§1 R4); `VERDICT: escalate` at any round, or a round past that one re-review → the loop stops (§1 R4), an escalation a human decides.
+319:### Review & Deliver — review-ready, one independent review, then archive
+339:## 5. Prompts
+341:**Verdict-line phrase table.** Every review ends with exactly one `VERDICT:` line drawn from this table — these are the machine-greppable strings that `/goal` conditions and §4's exit rules match against. CN documents quote the English strings verbatim; the verdict line itself is never translated. Three outcomes: **ACCEPT · REVISE · ESCALATE**.
+345:| contract (P3 on a contract) | `VERDICT: no major issues, ready to proceed to execution` | `VERDICT: <N> issues open` | `VERDICT: escalate` |
+346:| implementation (P3 on a diff) | `VERDICT: no spec-vs-code gaps` | `VERDICT: gaps found` · `VERDICT: <N> issues open` | `VERDICT: escalate` |
+348:`VERDICT: escalate` means **the approach is wrong, not the details** — return it instead of opening another patching round, and put the reason in the review document and as an `## Open` item. It is a human's to answer: `apriori gate` blocks and `apriori status --escalation` exits 3 until the owner records `reframe <family> round <n> <split|tests|redo|accept-risk> — <reason>` in `gates:`.
+350:`<N>` = the count of substantive issues still open at the end of that round — a positive integer; `0` is an accept however it is phrased. Advisories never count.
+352:**Single-file evidence's own vocabulary.** A self-contained doc (§1 R2) closes with one of three canonical full-line forms, matched whole and case-insensitively: `VERDICT: ACCEPT`, `VERDICT: REVISE`, `VERDICT: ESCALATE`. The phrasings in the table above stay legal on either format. The line must match whole: an ACCEPT followed by a qualifying clause, or a REVISE whose reason rides the machine line, is refused — the reason belongs in the document body, never on the machine line.
+371:### P2 — producer: the minimal contract, then review-ready
+385:### P3 — independent review (heterogeneous, R2)
+401:End with one verdict line from §5's phrase table — including "VERDICT: escalate" when the APPROACH is wrong rather than the details.
+#!/usr/bin/env node
+// Portable test entry: enumerate test/*.test.js ourselves and hand the explicit list to
+// `node --test`. Why not a glob or a directory arg: glob patterns need node >= 21, and
+// directory scanning misbehaves on newer majors — while bare `node --test` recurses the
+// whole repo and picks up the imported lab trees under validation/. Explicit is portable.
+// Extra argv (e.g. --test-reporter=tap) is passed through.
+import fs from 'node:fs';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+
+const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
+const dir = path.join(root, 'test');
+const files = fs.readdirSync(dir).filter((f) => f.endsWith('.test.js')).sort().map((f) => path.join(dir, f));
+if (!files.length) { console.error('run-tests: no test/*.test.js files found'); process.exit(2); }
+const r = spawnSync(process.execPath, ['--test', ...process.argv.slice(2), ...files], { stdio: 'inherit', cwd: root });
+process.exit(r.status === null ? 1 : r.status);
+'use strict';
+/*
+ * apriori gate — aggregate the MECHANICAL exit conditions for one change into one exit code.
+ * 0 = PASS · 1 = BLOCKED · 2 = the evaluation itself is untrustworthy.
+ * Strictly read-only. PASS covers machine checks only — human gates remain human.
+ */
+const fs = require('fs');
+const path = require('path');
+const { spawnSync } = require('child_process');
+const { parseFlowState } = require('./flow');
+const sr = require('./spec-runner');
+const { verify, configTestCmd } = sr;
+const { containsFuturePath } = require('./archive-merge');
+const { resolveChange, configCas, configCasProblem } = require('./resolve');
+const { resolveIdPattern } = require('./config');
+const { withStrict, recover } = require('./args');
+// the flow-state / open-item predicates live in ONE place; gate consumes them
+const rd = require('./readiness');
+const { stripFences } = require('./text');
+const rv = require('./review');
+const rk = require('./risk');
+const { checkFlowState, checkEvidenceStatus, reviewDirDefect } = rd;
+const CAVEAT = 'mechanical checks only; human gates remain human';
+
+function err(res, msg) { res.errors.push(msg); res.result = 'ERROR'; res.code = 2; return res; }
+
+
+// --- individual checks; each returns {id, status: 'pass'|'blocked'|'n/a', detail} ---
+// C3 and C9 live in lib/readiness.js (imported above) so that `archive`'s readiness
+// precondition and this gate can never judge a bundle differently.
+
+// C2 and C4 are PLACEHOLDERS since 6.2. C2 read a 5.x task list as a diagnostic; C4 read the
+// issue ledger. Both files lost their consumer — a change's unresolved items live in the
+// state's `## Open` section (C9) — so neither check reads anything. The ids stay in `checks[]`
+// so a `--json` consumer that indexes by id keeps working; the detail says why they are inert.
+const C2_RETIRED = { id: 'C2', status: 'n/a', detail: 'retired in 6.0 — nothing is read' };
+const C4_RETIRED = { id: 'C4', status: 'n/a', detail: 'ledger retired in 6.0 — open items live in ## Open' };
+
+// C5: every verdict line has its raw archive beside it — the mechanical backstop against a
+// simulated review. The DIRECTORY SCAN is lib/review.js's (one reader of review/, so C5, C8
+// and status can never disagree about what is in there), and since batch C row 10 the
+// JUDGMENT is review.completenessFindings — the same predicate archive R4 renders — so the
+// two surfaces cannot classify the same review/ differently either. This face only renders.
+// An unusable review ROOT (symlink / escape / not a directory) is refused here, never read through.
+function checkEvidence(facts) {
+  const c = rv.completenessFindings(facts);
+  if (c.symlink) return { id: 'C5', status: 'blocked', detail: `evidence doc is a symlink: ${c.symlink}` };
+  if (c.missing.length)
+    return { id: 'C5', status: 'blocked', detail: `verdict doc(s) without a raw archive or self-contained provenance: ${c.missing.join(', ')}` };
+  // The empty set was passing VACUOUSLY — "every verdict has raw evidence" over zero verdicts
+  // is true and attests nothing, and it read as a green tick on a change nobody reviewed.
+  // Whether that absence is legal is the LOOP's question (C8, per mode), not this one's.
+  if (!c.verdictDocs)
+    return { id: 'C5', status: 'n/a', detail: 'no review document carries a verdict — nothing to attest' };
+  return { id: 'C5', status: 'pass', detail: `${c.verdictDocs} review doc(s), every verdict has raw evidence` };
+}
+
+// C8: every review family's loop converges, or it stops. Rounds are DERIVED per family
+// (review.js) — 6.0 keeps no hand-written `round:`, and it never sums families into one
+// counter. The two control points, applied to each family on its own: an `escalate` verdict, and
+// a round past the one automatic re-review that follows the producer's rulings at the owner's
+// review-round-limit (limit-ruling — the limit itself asks the producer, not the owner). The STAGE decides whether those
+// two are refusals: an archived bundle is frozen history, so they report there instead of
+// blocking, while evidence-integrity problems block at either stage. An unreadable review/
+// draws no conclusion here: C5 already blocks on it.
+function checkReviewLoop(facts, flowText, stage, cwd) {
+  if (facts.symlink) return { id: 'C8', status: 'n/a', detail: 'review evidence is unreadable — see C5' };
+  // the ONE configured number the loop consults — read through the shared structured reader
+  const l = rv.reviewLoop(facts, flowText, stage, { limit: require('./config').resolveReviewRoundLimit(cwd), cwd });
+  return { id: 'C8', status: l.status, detail: l.detail };
+}
+
+function checkKb(cwd, dir) {
+  const specsDir = path.join(dir, 'specs');
+  const modules = new Set();
+  const walk = (d, base) => {
+    if (!fs.existsSync(d)) return;
+    for (const e of fs.readdirSync(d, { withFileTypes: true })) {
+      const p = path.join(d, e.name);
+      if (e.isDirectory()) walk(p, base);
+      else if (e.name.endsWith('.md')) modules.add(path.relative(base, p).split(path.sep)[0]);
+    }
+  };
+  walk(specsDir, specsDir);
+  if (!modules.size) return { id: 'C6', status: 'n/a', detail: 'no delta specs to map' };
+
+  // build the module → truth index (c6-truth-binding): a truth doc binds by its
+  // declared store-module (default = basename), never by a filename assumption
+  const truthDir = path.join(cwd, 'apriori', 'truth');
+  const index = new Map();                 // module → { text, sourceFiles, basename }
+  const conflicts = new Map();             // module → "declared by A and B"
+  if (fs.existsSync(truthDir)) {
+    for (const e of fs.readdirSync(truthDir).sort()) {
+      if (!e.endsWith('.md')) continue;
+      const text = fs.readFileSync(path.join(truthDir, e), 'utf8');
+      const h2 = text.search(/^##\s/m);
+      const header = h2 >= 0 ? text.slice(0, h2) : text;
+      const smM = header.match(/^store-module:\s*(.+)$/m);
+      const sfM = header.match(/^source-files:\s*(.+)$/m);
+      const mods = smM ? smM[1].trim().split(/\s+/) : [e.replace(/\.md$/, '')];
+      const sourceFiles = sfM ? sfM[1].trim().split(/\s+/) : null;   // null = default lib/<module>.js
+      for (const m of mods) {
+        if (index.has(m)) conflicts.set(m, `${m}: declared by both ${index.get(m).basename} and ${e}`);
+        else index.set(m, { text, sourceFiles, basename: e });
+      }
+    }
+  }
+  const stripFencesKb = (t) => stripFences(t);              // the shared fence grammar (lib/text.js)
+  const blocked = [], notes = [];
+  let checked = 0;
+  for (const m of [...modules].sort()) {
+    if (conflicts.has(m)) { blocked.push(conflicts.get(m)); continue; }
+    const entry = index.get(m);
+    if (!entry) { notes.push(`${m}: no truth doc`); continue; }
+    const noFence = stripFencesKb(entry.text);
+    const sc = noFence.match(/^source-commit:\s+(\S+)/m);
+    if (!sc) {
+      const attempt = noFence.split('\n').some((l) => l.includes('source-commit:') && !/^source-commit:\s+\S+/.test(l));
+      notes.push(attempt
+        ? `${m}: source-commit is not in the canonical fence-outside line-start form 'source-commit: <ref>'`
+        : `${m}: truth doc has no source-commit`);
+      continue;
+    }
+    const ref = sc[1];
+    const explicit = entry.sourceFiles !== null;
+    const declared = explicit ? entry.sourceFiles : [`lib/${m}.js`];
+    // an explicit declaration is a complete promise: every token must be verifiable
+    const usable = [];
+    let tokenBad = null;
+    for (const rel of declared) {
+      // an explicit token is a repo-relative promise: reject absolute/backslash/empty/. or .. segments
+      if (explicit && (rel === '' || path.isAbsolute(rel) || rel.includes('\\') ||
+          rel.split('/').some((seg) => seg === '' || seg === '.' || seg === '..'))) {
+        tokenBad = `${m}: malformed source-files token (must be a normalized repo-relative path): ${rel}`; break;
+      }
+      const abs = path.join(cwd, rel);
+      let st = null; try { st = fs.lstatSync(abs); } catch { /* absent */ }
+      if (!st) { if (explicit) { tokenBad = `${m}: declared source-files token missing: ${rel}`; break; } continue; }
+      if (st.isSymbolicLink()) { if (explicit) { tokenBad = `${m}: declared source-files token is a symlink: ${rel}`; break; } continue; }
+      if (!containsFuturePath(cwd, abs)) { if (explicit) { tokenBad = `${m}: declared source-files token escapes the repo: ${rel}`; break; } continue; }
+      if (!st.isFile() && !st.isDirectory()) { if (explicit) { tokenBad = `${m}: declared source-files token is neither file nor directory: ${rel}`; break; } continue; }
+      usable.push(rel);
+    }
+    if (tokenBad) { blocked.push(tokenBad); continue; }
+    if (!usable.length) { notes.push(`${m}: no ${declared.join(' / ')} to compare`); continue; }
+    const g = spawnSync('git', ['-C', cwd, 'log', '--oneline', `${ref}..HEAD`, '--', ...usable], { encoding: 'utf8' });
+    if (g.error) { notes.push(`${m}: git unavailable (${g.error.message})`); continue; }
+    if (g.status !== 0) { notes.push(`${m}: git failed (${(g.stderr || '').split('\n')[0]})`); continue; }
+    const n = g.stdout.trim() ? g.stdout.trim().split('\n').length : 0;
+    if (n > 0) blocked.push(`${m}: ${n} commit(s) since ${ref}`);
+    else checked++;
+  }
+  if (blocked.length) return { id: 'C6', status: 'blocked', detail: blocked.join('; ') };
+  if (checked > 0) return { id: 'C6', status: 'pass', detail: `${checked} module stamp(s) up to date${notes.length ? `; ${notes.join('; ')}` : ''}` };
+  return { id: 'C6', status: 'n/a', detail: notes.join('; ') };
+}
+
+// Scenario-to-TAP binding completeness (UNBOUND / a non-failing ORPHAN / UNIDENTIFIED) is
+// advisory by default, never a block: a native focused test command that succeeds and leaves
+// real TAP evidence must not force a producer to write a TAP merger, scenario-ID promoter, or
+// output-conversion script just to satisfy this check. `verify()`'s own `v.passes` is the ONE
+// place this fact-only rule lives (spec-runner.js) — gate consumes it rather than re-deriving
+// it, so `apriori verify` and `apriori gate` can never disagree about what "real evidence"
+// means. What still blocks, fail-closed: a bound scenario's own test failed (boundRed), a real
+// `not ok` nobody could attribute to a scenario (unattributed), a failing test bound to an ID
+// no scenario declares (failing orphan, already folded into `v.orphan` for a --change run), a
+// cross-boundary duplicate ID (ambiguous binding, a spec defect — not a TAP-format chore), or
+// the total absence of REAL execution evidence (`run.executedPoints === 0` — every TAP point
+// parsed was SKIP/TODO, or none at all: a directive marks a point never run, so it is parsed
+// structure, not evidence, and an all-SKIP/all-TODO run must not pass on parsing alone).
+// `run.errors` (infra: crash, non-TAP output, bailout, …) already fails closed upstream of all
+// of this.
+function checkBinding(cwd, name, stage, testCmd, idPattern) {
+  const run = stage === 'in-flight'
+    ? verify({ change: name, cwd, testCmd, idPattern })
+    : verify({ specs: [path.join(cwd, 'apriori', 'specs')], cwd, testCmd, idPattern });
+  if (run.errors.length) return { infra: run.errors };
+  const v = run.verdict;
+  const strictClean = v.clean && run.duplicates.length === 0;
+  // a change whose scope is genuinely empty (removal-only / all-prose delta) owes no execution
+  // evidence — `vacuousNote` is the one place that fact already lives (spec-runner's applyChangeScope)
+  const hasEvidence = !!run.vacuousNote || (run.executedPoints || 0) > 0;
+  const passes = v.passes && run.duplicates.length === 0 && hasEvidence;
+  // in-flight runs carry the informative store summary (change-scoped verdict, GT-26/27)
+  const sr2 = run.storeReport;
+  const suffix = sr2
+    ? `; store: ${sr2.boundRed.length} red, ${sr2.unbound.length} unbound, ${sr2.orphan.length} orphan, ${sr2.unidentified.length} unidentified, ${sr2.unattributedFailures.count} unattributed, ${sr2.duplicates.length} duplicate(s) outstanding`
+    : '';
+  const label0 = sr2 ? `${stage}, change-scoped` : stage;
+  const advisoryParts = [];
+  for (const [label, arr] of [['unbound', v.unbound], ['unidentified', v.unidentified]])
+    if (arr.length) advisoryParts.push(`${arr.length} ${label}`);
+  const advisory = advisoryParts.length
+    ? ` (advisory, non-blocking: ${advisoryParts.join(', ')} — scenario-ID binding is a suggestion, not required)` : '';
+  if (passes) {
+    const detail = strictClean ? `verify GREEN (${label0})${suffix}` : `tests pass (${label0})${suffix}${advisory}`;
+    return { check: { id: 'C1', status: 'pass', detail }, projection: run.projection };
+  }
+  const failingOrphan = v.orphan.filter((id) => (run.results.get(id) || {}).fail > 0);
+  const parts = [];
+  for (const [label, arr] of [['red', v.boundRed], ['failing-orphan', failingOrphan], ['unattributed-failures', v.unattributed || []], ['duplicate-IDs', run.duplicates]])
+    if (arr.length) parts.push(`${arr.length} ${label}`);
+  if (!hasEvidence) parts.push('0 executed test points — no evidence of tests actually running (SKIP/TODO does not count)');
+  return { check: { id: 'C1', status: 'blocked', detail: `verify GAPS: ${parts.join(', ')}${suffix}${advisory}` }, projection: run.projection };
+}
+
+
+// The same shape as checkBinding, for the path where no test command exists. C1 cannot run,
+// but everything C1 was ALSO producing for its neighbours still can: C7 needs the projection,
+// and a broken id-pattern is still a broken config. Nothing here spawns a process.
+function checkBindingSkipped(cwd, name, stage, idPattern) {
+  // a broken pattern is a broken CONFIG, not an absent one — it stays an evaluation error
+  // (GT-24 keeps holding). Compile-checking is in-process; no scenario is ever MATCHED here,
+  // so no matcher child is spawned and GT-25's runtime precondition cannot arise.
+  const idp = resolveIdPattern(cwd, idPattern);
+  if (idp.error) return { infra: [idp.error] };
+  const detail = 'skipped — no test command (pass --test-cmd or add a test-cmd row to '
+    + 'apriori/process-config.md); the binding check did not run';
+  const c1 = { id: 'C1', status: 'skipped', detail };
+  // archived: the deltas are already merged and C7 is n/a — building a projection could only
+### Requirement: the golden path proves the packaged CLI end-to-end
+`scripts/golden-path.mjs` SHALL extract the README Quickstart's shell blocks in document order and run them as one bash script in a fresh temp directory, with `apriori` resolving to the local checkout bin (`--local`) or to a tarball installed into an isolated prefix (`--packed <tgz>`, PATH prepended with the platform bin dir and a preflight asserting `apriori` resolves inside the prefix); it SHALL assert each block's last command against the documented exit sequence `[0, 1, 0, 0]` and the final state (store verify 0, check 0, doctor --no-run 0, archived demo change present), failing loudly with the block index and expected/actual on any mismatch. The CI workflow SHALL run the packed mode on ubuntu and windows.
+
+#### Scenario: GP-01 the extractor is a pure text seam
+- WHEN `extractBlocks(readmeText)` runs on the real README (and on doctored variants in tests)
+- THEN it returns the Quickstart's ```shell blocks in document order (four today), never reading or writing the filesystem itself
+
+#### Scenario: GP-02 a --local run walks the whole Quickstart
+- WHEN `node scripts/golden-path.mjs --local` runs in a fresh temp dir
+- THEN every block executes in sequence with the checkout bin aliased over `npm i -g`, per-block last exits match `[0, 1, 0, 0]`, and the run finishes exit 0
+
+#### Scenario: GP-03 final state is asserted, not assumed
+- WHEN the blocks complete
+- THEN the runner re-asserts: `verify --specs apriori/specs` exits 0, `check` exits 0, `doctor --no-run` exits 0, and `apriori/changes/archive/` contains the archived demo change — any miss fails the run naming the assertion
+
+#### Scenario: GP-04 drift between README and contract fails loudly
+- WHEN a doctored README text changes the block count or makes a block's exit diverge from the expected sequence
+- THEN the runner (fed through the text seam) fails naming the block index and expected/actual — the README cannot silently drift from the contract
+
+#### Scenario: GP-05 packed mode proves the published file set
+- WHEN `--packed <tgz>` installs the tarball into an isolated prefix (platform bin dir on PATH, resolve-inside-prefix preflight)
+- THEN the same walk succeeds using ONLY the packaged files — a package.json `files:` gap surfaces here; the runner aborts if `apriori` resolves outside the prefix
+
+### Requirement: the walker resolves an explicit Git Bash on Windows
+`scripts/golden-path.mjs` SHALL expose `resolveBash(opts = {})` (injectable `platform`/`env`/`whereGit`/`existsFile` seams with real defaults) and use its single result, spawned without a shell, at every bash spawn site. On non-win32 it returns `'bash'` and probes nothing. On win32 it returns an absolute Git Bash path — bare `bash` is never the answer and the System32 WSL shim is never a candidate: `APRIORI_GIT_BASH` when set must be an absolute path to an existing file (relative or missing → hard fail naming the variable); otherwise candidates are derived from `where git` hits (spawned `{shell: false}`; nonzero/error/empty = zero candidates; stdout split on `/\r?\n/`, outer-trimmed, blanks dropped, interior spaces preserved; a hit stripping a trailing `cmd\git.exe` | `mingw64\bin\git.exe` | `mingw32\bin\git.exe` | `bin\git.exe`, case-insensitive, yields its install root; unmatched shapes derive nothing) as `<root>\bin\bash.exe` then `<root>\usr\bin\bash.exe`, then the conventional `%ProgramFiles%`/`%ProgramFiles(x86)%`/`%LocalAppData%\Programs` Git locations (bin and usr\bin variants, env-var-present only), deduplicated, first existing file wins; nothing found → a thrown error naming the cure (install Git for Windows or set APRIORI_GIT_BASH). The resolved target is logged once per run.
+
+#### Scenario: GP-06 posix stays bare bash
+- WHEN resolveBash runs with a non-win32 platform seam
+- THEN it returns 'bash' without consulting the env, where, or the filesystem
+
+#### Scenario: GP-07 the explicit override is honored or fails loudly
+- WHEN APRIORI_GIT_BASH is an absolute path to an existing file, a relative path, or an absolute path to nothing (win32 seams)
+- THEN the first returns that exact value and the other two fail naming the variable
+
+#### Scenario: GP-08 every Git-for-Windows layout derives its root
+- WHEN where-git reports hits shaped cmd\git.exe, mingw64\bin\git.exe, mingw32\bin\git.exe, or bin\git.exe — including multi-hit CRLF output with spaces in paths and blank lines
+- THEN each derives `<root>\bin\bash.exe` (falling back to `<root>\usr\bin\bash.exe` when bin is absent) and the first existing candidate wins
+
+#### Scenario: GP-09 no Git Bash means a named cure, never the shim
+- WHEN win32 seams provide no override, no where-git hits, and no conventional install
+- THEN resolveBash throws the install/set-APRIORI_GIT_BASH message — and across every win32 fixture the result is never bare 'bash'
+
+#### Scenario: GP-10 the resolved bash is visible
+- WHEN the walker resolves its bash
+- THEN the choice is logged exactly once per run
+
+### Requirement: the suite is portable to the Windows CI matrix
+The test suite SHALL pass on the CI workflow's Windows runners as it does on Linux, without weakening what it asserts about the code: a test that runs `npm` SHALL do so through one seam (`test/helpers/npm.js`: `npm.cmd` through a shell on `win32`, bare `npm` elsewhere); a test that compares recorded text containing repository paths SHALL compare them in a separator-neutral form (the corpus normalizer renders the path under `<ROOT>` with `/` whatever the host printed, a filter on a relative path reads it with `/`, and an assertion on a `path.relative` result or on a message that embeds a host path compares in `/` form or accepts either separator — BD-08, found by the first Windows CI run that got past CL-21, where the runners can create symlinks and so ran the case a host without the privilege had skipped); and a test that creates a symlink SHALL not fail for want of the privilege: it probes first (`canSymlink()` in nineteen files, AM-140 and GT-57 newly among them; an inline try/catch probe in six older files) or, in two older tests (UP-10 in update.test.js, the prototype-walk guide tests), skips the symlink case on `win32` outright — either way only the symlink case is skipped and every other assertion keeps running; the probe form is preferred for new tests because it keeps the case alive on a Windows host that can link. A test whose premise cannot arise on a platform (CL-21: blocking stdio pipes on Windows) SHALL be skipped there with its reason, never silently passed.
+
+#### Scenario: WN-01 the suite is portable to the Windows CI matrix: npm goes through one seam, recorded paths read with /, symlink fixtures are guarded
+- WHEN every `test/*.test.js` source is scanned, the corpus normalizer is given a Windows-style path under the repository root, and the npm seam is read
+- THEN no test spawns `npm` by its bare name, the seam names `npm.cmd` under `win32` with a shell, the normalizer yields `<ROOT>/apriori/specs/x/spec.md` for the backslash form and the forward-slash form alike, and the two tests that lacked a probe (AM-140, GT-57) consult `canSymlink()`
+"""Scenario IDs live at the START of each test name — that is the whole binding contract."""
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from slug import slugify
+
+
+def test_PY_01_lowercases_and_hyphenates():
+    assert slugify("Hello World") == "hello-world"
+
+
+def test_PY_02_collapses_runs_and_trims_edges():
+    assert slugify("  --Big__Deal!! ") == "big-deal"
+
+
+def test_PY_03_empty_and_symbol_only_input():
+    assert slugify("***") == ""
+### Requirement: slugify normalizes text into URL-safe slugs
+`slugify` SHALL lowercase its input, collapse every non-alphanumeric run into a single hyphen, and trim leading/trailing hyphens.
+
+#### Scenario: PY-01 lowercases and hyphenates
+- WHEN slugify('Hello World') is called
+- THEN it returns 'hello-world'
+
+#### Scenario: PY-02 collapses runs and trims edges
+- WHEN slugify('  --Big__Deal!! ') is called
+- THEN it returns 'big-deal'
+
+#### Scenario: PY-03 empty and symbol-only input yields the empty slug
+- WHEN slugify('***') is called
+- THEN it returns ''
+
+exec
+/usr/bin/zsh -lc "node --test test/ci-pytest-tap-compat.test.js; git rev-parse HEAD; rg -n 'pytest|python-example|WN-02' .github examples scripts test/ci-pytest-tap-compat.test.js test/windows-portability.test.js apriori/specs/golden/spec.md" in /root/terra/asd-v62-code
+ succeeded in 26ms:
+✔ test/ci-pytest-tap-compat.test.js (46.127642ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 54.723205
+8a3ca68b7331979e537be2ec820a80e5806b56f8
+test/ci-pytest-tap-compat.test.js:2:// ci-pytest-tap-compat — the Python example's CI job and its README install a pytest that pytest-tap supports (WN-02).
+test/ci-pytest-tap-compat.test.js:3:// Trigger: the 6.1.0 release CI (PR #2, 2026-11-01) — pytest 9.2.0 broke pytest-tap 3.5 at plugin load ("option dest
+test/ci-pytest-tap-compat.test.js:5:// with pytest 8.4.2 the same example is GREEN. An external release, not a change in apriori.
+test/ci-pytest-tap-compat.test.js:14:test('WN-02 the Python example installs a pytest that pytest-tap supports, in CI and in its README', () => {
+test/ci-pytest-tap-compat.test.js:16:  const job = ci.slice(ci.indexOf('python-example:'));
+test/ci-pytest-tap-compat.test.js:17:  assert.ok(job.length > 0, 'the python-example job exists');
+test/ci-pytest-tap-compat.test.js:20:  assert.match(pip[0], /"pytest<9"/, 'CI pins pytest below 9 (pytest 9.2 breaks pytest-tap 3.5)');
+test/ci-pytest-tap-compat.test.js:21:  assert.match(pip[0], /\bpytest-tap\b/);
+test/ci-pytest-tap-compat.test.js:22:  const readme = read('examples/python-pytest/README.md');
+test/ci-pytest-tap-compat.test.js:23:  assert.match(readme, /^pip install "pytest<9" pytest-tap$/m, 'the README install line matches CI');
+test/ci-pytest-tap-compat.test.js:24:  assert.match(readme, /pytest 9/, 'the README says why the pin is there');
+.github/workflows/ci.yml:43:  python-example:
+.github/workflows/ci.yml:57:      # pytest 9.2 breaks pytest-tap 3.5 at plugin load (option dest 'tap_stream' already used); pin below 9
+.github/workflows/ci.yml:58:      - run: pip install "pytest<9" pytest-tap
+.github/workflows/ci.yml:60:        working-directory: examples/python-pytest
+examples/python-pytest/run_tap.py:2:"""pytest → apriori-friendly TAP.
+examples/python-pytest/run_tap.py:4:pytest-tap emits `ok 1 tests/x.py::test_PY_01_name` — no ` - ` separator, and Python
+examples/python-pytest/run_tap.py:14:    [sys.executable, "-m", "pytest", "--tap-stream", "-q"],
+examples/python-pytest/README.md:1:# Python + pytest example
+examples/python-pytest/README.md:9:pip install "pytest<9" pytest-tap
+examples/python-pytest/README.md:13:Expect `RESULT: GREEN — spec is the test suite`. pytest is pinned below 9 because pytest 9.2 breaks pytest-tap 3.5 when the plugin loads (`option dest 'tap_stream' already used`), so the test command exits 3 with no TAP and `verify` refuses the run.
+examples/python-pytest/README.md:15:`run_tap.py` is the whole integration: pytest-tap's dialect (`ok 1 tests/x.py::test_PY_01_name`)
+
+codex
+The workflow and README both use the required quoted `pytest<9` constraint, and the focused guard test passes. The CI job still runs the Python adapter through `verify` on both operating systems. I’m checking the gate result and whether the guard’s assertions leave any material gap in WN-02.
+exec
+/usr/bin/zsh -lc 'node bin/apriori.js gate --change ci-pytest-tap-compat --json' in /root/terra/asd-v62-code
+exec
+/usr/bin/zsh -lc "sed -n '339,355p' RUNBOOK.md; sed -n '385,403p' RUNBOOK.md; node --version; node --test --test-reporter=tap test/ci-pytest-tap-compat.test.js; rg -n 'test-cmd|CLAUDE|readFile' lib/config.js lib/resolve.js lib/gate.js; git diff --check v6-dev...HEAD" in /root/terra/asd-v62-code
+ exited 1 in 0ms:
+{
+  "change": "ci-pytest-tap-compat",
+  "stage": "in-flight",
+  "checks": [
+    {
+      "id": "C1",
+      "status": "skipped",
+      "detail": "skipped — no test command (pass --test-cmd or add a test-cmd row to apriori/process-config.md); the binding check did not run"
+    },
+    {
+      "id": "C2",
+      "status": "n/a",
+      "detail": "retired in 6.0 — nothing is read"
+    },
+    {
+      "id": "C3",
+      "status": "pass",
+      "detail": "legal (review)"
+    },
+    {
+      "id": "C4",
+      "status": "n/a",
+      "detail": "ledger retired in 6.0 — open items live in ## Open"
+    },
+    {
+      "id": "C5",
+      "status": "n/a",
+      "detail": "no review document carries a verdict — nothing to attest"
+    },
+    {
+      "id": "C6",
+      "status": "n/a",
+      "detail": "golden: no truth doc"
+    },
+    {
+      "id": "C7",
+      "status": "pass",
+      "detail": "every mutation delta is stamped"
+    },
+    {
+      "id": "C8",
+      "status": "blocked",
+      "detail": "review-round-limit 8 (default); no completed independent review round — land `review/<family>-v1.md` with its VERDICT line and the `<family>-v1-raw.*` transcript beside it; transcript 'code-review-v1-raw.txt' names a review round whose summary 'code-review-v1.md' is missing"
+    },
+    {
+      "id": "C9",
+      "status": "pass",
+      "detail": "no open items"
+    }
+  ],
+  "result": "BLOCKED",
+  "blocked": 1,
+  "errors": []
+}
+
+ succeeded in 11ms:
+## 5. Prompts
+
+**Verdict-line phrase table.** Every review ends with exactly one `VERDICT:` line drawn from this table — these are the machine-greppable strings that `/goal` conditions and §4's exit rules match against. CN documents quote the English strings verbatim; the verdict line itself is never translated. Three outcomes: **ACCEPT · REVISE · ESCALATE**.
+
+| Review | ACCEPT | REVISE | ESCALATE |
+|---|---|---|---|
+| contract (P3 on a contract) | `VERDICT: no major issues, ready to proceed to execution` | `VERDICT: <N> issues open` | `VERDICT: escalate` |
+| implementation (P3 on a diff) | `VERDICT: no spec-vs-code gaps` | `VERDICT: gaps found` · `VERDICT: <N> issues open` | `VERDICT: escalate` |
+
+`VERDICT: escalate` means **the approach is wrong, not the details** — return it instead of opening another patching round, and put the reason in the review document and as an `## Open` item. It is a human's to answer: `apriori gate` blocks and `apriori status --escalation` exits 3 until the owner records `reframe <family> round <n> <split|tests|redo|accept-risk> — <reason>` in `gates:`.
+
+`<N>` = the count of substantive issues still open at the end of that round — a positive integer; `0` is an accept however it is phrased. Advisories never count.
+
+**Single-file evidence's own vocabulary.** A self-contained doc (§1 R2) closes with one of three canonical full-line forms, matched whole and case-insensitively: `VERDICT: ACCEPT`, `VERDICT: REVISE`, `VERDICT: ESCALATE`. The phrasings in the table above stay legal on either format. The line must match whole: an ACCEPT followed by a qualifying clause, or a REVISE whose reason rides the machine line, is refused — the reason belongs in the document body, never on the machine line.
+
+**There is no issue ledger.** The state's `## Open` section is where a change's open substantive issues live — one line each, a stable id first — and it is the only place `gate`, `archive` and `status` read them (`review/issues.md` is never read to judge a change). **Migration, once:** an ACTIVE bundle whose legacy `review/issues.md` still carries `open` rows (old table contract, `open` as the leading status token) is refused at gate C3 / archive R1 / review-ready until each row is MOVED — `- <ID>: <text>` into `## Open`, the row deleted from the ledger (or the file deleted); a copied row is still an open row, and a ledger that cannot be read is a structural error. Frozen archives are never scanned. **IDs:** an Open id is one token, no spaces (`[^\s:]+` — re-key `data schema` as `data-schema`); a re-found issue reopens its old id — reopened is an event, not a new line; a closed id is never reused for a different risk within the same bundle. The CLI cannot prove that last rule (it has no memory of what an id once named), so an `evidence-accept` whose id later names a different item is a documentation violation, not something the tool detects. **Exactly one thing blocks: a pending item — one nobody has accepted and that is not a registered follow-up.** An accepted item is reported as still present and never deleted by a tool; the producer deletes the line when the risk is actually resolved. A registered follow-up (`- <ID>: follow-up → <new-change-name> — <text>`, §4 Review & Deliver) is a new ask this delivery does not depend on: reported as a note, never a blocker, never closed by being moved out. A commitment carried into another change keeps its original id there as a pending item until that change's own exit evidence closes it — picking it up, archiving the change it came from, or renaming either change never closes it. Only correctness, security and stated-requirement gaps become pending items at all — a new ask with no delivery dependency is a follow-up item, not a pending one; everything else is `advisory`, and that label is the reviewer's exclusive call. R1's unresolved delivery obligations and R4's review stops keep their authority: a follow-up registration releases neither.
+
+### P3 — independent review (heterogeneous, R2)
+
+```text
+You are an independent reviewer. Judge the product, not the paperwork.
+[Input] — this is your DEFAULT context, and it is all of it:
+* the behavior contract: apriori/changes/<change>/specs/
+* the diff
+* the ## Open items and the boundaries still uncovered: apriori/changes/<change>/flow-state.md, plus `apriori gate --change <change> --json`
+You may read the whole repo, its callers, config and prototypes on your own initiative. Do NOT ask for raw review transcripts, closed issues, or other changes' documents.
+You are NOT here to compile the code, to add the producer's missing tests one by one, or to rewrite the approach. If any of that is needed, the change was not review-ready — say so and stop.
+[Three questions]
+1. Does it violate established behavior or an actual safety constraint: behavior the contract requires that the code does not implement, or implements only on the happy path; where external input or permissions are touched, unvalidated input, missing authz, secrets in logs, injection surfaces; an established hard guarantee with no test injecting the adversarial condition on its success path.
+2. Semantic faithfulness — does real entry-point evidence support the implementation: does each test assert its scenario's behavior, or share its ID while asserting less; does a replaced owner have an assertion that fails if it is still live; the uncovered boundaries the ## Open items themselves name — is each genuinely acceptable, or is it the defect.
+3. Does the scope exceed the goal, or defy judgment: self-added promises and mechanisms beyond the requirement, valid decisions or safety responsibility; can one clear, repeatable evidence chain prove this change done — if not, say SPLIT.
+[Scope] Only the above count toward the verdict. Style, taste and nice-to-haves — label advisory. If you run tests in a read-only sandbox, treat degraded output as a sandbox artifact, not a finding (R2).
+[Output] The newly found substantive issues (description / risk / suggested fix); which risk surfaces you did and did not examine; advisories separately. Land it at apriori/changes/<change>/review/<family>-v{N}.md.
+End with one verdict line from §5's phrase table — including "VERDICT: escalate" when the APPROACH is wrong rather than the details.
+```
+
+v24.13.0
+TAP version 13
+# Subtest: test/ci-pytest-tap-compat.test.js
+ok 1 - test/ci-pytest-tap-compat.test.js
+  ---
+  duration_ms: 42.242329
+  type: 'test'
+  ...
+1..1
+# tests 1
+# suites 0
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 49.387853
+lib/gate.js:95:      const text = fs.readFileSync(path.join(truthDir, e), 'utf8');
+lib/gate.js:217:  const detail = 'skipped — no test command (pass --test-cmd or add a test-cmd row to '
+lib/gate.js:238:    if (typeof flag !== 'string') return { kind: 'error', error: `--test-cmd must be a string (got ${Array.isArray(flag) ? 'array' : typeof flag})` };
+lib/gate.js:239:    if (flag.trim() === '') return { kind: 'error', error: 'empty --test-cmd — pass a command or omit the flag' };
+lib/gate.js:290:    try { flowText = fs.readFileSync(flowPath, 'utf8'); state = parseFlowState(flowText); }
+lib/gate.js:382:      ? 'no test command — the reviewer must not be the first to run the suite (pass --test-cmd or add a test-cmd config row)'
+lib/gate.js:394:const USAGE = 'usage: apriori gate --change <name> [--test-cmd "<cmd>"] [--id-pattern <re>] [--cwd <dir>] [--json] [--no-cas] [--review-ready]';
+lib/gate.js:403:  flags: { '--change': 'value', '--test-cmd': 'value', '--id-pattern': 'value', '--cwd': 'value', '--json': 'flag', '--no-cas': 'flag', '--review-ready': 'flag' } };
+lib/gate.js:406:// `--test-cmd --review-ready` there is no review-ready view, only a test command spelled that
+lib/gate.js:419:    const a = { ...requestOf(f), testCmd: ('--test-cmd' in f) ? f['--test-cmd'] : null,   // PRESENCE, not truthiness — an empty flag is an error, never a config fallback
+lib/config.js:134:  try { text = fs.readFileSync(p, 'utf8'); }
+
+exec
+/usr/bin/zsh -lc 'node test/ci-pytest-tap-compat.test.js; nl -ba test/ci-pytest-tap-compat.test.js; git status --short' in /root/terra/asd-v62-code
+ succeeded in 0ms:
+✔ WN-02 the Python example installs a pytest that pytest-tap supports, in CI and in its README (1.549416ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 6.738925
+     1	'use strict';
+     2	// ci-pytest-tap-compat — the Python example's CI job and its README install a pytest that pytest-tap supports (WN-02).
+     3	// Trigger: the 6.1.0 release CI (PR #2, 2026-11-01) — pytest 9.2.0 broke pytest-tap 3.5 at plugin load ("option dest
+     4	// 'tap_stream' already used by ['--tap']"), so `python run_tap.py` exited 3 with no TAP and verify refused the run;
+     5	// with pytest 8.4.2 the same example is GREEN. An external release, not a change in apriori.
+     6	const { test } = require('node:test');
+     7	const assert = require('node:assert');
+     8	const fs = require('node:fs');
+     9	const path = require('node:path');
+    10	
+    11	const ROOT = path.join(__dirname, '..');
+    12	const read = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
+    13	
+    14	test('WN-02 the Python example installs a pytest that pytest-tap supports, in CI and in its README', () => {
+    15	  const ci = read('.github/workflows/ci.yml');
+    16	  const job = ci.slice(ci.indexOf('python-example:'));
+    17	  assert.ok(job.length > 0, 'the python-example job exists');
+    18	  const pip = job.match(/^\s*- run: pip install .*$/m);
+    19	  assert.ok(pip, 'the job installs its Python dependencies');
+    20	  assert.match(pip[0], /"pytest<9"/, 'CI pins pytest below 9 (pytest 9.2 breaks pytest-tap 3.5)');
+    21	  assert.match(pip[0], /\bpytest-tap\b/);
+    22	  const readme = read('examples/python-pytest/README.md');
+    23	  assert.match(readme, /^pip install "pytest<9" pytest-tap$/m, 'the README install line matches CI');
+    24	  assert.match(readme, /pytest 9/, 'the README says why the pin is there');
+    25	});
+?? apriori/changes/ci-pytest-tap-compat/review/
+
+codex
+Reviewed `git diff v6-dev...HEAD` at `8a3ca68b7331979e537be2ec820a80e5806b56f8` against the change’s WN-02 contract.
+
+No newly found substantive issues. The CI installation step and example README both use `pip install "pytest<9" pytest-tap`; the README explains the plugin-load failure. The change stays within the dependency compatibility fix and introduces no product behavior or permission changes. No split or approach escalation is warranted.
+
+Examined surfaces:
+
+- The Ubuntu/Windows Python job, dependency command quoting, and its existing `run_tap.py` → `apriori verify` execution path.
+- The guard’s assertions against the actual workflow and README, and its discovery through `scripts/run-tests.mjs`. Reverting either installation line to its previous unpinned form would fail the guard.
+- The delta contract, existing golden contract, and flow-state. `## Open` contains no unresolved items.
+
+Validation: `node test/ci-pytest-tap-compat.test.js` passed WN-02; the focused `node --test` invocation also passed. `git diff --check v6-dev...HEAD` passed.
+
+The requested gate returned `BLOCKED` solely because this review summary had not yet been landed. C1 skipped execution because no test command was configured; C3, C7, and C9 passed. These results do not establish a product defect or independently prove runtime compatibility.
+
+Not independently exercised: fresh dependency installation, the Python example runtime, hosted Windows/Linux CI, or the full repository suite. The fresh-venv compatibility results in flow-state are producer-reported evidence.
+
+Advisory: the guard extracts everything after `python-example:` rather than delimiting that job, and checks CI dependency substrings rather than the complete command. Bounding the extraction and matching the command exactly would make it more resilient to future workflow restructuring. The current workflow has the intended executable command in that job, so this is non-blocking.
+
+VERDICT: no spec-vs-code gaps
+tokens used
+30,365
+Reviewed `git diff v6-dev...HEAD` at `8a3ca68b7331979e537be2ec820a80e5806b56f8` against the change’s WN-02 contract.
+
+No newly found substantive issues. The CI installation step and example README both use `pip install "pytest<9" pytest-tap`; the README explains the plugin-load failure. The change stays within the dependency compatibility fix and introduces no product behavior or permission changes. No split or approach escalation is warranted.
+
+Examined surfaces:
+
+- The Ubuntu/Windows Python job, dependency command quoting, and its existing `run_tap.py` → `apriori verify` execution path.
+- The guard’s assertions against the actual workflow and README, and its discovery through `scripts/run-tests.mjs`. Reverting either installation line to its previous unpinned form would fail the guard.
+- The delta contract, existing golden contract, and flow-state. `## Open` contains no unresolved items.
+
+Validation: `node test/ci-pytest-tap-compat.test.js` passed WN-02; the focused `node --test` invocation also passed. `git diff --check v6-dev...HEAD` passed.
+
+The requested gate returned `BLOCKED` solely because this review summary had not yet been landed. C1 skipped execution because no test command was configured; C3, C7, and C9 passed. These results do not establish a product defect or independently prove runtime compatibility.
+
+Not independently exercised: fresh dependency installation, the Python example runtime, hosted Windows/Linux CI, or the full repository suite. The fresh-venv compatibility results in flow-state are producer-reported evidence.
+
+Advisory: the guard extracts everything after `python-example:` rather than delimiting that job, and checks CI dependency substrings rather than the complete command. Bounding the extraction and matching the command exactly would make it more resilient to future workflow restructuring. The current workflow has the intended executable command in that job, so this is non-blocking.
+
+VERDICT: no spec-vs-code gaps

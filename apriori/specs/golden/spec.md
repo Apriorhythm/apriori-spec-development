@@ -50,3 +50,10 @@ The test suite SHALL pass on the CI workflow's Windows runners as it does on Lin
 #### Scenario: WN-01 the suite is portable to the Windows CI matrix: npm goes through one seam, recorded paths read with /, symlink fixtures are guarded
 - WHEN every `test/*.test.js` source is scanned, the corpus normalizer is given a Windows-style path under the repository root, and the npm seam is read
 - THEN no test spawns `npm` by its bare name, the seam names `npm.cmd` under `win32` with a shell, the normalizer yields `<ROOT>/apriori/specs/x/spec.md` for the backslash form and the forward-slash form alike, and the two tests that lacked a probe (AM-140, GT-57) consult `canSymlink()`
+
+### Requirement: the Python example installs a pytest that pytest-tap supports
+The CI workflow's `python-example` job and the example's README SHALL install pytest below 9 together with pytest-tap (`pip install "pytest<9" pytest-tap`), and the README SHALL say why: pytest 9.2 breaks pytest-tap 3.5 when the plugin loads, so the example's test command exits 3 with no TAP and `verify` refuses the run.
+
+#### Scenario: WN-02 the Python example installs a pytest that pytest-tap supports, in CI and in its README
+- WHEN `.github/workflows/ci.yml`'s `python-example` job and `examples/python-pytest/README.md` are read
+- THEN the job's install step is `pip install "pytest<9" pytest-tap`, the README carries the same line, and the README names pytest 9 as the reason for the pin

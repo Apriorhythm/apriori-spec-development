@@ -23,6 +23,15 @@ advantage over working without apriori, and cost improvements are not shown. (Be
 **Release steps (2026-11-01).** Tag `v6.1.0` is cut on this line; `main` and `release/v6` are
 fast-forwarded to it; the package is published to npm as `apriori-cli@6.1.0`.
 
+### ci-pytest-tap-compat (2026-11-01) — the Python example pins pytest below 9
+
+The 6.1.0 release CI found the `python-example` job red on both runners: pytest 9.2.0, released just
+before, breaks pytest-tap 3.5 when the plugin loads (`option dest 'tap_stream' already used by
+['--tap']`), so `python run_tap.py` exited 3 with no TAP and `verify` refused the run. The job and the
+example's README now install `"pytest<9" pytest-tap`, and the README says why (golden WN-02, guarded
+by `test/ci-pytest-tap-compat.test.js`). An external release, not a change in apriori; the pin goes
+when pytest-tap supports pytest 9.
+
 ### release-6-1-0: the release identity is 6.1.0
 
 `package.json` `6.0.0` → `6.1.0`; `RUNBOOK.md` header `runbook-version: 6.1` (CK-11 compares
